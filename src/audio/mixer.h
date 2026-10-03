@@ -9,6 +9,11 @@
 // The mixed length is the longest stem's; shorter stems contribute silence past
 // their end. Summing can push peaks past [-1, 1]; clamping is the player's job,
 // not the mixer's, so the raw sum is preserved here for testability.
+//
+// StreamMix (audio/stream_mix.h) does the same mix while playing, straight from
+// the compressed stems, with no decoded buffer. mix_stems stays as its test
+// reference: a StreamMix read start to end must equal it. decode_and_mix and
+// pad_front_ms go once the load job opens a StreamMix instead.
 
 #ifndef HYDRA_AUDIO_MIXER_H
 #define HYDRA_AUDIO_MIXER_H

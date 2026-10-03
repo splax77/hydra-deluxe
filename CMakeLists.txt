@@ -214,6 +214,7 @@ add_library(hydra_audio STATIC
     src/audio/vorbis_reader.cpp
     src/audio/ma_reader.cpp
     src/audio/mixer.cpp
+    src/audio/stream_mix.cpp
     src/audio/player.cpp
     src/audio/device.cpp
 )
@@ -383,6 +384,7 @@ add_executable(hydra_tests
     tests/test_audio_decode.cpp
     tests/test_stem_reader.cpp
     tests/test_audio_mixer.cpp
+    tests/test_stream_mix.cpp
     tests/test_audio_player.cpp
     tests/test_audio_device.cpp
     tests/test_obj_loader.cpp
