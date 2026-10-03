@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -14,6 +15,8 @@
 #include "app/preview_source.h"
 #include "audio/decode.h"
 #include "audio/mixer.h"
+#include "audio/stem_reader.h"
+#include "audio/stream_mix.h"
 #include "core/winstr.h"
 
 using namespace hydra::audio;
@@ -86,6 +89,23 @@ DecodedAudio reference_mix(const std::vector<DecodedAudio>& stems, int rate,
     return out;
 }
 
+// A whole MixSource read start to end, in odd-sized blocks.
+DecodedAudio read_all(MixSource& src) {
+    DecodedAudio out;
+    out.channels = src.channels();
+    out.sample_rate = src.sample_rate();
+    out.samples.resize(static_cast<std::size_t>(src.length_frames()) * src.channels());
+    int64_t at = 0;
+    while (at < src.length_frames()) {
+        const int64_t n = src.read(out.samples.data() + at * src.channels(),
+                                   std::min<int64_t>(511, src.length_frames() - at));
+        if (n <= 0) break;
+        at += n;
+    }
+    out.samples.resize(static_cast<std::size_t>(at) * src.channels());
+    return out;
+}
+
 // Same format and the same float bits, sample for sample.
 bool same_bits(const DecodedAudio& a, const DecodedAudio& b) {
     if (a.sample_rate != b.sample_rate || a.channels != b.channels) return false;
@@ -136,7 +156,9 @@ TEST_CASE("mix_stems resamples to the output rate and unifies channels") {
     }
 }
 
-TEST_CASE("decode_and_mix decodes each stem, skips undecodable ones") {
+// The Preview load opens each stem and skips one that won't open (the job's
+// open loop); the rest mix in a StreamMix. This was decode_and_mix's test.
+TEST_CASE("StreamMix of the stems that open: an undecodable stem is skipped") {
     hydra::app::PreviewAudioStem ogg;  // a file-path stem
     ogg.label = "song";
     ogg.path = std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg";
@@ -149,21 +171,27 @@ TEST_CASE("decode_and_mix decodes each stem, skips undecodable ones") {
     junk.label = "broken";
     junk.bytes = {'n', 'o', 't', ' ', 'a', 'u', 'd', 'i', 'o'};
 
-    // The progress callback fires once per stem, even for one that is skipped,
-    // so a loading bar can count stems without caring which ones decoded.
-    std::vector<std::pair<int, int>> ticks;
-    DecodedAudio out = decode_and_mix({ogg, mp3, junk}, 48000, 2,
-                                      [&](int done, int total) { ticks.emplace_back(done, total); });
-    CHECK(ticks == std::vector<std::pair<int, int>>{{0, 3}, {1, 3}, {2, 3}, {3, 3}});
+    std::vector<std::unique_ptr<StemReader>> readers;
+    int skipped = 0;
+    for (const hydra::app::PreviewAudioStem& s : {ogg, mp3, junk}) {
+        try {
+            readers.push_back(open_stem_reader(s));
+        } catch (const std::exception&) {
+            ++skipped;
+        }
+    }
+    CHECK(skipped == 1);
+    StreamMix mix(std::move(readers), 48000, 2, 0);
+    DecodedAudio out = read_all(mix);
     CHECK(out.channels == 2);
     CHECK(out.sample_rate == 48000);
     REQUIRE(out.frames() > 4800);  // both real 220 Hz stems mixed in
     CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));
 
-    // Every stem undecodable -> an empty mix, never a throw.
-    DecodedAudio none = decode_and_mix({junk}, 48000, 2);
-    CHECK(none.samples.empty());
-    CHECK(none.channels == 2);
+    // No stem opened -> an empty mix, never a throw.
+    StreamMix none({}, 48000, 2, 0);
+    CHECK(none.length_frames() == 0);
+    CHECK(none.channels() == 2);
 }
 
 TEST_CASE("mix_stems matches the convert-all-then-sum mix bit for bit") {
@@ -178,7 +206,7 @@ TEST_CASE("mix_stems matches the convert-all-then-sum mix bit for bit") {
     CHECK(same_bits(mix_stems(stems, 44100, 1), reference_mix(stems, 44100, 1)));
 }
 
-TEST_CASE("decode_and_mix matches decoding every stem then mixing") {
+TEST_CASE("StreamMix of real stems matches decoding every stem then mixing") {
     hydra::app::PreviewAudioStem ogg;
     ogg.label = "song";
     ogg.path = std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg";
@@ -194,13 +222,24 @@ TEST_CASE("decode_and_mix matches decoding every stem then mixing") {
     const std::vector<hydra::app::PreviewAudioStem> stems = {ogg, junk, mp3, opus};
 
     std::vector<DecodedAudio> decoded;
+    std::vector<std::unique_ptr<StemReader>> readers;
     for (const hydra::app::PreviewAudioStem& s : stems) {
         try {
             decoded.push_back(decode_stem(s));
+            readers.push_back(open_stem_reader(s));
         } catch (const std::exception&) {
         }
     }
     REQUIRE(decoded.size() == 3);
+    REQUIRE(readers.size() == 3);
 
-    CHECK(same_bits(decode_and_mix(stems, 48000, 2), mix_stems(decoded, 48000, 2)));
+    // Resampling in blocks instead of in one call: equal within float rounding.
+    StreamMix mix(std::move(readers), 48000, 2, 0);
+    const DecodedAudio want = mix_stems(decoded, 48000, 2);
+    const DecodedAudio got = read_all(mix);
+    REQUIRE(got.samples.size() == want.samples.size());
+    double worst = 0.0;
+    for (std::size_t i = 0; i < got.samples.size(); ++i)
+        worst = std::max(worst, static_cast<double>(std::fabs(got.samples[i] - want.samples[i])));
+    CHECK(worst <= 1e-6);
 }

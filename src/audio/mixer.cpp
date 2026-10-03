@@ -1,12 +1,9 @@
 #include "audio/mixer.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <utility>
-
-#include "app/preview_source.h"
 
 // miniaudio's configuration macros come from the miniaudio target.
 #include "miniaudio.h"
@@ -74,38 +71,6 @@ DecodedAudio mix_stems(const std::vector<DecodedAudio>& stems, int out_rate,
     for (const DecodedAudio& s : stems)
         add_into(out.samples, convert_stem(s, out_rate, out_channels));
     return out;
-}
-
-DecodedAudio decode_and_mix(const std::vector<app::PreviewAudioStem>& stems,
-                            int out_rate, int out_channels,
-                            const DecodeProgress& on_progress) {
-    DecodedAudio out;
-    out.sample_rate = out_rate;
-    out.channels = out_channels;
-    const int total = static_cast<int>(stems.size());
-    if (on_progress) on_progress(0, total);
-    int done = 0;
-    for (const app::PreviewAudioStem& s : stems) {
-        // Decode, convert and add this stem, then let both copies go before
-        // the next one decodes: at most one stem is ever held beside the mix.
-        DecodedAudio decoded;
-        bool ok = false;
-        try {
-            decoded = decode_stem(s);
-            ok = true;
-        } catch (const std::exception&) {
-            // Skip a stem we cannot decode; the rest of the chart still plays.
-        }
-        if (ok) add_into(out.samples, convert_stem(std::move(decoded), out_rate, out_channels));
-        if (on_progress) on_progress(++done, total);
-    }
-    return out;
-}
-
-void pad_front_ms(DecodedAudio& audio, double ms) {
-    if (ms <= 0.0 || audio.channels <= 0 || audio.sample_rate <= 0) return;
-    const auto frames = static_cast<std::size_t>(std::llround(ms * audio.sample_rate / 1000.0));
-    audio.samples.insert(audio.samples.begin(), frames * static_cast<std::size_t>(audio.channels), 0.0f);
 }
 
 }  // namespace hydra::audio

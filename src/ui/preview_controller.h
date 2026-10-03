@@ -85,10 +85,12 @@ public:
     bool sp_meter_has_curve() const;
 
     bool loading() const { return job_ != nullptr; }
-    // Only meaningful while loading(); the load's current step and stem count.
+    // Only meaningful while loading(); the load's current step and how far
+    // through the audio it is.
     struct LoadProgress {
         float fraction = 0.0f;  // 0..1 estimate
-        std::string label;      // "Decoding audio 2/5"
+        std::string label;      // "Opening audio: 312 of 625 MB"
+        std::string detail;     // time left ("about 40 s left"), or ""
     };
     LoadProgress load_progress() const;
     bool has_error() const { return !error_.empty(); }
