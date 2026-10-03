@@ -49,6 +49,17 @@
 //#define IMGUI_DISABLE_DEFAULT_MATH_FUNCTIONS              // Don't implement ImFabs/ImSqrt/ImPow/ImFmod/ImCos/ImSin/ImAcos/ImAtan2 so you can implement them yourself.
 //#define IMGUI_DISABLE_FILE_FUNCTIONS                      // Don't implement ImFileOpen/ImFileClose/ImFileRead/ImFileWrite and ImFileHandle at all (replace them with dummies)
 //#define IMGUI_DISABLE_DEFAULT_FILE_FUNCTIONS              // Don't implement ImFileOpen/ImFileClose/ImFileRead/ImFileWrite and ImFileHandle so you can implement them yourself if you don't want to link with fopen/fclose/fread/fwrite. This will also disable the LogToTTY() function.
+// Hydra: ImGui's own file opens (hydra_ui.ini, the fonts) go through Hydra's
+// long-path helper like every other file open, so they work past 260
+// characters. Defined in src/ui/imgui_files.cpp. Hydra never calls LogToTTY().
+#define IMGUI_DISABLE_DEFAULT_FILE_FUNCTIONS
+#include <stdio.h>
+typedef FILE* ImFileHandle;
+ImFileHandle        ImFileOpen(const char* filename, const char* mode);
+bool                ImFileClose(ImFileHandle file);
+unsigned long long  ImFileGetSize(ImFileHandle file);
+unsigned long long  ImFileRead(void* data, unsigned long long size, unsigned long long count, ImFileHandle file);
+unsigned long long  ImFileWrite(const void* data, unsigned long long size, unsigned long long count, ImFileHandle file);
 //#define IMGUI_DISABLE_DEFAULT_ALLOCATORS                  // Don't implement default allocators calling malloc()/free() to avoid linking with them. You will need to call ImGui::SetAllocatorFunctions().
 //#define IMGUI_DISABLE_DEFAULT_FONT                        // Disable default embedded fonts (ProggyClean + ProggyForever). Remove ~9 KB + ~14 KB from output binary. AddFontDefaultXXX() functions will assert.
 //#define IMGUI_DISABLE_DEFAULT_FONT_BITMAP                 // Disable default embedded bitmap font (ProggyClean). Remove ~9 KB from output binary. AddFontDefaultBitmap() will assert.

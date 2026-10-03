@@ -15,7 +15,7 @@
 namespace hydra::audio {
 
 std::shared_ptr<const MappedFile> MappedFile::open(const std::string& utf8_path) {
-    HANDLE file = CreateFileW(hydra::utf8_to_wide(utf8_path).c_str(), GENERIC_READ,
+    HANDLE file = CreateFileW(hydra::win32_path(utf8_path).c_str(), GENERIC_READ,
                               FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                               FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE)

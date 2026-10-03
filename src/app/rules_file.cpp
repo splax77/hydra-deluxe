@@ -5,6 +5,7 @@
 
 #include "app/config.h"
 #include "core/strutil.h"
+#include "core/winstr.h"
 
 namespace hydra::app {
 
@@ -39,7 +40,7 @@ int to_int(const std::string& path, const std::string& key, const std::string& v
 
 core::Rules load_rules_file(const std::filesystem::path& path) {
     core::Rules r;
-    std::ifstream f(path);
+    std::ifstream f(os_path(path));
     if (!f) return r;  // no file: today's rules
     const std::string where = path.u8string();
 

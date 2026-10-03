@@ -322,7 +322,8 @@ end through the new reader. Results:
 - One file (a 335-character path) can't be opened at all. That is the Windows
   path-length limit, and it failed the same way before. The user asked for
   long-path support across all of Hydra (2026-10-03), handled as its own
-  change.
+  change. Done the same day (ADR 0020). The library scan used to find 0
+  charts in that folder. It now finds the chart and analyzes it.
 
 The 51,839 Vorbis files weren't scanned, because their error handling didn't
 change: both old and new code play a damaged Vorbis file up to the damage.

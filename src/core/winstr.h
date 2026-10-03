@@ -4,12 +4,18 @@
 // narrow CRT / std::ifstream path APIs go through the ANSI codepage on
 // Windows and mangle them, so every file open routes through the wide API
 // via these helpers.
+//
+// They also contain very long paths (nested pack folders past 260
+// characters). win32_path is the one place a path is made safe for that; every
+// helper here uses it, and code that must hand a path to the OS itself calls
+// win32_path or os_path, never utf8_to_wide.
 
 #ifndef HYDRA_CORE_WINSTR_H
 #define HYDRA_CORE_WINSTR_H
 
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -18,10 +24,44 @@ namespace hydra {
 std::wstring utf8_to_wide(const std::string& s);
 std::string wide_to_utf8(const std::wstring& w);
 
+// A path ready for any wide Win32 file function, at any length. Windows caps
+// ordinary paths at 260 characters unless the machine has opted in, so a long
+// path is made full (GetFullPathNameW resolves ".", ".." and forward slashes,
+// which the prefix would otherwise take literally) and given the \\?\ prefix
+// (\\?\UNC\ for a network share), which works whatever the machine setting.
+// A short path comes back as the plain wide string, so nothing changes for it.
+// A path already starting \\?\ or \\.\ is left alone.
+std::wstring win32_path(const std::wstring& path);
+std::wstring win32_path(const std::string& utf8_path);
+
+// win32_path as a std::filesystem::path, for std::filesystem calls and
+// fstreams, which take a path object.
+std::filesystem::path os_path(const std::filesystem::path& p);
+std::filesystem::path os_path(const std::string& utf8_path);
+
 // _wfopen with a UTF-8 path; nullptr on failure, like fopen.
 std::FILE* fopen_utf8(const std::string& utf8_path, const wchar_t* mode);
 
 bool file_exists_utf8(const std::string& utf8_path);
+bool is_directory_utf8(const std::string& utf8_path);
+
+// One entry of a folder listing ("." and ".." left out).
+struct DirEntry {
+    std::string name;  // UTF-8, the entry's own name
+    bool is_dir = false;
+    // Size and last-write time (FILETIME ticks) straight from the find data:
+    // the library rescan cache's change fingerprint, at no extra stat cost.
+    uint64_t size = 0;
+    uint64_t mtime = 0;
+};
+
+// The entries of one folder, in the order Windows lists them. Empty when the
+// folder can't be read.
+std::vector<DirEntry> list_dir(const std::string& dir_utf8);
+
+// This executable's full path, UTF-8, at any length (the buffer grows until
+// GetModuleFileNameW stops truncating).
+std::string exe_path_utf8();
 
 // The size of a file in bytes, read from the file system (no open, no read).
 // 64 bits, so sizes past 2 GB come out right. Throws std::runtime_error when

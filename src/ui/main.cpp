@@ -197,7 +197,7 @@ int main()
         // a GUI exe has no stdout fd to _dup2 onto. Wide, because the path is
         // UTF-8.)
 #pragma warning(suppress : 4996)
-        if (_wfreopen(hydra::utf8_to_wide(uitest_log).c_str(), L"w", stdout))
+        if (_wfreopen(hydra::win32_path(uitest_log).c_str(), L"w", stdout))
             setvbuf(stdout, nullptr, _IONBF, 0);
         uitest = std::make_unique<uitest::Harness>();
         uitest->init_attached(g_pd3dDevice, g_pd3dDeviceContext, g_pSwapChain);

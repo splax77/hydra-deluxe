@@ -269,6 +269,7 @@ add_library(hydra_ui STATIC
     src/ui/dm_jobs.cpp
     src/ui/dynamics_tab.cpp
     src/ui/icons.cpp
+    src/ui/imgui_files.cpp  # ImGui's file functions (imconfig.h)
     src/ui/paths_tab.cpp
     src/ui/preview_tab.cpp
     src/ui/stars_tab.cpp
@@ -424,6 +425,7 @@ add_executable(hydra_tests
     tests/test_preview_controller.cpp
     tests/test_preview_load_progress.cpp
     tests/test_utf8_paths.cpp
+    tests/test_long_paths.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.
@@ -450,6 +452,7 @@ target_compile_definitions(hydra_tests PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
+    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_long_paths scans src/ and tools/
 )
 
 # ---- hydra_uitest: the headless GUI test runner ----------------------------
@@ -518,3 +521,17 @@ target_include_directories(hydra_replay_json PUBLIC tools third_party/json)
 target_link_libraries(hydra_replay_json PUBLIC hydra_core PRIVATE hydra_warnings)
 target_link_libraries(hydra_replay PRIVATE hydra_replay_json)
 target_link_libraries(hydra_tests PRIVATE hydra_replay_json)
+
+# ---- long-path awareness, for every executable ---------------------------
+# One manifest, merged into each exe by the linker, declares Hydra long-path
+# aware (see src/app/long_paths.manifest). Hydra's own file calls handle long
+# paths through core/winstr regardless; this lets third-party code do the same
+# on machines with long paths enabled.
+#
+# hydra_tests is left out on purpose. Without the manifest Windows refuses a
+# plain long path even where long paths are enabled, so test_long_paths proves
+# Hydra's own handling rather than the machine's setting.
+foreach(hydra_exe Hydra hydra_batch hydra_report hydra_fillcompare
+                  hydra_uitest hydra_bench hydra_replay)
+    target_sources(${hydra_exe} PRIVATE src/app/long_paths.manifest)
+endforeach()

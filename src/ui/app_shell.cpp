@@ -15,6 +15,7 @@
 #include "imgui_internal.h"  // g.LogBuffer for FrameText; ImGuiSettingsHandler
 
 #include "app/config.h"
+#include "core/winstr.h"
 #include "ui/app_state.h"
 #include "ui/details_view.h"
 #include "ui/fonts.h"
@@ -255,7 +256,7 @@ void setup_imgui(const ImGuiSetupOptions& options) {
             "C:\\Windows\\Fonts\\msgothic.ttc",  // MS Gothic (bitmap-ish, last resort)
         };
         for (const char* path : cjk_candidates) {
-            if (::GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) continue;
+            if (!hydra::file_exists_utf8(path)) continue;
             ImFontConfig merge;
             merge.MergeMode = true;
             if (io.Fonts->AddFontFromFileTTF(path, 18.0f, &merge)) break;

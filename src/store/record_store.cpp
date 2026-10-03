@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "core/stars.h"
+#include "core/winstr.h"
 #include "store/serialize.h"
 #include "store/stored_versions.h"
 
@@ -543,11 +544,20 @@ PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record) {
     return row;
 }
 
+int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags) {
+    // SQLite takes UTF-8 and understands the \\?\ prefix, so a long database
+    // path goes through the same one conversion as every other file.
+    // "win32-longpath" is SQLite's own Windows layer with its path buffer
+    // raised from 260 characters to 32,767; it is otherwise the default one.
+    return sqlite3_open_v2(wide_to_utf8(win32_path(utf8_path)).c_str(), db, flags,
+                           "win32-longpath");
+}
+
 // ---- RecordStore ------------------------------------------------------
 
 RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_fingerprint)
     : rules_fingerprint_(rules_fingerprint) {
-    if (sqlite3_open(dbpath.c_str(), &db_) != SQLITE_OK) {
+    if (open_sqlite(dbpath, &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) != SQLITE_OK) {
         std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown error";
         if (db_) sqlite3_close(db_);
         db_ = nullptr;

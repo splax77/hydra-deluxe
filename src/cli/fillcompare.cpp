@@ -111,7 +111,7 @@ int main() {
 
     std::filesystem::path outpath = std::filesystem::absolute(std::filesystem::u8path(out));
     std::error_code ec;
-    std::filesystem::create_directories(outpath.parent_path(), ec);
+    std::filesystem::create_directories(hydra::os_path(outpath.parent_path()), ec);
 
     try {
         hydra::app::write_report_file(outpath, report.html);

@@ -169,7 +169,7 @@ static void scan_mode(const std::string& folder, const std::string& dbpath,
         // Real libraries carry ANSI-encoded song.ini metadata; replace
         // invalid UTF-8 instead of throwing (both sides of a diff replace
         // identically, so equivalence still holds).
-        std::ofstream f(std::filesystem::u8path(dumppath), std::ios::binary | std::ios::trunc);
+        std::ofstream f(hydra::os_path(dumppath), std::ios::binary | std::ios::trunc);
         f << arr.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << "\n";
         std::printf("  dumped %zu items to %s\n", sorted.size(), dumppath.c_str());
     }
@@ -225,7 +225,7 @@ static void dump_db(const std::string& dbpath, const std::string& outpath) {
                        {"title", e.title},
                        {"artist", e.artist},
                        {"charter", e.charter}});
-    std::ofstream f(std::filesystem::u8path(outpath), std::ios::binary | std::ios::trunc);
+    std::ofstream f(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
     f << arr.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << "\n";
     std::printf("dumped %zu rows from %s\n", rows.size(), dbpath.c_str());
 }

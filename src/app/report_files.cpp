@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "app/config.h"
+#include "core/winstr.h"
 
 namespace hydra::app {
 
@@ -50,8 +51,8 @@ std::filesystem::path reports_dir() {
 
     const std::filesystem::path dir = *docs / L"Hydra";
     std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    if (!std::filesystem::is_directory(dir, ec)) return db_folder();
+    std::filesystem::create_directories(os_path(dir), ec);
+    if (!std::filesystem::is_directory(os_path(dir), ec)) return db_folder();
     return dir;
 }
 
@@ -75,7 +76,7 @@ bool open_report_in_browser() { return open_in_browser(report_html_path()); }
 bool open_dm_report_in_browser() { return open_in_browser(dm_report_html_path()); }
 
 bool report_file_exists() {
-    return GetFileAttributesW(report_html_path().c_str()) != INVALID_FILE_ATTRIBUTES;
+    return file_exists_utf8(wide_to_utf8(report_html_path()));
 }
 
 void write_report_file(const std::filesystem::path& outpath, const std::string& html) {
@@ -86,21 +87,21 @@ void write_report_file(const std::filesystem::path& outpath, const std::string& 
     std::filesystem::path tmp = outpath;
     tmp += ".tmp";
 
-    std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+    std::ofstream f(os_path(tmp), std::ios::binary | std::ios::trunc);
     if (!f) throw std::runtime_error("cannot write " + outpath.u8string());
     f << html;
     f.close();
     if (!f) {
         std::error_code ec;
-        std::filesystem::remove(tmp, ec);
+        std::filesystem::remove(os_path(tmp), ec);
         throw std::runtime_error("cannot write " + outpath.u8string());
     }
 
     try {
-        std::filesystem::rename(tmp, outpath);
+        std::filesystem::rename(os_path(tmp), os_path(outpath));
     } catch (const std::filesystem::filesystem_error&) {
         std::error_code ec;
-        std::filesystem::remove(tmp, ec);
+        std::filesystem::remove(os_path(tmp), ec);
         throw std::runtime_error("cannot write " + outpath.u8string());
     }
 }

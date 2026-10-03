@@ -120,21 +120,9 @@ bool srb_decrypt_blob(const uint8_t* enc, size_t len, const uint8_t* header16,
 // The folder's song.ini, matched in any case (Song.INI counts), or "" when
 // there is none.
 std::string find_song_ini(const std::string& folder) {
-    std::wstring pattern = utf8_to_wide(folder + "\\*");
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return {};
-    std::string found;
-    do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-        const std::string name = wide_to_utf8(fd.cFileName);
-        if (is_song_ini(name)) {
-            found = folder + "\\" + name;
-            break;
-        }
-    } while (FindNextFileW(h, &fd));
-    FindClose(h);
-    return found;
+    for (const DirEntry& e : list_dir(folder))
+        if (!e.is_dir && is_song_ini(e.name)) return folder + "\\" + e.name;
+    return {};
 }
 
 // A delay string in milliseconds, or nullopt when it is not wholly a number.
@@ -197,23 +185,16 @@ bool looks_like_audio(const std::vector<uint8_t>& b) {
 
 std::vector<PreviewAudioStem> find_loose_audio(const std::string& folder) {
     std::vector<PreviewAudioStem> stems;
-    std::wstring pattern = utf8_to_wide(folder + "\\*");
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return stems;
-    do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-        std::string name = wide_to_utf8(fd.cFileName);
-        if (!is_audio_filename(name)) continue;
-        std::string stem = stem_of(name);
+    for (const DirEntry& e : list_dir(folder)) {
+        if (e.is_dir || !is_audio_filename(e.name)) continue;
+        std::string stem = stem_of(e.name);
         // "preview.*" is a short clip, not part of the song mix.
         if (to_lower_ascii(stem) == "preview") continue;
         PreviewAudioStem s;
         s.label = stem;
-        s.path = folder + "\\" + name;
+        s.path = folder + "\\" + e.name;
         stems.push_back(std::move(s));
-    } while (FindNextFileW(h, &fd));
-    FindClose(h);
+    }
     std::sort(stems.begin(), stems.end(),
               [](const PreviewAudioStem& a, const PreviewAudioStem& b) {
                   return a.label < b.label;

@@ -166,7 +166,7 @@ void emit(const json& j, const std::string& out, bool pretty) {
         std::fputc('\n', stdout);
         return;
     }
-    std::ofstream f(std::filesystem::u8path(out), std::ios::binary | std::ios::trunc);
+    std::ofstream f(hydra::os_path(out), std::ios::binary | std::ios::trunc);
     f << text << "\n";
     std::printf("wrote %s (%zu bytes)\n", out.c_str(), text.size());
 }
@@ -274,7 +274,7 @@ int parse_index(const std::string& v) {
 // the file and the index, because "score came out wrong" is much harder to
 // notice than "that file does not have a path 7".
 std::vector<ReplayWindow> windows_from_file(const std::string& file, int index) {
-    std::ifstream in(std::filesystem::u8path(file), std::ios::binary);
+    std::ifstream in(hydra::os_path(file), std::ios::binary);
     if (!in) throw std::runtime_error("cannot read --path file: " + file);
 
     json doc;
@@ -440,13 +440,14 @@ std::string snapshot_db(const std::string& src) {
     // through SQLite and gets one consistent snapshot, whatever the app is
     // doing (https://www.sqlite.org/backup.html).
     sqlite3* from = nullptr;
-    if (sqlite3_open_v2(src.c_str(), &from, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+    if (hydra::store::open_sqlite(src, &from, SQLITE_OPEN_READONLY) != SQLITE_OK) {
         sqlite3_close(from);
         throw std::runtime_error("cannot read database: " + src);
     }
-    std::filesystem::remove(std::filesystem::u8path(dst), ec);
+    std::filesystem::remove(hydra::os_path(dst), ec);
     sqlite3* to = nullptr;
-    if (sqlite3_open(dst.c_str(), &to) != SQLITE_OK) {
+    if (hydra::store::open_sqlite(dst, &to, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) !=
+        SQLITE_OK) {
         sqlite3_close(to);
         sqlite3_close(from);
         throw std::runtime_error(
@@ -526,7 +527,7 @@ int cmd_dump(const Args& a) {
         std::string path;
         ~SnapshotGuard() {
             std::error_code ec;
-            std::filesystem::remove(std::filesystem::u8path(path), ec);
+            std::filesystem::remove(hydra::os_path(path), ec);
         }
     } snapshot_guard{snapshot_path};
 

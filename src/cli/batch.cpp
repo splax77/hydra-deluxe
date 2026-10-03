@@ -74,7 +74,7 @@ bool same_file(const std::string& a, const std::string& b) {
     auto normalize = [](const std::string& p) {
         std::error_code ec;
         std::filesystem::path canon =
-            std::filesystem::weakly_canonical(std::filesystem::u8path(p), ec);
+            std::filesystem::weakly_canonical(hydra::os_path(p), ec);
         return hydra::to_lower_ascii(ec ? p : canon.u8string());
     };
     return normalize(a) == normalize(b);

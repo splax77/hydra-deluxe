@@ -14,12 +14,9 @@
 namespace hydra::app {
 
 std::string exe_dir() {
-    wchar_t buf[MAX_PATH];
-    DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
-    std::wstring path(buf, n);
-    size_t pos = path.find_last_of(L"\\/");
-    std::wstring dir = pos == std::wstring::npos ? L"." : path.substr(0, pos);
-    return wide_to_utf8(dir);
+    const std::string path = exe_path_utf8();
+    const size_t pos = path.find_last_of("\\/");
+    return pos == std::string::npos ? std::string(".") : path.substr(0, pos);
 }
 
 namespace {
@@ -53,7 +50,7 @@ Settings Settings::load() { return load_file(ini_path()); }
 
 Settings Settings::load_file(const std::string& path) {
     Settings s;
-    std::ifstream f(utf8_to_wide(path));
+    std::ifstream f(os_path(path));
     if (!f) return s;  // defaults
 
     std::string line;
@@ -103,7 +100,7 @@ Settings Settings::load_file(const std::string& path) {
 bool Settings::save() const { return save_file(ini_path()); }
 
 bool Settings::save_file(const std::string& path) const {
-    std::ofstream f(utf8_to_wide(path), std::ios::trunc);
+    std::ofstream f(os_path(path), std::ios::trunc);
     if (!f) return false;
 
     f << "is_rescan=" << (is_rescan ? 1 : 0) << "\n";

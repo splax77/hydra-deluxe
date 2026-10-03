@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Merged into every Hydra executable (CMakeLists.txt). Declares the app
+     long-path aware, so on a machine with long paths enabled (the
+     LongPathsEnabled policy) third-party code such as SQLite and the C++ file
+     library also lifts the 260-character limit. Hydra's own file calls work at
+     any length either way, through core/winstr's win32_path. -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+      <ws2:longPathAware>true</ws2:longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>

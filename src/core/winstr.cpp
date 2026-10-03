@@ -31,19 +31,99 @@ std::string wide_to_utf8(const std::wstring& w) {
     return s;
 }
 
+namespace {
+
+// The longest path every wide file function takes without the prefix.
+// CreateDirectoryW's limit is the tightest: MAX_PATH minus room for an 8.3
+// file name, so anything at or past it gets the prefix.
+constexpr size_t kPlainPathLimit = MAX_PATH - 12;
+
+bool starts_with(const std::wstring& s, const wchar_t* prefix) {
+    return s.rfind(prefix, 0) == 0;
+}
+
+}  // namespace
+
+std::wstring win32_path(const std::wstring& path) {
+    if (path.size() < kPlainPathLimit) return path;
+    if (starts_with(path, L"\\\\?\\") || starts_with(path, L"\\\\.\\")) return path;
+    // Make it full first: under the prefix Windows no longer resolves "." or
+    // ".." and no longer accepts '/' as a separator.
+    DWORD need = GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
+    if (need == 0) return path;  // leave it to the caller's own error path
+    std::wstring full(need, L'\0');
+    DWORD got = GetFullPathNameW(path.c_str(), need, &full[0], nullptr);
+    if (got == 0 || got >= need) return path;
+    full.resize(got);
+    if (starts_with(full, L"\\\\?\\") || starts_with(full, L"\\\\.\\")) return full;
+    if (starts_with(full, L"\\\\")) return L"\\\\?\\UNC\\" + full.substr(2);  // \\server\share
+    return L"\\\\?\\" + full;
+}
+
+std::wstring win32_path(const std::string& utf8_path) {
+    return win32_path(utf8_to_wide(utf8_path));
+}
+
+std::filesystem::path os_path(const std::filesystem::path& p) {
+    return std::filesystem::path(win32_path(p.native()));
+}
+
+std::filesystem::path os_path(const std::string& utf8_path) {
+    return std::filesystem::path(win32_path(utf8_path));
+}
+
 std::FILE* fopen_utf8(const std::string& utf8_path, const wchar_t* mode) {
-    return _wfopen(utf8_to_wide(utf8_path).c_str(), mode);
+    return _wfopen(win32_path(utf8_path).c_str(), mode);
 }
 
 bool file_exists_utf8(const std::string& utf8_path) {
-    return GetFileAttributesW(utf8_to_wide(utf8_path).c_str()) !=
-           INVALID_FILE_ATTRIBUTES;
+    return GetFileAttributesW(win32_path(utf8_path).c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+bool is_directory_utf8(const std::string& utf8_path) {
+    const DWORD attrs = GetFileAttributesW(win32_path(utf8_path).c_str());
+    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+}
+
+std::vector<DirEntry> list_dir(const std::string& dir_utf8) {
+    std::vector<DirEntry> out;
+    // The pattern is built before win32_path so the prefix rule sees its full
+    // length, "\*" included.
+    const std::wstring pattern = win32_path(utf8_to_wide(dir_utf8) + L"\\*");
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return out;
+    do {
+        const std::wstring name = fd.cFileName;
+        if (name == L"." || name == L"..") continue;
+        DirEntry e;
+        e.name = wide_to_utf8(name);
+        e.is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        e.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
+        e.mtime = (static_cast<uint64_t>(fd.ftLastWriteTime.dwHighDateTime) << 32) |
+                  fd.ftLastWriteTime.dwLowDateTime;
+        out.push_back(std::move(e));
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return out;
+}
+
+std::string exe_path_utf8() {
+    std::wstring buf(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD n = GetModuleFileNameW(nullptr, &buf[0], static_cast<DWORD>(buf.size()));
+        if (n == 0) return "";
+        if (n < buf.size()) {
+            buf.resize(n);
+            return wide_to_utf8(buf);
+        }
+        buf.resize(buf.size() * 2);  // truncated: try a bigger buffer
+    }
 }
 
 uint64_t file_size_bytes(const std::string& utf8_path) {
     WIN32_FILE_ATTRIBUTE_DATA fa;
-    if (!GetFileAttributesExW(utf8_to_wide(utf8_path).c_str(), GetFileExInfoStandard,
-                              &fa))
+    if (!GetFileAttributesExW(win32_path(utf8_path).c_str(), GetFileExInfoStandard, &fa))
         throw std::runtime_error("cannot read file size: " + utf8_path);
     return (static_cast<uint64_t>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow;
 }

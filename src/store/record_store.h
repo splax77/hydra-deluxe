@@ -48,6 +48,12 @@ struct sqlite3_stmt;
 
 namespace hydra::store {
 
+// Opens a SQLite database at a UTF-8 path of any length. The one place Hydra
+// calls sqlite3_open: RecordStore and the tools both come through here.
+// `flags` are sqlite3_open_v2's (SQLITE_OPEN_*). Returns its result code; *db
+// is set even on failure, so the caller closes it either way.
+int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags);
+
 // The summary columns computed from a record's best path. All fields are
 // unset when the
 // record has no paths (an empty/incompatible result).

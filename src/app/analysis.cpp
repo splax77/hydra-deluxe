@@ -30,38 +30,8 @@ namespace hydra::app {
 
 namespace {
 
-struct DirEntry {
-    std::string name;
-    bool is_dir;
-    // Size and last-write time (FILETIME ticks) straight from the find data —
-    // the rescan cache's change fingerprint, at no extra stat cost.
-    uint64_t size = 0;
-    uint64_t mtime = 0;
-};
-
-std::vector<DirEntry> list_dir(const std::string& dir_utf8) {
-    std::vector<DirEntry> out;
-    std::wstring pattern = utf8_to_wide(dir_utf8) + L"\\*";
-    WIN32_FIND_DATAW fd;
-    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return out;
-    do {
-        std::wstring name = fd.cFileName;
-        if (name == L"." || name == L"..") continue;
-        uint64_t size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
-        uint64_t mtime = (static_cast<uint64_t>(fd.ftLastWriteTime.dwHighDateTime) << 32) |
-                         fd.ftLastWriteTime.dwLowDateTime;
-        out.push_back({wide_to_utf8(name),
-                       (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0, size, mtime});
-    } while (FindNextFileW(h, &fd));
-    FindClose(h);
-    return out;
-}
-
-bool is_dir(const std::string& path_utf8) {
-    DWORD attrs = GetFileAttributesW(utf8_to_wide(path_utf8).c_str());
-    return attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
-}
+// Folder listings and directory checks come from core/winstr (list_dir,
+// is_directory_utf8), which handle paths of any length.
 
 std::string join_path(const std::string& a, const std::string& b) {
     if (a.empty()) return b;
@@ -341,7 +311,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     std::vector<std::pair<std::string, std::string>> unexplored;
     std::set<std::string> visited;
     for (const std::string& root : rootfolders) {
-        if (is_dir(root)) unexplored.push_back({root, root});
+        if (is_directory_utf8(root)) unexplored.push_back({root, root});
         visited.insert(root);
     }
 
