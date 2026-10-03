@@ -23,7 +23,13 @@ std::FILE* fopen_utf8(const std::string& utf8_path, const wchar_t* mode);
 
 bool file_exists_utf8(const std::string& utf8_path);
 
-// The whole file's bytes; throws std::runtime_error when the open fails.
+// The size of a file in bytes, read from the file system (no open, no read).
+// 64 bits, so sizes past 2 GB come out right. Throws std::runtime_error when
+// the file can't be found.
+uint64_t file_size_bytes(const std::string& utf8_path);
+
+// The whole file's bytes, files over 2 GB included. Throws std::runtime_error
+// when the open fails or the file's size can't be read.
 std::vector<uint8_t> read_file_bytes(const std::string& utf8_path);
 
 // The whole file as text, bytes as they are (no newline translation); throws
