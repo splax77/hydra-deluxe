@@ -8,10 +8,13 @@
 #include <optional>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "app/config.h"  // Settings: the app's default analysis settings
 #include "app/preview_view.h"
+#include "corpus_util.h"
 #include "render/track_state.h"
 
 using namespace hydra;
@@ -622,4 +625,144 @@ TEST_CASE("build_track_state: one pass matches the per-instant reference on a ra
     TrackState st = build_track_state(scene, TrackStateOptions{});
     CHECK(st.instants().size() >= 2000);
     check_same_as_reference(scene);
+}
+
+// ---- rebuild_overlay_fields -------------------------------------------------
+
+namespace {
+
+// Build from `from`, swap in `to`'s overlay, and hold the result to a full
+// build of `to`: every instant, and the empty-window fallback between every
+// pair of neighbours (which reads the intervals). Then swap back to `from` and
+// hold that to a full build of `from`, so instants only `to` made are seen to
+// go. Both pro settings.
+void check_rebuild(const PreviewScene& from, const PreviewScene& to, const std::string& what) {
+    auto same_as_full = [&what](const TrackState& got, const TrackState& want, const char* step) {
+        const std::vector<TrackInstant>& g = got.instants();
+        const std::vector<TrackInstant>& w = want.instants();
+        INFO(what << ", " << step);
+        REQUIRE(g.size() == w.size());
+        size_t mismatches = 0, first = 0;
+        for (size_t i = 0; i < w.size(); ++i)
+            if (!same_instant(g[i], w[i]) && mismatches++ == 0) first = i;
+        INFO("first mismatch at instant " << first);
+        CHECK(mismatches == 0);
+        size_t synth_mismatches = 0;
+        for (size_t i = 0; i + 1 < w.size(); ++i) {
+            TrackWindow gw = got.window(w[i].t, w[i + 1].t);
+            TrackWindow ww = want.window(w[i].t, w[i + 1].t);
+            if (gw.size() != 1 || ww.size() != 1 || !same_instant(gw[0], ww[0])) ++synth_mismatches;
+        }
+        CHECK(synth_mismatches == 0);
+    };
+    for (bool pro : {true, false}) {
+        TrackState st = build_track_state(from, TrackStateOptions{pro});
+        rebuild_overlay_fields(st, to);
+        same_as_full(st, build_track_state(to, TrackStateOptions{pro}), "rebuilt to the new scene");
+        rebuild_overlay_fields(st, from);
+        same_as_full(st, build_track_state(from, TrackStateOptions{pro}), "rebuilt back again");
+    }
+}
+
+// A random overlay over `scene`'s fills: each fill Hidden, Offered or Taken,
+// and activations whose SP windows start and end on notes, beats, fill
+// edges, each other or nowhere in particular, some empty or backwards, some
+// lighting a lane on a taken fill.
+void randomize_overlay(PreviewScene& scene, std::mt19937& rng, const std::vector<double>& moments) {
+    auto pick = [&rng](uint32_t n) { return static_cast<uint32_t>(rng() % n); };
+    auto moment = [&]() { return moments[pick(static_cast<uint32_t>(moments.size()))]; };
+    scene.activations.clear();
+    std::vector<int64_t> taken_ends;
+    for (PreviewFill& f : scene.fills) {
+        f.state = static_cast<PreviewFillState>(pick(3));
+        if (f.state == PreviewFillState::Taken) taken_ends.push_back(f.span.end_tick);
+    }
+    for (int i = 0; i < 40; ++i) {
+        PreviewActivation a;
+        a.ms = pick(2) == 0 ? moment() : 0.5 * pick(8000);
+        a.tick = static_cast<int64_t>(a.ms);
+        a.has_sp_end = pick(6) != 0;
+        a.sp_end_ms = pick(3) == 0 ? moment() : a.ms + 0.5 * (static_cast<double>(pick(1200)) - 100.0);
+        a.sp_end_tick = static_cast<int64_t>(a.sp_end_ms);
+        if (pick(2) == 0) {
+            a.has_lane = true;
+            a.lane = static_cast<PreviewLane>(pick(5));
+            if (!taken_ends.empty() && pick(4) != 0)
+                a.tick = taken_ends[pick(static_cast<uint32_t>(taken_ends.size()))];
+        }
+        scene.activations.push_back(a);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
+    std::mt19937 rng(20261004u);
+    auto pick = [&rng](uint32_t n) { return static_cast<uint32_t>(rng() % n); };
+
+    // The path-free half: notes, beats, SP phrases, solos and fill windows,
+    // many sharing moments.
+    PreviewScene base = timed_scene();
+    const auto& ms_index = base.timing->ms_index();
+    std::vector<double> moments;
+    auto random_span = [&]() {
+        const int64_t end = 1 + pick(3999);
+        PreviewSpan s = span(static_cast<double>(end) - 0.5 * (1 + pick(600)), 0.0);
+        s.end_tick = end;
+        s.end_ms = static_cast<double>(end);
+        moments.push_back(s.start_ms);
+        moments.push_back(ms_index.ms_at_tick_f(static_cast<double>(end) + 0.5));
+        return s;
+    };
+    for (int i = 0; i < 30; ++i) base.sp_phrases.push_back(random_span());
+    for (int i = 0; i < 30; ++i) base.solos.push_back(random_span());
+    for (int i = 0; i < 60; ++i) base.fills.push_back(fill(random_span(), PreviewFillState::Hidden));
+    for (int i = 0; i < 1500; ++i) {
+        const double ms = pick(5) == 0 ? moments[pick(static_cast<uint32_t>(moments.size()))]
+                                       : static_cast<double>(pick(4000));
+        base.notes.push_back(note(ms, static_cast<PreviewLane>(pick(5)), pick(2) == 0));
+        moments.push_back(ms);
+    }
+    for (int i = 0; i < 400; ++i) {
+        PreviewBeat b;
+        b.ms = pick(4) == 0 ? moments[pick(static_cast<uint32_t>(moments.size()))]
+                            : 0.25 * pick(16000);
+        b.kind = static_cast<PreviewBeatKind>(pick(3));
+        base.beats.push_back(b);
+    }
+
+    std::vector<PreviewScene> scenes{base};
+    for (int k = 0; k < 4; ++k) {
+        PreviewScene s = base;
+        randomize_overlay(s, rng, moments);
+        scenes.push_back(std::move(s));
+    }
+    // Every scene to every other, the empty overlay included both ways.
+    for (size_t i = 0; i < scenes.size(); ++i)
+        for (size_t j = 0; j < scenes.size(); ++j)
+            check_rebuild(scenes[i], scenes[j],
+                          "overlay " + std::to_string(i) + " -> " + std::to_string(j));
+}
+
+TEST_CASE("rebuild_overlay_fields: equals a full build on every corpus chart and stored path") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int charts = 0, swaps = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        ++charts;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        // The base (what the Preview's first scene job builds the timeline
+        // from), then each stored path's scene in turn.
+        std::vector<PreviewScene> scenes{build_preview_base(song)};
+        for (const Path* p : rec.all_paths())
+            scenes.push_back(build_preview_scene(song, p, cfg.sp_cap, cfg.rules));
+        scenes.push_back(build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules));
+        for (size_t i = 0; i + 1 < scenes.size(); ++i) {
+            ++swaps;
+            check_rebuild(scenes[i], scenes[i + 1], chart + " scene " + std::to_string(i));
+        }
+    }
+    CHECK(charts > 0);
+    CHECK(swaps > charts);
 }

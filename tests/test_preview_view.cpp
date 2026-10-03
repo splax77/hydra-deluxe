@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"  // Settings: the app's default analysis settings
 #include "app/preview_view.h"
 #include "app/path_view.h"
 #include "core/model.h"
@@ -598,6 +599,213 @@ TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
     PreviewScene bare = build_preview_scene(r.song, nullptr);
     CHECK(bare.notes.size() == scene.notes.size());
     CHECK(bare.activations.empty());
+}
+
+// ---- base + overlay equals the whole scene --------------------------------
+
+namespace {
+
+// The first PreviewScene member where `a` and `b` differ, named, or "" when
+// every member is equal. Exact compares: both sides run the same arithmetic.
+// SongTiming has no operator==, so its indexes are compared entry by entry
+// and its ms index is read back at every tick the scene names.
+std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
+    auto span_eq = [](const PreviewSpan& x, const PreviewSpan& y) {
+        return x.start_tick == y.start_tick && x.end_tick == y.end_tick &&
+               x.start_ms == y.start_ms && x.end_ms == y.end_ms;
+    };
+    auto spans_eq = [&](const std::vector<PreviewSpan>& x, const std::vector<PreviewSpan>& y) {
+        return std::equal(x.begin(), x.end(), y.begin(), y.end(), span_eq);
+    };
+    if (!std::equal(a.notes.begin(), a.notes.end(), b.notes.begin(), b.notes.end(),
+                    [](const PreviewNote& x, const PreviewNote& y) {
+                        return x.tick == y.tick && x.ms == y.ms && x.measure == y.measure &&
+                               x.lane == y.lane && x.cymbal == y.cymbal && x.ghost == y.ghost &&
+                               x.accent == y.accent && x.double_kick == y.double_kick &&
+                               x.solo == y.solo;
+                    }))
+        return "notes";
+    if (!spans_eq(a.sp_phrases, b.sp_phrases)) return "sp_phrases";
+    if (!spans_eq(a.solos, b.solos)) return "solos";
+    if (!std::equal(a.fills.begin(), a.fills.end(), b.fills.begin(), b.fills.end(),
+                    [&](const PreviewFill& x, const PreviewFill& y) {
+                        return span_eq(x.span, y.span) && x.state == y.state;
+                    }))
+        return "fills";
+    if (!std::equal(a.activations.begin(), a.activations.end(), b.activations.begin(),
+                    b.activations.end(),
+                    [](const PreviewActivation& x, const PreviewActivation& y) {
+                        return x.tick == y.tick && x.ms == y.ms && x.sp_meter == y.sp_meter &&
+                               x.skips == y.skips && x.has_sp_end == y.has_sp_end &&
+                               x.sp_end_tick == y.sp_end_tick && x.sp_end_ms == y.sp_end_ms &&
+                               x.collected_phrase_ticks == y.collected_phrase_ticks &&
+                               x.lane == y.lane && x.has_lane == y.has_lane &&
+                               x.measure == y.measure && x.chord == y.chord;
+                    }))
+        return "activations";
+    if (!std::equal(a.beats.begin(), a.beats.end(), b.beats.begin(), b.beats.end(),
+                    [](const PreviewBeat& x, const PreviewBeat& y) {
+                        return x.tick == y.tick && x.ms == y.ms && x.kind == y.kind;
+                    }))
+        return "beats";
+    if (!std::equal(a.tempos.begin(), a.tempos.end(), b.tempos.begin(), b.tempos.end(),
+                    [](const PreviewTempo& x, const PreviewTempo& y) {
+                        return x.tick == y.tick && x.ms == y.ms && x.bpm == y.bpm;
+                    }))
+        return "tempos";
+    if (!std::equal(a.sections.begin(), a.sections.end(), b.sections.begin(), b.sections.end(),
+                    [](const PreviewSection& x, const PreviewSection& y) {
+                        return x.tick == y.tick && x.ms == y.ms && x.name == y.name;
+                    }))
+        return "sections";
+    if (!std::equal(a.meters.begin(), a.meters.end(), b.meters.begin(), b.meters.end(),
+                    [](const PreviewMeter& x, const PreviewMeter& y) {
+                        return x.tick == y.tick && x.tpm == y.tpm && x.first_bar == y.first_bar;
+                    }))
+        return "meters";
+    if (!std::equal(a.time_sigs.begin(), a.time_sigs.end(), b.time_sigs.begin(),
+                    b.time_sigs.end(), [](const PreviewTimeSig& x, const PreviewTimeSig& y) {
+                        return x.tick == y.tick && x.numerator == y.numerator &&
+                               x.denominator == y.denominator;
+                    }))
+        return "time_sigs";
+    if (a.sp_meter.cap != b.sp_meter.cap ||
+        !std::equal(a.sp_meter.segments.begin(), a.sp_meter.segments.end(),
+                    b.sp_meter.segments.begin(), b.sp_meter.segments.end(),
+                    [](const SpMeterSegment& x, const SpMeterSegment& y) {
+                        return x.start_ms == y.start_ms && x.end_ms == y.end_ms &&
+                               x.start_bars == y.start_bars && x.end_bars == y.end_bars;
+                    }))
+        return "sp_meter";
+    if (a.score.state != b.score.state ||
+        !std::equal(a.score.steps.begin(), a.score.steps.end(), b.score.steps.begin(),
+                    b.score.steps.end(), [](const PreviewScoreStep& x, const PreviewScoreStep& y) {
+                        return x.ms == y.ms && x.total == y.total &&
+                               x.multiplier == y.multiplier && x.combo == y.combo;
+                    }))
+        return "score";
+    if (a.timing.has_value() != b.timing.has_value()) return "timing (presence)";
+    if (a.timing) {
+        const SongTiming& x = *a.timing;
+        const SongTiming& y = *b.timing;
+        if (x.tick_resolution() != y.tick_resolution()) return "timing (resolution)";
+        const MeasureIndex& mx = x.measure_index();
+        const MeasureIndex& my = y.measure_index();
+        if (mx.count() != my.count()) return "timing (meter sections)";
+        for (int i = 0; i < mx.count(); ++i)
+            if (mx.keys_at(i) != my.keys_at(i) || mx.tpm_at(i) != my.tpm_at(i) ||
+                mx.starts_at(i) != my.starts_at(i) || mx.measures_at(i) != my.measures_at(i))
+                return "timing (meter section " + std::to_string(i) + ")";
+        std::vector<int64_t> ticks{0};
+        for (const PreviewTempo& t : a.tempos) ticks.push_back(t.tick);
+        for (const PreviewNote& n : a.notes) ticks.push_back(n.tick);
+        for (int64_t t : ticks)
+            if (x.ms_index().at(t) != y.ms_index().at(t) ||
+                x.ms_index().tps_at(t) != y.ms_index().tps_at(t))
+                return "timing (ms index at tick " + std::to_string(t) + ")";
+    }
+    if (a.tick_resolution != b.tick_resolution) return "tick_resolution";
+    if (a.song_length_ms != b.song_length_ms) return "song_length_ms";
+    if (a.has_notes != b.has_notes) return "has_notes";
+    return "";
+}
+
+// build_preview_scene against base + overlay for one song and path, and the
+// overlay laid over a scene built for `other` (another path, or none): both
+// must equal the whole scene, member by member.
+void check_split(const Song& song, const Path* path, int sp_cap, const core::Rules& rules,
+                 const Path* other, const std::string& what) {
+    const PreviewScene whole = build_preview_scene(song, path, sp_cap, rules);
+    const std::string split = scene_difference(
+        whole, apply_preview_overlay(build_preview_base(song), song, path, sp_cap, rules));
+    INFO(what << ": base + overlay differs in " << split);
+    CHECK(split.empty());
+    const std::string relaid = scene_difference(
+        whole, apply_preview_overlay(build_preview_scene(song, other, sp_cap, rules), song, path,
+                                     sp_cap, rules));
+    INFO(what << ": overlay over another path's scene differs in " << relaid);
+    CHECK(relaid.empty());
+}
+
+}  // namespace
+
+TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures") {
+    const core::Rules& rules = core::default_rules();
+
+    // Not analyzed: no path at all.
+    for (const Song& song : {make_hand_song(), make_fill_song(), make_overfill_song()})
+        check_split(song, nullptr, kCloneHeroSpCap, rules, nullptr, "no path");
+
+    // The fill fixtures: which fills a path was offered or took.
+    {
+        Song song = make_fill_song();
+        Path one, two;
+        one.activations = {act_at(song, 1440, 1)};
+        two.activations = {act_at(song, 960, 0), act_at(song, 1920, 1)};
+        check_split(song, &one, kCloneHeroSpCap, rules, &two, "fills, one activation");
+        check_split(song, &two, kCloneHeroSpCap, rules, &one, "fills, two activations");
+        check_split(song, nullptr, kCloneHeroSpCap, rules, &two, "fills, path dropped");
+    }
+
+    // The SP meter fixtures: a collection mid-SP, a squeezed-out phrase, a
+    // tempo change inside the window, and a what-if cap.
+    {
+        Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
+        Path collected;
+        Activation act = sp_act_at(song, 3840, 2);
+        act.deact_tick = 3840 + 6 * 1920;
+        act.collected_phrase_ticks = {5760};
+        collected.activations = {act};
+        Path plain = priced_path(song, {sp_act_at(song, 3840, 2)});
+        for (int cap : {kCloneHeroSpCap, 2, 6}) {
+            check_split(song, &collected, cap, rules, &plain, "sp, collected");
+            check_split(song, &plain, cap, rules, nullptr, "sp, priced");
+            check_split(song, nullptr, cap, rules, &plain, "sp, no path");
+        }
+    }
+    {
+        Song song = make_sp_song({960}, /*last_tick=*/15360, /*extra_bpm=*/{{5760, 180.0}});
+        Path path = priced_path(song, {sp_act_at(song, 3840, 1)});
+        check_split(song, &path, kCloneHeroSpCap, rules, nullptr, "sp, tempo change");
+    }
+    {
+        Song song = make_overfill_song();
+        Path path;
+        path.activations = {act_at(song, 2304, 0)};
+        check_split(song, &path, kCloneHeroSpCap, rules, nullptr, "overfill");
+    }
+
+    // An empty song gives the empty scene either way.
+    Song empty(480);
+    empty.bpm_changes[0] = 120.0;
+    empty.build_timing();
+    Path on_empty;
+    check_split(empty, nullptr, kCloneHeroSpCap, rules, nullptr, "empty song");
+    check_split(empty, &on_empty, 6, rules, nullptr, "empty song, path");
+}
+
+TEST_CASE("base + overlay: equals build_preview_scene on every corpus chart and stored path") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int charts = 0, paths = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        ++charts;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        const std::vector<const Path*> all = rec.all_paths();
+        check_split(song, nullptr, cfg.sp_cap, cfg.rules, all.empty() ? nullptr : all.front(),
+                    chart + " (no path)");
+        for (size_t i = 0; i < all.size(); ++i) {
+            ++paths;
+            // Laid over the next path's scene, so every overlay replaces a
+            // different one.
+            const Path* other = i + 1 < all.size() ? all[i + 1] : nullptr;
+            check_split(song, all[i], cfg.sp_cap, cfg.rules, other,
+                        chart + " path " + std::to_string(i));
+        }
+    }
+    CHECK(charts > 0);
+    CHECK(paths > charts);
 }
 
 TEST_CASE("sp meter curve: each phrase's last note banks one bar") {

@@ -243,6 +243,10 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
 
 PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
                                  const core::Rules& rules) {
+    return apply_preview_overlay(build_preview_base(song), song, path, sp_cap, rules);
+}
+
+PreviewScene build_preview_base(const Song& song) {
     PreviewScene scene;
     if (song.is_empty()) return scene;
 
@@ -317,6 +321,19 @@ PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
     // reach; the timing's own timecode extrapolates instead.
     for (const SongSection& s : song.practice_sections)
         scene.sections.push_back({s.tick, song.timecode(s.tick).ms(), s.name});
+    return scene;
+}
+
+PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const Path* path,
+                                   int sp_cap, const core::Rules& rules) {
+    // Drop any overlay the base already carries; the fields go back to what a
+    // fresh base holds.
+    scene.activations.clear();
+    for (PreviewFill& f : scene.fills) f.state = PreviewFillState::Hidden;
+    scene.score = PreviewScore{};
+    scene.sp_meter = SpMeterCurve{};
+    if (song.is_empty()) return scene;
+    const SongTiming& timing = song.timing();
 
     // Overlay: the path's activations, ms resolved against the song's timing.
     if (path != nullptr) {

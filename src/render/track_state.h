@@ -109,6 +109,7 @@ public:
 
 private:
     friend TrackState build_track_state(const app::PreviewScene&, const TrackStateOptions&);
+    friend void rebuild_overlay_fields(TrackState&, const app::PreviewScene&);
 
     using Interval = std::pair<double, double>;  // [start, end] seconds
     struct LaneInterval {
@@ -117,9 +118,21 @@ private:
     };
 
     std::vector<TrackInstant> instants_;
+    // One entry per instant: the time the instant would have from the scene's
+    // path-free moments alone (its notes, its beat, SP phrase and solo
+    // edges), or NaN when only overlay edges put it there. This is what lets
+    // rebuild_overlay_fields drop the old overlay's instants and restore
+    // the time of the ones it keeps.
+    std::vector<double> base_t_;
     std::vector<Interval> overdrive_, solo_, fill_, fill_taken_, sp_active_;
     std::vector<LaneInterval> fill_lane_;
     std::vector<Interval> fill_lane_ivs_;  // fill_lane_'s spans alone, built once
+
+    // The overlay's intervals (fill, fill_taken, sp_active, fill_lane), cleared
+    // and rebuilt from the scene's fill states and activations.
+    void set_overlay_intervals(const app::PreviewScene& scene);
+    // Every instant's span fields from the intervals, in one sweep.
+    void sweep_span_fields();
 
     // The state of every span at t, by the per-instant reference rule
     // (toggle_at). window() uses it for the empty-window fallback;
@@ -138,6 +151,18 @@ private:
 // would never have shown them. The activated fill's lane comes from the
 // activation at the fill's end note.
 TrackState build_track_state(const app::PreviewScene& scene, const TrackStateOptions& opts);
+
+// Swap a timeline's path overlay for `scene`'s, keeping everything else. The
+// overlay is the fill, fill_taken, sp_active and fill_lane spans (they read the
+// fill states and activations, see app::apply_preview_overlay). `state` must
+// have been built by build_track_state from a scene with the same path-free
+// half as `scene` (same notes, beats, SP phrases, solos, fill windows and
+// timing), under the options `state` should keep. The result equals
+// build_track_state(scene, those options): instants only the old overlay put
+// there are dropped, the new overlay's edges become instants, and every
+// instant's span fields are swept again. Notes and beats are moved, never
+// rebuilt.
+void rebuild_overlay_fields(TrackState& state, const app::PreviewScene& scene);
 
 // Onyx's makeToggle: the state of a span at `t` given its intervals. The
 // reference rule: build_track_state computes the same answer for every instant
