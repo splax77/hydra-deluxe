@@ -208,6 +208,11 @@ target_link_libraries(hydra_core PRIVATE bcrypt shell32 ole32 uuid hydra_warning
 # Depends on hydra_core for the PreviewAudioStem type and file I/O helpers.
 add_library(hydra_audio STATIC
     src/audio/decode.cpp
+    src/audio/mapped_file.cpp
+    src/audio/stem_reader.cpp
+    src/audio/opus_reader.cpp
+    src/audio/vorbis_reader.cpp
+    src/audio/ma_reader.cpp
     src/audio/mixer.cpp
     src/audio/player.cpp
     src/audio/device.cpp
@@ -376,6 +381,7 @@ add_executable(hydra_tests
     tests/test_preview_view.cpp
     tests/test_preview_source.cpp
     tests/test_audio_decode.cpp
+    tests/test_stem_reader.cpp
     tests/test_audio_mixer.cpp
     tests/test_audio_player.cpp
     tests/test_audio_device.cpp
@@ -425,6 +431,9 @@ add_executable(hydra_tests
 target_link_libraries(hydra_tests PRIVATE
     hydra_ui hydra_dm hydra_audio hydra_render hydra_image d3d11 dxgi d3dcompiler
     hydra_warnings)
+# test_stem_reader keeps copies of the old whole-file decoders as its reference
+# and re-pages Opus fixtures with libogg, so it needs the codec headers too.
+target_link_libraries(hydra_tests PRIVATE miniaudio stb_vorbis opus ogg)
 target_include_directories(hydra_tests PRIVATE
     third_party/doctest
     third_party/json
