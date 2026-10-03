@@ -1,15 +1,21 @@
+#include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <functional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "uitest_harness.h"
 
+#include "app/analysis.h"
 #include "app/config.h"
 #include "app/report_files.h"
 #include "core/model.h"
 #include "imgui_internal.h"
 #include "ui/app_state.h"
+#include "ui/library_jobs.h"
 #include "ui/win32_dialogs.h"
 
 namespace fs = std::filesystem;
@@ -316,6 +322,31 @@ void test_batch_pause_stop(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
+    // The test library analyzes in a blink, so a real run can finish between
+    // two clicks. Hold the first chart open (ticking progress, so Stop still
+    // reaches it) until the test lets go; every click below then lands while
+    // the run is provably still going.
+    static std::atomic<bool> release{false};
+    static std::atomic<int> started{0};
+    release = false;
+    started = 0;
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
+           const std::function<void(float)>& on_progress) {
+            ++started;
+            while (!release.load()) {
+                on_progress(0.0f);  // throws once Stop is pressed
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return hydra::app::analyze_chart_file(path, settings, on_progress);
+        },
+        /*workers=*/1);
+    struct ClearSeam {
+        ~ClearSeam() {
+            release = true;
+            hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+        }
+    } clear_seam;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");
     ctx->SetRef("//Analyze library");
@@ -323,6 +354,7 @@ void test_batch_pause_stop(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job && !h.app->batch_job->snapshot().preparing;
     }, 30));
+    IM_CHECK(wait_until(ctx, [&] { return started.load() >= 1; }, 30));
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
     ctx->SetRef(child_window(ctx, "//Hydra/##batchstrip"));
     ctx->ItemClick("Pause");

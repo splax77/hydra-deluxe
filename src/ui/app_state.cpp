@@ -449,6 +449,7 @@ void AppState::start_batch(bool redo) {
     batch_seen_completed_ = 0;
     batch_refreshed_at_ = -1.0;
     batch_finish_seen_ = false;
+    apply_app_batch_analyzer_for_test(*batch_job);
     batch_job->start();
 }
 

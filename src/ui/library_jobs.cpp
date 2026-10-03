@@ -155,6 +155,20 @@ void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
     workers_ = std::max(1, workers);
 }
 
+namespace {
+app::ChartAnalyzer g_app_batch_analyzer;
+int g_app_batch_workers = 1;
+}  // namespace
+
+void set_app_batch_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
+    g_app_batch_analyzer = std::move(analyze);
+    g_app_batch_workers = workers;
+}
+
+void apply_app_batch_analyzer_for_test(BatchJob& job) {
+    if (g_app_batch_analyzer) job.set_analyzer_for_test(g_app_batch_analyzer, g_app_batch_workers);
+}
+
 void BatchJob::start() {
     {
         std::lock_guard<std::mutex> lock(mu_);

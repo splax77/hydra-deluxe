@@ -178,6 +178,14 @@ private:
     BatchClock clock_;  // guarded by mu_
 };
 
+// GUI-test seam: when set, every batch the app starts runs this analyzer on
+// this many workers (see BatchJob::set_analyzer_for_test), so a GUI test can
+// hold a run open instead of racing a small library to its end. An empty
+// analyzer clears it. Only the uitest harness sets it.
+void set_app_batch_analyzer_for_test(app::ChartAnalyzer analyze, int workers);
+// Hands the seam to a batch about to start; does nothing when it is unset.
+void apply_app_batch_analyzer_for_test(BatchJob& job);
+
 // ---- AnalyzeJob -------------------------------------------------------
 
 // cancel() interrupts the search at its next progress tick (the same unwind
