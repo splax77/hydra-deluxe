@@ -302,6 +302,34 @@ Seek(F): find the link holding F. Target granule = F_in_link + pre-skip. Binary-
 
 ---
 
+### Task 2b: Fast, exact MP3 seeks
+
+**Goal:** An MP3 seek anywhere in the file takes under 20 ms and lands on the exact frame, so a seek on the audio thread never stalls playback.
+
+Added after Task 2. miniaudio 0.11.25's MP3 seeking is wrong in two ways. It ignores the LAME encoder delay (1,105 frames on the fixture), and its own seek table lands thousands of frames off. So Task 2's reader seeks exactly by decoding forward from the start. A backward seek near the end of a 21.6-minute MP3 took 624 ms. This task makes it fast without losing exactness.
+
+**Files:**
+- Modify: `src/audio/ma_reader.cpp`
+- Test: `tests/test_stem_reader.cpp`
+
+**Acceptance Criteria:**
+- [ ] MP3 stems use `ma_dr_mp3` directly (`ma_dr_mp3_init_memory`, `ma_dr_mp3_read_pcm_frames_f32`, `ma_dr_mp3_seek_to_pcm_frame`, `ma_dr_mp3_bind_seek_table`) instead of `ma_decoder`. WAV and FLAC keep `ma_decoder`.
+- [ ] At open, the reader builds its own seek points about every 0.5 s of audio, each recording the frame's byte offset and its true PCM frame index after the encoder delay. It parses frame headers (sync, version, layer, bitrate, sample rate, padding), reading the Xing/Info/LAME tag for delay and padding, without decoding audio. Each seek point carries enough frames to discard so the bit reservoir (MP3's habit of borrowing bytes from earlier frames) is refilled before the target. Use at least 2 frames of discard, more if the exactness test needs it.
+- [ ] A straight-through read stays bit-identical to today (the Task 2 test still passes unchanged).
+- [ ] Seeking to frame F then reading matches the straight-through decode within 1e-3 after the first 20 ms, for a sweep of F every 1,777 frames across the fixture.
+- [ ] On the 21.6-minute library MP3 Task 2 timed (`Koloxid CF3.mp3` under `C:\Clone Hero\songs`; find it with Glob), a backward seek to 90% takes under 20 ms, and opening takes under 100 ms. Record both. Also record the worst post-seek error over 200 random seeks on that file, compared against a straight-through decode.
+- [ ] Never throws from read or seek; an unparseable frame ends the stem early, as today.
+
+**Verify:** `.\build_cpp.ps1 -Target hydra_tests; .\build-cpp\Release\hydra_tests.exe -tc="*StemReader*,*decode_audio*"` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1:** Write the sweep exactness test and a timing probe in the scratchpad.
+- [ ] **Step 2:** Implement the header scan and seek points; bind them with `ma_dr_mp3_bind_seek_table`. Check how `ma_dr_mp3_seek_to_pcm_frame` uses `mp3FramesToDiscard` and `pcmFramesToDiscard` in the vendored `third_party/miniaudio/miniaudio.h` before relying on them. If its seek-table path still mishandles the delay, seek by hand: reset the decoder state and position the input at the seek point's byte offset (read the vendored source for the supported way), decode the discard frames, then drop `pcmFramesToDiscard`.
+- [ ] **Step 3:** Run all tests; time the real file; commit — "Fast exact MP3 seeks with Hydra's own seek points".
+
+---
+
 ### Task 3: Stream the mix during playback
 
 **Goal:** The Playhead pulls audio from a `StreamMix` that reads every stem at one shared position, converts each to 48 kHz stereo, and adds them, so playback needs no decoded buffer at all.
