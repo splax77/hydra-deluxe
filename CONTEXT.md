@@ -215,13 +215,16 @@ Without a path it fills and pins at the cap, since nothing spends it.
 
 **Stem**:
 One of the several audio files a chart may ship instead of a single mix (e.g.
-`drums`, `guitar`, `song`). The Preview decodes and mixes all of a chart's
-stems into one output.
+`drums`, `guitar`, `song`). The Preview mixes all of a chart's stems into one
+output, unpacking each from its compressed file as it plays (docs/adr/0019).
 
 **Mixer**:
-The step that decodes a chart's stems, resamples them to one common format,
-and sums them into a single signal to play. A stem it cannot decode is
-skipped, so one broken stem does not silence the rest.
+The step that reads a chart's stems at one shared position, resamples them to
+one common format, and sums them into a single signal to play. It reads a few
+milliseconds at a time from each stem's compressed bytes; nothing is unpacked
+up front. A stem it cannot open is skipped, so one broken stem does not
+silence the rest. A stem that hits a decode error part way through goes
+silent from that point.
 
 **Transport**:
 The Preview's play, pause, and seek control together with its clock. The clock

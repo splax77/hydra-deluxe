@@ -252,3 +252,138 @@ Audio: [miniaudio manual](https://miniaud.io/docs/manual/index.html),
 Timing programs: the audio bench and the parse/scene bench live in this
 session's scratchpad (`bench\preview_bench.cpp`, `pbench\bench.cpp`). They link
 against the 9/29 `build-ship` Release libraries.
+
+## Status (2026-10-03)
+
+Every fix in this audit is built, on the branch `pv/integration`, waiting to be
+merged into main. The decision is written up in ADR 0019. The plan is
+`docs/superpowers/plans/2026-10-03-preview-loading-fixes.md`.
+
+### What shipped
+
+The Preview now plays straight from the compressed file (Task 2, a0913d0;
+Task 3, fffa79c). Each stem has a reader that can unpack audio from any point.
+One mixer reads every stem at one shared position, so stems can't drift
+apart. Loose audio files are memory-mapped: Windows reads their bytes from
+disk only when they are touched. A stem inside a .sng or .srb keeps its bytes
+in memory.
+
+Opus seeks decode forward from 400 ms before the target. The plan said 80 ms,
+the spec's minimum. We measured 80 ms on the test file and it wasn't exact
+(errors of 0.03 twenty ms past the target). 400 ms matches a straight read.
+
+Opus end trimming (stopping before the encoder's padding at the very end) is
+built but switched off. The Preview has always played that padding, so
+playback is unchanged.
+
+MP3 seeks use Hydra's own seek points (Task 2b, 9f9c759). miniaudio 0.11.25's
+MP3 seek ignores the LAME encoder delay, and its own seek table lands thousands
+of frames off.
+
+At each seek the mixer re-creates its resampler in a memory block it set aside
+at the start (Task 3, fffa79c). miniaudio 0.11.25's `ma_data_converter_reset`
+leaves the resampler filter broken, so it isn't used.
+
+The Vorbis 3.1-hour overflow is gone, because the whole-file decode is gone
+(Task 2). Files over 2 GB read correctly (Task 1, adee9a6). The Opus header
+gain is applied and chained Opus files play every link (Task 2). A .sng or .srb
+is read from disk once (Task 12, 3686dd6).
+
+The load opens stems in parallel beside the chart parse. The bar moves by
+bytes, says "Opening audio: 466 of 625 MB", and cancel works inside every long
+loop (Task 4, ae75ef7). The highway timeline is built in one pass (Task 6,
+8528da9), on the worker thread (Task 7, 9b12344), and a path click rebuilds
+only the path overlay (Task 8, 0d0bfe9). The replay walks only the open
+activation windows (Task 9, 8bc214f). Preview boxes are cached per scene
+(Task 10, 42f37e0). MIDI and .chart parsing are leaner (Task 11, 55049e7). A
+GUI test was fixed so batch-pause-stop holds its run open (a33c5d7).
+
+### One behavior change waiting for your decision
+
+A stem with a decode error in the middle now plays up to the damage, then goes
+silent. Before, the full decode threw on that error, and the whole stem was
+dropped. A file that is simply cut short behaves the same as before: it plays
+to where it ends.
+
+Is this a real concern? Not in this library today. A scan of every audio file
+under `C:\Clone Hero\songs` found no file that hits this case. It covered
+3,761 Opus streams (3,722 loose plus 39 inside .sng files). It also covered
+287 files the new reader reads through miniaudio: 36 WAV, 1 FLAC, 22 MP3, and
+228 files named `.ogg` that aren't Ogg at all (226 MP3, 1 WAV, 1 that can't be
+opened). For Opus it checked every page's checksum and every audio packet's framing,
+which is what libopus rejects. For WAV, FLAC and MP3 it read each file to the
+end through the new reader. Results:
+
+- Packets libopus would reject: 0. Pages failing their checksum: 0. Holes: 0.
+  Cut-off endings: 0.
+- 1,955 Opus files don't mark their last page as the end of the stream. Both
+  the old and new code ignore that flag, so they play fine.
+- WAV, FLAC and MP3 files that stop early or report an error: 0.
+- One file (a 335-character path) can't be opened at all. That is the Windows
+  path-length limit, and it failed the same way before.
+
+The 51,839 Vorbis files weren't scanned, because their error handling didn't
+change: both old and new code play a damaged Vorbis file up to the damage.
+
+The scan ran in 44 s over 33 GB. To check that it can find the problem, it was
+also run on a copy of the test Opus file with one bad packet. It flagged that
+copy. On the same copy, the old decode threw and dropped the stem, and the new
+reader played 2.0 of the 5.0 seconds.
+
+### Measured on the real charts
+
+Measured with the real `PreviewLoadJob`, from start to ready, on this machine.
+There were no compilers or Hydra processes running, and CPU was at 6-10%. Other
+agents were active in the session, so treat these as indicative.
+
+| Chart | Audio | Ready, warm (3 runs) | Peak working set | Peak private memory |
+|---|---|---|---|---|
+| blink-182 Discography | song.opus, 625 MB, 8.6 h | 175-179 ms | 706 MB | 129 MB |
+| Rise Against Discography (2024) | song.opus, 563 MB, 7.9 h | 158-167 ms | 629 MB | 96 MB |
+| Nirvana "Endless, Nameless Setlist (discog)" | song.ogg (Vorbis), 715 MB, 6.5 h | 259-266 ms | 185 MB | 190 MB |
+
+"Warm" means the file was already in Windows' file cache. Most of the peak
+working set on the Opus charts is the mapped file itself: Windows counts those
+pages but can drop them at any time. "Private memory" is what Hydra itself
+holds. Before, blink-182 was heading for about 36 GB and minutes of swapping.
+
+Cold cache: not measured. Clearing Windows' file cache needs admin rights, and
+there was no honest way to get it otherwise. The first run of each Opus chart
+in the session took 364 ms (blink-182) and 380 ms (Rise Against). That is a
+hint only: it is unknown how much of the file was already cached.
+
+After each load the bench played 100 device blocks, jumped 4 hours in, and
+played 100 more. That took 19-32 ms in total, and the audio after the jump was
+not silent on all three charts.
+
+The Nirvana chart now plays audio. song.ini gives its length as 23,270,160 ms
+(6 h 28 min). The new load reports 1,116,967,705 frames at 48 kHz, which is
+the same 23,270 s. It was silent before. Main's old decode
+(`stb_vorbis_decode_memory`), run on its song.ogg, threw "stb_vorbis could not
+decode the stream" after 13.2 s, at a 2.87 GB peak. The old mixer skipped the
+stem, and it was the chart's only stem.
+
+### Tests on the final tree
+
+Unit tests: 652 cases passed, 3 skipped, 0 failed (3,566,089 assertions). GUI
+tests: 60 of 60 passed (`hydra_uitest --all --jobs 4`).
+
+### Your check in the real app (pending)
+
+The GUI tests cover these steps: `preview-controls` and
+`preview-buttons-keys` (play, ±5 s jumps, 5-tick steps), `preview-path-picker`
+(change path), `preview-load-bar` (the bar during a real load), and
+`details-close-teardown`. In the unit tests, "a Preview load cancelled while
+opening a 300 MB Opus stem stops promptly" covers closing mid-load. Your own
+look is still pending:
+
+1. Open the blink-182 Discography chart's Preview. It should be ready in under
+   a second.
+2. Press play. Audio and highway should be in sync.
+3. Seek to the middle (around 4 h). Audio should pick up at once and stay in
+   sync.
+4. Step by ticks with comma and period. The notes and audio should match.
+5. Change the path in the "Showing" list. Only the overlay should change, with
+   no freeze.
+6. Open the chart again and close the details panel while the bar is still
+   moving. The app should not freeze.

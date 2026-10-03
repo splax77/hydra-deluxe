@@ -3,6 +3,10 @@
 _Superseded in part by ADR 0008: the display clock is now the master and the
 audio follows it; the decoder and mixer decisions below still stand._
 
+_Superseded in part by ADR 0019: the mixer no longer decodes every stem up
+front and sums the results. It streams each stem from its compressed bytes and
+sums them as it plays. The library choices below still stand._
+
 The Preview plays a chart's audio in sync with the highway, and the Clone Hero
 corpus is dominated by `.ogg` (Vorbis) and `.opus`, usually split into several
 stems. Windows Media Foundation — the obvious built-in choice — cannot decode
