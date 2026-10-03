@@ -201,12 +201,19 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
 
 // The running score, from the same replay hydra_replay uses. Trusted only
 // when replay_stored_path says the replay stands for the path.
+//
+// Replayed scores-only: the rows' chord_code and notes stay empty. This reads
+// only ms, cum_onscreen_total, multiplier_shown and combo_after off each row,
+// plus result.final through faithful(); nothing else in this file reads a
+// replay row.
 PreviewScore build_score(const Song& song, const Path* path, const core::Rules& rules) {
     PreviewScore score;
     if (path == nullptr) return score;  // None
     score.state = PreviewScore::State::Unavailable;
     try {
-        const PathReplay pr = replay_stored_path(song, *path, rules);
+        ReplayOptions options;
+        options.scores_only = true;
+        const PathReplay pr = replay_stored_path(song, *path, rules, options);
         if (!pr.faithful()) return score;
         score.steps.reserve(pr.result.chords.size());
         for (const ReplayChord& c : pr.result.chords)

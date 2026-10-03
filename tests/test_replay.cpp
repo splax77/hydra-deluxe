@@ -9,7 +9,10 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -20,8 +23,10 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "core/backend_value.h"
 #include "core/model.h"
 #include "core/replay.h"
+#include "env_util.h"
 #include "replay_json.h"
 #include "core/scoring.h"
 #include "core/timing.h"
@@ -763,4 +768,416 @@ TEST_CASE("replay score fields: one list in schema order") {
     s.base = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
     for (size_t i = 0; i < 6; ++i)
         CHECK(s.*(kReplayScoreFields[i].member) == static_cast<int64_t>(i + 1));
+}
+
+// ---------------------------------------------------------------------------
+// The open-window walk against the every-window walk it replaced.
+//
+// replay_path used to check every window for every chord. It now keeps a short
+// list of the windows that can still pay the current chord. The function
+// below is the old loop, copied verbatim from core/replay.cpp before the
+// change (only renamed), so the tests can prove the two give identical rows.
+
+namespace {
+
+struct RefWindow {
+    int64_t act_tick = 0;
+    int64_t deact_tick = 0;
+    double deact_ms = 0.0;
+    std::optional<int64_t> sqout_tick;
+};
+
+ReplayResult reference_replay_path(const Song& song,
+                                   const std::vector<ReplayWindow>& windows,
+                                   const core::Rules& rules) {
+    const SongTiming& timing = song.timing();
+
+    std::vector<RefWindow> wins;
+    wins.reserve(windows.size());
+    for (const ReplayWindow& w : windows) {
+        RefWindow win;
+        win.act_tick = w.act_tick;
+        win.deact_tick = w.deact_tick;
+        win.deact_ms = timing.timecode(w.deact_tick).ms();
+        win.sqout_tick = w.sqout_tick;
+        wins.push_back(win);
+    }
+    std::sort(wins.begin(), wins.end(), [](const RefWindow& a, const RefWindow& b) {
+        return a.act_tick < b.act_tick;
+    });
+
+    ReplayResult out;
+    out.chords.reserve(song.sequence.size());
+
+    int combo = 0;
+    ReplayScore cum;
+    int64_t solo_pending = 0;
+
+    const size_t n = song.sequence.size();
+    std::vector<CategoryScores> per_note;
+
+    for (size_t i = 0; i < n; ++i) {
+        const SongTimestamp& ts = song.sequence[i];
+        const CategoryScores sg = category_scores(ts.chord, combo, &per_note, rules.sqout_rule);
+
+        ReplayChord row;
+        row.index = static_cast<int>(i);
+        row.tick = ts.timecode.ticks();
+        row.ms = ts.timecode.ms();
+        const int64_t* mbt = ts.timecode.measure_beats_ticks();
+        row.measure = mbt[0];
+        row.beat = mbt[1];
+        row.measure_tick = mbt[2];
+        row.measures_decimal = ts.timecode.measures_decimal();
+        row.chord_code = ts.chord.code();
+        row.is_fill = ts.has_activation();
+        row.is_solo = ts.flag_solo;
+        row.is_sp_phrase_end = ts.flag_sp;
+        row.combo_before = combo;
+        row.multiplier = sg.multiplier;
+        row.multiplier_after = sg.multiplier_after;
+
+        const std::vector<ChordNote> ordering = ts.chord.notes(true);
+        row.notes.reserve(ordering.size());
+        for (size_t k = 0; k < ordering.size(); ++k) {
+            ReplayNote note;
+            note.color = ordering[k].colortype;
+            note.cymbal = ordering[k].is_cymbal();
+            note.sp_points = k < per_note.size() ? per_note[k].sp : 0;
+            note.multiplier = k < per_note.size() ? per_note[k].multiplier : 1;
+            note.dynamics_bonus =
+                k < per_note.size() ? per_note[k].dynamics_bonus : 0;
+            note.dynamic = ordering[k].dynamictype;
+            row.notes.push_back(note);
+        }
+
+        int64_t sp_points = 0;
+        int sp_claims = 0;
+        for (const RefWindow& w : wins) {
+            if (row.tick < w.act_tick) continue;
+            const double offset = row.tick <= w.deact_tick
+                                      ? std::min(row.ms - w.deact_ms, 0.0)
+                                      : row.ms - w.deact_ms;
+            const core::SqOutPosition pos =
+                core::sqout_position(row.tick, w.sqout_tick);
+            if (pos == core::SqOutPosition::After ||
+                !core::counted_without_squeeze(offset, rules.backend_leeway_ms))
+                continue;
+            ++sp_claims;
+            sp_points += core::backend_row_value(
+                offset, sg.sp, sg.sqout_sp(), pos,
+                rules.backend_leeway_ms);
+        }
+        row.in_sp = sp_claims > 0;
+        row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
+
+        row.points.base = sg.base;
+        row.points.combo = sg.combo;
+        row.points.sp = sp_points;
+        row.points.solo =
+            ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;
+        row.points.accent = sg.accent;
+        row.points.ghost = sg.ghost;
+
+        combo += ts.chord.count();
+        row.combo_after = combo;
+
+        cum.add(row.points);
+        row.cum = cum;
+
+        if (ts.flag_solo) {
+            solo_pending += row.points.solo;
+            const bool last_of_run =
+                i + 1 >= n || !song.sequence[i + 1].flag_solo;
+            if (last_of_run) solo_pending = 0;
+        }
+        row.cum_onscreen_total = cum.total() - solo_pending;
+
+        out.chords.push_back(std::move(row));
+    }
+
+    out.final = cum;
+    return out;
+}
+
+// The name of the first field where two rows differ, or "" when every field
+// of ReplayChord (and of each ReplayNote) is identical. With `scores_only`,
+// chord_code and notes are skipped (a scores-only row leaves them empty).
+std::string first_row_difference(const ReplayChord& a, const ReplayChord& b,
+                                 bool scores_only = false) {
+    if (a.index != b.index) return "index";
+    if (a.tick != b.tick) return "tick";
+    if (a.ms != b.ms) return "ms";
+    if (a.measure != b.measure) return "measure";
+    if (a.beat != b.beat) return "beat";
+    if (a.measure_tick != b.measure_tick) return "measure_tick";
+    if (a.measures_decimal != b.measures_decimal) return "measures_decimal";
+    if (!scores_only) {
+        if (a.chord_code != b.chord_code) return "chord_code";
+        if (a.notes.size() != b.notes.size()) return "notes.size";
+        for (size_t k = 0; k < a.notes.size(); ++k) {
+            const ReplayNote& x = a.notes[k];
+            const ReplayNote& y = b.notes[k];
+            if (x.color != y.color) return "notes.color";
+            if (x.cymbal != y.cymbal) return "notes.cymbal";
+            if (x.sp_points != y.sp_points) return "notes.sp_points";
+            if (x.multiplier != y.multiplier) return "notes.multiplier";
+            if (x.dynamics_bonus != y.dynamics_bonus) return "notes.dynamics_bonus";
+            if (x.dynamic != y.dynamic) return "notes.dynamic";
+        }
+    }
+    if (a.is_fill != b.is_fill) return "is_fill";
+    if (a.is_solo != b.is_solo) return "is_solo";
+    if (a.is_sp_phrase_end != b.is_sp_phrase_end) return "is_sp_phrase_end";
+    if (a.combo_before != b.combo_before) return "combo_before";
+    if (a.combo_after != b.combo_after) return "combo_after";
+    if (a.multiplier != b.multiplier) return "multiplier";
+    if (a.multiplier_after != b.multiplier_after) return "multiplier_after";
+    if (a.in_sp != b.in_sp) return "in_sp";
+    if (a.multiplier_shown != b.multiplier_shown) return "multiplier_shown";
+    if (!(a.points == b.points)) return "points";
+    if (!(a.cum == b.cum)) return "cum";
+    if (a.cum_onscreen_total != b.cum_onscreen_total) return "cum_onscreen_total";
+    return "";
+}
+
+// "" when the two results are identical row for row, else where they differ.
+std::string first_result_difference(const ReplayResult& a, const ReplayResult& b,
+                                    bool scores_only = false) {
+    if (a.chords.size() != b.chords.size()) return "row count";
+    for (size_t i = 0; i < a.chords.size(); ++i) {
+        const std::string d = first_row_difference(a.chords[i], b.chords[i], scores_only);
+        if (!d.empty()) return "row " + std::to_string(i) + ": " + d;
+    }
+    if (!(a.final == b.final)) return "final";
+    return "";
+}
+
+// A small deterministic generator, so the synthetic windows are the same on
+// every run and every machine.
+struct Lcg {
+    uint64_t state;
+    uint32_t next() {
+        state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+        return static_cast<uint32_t>(state >> 33);
+    }
+};
+
+// `count` made-up windows over `song`: random activation chords, windows of
+// 1 to 60 chords that overlap freely, deactivation nodes that are sometimes a
+// few ticks off a chord, and a squeeze-out chord on about a quarter of them
+// (anywhere from 3 chords before the SP end to 3 after, so some sit before D).
+std::vector<ReplayWindow> synthetic_windows(const Song& song, size_t count,
+                                            uint64_t seed) {
+    std::vector<ReplayWindow> out;
+    const size_t n = song.sequence.size();
+    if (n == 0) return out;
+    Lcg rng{seed};
+    out.reserve(count);
+    for (size_t j = 0; j < count; ++j) {
+        const size_t a = rng.next() % n;
+        const size_t len = 1 + rng.next() % 60;
+        const size_t d = std::min(a + len, n - 1);
+        ReplayWindow w;
+        w.act_tick = song.sequence[a].timecode.ticks();
+        w.deact_tick = song.sequence[d].timecode.ticks() +
+                       (rng.next() % 3 == 0 ? static_cast<int64_t>(rng.next() % 10) : 0);
+        if (rng.next() % 4 == 0) {
+            const size_t lo = d >= 3 ? d - 3 : 0;
+            const size_t q = std::min(lo + rng.next() % 7, n - 1);
+            w.sqout_tick = song.sequence[q].timecode.ticks();
+        }
+        out.push_back(w);
+    }
+    return out;
+}
+
+// Leeways that stress the exit rule: the real 3 ms, none, a negative one, and
+// one wide enough that chords well past D keep counting.
+std::vector<core::Rules> leeway_variants() {
+    std::vector<core::Rules> out;
+    for (double leeway : {3.0, 0.0, -5.0, 250.0}) {
+        core::Rules r = core::default_rules();
+        r.backend_leeway_ms = leeway;
+        out.push_back(r);
+    }
+    core::Rules whole = core::default_rules();
+    whole.sqout_rule = core::SqOutRule::WholeChord;
+    out.push_back(whole);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("replay: the open-window walk equals the every-window walk on every corpus path") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int charts = 0, runs = 0;
+    std::string first_diff;
+
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        ++charts;
+
+        // No Star Power at all, then every stored path's own windows.
+        std::vector<std::vector<ReplayWindow>> lists{{}};
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+        for (const Path* p : rec.all_paths()) lists.push_back(windows_for_path(*p));
+
+        for (const std::vector<ReplayWindow>& wl : lists) {
+            ++runs;
+            const std::string d = first_result_difference(
+                reference_replay_path(song, wl, cfg.rules), replay_path(song, wl, cfg.rules));
+            if (!d.empty() && first_diff.empty()) first_diff = path + ": " + d;
+        }
+    }
+
+    CHECK(charts > 0);
+    CHECK(runs > charts);
+    INFO("first difference: " << first_diff);
+    CHECK(first_diff.empty());
+}
+
+TEST_CASE("replay: the open-window walk equals the every-window walk on hand-built windows") {
+    // The squeeze-out chart from "a squeezed-out chord past the leeway earns
+    // nothing", under every leeway variant, with its window and with a
+    // squeeze-out that sits before D.
+    Song song(192);
+    song.tpm_changes[0] = 768;
+    song.bpm_changes[0] = 120.0;
+    song.build_timing();
+    for (int64_t tick : {0, 768, 1536, 2304, 3072, 3256}) {
+        SongTimestamp ts;
+        ts.timecode = song.timecode(tick);
+        ts.chord.add_note(NoteColor::Red);
+        ts.chord.add_note(NoteColor::Yellow);
+        ts.flag_sp = tick == 3256;
+        song.sequence.push_back(ts);
+    }
+    ReplayWindow late;
+    late.act_tick = 0;
+    late.deact_tick = 3072;
+    late.sqout_tick = 3256;
+    ReplayWindow early;
+    early.act_tick = 768;
+    early.deact_tick = 3072;
+    early.sqout_tick = 2304;
+    ReplayWindow plain;
+    plain.act_tick = 1536;
+    plain.deact_tick = 3100;
+
+    const std::vector<std::vector<ReplayWindow>> lists = {
+        {late}, {early}, {plain}, {late, early, plain}, {plain, early, late}};
+    for (const core::Rules& rules : leeway_variants())
+        for (const std::vector<ReplayWindow>& wl : lists) {
+            const std::string d = first_result_difference(
+                reference_replay_path(song, wl, rules), replay_path(song, wl, rules));
+            INFO("leeway " << rules.backend_leeway_ms << ", " << wl.size() << " window(s)");
+            CHECK(d.empty());
+        }
+}
+
+TEST_CASE("replay: the open-window walk equals the every-window walk with 2,000 activations") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+
+    // The longest corpus chart, by chord count.
+    const Song* longest = nullptr;
+    std::string longest_path;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (!longest || song.sequence.size() > longest->sequence.size()) {
+            longest = &song;
+            longest_path = path;
+        }
+    }
+    REQUIRE(longest != nullptr);
+    REQUIRE(longest->sequence.size() > 500);
+    INFO("chart: " << longest_path << " (" << longest->sequence.size() << " chords)");
+
+    for (uint64_t seed : {1ULL, 2ULL, 3ULL}) {
+        const std::vector<ReplayWindow> wl = synthetic_windows(*longest, 2000, seed);
+        for (const core::Rules& rules : leeway_variants()) {
+            const ReplayResult want = reference_replay_path(*longest, wl, rules);
+            const std::string d = first_result_difference(want, replay_path(*longest, wl, rules));
+            INFO("seed " << seed << ", leeway " << rules.backend_leeway_ms);
+            CHECK(d.empty());
+            // The windows must actually pay something, or the test proves
+            // nothing about the exit rule.
+            CHECK(want.final.sp > 0);
+        }
+    }
+}
+
+TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score the same") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    ReplayOptions scores;
+    scores.scores_only = true;
+    int runs = 0;
+    std::string first_diff;
+
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+        for (const Path* p : rec.all_paths()) {
+            ++runs;
+            const PathReplay full = replay_stored_path(song, *p, cfg.rules);
+            const PathReplay lean = replay_stored_path(song, *p, cfg.rules, scores);
+            CHECK(lean.faithful() == full.faithful());
+            const std::string d = first_result_difference(full.result, lean.result, true);
+            if (!d.empty() && first_diff.empty()) first_diff = path + ": " + d;
+            for (const ReplayChord& c : lean.result.chords) {
+                if (!c.chord_code.empty() || !c.notes.empty()) {
+                    if (first_diff.empty()) first_diff = path + ": a scores-only row kept its notes";
+                    break;
+                }
+            }
+        }
+    }
+    CHECK(runs > 0);
+    INFO("first difference: " << first_diff);
+    CHECK(first_diff.empty());
+}
+
+// Timing on the real stress chart, for the record (Task 9 of the
+// 2026-10-03 preview-loading plan). Skipped by default; run it with
+//   hydra_tests.exe -tc="replay timing*" --no-skip
+// HYDRA_REPLAY_BENCH_CHART overrides the chart path.
+TEST_CASE("replay timing: 2,000 activations on the Discography chart" * doctest::skip()) {
+    const std::string chart = read_env("HYDRA_REPLAY_BENCH_CHART").value_or(
+        "C:\\Clone Hero\\songs\\Misc Downloads\\blink-182 - Discography\\notes.mid");
+    if (!std::filesystem::exists(std::filesystem::u8path(chart))) {
+        MESSAGE("chart not found, skipped: " << chart);
+        return;
+    }
+    const Song song = load_songpath(chart, true, true);
+    REQUIRE_FALSE(song.is_empty());
+    const std::vector<ReplayWindow> wl = synthetic_windows(song, 2000, 7);
+    const core::Rules rules = core::default_rules();
+    ReplayOptions scores;
+    scores.scores_only = true;
+
+    using clock = std::chrono::steady_clock;
+    auto best_ms = [](auto&& fn) {
+        double best = 1e300;
+        for (int run = 0; run < 3; ++run) {
+            const auto t0 = clock::now();
+            fn();
+            const double ms =
+                std::chrono::duration<double, std::milli>(clock::now() - t0).count();
+            best = std::min(best, ms);
+        }
+        return best;
+    };
+    ReplayResult a, b, c, z;
+    const double old_ms = best_ms([&] { a = reference_replay_path(song, wl, rules); });
+    const double new_ms = best_ms([&] { b = replay_path(song, wl, rules); });
+    const double lean_ms = best_ms([&] { c = replay_path(song, wl, rules, scores); });
+    const double none_ms = best_ms([&] { z = replay_path(song, {}, rules); });
+    CHECK(first_result_difference(a, b).empty());
+    CHECK(first_result_difference(a, c, true).empty());
+    MESSAGE(song.sequence.size() << " chords, " << wl.size() << " windows, best of 3:"
+            << " every-window walk " << old_ms << " ms, open-window walk " << new_ms
+            << " ms, open-window scores-only " << lean_ms << " ms, no windows "
+            << none_ms << " ms");
 }
