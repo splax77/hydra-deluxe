@@ -28,7 +28,7 @@ void test_preview(ImGuiTestContext* ctx) {
     open_details(ctx, 0);
     if (ctx->IsError()) return;
     // The loading bar's numbers: reading sits at 0, decoding spreads stems
-    // over the middle, mixing and building fill the tail. The test charts
+    // over the middle, mixing, the scene and the highway fill the tail. The test charts
     // load too fast to catch on screen, so pin the math down here.
     {
         using P = hydra::ui::PreviewLoadJob::Progress;
@@ -41,6 +41,7 @@ void test_preview(ImGuiTestContext* ctx) {
         const P decode4{S::Decoding, 4, 4};
         const P mixing{S::Mixing, 4, 4};
         const P building{S::Building, 4, 4};
+        const P highway{S::Highway, 4, 4};
         IM_CHECK_EQ(reading.fraction(), 0.0f);
         IM_CHECK_STR_EQ(reading.label().c_str(), "Reading chart");
         IM_CHECK_FLOAT_NEAR_EQ(decode0.fraction(), 0.10f, 1e-5f);
@@ -50,6 +51,8 @@ void test_preview(ImGuiTestContext* ctx) {
         IM_CHECK_FLOAT_NEAR_EQ(mixing.fraction(), 0.85f, 1e-5f);
         IM_CHECK_FLOAT_NEAR_EQ(building.fraction(), 0.95f, 1e-5f);
         IM_CHECK_STR_EQ(building.label().c_str(), "Building scene");
+        IM_CHECK_FLOAT_NEAR_EQ(highway.fraction(), 0.98f, 1e-5f);
+        IM_CHECK_STR_EQ(highway.label().c_str(), "Building highway");
     }
 
     ctx->ItemClick("**/Preview");

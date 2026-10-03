@@ -70,7 +70,10 @@ void PreviewController::start_scene_job() {
         scene_job_->cancel();
         retired_scene_jobs_.push_back(std::move(scene_job_));
     }
-    scene_job_ = std::make_unique<PreviewSceneJob>(song_, path_, sp_cap_, rules_, path_key_);
+    render::TrackStateOptions track_opts;
+    track_opts.pro = pro_;
+    scene_job_ = std::make_unique<PreviewSceneJob>(song_, path_, sp_cap_, rules_, path_key_,
+                                                   track_opts);
     scene_job_->start();
 }
 
@@ -90,6 +93,7 @@ void PreviewController::close() {
     requested_path_key_.clear();
     scene_ = hydra::app::PreviewScene{};
     scene_dirty_ = true;  // the renderer (if kept) must drop the old chart
+    pending_track_.reset();  // scene_ is empty now; render() builds its (empty) timeline
     song_.reset();
     path_.reset();
     sp_cap_ = kCloneHeroSpCap;
@@ -114,7 +118,10 @@ void PreviewController::poll() {
     // A new selection's overlay is ready: swap it in.
     if (scene_job_ && scene_job_->finished()) {
         if (scene_job_->ok()) {
-            scene_ = scene_job_->take_scene();
+            PreviewSceneJob::Output out = scene_job_->take_output();
+            scene_ = std::move(out.scene);
+            pending_track_ = std::move(out.track_state);
+            pending_track_opts_ = out.track_opts;
             scene_path_key_ = scene_job_->key();
             scene_dirty_ = true;
         } else if (error_.empty()) {
@@ -130,6 +137,8 @@ void PreviewController::poll() {
         PreviewLoadJob::Result result = job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
         scene_ = std::move(result.scene);
+        pending_track_ = std::move(result.track_state);
+        pending_track_opts_ = result.track_opts;
         scene_path_key_ = job_path_key_;
         scene_dirty_ = true;
         transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);
@@ -186,7 +195,15 @@ ID3D11ShaderResourceView* PreviewController::render(int width, int height) {
         if (scene_dirty_) {
             render::TrackStateOptions opts;
             opts.pro = pro_;
-            renderer_->set_scene(scene_, opts);
+            // A job built scene_'s timeline on its worker: just move it in.
+            // If it was built for another pro-drums setting than the one
+            // drawn now, or there is none (the empty scene after close()),
+            // build it here as before.
+            if (pending_track_ && pending_track_opts_.pro == opts.pro)
+                renderer_->set_scene(scene_, std::move(*pending_track_));
+            else
+                renderer_->set_scene(scene_, opts);
+            pending_track_.reset();
             scene_dirty_ = false;
         }
         renderer_->render(transport_.tick());
