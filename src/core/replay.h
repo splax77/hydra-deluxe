@@ -168,11 +168,29 @@ struct ReplayResult {
     ReplayScore final;
 };
 
+// How much of each row replay_path fills in.
+struct ReplayOptions {
+    // Leave each row's chord_code and notes empty, and skip the work that
+    // builds them. Every score field (points, cum, cum_onscreen_total,
+    // multipliers, combo, in_sp) and ReplayResult::final are the same as a
+    // full replay's. Only the Preview sets it: its score box reads ms,
+    // cum_onscreen_total, multiplier_shown and combo_after off each row, and
+    // PathReplay::faithful() reads final (app/preview_view.cpp build_score).
+    // Set it field by field (`ReplayOptions o; o.scores_only = true;`): the
+    // project is C++17, which has no designated initializers.
+    bool scores_only = false;
+};
+
 // Score `song` under `windows` (any order; they are sorted here). An empty
 // list scores the chart with no Star Power anywhere. Throws
 // std::invalid_argument for a window with a SqOut offset but no SqOut tick.
+//
+// One pass over the chords. Only the windows that can still pay the current
+// chord are checked (replay.cpp explains why a window that leaves can never
+// pay again), so many activations cost little more than a few.
 ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
-                         const core::Rules& rules = core::default_rules());
+                         const core::Rules& rules = core::default_rules(),
+                         const ReplayOptions& options = {});
 
 // The six score categories off a stored Path, in ReplayScore's shape, so a
 // caller can compare it against a ReplayResult::final with operator==
@@ -209,7 +227,8 @@ struct PathReplay {
 // Replay `path` through its own windows. Replays even when some activation
 // yields no window, so a caller can report what did not match.
 PathReplay replay_stored_path(const Song& song, const Path& path,
-                              const core::Rules& rules = core::default_rules());
+                              const core::Rules& rules = core::default_rules(),
+                              const ReplayOptions& options = {});
 
 // The windows a hand-typed window list may have priced too high, one
 // plain-English line each.

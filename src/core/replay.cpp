@@ -39,7 +39,7 @@ std::vector<const SongTimestamp*> sqout_candidates(const Song& song,
 }  // namespace
 
 ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
-                         const core::Rules& rules) {
+                         const core::Rules& rules, const ReplayOptions& options) {
     const SongTiming& timing = song.timing();
 
     std::vector<Window> wins;
@@ -72,9 +72,31 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     const size_t n = song.sequence.size();
     std::vector<CategoryScores> per_note;
 
+    // The windows that can still pay a chord, as indexes into `wins`.
+    //
+    // A window joins when the walk reaches its activation chord. `wins` is
+    // sorted by act_tick and the chords come in tick order, so `next_win`
+    // walks `wins` once and a window, once in, stays past its activation.
+    //
+    // A window leaves for good when the chord is past its deactivation node
+    // and the window does not pay it. Both reasons a window skips a chord
+    // there only grow as the walk moves on, so it can never pay a later one:
+    //   - sqout_position(...) == After means the chord's tick is past the
+    //     squeezed-out chord's tick, and ticks only grow.
+    //   - Past the deactivation node the offset is row.ms - deact_ms, and ms
+    //     never falls as ticks grow (positive tempos). counted_without_squeeze
+    //     is true for every offset up to a threshold and false above it
+    //     (offset <= 0 || offset < leeway), so once false it stays false.
+    // So the sum below visits exactly the windows the old every-window loop
+    // paid, and sums the same integers (order does not change an int sum).
+    std::vector<size_t> open;
+    size_t next_win = 0;
+
     for (size_t i = 0; i < n; ++i) {
         const SongTimestamp& ts = song.sequence[i];
-        const CategoryScores sg = category_scores(ts.chord, combo, &per_note, rules.sqout_rule);
+        const CategoryScores sg =
+            category_scores(ts.chord, combo, options.scores_only ? nullptr : &per_note,
+                            rules.sqout_rule);
 
         ReplayChord row;
         row.index = static_cast<int>(i);
@@ -85,7 +107,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.beat = mbt[1];
         row.measure_tick = mbt[2];
         row.measures_decimal = ts.timecode.measures_decimal();
-        row.chord_code = ts.chord.code();
+        if (!options.scores_only) row.chord_code = ts.chord.code();
         row.is_fill = ts.has_activation();
         row.is_solo = ts.flag_solo;
         row.is_sp_phrase_end = ts.flag_sp;
@@ -93,19 +115,24 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.multiplier = sg.multiplier;  // what category_scores applied
         row.multiplier_after = sg.multiplier_after;
 
-        const std::vector<ChordNote> ordering = ts.chord.notes(true);
-        row.notes.reserve(ordering.size());
-        for (size_t k = 0; k < ordering.size(); ++k) {
-            ReplayNote note;
-            note.color = ordering[k].colortype;
-            note.cymbal = ordering[k].is_cymbal();
-            note.sp_points = k < per_note.size() ? per_note[k].sp : 0;
-            note.multiplier = k < per_note.size() ? per_note[k].multiplier : 1;
-            note.dynamics_bonus =
-                k < per_note.size() ? per_note[k].dynamics_bonus : 0;
-            note.dynamic = ordering[k].dynamictype;
-            row.notes.push_back(note);
+        if (!options.scores_only) {
+            const std::vector<ChordNote> ordering = ts.chord.notes(true);
+            row.notes.reserve(ordering.size());
+            for (size_t k = 0; k < ordering.size(); ++k) {
+                ReplayNote note;
+                note.color = ordering[k].colortype;
+                note.cymbal = ordering[k].is_cymbal();
+                note.sp_points = k < per_note.size() ? per_note[k].sp : 0;
+                note.multiplier = k < per_note.size() ? per_note[k].multiplier : 1;
+                note.dynamics_bonus =
+                    k < per_note.size() ? per_note[k].dynamics_bonus : 0;
+                note.dynamic = ordering[k].dynamictype;
+                row.notes.push_back(note);
+            }
         }
+
+        while (next_win < wins.size() && row.tick >= wins[next_win].act_tick)
+            open.push_back(next_win++);
 
         // How many activations pay this chord's doubling. Normally 0 or 1;
         // summed rather than flagged because the engine sums too (a chord in
@@ -113,24 +140,31 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         // is paid by both).
         int64_t sp_points = 0;
         int sp_claims = 0;
-        for (const Window& w : wins) {
-            if (row.tick < w.act_tick) continue;
+        size_t kept = 0;
+        for (size_t k = 0; k < open.size(); ++k) {
+            const Window& w = wins[open[k]];
             // The row's offset from the SP end, as the graph measures it. A
             // chord on or before the deactivation node is inside the window
             // whatever its ms says.
-            const double offset = row.tick <= w.deact_tick
-                                      ? std::min(row.ms - w.deact_ms, 0.0)
-                                      : row.ms - w.deact_ms;
+            const bool past_deact = row.tick > w.deact_tick;
+            const double offset = past_deact ? row.ms - w.deact_ms
+                                             : std::min(row.ms - w.deact_ms, 0.0);
             const core::SqOutPosition pos =
                 core::sqout_position(row.tick, w.sqout_tick);
-            if (pos == core::SqOutPosition::After ||
-                !core::counted_without_squeeze(offset, rules.backend_leeway_ms))
-                continue;
-            ++sp_claims;
-            sp_points += core::backend_row_value(
-                offset, sg.sp, sg.sqout_sp(), pos,
-                rules.backend_leeway_ms);
+            const bool pays =
+                pos != core::SqOutPosition::After &&
+                core::counted_without_squeeze(offset, rules.backend_leeway_ms);
+            if (pays) {
+                ++sp_claims;
+                sp_points += core::backend_row_value(
+                    offset, sg.sp, sg.sqout_sp(), pos,
+                    rules.backend_leeway_ms);
+            }
+            // Erase-remove in place: keep the window unless it is past its
+            // deactivation node and skipped this chord (see `open` above).
+            if (pays || !past_deact) open[kept++] = open[k];
         }
+        open.resize(kept);
         row.in_sp = sp_claims > 0;
         row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
 
@@ -196,10 +230,11 @@ std::vector<ReplayWindow> windows_for_path(const Path& path) {
 }
 
 PathReplay replay_stored_path(const Song& song, const Path& path,
-                              const core::Rules& rules) {
+                              const core::Rules& rules,
+                              const ReplayOptions& options) {
     PathReplay out;
     out.windows = windows_for_path(path);
-    out.result = replay_path(song, out.windows, rules);
+    out.result = replay_path(song, out.windows, rules, options);
     out.stored = score_of(path);
     out.activations = path.walk_activations().size();
     return out;
