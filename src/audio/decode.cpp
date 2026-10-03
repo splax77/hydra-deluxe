@@ -1,24 +1,11 @@
 #include "audio/decode.h"
 
-#include <algorithm>
-#include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <stdexcept>
+#include <utility>
 
-#include <ogg/ogg.h>
-#include <opus.h>
-
-#include "app/preview_source.h"
-#include "core/winstr.h"
-
-// miniaudio's configuration macros come from the miniaudio target
-// (CMakeLists.txt), the same set its implementation TU is compiled with.
-#include "miniaudio.h"
-
-// stb_vorbis is compiled as its own TU (third_party/stb/stb_vorbis.c); take only
-// its prototypes here and link the implementation.
-#define STB_VORBIS_HEADER_ONLY
-#include "stb_vorbis.c"
+#include "audio/stem_reader.h"
 
 namespace hydra::audio {
 
@@ -44,6 +31,40 @@ bool contains_tag(const uint8_t* data, std::size_t size, std::size_t limit,
     return false;
 }
 
+// Reads a whole stem through its reader: exactly length_frames() frames are
+// reserved up front, so the buffer never grows or copies. Should a decoder
+// yield more than it promised, the extra is kept (the buffer grows), so the
+// output always equals reading to the end. A decode error part way through
+// throws, as the old whole-file decoders did.
+DecodedAudio read_all(StemReader& r) {
+    DecodedAudio out;
+    out.channels = r.channels();
+    out.sample_rate = r.sample_rate();
+    if (out.channels <= 0) throw std::runtime_error("decode_audio: the stream has no channels");
+    const std::size_t ch = static_cast<std::size_t>(out.channels);
+    int64_t cap = r.length_frames();
+    out.samples.resize(static_cast<std::size_t>(cap) * ch);
+    int64_t n = 0;
+    while (n < cap) {
+        const int64_t got = r.read(out.samples.data() + static_cast<std::size_t>(n) * ch, cap - n);
+        if (got <= 0) break;
+        n += got;
+    }
+    if (n == cap) {
+        // Promised length reached; anything past it lands in a side buffer.
+        std::vector<float> extra(4096 * ch);
+        while (const int64_t got = r.read(extra.data(), 4096)) {
+            out.samples.resize(static_cast<std::size_t>(n) * ch);
+            out.samples.insert(out.samples.end(), extra.begin(),
+                               extra.begin() + static_cast<std::ptrdiff_t>(got * out.channels));
+            n += got;
+        }
+    }
+    if (r.failed()) throw std::runtime_error("decode_audio: the stream failed to decode");
+    out.samples.resize(static_cast<std::size_t>(n) * ch);
+    return out;
+}
+
 }  // namespace
 
 AudioFormat sniff_format(const uint8_t* data, std::size_t size) {
@@ -67,184 +88,16 @@ AudioFormat sniff_format(const uint8_t* data, std::size_t size) {
     return AudioFormat::Unknown;
 }
 
-namespace {
-
-// Decode WAV/MP3/FLAC from memory with miniaudio's own decoders, to native
-// channel count and sample rate as interleaved float.
-DecodedAudio decode_with_miniaudio(const uint8_t* data, std::size_t size) {
-    ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 0, 0);
-    ma_decoder dec;
-    if (ma_decoder_init_memory(data, size, &cfg, &dec) != MA_SUCCESS)
-        throw std::runtime_error("decode_audio: miniaudio could not open the stream");
-
-    DecodedAudio out;
-    out.channels = static_cast<int>(dec.outputChannels);
-    out.sample_rate = static_cast<int>(dec.outputSampleRate);
-
-    const ma_uint64 kChunkFrames = 4096;
-    for (;;) {
-        std::size_t base = out.samples.size();
-        out.samples.resize(base + static_cast<std::size_t>(kChunkFrames) *
-                                      out.channels);
-        ma_uint64 read = 0;
-        ma_result r = ma_decoder_read_pcm_frames(&dec, out.samples.data() + base,
-                                                 kChunkFrames, &read);
-        out.samples.resize(base +
-                           static_cast<std::size_t>(read) * out.channels);
-        if (read == 0) break;
-        if (r != MA_SUCCESS && r != MA_AT_END) {
-            ma_decoder_uninit(&dec);
-            throw std::runtime_error("decode_audio: miniaudio read failed");
-        }
-        if (r == MA_AT_END) break;
-    }
-    ma_decoder_uninit(&dec);
-    return out;
-}
-
-// Decode an Ogg-Vorbis stream from memory with stb_vorbis to interleaved float.
-DecodedAudio decode_ogg_vorbis(const uint8_t* data, std::size_t size) {
-    int channels = 0, rate = 0;
-    short* pcm = nullptr;
-    int frames = stb_vorbis_decode_memory(data, static_cast<int>(size),
-                                          &channels, &rate, &pcm);
-    if (frames < 0 || pcm == nullptr)
-        throw std::runtime_error("decode_audio: stb_vorbis could not decode the stream");
-
-    DecodedAudio out;
-    out.channels = channels;
-    out.sample_rate = rate;
-    out.samples.resize(static_cast<std::size_t>(frames) * channels);
-    for (std::size_t i = 0; i < out.samples.size(); ++i)
-        out.samples[i] = pcm[i] / 32768.0f;
-    std::free(pcm);
-    return out;
-}
-
-// Decode an Ogg-Opus stream from memory. opusfile is not vendored, so this walks
-// the Ogg pages with libogg and decodes the packets with libopus by hand:
-//   * the first packet is the OpusHead identification header — read the channel
-//     count and the 16-bit little-endian pre-skip (encoder delay at 48 kHz);
-//   * the second packet is OpusTags — skipped;
-//   * the rest are audio packets, decoded to 48 kHz float and concatenated, with
-//     the pre-skip samples dropped from the very start.
-// Opus always decodes at 48 kHz regardless of the source rate. Only mapping
-// family 0 (mono/stereo) is handled; that covers the Clone Hero corpus.
-DecodedAudio decode_ogg_opus(const uint8_t* data, std::size_t size) {
-    ogg_sync_state oy;
-    ogg_sync_init(&oy);
-
-    ogg_stream_state os;
-    bool stream_ready = false;
-    OpusDecoder* dec = nullptr;
-    DecodedAudio out;
-    out.sample_rate = 48000;
-
-    auto cleanup = [&] {
-        if (dec) opus_decoder_destroy(dec);
-        if (stream_ready) ogg_stream_clear(&os);
-        ogg_sync_clear(&oy);
-    };
-
-    try {
-        char* buf = ogg_sync_buffer(&oy, static_cast<long>(size));
-        std::memcpy(buf, data, size);
-        ogg_sync_wrote(&oy, static_cast<long>(size));
-
-        int channels = 0;
-        long skip_remaining = 0;
-        long packet_index = 0;
-        const int kMaxFrame = 5760;  // 120 ms at 48 kHz, the largest Opus packet
-        // One decode buffer for the whole stream, sized once the OpusHead
-        // gives the channel count. Every packet decodes into it.
-        std::vector<float> pcm;
-
-        ogg_page og;
-        while (ogg_sync_pageout(&oy, &og) == 1) {
-            if (!stream_ready) {
-                ogg_stream_init(&os, ogg_page_serialno(&og));
-                stream_ready = true;
-            }
-            ogg_stream_pagein(&os, &og);
-
-            ogg_packet op;
-            while (ogg_stream_packetout(&os, &op) == 1) {
-                if (packet_index == 0) {
-                    if (op.bytes < 19 ||
-                        std::memcmp(op.packet, "OpusHead", 8) != 0)
-                        throw std::runtime_error(
-                            "decode_audio: Opus stream has no OpusHead");
-                    channels = op.packet[9];
-                    skip_remaining =
-                        op.packet[10] | (static_cast<int>(op.packet[11]) << 8);
-                    if (channels < 1 || channels > 2)
-                        throw std::runtime_error(
-                            "decode_audio: only mono/stereo Opus is supported");
-                    int err = 0;
-                    dec = opus_decoder_create(48000, channels, &err);
-                    if (err != OPUS_OK || dec == nullptr)
-                        throw std::runtime_error(
-                            "decode_audio: opus_decoder_create failed");
-                    out.channels = channels;
-                    pcm.resize(static_cast<std::size_t>(kMaxFrame) * channels);
-                } else if (packet_index == 1) {
-                    // OpusTags comment header — nothing to decode.
-                } else {
-                    int n = opus_decode_float(dec, op.packet,
-                                              static_cast<opus_int32>(op.bytes),
-                                              pcm.data(), kMaxFrame, 0);
-                    if (n < 0)
-                        throw std::runtime_error("decode_audio: opus_decode failed");
-                    int start = 0;
-                    if (skip_remaining > 0) {
-                        int drop = static_cast<int>(
-                            std::min<long>(skip_remaining, n));
-                        start = drop;
-                        skip_remaining -= drop;
-                    }
-                    out.samples.insert(
-                        out.samples.end(),
-                        pcm.begin() + static_cast<std::size_t>(start) * channels,
-                        pcm.begin() + static_cast<std::size_t>(n) * channels);
-                }
-                ++packet_index;
-            }
-        }
-
-        if (dec == nullptr || out.samples.empty())
-            throw std::runtime_error("decode_audio: no Opus audio decoded");
-    } catch (...) {
-        cleanup();
-        throw;
-    }
-    cleanup();
-    return out;
-}
-
-}  // namespace
-
 DecodedAudio decode_audio(const uint8_t* data, std::size_t size) {
-    switch (sniff_format(data, size)) {
-        case AudioFormat::Wav:
-        case AudioFormat::Mp3:
-        case AudioFormat::Flac:
-            return decode_with_miniaudio(data, size);
-        case AudioFormat::OggVorbis:
-            return decode_ogg_vorbis(data, size);
-        case AudioFormat::OggOpus:
-            return decode_ogg_opus(data, size);
-        default:
-            throw std::runtime_error(
-                "decode_audio: unrecognized audio container");
-    }
+    StemBytes bytes;
+    if (data != nullptr) bytes.owned.assign(data, data + size);
+    std::unique_ptr<StemReader> r = open_stem_reader(std::move(bytes));
+    return read_all(*r);
 }
 
 DecodedAudio decode_stem(const app::PreviewAudioStem& stem) {
-    if (stem.from_file()) {
-        std::vector<uint8_t> bytes = hydra::read_file_bytes(stem.path);
-        return decode_audio(bytes);
-    }
-    return decode_audio(stem.bytes);
+    std::unique_ptr<StemReader> r = open_stem_reader(stem);
+    return read_all(*r);
 }
 
 }  // namespace hydra::audio

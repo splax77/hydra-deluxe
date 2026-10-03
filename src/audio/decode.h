@@ -10,6 +10,9 @@
 // for the codec tag; that discrimination is the whole reason this is a distinct,
 // tested step. This layer never opens an output device — it is pure and fully
 // testable off a real audio device (see the player for the device side).
+//
+// The decoders themselves are seekable StemReaders (audio/stem_reader.h);
+// decode_audio opens one and reads it start to end.
 
 #ifndef HYDRA_AUDIO_DECODE_H
 #define HYDRA_AUDIO_DECODE_H
