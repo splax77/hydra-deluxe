@@ -7,6 +7,7 @@
 #include "doctest.h"
 
 #include <cstdint>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -27,20 +28,20 @@ json event_view(const hydra::MidiFile& mid) {
         int64_t tick = 0;
         json events = json::array();
         for (const auto& m : track.messages) {
+            using T = hydra::Message::Type;
             tick += m.time;
-            if (m.type == "note_on") {
-                events.push_back({tick, "note_on", m.note, m.velocity});
-            } else if (m.type == "note_off") {
-                events.push_back({tick, "note_off", m.note, m.velocity});
-            } else if (m.type == "set_tempo") {
-                events.push_back({tick, "set_tempo", m.tempo});
-            } else if (m.type == "time_signature") {
-                events.push_back({tick, "time_signature",
-                                  m.numerator, m.denominator});
+            const std::string name = hydra::message_type_name(m.type);
+            const int note = m.note, velocity = m.velocity;
+            if (m.type == T::NoteOn || m.type == T::NoteOff) {
+                events.push_back({tick, name, note, velocity});
+            } else if (m.type == T::SetTempo) {
+                events.push_back({tick, name, m.tempo});
+            } else if (m.type == T::TimeSignature) {
+                events.push_back({tick, name, m.numerator, m.denominator});
             } else if (m.str_attr == hydra::Message::StrAttr::Text) {
-                events.push_back({tick, m.type, "text", m.str});
+                events.push_back({tick, name, "text", m.str});
             } else if (m.str_attr == hydra::Message::StrAttr::Name) {
-                events.push_back({tick, m.type, "name", m.str});
+                events.push_back({tick, name, "name", m.str});
             }
         }
         view.push_back(std::move(events));
@@ -167,13 +168,53 @@ TEST_CASE("midi: track_name is not exposed as text") {
 
     bool found = false;
     for (const auto& m : mid.tracks[0].messages) {
-        if (m.type == "track_name") {
+        if (m.type == hydra::Message::Type::TrackName) {
             found = true;
             CHECK(m.str_attr == hydra::Message::StrAttr::Name);
             CHECK(m.str_attr != hydra::Message::StrAttr::Text);
         }
     }
     CHECK(found);
+}
+
+TEST_CASE("midi: each string meta gets its type, mido name and attribute") {
+    // One meta of every string-carrying type, 0x01..0x09. 0x08 (program
+    // name) is unknown to mido, so it is dropped.
+    std::vector<uint8_t> track;
+    for (uint8_t t = 0x01; t <= 0x09; ++t) {
+        const uint8_t ev[] = {0x00, 0xFF, t, 0x01, 'x'};
+        track.insert(track.end(), std::begin(ev), std::end(ev));
+    }
+    const uint8_t eot[] = {0x00, 0xFF, 0x2F, 0x00};
+    track.insert(track.end(), std::begin(eot), std::end(eot));
+    hydra::MidiFile mid(smf(track));
+    REQUIRE(mid.tracks.size() == 1);
+
+    using T = hydra::Message::Type;
+    using A = hydra::Message::StrAttr;
+    struct Want { T type; const char* name; A attr; };
+    const Want want[] = {
+        {T::Text, "text", A::Text},
+        {T::Copyright, "copyright", A::Text},
+        {T::TrackName, "track_name", A::Name},
+        {T::InstrumentName, "instrument_name", A::Name},
+        {T::Lyrics, "lyrics", A::Text},
+        {T::Marker, "marker", A::Text},
+        {T::CueMarker, "cue_marker", A::Text},
+        {T::DeviceName, "device_name", A::Name},
+    };
+    const auto& msgs = mid.tracks[0].messages;
+    REQUIRE(msgs.size() == std::size(want));
+    for (size_t i = 0; i < msgs.size(); ++i) {
+        CHECK(msgs[i].type == want[i].type);
+        CHECK(std::string(hydra::message_type_name(msgs[i].type)) == want[i].name);
+        CHECK(msgs[i].str_attr == want[i].attr);
+        CHECK(msgs[i].str == "x");
+    }
+    CHECK(std::string(hydra::message_type_name(T::NoteOn)) == "note_on");
+    CHECK(std::string(hydra::message_type_name(T::NoteOff)) == "note_off");
+    CHECK(std::string(hydra::message_type_name(T::SetTempo)) == "set_tempo");
+    CHECK(std::string(hydra::message_type_name(T::TimeSignature)) == "time_signature");
 }
 
 TEST_CASE("midi: non-MIDI input is rejected") {

@@ -8,27 +8,29 @@
 namespace hydra {
 namespace {
 
+using MType = Message::Type;
+
 // mido splits the string-valued metas across two attribute names, and the
 // split is load-bearing (see the header). These are the meta types that carry
 // their string as `text`.
-bool text_meta(int meta_type, std::string* name) {
+bool text_meta(int meta_type, MType* type) {
     switch (meta_type) {
-        case 0x01: *name = "text"; return true;
-        case 0x02: *name = "copyright"; return true;
-        case 0x05: *name = "lyrics"; return true;
-        case 0x06: *name = "marker"; return true;
-        case 0x07: *name = "cue_marker"; return true;
+        case 0x01: *type = MType::Text; return true;
+        case 0x02: *type = MType::Copyright; return true;
+        case 0x05: *type = MType::Lyrics; return true;
+        case 0x06: *type = MType::Marker; return true;
+        case 0x07: *type = MType::CueMarker; return true;
         default: return false;
     }
 }
 
 // These carry their string as `name`. 0x08 is deliberately absent: mido has no
 // spec for it, so it arrives as an unknown meta with neither attribute.
-bool name_meta(int meta_type, std::string* name) {
+bool name_meta(int meta_type, MType* type) {
     switch (meta_type) {
-        case 0x03: *name = "track_name"; return true;
-        case 0x04: *name = "instrument_name"; return true;
-        case 0x09: *name = "device_name"; return true;
+        case 0x03: *type = MType::TrackName; return true;
+        case 0x04: *type = MType::InstrumentName; return true;
+        case 0x09: *type = MType::DeviceName; return true;
         default: return false;
     }
 }
@@ -102,7 +104,7 @@ uint64_t read_message_length(const uint8_t* data, size_t& pos, size_t end) {
 bool meta_message(int meta_type, const uint8_t* payload, size_t len,
                   int64_t time, Message* out) {
     if (meta_type == 0x51 && len == 3) {
-        out->type = "set_tempo";
+        out->type = MType::SetTempo;
         out->time = time;
         out->tempo = (uint32_t(payload[0]) << 16) |
                      (uint32_t(payload[1]) << 8) | uint32_t(payload[2]);
@@ -110,23 +112,23 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
     }
 
     if (meta_type == 0x58 && len >= 2) {
-        out->type = "time_signature";
+        out->type = MType::TimeSignature;
         out->time = time;
         out->numerator = payload[0];
         out->denominator = 1 << payload[1];  // stored as a power of two, as mido
         return true;
     }
 
-    std::string name;
-    if (text_meta(meta_type, &name)) {
-        out->type = name;
+    MType type;
+    if (text_meta(meta_type, &type)) {
+        out->type = type;
         out->time = time;
         out->str = decode_latin1(payload, len);
         out->str_attr = Message::StrAttr::Text;
         return true;
     }
-    if (name_meta(meta_type, &name)) {
-        out->type = name;
+    if (name_meta(meta_type, &type)) {
+        out->type = type;
         out->time = time;
         out->str = decode_latin1(payload, len);
         out->str_attr = Message::StrAttr::Name;
@@ -137,6 +139,24 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
 }
 
 }  // namespace
+
+const char* message_type_name(Message::Type type) {
+    switch (type) {
+        case MType::NoteOn: return "note_on";
+        case MType::NoteOff: return "note_off";
+        case MType::SetTempo: return "set_tempo";
+        case MType::TimeSignature: return "time_signature";
+        case MType::Text: return "text";
+        case MType::Copyright: return "copyright";
+        case MType::Lyrics: return "lyrics";
+        case MType::Marker: return "marker";
+        case MType::CueMarker: return "cue_marker";
+        case MType::TrackName: return "track_name";
+        case MType::InstrumentName: return "instrument_name";
+        case MType::DeviceName: return "device_name";
+    }
+    return "unknown";
+}
 
 MidiFile::MidiFile(const std::vector<uint8_t>& data) {
     parse(data.data(), data.size());
@@ -203,6 +223,10 @@ void MidiFile::parse(const uint8_t* data, size_t size) {
 
 MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
     MidiTrack track;
+    // A channel event with running status is three bytes (delta, two data
+    // bytes), the smallest message the reader emits, so bytes / 3 is a cheap
+    // upper estimate that saves the vector's repeated regrowth on huge tracks.
+    track.messages.reserve((end - pos) / 3);
 
     // Ticks accumulated since the last emitted message. Skipped events hand
     // their delta to whatever comes next, so absolute time is preserved.
@@ -275,14 +299,11 @@ MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
 
         if (high == 0x90 || high == 0x80) {
             // clip=True in mido: data bytes are clamped, not rejected.
-            int note = d1 < 128 ? d1 : 127;
-            int velocity = d2 < 128 ? d2 : 127;
-            Message msg;
-            msg.type = (high == 0x90) ? "note_on" : "note_off";
-            msg.note = note;
-            msg.velocity = velocity;
+            Message& msg = track.messages.emplace_back();
+            msg.type = (high == 0x90) ? MType::NoteOn : MType::NoteOff;
+            msg.note = d1 < 128 ? d1 : uint8_t{127};
+            msg.velocity = d2 < 128 ? d2 : uint8_t{127};
             msg.time = pending;
-            track.messages.push_back(std::move(msg));
             pending = 0;
         }
     }
