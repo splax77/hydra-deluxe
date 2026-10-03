@@ -40,13 +40,26 @@ bool file_exists_utf8(const std::string& utf8_path) {
            INVALID_FILE_ATTRIBUTES;
 }
 
+uint64_t file_size_bytes(const std::string& utf8_path) {
+    WIN32_FILE_ATTRIBUTE_DATA fa;
+    if (!GetFileAttributesExW(utf8_to_wide(utf8_path).c_str(), GetFileExInfoStandard,
+                              &fa))
+        throw std::runtime_error("cannot read file size: " + utf8_path);
+    return (static_cast<uint64_t>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow;
+}
+
 std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
     std::FILE* f = fopen_utf8(utf8_path, L"rb");
     if (f == nullptr) throw std::runtime_error("cannot open file: " + utf8_path);
-    std::fseek(f, 0, SEEK_END);
-    long size = std::ftell(f);
-    std::fseek(f, 0, SEEK_SET);
-    std::vector<uint8_t> buf(size > 0 ? static_cast<size_t>(size) : 0);
+    // std::ftell returns a 32-bit long on Windows and fails past 2 GB, which
+    // used to hand back an empty buffer; the 64-bit pair has no such limit.
+    const bool seeked = _fseeki64(f, 0, SEEK_END) == 0;
+    const long long size = seeked ? _ftelli64(f) : -1;
+    if (size < 0 || _fseeki64(f, 0, SEEK_SET) != 0) {
+        std::fclose(f);
+        throw std::runtime_error("cannot read file size: " + utf8_path);
+    }
+    std::vector<uint8_t> buf(static_cast<size_t>(size));
     if (size > 0) buf.resize(std::fread(buf.data(), 1, buf.size(), f));
     std::fclose(f);
     return buf;

@@ -5,10 +5,80 @@
 
 #include "doctest.h"
 
+#include <cstdio>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winioctl.h>  // FSCTL_SET_SPARSE
+
 #include "core/winstr.h"
+
+namespace {
+
+// A file in the temp folder that is deleted when the test ends, pass or fail.
+struct TempFile {
+    std::wstring path;
+    explicit TempFile(const wchar_t* name) {
+        wchar_t dir[MAX_PATH];
+        GetTempPathW(MAX_PATH, dir);
+        path = std::wstring(dir) + name;
+    }
+    ~TempFile() { DeleteFileW(path.c_str()); }
+    std::string utf8() const { return hydra::wide_to_utf8(path); }
+};
+
+}  // namespace
+
+// ftell returns a 32-bit long on Windows, so a file past 2 GB used to read
+// back as empty. The sparse flag makes the 2.5 GB file cost no disk space.
+TEST_CASE("file_size_bytes reports sizes past 2 GB") {
+    TempFile tmp(L"hydra_sparse_test.bin");
+    HANDLE h = CreateFileW(tmp.path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                           FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(h != INVALID_HANDLE_VALUE);
+    DWORD ret = 0;
+    const BOOL sparse =
+        DeviceIoControl(h, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &ret, nullptr);
+    LARGE_INTEGER size;
+    size.QuadPart = 2'500'000'000LL;
+    const BOOL moved = SetFilePointerEx(h, size, nullptr, FILE_BEGIN);
+    const BOOL ended = SetEndOfFile(h);
+    CloseHandle(h);
+    REQUIRE(sparse);
+    REQUIRE(moved);
+    REQUIRE(ended);
+    CHECK(hydra::file_size_bytes(tmp.utf8()) == 2'500'000'000ULL);
+}
+
+TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing one") {
+    TempFile tmp(L"hydra_file_size_small.bin");
+    std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
+    REQUIRE(f != nullptr);
+    const char payload[] = "hello, hydra";
+    std::fwrite(payload, 1, sizeof(payload) - 1, f);
+    std::fclose(f);
+    CHECK(hydra::file_size_bytes(tmp.utf8()) == sizeof(payload) - 1);
+    const std::vector<uint8_t> bytes = hydra::read_file_bytes(tmp.utf8());
+    CHECK(std::string(bytes.begin(), bytes.end()) == "hello, hydra");
+
+    TempFile missing(L"hydra_file_size_missing_does_not_exist.bin");
+    CHECK_THROWS_AS(hydra::file_size_bytes(missing.utf8()), std::runtime_error);
+    CHECK_THROWS_AS(hydra::read_file_bytes(missing.utf8()), std::runtime_error);
+}
+
+TEST_CASE("read_file_bytes of an empty file is empty, not an error") {
+    TempFile tmp(L"hydra_file_size_empty.bin");
+    std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
+    REQUIRE(f != nullptr);
+    std::fclose(f);
+    CHECK(hydra::file_size_bytes(tmp.utf8()) == 0);
+    CHECK(hydra::read_file_bytes(tmp.utf8()).empty());
+}
 
 TEST_CASE("split_command_line_utf8 keeps a fullwidth slash in a chart path") {
     const std::vector<std::string> args = hydra::split_command_line_utf8(
