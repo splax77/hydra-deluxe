@@ -64,6 +64,21 @@ std::wstring win32_path(const std::string& utf8_path) {
     return win32_path(utf8_to_wide(utf8_path));
 }
 
+std::wstring shell_path(const std::wstring& path) {
+    if (path.size() < MAX_PATH) return path;
+    const std::wstring full = win32_path(path);
+    const DWORD need = GetShortPathNameW(full.c_str(), nullptr, 0);
+    if (need == 0) return L"";  // missing file
+    std::wstring s(need, L'\0');
+    const DWORD got = GetShortPathNameW(full.c_str(), &s[0], need);
+    if (got == 0 || got >= need) return L"";
+    s.resize(got);
+    if (starts_with(s, L"\\\\?\\UNC\\")) s = L"\\\\" + s.substr(8);
+    else if (starts_with(s, L"\\\\?\\")) s = s.substr(4);
+    // A drive without short names hands the long path back.
+    return s.size() < MAX_PATH ? s : L"";
+}
+
 std::filesystem::path os_path(const std::filesystem::path& p) {
     return std::filesystem::path(win32_path(p.native()));
 }

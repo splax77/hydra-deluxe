@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 #include <shlobj.h>
+#include <shlwapi.h>  // AssocQueryStringW
 
 #include <fstream>
 #include <stdexcept>
@@ -60,11 +61,64 @@ void set_documents_dir_lookup(DocumentsDirFn fn) { g_documents_dir = std::move(f
 
 void set_open_in_browser(OpenInBrowserFn fn) { g_open_in_browser = std::move(fn); }
 
-bool open_in_browser(const std::wstring& path) {
-    if (g_open_in_browser) return g_open_in_browser(path);
+namespace {
+
+bool shell_open(const std::wstring& path) {
     HINSTANCE rc = ShellExecuteW(nullptr, L"open", path.c_str(), nullptr,
                                  nullptr, SW_SHOWNORMAL);
     return reinterpret_cast<INT_PTR>(rc) > 32;
+}
+
+// Starts the program Windows opens .html files with, on `page`. For a short
+// 8.3 path: the shell expands one back to the long path and then fails, but
+// Firefox, Edge and Chrome all open it when it's handed to them directly
+// (measured 2026-10-03, docs/adr/0020).
+bool launch_html_viewer(const std::wstring& page) {
+    DWORD n = 0;
+    AssocQueryStringW(ASSOCF_NONE, ASSOCSTR_EXECUTABLE, L".html", L"open", nullptr, &n);
+    if (n == 0) return false;
+    std::wstring exe(n, L'\0');
+    if (FAILED(AssocQueryStringW(ASSOCF_NONE, ASSOCSTR_EXECUTABLE, L".html", L"open",
+                                 &exe[0], &n)))
+        return false;
+    exe.resize(wcslen(exe.c_str()));
+    std::wstring cmd = L"\"" + exe + L"\" \"" + page + L"\"";
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(exe.c_str(), &cmd[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr,
+                        &si, &pi))
+        return false;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+
+}  // namespace
+
+std::filesystem::path copy_to_short_temp(const std::filesystem::path& page) {
+    wchar_t tmp[MAX_PATH + 1];
+    const DWORD n = GetTempPathW(MAX_PATH + 1, tmp);
+    if (n == 0 || n > MAX_PATH) return {};
+    const std::filesystem::path dir = std::filesystem::path(tmp) / L"Hydra";
+    const std::filesystem::path copy = dir / page.filename();
+    if (copy.native().size() >= MAX_PATH) return {};
+    std::error_code ec;
+    std::filesystem::create_directories(os_path(dir), ec);
+    std::filesystem::copy_file(os_path(page), os_path(copy),
+                               std::filesystem::copy_options::overwrite_existing, ec);
+    return ec ? std::filesystem::path() : copy;
+}
+
+bool open_in_browser(const std::wstring& path) {
+    if (g_open_in_browser) return g_open_in_browser(path);
+    if (path.size() < MAX_PATH) return shell_open(path);
+    // Past 260 characters the shell can't open the page, so hand the browser
+    // the page's short name, or failing that a copy at a short path.
+    const std::wstring short_form = shell_path(path);
+    if (!short_form.empty() && launch_html_viewer(short_form)) return true;
+    const std::filesystem::path copy = copy_to_short_temp(path);
+    return !copy.empty() && shell_open(copy.wstring());
 }
 
 std::wstring report_html_path() { return html_artifact_path(L"hydra_paths.html"); }

@@ -34,6 +34,14 @@ std::string wide_to_utf8(const std::wstring& w);
 std::wstring win32_path(const std::wstring& path);
 std::wstring win32_path(const std::string& utf8_path);
 
+// A path the Windows shell will take (ShellExecute, Explorer, a browser's
+// command line). The shell accepts no \\?\ path and nothing of 260 characters
+// or more, so a long path is swapped for its short 8.3 form (C:\CLONEH~1\...),
+// which names the same file. A short path comes back unchanged. Empty when the
+// path is long and has no short form: the file is missing, or its drive keeps
+// no short names (Windows turns them off on most drives other than C:).
+std::wstring shell_path(const std::wstring& path);
+
 // win32_path as a std::filesystem::path, for std::filesystem calls and
 // fstreams, which take a path object.
 std::filesystem::path os_path(const std::filesystem::path& p);

@@ -43,6 +43,32 @@ line doesn't call `os_path`, and on `utf8_to_wide` used anywhere a path could
 pass through it. The DMBot client is the one exception, because it converts a
 URL.
 
-Not covered: the Windows shell. Opening a report in the browser goes through
-`ShellExecuteW`, which takes no `\\?\` path. The report folder is Documents\Hydra,
-which is short.
+## The shell: Open report and Show in folder
+
+The Windows shell (`ShellExecuteW`, Explorer) is the exception. It takes no
+`\\?\` path and nothing of 260 characters or more. We measured this on
+2026-10-03 with a page that pinged a local listener when it really loaded.
+From a long-path-aware program like Hydra.exe, the shell failed on the long
+path, the `\\?\` path, a long `file:///` link and even the short 8.3 name,
+which it seems to expand back to the long path. A program without the manifest did
+better only because the shell rewrote the path into a `\\?\` form that Firefox
+accepts and Edge and Chrome don't.
+
+What worked was the short 8.3 name (`C:\CLONEH~1\...`) handed to the program
+directly. Firefox, Edge and Chrome all opened it, and Explorer opened the
+folder with the file highlighted. A copy of the page at a short path also
+opened normally through the shell.
+
+So `shell_path` (winstr) turns a long path into its short name, or gives back
+nothing when there isn't one. That happens when the file is missing or the
+drive keeps no short names, which Windows turns off on most drives other than C:.
+
+- Open report (`app::open_in_browser`): a short path goes to the shell as
+  before. A long one goes to the program Windows opens `.html` files with, as
+  its short name. With no short name, the page is copied to `%TEMP%\Hydra`
+  and that copy is opened. A report is one self-contained file, so the copy
+  shows the same page.
+- Show in folder (`ui::show_in_folder`): Explorer gets the short name. With
+  none, it returns false, and the app's message names the full path.
+
+The source-scan test also fails on a shell launch anywhere but these two files.

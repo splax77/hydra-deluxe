@@ -66,7 +66,11 @@ void set_show_in_folder(ShowInFolderFn fn) { show_in_folder_seam() = std::move(f
 bool show_in_folder(const std::filesystem::path& file) {
     const std::wstring path = file.wstring();
     if (show_in_folder_seam()) return show_in_folder_seam()(path);
-    const std::wstring args = L"/select,\"" + path + L"\"";
+    // Explorer opens nothing for a path of 260 characters or more; its short
+    // name works. With no short name there is nothing it can show.
+    const std::wstring target = hydra::shell_path(path);
+    if (target.empty()) return false;
+    const std::wstring args = L"/select,\"" + target + L"\"";
     HINSTANCE r = ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr,
                                 SW_SHOWNORMAL);
     return reinterpret_cast<INT_PTR>(r) > 32;  // ShellExecute's documented success test

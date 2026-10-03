@@ -196,9 +196,10 @@ target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}")
 # winstr.cpp splits every entry point's Unicode command line with
 # CommandLineToArgvW. shell32 + ole32 + uuid: reports_dir() finds Documents
 # with SHGetKnownFolderPath(FOLDERID_Documents) and frees the answer with
-# CoTaskMemFree.
+# CoTaskMemFree. shlwapi: open_in_browser looks up the .html program
+# (AssocQueryStringW) to hand it a long page's short name directly.
 target_link_libraries(hydra_core PUBLIC sqlite3 miniz)
-target_link_libraries(hydra_core PRIVATE bcrypt shell32 ole32 uuid hydra_warnings)
+target_link_libraries(hydra_core PRIVATE bcrypt shell32 shlwapi ole32 uuid hydra_warnings)
 
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the

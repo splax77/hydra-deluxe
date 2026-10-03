@@ -217,6 +217,55 @@ TEST_CASE("ImGui's own file calls (hydra_ui.ini, fonts) work past 260 characters
     IM_FREE(data);
 }
 
+// The shell (ShellExecute, Explorer) opens no path of 260 characters or more,
+// \\?\ or not, so the report buttons hand it the short 8.3 name instead.
+TEST_CASE("shell_path gives the shell a short name for a long path") {
+    CHECK(hydra::shell_path(L"C:\\Songs\\hydra_paths.html") == L"C:\\Songs\\hydra_paths.html");
+
+    LongDir dir("shell");
+    const std::string page = dir.deep + "\\hydra_paths.html";
+    copy_file_to(kOpus, page);  // any bytes will do
+    const std::wstring wpage = hydra::utf8_to_wide(page);
+
+    // What Windows itself says the short form is. A drive without short
+    // names hands the long path back, and then there's nothing to give.
+    const std::wstring full = hydra::win32_path(wpage);
+    std::wstring raw(32768, L'\0');
+    raw.resize(GetShortPathNameW(full.c_str(), &raw[0], static_cast<DWORD>(raw.size())));
+    REQUIRE(raw.rfind(L"\\\\?\\", 0) == 0);
+    const std::wstring expected = raw.size() - 4 < MAX_PATH ? raw.substr(4) : L"";
+
+    const std::wstring got = hydra::shell_path(wpage);
+    CHECK(got == expected);
+    if (!got.empty()) {
+        CHECK(got.size() < MAX_PATH);
+        CHECK(hydra::read_file_bytes(hydra::wide_to_utf8(got)) == hydra::read_file_bytes(kOpus));
+    }
+    const std::string has_short = got.empty() ? "no" : "yes";
+    MESSAGE("short names on this drive: " << has_short);
+
+    CHECK(hydra::shell_path(wpage + L".missing") == L"");
+}
+
+TEST_CASE("a long report page is copied to a short temp path for the browser") {
+    LongDir dir("copy");
+    const fs::path page(hydra::utf8_to_wide(dir.deep + "\\hydra_longpath_probe.html"));
+    hydra::app::write_report_file(page, "<html>copy</html>");
+
+    const fs::path copy = hydra::app::copy_to_short_temp(page);
+    REQUIRE_FALSE(copy.empty());
+    CHECK(copy.native().size() < MAX_PATH);
+    CHECK(copy.filename() == page.filename());
+    CHECK(hydra::read_file_text(hydra::wide_to_utf8(copy.wstring())) == "<html>copy</html>");
+
+    // A second open overwrites the older copy.
+    hydra::app::write_report_file(page, "<html>newer</html>");
+    CHECK(hydra::app::copy_to_short_temp(page) == copy);
+    CHECK(hydra::read_file_text(hydra::wide_to_utf8(copy.wstring())) == "<html>newer</html>");
+    std::error_code ec;
+    fs::remove(copy, ec);
+}
+
 // The one-place rule, checked: no source file hands a path to the OS without
 // going through win32_path. A new direct call fails here with its file and
 // line, so the rule can't drift back to many hand-written conversions.
@@ -265,6 +314,14 @@ TEST_CASE("every file call in src/ and tools/ goes through win32_path") {
                         if (line.find(call) != std::string::npos)
                             problems.push_back(where + "raw file call without win32_path: " + line);
                 }
+
+                // The shell takes no long path, so its two callers swap one
+                // for shell_path's short form; nothing else launches it.
+                if ((line.find("ShellExecute") != std::string::npos ||
+                     line.find("CreateProcess") != std::string::npos) &&
+                    rel != "src/app/report_files.cpp" && rel != "src/ui/win32_dialogs.cpp")
+                    problems.push_back(where + "shell launch outside the two report buttons: " +
+                                       line);
 
                 const bool names_fs = line.find("filesystem::") != std::string::npos ||
                                       line.find("fs::") != std::string::npos;
