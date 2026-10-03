@@ -424,3 +424,99 @@ TEST_CASE("StemReader: unrecognized bytes throw a decode_audio error") {
     missing.path = fixture_path("no_such_file.opus");
     CHECK_THROWS_AS(open_stem_reader(missing), std::runtime_error);
 }
+
+namespace {
+
+// Seeks to every `stride`-th frame (in an order that jumps back and forth),
+// reads 4800 frames, and returns the worst difference from the straight
+// decode after the first 20 ms. Also checks each read is full length.
+float mp3_seek_sweep(StemReader& r, const DecodedAudio& full, int64_t stride) {
+    const int64_t len = r.length_frames();
+    const int ch = r.channels();
+    const int64_t settle = r.sample_rate() / 50;
+    std::vector<int64_t> targets;
+    for (int64_t f = 0; f < len; f += stride) targets.push_back(f);
+    // Interleave from both ends: every seek is a long jump, half backward.
+    std::vector<int64_t> order;
+    for (std::size_t a = 0, b = targets.size(); a < b;) {
+        order.push_back(targets[a++]);
+        if (a < b) order.push_back(targets[--b]);
+    }
+    std::vector<float> buf(4800 * static_cast<std::size_t>(ch));
+    float worst = 0.0f;
+    for (int64_t f : order) {
+        CAPTURE(f);
+        r.seek(f);
+        int64_t n = 0;
+        while (n < 4800) {
+            const int64_t k = r.read(buf.data() + n * ch, 4800 - n);
+            if (k == 0) break;
+            n += k;
+        }
+        CHECK(n == std::min<int64_t>(4800, len - f));
+        for (int64_t i = settle; i < n; ++i)
+            for (int c = 0; c < ch; ++c)
+                worst = std::max(worst, std::fabs(buf[i * ch + c] - full.samples[(f + i) * ch + c]));
+    }
+    return worst;
+}
+
+// Byte size of the MPEG-1 Layer III frame whose header starts at `h`.
+std::size_t mp3_l3_frame_size(const uint8_t* h) {
+    static const int kbps[16] = {0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0};
+    static const int hz[4] = {44100, 48000, 32000, 0};
+    return static_cast<std::size_t>(144000 * kbps[h[2] >> 4] / hz[(h[2] >> 2) & 3] + ((h[2] >> 1) & 1));
+}
+
+// A ~40 s MP3 with no ID3 or Xing tag: the fixture's audio frames, 24 times
+// over. With no tag dr_mp3 counts every frame and skips no encoder delay, and
+// a stream this long exercises many seek points.
+std::vector<uint8_t> long_untagged_mp3() {
+    std::vector<uint8_t> b = fixture_bytes("sine220.mp3");
+    std::size_t pos = 0;
+    if (b.size() > 10 && std::memcmp(b.data(), "ID3", 3) == 0)
+        pos = 10 + ((static_cast<std::size_t>(b[6] & 0x7F) << 21) | ((b[7] & 0x7F) << 14) |
+                    ((b[8] & 0x7F) << 7) | (b[9] & 0x7F));
+    REQUIRE(pos + 4 < b.size());
+    REQUIRE(b[pos] == 0xFF);
+    pos += mp3_l3_frame_size(&b[pos]);  // drop the Xing/Info frame
+    std::vector<uint8_t> out;
+    for (int i = 0; i < 24; ++i) out.insert(out.end(), b.begin() + static_cast<std::ptrdiff_t>(pos), b.end());
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("StemReader: an MP3 seek anywhere lands on the straight decode") {
+    std::vector<uint8_t> bytes = fixture_bytes("sine220.mp3");
+    DecodedAudio full = old_full_decode(bytes);
+    auto r = open_stem_reader(StemBytes{bytes, nullptr});
+    REQUIRE(r->length_frames() == full.frames());
+    CHECK(mp3_seek_sweep(*r, full, 1777) <= 1e-3f);
+}
+
+TEST_CASE("StemReader: MP3 seeks through the seek points on a long stream") {
+    std::vector<uint8_t> bytes = long_untagged_mp3();
+    DecodedAudio full = old_full_decode(bytes);
+    REQUIRE(full.frames() > 40 * 44100 / 2);
+    auto r = open_stem_reader(StemBytes{bytes, nullptr});
+    REQUIRE(r->length_frames() == full.frames());
+    CHECK(read_to_end(*r) == full.samples);  // straight read still bit for bit
+    CHECK(mp3_seek_sweep(*r, full, 1777) <= 1e-3f);
+    // Odd targets right around frame boundaries and seek points.
+    for (int64_t f : {int64_t{1151}, int64_t{1152}, int64_t{1153}, int64_t{22050}, int64_t{22051},
+                      full.frames() / 2 + 1, full.frames() - 1153, full.frames() - 1}) {
+        CAPTURE(f);
+        r->seek(f);
+        const int ch = r->channels();
+        std::vector<float> buf(static_cast<std::size_t>(ch) * 2048);
+        const int64_t n = r->read(buf.data(), 2048);
+        CHECK(n == std::min<int64_t>(2048, full.frames() - f));
+        // Seek points decode two whole frames before the target, so the
+        // audio matches from the very first frame, no warm-up.
+        float worst = 0.0f;
+        for (int64_t i = 0; i < n * ch; ++i)
+            worst = std::max(worst, std::fabs(buf[i] - full.samples[f * ch + i]));
+        CHECK(worst <= 1e-3f);
+    }
+}
