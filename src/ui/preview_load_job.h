@@ -7,6 +7,7 @@
 #define HYDRA_UI_PREVIEW_LOAD_JOB_H
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -93,15 +94,55 @@ private:
     std::atomic<int> stems_total_{0};
 };
 
-// Rebuilds the Preview scene for a new path overlay off the UI thread, and the
-// highway timeline from it. The song is shared with the controller, read-only,
-// so nothing is re-parsed and the audio is left alone. `key` is the overlay
-// key the scene is built for; `track_opts` are the timeline options the
-// controller draws with (its pro-drums setting).
+// The path-free half of one chart's Preview: the scene without an overlay
+// (app::build_preview_base) and the highway timeline built from it under
+// `track_opts`. Built once per open chart, then shared read-only between
+// scene jobs, like the song.
+struct PreviewSceneBase {
+    app::PreviewScene scene;
+    render::TrackState track_state;
+    render::TrackStateOptions track_opts;
+};
+
+// Builds a song's PreviewSceneBase. `check_cancel` runs between the steps and
+// may throw to stop the build.
+std::shared_ptr<const PreviewSceneBase> build_scene_base(
+    const Song& song, render::TrackStateOptions track_opts,
+    const std::function<void()>& check_cancel);
+
+// Builds the PreviewSceneBase off the UI thread once a chart has loaded, so
+// that even the first path change only lays an overlay over it.
+class PreviewBaseJob : public ResultJobBase {
+public:
+    PreviewBaseJob(std::shared_ptr<const Song> song, render::TrackStateOptions track_opts);
+    ~PreviewBaseJob() { shutdown(); }
+
+    void start();
+    // Valid once finished() && ok().
+    std::shared_ptr<const PreviewSceneBase> take_base() { return std::move(base_); }
+
+private:
+    void run();
+
+    std::shared_ptr<const Song> song_;
+    render::TrackStateOptions track_opts_;
+    std::shared_ptr<const PreviewSceneBase> base_;
+};
+
+// Rebuilds the Preview for a new path overlay off the UI thread. The song and
+// the path-free base are shared with the controller, read-only, so nothing is
+// re-parsed, the audio is left alone, and only the overlay is built: the
+// scene's overlay (app::apply_preview_overlay) and the timeline's overlay
+// fields (render::rebuild_overlay_fields) on a copy of the base timeline.
+// `base` may be null, or built for other timeline options: then the job
+// builds it first and hands it back in Output::base for the next job. `key`
+// is the overlay key the scene is built for; `track_opts` are the timeline
+// options the controller draws with (its pro-drums setting).
 class PreviewSceneJob : public ResultJobBase {
 public:
-    PreviewSceneJob(std::shared_ptr<const Song> song, std::optional<Path> path, int sp_cap,
-                    core::Rules rules, std::string key,
+    PreviewSceneJob(std::shared_ptr<const Song> song,
+                    std::shared_ptr<const PreviewSceneBase> base, std::optional<Path> path,
+                    int sp_cap, core::Rules rules, std::string key,
                     render::TrackStateOptions track_opts);
     ~PreviewSceneJob() { shutdown(); }
 
@@ -112,6 +153,9 @@ public:
         // build_track_state(scene, track_opts), built on the worker.
         render::TrackState track_state;
         render::TrackStateOptions track_opts;
+        // The base this output was built over: the one the job was given, or
+        // the one it had to build.
+        std::shared_ptr<const PreviewSceneBase> base;
     };
     // Valid once finished() && ok(); moves the output out (call once).
     Output take_output();
@@ -121,6 +165,7 @@ private:
     void run();
 
     std::shared_ptr<const Song> song_;
+    std::shared_ptr<const PreviewSceneBase> base_;
     std::optional<Path> path_;
     int sp_cap_;
     core::Rules rules_;

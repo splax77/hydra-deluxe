@@ -153,8 +153,53 @@ TEST_CASE("the Preview load builds the highway timeline on its worker") {
 }
 
 // The same for a path change: the overlay job hands back the timeline built
-// from its own scene with the options it was given.
+// from its own scene with the options it was given. The first job builds the
+// path-free base itself; a second one given that base only lays the overlay
+// over it, and gets the same scene and timeline.
 TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
+    const AnalyzedChart a = first_chart_with_a_path();
+    PreviewLoadJob load(entry_for(a.chart), true, true, Difficulty::Expert, std::nullopt, 4);
+    load.start();
+    wait_finished(load);
+    REQUIRE(load.ok());
+    auto song = std::make_shared<const hydra::Song>(load.take_result().song);
+    std::shared_ptr<const hydra::ui::PreviewSceneBase> pro_base;
+    for (bool pro : {true, false}) {
+        CAPTURE(pro);
+        hydra::render::TrackStateOptions opts;
+        opts.pro = pro;
+        // A base built for the other pro setting is not reused.
+        hydra::ui::PreviewSceneJob job(song, pro ? nullptr : pro_base, a.best, 4,
+                                       hydra::core::default_rules(), "key", opts);
+        job.start();
+        wait_finished(job);
+        REQUIRE(job.ok());
+        hydra::ui::PreviewSceneJob::Output out = job.take_output();
+        CHECK(out.track_opts.pro == pro);
+        CHECK_FALSE(out.scene.activations.empty());  // the path's overlay is in
+        check_same_track(out.track_state, hydra::render::build_track_state(out.scene, opts));
+        REQUIRE(out.base != nullptr);
+        CHECK(out.base != pro_base);
+        CHECK(out.base->track_opts.pro == pro);
+        CHECK(out.base->scene.activations.empty());
+        if (pro) pro_base = out.base;
+
+        // The next path change: the base is shared, not rebuilt.
+        hydra::ui::PreviewSceneJob again(song, out.base, a.best, 4,
+                                         hydra::core::default_rules(), "key", opts);
+        again.start();
+        wait_finished(again);
+        REQUIRE(again.ok());
+        hydra::ui::PreviewSceneJob::Output out2 = again.take_output();
+        CHECK(out2.base == out.base);
+        CHECK(out2.scene.activations.size() == out.scene.activations.size());
+        check_same_track(out2.track_state, out.track_state);
+    }
+}
+
+// The controller warms the base after a load with this job: the path-free
+// scene and the timeline built from it, for the options it was given.
+TEST_CASE("the Preview base job builds the path-free scene and timeline") {
     const AnalyzedChart a = first_chart_with_a_path();
     PreviewLoadJob load(entry_for(a.chart), true, true, Difficulty::Expert, std::nullopt, 4);
     load.start();
@@ -165,15 +210,19 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
         CAPTURE(pro);
         hydra::render::TrackStateOptions opts;
         opts.pro = pro;
-        hydra::ui::PreviewSceneJob job(song, a.best, 4, hydra::core::default_rules(), "key",
-                                       opts);
+        hydra::ui::PreviewBaseJob job(song, opts);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
-        hydra::ui::PreviewSceneJob::Output out = job.take_output();
-        CHECK(out.track_opts.pro == pro);
-        CHECK_FALSE(out.scene.activations.empty());  // the path's overlay is in
-        check_same_track(out.track_state, hydra::render::build_track_state(out.scene, opts));
+        std::shared_ptr<const hydra::ui::PreviewSceneBase> base = job.take_base();
+        REQUIRE(base != nullptr);
+        CHECK(base->track_opts.pro == pro);
+        const hydra::app::PreviewScene want = hydra::app::build_preview_base(*song);
+        CHECK(base->scene.notes.size() == want.notes.size());
+        CHECK(base->scene.fills.size() == want.fills.size());
+        CHECK(base->scene.activations.empty());
+        CHECK(base->scene.sp_meter.segments.empty());
+        check_same_track(base->track_state, hydra::render::build_track_state(want, opts));
     }
 }
 

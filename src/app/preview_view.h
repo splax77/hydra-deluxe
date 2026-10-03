@@ -346,6 +346,28 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
                                  const core::Rules& rules = core::default_rules());
 
+// The same scene in two halves, so a path change rebuilds only what the path
+// changes. build_preview_scene(song, path, cap, rules) is exactly
+// apply_preview_overlay(build_preview_base(song), song, path, cap, rules).
+//
+// The base reads the song alone. It owns these fields: notes, sp_phrases,
+// solos, the fill windows (each fills[i].span), beats, tempos, sections,
+// meters, time_sigs, timing, tick_resolution, song_length_ms and has_notes.
+// Every fill in a base reads Hidden, the field's default.
+//
+// The overlay owns the rest: activations, every fill's state, score and
+// sp_meter. Those read the path, the SP cap or the rules. The SP meter is
+// overlay even without a path: its ceiling is the record's cap and its drain
+// is the path's activations.
+//
+// apply_preview_overlay clears whatever overlay `base` already carries before
+// it builds the new one, so a scene built for another path works as a base too.
+// An empty song gives the empty scene build_preview_scene gives.
+PreviewScene build_preview_base(const Song& song);
+PreviewScene apply_preview_overlay(PreviewScene base, const Song& song, const Path* path,
+                                   int sp_cap = kCloneHeroSpCap,
+                                   const core::Rules& rules = core::default_rules());
+
 // Identity of the path an overlay was built from. Path has no operator==, so
 // callers that must notice a changed selection compare these keys instead. A
 // null path (no overlay) gives an empty key.

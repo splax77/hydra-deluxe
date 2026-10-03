@@ -72,8 +72,8 @@ void PreviewController::start_scene_job() {
     }
     render::TrackStateOptions track_opts;
     track_opts.pro = pro_;
-    scene_job_ = std::make_unique<PreviewSceneJob>(song_, path_, sp_cap_, rules_, path_key_,
-                                                   track_opts);
+    scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_, sp_cap_, rules_,
+                                                   path_key_, track_opts);
     scene_job_->start();
 }
 
@@ -89,12 +89,15 @@ void PreviewController::close() {
     transport_.unload();
     job_.reset();  // ResultJobBase's shutdown() joins the worker
     scene_job_.reset();
+    base_job_.reset();
+    base_started_ = false;
     retired_scene_jobs_.clear();
     requested_path_key_.clear();
     scene_ = hydra::app::PreviewScene{};
     scene_dirty_ = true;  // the renderer (if kept) must drop the old chart
     pending_track_.reset();  // scene_ is empty now; render() builds its (empty) timeline
     song_.reset();
+    scene_base_.reset();
     path_.reset();
     sp_cap_ = kCloneHeroSpCap;
     path_key_.clear();
@@ -119,6 +122,7 @@ void PreviewController::poll() {
     if (scene_job_ && scene_job_->finished()) {
         if (scene_job_->ok()) {
             PreviewSceneJob::Output out = scene_job_->take_output();
+            scene_base_ = std::move(out.base);  // the next path change reuses it
             scene_ = std::move(out.scene);
             pending_track_ = std::move(out.track_state);
             pending_track_opts_ = out.track_opts;
@@ -128,6 +132,20 @@ void PreviewController::poll() {
             error_ = scene_job_->error();
         }
         scene_job_.reset();
+    }
+    // The path-free base, built once the chart has loaded so even the first
+    // path change only lays an overlay over it. A scene job already running
+    // without one builds its own, so none is started beside it.
+    if (base_job_ && base_job_->finished()) {
+        if (base_job_->ok() && !scene_base_) scene_base_ = base_job_->take_base();
+        base_job_.reset();
+    }
+    if (!base_started_ && !job_ && !scene_job_ && !scene_base_ && song_ && !song_->is_empty()) {
+        render::TrackStateOptions track_opts;
+        track_opts.pro = pro_;
+        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts);
+        base_job_->start();
+        base_started_ = true;
     }
 
     if (!job_ || !job_->finished()) return;

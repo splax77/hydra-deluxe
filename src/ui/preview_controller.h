@@ -42,6 +42,8 @@ namespace hydra::ui {
 
 class PreviewLoadJob;
 class PreviewSceneJob;
+class PreviewBaseJob;
+struct PreviewSceneBase;
 
 class PreviewController {
 public:
@@ -223,6 +225,13 @@ private:
     // load is in flight and the Paths tab (or the cap) changed the selection
     // under it; poll() closes the gap.
     std::shared_ptr<const Song> song_;  // shared read-only with scene jobs
+    // The song's path-free scene and timeline, shared read-only with scene
+    // jobs so a path change builds only the overlay. poll() starts base_job_
+    // to build it once the load has landed (a scene job that runs first
+    // builds its own and hands it back); dropped with the song.
+    std::shared_ptr<const PreviewSceneBase> scene_base_;
+    std::unique_ptr<PreviewBaseJob> base_job_;
+    bool base_started_ = false;  // base_job_ ran once for this chart
     std::optional<Path> path_;
     std::string requested_path_key_;  // the path half of path_key_, as open() got it
     std::string path_key_;        // key of path_ + sp_cap_

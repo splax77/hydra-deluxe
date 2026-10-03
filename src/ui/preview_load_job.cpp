@@ -115,10 +115,38 @@ std::string PreviewLoadJob::Progress::label() const {
     return "";
 }
 
-PreviewSceneJob::PreviewSceneJob(std::shared_ptr<const Song> song, std::optional<Path> path,
-                                 int sp_cap, core::Rules rules, std::string key,
-                                 render::TrackStateOptions track_opts)
+std::shared_ptr<const PreviewSceneBase> build_scene_base(
+    const Song& song, render::TrackStateOptions track_opts,
+    const std::function<void()>& check_cancel) {
+    auto built = std::make_shared<PreviewSceneBase>();
+    built->scene = app::build_preview_base(song);
+    check_cancel();
+    built->track_state = render::build_track_state(built->scene, track_opts);
+    built->track_opts = track_opts;
+    check_cancel();
+    return built;
+}
+
+PreviewBaseJob::PreviewBaseJob(std::shared_ptr<const Song> song,
+                               render::TrackStateOptions track_opts)
+    : song_(std::move(song)), track_opts_(track_opts) {}
+
+void PreviewBaseJob::start() { spawn([this] { run(); }); }
+
+void PreviewBaseJob::run() {
+    run_guarded([this] {
+        throw_if_cancelled();
+        base_ = build_scene_base(*song_, track_opts_, [this] { throw_if_cancelled(); });
+        return true;
+    });
+}
+
+PreviewSceneJob::PreviewSceneJob(std::shared_ptr<const Song> song,
+                                 std::shared_ptr<const PreviewSceneBase> base,
+                                 std::optional<Path> path, int sp_cap, core::Rules rules,
+                                 std::string key, render::TrackStateOptions track_opts)
     : song_(std::move(song)),
+      base_(std::move(base)),
       path_(std::move(path)),
       sp_cap_(sp_cap),
       rules_(std::move(rules)),
@@ -130,12 +158,21 @@ void PreviewSceneJob::start() { spawn([this] { run(); }); }
 void PreviewSceneJob::run() {
     run_guarded([this] {
         throw_if_cancelled();  // a newer selection already replaced this one
-        app::PreviewScene scene =
-            app::build_preview_scene(*song_, path_ ? &*path_ : nullptr, sp_cap_, rules_);
+        // The path-free half, once per chart: reuse the controller's, or
+        // build it here when there is none yet (or it was drawn with other
+        // timeline options).
+        std::shared_ptr<const PreviewSceneBase> base = base_;
+        if (!base || base->track_opts.pro != track_opts_.pro)
+            base = build_scene_base(*song_, track_opts_, [this] { throw_if_cancelled(); });
+        // Only the overlay is built per path: the scene's, then the
+        // timeline's on a copy of the base timeline, so the swap on the UI
+        // thread is only a move.
+        app::PreviewScene scene = app::apply_preview_overlay(
+            base->scene, *song_, path_ ? &*path_ : nullptr, sp_cap_, rules_);
         throw_if_cancelled();
-        // The timeline too, so the swap on the UI thread is only a move.
-        render::TrackState track_state = render::build_track_state(scene, track_opts_);
-        output_ = Output{std::move(scene), std::move(track_state), track_opts_};
+        render::TrackState track_state = base->track_state;
+        render::rebuild_overlay_fields(track_state, scene);
+        output_ = Output{std::move(scene), std::move(track_state), track_opts_, std::move(base)};
         return true;
     });
 }
