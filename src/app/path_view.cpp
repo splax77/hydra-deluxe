@@ -252,11 +252,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             clauses += pre_part + " at the SqIn's SP end";
         }
         if (!clauses.empty()) av.scale_warning = "Frontend timing scales " + clauses + ".";
-        // Orange only when a shown scale moves a figure on screen.
-        av.scale_warn = (rate.late_backend_warns && shows(post.late)) ||
-                        (rate.early_backend_warns && shows(post.early)) ||
-                        (rate.late_note_warns && shows(pre.late)) ||
-                        (rate.early_note_warns && shows(pre.early));
+        av.scale_warn = rate.scale_governs;
 
         // When the SP window was cap-clamped and this activation lists a
         // squeeze the frontend decides, warn that the anchor is the
@@ -292,7 +288,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             char tbuf[32];
             std::snprintf(tbuf, sizeof(tbuf), "%.1f", bsq.offset_ms.value_or(0.0));
             row.timing = tbuf;
-            if (br.effective_ms) {
+            if (br.note.effective_ms) {
                 char tip[256];
                 // The budget at identity scale (x1.00): what the combined
                 // budget would be with no frontend-timing scale.
@@ -301,8 +297,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                               "Effectively %.1fms on the normal %.0fms scale:\n"
                               "frontend timing scales x%.2f here, so the combined\n"
                               "squeeze budget is %.0fms, not %.0fms.",
-                              *br.effective_ms, normal_budget, br.scale,
-                              br.budget_ms, normal_budget);
+                              *br.note.effective_ms, normal_budget, br.note.scale,
+                              br.note.budget_ms, normal_budget);
                 row.tooltip = tip;
             }
             row.chord = bsq.chord.notationstr();
@@ -320,10 +316,10 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
             row.rating = bsq.summarystr(W, rules.backend_leeway_ms);
-            if (br.effective_ms) {
+            if (br.note.effective_ms) {
                 char effbuf[32];
                 std::snprintf(effbuf, sizeof(effbuf), " (eff. %.1fms)",
-                              *br.effective_ms);
+                              *br.note.effective_ms);
                 row.rating += effbuf;
             }
             if (br.squeezed_out) {

@@ -282,8 +282,9 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     overbudget.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 250.0});
     CHECK(row_of(overbudget).scale_warning.empty());
 
-    // Gore act 4: the only row sits exactly on the SP end, so no number on
-    // screen moves -- the line still shows both sides, early first, plain.
+    // Gore act 4: the only row sits exactly on the SP end. It is inside SP,
+    // so the early x8.59 governs it: its 0 ms margin is still 0 ms, and the
+    // line is orange because a shown multiplier governs a row.
     Activation gore = base;
     gore.transfer_post = TransferScale{8.59, 8.76};
     gore.transfer_pre = gore.transfer_post;
@@ -293,7 +294,9 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     ActivationRowView av = row_of(gore);
     CHECK(av.scale_warning ==
           "Frontend timing scales x8.59 (early) / x8.76 (late) at the SP end.");
-    CHECK_FALSE(av.scale_warn);
+    CHECK(av.scale_warn);
+    REQUIRE(av.backends.size() == 1);
+    CHECK(av.backends[0].rating.find(" (eff. 0.0ms)") != std::string::npos);
 
     // A side that prints as x1.00 is left out.
     Activation late_only = base;
