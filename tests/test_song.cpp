@@ -5,7 +5,10 @@
 
 #include "doctest.h"
 
+#include <cctype>
 #include <cstdint>
+#include <regex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -483,4 +486,239 @@ TEST_CASE(".chart: [Song] Offset is read in seconds") {
 
     Song plain = load_songbytes_chart(multidiff::chart_bytes(), true, true);
     CHECK_FALSE(plain.chart_offset_s.has_value());
+}
+
+// ---- the parsers' hand matchers against the regexes they replaced ----------
+//
+// The parsers used std::regex for the disco-flip and dynamics markers and the
+// .chart section header. They match by hand now, for speed. These cases keep
+// the old regexes as the oracle and drive the real parsers with strings built
+// around every byte value, so any difference in what matches shows up.
+
+namespace {
+
+const std::regex& oracle_dynamics() {
+    static const std::regex r(R"(\[?ENABLE_CHART_DYNAMICS\]?)");
+    return r;
+}
+const std::regex& oracle_disco_on() {
+    static const std::regex r(R"(\[?mix.3.drums\d?d\]?)");
+    return r;
+}
+const std::regex& oracle_disco_off() {
+    static const std::regex r(R"(\[?mix.3.drums\d?(dnoflip)?\]?)");
+    return r;
+}
+
+// Disco markers with byte `b` placed in every spot the regexes care about.
+std::vector<std::string> disco_candidates(char b) {
+    const std::string c(1, b);
+    return {"mix" + c + "3_drums0d", "mix_3" + c + "drums0d", "mix_3_drums" + c + "d",
+            "mix_3_drums" + c, "mix_3_drums" + c + "dnoflip", "[mix_3_drums0d" + c,
+            c + "mix_3_drums0d", "mix_3_drums0" + c, c + "mix_3_drums0d]"};
+}
+
+// The MIDI reader stores each text byte as latin-1 decoded to UTF-8.
+std::string latin1_to_utf8(const std::string& s) {
+    std::string out;
+    for (unsigned char b : s) {
+        if (b < 0x80) {
+            out.push_back(static_cast<char>(b));
+        } else {
+            out.push_back(static_cast<char>(0xC0 | (b >> 6)));
+            out.push_back(static_cast<char>(0x80 | (b & 0x3F)));
+        }
+    }
+    return out;
+}
+
+// Replace an event's leading zero delta with one beat (480 ticks).
+std::vector<uint8_t> one_beat_later(std::vector<uint8_t> ev) {
+    ev.erase(ev.begin());
+    std::vector<uint8_t> out = {0x83, 0x60};
+    out.insert(out.end(), ev.begin(), ev.end());
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE(".chart: disco markers match the regexes they replaced") {
+    int checked = 0;
+    for (int byte = 0; byte < 256; ++byte) {
+        const char b = static_cast<char>(byte);
+        // A .chart event word never holds whitespace or '=' (both split it).
+        if (std::isspace(static_cast<unsigned char>(b)) || b == '=') continue;
+        for (const std::string& marker : disco_candidates(b)) {
+            for (bool prior_on : {false, true}) {
+                const std::string text =
+                    "[Song]\n{\n  Resolution = 192\n}\n"
+                    "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+                    "[ExpertDrums]\n{\n" +
+                    std::string(prior_on ? "  0 = E mix_3_drums0d\n" : "") +
+                    "  0 = N 0 0\n  192 = E " + marker + "\n  192 = N 1 0\n}\n";
+                const std::vector<uint8_t> data(text.begin(), text.end());
+                const Song song = load_songbytes_chart(data, true, true);
+                REQUIRE(song.sequence.size() == 2);
+
+                const bool off = std::regex_match(marker, oracle_disco_off());
+                const bool on = std::regex_match(marker, oracle_disco_on());
+                const bool want_flip = off ? false : on ? true : prior_on;
+                // A flipped red pad reads as a yellow cymbal.
+                const bool flipped = song.sequence[1].chord.at(NoteColor::Yellow).has_value();
+                CHECK_MESSAGE(flipped == want_flip,
+                              "byte " << byte << " marker index, prior " << prior_on);
+                ++checked;
+            }
+        }
+    }
+    CHECK(checked > 4000);
+}
+
+TEST_CASE(".mid: disco and dynamics markers match the regexes they replaced") {
+    using namespace testmidi;
+    int checked = 0;
+    for (int byte = 0; byte < 256; ++byte) {
+        const char b = static_cast<char>(byte);
+        for (const std::string& marker : disco_candidates(b)) {
+            const std::string as_read = latin1_to_utf8(marker);
+            const bool on = std::regex_match(as_read, oracle_disco_on());
+            const bool off = std::regex_match(as_read, oracle_disco_off());
+            for (bool prior_on : {false, true}) {
+                std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo()};
+                if (prior_on) ev.push_back(text_event("mix_3_drums0d"));
+                ev.push_back(note_on(96, 100));                    // tick 0: kick
+                ev.push_back(one_beat_later(text_event(marker)));  // tick 480
+                ev.push_back(note_on(97, 100));                    // tick 480: red
+                ev.push_back(end_of_track());
+                const Song song = load_songbytes_mid(smf(concat(ev)), true, true);
+                REQUIRE(song.sequence.size() == 2);
+                const bool want_flip = on ? true : off ? false : prior_on;
+                const bool flipped = song.sequence[1].chord.at(NoteColor::Yellow).has_value();
+                CHECK_MESSAGE(flipped == want_flip, "byte " << byte << ", prior " << prior_on);
+                ++checked;
+            }
+        }
+
+        const std::string c(1, b);
+        for (const std::string& marker : std::vector<std::string>{
+                 "[ENABLE_CHART_DYNAMICS]", "ENABLE_CHART_DYNAMICS", "[ENABLE_CHART_DYNAMICS",
+              "ENABLE_CHART_DYNAMICS]", "[[ENABLE_CHART_DYNAMICS]", "[ENABLE_CHART_DYNAMICS]]",
+              "", "[]", c + "ENABLE_CHART_DYNAMICS", "ENABLE_CHART_DYNAMICS" + c,
+              "ENABLE_CHART" + c + "DYNAMICS"}) {
+            const bool want = std::regex_match(latin1_to_utf8(marker), oracle_dynamics());
+            const Song song = load_songbytes_mid(
+                smf(concat({track_name("PART DRUMS"), set_tempo(), text_event(marker),
+                            note_on(97, 127), end_of_track()})),
+                true, true);
+            REQUIRE(song.sequence.size() == 1);
+            const bool accent = song.sequence[0].chord.at(NoteColor::Red)->is_accent();
+            CHECK_MESSAGE(accent == want, "byte " << byte << ": dynamics marker");
+            ++checked;
+        }
+    }
+    CHECK(checked > 6000);
+}
+
+TEST_CASE(".chart: section headers are found as the regex found them") {
+    // The first line outside a section must hold a `[name]`, found as
+    // std::regex_search(`\[.*\]`) found it: leftmost '[', greedy to the last
+    // ']' reachable without crossing a '\r'. No header throws ChartFileError;
+    // a header that is not [Song] leaves the chart without its [Song] section.
+    static const std::regex header(R"(\[.*\])");
+    const std::vector<std::string> lines = {
+        "[Song]", "x[Song]", "[Song]x", "[Song] [x]", "[[Song]", "[Song]]",
+        "[So\rng]", "[Song\r]", "[x\r][Song]", "[x\r]]", "]Song[", "[", "Song",
+        "[]", "\x01[Song]", "[\r[Song]", "[a\r[b]", "[Song]\r]", "[x]\r[Song]",
+        "\xC3\xA9[Song]\xC3\xA9", "[S\xC3\xA9]",
+    };
+    for (const std::string& raw : lines) {
+        const std::string text = raw + "\n{\n  Resolution = 192\n}\n"
+                                       "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";
+        const std::vector<uint8_t> data(text.begin(), text.end());
+        const std::string line = trim(raw);
+        std::smatch m;
+        if (!std::regex_search(line, m, header)) {
+            CHECK_THROWS_AS(load_songbytes_chart(data, true, true), ChartFileError);
+            continue;
+        }
+        const std::string bracket = m.str(0);
+        if (bracket.substr(1, bracket.size() - 2) == "Song") {
+            CHECK_MESSAGE(load_songbytes_chart(data, true, true).tick_resolution() == 192, raw);
+        } else {
+            CHECK_THROWS_AS(load_songbytes_chart(data, true, true), std::out_of_range);
+        }
+    }
+}
+
+// Malformed .chart lines keep the handling they have always had. Each case
+// was checked against the regex-era reader before it was replaced.
+TEST_CASE(".chart: malformed lines keep their handling") {
+    const std::string song = "[Song]\n{\n  Resolution = 192\n}\n";
+    const std::string sync = "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";
+    auto parse = [](const std::string& text) {
+        const std::vector<uint8_t> data(text.begin(), text.end());
+        return load_songbytes_chart(data, true, true);
+    };
+
+    // A blank line outside a section is not a header: the chart is refused.
+    CHECK_THROWS_AS(parse(song + "\n" + sync), ChartFileError);
+    // So is trailing whitespace after the last section, or a stray '}'.
+    CHECK_THROWS_AS(parse(song + sync + "   "), ChartFileError);
+    CHECK_THROWS_AS(parse(song + "}\n" + sync), ChartFileError);
+
+    // A second '=' ends the value: "N 1 0 = junk" reads as "N 1 0".
+    {
+        Song s = parse(song + sync + "[ExpertDrums]\n{\n  0 = N 1 0 = junk\n  192 = N 2 0=\n}\n");
+        REQUIRE(s.sequence.size() == 2);
+        CHECK(s.sequence[0].chord.at(NoteColor::Red).has_value());
+        CHECK(s.sequence[1].chord.at(NoteColor::Yellow).has_value());
+    }
+
+    // Lines with no '=' or no value, and an N with too few words, add nothing.
+    {
+        Song s = parse(song + sync +
+                       "[ExpertDrums]\n{\n  garbage\n  =\n  0 = N 1\n  0 = N 3 0\n}\n");
+        REQUIRE(s.sequence.size() == 1);
+        CHECK(s.sequence[0].chord.count() == 1);
+        CHECK(s.sequence[0].chord.at(NoteColor::Blue).has_value());
+    }
+
+    // A note number that is not a number refuses the chart, as std::stoi does.
+    CHECK_THROWS_AS(parse(song + sync + "[ExpertDrums]\n{\n  0 = N x 0\n}\n"),
+                    std::invalid_argument);
+
+    // A section that never closes is dropped.
+    CHECK(parse(song + sync + "[ExpertDrums]\n{\n  0 = N 1 0\n").sequence.empty());
+
+    // A repeated section replaces the earlier one.
+    {
+        Song s = parse(song + "[Song]\n{\n  Resolution = 480\n}\n" + sync +
+                       "[ExpertDrums]\n{\n  0 = N 1 0\n}\n[ExpertDrums]\n{\n  0 = N 2 0\n}\n");
+        CHECK(s.tick_resolution() == 480);
+        REQUIRE(s.sequence.size() == 1);
+        CHECK(s.sequence[0].chord.at(NoteColor::Yellow).has_value());
+    }
+
+    // Tabs and CRLF are whitespace; tick keys read like std::stoll ("+192").
+    {
+        Song s = parse("\t[Song]\v\f\n{\n Resolution\t=\t192 \r\n}\r\n" + sync +
+                       "[ExpertDrums]\n{\n  0\t=\tN\t1\t0\n  +192 = N 2 0\n}\n");
+        REQUIRE(s.sequence.size() == 2);
+        CHECK(s.sequence[1].timecode.ticks() == 192);
+    }
+
+    // Generic E events: quotes and outer spaces come off, inner spaces stay.
+    {
+        Song s = parse(song + sync +
+                       "[Events]\n{\n  0 = E   \"section  Intro  \"  \n  96 = E\n"
+                       "  48 = E section Verse\n  10 = E \"prc_chorus\"\n}\n"
+                       "[ExpertDrums]\n{\n  0 = N 1 0\n}\n");
+        REQUIRE(s.practice_sections.size() == 3);
+        CHECK(s.practice_sections[0].tick == 0);
+        CHECK(s.practice_sections[0].name == " Intro  ");
+        CHECK(s.practice_sections[1].tick == 10);
+        CHECK(s.practice_sections[1].name == "chorus");
+        CHECK(s.practice_sections[2].tick == 48);
+        CHECK(s.practice_sections[2].name == "Verse");
+    }
 }

@@ -33,25 +33,40 @@ public:
 // One event. A single struct covers channel and meta messages, matching the
 // dynamic shape hymidi produces; only the fields relevant to `type` are set.
 struct Message {
+    // Every kind of message the reader emits. The names mido gives them are
+    // spelled by message_type_name().
+    enum class Type : uint8_t {
+        NoteOn, NoteOff, SetTempo, TimeSignature,
+        // Metas whose string is mido's `text` attribute.
+        Text, Copyright, Lyrics, Marker, CueMarker,
+        // Metas whose string is mido's `name` attribute.
+        TrackName, InstrumentName, DeviceName,
+    };
+
     // Which string attribute a meta carries, if any. Text-metas and name-metas
     // are kept distinct because hysong pattern-matches on `text` specifically.
-    enum class StrAttr { None, Text, Name };
+    enum class StrAttr : uint8_t { None, Text, Name };
 
-    std::string type;          // "note_on", "note_off", "set_tempo",
-                               // "time_signature", or a meta type name.
     int64_t time = 0;          // delta ticks since the previous emitted event.
 
-    int note = 0;              // note_on / note_off
-    int velocity = 0;          // note_on / note_off
+    Type type = Type::NoteOn;
+    StrAttr str_attr = StrAttr::None;
+
+    uint8_t note = 0;          // note_on / note_off (0..127, clipped as mido)
+    uint8_t velocity = 0;      // note_on / note_off (0..127, clipped as mido)
 
     uint32_t tempo = 0;        // set_tempo (microseconds per quarter note)
 
     int numerator = 0;         // time_signature
     int denominator = 0;       // time_signature (already 2**b, as in mido)
 
-    std::string str;           // text/name payload, UTF-8 (latin-1 decoded)
-    StrAttr str_attr = StrAttr::None;
+    // Text/name payload, UTF-8 (latin-1 decoded). Only text and name metas
+    // fill it; every other message leaves it empty, so it never allocates.
+    std::string str;
 };
+
+// mido's name for a message type ("note_on", "set_tempo", "track_name", ...).
+const char* message_type_name(Message::Type type);
 
 class MidiTrack {
 public:

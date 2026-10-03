@@ -1,12 +1,12 @@
 #include "parse/song.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
-#include <functional>
-#include <regex>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_map>
 
 #include "core/strutil.h"
@@ -22,31 +22,13 @@ namespace hydra {
 
 namespace {
 
-std::vector<std::string> split_ws(const std::string& s) {
-    std::vector<std::string> out;
-    size_t i = 0, n = s.size();
-    while (i < n) {
-        while (i < n && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
-        size_t start = i;
-        while (i < n && !std::isspace(static_cast<unsigned char>(s[i]))) ++i;
-        if (i > start) out.push_back(s.substr(start, i - start));
-    }
-    return out;
-}
-
-std::vector<std::string> split_char(const std::string& s, char c) {
-    std::vector<std::string> out;
-    size_t start = 0;
-    while (true) {
-        size_t p = s.find(c, start);
-        if (p == std::string::npos) {
-            out.push_back(s.substr(start));
-            break;
-        }
-        out.push_back(s.substr(start, p - start));
-        start = p + 1;
-    }
-    return out;
+// trim() (core/strutil) without the copy: the same whitespace set, as a view.
+std::string_view trim_view(std::string_view s) {
+    constexpr std::string_view kSpace = " \t\r\n\v\f";
+    const size_t a = s.find_first_not_of(kSpace);
+    if (a == std::string_view::npos) return {};
+    const size_t b = s.find_last_not_of(kSpace);
+    return s.substr(a, b - a + 1);
 }
 
 // The name inside a practice-section marker body, which both formats spell one
@@ -78,21 +60,51 @@ bool try_parse_int(const std::string& s, int64_t& out) {
     return false;
 }
 
-const std::regex& re_dynamics() {
-    static const std::regex r(R"(\[?ENABLE_CHART_DYNAMICS\]?)");
-    return r;
-}
-const std::regex& re_disco_on() {
-    static const std::regex r(R"(\[?mix.3.drums\d?d\]?)");
-    return r;
-}
-const std::regex& re_disco_off() {
-    static const std::regex r(R"(\[?mix.3.drums\d?(dnoflip)?\]?)");
-    return r;
+// The three text markers both formats read, matched by hand. Each one is
+// exactly the whole-string regex it replaced (named beside it). The tests
+// "... markers match the regexes they replaced" in test_song.cpp check that
+// through both parsers, with every byte value in every position that matters.
+//
+// What the regex pieces meant, as std::regex (ECMAScript, char) reads them:
+// `.` is any byte except '\n' and '\r'; `\d` is an ASCII digit; `\[?` and
+// `\]?` are one optional bracket at each end. No marker body starts with '['
+// or ends with ']', so peeling one bracket off each end is never ambiguous.
+bool regex_dot(char c) { return c != '\n' && c != '\r'; }
+bool regex_digit(char c) { return c >= '0' && c <= '9'; }
+
+std::string_view peel_brackets(std::string_view s) {
+    if (!s.empty() && s.front() == '[') s.remove_prefix(1);
+    if (!s.empty() && s.back() == ']') s.remove_suffix(1);
+    return s;
 }
 
-bool full_match(const std::string& s, const std::regex& re) {
-    return std::regex_match(s, re);
+// `mix.3.drums`: the 11-byte head both disco markers share.
+bool disco_head(std::string_view s) {
+    return s.size() >= 11 && s.substr(0, 3) == "mix" && regex_dot(s[3]) && s[4] == '3' &&
+           regex_dot(s[5]) && s.substr(6, 5) == "drums";
+}
+
+// \[?ENABLE_CHART_DYNAMICS\]?
+bool is_dynamics_marker(std::string_view s) {
+    return peel_brackets(s) == "ENABLE_CHART_DYNAMICS";
+}
+
+// \[?mix.3.drums\d?d\]?
+bool is_disco_on_marker(std::string_view s) {
+    s = peel_brackets(s);
+    if (!disco_head(s)) return false;
+    std::string_view rest = s.substr(11);
+    if (!rest.empty() && regex_digit(rest.front())) rest.remove_prefix(1);
+    return rest == "d";
+}
+
+// \[?mix.3.drums\d?(dnoflip)?\]?
+bool is_disco_off_marker(std::string_view s) {
+    s = peel_brackets(s);
+    if (!disco_head(s)) return false;
+    std::string_view rest = s.substr(11);
+    if (!rest.empty() && regex_digit(rest.front())) rest.remove_prefix(1);
+    return rest.empty() || rest == "dnoflip";
 }
 
 // Activation-fill placement heuristic, shared by both parsers: true when the
@@ -292,10 +304,62 @@ namespace {
 enum class MPhase { None, Time, Pre, PreDelayed, Notes, Post, PostDelayed,
                     PreTimestamp };
 
+// What a MIDI message does to the parser, decided once when the message is
+// classified and carried out later in its phase. A plain tagged struct, so a
+// tick's handlers cost no allocation (they used to be std::function closures).
+enum class MAct : uint8_t {
+    None, Note, FillStart, StoreFillEnd, ApplyFill, SpStart, SpEnd, Tom, Flam,
+    Solo, Dynamics, Disco, Tempo, TimeSig,
+};
+
 struct MOp {
     MPhase phase = MPhase::None;
-    std::function<void()> run;
+    MAct act = MAct::None;
+    NoteColor color = NoteColor::Kick;                  // Note, Tom
+    NoteDynamicType dyn = NoteDynamicType::Normal;      // Note
+    NoteCymbalType cymbal = NoteCymbalType::Normal;     // Tom
+    bool flag = false;     // Note: is2x; Flam/Solo/Disco: on
+    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/Tempo/TimeSig;
+                           // ApplyFill: the fill's start tick
+    uint32_t tempo = 0;    // Tempo
+    int num = 0, den = 0;  // TimeSig
+
+    bool runs() const { return act != MAct::None; }
 };
+
+MOp mop(MPhase phase, MAct act) {
+    MOp op;
+    op.phase = phase;
+    op.act = act;
+    return op;
+}
+
+MOp mop_note(NoteColor color, NoteDynamicType dyn, bool is2x) {
+    MOp op = mop(MPhase::Notes, MAct::Note);
+    op.color = color;
+    op.dyn = dyn;
+    op.flag = is2x;
+    return op;
+}
+
+MOp mop_tick(MPhase phase, MAct act, int64_t tick) {
+    MOp op = mop(phase, act);
+    op.tick = tick;
+    return op;
+}
+
+MOp mop_flag(MAct act, bool on) {
+    MOp op = mop(MPhase::Pre, act);
+    op.flag = on;
+    return op;
+}
+
+MOp mop_tom(NoteColor color, NoteCymbalType cymbal) {
+    MOp op = mop(MPhase::Pre, MAct::Tom);
+    op.color = color;
+    op.cymbal = cymbal;
+    return op;
+}
 
 // All four difficulties share the one "PART DRUMS" track; each owns a block of
 // five pitches starting here (kick, then the four pads).
@@ -336,7 +400,8 @@ private:
 
     MOp optype(const Message& msg, int64_t tick);
     void push_timestamp(int64_t tick);
-    static void run_ops(std::vector<std::function<void()>>& ops);
+    void run(const MOp& op);
+    void run_ops(const std::vector<MOp>& ops);
 
     // op_* handlers
     void op_enable_dynamics() { dynamics_enabled_ = true; }
@@ -379,6 +444,10 @@ private:
 
     Chord chord_;
     std::vector<const Message*> msg_buffer_;
+    // One bucket per phase that push_timestamp runs, reused tick to tick so
+    // their storage is allocated once per parse, not once per tick.
+    std::vector<MOp> pre_, pre_delayed_, notes_, pre_timestamp_, post_,
+        post_delayed_;
     bool flag_solo_ = false;
     std::array<NoteCymbalType, 5> flag_cymbals_{};
     bool flag_flam_ = false;
@@ -390,16 +459,17 @@ private:
 };
 
 MOp MidiParser::optype(const Message& msg, int64_t tick) {
-    const bool is_channel = (msg.type == "note_on" || msg.type == "note_off");
+    using MType = Message::Type;
+    const bool is_channel = (msg.type == MType::NoteOn || msg.type == MType::NoteOff);
 
     if (is_channel) {
         int note = msg.note;
         if (!is_handled_note(note, base_)) return {};
 
         int velocity = msg.velocity;
-        bool is_noteon = (msg.type == "note_on" && velocity > 0);
+        bool is_noteon = (msg.type == MType::NoteOn && velocity > 0);
         bool is_noteoff =
-            (msg.type == "note_off" || (msg.type == "note_on" && velocity == 0));
+            (msg.type == MType::NoteOff || (msg.type == MType::NoteOn && velocity == 0));
 
         if (is_noteoff && note < 103) return {};
 
@@ -412,48 +482,27 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 velocity == 127   ? NoteDynamicType::Accent
                 : velocity == 1   ? NoteDynamicType::Ghost
                                   : NoteDynamicType::Normal;
-            if (note == base_) {
-                return {MPhase::Notes, [this, vel_dyn] {
-                            op_note(NoteColor::Kick, vel_dyn, false);
-                        }};
-            }
+            if (note == base_) return mop_note(NoteColor::Kick, vel_dyn, false);
             if (note > base_ && note <= base_ + 4) {
                 // base+1 -> Red(2), as 97 -> Red(2) on Expert.
                 NoteColor color = static_cast<NoteColor>(note - base_ + 1);
-                return {MPhase::Notes, [this, color, vel_dyn] {
-                            op_note(color, vel_dyn, false);
-                        }};
+                return mop_note(color, vel_dyn, false);
             }
             switch (note) {
                 case 95:
-                    if (mode_bass2x_)
-                        return {MPhase::Notes, [this, vel_dyn] {
-                                    op_note(NoteColor::Kick, vel_dyn, true);
-                                }};
+                    if (mode_bass2x_) return mop_note(NoteColor::Kick, vel_dyn, true);
                     return {};
                 case 120:
-                    return {MPhase::PostDelayed,
-                            [this, tick] { op_fillstart(tick); }};
+                    return mop_tick(MPhase::PostDelayed, MAct::FillStart, tick);
                 case 116:
-                    return {sp_start_tick_.has_value() ? MPhase::PreDelayed
-                                                       : MPhase::Pre,
-                            [this, tick] { op_sp_start(tick); }};
-                case 112:
-                    return {MPhase::Pre, [this] {
-                                op_tom(NoteColor::Green, NoteCymbalType::Normal);
-                            }};
-                case 111:
-                    return {MPhase::Pre, [this] {
-                                op_tom(NoteColor::Blue, NoteCymbalType::Normal);
-                            }};
-                case 110:
-                    return {MPhase::Pre, [this] {
-                                op_tom(NoteColor::Yellow, NoteCymbalType::Normal);
-                            }};
-                case 109:
-                    return {MPhase::Pre, [this] { op_flam(true); }};
-                case 103:
-                    return {MPhase::Pre, [this] { op_solo(true); }};
+                    return mop_tick(sp_start_tick_.has_value() ? MPhase::PreDelayed
+                                                               : MPhase::Pre,
+                                    MAct::SpStart, tick);
+                case 112: return mop_tom(NoteColor::Green, NoteCymbalType::Normal);
+                case 111: return mop_tom(NoteColor::Blue, NoteCymbalType::Normal);
+                case 110: return mop_tom(NoteColor::Yellow, NoteCymbalType::Normal);
+                case 109: return mop_flag(MAct::Flam, true);
+                case 103: return mop_flag(MAct::Solo, true);
                 default:
                     return {};
             }
@@ -462,32 +511,21 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
         if (is_noteoff) {
             switch (note) {
                 case 120:
-                    return {MPhase::Pre,
-                            [this, tick] { op_store_fillend(tick); }};
+                    return mop_tick(MPhase::Pre, MAct::StoreFillEnd, tick);
                 case 116:
-                    return {sp_start_tick_.has_value() ? MPhase::Pre
-                                                       : MPhase::PreDelayed,
-                            [this] { op_sp_end(); }};
-                case 112:
-                    return {MPhase::Pre, [this] {
-                                op_tom(NoteColor::Green, NoteCymbalType::Cymbal);
-                            }};
-                case 111:
-                    return {MPhase::Pre, [this] {
-                                op_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
-                            }};
-                case 110:
-                    return {MPhase::Pre, [this] {
-                                op_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
-                            }};
-                case 109:
-                    return {MPhase::Pre, [this] { op_flam(false); }};
+                    return mop(sp_start_tick_.has_value() ? MPhase::Pre
+                                                          : MPhase::PreDelayed,
+                               MAct::SpEnd);
+                case 112: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
+                case 111: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
+                case 110: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
+                case 109: return mop_flag(MAct::Flam, false);
                 case 103:
                     // A MIDI solo marker covers ticks up to its note-off, not
                     // including it: end the solo before this tick's notes.
                     // Pinned by ".mid: the note on the solo marker's note-off
                     // tick is outside the solo".
-                    return {MPhase::Pre, [this] { op_solo(false); }};
+                    return mop_flag(MAct::Solo, false);
                 default:
                     return {};
             }
@@ -499,29 +537,47 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
     // not match Python's `MetaMessage(text=...)` patterns.
     if (msg.str_attr == Message::StrAttr::Text) {
         const std::string& t = msg.str;
-        if (full_match(t, re_dynamics()))
-            return {MPhase::Pre, [this] { op_enable_dynamics(); }};
-        if (full_match(t, re_disco_on()))
-            return {MPhase::Pre, [this] { op_disco(true); }};
-        if (full_match(t, re_disco_off()))
-            return {MPhase::Pre, [this] { op_disco(false); }};
+        if (is_dynamics_marker(t)) return mop(MPhase::Pre, MAct::Dynamics);
+        if (is_disco_on_marker(t)) return mop_flag(MAct::Disco, true);
+        if (is_disco_off_marker(t)) return mop_flag(MAct::Disco, false);
     }
-    if (msg.type == "set_tempo") {
-        uint32_t tempo = msg.tempo;
-        return {MPhase::Time, [this, tick, tempo] { op_tempo(tick, tempo); }};
+    if (msg.type == MType::SetTempo) {
+        MOp op = mop_tick(MPhase::Time, MAct::Tempo, tick);
+        op.tempo = msg.tempo;
+        return op;
     }
-    if (msg.type == "time_signature") {
-        int num = msg.numerator, den = msg.denominator;
-        return {MPhase::Time,
-                [this, tick, num, den] { op_timesig(tick, num, den); }};
+    if (msg.type == MType::TimeSignature) {
+        MOp op = mop_tick(MPhase::Time, MAct::TimeSig, tick);
+        op.num = msg.numerator;
+        op.den = msg.denominator;
+        return op;
     }
     return {};
 }
 
-void MidiParser::run_ops(std::vector<std::function<void()>>& ops) {
-    for (auto& op : ops) {
+void MidiParser::run(const MOp& op) {
+    switch (op.act) {
+        case MAct::None: break;
+        case MAct::Note: op_note(op.color, op.dyn, op.flag); break;
+        case MAct::FillStart: op_fillstart(op.tick); break;
+        case MAct::StoreFillEnd: op_store_fillend(op.tick); break;
+        case MAct::ApplyFill: op_apply_fill(op.tick); break;
+        case MAct::SpStart: op_sp_start(op.tick); break;
+        case MAct::SpEnd: op_sp_end(); break;
+        case MAct::Tom: op_tom(op.color, op.cymbal); break;
+        case MAct::Flam: op_flam(op.flag); break;
+        case MAct::Solo: op_solo(op.flag); break;
+        case MAct::Dynamics: op_enable_dynamics(); break;
+        case MAct::Disco: op_disco(op.flag); break;
+        case MAct::Tempo: op_tempo(op.tick, op.tempo); break;
+        case MAct::TimeSig: op_timesig(op.tick, op.num, op.den); break;
+    }
+}
+
+void MidiParser::run_ops(const std::vector<MOp>& ops) {
+    for (const MOp& op : ops) {
         try {
-            op();
+            run(op);
         } catch (const ChartFileError&) {
         }
     }
@@ -530,48 +586,51 @@ void MidiParser::run_ops(std::vector<std::function<void()>>& ops) {
 void MidiParser::push_timestamp(int64_t tick) {
     chord_ = Chord();
 
-    std::vector<std::function<void()>> pre, pre_delayed, notes, pre_timestamp,
-        post, post_delayed;
+    pre_.clear();
+    pre_delayed_.clear();
+    notes_.clear();
+    pre_timestamp_.clear();
+    post_.clear();
+    post_delayed_.clear();
     for (const Message* msg : msg_buffer_) {
         MOp op = optype(*msg, tick);
-        if (!op.run) continue;
+        if (!op.runs()) continue;
         switch (op.phase) {
-            case MPhase::Pre: pre.push_back(std::move(op.run)); break;
-            case MPhase::PreDelayed: pre_delayed.push_back(std::move(op.run)); break;
-            case MPhase::Notes: notes.push_back(std::move(op.run)); break;
-            case MPhase::Post: post.push_back(std::move(op.run)); break;
-            case MPhase::PostDelayed: post_delayed.push_back(std::move(op.run)); break;
-            case MPhase::PreTimestamp: pre_timestamp.push_back(std::move(op.run)); break;
+            case MPhase::Pre: pre_.push_back(op); break;
+            case MPhase::PreDelayed: pre_delayed_.push_back(op); break;
+            case MPhase::Notes: notes_.push_back(op); break;
+            case MPhase::Post: post_.push_back(op); break;
+            case MPhase::PostDelayed: post_delayed_.push_back(op); break;
+            case MPhase::PreTimestamp: pre_timestamp_.push_back(op); break;
             default: break;  // Time / None: not run from push_timestamp.
         }
     }
 
-    run_ops(pre);
-    run_ops(pre_delayed);
-    run_ops(notes);
+    run_ops(pre_);
+    run_ops(pre_delayed_);
+    run_ops(notes_);
 
     // Activation fill placement.
     if (chord_.count() && fill_end_tick_.has_value() &&
         tick >= *fill_end_tick_) {
-        int64_t start = *fill_start_tick_;
-        auto fill_op = [this, start] { op_apply_fill(start); };
+        MOp fill_op = mop_tick(MPhase::None, MAct::ApplyFill, *fill_start_tick_);
 
         if (fill_lands_on_chord(*song_, *fill_end_tick_, tick, rules_.fill_land_slop_beats))
-            post.push_back(std::move(fill_op));
+            post_.push_back(fill_op);
         else
-            pre_timestamp.push_back(std::move(fill_op));
+            pre_timestamp_.push_back(fill_op);
         fill_start_tick_.reset();
         fill_end_tick_.reset();
     }
 
-    run_ops(pre_timestamp);
+    run_ops(pre_timestamp_);
 
     if (chord_.count())
         emit_chord_timestamp(*song_, chord_, tick, flag_flam_,
                              mode_pro_ && flag_disco_, flag_solo_);
 
-    run_ops(post);
-    run_ops(post_delayed);
+    run_ops(post_);
+    run_ops(post_delayed_);
 
     msg_buffer_.clear();
 }
@@ -590,7 +649,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     for (const Message& msg : mid.tracks[0].messages) {
         elapsed += msg.time;
         MOp op = optype(msg, elapsed);
-        if (op.phase == MPhase::Time && op.run) op.run();
+        if (op.phase == MPhase::Time && op.runs()) run(op);
     }
     song.build_timing();
 
@@ -671,64 +730,90 @@ struct ChartDataEntry {
     std::optional<int> phrasevalue;
     std::optional<int64_t> phraselength;
 
-    ChartDataEntry(const std::string& keystr_in, const std::string& valuestr_in);
+    // Both sides arrive already trimmed.
+    ChartDataEntry(std::string_view keystr, std::string_view valuestr);
 
     bool is_tick_data() const { return key_tick.has_value(); }
 };
 
-ChartDataEntry::ChartDataEntry(const std::string& keystr_in,
-                               const std::string& valuestr_in) {
-    std::string keystr = trim(keystr_in);
-    std::string valuestr = trim(valuestr_in);
+// The whitespace-separated words of an event value, as views into it. Only
+// the first four are kept (no event reads further); `count` is the full count,
+// which the event forms check exactly.
+struct ChartWords {
+    std::array<std::string_view, 4> w{};
+    size_t count = 0;
+};
 
+ChartWords split_ws_view(std::string_view s) {
+    ChartWords out;
+    size_t i = 0, n = s.size();
+    while (i < n) {
+        while (i < n && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
+        size_t start = i;
+        while (i < n && !std::isspace(static_cast<unsigned char>(s[i]))) ++i;
+        if (i > start) {
+            if (out.count < out.w.size()) out.w[out.count] = s.substr(start, i - start);
+            ++out.count;
+        }
+    }
+    return out;
+}
+
+// std::stoi / std::stoll on one word, with their exact acceptance rules
+// (leading digits read, trailing junk ignored, throws on no digits).
+int word_stoi(std::string_view w) { return std::stoi(std::string(w)); }
+long long word_stoll(std::string_view w) { return std::stoll(std::string(w)); }
+
+ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuestr) {
     int64_t k;
-    if (try_parse_int(keystr, k))
+    if (try_parse_int(std::string(keystr), k))
         key_tick = k;
     else
-        key_name = keystr;
+        key_name = std::string(keystr);
 
     if (!key_tick.has_value()) {
         int64_t iv;
-        if (try_parse_int(valuestr, iv))
+        std::string value(valuestr);
+        if (try_parse_int(value, iv))
             property_int = iv;
         else
-            property_str = valuestr;
+            property_str = std::move(value);
         return;
     }
 
-    std::vector<std::string> t = split_ws(valuestr);
-    if (t.empty()) return;
-    const std::string& t0 = t[0];
+    const ChartWords t = split_ws_view(valuestr);
+    if (t.count == 0) return;
+    const std::string_view t0 = t.w[0];
 
-    if (t0 == "TS" && t.size() == 2) {
-        ts_numerator = std::stoi(t[1]);
+    if (t0 == "TS" && t.count == 2) {
+        ts_numerator = word_stoi(t.w[1]);
         ts_denominator = 4;
-    } else if (t0 == "TS" && t.size() == 3) {
-        ts_numerator = std::stoi(t[1]);
-        ts_denominator = 1 << std::stoi(t[2]);
-    } else if (t0 == "B" && t.size() == 2) {
-        tempo_bpm = static_cast<double>(std::stoll(t[1])) / 1000.0;
-    } else if (t0 == "E" && t.size() == 2 && t[1] == "solo") {
+    } else if (t0 == "TS" && t.count == 3) {
+        ts_numerator = word_stoi(t.w[1]);
+        ts_denominator = 1 << word_stoi(t.w[2]);
+    } else if (t0 == "B" && t.count == 2) {
+        tempo_bpm = static_cast<double>(word_stoll(t.w[1])) / 1000.0;
+    } else if (t0 == "E" && t.count == 2 && t.w[1] == "solo") {
         solo_start = true;
-    } else if (t0 == "E" && t.size() == 2 && t[1] == "soloend") {
+    } else if (t0 == "E" && t.count == 2 && t.w[1] == "soloend") {
         solo_end = true;
-    } else if (t0 == "E" && t.size() == 2 && full_match(t[1], re_disco_off())) {
+    } else if (t0 == "E" && t.count == 2 && is_disco_off_marker(t.w[1])) {
         discoflip_disable = true;
-    } else if (t0 == "E" && t.size() == 2 && full_match(t[1], re_disco_on())) {
+    } else if (t0 == "E" && t.count == 2 && is_disco_on_marker(t.w[1])) {
         discoflip_enable = true;
     } else if (t0 == "E") {
         // Generic text event: no gameplay effect, but [Events] carries the
         // practice-section markers here.
-        std::string rest = trim(valuestr.substr(1));
+        std::string_view rest = trim_view(valuestr.substr(1));
         if (rest.size() >= 2 && rest.front() == '"' && rest.back() == '"')
             rest = rest.substr(1, rest.size() - 2);
-        event_text = rest;
-    } else if (t0 == "N" && t.size() == 3) {
-        notevalue = std::stoi(t[1]);
-        notelength = std::stoll(t[2]);
-    } else if (t0 == "S" && t.size() == 3) {
-        phrasevalue = std::stoi(t[1]);
-        phraselength = std::stoll(t[2]);
+        event_text = std::string(rest);
+    } else if (t0 == "N" && t.count == 3) {
+        notevalue = word_stoi(t.w[1]);
+        notelength = word_stoll(t.w[2]);
+    } else if (t0 == "S" && t.count == 3) {
+        phrasevalue = word_stoi(t.w[1]);
+        phraselength = word_stoll(t.w[2]);
     }
 }
 
@@ -738,24 +823,67 @@ struct ChartSection {
     std::unordered_map<int64_t, std::vector<ChartDataEntry>> tick_data;
     std::unordered_map<std::string, std::vector<ChartDataEntry>> prop_data;
 
-    void add(const ChartDataEntry& e) {
+    // Takes the entry by value and moves it into place: no copy per entry.
+    void add(ChartDataEntry e) {
         if (e.is_tick_data()) {
-            int64_t key = *e.key_tick;
-            if (tick_data.find(key) == tick_data.end())
-                tick_order.push_back(key);
-            tick_data[key].push_back(e);
+            const int64_t key = *e.key_tick;
+            auto [it, inserted] = tick_data.try_emplace(key);
+            if (inserted) tick_order.push_back(key);
+            it->second.push_back(std::move(e));
         } else {
-            prop_data[*e.key_name].push_back(e);
+            std::vector<ChartDataEntry>& v = prop_data[*e.key_name];
+            v.push_back(std::move(e));
         }
     }
 };
 
 enum class CPhase { None, Time, Notes, NoteMods, Pre, Post, PostDelayed };
 
+// What a .chart event does, decided when it is classified and carried out in
+// its phase: a plain tagged struct, so a tick's handlers cost no allocation.
+enum class CAct : uint8_t {
+    None, Disco, Tempo, TimeSig, Solo, Note, TwoX, Accent, Ghost, Cymbal,
+    SpStart, SpEnd, FillStart, FillEnd,
+};
+
 struct COp {
     CPhase phase = CPhase::None;
-    std::function<void()> run;
+    CAct act = CAct::None;
+    NoteColor color = NoteColor::Kick;  // Note, Accent, Ghost, Cymbal
+    bool flag = false;                  // Disco, Solo: on
+    int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart: tick; SpEnd/FillEnd: start
+    int64_t b = 0;   // SpStart/FillStart: end tick
+    double bpm = 0;  // Tempo
+    int num = 0, den = 0;  // TimeSig
+
+    bool runs() const { return act != CAct::None; }
 };
+
+COp cop(CPhase phase, CAct act) {
+    COp op;
+    op.phase = phase;
+    op.act = act;
+    return op;
+}
+
+COp cop_color(CPhase phase, CAct act, NoteColor color) {
+    COp op = cop(phase, act);
+    op.color = color;
+    return op;
+}
+
+COp cop_flag(CPhase phase, CAct act, bool on) {
+    COp op = cop(phase, act);
+    op.flag = on;
+    return op;
+}
+
+COp cop_span(CPhase phase, CAct act, int64_t a, int64_t b) {
+    COp op = cop(phase, act);
+    op.a = a;
+    op.b = b;
+    return op;
+}
 
 class ChartParser {
 public:
@@ -768,6 +896,7 @@ private:
 
     void load_sections(const std::vector<uint8_t>& data);
     COp optype(const ChartDataEntry& e, int64_t tick);
+    void run(const COp& op);
     void push_timestamp(int64_t tick, const std::vector<ChartDataEntry>& entries);
 
     void op_disco(bool on) { flag_disco_ = on; }
@@ -802,6 +931,7 @@ private:
     std::unordered_map<std::string, ChartSection> sections_;
 
     Chord chord_;
+    std::vector<COp> ops_;  // one tick's handlers, reused tick to tick
     bool flag_solo_ = false;
     bool flag_disco_ = false;
     std::optional<int64_t> sp_start_tick_;
@@ -810,25 +940,41 @@ private:
     std::optional<int64_t> fill_end_tick_;
 };
 
-void ChartParser::load_sections(const std::vector<uint8_t>& data) {
-    // Split into lines on '\n' (a trailing '\r' is removed by trim).
-    std::vector<std::string> lines;
-    std::string cur;
-    for (uint8_t b : data) {
-        if (b == '\n') {
-            lines.push_back(cur);
-            cur.clear();
-        } else {
-            cur.push_back(static_cast<char>(b));
+// The first match of the regex `\[.*\]` searched in `line`, as std::regex finds
+// it: the leftmost '[' that some later ']' closes with only regex_dot bytes
+// between, closed by the last such ']' (`.*` is greedy). Returns false when
+// there is none.
+bool find_section_header(std::string_view line, std::string_view* bracket) {
+    size_t i = line.find('[');
+    while (i != std::string_view::npos) {
+        size_t close = std::string_view::npos;
+        size_t k = i + 1;
+        for (; k < line.size() && regex_dot(line[k]); ++k)
+            if (line[k] == ']') close = k;
+        if (close != std::string_view::npos) {
+            *bracket = line.substr(i, close - i + 1);
+            return true;
         }
+        // Every '[' before k ends its run at k too, with no ']' in it.
+        i = line.find('[', k);
     }
-    if (!cur.empty()) lines.push_back(cur);
+    return false;
+}
 
-    static const std::regex header_re(R"(\[.*\])");
+void ChartParser::load_sections(const std::vector<uint8_t>& data) {
+    // Walk the file in place, one line per '\n' (a trailing '\r' is removed by
+    // the trim). Every line ended by a '\n' counts, empty or not; the last
+    // unterminated piece counts only when it is non-empty.
+    const std::string_view text(reinterpret_cast<const char*>(data.data()), data.size());
 
     std::optional<ChartSection> wip;
-    for (const std::string& raw : lines) {
-        std::string line = trim(raw);
+    size_t pos = 0;
+    while (pos < text.size()) {
+        const size_t nl = text.find('\n', pos);
+        const size_t stop = nl == std::string_view::npos ? text.size() : nl;
+        const std::string_view line = trim_view(text.substr(pos, stop - pos));
+        pos = nl == std::string_view::npos ? text.size() : nl + 1;
+
         if (wip.has_value()) {
             if (line == "{") {
                 // block open
@@ -836,106 +982,126 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data) {
                 sections_[wip->name] = std::move(*wip);
                 wip.reset();
             } else {
-                std::vector<std::string> parts = split_char(line, '=');
-                std::string lhs = trim(parts[0]);
-                std::string rhs = parts.size() > 1 ? trim(parts[1]) : "";
-                wip->add(ChartDataEntry(lhs, rhs));
+                // The key is what precedes the first '='; the value is what
+                // lies between the first '=' and the next one (or line end).
+                const size_t eq = line.find('=');
+                std::string_view lhs = line.substr(0, eq), rhs;
+                if (eq != std::string_view::npos) {
+                    const size_t eq2 = line.find('=', eq + 1);
+                    rhs = line.substr(eq + 1, eq2 == std::string_view::npos
+                                                  ? std::string_view::npos
+                                                  : eq2 - eq - 1);
+                }
+                wip->add(ChartDataEntry(trim_view(lhs), trim_view(rhs)));
             }
         } else {
-            std::smatch m;
-            if (!std::regex_search(line, m, header_re))
+            std::string_view bracket;
+            if (!find_section_header(line, &bracket))
                 throw ChartFileError("expected a [section] header");
-            std::string bracket = m.str(0);
             ChartSection s;
-            s.name = bracket.substr(1, bracket.size() - 2);
+            s.name = std::string(bracket.substr(1, bracket.size() - 2));
             wip = std::move(s);
         }
     }
 }
 
 COp ChartParser::optype(const ChartDataEntry& e, int64_t tick) {
-    if (e.discoflip_enable) return {CPhase::Pre, [this] { op_disco(true); }};
-    if (e.discoflip_disable) return {CPhase::Pre, [this] { op_disco(false); }};
+    if (e.discoflip_enable) return cop_flag(CPhase::Pre, CAct::Disco, true);
+    if (e.discoflip_disable) return cop_flag(CPhase::Pre, CAct::Disco, false);
     if (e.tempo_bpm.has_value()) {
-        double bpm = *e.tempo_bpm;
-        return {CPhase::Time, [this, tick, bpm] { op_tempo(tick, bpm); }};
+        COp op = cop_span(CPhase::Time, CAct::Tempo, tick, 0);
+        op.bpm = *e.tempo_bpm;
+        return op;
     }
     if (e.ts_numerator.has_value() && *e.ts_numerator != 0) {
-        int n = *e.ts_numerator, d = *e.ts_denominator;
-        return {CPhase::Time, [this, tick, n, d] { op_timesig(tick, n, d); }};
+        COp op = cop_span(CPhase::Time, CAct::TimeSig, tick, 0);
+        op.num = *e.ts_numerator;
+        op.den = *e.ts_denominator;
+        return op;
     }
-    if (e.solo_start) return {CPhase::Pre, [this] { op_solo(true); }};
+    if (e.solo_start) return cop_flag(CPhase::Pre, CAct::Solo, true);
     // A .chart `E soloend` sits on the solo's last note: end the solo after
     // this tick's notes. Pinned by ".chart: the note on the solo end tick is
     // in the solo".
-    if (e.solo_end) return {CPhase::Post, [this] { op_solo(false); }};
+    if (e.solo_end) return cop_flag(CPhase::Post, CAct::Solo, false);
 
     if (e.notevalue.has_value()) {
+        constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
         switch (*e.notevalue) {
-            case 0: return {CPhase::Notes, [this] { op_note(NoteColor::Kick); }};
-            case 1: return {CPhase::Notes, [this] { op_note(NoteColor::Red); }};
-            case 2: return {CPhase::Notes, [this] { op_note(NoteColor::Yellow); }};
-            case 3: return {CPhase::Notes, [this] { op_note(NoteColor::Blue); }};
-            case 4: return {CPhase::Notes, [this] { op_note(NoteColor::Green); }};
+            case 0: return cop_color(N, CAct::Note, NoteColor::Kick);
+            case 1: return cop_color(N, CAct::Note, NoteColor::Red);
+            case 2: return cop_color(N, CAct::Note, NoteColor::Yellow);
+            case 3: return cop_color(N, CAct::Note, NoteColor::Blue);
+            case 4: return cop_color(N, CAct::Note, NoteColor::Green);
             case 32:
-                if (mode_bass2x_)
-                    return {CPhase::Notes, [this] { op_2x(); }};
+                if (mode_bass2x_) return cop(N, CAct::TwoX);
                 return {};
-            case 34: return {CPhase::NoteMods, [this] { op_accent(NoteColor::Red); }};
-            case 35: return {CPhase::NoteMods, [this] { op_accent(NoteColor::Yellow); }};
-            case 36: return {CPhase::NoteMods, [this] { op_accent(NoteColor::Blue); }};
-            case 37: return {CPhase::NoteMods, [this] { op_accent(NoteColor::Green); }};
-            case 40: return {CPhase::NoteMods, [this] { op_ghost(NoteColor::Red); }};
-            case 41: return {CPhase::NoteMods, [this] { op_ghost(NoteColor::Yellow); }};
-            case 42: return {CPhase::NoteMods, [this] { op_ghost(NoteColor::Blue); }};
-            case 43: return {CPhase::NoteMods, [this] { op_ghost(NoteColor::Green); }};
+            case 34: return cop_color(M, CAct::Accent, NoteColor::Red);
+            case 35: return cop_color(M, CAct::Accent, NoteColor::Yellow);
+            case 36: return cop_color(M, CAct::Accent, NoteColor::Blue);
+            case 37: return cop_color(M, CAct::Accent, NoteColor::Green);
+            case 40: return cop_color(M, CAct::Ghost, NoteColor::Red);
+            case 41: return cop_color(M, CAct::Ghost, NoteColor::Yellow);
+            case 42: return cop_color(M, CAct::Ghost, NoteColor::Blue);
+            case 43: return cop_color(M, CAct::Ghost, NoteColor::Green);
             case 66:
-                if (mode_pro_)
-                    return {CPhase::NoteMods, [this] { op_cymbal(NoteColor::Yellow); }};
+                if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Yellow);
                 return {};
             case 67:
-                if (mode_pro_)
-                    return {CPhase::NoteMods, [this] { op_cymbal(NoteColor::Blue); }};
+                if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Blue);
                 return {};
             case 68:
-                if (mode_pro_)
-                    return {CPhase::NoteMods, [this] { op_cymbal(NoteColor::Green); }};
+                if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Green);
                 return {};
             default: return {};
         }
     }
 
     if (e.phrasevalue.has_value()) {
-        if (*e.phrasevalue == 2) {
-            int64_t len = *e.phraselength;
-            return {CPhase::Pre,
-                    [this, tick, len] { op_sp_start(tick, tick + len); }};
-        }
-        if (*e.phrasevalue == 64) {
-            int64_t len = *e.phraselength;
-            return {CPhase::PostDelayed,
-                    [this, tick, len] { op_fillstart(tick, tick + len); }};
-        }
+        if (*e.phrasevalue == 2)
+            return cop_span(CPhase::Pre, CAct::SpStart, tick, tick + *e.phraselength);
+        if (*e.phrasevalue == 64)
+            return cop_span(CPhase::PostDelayed, CAct::FillStart, tick,
+                            tick + *e.phraselength);
     }
     return {};
+}
+
+void ChartParser::run(const COp& op) {
+    switch (op.act) {
+        case CAct::None: break;
+        case CAct::Disco: op_disco(op.flag); break;
+        case CAct::Tempo: op_tempo(op.a, op.bpm); break;
+        case CAct::TimeSig: op_timesig(op.a, op.num, op.den); break;
+        case CAct::Solo: op_solo(op.flag); break;
+        case CAct::Note: op_note(op.color); break;
+        case CAct::TwoX: op_2x(); break;
+        case CAct::Accent: op_accent(op.color); break;
+        case CAct::Ghost: op_ghost(op.color); break;
+        case CAct::Cymbal: op_cymbal(op.color); break;
+        case CAct::SpStart: op_sp_start(op.a, op.b); break;
+        case CAct::SpEnd: op_sp_end(op.a); break;
+        case CAct::FillStart: op_fillstart(op.a, op.b); break;
+        case CAct::FillEnd: op_fillend(op.a); break;
+    }
 }
 
 void ChartParser::push_timestamp(int64_t tick,
                                  const std::vector<ChartDataEntry>& entries) {
     chord_ = Chord();
 
-    std::vector<COp> ops;
-    ops.reserve(entries.size());
+    std::vector<COp>& ops = ops_;
+    ops.clear();
     for (const ChartDataEntry& e : entries) {
         COp op = optype(e, tick);
-        if (op.run) ops.push_back(std::move(op));
+        if (op.runs()) ops.push_back(op);
     }
 
-    auto run_phase = [&ops](CPhase phase) {
-        for (COp& op : ops) {
+    auto run_phase = [this, &ops](CPhase phase) {
+        for (const COp& op : ops) {
             if (op.phase != phase) continue;
             try {
-                op.run();
+                run(op);
             } catch (const ChartFileError&) {
             }
         }
@@ -946,9 +1112,8 @@ void ChartParser::push_timestamp(int64_t tick,
 
     // Phrase end: SP.
     if (sp_end_tick_.has_value() && tick >= *sp_end_tick_) {
-        int64_t start = sp_start_tick_.value_or(0);
-        ops.insert(ops.begin(),
-                   COp{CPhase::Pre, [this, start] { op_sp_end(start); }});
+        const int64_t start = sp_start_tick_.value_or(0);
+        ops.insert(ops.begin(), cop_span(CPhase::Pre, CAct::SpEnd, start, 0));
     }
 
     // Phrase end: activation fill.
@@ -957,8 +1122,7 @@ void ChartParser::push_timestamp(int64_t tick,
         CPhase order = fill_lands_on_chord(*song_, *fill_end_tick_, tick, rules_.fill_land_slop_beats)
                            ? CPhase::Post
                            : CPhase::Pre;
-        int64_t start = *fill_start_tick_;
-        ops.push_back(COp{order, [this, start] { op_fillend(start); }});
+        ops.push_back(cop_span(order, CAct::FillEnd, *fill_start_tick_, 0));
         fill_start_tick_.reset();
         fill_end_tick_.reset();
     }
@@ -1013,7 +1177,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         for (int64_t tk : sync.tick_order) {
             for (const ChartDataEntry& e : sync.tick_data.at(tk)) {
                 COp op = optype(e, tk);
-                if (op.phase == CPhase::Time && op.run) op.run();
+                if (op.phase == CPhase::Time && op.runs()) run(op);
             }
         }
     }
