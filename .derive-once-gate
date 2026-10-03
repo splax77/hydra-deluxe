@@ -1,0 +1,2 @@
+This repo is gated: merges and commits on main that touch src/, tests/, tools/
+or CMakeLists.txt need a derive-once review. See docs/agents/derive-once-review.md.
