@@ -51,6 +51,12 @@ std::vector<SngFileEntry> sng_read_file_table(const std::vector<uint8_t>& buf);
 std::optional<std::vector<uint8_t>> sng_decode_file(const std::vector<uint8_t>& buf,
                                                     const SngFileEntry& entry);
 
+// The same, unmasked straight into `out` (resized to the entry's length): one
+// allocation, no extra copy. False, with `out` untouched, when the entry's
+// range is outside the buffer.
+bool sng_decode_file_into(const std::vector<uint8_t>& buf, const SngFileEntry& entry,
+                          std::vector<uint8_t>& out);
+
 }  // namespace hydra
 
 #endif  // HYDRA_PARSE_SNG_H

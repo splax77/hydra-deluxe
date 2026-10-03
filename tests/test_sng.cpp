@@ -150,3 +150,54 @@ TEST_CASE("sng: the note loader reads the chart through the shared reader") {
     write_fixture(tiny, {1, 2, 3});
     CHECK_THROWS_AS(load_songpath_sng(tiny, true, true), std::runtime_error);
 }
+
+TEST_CASE("sng: unmasking into the caller's buffer matches the byte formula") {
+    // 1,000 bytes cross the 256-byte key period several times and end mid-block.
+    std::vector<uint8_t> payload(1000);
+    for (size_t i = 0; i < payload.size(); ++i)
+        payload[i] = static_cast<uint8_t>((i * 37 + 11) ^ (i >> 3));
+    const std::vector<uint8_t> buf =
+        make_sng({}, {{"a.bin", {9, 8, 7}}, {"song.ogg", payload}, {"empty.bin", {}}});
+    const auto table = sng_read_file_table(buf);
+    REQUIRE(table.size() == 3);
+
+    // The formula itself, written out per byte, on the stored bytes.
+    const uint8_t* mask = buf.data() + kSngXorMaskOffset;
+    std::vector<uint8_t> by_formula(payload.size());
+    for (size_t i = 0; i < by_formula.size(); ++i)
+        by_formula[i] = static_cast<uint8_t>(buf[static_cast<size_t>(table[1].offset) + i] ^
+                                             mask[i % 16] ^ (i & 0xff));
+    CHECK(by_formula == payload);
+
+    std::vector<uint8_t> out = {1, 2, 3, 4, 5};  // stale contents get replaced
+    REQUIRE(sng_decode_file_into(buf, table[1], out));
+    CHECK(out == payload);
+    REQUIRE(sng_decode_file_into(buf, table[0], out));
+    CHECK(out == std::vector<uint8_t>{9, 8, 7});
+    REQUIRE(sng_decode_file_into(buf, table[2], out));
+    CHECK(out.empty());
+
+    // Out of range: false, and the buffer is left as it was.
+    SngFileEntry bad = table[1];
+    bad.length += 1;
+    std::vector<uint8_t> keep = {42};
+    CHECK_FALSE(sng_decode_file_into(buf, bad, keep));
+    CHECK(keep == std::vector<uint8_t>{42});
+    CHECK_FALSE(sng_decode_file(buf, bad).has_value());
+}
+
+TEST_CASE("sng: a container parses the same from bytes as from its path") {
+    const std::vector<uint8_t> buf =
+        make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"notes.mid", tiny_mid()}});
+    const std::string path = sng_fixture_path("from_bytes.sng");
+    write_fixture(path, buf);
+    const Song via_path = load_songpath(path, true, true);
+    const Song via_bytes = load_songpath_from_bytes(path, buf, true, true);
+    REQUIRE(via_bytes.sequence.size() == via_path.sequence.size());
+    for (size_t i = 0; i < via_path.sequence.size(); ++i) {
+        CHECK(via_bytes.sequence[i].timecode.ticks() == via_path.sequence[i].timecode.ticks());
+        CHECK(via_bytes.sequence[i].chord == via_path.sequence[i].chord);
+    }
+    // The extension still decides the format; an unknown one throws.
+    CHECK_THROWS_AS(load_songpath_from_bytes("x.txt", buf, true, true), std::runtime_error);
+}

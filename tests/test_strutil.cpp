@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 #include <string>
+#include <string_view>
 
 #include "core/strutil.h"
 
@@ -23,6 +24,19 @@ TEST_CASE("strutil: trim strips ASCII whitespace from both ends only") {
     CHECK(trim(" \t\r\n") == "");
     CHECK(trim("") == "");
     CHECK(trim("inner  space") == "inner  space");
+}
+
+TEST_CASE("strutil: trim_view trims like trim and points into the input") {
+    for (const char* s : {"  key = value \r\n", "\t\v\fx y\f\v\t", " \t\r\n", "",
+                          "inner  space", "x", " x "}) {
+        CHECK(std::string(trim_view(s)) == trim(s));
+    }
+    // A view, not a copy: it lies inside the original text.
+    const std::string text = "  [Song]\r\n";
+    const std::string_view v = trim_view(text);
+    CHECK(std::string(v) == "[Song]");
+    CHECK(static_cast<const void*>(v.data()) == static_cast<const void*>(text.data() + 2));
+    CHECK(trim_view("   ").empty());
 }
 
 TEST_CASE("strutil: ends_with is exact and ends_with_ci ignores ASCII case") {

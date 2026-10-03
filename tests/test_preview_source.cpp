@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <optional>
 #include <string>
 #include <utility>
@@ -423,4 +424,135 @@ TEST_CASE("resolve_preview_source: a .srb uses its chart's Offset") {
     write_bytes(path, make_srb(chart_with_offset("0.25"), {}, "notes.chart"));
     CHECK(resolve_preview_source(path, true, true).audio_offset_ms ==
           doctest::Approx(250.0));
+}
+
+namespace {
+
+// Every Song field written out as text, so two parses compare in one check
+// and a difference names the field.
+std::string song_text(const Song& s) {
+    std::string out;
+    char num[64];
+    auto add = [&](const char* fmt, auto... v) {
+        std::snprintf(num, sizeof num, fmt, v...);
+        out += num;
+    };
+    add("res %lld dyn %d\n", static_cast<long long>(s.tick_resolution()),
+        s.dynamics_enabled ? 1 : 0);
+    if (s.chart_offset_s) add("offset %.17g\n", *s.chart_offset_s);
+    for (const auto& [t, v] : s.tpm_changes) add("tpm %lld %lld\n", static_cast<long long>(t), static_cast<long long>(v));
+    for (const auto& [t, v] : s.bpm_changes) add("bpm %lld %.17g\n", static_cast<long long>(t), v);
+    for (const auto& [t, v] : s.timesig_changes)
+        add("ts %lld %d/%d\n", static_cast<long long>(t), v.first, v.second);
+    for (const std::string& f : s.features) out += "feature " + f + "\n";
+    for (const SongSection& sec : s.practice_sections) {
+        add("section %lld ", static_cast<long long>(sec.tick));
+        out += sec.name + "\n";
+    }
+    for (const SongTimestamp& ts : s.sequence) {
+        add("%lld %.17g ", static_cast<long long>(ts.timecode.ticks()), ts.timecode.ms());
+        out += ts.chord.code();
+        add(" solo %d sp %d act %lld spstart %lld\n", ts.flag_solo ? 1 : 0, ts.flag_sp ? 1 : 0,
+            static_cast<long long>(ts.activation_length.value_or(-1)),
+            static_cast<long long>(ts.sp_phrase_start.value_or(-1)));
+    }
+    return out;
+}
+
+// read_file_bytes, counting how many times each path was read.
+struct CountingReader {
+    std::map<std::string, int> reads;
+    FileBytesReader reader() {
+        return [this](const std::string& path) {
+            ++reads[path];
+            return hydra::read_file_bytes(path);
+        };
+    }
+};
+
+}  // namespace
+
+TEST_CASE("resolve_preview_source reads a .sng or .srb from disk once") {
+    const std::vector<uint8_t> notes = chart_with_offset("0.25");
+    const std::vector<uint8_t> ogg = bytes_of("OggS the one stem");
+
+    const std::string sng = fixture_dir() + "\\readonce.sng";
+    write_bytes(sng, make_sng({{"notes.chart", notes}, {"song.ogg", ogg}},
+                              {{"delay", "500"}}));
+    const std::string srb = fixture_dir() + "\\readonce.srb";
+    write_bytes(srb, make_srb(notes, {ogg}, "notes.chart"));
+
+    for (const std::string& path : {sng, srb}) {
+        CAPTURE(path);
+        CountingReader count;
+        const PreviewSource src =
+            resolve_preview_source_reading(count.reader(), path, true, true);
+        CHECK(count.reads.size() == 1);
+        CHECK(count.reads[path] == 1);
+        CHECK_FALSE(src.song.is_empty());
+        REQUIRE(src.stems.size() == 1);
+        CHECK(src.stems[0].bytes == ogg);
+    }
+
+    // A loose chart's files are read by the loaders, not through the reader.
+    const std::string dir = make_subdir("readonce_loose");
+    write_bytes(dir + "\\notes.chart", notes);
+    CountingReader loose;
+    CHECK_FALSE(resolve_preview_source_reading(loose.reader(), dir + "\\notes.chart", true, true)
+                    .song.is_empty());
+    CHECK(loose.reads.empty());
+}
+
+TEST_CASE("container charts give the same Song, stems and offset as the chart inside") {
+    // What the loaders did before the read-once change: decode the notes entry
+    // and parse it with the .mid/.chart byte loader. Each container must still
+    // give exactly that Song, the audio bytes it holds, and the same offset.
+    const std::vector<uint8_t> chart = chart_with_offset("0.25");
+    const std::vector<uint8_t> mid =
+        hydra::read_file_bytes(corpus::first_chart_with_suffix(".mid"));
+    const std::vector<uint8_t> song_ogg = bytes_of("OggS song stem");
+    const std::vector<uint8_t> drums_ogg = bytes_of("OggS drums stem, a bit longer");
+
+    struct Case {
+        const char* file;
+        std::vector<uint8_t> container;
+        bool is_mid;
+        std::vector<std::vector<uint8_t>> stems;
+        double offset_ms;
+    };
+    const std::vector<Case> cases = {
+        {"eq_chart.sng",
+         make_sng({{"notes.chart", chart}, {"song.ogg", song_ogg}, {"drums.ogg", drums_ogg}},
+                  {{"delay", "120"}}),
+         false, {song_ogg, drums_ogg}, 120.0},
+        {"eq_chart_nodelay.sng", make_sng({{"notes.chart", chart}, {"song.ogg", song_ogg}}),
+         false, {song_ogg}, 250.0},
+        {"eq_mid.sng", make_sng({{"song.ogg", song_ogg}, {"notes.mid", mid}}), true,
+         {song_ogg}, 0.0},
+        {"eq_chart.srb", make_srb(chart, {song_ogg, drums_ogg}, "notes.chart"), false,
+         {song_ogg, drums_ogg}, 250.0},
+        {"eq_mid.srb", make_srb(mid, {song_ogg}), true, {song_ogg}, 0.0},
+    };
+
+    for (const Case& c : cases) {
+        CAPTURE(c.file);
+        const std::string path = fixture_dir() + "\\" + c.file;
+        write_bytes(path, c.container);
+        for (Difficulty d : {Difficulty::Expert, Difficulty::Hard}) {
+            const Song expected = c.is_mid ? load_songbytes_mid(mid, true, true, d)
+                                           : load_songbytes_chart(chart, true, true, d);
+            const std::string want = song_text(expected);
+            CHECK(song_text(load_songpath(path, true, true, d)) == want);
+            CHECK(song_text(load_songpath_from_bytes(path, c.container, true, true, d)) == want);
+
+            const PreviewSource src = resolve_preview_source(path, true, true, d);
+            CHECK(song_text(src.song) == want);
+            REQUIRE(src.stems.size() == c.stems.size());
+            for (size_t i = 0; i < c.stems.size(); ++i) {
+                CHECK(src.stems[i].bytes == c.stems[i]);
+                CHECK_FALSE(src.stems[i].from_file());
+            }
+            CHECK(src.audio_offset_ms == doctest::Approx(c.offset_ms));
+        }
+    }
 }
