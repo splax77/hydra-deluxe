@@ -22,15 +22,6 @@ namespace hydra {
 
 namespace {
 
-// trim() (core/strutil) without the copy: the same whitespace set, as a view.
-std::string_view trim_view(std::string_view s) {
-    constexpr std::string_view kSpace = " \t\r\n\v\f";
-    const size_t a = s.find_first_not_of(kSpace);
-    if (a == std::string_view::npos) return {};
-    const size_t b = s.find_last_not_of(kSpace);
-    return s.substr(a, b - a + 1);
-}
-
 // The name inside a practice-section marker body, which both formats spell one
 // of two ways: "section Verse 2B" (Clone Hero) or "prc_verse_2b" (Rock Band).
 // Nothing else is a section.
@@ -1252,10 +1243,8 @@ Song load_songpath_chart(const std::string& path, bool pro, bool bass2x,
     return ChartParser(rules).parse(data, pro, bass2x, difficulty);
 }
 
-Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,
-                       Difficulty difficulty, const core::Rules& rules) {
-    std::vector<uint8_t> buf = read_file_bytes(path);
-
+Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+                        Difficulty difficulty, const core::Rules& rules) {
     // A notes.mid wins over a notes.chart; among .chart entries the last one
     // listed wins (the order this loader has always used).
     const std::vector<SngFileEntry> entries = sng_read_file_table(buf);
@@ -1282,9 +1271,8 @@ Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,
     return load_songbytes_chart(*notebytes, pro, bass2x, difficulty, rules);
 }
 
-Song load_songpath_srb(const std::string& path, bool pro, bool bass2x,
-                       Difficulty difficulty, const core::Rules& rules) {
-    std::vector<uint8_t> buf = read_file_bytes(path);
+Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+                        Difficulty difficulty, const core::Rules& rules) {
     if (buf.size() <= kSrbHeaderSize)
         throw std::runtime_error("Truncated SRB file.");
 
@@ -1311,13 +1299,41 @@ Song load_songpath_srb(const std::string& path, bool pro, bool bass2x,
     return load_songbytes_chart(notebytes, pro, bass2x, difficulty, rules);
 }
 
+// A container is read from disk once and parsed from those bytes, so the
+// Preview can hand the same buffer to its audio extractor (see
+// load_songpath_from_bytes).
+Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,
+                       Difficulty difficulty, const core::Rules& rules) {
+    return load_songbytes_sng(read_file_bytes(path), pro, bass2x, difficulty, rules);
+}
+
+Song load_songpath_srb(const std::string& path, bool pro, bool bass2x,
+                       Difficulty difficulty, const core::Rules& rules) {
+    return load_songbytes_srb(read_file_bytes(path), pro, bass2x, difficulty, rules);
+}
+
+Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
+                              bool pro, bool bass2x, Difficulty difficulty,
+                              const core::Rules& rules) {
+    switch (chart_format_of(path)) {
+        case ChartFormat::Mid: return load_songbytes_mid(bytes, pro, bass2x, difficulty, rules);
+        case ChartFormat::Chart: return load_songbytes_chart(bytes, pro, bass2x, difficulty, rules);
+        case ChartFormat::Sng: return load_songbytes_sng(bytes, pro, bass2x, difficulty, rules);
+        case ChartFormat::Srb: return load_songbytes_srb(bytes, pro, bass2x, difficulty, rules);
+        case ChartFormat::None: break;
+    }
+    throw std::runtime_error("unexpected chart type: " + path);
+}
+
 Song load_songpath(const std::string& path, bool pro, bool bass2x,
                    Difficulty difficulty, const core::Rules& rules) {
     switch (chart_format_of(path)) {
         case ChartFormat::Mid: return load_songpath_mid(path, pro, bass2x, difficulty, rules);
         case ChartFormat::Chart: return load_songpath_chart(path, pro, bass2x, difficulty, rules);
-        case ChartFormat::Sng: return load_songpath_sng(path, pro, bass2x, difficulty, rules);
-        case ChartFormat::Srb: return load_songpath_srb(path, pro, bass2x, difficulty, rules);
+        case ChartFormat::Sng:
+        case ChartFormat::Srb:
+            return load_songpath_from_bytes(path, read_file_bytes(path), pro, bass2x,
+                                            difficulty, rules);
         case ChartFormat::None: break;
     }
     throw std::runtime_error("unexpected chart type: " + path);

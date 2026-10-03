@@ -159,6 +159,22 @@ Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro, bool bass2x,
 Song load_songbytes_chart(const std::vector<uint8_t>& data, bool pro, bool bass2x,
                           Difficulty difficulty = Difficulty::Expert,
                           const core::Rules& rules = core::default_rules());
+// A whole .sng / .srb container's bytes, as read from disk.
+Song load_songbytes_sng(const std::vector<uint8_t>& container, bool pro, bool bass2x,
+                        Difficulty difficulty = Difficulty::Expert,
+                        const core::Rules& rules = core::default_rules());
+Song load_songbytes_srb(const std::vector<uint8_t>& container, bool pro, bool bass2x,
+                        Difficulty difficulty = Difficulty::Expert,
+                        const core::Rules& rules = core::default_rules());
+
+// The file at `path` parsed from `bytes`, its contents already read by the
+// caller: dispatch on path's extension like load_songpath, without touching
+// the disk. The Preview uses it to read a .sng/.srb once and share the bytes
+// between the notes and the audio. load_songpath calls it for containers.
+Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
+                              bool pro, bool bass2x,
+                              Difficulty difficulty = Difficulty::Expert,
+                              const core::Rules& rules = core::default_rules());
 
 // Dispatch on the file extension (.mid/.chart/.sng/.srb, case-insensitive).
 Song load_songpath(const std::string& path, bool pro, bool bass2x,

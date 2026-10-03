@@ -18,6 +18,10 @@ std::string to_lower_ascii(std::string_view s);
 // both ends. Inner whitespace is kept.
 std::string trim(std::string_view s);
 
+// trim() without the copy: the same whitespace set, returned as a view into s
+// (empty when s is all whitespace). Valid only while s's storage lives.
+std::string_view trim_view(std::string_view s);
+
 // Whether s ends with suffix, byte for byte.
 bool ends_with(std::string_view s, std::string_view suffix);
 

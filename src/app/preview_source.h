@@ -21,6 +21,7 @@
 #define HYDRA_APP_PREVIEW_SOURCE_H
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -58,10 +59,24 @@ struct PreviewSource {
 // Parse `notespath` (any supported chart kind) and gather its audio.
 // pro/bass2x/difficulty mirror the analysis toggles so the previewed notes
 // match the analyzed ones. rules places the fills the same way analysis does.
+// A .sng or .srb is read from disk once and the same bytes feed the notes and
+// the audio.
 PreviewSource resolve_preview_source(const std::string& notespath, bool pro,
                                      bool bass2x,
                                      Difficulty difficulty = Difficulty::Expert,
                                      const core::Rules& rules = core::default_rules());
+
+// Reads a whole file's bytes, like read_file_bytes.
+using FileBytesReader = std::function<std::vector<uint8_t>(const std::string&)>;
+
+// resolve_preview_source with the container read going through `read_bytes`
+// (resolve_preview_source passes read_file_bytes). Tests pass a counting
+// wrapper to prove a .sng/.srb is read once. Loose charts don't use it.
+PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
+                                             const std::string& notespath, bool pro,
+                                             bool bass2x,
+                                             Difficulty difficulty = Difficulty::Expert,
+                                             const core::Rules& rules = core::default_rules());
 
 // ---- pieces, exposed for testing and reuse -------------------------------
 

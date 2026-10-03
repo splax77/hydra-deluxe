@@ -18,11 +18,15 @@ std::string to_lower_ascii(std::string_view s) {
     return out;
 }
 
-std::string trim(std::string_view s) {
+std::string_view trim_view(std::string_view s) {
     const size_t a = s.find_first_not_of(kSpace);
-    if (a == std::string_view::npos) return std::string();
+    if (a == std::string_view::npos) return {};
     const size_t b = s.find_last_not_of(kSpace);
-    return std::string(s.substr(a, b - a + 1));
+    return s.substr(a, b - a + 1);
+}
+
+std::string trim(std::string_view s) {
+    return std::string(trim_view(s));
 }
 
 bool ends_with(std::string_view s, std::string_view suffix) {
