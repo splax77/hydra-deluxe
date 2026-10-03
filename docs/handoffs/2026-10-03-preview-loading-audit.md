@@ -298,12 +298,12 @@ activation windows (Task 9, 8bc214f). Preview boxes are cached per scene
 (Task 10, 42f37e0). MIDI and .chart parsing are leaner (Task 11, 55049e7). A
 GUI test was fixed so batch-pause-stop holds its run open (a33c5d7).
 
-### One behavior change waiting for your decision
+### One behavior change (approved)
 
 A stem with a decode error in the middle now plays up to the damage, then goes
 silent. Before, the full decode threw on that error, and the whole stem was
 dropped. A file that is simply cut short behaves the same as before: it plays
-to where it ends.
+to where it ends. The user approved the new behavior on 2026-10-03.
 
 Is this a real concern? Not in this library today. A scan of every audio file
 under `C:\Clone Hero\songs` found no file that hits this case. It covered
@@ -320,7 +320,9 @@ end through the new reader. Results:
   the old and new code ignore that flag, so they play fine.
 - WAV, FLAC and MP3 files that stop early or report an error: 0.
 - One file (a 335-character path) can't be opened at all. That is the Windows
-  path-length limit, and it failed the same way before.
+  path-length limit, and it failed the same way before. The user asked for
+  long-path support across all of Hydra (2026-10-03), handled as its own
+  change.
 
 The 51,839 Vorbis files weren't scanned, because their error handling didn't
 change: both old and new code play a damaged Vorbis file up to the damage.

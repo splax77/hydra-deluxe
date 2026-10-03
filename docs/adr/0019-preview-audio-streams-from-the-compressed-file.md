@@ -78,13 +78,13 @@ has always played that padding, so playback is unchanged.
 The audio callback never throws, never allocates after its first call, and
 never reads a file directly; it only touches mapped or in-memory bytes.
 
-One open question for the user (not settled): a stem with a decode error in
-the middle now plays up to the damage, then goes silent. The old full decode
-threw on that error, and the mixer dropped the whole stem. A file that is
-simply cut short behaved the same before and after (it plays to where it
-ends). A scan of the whole library on 2026-10-03 found no file that hits this
-case (details in the audit's Status section). Until the user decides, this is
-recorded as a behavior change awaiting a yes, not as the intended design.
+A stem with a decode error in the middle plays up to the damage, then goes
+silent while the other stems carry on. The old full decode threw on that
+error, and the mixer dropped the whole stem. A file that is simply cut short
+behaved the same before and after (it plays to where it ends). The user
+approved this as the intended design on 2026-10-03. A scan of the whole
+library that day found no file that hits this case (details in the audit's
+Status section).
 
 Trade-off: Hydra now owns seeking code that opusfile and miniaudio would
 otherwise hide: the Opus page index, the MP3 seek points, and the converter
