@@ -119,7 +119,11 @@ private:
     std::vector<TrackInstant> instants_;
     std::vector<Interval> overdrive_, solo_, fill_, fill_taken_, sp_active_;
     std::vector<LaneInterval> fill_lane_;
+    std::vector<Interval> fill_lane_ivs_;  // fill_lane_'s spans alone, built once
 
+    // The state of every span at t, by the per-instant reference rule
+    // (toggle_at). window() uses it for the empty-window fallback;
+    // build_track_state gets the same answers from one sweep.
     TrackInstant synthesize(double t) const;
 };
 
@@ -135,7 +139,9 @@ private:
 // activation at the fill's end note.
 TrackState build_track_state(const app::PreviewScene& scene, const TrackStateOptions& opts);
 
-// Onyx's makeToggle: the state of a span at `t` given its intervals.
+// Onyx's makeToggle: the state of a span at `t` given its intervals. The
+// reference rule: build_track_state computes the same answer for every instant
+// in one sweep, and the tests hold it to this function.
 Toggle toggle_at(const std::vector<std::pair<double, double>>& intervals, double t);
 
 }  // namespace hydra::render
