@@ -348,6 +348,78 @@ TEST_CASE(".mid: EVENTS text metas become practice sections") {
     CHECK(song.practice_sections[1].name == "verse_1");
 }
 
+namespace {
+std::vector<uint8_t> chart_with(const std::string& resolution, const std::string& sync) {
+    std::string s = "[Song]\n{\n  Resolution = " + resolution + "\n}\n"
+                    "[SyncTrack]\n{\n" + sync + "}\n"
+                    "[ExpertDrums]\n{\n  0 = N 0 0\n  768 = N 1 0\n}\n";
+    return std::vector<uint8_t>(s.begin(), s.end());
+}
+}  // namespace
+
+// Timing that would make a measure or beat last zero, negative or infinite
+// time is refused at load with a plain error naming the tick (D6). A time
+// signature with a top number of 0 is the one line that is ignored instead.
+TEST_CASE(".chart: a timing line that can't measure time is refused") {
+    const std::string ok = "  0 = TS 4\n  0 = B 120000\n";
+    CHECK_NOTHROW(load_songbytes_chart(chart_with("192", ok), true, true));
+    struct Bad {
+        const char* sync;
+        const char* error;
+    };
+    for (const Bad& bad :
+         {Bad{"  0 = TS 4\n  0 = B 0\n", "the tempo at tick 0 is not above 0 BPM"},
+          Bad{"  0 = TS 4\n  0 = B 120000\n  384 = B -60000\n",
+              "the tempo at tick 384 is not above 0 BPM"},
+          Bad{"  0 = TS -3\n  0 = B 120000\n",
+              "the time signature at tick 0 makes a measure -576 ticks long"},
+          Bad{"  0 = TS 1 12\n  0 = B 120000\n",
+              "the time signature at tick 0 makes a measure 0 ticks long"},
+          Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 40\n",
+              "the time signature at tick 384 has a bottom number that is out of range"},
+          Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 -1\n",
+              "the time signature at tick 384 has a bottom number that is out of range"}}) {
+        CAPTURE(bad.sync);
+        CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with("192", bad.sync), true, true),
+                             bad.error, ChartFileError);
+    }
+    CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with("0", ok), true, true),
+                         "the chart's resolution is 0, and it must be above 0",
+                         ChartFileError);
+}
+
+TEST_CASE(".chart: a TS 0 timing line is still ignored") {
+    Song song = load_songbytes_chart(
+        chart_with("192", "  0 = TS 4\n  0 = B 120000\n  768 = TS 0\n"), true, true);
+    CHECK(song.tpm_changes.size() == 1);
+    CHECK(song.tpm_changes.at(0) == 768);
+    // Ignored whatever its bottom number says.
+    Song odd = load_songbytes_chart(
+        chart_with("192", "  0 = TS 4\n  0 = B 120000\n  768 = TS 0 40\n"), true, true);
+    CHECK(odd.tpm_changes.size() == 1);
+}
+
+TEST_CASE(".mid: a timing line that can't measure time") {
+    auto track = [](std::vector<uint8_t> timing) {
+        return testmidi::smf(testmidi::concat({testmidi::track_name("PART DRUMS"),
+                                               testmidi::set_tempo(), timing,
+                                               testmidi::note_on(96, 100),
+                                               testmidi::end_of_track()}));
+    };
+    // TS 0/4: ignored, the 4/4 default stays (finding 100's crash).
+    Song song = load_songbytes_mid(track({0x00, 0xFF, 0x58, 0x04, 0x00, 0x02, 0x18, 0x08}),
+                                   true, true);
+    CHECK(song.tpm_changes.at(0) == 480 * 4);
+    // A 0 us tempo would be an infinite BPM: refused.
+    CHECK_THROWS_WITH_AS(load_songbytes_mid(track(testmidi::set_tempo(0)), true, true),
+                         "the tempo at tick 0 is not above 0 BPM", ChartFileError);
+    // A denominator exponent of 40: refused, never shifted.
+    CHECK_THROWS_WITH_AS(
+        load_songbytes_mid(track({0x00, 0xFF, 0x58, 0x04, 0x04, 40, 0x18, 0x08}), true, true),
+        "the time signature at tick 0 has a bottom number that is out of range",
+        ChartFileError);
+}
+
 TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
     // Clone Hero prices a velocity-1 kick as a ghost and a velocity-127 kick
     // as an accent, both worth double. Hydra used to hand every kick Normal.

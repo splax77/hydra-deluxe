@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <stdexcept>
@@ -15,8 +16,29 @@
 #include "parse/sng.h"
 #include "parse/chart_files.h"
 #include "parse/srb.h"
+#include "parse/timesig.h"
 
 namespace hydra {
+
+// The timing maps Hydra can measure time with: a positive resolution, every
+// measure at least one tick long, every tempo a positive, finite BPM. Both
+// parsers reach this through Song::build_timing, so no chart with a zero,
+// negative or infinite measure length reaches the engine (D4, R7.6).
+void check_timing_maps(int64_t tick_resolution,
+                       const std::map<int64_t, int64_t>& tpm_changes,
+                       const std::map<int64_t, double>& bpm_changes) {
+    if (tick_resolution <= 0)
+        throw ChartFileError("the chart's resolution is " + std::to_string(tick_resolution) +
+                             ", and it must be above 0");
+    for (const auto& [tick, len] : tpm_changes)
+        if (len <= 0)
+            throw ChartFileError("the time signature at tick " + std::to_string(tick) +
+                                 " makes a measure " + std::to_string(len) + " ticks long");
+    for (const auto& [tick, bpm] : bpm_changes)
+        if (!std::isfinite(bpm) || bpm <= 0.0)
+            throw ChartFileError("the tempo at tick " + std::to_string(tick) +
+                                 " is not above 0 BPM");
+}
 
 // ---- shared helpers -----------------------------------------------------
 
@@ -117,8 +139,17 @@ bool fill_lands_on_chord(const Song& song, int64_t fill_end_tick, int64_t tick,
 // call them (its own event phases); what they do to the Song lives here once.
 
 // A time signature: ticks per measure = resolution * 4 * num / den. The
-// signature itself is kept too, for display.
+// signature itself is kept too, for display. A numerator of 0 names no meter,
+// so the line is ignored and the previous meter stays, in both formats
+// (finding 100). A bottom number the readers couldn't hold (0, from
+// timesig_denominator) refuses the chart here, where the tick is known.
+// Anything else that makes a measure last no time is refused by
+// check_timing_maps.
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
+    if (numerator == 0) return;
+    if (denominator <= 0)
+        throw ChartFileError("the time signature at tick " + std::to_string(tick) +
+                             " has a bottom number that is out of range");
     song.tpm_changes[tick] = song.tick_resolution() * static_cast<int64_t>(numerator) * 4 /
                              static_cast<int64_t>(denominator);
     song.timesig_changes[tick] = {numerator, denominator};
@@ -781,7 +812,7 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
         ts_denominator = 4;
     } else if (t0 == "TS" && t.count == 3) {
         ts_numerator = word_stoi(t.w[1]);
-        ts_denominator = 1 << word_stoi(t.w[2]);
+        ts_denominator = timesig_denominator(word_stoi(t.w[2]));
     } else if (t0 == "B" && t.count == 2) {
         tempo_bpm = static_cast<double>(word_stoll(t.w[1])) / 1000.0;
     } else if (t0 == "E" && t.count == 2 && t.w[1] == "solo") {
@@ -1004,7 +1035,7 @@ COp ChartParser::optype(const ChartDataEntry& e, int64_t tick) {
         op.bpm = *e.tempo_bpm;
         return op;
     }
-    if (e.ts_numerator.has_value() && *e.ts_numerator != 0) {
+    if (e.ts_numerator.has_value()) {
         COp op = cop_span(CPhase::Time, CAct::TimeSig, tick, 0);
         op.num = *e.ts_numerator;
         op.den = *e.ts_denominator;

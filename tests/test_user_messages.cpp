@@ -69,6 +69,21 @@ TEST_CASE("user_messages: a missing or unreadable song file") {
     CHECK(plain_error(hydra::ChartFileError("a brand new parse failure")) == kChartUnreadable);
 }
 
+TEST_CASE("user_messages: refused chart timing names the tick") {
+    CHECK(plain_error(hydra::ChartFileError("the tempo at tick 384 is not above 0 BPM")) ==
+          "Hydra can't analyze this chart because the tempo at tick 384 is not above 0 "
+          "BPM. Fix that line in the chart file or download the song again.");
+    CHECK(plain_error(hydra::ChartFileError(
+              "the time signature at tick 768 makes a measure 0 ticks long")) ==
+          "Hydra can't analyze this chart because the time signature at tick 768 makes a "
+          "measure 0 ticks long. Fix that line in the chart file or download the song "
+          "again.");
+    CHECK(plain_error(hydra::ChartFileError(
+              "the chart's resolution is 0, and it must be above 0")) ==
+          "Hydra can't analyze this chart because the chart's resolution is 0, and it must "
+          "be above 0. Fix that line in the chart file or download the song again.");
+}
+
 TEST_CASE("user_messages: the no-notes message is already plain and passes through") {
     const std::string msg = "No Expert Pro Drums notes in this chart.";
     CHECK(plain_error(hydra::ChartFileError(msg)) == msg);
