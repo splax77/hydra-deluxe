@@ -20,3 +20,14 @@ covered by a real Ogg-Opus fixture in the tests (`testdata/audio/sine220.opus`).
 Only mapping family 0 (mono and stereo) is handled, which covers the Clone Hero
 corpus. Do not add opusfile "to simplify this": it re-introduces the build
 problem the hand demux was written to avoid.
+
+Update (ADR 0019): the decoder now lives in `src/audio/opus_reader.cpp` and
+streams instead of decoding the whole file. Four things were added by hand,
+still without opusfile. A page index: one pass over the Ogg page headers that
+records where each page starts and how many samples come before it. Seeks: a
+binary search of that index, then decoding forward from at least 400 ms before
+the target and throwing the warm-up away. The OpusHead output gain, applied as
+the spec requires (zero in every library file scanned, so nothing changed
+audibly). Chained files: each link plays in turn with its own pre-skip and
+gain. A straight read with no seek is still bit for bit the old output, and the
+pinned fixture test is unchanged.
