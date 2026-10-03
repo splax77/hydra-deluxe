@@ -23,6 +23,7 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "render/track_state.h"
 #include "store/record_store.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/preview_controller.h"
@@ -78,7 +79,103 @@ std::string chart_with_audio() {
     return d + "\\notes.chart";
 }
 
+// Every field of two timelines, instant by instant.
+void check_same_track(const hydra::render::TrackState& got,
+                      const hydra::render::TrackState& want) {
+    const auto& g = got.instants();
+    const auto& w = want.instants();
+    REQUIRE(g.size() == w.size());
+    for (size_t i = 0; i < g.size(); ++i) {
+        CAPTURE(i);
+        CHECK(g[i].t == w[i].t);
+        REQUIRE(g[i].notes.size() == w[i].notes.size());
+        for (size_t n = 0; n < g[i].notes.size(); ++n) {
+            CHECK(g[i].notes[n].kick == w[i].notes[n].kick);
+            CHECK(g[i].notes[n].pad == w[i].notes[n].pad);
+            CHECK(g[i].notes[n].cymbal == w[i].notes[n].cymbal);
+            CHECK(g[i].notes[n].velocity == w[i].notes[n].velocity);
+        }
+        CHECK(g[i].overdrive == w[i].overdrive);
+        CHECK(g[i].solo == w[i].solo);
+        CHECK(g[i].fill == w[i].fill);
+        CHECK(g[i].fill_taken == w[i].fill_taken);
+        CHECK(g[i].sp_active == w[i].sp_active);
+        CHECK(g[i].fill_lane == w[i].fill_lane);
+        CHECK(g[i].fill_lane_pad == w[i].fill_lane_pad);
+        CHECK(g[i].beat == w[i].beat);
+    }
+}
+
+// A corpus chart Hydra finds at least one path on, and its best path.
+struct AnalyzedChart {
+    std::string chart;
+    hydra::Path best;
+};
+AnalyzedChart first_chart_with_a_path() {
+    using namespace hydra;
+    using namespace hydra::app;
+    AnalysisSettings settings;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 2;
+    settings.ms_filter = 10.0;
+    for (const std::string& p : corpus::chart_paths()) {
+        try {
+            AnalysisResult r = analyze_chart_file(p, settings);
+            if (!r.record.paths.empty()) return {p, r.record.best_path()};
+        } catch (const std::exception&) {
+        }
+    }
+    FAIL("no corpus chart has a path");
+    return {};
+}
+
 }  // namespace
+
+// The load job builds the highway timeline on its worker so the UI thread
+// only moves it into the renderer. It must be exactly the timeline the
+// renderer would have built from the job's scene, for the pro-drums setting
+// the job was started with.
+TEST_CASE("the Preview load builds the highway timeline on its worker") {
+    const AnalyzedChart a = first_chart_with_a_path();
+    for (bool pro : {true, false}) {
+        CAPTURE(pro);
+        PreviewLoadJob job(entry_for(a.chart), pro, true, Difficulty::Expert, a.best, 4);
+        job.start();
+        wait_finished(job);
+        REQUIRE(job.ok());
+        PreviewLoadJob::Result r = job.take_result();
+        CHECK(r.track_opts.pro == pro);
+        CHECK_FALSE(r.track_state.instants().empty());
+        hydra::render::TrackStateOptions opts;
+        opts.pro = pro;
+        check_same_track(r.track_state, hydra::render::build_track_state(r.scene, opts));
+    }
+}
+
+// The same for a path change: the overlay job hands back the timeline built
+// from its own scene with the options it was given.
+TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
+    const AnalyzedChart a = first_chart_with_a_path();
+    PreviewLoadJob load(entry_for(a.chart), true, true, Difficulty::Expert, std::nullopt, 4);
+    load.start();
+    wait_finished(load);
+    REQUIRE(load.ok());
+    auto song = std::make_shared<const hydra::Song>(load.take_result().song);
+    for (bool pro : {true, false}) {
+        CAPTURE(pro);
+        hydra::render::TrackStateOptions opts;
+        opts.pro = pro;
+        hydra::ui::PreviewSceneJob job(song, a.best, 4, hydra::core::default_rules(), "key",
+                                       opts);
+        job.start();
+        wait_finished(job);
+        REQUIRE(job.ok());
+        hydra::ui::PreviewSceneJob::Output out = job.take_output();
+        CHECK(out.track_opts.pro == pro);
+        CHECK_FALSE(out.scene.activations.empty());  // the path's overlay is in
+        check_same_track(out.track_state, hydra::render::build_track_state(out.scene, opts));
+    }
+}
 
 // Closing the details window joins the load's thread on the UI thread. A
 // job that ignored its cancel flag ran its whole parse, decode and mix first.

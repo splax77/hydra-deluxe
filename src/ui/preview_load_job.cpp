@@ -7,6 +7,7 @@
 #include "app/preview_view.h"
 #include "audio/mixer.h"
 #include "core/model.h"
+#include "render/track_state.h"
 
 namespace hydra::ui {
 
@@ -59,7 +60,16 @@ void PreviewLoadJob::run() {
         step_.store(Step::Building);
         const Path* path = path_ ? &*path_ : nullptr;
         app::PreviewScene scene = app::build_preview_scene(source.song, path, sp_cap_, rules_);
-        result_ = Result{std::move(scene), std::move(mixed), offset_ms, std::move(source.song)};
+        throw_if_cancelled();
+        // The highway timeline, built here so the UI thread only uploads it.
+        // The pro-drums setting that picked the drum track also picks how the
+        // pads draw (cymbals or all toms), as the controller would.
+        step_.store(Step::Highway);
+        render::TrackStateOptions track_opts;
+        track_opts.pro = pro_;
+        render::TrackState track_state = render::build_track_state(scene, track_opts);
+        result_ = Result{std::move(scene),       std::move(mixed),       offset_ms,
+                         std::move(source.song), std::move(track_state), track_opts};
         return true;
     });
 }
@@ -75,7 +85,8 @@ PreviewLoadJob::Progress PreviewLoadJob::progress() const {
 }
 
 float PreviewLoadJob::Progress::fraction() const {
-    // Reading 0-10%, decoding 10-85%, mixing 85-95%, building 95-100%.
+    // Reading 0-10%, decoding 10-85%, mixing 85-95%, building the scene
+    // 95-98%, building the highway timeline 98-100%.
     switch (step) {
         case Step::Reading: return 0.0f;
         case Step::Decoding: {
@@ -86,6 +97,7 @@ float PreviewLoadJob::Progress::fraction() const {
         }
         case Step::Mixing: return 0.85f;
         case Step::Building: return 0.95f;
+        case Step::Highway: return 0.98f;
     }
     return 0.0f;
 }
@@ -98,28 +110,36 @@ std::string PreviewLoadJob::Progress::label() const {
                    "/" + std::to_string(stems_total);
         case Step::Mixing: return "Mixing audio";
         case Step::Building: return "Building scene";
+        case Step::Highway: return "Building highway";
     }
     return "";
 }
 
 PreviewSceneJob::PreviewSceneJob(std::shared_ptr<const Song> song, std::optional<Path> path,
-                                 int sp_cap, core::Rules rules, std::string key)
+                                 int sp_cap, core::Rules rules, std::string key,
+                                 render::TrackStateOptions track_opts)
     : song_(std::move(song)),
       path_(std::move(path)),
       sp_cap_(sp_cap),
       rules_(std::move(rules)),
-      key_(std::move(key)) {}
+      key_(std::move(key)),
+      track_opts_(track_opts) {}
 
 void PreviewSceneJob::start() { spawn([this] { run(); }); }
 
 void PreviewSceneJob::run() {
     run_guarded([this] {
         throw_if_cancelled();  // a newer selection already replaced this one
-        scene_ = app::build_preview_scene(*song_, path_ ? &*path_ : nullptr, sp_cap_, rules_);
+        app::PreviewScene scene =
+            app::build_preview_scene(*song_, path_ ? &*path_ : nullptr, sp_cap_, rules_);
+        throw_if_cancelled();
+        // The timeline too, so the swap on the UI thread is only a move.
+        render::TrackState track_state = render::build_track_state(scene, track_opts_);
+        output_ = Output{std::move(scene), std::move(track_state), track_opts_};
         return true;
     });
 }
 
-app::PreviewScene PreviewSceneJob::take_scene() { return std::move(*scene_); }
+PreviewSceneJob::Output PreviewSceneJob::take_output() { return std::move(*output_); }
 
 }  // namespace hydra::ui

@@ -168,6 +168,59 @@ TEST_CASE("PreviewRenderer: SP phrase energy gems and active SP floor change pix
     CHECK(floor[1] > floor[0]);
 }
 
+// The Preview builds the timeline on a worker and hands it over ready-made.
+// That overload must draw exactly what the building one draws, pixel for
+// pixel, in both the pro (cymbal) and 4-lane looks.
+TEST_CASE("PreviewRenderer: a prebuilt track state draws the same pixels (WARP)") {
+    ComPtr<ID3D11Device> dev;
+    ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(warp::make_device(dev, ctx));
+
+    const int W = 160, H = 120;
+    PreviewScene scene;
+    scene.has_notes = true;
+    scene.notes.push_back(note_at(1100.0, PreviewLane::Kick));
+    scene.notes.push_back(note_at(1150.0, PreviewLane::Yellow, true));
+    scene.notes.push_back(note_at(1200.0, PreviewLane::Green));
+    scene.timing = hydra::SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
+    scene.tick_resolution = 1000;
+    hydra::app::PreviewSpan phrase;
+    phrase.start_ms = 1100.0;
+    phrase.end_ms = 1200.0;
+    phrase.start_tick = 1100;
+    phrase.end_tick = 1200;
+    scene.sp_phrases.push_back(phrase);
+    hydra::app::PreviewActivation act;
+    act.ms = 900.0;
+    act.has_sp_end = true;
+    act.sp_end_ms = 2500.0;
+    scene.activations.push_back(act);
+    scene.song_length_ms = 2500.0;
+
+    for (bool pro : {true, false}) {
+        CAPTURE(pro);
+        TrackStateOptions opts;
+        opts.pro = pro;
+
+        PreviewRenderer built(dev.Get(), ctx.Get(), kAssets);
+        built.resize(W, H);
+        built.set_scene(scene, opts);
+        built.render(1000.0);
+        std::vector<uint8_t> a =
+            warp::read_pixels(dev.Get(), ctx.Get(), built.texture_srv(), W, H);
+
+        PreviewRenderer prebuilt(dev.Get(), ctx.Get(), kAssets);
+        prebuilt.resize(W, H);
+        prebuilt.set_scene(scene, build_track_state(scene, opts));
+        prebuilt.render(1000.0);
+        std::vector<uint8_t> b =
+            warp::read_pixels(dev.Get(), ctx.Get(), prebuilt.texture_srv(), W, H);
+
+        REQUIRE(a.size() == b.size());
+        CHECK(a == b);
+    }
+}
+
 TEST_CASE("PreviewRenderer: resize and a tall target keep the track at the bottom (WARP)") {
     ComPtr<ID3D11Device> dev;
     ComPtr<ID3D11DeviceContext> ctx;

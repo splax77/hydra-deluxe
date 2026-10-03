@@ -39,9 +39,15 @@ public:
     // (Re)create the size-dependent targets.
     void resize(int width, int height);
 
-    // Replace the chart being drawn (builds the track state once).
+    // Replace the chart being drawn (builds the track state once, here, on
+    // the calling thread).
     void set_scene(const hydra::app::PreviewScene& scene,
                    const TrackStateOptions& opts = TrackStateOptions{});
+    // Replace the chart being drawn with a timeline already built from
+    // `scene` (build_track_state on a worker thread), so this call only moves
+    // it in. The caller guarantees `state` was built from `scene`; the scene
+    // itself is not read again.
+    void set_scene(const hydra::app::PreviewScene& scene, TrackState state);
 
     // Draw the frame at `now_ms` into the offscreen target.
     void render(double now_ms);

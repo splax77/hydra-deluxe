@@ -15,6 +15,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/winstr.h"
@@ -390,6 +391,10 @@ void PreviewRenderer::resize(int width, int height) {
 
 void PreviewRenderer::set_scene(const PreviewScene& scene, const TrackStateOptions& opts) {
     impl_->state = build_track_state(scene, opts);
+}
+
+void PreviewRenderer::set_scene(const PreviewScene& /*scene*/, TrackState state) {
+    impl_->state = std::move(state);
 }
 
 void PreviewRenderer::render(double now_ms) {

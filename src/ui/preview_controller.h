@@ -203,6 +203,13 @@ private:
     hydra::app::PreviewScene scene_;
     bool scene_dirty_ = true;  // scene_ changed since the renderer last saw it
     bool pro_ = true;          // the pro-drums view setting the chart was opened with
+    // The highway timeline a job built from scene_ on its worker, waiting for
+    // render() to move it into the renderer, plus the options it was built
+    // with. Set together with scene_ whenever a job's scene lands; empty
+    // otherwise (then render() builds the timeline itself, as for the empty
+    // scene after close()). Dropped after the upload.
+    std::optional<render::TrackState> pending_track_;
+    render::TrackStateOptions pending_track_opts_;
     int sp_cap_ = kCloneHeroSpCap;  // the SP meter's ceiling the scene was built with
     // The rules the running score is priced under: the user's
     // hydra_rules.ini, as the panel passes it to every open().
