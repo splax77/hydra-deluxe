@@ -3,14 +3,18 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <utility>
 
 namespace hydra::audio {
 
 Playhead::Playhead(DecodedAudio mixed)
-    : audio_(std::move(mixed)),
-      channels_(audio_.channels),
-      sample_rate_(audio_.sample_rate),
-      length_(audio_.frames()) {}
+    : Playhead(std::make_unique<BufferSource>(std::move(mixed))) {}
+
+Playhead::Playhead(std::unique_ptr<MixSource> source)
+    : source_(std::move(source)),
+      channels_(source_ ? source_->channels() : 0),
+      sample_rate_(source_ ? source_->sample_rate() : 0),
+      length_(source_ && channels_ > 0 ? std::max<int64_t>(source_->length_frames(), 0) : 0) {}
 
 void Playhead::play() { playing_ = true; }
 void Playhead::pause() { playing_ = false; }
@@ -45,18 +49,23 @@ int64_t Playhead::read_frames(float* out, int64_t frame_count) {
     int64_t avail = length_ - position_;
     int64_t n = std::min<int64_t>(frame_count, std::max<int64_t>(avail, 0));
 
+    std::size_t written = 0;
     if (n > 0) {
-        const float* src =
-            audio_.samples.data() + static_cast<std::size_t>(position_) * channels_;
-        const std::size_t count = static_cast<std::size_t>(n) * channels_;
-        if (gain_ == 1.0f) {
-            std::memcpy(out, src, count * sizeof(float));
-        } else {
-            for (std::size_t i = 0; i < count; ++i) out[i] = src[i] * gain_;
+        // A seek (or resume after one) moved the playhead: move the source
+        // once, here on the device thread. A resume from where the source
+        // already is needs no seek, so pause/play doesn't restart decoders.
+        if (source_position_ != position_) {
+            source_->seek(position_);
+            source_position_ = position_;
         }
+        const int64_t got = std::clamp<int64_t>(source_->read(out, n), 0, n);
+        source_position_ += got;
+        written = static_cast<std::size_t>(got) * channels_;
+        if (gain_ != 1.0f)
+            for (std::size_t i = 0; i < written; ++i) out[i] *= gain_;
     }
-    // Silence any frames past the end of the mix.
-    std::size_t written = static_cast<std::size_t>(n) * channels_;
+    // Silence any frames past the end of the mix (or a source that came up
+    // short, which then gets re-seeked on the next read).
     if (written < total)
         std::memset(out + written, 0, (total - written) * sizeof(float));
 
