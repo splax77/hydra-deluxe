@@ -27,31 +27,28 @@ void test_preview(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     open_details(ctx, 0);
     if (ctx->IsError()) return;
-    // The loading bar's numbers: reading sits at 0, decoding spreads stems
-    // over the middle, mixing, the scene and the highway fill the tail. The test charts
-    // load too fast to catch on screen, so pin the math down here.
+    // The loading bar's numbers: reading sits at 0, opening audio fills most
+    // of the bar by bytes, the scene and the highway fill the tail. The test
+    // charts load too fast to catch on screen, so pin the math down here
+    // (tests/test_preview_load_progress.cpp has the rest).
     {
         using P = hydra::ui::PreviewLoadJob::Progress;
         using S = hydra::ui::PreviewLoadJob::Step;
         // Locals, not P{...} inline: the braces' commas split the IM_CHECK
         // macro arguments.
         const P reading{S::Reading, 0, 0};
-        const P decode0{S::Decoding, 0, 4};
-        const P decode2{S::Decoding, 2, 4};
-        const P decode4{S::Decoding, 4, 4};
-        const P mixing{S::Mixing, 4, 4};
-        const P building{S::Building, 4, 4};
-        const P highway{S::Highway, 4, 4};
+        const P open0{S::Opening, 0, 4000000};
+        const P open2{S::Opening, 2000000, 4000000};
+        const P building{S::Building, 4000000, 4000000};
+        const P highway{S::Highway, 4000000, 4000000};
         IM_CHECK_EQ(reading.fraction(), 0.0f);
         IM_CHECK_STR_EQ(reading.label().c_str(), "Reading chart");
-        IM_CHECK_FLOAT_NEAR_EQ(decode0.fraction(), 0.10f, 1e-5f);
-        IM_CHECK_FLOAT_NEAR_EQ(decode2.fraction(), 0.475f, 1e-5f);
-        IM_CHECK_STR_EQ(decode2.label().c_str(), "Decoding audio 3/4");
-        IM_CHECK_STR_EQ(decode4.label().c_str(), "Decoding audio 4/4");
-        IM_CHECK_FLOAT_NEAR_EQ(mixing.fraction(), 0.85f, 1e-5f);
-        IM_CHECK_FLOAT_NEAR_EQ(building.fraction(), 0.95f, 1e-5f);
+        IM_CHECK_FLOAT_NEAR_EQ(open0.fraction(), 0.08f, 1e-5f);
+        IM_CHECK_FLOAT_NEAR_EQ(open2.fraction(), 0.49f, 1e-5f);
+        IM_CHECK_STR_EQ(open2.label().c_str(), "Opening audio: 2 of 4 MB");
+        IM_CHECK_FLOAT_NEAR_EQ(building.fraction(), 0.90f, 1e-5f);
         IM_CHECK_STR_EQ(building.label().c_str(), "Building scene");
-        IM_CHECK_FLOAT_NEAR_EQ(highway.fraction(), 0.98f, 1e-5f);
+        IM_CHECK_FLOAT_NEAR_EQ(highway.fraction(), 0.945f, 1e-5f);
         IM_CHECK_STR_EQ(highway.label().c_str(), "Building highway");
     }
 

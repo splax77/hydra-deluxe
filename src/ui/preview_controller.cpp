@@ -80,7 +80,7 @@ void PreviewController::start_scene_job() {
 PreviewController::LoadProgress PreviewController::load_progress() const {
     if (!job_) return {};
     PreviewLoadJob::Progress p = job_->progress();
-    return {p.fraction(), p.label()};
+    return {p.fraction(), p.label(), p.time_left_text()};
 }
 
 void PreviewController::close() {
@@ -142,7 +142,7 @@ void PreviewController::poll() {
         scene_path_key_ = job_path_key_;
         scene_dirty_ = true;
         transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);
-        transport_.load(std::make_unique<audio::Playhead>(std::move(result.mixed)),
+        transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
                         scene_.song_length_ms, result.audio_offset_ms);
         // Open the output device only when there is audio to play; a chart with
         // no locatable stems previews silently (the highway still draws).

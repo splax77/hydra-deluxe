@@ -503,6 +503,37 @@ TEST_CASE("resolve_preview_source reads a .sng or .srb from disk once") {
     CHECK(loose.reads.empty());
 }
 
+// The Preview load runs the two halves side by side on one container read.
+TEST_CASE("the song and stem halves share one container read and match the whole") {
+    const std::vector<uint8_t> notes = chart_with_offset("0.25");
+    const std::vector<uint8_t> ogg = bytes_of("OggS the one stem");
+    const std::string sng = fixture_dir() + "\\halves.sng";
+    write_bytes(sng, make_sng({{"notes.chart", notes}, {"song.ogg", ogg}}, {{"delay", "500"}}));
+    const std::string srb = fixture_dir() + "\\halves.srb";
+    write_bytes(srb, make_srb(notes, {ogg}, "notes.chart"));
+
+    for (const std::string& path : {sng, srb}) {
+        CAPTURE(path);
+        CountingReader count;
+        const SharedBytes container = read_preview_container(count.reader(), path);
+        REQUIRE(container != nullptr);
+        const PreviewSong ps = resolve_preview_song(path, container, true, true);
+        const std::vector<PreviewAudioStem> stems = resolve_preview_stems(path, container);
+        CHECK(count.reads[path] == 1);
+        const PreviewSource whole = resolve_preview_source(path, true, true);
+        CHECK(ps.song.chart_offset_s == whole.song.chart_offset_s);
+        CHECK(ps.audio_offset_ms == whole.audio_offset_ms);
+        REQUIRE(stems.size() == 1);
+        CHECK(stems[0].bytes == ogg);
+        // A stop request before the first entry gives no stems.
+        if (path == sng) CHECK(resolve_preview_stems(path, container, [] { return false; }).empty());
+    }
+    // A loose chart has no container to read.
+    CountingReader none;
+    CHECK(read_preview_container(none.reader(), "C:\\x\\notes.chart") == nullptr);
+    CHECK(none.reads.empty());
+}
+
 TEST_CASE("container charts give the same Song, stems and offset as the chart inside") {
     // What the loaders did before the read-once change: decode the notes entry
     // and parse it with the .mid/.chart byte loader. Each container must still

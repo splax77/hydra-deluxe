@@ -422,6 +422,7 @@ add_executable(hydra_tests
     tests/test_label_layout.cpp
     tests/test_activation_row_layout.cpp
     tests/test_preview_controller.cpp
+    tests/test_preview_load_progress.cpp
     tests/test_utf8_paths.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.

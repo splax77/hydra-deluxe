@@ -348,6 +348,46 @@ void test_details_close_teardown(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 }
 
+// The Preview's loading bar while a real load runs: every frame's label
+// starts with one of the four step names, and the bar never moves backwards.
+// The test charts load in a few frames, so this sees few polls; the bar's
+// arithmetic itself is pinned in tests/test_preview_load_progress.cpp.
+void test_preview_load_bar(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    open_details(ctx, 0);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/Preview");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+    static const char* const kSteps[] = {"Reading chart", "Opening audio", "Building scene",
+                                         "Building highway"};
+    int polls = 0;
+    int bad_labels = 0;
+    int backwards = 0;
+    float prev = 0.0f;
+    std::string first_bad;
+    IM_CHECK(wait_until(ctx, [&] {
+        if (!h.app->preview->loading()) return true;
+        const hydra::ui::PreviewController::LoadProgress lp = h.app->preview->load_progress();
+        ++polls;
+        bool named = false;
+        for (const char* s : kSteps) named = named || lp.label.rfind(s, 0) == 0;
+        if (!named) {
+            ++bad_labels;
+            if (first_bad.empty()) first_bad = lp.label;
+        }
+        if (lp.fraction < prev) ++backwards;
+        prev = lp.fraction;
+        return false;
+    }, 120));
+    ctx->LogInfo("load bar polled %d times; first bad label '%s'", polls, first_bad.c_str());
+    IM_CHECK_EQ(bad_labels, 0);
+    IM_CHECK_EQ(backwards, 0);
+    IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
+}
+
 // The panel docks beside the library: opening it narrows the library, and
 // the X and Escape both close it and give the library its width back.
 void test_panel_open_close(ImGuiTestContext* ctx) {
@@ -729,6 +769,7 @@ const std::vector<TestEntry>& details_tests() {
         {"dynamics-stored", test_dynamics_stored},
         {"stars", test_stars},
         {"details-close-teardown", test_details_close_teardown},
+        {"preview-load-bar", test_preview_load_bar},
         {"panel-open-close", test_panel_open_close},
         {"panel-split", test_panel_split},
         {"panel-hide-library", test_panel_hide_library},

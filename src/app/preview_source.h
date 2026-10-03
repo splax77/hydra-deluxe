@@ -22,6 +22,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -77,6 +78,39 @@ PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
                                              bool bass2x,
                                              Difficulty difficulty = Difficulty::Expert,
                                              const core::Rules& rules = core::default_rules());
+
+// ---- the two halves, for a load that runs them side by side -------------
+//
+// resolve_preview_source is these three calls in a row. The Preview load job
+// calls them itself so the chart parse and the audio open can run at once:
+// read the container (if any) first, then hand the same bytes to both halves.
+
+// A .sng or .srb chart's whole file, read once through `read_bytes` and shared
+// read-only by both halves. Null for a loose chart (its halves read their own
+// files).
+using SharedBytes = std::shared_ptr<const std::vector<uint8_t>>;
+SharedBytes read_preview_container(const FileBytesReader& read_bytes,
+                                   const std::string& notespath);
+
+// The notes half: the parsed song and where chart time 0 sits in the audio.
+struct PreviewSong {
+    Song song;
+    double audio_offset_ms = 0.0;  // as PreviewSource::audio_offset_ms
+};
+// `container` is read_preview_container's result for the same notespath.
+PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
+                                 bool pro, bool bass2x,
+                                 Difficulty difficulty = Difficulty::Expert,
+                                 const core::Rules& rules = core::default_rules());
+
+// Asked between a container's audio entries; return false to stop early.
+using KeepGoing = std::function<bool()>;
+// The audio half: every stem, located but not decoded. Loose stems carry a
+// path; container stems carry their extracted bytes. If `keep_going` returns
+// false, extraction stops and the stems found so far come back.
+std::vector<PreviewAudioStem> resolve_preview_stems(const std::string& notespath,
+                                                    const SharedBytes& container,
+                                                    const KeepGoing& keep_going = nullptr);
 
 // ---- pieces, exposed for testing and reuse -------------------------------
 
