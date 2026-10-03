@@ -85,6 +85,13 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
 
     // Flat run up to `until_ms`, stepping the bank at every phrase that lands
     // strictly before it.
+    // Tempos and meters are sorted by tick, and the activations come in path
+    // order, which is time order. So one moving index per list finds the
+    // first change past each activation note, instead of rescanning both
+    // lists for every activation.
+    size_t next_tempo = 0;
+    size_t next_meter = 0;
+
     auto run_flat_to = [&](double until_ms) {
         while (next_phrase < phrases.size() && phrases[next_phrase].end_ms < until_ms) {
             push_segment(curve, cursor_ms, phrases[next_phrase].end_ms, bank, bank);
@@ -139,14 +146,20 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
                           act.collected_phrase_ticks.end(),
                           p->end_tick) == act.collected_phrase_ticks.end())
                 ++squeezed_out;
-        for (const PreviewTempo& t : scene.tempos)
-            if (t.tick > act.tick && t.tick < act.sp_end_tick)
-                splits.push_back({t.tick, t.ms, false});
+        // The tempo and meter changes strictly inside the window. Each index
+        // first steps past the changes at or before this activation note; the
+        // window's own changes are read from there without moving it, so a
+        // window running past the next activation still sees them.
+        const std::vector<PreviewTempo>& tempos = scene.tempos;
+        while (next_tempo < tempos.size() && tempos[next_tempo].tick <= act.tick) ++next_tempo;
+        for (size_t i = next_tempo; i < tempos.size() && tempos[i].tick < act.sp_end_tick; ++i)
+            splits.push_back({tempos[i].tick, tempos[i].ms, false});
         // Meters carry only ticks; their ms comes from the same index every
         // other time in the scene does.
-        for (const PreviewMeter& m : scene.meters)
-            if (m.tick > act.tick && m.tick < act.sp_end_tick)
-                splits.push_back({m.tick, timing.ms_index().at(m.tick), false});
+        const std::vector<PreviewMeter>& meters = scene.meters;
+        while (next_meter < meters.size() && meters[next_meter].tick <= act.tick) ++next_meter;
+        for (size_t i = next_meter; i < meters.size() && meters[i].tick < act.sp_end_tick; ++i)
+            splits.push_back({meters[i].tick, timing.ms_index().at(meters[i].tick), false});
         std::stable_sort(splits.begin(), splits.end(),
                          [](const DrainSplit& a, const DrainSplit& b) { return a.tick < b.tick; });
 
@@ -342,17 +355,25 @@ PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
         // offered, its own candidate was taken, and every other candidate was
         // hidden — the game would not have shown it. Candidates after the last
         // activation stay hidden: the engine records nothing about them.
+        //
+        // The fills are in chart order (one per note, by end tick) and so are
+        // the activations, so one index walks the fills alongside them:
+        // `next_fill` is the first fill ending at or after the activation
+        // note. That fill is the taken one when it ends on the note itself,
+        // and the offered ones are the fills just before it, back to the
+        // previous activation.
+        std::vector<PreviewFill>& fills = scene.fills;
         int64_t prev_tick = std::numeric_limits<int64_t>::min();
+        size_t next_fill = 0;
         for (const PreviewActivation& a : scene.activations) {
-            for (PreviewFill& f : scene.fills)
-                if (f.span.end_tick == a.tick) {
-                    f.state = PreviewFillState::Taken;
-                    break;
-                }
+            while (next_fill < fills.size() && fills[next_fill].span.end_tick < a.tick) ++next_fill;
+            if (next_fill < fills.size() && fills[next_fill].span.end_tick == a.tick)
+                fills[next_fill].state = PreviewFillState::Taken;
             int left = a.skips;
-            for (auto it = scene.fills.rbegin(); it != scene.fills.rend() && left > 0; ++it) {
-                if (it->span.end_tick >= a.tick || it->span.end_tick <= prev_tick) continue;
-                it->state = PreviewFillState::Offered;
+            for (size_t i = next_fill; i > 0 && left > 0; --i) {
+                PreviewFill& f = fills[i - 1];
+                if (f.span.end_tick <= prev_tick) break;
+                f.state = PreviewFillState::Offered;
                 --left;
             }
             prev_tick = a.tick;
@@ -465,31 +486,49 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
     box.position = scene.timing ? format_measure(*scene.timing, now_tick) : "m1.1.0";
     box.length = scene.timing ? format_measure(*scene.timing, end_tick) : "m1.1.0";
 
+    // Each lookup below wants the last entry at or before the playhead, which
+    // is the one just before the first entry past it. Tempos and time
+    // signatures come from the song's tick-keyed maps, so they are sorted by
+    // tick (and the tempos by ms too), and a binary search finds that entry.
+
     // The tempo in force: the last change at or before now (the opening tempo
     // before any change).
     double bpm = scene.tempos.empty() ? 0.0 : scene.tempos.front().bpm;
-    for (const PreviewTempo& t : scene.tempos) {
-        if (t.ms > now) break;
-        bpm = t.bpm;
-    }
+    const auto tempo_past = std::upper_bound(
+        scene.tempos.begin(), scene.tempos.end(), now,
+        [](double v, const PreviewTempo& t) { return v < t.ms; });
+    if (tempo_past != scene.tempos.begin()) bpm = (tempo_past - 1)->bpm;
     // The time signature in force at the playhead's tick, as the chart wrote
     // it; 4/4 before any, the chart default.
     int ts_num = 4, ts_den = 4;
-    for (const PreviewTimeSig& t : scene.time_sigs) {
-        if (t.tick > now_tick) break;
-        ts_num = t.numerator;
-        ts_den = t.denominator;
+    const auto sig_past = std::upper_bound(
+        scene.time_sigs.begin(), scene.time_sigs.end(), now_tick,
+        [](int64_t v, const PreviewTimeSig& t) { return v < t.tick; });
+    if (sig_past != scene.time_sigs.begin()) {
+        ts_num = (sig_past - 1)->numerator;
+        ts_den = (sig_past - 1)->denominator;
     }
     char buf[64];
     std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, ts_num, ts_den);
     box.tempo = buf;
 
-    std::string section;
-    for (const PreviewSection& s : scene.sections) {
-        if (s.tick > now_tick) break;
-        section = s.name;
-    }
-    if (!section.empty()) box.section_line = "Section " + section;
+    // Sections are in tick order on every chart but one kind: a MIDI file
+    // with more than one EVENTS track lists each track's sections in turn.
+    // The answer has always been "the section before the first one past the
+    // playhead, front to back", so an out-of-order list keeps that scan and
+    // reads exactly as before; a sorted one gets the binary search.
+    const std::vector<PreviewSection>& sections = scene.sections;
+    const auto by_tick = [](const PreviewSection& a, const PreviewSection& b) {
+        return a.tick < b.tick;
+    };
+    const auto section_past =
+        std::is_sorted(sections.begin(), sections.end(), by_tick)
+            ? std::upper_bound(sections.begin(), sections.end(), now_tick,
+                               [](int64_t v, const PreviewSection& s) { return v < s.tick; })
+            : std::find_if(sections.begin(), sections.end(),
+                           [now_tick](const PreviewSection& s) { return s.tick > now_tick; });
+    if (section_past != sections.begin() && !(section_past - 1)->name.empty())
+        box.section_line = "Section " + (section_past - 1)->name;
     return box;
 }
 
@@ -597,16 +636,18 @@ std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_m
 
 PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms) {
     PreviewNextActBox box;
-    const size_t count = scene.activations.size();
-    for (size_t i = 0; i < count; ++i) {
-        const PreviewActivation& a = scene.activations[i];
-        if (a.ms < now_ms - kOnActivationMs) continue;
-        box.shown = true;
-        box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(count);
-        box.detail = "at " + a.measure;
-        if (!a.chord.empty()) box.detail += " \xC2\xB7 " + a.chord;
-        break;
-    }
+    // The first activation not yet behind the playhead. The activations are
+    // in time order, so a binary search finds it.
+    const std::vector<PreviewActivation>& acts = scene.activations;
+    const auto next = std::lower_bound(
+        acts.begin(), acts.end(), now_ms - kOnActivationMs,
+        [](const PreviewActivation& a, double v) { return a.ms < v; });
+    if (next == acts.end()) return box;
+    const size_t i = static_cast<size_t>(next - acts.begin());
+    box.shown = true;
+    box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(acts.size());
+    box.detail = "at " + next->measure;
+    if (!next->chord.empty()) box.detail += " \xC2\xB7 " + next->chord;
     return box;
 }
 

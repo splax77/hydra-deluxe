@@ -6,8 +6,13 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdio>
+#include <limits>
 #include <map>
 #include <optional>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -1289,6 +1294,403 @@ TEST_CASE("next activation box: the activation at or after the playhead") {
     CHECK(build_next_act_box(t.scene, 2001.0).detail == "at m5.1.0 " + kDot + " [Red]");
     CHECK_FALSE(build_next_act_box(t.scene, 9000.0).shown);
     CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0).shown);
+}
+
+// ---- Old scan versus new search ------------------------------------------
+//
+// The time box, the next-activation box, the fill states and the SP meter
+// used to scan their lists from the front (and the fills and the meter did so
+// once per activation). They now search or walk with a moving index. The old
+// scans are copied here verbatim as the reference, and every result must
+// match them exactly: on every corpus chart with each of its paths, and on a
+// busy synthetic chart with random tempos, meters, sections and activations.
+
+namespace {
+
+namespace old_scan {
+
+constexpr double kOnActivationMs = 0.5;
+
+std::string clock_str(double ms) {
+    double secs = ms / 1000.0;
+    int minutes = static_cast<int>(secs / 60.0);
+    double rem = secs - minutes * 60.0;
+    char buf[48];
+    std::snprintf(buf, sizeof buf, "%d:%06.3f", minutes, rem);
+    return buf;
+}
+
+int64_t tick_at(const SongTiming& timing, double ms) {
+    const int64_t tick = std::llround(timing.ms_index().tick_at_ms(ms));
+    return tick < 0 ? 0 : tick;
+}
+
+double shown_length(double length_ms) { return length_ms < 0.0 ? 0.0 : length_ms; }
+
+double shown_ms(double now_ms, double length_ms) {
+    const double len = shown_length(length_ms);
+    return now_ms < 0.0 ? 0.0 : (now_ms > len ? len : now_ms);
+}
+
+PreviewTimeBox time_box(const PreviewScene& scene, double now_ms, double length_ms) {
+    PreviewTimeBox box;
+    const double len = shown_length(length_ms);
+    const double now = shown_ms(now_ms, length_ms);
+    box.timestamp = clock_str(now) + " / " + clock_str(len);
+    const int64_t now_tick = scene.timing ? tick_at(*scene.timing, now) : 0;
+    const int64_t end_tick = scene.timing ? tick_at(*scene.timing, len) : 0;
+    box.position = scene.timing ? format_measure(*scene.timing, now_tick) : "m1.1.0";
+    box.length = scene.timing ? format_measure(*scene.timing, end_tick) : "m1.1.0";
+    double bpm = scene.tempos.empty() ? 0.0 : scene.tempos.front().bpm;
+    for (const PreviewTempo& t : scene.tempos) {
+        if (t.ms > now) break;
+        bpm = t.bpm;
+    }
+    int ts_num = 4, ts_den = 4;
+    for (const PreviewTimeSig& t : scene.time_sigs) {
+        if (t.tick > now_tick) break;
+        ts_num = t.numerator;
+        ts_den = t.denominator;
+    }
+    char buf[64];
+    std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, ts_num, ts_den);
+    box.tempo = buf;
+    std::string section;
+    for (const PreviewSection& s : scene.sections) {
+        if (s.tick > now_tick) break;
+        section = s.name;
+    }
+    if (!section.empty()) box.section_line = "Section " + section;
+    return box;
+}
+
+PreviewNextActBox next_act_box(const PreviewScene& scene, double now_ms) {
+    PreviewNextActBox box;
+    const size_t count = scene.activations.size();
+    for (size_t i = 0; i < count; ++i) {
+        const PreviewActivation& a = scene.activations[i];
+        if (a.ms < now_ms - kOnActivationMs) continue;
+        box.shown = true;
+        box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(count);
+        box.detail = "at " + a.measure;
+        if (!a.chord.empty()) box.detail += " \xC2\xB7 " + a.chord;
+        break;
+    }
+    return box;
+}
+
+// The fill states as the old nested scans set them, from scratch.
+std::vector<PreviewFillState> fill_states(const PreviewScene& scene, bool has_path) {
+    std::vector<PreviewFill> fills = scene.fills;
+    for (PreviewFill& f : fills) f.state = PreviewFillState::Hidden;
+    if (!has_path) {
+        for (PreviewFill& f : fills) f.state = PreviewFillState::Offered;
+    } else {
+        int64_t prev_tick = std::numeric_limits<int64_t>::min();
+        for (const PreviewActivation& a : scene.activations) {
+            for (PreviewFill& f : fills)
+                if (f.span.end_tick == a.tick) {
+                    f.state = PreviewFillState::Taken;
+                    break;
+                }
+            int left = a.skips;
+            for (auto it = fills.rbegin(); it != fills.rend() && left > 0; ++it) {
+                if (it->span.end_tick >= a.tick || it->span.end_tick <= prev_tick) continue;
+                it->state = PreviewFillState::Offered;
+                --left;
+            }
+            prev_tick = a.tick;
+        }
+    }
+    std::vector<PreviewFillState> out;
+    for (const PreviewFill& f : fills) out.push_back(f.state);
+    return out;
+}
+
+struct DrainSplit {
+    int64_t tick = 0;
+    double ms = 0.0;
+    bool collection = false;
+};
+
+void push_segment(SpMeterCurve& curve, double start_ms, double end_ms, double start_bars,
+                  double end_bars) {
+    if (end_ms <= start_ms) return;
+    curve.segments.push_back({start_ms, end_ms, start_bars, end_bars});
+}
+
+SpMeterCurve sp_meter_curve(const PreviewScene& scene, const SongTiming& timing, int sp_cap) {
+    SpMeterCurve curve;
+    curve.cap = sp_cap < 1 ? 1 : sp_cap;
+    if (scene.sp_phrases.empty() && scene.activations.empty()) return curve;
+    const double cap = static_cast<double>(curve.cap);
+    const std::vector<PreviewSpan>& phrases = scene.sp_phrases;
+    size_t next_phrase = 0;
+    double bank = 0.0;
+    double cursor_ms = 0.0;
+    auto run_flat_to = [&](double until_ms) {
+        while (next_phrase < phrases.size() && phrases[next_phrase].end_ms < until_ms) {
+            push_segment(curve, cursor_ms, phrases[next_phrase].end_ms, bank, bank);
+            cursor_ms = phrases[next_phrase].end_ms;
+            bank = std::min(bank + 1.0, cap);
+            ++next_phrase;
+        }
+        push_segment(curve, cursor_ms, until_ms, bank, bank);
+        if (until_ms > cursor_ms) cursor_ms = until_ms;
+    };
+    for (const PreviewActivation& act : scene.activations) {
+        run_flat_to(act.ms);
+        bank = static_cast<double>(act.sp_meter);
+        if (act.sp_meter <= 0 || !act.has_sp_end) {
+            bank = 0.0;
+            continue;
+        }
+        std::vector<const PreviewSpan*> window;
+        for (size_t i = next_phrase; i < phrases.size(); ++i) {
+            if (phrases[i].end_ms >= act.sp_end_ms) break;
+            if (phrases[i].end_tick > act.tick) window.push_back(&phrases[i]);
+            ++next_phrase;
+        }
+        std::vector<DrainSplit> splits;
+        for (int64_t t : act.collected_phrase_ticks)
+            if (t > act.tick && t < act.sp_end_tick)
+                splits.push_back({t, timing.ms_index().at(t), true});
+        int64_t squeezed_out = 0;
+        for (const PreviewSpan* p : window)
+            if (std::find(act.collected_phrase_ticks.begin(), act.collected_phrase_ticks.end(),
+                          p->end_tick) == act.collected_phrase_ticks.end())
+                ++squeezed_out;
+        for (const PreviewTempo& t : scene.tempos)
+            if (t.tick > act.tick && t.tick < act.sp_end_tick)
+                splits.push_back({t.tick, t.ms, false});
+        for (const PreviewMeter& m : scene.meters)
+            if (m.tick > act.tick && m.tick < act.sp_end_tick)
+                splits.push_back({m.tick, timing.ms_index().at(m.tick), false});
+        std::stable_sort(splits.begin(), splits.end(),
+                         [](const DrainSplit& a, const DrainSplit& b) { return a.tick < b.tick; });
+        double remaining = static_cast<double>(sp_bars_to_measures(act.sp_meter));
+        int64_t prev_tick = act.tick;
+        double prev_ms = act.ms;
+        double prev_measures = timing.measures_at_tick_f(static_cast<double>(prev_tick));
+        for (const DrainSplit& s : splits) {
+            const double measures = timing.measures_at_tick_f(static_cast<double>(s.tick));
+            const double elapsed = measures - prev_measures;
+            const double left = std::max(0.0, remaining - elapsed);
+            push_segment(curve, prev_ms, s.ms, remaining / static_cast<double>(kMeasuresPerSpBar),
+                         left / static_cast<double>(kMeasuresPerSpBar));
+            remaining = left;
+            if (s.collection)
+                remaining = std::min(remaining + static_cast<double>(kMeasuresPerSpBar),
+                                     static_cast<double>(sp_bars_to_measures(curve.cap)));
+            prev_tick = s.tick;
+            prev_ms = s.ms;
+            prev_measures = measures;
+        }
+        push_segment(curve, prev_ms, act.sp_end_ms,
+                     remaining / static_cast<double>(kMeasuresPerSpBar), 0.0);
+        bank = std::min(static_cast<double>(squeezed_out), cap);
+        cursor_ms = std::max(cursor_ms, act.sp_end_ms);
+    }
+    while (next_phrase < phrases.size()) {
+        push_segment(curve, cursor_ms, phrases[next_phrase].end_ms, bank, bank);
+        cursor_ms = std::max(cursor_ms, phrases[next_phrase].end_ms);
+        bank = std::min(bank + 1.0, cap);
+        ++next_phrase;
+    }
+    const double end_ms = std::max(cursor_ms, scene.song_length_ms);
+    curve.segments.push_back({cursor_ms, end_ms, bank, bank});
+    return curve;
+}
+
+}  // namespace old_scan
+
+// Every lookup on `scene` against the old scans: the fill states and the SP
+// meter once, then the time box and next-activation box at random times plus
+// every boundary where a lookup's answer can flip (tempo, signature, section
+// and activation times, and a hair either side).
+void check_lookups_match_old_scans(const PreviewScene& scene, bool has_path, int sp_cap,
+                                   std::mt19937& rng) {
+    const std::vector<PreviewFillState> want_fills = old_scan::fill_states(scene, has_path);
+    REQUIRE(want_fills.size() == scene.fills.size());
+    for (size_t i = 0; i < want_fills.size(); ++i) {
+        CAPTURE(i);
+        CHECK(scene.fills[i].state == want_fills[i]);
+    }
+
+    REQUIRE(scene.timing.has_value());
+    const SpMeterCurve want_curve = old_scan::sp_meter_curve(scene, *scene.timing, sp_cap);
+    CHECK(scene.sp_meter.cap == want_curve.cap);
+    REQUIRE(scene.sp_meter.segments.size() == want_curve.segments.size());
+    for (size_t i = 0; i < want_curve.segments.size(); ++i) {
+        CAPTURE(i);
+        const SpMeterSegment& g = scene.sp_meter.segments[i];
+        const SpMeterSegment& w = want_curve.segments[i];
+        CHECK(g.start_ms == w.start_ms);
+        CHECK(g.end_ms == w.end_ms);
+        CHECK(g.start_bars == w.start_bars);
+        CHECK(g.end_bars == w.end_bars);
+    }
+
+    // At most this many boundaries per list, spread evenly, so a chart with
+    // thousands of tempo changes stays quick.
+    constexpr size_t kPerList = 150;
+    std::vector<double> times;
+    auto around = [&times](double ms) {
+        times.push_back(ms);
+        times.push_back(std::nextafter(ms, -1e300));
+        times.push_back(std::nextafter(ms, 1e300));
+    };
+    auto sample = [&](size_t n, auto&& ms_of) {
+        const size_t step = n > kPerList ? n / kPerList : 1;
+        for (size_t i = 0; i < n; i += step) around(ms_of(i));
+    };
+    const SongTiming& timing = *scene.timing;
+    sample(scene.tempos.size(), [&](size_t i) { return scene.tempos[i].ms; });
+    sample(scene.time_sigs.size(), [&](size_t i) { return timing.ms_index().at(scene.time_sigs[i].tick); });
+    sample(scene.sections.size(), [&](size_t i) { return scene.sections[i].ms; });
+    sample(scene.activations.size(), [&](size_t i) {
+        const double ms = scene.activations[i].ms;
+        around(ms + old_scan::kOnActivationMs);
+        return ms - old_scan::kOnActivationMs;
+    });
+    const double len = scene.song_length_ms;
+    std::uniform_real_distribution<double> any_time(-1000.0, len + 3000.0);
+    for (int i = 0; i < 300; ++i) times.push_back(any_time(rng));
+
+    for (double length_ms : {len, len + 2500.0}) {
+        for (double now : times) {
+            CAPTURE(now);
+            CAPTURE(length_ms);
+            const PreviewTimeBox g = build_time_box(scene, now, length_ms);
+            const PreviewTimeBox w = old_scan::time_box(scene, now, length_ms);
+            CHECK(g.timestamp == w.timestamp);
+            CHECK(g.position == w.position);
+            CHECK(g.length == w.length);
+            CHECK(g.tempo == w.tempo);
+            CHECK(g.section_line == w.section_line);
+        }
+    }
+    for (double now : times) {
+        CAPTURE(now);
+        const PreviewNextActBox g = build_next_act_box(scene, now);
+        const PreviewNextActBox w = old_scan::next_act_box(scene, now);
+        CHECK(g.shown == w.shown);
+        CHECK(g.header == w.header);
+        CHECK(g.detail == w.detail);
+    }
+}
+
+// A busy chart for the comparison: a tempo change every one to six beats, a
+// meter change (with its written signature) every few measures, sections
+// every few measures, an SP phrase every eight notes and a fill on every
+// third note. Then a path of activations on fills, in time order, each with
+// a random bar count, skip count and some phrases collected inside it.
+struct BusyChart {
+    Song song{480};
+    Path path;
+};
+
+BusyChart make_busy_chart(std::mt19937& rng, int64_t measures) {
+    BusyChart c;
+    Song& song = c.song;
+    const int64_t last = measures * 1920;
+    song.bpm_changes[0] = 120.0;
+    std::uniform_int_distribution<int> beats(1, 6);
+    std::uniform_int_distribution<int> bpm(60, 240);
+    for (int64_t t = 480 * 3; t < last; t += 480 * beats(rng)) song.bpm_changes[t] = bpm(rng);
+    std::uniform_int_distribution<int> bars(2, 6);
+    for (int64_t t = 1920 * 4; t < last; t += 1920 * bars(rng)) {
+        const bool three = (t / 1920) % 2 == 0;
+        song.tpm_changes[t] = three ? 1440 : 1920;
+        song.timesig_changes[t] = three ? std::make_pair(3, 4) : std::make_pair(4, 4);
+    }
+    for (int64_t t = 1920 * 2, n = 1; t < last; t += 1920 * bars(rng), ++n)
+        song.practice_sections.push_back({t, "part " + std::to_string(n)});
+    song.build_timing();
+
+    int note = 0;
+    for (int64_t t = 0; t <= last; t += 240, ++note) {
+        SongTimestamp ts;
+        ts.timecode = song.timecode(t);
+        ts.chord.add_note(NoteColor::Red);
+        if (note % 8 == 7) {
+            ts.flag_sp = true;
+            ts.sp_phrase_start = t - 240 * 7;
+        }
+        if (note % 3 == 2) ts.activation_length = 480;
+        song.sequence.push_back(std::move(ts));
+    }
+
+    std::uniform_int_distribution<int> sp(1, 4);
+    std::uniform_int_distribution<int> skips(0, 3);
+    std::uniform_int_distribution<int> gap(0, 12);
+    std::bernoulli_distribution collect(0.5);
+    int64_t after = 0;
+    for (const SongTimestamp& ts : song.sequence) {
+        const int64_t t = ts.timecode.ticks();
+        if (!ts.activation_length || t < after) continue;
+        if (gap(rng) != 0) continue;
+        Activation a = sp_act_at(song, t, sp(rng));
+        a.skips = skips(rng);
+        a.chord.add_note(NoteColor::Red);
+        for (const SongTimestamp& p : song.sequence) {
+            const int64_t pt = p.timecode.ticks();
+            if (p.flag_sp && pt > t && pt < *a.deact_tick && collect(rng))
+                a.collected_phrase_ticks.push_back(pt);
+        }
+        after = *a.deact_tick + 1;
+        c.path.activations.push_back(a);
+    }
+    return c;
+}
+
+}  // namespace
+
+TEST_CASE("preview lookups: searches match the old scans on a busy synthetic chart") {
+    std::mt19937 rng(20261003);
+    for (int round = 0; round < 3; ++round) {
+        CAPTURE(round);
+        const BusyChart c = make_busy_chart(rng, 400);
+        REQUIRE(c.path.activations.size() > 20);
+        for (int cap : {1, 4, 6}) {
+            CAPTURE(cap);
+            check_lookups_match_old_scans(build_preview_scene(c.song, &c.path, cap), true, cap, rng);
+        }
+        check_lookups_match_old_scans(build_preview_scene(c.song, nullptr, 4), false, 4, rng);
+
+        // Sections out of tick order (a MIDI with two EVENTS tracks lists each
+        // track's in turn) keep the old front-to-back answer.
+        PreviewScene shuffled = build_preview_scene(c.song, &c.path, 4);
+        REQUIRE(shuffled.sections.size() > 4);
+        std::rotate(shuffled.sections.begin(),
+                    shuffled.sections.begin() + static_cast<std::ptrdiff_t>(shuffled.sections.size() / 2),
+                    shuffled.sections.end());
+        check_lookups_match_old_scans(shuffled, true, 4, rng);
+    }
+}
+
+TEST_CASE("preview lookups: searches match the old scans on every corpus chart and path") {
+    AnalysisSettings settings;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 3;
+    settings.ms_filter = 10.0;
+    std::mt19937 rng(7);
+    int charts_with_paths = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        std::optional<AnalysisResult> r;
+        try {
+            r.emplace(analyze_chart_file(chart, settings));
+        } catch (const std::exception&) {
+            continue;  // a chart the analysis rejects has no scene to compare
+        }
+        if (r->song.is_empty()) continue;
+        check_lookups_match_old_scans(build_preview_scene(r->song, nullptr, 4), false, 4, rng);
+        if (!r->record.paths.empty()) ++charts_with_paths;
+        for (const Path& p : r->record.paths)
+            check_lookups_match_old_scans(build_preview_scene(r->song, &p, 4), true, 4, rng);
+    }
+    CHECK(charts_with_paths > 10);
 }
 
 TEST_CASE("sp meter readout: bars banked over the cap") {

@@ -205,6 +205,7 @@ ID3D11ShaderResourceView* PreviewController::render(int width, int height) {
                 renderer_->set_scene(scene_, opts);
             pending_track_.reset();
             scene_dirty_ = false;
+            ++scene_generation_;  // the per-scene caches built before this are stale
         }
         renderer_->render(transport_.tick());
         have_frame_ = true;
@@ -285,20 +286,29 @@ hydra::app::PreviewDrainBox PreviewController::drain_box() const {
     return hydra::app::build_drain_box(scene_, transport_.now_ms());
 }
 
-std::vector<double> PreviewController::scrub_marks() const {
-    return hydra::app::build_scrub_marks(scene_, transport_.length_ms());
+const std::vector<double>& PreviewController::scrub_marks() const {
+    const double length = transport_.length_ms();
+    if (!cache_fresh(scrub_marks_cache_) || scrub_marks_cache_.length_ms != length) {
+        scrub_marks_ = hydra::app::build_scrub_marks(scene_, length);
+        stamp(scrub_marks_cache_);
+        scrub_marks_cache_.length_ms = length;
+    }
+    return scrub_marks_;
 }
 
 hydra::app::PreviewNextActBox PreviewController::next_act_box() const {
     return hydra::app::build_next_act_box(scene_, transport_.now_ms());
 }
 
-std::vector<hydra::app::PreviewNextActBox> PreviewController::next_act_boxes() const {
-    std::vector<hydra::app::PreviewNextActBox> boxes;
-    boxes.reserve(scene_.activations.size());
-    for (const hydra::app::PreviewActivation& a : scene_.activations)
-        boxes.push_back(hydra::app::build_next_act_box(scene_, a.ms));
-    return boxes;
+const std::vector<hydra::app::PreviewNextActBox>& PreviewController::next_act_boxes() const {
+    if (!cache_fresh(next_act_boxes_cache_)) {
+        next_act_boxes_.clear();
+        next_act_boxes_.reserve(scene_.activations.size());
+        for (const hydra::app::PreviewActivation& a : scene_.activations)
+            next_act_boxes_.push_back(hydra::app::build_next_act_box(scene_, a.ms));
+        stamp(next_act_boxes_cache_);
+    }
+    return next_act_boxes_;
 }
 
 std::string PreviewController::sp_meter_readout() const {
