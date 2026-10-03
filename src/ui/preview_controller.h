@@ -156,7 +156,9 @@ public:
 
     // The drawn path's activations on the scrubber, as fractions of
     // length_ms() (app::build_scrub_marks). Empty until a path's scene is in.
-    std::vector<double> scrub_marks() const;
+    // Built once per scene and length, then cached (see SceneCache below);
+    // the reference holds until the next call.
+    const std::vector<double>& scrub_marks() const;
 
     // The box at the highway's bottom-left (app::build_next_act_box).
     hydra::app::PreviewNextActBox next_act_box() const;
@@ -164,7 +166,8 @@ public:
     // Every box that one shows over the drawn path, one per activation: what
     // it reads with the playhead on each activation in turn. The panel fits
     // the text scale to all of them at once, so it holds still during play.
-    std::vector<hydra::app::PreviewNextActBox> next_act_boxes() const;
+    // Built once per scene, then cached, like scrub_marks().
+    const std::vector<hydra::app::PreviewNextActBox>& next_act_boxes() const;
 
     // The number under the SP gauge, "2.5/4" (app::sp_meter_readout).
     std::string sp_meter_readout() const;
@@ -190,6 +193,33 @@ public:
     const render::PreviewConfig& preview_config() const;
 
 private:
+    // What the panel reads every frame but only changes with the scene:
+    // the scrub marks (which also move with the song length) and the
+    // next-activation boxes. Every change to scene_ sets scene_dirty_, and
+    // render() is the one place that clears it, counting a new scene
+    // generation as it does. So a cache is good only if it was built while
+    // the flag was clear and in the current generation. One built while the
+    // flag is set is never trusted, which keeps it right even before the
+    // first render() (or in a test that never renders): it is rebuilt on
+    // every call until render() takes the scene in.
+    struct SceneCache {
+        bool trusted = false;
+        uint64_t generation = 0;
+        double length_ms = 0.0;  // scrub marks only
+    };
+    bool cache_fresh(const SceneCache& c) const {
+        return c.trusted && !scene_dirty_ && c.generation == scene_generation_;
+    }
+    void stamp(SceneCache& c) const {
+        c.trusted = !scene_dirty_;
+        c.generation = scene_generation_;
+    }
+    uint64_t scene_generation_ = 0;  // bumped by render() as it takes in a new scene_
+    mutable SceneCache scrub_marks_cache_;
+    mutable std::vector<double> scrub_marks_;
+    mutable SceneCache next_act_boxes_cache_;
+    mutable std::vector<hydra::app::PreviewNextActBox> next_act_boxes_;
+
     float overlay_scale_ = 1.0f;
     ID3D11Device* device_;
     ID3D11DeviceContext* context_;

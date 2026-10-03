@@ -247,7 +247,10 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // The tick buttons and comma/period step this many chart ticks.
     constexpr int kTickStep = 5;
     render_path_picker(app);
-    const bool no_acts = pc->scrub_marks().empty();
+    // Read once per frame (the controller caches it per scene); the
+    // scrubber's gold ticks below draw from the same list.
+    const std::vector<double>& scrub_marks = pc->scrub_marks();
+    const bool no_acts = scrub_marks.empty();
     begin_disabled_button(no_acts);
     if (ImGui::Button("< Act##prevact")) pc->jump_activation(-1);
     ImGui::SameLine();
@@ -303,7 +306,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     pc->set_scrubbing(ImGui::IsItemActive());
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal))
         ImGui::SetTooltip("Gold marks are this path's activations.");
-    draw_scrub_marks(pc->scrub_marks());
+    draw_scrub_marks(scrub_marks);
     ImGui::SameLine();
     ImGui::PushFont(g_mono_font, 0.0f);
     text_in_slot(box.timestamp.c_str(), readout_w);
