@@ -360,7 +360,7 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     act2.backends.clear();
     BackendSqueeze dq;
     dq.timecode = st.timecode(45960);
-    dq.offset_ms = st.timecode(45960).ms() - st.timecode(46080).ms();
+    dq.offset_ms = offset_from_sp_end(st.timecode(45960).ms(), st.timecode(46080).ms());
     act2.backends.push_back(dq);
     auto scales2 = frontend_transfer_scales(act2, st);
     REQUIRE(scales2.has_value());

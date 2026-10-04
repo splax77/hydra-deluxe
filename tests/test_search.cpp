@@ -681,21 +681,7 @@ TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrase
     CHECK(claimed > 0);
 }
 
-namespace {
-
-// The deactivation edge on the SP track whose SP end is `end_tick`.
-const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t end_tick) {
-    const ScoreGraphNode* sp = nullptr;
-    for (const ScoreGraphNode* b = graph.start(); b && !sp;
-         b = b->adv_edge ? b->adv_edge->dest : nullptr)
-        if (b->branch_edge) sp = b->branch_edge->dest;
-    for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr)
-        if (sp->branch_edge && sp->branch_edge->dest->timecode.ticks() == end_tick)
-            return sp->branch_edge;
-    return nullptr;
-}
-
-}  // namespace
+using test::deact_edge_at;
 
 // A squeeze choice's facts, pinned on two hand-built songs at 240 BPM (a
 // measure is 1920 ticks and 1000 ms). Both activate at 5760 with two bars,
@@ -1815,10 +1801,7 @@ TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record 
         HydraRecord rec;
         REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
         int sqouts = 0;
-        std::vector<const Path*> every;
-        for (const Path& root : rec.paths) every.push_back(&root);
-        for (const Path* v : test::all_tied(rec.paths)) every.push_back(v);
-        for (const Path* p : every) {
+        for (const Path* p : rec.all_paths()) {
             CAPTURE(p->pathstring());
             for (const Activation& a : p->walk_activations()) {
                 if (!a.sqout_tick) continue;
@@ -1828,7 +1811,8 @@ TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record 
                 REQUIRE(a.deact_tick().has_value());
                 REQUIRE(a.sqout_row() != nullptr);
                 CHECK(*a.sqout_row()->offset_ms ==
-                      song.timecode(*a.sqout_tick).ms() - song.timecode(*a.deact_tick()).ms());
+                      offset_from_sp_end(song.timecode(*a.sqout_tick).ms(),
+                                         song.timecode(*a.deact_tick()).ms()));
             }
         }
         CHECK(sqouts > 0);
