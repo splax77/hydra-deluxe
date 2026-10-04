@@ -67,6 +67,17 @@ const char* status_label(store::RecordStatus status) {
     return "Not analyzed";
 }
 
+// The inverse of chip_of above: each status chip groups exactly one status.
+std::optional<store::RecordStatus> status_of(StatusChip chip) {
+    switch (chip) {
+        case StatusChip::NotAnalyzed: return store::RecordStatus::NotAnalyzed;
+        case StatusChip::Stale: return store::RecordStatus::Stale;
+        case StatusChip::Analyzed: return store::RecordStatus::Ready;
+        case StatusChip::All: break;
+    }
+    return std::nullopt;
+}
+
 std::string best_path_label(store::RecordStatus status, const std::string& bestpath,
                             const store::PathSummary& summary) {
     // A row with no current result shows its status word.

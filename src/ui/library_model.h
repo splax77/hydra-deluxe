@@ -11,6 +11,7 @@
 #define HYDRA_UI_LIBRARY_MODEL_H
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -38,10 +39,13 @@ struct LibraryRow {
     std::string best_label;               // the Best path cell (best_path_label)
 };
 
-// The word for a record's status: "Analyzed", "Stale" or "Not analyzed", the
-// same words the status chips show. The Best path cell and hydra_uitest's
-// state dump both read it.
+// The word for a record's status: "Analyzed", "Stale" or "Not analyzed". The
+// status chips, the Best path cell and hydra_uitest's state dump all read it.
 const char* status_label(store::RecordStatus status);
+
+// The record status a chip filters to, so the chip can show status_label's
+// word. All filters to no one status, so it has none.
+std::optional<store::RecordStatus> status_of(StatusChip chip);
 
 // The Best path cell: "Not analyzed", "Stale", or "<score>  <path>" such as
 // "378,315  3- 1 2". The score is the stored summary's, never recomputed.

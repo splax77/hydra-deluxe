@@ -21,6 +21,7 @@
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/timing.h"
+#include "core/winstr.h"  // ByteSource
 
 namespace hydra {
 
@@ -270,13 +271,16 @@ Song load_songbytes_srb(const std::vector<uint8_t>& container, bool pro, bool ba
 // The file at `path` parsed from `bytes`, its contents already read by the
 // caller: dispatch on path's extension like load_songpath, without touching
 // the disk. The Preview uses it to read a .sng/.srb once and share the bytes
-// between the notes and the audio. load_songpath calls it for containers.
+// between the notes and the audio. Its notes are picked out exactly as
+// load_songpath picks them from the file.
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
                               bool pro, bool bass2x,
                               Difficulty difficulty = Difficulty::Expert,
                               const core::Rules& rules = core::default_rules());
 
 // Dispatch on the file extension (.mid/.chart/.sng/.srb, case-insensitive).
+// A .sng or .srb is read in pieces: its header, then only the notes, never
+// the audio and art that make up the rest of the file.
 Song load_songpath(const std::string& path, bool pro, bool bass2x,
                    Difficulty difficulty = Difficulty::Expert,
                    const core::Rules& rules = core::default_rules());
@@ -291,6 +295,14 @@ void require_notes(const Song& song, Difficulty difficulty, bool prodrums);
 Song load_songpath_with_notes(const std::string& path, bool pro, bool bass2x,
                               Difficulty difficulty = Difficulty::Expert,
                               const core::Rules& rules = core::default_rules());
+
+// The one dispatch on the extension of `path`, its bytes read from `src`:
+// load_songpath passes the file (file_byte_source), load_songpath_from_bytes
+// the bytes in hand. A .mid or .chart is read whole; a .sng or .srb only in
+// the pieces its notes need. Tests pass a counting source to prove that.
+Song load_songpath_reading(const ByteSource& src, const std::string& path, bool pro,
+                           bool bass2x, Difficulty difficulty = Difficulty::Expert,
+                           const core::Rules& rules = core::default_rules());
 
 }  // namespace hydra
 

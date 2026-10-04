@@ -768,15 +768,8 @@ TEST_CASE("the no-notes error carries no_notes_message's sentence") {
 }
 
 TEST_CASE("load-and-check throws the no-notes error for a missing difficulty") {
-    std::string no_hard, has_hard;
-    for (const std::string& p : corpus::chart_paths()) {
-        const bool empty = corpus::song(p, true, true, Difficulty::Hard).is_empty();
-        if (empty && no_hard.empty()) no_hard = p;
-        if (!empty && has_hard.empty()) has_hard = p;
-        if (!no_hard.empty() && !has_hard.empty()) break;
-    }
-    REQUIRE(!no_hard.empty());
-    REQUIRE(!has_hard.empty());
+    const std::string no_hard = corpus::first_chart_without_notes(Difficulty::Hard);
+    const std::string has_hard = corpus::first_chart_with_notes(Difficulty::Hard);
     CAPTURE(no_hard);
     CAPTURE(has_hard);
 

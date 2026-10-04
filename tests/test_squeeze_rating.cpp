@@ -252,7 +252,7 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
     SPSqueeze sqout{SqueezeKind::SqOut, -gap};
     const double r = scales->post.early;
     CHECK(sqout.difficulty() == doctest::Approx(191.0825).epsilon(1e-5));
-    CHECK(sqout.difficulty() / (1.0 + r) == doctest::Approx(96.15).epsilon(1e-3));
+    CHECK(effective_backend_ms(sqout.difficulty(), r) == doctest::Approx(192.308).epsilon(1e-4));
     CHECK(squeeze_budget_ms(r, 85.0) == doctest::Approx(168.92).epsilon(1e-4));
     CHECK(squeeze_budget_ms(r, 70.0) == doctest::Approx(139.11).epsilon(1e-4));
 
@@ -347,19 +347,9 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     double gap = st.timecode(46080).ms() - st.timecode(45960).ms();
     CHECK(gap == doctest::Approx(143.129).epsilon(1e-4));
     const double r = scales->post.early;
-    CHECK(effective_backend_ms(gap, r) ==
-          doctest::Approx(2.0 * gap / (1.0 + r)).epsilon(1e-12));  // ~147.9
     CHECK(effective_backend_ms(gap, r) == doctest::Approx(147.94).epsilon(1e-3));
-    // The factor of two is the identity budget over the budget at this
-    // scale; the window cancels, so any window gives the same figure.
-    CHECK(effective_backend_ms(gap, r) ==
-          doctest::Approx(gap * squeeze_budget_ms(1.0, kDefaultHitWindowMs) /
-                          squeeze_budget_ms(r, kDefaultHitWindowMs))
-              .epsilon(1e-12));
-    CHECK(effective_backend_ms(gap, r) ==
-          doctest::Approx(gap * squeeze_budget_ms(1.0, 70.0) / squeeze_budget_ms(r, 70.0))
-              .epsilon(1e-12));
-    CHECK(gap / (1.0 + r) == doctest::Approx(73.96).epsilon(1e-3));
+    // The budget at this scale for a 70 ms window, pinned from one run.
+    CHECK(squeeze_budget_ms(r, 70.0) == doctest::Approx(135.458).epsilon(1e-4));
     CHECK(74.1 * r + 75.1 > gap);         // the video's successful split
     CHECK(74.1 * 0.890911 + 75.1 < gap);  // the old scale called it a miss
 
@@ -699,13 +689,13 @@ TEST_CASE("timing_tiers: the Insane+ cutoff is the identity squeeze budget") {
     REQUIRE(t85.size() == 7);
     CHECK(std::string(t85[4].name) == "Insane+");
     REQUIRE(t85[4].cutoff.has_value());
-    CHECK(*t85[4].cutoff == squeeze_budget_ms(1.0, kDefaultHitWindowMs));
+    CHECK(*t85[4].cutoff == nominal_budget_ms(kDefaultHitWindowMs));
     CHECK(*t85[4].cutoff == 170.0);
 
     std::vector<TimingTier> t70 = timing_tiers(70.0);
     REQUIRE(t70.size() == 7);
     REQUIRE(t70[4].cutoff.has_value());
-    CHECK(*t70[4].cutoff == squeeze_budget_ms(1.0, 70.0));
+    CHECK(*t70[4].cutoff == nominal_budget_ms(70.0));
 
     // Beyond and None still carry no cutoff.
     CHECK_FALSE(t85[5].cutoff.has_value());

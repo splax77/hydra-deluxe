@@ -151,11 +151,7 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
 }
 
 TEST_CASE("run_batch files results under the lens it is given") {
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths()) {
-        if (!hydra::load_songpath(p, true, true).is_empty()) { chart = p; break; }
-    }
-    REQUIRE(!chart.empty());
+    const std::string chart = corpus::first_chart_with_notes();
 
     BatchRun run;
     run.chartmode = "lens-test";
@@ -301,11 +297,7 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
 }
 
 TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure") {
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths()) {
-        if (!hydra::load_songpath(p, true, true).is_empty()) { chart = p; break; }
-    }
-    REQUIRE(!chart.empty());
+    const std::string chart = corpus::first_chart_with_notes();
 
     ScanItem item;
     item.md5 = hash_chart_file(chart);
