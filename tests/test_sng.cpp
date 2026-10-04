@@ -15,12 +15,15 @@
 #include <utility>
 #include <vector>
 
+#include "byte_source_util.h"
 #include "core/winstr.h"
 #include "midi_util.h"
 #include "parse/sng.h"
 #include "parse/song.h"
+#include "song_equal.h"
 
 using namespace hydra;
+using testsong::songs_equal;
 
 namespace {
 
@@ -139,11 +142,8 @@ TEST_CASE("sng: truncated input stops early instead of reading past the end") {
 TEST_CASE("sng: the note loader reads the chart through the shared reader") {
     const std::string path = sng_fixture_path("loader.sng");
     write_fixture(path, make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"NOTES.MID", tiny_mid()}}));
-    Song direct = load_songbytes_mid(tiny_mid(), true, true);
-    Song via_sng = load_songpath_sng(path, true, true);
-    REQUIRE(via_sng.sequence.size() == direct.sequence.size());
-    for (size_t i = 0; i < direct.sequence.size(); ++i)
-        CHECK(via_sng.sequence[i].timecode.ticks() == direct.sequence[i].timecode.ticks());
+    CHECK(songs_equal(load_songpath_sng(path, true, true),
+                      load_songbytes_mid(tiny_mid(), true, true)));
 
     // A file too short to hold a table throws a clear error.
     const std::string tiny = sng_fixture_path("tiny.sng");
@@ -186,18 +186,97 @@ TEST_CASE("sng: unmasking into the caller's buffer matches the byte formula") {
     CHECK_FALSE(sng_decode_file(buf, bad).has_value());
 }
 
+namespace {
+
+// load_songpath's own dispatch on the file, counting the bytes it reads.
+Song load_counting(const std::string& path, uint64_t& bytes_read) {
+    bytes_read = 0;
+    return load_songpath_reading(testbytes::counting(file_byte_source(path), bytes_read), path,
+                                 true, true);
+}
+
+}  // namespace
+
+// A real container is mostly audio (the library's Endless Setlist .sng files
+// are about 1 GB each); the notes are a few hundred KB of it.
+TEST_CASE("sng: the note loader reads the header and the notes, not the audio") {
+    std::vector<uint8_t> audio(16 << 20);
+    for (size_t i = 0; i < audio.size(); ++i) audio[i] = static_cast<uint8_t>(i * 131 + 7);
+    const std::vector<uint8_t> buf =
+        make_sng({{"name", "Song"}}, {{"song.ogg", audio}, {"notes.mid", tiny_mid()}});
+    const std::string path = sng_fixture_path("big_audio.sng");
+    write_fixture(path, buf);
+
+    uint64_t bytes_read = 0;
+    const Song via_reads = load_counting(path, bytes_read);
+    CHECK(songs_equal(via_reads, load_songbytes_sng(buf, true, true)));
+    CHECK(bytes_read < (1u << 20));
+    CHECK(bytes_read > 0);
+}
+
+TEST_CASE("sng: a header longer than the first read still loads") {
+    // A 300 KB metadata value pushes the file table past any small first read.
+    const std::string big(300 * 1024, 'x');
+    const std::vector<uint8_t> buf = make_sng(
+        {{"name", "Song"}, {"loading_phrase", big}},
+        {{"song.ogg", {1, 2, 3}}, {"album.png", {4, 5}}, {"notes.mid", tiny_mid()}});
+    const std::string path = sng_fixture_path("big_header.sng");
+    write_fixture(path, buf);
+
+    uint64_t bytes_read = 0;
+    CHECK(songs_equal(load_counting(path, bytes_read), load_songbytes_sng(buf, true, true)));
+}
+
+// A file can shrink after it was opened and sized: the source then claims
+// more bytes than its reads hand back. A short read ends the header read;
+// waiting for the claimed size used to loop forever.
+TEST_CASE("sng: a source shorter than its stated size ends the header read") {
+    const std::vector<uint8_t> whole = make_sng({{"name", "Song"}}, {{"notes.mid", tiny_mid()}});
+    const std::vector<uint8_t> cut(whole.begin(), whole.begin() + 10);
+    ByteSource shrunk = memory_byte_source(cut);
+    shrunk.size = 200000;
+    CHECK(sng_read_head(shrunk) == cut);
+    CHECK_THROWS_WITH(load_songpath_reading(shrunk, "shrunk.sng", true, true),
+                      "No chart files found in SNG file.");
+
+    // A short first read ends the header even when later reads would be whole.
+    CHECK(sng_read_head(testbytes::short_first_read(memory_byte_source(whole), 10)) ==
+          std::vector<uint8_t>(whole.begin(), whole.begin() + 10));
+}
+
+TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does") {
+    const std::vector<uint8_t> whole =
+        make_sng({{"name", "Song"}}, {{"notes.mid", tiny_mid()}});
+
+    // The notes entry runs past the end of the file.
+    std::vector<uint8_t> cut_notes(whole.begin(), whole.end() - 5);
+    const std::string cut_path = sng_fixture_path("cut_notes.sng");
+    write_fixture(cut_path, cut_notes);
+    CHECK_THROWS_WITH(load_songpath(cut_path, true, true), "Truncated SNG file.");
+    CHECK_THROWS_WITH(load_songbytes_sng(cut_notes, true, true), "Truncated SNG file.");
+
+    // The file table is cut: no notes entry is found.
+    std::vector<uint8_t> cut_table(whole.begin(),
+                                   whole.begin() + (whole.size() - tiny_mid().size() - 4));
+    const std::string table_path = sng_fixture_path("cut_table.sng");
+    write_fixture(table_path, cut_table);
+    CHECK_THROWS_WITH(load_songpath(table_path, true, true), "No chart files found in SNG file.");
+
+    // A metadata length far past the end of the file.
+    std::vector<uint8_t> huge_meta = whole;
+    for (int i = 0; i < 8; ++i) huge_meta[kSngMetadataLenOffset + i] = 0x7f;
+    const std::string meta_path = sng_fixture_path("huge_meta.sng");
+    write_fixture(meta_path, huge_meta);
+    CHECK_THROWS_WITH(load_songpath(meta_path, true, true), "No chart files found in SNG file.");
+}
+
 TEST_CASE("sng: a container parses the same from bytes as from its path") {
     const std::vector<uint8_t> buf =
         make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"notes.mid", tiny_mid()}});
     const std::string path = sng_fixture_path("from_bytes.sng");
     write_fixture(path, buf);
-    const Song via_path = load_songpath(path, true, true);
-    const Song via_bytes = load_songpath_from_bytes(path, buf, true, true);
-    REQUIRE(via_bytes.sequence.size() == via_path.sequence.size());
-    for (size_t i = 0; i < via_path.sequence.size(); ++i) {
-        CHECK(via_bytes.sequence[i].timecode.ticks() == via_path.sequence[i].timecode.ticks());
-        CHECK(via_bytes.sequence[i].chord == via_path.sequence[i].chord);
-    }
+    CHECK(songs_equal(load_songpath_from_bytes(path, buf, true, true),
+                      load_songpath(path, true, true)));
     // The extension still decides the format; an unknown one throws.
     CHECK_THROWS_AS(load_songpath_from_bytes("x.txt", buf, true, true), std::runtime_error);
 }
