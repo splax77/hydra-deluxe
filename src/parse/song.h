@@ -77,6 +77,14 @@ std::optional<Difficulty> difficulty_from_name(std::string_view name);
 // lacks the requested difficulty, used by analysis and the Preview loader.
 std::string no_notes_message(Difficulty difficulty, bool prodrums);
 
+// A chart with no notes at the asked difficulty. Its message is
+// no_notes_message's sentence, and it is still a ChartFileError, so anything
+// that catches chart problems catches it.
+class NoNotesError : public ChartFileError {
+public:
+    NoNotesError(Difficulty difficulty, bool prodrums);
+};
+
 // What a song with no usable name is called everywhere it is shown.
 inline constexpr const char* kUnknownTitle = "(unknown)";
 
@@ -264,6 +272,17 @@ Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t
 Song load_songpath(const std::string& path, bool pro, bool bass2x,
                    Difficulty difficulty = Difficulty::Expert,
                    const core::Rules& rules = core::default_rules());
+
+// Throws NoNotesError when `song` has no notes. `difficulty` and `prodrums`
+// are the ones the song was loaded with, so the sentence names them. For a
+// caller that already holds a loaded song, such as the Preview loader.
+void require_notes(const Song& song, Difficulty difficulty, bool prodrums);
+
+// load_songpath, then require_notes: the chart at `path`, or NoNotesError
+// when it has no notes at `difficulty`.
+Song load_songpath_with_notes(const std::string& path, bool pro, bool bass2x,
+                              Difficulty difficulty = Difficulty::Expert,
+                              const core::Rules& rules = core::default_rules());
 
 // The one dispatch on the extension of `path`, its bytes read from `src`:
 // load_songpath passes the file (file_byte_source), load_songpath_from_bytes

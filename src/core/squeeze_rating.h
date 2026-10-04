@@ -72,13 +72,19 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act);
 
 // ---- rating pieces --------------------------------------------------------
 
-// A backend squeeze's raw ms mapped onto the nominal 2*W scale the ratings
-// assume. With frontend timing scaling by r at the SP end, the real combined
-// squeeze budget is squeeze_budget_ms(r, W) = W*(1+r) rather than 2*W, so a
-// raw |offset| counts for |offset| * 2 / (1+r) of the nominal budget (a
-// W-free quantity).
+// The identity transfer scale, x1.00: frontend timing that stretches nothing.
+constexpr double kIdentityScale = 1.0;
+
+// A backend squeeze's raw ms mapped onto the nominal budget the ratings
+// assume (nominal_budget_ms). With frontend timing scaling by r at the SP
+// end, the real combined squeeze budget is squeeze_budget_ms(r, W) instead,
+// so a raw |offset| is rescaled by nominal_budget_ms over squeeze_budget_ms
+// at r. The window W cancels in that ratio.
 double effective_backend_ms(double offset_ms, double transfer_r);
 double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWindowMs);
+// The two-hit budget at the identity scale: squeeze_budget_ms at
+// kIdentityScale. The Insane+ cutoff and the "normal scale" tooltip read it.
+double nominal_budget_ms(double hit_window_ms = kDefaultHitWindowMs);
 
 // A multiplier is x1.00 only when it equals 1 up to the round-off of the
 // measure-length division (two equal measures reached through different
@@ -86,7 +92,7 @@ double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWi
 // 1e-9 (docs/audit/2026-10-03-fix-decisions.md, D14): no test-set multiplier
 // is that close to 1.
 constexpr double kScaleIdentityTolerance = 1e-9;
-inline bool is_scaled(double r) { return std::abs(r - 1.0) > kScaleIdentityTolerance; }
+inline bool is_scaled(double r) { return std::abs(r - kIdentityScale) > kScaleIdentityTolerance; }
 
 // The most decimals the scale line needs so a scaled multiplier never prints
 // as 1: rounding to d decimals moves a value by at most half a unit,
@@ -110,7 +116,7 @@ constexpr int kScaleIdentityDigits = [] {
 // squeeze still to earn), so the squeeze kind never enters.
 struct NoteRating {
     bool early = false;                  // which side of the end's TransferScale governs
-    double scale = 1.0;                  // that side's stored multiplier, full precision
+    double scale = kIdentityScale;       // that side's stored multiplier, full precision
     double budget_ms = 0.0;              // squeeze_budget_ms(scale, W)
     std::optional<double> effective_ms;  // set exactly when is_scaled(scale)
 };
@@ -178,9 +184,9 @@ ActivationRating rate_activation(
 // ---- timing tiers ---------------------------------------------------------
 
 // The report's timing tiers: raw squeeze ms banded against the two-hit
-// budget 2*W, quarters of the budget after the kDifficultMs "Normal" floor
-// (at the historical W = 70 this is the 2/35/70/105/140 ladder). In payload
-// order; `cutoff` is the band's exclusive upper edge, unset for the open
+// budget (nominal_budget_ms), quarters of it after the kDifficultMs
+// "Normal" floor (at the historical W = 70 this is the 2/35/70/105/140
+// ladder). In payload order; `cutoff` is the band's exclusive upper edge, unset for the open
 // "Beyond" band and the "None" (no squeeze) entry.
 struct TimingTier { const char* name; const char* tok; std::optional<double> cutoff; };
 std::vector<TimingTier> timing_tiers(double hit_window_ms = kDefaultHitWindowMs);

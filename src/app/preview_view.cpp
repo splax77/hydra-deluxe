@@ -596,12 +596,20 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
     return scene.timing->ms_index().at(target);
 }
 
+bool has_song_length(double length_ms) { return length_ms > 0.0; }
+
+std::optional<double> song_fraction(double ms, double length_ms) {
+    if (!has_song_length(length_ms)) return std::nullopt;
+    return std::clamp(ms / length_ms, 0.0, 1.0);
+}
+
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms) {
+    // song_fraction alone decides whether the length is usable; with no
+    // usable length it gives nothing, so there are no marks.
     std::vector<double> marks;
-    if (length_ms <= 0.0) return marks;
     marks.reserve(scene.activations.size());
     for (const PreviewActivation& a : scene.activations)
-        marks.push_back(std::clamp(a.ms / length_ms, 0.0, 1.0));
+        if (const std::optional<double> at = song_fraction(a.ms, length_ms)) marks.push_back(*at);
     return marks;
 }
 
@@ -657,10 +665,7 @@ std::string preview_path_label(const PathButtonView& button) {
 
 std::string path_overlay_key(const Path* path) {
     if (path == nullptr) return {};
-    // The key only has to tell paths of one chart apart (the controller
-    // compares it after matching the chart), and a chart's multiplier
-    // squeezes are the same for every path, so they are left out.
-    return path->pathstring_verbose({}) + "|" + std::to_string(path->totalscore());
+    return path_identity(*path);
 }
 
 }  // namespace hydra::app

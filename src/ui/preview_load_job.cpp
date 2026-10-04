@@ -171,7 +171,7 @@ void PreviewLoadJob::run() {
         // empty scene and the tab would show a blank highway with no reason
         // given. Throwing here surfaces it as "Preview failed: ...", the same
         // wording analysis uses.
-        if (ps.song.is_empty()) throw ChartFileError(no_notes_message(difficulty_, pro_));
+        require_notes(ps.song, difficulty_, pro_);
         reading_done_.store(true);
         throw_if_cancelled();
         const Path* path = path_ ? &*path_ : nullptr;

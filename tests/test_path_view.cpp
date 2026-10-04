@@ -13,6 +13,7 @@
 #include "app/analysis.h"
 #include "app/display_format.h"
 #include "app/path_view.h"
+#include "app/preview_view.h"  // path_overlay_key
 #include "corpus_util.h"
 #include "record_fixtures.h"
 
@@ -221,7 +222,7 @@ TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
     CHECK(list.groups.front().score_label ==
           group_thousands(flat.front()->totalscore()));
 
-    // An all-0 path that duplicates a listed path (same score AND notation)
+    // An all-0 path that duplicates a listed path (the same path_identity)
     // stays hidden.
     HydraRecord dup = rec;
     dup.allzero_paths.clear();
@@ -236,6 +237,56 @@ TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
     CHECK(wl.allzero_label ==
           group_thousands(worse.allzero_paths.front().totalscore()) +
               "   (-100)");
+}
+
+TEST_CASE("path_identity: same path, rescored path, trimmed path") {
+    const std::vector<const Path*> paths = analyzed().record.all_paths();
+    REQUIRE_FALSE(paths.empty());
+    const Path& first = *paths.front();
+    REQUIRE_FALSE(first.activations.empty());
+
+    // A copy is the same path.
+    Path copy = first;
+    CHECK_FALSE(path_identity(first).empty());
+    CHECK(path_identity(first) == path_identity(copy));
+
+    // Same activations, one more point: a different path.
+    Path rescored = first;
+    rescored.score_base += 1;
+    CHECK(path_identity(first) != path_identity(rescored));
+
+    // One activation fewer: a different path.
+    Path trimmed = first;
+    trimmed.activations.pop_back();
+    CHECK(path_identity(first) != path_identity(trimmed));
+
+    // Only the last activation's deact tick moved: a different path.
+    Path moved = first;
+    REQUIRE_FALSE(moved.activations.back().sp_end_steps.empty());
+    moved.activations.back().sp_end_steps.back().end_tick += 1;
+    CHECK(path_identity(first) != path_identity(moved));
+}
+
+TEST_CASE("build_path_list: the dedupe and the overlay key read one identity") {
+    const HydraRecord& rec = analyzed().record;
+    const std::vector<const Path*> flat = rec.all_paths();
+    REQUIRE_FALSE(flat.empty());
+
+    // The Preview's overlay key is the path's identity, for every path.
+    for (const Path* p : flat) CHECK(path_overlay_key(p) == path_identity(*p));
+
+    // Each listed path, offered alone (without its variants) as the all-0
+    // path, hides; the same path one deact tick later shows.
+    for (const Path* p : flat) {
+        HydraRecord one = rec;
+        one.allzero_paths.clear();
+        one.allzero_paths.push_back(*p);
+        one.allzero_paths.front().variants.clear();
+        CHECK_FALSE(build_path_list(one).show_allzero);
+        if (p->activations.empty() || p->activations.back().sp_end_steps.empty()) continue;
+        one.allzero_paths.front().activations.back().sp_end_steps.back().end_tick += 1;
+        CHECK(build_path_list(one).show_allzero);
+    }
 }
 
 TEST_CASE("build_activations: rows and backend rows line up") {

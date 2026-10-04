@@ -58,8 +58,9 @@ std::string plain(const std::string& text);
 std::string counted(int64_t n, const char* one, const char* many);
 
 // (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2).
-// nullopt -> (None, tn). Bands derive from the two-hit budget 2*W: <2 Normal
-// (an absolute floor), then quarters of 2*W up to Beyond at >= 2*W. At the
+// nullopt -> (None, tn). Bands derive from the two-hit budget
+// (nominal_budget_ms): below kDifficultMs is Normal (an absolute floor), then
+// quarters of the budget up to Beyond at or past the whole budget. At the
 // historical W = 70 this is the original 2/35/70/105/140 ladder.
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              double hit_window_ms = kDefaultHitWindowMs);

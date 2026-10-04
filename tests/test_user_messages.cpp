@@ -114,6 +114,10 @@ TEST_CASE("user_messages: the no-notes message is already plain and passes throu
     const std::string msg = "No Expert Pro Drums notes in this chart.";
     CHECK(plain_error(hydra::ChartFileError(msg)) == msg);
     CHECK(plain_error_text(msg) == msg);
+    // The typed error the loaders throw passes through the same way.
+    CHECK(plain_error(hydra::NoNotesError(hydra::Difficulty::Expert, true)) == msg);
+    CHECK(plain_error(hydra::NoNotesError(hydra::Difficulty::Hard, false)) ==
+          "No Hard Drums notes in this chart.");
 }
 
 TEST_CASE("user_messages: a broken search is reported as Hydra's bug") {

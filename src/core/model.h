@@ -626,6 +626,13 @@ struct Path {
     double avg_mult() const;
 };
 
+// Which path this is, as a string. It names the path by its score and, for
+// every activation the path walks (walk_activations, the variant tail
+// included), that activation's tick and its deact tick. Two paths with the
+// same identity are the same path. The string is only compared, never parsed.
+// The Paths tab's all-0 dedupe and the Preview's overlay key both read it.
+std::string path_identity(const Path& path);
+
 // ---- HydraRecord --------------------------------------------------------
 
 struct HydraRecord {

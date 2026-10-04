@@ -15,10 +15,7 @@
 using namespace hydra;
 
 TEST_CASE("corpus cache: one parse and one analysis per chart and settings") {
-    std::string path;
-    for (const std::string& p : corpus::chart_paths())
-        if (!corpus::song(p, true, true).is_empty()) { path = p; break; }
-    REQUIRE(!path.empty());
+    const std::string path = corpus::first_chart_with_notes();
 
     const Song& a = corpus::song(path, true, true);
     CHECK(&corpus::song(path, true, true) == &a);
@@ -48,15 +45,16 @@ TEST_CASE("corpus cache: one parse and one analysis per chart and settings") {
 }
 
 TEST_CASE("corpus cache: a failure is thrown again on every call") {
-    // A chart with no Hard charting parses to an empty song, and analyzing an
-    // empty song throws ChartFileError. The second call must throw too.
-    std::string no_hard;
-    for (const std::string& p : corpus::chart_paths())
-        if (corpus::song(p, true, true, Difficulty::Hard).is_empty()) { no_hard = p; break; }
-    REQUIRE(!no_hard.empty());
+    // A chart with no Hard charting parses to an empty song, and analyzing it
+    // throws NoNotesError, as analyze_chart_file does. The second call must
+    // throw the same error again.
+    const std::string no_hard = corpus::first_chart_without_notes(Difficulty::Hard);
+    CAPTURE(no_hard);
 
     app::AnalysisSettings hard;
     hard.difficulty = Difficulty::Hard;
-    CHECK_THROWS_AS(corpus::analyzed(no_hard, hard), ChartFileError);
-    CHECK_THROWS_AS(corpus::analyzed(no_hard, hard), ChartFileError);
+    CHECK_THROWS_WITH_AS(corpus::analyzed(no_hard, hard),
+                         "No Hard Pro Drums notes in this chart.", NoNotesError);
+    CHECK_THROWS_WITH_AS(corpus::analyzed(no_hard, hard),
+                         "No Hard Pro Drums notes in this chart.", NoNotesError);
 }
