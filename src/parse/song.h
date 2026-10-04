@@ -39,6 +39,25 @@ const char* difficulty_name(Difficulty difficulty);
 inline constexpr Difficulty kAllDifficulties[] = {Difficulty::Expert, Difficulty::Hard,
                                                   Difficulty::Medium, Difficulty::Easy};
 
+// How a chart file spells one difficulty's drums. One row per difficulty, held
+// in one table in song.cpp; every parser rule that depends on the difficulty
+// reads its row instead of keeping its own copy of Expert's values.
+struct DifficultyChartCodes {
+    // .mid: the kick's pitch. The four pads follow it (kick + 1 is red).
+    int kick_pitch;
+    // .mid: the 2x kick's pitch, one below the kick. Clone Hero reads 59, 71,
+    // 83 and 95, each into its own difficulty (0x2155050 at 0x21555CD).
+    int kick2x_pitch;
+    // The N in a disco-flip marker `[mix N drums...]`. Clone Hero applies a
+    // marker only to the difficulty it names (0x215C750, digit mapped by
+    // 0x210D990).
+    char mix_digit;
+};
+
+// The row for `difficulty`. An out-of-range value reads as Expert, as the
+// parsers' old switches did.
+const DifficultyChartCodes& difficulty_chart_codes(Difficulty difficulty);
+
 // The difficulty whose name matches `name` in any case ("hard", "HARD" and
 // "Hard" all give Hard). nullopt for anything else. The settings INI and
 // hydra_replay's --difficulty both read names through this.

@@ -396,15 +396,31 @@ MOp mop_tom(NoteColor color, NoteCymbalType cymbal) {
     return op;
 }
 
-// All four difficulties share the one "PART DRUMS" track; each owns a block of
-// five pitches starting here (kick, then the four pads).
+}  // namespace
+
+// The one table of how each difficulty is spelled in a chart file, in
+// Difficulty enum order. All four difficulties share the one "PART DRUMS"
+// track; each owns a block of five pitches starting at its kick (kick, then
+// the four pads), and its 2x kick sits one below the kick.
+namespace {
+constexpr DifficultyChartCodes kDifficultyChartCodes[] = {
+    {96, 95, '3'},  // Expert
+    {84, 83, '2'},  // Hard
+    {72, 71, '1'},  // Medium
+    {60, 59, '0'},  // Easy
+};
+static_assert(std::size(kDifficultyChartCodes) == std::size(kAllDifficulties));
+}  // namespace
+
+const DifficultyChartCodes& difficulty_chart_codes(Difficulty difficulty) {
+    const auto i = static_cast<size_t>(difficulty);
+    return kDifficultyChartCodes[i < std::size(kDifficultyChartCodes) ? i : 0];
+}
+
+namespace {
+
 int difficulty_base_pitch(Difficulty difficulty) {
-    switch (difficulty) {
-        case Difficulty::Hard: return 84;
-        case Difficulty::Medium: return 72;
-        case Difficulty::Easy: return 60;
-        default: return 96;
-    }
+    return difficulty_chart_codes(difficulty).kick_pitch;
 }
 
 // `base` is the difficulty's kick pitch. The five note pitches follow it; every
