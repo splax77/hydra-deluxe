@@ -38,6 +38,11 @@ struct LibraryRow {
     std::string best_label;               // the Best path cell (best_path_label)
 };
 
+// The word for a record's status: "Analyzed", "Stale" or "Not analyzed", the
+// same words the status chips show. The Best path cell and hydra_uitest's
+// state dump both read it.
+const char* status_label(store::RecordStatus status);
+
 // The Best path cell: "Not analyzed", "Stale", or "<score>  <path>" such as
 // "378,315  3- 1 2". The score is the stored summary's, never recomputed.
 std::string best_path_label(store::RecordStatus status, const std::string& bestpath,

@@ -58,13 +58,19 @@ bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
 
 }  // namespace
 
+const char* status_label(store::RecordStatus status) {
+    switch (status) {
+        case store::RecordStatus::Ready: return "Analyzed";
+        case store::RecordStatus::Stale: return "Stale";
+        case store::RecordStatus::NotAnalyzed: break;
+    }
+    return "Not analyzed";
+}
+
 std::string best_path_label(store::RecordStatus status, const std::string& bestpath,
                             const store::PathSummary& summary) {
-    switch (status) {
-        case store::RecordStatus::Stale: return "Stale";
-        case store::RecordStatus::NotAnalyzed: return "Not analyzed";
-        case store::RecordStatus::Ready: break;
-    }
+    // A row with no current result shows its status word.
+    if (status != store::RecordStatus::Ready) return status_label(status);
     // A Ready result with no paths has no score; its cell shows its path
     // string (empty), as the table always has.
     if (!summary.score) return bestpath;

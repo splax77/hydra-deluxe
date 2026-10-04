@@ -90,6 +90,17 @@ TEST_CASE("library model: every chart shows, sorted by title, with its Best path
     CHECK(m.counts().analyzed == 1);
 }
 
+TEST_CASE("library model: status_label is the one source of the three status words") {
+    using hydra::ui::status_label;
+    CHECK(std::string(status_label(RecordStatus::Ready)) == "Analyzed");
+    CHECK(std::string(status_label(RecordStatus::Stale)) == "Stale");
+    CHECK(std::string(status_label(RecordStatus::NotAnalyzed)) == "Not analyzed");
+    // The Best path cell of a row with no current result shows the same word.
+    const hydra::store::PathSummary none;
+    CHECK(hydra::ui::best_path_label(RecordStatus::Stale, "", none) == "Stale");
+    CHECK(hydra::ui::best_path_label(RecordStatus::NotAnalyzed, "", none) == "Not analyzed");
+}
+
 TEST_CASE("library model: the search narrows the rows and the chip counts follow it") {
     LibraryModel m = sample();
     m.set_query("\"tier 4\"");

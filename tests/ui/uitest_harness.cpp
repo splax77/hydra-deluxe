@@ -26,6 +26,7 @@
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
+#include "ui/library_model.h"
 #include "ui/preview_controller.h"
 
 namespace fs = std::filesystem;
@@ -430,12 +431,10 @@ void dump_state(Harness& h) {
                 a.library_shown_count(), a.search.c_str());
     for (size_t i = 0; i < a.library_shown_count() && i < 20; ++i) {
         const auto& r = a.library_row_at(i);
-        auto s = r.status;
-        const char* st = s == hydra::store::RecordStatus::Ready   ? "current"
-                         : s == hydra::store::RecordStatus::Stale ? "stale"
-                                                                  : "new";
+        // The status chip's word: "Analyzed", "Stale" or "Not analyzed".
         std::printf("    row[%zu] \"%s\" - %s (%s) md5=%s status=%s\n", i, r.title.c_str(),
-                    r.artist.c_str(), r.charter.c_str(), r.entry.md5.c_str(), st);
+                    r.artist.c_str(), r.charter.c_str(), r.entry.md5.c_str(),
+                    hydra::ui::status_label(r.status));
     }
     std::printf("  selected=%s panel_open=%s viewed_record=%s paths=%zu\n",
                 a.selected ? a.selected->title.c_str() : "(none)", yes_no(a.details_open()),
