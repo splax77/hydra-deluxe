@@ -134,7 +134,9 @@ struct ChordNote {
 
     bool operator==(const ChordNote& o) const;
     bool operator!=(const ChordNote& o) const { return !(*this == o); }
-    std::string str() const;
+    // The note's name (note_label, in the words of the Pro Drums setting
+    // `pro`), then a ghost or accent in parentheses.
+    std::string str(bool pro = true) const;
     int basescore() const;
     bool is_dynamic() const { return dynamictype != NoteDynamicType::Normal; }
     bool is_accent() const { return dynamictype == NoteDynamicType::Accent; }
@@ -170,7 +172,9 @@ public:
     int count() const;
     int hands_count() const;
 
-    std::string rowstr() const;
+    // "[Kick - Red snare - Green cymbal]": each note's str(pro), where `pro`
+    // is the Pro Drums setting the chart was read with.
+    std::string rowstr(bool pro = true) const;
     std::string notationstr() const;
 
     void apply_disco_flip();

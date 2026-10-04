@@ -183,11 +183,13 @@ void render_timeline(const app::ActivationsView& view) {
         const ImVec2 m_max(x + px(2.0f), top.y + px(36.0f));
         dl->AddRectFilled(m_min, m_max, ImGui::GetColorU32(kBestPathColor), px(1.0f));
         // A mark whose activation has a badge (a squeeze or an early fill)
-        // gets the badge's outline.
+        // gets an outline in the badge's colour: orange only when the row is
+        // difficult, grey otherwise.
         if (!a.badge.empty())
             dl->AddRect(ImVec2(m_min.x - px(2.0f), m_min.y - px(2.0f)),
                         ImVec2(m_max.x + px(2.0f), m_max.y + px(2.0f)),
-                        ImGui::GetColorU32(kWarningColor), px(1.0f), 0, px(1.5f));
+                        ImGui::GetColorU32(a.difficult ? kWarningColor : dim_color()), px(1.0f),
+                        0, px(1.5f));
         const std::string num = std::to_string(a.number);
         centres.push_back(x);
         widths.push_back(ImGui::GetFont()->CalcTextSizeA(num_size, FLT_MAX, 0.0f, num.c_str()).x);
@@ -554,7 +556,7 @@ void render_path_panel(AppState& app, const Path*& selected_path) {
             *selected_path, record, generation,
             app.viewed.timing ? &*app.viewed.timing : nullptr,
             static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
-            app.settings.rules, app.viewed.song_length_ms);
+            app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums);
         app::PathsTabUi& ui = cache.ui();
         render_activations(d.activations, ui);
         render_path_footer(app, d, ui);

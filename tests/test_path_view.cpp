@@ -14,6 +14,7 @@
 #include "app/display_format.h"
 #include "app/path_view.h"
 #include "app/preview_view.h"  // path_overlay_key
+#include "app/user_messages.h"  // kNoPathsFound
 #include "corpus_util.h"
 #include "record_fixtures.h"
 
@@ -103,6 +104,11 @@ TEST_CASE("build_record_status: the three states and their lines") {
     HydraRecord whatif = rec;
     whatif.sp_cap = 32;
     CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  32 bars");
+    // The count and its noun agree (D48 Q12), and a big cap is comma-grouped.
+    whatif.sp_cap = 1;
+    CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  1 bar");
+    whatif.sp_cap = 1000;
+    CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  1,000 bars");
 
     // A Ready record that found nothing stays Ready and says so in one line.
     HydraRecord nothing = rec;
@@ -111,6 +117,7 @@ TEST_CASE("build_record_status: the three states and their lines") {
     CHECK(none.state == store::RecordStatus::Ready);
     REQUIRE(none.lines.size() == 1);
     CHECK(none.lines[0] == "No paths found.");
+    CHECK(none.lines[0] == kNoPathsFound);
 }
 
 TEST_CASE("build_score_breakdown: exact lines, rounded like the report") {
@@ -834,6 +841,12 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     Activation sqin = none;
     sqin.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.4});
     CHECK(activation_badge(sqin) == "squeeze in 12 ms");
+    // Whole ms round to nearest (D48 Q2): 12.6 reads 13, and an exact half
+    // rounds up too, the same as the copied path.
+    sqin.sqinouts[0].offset_ms = 12.6;
+    CHECK(activation_badge(sqin) == "squeeze in 13 ms");
+    sqin.sqinouts[0].offset_ms = 12.5;
+    CHECK(activation_badge(sqin) == "squeeze in 13 ms");
 
     Activation sqout = none;
     sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -163.0});
@@ -845,6 +858,9 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     CHECK(activation_badge(e0) == "early fill 30 ms");
     e0.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
     CHECK(activation_badge(e0) == "early fill 30 ms");
+    // A squeeze and a required fill tied exactly: the badge names the squeeze.
+    e0.sqinouts[0].offset_ms = -30.0;
+    CHECK(activation_badge(e0) == "squeeze out 30 ms");
 
     // An optional (E1) fill still gets a badge: its timing decides whether the
     // first fill shows up, which is how the skips are counted.
@@ -855,6 +871,31 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     // A squeeze the activation needs outranks an optional fill.
     e1.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
     CHECK(activation_badge(e1) == "squeeze out 5 ms");
+}
+
+TEST_CASE("activation badge and copied path agree") {
+    // A 12.6 ms squeeze-in: the badge and the copied path both say 13 ms, and
+    // the path button keeps its one decimal.
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
+    Path p;
+    p.activations.push_back(act);
+
+    const std::string badge = activation_badge(act);
+    CHECK(badge == "squeeze in 13 ms");
+    const std::string verbose = act.notationstr_verbose();
+    CHECK(verbose == "0+ (13 ms)");
+    // The badge's number is the copied path's number.
+    const std::string number = badge.substr(std::string("squeeze in ").size());
+    CHECK(verbose.find("(" + number + ")") != std::string::npos);
+
+    HydraRecord rec;
+    rec.paths.push_back(p);
+    PathButtonsView v = build_path_buttons(rec, 0, 2);
+    REQUIRE(v.buttons.size() == 1);
+    CHECK(v.buttons[0].timing == "12.6 ms");
 }
 
 TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
@@ -1075,6 +1116,18 @@ TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
     CHECK(within_label(0, 1) == "Within 1 score");
     CHECK(within_label(1, 5000) == "Within 5,000 points");
     CHECK(within_label(1, 1) == "Within 1 point");
+
+    // A top score tied between a root and its variant: both tied paths sit in
+    // the Optimal group, and the lower root does not.
+    const HydraRecord tied = test::tied_variant_record();
+    PathButtonsView tv = build_path_buttons(tied, /*depth_mode=*/0, /*depth_value=*/2);
+    REQUIRE(tv.buttons.size() == 3);
+    CHECK(tv.buttons[0].path == &tied.paths.at(0));
+    CHECK(tv.buttons[0].group == PathButtonView::Group::Optimal);
+    CHECK(tv.buttons[1].path == &tied.paths.at(0).variants.at(0));
+    CHECK(tv.buttons[1].group == PathButtonView::Group::Optimal);
+    CHECK(tv.buttons[2].path == &tied.paths.at(1));
+    CHECK(tv.buttons[2].group == PathButtonView::Group::Within);
 }
 
 TEST_CASE("multiplier squeeze: Burnout's one squeeze and the fold's summary") {
@@ -1148,4 +1201,30 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
     CHECK(cache.buttons_builds() == 2);
     cache.buttons(rec, 2, 0, 3);
     CHECK(cache.buttons_builds() == 3);
+}
+
+TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's words") {
+    // Kick, a ghost red, a yellow tom and a green cymbal (D48 Q11, finding 17).
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    act.chord.add_note(NoteColor::Kick);
+    act.chord.add_note(NoteColor::Red).dynamictype = NoteDynamicType::Ghost;
+    act.chord.add_note(NoteColor::Yellow);
+    act.chord.add_note(NoteColor::Green).cymbaltype = NoteCymbalType::Cymbal;
+    Path p;
+    p.activations.push_back(act);
+    HydraRecord rec;
+
+    auto chord_of = [&](bool pro_drums) {
+        ActivationsView v = build_activations(p, rec, nullptr, 85.0, std::nullopt,
+                                              core::default_rules(), std::nullopt, pro_drums);
+        REQUIRE(v.acts.size() == 1);
+        return v.acts[0].chord;
+    };
+    // With Pro Drums on, a pad is a snare or a tom.
+    CHECK(chord_of(true) == "[Kick - Red snare (Ghost) - Yellow tom - Green cymbal]");
+    // With it off the chart has no tom or snare, so the pads are plain colours;
+    // a cymbal still says cymbal.
+    CHECK(chord_of(false) == "[Kick - Red (Ghost) - Yellow - Green cymbal]");
 }

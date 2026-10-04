@@ -473,20 +473,16 @@ PathSummary summarize_path(const Path& path) {
     s.actcount = static_cast<int>(acts.size());
 
     int maxskip = 0;
-    std::optional<double> hardest;
     int sqin = 0, sqout = 0;
     for (const Activation& a : acts) {
         if (a.skips() > maxskip) maxskip = a.skips();
-        if (auto d = a.difficulty()) {
-            if (!hardest || *d > *hardest) hardest = d;
-        }
         for (const SPSqueeze& sq : a.sqinouts) {
             if (sq.kind == SqueezeKind::SqIn) ++sqin;
             else ++sqout;
         }
     }
     s.maxskip = maxskip;
-    s.hardest_ms = hardest;
+    s.hardest_ms = path.difficulty();  // the path's own hardest squeeze or required fill
     s.avgmult = path.avg_mult();
     s.notecount = path.notecount;
     s.sqin_count = sqin;

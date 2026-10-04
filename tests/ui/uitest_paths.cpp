@@ -3,12 +3,14 @@
 // table and its limit, the two folds under the list, and Copy path. Labels are
 // the plan's label contract (docs/superpowers/plans/2026-09-27-ui-redesign.md).
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "uitest_harness.h"
 
@@ -21,6 +23,7 @@
 #include "ui/details_view.h"
 #include "ui/fonts.h"  // px()
 #include "ui/preview_controller.h"
+#include "ui/theme.h"  // kBestPathColor, kWarningColor
 
 namespace uitest {
 
@@ -103,6 +106,86 @@ void test_paths_list(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 0 0 0");
 }
 
+// A window drawn this frame whose name holds `part` (child names are mangled).
+ImGuiWindow* window_named(const char* part) {
+    for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows)
+        if (w->WasActive && std::strstr(w->Name, part)) return w;
+    return nullptr;
+}
+
+// One timeline mark as the Paths tab last drew it: where its gold bar sits,
+// and whether an orange or a grey stroke is drawn around it.
+struct DrawnMark {
+    float x = 0.0f;
+    bool orange = false;
+    bool grey = false;
+};
+
+// The timeline's marks, read from the vertices the Paths tab drew last frame,
+// left to right. The strip is the only gold above the first activation row in
+// the details column, so its gold vertices give each mark's place; a stroke
+// counts as the mark's when it sits within a few pixels of it.
+std::vector<DrawnMark> drawn_marks(ImGuiTestContext* ctx) {
+    std::vector<DrawnMark> marks;
+    ImGuiWindow* details = window_named("##pathdetails");
+    if (!details) return marks;
+    const float row_top = ctx->ItemInfo("**/##act1").RectFull.Min.y;
+    const ImU32 gold = ImGui::GetColorU32(hydra::ui::kBestPathColor);
+    const ImU32 orange = ImGui::GetColorU32(hydra::ui::kWarningColor);
+    const ImU32 grey = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+    const ImVector<ImDrawVert>& vtx = details->DrawList->VtxBuffer;
+    const float reach = hydra::ui::px(6.0f);
+    float top = FLT_MAX, bottom = -FLT_MAX;
+    std::vector<float> xs;
+    for (const ImDrawVert& v : vtx) {
+        if (v.col != gold || v.pos.y >= row_top) continue;
+        top = (std::min)(top, v.pos.y);
+        bottom = (std::max)(bottom, v.pos.y);
+        xs.push_back(v.pos.x);
+    }
+    std::sort(xs.begin(), xs.end());
+    // One mark per cluster of gold, at the middle of its left and right edge.
+    float left = 0.0f, right = 0.0f;
+    for (size_t i = 0; i < xs.size(); ++i) {
+        if (i == 0 || xs[i] - right > reach) {
+            if (i > 0) marks.push_back({(left + right) * 0.5f});
+            left = xs[i];
+        }
+        right = xs[i];
+    }
+    if (!xs.empty()) marks.push_back({(left + right) * 0.5f});
+    for (DrawnMark& m : marks)
+        for (const ImDrawVert& v : vtx) {
+            if (v.pos.y < top - reach || v.pos.y > bottom + reach) continue;
+            if (std::fabs(v.pos.x - m.x) > reach) continue;
+            if (v.col == orange) m.orange = true;
+            if (v.col == grey) m.grey = true;
+        }
+    return marks;
+}
+
+// Each mark's outline follows its row: orange when the row is difficult (its
+// badge is orange), grey when it has a badge that is not, none without one.
+void check_marks_follow_rows(ImGuiTestContext* ctx, hydra::ui::AppState& app) {
+    const hydra::app::ActivationsView& view =
+        app.details_ui.paths_tab
+            .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
+                     app.viewed.timing ? &*app.viewed.timing : nullptr,
+                     static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
+                     app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums)
+            .activations;
+    const std::vector<DrawnMark> marks = drawn_marks(ctx);
+    IM_CHECK_EQ(marks.size(), view.acts.size());
+    if (marks.size() != view.acts.size()) return;
+    for (size_t i = 0; i < marks.size(); ++i) {
+        const hydra::app::ActivationRowView& a = view.acts[i];
+        ctx->LogInfo("mark %d at %.1f: badge \"%s\", difficult %d, orange %d, grey %d", a.number,
+                     marks[i].x, a.badge.c_str(), a.difficult, marks[i].orange, marks[i].grey);
+        IM_CHECK_EQ(marks[i].orange, a.difficult);
+        IM_CHECK_EQ(marks[i].grey, !a.badge.empty() && !a.difficult);
+    }
+}
+
 // The activation rows: one line each, the first open, one open at a time,
 // Expand all and Collapse all, and the plain sentence instead of the old line.
 void test_paths_rows(ImGuiTestContext* ctx) {
@@ -124,6 +207,8 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, "6 notes near the SP end"));
     IM_CHECK(!on_screen(h, "SqOut: Note timing"));
     IM_CHECK(!on_screen(h, "Frontend:"));
+    // The timeline outlines follow the rows: row 1's 163 ms squeeze is orange.
+    check_marks_follow_rows(ctx, *h.app);
 
     // "Show in Preview" asks the Preview for activation 1 (Task 11 consumes it)
     // and switches to the Preview tab, which starts the Preview.
@@ -153,6 +238,16 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, "3 notes near the SP end"));
     IM_CHECK(!on_screen(h, "7 notes near the SP end"));
+
+    // Beg (Evans Blue): its optimal path has a 0 ms squeeze-out and a 0 ms
+    // early fill. Their badges are grey, so their marks are outlined grey,
+    // not orange.
+    open_titled(ctx, "evans blue", "Beg");
+    if (ctx->IsError()) return;
+    analyze_open_song(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(2);
+    check_marks_follow_rows(ctx, *h.app);
 }
 
 // The backend table folds per activation, and the Backend limit moved here.
@@ -262,13 +357,6 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
     IM_CHECK(on_screen(h, "It costs no points, because Hydra's score never counted that "
                           "note under Star Power"));
-}
-
-// A window drawn this frame whose name holds `part` (child names are mangled).
-ImGuiWindow* window_named(const char* part) {
-    for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows)
-        if (w->WasActive && std::strstr(w->Name, part)) return w;
-    return nullptr;
 }
 
 // At the panel's narrowest the Paths tab still fits: with every row, a
@@ -443,7 +531,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
             .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
                      app.viewed.timing ? &*app.viewed.timing : nullptr,
                      static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
-                     app.settings.rules, app.viewed.song_length_ms)
+                     app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums)
             .activations;
     std::string widest;
     for (const hydra::app::ActivationRowView& a : view.acts)
