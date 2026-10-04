@@ -24,6 +24,11 @@ TEST_CASE("batch text: durations read m:ss under an hour and h:mm:ss over it") {
     CHECK(format_duration(-3.0) == "0:00");
 }
 
+TEST_CASE("batch text: time left reads about m:ss left") {
+    CHECK(time_left_text(90.0) == "about 1:30 left");
+    CHECK(time_left_text(42.4) == "about 0:42 left");
+}
+
 TEST_CASE("batch text: the confirm lists the settings a batch runs with") {
     Settings s;  // Expert, Pro Drums, 2x Bass, cap 4, 4 scores, 10 ms
     BatchSettingsSummary d = batch_settings_summary(s);

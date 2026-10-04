@@ -45,6 +45,12 @@ std::string count_label(int64_t n, const char* one, const char* many);
 // A duration as "0:42", "12:03" or "1:02:05". Negative reads as 0:00.
 std::string format_duration(double seconds);
 
+// How long a job has left, as the batch strip and the Preview loader say it:
+// "about 1:30 left". The time itself is format_duration's.
+inline std::string time_left_text(double seconds) {
+    return "about " + format_duration(seconds) + " left";
+}
+
 // The settings lines the batch confirm lists, in the confirm's order.
 struct BatchSettingsSummary {
     std::string difficulty;   // "Expert · Pro Drums · 2x Bass"
