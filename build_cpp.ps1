@@ -25,12 +25,11 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 
 . (Join-Path $root "tools\find_cmake.ps1")
+. (Join-Path $root "tools\cmake_presets.ps1")
 $cmake = Find-CMake
 Write-Host "Using cmake: $cmake"
 
-# Must match each preset's binaryDir in CMakePresets.json.
-$buildDirs = @{ default = "build-cpp"; vs2022 = "build-cpp-vs2022"; ship = "build-ship" }
-$buildDir = Join-Path $root $buildDirs[$Preset]
+$buildDir = Get-PresetBuildDir $root $Preset
 
 # cmake reads CMakePresets.json from the current folder, so run it from the
 # script's own checkout; otherwise a call from another worktree builds that one.

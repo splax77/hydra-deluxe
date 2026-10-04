@@ -22,6 +22,7 @@ $root = $PSScriptRoot                  # <repo>\installer
 $repo = Split-Path $root               # <repo>
 
 . (Join-Path $repo "tools\find_cmake.ps1")
+. (Join-Path $repo "tools\cmake_presets.ps1")
 
 function Find-ISCC {
     $onPath = Get-Command iscc -ErrorAction SilentlyContinue
@@ -41,7 +42,7 @@ function Find-ISCC {
 if (-not $SkipBuild) {
     & (Join-Path $repo "build_cpp.ps1") -Preset ship
 }
-$build = Join-Path $repo "build-ship"
+$build = Get-PresetBuildDir $repo ship
 
 # 2. Version from the single source of truth in CMakeLists.txt.
 $cmakeLists = Get-Content (Join-Path $repo "CMakeLists.txt") -Raw
@@ -84,8 +85,9 @@ if (-not (Test-Path $redist)) {
 # 5. Compile the installer.
 $iscc = Find-ISCC
 Write-Host "Using ISCC: $iscc"
+$output = Join-Path (Get-PresetBuildDir $repo default) "installer"
 & $iscc "/DHYDRA_VERSION=$version" "/DHYDRA_STAGE=$stage" "/DHYDRA_REDIST=$redistDir" `
-    (Join-Path $root "hydra.iss")
+    "/DHYDRA_OUTPUT=$output" (Join-Path $root "hydra.iss")
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
 
-Write-Host "Installer written to build-cpp\installer\HydraDeluxe-$version-setup.exe"
+Write-Host "Installer written to $output\HydraDeluxe-$version-setup.exe"

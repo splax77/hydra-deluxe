@@ -4,6 +4,8 @@
 ;   /DHYDRA_VERSION=<x.y.z>   version parsed from CMakeLists.txt
 ;   /DHYDRA_STAGE=<dir>       cmake --install staging dir (exes, resource/, docs)
 ;   /DHYDRA_REDIST=<dir>      dir holding VC_redist.x64.exe
+;   /DHYDRA_OUTPUT=<dir>      where setup.exe goes (the default preset's
+;                             build folder + \installer, from CMakePresets.json)
 ;
 ; Design notes:
 ;   * Installs to {autopf}\Hydra with admin rights, then grants the Users
@@ -40,7 +42,7 @@ LicenseFile={#SourcePath}..\LICENSE
 SetupIconFile={#SourcePath}..\resource\icon_app.ico
 UninstallDisplayIcon={app}\Hydra.exe
 DisableProgramGroupPage=yes
-OutputDir={#SourcePath}..\build-cpp\installer
+OutputDir={#HYDRA_OUTPUT}
 OutputBaseFilename=HydraDeluxe-{#HYDRA_VERSION}-setup
 Compression=lzma2
 SolidCompression=yes
