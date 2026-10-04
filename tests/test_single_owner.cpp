@@ -10,7 +10,8 @@
 // tools/ unless it names its own scope; the rows about tests (a test that
 // recomputes an engine fact, or walks the source tree itself) cover tests/.
 // The long-path rules (ADR 0020) are rows here too, so a new one-place rule
-// is a new row, not a new walker.
+// is a new row, not a new walker. The walk itself, and the repo root, come
+// from tests/source_tree.h.
 #include "doctest.h"
 
 #include <filesystem>
@@ -23,10 +24,7 @@
 #include <vector>
 
 #include "core/strutil.h"
-
-#ifndef HYDRA_SOURCE_DIR
-#error "HYDRA_SOURCE_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "source_tree.h"
 
 namespace fs = std::filesystem;
 
@@ -538,26 +536,28 @@ const std::vector<OwnerRule>& rules() {
          {},
          {"src", "tools", "tests"}},
         {"Which test walks the source tree?",
-         "this file, tests/test_single_owner.cpp",
+         "sourcetree::for_each_source_file in tests/source_tree.h",
          R"(recursive_directory_iterator\(root\s*/\s*sub\))",
          "",
-         {},
+         {"tests/source_tree.h"},
          {},
          "this file's own rule (one scan, new rules are rows); step-1 derive-once review "
-         "finding 12 (2026-10-04)",
+         "finding 12 (2026-10-04); one walker for the docs test too (phase 4 join, "
+         "2026-10-04)",
          {"for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {",
           "for (const auto& e : fs::recursive_directory_iterator(root/sub))"},
          {"for (const auto& e : std::filesystem::directory_iterator(dir)) {"},
          {},
          {"tests"}},
         {"Which test reads the source tree?",
-         "this file, tests/test_single_owner.cpp",
+         "sourcetree::root in tests/source_tree.h",
          R"(\bHYDRA_SOURCE_DIR\b)",
          "",
-         {},
+         {"tests/source_tree.h"},
          {},
          "this file's own rule (one scan, new rules are rows); step-1 derive-once review of "
-         "fb1189b, finding 5 (2026-10-04)",
+         "fb1189b, finding 5 (2026-10-04); one reader for the docs test too (phase 4 join, "
+         "2026-10-04)",
          {"std::ifstream in(std::string(HYDRA_SOURCE_DIR) + \"/src/app/preview_view.cpp\");",
           "const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);"},
          {"return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, "
@@ -1203,7 +1203,7 @@ bool in_scope(const OwnerRule& r, const std::string& sub, const std::string& rel
 }
 
 TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
-    const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
+    const fs::path root = sourcetree::root();
     const std::vector<CompiledRule> compiled = compile_rules();
 
     const std::vector<ListedLine> listed = listed_lines();
@@ -1211,15 +1211,14 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     std::vector<std::string> problems;
     int files = 0;
     std::vector<int> functions_found(compiled.size(), 0);
-    for (const std::string sub : {"src", "tools", "tests"}) {
-        for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
-            const fs::path ext = e.path().extension();
-            if (ext != ".cpp" && ext != ".h") continue;
-            const std::string rel = fs::relative(e.path(), root).generic_u8string();
+    sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+            const fs::path ext = path.extension();
+            if (ext != ".cpp" && ext != ".h") return;
             // This file holds every rule's examples as text.
-            if (rel == "tests/test_single_owner.cpp") continue;
+            if (rel == "tests/test_single_owner.cpp") return;
+            const std::string sub = rel.substr(0, rel.find('/'));  // the top folder
             ++files;
-            std::ifstream in(e.path());
+            std::ifstream in(path);
             std::string line;
             int lineno = 0;
             std::vector<bool> in_function(compiled.size(), false);
@@ -1258,8 +1257,7 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
                                            "\", which belongs to " + rule.owner + ": " + t);
                 }
             }
-        }
-    }
+    });
     for (size_t i = 0; i < listed.size(); ++i) {
         if (used[i]) continue;
         problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
@@ -1293,9 +1291,9 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
 // the row scan skips, so this case reads it: the block between the "Results"
 // banner and the kResultsStamp line in src/store/stored_versions.h must name
 // src/parse next to src/search and src/core. Moved here from
-// test_s2_stamps.cpp, so this file stays the one test that reads the tree.
+// test_s2_stamps.cpp; the repo root comes from tests/source_tree.h.
 TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (D23)") {
-    std::ifstream in(fs::u8path(HYDRA_SOURCE_DIR) / "src" / "store" / "stored_versions.h");
+    std::ifstream in(sourcetree::root() / "src" / "store" / "stored_versions.h");
     REQUIRE(in.good());
     std::stringstream ss;
     ss << in.rdbuf();

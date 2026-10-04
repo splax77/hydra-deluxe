@@ -417,12 +417,12 @@ TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying wi
     REQUIRE(r.chords.size() == 4);
     CHECK(r.chords[2].points.sp == 0);
     CHECK_FALSE(r.chords[2].in_sp);
-    CHECK(ambiguous_window_warnings(song, r, {a, b}).empty());
+    CHECK(ambiguous_window_warnings(song, r, {a, b}, core::default_rules()).empty());
 
     // With no squeezed-out window the chord still is not paid (250 ms is past
     // the leeway), so the answer is the same.
     const ReplayResult alone = replay_path(song, {a});
-    CHECK(ambiguous_window_warnings(song, alone, {a}).empty());
+    CHECK(ambiguous_window_warnings(song, alone, {a}, core::default_rules()).empty());
 }
 
 TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power") {
@@ -537,7 +537,8 @@ TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
         saw_0pp = true;
         // Its last window squeezed 17360 in, so no warning may name it.
         for (const std::string& warn :
-             ambiguous_window_warnings(song, replay_path(song, got), got))
+             ambiguous_window_warnings(song, replay_path(song, got), got,
+                                       core::default_rules()))
             CHECK_MESSAGE(warn.find("17360") == std::string::npos, warn);
     }
     CHECK(with_sqins > 0);
@@ -659,7 +660,8 @@ TEST_CASE("a window ending on a phrase note with no offset is flagged") {
     // The warning only fires for a chord the window paid, so it reads the
     // replay of that same window, as `hydra_replay score` does.
     auto warnings_for = [&](const ReplayWindow& win) {
-        return ambiguous_window_warnings(song, replay_path(song, {win}), {win});
+        return ambiguous_window_warnings(song, replay_path(song, {win}), {win},
+                                         core::default_rules());
     };
 
     // Ending on the phrase note itself.
@@ -689,7 +691,7 @@ TEST_CASE("a window ending on a phrase note with no offset is flagged") {
     settled.act_tick = r.chords.front().tick;
     settled.deact_tick = phrase_note->tick;
     settled.sqout_offset_ms = 8.0;
-    CHECK(ambiguous_window_warnings(song, r, {settled}).empty());
+    CHECK(ambiguous_window_warnings(song, r, {settled}, core::default_rules()).empty());
 }
 
 TEST_CASE("per-note sp points sum to the chord's sp points") {
@@ -851,7 +853,7 @@ TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refus
     second.deact_tick = 3072;
     const ReplayResult r = replay_path(song, {first, second});
     const std::vector<std::string> warned =
-        ambiguous_window_warnings(song, r, {first, second});
+        ambiguous_window_warnings(song, r, {first, second}, core::default_rules());
     REQUIRE(warned.size() == 1);
     CHECK(warned[0].rfind("window 0:2950 ", 0) == 0);
 }
@@ -876,7 +878,8 @@ TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's 
     plain.act_tick = 3000;
     plain.deact_tick = 3072;
     const ReplayResult r = replay_path(song, {plain});
-    const std::vector<std::string> warned = ambiguous_window_warnings(song, r, {plain});
+    const std::vector<std::string> warned =
+        ambiguous_window_warnings(song, r, {plain}, core::default_rules());
     REQUIRE(warned.size() == 1);
     CHECK(warned[0].find("tick 3036") != std::string::npos);
 }
@@ -891,8 +894,9 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     ReplayWindow w;
     w.act_tick = 0;
     w.deact_tick = 3072;
+    const core::Rules& rules = core::default_rules();
     const ReplayResult r = replay_path(two, {w});
-    const std::vector<std::string> warned = ambiguous_window_warnings(two, r, {w});
+    const std::vector<std::string> warned = ambiguous_window_warnings(two, r, {w}, rules);
     REQUIRE(warned.size() == 1);
     CHECK(warned[0].find("tick 3024") != std::string::npos);  // the newest, not 2928
 
@@ -900,22 +904,76 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     // so no phrase at or before D can have been squeezed out there.
     ReplayWindow stored = w;
     stored.from_record = true;
-    CHECK(ambiguous_window_warnings(two, r, {stored}).empty());
+    CHECK(ambiguous_window_warnings(two, r, {stored}, rules).empty());
 
     // Exactly 500 ms before D is outside the graph's window: no warning.
     const Song edge = song_with({{0, false}, {768, false}, {2880, true},
                                  {3072, false}});
     const ReplayResult re = replay_path(edge, {w});
-    CHECK(ambiguous_window_warnings(edge, re, {w}).empty());
+    CHECK(ambiguous_window_warnings(edge, re, {w}, rules).empty());
 
     // A phrase chord one tick (2.6 ms) after D is inside the leeway, so the
     // window paid it and squeezing it out would change the score.
     const Song after = song_with({{0, false}, {768, false}, {3072, false},
                                   {3073, true}});
     const ReplayResult ra = replay_path(after, {w});
-    const std::vector<std::string> late = ambiguous_window_warnings(after, ra, {w});
+    const std::vector<std::string> late = ambiguous_window_warnings(after, ra, {w}, rules);
     REQUIRE(late.size() == 1);
     CHECK(late[0].find("tick 3073") != std::string::npos);
+}
+
+// The warning quotes what squeezing the chord out would cost, under the rules
+// the replay ran with, and that cost is the whole drop, not just the phrase
+// chord's share. song_with's chords are two notes (red and yellow, 50 points
+// each). The phrase chord at 3024 is the fourth chord (combo 6), both notes
+// at 1x, so its doubling is 50 + 50. The chord at 3072 is the fifth (combo
+// 8): its first note is the ninth hit, at 1x, and its second the tenth, the
+// first one paid at 2x, so its doubling is 50 + 100 = 150. Squeezing 3024
+// out ends Star Power before it:
+//   first_note:  3024 loses its first note's 50, 3072 loses its 150 = 200.
+//   whole_chord: 3024 loses both notes' 100,     3072 loses its 150 = 250.
+// Ending the window on 3024 itself leaves no later chord, so there the cost
+// is the phrase chord's share alone: 50 and 100.
+TEST_CASE("the squeeze-out warning quotes the whole drop under sqout_rule") {
+    const Song two = song_with({{0, false}, {768, false}, {2928, true},
+                                {3024, true}, {3072, false}});
+    ReplayWindow w;
+    w.act_tick = 0;
+    w.deact_tick = 3072;
+    ReplayWindow on = w;
+    on.deact_tick = 3024;
+
+    const core::Rules& first = core::default_rules();
+    REQUIRE(first.sqout_rule == core::SqOutRule::FirstNote);
+    const ReplayResult r1 = replay_path(two, {w}, first);
+    const std::vector<std::string> one = ambiguous_window_warnings(two, r1, {w}, first);
+    REQUIRE(one.size() == 1);
+    CHECK(one[0] ==
+          "window 0:3072 ends just after the Star Power phrase note at tick 3024 "
+          "(125.00 ms earlier) with no squeeze-out offset; if the player squeezed "
+          "it out, this score is 200 points high (the same windows replayed with "
+          "that squeeze-out, under sqout_rule)");
+    // The same window typed with that squeeze-out really scores 200 less.
+    ReplayWindow out = w;
+    out.sqout_tick = 3024;
+    CHECK(r1.final.total() - replay_path(two, {out}, first).final.total() == 200);
+
+    const std::vector<std::string> one_on =
+        ambiguous_window_warnings(two, replay_path(two, {on}, first), {on}, first);
+    REQUIRE(one_on.size() == 1);
+    CHECK(one_on[0].find("this score is 50 points high") != std::string::npos);
+
+    core::Rules whole = core::default_rules();
+    whole.sqout_rule = core::SqOutRule::WholeChord;
+    const std::vector<std::string> both =
+        ambiguous_window_warnings(two, replay_path(two, {w}, whole), {w}, whole);
+    REQUIRE(both.size() == 1);
+    CHECK(both[0].find("this score is 250 points high") != std::string::npos);
+
+    const std::vector<std::string> both_on =
+        ambiguous_window_warnings(two, replay_path(two, {on}, whole), {on}, whole);
+    REQUIRE(both_on.size() == 1);
+    CHECK(both_on[0].find("this score is 100 points high") != std::string::npos);
 }
 
 // The phrase chords strictly inside an SP end's squeeze window, in chart
