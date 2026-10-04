@@ -744,8 +744,12 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     ctx->SetRef("//Hydra");
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
 
-    h.app->start_batch(false);  // the whole library: long enough to look at
-    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_running(); }, 10));
+    // The whole library still analyzes in a blink, so hold its first chart at
+    // the gate: the checks below then look at a run that is provably going.
+    BatchGate gate;
+    h.app->start_batch(false);
+    IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
+    IM_CHECK(h.app->batch_running());
     IM_CHECK(wait_until(ctx, [&] {
         return visible_text(h).find("Stop the batch to change these.") != std::string::npos;
     }, 5));

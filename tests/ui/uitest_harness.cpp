@@ -5,6 +5,8 @@
 #endif
 #include <windows.h>
 
+#include <atomic>
+#include <climits>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -16,11 +18,13 @@
 #include "imgui_internal.h"
 #include "imgui_te_internal.h"
 
+#include "app/analysis.h"
 #include "app/config.h"
 #include "app/report_files.h"
 #include "audio/device.h"
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
+#include "ui/library_jobs.h"
 #include "ui/preview_controller.h"
 
 namespace fs = std::filesystem;
@@ -318,6 +322,39 @@ bool jobs_busy(Harness& h) {
     if (a.preview && a.preview->loading()) return true;
     return false;
 }
+
+namespace {
+// Statics, not gate members: a batch job keeps its copy of the analyzer and
+// can outlive the gate (until reset_app tears the app down), so the analyzer
+// must never point into a gate that is gone.
+std::atomic<int> g_gate_allowed{0};
+std::atomic<int> g_gate_started{0};
+}  // namespace
+
+BatchGate::BatchGate() {
+    g_gate_allowed = 0;
+    g_gate_started = 0;
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
+           const std::function<void(float)>& on_progress) {
+            const int n = ++g_gate_started;
+            while (n > g_gate_allowed.load()) {
+                on_progress(0.0f);  // throws once Stop is pressed
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return hydra::app::analyze_chart_file(path, settings, on_progress);
+        },
+        /*workers=*/1);
+}
+
+BatchGate::~BatchGate() {
+    g_gate_allowed = INT_MAX;
+    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+}
+
+void BatchGate::allow(int charts) { g_gate_allowed = charts; }
+
+int BatchGate::started() const { return g_gate_started.load(); }
 
 std::string visible_text(Harness& h) {
     std::string s = h.frame_text.text;

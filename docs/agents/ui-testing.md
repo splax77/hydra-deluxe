@@ -28,7 +28,7 @@ Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The
 
 **Running tests in parallel.** `--jobs <n>` starts each test as its own `hydra_uitest --test <name>` process, at most n at once. Each process has its own scratch folder and a fresh ImGui context, so no test sees another's leftovers. The results still print in the usual order. The full suite takes about 14 s at `--jobs 4`, against about 22 s one after another. `--jobs` runs named tests only, not scripts.
 
-A few tests race a real batch against a count of frames. On a machine busy with other test processes, each frame is slow enough for the batch to finish first. Those tests are listed in `kRunAlone` in `tests/ui/uitest_main.cpp` (today `batch-strip-drift` and `batch-pause-stop`). `--jobs` starts them last, one at a time, with nothing else running. A new test that counts frames while a job runs belongs on that list.
+The 97 test charts analyze in a blink: a whole-library batch can start and finish between two frames. So a test that looks at a running batch (the strip, Pause, Stop, the settings lock) makes a `BatchGate` before it starts the batch. The gate holds each chart until the test lets it through with `allow(n)`, and `started()` says how many charts have reached it. The run is then provably still going when the test looks, however busy the machine is.
 
 Each test starts from scratch: a temp folder with a settings INI (song folder = `testdata/input`, 97 charts; "open report automatically" off; search depth 2) and an empty DB. No browser opens, no sound card is touched, and the dmleaderboards API is canned (one user, `alice`, id `111`, whose one score is the first library chart). Reports land in the scratch folder, never in the real Documents folder. The seams are `set_open_in_browser`, `audio::set_headless`, `net::set_fetcher`, and `app::set_path_overrides`.
 
@@ -144,6 +144,7 @@ The shared helpers live in `uitest_harness.{h,cpp}`. `open_titled(ctx, search, t
 Rules of thumb:
 
 - Wait on app state (`h.app->…`) with `wait_until`, never on frame counts. Jobs are real threads.
+- To look at a running batch, hold it open with `BatchGate` (see above); never hope it is still running.
 - `wait_until` yields one extra frame after its condition holds, so `visible_text` reflects it.
 - `wait_until` returns false at once when the test has already failed (`ctx->IsError()`). A click that found no item no longer sits out the whole timeout.
 - An `IM_CHECK` inside a helper only returns from the helper. Check `ctx->IsError()` after calling one.
@@ -156,5 +157,5 @@ Rules of thumb:
 - `tests/ui/uitest_tests.cpp` — `register_tests` and its `kRunOrder` list.
 - `tests/ui/uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp`, `uitest_batch_reports.cpp` — the checked-in tests by area, each with its entry table.
 - `tests/ui/uitest_paths.cpp` — the Paths tab tests.
-- `tests/ui/uitest_main.cpp` — the CLI, `--jobs` and `kRunAlone`.
+- `tests/ui/uitest_main.cpp` — the CLI and `--jobs`.
 - `src/ui/app_shell.{h,cpp}` — `setup_imgui` / `run_frame`, shared by `Hydra.exe` and the runner. `run_frame` can capture every string ImGui drew (`FrameText`), which is what `text`/`wait-text` read.
