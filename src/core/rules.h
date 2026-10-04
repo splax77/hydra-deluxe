@@ -37,7 +37,9 @@ struct Rules {
     double fill_length_measures = 0.5;
     // Authored-fill placement (fill_lands_on_chord, both parsers): how close
     // the next chord must be to the fill end to count as the chord the fill
-    // lands on.
+    // lands on, in beats. The parser takes the whole ticks of this and adds
+    // one tick, as Clone Hero 1.1 does (finding 315, D22), so 0 still allows
+    // a chord one tick late.
     double fill_land_slop_beats = 1.0 / 32;
 
     // A 64-bit hash of every field above: everything that can change a run's

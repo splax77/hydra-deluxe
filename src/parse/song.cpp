@@ -133,18 +133,27 @@ bool is_disco_off_marker(std::string_view s) {
     return rest.empty() || rest == "dnoflip";
 }
 
-// Activation-fill placement heuristic, shared by both parsers: true when the
-// fill that ended at `fill_end_tick` lands on the chord being emitted at
-// `tick` (so its op must run after the chord emit), false when it belongs to
-// an earlier chord (run it before). "Lands on" means the next chord is within
-// a 1/32-of-a-beat slop of the fill end and no closer to the previous chord.
+// Activation-fill placement, shared by both parsers: true when the fill that
+// ended at `fill_end_tick` lands on the chord being emitted at `tick` (so its
+// op must run after the chord emit), false when it belongs to an earlier
+// chord (run it before). "Lands on" means the next chord is inside the
+// landing window and no farther from the fill end than the previous chord; a
+// tie goes to the next chord.
+//
+// The window is Clone Hero 1.1's: the whole ticks of resolution x slop, plus
+// one tick (cvttsd2si truncates at 0x20D0088, then inc adds one at
+// 0x20D008D), and a chord exactly at its edge still lands (finding 315, D22).
+// The +1 sits on top of the rules value, so a hydra_rules.ini slop of 0 still
+// lands a chord one tick late.
 bool fill_lands_on_chord(const Song& song, int64_t fill_end_tick, int64_t tick,
                          double slop_beats) {
     std::optional<int64_t> prevchord_dist;
     if (!song.sequence.empty())
         prevchord_dist = fill_end_tick - song.sequence.back().timecode.ticks();
-    int64_t nextchord_dist = tick - fill_end_tick;
-    return nextchord_dist <= static_cast<int64_t>(song.tick_resolution() * slop_beats) &&
+    const int64_t nextchord_dist = tick - fill_end_tick;
+    const int64_t window_ticks =
+        static_cast<int64_t>(song.tick_resolution() * slop_beats) + 1;
+    return nextchord_dist <= window_ticks &&
            (!prevchord_dist.has_value() || nextchord_dist <= *prevchord_dist);
 }
 
