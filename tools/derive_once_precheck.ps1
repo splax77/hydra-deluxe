@@ -694,6 +694,13 @@ function Add-RowItems([string[]]$Kinds) {
 
 $selfFiles = @('tools/derive_once_precheck.ps1', 'tools/test_derive_once_precheck.ps1')
 
+# Which calls are test assertions? The doctest assertion macros, and any
+# assert*( or self.assert*( for C asserts and Python's unittest. Check 1
+# does not take a doctest macro for a helper, check 2 reads an expected value
+# inside an assertion, and check 3 takes a number on one as a pinned result.
+$doctestAsserts = 'CHECK|REQUIRE|CHECK_EQ|REQUIRE_EQ|CHECK_FALSE|CHECK_THROWS\w*|WARN'
+$assertRx = "\b($doctestAsserts|assert\w*|self\.assert\w*)\s*\("
+
 # ------------------------------------------- check 1: helpers defined twice
 
 $cppKeywords = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
@@ -707,7 +714,7 @@ $cppKeywords = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
     'uint32_t', 'uint64_t'))
 $notFunctionNames = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
     'if', 'for', 'while', 'switch', 'catch', 'return', 'sizeof', 'decltype', 'alignof', 'static_assert',
-    'TEST_CASE', 'SUBCASE', 'TEST_SUITE', 'CHECK', 'REQUIRE', 'main'))
+    'TEST_CASE', 'SUBCASE', 'TEST_SUITE', 'main'))  # and the doctest assertions ($doctestAsserts)
 $fnRx = [regex]::new('(?m)^[ \t]*(?:template\s*<[^;{}]*>\s*)?(?<pre>(?:[A-Za-z_][\w:]*(?:<[^;{}()]*>)?[\s\*&]+)+?)(?<name>[A-Za-z_]\w*)\s*\((?<params>[^;{}]*?)\)\s*(?:const\s*)?(?:noexcept\s*)?(?:->\s*[^;{}()]+?)?\{', 'Compiled')
 $lamRx = [regex]::new('(?:\bauto|\bconst\s+auto)\s*&?\s*(?<name>[A-Za-z_]\w*)\s*=\s*\[[^\]]*\]\s*(?:\((?<params>[^;{}]*?)\))?\s*(?:mutable\s*)?(?:->\s*[^;{}()]+?)?\{', 'Compiled')
 $tokRx = [regex]::new('[A-Za-z_]\w*|\d[\w.'']*|"\s*"|''\s*''|->|::|\S', 'Compiled')
@@ -768,7 +775,7 @@ function Get-Definitions([string]$Path) {
         if ($end -lt 0) { return }
         if (-not $isLambda -and -not (& $atTop $open)) { return }
         $name = $m.Groups['name'].Value
-        if ($notFunctionNames.Contains($name)) { return }
+        if ($notFunctionNames.Contains($name) -or $name -cmatch "^($doctestAsserts)$") { return }
         if (-not $isLambda -and ($m.Groups['pre'].Value -match '\b(return|else|new|delete|throw|case|do|goto|co_return)\b')) { return }
         $norm = Get-Normalised ($m.Groups['params'].Value + ' ' + $code.Substring($open, $end - $open + 1))
         $first = Get-LineOf $v ($m.Index + ($m.Value.Length - $m.Value.TrimStart().Length))
@@ -883,7 +890,7 @@ function Invoke-Check2 {
            What = 'the tied-path count worked out a second way'; Why = 'Path::recount_tied_paths owns the count; pin it' },
         # No row: this is a shape of test, not one rule's question, so no
         # single owner fits a scan row.
-        @{ Rx = '\b(CHECK|REQUIRE|CHECK_EQ|REQUIRE_EQ|CHECK_FALSE)\s*\([^;]*==\s*[^;]*([\w)\]]\s*\([^()]*\)\s*(?:\+|-(?!>)|\*|/)\s*[A-Za-z_(]|[\w)\]]\s*(?:\+|-(?!>)|\*|/)\s*[\w:<>]+\s*\()'
+        @{ Rx = $assertRx + '[^;]*==\s*[^;]*([\w)\]]\s*\([^()]*\)\s*(?:\+|-(?!>)|\*|/)\s*[A-Za-z_(]|[\w)\]]\s*(?:\+|-(?!>)|\*|/)\s*[\w:<>]+\s*\()'
            What = 'an expected value computed from other calls'; Why = 'a test pins literals from one run; it never computes the expected value' },
         # No row: the same, a shape of test with no single owner.
         @{ Rx = '\b(want|wanted|expect|expected)\w*\s*=\s*[^;]*[!=]=[^;]*(\|\||&&)'
@@ -1041,6 +1048,10 @@ function Invoke-Check3 {
     # 1000, 1024 and 1000000 next to * or / are unit factors, ms to s and
     # KiB, not limits (decision D49).
     $unitFactors = [System.Collections.Generic.HashSet[string]]::new([string[]]@('1000', '1024', '1000000'))
+    # Is this number a duration? It is the first argument of a time call
+    # (seconds(, sleep_for(, a timeout or deadline...); in a test, a unit
+    # after it (5ms, 2s) says so too.
+    $durationBeforeRx = '\b(seconds|milliseconds|minutes|microseconds|sleep_for|timeout|deadline)\w*\s*\(\s*$'
     foreach ($f in $added.Keys) {
         if (-not ((Test-CppPath $f) -or (Test-PyPath $f))) { continue }
         if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
@@ -1056,7 +1067,7 @@ function Invoke-Check3 {
             $t = $code.Trim()
             if (-not $t) { continue }
             if ($t -match '^#\s*(include|pragma|error|if|ifdef|ifndef|endif|else|elif)\b|^\s*static_assert\b|^(import|from)\s') { continue }
-            $isCheck = $t -match '\b(CHECK|REQUIRE|CHECK_EQ|REQUIRE_EQ|CHECK_FALSE|CHECK_THROWS\w*|WARN|assert\w*|self\.assert\w*)\s*\('
+            $isCheck = $t -match $assertRx
             $isLoop = $t -match '^\s*(for|while)\s*\('
             foreach ($m in $litRx.Matches($code)) {
                 $n = ConvertTo-Number $m.Value
@@ -1086,7 +1097,7 @@ function Invoke-Check3 {
                     $isNamed = $before -match '(?<![=!<>+\-*/%&|^])=\s*[-+(]*$|^\s*(constexpr|const|static)?[\w:<>\s]*\b[A-Z][A-Z0-9_]+\s*=\s*$'
                     $isReturn = $before -match '\breturn\s*[-+(]*$' -and $after -match '^[;)]'
                     $isBound = $before -match '\bstd::(min|max|clamp)\s*(<[^>]*>)?\s*\(([^()]*,)?\s*$'
-                    $isDuration = $before -match '\b(seconds|milliseconds|minutes|microseconds|sleep_for|timeout|deadline)\w*\s*\(\s*$'
+                    $isDuration = $before -match $durationBeforeRx
                     if (-not ($inCompare -or $isNamed -or $isReturn -or $isBound -or $isDuration)) { continue }
                 }
                 if ($isTest) {
@@ -1097,7 +1108,7 @@ function Invoke-Check3 {
                     $assigned = if ($before -match '(?:(?:\.|->)(\w+)|\b(\w+))\s*=$') { "$($Matches[1])$($Matches[2])" } else { '' }
                     $isField = $assigned -and $assigned -match $limitWords
                     $isLoopLimit = $isLoop -and $t -match $loopWords -and $t -notmatch ':\s*\{'
-                    $isDuration = $before -match '\b(seconds|milliseconds|minutes|microseconds|sleep_for|timeout|deadline)\w*\s*\(\s*$' -or $after -match '^(ms|s|min)\b'
+                    $isDuration = $before -match $durationBeforeRx -or $after -match '^(ms|s|min)\b'
                     if ($isCheck -and -not $inCompare) { continue }
                     if ($isLoop -and -not $isLoopLimit -and -not $inCompare) { continue }
                     if ($isLoop -and $inCompare -and -not $isLoopLimit) { continue }
