@@ -236,7 +236,66 @@ bool flags_line(const CompiledRule& c, const std::string& line) {
     return c.rule->calls_owner.empty() || !std::regex_search(line, c.calls_owner);
 }
 
+// A line the scan accepts by its exact text: an owner's own line or a
+// baseline copy. Both kinds go in one list and follow one rule.
+struct ListedLine {
+    std::string question;
+    std::string file;       // repo-relative, forward slashes
+    std::string line_text;  // trimmed
+    std::string stale;      // the message when no source line uses it
+};
+
+// Owner lines first, so an owner line is used before a baseline entry with
+// the same text.
+std::vector<ListedLine> listed_lines() {
+    std::vector<ListedLine> out;
+    for (const OwnerRule& r : rules())
+        for (const OwnerLine& o : r.owner_lines)
+            out.push_back({r.question, o.file, o.line_text,
+                           "owner line no longer matches (update it)"});
+    for (const KnownCopy& k : known_copies())
+        out.push_back({k.question, k.file, k.line_text,
+                       "baseline entry no longer matches (remove it)"});
+    return out;
+}
+
+enum class Take { taken, used_up, unlisted };
+
+// Each listed entry covers exactly one line of source: the first entry with
+// this question, file and text that no earlier line used takes it. A
+// word-for-word copy finds every such entry used (used_up).
+Take take_listed_line(const std::vector<ListedLine>& listed, std::vector<bool>& used,
+                      const std::string& question, const std::string& file,
+                      const std::string& text) {
+    bool any = false;
+    for (size_t i = 0; i < listed.size(); ++i) {
+        const ListedLine& l = listed[i];
+        if (l.question != question || l.file != file || l.line_text != text) continue;
+        any = true;
+        if (!used[i]) {
+            used[i] = true;
+            return Take::taken;
+        }
+    }
+    return any ? Take::used_up : Take::unlisted;
+}
+
 }  // namespace
+
+TEST_CASE("single-owner listed lines each cover one line of source") {
+    const std::vector<ListedLine> listed = {{"Q?", "src/a.cpp", "x();", "stale"},
+                                            {"Q?", "src/a.cpp", "y();", "stale"},
+                                            {"Q?", "src/a.cpp", "y();", "stale"}};
+    std::vector<bool> used(listed.size(), false);
+    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "x();") == Take::taken);
+    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "x();") == Take::used_up);
+    // Two identical entries cover two identical lines, and no third.
+    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::taken);
+    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::taken);
+    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::used_up);
+    CHECK(take_listed_line(listed, used, "Q?", "src/b.cpp", "x();") == Take::unlisted);
+    CHECK(take_listed_line(listed, used, "Other?", "src/a.cpp", "x();") == Take::unlisted);
+}
 
 TEST_CASE("single-owner rules match their own examples") {
     for (const CompiledRule& c : compile_rules()) {
@@ -270,8 +329,8 @@ TEST_CASE("single-owner rules hold across src/ and tools/") {
     const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
     const std::vector<CompiledRule> compiled = compile_rules();
 
-    std::set<size_t> seen;  // indexes into known_copies() that matched a line
-    std::set<const OwnerLine*> owner_seen;
+    const std::vector<ListedLine> listed = listed_lines();
+    std::vector<bool> used(listed.size(), false);  // which listed entries a line took
     std::vector<std::string> problems;
     int files = 0;
     for (const char* sub : {"src", "tools"}) {
@@ -293,29 +352,10 @@ TEST_CASE("single-owner rules hold across src/ and tools/") {
                     for (const std::string& o : rule.owner_files) skip = skip || rel == o;
                     for (const Exempt& x : rule.exempt) skip = skip || rel == x.file;
                     if (skip || !flags_line(c, line)) continue;
-                    // Each listed line covers exactly one line of source: the
-                    // first unused entry with this file and text takes it. A
-                    // word-for-word copy finds every such entry used and fails.
+                    const Take take = take_listed_line(listed, used, rule.question, rel, t);
+                    if (take == Take::taken) continue;
                     const std::string where = rel + ":" + std::to_string(lineno);
-                    bool listed = false;
-                    bool taken = false;
-                    for (const OwnerLine& o : rule.owner_lines) {
-                        if (o.file != rel || o.line_text != t) continue;
-                        listed = true;
-                        if (owner_seen.insert(&o).second) {
-                            taken = true;
-                            break;
-                        }
-                    }
-                    for (size_t i = 0; !taken && i < known_copies().size(); ++i) {
-                        const KnownCopy& k = known_copies()[i];
-                        if (k.question != rule.question || k.file != rel || k.line_text != t)
-                            continue;
-                        listed = true;
-                        if (seen.insert(i).second) taken = true;
-                    }
-                    if (taken) continue;
-                    if (listed)
+                    if (take == Take::used_up)
                         problems.push_back(where + ": a second copy of a listed line (each "
                                            "entry covers one line) answers \"" +
                                            rule.question + "\": " + t);
@@ -326,18 +366,9 @@ TEST_CASE("single-owner rules hold across src/ and tools/") {
             }
         }
     }
-    for (size_t i = 0; i < known_copies().size(); ++i) {
-        if (seen.count(i)) continue;
-        const KnownCopy& c = known_copies()[i];
-        problems.push_back("baseline entry no longer matches (remove it): " + c.file + ": " +
-                           c.line_text);
-    }
-    for (const OwnerRule& r : rules()) {
-        for (const OwnerLine& o : r.owner_lines) {
-            if (owner_seen.count(&o)) continue;
-            problems.push_back("owner line no longer matches (update it): " + o.file + ": " +
-                               o.line_text);
-        }
+    for (size_t i = 0; i < listed.size(); ++i) {
+        if (used[i]) continue;
+        problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
     }
     CHECK(files > 100);  // the scan found the sources
     std::ostringstream report;
