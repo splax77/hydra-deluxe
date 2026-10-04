@@ -160,6 +160,38 @@ inline Song clamp_song() {
                             {{0, 120.0}, {2700, 60.0}});
 }
 
+// A squeeze window that reaches back past the activation. At 4000 BPM a
+// measure (768 ticks) lasts 60 ms, so the 500 ms squeeze window spans more
+// than eight measures. Phrases at 0, 768 and 1536 bank three bars before the
+// fill at 2304 (180 ms) activates, so SP ends at 2304 + 6 measures = 6912
+// (540 ms). The SP end two measures earlier, 5376 (420 ms), has the phrase at
+// 0 inside its window; the one at 6912 has the phrase at 768. Both phrases
+// were banked before SP started, so this activation can squeeze neither in
+// nor out: its SP simply ends at 6912.
+inline Song banked_phrase_window_song() {
+    return build_tempo_song({{0, true},     {768, true},  {1536, true}, {2304, false, true},
+                             {3072},        {3840},       {4608},       {5376},
+                             {6144},        {6912},       {7680},       {8448},
+                             {9216}},
+                            {{0, 4000.0}});
+}
+
+// Two activations that tie on one SP end but not on what they banked. 120 BPM
+// up to tick 9600, then 4000 BPM (a measure is 60 ms). Phrases end at 768,
+// 2304, 8448 and 12288; fills end at 4608, 10752 and 13824. Path '1' banks
+// three bars, activates at 10752 (SP end 15360) and collects 12288, so its
+// end moves to 16896. Path '0 E0' activates at 4608, banks 8448 and 12288 and
+// activates at 13824 with two bars: SP end 16896 too, with the same score at
+// 13824. The SP end at 15360 has 12288 in its window. '1' can squeeze it out
+// there; '0 E0' banked it before its activation and cannot, so the two must
+// not be folded into one future. The trimmed review probe probe1.
+inline Song banked_phrase_fold_song() {
+    return build_tempo_song({{768, true},   {2304, true},  {4608, false, true}, {6144},
+                             {8448, true},  {10752, false, true}, {12288, true},
+                             {13824, false, true}, {17000}},
+                            {{0, 120.0}, {9600, 4000.0}});
+}
+
 // Keep every path, not only the best score (EngineOptions' default depth is
 // 0), so a SqOut or SqIn branch the fixture creates is in the output even
 // when it is not optimal.

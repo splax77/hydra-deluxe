@@ -273,11 +273,35 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     const SqOutNote typed{best->timecode.ticks(),
                           offset_from_sp_end(best->timecode.ms(), d_ms)};
 
-    // The engine squeezes out only the chord core::sqout_chord names. Anything
-    // else is a squeeze-out the search can never produce: refuse, never price
-    // it. best exists, so the window holds a phrase chord and engine does too.
-    const SongTimestamp* engine =
-        core::sqout_chord(song, song.timing().timecode(w.deact_tick));
+    // The engine squeezes out only the chord core::sqout_chord names for this
+    // activation. Anything else is a squeeze-out the search can never
+    // produce: refuse, never price it.
+    const Timecode deact_tc = song.timing().timecode(w.deact_tick);
+    if (!core::activation_can_squeeze(w.act_tick, typed.tick)) {
+        std::snprintf(buf, sizeof(buf),
+                      "%s: the SqOut offset %.2f ms lands on the phrase chord at "
+                      "tick %lld, at or before the activation at tick %lld. That "
+                      "phrase was banked before Star Power started, so this "
+                      "window cannot squeeze it out. Not priced.",
+                      where.c_str(), *w.sqout_offset_ms, (long long)typed.tick,
+                      (long long)w.act_tick);
+        throw std::runtime_error(buf);
+    }
+    const SongTimestamp* engine = core::sqout_chord(song, deact_tc, w.act_tick);
+    if (!engine) {
+        // best exists, so the window holds a phrase chord; the first one was
+        // banked before this activation, so the engine squeezes nothing here.
+        const SongTimestamp* first = core::sqout_chord(song, deact_tc);
+        std::snprintf(buf, sizeof(buf),
+                      "%s: the SqOut offset %.2f ms lands on the phrase chord at "
+                      "tick %lld, which the engine never squeezes out. The first "
+                      "phrase chord within %.0f ms of the SP end, at tick %lld, "
+                      "was banked before the activation, so this window "
+                      "squeezes nothing out. Not priced.",
+                      where.c_str(), *w.sqout_offset_ms, (long long)typed.tick,
+                      kSqueezeWindowMs, (long long)first->timecode.ticks());
+        throw std::runtime_error(buf);
+    }
     if (best != engine) {
         std::snprintf(
             buf, sizeof(buf),
@@ -305,9 +329,10 @@ std::vector<std::string> ambiguous_window_warnings(
         // A squeeze-out offset or chord settles the question.
         if (w.sqout_offset_ms || w.sqout_tick) continue;
 
-        // The one chord the graph could squeeze out at this D.
+        // The one chord the engine could squeeze out at this D, for this
+        // window's activation.
         const SongTimestamp* engine =
-            core::sqout_chord(song, timing.timecode(w.deact_tick));
+            core::sqout_chord(song, timing.timecode(w.deact_tick), w.act_tick);
         if (!engine) continue;
         const int64_t tick = engine->timecode.ticks();
 
