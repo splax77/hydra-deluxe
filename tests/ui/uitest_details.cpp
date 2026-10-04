@@ -764,6 +764,18 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("hardest squeeze") == std::string::npos);
     IM_CHECK(text.find("163.0 ms") != std::string::npos);
     IM_CHECK(ctx->ItemExists("**/Re-analyze"));
+
+    // A result from another Hydra build, under these rules: the headline and
+    // the Paths tab name only that cause, and the button stays Re-analyze.
+    h.app->viewed.status = hydra::store::RecordStatus::Stale;
+    h.app->viewed.stale_build = true;
+    h.app->viewed.stale_rules = false;
+    ctx->Yield(2);
+    text = visible_text(h);
+    IM_CHECK(text.find("Out of date: this result came from another Hydra version. Re-analyze "
+                       "to refresh it.") != std::string::npos);
+    IM_CHECK(text.find("hydra_rules.ini") == std::string::npos);
+    IM_CHECK(ctx->ItemExists("**/Re-analyze"));
 }
 
 // Closing the panel mid-analysis no longer cancels it: the result is stored

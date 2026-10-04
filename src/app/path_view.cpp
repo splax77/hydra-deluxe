@@ -1,6 +1,7 @@
 #include "app/path_view.h"
 #include "app/display_format.h"
 #include "app/preview_view.h"  // song_fraction
+#include "app/user_messages.h"  // kNoPathsFound
 
 #include <algorithm>
 #include <cmath>
@@ -16,7 +17,7 @@ namespace hydra::app {
 namespace {
 
 std::string bars_text(int bars) {
-    return std::to_string(bars) + (bars == 1 ? " bar" : " bars");
+    return counted(bars, "bar", "bars");
 }
 
 // The separator the new labels use: " · " (U+00B7 in UTF-8).
@@ -50,23 +51,15 @@ std::string format_measure(const SongTiming& timing, int64_t tick) {
 }
 
 std::string activation_badge(const Activation& act) {
-    std::optional<double> hardest = act.difficulty();
-    // An E activation that skips fills has an optional early fill, which
-    // difficulty() leaves out. It still gets the badge: its timing decides
-    // whether the first fill shows up, and so how the skips are counted.
-    if (!hardest && act.is_e_critical()) hardest = act.e_difficulty(/*verbose=*/true);
+    // The activation says which part is hardest and how hard (a tie names the
+    // squeeze, and an E activation's optional early fill counts when nothing
+    // else does); the badge only words it.
+    const std::optional<HardestTiming> hardest = act.hardest();
     if (!hardest) return {};
-    // difficulty() is the max over the SqIns/SqOuts and a required fill, so
-    // the squeeze that produced it compares equal; a tie names the squeeze.
-    const char* what = "early fill";
-    for (const SPSqueeze& sq : act.sqinouts)
-        if (sq.difficulty() == *hardest) {
-            what = sq.kind == SqueezeKind::SqIn ? "squeeze in" : "squeeze out";
-            break;
-        }
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%s %.0f ms", what, *hardest);
-    return buf;
+    const char* what = hardest->part == TimingPart::SqueezeIn    ? "squeeze in"
+                       : hardest->part == TimingPart::SqueezeOut ? "squeeze out"
+                                                                 : "early fill";
+    return std::string(what) + " " + format_ms_whole(hardest->ms);
 }
 
 std::vector<TextLine> squeeze_sentences(const Activation& act,
@@ -140,7 +133,7 @@ RecordStatusView build_record_status(const store::RecordLookup& lookup) {
     // A Ready record can legitimately hold nothing -- the chart was analyzed
     // and no path survived. Say so instead of asking for a best path.
     if (record.paths.empty()) {
-        view.lines.push_back("No paths found.");
+        view.lines.push_back(kNoPathsFound);
         return view;
     }
     view.lines.push_back("Best score:  " +
@@ -153,7 +146,7 @@ RecordStatusView build_record_status(const store::RecordLookup& lookup) {
     else
         view.lines.push_back("Path limit:  off");
     if (record.sp_cap)
-        view.lines.push_back("SP cap:  " + std::to_string(*record.sp_cap) + " bars");
+        view.lines.push_back("SP cap:  " + bars_text(*record.sp_cap));
     return view;
 }
 
@@ -202,7 +195,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                                   double hit_window_ms,
                                   std::optional<double> backend_limit_ms,
                                   const core::Rules& rules,
-                                  std::optional<double> song_length_ms) {
+                                  std::optional<double> song_length_ms,
+                                  bool pro_drums) {
     ActivationsView view;
     const double W = hit_window_ms;
 
@@ -219,7 +213,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.sp_bars = act.sp_meter();
         av.bars = bars_text(act.sp_meter());
         av.badge = activation_badge(act);
-        av.chord = act.chord.rowstr();
+        av.chord = act.chord.rowstr(pro_drums);
         if (timing && song_length_ms)
             av.song_fraction =
                 song_fraction(timing->timecode(act.timecode.ticks()).ms(), *song_length_ms);
@@ -369,8 +363,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             av.backends.push_back(std::move(row));
         }
         const size_t shown = av.backends.size();
-        av.backends_label = std::to_string(shown) + (shown == 1 ? " note" : " notes") +
-                            " near the SP end";
+        av.backends_label =
+            counted(static_cast<int64_t>(shown), "note", "notes") + " near the SP end";
 
         view.acts.push_back(std::move(av));
     }
@@ -455,11 +449,8 @@ PathListView build_path_list(const HydraRecord& record) {
 }
 
 std::string within_label(int depth_mode, int depth_value) {
-    const bool points = depth_mode == 1;
-    const std::string n = points ? group_thousands(depth_value) : std::to_string(depth_value);
-    const char* unit = points ? (depth_value == 1 ? " point" : " points")
-                              : (depth_value == 1 ? " score" : " scores");
-    return "Within " + n + unit;
+    return "Within " + (depth_mode == 1 ? counted(depth_value, "point", "points")
+                                        : counted(depth_value, "score", "scores"));
 }
 
 PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, int depth_value) {
@@ -486,9 +477,10 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
         }
         view.buttons.push_back(std::move(b));
     };
-    for (size_t g = 0; g < list.groups.size(); ++g)
-        for (const Path* p : list.groups[g].paths)
-            add(p, g == 0 ? PathButtonView::Group::Optimal : PathButtonView::Group::Within);
+    for (const PathGroupView& g : list.groups)
+        for (const Path* p : g.paths)
+            add(p, record.is_optimal(*p) ? PathButtonView::Group::Optimal
+                                         : PathButtonView::Group::Within);
     if (list.show_allzero)
         for (const Path* p : list.allzero) add(p, PathButtonView::Group::AllZero);
     return view;
@@ -534,20 +526,22 @@ const RecordStatusView& PathsTabCache::status(const store::RecordLookup& lookup,
 const PathsTabCache::Details& PathsTabCache::details(
     const Path& path, const HydraRecord& record, int record_generation,
     const SongTiming* timing, double hit_window_ms, std::optional<double> backend_limit_ms,
-    const core::Rules& rules, std::optional<double> song_length_ms) {
+    const core::Rules& rules, std::optional<double> song_length_ms, bool pro_drums) {
     const bool new_path = record_generation != details_generation_ || &path != details_path_;
     if (new_path || hit_window_ms != details_hit_window_ms_ ||
         backend_limit_ms != details_backend_limit_ms_ ||
-        song_length_ms != details_song_length_ms_) {
+        song_length_ms != details_song_length_ms_ || pro_drums != details_pro_drums_) {
         details_.squeezes = build_multsqueezes(record);
         details_.activations = build_activations(path, record, timing, hit_window_ms,
-                                                 backend_limit_ms, rules, song_length_ms);
+                                                 backend_limit_ms, rules, song_length_ms,
+                                                 pro_drums);
         details_.breakdown = build_score_breakdown(path);
         details_generation_ = record_generation;
         details_path_ = &path;
         details_hit_window_ms_ = hit_window_ms;
         details_backend_limit_ms_ = backend_limit_ms;
         details_song_length_ms_ = song_length_ms;
+        details_pro_drums_ = pro_drums;
         // What is unfolded belongs to the path; a display setting keeps it.
         if (new_path) ui_.reset(details_.activations.acts.size());
         ++details_builds_;

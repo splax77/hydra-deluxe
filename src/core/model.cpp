@@ -62,17 +62,17 @@ bool ChordNote::operator==(const ChordNote& o) const {
            cymbaltype == o.cymbaltype && is2x == o.is2x;
 }
 
-// The note's name with Pro Drums on (note_label), then a ghost or accent in
-// parentheses, so a ghost 2x kick reads "2x kick (Ghost)". Every lane
-// carries dynamics, the kick included (ADR 0012).
-std::string ChordNote::str() const {
+// The note's name (note_label, with the Pro Drums setting `pro`), then a
+// ghost or accent in parentheses, so a ghost 2x kick reads "2x kick (Ghost)".
+// Every lane carries dynamics, the kick included (ADR 0012).
+std::string ChordNote::str(bool pro) const {
     std::string mod;
     switch (dynamictype) {
         case NoteDynamicType::Normal: break;
         case NoteDynamicType::Ghost: mod = " (Ghost)"; break;
         case NoteDynamicType::Accent: mod = " (Accent)"; break;
     }
-    return note_label(*this, /*pro=*/true) + mod;
+    return note_label(*this, pro) + mod;
 }
 
 int ChordNote::basescore() const {
@@ -192,12 +192,12 @@ int Chord::hands_count() const {
     return at(NoteColor::Kick).has_value() ? count() - 1 : count();
 }
 
-std::string Chord::rowstr() const {
+std::string Chord::rowstr(bool pro) const {
     std::vector<ChordNote> ns = notes();
     std::string inner;
     for (size_t i = 0; i < ns.size(); ++i) {
         if (i) inner += " - ";
-        inner += ns[i].str();
+        inner += ns[i].str(pro);
     }
     return "[" + inner + "]";
 }
