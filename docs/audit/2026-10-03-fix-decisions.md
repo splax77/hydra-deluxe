@@ -218,3 +218,9 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 - `kSpActivationBars = 2` (finding 334) and `kDefaultDepthValue = 4` (finding 181) get a name and a CONTEXT.md sentence, written by the M6-J4 merge.
 - Two dev-tool wordings change: `hydra_bench`'s header adopts `describe_settings`' words (206), and `MidiFile::from_file`'s raw error becomes winstr's "cannot open file:" (R7.11).
 - 75: `widest_word` takes `wrap_words`' answer.
+
+**D55 (phase 7 wave 1 follow-ups), 2026-10-04.** Four choices came up while wave 1 was built. The user took the recommended answer to each.
+1. **E2, the how-to line when both ends matter.** Some chords need a note held before the step and another note pushed past it, for example kick, yellow cymbal, blue cymbal and an accented red at combo 7. For those, the line names both ends: "Hit [Kick] first and [Red (Accent)] last." This needs a chord of 4 or more notes with an accent or ghost, so no real chart shows it.
+2. **SE1, `#` in free text.** A `#` after a value in hydra_settings.ini starts a comment (D51 call 15), except in the two free-text keys, `chartfolder` and `dm_last_user`. There a `#` stays part of the value, so a folder such as `C:\Songs\#1 Hits` still loads whole.
+3. **ST1, reindex and other rules.** `hydra_batch --reindex` leaves a row it can't read untouched, instead of blanking its summary columns. A result kept under other rules (D51 call 8) keeps its cached score and stars in the library.
+4. **ST1, older builds.** The schema 4 `rules_fp` column has no default. An older Hydra that opens a database this version upgraded fails to save, with a clear error, rather than writing a row with a wrong rules value in its key.
