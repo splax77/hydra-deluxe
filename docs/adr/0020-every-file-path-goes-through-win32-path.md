@@ -59,7 +59,7 @@ converts a URL.
 ## The shell: Open report and Show in folder
 
 The Windows shell (`ShellExecuteW`, Explorer) is the exception. It takes no
-`\\?\` path and nothing of 260 characters or more. We measured this on
+prefixed path and nothing of 260 characters or more. We measured this on
 2026-10-03 with a page that pinged a local listener when it really loaded.
 From a long-path-aware program like Hydra.exe, the shell failed on the long
 path, the `\\?\` path, a long `file:///` link and even the short 8.3 name,
@@ -73,7 +73,9 @@ folder with the file highlighted. A copy of the page at a short path also
 opened normally through the shell.
 
 The shell's edge is 260 characters, the plain `MAX_PATH`, and it never takes
-a `\\?\` path. One function asks that question: `fits_shell` (winstr) says
+a prefixed path: neither `\\?\` nor the device prefix `\\.\`. Its parser
+(`SHParseDisplayName`) refuses both, checked on 2026-10-04 with
+`C:\Windows\win.ini` in each form. One function asks that question: `fits_shell` (winstr) says
 whether the shell takes a path as it is. Nothing else compares a path's
 length against 260 for the shell. `shell_path`, `open_in_browser`,
 `copy_to_short_temp` and the tests all call it, and the source-scan test fails
@@ -82,7 +84,8 @@ on a second copy.
 So `shell_path` (winstr) turns a path the shell won't take into its short
 name, or gives back nothing when there isn't one. That happens when the file
 is missing or the drive keeps no short names, which Windows turns off on most
-drives other than C:.
+drives other than C:. A `\\.\` path also gets nothing, since its short form
+keeps the prefix.
 
 - Open report (`app::open_in_browser`): a path the shell takes goes to the
   shell as before. Otherwise it goes to the program Windows opens `.html`
