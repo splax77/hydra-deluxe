@@ -8,12 +8,15 @@
 #include "doctest.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "app/analysis.h"
+#include "app/config.h"
 #include "core/model.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -349,4 +352,61 @@ TEST_CASE("path codec: a missing node or a bad structure blob throws") {
     FlatRecord cut = flat;
     cut.structure.resize(cut.structure.size() / 2);
     CHECK_THROWS_AS(rebuild_record(cut), SerializeError);
+}
+
+// Not an invariant. Prints every squeeze fact the step-1 plan promises not to
+// move, so a run before a change and a run after it can be compared line by
+// line. It is skipped in the normal run. Run it on its own with --no-skip and
+// send stdout to a file.
+TEST_CASE("print the corpus squeeze facts" * doctest::skip()) {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        // The chart's folder name, so the printout doesn't depend on where
+        // the checkout lives.
+        const size_t slash = chart.find_last_of("/\\");
+        const size_t before = slash == std::string::npos || slash == 0
+                                  ? std::string::npos
+                                  : chart.find_last_of("/\\", slash - 1);
+        const std::string name =
+            slash == std::string::npos
+                ? chart
+                : chart.substr(before == std::string::npos ? 0 : before + 1,
+                               slash - (before == std::string::npos ? 0 : before + 1));
+
+        HydraRecord rec;
+        try {
+            const Song& song =
+                corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+            if (song.is_empty()) continue;
+            // Through the codec, so these are the facts a stored record holds.
+            rec = rebuild_record(flatten_record(corpus::analyzed(chart, cfg)));
+            restore_timecodes(rec, song.timing());
+        } catch (const ChartFileError& e) {
+            std::printf("%s|load error|%s\n", name.c_str(), e.what());
+            continue;
+        }
+
+        auto print_paths = [&](const char* list, const std::vector<const Path*>& paths) {
+            int index = 0;
+            for (const Path* p : paths) {
+                std::printf("%s|%s|%d|%s|%lld\n", name.c_str(), list, index++,
+                            p->pathstring().c_str(), (long long)p->totalscore());
+                for (const Activation& act : p->walk_activations()) {
+                    std::printf("  act %lld deact %lld sqout %lld\n",
+                                (long long)act.timecode.ticks(),
+                                (long long)act.deact_tick.value_or(-1),
+                                (long long)act.sqout_tick.value_or(-1));
+                    // %.17g so even a last-bit change in an offset shows.
+                    for (const SPSqueeze& sq : act.sqinouts)
+                        std::printf("    %s %.17g\n", sq.type_name(), sq.offset_ms);
+                    for (const BackendSqueeze& b : act.display_backends())
+                        std::printf("    row %lld %s %d %d %.17g\n",
+                                    (long long)b.timecode.ticks(), b.chord.code().c_str(),
+                                    b.points, b.sqout_points, b.offset_ms.value_or(0.0));
+                }
+            }
+        };
+        print_paths("paths", rec.all_paths());
+        print_paths("allzero", rec.all_allzero_paths());
+    }
 }
