@@ -190,3 +190,5 @@ The calls in short:
 26. The batch reports its own analyzed, skipped and failed counts (Q26, 142).
 
 The code-only calls at the end of the sheet are approved as written. They cover findings 38, 59, 68, 78 to 85, 86, 98, 103, 108, 109, 170, 174, 198 and 202. In particular, the six old probe scripts are deleted.
+
+**D52 (phase 3, fill comparison counts), 2026-10-04.** The user chose the recommended answer. D50 item 2 puts a chart with a score on only one side under "In both". The fill page's subtitle, its tiles and hydra_fillcompare's "Compared N charts: …" line now count those charts as "N with a score on one side only", with a matching tile. The parts add up to the total again. No score, path or record changes.
