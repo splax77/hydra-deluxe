@@ -298,7 +298,7 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     REQUIRE(av.backends.size() == 1);
     CHECK(av.backends[0].rating.find(" (eff. 0.0ms)") != std::string::npos);
 
-    // A side that prints as x1.00 is left out.
+    // A side at exactly x1.00 is left out.
     Activation late_only = base;
     late_only.transfer_post = TransferScale{1.0, 6.33};
     late_only.transfer_pre = late_only.transfer_post;
@@ -864,6 +864,40 @@ TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. fig
     CHECK(r.rating.find(" (eff. 307.7ms)") != std::string::npos);
     CHECK_FALSE(r.tooltip.empty());
     CHECK(v.acts[0].scale_warning.find("x1.60") != std::string::npos);
+}
+
+TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its row's figure") {
+    HydraRecord rec;
+    Activation act;
+    act.skips = 0;
+    act.e_offset = 300.0;  // not e-critical
+    act.transfer_post = TransferScale{0.9973, 1.0};
+    act.transfer_pre = act.transfer_post;
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -187.5});
+    BackendSqueeze ry;
+    ry.timecode = Timecode::raw(5000);
+    ry.offset_ms = -187.5;
+    ry.is_sp = true;
+    act.backends.push_back(ry);
+    act.sqout_tick = 5000;
+    Path p;
+    p.activations.push_back(act);
+
+    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning == "Frontend timing scales x0.997 (early) at the SP end.");
+    CHECK(v.acts[0].scale_warn);
+    REQUIRE(v.acts[0].backends.size() == 1);
+    // 375 / 1.9973 = 187.75... -> "187.7" or "187.8" per %.1f; compute it.
+    char want[32];
+    std::snprintf(want, sizeof(want), " (eff. %.1fms)", 375.0 / 1.9973);
+    CHECK(v.acts[0].backends[0].rating.find(want) != std::string::npos);
+    const std::string& tip = v.acts[0].backends[0].tooltip;
+    CHECK(tip.find("scales x0.997 here") != std::string::npos);
+    CHECK(tip.find("budget is 169.8ms, not 170.0ms") != std::string::npos);
+    // The squeeze-out's figure lives on its row only (decision 2).
+    REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
+    CHECK(v.acts[0].squeeze_sentences[0].text.find("eff.") == std::string::npos);
 }
 
 TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {

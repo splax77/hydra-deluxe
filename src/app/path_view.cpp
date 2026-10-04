@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
 
 #include "core/backend_value.h"
@@ -19,6 +20,18 @@ std::string bars_text(int bars) {
 
 // The separator the new labels use: " · " (U+00B7 in UTF-8).
 const char* const kDot = " \xC2\xB7 ";
+
+// A multiplier as the scale line prints it: two decimals, or as many more as
+// it takes not to read as x1.00 (nine reach past is_scaled's tolerance), so
+// a multiplier that governs a figure never prints as 1.
+std::string format_scale(double r) {
+    char buf[32];
+    for (int digits = 2; digits <= 9; ++digits) {
+        std::snprintf(buf, sizeof(buf), "x%.*f", digits, r);
+        if (std::strtod(buf + 1, nullptr) != 1.0) break;
+    }
+    return buf;
+}
 
 }  // namespace
 
@@ -218,36 +231,23 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
         ActivationRating rate = rate_activation(act, W, rules.backend_leeway_ms);
 
-        // The line shows every scale that isn't x1.00, early first. Backend
-        // rows are judged at the post (deact-node) end, SqIn/SqOut phrase
-        // notes at the pre (pre-extension) end; the two differ only when a
-        // SqIn extended SP, and then the SqIn's end gets its own clause.
-        // 0.005 is half the last digit of %.2f: a scale within it prints as
-        // x1.00, and two scales within it print the same.
-        auto shows = [](double r) { return std::abs(r - 1.0) >= 0.005; };
-        auto same = [](double a, double b) { return std::abs(a - b) < 0.005; };
-        auto sides = [&shows](const TransferScale& s) {
-            char buf[64];
+        // The line names every multiplier that isn't 1, early first: at the
+        // SP end, then at the SqIn's end when that prints differently. It is
+        // orange when one of them governs a row or SqIn on this activation.
+        auto sides = [](const TransferScale& s) {
             std::string out;
-            if (shows(s.early)) {
-                std::snprintf(buf, sizeof(buf), "x%.2f (early)", s.early);
-                out = buf;
-            }
-            if (shows(s.late)) {
-                std::snprintf(buf, sizeof(buf), "x%.2f (late)", s.late);
+            if (is_scaled(s.early)) out = format_scale(s.early) + " (early)";
+            if (is_scaled(s.late)) {
                 if (!out.empty()) out += " / ";
-                out += buf;
+                out += format_scale(s.late) + " (late)";
             }
             return out;
         };
-        const TransferScale& post = rate.scales.post;
-        const TransferScale& pre = rate.scales.pre;
-        const std::string post_part = sides(post);
-        const bool pre_differs = !same(pre.early, post.early) || !same(pre.late, post.late);
-        const std::string pre_part = pre_differs ? sides(pre) : std::string();
+        const std::string post_part = sides(rate.scales.post);
+        const std::string pre_part = sides(rate.scales.pre);
         std::string clauses;
         if (!post_part.empty()) clauses = post_part + " at the SP end";
-        if (!pre_part.empty()) {
+        if (!pre_part.empty() && pre_part != post_part) {
             if (!clauses.empty()) clauses += "; ";
             clauses += pre_part + " at the SqIn's SP end";
         }
@@ -295,10 +295,11 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 const double normal_budget = squeeze_budget_ms(1.0, W);
                 std::snprintf(tip, sizeof(tip),
                               "Effectively %.1fms on the normal %.0fms scale:\n"
-                              "frontend timing scales x%.2f here, so the combined\n"
-                              "squeeze budget is %.0fms, not %.0fms.",
-                              *br.note.effective_ms, normal_budget, br.note.scale,
-                              br.note.budget_ms, normal_budget);
+                              "frontend timing scales %s here, so the combined\n"
+                              "squeeze budget is %.1fms, not %.1fms.",
+                              *br.note.effective_ms, normal_budget,
+                              format_scale(br.note.scale).c_str(), br.note.budget_ms,
+                              normal_budget);
                 row.tooltip = tip;
             }
             row.chord = bsq.chord.notationstr();
