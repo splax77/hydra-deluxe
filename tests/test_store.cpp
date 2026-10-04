@@ -340,11 +340,15 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
 }
 
 TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others Stale") {
-    // The stamp is not the app version (ADR 0018). 1.8.3 stamped its app
-    // version on results identical to 1.8.2's, so both read Ready, through
-    // the C++ rule (get_record, get_summary) and its SQL twin (has_record).
-    CHECK(kResultsStamp.is_current("1.8.2"));
-    CHECK(kResultsStamp.is_current("1.8.3"));
+    // The stamp is not the app version (ADR 0018). Only "2.1.0" reads Ready.
+    // Results stamped "1.8.2" (every release from 1.8.4 to 2.0.0) or "1.8.3"
+    // hold values the SP-end history changed (ADR 0021), so they read Stale,
+    // through the C++ rule (get_record, get_summary) and its SQL twin
+    // (has_record).
+    CHECK(kResultsStamp.is_current("2.1.0"));
+    CHECK_FALSE(kResultsStamp.is_current("2.0.0"));
+    CHECK_FALSE(kResultsStamp.is_current("1.8.2"));
+    CHECK_FALSE(kResultsStamp.is_current("1.8.3"));
     CHECK(current_record_version() == std::string(kResultsStamp.written));
 
     const CapQuery at4 = CapQuery::at(4);
@@ -370,9 +374,9 @@ TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others S
         const char* hash;
         const char* stamp;
         RecordStatus want;
-    } cases[] = {{"a", "1.8.2", RecordStatus::Ready},
-                 {"b", "1.8.3", RecordStatus::Ready},
-                 {"c", "1.8.1", RecordStatus::Stale},
+    } cases[] = {{"a", "2.1.0", RecordStatus::Ready},
+                 {"b", "1.8.3", RecordStatus::Stale},
+                 {"c", "1.8.2", RecordStatus::Stale},
                  {"d", "0.0.0", RecordStatus::Stale}};
     for (const auto& c : cases) {
         CAPTURE(c.stamp);

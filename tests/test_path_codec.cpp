@@ -342,10 +342,15 @@ TEST_CASE("path codec: a missing node or a bad structure blob throws") {
     past5.structure[0] = 5;
     CHECK_THROWS_AS(rebuild_record(past5), SerializeError);
 
-    // The current version is 6, and the unmodified flat record -- still at
+    // Version 6 is the 2.0.0 layout: no SP-end history, bank or fill lists.
+    FlatRecord past6 = flat;
+    past6.structure[0] = 6;
+    CHECK_THROWS_AS(rebuild_record(past6), SerializeError);
+
+    // The current version is 7, and the unmodified flat record -- still at
     // that version -- round-trips through rebuild_record without throwing,
     // rules fingerprint included.
-    CHECK(kPathFormatStamp.written == 6);
+    CHECK(kPathFormatStamp.written == 7);
     CHECK(flat.structure[0] == static_cast<uint8_t>(kPathFormatStamp.written));
     HydraRecord rebuilt = rebuild_record(flat);
     CHECK(rebuilt.rules_fingerprint == rec.rules_fingerprint);
