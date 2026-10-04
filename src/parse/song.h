@@ -94,6 +94,18 @@ inline constexpr const char* kUnknownTitle = "(unknown)";
 // place that shows a stored name reads it through this.
 std::string title_or_unknown(std::string title);
 
+// Removes Clone Hero rich-text tags: <color=...>, </color>, <b>, </b>, <i>,
+// </i>, <size=...>, </size>, <u>, </u>, <s>, </s>, <sub>, </sub>, <sup>,
+// </sup>, case-insensitive. Anything else in angle brackets is kept, including
+// <color> with no value, a tag that never closes, and "<unknown artist>".
+// The library search reads it as app::strip_rich_tags (app/library_query.h).
+std::string strip_rich_tags(std::string_view text);
+
+// The one cleaned song title every screen shows (D48, Q14): the rich-text
+// tags stripped, spaces at either end trimmed, then title_or_unknown's
+// fallback, so a title made only of tags or spaces reads kUnknownTitle.
+std::string display_title(std::string_view title);
+
 // What a song with no usable artist or charter shows everywhere it is shown.
 inline constexpr const char* kUnknownArtist = "<unknown artist>";
 inline constexpr const char* kUnknownCharter = "<unknown charter>";

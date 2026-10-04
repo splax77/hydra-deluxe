@@ -170,6 +170,20 @@ TEST_CASE("timing: continuous helpers are exact, inverse, and monotone") {
           doctest::Approx(flat.plusmeasure(tc, 4).ms()).epsilon(1e-12));
 }
 
+TEST_CASE("timing: display_tick_at_ms rounds to the nearest tick and never goes below 0") {
+    // Flat 120 BPM at resolution 480: one beat (480 ticks) is 500 ms, so
+    // 1000 ms is tick 960.
+    std::map<int64_t, int64_t> tpm{{0, 1920}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    hydra::SongTiming st(480, tpm, bpm);
+
+    // Less than half a tick before tick 960 already shows tick 960.
+    CHECK(st.display_tick_at_ms(999.9) == 960);
+    CHECK(st.display_tick_at_ms(1000.0) == 960);
+    // Before the song starts the shown tick stays at 0.
+    CHECK(st.display_tick_at_ms(-250.0) == 0);
+}
+
 TEST_CASE("timing: one SP bar is two measures") {
     CHECK(hydra::kMeasuresPerSpBar == 2);
     CHECK(hydra::sp_bars_to_measures(1) == 2);

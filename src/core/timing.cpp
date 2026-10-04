@@ -240,4 +240,9 @@ double SongTiming::sp_end_ms(double act_hit_ms, int64_t end_measures) const {
     return ms_.ms_at_tick_f(tick_at_measures_f(m));
 }
 
+int64_t SongTiming::display_tick_at_ms(double ms) const {
+    const int64_t tick = std::llround(ms_.tick_at_ms(ms));
+    return tick < 0 ? 0 : tick;
+}
+
 }  // namespace hydra
