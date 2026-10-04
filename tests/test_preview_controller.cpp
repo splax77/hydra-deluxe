@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "chart_text.h"
 #include "app/preview_view.h"
 #include "audio/device.h"
 #include "core/winstr.h"
@@ -75,6 +76,30 @@ std::string chart_with_audio() {
     CreateDirectoryW(dir.c_str(), nullptr);
     const std::string d = hydra::wide_to_utf8(dir);
     copy_file_utf8(corpus::first_chart_with_suffix(".chart"), d + "\\notes.chart");
+    copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");
+    return d + "\\notes.chart";
+}
+
+// A chart folder whose audio outlasts its notes: two notes at 600 BPM
+// (resolution 192, so a beat is 100 ms and a measure 400 ms), the last at
+// tick 192 (100 ms), and the 5 s test sine as song.ogg. Without the audio's
+// end the beat lines would stop two measures past the last note, at tick
+// 1728 (900 ms).
+std::string short_chart_with_long_audio() {
+    wchar_t tmp[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp);
+    std::wstring dir = std::wstring(tmp) + L"hydra_prevctl_tail_" +
+                       std::to_wstring(GetCurrentProcessId());
+    CreateDirectoryW(dir.c_str(), nullptr);
+    const std::string d = hydra::wide_to_utf8(dir);
+    using namespace testchart;
+    const std::string text =
+        chart_text(section("ExpertDrums", line(0, "N 0 0") + line(192, "N 1 0")), 192, "",
+                   line(0, "TS 4") + line(0, "B 600000"));
+    std::FILE* f = hydra::fopen_utf8(d + "\\notes.chart", L"wb");
+    REQUIRE(f != nullptr);
+    std::fputs(text.c_str(), f);
+    std::fclose(f);
     copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");
     return d + "\\notes.chart";
 }
@@ -152,6 +177,28 @@ TEST_CASE("the Preview load builds the highway timeline on its worker") {
     }
 }
 
+// The beat lines keep scrolling while the music plays past the last note
+// (D48, Q25): the load builds its scene once the audio's length is known, and
+// the grid ends on the beat a playhead at the audio's end shows, 5 s in, tick
+// 9600, not two measures past the last note.
+TEST_CASE("the Preview load runs the beat lines to the end of the audio") {
+    PreviewLoadJob job(entry_for(short_chart_with_long_audio()), true, true, Difficulty::Expert,
+                       std::nullopt, 4);
+    job.start();
+    wait_finished(job);
+    REQUIRE(job.ok());
+    PreviewLoadJob::Result r = job.take_result();
+    // Where the audio stops in chart time, which the controller keeps for
+    // every later base build: the sine's five seconds.
+    REQUIRE(r.audio_end_ms.has_value());
+    CHECK(*r.audio_end_ms == doctest::Approx(5000.0));
+    REQUIRE_FALSE(r.scene.beats.empty());
+    CHECK(r.scene.beats.back().tick == 9600);
+    CHECK(r.scene.beats.back().ms == doctest::Approx(5000.0));
+    // The timeline the renderer draws is built from that same scene.
+    check_same_track(r.track_state, hydra::render::build_track_state(r.scene, r.track_opts));
+}
+
 // The same for a path change: the overlay job hands back the timeline built
 // from its own scene with the options it was given. The first job builds the
 // path-free base itself; a second one given that base only lays the overlay
@@ -168,9 +215,10 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
         CAPTURE(pro);
         hydra::render::TrackStateOptions opts;
         opts.pro = pro;
-        // A base built for the other pro setting is not reused.
+        // A base built for the other pro setting is not reused. This chart
+        // has no audio, so there is no audio end.
         hydra::ui::PreviewSceneJob job(song, pro ? nullptr : pro_base, a.best, 4,
-                                       hydra::core::default_rules(), "key", opts);
+                                       hydra::core::default_rules(), "key", opts, std::nullopt);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
@@ -186,7 +234,7 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
 
         // The next path change: the base is shared, not rebuilt.
         hydra::ui::PreviewSceneJob again(song, out.base, a.best, 4,
-                                         hydra::core::default_rules(), "key", opts);
+                                         hydra::core::default_rules(), "key", opts, std::nullopt);
         again.start();
         wait_finished(again);
         REQUIRE(again.ok());
@@ -198,31 +246,50 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
 }
 
 // The controller warms the base after a load with this job: the path-free
-// scene and the timeline built from it, for the options it was given.
+// scene and the timeline built from it, for the options and the audio end it
+// was given. A scene job that has no base yet builds one the same way, so
+// the beat lines still reach the audio's end after a path change.
 TEST_CASE("the Preview base job builds the path-free scene and timeline") {
-    const AnalyzedChart a = first_chart_with_a_path();
-    PreviewLoadJob load(entry_for(a.chart), true, true, Difficulty::Expert, std::nullopt, 4);
+    PreviewLoadJob load(entry_for(short_chart_with_long_audio()), true, true, Difficulty::Expert,
+                        std::nullopt, 4);
     load.start();
     wait_finished(load);
     REQUIRE(load.ok());
-    auto song = std::make_shared<const hydra::Song>(load.take_result().song);
+    PreviewLoadJob::Result r = load.take_result();
+    REQUIRE(r.audio_end_ms.has_value());
+    auto song = std::make_shared<const hydra::Song>(std::move(r.song));
     for (bool pro : {true, false}) {
         CAPTURE(pro);
         hydra::render::TrackStateOptions opts;
         opts.pro = pro;
-        hydra::ui::PreviewBaseJob job(song, opts);
+        hydra::ui::PreviewBaseJob job(song, opts, r.audio_end_ms);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
         std::shared_ptr<const hydra::ui::PreviewSceneBase> base = job.take_base();
         REQUIRE(base != nullptr);
         CHECK(base->track_opts.pro == pro);
-        const hydra::app::PreviewScene want = hydra::app::build_preview_base(*song);
+        const hydra::app::PreviewScene want = hydra::app::build_preview_base(*song, r.audio_end_ms);
         CHECK(base->scene.notes.size() == want.notes.size());
         CHECK(base->scene.fills.size() == want.fills.size());
         CHECK(base->scene.activations.empty());
         CHECK(base->scene.sp_meter.segments.empty());
+        REQUIRE_FALSE(base->scene.beats.empty());
+        CHECK(base->scene.beats.back().tick == 9600);
         check_same_track(base->track_state, hydra::render::build_track_state(want, opts));
+
+        hydra::ui::PreviewSceneJob scene_job(song, nullptr, std::nullopt, 4,
+                                             hydra::core::default_rules(), "key", opts,
+                                             r.audio_end_ms);
+        scene_job.start();
+        wait_finished(scene_job);
+        REQUIRE(scene_job.ok());
+        const hydra::ui::PreviewSceneJob::Output out = scene_job.take_output();
+        REQUIRE(out.base != nullptr);
+        REQUIRE_FALSE(out.base->scene.beats.empty());
+        CHECK(out.base->scene.beats.back().tick == 9600);
+        REQUIRE_FALSE(out.scene.beats.empty());
+        CHECK(out.scene.beats.back().tick == 9600);
     }
 }
 
@@ -276,6 +343,37 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
     CHECK(pc.audio_warning().empty());
 }
 
+// The scrubber ends at the last note while the music plays on (D50 item 4).
+// The chart's last note is at 100 ms and its audio runs 5 s. The slider's
+// range is length_ms(), so it reaches only the last note; a drag to its right
+// end seeks there, not to the audio's end. Playback can still run into the
+// tail, and there the thumb waits at the right end.
+TEST_CASE("scrub marks: the Preview's scrubber ends at the last note while the audio plays on") {
+    PreviewController pc(nullptr, nullptr);
+    pc.set_audio_device_factory(
+        [](int, int, PreviewController::AudioSource)
+            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+            throw std::runtime_error("no device in tests");
+        });
+    pc.open(entry_for(short_chart_with_long_audio()), true, true, Difficulty::Expert, nullptr, "",
+            4);
+    for (int i = 0; i < 1200 && pc.loading(); ++i) {
+        pc.poll();
+        Sleep(50);
+    }
+    REQUIRE_FALSE(pc.loading());
+    REQUIRE(pc.has_audio());
+
+    CHECK(pc.length_ms() == doctest::Approx(100.0));  // the slider's right end
+    pc.seek_ms(pc.length_ms());                        // a drag to that end
+    CHECK(pc.position_ms() == doctest::Approx(100.0));
+
+    pc.jump_ms(4000.0);  // into the tail, which still plays
+    CHECK(pc.position_ms() == doctest::Approx(4100.0));
+    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.length_ms()) ==
+          doctest::Approx(100.0));
+}
+
 // Picking another path with the Preview open used to rebuild the scene inside
 // open(), on the UI thread. It now builds on a job and lands on a later poll().
 TEST_CASE("switching paths builds the new overlay off the UI thread") {
@@ -325,6 +423,40 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
     }
     CHECK_FALSE(pc.has_error());
     CHECK(pc.overlay_path_key().rfind(best_key, 0) == 0);
+}
+
+// With a chart open on the Preview tab, a mode change used to keep the old
+// mode's notes: open() compared only the md5. Each of difficulty, Pro Drums
+// and 2x Bass now picks another song, so open() starts a new load (D48, Q22).
+TEST_CASE("a difficulty change on the open chart starts a new Preview load") {
+    PreviewController pc(nullptr, nullptr);
+    const ChartLibraryEntry entry = entry_for(corpus::first_chart_with_suffix(".chart"));
+    auto settle = [&pc] {
+        for (int i = 0; i < 1200 && pc.loading(); ++i) {
+            pc.poll();
+            Sleep(10);
+        }
+        REQUIRE_FALSE(pc.loading());
+    };
+    pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
+    settle();
+
+    // The same chart in the same mode is a no-op: nothing reloads.
+    pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
+    CHECK_FALSE(pc.loading());
+
+    // Another difficulty starts a new load at once.
+    pc.open(entry, true, false, Difficulty::Hard, nullptr, "", 4);
+    CHECK(pc.loading());
+    settle();
+
+    // Pro Drums off, then 2x Bass on: each is another song too.
+    pc.open(entry, false, false, Difficulty::Hard, nullptr, "", 4);
+    CHECK(pc.loading());
+    settle();
+    pc.open(entry, false, true, Difficulty::Hard, nullptr, "", 4);
+    CHECK(pc.loading());
+    settle();
 }
 
 TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song") {

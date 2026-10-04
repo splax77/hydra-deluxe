@@ -11,6 +11,7 @@
 #include "app/user_messages.h"
 #include "audio/device.h"
 #include "audio/player.h"
+#include "store/record_store.h"  // song_length_ms
 #include "ui/preview_load_job.h"
 
 namespace hydra::ui {
@@ -36,7 +37,8 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
                              const Path* path, const std::string& path_key,
                              int sp_cap, const core::Rules& rules) {
     rules_ = rules;
-    if (active_ && open_key_ == entry.md5) {
+    const PreviewSongKey key{entry.md5, difficulty, pro, bass2x};
+    if (active_ && open_key_ == key) {
         // Same chart, same overlay: nothing to do, and nothing built.
         if (sp_cap == sp_cap_ && path_key == requested_path_key_) return;
         path_ = path ? std::optional<Path>(*path) : std::nullopt;
@@ -51,7 +53,7 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     }
     close();
 
-    open_key_ = entry.md5;
+    open_key_ = key;
     active_ = true;
     error_.clear();
     pro_ = pro;
@@ -74,7 +76,7 @@ void PreviewController::start_scene_job() {
     render::TrackStateOptions track_opts;
     track_opts.pro = pro_;
     scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_, sp_cap_, rules_,
-                                                   path_key_, track_opts);
+                                                   path_key_, track_opts, audio_end_ms_);
     scene_job_->start();
 }
 
@@ -98,6 +100,7 @@ void PreviewController::close() {
     scene_dirty_ = true;  // the renderer (if kept) must drop the old chart
     pending_track_.reset();  // scene_ is empty now; render() builds its (empty) timeline
     song_.reset();
+    audio_end_ms_.reset();
     scene_base_.reset();
     path_.reset();
     sp_cap_ = kCloneHeroSpCap;
@@ -108,7 +111,7 @@ void PreviewController::close() {
     active_ = false;
     scrubbing_ = false;
     resume_after_scrub_ = false;
-    open_key_.clear();
+    open_key_ = PreviewSongKey{};
     error_.clear();
     audio_warning_.clear();
 }
@@ -144,7 +147,7 @@ void PreviewController::poll() {
     if (!base_started_ && !job_ && !scene_job_ && !scene_base_ && song_ && !song_->is_empty()) {
         render::TrackStateOptions track_opts;
         track_opts.pro = pro_;
-        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts);
+        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts, audio_end_ms_);
         base_job_->start();
         base_started_ = true;
     }
@@ -155,6 +158,7 @@ void PreviewController::poll() {
     if (ok) {
         PreviewLoadJob::Result result = job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
+        audio_end_ms_ = result.audio_end_ms;
         scene_ = std::move(result.scene);
         pending_track_ = std::move(result.track_state);
         pending_track_opts_ = result.track_opts;
@@ -257,7 +261,14 @@ bool PreviewController::playing() const { return transport_.playing(); }
 
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
-double PreviewController::length_ms() const { return transport_.length_ms(); }
+// The scrubber's range (D50 item 4): the song's length as the Paths timeline
+// reads it, so the slider and its gold marks end at the last note. Playback,
+// the clock and the 5 s jumps still run to the transport's length, which
+// reaches the audio's end.
+double PreviewController::length_ms() const {
+    return hydra::app::scrub_end_ms(song_ ? store::song_length_ms(*song_) : std::nullopt,
+                                    transport_.length_ms());
+}
 
 void PreviewController::seek_ms(double ms) { transport_.seek_ms(ms); }
 
@@ -308,7 +319,7 @@ hydra::app::PreviewDrainBox PreviewController::drain_box() const {
 }
 
 const std::vector<double>& PreviewController::scrub_marks() const {
-    const double length = transport_.length_ms();
+    const double length = length_ms();
     if (!cache_fresh(scrub_marks_cache_) || scrub_marks_cache_.length_ms != length) {
         scrub_marks_ = hydra::app::build_scrub_marks(scene_, length);
         stamp(scrub_marks_cache_);
@@ -318,7 +329,7 @@ const std::vector<double>& PreviewController::scrub_marks() const {
 }
 
 hydra::app::PreviewNextActBox PreviewController::next_act_box() const {
-    return hydra::app::build_next_act_box(scene_, transport_.now_ms());
+    return hydra::app::build_next_act_box(scene_, transport_.now_ms(), pro_);
 }
 
 const std::vector<hydra::app::PreviewNextActBox>& PreviewController::next_act_boxes() const {
@@ -326,7 +337,7 @@ const std::vector<hydra::app::PreviewNextActBox>& PreviewController::next_act_bo
         next_act_boxes_.clear();
         next_act_boxes_.reserve(scene_.activations.size());
         for (const hydra::app::PreviewActivation& a : scene_.activations)
-            next_act_boxes_.push_back(hydra::app::build_next_act_box(scene_, a.ms));
+            next_act_boxes_.push_back(hydra::app::build_next_act_box(scene_, a.ms, pro_));
         stamp(next_act_boxes_cache_);
     }
     return next_act_boxes_;

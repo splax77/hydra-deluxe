@@ -18,11 +18,26 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "app/preview_clock.h"
 #include "audio/player.h"
 
 namespace hydra::ui {
+
+// Where `audio` stops in chart time: its length in ms minus `audio_offset_ms`
+// (audio_ms = chart_ms + audio_offset_ms). Empty when there is no audio. The
+// one rule for the audio's end: the load job asks it of the mix it opened
+// (where the beat lines stop) and PreviewTransport::load asks it of the
+// playhead it is handed. `audio` is anything with channels(), sample_rate()
+// and length_frames(): an audio::MixSource or an audio::Playhead.
+template <class Audio>
+std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {
+    if (audio.channels() <= 0 || audio.sample_rate() <= 0 || audio.length_frames() <= 0)
+        return std::nullopt;
+    return static_cast<double>(audio.length_frames()) * 1000.0 / audio.sample_rate() -
+           audio_offset_ms;
+}
 
 class PreviewTransport {
 public:

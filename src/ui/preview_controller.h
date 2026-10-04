@@ -75,8 +75,10 @@ public:
     // shown. `path` (may be null) supplies the path overlay; it is copied, so
     // the caller's Path need not outlive the call. `path_key` is
     // app::path_overlay_key(path), which the caller builds once per selection
-    // (it is too heavy to build per frame). Already open for the same chart,
-    // path key and SP cap: a no-op. Same chart, different path or cap: the new
+    // (it is too heavy to build per frame). Already open for the same song
+    // (PreviewSongKey: chart, difficulty, Pro Drums and 2x Bass), path key and
+    // SP cap: a no-op. Another song is a fresh load. Same song, different
+    // path or cap: the new
     // overlay is built on a background job off the retained song and swapped
     // in by a later poll() — no re-parse, no audio re-decode, playback
     // position untouched; the old overlay stays up until then.
@@ -110,7 +112,7 @@ public:
     struct LoadProgress {
         float fraction = 0.0f;  // 0..1 estimate
         std::string label;      // "Opening audio: 312 of 625 MB"
-        std::string detail;     // time left ("about 40 s left"), or ""
+        std::string detail;     // time left ("about 0:40 left"), or ""
     };
     LoadProgress load_progress() const;
     bool has_error() const { return !error_.empty(); }
@@ -275,6 +277,10 @@ private:
     // load is in flight and the Paths tab (or the cap) changed the selection
     // under it; poll() closes the gap.
     std::shared_ptr<const Song> song_;  // shared read-only with scene jobs
+    // Where the song's audio stops in chart time (the load's
+    // Result::audio_end_ms), kept with the song so every base built for it
+    // runs the beat lines to the same end. Empty without audio.
+    std::optional<double> audio_end_ms_;
     // The song's path-free scene and timeline, shared read-only with scene
     // jobs so a path change builds only the overlay. poll() starts base_job_
     // to build it once the load has landed (a scene job that runs first
@@ -305,7 +311,7 @@ private:
     std::unique_ptr<hydra::audio::PreviewAudioDevice> audio_device_;
 
     bool active_ = false;
-    std::string open_key_;
+    PreviewSongKey open_key_;  // the song open() last loaded
     std::string error_;
     std::string audio_warning_;
     AudioDeviceFactory device_factory_;

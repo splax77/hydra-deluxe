@@ -78,6 +78,10 @@ public:
         // Where chart time 0 sits in `audio` (never negative: a negative
         // chart offset is padded into the front of `audio` instead).
         double audio_offset_ms = 0.0;
+        // Where the audio stops in chart time (audio_end_chart_ms), empty when
+        // no stem has any audio. The scene's beat lines run to it, and the
+        // controller hands it to every later base build so they do too.
+        std::optional<double> audio_end_ms;
         // The parsed song the scene was built from. The controller keeps it so
         // a later path selection can rebuild the overlay without re-parsing.
         Song song;
@@ -93,8 +97,9 @@ public:
     Result take_result();
 
     // Where the load is, for the Preview tab's loading bar. The steps are
-    // shown in this order. Opening audio runs beside the other three, so the
-    // step shown is the first one not yet done.
+    // shown in this order, and the step shown is the first one not yet done.
+    // Opening audio runs beside reading the chart; the scene and the highway
+    // wait for it, because the beat lines run to the audio's end.
     enum class Step { Reading, Opening, Building, Highway };
     struct Progress {
         Step step = Step::Reading;
@@ -112,7 +117,7 @@ public:
         // "Reading chart", "Opening audio: 312 of 625 MB", "Building scene",
         // "Building highway".
         std::string label() const;
-        // "about 40 s left" / "about 3 min left", or "" when the load is
+        // "about 0:40 left" / "about 3:05 left", or "" when the load is
         // under 3 s old, the rate isn't known, or the step isn't Opening audio.
         std::string time_left_text() const;
     };
@@ -159,17 +164,19 @@ struct PreviewSceneBase {
     render::TrackStateOptions track_opts;
 };
 
-// Builds a song's PreviewSceneBase. `check_cancel` runs between the steps and
-// may throw to stop the build.
+// Builds a song's PreviewSceneBase. `audio_end_ms` is the load's
+// Result::audio_end_ms, where the beat lines end (app::build_preview_base).
+// `check_cancel` runs between the steps and may throw to stop the build.
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
-    const Song& song, render::TrackStateOptions track_opts,
+    const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
     const std::function<void()>& check_cancel);
 
 // Builds the PreviewSceneBase off the UI thread once a chart has loaded, so
 // that even the first path change only lays an overlay over it.
 class PreviewBaseJob : public ResultJobBase {
 public:
-    PreviewBaseJob(std::shared_ptr<const Song> song, render::TrackStateOptions track_opts);
+    PreviewBaseJob(std::shared_ptr<const Song> song, render::TrackStateOptions track_opts,
+                   std::optional<double> audio_end_ms);
     ~PreviewBaseJob() { shutdown(); }
 
     void start();
@@ -181,6 +188,7 @@ private:
 
     std::shared_ptr<const Song> song_;
     render::TrackStateOptions track_opts_;
+    std::optional<double> audio_end_ms_;
     std::shared_ptr<const PreviewSceneBase> base_;
 };
 
@@ -192,13 +200,14 @@ private:
 // `base` may be null, or built for other timeline options: then the job
 // builds it first and hands it back in Output::base for the next job. `key`
 // is the overlay key the scene is built for; `track_opts` are the timeline
-// options the controller draws with (its pro-drums setting).
+// options the controller draws with (its pro-drums setting); `audio_end_ms`
+// is the load's Result::audio_end_ms, for a base the job has to build.
 class PreviewSceneJob : public ResultJobBase {
 public:
     PreviewSceneJob(std::shared_ptr<const Song> song,
                     std::shared_ptr<const PreviewSceneBase> base, std::optional<Path> path,
                     int sp_cap, core::Rules rules, std::string key,
-                    render::TrackStateOptions track_opts);
+                    render::TrackStateOptions track_opts, std::optional<double> audio_end_ms);
     ~PreviewSceneJob() { shutdown(); }
 
     void start();
@@ -226,6 +235,7 @@ private:
     core::Rules rules_;
     std::string key_;
     render::TrackStateOptions track_opts_;
+    std::optional<double> audio_end_ms_;
     std::optional<Output> output_;
 };
 

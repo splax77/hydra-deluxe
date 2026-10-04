@@ -419,16 +419,19 @@ TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
 
 TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
+    // The Preview passes the audio's end, as the load does: here the audio
+    // runs the plan's 5 s past the last note (tick 720, 750 ms), to 5750 ms.
+    PreviewScene scene = build_preview_scene(song, nullptr, kCloneHeroSpCap,
+                                             core::default_rules(), 5750.0);
     CHECK(scene.tick_resolution == 480);
     REQUIRE(scene.tempos.size() == 1);
     CHECK(scene.tempos[0].bpm == doctest::Approx(120.0));
     REQUIRE(!scene.beats.empty());
     CHECK(scene.beats.front().tick == 0);
-    // With no audio end given, the grid extends two measures past the last
-    // note (tick 720 -> through 4560; the last line at or before that is the
-    // beat at 4320). The case below passes the audio's end instead.
-    CHECK(scene.beats.back().tick == 4320);
+    // 5750 ms is tick 5520; the last line at or before it is the beat at
+    // 5280 (no half-beat line is drawn before a beat the grid does not reach).
+    CHECK(scene.beats.back().tick == 5280);
+    CHECK(scene.beats.back().kind == PreviewBeatKind::Beat);
 }
 
 TEST_CASE("build_preview_scene: the beat lines run to the end of the audio") {
@@ -650,7 +653,7 @@ TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
             CHECK(pa.lane == lane_of(a.chord.activation_note().colortype));
         }
         CHECK(pa.measure == format_measure(r.song.timing(), pa.tick));
-        CHECK(pa.chord == (a.chord.count() > 0 ? a.chord.rowstr() : std::string()));
+        CHECK(pa.chord == a.chord);  // named by the box, in the Pro Drums setting's words
     }
 
     // Same song, no path: identical notes, empty overlay.
@@ -1721,6 +1724,42 @@ TEST_CASE("song_fraction: has_song_length takes only a positive length") {
     CHECK_FALSE(has_song_length(-1.0));
 }
 
+// The audio-tail chart: the last note is at 1000 ms and the audio stops 5 s
+// later, at 6000 ms. One activation on the note at tick 1440; one bar of SP
+// runs two measures, so its window ends at tick 5280. The scrubber is built
+// the way the Preview builds it (its right edge from scrub_end_ms over the
+// song's store::song_length_ms, the transport reaching the audio's end) and
+// the Paths timeline the way the Paths tab builds it (the stored last-note
+// length), and the two marks must be the same number.
+TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when the audio outlasts the notes") {
+    const test::AudioTailChart c = test::audio_tail_chart();
+    Path path;
+    path.activations = {sp_act_at(c.song, 1440, /*sp_meter=*/1, /*end_tick=*/5280)};
+    const PreviewScene scene = build_preview_scene(c.song, &path, kCloneHeroSpCap,
+                                                   core::default_rules(), c.audio_end_ms);
+    const std::vector<double> marks =
+        build_scrub_marks(scene, scrub_end_ms(store::song_length_ms(c.song), c.audio_end_ms));
+    REQUIRE(marks.size() == 1);
+    CHECK(marks[0] == doctest::Approx(0.75));
+
+    const ActivationsView view =
+        build_activations(path, HydraRecord{}, &c.song.timing(), Settings{}.hit_window_ms,
+                          std::nullopt, core::default_rules(), c.last_note_ms);
+    REQUIRE(view.acts.size() == 1);
+    REQUIRE(view.acts[0].song_fraction.has_value());
+    CHECK(marks[0] == *view.acts[0].song_fraction);
+}
+
+TEST_CASE("scrub marks: a playhead past the last note parks the thumb at the right end") {
+    const test::AudioTailChart c = test::audio_tail_chart();
+    const double end = scrub_end_ms(c.last_note_ms, c.audio_end_ms);
+    CHECK(end == doctest::Approx(1000.0));
+    // Playback runs on to the audio's end; the thumb waits at the last note.
+    CHECK(scrub_thumb_ms(c.audio_end_ms, end) == doctest::Approx(1000.0));
+    // Before the last note the thumb follows the playhead.
+    CHECK(scrub_thumb_ms(500.0, end) == doctest::Approx(500.0));
+}
+
 TEST_CASE("activation jumps: nearest activation before or after the playhead") {
     TwoActs t;
     CHECK(activation_jump_ms(t.scene, 0.0, +1) == doctest::Approx(2000.0));
@@ -1736,33 +1775,43 @@ TEST_CASE("activation jumps: nearest activation before or after the playhead") {
 
 TEST_CASE("next activation box: the activation at or after the playhead") {
     TwoActs t;
-    PreviewNextActBox box = build_next_act_box(t.scene, 0.0);
+    PreviewNextActBox box = build_next_act_box(t.scene, 0.0, /*pro_drums=*/true);
     CHECK(box.shown);
     CHECK(box.header == "Next: activation 1 of 2");
     CHECK(box.detail == "at m2.1.0 " + kDot + " [Red snare]");
-    CHECK(build_next_act_box(t.scene, 2000.0).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0).header == "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0).detail == "at m5.1.0 " + kDot + " [Red snare]");
-    CHECK_FALSE(build_next_act_box(t.scene, 9000.0).shown);
-    CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0).shown);
+    CHECK(build_next_act_box(t.scene, 2000.0, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, 2001.0, true).header == "Next: activation 2 of 2");
+    CHECK(build_next_act_box(t.scene, 2001.0, true).detail == "at m5.1.0 " + kDot + " [Red snare]");
+    CHECK_FALSE(build_next_act_box(t.scene, 9000.0, true).shown);
+    CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0, true).shown);
+}
+
+TEST_CASE("next activation box: the note names follow the Pro Drums setting") {
+    // The Dynamics wording (note_label): with Pro Drums off the red pad is
+    // plain "Red", with it on "Red snare" (D48, Q11).
+    TwoActs t;
+    CHECK(build_next_act_box(t.scene, 0.0, /*pro_drums=*/false).detail ==
+          "at m2.1.0 " + kDot + " [Red]");
+    CHECK(build_next_act_box(t.scene, 0.0, /*pro_drums=*/true).detail ==
+          "at m2.1.0 " + kDot + " [Red snare]");
 }
 
 TEST_CASE("next activation box: on an activation within half a millisecond, and no chord") {
     TwoActs t;
     // The playhead counts as on an activation up to half a millisecond past
     // it: at 2000.5 ms the box still names activation 1, a hair later 2.
-    CHECK(build_next_act_box(t.scene, -100.0).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, 2000.5).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300)).header ==
+    CHECK(build_next_act_box(t.scene, -100.0, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, 2000.5, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300), true).header ==
           "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 8000.5).header == "Next: activation 2 of 2");
-    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300)).shown);
+    CHECK(build_next_act_box(t.scene, 8000.5, true).header == "Next: activation 2 of 2");
+    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300), true).shown);
 
     // An activation with no chord names only its measure.
     Song song = make_sp_song({960}, /*last_tick=*/13440);
     Path path;
     path.activations = {sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760)};
-    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0);
+    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0, true);
     CHECK(box.header == "Next: activation 1 of 1");
     CHECK(box.detail == "at m2.1.0");
 }

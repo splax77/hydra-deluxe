@@ -107,9 +107,10 @@ struct PreviewActivation {
     PreviewLane lane = PreviewLane::Kick;
     bool has_lane = false;
     // The activation's position as the Paths tab prints it (format_measure)
-    // and its chord (Chord::rowstr); chord is empty when the record has none.
+    // and its chord, which build_next_act_box names in the Pro Drums
+    // setting's words; chord is empty when the record has none.
     std::string measure;
-    std::string chord;
+    Chord chord;
 };
 
 // A beat line on the highway: a bar line, a beat line, or the fainter
@@ -232,8 +233,11 @@ struct PreviewScene {
     std::optional<SongTiming> timing;
     int64_t tick_resolution = 0;       // ticks per quarter note
     // The last note's onset: where the SP curve closes and the Preview's own
-    // song end. The scrubber's range is the transport's length instead
+    // song end. Playback runs to the transport's length instead
     // (PreviewTransport::load takes the later of this and the audio's end).
+    // The scrubber's right edge does not read this field: it reads
+    // store::song_length_ms, the length song_fraction and the Paths timeline
+    // read (see scrub_end_ms).
     double song_length_ms = 0.0;
     bool has_notes = false;
 };
@@ -315,9 +319,23 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
                     int delta_ticks);
 
 // Where each activation of the shown path sits on the scrubber: its onset over
-// `length_ms` (the transport's length, the scrubber's right edge), clamped to
-// 0..1, in activation order. Empty with no path or no length.
+// `length_ms` (the scrubber's right edge, scrub_end_ms), clamped to 0..1, in
+// activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
+
+// The Preview scrubber's right edge (D50 item 4). It is the song's length,
+// `song_length_ms`, when has_song_length says that length is usable. Pass the
+// value store::song_length_ms gives for the chart: the same length the Paths
+// tab hands build_activations for song_fraction, so an activation sits at the
+// same fraction on both bars. Otherwise the edge is `playback_length_ms`, the
+// transport's length, as before. Playback still runs on into any audio past
+// the last note; the thumb just cannot be dragged there.
+double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms);
+
+// Where the scrubber's thumb sits with the playhead at `now_ms`. It follows
+// the playhead and stays parked at `scrub_end_ms` while playback runs past it
+// into the audio tail.
+double scrub_thumb_ms(double now_ms, double scrub_end_ms);
 
 // Is `length_ms` a song length the timeline can use? Only a positive length
 // is. song_fraction and the Paths tab's end-measure label both ask it, so the
@@ -338,14 +356,16 @@ std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_m
 
 // The box at the highway's bottom-left: the first activation at or after the
 // playhead (the same half-millisecond slack), "Next: activation 1 of 3" and
-// "at m32.1.0 · [Kick - GreenCym]". Hidden past the last activation and when
-// the scene has no path.
+// "at m32.1.0 · [Kick - Green cymbal]". The chord's notes are named by
+// Chord::rowstr in the words of `pro_drums`, the Pro Drums setting: "Red
+// snare" with it on, plain "Red" with it off (D48, Q11). Hidden past the last
+// activation and when the scene has no path.
 struct PreviewNextActBox {
     bool shown = false;
     std::string header;
     std::string detail;
 };
-PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms);
+PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, bool pro_drums);
 
 // The number under the SP gauge: bars banked at `now_ms` over the cap, one
 // decimal ("2.5/4"). Empty when the curve has no segments.
