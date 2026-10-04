@@ -670,6 +670,25 @@ TEST_CASE("rate_activation: cap_clamped flag") {
     CHECK_FALSE(r3.cap_clamped);
 }
 
+TEST_CASE("is_frontend_decided: squeezed out, or not counted without a squeeze") {
+    const double leeway = core::default_rules().backend_leeway_ms;
+    BackendRating counted;
+    counted.row.offset_ms = -40.0;
+    CHECK_FALSE(is_frontend_decided(counted, leeway));
+
+    BackendRating uncounted;
+    uncounted.row.offset_ms = leeway + 5.0;
+    CHECK(is_frontend_decided(uncounted, leeway));
+
+    BackendRating squeezed;
+    squeezed.row.offset_ms = -40.0;
+    squeezed.squeezed_out = true;
+    CHECK(is_frontend_decided(squeezed, leeway));
+
+    BackendRating no_offset;
+    CHECK_FALSE(is_frontend_decided(no_offset, leeway));
+}
+
 // The engine counts a plain row less than the leeway past the SP end, so it
 // is not a squeeze the frontend decides. The rating, the late-row warn and
 // the overfill flag all use that same edge (user decision 7).

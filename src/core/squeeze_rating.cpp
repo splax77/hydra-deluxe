@@ -78,6 +78,12 @@ NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
     return n;
 }
 
+bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms) {
+    return row.squeezed_out ||
+           (row.row.offset_ms &&
+            !core::counted_without_squeeze(*row.row.offset_ms, backend_leeway_ms));
+}
+
 ActivationRating rate_activation(const Activation& act,
                                  double hit_window_ms,
                                  double backend_leeway_ms) {
@@ -127,22 +133,12 @@ ActivationRating rate_activation(const Activation& act,
 
     // The cap-clamped flag fires when the activation has a clamp_tick AND at
     // least one squeeze the frontend decides: any SqIn/SqOut, or any backend
-    // row that was squeezed out or that the engine does not count (at or past
-    // the leeway).
+    // row is_frontend_decided accepts.
     if (act.clamp_tick.has_value()) {
-        bool has_frontend_squeeze = !act.sqinouts.empty();
-        if (!has_frontend_squeeze) {
-            for (const BackendRating& br : out.backends) {
-                if (br.squeezed_out ||
-                    (br.row.offset_ms &&
-                     !core::counted_without_squeeze(*br.row.offset_ms,
-                                                    backend_leeway_ms))) {
-                    has_frontend_squeeze = true;
-                    break;
-                }
-            }
-        }
-        out.cap_clamped = has_frontend_squeeze;
+        bool decided = !act.sqinouts.empty();
+        for (const BackendRating& br : out.backends)
+            decided = decided || is_frontend_decided(br, backend_leeway_ms);
+        out.cap_clamped = decided;
     }
 
     return out;

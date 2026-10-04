@@ -117,6 +117,11 @@ struct BackendRating {
     NoteRating note;
 };
 
+// Whether the frontend decides this row: it was squeezed out, or the engine
+// does not count it without a squeeze (at or past the leeway). The overfill
+// warning fires only for an activation that has such a row or a SqIn/SqOut.
+bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms);
+
 // The full transfer-scale story for one activation, as the details display
 // tells it.
 struct ActivationRating {
@@ -125,11 +130,9 @@ struct ActivationRating {
     // True when a multiplier that isn't 1 governs at least one row or SqIn
     // on this activation: the scale line turns orange.
     bool scale_governs = false;
-    // True when the activation's SP window was cap-clamped AND the activation
-    // lists a squeeze the frontend decides: any SqIn/SqOut, or any backend
-    // row that rate_activation judges (squeezed_out, or a plain row the engine
-    // does not count: offset at or past the leeway).
-    // Drives the overfill warning in the details view.
+    // True when the SP cap clamped this activation's window AND the frontend
+    // decides at least one of its squeezes: any SqIn/SqOut, or any row
+    // is_frontend_decided accepts. Drives the overfill warning.
     bool cap_clamped = false;
     // One entry per act.display_backends() row, in that order.
     std::vector<BackendRating> backends;
