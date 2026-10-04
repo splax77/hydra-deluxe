@@ -59,11 +59,25 @@ The sections below explain each difference.
 
 ## Numbers that can differ
 
-The two versions can give different optimal scores for the same chart. There are two reasons.
+The two versions can give different optimal scores for the same chart. There are three reasons.
 
 **Ghost and accent kicks.** Clone Hero scores a ghost or accent kick double, the same as on the pads. Public Hydra 1.3.1 scored every kick as a normal hit, so its optimal was too low on charts with kick dynamics. Onyxite's "Won't Get Fooled Again (O)" is the chart that proved it.
 
 **Squeeze-ins and squeeze-outs further from the SP end.** This version looks for them up to 500 ms from the SP end. The public version stops at 140 ms, so it can miss a squeeze that a strong player can hit.
+
+**Chart rules matched to Clone Hero's code.** In 2.x this version read Clone
+Hero 1.1's own code and matched how it reads a chart. Below Expert, disco
+flip and 2x kicks now follow the difficulty you play, not Expert's markers.
+A Star Power phrase pays on the notes Clone Hero pays at its two edges. An
+authored fill lands one tick later, and each fill is placed on its own,
+so a fill the next one used to hide now counts. A one-bracket dynamics tag no longer
+turns dynamics on. This version's parser started as a port of public Hydra
+1.x, checked chart by chart. Public Hydra's disco and 2x kick rules were
+checked only in its 1.2.0 source, which still reads charts the old way;
+whether a newer public version changed that was not checked. The biggest effect is on
+Hard, Medium and Easy with Pro Drums, where about 640 charts each score
+differently, mostly higher. One Clone Hero rule is deliberately not copied:
+`drums0dnoflip` turns disco flip off here, as the marker says.
 
 Two changes affect only the display, never the path search. The hit window is 85 ms per side, which is Clone Hero's Pro Drums window. It sets the squeeze ratings and the report's difficulty tiers. The early fill window is 60 ms. Across 18,773 analyzed charts, no best path needed an early fill between 60 and 85 ms, so this changed no result.
 
