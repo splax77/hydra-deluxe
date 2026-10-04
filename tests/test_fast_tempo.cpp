@@ -77,6 +77,9 @@ std::string windows_text(const Path& p) {
         for (const BackendSqueeze& b : a.backends)
             o << ' ' << b.timecode.ticks() << '/' << b.points << '/' << b.sqout_points << '/'
               << (b.offset_ms ? *b.offset_ms : -1.0);
+        // The early-fill facts (D38): the offset and the fills passed over.
+        o << " | e " << a.e_offset << " | passed";
+        for (const int64_t t : a.skipped_fill_ticks) o << ' ' << t;
         o << "] ";
     }
     return o.str();

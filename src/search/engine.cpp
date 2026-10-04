@@ -239,6 +239,13 @@ struct Variant {
     // Its banked bars at the fold (an index into banks_, or -1). For a finished
     // path this is its whole trailing list; between windows, its first m bars.
     int32_t bank_tail;
+    // Its own early-fill facts at the fold (D38), for the activation its
+    // leader takes next: its SP-ready time, the fills it passed over since
+    // its last window (an index into fills_, or -1), and the e_offset at the
+    // first of them (NO_DOUBLE when none).
+    double sp_ready_ms;
+    int32_t skip_tail;
+    double skipped_e_offset;
 };
 struct Path {
     int32_t node;
@@ -529,6 +536,14 @@ private:
     void emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
                       int32_t parent_trail_begin, int32_t parent_trail_end);
     void close_folded_act(int32_t own, int32_t lead, const Variant& var);
+    void own_early_fill(const Variant& var, OutAct* next);
+    // The deadline of the base-track fill on `tick` (index_fills' list).
+    double fill_deadline_at(int64_t tick) const {
+        const auto it = std::lower_bound(fill_tick_.begin(), fill_tick_.end(), tick);
+        if (it == fill_tick_.end() || *it != tick)
+            throw std::logic_error("no fill on a passed-over fill's tick");
+        return fill_deadline_[(size_t)(it - fill_tick_.begin())];
+    }
     void emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
                    int32_t* begin, int32_t* end);
     int32_t push_tick(std::vector<ColNode>& pool, int32_t prev, int64_t tick) {
@@ -648,6 +663,7 @@ private:
     // The base track's fills in chart order: each one's deadline, and the
     // earliest deadline from it on (so ready_class can stop early). Per node,
     // the first fill after it. Built once, by index_fills.
+    std::vector<int64_t> fill_tick_;
     std::vector<double> fill_deadline_;
     std::vector<double> fill_min_deadline_;
     std::vector<int32_t> next_fill_;
@@ -660,7 +676,7 @@ void Engine::index_fills() {
         if (!n.is_sp && n.branch_edge >= 0)
             fills.emplace_back(n.tick, edge(n.branch_edge).activation_fill_deadline_ms);
     std::sort(fills.begin(), fills.end());
-    std::vector<int64_t> ticks;
+    std::vector<int64_t>& ticks = fill_tick_;
     ticks.reserve(fills.size());
     fill_deadline_.reserve(fills.size());
     for (const auto& f : fills) {
@@ -1109,6 +1125,9 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
                 v.open_sp ? sq_count(acts_[(size_t)leader.act_tail].sq_tail) : 0;
             v.finished = p.node < 0;
             v.bank_tail = p.bank_tail;
+            v.sp_ready_ms = p.sp_ready_ms;
+            v.skip_tail = p.skip_tail;
+            v.skipped_e_offset = p.skipped_e_offset;
             variants_.push_back(v);
             leader.var_head = (int32_t)variants_.size() - 1;
             leader.tied_count += p.tied_count;
@@ -1443,6 +1462,38 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     out_acts_[(size_t)own_i] = own;
 }
 
+// D38: the leader's next activation, as the variant folded between windows
+// reaches it. From the fold on both paths met the same notes and passed the
+// same fills, so the activation itself and the fills passed after the fold
+// are shared. Before the fold the variant had its own SP-ready time and its
+// own passed fills, so its early-fill facts are its own: its passed fills,
+// then the shared ones, and the e_offset the early-fill rule
+// (core/model.h) gives its ready time at the first fill it passed, or at the
+// activation's fill when it passed none.
+void Engine::own_early_fill(const Variant& var, OutAct* next) {
+    std::vector<int64_t> shared;
+    for (int32_t k = next->skip_begin; k < next->skip_end; ++k)
+        if (out_ticks_[(size_t)k] > var.fold_tick) shared.push_back(out_ticks_[(size_t)k]);
+
+    if (has_value(var.skipped_e_offset)) {
+        next->e_offset = var.skipped_e_offset;
+    } else if (has_value(var.sp_ready_ms)) {
+        const double deadline =
+            shared.empty() ? edge(node(next->act_node).branch_edge).activation_fill_deadline_ms
+                           : fill_deadline_at(shared.front());
+        next->e_offset = fill_e_offset(deadline, var.sp_ready_ms);
+    } else if (var.skip_tail >= 0 || (int32_t)shared.size() != next->skip_end - next->skip_begin) {
+        // Under 2 bars at the fold, as its leader was (same meter): neither
+        // could have passed a fill yet, and both became ready later, at the
+        // same phrase. The leader's offset is the variant's.
+        throw std::logic_error("a variant under 2 bars at its fold passed a fill");
+    }
+
+    emit_ticks(fills_, var.skip_tail, &next->skip_begin, &next->skip_end);
+    for (const int64_t t : shared) out_ticks_.push_back(t);
+    next->skip_end = (int32_t)out_ticks_.size();
+}
+
 void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
                           int32_t parent_trail_begin, int32_t parent_trail_end) {
     std::vector<int32_t> order;
@@ -1493,6 +1544,7 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
             OutAct next = out_acts_[(size_t)parent_walk[(size_t)var.var_point]];
             splice_bank(var.bank_tail, next.bank_begin, next.bank_end, &next.bank_begin,
                         &next.bank_end);
+            own_early_fill(var, &next);
             out_acts_.push_back(next);
             op.act_end = (int32_t)out_acts_.size();
             op.var_point = var.var_point + 1;
