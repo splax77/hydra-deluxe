@@ -204,7 +204,7 @@ if (-not $FixtureOnly) {
             @('C', 'tests/test_s2_dynamics_tag.cpp', 'MThd'),
             @('B', 'tests/test_song.cpp', 'want = read =='),
             @('B', 'tools/ch_probe/tests/test_s2_window_constants.py', 'WINDOW_CAP_MS / 2'),
-            @('D', 'src/parse/song.cpp', '\b84 in:'),
+            @('D', 'tools/ch_probe/tests/test_s2_window_constants.py', '\b75 in:'),
             @('E', 'tests/test_s2_stamps.cpp', 'stored_versions\.h')
         ) @()
     } else { Write-Host 'step 2 range skipped: 11b9d44 is not in this repository' }

@@ -16,8 +16,10 @@ A; "A..B" checks what B adds over A; a single commit checks that commit. Only
 lines the range adds are checked, read from the range's last commit (B), so
 the script needs no checkout, no build, and never edits anything. With
 -WholeTree every line of B counts as added; check 3 is then skipped, because
-"every number ever written" is not a review list. -Disable turns checks off
-by number (the self-test uses it to prove each check is needed).
+"every number ever written" is not a review list. On main (2026-10-04,
+23a5d97) -WholeTree lists 80 items: copies already in the tree, two of them
+marked as known copies. -Disable turns checks off by number (the self-test
+uses it to prove each check is needed).
 
 Each line reads:  <kind> <file>:<line>  <what was found>  -- <why it counts>
 The kind letters are the merge-gate audit's (2026-10-04, section 4): C a
@@ -90,7 +92,17 @@ THE FOUR CHECKS
    Skipped, and why:
    - 0, 1, 2 and their negatives: counts, first/second, off-by-one and
      halving are arithmetic, not thresholds.
-   - A number directly inside [ ]: an array size or an index.
+   - A number directly inside [ ]: an array size or an index. A number equal
+     to an array size the file declares (key[256], std::array<T, 4>): a loop
+     bound or limit that matches its container.
+   - 1000, 1024 and 1000000 next to * or /: unit factors (ms to s, KiB).
+   - In src/ and tools/, a number inside other arithmetic or passed to a
+     call: that computes a layout or a conversion (pos += 8, fits(buf, 16)).
+     Production numbers are checked where a threshold, limit, tolerance,
+     time or fallback shows up: a comparison (a shift amount counts when
+     its line compares, as in "x >= (1 << 30)"), the right side of a plain
+     "=", a returned value, a std::min/max/clamp bound, or a duration.
+     Table rows in braces are data and are skipped.
    - In tests, a number on a CHECK, REQUIRE or assert line that is not in a
      < > <= >= comparison: that is a pinned result from a run, which is what
      a test should hold, not a threshold.
@@ -532,7 +544,7 @@ function Invoke-Check2 {
            What = 'the tied-path count worked out a second way'; Why = 'Path::recount_tied_paths owns the count; pin it' },
         @{ Rx = '\.target_act_ticks\s*=(?!=)'
            What = 'a test runs its own targeted search'; Why = 'search_target owns the targeted search and its filter; call it and pin its answer' },
-        @{ Rx = '\b(CHECK|REQUIRE|CHECK_EQ|REQUIRE_EQ|CHECK_FALSE)\s*\([^;]*==\s*[^;]*([\w)\]]\s*\([^()]*\)\s*(?:\+|-(?!>)|\*|/)\s*[\w(]|[\w)\]]\s*(?:\+|-(?!>)|\*|/)\s*[\w:<>]+\s*\()'
+        @{ Rx = '\b(CHECK|REQUIRE|CHECK_EQ|REQUIRE_EQ|CHECK_FALSE)\s*\([^;]*==\s*[^;]*([\w)\]]\s*\([^()]*\)\s*(?:\+|-(?!>)|\*|/)\s*[A-Za-z_(]|[\w)\]]\s*(?:\+|-(?!>)|\*|/)\s*[\w:<>]+\s*\()'
            What = 'an expected value computed from other calls'; Why = 'a test pins literals from one run; it never computes the expected value' },
         @{ Rx = '\b(want|wanted|expect|expected)\w*\s*=\s*[^;]*[!=]=[^;]*(\|\||&&)'
            What = 'the expected answer built from the predicate''s own comparisons'; Why = 'pin a literal list of inputs and answers instead of restating the rule' }
@@ -679,11 +691,17 @@ function Invoke-Check3 {
     foreach ($p in $paras) { if (-not $byRecord.ContainsKey($p.Record)) { $byRecord[$p.Record] = [System.Collections.Generic.List[object]]::new() }; $byRecord[$p.Record].Add($p) }
     $litRx = [regex]::new('(?<![\w.''])(?:0[xX][0-9a-fA-F'']+|\d[\d'']*(?:\.\d*)?(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?)(?:[uUlLfF]+)?(?![\w.''])', 'Compiled')
     $skip = [System.Collections.Generic.HashSet[string]]::new([string[]]@('0', '1', '2'))
+    $unitFactors = [System.Collections.Generic.HashSet[string]]::new([string[]]@('1000', '1024', '1000000'))
     foreach ($f in $added.Keys) {
         if (-not ((Test-CppPath $f) -or (Test-PyPath $f))) { continue }
         if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
         $isTest = $f -like 'tests/*' -or $f -match '^tools/.*(/tests/|/test_[^/]*\.py$)'
         $v = Get-Views $f
+        # Sizes of arrays this file declares: a loop or a bound that matches one is the container's size.
+        $containerSizes = [System.Collections.Generic.HashSet[string]]::new()
+        foreach ($cm in [regex]::Matches($v.CodeText, '\b[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*\[\s*(\d+)\s*\]|std::array\s*<[^,<>]+,\s*(\d+)\s*>')) {
+            [void]$containerSizes.Add("$($cm.Groups[1].Value)$($cm.Groups[2].Value)")
+        }
         foreach ($ln in (Get-AddedLines $f $v.Code.Count)) {
             $code = $v.Code[$ln - 1]
             $t = $code.Trim()
@@ -699,8 +717,29 @@ function Invoke-Check3 {
                 $before = $code.Substring(0, $m.Index).TrimEnd()
                 $after = $code.Substring($m.Index + $m.Length).TrimStart()
                 if ($before.EndsWith('[') -and $after.StartsWith(']')) { continue }
+                if ($containerSizes.Contains($canon)) { continue }
+                # A unit factor (ms to s, bytes to KiB) multiplies or divides.
+                if ($unitFactors.Contains($canon) -and ($before -match '[*/]=?$' -or $after -match '^[*/]')) { continue }
                 $inCompare = ($before -match '(?<![<>-])(<=?|>=?)$' -and $before -notmatch '(<<|>>|->)$') -or
                              ($after -match '^(<=?|>=?)(?![<>=])')
+                # A shift amount counts as compared when its line compares.
+                if (-not $inCompare -and $before -match '(<<|>>)$') {
+                    $plain = $code -replace '<<|>>|->', ' ' -replace '<[\w:\s,*&]*>', ' '
+                    $inCompare = $plain -match '[<>]'
+                }
+                if (-not $isTest) {
+                    # Production: thresholds, limits, tolerances, times and
+                    # fallbacks show up as a comparison, a named value (the
+                    # right side of a plain "="), a returned value, a
+                    # min/max/clamp bound or a duration. A number inside other
+                    # arithmetic or passed to a call computes a layout or a
+                    # conversion, so it is left to the reviewer.
+                    $isNamed = $before -match '(?<![=!<>+\-*/%&|^])=\s*[-+(]*$|^\s*(constexpr|const|static)?[\w:<>\s]*\b[A-Z][A-Z0-9_]+\s*=\s*$'
+                    $isReturn = $before -match '\breturn\s*[-+(]*$' -and $after -match '^[;)]'
+                    $isBound = $before -match '\bstd::(min|max|clamp)\s*(<[^>]*>)?\s*\(([^()]*,)?\s*$'
+                    $isDuration = $before -match '\b(seconds|milliseconds|minutes|microseconds|sleep_for|timeout|deadline)\w*\s*\(\s*$'
+                    if (-not ($inCompare -or $isNamed -or $isReturn -or $isBound -or $isDuration)) { continue }
+                }
                 if ($isTest) {
                     # A test's own limits: a field or constant whose name says
                     # limit, a loop over seeds or repeats, a duration, or a
