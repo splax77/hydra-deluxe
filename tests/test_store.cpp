@@ -208,7 +208,7 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
     const std::vector<Config> configs = {
         {"cap4", 4, DepthMode::Scores, 4, std::nullopt},
         {"cap4.ms10", 4, DepthMode::Scores, 4, 10.0},
-        {"uncapped", 999, DepthMode::Scores, 4, std::nullopt},
+        {"uncapped", 999, DepthMode::Scores, 4, std::nullopt},  // "uncapped" is 999 (D43)
         {"cap4.fills10", 4, DepthMode::Scores, 4, std::nullopt, true},
     };
     RecordStore store(":memory:");

@@ -322,6 +322,18 @@ private:
 //                the cap's length past that phrase (ADR 0013).
 //   SqIn       - the squeeze-in phrase, early or late.
 enum class SpEndKind : uint8_t { Activation = 0, Collected = 1, Clamped = 2, SqIn = 3 };
+// The last valid kind: the codec refuses any stored value past it.
+constexpr SpEndKind kLastSpEndKind = SpEndKind::SqIn;
+
+// Is this step a squeeze-in? The one statement of that rule: the engine's
+// running window (Engine::squeezed_in), the stored list
+// (core::sqin_phrase_ticks) and nth_sqin_step all ask it.
+inline bool is_sqin_kind(SpEndKind kind) { return kind == SpEndKind::SqIn; }
+
+// Did this step squeeze in the phrase on `tick`?
+inline bool is_sqin_step_on(int64_t step_tick, SpEndKind kind, int64_t tick) {
+    return step_tick == tick && is_sqin_kind(kind);
+}
 
 // One place an activation's SP end moved: `tick` is the note that moved it,
 // `end_tick` the SP end in force after it.
@@ -334,6 +346,17 @@ struct SpEndStep {
     }
     bool operator!=(const SpEndStep& o) const { return !(*this == o); }
 };
+
+// The n-th SqIn step (counting from 0) in a run of SP-end steps: the n-th
+// SqIn squeeze owns it, because both lists are kept in time order. `last`
+// when the run holds fewer. Activation::squeeze_end_step and the engine's
+// folded-variant copy-out (Engine::close_folded_act) both pair them here.
+template <class It>
+It nth_sqin_step(It first, It last, size_t n) {
+    for (; first != last; ++first)
+        if (is_sqin_kind(first->kind) && n-- == 0) return first;
+    return last;
+}
 
 struct Activation {
     // The search sets these on every activation it makes, so they are

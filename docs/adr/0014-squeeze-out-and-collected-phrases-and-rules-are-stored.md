@@ -202,3 +202,24 @@ before its phrase (D32). None of the 97 corpus charts has one, and a count
 across 19,343 library charts found none either. Old records of such a chart
 keep their wrong squeeze until they are analyzed again, and the format 7
 bump makes every record read Stale anyway.
+
+### Three numbers the extreme-tempo rules use (D40)
+
+The user recorded these as they are on 2026-10-04 (decision D40). None
+changes a score on the library.
+
+- The banked phrase in reach looks one tick before the first SP end that
+  can squeeze (`banked_phrase_in_reach`). plusmeasure rounds down, so the
+  real end can come out a tick early; the extra tick keeps the reach wide
+  enough. It decides which tied running paths fold at extreme tempos. D36's
+  follow-up may revisit it.
+- An SP end exactly on its phrase's tick counts as reaching that phrase
+  (`sqin_end_by_phrase` uses `<=`). The graph then adds that end's node
+  when it moves the end, as for an end before the phrase.
+- The search's group key packs each path into 64 bits
+  (`reduce_iteration_paths` and `ready_class` in engine.cpp). While SP
+  runs: the SP end must lie within ±2^46 ticks and the banked-phrase
+  ordinal must be at most 65,535. While waiting: the meter must be under
+  2^30, and each of `ready_class`'s two fill counts gets 16 bits. A chart
+  past any of these fails to analyze with an error. It never folds paths
+  wrongly. These widths come with D35's ready-time key.

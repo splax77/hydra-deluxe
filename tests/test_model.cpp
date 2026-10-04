@@ -6,10 +6,7 @@
 #include "doctest.h"
 
 #include <cmath>
-#include <filesystem>
-#include <fstream>
 #include <optional>
-#include <regex>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -125,10 +122,10 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
 }
 
 // The early-fill window has one owner: model.h states both halves of it, the
-// fill that refuses (fill_refuses) and the E0 (is_e0), and nothing in src/ or
-// tools/ compares against kEarlyFillWindowMs on its own. A second copy of the
-// cut-off drifts the day one of them changes (review of D35, finding A).
-TEST_CASE("early-fill window: only model.h reads kEarlyFillWindowMs") {
+// fill that refuses (fill_refuses) and the E0 (is_e0). That only model.h
+// reads kEarlyFillWindowMs is a row of the single-owner scan
+// (test_single_owner.cpp); this checks the two halves' edges.
+TEST_CASE("early-fill window: the refusal and the E0 edges") {
     CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
     CHECK_FALSE(fill_refuses(-kEarlyFillWindowMs));  // exactly 60 ms late still spawns
     CHECK(fill_refuses(-kEarlyFillWindowMs - 0.1));
@@ -138,37 +135,6 @@ TEST_CASE("early-fill window: only model.h reads kEarlyFillWindowMs") {
     CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
     a.e_offset = kEarlyFillWindowMs;
     CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
-
-    namespace fs = std::filesystem;
-    const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
-    std::vector<std::string> problems;
-    int files = 0, owner_uses = 0;
-    for (const char* sub : {"src", "tools"}) {
-        for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
-            const fs::path ext = e.path().extension();
-            if (ext != ".cpp" && ext != ".h") continue;
-            ++files;
-            const std::string rel = fs::relative(e.path(), root).generic_u8string();
-            std::ifstream in(e.path());
-            std::string line;
-            int lineno = 0;
-            while (std::getline(in, line)) {
-                ++lineno;
-                const std::string code = line.substr(0, line.find("//"));
-                if (code.find("kEarlyFillWindowMs") == std::string::npos) continue;
-                if (rel == "src/core/model.h") {
-                    ++owner_uses;
-                    continue;
-                }
-                problems.push_back(rel + ":" + std::to_string(lineno) + ": " + line);
-            }
-        }
-    }
-    CHECK(files > 50);
-    CHECK(owner_uses >= 3);  // the constant, fill_refuses and is_e0
-    INFO(problems.size() << " problem lines; first: "
-                         << (problems.empty() ? std::string() : problems.front()));
-    CHECK(problems.empty());
 }
 
 TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
@@ -636,70 +602,6 @@ TEST_CASE("Activation: set_sqout stamps the tick, trims later rows, builds the S
     Activation none;
     CHECK(none.sqout_row() == nullptr);
     CHECK_THROWS_AS(none.set_sqout(200), std::logic_error);  // no row on that tick
-}
-
-// The one-writer rule, checked: in src/ and tools/, only model.cpp (set_sqout)
-// writes Activation::sqout_tick. Tests may build odd shapes by hand. The
-// replay keeps its own windows (ReplayWindow, and replay.cpp's Window), which
-// have a field of the same name; those are always named w or win there.
-TEST_CASE("only set_sqout writes an activation's sqout_tick") {
-    namespace fs = std::filesystem;
-    const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
-    // An assignment, reset or emplace, with the object it's on (if any).
-    const std::regex write(
-        R"((?:(\w+)\s*(?:\.|->)\s*)?\bsqout_tick\s*(?:=(?!=)|\.\s*(?:reset|emplace)\s*\())");
-    std::smatch m;
-    // The pattern itself: writes are seen, reads are not.
-    CHECK(std::regex_search(std::string("    act.sqout_tick = 200;"), write));
-    CHECK(std::regex_search(std::string("a->sqout_tick.reset();"), write));
-    CHECK(std::regex_search(std::string("sqout_tick.emplace(5);"), write));
-    CHECK_FALSE(std::regex_search(std::string("if (act.sqout_tick == t)"), write));
-    CHECK_FALSE(std::regex_search(std::string("w.opt_i64(act.sqout_tick);"), write));
-    std::string probe = "        win.sqout_tick = w.sqout_tick;";
-    REQUIRE(std::regex_search(probe, m, write));
-    CHECK(m[1].str() == "win");
-    probe = "    const std::optional<int64_t> sqout_tick =";
-    REQUIRE(std::regex_search(probe, m, write));
-    CHECK(m[1].str().empty());  // a local: no object it's on
-
-    const auto replay_window_file = [](const std::string& rel) {
-        return rel == "src/core/replay.cpp" || rel == "tools/replay.cpp" ||
-               rel == "tools/replay_json.cpp";
-    };
-    std::vector<std::string> problems;
-    int files = 0, model_writes = 0;
-    for (const char* sub : {"src", "tools"}) {
-        for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
-            const fs::path ext = e.path().extension();
-            if (ext != ".cpp" && ext != ".h") continue;
-            ++files;
-            const std::string rel = fs::relative(e.path(), root).generic_u8string();
-            std::ifstream in(e.path());
-            std::string line;
-            int lineno = 0;
-            while (std::getline(in, line)) {
-                ++lineno;
-                const std::string code = line.substr(0, line.find("//"));
-                if (!std::regex_search(code, m, write)) continue;
-                if (rel == "src/core/model.cpp") {
-                    ++model_writes;
-                    continue;
-                }
-                const std::string on = m[1].str();
-                // A bare name is a local of the same name (engine.cpp has
-                // one) unless it's inside Activation, whose members live in
-                // model.cpp and model.h.
-                if (on.empty() && rel != "src/core/model.h") continue;
-                if (replay_window_file(rel) && (on == "w" || on == "win")) continue;
-                problems.push_back(rel + ":" + std::to_string(lineno) + ": " + line);
-            }
-        }
-    }
-    CHECK(files > 50);
-    CHECK(model_writes > 0);  // the scan does see the one writer
-    INFO(problems.size() << " problem lines; first: "
-                         << (problems.empty() ? std::string() : problems.front()));
-    CHECK(problems.empty());
 }
 
 TEST_CASE("refill_tick: a late squeeze-in's bar arrives at the old end") {

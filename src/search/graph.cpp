@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <stdexcept>
 
+#include "core/backend_value.h"
 #include "core/scoring.h"
 #include "core/sqout_chord.h"
 
@@ -28,6 +29,7 @@ struct TickGreater {
 // too late: the node would then sit behind the phrase on the track. Only
 // possible when 500 ms spans more than one SP bar; no library chart is that
 // fast. The one statement of the test: build and add_deact_edge both ask it.
+// An end exactly on its phrase counts as by it (decision D40, ADR 0014).
 bool sqin_end_by_phrase(int64_t end_tick, int64_t phrase_tick) {
     return end_tick <= phrase_tick;
 }
@@ -400,7 +402,7 @@ void ScoreGraph::add_deact_edge() {
             SqueezeChoice choice;
             choice.chord = c->timecode;
             choice.timing = offset_from_sp_end(c->timecode.ms(), end.ms());
-            choice.late = c->timecode.ticks() > end.ticks();
+            choice.late = core::after_sp_end(c->timecode.ticks(), end.ticks());
             choice.sqout_time = choice.late ? end : one_bar;
             deact_edge->squeeze_choices.push_back(choice);
             // A late SqIn's end can come before its own phrase: add its node

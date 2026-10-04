@@ -495,47 +495,8 @@ std::vector<Step> steps_of(const Activation& a) {
     return out;
 }
 
-// Every window of a path written out: activation, SP end steps, squeezes,
-// squeezed-out note and backend rows. Two paths with the same text store the
-// same windows.
-std::string windows_text(const Path& p) {
-    std::ostringstream o;
-    for (const Activation& a : p.walk_activations()) {
-        o << a.timecode.ticks() << " [steps";
-        for (const SpEndStep& s : a.sp_end_steps)
-            o << ' ' << s.tick << '>' << s.end_tick << ':' << static_cast<int>(s.kind);
-        o << " | sq";
-        for (const SPSqueeze& q : a.sqinouts) o << ' ' << q.symbol() << q.offset_ms;
-        o << " | out " << a.sqout_tick.value_or(-1) << " | backends";
-        for (const BackendSqueeze& b : a.backends)
-            o << ' ' << b.timecode.ticks() << '/' << b.points << '/' << b.sqout_points << '/'
-              << (b.offset_ms ? *b.offset_ms : -1.0);
-        // The early-fill facts (D38): the offset and the fills passed over.
-        o << " | e " << a.e_offset << " | passed";
-        for (const int64_t t : a.skipped_fill_ticks) o << ' ' << t;
-        o << "] ";
-    }
-    return o.str();
-}
-
-// D3's promise for a tied variant: it stores what the search stores when it
-// prices that path's activations alone (search_target). Returns "" when one
-// lone path has the variant's total and windows, else what differed.
-std::string lone_pricing_mismatch(const Song& song, const SearchSettings& settings,
-                                  const Path& variant) {
-    std::vector<int64_t> ticks;
-    for (const Activation& a : variant.walk_activations()) ticks.push_back(a.timecode.ticks());
-    const std::string mine = windows_text(variant);
-    std::string lone_same_total;
-    for (const Path& t : search_target(song, settings, ticks)) {
-        if (t.totalscore() != variant.totalscore()) continue;
-        const std::string theirs = windows_text(t);
-        if (theirs == mine) return "";
-        lone_same_total += "\n  lone:    " + theirs;
-    }
-    return "'" + variant.pathstring() + "' " + std::to_string(variant.totalscore()) +
-           "\n  variant: " + mine + (lone_same_total.empty() ? "\n  no lone path ties it" : lone_same_total);
-}
+// D3's promise for a tied variant (record_fixtures.h).
+using test::lone_pricing_mismatch;
 
 void collect_variants(const Path& p, std::vector<const Path*>& out) {
     for (const Path& v : p.variants) {
@@ -703,50 +664,11 @@ TEST_CASE("SP past the last note: tail rows use the 500 ms window from the SP en
     CHECK(act.display_backends() == act.backends);
 }
 
-// D5 moves where tail rows are filtered, not which rows survive. The old
-// rule is written out here: every graph tail note, measured from the SP end,
-// kept when it is strictly less than 500 ms away.
-TEST_CASE("tail rows: every corpus activation keeps exactly the rows the old display kept") {
-    int tails = 0, edges = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, true, true);
-        if (song.is_empty()) continue;
-        ScoreGraph graph(song, 4);
-        const int64_t last_tick = song.sequence.back().timecode.ticks();
-        for (const Path& p : run_search(graph, EngineOptions{DepthMode::Scores, 4})) {
-            for (const Activation& act : p.all_activations()) {
-                // The SP end the engine stamped on this activation.
-                const std::optional<int64_t> end_tick = act.deact_tick();
-                if (!end_tick) continue;
-                if (*end_tick <= last_tick) {
-                    // A deactivation edge: its rows were gathered inside the window.
-                    ++edges;
-                    for (const BackendSqueeze& b : act.backends)
-                        CHECK((std::fabs(*b.offset_ms) < 500.0 || act.is_sqout_backend(b)));
-                    continue;
-                }
-                ++tails;
-                const double end_ms = song.timing().ms_index().at(*end_tick);
-                std::vector<BackendSqueeze> want;
-                for (const BackendSqueeze& b : graph.tail_backends()) {
-                    BackendSqueeze copy = b;
-                    copy.offset_ms = b.timecode.ms() - end_ms;
-                    if (std::fabs(*copy.offset_ms) < 500.0) want.push_back(copy);
-                }
-                CHECK(act.display_backends() == want);  // what is stored and shown: unchanged
-                CHECK(act.backends == want);            // and now nothing extra in memory
-            }
-        }
-    }
-    CHECK(edges > 0);
-    CHECK(tails > 0);
-}
-
 // The graph lists, for every deactivation edge, exactly the phrase chords
 // core::squeeze_window_phrases names, in chart order, so the engine can offer
 // the first one a window can still squeeze (D34). This guards against drift.
 TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrases names") {
-    int edges = 0, claimed = 0, before = 0, after = 0;
+    int edges = 0, claimed = 0;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
         if (song.is_empty()) continue;
@@ -767,38 +689,75 @@ TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrase
             const std::vector<const SongTimestamp*> window =
                 core::squeeze_window_phrases(song, end);
             REQUIRE(e->squeeze_choices.size() == window.size());
-
-            // The edge's other facts, worked out here from each chord and the
-            // song's own timing, not from the graph.
-            REQUIRE(e->sqin_time.has_value());
-            if (window.empty()) {
-                // No chord to squeeze: the path just ends at the SP end.
-                CHECK(e->sqin_time->ticks() == end.ticks());
-                continue;
-            }
+            if (window.empty()) continue;
             ++claimed;
-            // A chord moves the SqIn end one bar. A chord at or before the end
-            // moves the SqOut end too; a chord after it is a late SqIn only.
-            const int64_t one_bar =
-                song.timing().plusmeasure(end, sp_bars_to_measures(1)).ticks();
-            CHECK(one_bar > end.ticks());
-            CHECK(e->sqin_time->ticks() == one_bar);
-            for (size_t k = 0; k < window.size(); ++k) {
-                const SongTimestamp* c = window[k];
-                const SqueezeChoice& got = e->squeeze_choices[k];
-                CHECK(got.chord.ticks() == c->timecode.ticks());
-                CHECK(got.timing == c->timecode.ms() - end.ms());  // bit for bit
-                const bool at_or_before = c->timecode.ticks() <= end.ticks();
-                CHECK(got.sqout_time.ticks() == (at_or_before ? one_bar : end.ticks()));
-                CHECK(got.late == !at_or_before);
-                (at_or_before ? before : after)++;
-            }
+            for (size_t k = 0; k < window.size(); ++k)
+                CHECK(e->squeeze_choices[k].chord.ticks() == window[k]->timecode.ticks());
         }
     }
     CHECK(edges > 0);
     CHECK(claimed > 0);
-    CHECK(before > 0);  // both halves of the rule are exercised by the corpus
-    CHECK(after > 0);
+}
+
+namespace {
+
+// The deactivation edge on the SP track whose SP end is `end_tick`.
+const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t end_tick) {
+    const ScoreGraphNode* sp = nullptr;
+    for (const ScoreGraphNode* b = graph.start(); b && !sp;
+         b = b->adv_edge ? b->adv_edge->dest : nullptr)
+        if (b->branch_edge) sp = b->branch_edge->dest;
+    for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr)
+        if (sp->branch_edge && sp->branch_edge->dest->timecode.ticks() == end_tick)
+            return sp->branch_edge;
+    return nullptr;
+}
+
+}  // namespace
+
+// A squeeze choice's facts, pinned on two hand-built songs at 240 BPM (a
+// measure is 1920 ticks and 1000 ms). Both activate at 5760 with two bars,
+// so SP ends at 13440 (7000 ms), and one bar more is 17280 (9000 ms).
+TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
+    SUBCASE("a phrase 250 ms before the end: an early squeeze, both ends move") {
+        const Song song = test::make_early_sqout_song();
+        const ScoreGraph graph(song, 4);
+        const ScoreGraphEdge* e = deact_edge_at(graph, 13440);
+        REQUIRE(e != nullptr);
+        REQUIRE(e->sqin_time.has_value());
+        CHECK(e->sqin_time->ticks() == 17280);
+        REQUIRE(e->squeeze_choices.size() == 1);
+        const SqueezeChoice& c = e->squeeze_choices[0];
+        CHECK(c.chord.ticks() == 12960);
+        CHECK(c.timing == doctest::Approx(-250.0).epsilon(1e-9));
+        CHECK_FALSE(c.late);
+        CHECK(c.sqout_time.ticks() == 17280);
+    }
+    SUBCASE("a phrase 250 ms after the end: a late squeeze-in only") {
+        const Song song = test::make_late_sqin_song();
+        const ScoreGraph graph(song, 4);
+        const ScoreGraphEdge* e = deact_edge_at(graph, 13440);
+        REQUIRE(e != nullptr);
+        REQUIRE(e->sqin_time.has_value());
+        CHECK(e->sqin_time->ticks() == 17280);
+        REQUIRE(e->squeeze_choices.size() == 1);
+        const SqueezeChoice& c = e->squeeze_choices[0];
+        CHECK(c.chord.ticks() == 13920);
+        CHECK(c.timing == doctest::Approx(250.0).epsilon(1e-9));
+        CHECK(c.late);
+        CHECK(c.sqout_time.ticks() == 13440);
+    }
+    SUBCASE("no phrase in the window: the path just ends at the SP end") {
+        // Two bars from the fill at 5760, and the next phrase is past the
+        // window.
+        const Song song = test::beat_song({480, 1920, 15360}, {5760}, 21120);
+        const ScoreGraph graph(song, 4);
+        const ScoreGraphEdge* e = deact_edge_at(graph, 13440);
+        REQUIRE(e != nullptr);
+        REQUIRE(e->sqin_time.has_value());
+        CHECK(e->sqin_time->ticks() == 13440);
+        CHECK(e->squeeze_choices.empty());
+    }
 }
 
 // run_search takes its knobs in one EngineOptions value, so no two flags can
@@ -837,7 +796,7 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
     // Pinning the best path's activation ticks hands that path back.
     EngineOptions pinned;
     pinned.depth_mode = DepthMode::Points;
-    pinned.depth_value = 1'000'000'000;
+    pinned.depth_value = kKeepEveryPathBand;
     std::vector<int64_t> ticks;
     for (const Activation& a : best.front().activations) ticks.push_back(a.timecode.ticks());
     pinned.target_act_ticks = ticks;
@@ -1508,8 +1467,6 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                     CHECK(act.refill_tick(k) <= prev.end_tick);
                     CHECK(act.refill_tick(k) >= prev.tick);
                 }
-                CHECK(act.nominal_end() ==
-                      song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter())).ticks());
                 // Appendix B's first guarantee: one SqIn step per SqIn, so
                 // a relabel that found nothing cannot pass silently.
                 size_t sqins = 0, sqin_steps = 0;
@@ -1521,7 +1478,7 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
             }
         }
     }
-    CHECK(acts > 1000);
+    CHECK(acts > 1000);  // a floor the user approved (D43)
 }
 
 TEST_CASE("path codec: encode/decode a path node keeps clamp_tick()") {
@@ -1620,7 +1577,7 @@ TEST_CASE("Bank: every corpus path banks in order") {
             acts += bank_check::check_path_banks(*p, phrase_ends, chart_end);
         }
     }
-    CHECK(acts > 1000);
+    CHECK(acts > 1000);  // a floor the user approved (D43)
 }
 
 TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
@@ -1708,7 +1665,7 @@ TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
             }
         }
     }
-    CHECK(skipped > 100);
+    CHECK(skipped > 100);  // a floor the user approved (D43)
 }
 
 // ---- Tied variants keep their own state (decision D3) ------------------

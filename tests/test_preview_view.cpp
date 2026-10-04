@@ -13,7 +13,6 @@
 #include <limits>
 #include <map>
 #include <optional>
-#include <random>
 #include <set>
 #include <sstream>
 #include <string>
@@ -1709,523 +1708,304 @@ TEST_CASE("next activation box: the activation at or after the playhead") {
     CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0).shown);
 }
 
-// ---- Old scan versus new search ------------------------------------------
-//
-// The time box, the next-activation box, the fill states and the SP meter
-// used to scan their lists from the front (and the fills and the meter did so
-// once per activation). They now search or walk with a moving index. The old
-// scans are copied here verbatim as the reference, and every result must
-// match them exactly: on every corpus chart with each of its paths, and on a
-// busy synthetic chart with random tempos, meters, sections and activations.
+TEST_CASE("next activation box: on an activation within half a millisecond, and no chord") {
+    TwoActs t;
+    // The playhead counts as on an activation up to half a millisecond past
+    // it: at 2000.5 ms the box still names activation 1, a hair later 2.
+    CHECK(build_next_act_box(t.scene, -100.0).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, 2000.5).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300)).header ==
+          "Next: activation 2 of 2");
+    CHECK(build_next_act_box(t.scene, 8000.5).header == "Next: activation 2 of 2");
+    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300)).shown);
+
+    // An activation with no chord names only its measure.
+    Song song = make_sp_song({960}, /*last_tick=*/13440);
+    Path path;
+    path.activations = {sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760)};
+    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0);
+    CHECK(box.header == "Next: activation 1 of 1");
+    CHECK(box.detail == "at m2.1.0");
+}
 
 namespace {
 
-namespace old_scan {
-
-constexpr double kOnActivationMs = 0.5;
-
-std::string clock_str(double ms) {
-    double secs = ms / 1000.0;
-    int minutes = static_cast<int>(secs / 60.0);
-    double rem = secs - minutes * 60.0;
-    char buf[48];
-    std::snprintf(buf, sizeof buf, "%d:%06.3f", minutes, rem);
-    return buf;
-}
-
-int64_t tick_at(const SongTiming& timing, double ms) {
-    const int64_t tick = std::llround(timing.ms_index().tick_at_ms(ms));
-    return tick < 0 ? 0 : tick;
-}
-
-double shown_length(double length_ms) { return length_ms < 0.0 ? 0.0 : length_ms; }
-
-double shown_ms(double now_ms, double length_ms) {
-    const double len = shown_length(length_ms);
-    return now_ms < 0.0 ? 0.0 : (now_ms > len ? len : now_ms);
-}
-
-PreviewTimeBox time_box(const PreviewScene& scene, double now_ms, double length_ms) {
-    PreviewTimeBox box;
-    const double len = shown_length(length_ms);
-    const double now = shown_ms(now_ms, length_ms);
-    box.timestamp = clock_str(now) + " / " + clock_str(len);
-    const int64_t now_tick = scene.timing ? tick_at(*scene.timing, now) : 0;
-    const int64_t end_tick = scene.timing ? tick_at(*scene.timing, len) : 0;
-    box.position = scene.timing ? format_measure(*scene.timing, now_tick) : "m1.1.0";
-    box.length = scene.timing ? format_measure(*scene.timing, end_tick) : "m1.1.0";
-    double bpm = scene.tempos.empty() ? 0.0 : scene.tempos.front().bpm;
-    for (const PreviewTempo& t : scene.tempos) {
-        if (t.ms > now) break;
-        bpm = t.bpm;
-    }
-    int ts_num = 4, ts_den = 4;
-    for (const PreviewTimeSig& t : scene.time_sigs) {
-        if (t.tick > now_tick) break;
-        ts_num = t.numerator;
-        ts_den = t.denominator;
-    }
-    char buf[64];
-    std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, ts_num, ts_den);
-    box.tempo = buf;
-    std::string section;
-    for (const PreviewSection& s : scene.sections) {
-        if (s.tick > now_tick) break;
-        section = s.name;
-    }
-    if (!section.empty()) box.section_line = "Section " + section;
-    return box;
-}
-
-PreviewNextActBox next_act_box(const PreviewScene& scene, double now_ms) {
-    PreviewNextActBox box;
-    const size_t count = scene.activations.size();
-    for (size_t i = 0; i < count; ++i) {
-        const PreviewActivation& a = scene.activations[i];
-        if (a.ms < now_ms - kOnActivationMs) continue;
-        box.shown = true;
-        box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(count);
-        box.detail = "at " + a.measure;
-        if (!a.chord.empty()) box.detail += " \xC2\xB7 " + a.chord;
-        break;
-    }
-    return box;
-}
-
-// The fill states as the old nested scans set them, from scratch.
-std::vector<PreviewFillState> fill_states(const PreviewScene& scene, bool has_path) {
-    std::vector<PreviewFill> fills = scene.fills;
-    for (PreviewFill& f : fills) f.state = PreviewFillState::Hidden;
-    if (!has_path) {
-        for (PreviewFill& f : fills) f.state = PreviewFillState::Offered;
-    } else {
-        int64_t prev_tick = std::numeric_limits<int64_t>::min();
-        for (const PreviewActivation& a : scene.activations) {
-            for (PreviewFill& f : fills)
-                if (f.span.end_tick == a.tick) {
-                    f.state = PreviewFillState::Taken;
-                    break;
-                }
-            int left = static_cast<int>(a.skipped_fill_ticks.size());
-            for (auto it = fills.rbegin(); it != fills.rend() && left > 0; ++it) {
-                if (it->span.end_tick >= a.tick || it->span.end_tick <= prev_tick) continue;
-                it->state = PreviewFillState::Offered;
-                --left;
-            }
-            prev_tick = a.tick;
-        }
-    }
-    std::vector<PreviewFillState> out;
-    for (const PreviewFill& f : fills) out.push_back(f.state);
-    return out;
-}
-
-struct DrainSplit {
-    int64_t tick = 0;
-    double ms = 0.0;
-    bool collection = false;
-};
-
-void push_segment(SpMeterCurve& curve, double start_ms, double end_ms, double start_bars,
-                  double end_bars) {
-    if (end_ms <= start_ms) return;
-    curve.segments.push_back({start_ms, end_ms, start_bars, end_bars});
-}
-
-// What the old scan read off each activation, which PreviewActivation no
-// longer carries: the bars it spent and the phrases it collected. Taken from
-// the Path itself (Activation::sp_meter() and collected_phrase_ticks()).
-struct ActFacts {
-    int sp_meter = 0;
-    std::vector<int64_t> collected_phrase_ticks;
-};
-
-std::vector<ActFacts> act_facts(const Path* path) {
-    std::vector<ActFacts> out;
-    if (path == nullptr) return out;
-    for (const Activation& a : path->walk_activations())
-        out.push_back({a.sp_meter(), a.collected_phrase_ticks()});
-    return out;
-}
-
-SpMeterCurve sp_meter_curve(const PreviewScene& scene, const SongTiming& timing, int sp_cap,
-                            const std::vector<ActFacts>& facts) {
-    SpMeterCurve curve;
-    curve.cap = sp_cap < 1 ? 1 : sp_cap;
-    if (scene.sp_phrases.empty() && scene.activations.empty()) return curve;
-    const double cap = static_cast<double>(curve.cap);
-    const std::vector<PreviewSpan>& phrases = scene.sp_phrases;
-    size_t next_phrase = 0;
-    double bank = 0.0;
-    double cursor_ms = 0.0;
-    auto run_flat_to = [&](double until_ms) {
-        while (next_phrase < phrases.size() && phrases[next_phrase].end_ms < until_ms) {
-            push_segment(curve, cursor_ms, phrases[next_phrase].end_ms, bank, bank);
-            cursor_ms = phrases[next_phrase].end_ms;
-            bank = std::min(bank + 1.0, cap);
-            ++next_phrase;
-        }
-        push_segment(curve, cursor_ms, until_ms, bank, bank);
-        if (until_ms > cursor_ms) cursor_ms = until_ms;
-    };
-    REQUIRE(facts.size() == scene.activations.size());
-    for (size_t ai = 0; ai < scene.activations.size(); ++ai) {
-        const PreviewActivation& act = scene.activations[ai];
-        const ActFacts& f = facts[ai];
-        run_flat_to(act.ms);
-        bank = static_cast<double>(f.sp_meter);
-        if (f.sp_meter <= 0 || !act.has_sp_end) {
-            bank = 0.0;
-            continue;
-        }
-        std::vector<const PreviewSpan*> window;
-        for (size_t i = next_phrase; i < phrases.size(); ++i) {
-            if (phrases[i].end_ms >= act.sp_end_ms) break;
-            if (phrases[i].end_tick > act.tick) window.push_back(&phrases[i]);
-            ++next_phrase;
-        }
-        std::vector<DrainSplit> splits;
-        for (int64_t t : f.collected_phrase_ticks)
-            if (t > act.tick && t < act.sp_end_tick)
-                splits.push_back({t, timing.ms_index().at(t), true});
-        int64_t squeezed_out = 0;
-        for (const PreviewSpan* p : window)
-            if (std::find(f.collected_phrase_ticks.begin(), f.collected_phrase_ticks.end(),
-                          p->end_tick) == f.collected_phrase_ticks.end())
-                ++squeezed_out;
-        for (const PreviewTempo& t : scene.tempos)
-            if (t.tick > act.tick && t.tick < act.sp_end_tick)
-                splits.push_back({t.tick, t.ms, false});
-        for (const PreviewMeter& m : scene.meters)
-            if (m.tick > act.tick && m.tick < act.sp_end_tick)
-                splits.push_back({m.tick, timing.ms_index().at(m.tick), false});
-        std::stable_sort(splits.begin(), splits.end(),
-                         [](const DrainSplit& a, const DrainSplit& b) { return a.tick < b.tick; });
-        double remaining = static_cast<double>(sp_bars_to_measures(f.sp_meter));
-        int64_t prev_tick = act.tick;
-        double prev_ms = act.ms;
-        double prev_measures = timing.measures_at_tick_f(static_cast<double>(prev_tick));
-        for (const DrainSplit& s : splits) {
-            const double measures = timing.measures_at_tick_f(static_cast<double>(s.tick));
-            const double elapsed = measures - prev_measures;
-            const double left = std::max(0.0, remaining - elapsed);
-            push_segment(curve, prev_ms, s.ms, remaining / static_cast<double>(kMeasuresPerSpBar),
-                         left / static_cast<double>(kMeasuresPerSpBar));
-            remaining = left;
-            if (s.collection)
-                remaining = std::min(remaining + static_cast<double>(kMeasuresPerSpBar),
-                                     static_cast<double>(sp_bars_to_measures(curve.cap)));
-            prev_tick = s.tick;
-            prev_ms = s.ms;
-            prev_measures = measures;
-        }
-        push_segment(curve, prev_ms, act.sp_end_ms,
-                     remaining / static_cast<double>(kMeasuresPerSpBar), 0.0);
-        bank = std::min(static_cast<double>(squeezed_out), cap);
-        cursor_ms = std::max(cursor_ms, act.sp_end_ms);
-    }
-    while (next_phrase < phrases.size()) {
-        push_segment(curve, cursor_ms, phrases[next_phrase].end_ms, bank, bank);
-        cursor_ms = std::max(cursor_ms, phrases[next_phrase].end_ms);
-        bank = std::min(bank + 1.0, cap);
-        ++next_phrase;
-    }
-    const double end_ms = std::max(cursor_ms, scene.song_length_ms);
-    curve.segments.push_back({cursor_ms, end_ms, bank, bank});
-    return curve;
-}
-
-}  // namespace old_scan
-
-// One place the record-read gauge and the old scan disagree.
-struct GaugeDiff {
-    double ms = 0.0;
-    double got = 0.0;   // the gauge
-    double want = 0.0;  // the old scan
-};
-
-// The gauge against the old scan, by value. The two cut the curve at
-// different places, so segments are not compared one by one. Every segment
-// boundary of either curve (and a hair either side) and `random_times` random
-// times are probed. A late squeeze-in window is left out: the old scan drew it
-// wrong (finding 5). A window is one when some step's refill tick sits before
-// the step's own note, read off the Path's own activations.
-//
-// Between windows the two must agree exactly. Inside a window they may differ
-// by one tick per stored SP end step, and no more. The engine stores each SP
-// end as a whole tick, truncating the fraction of a measure
-// (SongTiming::plusmeasure). The old scan started at exactly the banked bars
-// and bent its last stretch to reach empty at the stored end. The new gauge
-// drains at exactly one bar per two measures to that stored end, so it starts
-// up to one tick's worth lower. One tick is 1 / (2 * ticks per measure) bars.
-std::vector<GaugeDiff> gauge_differences(const PreviewScene& scene, const Path* path,
-                                         int sp_cap, std::mt19937& rng,
-                                         int random_times = 300) {
-    const SpMeterCurve want_curve = old_scan::sp_meter_curve(scene, *scene.timing, sp_cap,
-                                                             old_scan::act_facts(path));
-    CHECK(scene.sp_meter.cap == want_curve.cap);
-    int64_t min_tpm = std::numeric_limits<int64_t>::max();
-    for (const PreviewMeter& m : scene.meters) min_tpm = std::min(min_tpm, m.tpm);
-    const double one_tick_bars =
-        min_tpm > 0 && min_tpm != std::numeric_limits<int64_t>::max()
-            ? 1.0 / (static_cast<double>(kMeasuresPerSpBar) * static_cast<double>(min_tpm))
-            : 0.0;
-    struct Window {
-        double from, to;
-        double slack;  // bars
-    };
-    std::vector<std::pair<double, double>> late_windows;
-    std::vector<Window> windows;
-    if (path != nullptr) {
-        size_t i = 0;
-        for (const Activation& a : path->walk_activations()) {
-            const PreviewActivation& pa = scene.activations.at(i++);
-            if (pa.has_sp_end)
-                windows.push_back({pa.ms, pa.sp_end_ms,
-                                   one_tick_bars * static_cast<double>(a.sp_end_steps.size())});
-            for (size_t k = 0; k < a.sp_end_steps.size(); ++k)
-                if (a.refill_tick(k) < a.sp_end_steps[k].tick) {
-                    late_windows.push_back({pa.ms, pa.sp_end_ms});
-                    break;
-                }
-        }
-    }
-    auto in_late_sqin_window = [&](double ms) {
-        for (const auto& [from, to] : late_windows)
-            if (from <= ms && ms <= to) return true;
-        return false;
-    };
-    // The slack at `ms`: inside a window (activation up to, not including,
-    // its deact node) one tick per step; anywhere else none.
-    auto slack_at = [&](double ms) {
-        for (const Window& w : windows)
-            if (w.from <= ms && ms < w.to) return w.slack;
-        return 0.0;
-    };
-    std::vector<double> probe;
-    for (const SpMeterCurve* cv : {&scene.sp_meter, &want_curve})
-        for (const SpMeterSegment& s : cv->segments)
-            for (double ms : {s.start_ms, s.end_ms})
-                for (double t : {ms, std::nextafter(ms, -1e300), std::nextafter(ms, 1e300)})
-                    probe.push_back(t);
-    std::uniform_real_distribution<double> any(-1000.0, scene.song_length_ms + 3000.0);
-    for (int i = 0; i < random_times; ++i) probe.push_back(any(rng));
-    std::vector<GaugeDiff> out;
-    for (double t : probe) {
-        if (in_late_sqin_window(t)) continue;
-        const double got = sp_meter_bars_at(scene.sp_meter, t);
-        const double want = sp_meter_bars_at(want_curve, t);
-        if (std::fabs(got - want) > slack_at(t) + 1e-9) out.push_back({t, got, want});
-    }
-    return out;
-}
-
-// Every lookup on `scene` against the old scans: the fill states and (when
-// `compare_gauge`) the SP meter once, then the time box and next-activation
-// box at random times plus every boundary where a lookup's answer can flip
-// (tempo, signature, section and activation times, and a hair either side).
-// `path` is the path the scene was built from, or null.
-void check_lookups_match_old_scans(const PreviewScene& scene, const Path* path, int sp_cap,
-                                   std::mt19937& rng, bool compare_gauge) {
-    const std::vector<PreviewFillState> want_fills =
-        old_scan::fill_states(scene, path != nullptr);
-    REQUIRE(want_fills.size() == scene.fills.size());
-    for (size_t i = 0; i < want_fills.size(); ++i) {
-        CAPTURE(i);
-        CHECK(scene.fills[i].state == want_fills[i]);
-    }
-
-    REQUIRE(scene.timing.has_value());
-    if (compare_gauge) {
-        for (const GaugeDiff& d : gauge_differences(scene, path, sp_cap, rng)) {
-            CAPTURE(d.ms);
-            CAPTURE(d.got);
-            CAPTURE(d.want);
-            FAIL_CHECK("the gauge differs from the old scan by more than the stored end's tick");
-        }
-    }
-
-    // At most this many boundaries per list, spread evenly, so a chart with
-    // thousands of tempo changes stays quick.
-    constexpr size_t kPerList = 150;
-    std::vector<double> times;
-    auto around = [&times](double ms) {
-        times.push_back(ms);
-        times.push_back(std::nextafter(ms, -1e300));
-        times.push_back(std::nextafter(ms, 1e300));
-    };
-    auto sample = [&](size_t n, auto&& ms_of) {
-        const size_t step = n > kPerList ? n / kPerList : 1;
-        for (size_t i = 0; i < n; i += step) around(ms_of(i));
-    };
-    const SongTiming& timing = *scene.timing;
-    sample(scene.tempos.size(), [&](size_t i) { return scene.tempos[i].ms; });
-    sample(scene.time_sigs.size(), [&](size_t i) { return timing.ms_index().at(scene.time_sigs[i].tick); });
-    sample(scene.sections.size(), [&](size_t i) { return scene.sections[i].ms; });
-    sample(scene.activations.size(), [&](size_t i) {
-        const double ms = scene.activations[i].ms;
-        around(ms + old_scan::kOnActivationMs);
-        return ms - old_scan::kOnActivationMs;
-    });
-    const double len = scene.song_length_ms;
-    std::uniform_real_distribution<double> any_time(-1000.0, len + 3000.0);
-    for (int i = 0; i < 300; ++i) times.push_back(any_time(rng));
-
-    for (double length_ms : {len, len + 2500.0}) {
-        for (double now : times) {
-            CAPTURE(now);
-            CAPTURE(length_ms);
-            const PreviewTimeBox g = build_time_box(scene, now, length_ms);
-            const PreviewTimeBox w = old_scan::time_box(scene, now, length_ms);
-            CHECK(g.timestamp == w.timestamp);
-            CHECK(g.position == w.position);
-            CHECK(g.length == w.length);
-            CHECK(g.tempo == w.tempo);
-            CHECK(g.section_line == w.section_line);
-        }
-    }
-    for (double now : times) {
-        CAPTURE(now);
-        const PreviewNextActBox g = build_next_act_box(scene, now);
-        const PreviewNextActBox w = old_scan::next_act_box(scene, now);
-        CHECK(g.shown == w.shown);
-        CHECK(g.header == w.header);
-        CHECK(g.detail == w.detail);
-    }
-}
-
-// A busy chart for the comparison: a tempo change every one to six beats, a
-// meter change (with its written signature) every few measures, sections
-// every few measures, an SP phrase every eight notes and a fill on every
-// third note. Then a path of activations on fills, in time order, each with
-// a random bar count, skip count and some phrases collected inside it.
-struct BusyChart {
-    Song song{480};
-    Path path;
-};
-
-BusyChart make_busy_chart(std::mt19937& rng, int64_t measures) {
-    BusyChart c;
-    Song& song = c.song;
-    const int64_t last = measures * 1920;
+// A chart whose lookups have many entries to search: four tempos, three
+// meters (with the signature the chart wrote) and four sections, at 480
+// ticks a beat. Tempo 120 BPM to tick 1920, 90 to 4800, 150 to 7680, then 60.
+// 4/4, then 3/4 from tick 3840, then 4/4 again from 6720 (both barlines).
+// So ticks 960, 1920, 2880, 3840, 4800, 5760, 6720, 7680, 8640 and 9600 are
+// 1000, 2000, 3333.3, 4666.7, 6000, 6800, 7600, 8400, 10400 and 12400 ms.
+Song make_lookup_song() {
+    Song song(480);
     song.bpm_changes[0] = 120.0;
-    std::uniform_int_distribution<int> beats(1, 6);
-    std::uniform_int_distribution<int> bpm(60, 240);
-    for (int64_t t = 480 * 3; t < last; t += 480 * beats(rng)) song.bpm_changes[t] = bpm(rng);
-    std::uniform_int_distribution<int> bars(2, 6);
-    for (int64_t t = 1920 * 4; t < last; t += 1920 * bars(rng)) {
-        const bool three = (t / 1920) % 2 == 0;
-        apply_timesig(song, t, three ? 3 : 4, 4);
-    }
-    for (int64_t t = 1920 * 2, n = 1; t < last; t += 1920 * bars(rng), ++n)
-        song.practice_sections.push_back({t, "part " + std::to_string(n)});
+    song.bpm_changes[1920] = 90.0;
+    song.bpm_changes[4800] = 150.0;
+    song.bpm_changes[7680] = 60.0;
+    apply_timesig(song, 3840, 3, 4);
+    apply_timesig(song, 6720, 4, 4);
+    song.practice_sections = {{960, "Intro"}, {2880, "Verse"}, {5760, "Chorus"},
+                              {8640, "Outro"}};
     song.build_timing();
-
-    int note = 0;
-    for (int64_t t = 0; t <= last; t += 240, ++note) {
+    for (int64_t t = 0; t <= 9600; t += 960) {
         SongTimestamp ts;
         ts.timecode = song.timecode(t);
         ts.chord.add_note(NoteColor::Red);
-        if (note % 8 == 7) {
-            ts.flag_sp = true;
-            ts.sp_phrase_start = t - 240 * 7;
-        }
-        if (note % 3 == 2) ts.activation_length = 480;
         song.sequence.push_back(std::move(ts));
     }
+    return song;
+}
 
-    std::uniform_int_distribution<int> sp(1, 4);
-    std::uniform_int_distribution<int> skips(0, 3);
-    std::uniform_int_distribution<int> gap(0, 12);
-    std::bernoulli_distribution collect(0.5);
-    int64_t after = 0;
-    int64_t prev_act = std::numeric_limits<int64_t>::min();
-    for (const SongTimestamp& ts : song.sequence) {
-        const int64_t t = ts.timecode.ticks();
-        if (!ts.activation_length || t < after) continue;
-        if (gap(rng) != 0) continue;
-        // Only lookups are tested here, so the end need not follow this chart's
-        // meter changes: a flat two measures of 1920 ticks per bar spent.
-        const int bars_spent = sp(rng);
-        Activation a = sp_act_at(song, t, bars_spent, t + 3840 * bars_spent);
-        // The passed-over fills are the nearest ones before the activation,
-        // the ticks the old scan would light, so the two agree on made-up data.
-        std::vector<int64_t> before;  // fills after the previous activation, before this one
-        for (const SongTimestamp& f : song.sequence) {
-            const int64_t ft = f.timecode.ticks();
-            if (f.activation_length && ft > prev_act && ft < t) before.push_back(ft);
-        }
-        const int n = std::min(skips(rng), static_cast<int>(before.size()));
-        a.skipped_fill_ticks.assign(before.end() - n, before.end());
-        prev_act = t;
-        a.chord.add_note(NoteColor::Red);
-        for (const SongTimestamp& p : song.sequence) {
-            const int64_t pt = p.timecode.ticks();
-            // A collection step that keeps the end: only lookups are tested.
-            if (p.flag_sp && pt > t && pt < *a.deact_tick() && collect(rng))
-                a.sp_end_steps.push_back({pt, *a.deact_tick(), SpEndKind::Collected});
-        }
-        after = *a.deact_tick() + 1;
-        c.path.activations.push_back(a);
-    }
-    return c;
+// The time box at `now` as one line: timestamp | position | length | tempo
+// line | section line.
+std::string time_box_line(const PreviewScene& scene, double now, double length_ms) {
+    const PreviewTimeBox b = build_time_box(scene, now, length_ms);
+    return b.timestamp + " | " + b.position + " | " + b.length + " | " + b.tempo + " | " +
+           b.section_line;
+}
+
+// On a mismatch the lines actually built are printed as C++ literals, so a
+// deliberate change can be read, checked by hand and pasted.
+void check_lines(const std::vector<std::string>& got, const std::vector<std::string>& want,
+                 const std::string& what) {
+    std::string literals;
+    if (got != want)
+        for (const std::string& l : got) literals += "    \"" + l + "\",\n";
+    INFO(what << " built:\n" << literals);
+    CHECK(got == want);
 }
 
 }  // namespace
 
-TEST_CASE("preview lookups: searches match the old scans on a busy synthetic chart") {
-    std::mt19937 rng(20261003);
-    for (int round = 0; round < 3; ++round) {
-        CAPTURE(round);
-        const BusyChart c = make_busy_chart(rng, 400);
-        REQUIRE(c.path.activations.size() > 20);
-        // Its activations are made up and carry no engine facts, so the gauge
-        // is not compared here; the corpus case below compares it.
-        for (int cap : {1, 4, 6}) {
-            CAPTURE(cap);
-            check_lookups_match_old_scans(build_preview_scene(c.song, &c.path, cap), &c.path, cap,
-                                          rng, /*compare_gauge=*/false);
-        }
-        check_lookups_match_old_scans(build_preview_scene(c.song, nullptr, 4), nullptr, 4, rng,
-                                      /*compare_gauge=*/false);
+TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many changes") {
+    const Song song = make_lookup_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.tempos.size() == 4);
+    REQUIRE(scene.time_sigs.size() == 3);
+    REQUIRE(scene.sections.size() == 4);
+    const double len = 12400.0;
 
-        // Sections reach the scene in tick order from both parsers.
-        const PreviewScene sorted = build_preview_scene(c.song, &c.path, 4);
-        CHECK(std::is_sorted(sorted.sections.begin(), sorted.sections.end(),
-                             [](const PreviewSection& a, const PreviewSection& b) {
-                                 return a.tick < b.tick;
-                             }));
-    }
+    // Each change at its own moment and a hair before it. The playhead's
+    // tick is rounded to the nearest one, so a section, signature or measure
+    // shows from half a tick before its tick: at 90 BPM a tick is 1.389 ms,
+    // so 3332.7 ms is tick 2879.54 and shows Verse at m2.3.0, while 3332.6 ms
+    // is tick 2879.47, still Intro at m2.2.479. Likewise 999.9 ms is tick
+    // 959.9 (Intro) and 4666.0 ms tick 3839.5 (3/4). The tempo is looked up
+    // by ms, so a hair before 2000 ms the box reads tick 1920 (m2.1.0) at the
+    // old 120 BPM. In 3/4 a measure is 1440 ticks: measure 3 starts at 3840,
+    // 4 at 5280, so tick 5759 (6799 ms at 150 BPM) is m4.1.479. Past the
+    // length the playhead is held at 12400 ms, tick 9600, m6.3.0.
+    std::vector<std::string> got;
+    for (double now : {-500.0, 0.0, 999.9, 1000.0, std::nextafter(2000.0, -1e300), 2000.0,
+                       3332.6, 3332.7, 4666.0, 4666.7, std::nextafter(6000.0, -1e300), 6000.0,
+                       6799.0, 6800.0, 7600.0, std::nextafter(8400.0, -1e300), 8400.0, 10400.0,
+                       20000.0})
+        got.push_back(time_box_line(scene, now, len));
+    const std::string d = " " + kDot + " ";
+    check_lines(got,
+                {"0:00.000 / 0:12.400 | m1.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | ",
+                 "0:00.000 / 0:12.400 | m1.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | ",
+                 "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
+                 "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
+                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
+                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
+                 "0:03.333 / 0:12.400 | m2.2.479 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
+                 "0:03.333 / 0:12.400 | m2.3.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Verse",
+                 "0:04.666 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
+                 "0:04.667 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
+                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
+                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
+                 "0:06.799 / 0:12.400 | m4.1.479 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
+                 "0:06.800 / 0:12.400 | m4.2.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Chorus",
+                 "0:07.600 / 0:12.400 | m5.1.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
+                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
+                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Chorus",
+                 "0:10.400 / 0:12.400 | m6.1.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro",
+                 "0:12.400 / 0:12.400 | m6.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
+                "time box");
+
+    // A negative length shows zero. A length past the last note keeps
+    // counting at the last tempo and meter: 60 BPM from tick 9600 (12400
+    // ms), so 15000 ms is tick 10848, 288 into measure 7 (from 10560), and
+    // 16400 ms is tick 11520, its third beat.
+    check_lines({time_box_line(scene, 500.0, -1.0), time_box_line(scene, 15000.0, 16400.0)},
+                {"0:00.000 / 0:00.000 | m1.1.0 | m1.1.0 | BPM 120.000" + d + "4/4 | ",
+                 "0:15.000 / 0:16.400 | m7.1.288 | m7.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
+                "time box lengths");
+
+    // Sections out of tick order never reach the time box: both parsers sort
+    // them (sort_practice_sections, D27 R7.7), and the parser tests pin that.
 }
 
-TEST_CASE("preview lookups: searches match the old scans on every corpus chart and path") {
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 3;
-    settings.ms_filter = 10.0;
-    std::mt19937 rng(7);
-    int charts_with_paths = 0;
+TEST_CASE("build_preview_scene: passed-over fills on several activations, and a tick that is no fill") {
+    // Fills end at 480, 960, 1440 and 1920. The first activation takes 480,
+    // the second passes over 960 and takes 1440, the third lists a tick (1700)
+    // that is no fill, which lights nothing, and takes 1920.
+    Song song = make_fill_song();
+    Path path;
+    path.activations = {act_at(song, 480, {}), act_at(song, 1440, {960}),
+                        act_at(song, 1920, {1700})};
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.fills.size() == 4);
+    CHECK(scene.fills[0].state == PreviewFillState::Taken);
+    CHECK(scene.fills[1].state == PreviewFillState::Offered);
+    CHECK(scene.fills[2].state == PreviewFillState::Taken);
+    CHECK(scene.fills[3].state == PreviewFillState::Taken);
+}
+
+TEST_CASE("sp meter curve: a meter change inside the window changes the drain rate") {
+    // 4/4 to tick 7680 (8000 ms, a barline), then 3/4: 1440 ticks, 1500 ms a
+    // measure. Two bars from tick 3840 (measure 2) are four measures: two of
+    // 4/4 to tick 7680, then two of 3/4 to tick 10560 (11000 ms). One bar is
+    // 4000 ms of 4/4 and 3000 ms of 3/4.
+    Song song = make_sp_song({960, 1920}, /*last_tick=*/13440, {}, 480, {{7680, {3, 4}}});
+    Path path;
+    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/10560);
+    act.bank_rise_ticks = {960, 1920};
+    path.activations = {act};
+    PreviewScene scene = build_preview_scene(song, &path);
+    const SpMeterCurve& c = scene.sp_meter;
+    check_curve_well_formed(c);
+    REQUIRE(scene.activations.size() == 1);
+    CHECK(scene.activations[0].sp_end_ms == doctest::Approx(11000.0));
+
+    CHECK(sp_meter_bars_at(c, 2000.0) == doctest::Approx(2.0));
+    CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(2.0));
+    CHECK(sp_meter_bars_at(c, 6000.0) == doctest::Approx(1.5));   // 2000 ms of 4/4
+    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(1.25));
+    CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(1.0));   // the meter change
+    CHECK(sp_meter_bars_at(c, 8750.0) == doctest::Approx(0.75));  // 750 ms of 3/4
+    CHECK(sp_meter_bars_at(c, 9500.0) == doctest::Approx(0.5));
+    CHECK(sp_meter_bars_at(c, std::nextafter(11000.0, -1e300)) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 11000.0) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 12000.0) == doctest::Approx(0.0));
+}
+
+// D15 and D42. The engine stores each SP end as a whole tick, dropping the
+// fraction of a measure (SongTiming::plusmeasure). The gauge drains at
+// exactly one bar per two measures to that stored end, so inside the window
+// it may sit up to one tick's worth of drain per stored SP-end step below a
+// gauge that starts at exactly the banked bars. Between windows it is exact.
+TEST_CASE("sp meter curve: a stored SP end that drops a fraction of a tick") {
+    // 120 BPM, 480 ticks a beat; 4/4 to tick 7680 (8000 ms), then 3/4 (1440
+    // ticks a measure). The activation is two ticks into measure 3: measure
+    // 2 + 2/1920. Two bars later is measure 6 + 2/1920, which in 3/4 is tick
+    // 7680 + (2 + 2/1920) x 1440 = 10561.5. The engine stores 10561.
+    Song song(480);
+    song.bpm_changes[0] = 120.0;
+    apply_timesig(song, 7680, 3, 4);
+    song.build_timing();
+    for (int64_t t : {0, 960, 1920, 3842, 4800, 7680, 9000, 12000, 14000}) {
+        SongTimestamp ts;
+        ts.timecode = song.timecode(t);
+        ts.chord.add_note(NoteColor::Red);
+        if (t == 960 || t == 1920) {
+            ts.flag_sp = true;
+            ts.sp_phrase_start = t - 480;
+        }
+        song.sequence.push_back(std::move(ts));
+    }
+    CHECK(song.timing().plusmeasure(song.timecode(3842), 4).ticks() == 10561);
+
+    Path path;
+    Activation act = sp_act_at(song, 3842, /*sp_meter=*/2, /*end_tick=*/10561);
+    act.bank_rise_ticks = {960, 1920};
+    path.activations = {act};
+    path.trailing_bank_ticks = {12000};  // a bar after the window (12500 ms)
+    PreviewScene scene = build_preview_scene(song, &path);
+    const SpMeterCurve& c = scene.sp_meter;
+    check_curve_well_formed(c);
+    REQUIRE(scene.activations.size() == 1);
+    // Tick 3842 is 4002.083 ms; tick 10561 is 8000 + 2881 x 500/480 =
+    // 11001.042 ms.
+    const double act_ms = scene.activations[0].ms;
+    const double end_ms = scene.activations[0].sp_end_ms;
+    CHECK(act_ms == doctest::Approx(4002.0833333));
+    CHECK(end_ms == doctest::Approx(11001.0416667));
+
+    // One tick of drain at the smallest measure here (1440 ticks): a bar is
+    // two measures, so 1 / 2880 bars. The window has one stored step.
+    const double one_tick = 1.0 / 2880.0;
+    // At the activation: the stored end is measure 4 + 2881/1440 = 6.0006944
+    // and the activation 2 + 2/1920 = 2.0010417, so 3.9996528 measures are
+    // left, 1.9998264 bars. Exactly 2 bars would start at 2.
+    const double at_act = sp_meter_bars_at(c, act_ms);
+    CHECK(at_act == doctest::Approx(1.99982638889).epsilon(1e-10));
+    CHECK(std::fabs(at_act - 2.0) <= one_tick);
+    // At the meter change (tick 7680, 8000 ms): 2881/1440 measures left =
+    // 1.0003472 bars. Exactly 2 bars less the 1.9989583 measures gone would
+    // be 1.0005208.
+    const double at_meter = sp_meter_bars_at(c, 8000.0);
+    CHECK(at_meter == doctest::Approx(1.00034722222).epsilon(1e-10));
+    CHECK(std::fabs(at_meter - 1.0005208) <= one_tick);
+    // Empty at the stored end, as both would be.
+    CHECK(sp_meter_bars_at(c, std::nextafter(end_ms, -1e300)) == doctest::Approx(0.0));
+    // Between windows, exact whole bars: two before, none after, then the
+    // trailing bar.
+    CHECK(sp_meter_bars_at(c, 3000.0) == 2.0);
+    CHECK(sp_meter_bars_at(c, end_ms) == 0.0);
+    CHECK(sp_meter_bars_at(c, 12000.0) == 0.0);
+    CHECK(sp_meter_bars_at(c, 12500.0) == 1.0);
+}
+
+// The gauge on every stored path of every corpus chart, held to what the
+// record says, through the record's own facts. At each activation it starts
+// at the bars the activation spent (Activation::sp_meter), up to one tick's
+// worth of drain lower (D15: the stored end drops a fraction of a tick); it
+// is empty at the stored deact node; and between windows it holds whole bars,
+// never over the cap. Without a path it holds whole bars that never fall.
+TEST_CASE("sp meter curve: every corpus gauge starts at its spent bars and empties at its deact node") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int charts = 0, windows = 0;
     for (const std::string& chart : corpus::chart_paths()) {
         CAPTURE(chart);
-        std::optional<AnalysisResult> r;
-        try {
-            r.emplace(analyze_chart_file(chart, settings));
-        } catch (const std::exception&) {
-            continue;  // a chart the analysis rejects has no scene to compare
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        ++charts;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+
+        const PreviewScene bare = build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules);
+        check_curve_well_formed(bare.sp_meter);
+        double prev = 0.0;
+        for (const SpMeterSegment& s : bare.sp_meter.segments) {
+            CHECK(s.start_bars == s.end_bars);
+            CHECK(s.start_bars == std::floor(s.start_bars));
+            CHECK(s.start_bars >= prev);
+            prev = s.start_bars;
         }
-        if (r->song.is_empty()) continue;
-        // Without a path the chart-only gauge must not move at all (Q10).
-        check_lookups_match_old_scans(build_preview_scene(r->song, nullptr, 4), nullptr, 4, rng,
-                                      /*compare_gauge=*/true);
-        if (!r->record.paths.empty()) ++charts_with_paths;
-        // Root paths. The gauge reads the record and must equal the old scan
-        // everywhere outside a late squeeze-in window: the proof that nothing
-        // else on screen moved.
-        for (const Path& p : r->record.paths)
-            check_lookups_match_old_scans(build_preview_scene(r->song, &p, 4), &p, 4, rng,
-                                          /*compare_gauge=*/true);
+
+        for (const Path* p : rec.all_paths()) {
+            CAPTURE(p->pathstring());
+            const PreviewScene scene = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+            const SpMeterCurve& c = scene.sp_meter;
+            check_curve_well_formed(c);
+            int64_t min_tpm = std::numeric_limits<int64_t>::max();
+            for (const PreviewMeter& m : scene.meters) min_tpm = std::min(min_tpm, m.tpm);
+            REQUIRE(min_tpm > 0);
+            const double one_tick = 1.0 / (static_cast<double>(kMeasuresPerSpBar) *
+                                           static_cast<double>(min_tpm));
+            size_t i = 0;
+            for (const Activation& a : p->walk_activations()) {
+                const PreviewActivation& pa = scene.activations.at(i++);
+                REQUIRE(pa.has_sp_end);
+                ++windows;
+                const double at_act = sp_meter_bars_at(c, pa.ms);
+                CHECK(at_act <= a.sp_meter() + 1e-9);
+                CHECK(at_act >= a.sp_meter() - one_tick - 1e-9);
+                CHECK(sp_meter_bars_at(c, std::nextafter(pa.sp_end_ms, -1e300)) < 1e-6);
+            }
+            for (const SpMeterSegment& s : c.segments) {
+                bool in_window = false;
+                for (const PreviewActivation& pa : scene.activations)
+                    if (s.end_ms > pa.ms && s.start_ms < pa.sp_end_ms) in_window = true;
+                if (in_window) continue;
+                CHECK(s.start_bars == s.end_bars);
+                CHECK(s.start_bars == std::floor(s.start_bars));
+            }
+        }
     }
-    CHECK(charts_with_paths > 10);
+    CHECK(charts > 0);
+    CHECK(windows > charts);
 }
 
 // The Preview lights a stored passed-over fill by matching its tick to a fill
@@ -2258,40 +2038,6 @@ TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene")
     CHECK(ticks_checked > 0);
 }
 
-// The same gauge comparison on every tied variant. Each variant keeps its own
-// bank (Task 18), so its gauge reads its own bar arrivals. Any difference is
-// printed before the check fails.
-TEST_CASE("preview lookups: every corpus variant's gauge matches the old scan") {
-    // The app's default settings, as "base + overlay" reads the corpus.
-    const AnalysisSettings cfg = Settings().to_analysis_settings();
-    std::mt19937 rng(7);
-    int variants = 0, differing = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        for (size_t pi = 0; pi < rec.paths.size(); ++pi) {
-            const Path& root = rec.paths[pi];
-            for (size_t vi = 0; vi < root.variants.size(); ++vi) {
-                const Path& v = root.variants[vi];
-                ++variants;
-                const std::vector<GaugeDiff> diffs = gauge_differences(
-                    build_preview_scene(song, &v, cfg.sp_cap), &v, cfg.sp_cap, rng);
-                if (diffs.empty()) continue;
-                ++differing;
-                for (const GaugeDiff& d : diffs) {
-                    if (d.ms < 0.0) continue;
-                    const int64_t tick = std::llround(song.timing().ms_index().tick_at_ms(d.ms));
-                    MESSAGE(chart << " | root " << pi << " variant " << vi << " (" << v.pathstring()
-                                  << ") | tick " << tick << " | ms " << d.ms << " | gauge "
-                                  << d.got << " | old scan " << d.want);
-                }
-                CHECK(diffs.empty());
-            }
-        }
-    }
-    MESSAGE("variants compared: " << variants << ", differing: " << differing);
-}
 
 TEST_CASE("sp meter readout: bars banked over the cap") {
     TwoActs t;

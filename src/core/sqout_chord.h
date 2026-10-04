@@ -80,7 +80,8 @@ It offered_phrase(It first, It last, int64_t act_tick, TickOf tick_of, SqueezedI
 // answer here is the same face the same squeeze choices at every later SP
 // end, because activation_can_squeeze then gives the same answer for every
 // window chord. The search groups paths by it (engine.cpp). One tick of
-// slack keeps the reach wide enough for plusmeasure's rounding.
+// slack keeps the reach wide enough for plusmeasure's rounding (decision
+// D40, recorded in ADR 0014).
 inline const SongTimestamp* banked_phrase_in_reach(const Song& song, int64_t act_tick,
                                                    const Timecode& earliest_end) {
     const std::vector<SongTimestamp>& seq = song.sequence;

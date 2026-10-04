@@ -23,6 +23,7 @@
 #include "bank_check.h"
 #include "core/model.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
@@ -44,11 +45,6 @@ Song fixture(const std::string& name) {
     return load_songpath(std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/" + name, true, true);
 }
 
-void collect_all(const Path& p, std::vector<const Path*>& out) {
-    out.push_back(&p);
-    for (const Path& v : p.variants) collect_all(v, out);
-}
-
 // A root's tied variants, theirs, and so on (roots are their own lone pricing).
 void collect_variants(const Path& p, std::vector<const Path*>& out) {
     for (const Path& v : p.variants) {
@@ -63,60 +59,16 @@ std::vector<int64_t> act_ticks(const Path& p) {
     return at;
 }
 
-// Every window of a path written out: activation, SP-end steps, squeezes,
-// squeezed-out note and backend rows.
-std::string windows_text(const Path& p) {
-    std::ostringstream o;
-    for (const Activation& a : p.walk_activations()) {
-        o << a.timecode.ticks() << " [steps";
-        for (const SpEndStep& s : a.sp_end_steps)
-            o << ' ' << s.tick << '>' << s.end_tick << ':' << static_cast<int>(s.kind);
-        o << " | sq";
-        for (const SPSqueeze& q : a.sqinouts) o << ' ' << q.symbol() << q.offset_ms;
-        o << " | out " << a.sqout_tick.value_or(-1) << " | backends";
-        for (const BackendSqueeze& b : a.backends)
-            o << ' ' << b.timecode.ticks() << '/' << b.points << '/' << b.sqout_points << '/'
-              << (b.offset_ms ? *b.offset_ms : -1.0);
-        // The early-fill facts (D38): the offset and the fills passed over.
-        o << " | e " << a.e_offset << " | passed";
-        for (const int64_t t : a.skipped_fill_ticks) o << ' ' << t;
-        o << "] ";
-    }
-    return o.str();
-}
-
 // D3's promise, checked without the corpus: the variant stores what the
-// search stores when it is told to activate exactly where the variant does.
-// A targeted search keeps ties as variants too, and can also return paths
-// that dropped an activation it could not take, so every lone path is
-// looked at and only those with the variant's activations count. Returns ""
-// on a match, else what differed.
+// search stores when it is told to activate exactly where the variant does
+// (test::lone_pricing in record_fixtures.h). Returns "" on a match, else
+// what differed, or the throw.
 std::string lone_mismatch(const Song& song, const app::AnalysisSettings& cfg, const Path& variant) {
-    const std::vector<int64_t> at = act_ticks(variant);
-    const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
-                           FillDeadlineRule::Ch11, cfg.rules);
-    EngineOptions o;
-    o.depth_mode = DepthMode::Points;
-    o.depth_value = 1'000'000'000;
-    o.target_act_ticks = at;
-    std::vector<Path> lone;
     try {
-        lone = run_search(graph, o);
+        return test::lone_pricing_mismatch(song, cfg, variant);
     } catch (const std::exception& e) {
         return "'" + variant.pathstring() + "': the lone search threw: " + e.what();
     }
-    std::vector<const Path*> all;
-    for (const Path& r : lone) collect_all(r, all);
-    const std::string mine = windows_text(variant);
-    std::string seen;
-    for (const Path* t : all) {
-        if (act_ticks(*t) != at || t->totalscore() != variant.totalscore()) continue;
-        const std::string theirs = windows_text(*t);
-        if (theirs == mine) return "";
-        seen += "\n  lone:    " + theirs;
-    }
-    return "'" + variant.pathstring() + "' " + std::to_string(variant.totalscore()) +
-           "\n  variant: " + mine + (seen.empty() ? "\n  no lone path ties it" : seen);
 }
 
 // The analysis, or a failed check naming the throw (so one chart's throw
@@ -444,8 +396,42 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
             CHECK_MESSAGE(diff.empty(), "seed " << seed << " " << diff);
         }
     }
+    // The seeds, these two counts and the generator's ranges are test limits
+    // the user approved (D43).
     CHECK(analyzed == 48);
     CHECK(variants > 50);
+}
+
+// D45: a targeted search drops only the paths that came back without one of
+// the named activations, and keeps the ones that took them all. On fuzz seed
+// 5, told to activate at 3168 and 12864, the engine returns paths that miss
+// one of them (SP still runs at the fill) beside paths that take both.
+// Before D45 the one short path made search_target report the whole set
+// unrealizable, and seven variants there had no lone answer.
+TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept (D45)") {
+    const FuzzChart fc = fuzz_chart(5);
+    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
+    const Song song = load_songbytes_chart(bytes, true, true);
+    const app::AnalysisSettings cfg = fast_settings(fc.cap);
+    const std::vector<int64_t> want = {3168, 12864};
+
+    // The engine's own answer: some roots take both, some miss one.
+    const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
+                           FillDeadlineRule::Ch11, cfg.rules);
+    EngineOptions o = test::wide_search();
+    o.target_act_ticks = want;
+    int whole = 0, short_of_one = 0;
+    for (const Path& r : run_search(graph, o)) (act_ticks(r) == want ? whole : short_of_one)++;
+    CHECK(whole > 0);
+    CHECK(short_of_one > 0);
+
+    // search_target keeps exactly the roots that took both.
+    const std::vector<Path> kept = search_target(song, cfg, want);
+    CHECK(static_cast<int>(kept.size()) == whole);
+    for (const Path& p : kept) CHECK(act_ticks(p) == want);
+
+    // A tick that is no fill node is still unrealizable: nothing comes back.
+    CHECK(search_target(song, cfg, {3168, 12865}).empty());
 }
 
 // The phrases still ahead when SP ends, pinned (s1-fix-merge). D34 lets one

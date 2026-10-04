@@ -35,6 +35,12 @@ struct SearchSettings {
     core::Rules rules = core::default_rules();
 };
 
+// A points band wide enough to keep every path: a real chart scores a few
+// million at most. The band is compared as `score + depth_value < best` in
+// int64 arithmetic, so it cannot overflow. search_target uses it, and so do
+// the tests that ask the engine to keep everything (audit R7.29).
+constexpr int kKeepEveryPathBand = 1'000'000'000;
+
 // How tall to build the search graph: the SP cap, but never more levels than
 // the song has phrases to bank, and never fewer than one.
 int graph_build_cap(int sp_cap, int sp_phrase_count);
@@ -52,9 +58,12 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
 // `act_ticks` (node ticks of the activation fills, ascending) and at no other
 // fill. Every squeeze variant of that path comes back, best score first, with
 // deact_tick / sp_meter / skips / sqinouts stamped by the engine exactly as a
-// normal search would stamp them. Empty when the engine cannot realize the
-// set (an activation with under 2 bars, a fill it cannot spawn in time, a tick
-// that is not a fill node). settings.depth_* and ms_filter are
+// normal search would stamp them. A path that came back without one of the
+// named activations is dropped, and the others stay (decision D45). Empty
+// when no path realizes the set (an activation with under 2 bars, a fill it
+// cannot spawn in time, a tick that is not a fill node). The graph is built
+// at graph_build_cap, as the main search builds it. settings.depth_* and
+// ms_filter are
 // ignored: the search keeps everything and applies no timing filter, because
 // the caller asked for this path, not the best one.
 std::vector<Path> search_target(const Song& song, const SearchSettings& settings,

@@ -13,11 +13,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <sstream>
+#include <string>
 #include <vector>
 
 #include "core/model.h"
 #include "parse/song.h"
 #include "search/engine.h"
+#include "search/pather.h"
 
 namespace hydra::test {
 
@@ -218,8 +221,93 @@ inline Song ready_time_fold_song() {
 inline EngineOptions wide_search() {
     EngineOptions o;
     o.depth_mode = DepthMode::Points;
-    o.depth_value = 1000000;
+    o.depth_value = kKeepEveryPathBand;
     return o;
+}
+
+// ---- lone pricing (decision D3) --------------------------------------------
+
+// Every window of a path written out: activation, SP-end steps, squeezes,
+// squeezed-out note, backend rows, the bars it spends, and the early-fill
+// facts (D38); then the bars banked after the last window. Doubles are
+// written in full, so two paths with the same text store the same facts.
+inline std::string windows_text(const Path& p) {
+    std::ostringstream o;
+    o.precision(17);
+    for (const Activation& a : p.walk_activations()) {
+        o << a.timecode.ticks() << " [steps";
+        for (const SpEndStep& s : a.sp_end_steps)
+            o << ' ' << s.tick << '>' << s.end_tick << ':' << static_cast<int>(s.kind);
+        o << " | sq";
+        for (const SPSqueeze& q : a.sqinouts) o << ' ' << q.symbol() << q.offset_ms;
+        o << " | out " << a.sqout_tick.value_or(-1) << " | backends";
+        for (const BackendSqueeze& b : a.backends)
+            o << ' ' << b.timecode.ticks() << '/' << b.points << '/' << b.sqout_points << '/'
+              << (b.offset_ms ? *b.offset_ms : -1.0);
+        o << " | bank";
+        for (const int64_t t : a.bank_rise_ticks) o << ' ' << t;
+        o << " | e " << a.e_offset << " | passed";
+        for (const int64_t t : a.skipped_fill_ticks) o << ' ' << t;
+        o << "] ";
+    }
+    o << "trailing";
+    for (const int64_t t : p.trailing_bank_ticks) o << ' ' << t;
+    return o.str();
+}
+
+// What a search pricing a variant's activations alone (search_target) says
+// about it. A lone match is a root of that search with the variant's total
+// and windows_text: only a root is an oracle, because a root was never
+// folded. When no root matches but one of the lone search's own tied
+// variants does, the lone search folded it too: `tied_under_root` is set,
+// and a caller that cannot judge such a variant may skip it.
+struct LonePricing {
+    std::string diff;              // "" on a lone match, else what differed
+    bool tied_under_root = false;  // no root matches, a lone variant does
+};
+
+inline void collect_tied(const Path& p, std::vector<const Path*>& out) {
+    for (const Path& v : p.variants) {
+        out.push_back(&v);
+        collect_tied(v, out);
+    }
+}
+
+inline LonePricing lone_pricing(const Song& song, const SearchSettings& settings,
+                                const Path& variant) {
+    std::vector<int64_t> ticks;
+    for (const Activation& a : variant.walk_activations()) ticks.push_back(a.timecode.ticks());
+    const std::string mine = windows_text(variant);
+    const std::vector<Path> lone = search_target(song, settings, ticks);
+    LonePricing out;
+    std::string seen;
+    for (const Path& t : lone) {
+        if (t.totalscore() != variant.totalscore()) continue;
+        const std::string theirs = windows_text(t);
+        if (theirs == mine) return out;
+        seen += "\n  lone:    " + theirs;
+    }
+    for (const Path& r : lone) {
+        std::vector<const Path*> tied;
+        collect_tied(r, tied);
+        for (const Path* t : tied)
+            if (t->totalscore() == variant.totalscore() && windows_text(*t) == mine)
+                out.tied_under_root = true;
+    }
+    out.diff = "'" + variant.pathstring() + "' " + std::to_string(variant.totalscore()) +
+               "\n  variant: " + mine +
+               (out.tied_under_root ? "\n  the lone search tied it under a root too" : "") +
+               (seen.empty() ? "\n  no lone root ties it" : seen);
+    return out;
+}
+
+// "" when a lone root stores what the variant stores, else what differed.
+// A variant the lone search folded under a root of its own has no oracle and
+// also gives "" (skipped); test_replay counts those and pins the count.
+inline std::string lone_pricing_mismatch(const Song& song, const SearchSettings& settings,
+                                         const Path& variant) {
+    const LonePricing lone = lone_pricing(song, settings, variant);
+    return lone.tied_under_root ? std::string() : lone.diff;
 }
 
 // The first activation, over every output path, that matches `pred`. It

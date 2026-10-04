@@ -494,7 +494,7 @@ private:
         for (int32_t t = p.end_tail; t >= 0; t = ends_[(size_t)t].prev) {
             const EndNode& s = ends_[(size_t)t];
             if (s.tick < tick) return false;
-            if (s.tick == tick && s.kind == SpEndKind::SqIn) return true;
+            if (is_sqin_step_on(s.tick, s.kind, tick)) return true;
         }
         return false;
     }
@@ -707,7 +707,6 @@ void Engine::index_fills() {
 // path under 2 bars: its ready time is not set yet.
 uint64_t Engine::ready_class(const Path& p) const {
     if (p.sp < 2 || !has_value(p.sp_ready_ms)) return 0;
-    const bool can_be_e0 = has_ms_filter_ && p.currentskips == 0;
     uint64_t refused = 0, over = 0;
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
         // Every deadline from here on is at least this one. When even this
@@ -716,7 +715,8 @@ uint64_t Engine::ready_class(const Path& p) const {
         if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
         if (fill_refuses(e_offset)) ++refused;
-        if (can_be_e0 && is_e0(e_offset, 0) && !within_ms_limit(early_fill_difficulty(e_offset)))
+        if (has_ms_filter_ && is_e0(e_offset, p.currentskips) &&
+            !within_ms_limit(early_fill_difficulty(e_offset)))
             ++over;
     }
     if (refused > 0xFFFF || over > 0xFFFF) throw std::logic_error("search group key out of range");
@@ -935,7 +935,9 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     c.end_tail = -1;
     // A squeeze-out banks one bar when the player hits the phrase: just after
     // SP ends for an early phrase, on its own tick for a late one.
-    c.bank_tail = sq ? push_tick(banks_, -1, std::max(node(e.dest).tick, sq->chord)) : -1;
+    const int64_t sp_end = node(e.dest).tick;
+    c.bank_tail = sq ? push_tick(banks_, -1, core::after_sp_end(sq->chord, sp_end) ? sq->chord : sp_end)
+                     : -1;
 
     c.act_tail = clone_tail(p.act_tail);
     if (c.act_tail >= 0) {
@@ -1263,6 +1265,8 @@ void Engine::reduce_iteration_paths() {
         // bits, the ordinal (a phrase count) in 16 and the SP flag in 1. Any
         // 2^47 consecutive values differ in their low 47 bits, so an end in
         // [-2^46, 2^46) packs exactly; the check below refuses the rest.
+        // These widths, the meter's 2^30 and ready_class's 16 bits per count
+        // are decision D40 (recorded in ADR 0014).
         const bool is_sp = !is_complete && node(p.node).is_sp;
         const int64_t sp_value =
             is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);
@@ -1427,13 +1431,11 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     for (int32_t k = lead.sq_begin; k < lead.sq_begin + var.fold_sq_count; ++k)
         if (out_sqs_[(size_t)k].kind == SQ_IN) ++sqins_before_fold;
     std::vector<int64_t> relabel_at;
-    int32_t sqin_rank = 0;
-    for (int32_t k = lead.end_begin; k < lead.end_end; ++k) {
-        const SpEndStep& s = out_ends_[(size_t)k];
-        if (s.kind != SpEndKind::SqIn) continue;
-        if (sqin_rank++ >= sqins_before_fold && s.tick <= var.fold_tick)
-            relabel_at.push_back(s.tick);
-    }
+    const auto lead_last = out_ends_.begin() + lead.end_end;
+    for (auto s = nth_sqin_step(out_ends_.begin() + lead.end_begin, lead_last,
+                                (size_t)sqins_before_fold);
+         s != lead_last; ++s)
+        if (is_sqin_kind(s->kind) && s->tick <= var.fold_tick) relabel_at.push_back(s->tick);
 
     const int32_t end_begin = (int32_t)out_ends_.size();
     for (int32_t k = own.end_begin; k < own.end_end; ++k) {

@@ -98,20 +98,20 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
     std::sort(ticks.begin(), ticks.end());
     ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());
 
-    ScoreGraph graph(song, std::optional<int>(settings.sp_cap),
+    // Built as tall as the main search builds it (decision D45).
+    ScoreGraph graph(song,
+                     std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
                      settings.legacy_fill_deadline ? FillDeadlineRule::Ch10
                                                    : FillDeadlineRule::Ch11,
                      settings.rules);
 
     // The caller named the path, so nothing may prune it: the widest possible
-    // points band keeps every survivor, and no timing filter is applied. The
-    // band is compared as `score + depth_value < best` in int64 arithmetic, so
-    // a billion cannot overflow.
+    // points band keeps every survivor, and no timing filter is applied.
     std::vector<Path> paths;
     try {
         EngineOptions options;
         options.depth_mode = DepthMode::Points;
-        options.depth_value = 1'000'000'000;
+        options.depth_value = kKeepEveryPathBand;
         options.target_act_ticks = ticks;
         paths = run_search(graph, options);
     } catch (const std::runtime_error&) {
@@ -122,17 +122,20 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
 
     // A tick the search never met as an activation opportunity -- not a fill
     // node at all, or one the path was already under Star Power for -- does not
-    // empty the frontier: the path just quietly comes back with fewer
-    // activations than asked for. That is still an unrealizable set, so it
-    // reports as one.
-    for (const Path& p : paths) {
-        const ActivationWalk acts = p.walk_activations();
-        if (acts.size() != ticks.size()) return {};
-        for (size_t i = 0; i < acts.size(); ++i) {
-            if (acts[i].timecode.ticks() != ticks[i])
-                return {};
-        }
-    }
+    // empty the frontier: that path just quietly comes back with fewer
+    // activations than asked for. Such a path is dropped; the paths that took
+    // every named activation stay (decision D45). None left means the set is
+    // not realizable. Each kept path's tied variants are kept with it, as the
+    // search folded them.
+    paths.erase(std::remove_if(paths.begin(), paths.end(),
+                               [&ticks](const Path& p) {
+                                   const ActivationWalk acts = p.walk_activations();
+                                   if (acts.size() != ticks.size()) return true;
+                                   for (size_t i = 0; i < acts.size(); ++i)
+                                       if (acts[i].timecode.ticks() != ticks[i]) return true;
+                                   return false;
+                               }),
+                paths.end());
     return paths;
 }
 
