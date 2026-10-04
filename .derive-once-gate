@@ -1,0 +1,4 @@
+This repo is gated: merges and commits on main that touch code need a
+derive-once review first. Which paths count is decided by
+Test-DeriveOnceGatedPath in the user-scope hook (hooks\lib\derive_once_rules.ps1),
+not by this file. See docs/agents/derive-once-review.md.

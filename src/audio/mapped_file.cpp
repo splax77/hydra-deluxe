@@ -1,5 +1,7 @@
 #include "audio/mapped_file.h"
 
+#include <cstdint>
+#include <optional>
 #include <stdexcept>
 
 #ifndef NOMINMAX
@@ -21,15 +23,14 @@ std::shared_ptr<const MappedFile> MappedFile::open(const std::string& utf8_path)
     if (file == INVALID_HANDLE_VALUE)
         throw std::runtime_error("cannot open file: " + utf8_path);
 
-    LARGE_INTEGER size{};
-    if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 ||
-        static_cast<unsigned long long>(size.QuadPart) > SIZE_MAX) {
+    const std::optional<uint64_t> size = hydra::open_handle_size_bytes(file);
+    if (!size || *size > SIZE_MAX) {
         CloseHandle(file);
         throw std::runtime_error("cannot open file: " + utf8_path);
     }
 
     std::shared_ptr<MappedFile> out(new MappedFile());
-    if (size.QuadPart == 0) {
+    if (*size == 0) {
         // CreateFileMappingW refuses an empty file; an empty map needs no view.
         CloseHandle(file);
         return out;
@@ -44,7 +45,7 @@ std::shared_ptr<const MappedFile> MappedFile::open(const std::string& utf8_path)
     if (view == nullptr) throw std::runtime_error("cannot open file: " + utf8_path);
 
     out->data_ = static_cast<const uint8_t*>(view);
-    out->size_ = static_cast<std::size_t>(size.QuadPart);
+    out->size_ = static_cast<std::size_t>(*size);
     return out;
 }
 
