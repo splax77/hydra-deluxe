@@ -131,7 +131,16 @@ squeeze budgets, ratings, and report tiers, never the search.
 **Transfer scale**:
 How frontend timing error carries to the SP end. SP length is measured in
 measures, so a hit `d` ms off moves the SP end `r*d` ms; early and late hits
-can scale differently on a signature or tempo change.
+can scale differently on a signature or tempo change. It is measured from the
+note whose timing moves the SP end: the activation, or the cap's collecting
+note. Each SqIn stores its own scale, at the SP end it was measured from
+(docs/adr/0021).
+
+**SP-end history**:
+Every place an activation's SP end moved, in order: the activation, each
+phrase collected, each cap clamp and each SqIn, with the end in force after
+it. The engine stores it once per activation. The deact node, the clamp note
+and the collected phrases are read from it (docs/adr/0021).
 
 **Deact node**:
 The exact chart position where an activation's Star Power ends; backend

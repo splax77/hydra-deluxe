@@ -45,6 +45,9 @@ struct Harness {
     std::string rules_path;
     std::string shots_dir;  // where `screenshot` files go (default: temp_dir)
     bool keep_temp = false;
+    // --db: each test starts from a copy of this database instead of an
+    // empty one. The file itself is only read, never opened by the app.
+    std::string seed_db;
 
     std::unique_ptr<hydra::ui::AppState> app;
     ImGuiTestEngine* engine = nullptr;

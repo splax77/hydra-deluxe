@@ -36,7 +36,7 @@ namespace {
 int usage() {
     std::fprintf(stderr,
                  "usage: hydra_uitest (--all | --test <name> | --script <file> | --list)"
-                 " [--keep-temp] [--shots <dir>] [--jobs <n>]\n");
+                 " [--keep-temp] [--shots <dir>] [--jobs <n>] [--db <file>]\n");
     return 2;
 }
 
@@ -208,6 +208,10 @@ int main() {
             if (!next(h.shots_dir)) return usage();
             passthrough.push_back(a);
             passthrough.push_back(h.shots_dir);
+        } else if (a == "--db") {
+            if (!next(h.seed_db)) return usage();
+            passthrough.push_back(a);
+            passthrough.push_back(h.seed_db);
         } else if (a == "--jobs") {
             if (!next(v)) return usage();
             jobs = std::atoi(v.c_str());

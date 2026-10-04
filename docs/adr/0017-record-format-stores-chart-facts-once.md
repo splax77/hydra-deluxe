@@ -17,8 +17,9 @@ after the record's header.
 
 A root path's totals (the six score categories, the note count and the
 leftover SP) are stored next to that root in the structure blob. A variant's
-totals are not stored at all: `Path::prepare_variants` copies them from the
-parent on every load, as it always did.
+score totals and note count are not stored: `Path::prepare_variants` copies
+them from the parent on every load. Its banked bars are its own and are
+stored with it (amended 2026-10, ADR 0022).
 
 The two skipped-note counts are gone. Nothing ever set them to anything but
 zero, so the two warnings that read them could never show.
@@ -39,3 +40,15 @@ the result record format v7, since it follows blob format 6; there is no
 constant named 7. Every result analyzed before this change reads Stale, and
 the library needs one re-analysis. Every number, label and path string it
 shows afterwards is unchanged.
+
+## Amendment, 2026-10: format 7
+
+The path format stamp is now 7 itself (`kPathFormatStamp`, ADR 0021). So
+"record format v7" above means stamp 6, the 1.8.1 to 2.0.0 layout.
+
+Format 7 changed the activation fields above. The skip count and the SP meter
+are now the sizes of two stored lists, the passed-over fills and the bank
+arrivals. The deactivation node and the cap-clamp tick are no longer stored:
+both are read from the stored SP-end history (ADR 0021). The squeeze-out tick
+keeps its presence byte. A transfer scale gained one, because it may be
+unknown.

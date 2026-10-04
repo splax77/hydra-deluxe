@@ -1,19 +1,16 @@
 # A capped Star Power window's frontend lever is the collection note, not the activation
 
-Status: **warning shipped; re-anchoring the math still open.**
+Status: **warning shipped; transfer scales re-anchored.**
 
-Song Details now tells you when this is happening. If an activation's Star
+Song Details tells you when this is happening. If an activation's Star
 Power window hit the cap and that activation has a squeeze the frontend
 decides, the details view shows an overfill warning naming the measure of
 the collecting note (the phrase note that filled the meter; the latest one
 when several clamp the same window). Its hover hint explains that this note's
-timing, not the activation's, moves the SP end. That warning is display-only: it
-reads a new stored fact (`clamp_tick`, the collecting note the search pinned
-the window to) and says something about it. The actual math this note
-describes is still wrong — `sp_end_shift_ms`, `required_frontend_ms`,
-`exact_even_split_ms`, and `frontend_transfer_scales` still anchor on the
-activation instead of the collecting note. That re-anchoring is the part left
-for a future session; everything below still describes the open gap.
+timing, not the activation's, moves the SP end. The warning reads a stored
+fact, the collecting note the search pinned the window to (`clamp_tick()`).
+Since 2.1.0 the transfer scales are measured from that note too (ADR 0021,
+decision D1).
 
 ## The one-line mechanic
 
@@ -42,54 +39,9 @@ In the engine this is `extend_deacts` (`src/search/graph.cpp`): the end is
 second term is the smaller one, the window is **cap-clamped** and the collection
 note is its anchor.
 
-## Where Hydra prices it wrong
+## How Hydra prices it
 
-`sp_end_shift_ms` (`src/core/squeeze_rating.cpp`) computes how far the SP end
-moves for a given frontend error, and it always builds the end from the
-activation's hit-time and `2 * sp_meter` measures. Its own comment says so:
-"it does not model the +2-measure extension per SP phrase collected
-mid-activation." `required_frontend_ms` and `exact_even_split_ms` inherit that
-anchor, and `frontend_transfer_scales` takes both of its transfer scales from
-`act_tick` as well.
-
-So in a cap-clamped window every frontend number Hydra reports is anchored on
-the wrong note:
-
-- The printed recipe names the activation ("activate N ms early"), but in a
-  clamped window the activation is inert — it cannot move the end until it is
-  hit roughly a full gap-width early. The real early hit the player needs is on
-  the collection note.
-- The transfer scale `r` is read at the activation's measure. The collection
-  note sits in a different measure, so on any tempo or time-signature change `r`
-  differs, and the **Squeeze rating** difficulty tier can come out wrong. (On a
-  flat-tempo chart `r` is 1.0 both ways and only the *recipe* is misleading, not
-  the tier — which is why this hid for so long.)
-
-There is a self-check hiding in this: in a clamped window an honest
-activation-anchored `sp_end_shift_ms` returns ~0 for any realistic displacement
-(the ceiling binds), so `required_frontend_ms` should blow up toward infinity.
-That explosion is the tell that the anchor is wrong. The current code never sees
-it because it prices with the plain unclamped `2 * sp_meter` formula.
-
-## The proposed rule (for whoever implements it)
-
-Detect the clamp and re-anchor the frontend math on the collection note.
-
-A window is cap-clamped when its recorded **deact node** equals
-`plusmeasure(collection_note, 2 * sp_cap)` and that is earlier than the
-activation's own `plusmeasure(activation, 2 * sp_meter)` reach. When it is,
-`sp_end_shift_ms`, `required_frontend_ms`, `exact_even_split_ms`, and both legs
-of `frontend_transfer_scales` should use the collection note's hit-time and tick
-as the frontend anchor instead of the activation's.
-
-The record does not currently carry the clamp anchor — `frontend_transfer_scales`
-only has `act.timecode`, `sp_meter`, `deact_tick`, and `sqinouts`, and the
-anchoring collection note cannot be recovered from those alone. So this follows
-the same pattern as the deact node in **ADR 0011**: a fact the record lacks gets
-a stored field written by the search where it already computes the ceiling —
-never another re-derivation at display time. **Difficulty** stays raw gap ms
-(**ADR 0001**); this only fixes which note the frontend recipe and the transfer
-scale are measured from.
+The search records each cap clamp as a step in the activation's SP-end history (ADR 0021). The transfer scales are measured from the latest clamp note at or before the end they describe, or from the activation when the cap never bound, so the scale line and the eff. figures read the note that really moves the end.
 
 ## The case that proved it
 

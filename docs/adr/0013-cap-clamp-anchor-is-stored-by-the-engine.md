@@ -40,3 +40,14 @@ Ready rule already checks the stored path format (from ADR 0011), so records
 analyzed before this change read Stale right away — the library asks for
 re-analysis immediately. No separate version bump is needed beyond the one
 above.
+
+## Amendment, 2026-10: the clamp note is read from the SP-end history
+
+`clamp_tick` is no longer a stored field. Each time the cap pins the end, the
+search records a `Clamped` step in the activation's SP-end history.
+`Activation::clamp_tick()` is the note of the last such step (ADR 0021). The
+rule above is unchanged: nothing outside the search reconstructs it.
+
+The clamp note now does more than drive the warning. When the cap pinned the
+end, the transfer scale is measured from that note, not from the activation,
+because its timing is what moves the end (D1).
