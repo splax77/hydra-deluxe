@@ -377,6 +377,9 @@ TEST_CASE("is_scaled: exactly 1 up to float noise, nothing coarser") {
     CHECK_FALSE(is_scaled(1.0 + 1e-12));
     CHECK(is_scaled(0.999));
     CHECK(is_scaled(1.0001));
+    // D14: the tolerance is 1e-9, and the scale line's digit cap follows it.
+    CHECK(kScaleIdentityTolerance == 1e-9);
+    CHECK(kScaleIdentityDigits == 9);
 }
 
 TEST_CASE("rate_note: the side of the end picks the multiplier") {
@@ -385,15 +388,15 @@ TEST_CASE("rate_note: the side of the end picks the multiplier") {
     NoteRating in = rate_note(-50.0, true, s, 85.0);
     CHECK(in.early);
     CHECK(in.scale == 0.5);
-    CHECK(in.budget_ms == doctest::Approx(squeeze_budget_ms(0.5, 85.0)));
+    CHECK(in.budget_ms == 127.5);
     REQUIRE(in.effective_ms.has_value());
-    CHECK(*in.effective_ms == doctest::Approx(effective_backend_ms(-50.0, 0.5)));
+    CHECK(*in.effective_ms == doctest::Approx(66.666666666666667).epsilon(1e-12));
     // Outside: a late hit.
     NoteRating out = rate_note(50.0, false, s, 85.0);
     CHECK_FALSE(out.early);
     CHECK(out.scale == 2.0);
     REQUIRE(out.effective_ms.has_value());
-    CHECK(*out.effective_ms == doctest::Approx(effective_backend_ms(50.0, 2.0)));
+    CHECK(*out.effective_ms == doctest::Approx(33.333333333333336).epsilon(1e-12));
 }
 
 TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close") {
@@ -402,7 +405,7 @@ TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close")
     const double r = 0.9912;
     NoteRating n = rate_note(-187.5, true, TransferScale{r, 1.0}, 85.0);
     REQUIRE(n.effective_ms.has_value());
-    CHECK(*n.effective_ms == doctest::Approx(375.0 / (1.0 + r)).epsilon(1e-12));
+    CHECK(*n.effective_ms == doctest::Approx(188.32864604258737).epsilon(1e-12));
     // Exactly 1, or float noise around it: no figure.
     CHECK_FALSE(rate_note(-187.5, true, TransferScale{1.0, 1.0}, 85.0).effective_ms.has_value());
     CHECK_FALSE(
@@ -439,10 +442,10 @@ TEST_CASE("rate_activation: every row reads post, by its side of the end") {
     CHECK(r.backends[2].note.scale == 0.5);
     CHECK_FALSE(r.backends[3].note.early);
     CHECK(r.backends[3].note.scale == 2.0);
-    for (const BackendRating& b : r.backends) {
-        REQUIRE(b.note.effective_ms.has_value());
-        CHECK(*b.note.effective_ms ==
-              doctest::Approx(effective_backend_ms(*b.row.offset_ms, b.note.scale)));
+    const double want[] = {53.333333333333336, 0.0, 2.0, 33.333333333333336};
+    for (size_t i = 0; i < r.backends.size(); ++i) {
+        REQUIRE(r.backends[i].note.effective_ms.has_value());
+        CHECK(*r.backends[i].note.effective_ms == doctest::Approx(want[i]).epsilon(1e-12));
     }
     CHECK(r.scale_governs);
 }
@@ -473,11 +476,11 @@ TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post")
     CHECK(r.backends[0].note.early);
     CHECK(r.backends[0].note.scale == 0.9912);
     REQUIRE(r.backends[0].note.effective_ms.has_value());
-    CHECK(*r.backends[0].note.effective_ms == doctest::Approx(375.0 / 1.9912).epsilon(1e-12));
+    CHECK(*r.backends[0].note.effective_ms == doctest::Approx(188.32864604258737).epsilon(1e-12));
     REQUIRE(r.note_effective_ms.size() == 2);
     // The SqIn: free by 92.1 ms at the pre end, so pre's early side.
     REQUIRE(r.note_effective_ms[0].has_value());
-    CHECK(*r.note_effective_ms[0] == doctest::Approx(184.2 / 1.97).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[0] == doctest::Approx(93.50253807106598).epsilon(1e-12));
     // The SqOut: its row above is its only rating.
     CHECK_FALSE(r.note_effective_ms[1].has_value());
 
@@ -502,9 +505,38 @@ TEST_CASE("rate_activation: a SqIn reads pre, by its side of the end") {
     REQUIRE(r.note_effective_ms[0].has_value());
     REQUIRE(r.note_effective_ms[1].has_value());
     // Sun of Nothing act 5: 400 ms free at early x1.60 is worth 307.7 ms.
-    CHECK(*r.note_effective_ms[0] == doctest::Approx(800.0 / 2.6).epsilon(1e-12));
-    CHECK(*r.note_effective_ms[1] == doctest::Approx(100.0 / 1.5).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[0] == doctest::Approx(307.6923076923077).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[1] == doctest::Approx(66.666666666666667).epsilon(1e-12));
     CHECK(r.scale_governs);
+}
+
+TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads pre's early side (D13)") {
+    // Only one side scaled, so the figure shows which side was read.
+    auto figure = [](TransferScale pre, double offset) {
+        Activation act;
+        act.skips = 0;
+        act.e_offset = 300.0;
+        act.transfer_pre = pre;
+        act.transfer_post = TransferScale{};
+        act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, offset});
+        ActivationRating r = rate_activation(act, 85.0);
+        REQUIRE(r.note_effective_ms.size() == 1);
+        return r.note_effective_ms[0];
+    };
+    const TransferScale early_only{1.6, 1.0};
+    const TransferScale late_only{1.0, 1.6};
+    // Exactly on the end: free, early side.
+    REQUIRE(figure(early_only, 0.0).has_value());
+    CHECK(*figure(early_only, 0.0) == 0.0);
+    CHECK_FALSE(figure(late_only, 0.0).has_value());
+    // Just before the end: free, early side.
+    REQUIRE(figure(early_only, -0.5).has_value());
+    CHECK(*figure(early_only, -0.5) == doctest::Approx(0.38461538461538464).epsilon(1e-12));
+    CHECK_FALSE(figure(late_only, -0.5).has_value());
+    // Just past the end: still to earn, late side.
+    CHECK_FALSE(figure(early_only, 0.5).has_value());
+    REQUIRE(figure(late_only, 0.5).has_value());
+    CHECK(*figure(late_only, 0.5) == doctest::Approx(0.38461538461538464).epsilon(1e-12));
 }
 
 TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rated note") {

@@ -366,6 +366,18 @@ TEST_CASE("backend_row_value: every engine case") {
     CHECK_FALSE(core::paid_by_sp_walk(0.5));
 }
 
+TEST_CASE("SPSqueeze::is_free: a note on the SP end is inside SP (D13)") {
+    // A SqIn is free once its note is inside SP: at the end or before it.
+    CHECK(SPSqueeze{SqueezeKind::SqIn, 0.0}.is_free());
+    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.0}.is_free());
+    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.001}.is_free());
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 0.001}.is_free());
+    // A SqOut is free once its note is already outside: past the end only.
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, 0.0}.is_free());
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, -0.001}.is_free());
+    CHECK(SPSqueeze{SqueezeKind::SqOut, 0.001}.is_free());
+}
+
 TEST_CASE("difficulty names: one list, one spelling") {
     // The dropdown indexes this list by the enum's value, so order matters.
     REQUIRE(std::size(kAllDifficulties) == 4);

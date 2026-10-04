@@ -22,11 +22,12 @@ std::string bars_text(int bars) {
 const char* const kDot = " \xC2\xB7 ";
 
 // A multiplier as the scale line prints it: two decimals, or as many more as
-// it takes not to read as x1.00 (nine reach past is_scaled's tolerance), so
-// a multiplier that governs a figure never prints as 1.
+// it takes not to read as x1.00, up to kScaleIdentityDigits (derived from
+// is_scaled's tolerance), so a multiplier that governs a figure never prints
+// as 1.
 std::string format_scale(double r) {
     char buf[32];
-    for (int digits = 2; digits <= 9; ++digits) {
+    for (int digits = 2; digits <= kScaleIdentityDigits; ++digits) {
         std::snprintf(buf, sizeof(buf), "x%.*f", digits, r);
         if (std::strtod(buf + 1, nullptr) != 1.0) break;
     }
@@ -75,16 +76,17 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
     for (size_t i = 0; i < act.sqinouts.size(); ++i) {
         const SPSqueeze& sq = act.sqinouts[i];
         // timing() is the edge SPSqueeze::description() prints: a SqOut must
-        // be hit later than it, a SqIn earlier than it.
+        // be hit later than it, a SqIn earlier than it. Which wording applies
+        // is SPSqueeze::is_free's answer, the one the rating reads too (D13).
         const double t = sq.timing();
+        const std::string edge = format_ms_spaced(std::fabs(t));
         std::string text;
         if (sq.kind == SqueezeKind::SqOut) {
             const std::string note =
                 squeezed_out ? "the " + squeezed_out->row.chord.notationstr() + " note"
                              : std::string("the SP phrase's last note");
-            const std::string when = t >= 0.0
-                                         ? "more than " + format_ms_spaced(std::fabs(t)) + " late"
-                                         : "no more than " + format_ms_spaced(std::fabs(t)) + " early";
+            const std::string when = sq.is_free() ? "no more than " + edge + " early"
+                                                  : "more than " + edge + " late";
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
             if (squeezed_out) {
                 // What the squeeze-out costs, from the same function the
@@ -107,9 +109,8 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                 text += " Its SP phrase banks for later.";
             }
         } else {
-            std::string when = t <= 0.0
-                                   ? "more than " + format_ms_spaced(std::fabs(t)) + " early"
-                                   : "no more than " + format_ms_spaced(std::fabs(t)) + " late";
+            std::string when = sq.is_free() ? "no more than " + edge + " late"
+                                            : "more than " + edge + " early";
             // A SqIn has no backend row to carry its eff. figure (a SqOut's
             // sits on its squeezed-out row), so the sentence carries it.
             if (i < note_effective_ms.size() && note_effective_ms[i])
