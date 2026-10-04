@@ -528,7 +528,7 @@ TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
         if (b.timecode.ticks() == 5280) last_note = &b;
     REQUIRE(last_note != nullptr);
     CHECK(*last_note->offset_ms ==
-          doctest::Approx(tick_ms(song, 5280) - end_ms).epsilon(1e-9));
+          doctest::Approx(offset_from_sp_end(tick_ms(song, 5280), end_ms)).epsilon(1e-9));
 
     // And the rows put the SP end back exactly where the engine had it.
     auto deact = activation_deact_tick(act);
