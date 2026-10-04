@@ -922,20 +922,26 @@ const std::vector<OwnerRule>& rules() {
          {"marks.push_back(*song_fraction(a.ms, length_ms));"},
          {{"src/app/preview_view.cpp", "return std::clamp(ms / length_ms, 0.0, 1.0);",
            "song_fraction, the owner"}}},
-        // The two-hit budget written out as twice the window, or the backend
-        // rescale written out as 2 / (1 + r), instead of nominal_budget_ms and
-        // squeeze_budget_ms.
+        // The two-hit budget written out as twice the window (either way
+        // round), as squeeze_budget_ms at a hand-typed identity scale, or the
+        // backend rescale written out as 2 / (1 + r), instead of
+        // nominal_budget_ms and squeeze_budget_ms.
         {"What is the two-hit budget at the identity scale?",
          "nominal_budget_ms beside squeeze_budget_ms in src/core/squeeze_rating.cpp",
-         R"re(\b2(\.0)?\s*\*\s*w\b|\*\s*2\.0\s*/\s*\(1\.0\s*\+)re",
+         R"re(\b2(\.0)?\s*\*\s*(w|hit_window\w*|kDefaultHitWindowMs)\b|\b(w|hit_window\w*|kDefaultHitWindowMs)\s*\*\s*2(\.0)?\b|squeeze_budget_ms\(\s*(1(\.0)?|kIdentityScale)\s*,|\*\s*2\.0\s*/\s*\(1\.0\s*\+)re",
          "",
          {},
          {},
-         "phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3 (2026-10-04)",
+         "phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, "
+         "finding 2 (2026-10-04)",
          {"{\"Insane+\", \"t4\", 2 * w},",
+          "{\"Insane+\", \"t4\", squeeze_budget_ms(1.0, w)},",
+          "const double budget = hit_window_ms * 2;",
           "return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);"},
-         {"{\"Insane+\", \"t4\", squeeze_budget_ms(1.0, w)},",
-          "{\"Insane+\", \"t4\", nominal_budget_ms(w)},"}},
+         {"{\"Insane+\", \"t4\", nominal_budget_ms(w)},"},
+         {{"src/core/squeeze_rating.cpp",
+           "return squeeze_budget_ms(kIdentityScale, hit_window_ms);",
+           "nominal_budget_ms, the owner"}}},
         // A ByteSource's reads come from a file or from memory, and tests
         // count them through one wrapper; a lambda written elsewhere would be
         // a second reader of the same bytes.
