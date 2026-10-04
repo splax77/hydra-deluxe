@@ -48,11 +48,13 @@ tools/ and tests/" (tests/test_single_owner.cpp) reads every source file in
 `src` and `tools`. It fails on any raw Windows file call outside winstr.cpp
 whose line doesn't call `win32_path`. It fails on a file stream, or a
 `std::filesystem` call that takes a path, whose line doesn't call `os_path`.
-That second check works from a list of call names, not every call there is.
-The list covers making, removing, renaming, copying and testing files and
-folders, sizes and times, `canonical`, both directory iterators, `absolute`,
-`status`, `equivalent`, `space` and `current_path`. A new kind of call needs a
-new name on the list. The test also fails on `utf8_to_wide` used anywhere a
+That second check works from a list of call names: every `std::filesystem`
+free function that takes a path, both directory iterators and
+`directory_entry` (as a call, a named variable, braces or a temporary), and
+the file streams in the same forms. A call with an empty argument list takes
+no path and passes. A new kind of call needs a new name on the list, and a
+call written with no `std::filesystem` or `fs` on its line (found through the
+argument's type, or a stream's `.open`) is not caught. The test also fails on `utf8_to_wide` used anywhere a
 path could pass through it. The DMBot client is the one exception, because it
 converts a URL.
 
@@ -78,8 +80,11 @@ a prefixed path: neither `\\?\` nor the device prefix `\\.\`. Its parser
 `C:\Windows\win.ini` in each form. One function asks that question: `fits_shell` (winstr) says
 whether the shell takes a path as it is. Nothing else compares a path's
 length against 260 for the shell. `shell_path`, `open_in_browser`,
-`copy_to_short_temp` and the tests all call it, and the source-scan test fails
-on a second copy.
+`copy_to_short_temp` and the tests all call it. The source-scan test fails on
+a second copy that compares a `size()`, `length()`, `strlen` or `wcslen`
+against 259, 260 or `MAX_PATH`, in either order. It cannot catch a length
+first held in a plain variable, because `n > MAX_PATH` is also how a
+buffer-fit check reads.
 
 So `shell_path` (winstr) turns a path the shell won't take into its short
 name, or gives back nothing when there isn't one. That happens when the file

@@ -214,8 +214,8 @@ TEST_CASE("ImGui's own file calls (hydra_ui.ini, fonts) work past 260 characters
 }
 
 // fits_shell is the one place that asks whether the shell takes a path: under
-// 260 characters and without the \\?\ prefix. The edge is pinned here as a
-// literal so the test doesn't share the owner's arithmetic.
+// 260 characters and without a \\?\ or \\.\ prefix. The edge is pinned here as
+// a literal so the test doesn't share the owner's arithmetic.
 TEST_CASE("fits_shell takes 259 characters, not 260, and no prefixed path") {
     const std::wstring at_259 = L"C:\\" + std::wstring(251, L'a') + L".html";
     const std::wstring at_260 = L"C:\\" + std::wstring(252, L'a') + L".html";
@@ -227,10 +227,12 @@ TEST_CASE("fits_shell takes 259 characters, not 260, and no prefixed path") {
     CHECK(hydra::fits_shell(L"C:\\Songs\\hydra_paths.html"));
     CHECK_FALSE(hydra::fits_shell(L"\\\\?\\C:\\Songs\\hydra_paths.html"));
     CHECK_FALSE(hydra::fits_shell(L"\\\\?\\UNC\\server\\share\\hydra_paths.html"));
+    CHECK_FALSE(hydra::fits_shell(L"\\\\.\\C:\\Songs\\hydra_paths.html"));
 }
 
 // The shell (ShellExecute, Explorer) opens no path of 260 characters or more,
-// \\?\ or not, so the report buttons hand it the short 8.3 name instead.
+// and no \\?\ or \\.\ path at any length (fits_shell), so the report buttons
+// hand it the short 8.3 name instead.
 TEST_CASE("shell_path gives the shell a short name for a long path") {
     CHECK(hydra::shell_path(L"C:\\Songs\\hydra_paths.html") == L"C:\\Songs\\hydra_paths.html");
 

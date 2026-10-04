@@ -96,7 +96,7 @@ const std::vector<OwnerRule>& rules() {
          "",
          {},
          {},
-         "ADR 0020 (the shell takes nothing of 260 or more); one owner put on the fix "
+         "ADR 0020 (the shell takes nothing of 260 or more, and no prefixed path); one owner put on the fix "
          "list by the user 2026-10-03 (audit R7.12 addendum)",
          {"if (path.size() < MAX_PATH) return path;",
           "if (copy.native().size() >= MAX_PATH) return {};",
@@ -121,7 +121,7 @@ const std::vector<OwnerRule>& rules() {
           "std::wstring buf(MAX_PATH, L'\\0');",
           "if (fits_shell(path)) return path;", "if (!fits_shell(copy.native())) return {};"},
          {{"src/core/winstr.cpp",
-           R"(return path.size() < MAX_PATH && !starts_with(path, L"\\\\?\\");)",
+           R"(return path.size() < MAX_PATH && !has_namespace_prefix(path);)",
            "fits_shell, the owner: shell_path, open_in_browser and copy_to_short_temp "
            "call it"}}},
         // Every way this codebase works out a file's size: the stdio seek and
@@ -192,8 +192,8 @@ const std::vector<OwnerRule>& rules() {
           "FILE* f = _wfopen(w.c_str(), L\"rb\");"},
          {"HANDLE h = CreateFileW(win32_path(p).c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);",
           "std::FILE* f = hydra::fopen_utf8(path, L\"rb\");"}},
-        // The shell takes no long path, so only the two report buttons launch
-        // it, each with shell_path's short form.
+        // The shell takes no long or prefixed path (fits_shell), so only the
+        // two report buttons launch it, each with shell_path's short form.
         {"Which code launches the Windows shell?",
          "open_in_browser (src/app/report_files.cpp) and show_in_folder "
          "(src/ui/win32_dialogs.cpp)",
