@@ -97,10 +97,18 @@ std::vector<uint8_t> read_file_bytes(const std::string& utf8_path);
 // to `length` of them from `offset` (fewer where it ends, none at or past its
 // end; the buffer is never larger than that). A container's notes sit in a
 // small part of a large file, so the note loader reads only that part.
+//
+// A read that hands back fewer bytes than asked means the source ends there.
+// That is the one end-of-source rule: a file can shrink after `size` was
+// read, so a caller stops on a short read, never by comparing what it read
+// with `size`.
 struct ByteSource {
     uint64_t size = 0;
     std::function<std::vector<uint8_t>(uint64_t offset, size_t length)> read;
 };
+
+// Every byte of the source, from its start to where a read stops.
+std::vector<uint8_t> read_all(const ByteSource& src);
 
 // The file, opened once and held open while the source (or a copy of it)
 // lives, read at any offset (past 4 GB included). Shared for reading and

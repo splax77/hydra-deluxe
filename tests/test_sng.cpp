@@ -227,6 +227,19 @@ TEST_CASE("sng: a header longer than the first read still loads") {
     CHECK(songs_equal(load_counting(path, bytes_read), load_songbytes_sng(buf, true, true)));
 }
 
+// A file can shrink after it was opened and sized: the source then claims
+// more bytes than its reads hand back. A short read ends the header read;
+// waiting for the claimed size used to loop forever.
+TEST_CASE("sng: a source shorter than its stated size ends the header read") {
+    const std::vector<uint8_t> whole = make_sng({{"name", "Song"}}, {{"notes.mid", tiny_mid()}});
+    const std::vector<uint8_t> cut(whole.begin(), whole.begin() + 10);
+    ByteSource shrunk = memory_byte_source(cut);
+    shrunk.size = 200000;
+    CHECK(sng_read_head(shrunk) == cut);
+    CHECK_THROWS_WITH(load_songpath_reading(shrunk, "shrunk.sng", true, true),
+                      "No chart files found in SNG file.");
+}
+
 TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does") {
     const std::vector<uint8_t> whole =
         make_sng({{"name", "Song"}}, {{"notes.mid", tiny_mid()}});

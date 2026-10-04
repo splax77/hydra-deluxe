@@ -1483,11 +1483,9 @@ Song load_songpath_reading(const ByteSource& src, const std::string& path, bool 
                            bool bass2x, Difficulty difficulty, const core::Rules& rules) {
     switch (chart_format_of(path)) {
         case ChartFormat::Mid:
-            return load_songbytes_mid(src.read(0, static_cast<size_t>(src.size)), pro, bass2x,
-                                      difficulty, rules);
+            return load_songbytes_mid(read_all(src), pro, bass2x, difficulty, rules);
         case ChartFormat::Chart:
-            return load_songbytes_chart(src.read(0, static_cast<size_t>(src.size)), pro, bass2x,
-                                        difficulty, rules);
+            return load_songbytes_chart(read_all(src), pro, bass2x, difficulty, rules);
         case ChartFormat::Sng: return load_container_sng(src, pro, bass2x, difficulty, rules);
         case ChartFormat::Srb: return load_container_srb(src, pro, bass2x, difficulty, rules);
         case ChartFormat::None: break;

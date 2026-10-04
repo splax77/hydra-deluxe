@@ -247,9 +247,12 @@ size_t next_piece_read(size_t last) {
                                                          : last * 2;
 }
 
-std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
-    const ByteSource src = file_byte_source(utf8_path);
+std::vector<uint8_t> read_all(const ByteSource& src) {
     return src.read(0, static_cast<size_t>(src.size));
+}
+
+std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
+    return read_all(file_byte_source(utf8_path));
 }
 
 std::string read_file_text(const std::string& utf8_path) {

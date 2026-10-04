@@ -858,6 +858,33 @@ const std::vector<OwnerRule>& rules() {
          {{"src/core/winstr.h", "constexpr size_t kFirstPieceRead = 64 * 1024;",
            "kFirstPieceRead, the owner"}},
          {"src", "tools", "tests"}},
+        // A file can shrink after it was sized, so comparing what was read
+        // with the stated size can wait forever (sng_read_head did).
+        {"Has a ByteSource run out?",
+         "the short-read rule on ByteSource in src/core/winstr.h",
+         R"(\w+\.size\(\)\s*[!=]=\s*\w+\.size\b(?!\())",
+         "",
+         {},
+         {},
+         "container ranged-reads derive-once review of 8229b6e, finding 1 (2026-10-04)",
+         {"if (needed <= head.size() || head.size() == src.size) return head;",
+          "if (bytes.size() != src.size) return std::nullopt;"},
+         {"if (bytes.size() != n) return std::nullopt;  // the file shrank since it was opened"},
+         {},
+         {"src", "tools", "tests"}},
+        {"What are all of a ByteSource's bytes?",
+         "read_all in src/core/winstr.cpp",
+         R"(\.read\(\s*0\s*,\s*(static_cast<size_t>\()?\w+\.size\)?\s*\))",
+         "",
+         {},
+         {},
+         "container ranged-reads derive-once review of 8229b6e, finding 2 (2026-10-04)",
+         {"return load_songbytes_mid(src.read(0, static_cast<size_t>(src.size)), pro, bass2x,",
+          "std::vector<uint8_t> all = src.read(0, src.size);"},
+         {"std::vector<uint8_t> head = src.read(0, asked);"},
+         {{"src/core/winstr.cpp", "return src.read(0, static_cast<size_t>(src.size));",
+           "read_all, the owner"}},
+         {"src", "tools", "tests"}},
     };
     return r;
 }

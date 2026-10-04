@@ -129,9 +129,9 @@ std::vector<uint8_t> sng_read_head(const ByteSource& src) {
     std::vector<uint8_t> head = src.read(0, asked);
     for (;;) {
         const uint64_t needed = walk_file_table(head, nullptr);
-        // The whole table is in hand, or head is the whole file (so it parses
-        // exactly as the file does).
-        if (needed <= head.size() || head.size() == src.size) return head;
+        // The whole table is in hand, or the read came back short: head is
+        // the whole file (so it parses exactly as the file does).
+        if (needed <= head.size() || head.size() < asked) return head;
         asked = static_cast<size_t>(std::min<uint64_t>(
             std::max<uint64_t>(needed, next_piece_read(asked)), SIZE_MAX));
         head = src.read(0, asked);
@@ -145,7 +145,7 @@ std::optional<std::vector<uint8_t>> sng_read_file(const ByteSource& src,
     if (!fits(src.size, entry.offset, entry.length)) return std::nullopt;
     const size_t n = static_cast<size_t>(entry.length);
     std::vector<uint8_t> bytes = src.read(entry.offset, n);
-    if (bytes.size() != n) return std::nullopt;  // the file shrank since it was opened
+    if (bytes.size() != n) return std::nullopt;  // a short read: the file shrank since it was opened
     unmask(head.data() + kSngXorMaskOffset, bytes.data(), n, bytes.data());
     return bytes;
 }
