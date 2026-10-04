@@ -96,6 +96,26 @@ TEST_CASE("phrase end: a phrase running past the last note flags that note") {
     CHECK(mid_flags(1440) == want);
 }
 
+TEST_CASE("phrase end: an unsorted .chart drum section is read in tick order (D47)") {
+    // The file writes chords at 0, 768, 384, 1536, with an SP phrase and a fill
+    // both spanning 0-500. Read in tick order, the last chord inside the
+    // phrase and the chord the fill lands on are the same one: 384. Before
+    // D47 the phrase rule read file order and paid chord 0 instead.
+    const Song song = load_songbytes_chart(
+        testchart::chart_bytes(testchart::section("ExpertDrums",
+                                                  "  0 = N 0 0\n  0 = S 2 500\n  0 = S 64 500\n"
+                                                  "  768 = N 1 0\n  384 = N 2 0\n  1536 = N 0 0\n")),
+        true, true);
+    REQUIRE(song.sequence.size() == 4);
+    std::vector<int64_t> ticks;
+    for (const SongTimestamp& ts : song.sequence) ticks.push_back(ts.timecode.ticks());
+    CHECK(ticks == std::vector<int64_t>{0, 384, 768, 1536});
+    CHECK(flags_of(song) == Flags{{384}, {0}});
+    CHECK_FALSE(song.sequence[0].has_activation());
+    REQUIRE(song.sequence[1].has_activation());
+    CHECK(*song.sequence[1].activation_length == 384);
+}
+
 TEST_CASE("phrase end: a zero-length phrase on a chord flags nothing") {
     CHECK(chart_flags(0) == Flags{});
     CHECK(mid_flags(0) == Flags{});

@@ -209,13 +209,13 @@ void apply_fill_end(Song& song, size_t index, int64_t starttick) {
 void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
                           double slop_beats) {
     if (fills.empty() || song.sequence.empty()) return;
-    // The chord list in tick order (a .chart need not be sorted).
+    // The chord list with its ticks. Both parsers emit chords in tick order
+    // (.mid by its event times, .chart by D47's one sort in ChartParser), so
+    // no sort here.
     std::vector<std::pair<int64_t, size_t>> order;
     order.reserve(song.sequence.size());
     for (size_t i = 0; i < song.sequence.size(); ++i)
         order.emplace_back(song.sequence[i].timecode.ticks(), i);
-    std::stable_sort(order.begin(), order.end(),
-                     [](const auto& a, const auto& b) { return a.first < b.first; });
     const int64_t window_ticks =
         static_cast<int64_t>(song.tick_resolution() * slop_beats) + 1;
 
@@ -1320,7 +1320,15 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     auto ed_it = sections_.find(difficulty_chart_codes(difficulty).chart_section());
     if (ed_it != sections_.end()) {
         const ChartSection& ed = ed_it->second;
-        for (int64_t tk : ed.tick_order)
+        // The one place chord order is settled for a .chart (D47): the drum
+        // section is read in tick order, whatever order the file wrote its
+        // ticks in, so the phrase rule (close_sp_phrase, D21) and the fill
+        // rule (place_authored_fills, D30) see the same chords in the same
+        // order. tick_order holds each tick once; the lines at one tick keep
+        // the file's order.
+        std::vector<int64_t> ticks = ed.tick_order;
+        std::sort(ticks.begin(), ticks.end());
+        for (int64_t tk : ticks)
             push_timestamp(tk, ed.tick_data.at(tk));
         // A phrase still open after the last tick runs past the last note.
         // Close it now, so that note awards it, as the 116 note-off does in
