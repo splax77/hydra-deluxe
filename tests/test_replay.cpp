@@ -1764,3 +1764,20 @@ TEST_CASE("replay timing: 2,000 activations on the Discography chart" * doctest:
             << " open-window walk " << new_ms << " ms, scores-only " << lean_ms
             << " ms, no windows " << none_ms << " ms");
 }
+
+// play_chart presses the pads each dump chord's "lanes" names, so the dump
+// says them from the C++ chord (M7-1 review finding 8). One entry per note in
+// kick, red, yellow, blue, green order; a dynamic never changes the pad, and
+// a 2x kick is the kick pad.
+TEST_CASE("lanes_json names each pad a chord hits, cymbals marked") {
+    CHECK(lanes_json(Chord::from_code(".nN.N")) ==
+          json::parse(R"([{"color": "Red", "cymbal": false},
+                          {"color": "Yellow", "cymbal": true},
+                          {"color": "Green", "cymbal": true}])"));
+    CHECK(lanes_json(Chord::from_code("N....")) ==
+          json::parse(R"([{"color": "Kick", "cymbal": false}])"));
+    CHECK(lanes_json(Chord::from_code("na.g.")) ==
+          json::parse(R"([{"color": "Kick", "cymbal": false},
+                          {"color": "Red", "cymbal": false},
+                          {"color": "Blue", "cymbal": false}])"));
+}

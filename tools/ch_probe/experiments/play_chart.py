@@ -5,8 +5,9 @@ exactly the chords, lanes and times Hydra scored. Make one with
     hydra_replay dump --chart <notes.chart or notes.mid> --db <hydra.db> --out <dump.json>
 Each entry of the dump's "chords" list gives the chord's time in the chart
 (`ms`, with no Offset or song.ini delay, which is the song clock the game
-shows) and its five-character code (`chord_code`, ADR 0015). Whether the 2x
-kick notes are in it follows the dump's own settings.
+shows) and the pads it hits (`lanes`, each note's color and whether it is a
+cymbal, written by hydra_replay from the C++ chord). Whether the 2x kick
+notes are in it follows the dump's own settings.
 
 While the song plays, live.wait_until polls the game's song clock and fires
 each chord PRESS_LEAD_MS early; it also notices the song stopping (clock frozen
@@ -42,34 +43,19 @@ from tools.ch_probe.experiments.walk_edges import SongClock
 # play_chart presses each chord this many ms before its time (D51: unchanged).
 PRESS_LEAD_MS = 2.0
 
-# ADR 0015 code positions 2 to 4: (pad lane, cymbal lane). Upper case is a cymbal.
-_PAD_LANES = (
-    (Lane.YELLOW, Lane.YELLOW_CYMBAL),
-    (Lane.BLUE, Lane.BLUE_CYMBAL),
-    (Lane.GREEN, Lane.GREEN_CYMBAL),
-)
-
-
-def lanes_for_code(code: str) -> list:
-    """The keys to press for one ADR 0015 chord code.
-
-    One character per lane in kick, red, yellow, blue, green order; "." is an
-    empty lane and a letter is a note. The kick presses L in either case (upper
-    case is the 2x kick). Yellow, blue and green press their cymbal key when
-    upper case and the pad key otherwise. The letter (n, g, a: normal, ghost,
-    accent) never changes the key.
-    """
-    if len(code) != 5:
-        raise ValueError(f"chord code {code!r} is not five characters")
-    lanes = []
-    if code[0] != ".":
-        lanes.append(Lane.KICK)
-    if code[1] != ".":
-        lanes.append(Lane.RED)
-    for ch, (pad, cymbal) in zip(code[2:], _PAD_LANES):
-        if ch != ".":
-            lanes.append(cymbal if ch.isupper() else pad)
-    return lanes
+# The key for each pad a dump chord names in its "lanes" list: hydra_replay
+# writes each note's color (Kick, Red, Yellow, Blue, Green) and whether it is
+# a cymbal, from the C++ chord. A 2x kick is the kick pad.
+_KEY_FOR_PAD = {
+    ("Kick", False): Lane.KICK,
+    ("Red", False): Lane.RED,
+    ("Yellow", False): Lane.YELLOW,
+    ("Yellow", True): Lane.YELLOW_CYMBAL,
+    ("Blue", False): Lane.BLUE,
+    ("Blue", True): Lane.BLUE_CYMBAL,
+    ("Green", False): Lane.GREEN,
+    ("Green", True): Lane.GREEN_CYMBAL,
+}
 
 
 def load_dump_notes(path: str) -> list:
@@ -78,7 +64,7 @@ def load_dump_notes(path: str) -> list:
         dump = json.load(f)
     notes = []
     for chord in dump["chords"]:
-        lanes = lanes_for_code(chord["chord_code"])
+        lanes = [_KEY_FOR_PAD[(pad["color"], pad["cymbal"])] for pad in chord["lanes"]]
         if lanes:
             notes.append((chord["ms"], lanes))
     return notes

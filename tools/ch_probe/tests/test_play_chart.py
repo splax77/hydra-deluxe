@@ -1,10 +1,10 @@
 """play_chart.py plays the chords Hydra analyzed, read from a dump file.
 
 The notes, lanes and times come from a `hydra_replay dump` JSON: each entry of
-its "chords" list gives the chord's time (`ms`) and its five-character code
-(`chord_code`, ADR 0015: kick, red, yellow, blue, green; "." empty, upper case
-a cymbal or a 2x kick). One gem is one key: pressing a tom and a cymbal key for
-one gem is an overhit. Waiting for a note, noticing the song stopped and
+its "chords" list gives the chord's time (`ms`) and the pads it hits
+(`lanes`, written by hydra_replay from the C++ chord: each note's color and
+whether it is a cymbal). One gem is one key: pressing a tom and a cymbal key
+for one gem is an overhit. Waiting for a note, noticing the song stopped and
 picking the first note when a run joins mid-song are live.py's.
 """
 
@@ -24,15 +24,22 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe.experiments import live, play_chart  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
 
+
+def _pad(color, cymbal=False):
+    return {"color": color, "cymbal": cymbal}
+
+
 # Only the keys play_chart reads; a real dump carries many more per chord.
+# Each "lanes" list is what hydra_replay's lanes_json writes for that chord.
 _DUMP = {"chords": [
-    {"ms": 0.0, "chord_code": "..n.."},      # yellow tom
-    {"ms": 500.0, "chord_code": "..N.."},    # yellow cymbal
-    {"ms": 1000.0, "chord_code": "...N."},   # blue cymbal
-    {"ms": 1500.0, "chord_code": "....N"},   # green cymbal
-    {"ms": 2000.0, "chord_code": "N...."},   # 2x kick
-    {"ms": 2500.0, "chord_code": "nn..."},   # red + kick
-    {"ms": 3000.0, "chord_code": "....a"},   # green accent
+    {"ms": 0.0, "lanes": [_pad("Yellow")]},                  # yellow tom
+    {"ms": 500.0, "lanes": [_pad("Yellow", True)]},          # yellow cymbal
+    {"ms": 1000.0, "lanes": [_pad("Blue", True)]},           # blue cymbal
+    {"ms": 1500.0, "lanes": [_pad("Green", True)]},          # green cymbal
+    {"ms": 2000.0, "lanes": [_pad("Kick")]},                 # 2x kick
+    {"ms": 2500.0, "lanes": [_pad("Kick"), _pad("Red")]},    # red + kick
+    {"ms": 3000.0, "lanes": [_pad("Green")]},                # green accent
+    {"ms": 3500.0, "lanes": []},                             # nothing to press
 ]}
 
 
@@ -56,13 +63,9 @@ class DumpPathTest(unittest.TestCase):
             (3000.0, [Lane.GREEN]),            # an accent is still the green pad
         ])
 
-    def test_lane_helper(self):
-        self.assertEqual(play_chart.lanes_for_code(".nN.N"),
-                         [Lane.RED, Lane.YELLOW_CYMBAL, Lane.GREEN_CYMBAL])
-        self.assertEqual(play_chart.lanes_for_code("N...."), [Lane.KICK])
-        self.assertEqual(play_chart.lanes_for_code("n...."), [Lane.KICK])
-        self.assertEqual(play_chart.lanes_for_code("...n."), [Lane.BLUE])
-        self.assertEqual(play_chart.lanes_for_code("....."), [])
+    def test_chord_codes_are_not_decoded_here(self):
+        # The dump says the pads; play_chart never reads the ADR 0015 code.
+        self.assertFalse(hasattr(play_chart, "lanes_for_code"))
 
 
 class SharedPiecesTest(unittest.TestCase):

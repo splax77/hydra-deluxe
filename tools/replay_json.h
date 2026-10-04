@@ -52,6 +52,12 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
 // the way hydra_batch prints "-".
 nlohmann::json result_json(const HydraRecord& rec);
 
+// The pads a chord hits, as `dump` writes each chord's "lanes": one entry per
+// note in kick, red, yellow, blue, green order (Chord::notes), each the
+// note's color (color_str) and whether it is a cymbal. play_chart presses one
+// key per entry.
+nlohmann::json lanes_json(const Chord& chord);
+
 }  // namespace hydra
 
 #endif  // HYDRA_TOOLS_REPLAY_JSON_H
