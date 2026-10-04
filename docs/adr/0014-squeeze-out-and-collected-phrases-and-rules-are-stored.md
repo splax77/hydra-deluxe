@@ -170,17 +170,22 @@ An SP end D offers a window at most one phrase (`core::offered_phrase`):
   the window's end from D. The graph decides once, per phrase and pending
   end, whether that end keeps a node that lists the phrase
   (`SpExtension::sqout_node`); the engine copies it into the step
-  (`EndNode::sqout_at`). A squeeze-in clears it, so a phrase is still squeezed
-  in only once. A banked phrase never has a step, so D18 holds too.
-- Late side, unchanged: when the window's end is D, the first phrase after D
-  that it has not squeezed in.
+  (`EndNode::sqout_at`). `offered_phrase` skips a phrase the window already
+  squeezed in, so a phrase is still squeezed in only once. A banked phrase
+  never has a step, so D18 holds too.
+- Late side: when the window's end is D, the first phrase after D that it
+  has not squeezed in. This side changed too. Before D36 an older phrase in
+  D's window could block it: the old rule offered the first phrase the window
+  could squeeze, and when that was an early one a path ending at D got
+  nothing, never the late phrase behind it. Now the late phrase is offered
+  whatever sits before D.
 
 The search's group key on SP nodes gains one word: the end where the newest
 phrase can still be squeezed out, while it is ahead. Paths at one node with
 one SP end and one such end have the same newest phrase, so they face the
 same offers. A squeeze-out now gives back exactly its own step, and the
-engine and the rebuild throw if a closed window's record ends anywhere but
-its deactivation node. T10's clamp-origin guard (finding 37) was this rule
+rebuild throws if a closed window's record ends anywhere but its
+deactivation node. T10's clamp-origin guard (finding 37) was this rule
 for Clamped steps only, so it went with the edge's `sqout_time` and
 `clamped` fields.
 
