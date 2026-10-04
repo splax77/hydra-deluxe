@@ -270,8 +270,12 @@ HydraRecord analyze_at_cap(const Song& song, int sp_cap, DepthMode depth_mode,
 
 HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
                           const std::function<void(float)>& on_progress) {
+    // Callers check for notes first (require_notes in song.h), because only
+    // they know the difficulty and drum mode the user's sentence names. Reaching
+    // here with an empty song is a caller bug, not a chart problem.
     if (song.is_empty())
-        throw ChartFileError("No drum notes in this chart.");
+        throw std::logic_error("analyze_chart was given a song with no notes; "
+                               "check it with require_notes first");
 
     // One pass at the chosen ceiling, Clone Hero's 4 bars included. The graph
     // is only built as tall as the song has phrases to bank -- no run can
