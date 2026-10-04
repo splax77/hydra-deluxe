@@ -1634,6 +1634,47 @@ TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
     CHECK((act.skipped_fill_ticks == std::vector<int64_t>{19200}));
 }
 
+// The 1.1 rule at the exact edge. A fill spawns when SP is ready no later
+// than kEarlyFillWindowMs past its deadline (the engine refuses it only when
+// e_offset < -kEarlyFillWindowMs). 125 BPM at 480 ticks a beat makes a tick
+// one millisecond. Fill A ends at 9600 and is 480 ticks long, so its 1.1
+// deadline is 4 beats before its start: tick 7200, 7200 ms. The first phrase
+// (480) banks a bar; the second, at `ready`, banks the other. Fill C (19200)
+// is the one taken. With SP ready at 7260 (exactly 60 ms late) A is shown and
+// passed over; one tick later it never spawns.
+TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the window edge is stored") {
+    auto passed_over = [](int64_t ready) {
+        std::vector<test::FixtureNote> notes;
+        for (int64_t t = 0; t <= 28800; t += 480) {
+            test::FixtureNote n{t};
+            n.phrase = t == 480;
+            if (t == 9600 || t == 19200) n.fill_length = 480;
+            notes.push_back(n);
+        }
+        notes.push_back({ready, true, 0});
+        std::sort(notes.begin(), notes.end(),
+                  [](const test::FixtureNote& a, const test::FixtureNote& b) {
+                      return a.tick < b.tick;
+                  });
+        const Song song = test::build_fixture_song(480, 125.0, notes);
+        // The arithmetic above, checked against the rule itself.
+        REQUIRE(activation_fill_deadline_ms(song.timing(), 9600, 480, FillDeadlineRule::Ch11) ==
+                7200.0);
+        REQUIRE(song.timecode(ready).ms() == static_cast<double>(ready));
+        ScoreGraph graph(song, 4, FillDeadlineRule::Ch11);
+        EngineOptions opts;
+        opts.target_act_ticks = std::vector<int64_t>{19200};
+        const std::vector<Path> paths = run_search(graph, opts);
+        REQUIRE(!paths.empty());
+        REQUIRE(paths.front().activations.size() == 1);
+        REQUIRE(paths.front().activations.front().timecode.ticks() == 19200);
+        return paths.front().activations.front().skipped_fill_ticks;
+    };
+    const int64_t edge = 7200 + static_cast<int64_t>(kEarlyFillWindowMs);
+    CHECK((passed_over(edge) == std::vector<int64_t>{9600}));
+    CHECK(passed_over(edge + 1).empty());
+}
+
 // The lasting order checks, on root paths. A tied variant still carries its
 // leader's list until finding 97 gets its own plan (Q3).
 TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
@@ -1947,31 +1988,9 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D
     CHECK(root_named(rec.paths, "0+-") == nullptr);
 }
 
-// D3 on the corpus: every tied variant stores what the search stores when it
-// prices that path alone, window by window (steps, squeezes, squeezed-out
-// note, backend rows). The settings are ones where mid-SP folds happen; the
-// defaults have none on this corpus.
-TEST_CASE("tied variants: every corpus variant matches its lone pricing") {
-    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    cfg.sp_cap = 4;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 40;
-    cfg.ms_filter = 10.0;
-    int variants = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        std::vector<const Path*> vs;
-        for (const Path& root : rec.paths) collect_variants(root, vs);
-        for (const Path* v : vs) {
-            ++variants;
-            const std::string diff = lone_pricing_mismatch(song, cfg, *v);
-            CHECK_MESSAGE(diff.empty(), chart << " " << diff);
-        }
-    }
-    CHECK(variants > 200);
-}
+// The corpus-wide lone-pricing check for tied variants (D3) lives in
+// test_replay.cpp ("every tied variant stores what a search pricing it alone
+// stores"), at cap 4, depth 40, ms limit 10 and two more settings.
 
 TEST_CASE("tied variants: a variant that finished the song keeps its own bank") {
     // Cap 4. Two phrases fill 2 bars, then two fills. '0' activates at 2304;

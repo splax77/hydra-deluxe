@@ -94,6 +94,9 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                 {"nominal_deact_tick", nominal},
                 {"sp_meter", act.sp_meter()},
                 {"skips", act.skips()},
+                // The stored list the engine wrote, never recomputed: under
+                // the 1.0 fill rule it need not be the fills nearest the act.
+                {"skipped_fill_ticks", act.skipped_fill_ticks},
                 {"chord_code", act.chord.code()},
                 {"sqinouts", sq},
             });

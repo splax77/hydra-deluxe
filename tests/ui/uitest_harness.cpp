@@ -349,7 +349,7 @@ std::atomic<int> g_gate_allowed{0};
 std::atomic<int> g_gate_started{0};
 }  // namespace
 
-BatchGate::BatchGate() {
+BatchGate::BatchGate(int workers) {
     g_gate_allowed = 0;
     g_gate_started = 0;
     hydra::ui::set_app_batch_analyzer_for_test(
@@ -362,7 +362,7 @@ BatchGate::BatchGate() {
             }
             return hydra::app::analyze_chart_file(path, settings, on_progress);
         },
-        /*workers=*/1);
+        workers);
 }
 
 BatchGate::~BatchGate() {

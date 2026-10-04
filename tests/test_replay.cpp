@@ -33,7 +33,9 @@
 #include "core/timing.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 #include "search/engine.h"
+#include "search/graph.h"
 #include "core/model.h"  // kSqueezeWindowMs, the horizon the warning uses
 #include "search/pather.h"
 
@@ -241,7 +243,9 @@ struct TiedVariantCount {
 
 // Decision D3 for one set of analysis settings, over the whole corpus. Each
 // variant is priced alone with a targeted search, and its stored facts must
-// equal that search's. Only a root of the search is an oracle: a root was
+// equal that search's: score, squeeze kinds and offsets, SP end steps, bank
+// rise ticks, trailing bank, squeezed-out note and every backend row. Only a
+// root of the search is an oracle: a root was
 // never folded. Skips, the early-fill offset and the skipped fills are not
 // compared; they are finding 97. All-zero variants are not visited.
 //
@@ -334,12 +338,19 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
                 if (got[i].sqout_tick != want[i].sqout_tick)
                     diffs.push_back(act + "sqout_tick: stored " + opt_text(want[i].sqout_tick) +
                                     ", alone " + opt_text(got[i].sqout_tick));
-                if (got[i].display_backends() != want[i].display_backends())
+                // Every stored row, not only the shown ones: the shown rows
+                // follow from these and sqout_tick.
+                if (got[i].backends != want[i].backends)
                     diffs.push_back(act + "backend rows: stored " +
-                                    std::to_string(want[i].display_backends().size()) +
-                                    " rows, alone " +
-                                    std::to_string(got[i].display_backends().size()) +
-                                    " rows, not equal");
+                                    std::to_string(want[i].backends.size()) + " rows, alone " +
+                                    std::to_string(got[i].backends.size()) + " rows, not equal");
+                // The kinds already match (same_kinds); the offsets must too.
+                for (size_t k = 0; k < got[i].sqinouts.size(); ++k)
+                    if (got[i].sqinouts[k].offset_ms != want[i].sqinouts[k].offset_ms)
+                        diffs.push_back(act + "squeeze " + std::to_string(k) +
+                                        " offset_ms: stored " +
+                                        std::to_string(want[i].sqinouts[k].offset_ms) +
+                                        ", alone " + std::to_string(got[i].sqinouts[k].offset_ms));
             }
             if (!diffs.empty()) ++n.differing;
             for (const std::string& d : diffs) CHECK_MESSAGE(false, d);
@@ -363,14 +374,20 @@ TEST_CASE("every tied variant stores what a search pricing it alone stores") {
     // `skipped` is pinned exactly: the variants with no lone root to compare
     // against. Each is printed with its reason. If the count moves, read
     // those lines before changing it.
-    struct Setting { int cap; int depth; int skipped; };
-    for (const Setting s : {Setting{4, 4, 0}, Setting{4, 40, 0}, Setting{2, 40, 4}}) {
+    //
+    // `min_variants` is a floor, not a pin: today the three settings list 12,
+    // 295 and 303 variants. A change that stopped listing most ties would
+    // still pass every other check here (fewer variants, none skipped, none
+    // differ), so the floor is what catches it.
+    struct Setting { int cap; int depth; int skipped; int min_variants; };
+    for (const Setting s : {Setting{4, 4, 0, 10}, Setting{4, 40, 0, 200},
+                            Setting{2, 40, 4, 200}}) {
         app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
         cfg.sp_cap = s.cap;
         cfg.depth_value = s.depth;
         INFO("cap " << s.cap << ", score range " << s.depth);
         const TiedVariantCount n = check_tied_variants(cfg);
-        CHECK(n.variants > 0);
+        CHECK(n.variants >= s.min_variants);
         CHECK(n.compared > 0);
         CHECK(n.differing == 0);
         CHECK(n.skipped() == s.skipped);
@@ -657,13 +674,41 @@ TEST_CASE("paths_json writes every field the dump readers use") {
         REQUIRE(!p0["activations"].empty());
         const json& a0 = p0["activations"][0];
         for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
-                              "sp_meter", "skips", "chord_code", "sqinouts"})
+                              "sp_meter", "skips", "skipped_fill_ticks", "chord_code", "sqinouts"})
             CHECK_MESSAGE(a0.contains(k), k);
 
         checked = true;
         break;  // one chart's first path is the whole contract
     }
     CHECK(checked);
+}
+
+// dump prints each activation's passed-over fills as the record stores them.
+// On the 1.0-rule fill song the stored fill (19200) is not the one nearest
+// the activation (24960), so a dump that guessed would print the wrong tick.
+TEST_CASE("paths_json prints the stored passed-over fills, not a guess") {
+    const Song song = test::make_ch10_fill_song();
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
+    EngineOptions opts;
+    opts.target_act_ticks = std::vector<int64_t>{28800};
+    HydraRecord rec;
+    rec.paths = run_search(graph, opts);
+    REQUIRE(!rec.paths.empty());
+    const std::vector<const Path*> all = rec.all_paths();
+    const json dumped = paths_json(all, song.timing());
+    REQUIRE(dumped.size() == all.size());
+    for (size_t k = 0; k < all.size(); ++k) {
+        const ActivationWalk acts = all[k]->walk_activations();
+        REQUIRE(dumped[k]["activations"].size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) {
+            const json& a = dumped[k]["activations"][i];
+            CHECK(a["skipped_fill_ticks"].get<std::vector<int64_t>>() ==
+                  acts[i].skipped_fill_ticks);
+            CHECK(a["skips"].get<int>() == acts[i].skips());
+        }
+    }
+    CHECK((dumped[0]["activations"][0]["skipped_fill_ticks"].get<std::vector<int64_t>>() ==
+           std::vector<int64_t>{19200}));
 }
 
 // A window that ends on the note closing a Star Power phrase is exactly where
