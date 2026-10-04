@@ -72,6 +72,9 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act);
 
 // ---- rating pieces --------------------------------------------------------
 
+// The identity transfer scale, x1.00: frontend timing that stretches nothing.
+constexpr double kIdentityScale = 1.0;
+
 // A backend squeeze's raw ms mapped onto the nominal 2*W scale the ratings
 // assume. With frontend timing scaling by r at the SP end, the real combined
 // squeeze budget is squeeze_budget_ms(r, W) = W*(1+r) rather than 2*W, so a
@@ -79,6 +82,9 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act);
 // W-free quantity).
 double effective_backend_ms(double offset_ms, double transfer_r);
 double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWindowMs);
+// The two-hit budget at the identity scale: squeeze_budget_ms at
+// kIdentityScale. The Insane+ cutoff and the "normal scale" tooltip read it.
+double nominal_budget_ms(double hit_window_ms = kDefaultHitWindowMs);
 
 // A multiplier is x1.00 only when it equals 1 up to the round-off of the
 // measure-length division (two equal measures reached through different
@@ -86,7 +92,7 @@ double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWi
 // 1e-9 (docs/audit/2026-10-03-fix-decisions.md, D14): no test-set multiplier
 // is that close to 1.
 constexpr double kScaleIdentityTolerance = 1e-9;
-inline bool is_scaled(double r) { return std::abs(r - 1.0) > kScaleIdentityTolerance; }
+inline bool is_scaled(double r) { return std::abs(r - kIdentityScale) > kScaleIdentityTolerance; }
 
 // The most decimals the scale line needs so a scaled multiplier never prints
 // as 1: rounding to d decimals moves a value by at most half a unit,
@@ -110,7 +116,7 @@ constexpr int kScaleIdentityDigits = [] {
 // squeeze still to earn), so the squeeze kind never enters.
 struct NoteRating {
     bool early = false;                  // which side of the end's TransferScale governs
-    double scale = 1.0;                  // that side's stored multiplier, full precision
+    double scale = kIdentityScale;       // that side's stored multiplier, full precision
     double budget_ms = 0.0;              // squeeze_budget_ms(scale, W)
     std::optional<double> effective_ms;  // set exactly when is_scaled(scale)
 };
