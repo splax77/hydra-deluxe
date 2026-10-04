@@ -76,7 +76,7 @@ AudioFormat sniff_format(const uint8_t* data, std::size_t size) {
 
     if (has_tag(data, size, 0, "OggS")) {
         // Two codecs share the OggS container; the first page names which.
-        if (contains_tag(data, size, 64, "OpusHead")) return AudioFormat::OggOpus;
+        if (contains_tag(data, size, 64, kOpusHeadTag)) return AudioFormat::OggOpus;
         if (contains_tag(data, size, 64, "vorbis")) return AudioFormat::OggVorbis;
         return AudioFormat::Unknown;
     }

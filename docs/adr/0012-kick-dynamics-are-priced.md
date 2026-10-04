@@ -32,8 +32,10 @@ revisit.
 ## The decision
 
 The kick uses the pads' velocity rule, in both places the MIDI reader spells a
-kick: pitch 96 (the difficulty's own kick) and pitch 95 (the 2x kick). Both now
-read the note's velocity instead of hard-coding Normal.
+kick: the difficulty's own kick pitch and the 2x kick one below it. The kick
+pitch comes from `difficulty_base_pitch` (96 on Expert, 84 on Hard, 72 on
+Medium, 60 on Easy), and `MidiParser::optype` reads the velocity for both
+instead of hard-coding Normal.
 
 `[ENABLE_CHART_DYNAMICS]` still gates the whole thing. A chart without that
 text event has its dynamics dropped for kicks exactly as for pads, so charts
@@ -42,8 +44,9 @@ that carry meaningless velocities are unaffected.
 The `.chart` format has no kick accent/ghost flag, so the `.chart` parser is
 untouched.
 
-`allows_dynamics()` now answers yes for every lane, which is what makes a kick's
-dynamic show up in `ChordNote::str()`. That string used to show either the
+Every lane carries dynamics now, the kick included, so `ChordNote::str()`
+shows a kick's dynamic with no lane check (the old per-lane gate is gone from
+the code). That string used to show either the
 dynamic or the 2x marker; a kick can now be both, so it shows both, in one
 parenthesis: `Kick`, `Kick (Ghost)`, `Kick (2x)`, `Kick (Ghost, 2x)`,
 `Kick (Accent, 2x)`. Pad wording is unchanged.
@@ -78,6 +81,10 @@ chart with no velocity-1 or velocity-127 kicks scores exactly what it did
 before.
 
 The Preview inherits the change for free, because it reads the note's ghost and
-accent flags: a ghost kick now draws as a narrowed bar with the ghost overlay,
-an accent kick with the accent overlay, the same treatment the pads already
-get. That is Clone Hero's own rendering, not a new invention.
+accent flags. A ghost kick keeps its full width and takes only the ghost
+overlay; an accent kick takes the accent overlay. Ghost pads still narrow, as
+in Onyx. Onyx narrows ghost kicks too, but a narrowed kick reads as a bar that
+stops short of the highway edge, so Hydra keeps the kick wide (f3ff7ec).
+`build_highway_draws` owns this. This ADR used to call the treatment Clone
+Hero's own rendering; that claim is unverified, since nobody has checked how
+the game draws a ghost kick.
