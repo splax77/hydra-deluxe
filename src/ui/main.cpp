@@ -10,6 +10,7 @@
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
 #include <d3d11.h>
+#include <shellscalingapi.h>  // MONITOR_DPI_TYPE only; GetDpiForMonitor is loaded at run time
 #include <shobjidl.h>
 #include <tchar.h>
 
@@ -68,6 +69,31 @@ static std::vector<hydra::ui::ScreenRect> monitor_work_areas()
     return areas;
 }
 
+// A monitor's DPI, read the way the ImGui Win32 backend reads it. Windows 8.1
+// and later answer through GetDpiForMonitor in shcore.dll, loaded at run time
+// because Hydra does not link Shcore.lib. Older Windows has no per-monitor
+// DPI, so the screen's LOGPIXELSX answers instead. 0 means no reading, which
+// ui_scale_for_dpi turns into the unscaled 1.0.
+static unsigned monitor_dpi(HMONITOR monitor)
+{
+    using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*);
+    static const GetDpiForMonitorFn get_dpi = [] {
+        const HMODULE shcore = ::LoadLibraryW(L"shcore.dll");
+        return shcore ? reinterpret_cast<GetDpiForMonitorFn>(
+                            ::GetProcAddress(shcore, "GetDpiForMonitor"))
+                      : nullptr;
+    }();
+    if (get_dpi)
+    {
+        UINT x = 0, y = 0;
+        return SUCCEEDED(get_dpi(monitor, MDT_EFFECTIVE_DPI, &x, &y)) ? x : 0;
+    }
+    const HDC dc = ::GetDC(nullptr);
+    const int dpi = dc ? ::GetDeviceCaps(dc, LOGPIXELSX) : 0;
+    if (dc) ::ReleaseDC(nullptr, dc);
+    return dpi > 0 ? static_cast<unsigned>(dpi) : 0;
+}
+
 // Keeps the remembered placement current as the user moves, resizes,
 // maximizes and restores the window. The un-maximized rectangle is read only
 // while the window is neither maximized nor minimized, so a Hydra closed
@@ -103,8 +129,8 @@ int main()
 
     // Make the process DPI aware and read the primary monitor's scale.
     ImGui_ImplWin32_EnableDpiAwareness();
-    float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(
-        ::MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY));
+    const float main_scale = hydra::ui::ui_scale_for_dpi(
+        monitor_dpi(::MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY)));
 
     // An explicit taskbar identity, so pins survive a reinstall to a new path.
     ::SetCurrentProcessExplicitAppUserModelID(hydra::kAppUserModelIDW);
@@ -170,14 +196,16 @@ int main()
 
     // setup_imgui assumed the primary monitor's scale. A window reopened on
     // another monitor may need a different one.
-    const float window_scale = ImGui_ImplWin32_GetDpiScaleForHwnd(hwnd);
-    if (window_scale > 0.0f && window_scale != main_scale)
+    const float window_scale = hydra::ui::ui_scale_for_dpi(
+        monitor_dpi(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)));
+    if (window_scale != main_scale)
         hydra::ui::set_ui_scale(window_scale);
 
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
-    const ImVec4 clear_color = ImVec4(0.10f, 0.11f, 0.13f, 1.00f);
+    const ImVec4 clear_color = ImVec4(hydra::ui::kClearColor[0], hydra::ui::kClearColor[1],
+                                      hydra::ui::kClearColor[2], hydra::ui::kClearColor[3]);
 
     // The app state. Normally built here; under --uitest the harness owns it
     // (each test starts from a fresh scratch library) and the frame loop
