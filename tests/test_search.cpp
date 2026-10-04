@@ -695,6 +695,20 @@ const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t end_tick) {
     return nullptr;
 }
 
+// Where collecting the phrase on `phrase_tick` moves the SP end `from_tick`,
+// as the SP track's advance edge records it, or nullopt.
+std::optional<SpExtension> extension_of(const ScoreGraph& graph, int64_t phrase_tick,
+                                        int64_t from_tick) {
+    const ScoreGraphNode* sp = nullptr;
+    for (const ScoreGraphNode* b = graph.start(); b && !sp;
+         b = b->adv_edge ? b->adv_edge->dest : nullptr)
+        if (b->branch_edge) sp = b->branch_edge->dest;
+    for (; sp && sp->adv_edge; sp = sp->adv_edge->dest)
+        for (const auto& [tc, ext] : sp->adv_edge->sp_times)
+            if (tc.ticks() == phrase_tick && ext.count(from_tick)) return ext.at(from_tick);
+    return std::nullopt;
+}
+
 }  // namespace
 
 // A squeeze choice's facts, pinned on two hand-built songs at 240 BPM (a
@@ -710,10 +724,15 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         const SqueezeChoice& c = e->squeeze_choices[0];
         CHECK(c.chord.ticks() == 12960);
         CHECK(c.sqin_time.ticks() == 17280);
-        CHECK_FALSE(c.clamped);
         CHECK(c.timing == doctest::Approx(-250.0).epsilon(1e-9));
         CHECK_FALSE(c.late);
-        CHECK(c.sqout_time.ticks() == 17280);
+        // The phrase's own step moves 13440 to 17280, and 13440 can give it
+        // back: the step offers the squeeze there (D36).
+        const std::optional<SpExtension> x = extension_of(graph, 12960, 13440);
+        REQUIRE(x.has_value());
+        CHECK(x->to_tick == 17280);
+        CHECK_FALSE(x->clamped);
+        CHECK(x->sqout_node);
     }
     SUBCASE("a phrase 250 ms after the end: a late squeeze-in only") {
         const Song song = test::make_late_sqin_song();
@@ -724,10 +743,8 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         const SqueezeChoice& c = e->squeeze_choices[0];
         CHECK(c.chord.ticks() == 13920);
         CHECK(c.sqin_time.ticks() == 17280);
-        CHECK_FALSE(c.clamped);
         CHECK(c.timing == doctest::Approx(250.0).epsilon(1e-9));
         CHECK(c.late);
-        CHECK(c.sqout_time.ticks() == 13440);
     }
     SUBCASE("no phrase in the window: the path just ends at the SP end") {
         // Two bars from the fill at 5760, and the next phrase is past the
@@ -1889,6 +1906,42 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D
     CHECK(rec.best_path().totalscore() == 2950);
     CHECK(test::path_named(rec.paths, "0++") == nullptr);
     CHECK(test::path_named(rec.paths, "0+-") == nullptr);
+}
+
+// D36 gap c, on the same chart. '0' activates at 19200 and its phrase 30480
+// moves its end from 30720; '1' activates at 21120 and 30480 moves its end
+// from 30721. Both land on 34560, so both SP ends hold a choice of 30480 for
+// a path whose end is 34560. Each window may squeeze 30480 only at the end
+// its own step moved: before D36 the first matching node, 30720, took '1's
+// squeeze too, so its SqIn or SqOut sat 1.04 ms off and a SqOut ended SP at
+// a node its record never names. Each window is checked in a targeted
+// search (search_target) of its own activation, so no fold hides it.
+TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own path (D36)") {
+    const Song song = load_songpath(
+        std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/twin_end_nodes.chart", true, true);
+    const app::AnalysisSettings cfg = test::scores_settings(2);
+    const ScoreGraph graph(song, 2);
+    CHECK(deact_edge_at(graph, 30720) != nullptr);
+    CHECK(deact_edge_at(graph, 30721) != nullptr);
+    for (const auto& [act, own_end] : {std::pair<int64_t, int64_t>{19200, 30720},
+                                       std::pair<int64_t, int64_t>{21120, 30721}}) {
+        CAPTURE(act);
+        const double own_ms = song.timecode(30480).ms() - song.timecode(own_end).ms();
+        int squeezes = 0;
+        const std::vector<Path> kept = search_target(song, cfg, {act});
+        for (const Path* p : flatten_paths(kept)) {
+            CAPTURE(p->pathstring());
+            for (const Activation& a : p->walk_activations()) {
+                REQUIRE(a.timecode.ticks() == act);
+                for (const SPSqueeze& q : a.sqinouts) {
+                    ++squeezes;
+                    CHECK(q.offset_ms == own_ms);
+                }
+                if (a.sqout_tick) CHECK(a.deact_tick() == std::optional<int64_t>(own_end));
+            }
+        }
+        CHECK(squeezes > 0);
+    }
 }
 
 // The corpus-wide lone-pricing check for tied variants (D3) lives in

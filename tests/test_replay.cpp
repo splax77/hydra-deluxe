@@ -788,34 +788,37 @@ TEST_CASE("a typed squeeze-out offset resolves to the phrase chord") {
     CHECK_THROWS(replay_path(song, {unresolved}));
 }
 
-// The engine only ever squeezes out the first phrase chord strictly within
-// 500 ms of the SP end. A typed offset that lands on a later one names a
-// squeeze-out the search can never produce, so it is refused and nothing is
-// priced (plan decision 20 of 2026-09-24).
+// The engine only ever squeezes out a window's newest phrase chord at or
+// before the SP end, or the first one after it (D36): a phrase hit earlier
+// than a later one cannot be hit after SP ran out while the later one is
+// hit before. A typed offset that lands on an older one names a squeeze-out
+// the search can never produce, so it is refused and nothing is priced (plan
+// decision 20 of 2026-09-24). Before D36 the roles were the other way round:
+// the first chord in the window was the engine's.
 TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refused") {
     // Phrase chords 375 ms (tick 2928) and 93.75 ms (tick 3036) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
                                 {3036, true}, {3072, false}});
 
-    ReplayWindow late;
-    late.act_tick = 0;
-    late.deact_tick = 3072;
-    late.sqout_offset_ms = -93.73;
+    ReplayWindow older;
+    older.act_tick = 0;
+    older.deact_tick = 3072;
+    older.sqout_offset_ms = -375.0;
     CHECK_THROWS_WITH_AS(
-        resolve_sqout_note(two, late),
-        "window 0:3072: the SqOut offset -93.73 ms lands on the phrase chord "
-        "at tick 3036 (-93.75 ms from the SP end), which the engine never "
-        "squeezes out. The only chord it can squeeze out here is the first "
-        "phrase chord within 500 ms of the SP end, at tick 2928 (-375.00 ms). "
-        "Not priced.",
+        resolve_sqout_note(two, older),
+        "window 0:3072: the SqOut offset -375.00 ms lands on the phrase chord "
+        "at tick 2928 (-375.00 ms from the SP end), which the engine never "
+        "squeezes out. A window squeezes out only its newest phrase chord at "
+        "or before the SP end or the first one after it: here tick 3036 "
+        "(-93.75 ms). Not priced.",
         std::runtime_error);
 
     // The engine's own chord is accepted.
-    ReplayWindow first = late;
-    first.sqout_offset_ms = -375.0;
-    const SqOutNote n = resolve_sqout_note(two, first);
-    CHECK(n.tick == 2928);
-    CHECK(n.offset_ms == doctest::Approx(-375.0));
+    ReplayWindow newest = older;
+    newest.sqout_offset_ms = -93.73;
+    const SqOutNote n = resolve_sqout_note(two, newest);
+    CHECK(n.tick == 3036);
+    CHECK(n.offset_ms == doctest::Approx(-93.75));
 }
 
 // A phrase chord at or before the activation was banked before Star Power
@@ -877,10 +880,9 @@ TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's 
     CHECK(warned[0].find("tick 3036") != std::string::npos);
 }
 
-// The graph lets a deactivation squeeze out exactly one chord: the first
-// phrase chord strictly within 500 ms of the SP end (core::sqout_chord, which
-// graph.cpp add_deact_edge calls). The warning names that chord, and only
-// when the window actually paid it.
+// A typed window may squeeze out its newest phrase chord at or before the SP
+// end, or the first one after it (core::sqout_chords, D36). The warning names
+// such a chord, and only when the window actually paid it.
 TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     // Phrase chords 375 ms (tick 2928) and 125 ms (tick 3024) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
@@ -891,7 +893,13 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     const ReplayResult r = replay_path(two, {w});
     const std::vector<std::string> warned = ambiguous_window_warnings(two, r, {w});
     REQUIRE(warned.size() == 1);
-    CHECK(warned[0].find("tick 2928") != std::string::npos);
+    CHECK(warned[0].find("tick 3024") != std::string::npos);  // the newest, not 2928
+
+    // The same window off a record that ended plainly at D: its end was D,
+    // so no phrase at or before D can have been squeezed out there.
+    ReplayWindow stored = w;
+    stored.from_record = true;
+    CHECK(ambiguous_window_warnings(two, r, {stored}).empty());
 
     // Exactly 500 ms before D is outside the graph's window: no warning.
     const Song edge = song_with({{0, false}, {768, false}, {2880, true},
@@ -939,19 +947,50 @@ TEST_CASE("squeeze_window_phrases: the phrase chords strictly inside the window,
     CHECK(core::squeeze_window_phrases(bare, bare.timecode(3072)).empty());
 }
 
-// The one rule for which phrase an SP end offers a window (D34): the first
-// in its squeeze window that the window did not bank before its activation
-// and has not squeezed in already.
-TEST_CASE("sqout_chord: the first window phrase not banked and not squeezed in (D34)") {
-    const Song two = song_with({{0, false}, {768, false}, {2928, true},
-                                {3000, false}, {3036, true}, {3072, false}});
-    const Timecode d = two.timecode(3072);
-    auto tick_of = [](const SongTimestamp* c) { return c ? c->timecode.ticks() : -1; };
-    CHECK(tick_of(core::sqout_chord(two, d, 0)) == 2928);           // the first
-    CHECK(tick_of(core::sqout_chord(two, d, 3000)) == 3036);        // 2928 banked
-    CHECK(tick_of(core::sqout_chord(two, d, 0, {2928})) == 3036);   // 2928 squeezed in
-    CHECK(tick_of(core::sqout_chord(two, d, 0, {2928, 3036})) == -1);
-    CHECK(tick_of(core::sqout_chord(two, d, 3036)) == -1);          // both banked
+// The one rule for which phrase an SP end offers a window (D36), on plain
+// ticks: the newest step's phrase when that step moved the end from this SP
+// end; else, when the window's end is this SP end, the first phrase after it
+// not squeezed in (D34); else nothing.
+TEST_CASE("offered_phrase: the newest step's phrase early, the first unsqueezed one late (D36)") {
+    const std::vector<int64_t> window = {2928, 3036, 3100, 3200};  // the end is 3072
+    const auto tick = [](int64_t t) { return t; };
+    const auto none = [](int64_t) { return false; };
+    const auto in_3100 = [](int64_t t) { return t == 3100; };
+    auto at = [&](std::optional<int64_t> path_end, int64_t newest, std::optional<int64_t> from,
+                  auto squeezed_in) {
+        const auto it = core::offered_phrase(window.begin(), window.end(), 3072, path_end,
+                                             newest, from, tick, squeezed_in);
+        return it == window.end() ? int64_t{-1} : *it;
+    };
+    CHECK(at(4000, 3036, 3072, none) == 3036);          // newest moved from here
+    CHECK(at(4000, 2928, 3072, none) == 2928);          // whichever it is
+    CHECK(at(4000, 3036, 3071, none) == -1);            // moved from a twin end
+    CHECK(at(4000, 3036, std::nullopt, none) == -1);    // no squeeze node, or SqIn
+    CHECK(at(3072, 3036, std::nullopt, none) == 3100);  // the end is here: late
+    CHECK(at(3072, 3036, std::nullopt, in_3100) == 3200);
+    CHECK(at(3072, 0, std::nullopt, [](int64_t) { return true; }) == -1);
+}
+
+// The replay's form of the rule (core::sqout_chords): a typed window has no
+// history, so either side; a stored window that ended plainly, only late.
+TEST_CASE("sqout_chords: a window's newest phrase at or before D, or the first after D (D36)") {
+    const Song s = song_with({{0, false}, {768, false}, {2928, true}, {3000, false},
+                              {3036, true}, {3072, false}, {3100, true}, {3200, true}});
+    const Timecode d = s.timecode(3072);
+    auto ticks = [&](int64_t act, const std::vector<int64_t>& in, bool plain) {
+        std::vector<int64_t> out;
+        for (const SongTimestamp* c : core::sqout_chords(s, d, act, in, plain))
+            out.push_back(c->timecode.ticks());
+        return out;
+    };
+    using V = std::vector<int64_t>;
+    CHECK(ticks(0, {}, false) == V{3036, 3100});      // 3036 is newest, never 2928
+    CHECK(ticks(3000, {}, false) == V{3036, 3100});   // 2928 banked, 3036 still newest
+    CHECK(ticks(3036, {}, false) == V{3100});         // both banked: late only
+    CHECK(ticks(0, {3036}, false) == V{3100});        // the newest squeezed in
+    CHECK(ticks(0, {3100}, false) == V{3036, 3200});  // the late one squeezed in
+    CHECK(ticks(0, {}, true) == V{3100});             // ended plainly at D
+    CHECK(ticks(0, {3036, 3100, 3200}, false).empty());
 }
 
 TEST_CASE("category_scores reports the multiplier each note was paid at") {

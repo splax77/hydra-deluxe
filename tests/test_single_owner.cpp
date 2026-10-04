@@ -327,6 +327,25 @@ const std::vector<OwnerRule>& rules() {
          {"mit->second.clamped ? SpEndKind::Clamped"},
          {{"src/core/model.cpp", "if (steps[s].kind == SpEndKind::Clamped) return steps[s].tick;",
            "last_clamp_tick, the owner"}}},
+        // D36: an SP end offers a window its newest phrase only when that
+        // phrase's step moved the end from there. Comparing a step's moved-
+        // from end to an SP end anywhere else restates the early side.
+        {"Does this SP end offer the window its newest phrase?",
+         "core::offered_phrase in src/core/sqout_chord.h",
+         R"(\b(sqout_at|newest_moved_from)\s*[!=]=(?!\s*NO_TIME\b))",
+         "",
+         {},
+         {},
+         "D36 (extreme-tempo gaps, 2026-10-04)",
+         {"if (newest.sqout_at == d)", "if (newest_moved_from == sp_end)",
+          "return s.sqout_at != node_tick;"},
+         {"const int64_t at = ends_[(size_t)p.end_tail].sqout_at;",
+          "newest.sqout_at == NO_TIME ? std::nullopt : std::optional<int64_t>(newest.sqout_at),"},
+         {{"src/core/sqout_chord.h", "if (newest_moved_from == sp_end)",
+           "offered_phrase, the owner"},
+          {"src/search/engine.cpp", "if (newest.sqout_at == d)",
+           "deactivation_type's guard after offered_phrase answered none: the graph listed no "
+           "choice for the phrase the step says it can give back, an impossible state"}}},
         // Was part of a walker in test_squeeze_rating.cpp (review finding 12).
         // An optional namespace prefix (hydra::kSqueezeWindowMs) must not
         // hide a comparison.

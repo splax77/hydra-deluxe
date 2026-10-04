@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -75,23 +76,40 @@ bool analyzes(const Song& song, const app::AnalysisSettings& cfg, HydraRecord& r
 // (tests/bank_check.h).
 using bank_check::check_one_step_per_sqin;
 
-// The corpus test's spent-phrase check (tests/bank_check.h) on every stored
-// path: no bank list holds a phrase a squeeze-in spent. The corpus never
-// reaches the D32 states, so these charts are where it is checked.
-//
-// The corpus test's order checks are not run here yet. They fail on a known
-// D32 gap: when a squeeze-out's 500 ms window holds a second phrase after the
-// squeezed one, the search deactivates one bar later than the stored steps
-// say (the squeeze-out drops the second phrase's step), so the squeezed-out
-// bar lands on the real deact node, not on deact_tick(). On
-// node_before_phrase at cap 3, path "0-" stores deact_tick 13440 and banks
-// the bar at 15648. Whether to fix that is an open question with the user.
-void check_banks(const HydraRecord& rec) {
+// Every closed window ends where its record says (D36 gap a). A squeezed-out
+// row's offset is measured from the node SP really ended on, so the record's
+// end, deact_tick(), must be that node: the chord's ms minus the offset.
+// Before D36 the search could squeeze out a phrase while keeping a later
+// one's step, so the trimmed record named an end one bar early (on
+// node_before_phrase at cap 3, path "0-" stored 13440 and ended at 15648).
+void check_deact_node(const Song& song, const Path& p) {
+    for (const Activation& a : p.walk_activations()) {
+        if (!a.sqout_tick) continue;
+        CAPTURE(a.timecode.ticks());
+        REQUIRE(a.deact_tick().has_value());
+        REQUIRE(a.sqout_row() != nullptr);
+        REQUIRE(a.sqout_row()->offset_ms.has_value());
+        CHECK(*a.sqout_row()->offset_ms ==
+              song.timecode(*a.sqout_tick).ms() - song.timecode(*a.deact_tick()).ms());
+    }
+}
+
+// The corpus test's bank checks (tests/bank_check.h) on every stored path,
+// tied variants included: no bank list holds a phrase a squeeze-in spent,
+// and every list banks in order between its windows. The corpus never
+// reaches the D32 states, so these charts are where they are checked. The
+// order check came back with D36: until then a squeezed-out bar could land
+// on the real deact node past the record's deact_tick() (check_deact_node).
+void check_banks(const Song& song, const HydraRecord& rec) {
     std::vector<const Path*> all = rec.all_paths();
     for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
+    for (const Path* p : all_tied(rec.paths)) all.push_back(p);
+    const std::set<int64_t> phrase_ends = bank_check::phrase_ends(song);
+    const int64_t chart_end = song.sequence.back().timecode.ticks();
     for (const Path* p : all) {
         CAPTURE(p->pathstring());
-        bank_check::check_spent_phrases(*p);
+        bank_check::check_path_banks(*p, phrase_ends, chart_end);
+        check_deact_node(song, *p);
     }
 }
 
@@ -200,17 +218,18 @@ TEST_CASE("fast tempo: graph tracks run forward and every phrase sits on its own
 //                           had no node
 //   late_sqin_twice         the same throw: a late squeeze-in's phrase was
 //                           squeezed in a second time at the next SP end
-// early_sqin_twice is not here: it never threw. A path on it squeezed one
-// early phrase in at two SP ends; D34 ended that (a phrase is squeezed in
-// only once). A variant folded there can still differ from its lone pricing:
-// the search groups running paths without the phrases their window already
-// squeezed in, so a variant can take its leader's squeeze of the next phrase
-// where alone it would squeeze the first. Only at these tempos; open, like
-// the SP-ready gap below. The chart stays for the graph test above.
+// early_sqin_twice never threw. A path on it squeezed one early phrase in at
+// two SP ends; D34 ended that (a phrase is squeezed in only once). A variant
+// folded there could still differ from its lone pricing (D36 gap b): the
+// search grouped running paths without the phrases their window already
+// squeezed in, so a variant took its leader's squeeze of the next phrase
+// where alone it would squeeze the first. D36 offers only the newest phrase,
+// which every path at one node shares, so the chart is back in the list.
 TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
     const std::vector<std::pair<std::string, int>> charts = {
         {"node_before_phrase.chart", 3},     {"end_on_window_node.chart", 2},
-        {"sqin_end_before_phrase.chart", 3}, {"late_sqin_twice.chart", 2}};
+        {"sqin_end_before_phrase.chart", 3}, {"late_sqin_twice.chart", 2},
+        {"early_sqin_twice.chart", 2}};
     for (const auto& [name, cap] : charts) {
         CAPTURE(name);
         const Song song = fixture(name);
@@ -219,7 +238,7 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
         if (!analyzes(song, cfg, rec)) continue;
         REQUIRE_FALSE(rec.paths.empty());
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
-        check_banks(rec);
+        check_banks(song, rec);
         const std::vector<const Path*> all = all_tied(rec.paths);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
@@ -318,12 +337,72 @@ TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent 
         }
         CHECK(next_in);
         CHECK(next_out);
+        check_banks(song, rec);
         const std::vector<const Path*> all = all_tied(rec.paths);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);
         }
     }
+}
+
+// D36 gap a, pinned. On node_before_phrase at cap 3 the window activated on
+// 8832 starts with its end on 13440 and collects 9696, 11040 and 14016; the
+// last moves its end from 15648. All three sit in the squeeze window of the
+// SP end 15648. A squeeze-out there can only be 14016's: 9696 and 11040 were
+// hit before it, so a player who hits either after SP ran out also hits
+// 14016 after SP ran out. Before D36 the search squeezed out 9696 (the first
+// in the window), kept 11040's and 14016's extensions, ended at 15648 and
+// stored the end 13440.
+TEST_CASE("fast tempo: a squeeze-out at an SP end gives back only the newest phrase (D36)") {
+    const Song song = fixture("node_before_phrase.chart");
+    const app::AnalysisSettings cfg = scores_settings(3);
+    HydraRecord rec;
+    REQUIRE(analyzes(song, cfg, rec));
+    int at_15648 = 0;
+    std::vector<const Path*> all = rec.all_paths();
+    for (const Path* p : all_tied(rec.paths)) all.push_back(p);
+    for (const Path* p : all) {
+        CAPTURE(p->pathstring());
+        const Activation* a = window_at(*p, 8832);
+        if (!a || !a->sqout_tick) continue;
+        // Never 9696 or 11040, whatever the node.
+        CHECK(*a->sqout_tick != 9696);
+        CHECK(*a->sqout_tick != 11040);
+        if (a->deact_tick() != std::optional<int64_t>(15648)) continue;
+        ++at_15648;
+        CHECK(*a->sqout_tick == 14016);
+    }
+    CHECK(at_15648 > 0);
+}
+
+// D36 gap b, pinned. On early_sqin_twice at cap 2 the window activated on
+// 10176 collects 11712, 13152 and 13248. The SP end 16224 is the one 13248
+// moved, and it is the only end where this window can squeeze anything:
+// in or out, the phrase is 13248. Before D36 the SP end 14784 offered 11712
+// or 13152 (the first not yet squeezed in), and a folded variant took its
+// leader's choice of the two.
+TEST_CASE("fast tempo: early_sqin_twice offers its window one squeeze, 13248 at 16224 (D36)") {
+    const Song song = fixture("early_sqin_twice.chart");
+    const app::AnalysisSettings cfg = scores_settings(2);
+    HydraRecord rec;
+    REQUIRE(analyzes(song, cfg, rec));
+    bool in = false, out = false;
+    std::vector<const Path*> all = rec.all_paths();
+    for (const Path* p : all_tied(rec.paths)) all.push_back(p);
+    for (const Path* p : all) {
+        CAPTURE(p->pathstring());
+        const Activation* a = window_at(*p, 10176);
+        if (!a) continue;
+        for (const int64_t t : sqin_phrase_ticks(*a)) CHECK(t == 13248);
+        if (has_sqin_step(*a, 13248)) in = true;
+        if (!a->sqout_tick) continue;
+        CHECK(*a->sqout_tick == 13248);
+        CHECK(a->deact_tick() == std::optional<int64_t>(16224));
+        out = true;
+    }
+    CHECK(in);
+    CHECK(out);
 }
 
 // Seeds whose only lone-pricing mismatch is the known SP-ready grouping gap.
@@ -352,7 +431,7 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
         if (!analyzes(song, cfg, rec)) continue;
         ++analyzed;
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
-        check_banks(rec);
+        check_banks(song, rec);
         const bool gap_seed = std::find(kSpReadyGapSeeds.begin(), kSpReadyGapSeeds.end(),
                                         seed) != kSpReadyGapSeeds.end();
         if (gap_seed) continue;
@@ -612,7 +691,7 @@ TEST_CASE("fast tempo: two spent phrases ahead, with or without a banked one, pr
         const app::AnalysisSettings cfg = scores_settings(c.cap);
         HydraRecord rec;
         if (!analyzes(song, cfg, rec)) continue;
-        check_banks(rec);
+        check_banks(song, rec);
         int shown = 0;
         for (const Path* p : rec.all_paths()) {
             const ActivationWalk walk = p->walk_activations();

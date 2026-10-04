@@ -55,11 +55,17 @@ struct ScoreGraphEdge;
 // unless the SP cap's ceiling (2 * cap measures past the collecting note) is
 // earlier. `clamped` says the ceiling won -- the end is now pinned to the
 // collecting note, not to whatever anchored it before. The deactivation edge
-// asks extend_deacts for the same answer when it prices a squeeze, so the two
-// never disagree (finding 37).
+// asks extend_deacts for the same answer when it prices a squeeze-in, so the
+// two never disagree (finding 37).
 struct SpExtension {
     int64_t to_tick = 0;
     bool clamped = false;
+    // The end it moved from holds the collecting phrase in its squeeze
+    // window, so the graph keeps that end as a node (ScoreGraph::build) and
+    // its deactivation edge lists the phrase. Only there can a squeeze-out
+    // give this phrase back (D36): the engine copies the answer into the
+    // step it writes (EndNode::sqout_at) and never re-derives it.
+    bool sqout_node = false;
 };
 
 // One phrase chord an SP end can squeeze in or out, as its deactivation edge
@@ -69,24 +75,15 @@ struct SqueezeChoice {
     // The chord's ms minus the SP end's ms: what the search ranks by and the
     // record shows.
     double timing = 0.0;
-    // The path end this chord is a choice for. A chord at or before the SP
-    // end was collected while SP ran, which moved the end where
-    // extend_deacts says (one bar on, or the cap's ceiling), so it is a
-    // choice for a path whose end is that moved end. A chord after the end
-    // is a choice for a path whose end is the end itself, and only a late
-    // squeeze-in reaches it.
-    Timecode sqout_time;
     // Where a squeeze-in on this chord leaves the SP end: extend_deacts'
     // answer for this end and this chord, the same one the chord's own
-    // advance edge carries (finding 37).
+    // advance edge carries (finding 37). Read for a late chord: an early
+    // one's squeeze-in keeps the end its own step already moved (D36).
     Timecode sqin_time;
-    // The cap's ceiling, not the plain bar, set sqin_time (and sqout_time for
-    // a chord at or before the end): the chord filled the meter. A clamped
-    // end is the same tick whichever end the chord moved, so the engine also
-    // checks where the path's end came from (Engine::deactivation_type,
-    // finding 37). Never
-    // set on a late chord: it sits after the end, so its ceiling is too.
-    bool clamped = false;
+    // After the SP end (core::after_sp_end). Which chord a path is offered,
+    // early or late, is core::offered_phrase's answer (D36): an early chord
+    // only to the path whose newest step moved its end from here, a late one
+    // only to a path whose end is here.
     bool late = false;
 };
 
@@ -130,8 +127,7 @@ struct ScoreGraphEdge {
 
     // Deactivation edges only: every phrase chord in this SP end's squeeze
     // window, in chart order (core::squeeze_window_phrases). The engine
-    // offers a path the first one its running window can still squeeze
-    // (core::offered_phrase); the rest wait behind it.
+    // offers a path at most one of them (core::offered_phrase, D36).
     // Each choice carries where a squeeze-in on it moves this SP end
     // (SqueezeChoice::sqin_time): under a cap it depends on the chord.
     std::vector<SqueezeChoice> squeeze_choices;

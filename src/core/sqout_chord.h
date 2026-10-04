@@ -10,8 +10,10 @@
 #include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <vector>
 
+#include "core/backend_value.h"
 #include "core/model.h"
 #include "parse/song.h"
 
@@ -49,25 +51,38 @@ inline bool activation_can_squeeze(int64_t act_tick, int64_t chord_tick) {
     return chord_tick > act_tick;
 }
 
-// The phrase an SP end offers the running window to squeeze in or out (D34):
-// the first phrase chord in its squeeze window, in chart order, that the
-// window can still squeeze. A phrase banked before the activation is not the
-// window's to squeeze (activation_can_squeeze, D18). A phrase the window
-// already squeezed in is spent: a phrase can be squeezed in only once. Two
-// SP ends one tick apart move one bar on to the same tick, so without this
-// both would offer the same phrase to the same path.
+// The phrase the SP end `sp_end` offers the running window to squeeze in or
+// out (D36). A squeeze-out means Star Power runs out before the phrase's
+// note is hit, and every later phrase is hit after that note. So:
+//  - Early side: the only phrase at or before the end a window can squeeze
+//    is its newest one, and only at the end that phrase's step moved its SP
+//    end from. `newest_tick` is the window's newest SP-end step's phrase;
+//    `newest_moved_from` is the end that step moved, when that end holds
+//    the phrase in its squeeze window (nullopt otherwise, and for an
+//    Activation or SqIn step: a phrase is squeezed in only once, D34).
+//    Banked phrases never have a step, so they are never offered (D18).
+//  - Late side: when the window's end `path_end` is this end, the first
+//    phrase after it that the window has not squeezed in (D34).
+// Two SP ends one tick apart that move one bar on to the same tick each
+// offer the phrase only to the window whose step moved from them.
 //
-// [first, last) is the window's phrase chords in chart order; `tick_of`
+// [first, last) is the end's window phrase chords in chart order; `tick_of`
 // reads a chord's tick, `squeezed_in(tick)` says whether this window
 // already squeezed that chord in. Returns `last` when nothing is offered.
 // The search and the replay both pick through this one function.
 template <class It, class TickOf, class SqueezedIn>
-It offered_phrase(It first, It last, int64_t act_tick, TickOf tick_of, SqueezedIn squeezed_in) {
-    for (; first != last; ++first) {
-        const int64_t tick = tick_of(*first);
-        if (activation_can_squeeze(act_tick, tick) && !squeezed_in(tick)) return first;
-    }
-    return last;
+It offered_phrase(It first, It last, int64_t sp_end, std::optional<int64_t> path_end,
+                  int64_t newest_tick, std::optional<int64_t> newest_moved_from, TickOf tick_of,
+                  SqueezedIn squeezed_in) {
+    using Ref = decltype(*first);
+    if (newest_moved_from == sp_end)
+        return std::find_if(first, last,
+                            [&](Ref c) { return tick_of(c) == newest_tick; });
+    if (path_end != sp_end) return last;
+    return std::find_if(first, last, [&](Ref c) {
+        const int64_t tick = tick_of(c);
+        return after_sp_end(tick, sp_end) && !squeezed_in(tick);
+    });
 }
 
 // The last phrase chord the activation on `act_tick` cannot squeeze (the
@@ -102,21 +117,42 @@ inline const SongTimestamp* banked_phrase_in_reach(const Song& song, int64_t act
                : nullptr;
 }
 
-// The phrase chord the activation on `act_tick` can squeeze out at `sp_end`
-// (offered_phrase over the window's chords), or nullptr. `squeezed_in` lists
-// the phrase chords this window already squeezed in, when the caller knows
-// them (a stored path's SqIn steps); none otherwise.
-inline const SongTimestamp* sqout_chord(const Song& song, const Timecode& sp_end,
-                                        int64_t act_tick,
-                                        const std::vector<int64_t>& squeezed_in = {}) {
+// The phrase chords the activation on `act_tick` could have squeezed out at
+// `sp_end` (offered_phrase over the window's chords), in chart order: zero,
+// one or two. `squeezed_in` lists the phrase chords this window already
+// squeezed in, when the caller knows them (a stored path's SqIn steps).
+// A window known to have ended plainly at `sp_end` (a stored record without
+// a squeeze-out) had its end there, so only the late side applies. A window
+// typed by hand carries no history, so both sides are possible: its newest
+// step may be the last phrase at or before the end that it could collect
+// (after the activation, not squeezed in), moved from this end; or its end
+// may be this end.
+inline std::vector<const SongTimestamp*> sqout_chords(const Song& song, const Timecode& sp_end,
+                                                      int64_t act_tick,
+                                                      const std::vector<int64_t>& squeezed_in,
+                                                      bool ended_plainly) {
     const std::vector<const SongTimestamp*> window = squeeze_window_phrases(song, sp_end);
-    const auto it = offered_phrase(
-        window.begin(), window.end(), act_tick,
-        [](const SongTimestamp* c) { return c->timecode.ticks(); },
-        [&squeezed_in](int64_t tick) {
-            return std::find(squeezed_in.begin(), squeezed_in.end(), tick) != squeezed_in.end();
-        });
-    return it == window.end() ? nullptr : *it;
+    const auto tick_of = [](const SongTimestamp* c) { return c->timecode.ticks(); };
+    const auto is_in = [&squeezed_in](int64_t tick) {
+        return std::find(squeezed_in.begin(), squeezed_in.end(), tick) != squeezed_in.end();
+    };
+    const int64_t d = sp_end.ticks();
+    std::vector<const SongTimestamp*> out;
+    if (!ended_plainly) {
+        const SongTimestamp* newest = nullptr;
+        for (const SongTimestamp* c : window)
+            if (!after_sp_end(tick_of(c), d) && activation_can_squeeze(act_tick, tick_of(c)))
+                newest = c;
+        if (newest && !is_in(tick_of(newest))) {
+            const auto it = offered_phrase(window.begin(), window.end(), d, std::nullopt,
+                                           tick_of(newest), d, tick_of, is_in);
+            if (it != window.end()) out.push_back(*it);
+        }
+    }
+    const auto late = offered_phrase(window.begin(), window.end(), d, d, 0, std::nullopt,
+                                     tick_of, is_in);
+    if (late != window.end()) out.push_back(*late);
+    return out;
 }
 
 }  // namespace hydra::core
