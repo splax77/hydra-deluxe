@@ -182,14 +182,22 @@ void apply_fill_end(Song& song, int64_t starttick) {
         last.activation_length = last.timecode.ticks() - starttick;
 }
 
-// An SP phrase ending: the last chord closes the phrase that began at
-// `starttick`, if it lies inside it.
-void mark_sp_phrase_end(Song& song, int64_t starttick) {
+// The one owner of "which chord awards this SP phrase", for both formats. A
+// phrase covers the ticks start <= t < end, as Clone Hero 1.1 assigns notes
+// to phrases (0x20D2440), and the last chord inside it gets the phrase. So a
+// zero-length phrase, or one with no chord inside, awards nothing, and a
+// phrase running past the last note is awarded on that note (finding 21,
+// D21). Each parser calls this once no later chord can fall inside the
+// phrase, always before that tick's own chord is emitted: .mid at the 116
+// note-off; .chart at the first tick at or past the end, and once more after
+// the last tick for a phrase still open.
+void close_sp_phrase(Song& song, int64_t start_tick, int64_t end_tick) {
     if (song.sequence.empty()) return;
     SongTimestamp& last = song.sequence.back();
-    if (last.timecode.ticks() >= starttick) {
+    const int64_t t = last.timecode.ticks();
+    if (t >= start_tick && t < end_tick) {
         last.flag_sp = true;
-        last.sp_phrase_start = starttick;
+        last.sp_phrase_start = start_tick;
     }
 }
 
@@ -362,7 +370,7 @@ struct MOp {
     NoteDynamicType dyn = NoteDynamicType::Normal;      // Note
     NoteCymbalType cymbal = NoteCymbalType::Normal;     // Tom
     bool flag = false;     // Note: is2x; Flam/Solo/Disco: on
-    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/Tempo/TimeSig;
+    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/SpEnd/Tempo/TimeSig;
                            // ApplyFill: the fill's start tick
     uint32_t tempo = 0;    // Tempo
     int num = 0, den = 0;  // TimeSig
@@ -481,9 +489,9 @@ private:
     void op_store_fillend(int64_t tick) { fill_end_tick_ = tick; }
     void op_apply_fill(int64_t starttick) { apply_fill_end(*song_, starttick); }
     void op_sp_start(int64_t tick) { sp_start_tick_ = tick; }
-    void op_sp_end() {
+    void op_sp_end(int64_t end_tick) {
         // A note-off with no phrase open (a stray 116 off) closes nothing.
-        if (sp_start_tick_) mark_sp_phrase_end(*song_, *sp_start_tick_);
+        if (sp_start_tick_) close_sp_phrase(*song_, *sp_start_tick_, end_tick);
         sp_start_tick_.reset();
     }
     void op_tom(NoteColor color, NoteCymbalType cymbal) {
@@ -582,9 +590,9 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 case 120:
                     return mop_tick(MPhase::Pre, MAct::StoreFillEnd, tick);
                 case 116:
-                    return mop(sp_start_tick_.has_value() ? MPhase::Pre
-                                                          : MPhase::PreDelayed,
-                               MAct::SpEnd);
+                    return mop_tick(sp_start_tick_.has_value() ? MPhase::Pre
+                                                               : MPhase::PreDelayed,
+                                    MAct::SpEnd, tick);
                 case 112: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
                 case 111: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
                 case 110: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
@@ -632,7 +640,7 @@ void MidiParser::run(const MOp& op) {
         case MAct::StoreFillEnd: op_store_fillend(op.tick); break;
         case MAct::ApplyFill: op_apply_fill(op.tick); break;
         case MAct::SpStart: op_sp_start(op.tick); break;
-        case MAct::SpEnd: op_sp_end(); break;
+        case MAct::SpEnd: op_sp_end(op.tick); break;
         case MAct::Tom: op_tom(op.color, op.cymbal); break;
         case MAct::Flam: op_flam(op.flag); break;
         case MAct::Solo: op_solo(op.flag); break;
@@ -926,7 +934,7 @@ struct COp {
     NoteColor color = NoteColor::Kick;  // Note, Accent, Ghost, Cymbal
     bool flag = false;                  // Disco, Solo: on
     int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart: tick; SpEnd/FillEnd: start
-    int64_t b = 0;   // SpStart/FillStart: end tick
+    int64_t b = 0;   // SpStart/FillStart/SpEnd: end tick
     double bpm = 0;  // Tempo
     int num = 0, den = 0;  // TimeSig
 
@@ -987,8 +995,8 @@ private:
         sp_start_tick_ = start;
         sp_end_tick_ = end;
     }
-    void op_sp_end(int64_t starttick) {
-        mark_sp_phrase_end(*song_, starttick);
+    void op_sp_end(int64_t start, int64_t end) {
+        close_sp_phrase(*song_, start, end);
         sp_end_tick_.reset();
     }
     void op_solo(bool on) { flag_solo_ = on; }
@@ -1154,7 +1162,7 @@ void ChartParser::run(const COp& op) {
         case CAct::Ghost: op_ghost(op.color); break;
         case CAct::Cymbal: op_cymbal(op.color); break;
         case CAct::SpStart: op_sp_start(op.a, op.b); break;
-        case CAct::SpEnd: op_sp_end(op.a); break;
+        case CAct::SpEnd: op_sp_end(op.a, op.b); break;
         case CAct::FillStart: op_fillstart(op.a, op.b); break;
         case CAct::FillEnd: op_fillend(op.a); break;
     }
@@ -1187,7 +1195,7 @@ void ChartParser::push_timestamp(int64_t tick,
     // Phrase end: SP.
     if (sp_end_tick_.has_value() && tick >= *sp_end_tick_) {
         const int64_t start = sp_start_tick_.value_or(0);
-        ops.insert(ops.begin(), cop_span(CPhase::Pre, CAct::SpEnd, start, 0));
+        ops.insert(ops.begin(), cop_span(CPhase::Pre, CAct::SpEnd, start, *sp_end_tick_));
     }
 
     // Phrase end: activation fill.
@@ -1270,6 +1278,11 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         const ChartSection& ed = ed_it->second;
         for (int64_t tk : ed.tick_order)
             push_timestamp(tk, ed.tick_data.at(tk));
+        // A phrase still open after the last tick runs past the last note.
+        // Close it now, so that note awards it, as the 116 note-off does in
+        // a .mid.
+        if (sp_end_tick_.has_value())
+            op_sp_end(sp_start_tick_.value_or(0), *sp_end_tick_);
     }
 
     // Practice sections. tick_order follows the file, which is not required to
