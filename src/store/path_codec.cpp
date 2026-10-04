@@ -140,6 +140,9 @@ void write_activation(BinaryWriter& w, const Activation& act) {
         w.i64(s.end_tick);
         w.u8(static_cast<uint8_t>(s.kind));
     }
+    // Where each bar the activation spends arrived (sp_meter() is the count).
+    w.u32(static_cast<uint32_t>(act.bank_rise_ticks.size()));
+    for (int64_t t : act.bank_rise_ticks) w.i64(t);
 }
 
 Activation read_activation(BinaryReader& r) {
@@ -189,6 +192,10 @@ Activation read_activation(BinaryReader& r) {
         s.kind = static_cast<SpEndKind>(kind);
         act.sp_end_steps.push_back(s);
     }
+    // The bank arrivals (see write_activation).
+    const uint32_t nbank = r.u32();
+    act.bank_rise_ticks.reserve(nbank);
+    for (uint32_t i = 0; i < nbank; ++i) act.bank_rise_ticks.push_back(r.i64());
     return act;
 }
 
@@ -204,6 +211,9 @@ void write_root_totals(BinaryWriter& w, const Path& p) {
     w.i64(p.score_ghosts);
     w.i32(p.notecount);
     w.i32(p.leftover_sp);
+    // Where each bar left after the last window arrived.
+    w.u32(static_cast<uint32_t>(p.trailing_bank_ticks.size()));
+    for (int64_t t : p.trailing_bank_ticks) w.i64(t);
 }
 
 void read_root_totals(BinaryReader& r, Path& p) {
@@ -215,6 +225,10 @@ void read_root_totals(BinaryReader& r, Path& p) {
     p.score_ghosts = r.i64();
     p.notecount = r.i32();
     p.leftover_sp = r.i32();
+    const uint32_t ntrail = r.u32();
+    p.trailing_bank_ticks.clear();
+    p.trailing_bank_ticks.reserve(ntrail);
+    for (uint32_t i = 0; i < ntrail; ++i) p.trailing_bank_ticks.push_back(r.i64());
 }
 
 // ---- structure blob -------------------------------------------------------

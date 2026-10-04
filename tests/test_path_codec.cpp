@@ -459,3 +459,21 @@ TEST_CASE("path codec: an unknown SP-end step kind is refused") {
     CHECK_THROWS_AS(store::decode_path_node(bytes), SerializeError);
     CHECK_NOTHROW(store::decode_path_node(good));
 }
+
+TEST_CASE("path codec: a node keeps bank_rise_ticks") {
+    Activation act;
+    act.timecode = Timecode::raw(17280);
+    act.bank_rise_ticks = {13440, 14400};
+    Path path;
+    path.activations.push_back(act);
+    const Path back = decode_path_node(encode_path_node(path));
+    REQUIRE(back.activations.size() == 1);
+    CHECK((back.activations.front().bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
+}
+
+TEST_CASE("path codec: a root keeps trailing_bank_ticks") {
+    HydraRecord rec = fixture().record;
+    rec.paths.front().trailing_bank_ticks = {111, 222};
+    const HydraRecord back = rebuild_record(flatten_record(rec));
+    CHECK((back.paths.front().trailing_bank_ticks == std::vector<int64_t>{111, 222}));
+}

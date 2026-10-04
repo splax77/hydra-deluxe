@@ -6,8 +6,10 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <set>
 #include <string>
@@ -1144,4 +1146,79 @@ TEST_CASE("graph_build_cap: never taller than the song's phrases, never below on
     CHECK(graph_build_cap(4, 10) == 4);   // the cap binds
     CHECK(graph_build_cap(32, 3) == 3);   // the song's phrases bind
     CHECK(graph_build_cap(8, 0) == 1);    // a phraseless song still builds one level
+}
+
+TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
+    Song song = test::make_early_sqout_song();
+    ScoreGraph graph(song, 4);
+    // The best path collects 12960 instead and keeps SP running over the
+    // second fill, so search wide and pick the path that squeezed out.
+    EngineOptions opts = test::wide_search();
+    opts.target_act_ticks = std::vector<int64_t>{5760, 17280};
+    const std::vector<Path> paths = run_search(graph, opts);
+    const Path* found = nullptr;
+    for (const Path& p : paths)
+        if (!p.activations.empty() && p.activations.front().sqout_tick) found = &p;
+    REQUIRE(found != nullptr);
+    const Path& path = *found;
+    REQUIRE(path.activations.size() == 2);
+    CHECK((path.activations[0].bank_rise_ticks == std::vector<int64_t>{480, 1920}));
+    // The phrase at 12960 was hit late, just after SP ended at 13440: its bar
+    // arrives there. Then the phrase at 14400.
+    CHECK((path.activations[1].bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
+    CHECK(path.trailing_bank_ticks.empty());
+}
+
+// R2's check, stage one: the lists hold exactly what the counts count.
+TEST_CASE("Bank: the lists match the stored counts on every corpus record") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song =
+            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        std::vector<const Path*> all = rec.all_paths();
+        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
+        for (const Path* p : all) {
+            CAPTURE(chart);
+            CHECK(p->trailing_bank_ticks.size() == static_cast<size_t>(p->leftover_sp));
+            for (const Activation& act : p->walk_activations())
+                CHECK(act.bank_rise_ticks.size() == static_cast<size_t>(act.sp_meter));
+        }
+    }
+}
+
+// The lasting order checks, on root paths. A variant's tail activations are
+// its leader's; their order against the variant's own windows is Part B's
+// job, and Part B extends this case to variants.
+TEST_CASE("Bank: every corpus root banks in order") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int acts = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song =
+            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        for (const Path& root : corpus::analyzed(chart, cfg).paths) {
+            const Activation* prev = nullptr;
+            for (const Activation& act : root.walk_activations()) {
+                CAPTURE(chart);
+                CAPTURE(act.timecode.ticks());
+                ++acts;
+                const int64_t floor =
+                    prev ? *prev->deact_tick() : std::numeric_limits<int64_t>::min();
+                for (size_t k = 0; k < act.bank_rise_ticks.size(); ++k) {
+                    CHECK(act.bank_rise_ticks[k] >= floor);
+                    CHECK(act.bank_rise_ticks[k] <= act.timecode.ticks());
+                    if (k > 0) CHECK(act.bank_rise_ticks[k] >= act.bank_rise_ticks[k - 1]);
+                }
+                if (prev && prev->sqout_tick) {
+                    REQUIRE_FALSE(act.bank_rise_ticks.empty());
+                    CHECK(act.bank_rise_ticks.front() ==
+                          std::max(*prev->deact_tick(), *prev->sqout_tick));
+                }
+                prev = &act;
+            }
+        }
+    }
+    CHECK(acts > 1000);
 }
