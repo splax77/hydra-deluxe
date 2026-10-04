@@ -18,6 +18,8 @@ The workflow is wf_9effe137-183. Each task gets an Opus implementer, then a Sonn
 - **J3-4:** four `flag_sp` assignments in `tests/test_preview_view.cpp` are known copies of the SP-edge rule. No task names them yet; J3-4 owns that file in J3 and should fold them.
 - **J2-1:** once J1-5 lands, the "cannot open MIDI file: " prefix in `user_messages.cpp` is dead, and so is its hand-built test. J2-1 owns that file.
 - **J2-4:** `set_analyzer_for_test` lives in `src/ui/library_jobs.cpp`, so its `std::max(1, ...)` floor goes in J2-4, not J1-6.
+- **J2-6** (from M7-1's review, handed over by phase 7): `tests/test_stem_reader.cpp` has eight inline max-abs-difference loops, including the one AU1 added. Fold every one onto `max_diff` in `tests/audio_util.h`, which J1-4 created. J2-6 owns that test file in J2.
+- **M6-J1 merge:** phase 7's round 2 fix on `claude/p7-w1` edits one test and adds one case in `tests/test_replay.cpp`. It also adds a count-and-seek helper beside `stem_reader.h`. J1-1 rebuilds its scan rows and fixture edits on top of that when main is merged into the J1 branch.
 - **J1-6 deletes** the `analysis.cpp` known-copy rows J1-5 adds to `test_single_owner.cpp`.
 - **J1-2:** there is no `hydra_uitest library` script; the GUI check is `hydra_uitest --test scan`.
 - **J1-1:** the plan's `-tc="fixtures:*"` filter matched no case on main. J1-1's new case is named so that it matches.
