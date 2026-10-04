@@ -429,18 +429,14 @@ PathListView build_path_list(const HydraRecord& record) {
     }
 
     // The all-0 section is only worth showing when the generated list does
-    // not already contain that path: same score and same notation is the same
-    // path. Score alone would hide a genuinely different all-0 path that ties
-    // some listed path, and notation alone would hide one that reads the same
-    // but banks differently.
+    // not already contain that path. "The same path" is path_identity, the
+    // one rule the Preview's overlay key reads too.
     view.allzero = record.all_allzero_paths();
     if (view.allzero.empty()) return view;
     for (const Path* z : view.allzero) {
-        const int64_t score = z->totalscore();
-        const std::string notation = z->pathstring();
+        const std::string identity = path_identity(*z);
         for (const Path* p : flat)
-            if (p->totalscore() == score && p->pathstring() == notation)
-                return view;
+            if (path_identity(*p) == identity) return view;
     }
     view.show_allzero = true;
 

@@ -384,9 +384,9 @@ PreviewScene apply_preview_overlay(PreviewScene base, const Song& song, const Pa
                                    int sp_cap = kCloneHeroSpCap,
                                    const core::Rules& rules = core::default_rules());
 
-// Identity of the path an overlay was built from. Path has no operator==, so
-// callers that must notice a changed selection compare these keys instead. A
-// null path (no overlay) gives an empty key.
+// Identity of the path an overlay was built from: path_identity, the same
+// rule the Paths tab's all-0 dedupe reads. Callers that must notice a changed
+// selection compare these keys. A null path (no overlay) gives an empty key.
 std::string path_overlay_key(const Path* path);
 
 }  // namespace hydra::app

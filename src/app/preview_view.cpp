@@ -657,10 +657,7 @@ std::string preview_path_label(const PathButtonView& button) {
 
 std::string path_overlay_key(const Path* path) {
     if (path == nullptr) return {};
-    // The key only has to tell paths of one chart apart (the controller
-    // compares it after matching the chart), and a chart's multiplier
-    // squeezes are the same for every path, so they are left out.
-    return path->pathstring_verbose({}) + "|" + std::to_string(path->totalscore());
+    return path_identity(*path);
 }
 
 }  // namespace hydra::app
