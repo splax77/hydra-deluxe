@@ -290,6 +290,11 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
         // Two steps of room, because a report lands on the first Ogg page
         // past each 4 MB mark.
         CHECK(at_stop - at_cancel <= 8ull << 20);
+        // The bytes say where the job noticed the cancel, not how long it then
+        // took to stop. A stall after that (a teardown waiting on a read) would
+        // freeze the UI thread, so a loose ceiling stays: ten times the old
+        // 200 ms limit, far above load noise.
+        CHECK(ms <= 2000.0);
         CHECK(job.error() == "cancelled");
     }
     remove_file(song);
