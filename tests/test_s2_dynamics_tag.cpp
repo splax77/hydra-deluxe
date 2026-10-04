@@ -23,13 +23,6 @@ using namespace testmidi;
 
 namespace {
 
-// `ev` (a delta-0 event from midi_util.h) moved later by `delta`.
-std::vector<uint8_t> after(std::vector<uint8_t> delta, std::vector<uint8_t> ev) {
-    ev.erase(ev.begin());
-    delta.insert(delta.end(), ev.begin(), ev.end());
-    return delta;
-}
-
 Song drums(std::vector<std::vector<uint8_t>> events) {
     events.insert(events.begin(), {track_name("PART DRUMS"), set_tempo()});
     events.push_back(end_of_track());
@@ -70,7 +63,7 @@ TEST_CASE("dynamics tag: at a shared tick, file order decides") {
     }
     SUBCASE("note first: the note stays plain, and counts as an earlier marking") {
         const Song song = drums({note_on(97, 127), text_event(kTag),
-                                 after({0x83, 0x60}, note_on(97, 127))});  // tick 480
+                                 after(480,note_on(97, 127))});  // tick 480
         CHECK(red(song, 0) == NoteDynamicType::Normal);
         CHECK(red(song, 1) == NoteDynamicType::Accent);
         REQUIRE(song.dynamics_late_tag_tick.has_value());
@@ -82,9 +75,9 @@ TEST_CASE("dynamics tag: at a shared tick, file order decides") {
 TEST_CASE("dynamics tag: a late tag keeps its tick and the earlier markings") {
     const Song song = drums({
         note_on(97, 127),                         // tick 0: red, accent velocity
-        after({0x81, 0x70}, note_on(98, 1)),      // tick 240: yellow, ghost velocity
-        after({0x81, 0x70}, text_event(kTag)),    // tick 480: the tag
-        after({0x83, 0x60}, note_on(97, 127)),    // tick 960: red, accent velocity
+        after(240,note_on(98, 1)),      // tick 240: yellow, ghost velocity
+        after(240,text_event(kTag)),    // tick 480: the tag
+        after(480,note_on(97, 127)),    // tick 960: red, accent velocity
     });
     CHECK(song.dynamics_enabled);
     CHECK(red(song, 0) == NoteDynamicType::Normal);
@@ -97,8 +90,8 @@ TEST_CASE("dynamics tag: a late tag keeps its tick and the earlier markings") {
 }
 
 TEST_CASE("dynamics tag: a late tag after only plain notes is not stored") {
-    const Song song = drums({note_on(97, 100), after({0x83, 0x60}, text_event(kTag)),
-                             after({0x83, 0x60}, note_on(97, 127))});
+    const Song song = drums({note_on(97, 100), after(480,text_event(kTag)),
+                             after(480,note_on(97, 127))});
     CHECK(song.dynamics_enabled);
     CHECK(red(song, 1) == NoteDynamicType::Accent);
     CHECK_FALSE(song.dynamics_late_tag_tick.has_value());
@@ -107,8 +100,8 @@ TEST_CASE("dynamics tag: a late tag after only plain notes is not stored") {
 
 TEST_CASE("dynamics tag: a second tag changes nothing") {
     const Song song = drums({text_event(kTag), note_on(97, 127),
-                             after({0x83, 0x60}, text_event(kTag)),
-                             after({0x83, 0x60}, note_on(97, 127))});
+                             after(480,text_event(kTag)),
+                             after(480,note_on(97, 127))});
     CHECK_FALSE(song.dynamics_late_tag_tick.has_value());
     CHECK(song.dynamics_marks_before_tag == 0);
 }
@@ -119,21 +112,13 @@ TEST_CASE("dynamics tag: a tag in the EVENTS track does nothing") {
         concat({track_name("EVENTS"), set_tempo(), text_event(kTag), end_of_track()});
     const std::vector<uint8_t> part =
         concat({track_name("PART DRUMS"), note_on(97, 127), end_of_track()});
-    std::vector<uint8_t> file = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 2, 0x01, 0xE0};
-    for (const std::vector<uint8_t>* t : {&events, &part}) {
-        file.insert(file.end(), {'M', 'T', 'r', 'k'});
-        const uint32_t n = static_cast<uint32_t>(t->size());
-        for (int shift = 24; shift >= 0; shift -= 8)
-            file.push_back(static_cast<uint8_t>(n >> shift));
-        file.insert(file.end(), t->begin(), t->end());
-    }
-    const Song song = load_songbytes_mid(file, true, true);
+    const Song song = load_songbytes_mid(smf_tracks({events, part}), true, true);
     CHECK_FALSE(song.dynamics_enabled);
     CHECK(red(song, 0) == NoteDynamicType::Normal);
 }
 
 TEST_CASE("dynamics tag: the breakdown stores the tag's time and the count") {
-    const Song song = drums({note_on(97, 127), after({0x83, 0x60}, text_event(kTag)),
+    const Song song = drums({note_on(97, 127), after(480,text_event(kTag)),
                              note_on(97, 127)});  // tag and a priced note at tick 480
     const app::DynamicsBreakdown bd = app::count_dynamics(song);
     REQUIRE(bd.late_tag_ms.has_value());

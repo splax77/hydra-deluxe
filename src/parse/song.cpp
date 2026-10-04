@@ -99,8 +99,8 @@ bool try_parse_int(const std::string& s, int64_t& out) {
 // whole-string regex it replaced (named beside it). The dynamics marker is not
 // a regex any more: it is Clone Hero's two exact strings (finding 64). The tests
 // "... disco markers match the regexes they replaced" in test_song.cpp check
-// the disco half through both parsers, and the .mid one also checks the
-// dynamics strings, with every byte value in every position that matters.
+// the disco markers through both parsers, with every byte value in every
+// position that matters; test_s2_dynamics_tag.cpp pins the dynamics strings.
 //
 // What the regex pieces meant, as std::regex (ECMAScript, char) reads them:
 // `.` is any byte except '\n' and '\r'; `\d` is an ASCII digit; `\[?` and
@@ -209,13 +209,13 @@ void apply_fill_end(Song& song, size_t index, int64_t starttick) {
 void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
                           double slop_beats) {
     if (fills.empty() || song.sequence.empty()) return;
-    // The chord list in tick order (a .chart need not be sorted).
+    // The chord list with its ticks. Both parsers emit chords in tick order
+    // (.mid by its event times, .chart by D47's one sort in ChartParser), so
+    // no sort here.
     std::vector<std::pair<int64_t, size_t>> order;
     order.reserve(song.sequence.size());
     for (size_t i = 0; i < song.sequence.size(); ++i)
         order.emplace_back(song.sequence[i].timecode.ticks(), i);
-    std::stable_sort(order.begin(), order.end(),
-                     [](const auto& a, const auto& b) { return a.first < b.first; });
     const int64_t window_ticks =
         static_cast<int64_t>(song.tick_resolution() * slop_beats) + 1;
 
@@ -275,12 +275,7 @@ void emit_chord_timestamp(Song& song, Chord& chord, int64_t tick, bool apply_fla
 }  // namespace
 
 const char* difficulty_name(Difficulty difficulty) {
-    switch (difficulty) {
-        case Difficulty::Hard: return "Hard";
-        case Difficulty::Medium: return "Medium";
-        case Difficulty::Easy: return "Easy";
-        default: return "Expert";
-    }
+    return difficulty_chart_codes(difficulty).name;
 }
 
 std::optional<Difficulty> difficulty_from_name(std::string_view name) {
@@ -484,10 +479,10 @@ MOp mop_tom(NoteColor color, NoteCymbalType cymbal) {
 // (DifficultyChartCodes::kick2x_pitch).
 namespace {
 constexpr DifficultyChartCodes kDifficultyChartCodes[] = {
-    {96, '3'},  // Expert
-    {84, '2'},  // Hard
-    {72, '1'},  // Medium
-    {60, '0'},  // Easy
+    {"Expert", 96, '3'},
+    {"Hard", 84, '2'},
+    {"Medium", 72, '1'},
+    {"Easy", 60, '0'},
 };
 static_assert(std::size(kDifficultyChartCodes) == std::size(kAllDifficulties));
 }  // namespace
@@ -851,7 +846,8 @@ struct ChartDataEntry {
     std::optional<int64_t> key_tick;
     std::optional<std::string> key_name;
 
-    std::optional<int64_t> property_int;
+    // A named property's value: the raw (trimmed) text. Each reader applies
+    // its own one number rule (Resolution, Offset).
     std::optional<std::string> property_str;
 
     std::optional<int> ts_numerator;
@@ -903,6 +899,14 @@ ChartWords split_ws_view(std::string_view s) {
     return out;
 }
 
+// A .chart `TS n` line with no second number: a missing exponent is 2 (a
+// quarter note), per the .chart format, so `TS 3` is 3/4. This is a rule about
+// how the file spells a written line, not Song's default meter
+// (kDefaultTimeSig*), which is the meter before any line is written. The two
+// are kept apart on purpose: if Song's default ever changed, `TS 3` in a file
+// would still mean 3/4. The exponent still goes through timesig_denominator.
+constexpr int kChartTsMissingExponent = 2;
+
 // std::stoi / std::stoll on one word, with their exact acceptance rules
 // (leading digits read, trailing junk ignored, throws on no digits).
 int word_stoi(std::string_view w) { return std::stoi(std::string(w)); }
@@ -917,12 +921,7 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
         key_name = std::string(keystr);
 
     if (!key_tick.has_value()) {
-        int64_t iv;
-        std::string value(valuestr);
-        if (try_parse_int(value, iv))
-            property_int = iv;
-        else
-            property_str = std::move(value);
+        property_str = std::string(valuestr);
         return;
     }
 
@@ -932,7 +931,7 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
 
     if (t0 == "TS" && t.count == 2) {
         ts_numerator = word_stoi(t.w[1]);
-        ts_denominator = 4;
+        ts_denominator = timesig_denominator(kChartTsMissingExponent);
     } else if (t0 == "TS" && t.count == 3) {
         ts_numerator = word_stoi(t.w[1]);
         ts_denominator = timesig_denominator(word_stoi(t.w[2]));
@@ -1277,26 +1276,20 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
 
     const ChartSection& song_sec = sections_.at("Song");
     const ChartDataEntry& res_entry = song_sec.prop_data.at("Resolution").at(0);
-    int64_t tick_resolution;
-    if (res_entry.property_int.has_value())
-        tick_resolution = *res_entry.property_int;
-    else
-        tick_resolution = std::stoll(*res_entry.property_str);
+    // One number rule for Resolution: std::stoll on the raw text (leading
+    // digits read, trailing junk ignored, no digits refuses the chart).
+    const int64_t tick_resolution = std::stoll(*res_entry.property_str);
 
     Song song(tick_resolution);
     song_ = &song;
 
-    // Offset is a decimal number of seconds. ChartDataEntry keeps an integer
-    // in property_int and anything else in property_str; the rest is read by
-    // the one chart-number rule, so "500ms" or "nan" counts as absent, like
-    // Clone Hero's default 0.
+    // Offset is a decimal number of seconds, read from its raw text by the one
+    // chart-number rule (parse_finite_number), integer or not, so "500ms" or
+    // "nan" counts as absent, like Clone Hero's default 0.
     if (auto it = song_sec.prop_data.find("Offset");
         it != song_sec.prop_data.end() && !it->second.empty()) {
         const ChartDataEntry& e = it->second.at(0);
-        if (e.property_int)
-            song.chart_offset_s = static_cast<double>(*e.property_int);
-        else if (e.property_str)
-            song.chart_offset_s = parse_finite_number(*e.property_str);
+        if (e.property_str) song.chart_offset_s = parse_finite_number(*e.property_str);
     }
 
     // Map tempo and time signatures from the sync track.
@@ -1318,10 +1311,18 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     // Each difficulty is its own section ("ExpertDrums", "HardDrums", ...);
     // everything inside one — notes, dynamics, cymbals, SP, fills, solos —
     // follows for free. A chart missing the section parses as an empty song.
-    auto ed_it = sections_.find(std::string(difficulty_name(difficulty)) + "Drums");
+    auto ed_it = sections_.find(difficulty_chart_codes(difficulty).chart_section());
     if (ed_it != sections_.end()) {
         const ChartSection& ed = ed_it->second;
-        for (int64_t tk : ed.tick_order)
+        // The one place chord order is settled for a .chart (D47): the drum
+        // section is read in tick order, whatever order the file wrote its
+        // ticks in, so the phrase rule (close_sp_phrase, D21) and the fill
+        // rule (place_authored_fills, D30) see the same chords in the same
+        // order. tick_order holds each tick once; the lines at one tick keep
+        // the file's order.
+        std::vector<int64_t> ticks = ed.tick_order;
+        std::sort(ticks.begin(), ticks.end());
+        for (int64_t tk : ticks)
             push_timestamp(tk, ed.tick_data.at(tk));
         // A phrase still open after the last tick runs past the last note.
         // Close it now, so that note awards it, as the 116 note-off does in

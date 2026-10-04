@@ -19,12 +19,13 @@
 #include "app/analysis.h"
 #include "app/preview_source.h"
 #include "app/preview_view.h"
+#include "chart_text.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "corpus_util.h"
 #include "midi_util.h"
-#include "miniz.h"
 #include "parse/song.h"
+#include "srb_util.h"
 #include "store/record_store.h"
 
 using namespace hydra;
@@ -34,66 +35,12 @@ namespace {
 // A .chart at 192 ticks a beat, 4/4 and 120 BPM, with `song_extra` lines in
 // [Song] and `drums` lines in [ExpertDrums].
 std::vector<uint8_t> chart_bytes(const std::string& song_extra, const std::string& drums) {
-    const std::string s = "[Song]\n{\n  Resolution = 192\n" + song_extra + "}\n" +
-                          "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n" +
-                          "[ExpertDrums]\n{\n" + drums + "}\n";
-    return std::vector<uint8_t>(s.begin(), s.end());
+    return testchart::chart_bytes(testchart::section("ExpertDrums", drums), 192, song_extra);
 }
 
-// A format-1 MIDI file, one MTrk chunk per track, 480 ticks a beat.
-std::vector<uint8_t> smf_tracks(const std::vector<std::vector<uint8_t>>& tracks) {
-    std::vector<uint8_t> d = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1,
-                              0, static_cast<uint8_t>(tracks.size()), 0x01, 0xE0};
-    for (const std::vector<uint8_t>& t : tracks) {
-        d.insert(d.end(), {'M', 'T', 'r', 'k'});
-        const uint32_t n = static_cast<uint32_t>(t.size());
-        for (int shift : {24, 16, 8, 0}) d.push_back(static_cast<uint8_t>(n >> shift));
-        d.insert(d.end(), t.begin(), t.end());
-    }
-    return d;
-}
-
-// A text meta event `vlq` ticks after the previous event (the delta already
-// written as MIDI variable-length bytes).
-std::vector<uint8_t> text_after(std::vector<uint8_t> vlq, const std::string& text) {
-    vlq.insert(vlq.end(), {0xFF, 0x01, static_cast<uint8_t>(text.size())});
-    vlq.insert(vlq.end(), text.begin(), text.end());
-    return vlq;
-}
-
-// Raw deflate, no zlib header: what .srb streams use (as in test_srb.cpp).
-std::vector<uint8_t> deflate_raw(const std::vector<uint8_t>& src) {
-    size_t out_len = 0;
-    void* p = tdefl_compress_mem_to_heap(src.data(), src.size(), &out_len,
-                                         TDEFL_DEFAULT_MAX_PROBES);
-    REQUIRE(p != nullptr);
-    std::vector<uint8_t> out(static_cast<uint8_t*>(p), static_cast<uint8_t*>(p) + out_len);
-    mz_free(p);
-    return out;
-}
-
-void push_str(std::vector<uint8_t>& out, const std::string& s) {
-    const uint32_t n = static_cast<uint32_t>(s.size());
-    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));
-    out.insert(out.end(), s.begin(), s.end());
-}
-
-// An .srb whose metadata names its notes stream `notes_name` (layout in
-// parse/srb.h): 16 header bytes, the deflated metadata, the deflated notes,
-// then one stand-in audio stream.
+// An .srb (tests/srb_util.h) whose metadata names its notes stream `notes_name`.
 std::vector<uint8_t> srb_with(const std::string& notes_name, const std::vector<uint8_t>& notes) {
-    std::vector<uint8_t> meta = {'4', 'b', '4', 1};
-    push_str(meta, notes_name);
-    for (const char* s : {"Name", "Artist", "Album", "Genre", "Charter", "2026", "desc"})
-        push_str(meta, s);
-    for (int i = 0; i < 24; ++i) meta.push_back(static_cast<uint8_t>(i * 7));
-    std::vector<uint8_t> out;
-    for (int i = 0; i < 12; ++i) out.push_back(static_cast<uint8_t>(0xA0 + i));
-    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(i == 0 ? 17 : 0));
-    for (const std::vector<uint8_t>& stream :
-         {deflate_raw(meta), deflate_raw(notes), deflate_raw(std::vector<uint8_t>(4096, 0x55))})
-        out.insert(out.end(), stream.begin(), stream.end());
-    return out;
+    return testsrb::make_srb(testsrb::make_metadata(notes_name), notes);
 }
 
 }  // namespace
@@ -177,13 +124,13 @@ TEST_CASE("s2 owners: .mid practice sections come out in tick order (R7.7)") {
     const std::vector<uint8_t> tempo = concat({set_tempo(), end_of_track()});
     const std::vector<uint8_t> drums =
         concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()});
-    // First EVENTS track: Intro at 0, Chorus at 1920 (VLQ 0x8F 0x00).
+    // First EVENTS track: Intro at 0, Chorus at 1920.
     const std::vector<uint8_t> events1 =
         concat({track_name("EVENTS"), text_event("[section Intro]"),
-                text_after({0x8F, 0x00}, "[section Chorus]"), end_of_track()});
-    // Second EVENTS track: Verse at 960 (VLQ 0x87 0x40).
+                after(1920, text_event("[section Chorus]")), end_of_track()});
+    // Second EVENTS track: Verse at 960.
     const std::vector<uint8_t> events2 =
-        concat({track_name("EVENTS"), text_after({0x87, 0x40}, "[section Verse]"),
+        concat({track_name("EVENTS"), after(960, text_event("[section Verse]")),
                 end_of_track()});
     const Song song = load_songbytes_mid(smf_tracks({tempo, drums, events1, events2}), true, true);
 

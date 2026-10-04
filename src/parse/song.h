@@ -30,8 +30,9 @@ namespace hydra {
 // nothing reads exactly what Hydra always read.
 enum class Difficulty { Expert, Hard, Medium, Easy };
 
-// "Expert" / "Hard" / "Medium" / "Easy" — the name used in the .chart section
-// name, the chartmode key, and the user-facing error strings.
+// "Expert" / "Hard" / "Medium" / "Easy" — the name used in the chartmode key
+// and the user-facing error strings. It reads the difficulty's row in the one
+// table (difficulty_chart_codes), so it shares that table's fallback.
 const char* difficulty_name(Difficulty difficulty);
 
 // Every difficulty, in enum order. UI lists and name lookups walk this
@@ -43,6 +44,8 @@ inline constexpr Difficulty kAllDifficulties[] = {Difficulty::Expert, Difficulty
 // in one table in song.cpp; every parser rule that depends on the difficulty
 // reads its row instead of keeping its own copy of Expert's values.
 struct DifficultyChartCodes {
+    // "Expert" / "Hard" / "Medium" / "Easy" (difficulty_name returns it).
+    const char* name;
     // .mid: the kick's pitch. The four pads follow it (kick + 1 is red).
     int kick_pitch;
     // The N in a disco-flip marker `[mix N drums...]`. Clone Hero applies a
@@ -54,6 +57,10 @@ struct DifficultyChartCodes {
     // 59, 71, 83 and 95, each into its own difficulty (0x2155050 at
     // 0x21555CD). Worked out here, the one place, instead of stored.
     constexpr int kick2x_pitch() const { return kick_pitch - 1; }
+
+    // .chart: the difficulty's drum section, the name plus "Drums"
+    // ("ExpertDrums", "HardDrums", ...).
+    std::string chart_section() const { return std::string(name) + "Drums"; }
 };
 
 // The row for `difficulty`. An out-of-range value reads as Expert, as the

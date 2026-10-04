@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "chart_text.h"
 #include "midi_util.h"
 #include "parse/song.h"
 
@@ -40,29 +41,13 @@ Flags flags_of(const Song& song) {
 }
 
 Flags chart_flags(int64_t length) {
-    std::string text =
-        "[Song]\n{\n  Resolution = 480\n}\n"
-        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
-        "[ExpertDrums]\n{\n";
+    std::string lines;
     for (int64_t t = kFirstChord; t <= kLastChord; t += kStep) {
-        if (t == kPhraseStart)
-            text += "  " + std::to_string(t) + " = S 2 " + std::to_string(length) + "\n";
-        text += "  " + std::to_string(t) + " = N 1 0\n";
+        if (t == kPhraseStart) lines += testchart::line(t, "S 2 " + std::to_string(length));
+        lines += testchart::line(t, "N 1 0");
     }
-    text += "}\n";
-    const std::vector<uint8_t> data(text.begin(), text.end());
-    return flags_of(load_songbytes_chart(data, true, true));
-}
-
-// The delta before an event, as MIDI writes it. Only the gaps this file uses.
-std::vector<uint8_t> delta_bytes(int64_t gap) {
-    switch (gap) {
-        case 0: return {0x00};
-        case 240: return {0x81, 0x70};
-        case 480: return {0x83, 0x60};
-    }
-    FAIL("delta_bytes: add the encoding for a gap of " << gap);
-    return {};
+    return flags_of(load_songbytes_chart(
+        testchart::chart_bytes(testchart::section("ExpertDrums", lines), 480), true, true));
 }
 
 Flags mid_flags(int64_t length) {
@@ -83,7 +68,7 @@ Flags mid_flags(int64_t length) {
         testmidi::concat({testmidi::track_name("PART DRUMS"), testmidi::set_tempo()});
     int64_t at = 0;
     for (const Ev& e : evs) {
-        const std::vector<uint8_t> d = delta_bytes(e.tick - at);
+        const std::vector<uint8_t> d = testmidi::varlen(static_cast<uint32_t>(e.tick - at));
         track.insert(track.end(), d.begin(), d.end());
         track.insert(track.end(), e.bytes.begin(), e.bytes.end());
         at = e.tick;
@@ -109,6 +94,26 @@ TEST_CASE("phrase end: a phrase running past the last note flags that note") {
     const Flags want{{2400}, {1440}};
     CHECK(chart_flags(1440) == want);
     CHECK(mid_flags(1440) == want);
+}
+
+TEST_CASE("phrase end: an unsorted .chart drum section is read in tick order (D47)") {
+    // The file writes chords at 0, 768, 384, 1536, with an SP phrase and a fill
+    // both spanning 0-500. Read in tick order, the last chord inside the
+    // phrase and the chord the fill lands on are the same one: 384. Before
+    // D47 the phrase rule read file order and paid chord 0 instead.
+    const Song song = load_songbytes_chart(
+        testchart::chart_bytes(testchart::section("ExpertDrums",
+                                                  "  0 = N 0 0\n  0 = S 2 500\n  0 = S 64 500\n"
+                                                  "  768 = N 1 0\n  384 = N 2 0\n  1536 = N 0 0\n")),
+        true, true);
+    REQUIRE(song.sequence.size() == 4);
+    std::vector<int64_t> ticks;
+    for (const SongTimestamp& ts : song.sequence) ticks.push_back(ts.timecode.ticks());
+    CHECK(ticks == std::vector<int64_t>{0, 384, 768, 1536});
+    CHECK(flags_of(song) == Flags{{384}, {0}});
+    CHECK_FALSE(song.sequence[0].has_activation());
+    REQUIRE(song.sequence[1].has_activation());
+    CHECK(*song.sequence[1].activation_length == 384);
 }
 
 TEST_CASE("phrase end: a zero-length phrase on a chord flags nothing") {

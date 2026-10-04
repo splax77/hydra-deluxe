@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "app/dynamics_breakdown.h"
+#include "chart_text.h"
+#include "difficulty_literals.h"
 #include "midi_util.h"
 #include "parse/song.h"
 
@@ -20,17 +22,10 @@ using namespace hydra;
 
 namespace {
 
-// Each difficulty's red-pad pitch, mix digit and .chart section, as literals.
-struct Diff {
-    Difficulty d;
-    uint8_t red;
-    char digit;
-    const char* section;
-};
-const Diff kDiffs[] = {{Difficulty::Expert, 97, '3', "ExpertDrums"},
-                       {Difficulty::Hard, 85, '2', "HardDrums"},
-                       {Difficulty::Medium, 73, '1', "MediumDrums"},
-                       {Difficulty::Easy, 61, '0', "EasyDrums"}};
+// Each difficulty's red-pad pitch, mix digit and .chart section, from the one
+// pinned literal table.
+using Diff = testdiff::Literals;
+constexpr const auto& kDiffs = testdiff::kLiterals;
 
 // A .mid whose PART DRUMS holds `markers` at tick 0, then a red note for
 // every difficulty on that same tick.
@@ -45,12 +40,10 @@ std::vector<uint8_t> mid_with(const std::vector<std::string>& markers) {
 
 // A .chart with one difficulty section: `markers` at tick 0, then a red note.
 std::vector<uint8_t> chart_with(const char* section, const std::vector<std::string>& markers) {
-    std::string s = "[Song]\n{\n  Resolution = 192\n}\n"
-                    "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
-                    "[" + std::string(section) + "]\n{\n";
-    for (const std::string& m : markers) s += "  0 = E " + m + "\n";
-    s += "  0 = N 1 0\n}\n";
-    return std::vector<uint8_t>(s.begin(), s.end());
+    std::string lines;
+    for (const std::string& m : markers) lines += "  0 = E " + m + "\n";
+    lines += "  0 = N 1 0\n";
+    return testchart::chart_bytes(testchart::section(section, lines));
 }
 
 // The one chord's red note was flipped: a flipped red reads as a yellow
@@ -67,10 +60,10 @@ std::string chart_on(char digit) { return std::string("mix_") + digit + "_drums0
 
 TEST_CASE(".mid: a disco marker flips only the difficulty it names") {
     for (const Diff& marked : kDiffs) {
-        const std::vector<uint8_t> mid = mid_with({mid_on(marked.digit)});
+        const std::vector<uint8_t> mid = mid_with({mid_on(marked.mix)});
         for (const Diff& parsed : kDiffs) {
             const std::string at = std::string(difficulty_name(parsed.d)) + ", marker " +
-                                   mid_on(marked.digit);
+                                   mid_on(marked.mix);
             CAPTURE(at);
             CHECK(flipped(load_songbytes_mid(mid, true, true, parsed.d)) ==
                   (parsed.d == marked.d));
@@ -82,10 +75,10 @@ TEST_CASE(".chart: a section obeys only the disco marker naming its own difficul
     for (const Diff& parsed : kDiffs) {
         for (const Diff& marked : kDiffs) {
             const std::string at = std::string(parsed.section) + ", marker " +
-                                   chart_on(marked.digit);
+                                   chart_on(marked.mix);
             CAPTURE(at);
             const Song song = load_songbytes_chart(
-                chart_with(parsed.section, {chart_on(marked.digit)}), true, true, parsed.d);
+                chart_with(parsed.section, {chart_on(marked.mix)}), true, true, parsed.d);
             CHECK(flipped(song) == (parsed.d == marked.d));
         }
     }
@@ -95,8 +88,8 @@ TEST_CASE("disco flip needs Pro Drums, in both formats and at every difficulty")
     for (const Diff& x : kDiffs) {
         const std::string name = difficulty_name(x.d);
         CAPTURE(name);
-        const std::vector<uint8_t> mid = mid_with({mid_on(x.digit)});
-        const std::vector<uint8_t> chart = chart_with(x.section, {chart_on(x.digit)});
+        const std::vector<uint8_t> mid = mid_with({mid_on(x.mix)});
+        const std::vector<uint8_t> chart = chart_with(x.section, {chart_on(x.mix)});
         CHECK(flipped(load_songbytes_mid(mid, true, true, x.d)));
         CHECK(flipped(load_songbytes_chart(chart, true, true, x.d)));
         CHECK_FALSE(flipped(load_songbytes_mid(mid, false, true, x.d)));
@@ -109,12 +102,12 @@ TEST_CASE("disco: dnoflip still closes the section (Hydra's rule, not Clone Hero
     for (const Diff& x : kDiffs) {
         const std::string name = difficulty_name(x.d);
         CAPTURE(name);
-        const std::string mid_off = std::string("[mix ") + x.digit + " drums0dnoflip]";
-        const std::string chart_off = std::string("mix_") + x.digit + "_drums0dnoflip";
-        CHECK_FALSE(flipped(load_songbytes_mid(mid_with({mid_on(x.digit), mid_off}), true,
+        const std::string mid_off = std::string("[mix ") + x.mix + " drums0dnoflip]";
+        const std::string chart_off = std::string("mix_") + x.mix + "_drums0dnoflip";
+        CHECK_FALSE(flipped(load_songbytes_mid(mid_with({mid_on(x.mix), mid_off}), true,
                                                true, x.d)));
         CHECK_FALSE(flipped(load_songbytes_chart(
-            chart_with(x.section, {chart_on(x.digit), chart_off}), true, true, x.d)));
+            chart_with(x.section, {chart_on(x.mix), chart_off}), true, true, x.d)));
     }
 }
 

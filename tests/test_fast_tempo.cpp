@@ -21,6 +21,7 @@
 
 #include "app/config.h"
 #include "bank_check.h"
+#include "chart_text.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "parse/song.h"
@@ -123,11 +124,11 @@ FuzzChart fuzz_chart(uint64_t seed) {
         return z ^ (z >> 31);
     };
     auto U = [&next](int a, int b) { return a + (int)(next() % (uint64_t)(b - a + 1)); };
-    std::ostringstream c;
-    c << "[Song]\n{\n  Resolution = 192\n  Offset = 0\n}\n[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n";
     const int fast_at = 3072 + 96 * U(0, 60);
-    c << "  " << fast_at << " = B " << (U(0, 1) ? 4000000 : 2000000)
-      << "\n}\n[Events]\n{\n}\n[ExpertDrums]\n{\n";
+    const std::string sync =
+        testchart::kSync44At120 +
+        testchart::line(fast_at, "B " + std::to_string(U(0, 1) ? 4000000 : 2000000));
+    std::ostringstream c;  // the [ExpertDrums] lines
     std::vector<int> ticks;
     for (int t = 0; t < 3072; t += 96) ticks.push_back(t);
     const int n_rand = U(12, 30);
@@ -147,8 +148,10 @@ FuzzChart fuzz_chart(uint64_t seed) {
         if (phrase) c << "  " << t << " = S 2 10\n";
         c << "  " << t << " = N " << (fill ? 1 : U(0, 1) ? 1 : 2) << " 0\n";
     }
-    c << "}\n";
-    return {c.str(), U(2, 4)};
+    return {testchart::chart_text(
+                testchart::section("Events", "") + testchart::section("ExpertDrums", c.str()),
+                192, "  Offset = 0\n", sync),
+            U(2, 4)};
 }
 
 }  // namespace
