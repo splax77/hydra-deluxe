@@ -503,3 +503,14 @@ TEST_CASE("MultSqueeze::applies answers exactly when the constructor accepts") {
         }
     }
 }
+
+TEST_CASE("refill_tick: a late squeeze-in's bar arrives at the old end") {
+    Activation a;
+    a.timecode = Timecode::raw(5760);
+    a.sp_end_steps = {{5760, 13440, SpEndKind::Activation},
+                      {12000, 15360, SpEndKind::Collected},
+                      {15840, 19200, SpEndKind::SqIn}};
+    CHECK(a.refill_tick(0) == 5760);
+    CHECK(a.refill_tick(1) == 12000);
+    CHECK(a.refill_tick(2) == 15360);  // past the end in force: the old end
+}

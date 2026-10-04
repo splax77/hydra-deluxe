@@ -205,13 +205,16 @@ engine records nothing about them.
 
 **SP meter gauge**:
 The vertical gauge on the note highway's right edge showing banked Star Power
-at the playhead: up one bar at each collected phrase, draining through each
-activation to hit empty exactly at the deact node. Anchored to the record's
-per-activation bank, deact node and list of collected phrases, never
-re-derived. Late-SqIn and cap-clamped phrases are in that list. A phrase
-inside the window that the record does not list was squeezed out, so it
-banks when SP ends rather than during the drain.
-Without a path it fills and pins at the cap, since nothing spends it.
+at the playhead. With a path, every value is the record's. Between activations
+it steps up one bar at each tick where the engine stamped a bar's arrival. In
+an active window it shows the measures left until the SP end in force, two
+measures to a bar, and the record lists every place that end moved. It empties
+exactly at the deact node. The gauge counts no phrases and applies no cap. A
+late squeeze-in refills at the old SP end, because the player hits that phrase
+early and SP never stops. A squeezed-out phrase's bar arrives when the player
+hits it: as SP ends for an early phrase, on its own note for a late one.
+Without a path it fills one bar per phrase and pins at the cap, since nothing
+spends it and there is no record to read.
 
 **Stem**:
 One of the several audio files a chart may ship instead of a single mix (e.g.
