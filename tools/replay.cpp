@@ -644,7 +644,10 @@ int cmd_target(const Args& a) {
 
     // When the set is unrealizable, walk the prefixes to name the activation
     // that broke it. Each run is milliseconds, so this costs nothing worth
-    // saving and turns "it failed" into "it failed here".
+    // saving and turns "it failed" into "it failed here". A prefix comes back
+    // empty only when no path takes all of its activations (D45 drops just
+    // the paths that miss one), so the first empty prefix ends on the
+    // activation no path can take.
     const bool realized = !rec.paths.empty();
     int64_t failed_tick = -1;
     size_t realized_prefix = ticks.size();

@@ -53,11 +53,6 @@ void collect_variants(const Path& p, std::vector<const Path*>& out) {
     }
 }
 
-void collect_all(const Path& p, std::vector<const Path*>& out) {
-    out.push_back(&p);
-    for (const Path& v : p.variants) collect_all(v, out);
-}
-
 std::vector<int64_t> act_ticks(const Path& p) {
     std::vector<int64_t> at;
     for (const Activation& a : p.walk_activations()) at.push_back(a.timecode.ticks());
@@ -65,40 +60,15 @@ std::vector<int64_t> act_ticks(const Path& p) {
 }
 
 // D3's promise, checked without the corpus: the variant stores what the
-// search stores when it is told to activate exactly where the variant does.
-// Returns "" on a match, else what differed.
-//
-// PENDING USER RULING (step-1 derive-once review finding 11): this still
-// runs the targeted search itself instead of test::lone_pricing, because
-// search_target returns nothing at all when any lone path comes back short
-// of an activation, and on fuzz seeds 5 and 16 that leaves seven variants
-// with no lone answer. It shares windows_text and the band with the helper.
+// search stores when it is told to activate exactly where the variant does
+// (test::lone_pricing in record_fixtures.h). Returns "" on a match, else
+// what differed, or the throw.
 std::string lone_mismatch(const Song& song, const app::AnalysisSettings& cfg, const Path& variant) {
-    const std::vector<int64_t> at = act_ticks(variant);
-    const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
-                           FillDeadlineRule::Ch11, cfg.rules);
-    EngineOptions o;
-    o.depth_mode = DepthMode::Points;
-    o.depth_value = kKeepEveryPathBand;
-    o.target_act_ticks = at;
-    std::vector<Path> lone;
     try {
-        lone = run_search(graph, o);
+        return test::lone_pricing_mismatch(song, cfg, variant);
     } catch (const std::exception& e) {
         return "'" + variant.pathstring() + "': the lone search threw: " + e.what();
     }
-    std::vector<const Path*> all;
-    for (const Path& r : lone) collect_all(r, all);
-    const std::string mine = test::windows_text(variant);
-    std::string seen;
-    for (const Path* t : all) {
-        if (act_ticks(*t) != at || t->totalscore() != variant.totalscore()) continue;
-        const std::string theirs = test::windows_text(*t);
-        if (theirs == mine) return "";
-        seen += "\n  lone:    " + theirs;
-    }
-    return "'" + variant.pathstring() + "' " + std::to_string(variant.totalscore()) +
-           "\n  variant: " + mine + (seen.empty() ? "\n  no lone path ties it" : seen);
 }
 
 // The analysis, or a failed check naming the throw (so one chart's throw
@@ -426,8 +396,42 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
             CHECK_MESSAGE(diff.empty(), "seed " << seed << " " << diff);
         }
     }
+    // The seeds, these two counts and the generator's ranges are test limits
+    // the user approved (D43).
     CHECK(analyzed == 48);
     CHECK(variants > 50);
+}
+
+// D45: a targeted search drops only the paths that came back without one of
+// the named activations, and keeps the ones that took them all. On fuzz seed
+// 5, told to activate at 3168 and 12864, the engine returns paths that miss
+// one of them (SP still runs at the fill) beside paths that take both.
+// Before D45 the one short path made search_target report the whole set
+// unrealizable, and seven variants there had no lone answer.
+TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept (D45)") {
+    const FuzzChart fc = fuzz_chart(5);
+    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
+    const Song song = load_songbytes_chart(bytes, true, true);
+    const app::AnalysisSettings cfg = fast_settings(fc.cap);
+    const std::vector<int64_t> want = {3168, 12864};
+
+    // The engine's own answer: some roots take both, some miss one.
+    const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
+                           FillDeadlineRule::Ch11, cfg.rules);
+    EngineOptions o = test::wide_search();
+    o.target_act_ticks = want;
+    int whole = 0, short_of_one = 0;
+    for (const Path& r : run_search(graph, o)) (act_ticks(r) == want ? whole : short_of_one)++;
+    CHECK(whole > 0);
+    CHECK(short_of_one > 0);
+
+    // search_target keeps exactly the roots that took both.
+    const std::vector<Path> kept = search_target(song, cfg, want);
+    CHECK(static_cast<int>(kept.size()) == whole);
+    for (const Path& p : kept) CHECK(act_ticks(p) == want);
+
+    // A tick that is no fill node is still unrealizable: nothing comes back.
+    CHECK(search_target(song, cfg, {3168, 12865}).empty());
 }
 
 // The phrases still ahead when SP ends, pinned (s1-fix-merge). D34 lets one

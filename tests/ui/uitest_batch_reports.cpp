@@ -88,6 +88,7 @@ void test_batch_strip_drift(ImGuiTestContext* ctx) {
         // held. Every frame until then (and two after, so the screen shows
         // it), Stop and the strip stay put.
         gate.allow(step);
+        // A test limit the user approved (D43), not an app setting.
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
         int frames_after = 2;
         while (frames_after > 0) {
@@ -387,7 +388,8 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     ctx->ItemClick("Start analyzing");
 
     // Frames run for a while with nothing let through. A fourth chart can
-    // never reach the gate: every worker is busy.
+    // never reach the gate: every worker is busy. Three workers and a
+    // 10-frame, 2 ms settle are test limits the user approved (D43).
     auto settle = [&] {
         for (int i = 0; i < 10; ++i) {
             ctx->Yield();
