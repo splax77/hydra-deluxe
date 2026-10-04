@@ -236,7 +236,7 @@ constexpr const char* kSchema2ResultsColumns =
 // sort and filter without decoding a single record. bestpath belongs to the
 // same cache, and so do stars and hardest_ms. prepare_row writes all of them
 // from summarize_record, and reindex rewrites all of them, bestpath included,
-// from the stored paths. Nothing else writes them, except fill_missing_stars,
+// from the stored paths of every row this build can read. Nothing else writes them, except fill_missing_stars,
 // which only fills a stars column an older Hydra left empty. A rule change
 // that alters any of them bumps kResultsStamp (stored_versions.h), so every
 // row written before it reads Stale and no old cached number is shown.
@@ -1530,25 +1530,21 @@ int RecordStore::reindex() {
         Stmt update = prepare(db_,
             "UPDATE results SET score=?,actcount=?,maxskip=?,hardest_ms=?,avgmult=?,"
             "notecount=?,sqin_count=?,sqout_count=?,pathcount=?,stars=?,"
-            "bestpath=COALESCE(?,bestpath) WHERE result_id=?");
+            "bestpath=? WHERE result_id=?");
         int done = 0;
         for (const Row& row : rows) {
-            // A stale row gets empty summaries and keeps its bestpath text:
-            // its stored bytes are not this build's to read, so there is
-            // nothing to recompute from.
-            PathSummary summary;
-            std::optional<std::string> bestpath;
-            if (rank_row(row.hyversion, row.structure, row.result_id, rules_fingerprint_)
-                    .ready()) {
-                const HydraRecord record = decode_record(
-                    row.structure, load_nodes(nodes_stmt, row.result_id), row.legacy_fills);
-                summary = summarize_record(record);
-                bestpath = bestpath_column(record);
-            }
+            // A row this build can't read (another results stamp, path format
+            // or rules fingerprint) is left untouched and not counted: there
+            // is nothing to recompute from, and a result kept under other
+            // rules (D51 call 8) keeps its cached columns (D55 item 3).
+            if (!rank_row(row.hyversion, row.structure, row.result_id, rules_fingerprint_)
+                     .ready())
+                continue;
+            const HydraRecord record = decode_record(
+                row.structure, load_nodes(nodes_stmt, row.result_id), row.legacy_fills);
             ResetOnExit reset{update};
-            bind_summary(update, 1, summary);
-            if (bestpath) bind_text(update, 11, *bestpath);
-            else sqlite3_bind_null(update, 11);
+            bind_summary(update, 1, summarize_record(record));
+            bind_text(update, 11, bestpath_column(record));
             sqlite3_bind_int64(update, 12, row.result_id);
             if (sqlite3_step(update) != SQLITE_DONE)
                 throw std::runtime_error(std::string("reindex failed: ") + sqlite3_errmsg(db_));
@@ -1566,10 +1562,9 @@ int RecordStore::fill_missing_stars() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     // Rows with a score but no stars: written before the column existed. Only
-    // Ready rows are filled. The rest are skipped, never blanked -- reindex
-    // blanks a Stale row's summaries, and under a bad hydra_rules.ini every
-    // row reads Stale, so reusing it here would wipe the whole library's
-    // scores on one bad start.
+    // Ready rows are filled. The rest are skipped, never blanked, as reindex
+    // skips them: under a bad hydra_rules.ini every row reads Stale, and
+    // blanking them would wipe the whole library's scores on one bad start.
     std::vector<int64_t> ids;
     {
         Stmt s = prepare(db_, "SELECT result_id, hyversion, substr(structure,1,12) FROM results"

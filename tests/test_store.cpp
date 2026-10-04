@@ -549,8 +549,9 @@ TEST_CASE("records at different caps coexist; each lookup sees only its own cap"
     CHECK(store.list_records(std::nullopt, CapQuery::at(64), Lens{}, SortColumn::Score, true)
               .empty());
 
-    // reindex touches each cap's own row.
-    CHECK(store.reindex() == 3);
+    // reindex rewrites each cap's own readable row. The stale 64-bar row is
+    // left untouched and not counted (D55 item 3).
+    CHECK(store.reindex() == 2);
     CHECK(store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true)[0]
               .summary.score == fixture().record.best_path().totalscore());
 }
@@ -740,6 +741,32 @@ TEST_CASE("a write under rules A keeps the rules-B row") {
         CHECK(lookup.record->paths.size() == fixture().record.paths.size());
         CHECK(store.has_record(key));
     }
+    std::remove(db.c_str());
+}
+
+TEST_CASE("reindex leaves a row made under other rules untouched") {
+    // D55 item 3: a result kept under other rules (D51 call 8) keeps its
+    // cached score after a reindex under the default rules.
+    core::Rules other = core::default_rules();
+    other.max_tied_paths = 2;
+    const RecordKey key{"h", "mode", CapQuery::at(8)};
+    const std::string db = temp_db("reindex_rules_b");
+    std::remove(db.c_str());
+    {
+        RecordStore store(db);
+        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
+        HydraRecord foreign = at_cap(8);
+        foreign.rules_fingerprint = other.fingerprint();
+        store.add_row(prepare_row(key, foreign));
+    }
+    const int64_t score = fixture().record.best_path().totalscore();
+    REQUIRE(scalar(db, "SELECT score FROM results") == score);
+    {
+        RecordStore store(db);
+        CHECK(store.reindex() == 0);
+    }
+    CHECK(scalar(db, "SELECT COUNT(*) FROM results WHERE score IS NOT NULL") == 1);
+    CHECK(scalar(db, "SELECT score FROM results") == score);
     std::remove(db.c_str());
 }
 
