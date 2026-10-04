@@ -716,7 +716,6 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
     }
     ++tally->charts;
 
-    const SongTiming& timing = song.timing();
     int index = 0, chart_fail = 0;
     for (const Path* p : rec.all_paths()) {
         const int i = index++;
@@ -765,14 +764,12 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
                 for (size_t k = 0; k < acts.size(); ++k) {
                     const Activation& act = acts[k];
                     const int64_t act_tick = act.timecode.ticks();
-                    const int64_t nominal =
-                        timing.plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter))
-                            .ticks();
+                    const int64_t nominal = act.nominal_end().value_or(-1);
                     std::printf(
                         "       act %zu: tick %lld  deact %lld  nominal %lld  "
                         "sp_meter %d  skips %d  backends %zu  sqinouts %zu\n",
                         k, (long long)act_tick,
-                        (long long)act.deact_tick.value_or(-1),
+                        (long long)act.deact_tick().value_or(-1),
                         (long long)nominal, act.sp_meter,
                         act.skips, act.backends.size(),
                         act.sqinouts.size());

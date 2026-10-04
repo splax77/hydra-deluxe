@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -22,6 +23,7 @@
 #include "parse/song.h"
 #include "search/pather.h"
 #include "record_bytes.h"
+#include "record_fixtures.h"
 #include "store/path_codec.h"
 #include "store/record_store.h"
 #include "store/serialize.h"
@@ -138,7 +140,7 @@ TEST_CASE("path codec: a rebuilt record flattens to the same bytes") {
 
     const ActivationWalk acts = back.best_path().walk_activations();
     REQUIRE_FALSE(acts.empty());
-    CHECK(acts.front().deact_tick == rec.best_path().walk_activations().front().deact_tick);
+    CHECK(acts.front().deact_tick() == rec.best_path().walk_activations().front().deact_tick());
 
     // Raw ticks until restored; after the restore the strings still agree.
     restore_timecodes(back, fixture().song.timing());
@@ -154,11 +156,11 @@ TEST_CASE("path codec: a node carries activations only, never totals") {
     changed.score_base += 1;
     changed.score_sp += 7;
     changed.notecount += 1;
-    changed.leftover_sp += 1;
+    test::set_leftover(changed, changed.leftover_sp + 1);
     CHECK(encode_path_node(changed) == encode_path_node(root));
 
     REQUIRE_FALSE(changed.activations.empty());
-    changed.activations.front().skips += 1;
+    test::set_skips(changed.activations.front(), changed.activations.front().skips + 1);
     CHECK(encode_path_node(changed) != encode_path_node(root));
 }
 
@@ -167,7 +169,7 @@ TEST_CASE("path codec: root totals ride in the structure, once per root") {
     const FlatRecord before = flatten_record(rec);
     rec.paths.front().score_base += 1;
     rec.paths.front().notecount += 2;
-    rec.paths.front().leftover_sp += 3;
+    test::set_leftover(rec.paths.front(), rec.paths.front().leftover_sp + 3);
     const FlatRecord after = flatten_record(rec);
 
     CHECK(after.structure != before.structure);
@@ -238,8 +240,8 @@ TEST_CASE("path codec: node payloads are flat and content-addressed") {
     // plain encode_path_node/decode_path_node round trip must keep it, not
     // just the fields that existed before it.
     REQUIRE_FALSE(root.activations.empty());
-    REQUIRE(root.activations.front().deact_tick.has_value());
-    CHECK(node.activations.front().deact_tick == root.activations.front().deact_tick);
+    REQUIRE(root.activations.front().deact_tick().has_value());
+    CHECK(node.activations.front().deact_tick() == root.activations.front().deact_tick());
 
     // The hash is 32 lowercase hex characters, and it names the bytes: the
     // same payload always hashes the same, a different one does not.
@@ -394,7 +396,7 @@ TEST_CASE("print the corpus squeeze facts" * doctest::skip()) {
                 for (const Activation& act : p->walk_activations()) {
                     std::printf("  act %lld deact %lld sqout %lld\n",
                                 (long long)act.timecode.ticks(),
-                                (long long)act.deact_tick.value_or(-1),
+                                (long long)act.deact_tick().value_or(-1),
                                 (long long)act.sqout_tick.value_or(-1));
                     // %.17g so even a last-bit change in an offset shows.
                     for (const SPSqueeze& sq : act.sqinouts)
@@ -414,4 +416,46 @@ TEST_CASE("print the corpus squeeze facts" * doctest::skip()) {
         print_paths("paths", rec.all_paths());
         print_paths("allzero", rec.all_allzero_paths());
     }
+}
+
+TEST_CASE("path codec: a node keeps the SP-end history") {
+    Activation act;
+    act.timecode = Timecode::raw(2304);
+    act.sp_end_steps = {{2304, 5376, SpEndKind::Activation},
+                        {3072, 6144, SpEndKind::Clamped},
+                        {5280, 6912, SpEndKind::SqIn},
+                        {6144, 8448, SpEndKind::Collected}};
+    Path path;
+    path.activations.push_back(act);
+    const Path back = store::decode_path_node(store::encode_path_node(path));
+    REQUIRE(back.activations.size() == 1);
+    CHECK(back.activations.front().sp_end_steps == act.sp_end_steps);
+    CHECK(back.activations.front().deact_tick() == std::optional<int64_t>(8448));
+    CHECK(back.activations.front().clamp_tick() == std::optional<int64_t>(3072));
+}
+
+TEST_CASE("path codec: an unknown SP-end step kind is refused") {
+    Activation act;
+    act.timecode = Timecode::raw(2304);
+    act.sp_end_steps = {{2304, 5376, SpEndKind::Activation}};
+    Path path;
+    path.activations.push_back(act);
+    std::vector<uint8_t> bytes = store::encode_path_node(path);
+    // The step is written as two 8-byte ticks and a kind byte. Find those
+    // bytes and turn the kind into one no build knows.
+    const std::vector<uint8_t> good = bytes;
+    bool found = false;
+    for (size_t i = 0; i + 17 <= bytes.size(); ++i) {
+        int64_t a = 0, b = 0;
+        std::memcpy(&a, &bytes[i], 8);
+        std::memcpy(&b, &bytes[i + 8], 8);
+        if (a == 2304 && b == 5376 && bytes[i + 16] == 0) {
+            bytes[i + 16] = 4;
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+    CHECK_THROWS_AS(store::decode_path_node(bytes), SerializeError);
+    CHECK_NOTHROW(store::decode_path_node(good));
 }

@@ -17,6 +17,7 @@
 #include "core/backend_value.h"
 #include "core/rules.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 
 using namespace hydra;
 
@@ -113,7 +114,7 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
 
     Activation a;
     a.e_offset = 10.0;
-    a.skips = 0;
+    test::set_skips(a, 0);
     CHECK(a.is_E0() == is_e0(10.0, 0));
     REQUIRE(a.e_difficulty().has_value());
     CHECK(*a.e_difficulty() == early_fill_difficulty(10.0));
@@ -124,7 +125,7 @@ TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
     CHECK_FALSE(empty.is_difficult());
 
     Activation a;
-    a.skips = 0;
+    test::set_skips(a, 0);
     a.e_offset = 300.0;  // not e-critical
     a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -(kDifficultMs + 0.5)});
     Path hard;
@@ -138,7 +139,7 @@ TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
 
 TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
     Activation a;
-    a.skips = 2;
+    test::set_skips(a, 2);
     a.e_offset = 300.0;  // not e-critical (>= kEarlyFillWindowMs)
     CHECK(a.notationstr() == "2");
 
@@ -159,7 +160,7 @@ TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
 TEST_CASE("Path pathstring and pathstring_verbose") {
     Path p;
     Activation a;
-    a.skips = 1;
+    test::set_skips(a, 1);
     a.e_offset = 400.0;  // not e-critical, no sqinouts -> verbose == notationstr
     p.activations.push_back(a);
     p.score_base = 100000;  // totalscore == 100000
@@ -184,9 +185,9 @@ TEST_CASE("Path pathstring and pathstring_verbose") {
 TEST_CASE("Path::walk_activations: own activations then the variant tail, in place") {
     Path p;
     Activation a1, a2, t1;
-    a1.skips = 0;
-    a2.skips = 1;
-    t1.skips = 2;
+    test::set_skips(a1, 0);
+    test::set_skips(a2, 1);
+    test::set_skips(t1, 2);
     p.activations = {a1, a2};
     p.variant_tail = {t1};
 

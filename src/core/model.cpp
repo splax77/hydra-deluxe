@@ -570,6 +570,66 @@ bool Path::is_difficult() const {
     return d && *d > kDifficultMs;
 }
 
+// ---- the SP-end history's readers -----------------------------------------
+// Each one reads sp_end_steps and nothing else (R1). An empty list (a
+// hand-built activation) gives "unset", never a guess.
+
+std::optional<int64_t> Activation::deact_tick() const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    return sp_end_steps.back().end_tick;
+}
+
+std::optional<int64_t> Activation::clamp_tick() const {
+    for (auto it = sp_end_steps.rbegin(); it != sp_end_steps.rend(); ++it)
+        if (it->kind == SpEndKind::Clamped) return it->tick;
+    return std::nullopt;
+}
+
+std::vector<int64_t> Activation::collected_phrase_ticks() const {
+    std::vector<int64_t> out;
+    for (size_t k = 1; k < sp_end_steps.size(); ++k) out.push_back(sp_end_steps[k].tick);
+    return out;
+}
+
+std::optional<int64_t> Activation::nominal_end() const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    return sp_end_steps.front().end_tick;
+}
+
+std::optional<size_t> Activation::squeeze_end_step(size_t squeeze_index) const {
+    if (squeeze_index >= sqinouts.size() || sp_end_steps.empty()) return std::nullopt;
+    if (sqinouts[squeeze_index].kind == SqueezeKind::SqOut) return sp_end_steps.size() - 1;
+    // The k-th SqIn squeeze is the k-th SqIn step: both are kept in time order.
+    size_t k = 0;
+    for (size_t i = 0; i < squeeze_index; ++i)
+        if (sqinouts[i].kind == SqueezeKind::SqIn) ++k;
+    for (size_t s = 1; s < sp_end_steps.size(); ++s)
+        if (sp_end_steps[s].kind == SpEndKind::SqIn && k-- == 0) return s - 1;
+    return std::nullopt;
+}
+
+std::optional<int64_t> Activation::squeeze_end_tick(size_t squeeze_index) const {
+    const std::optional<size_t> s = squeeze_end_step(squeeze_index);
+    if (!s) return std::nullopt;
+    return sp_end_steps[*s].end_tick;
+}
+
+// D1: an end is measured from the note whose timing moves it, the latest
+// clamp at or before the step that set it, else the activation.
+int64_t Activation::end_anchor_tick(size_t step_index) const {
+    for (size_t s = std::min(step_index + 1, sp_end_steps.size()); s-- > 0;)
+        if (sp_end_steps[s].kind == SpEndKind::Clamped) return sp_end_steps[s].tick;
+    return timecode.ticks();
+}
+
+int64_t Activation::refill_tick(size_t step_index) const {
+    const SpEndStep& s = sp_end_steps.at(step_index);
+    if (step_index == 0 || s.kind != SpEndKind::SqIn) return s.tick;
+    // A late squeeze-in: the phrase sits past the end in force, and the
+    // player hits it early, so the bar arrives at that end.
+    return std::min(s.tick, sp_end_steps[step_index - 1].end_tick);
+}
+
 // The engine stamps the squeezed-out chord's tick at copy-out (record v6).
 // A record without it is Stale and is never guessed at.
 bool Activation::is_sqout_backend(const BackendSqueeze& bsq) const {

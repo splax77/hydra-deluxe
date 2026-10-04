@@ -271,6 +271,26 @@ struct TransferScale {
                          //      backend squeezes
 };
 
+// Why an activation's SP end moved (Activation::sp_end_steps).
+//   Activation - the activation itself: the end its banked bars give.
+//   Collected  - a phrase collected while active: two measures more.
+//   Clamped    - a phrase collected with the meter full: the end pinned to
+//                the cap's length past that phrase (ADR 0013).
+//   SqIn       - the squeeze-in phrase, early or late.
+enum class SpEndKind : uint8_t { Activation = 0, Collected = 1, Clamped = 2, SqIn = 3 };
+
+// One place an activation's SP end moved: `tick` is the note that moved it,
+// `end_tick` the SP end in force after it.
+struct SpEndStep {
+    int64_t tick = 0;
+    int64_t end_tick = 0;
+    SpEndKind kind = SpEndKind::Activation;
+    bool operator==(const SpEndStep& o) const {
+        return tick == o.tick && end_tick == o.end_tick && kind == o.kind;
+    }
+    bool operator!=(const SpEndStep& o) const { return !(*this == o); }
+};
+
 struct Activation {
     // The search sets these six on every activation it makes, so they are
     // plain values (record format v7, docs/adr/0017).
@@ -283,18 +303,12 @@ struct Activation {
     std::vector<SPSqueeze> sqinouts;
     double e_offset = 0.0;
 
-    // The deactivation node D: the chart tick where this activation's Star
-    // Power ends, extensions from phrases collected mid-SP included. Stamped
-    // by the search at copy-out (blob v4). Unset only on a record written
-    // before v4; nothing in the codebase re-derives it.
-    std::optional<int64_t> deact_tick;
+    // The deactivation node, the cap's clamp note and the collected phrases
+    // are not fields: they are read from sp_end_steps, below.
 
-    // The collecting note the SP cap pinned this window's end to: when the
-    // meter was full and a phrase extended the window, the end sat a fixed
-    // distance from that phrase's note, not from the activation. Stamped by
-    // the search (blob v5). Unset when the window never hit the cap or on
-    // an older record. Nothing re-derives it.
-    std::optional<int64_t> clamp_tick;
+    // The cap's clamp: when the meter was full and a phrase extended the
+    // window, the end sat a fixed distance from that phrase's note, not from
+    // the activation. That note is a Clamped step (clamp_tick()).
 
     // The chart tick of the SP phrase chord this activation squeezed out:
     // the deact edge's sqinout_time when the path took the SqOut branch.
@@ -302,13 +316,35 @@ struct Activation {
     // did not squeeze out, or on an older record. Nothing re-derives it.
     std::optional<int64_t> sqout_tick;
 
-    // The ticks of the SP phrase-end chords this activation collected while
-    // active, in chart order: every phrase the gauge received, a late-SqIn
-    // phrase and a cap-clamped phrase included. A squeezed-out phrase is not
-    // among them. The search records each one as its path crosses the phrase
-    // (blob v6). Empty when none was collected, or on an older record.
-    // Nothing re-derives it.
-    std::vector<int64_t> collected_phrase_ticks;
+    // Each phrase chord collected while active is a step of sp_end_steps,
+    // a late-SqIn phrase and a cap-clamped phrase included. A squeezed-out
+    // phrase has no step (collected_phrase_ticks()).
+
+    // Every place this window's SP end moved, in order, as the search did it.
+    // The first step is the activation. A squeezed-out phrase has no step. A
+    // tail activation's last end is the end the search tracked. Stamped at
+    // copy-out; empty only on a hand-built activation. Every SP-end fact the
+    // record holds is read from this list (the accessors below). Nothing
+    // re-derives it.
+    std::vector<SpEndStep> sp_end_steps;
+
+    // Read from sp_end_steps; see each body in model.cpp.
+    //   deact_tick()             - the deactivation node D: where this
+    //                              window's SP ends, every extension included.
+    //   clamp_tick()             - the collecting note the SP cap last pinned
+    //                              the end to (ADR 0013); unset if none.
+    //   collected_phrase_ticks() - every phrase chord the gauge received while
+    //                              active, in chart order, a late-SqIn phrase
+    //                              and a clamped phrase included; never a
+    //                              squeezed-out phrase.
+    std::optional<int64_t> deact_tick() const;           // the last step's end
+    std::optional<int64_t> clamp_tick() const;           // the last Clamped step's tick
+    std::vector<int64_t> collected_phrase_ticks() const; // every step after the first
+    std::optional<int64_t> nominal_end() const;          // the first step's end
+    std::optional<size_t> squeeze_end_step(size_t squeeze_index) const;
+    std::optional<int64_t> squeeze_end_tick(size_t squeeze_index) const;
+    int64_t end_anchor_tick(size_t step_index) const;
+    int64_t refill_tick(size_t step_index) const;
 
     // Frontend transfer scales, computed by the search and stored with the
     // record (blob v3; older blobs default to 1.0 = the flat-tempo identity)
@@ -342,11 +378,11 @@ struct Activation {
     std::vector<BackendSqueeze> display_backends() const;
 };
 
-// deact_tick and the scales above are stored data only. Everything that
+// sp_end_steps and the scales above are stored data only. Everything that
 // derives or judges them — transfer_scale_between, frontend_transfer_scales,
 // and the display-layer rating built on them — lives in
 // core/squeeze_rating.h. activation_deact_tick lives there too, but it
-// derives nothing: it just hands back the stored deact_tick.
+// derives nothing: it just hands back deact_tick().
 
 // A read-only walk over a path's activations: its own, then the variant tail
 // it shares with its parent -- the order all_activations() copies them in.
