@@ -85,9 +85,9 @@ const std::vector<OwnerRule>& rules() {
         // which audit R7.12 calls a different question. The limit may be
         // spelled 260, and either side may carry a little arithmetic
         // (size() - 4 < MAX_PATH). winstr.cpp is not exempt as a file: only
-        // shell_path's two lines are listed.
+        // fits_shell's one line is listed.
         {"Does the Windows shell take a path this long?",
-         "shell_path in src/core/winstr.cpp",
+         "fits_shell in src/core/winstr.cpp",
          R"((\.(size|length)\(\)|\b(wcs|str)len\s*\([^()]*\))(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*(MAX_PATH|260)\b|\b(MAX_PATH|260)(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*[\w.:>()-]*(\.(size|length)\(\)|\b(wcs|str)len\s*\())",
          "",
          {},
@@ -106,11 +106,12 @@ const std::vector<OwnerRule>& rules() {
          {"wchar_t tmp[MAX_PATH + 1];", "GetTempPathW(MAX_PATH + 1, tmp);",
           "if (n == 0 || n > MAX_PATH) return {};",
           "constexpr size_t kPlainPathLimit = MAX_PATH - 12;", "const int kWidth = 260;",
-          "if (n > 260) return;", "if (rows.size() > 2600) return;"},
-         {{"src/core/winstr.cpp", "if (path.size() < MAX_PATH) return path;",
-           "shell_path, the owner: a short path goes to the shell as it is"},
-          {"src/core/winstr.cpp", "return s.size() < MAX_PATH ? s : L\"\";",
-           "shell_path, the owner: a short form still too long is refused"}}},
+          "if (n > 260) return;", "if (rows.size() > 2600) return;",
+          "if (fits_shell(path)) return path;", "if (!fits_shell(copy.native())) return {};"},
+         {{"src/core/winstr.cpp",
+           R"(return path.size() < MAX_PATH && !starts_with(path, L"\\\\?\\");)",
+           "fits_shell, the owner: shell_path, open_in_browser and copy_to_short_temp "
+           "call it"}}},
         // Every way this codebase works out a file's size: the stdio seek and
         // tell (32- and 64-bit), stream seekg/tellg, the Win32 size calls and
         // the size fields of their find and attribute data, the CRT's
@@ -197,15 +198,22 @@ const std::vector<OwnerRule>& rules() {
         // included.
         {"How does a std::filesystem call or file stream get a path it accepts at any length?",
          "os_path in src/core/winstr.cpp",
-         R"(^(?=.*(filesystem::|fs::)).*::(create_directories|create_directory|is_directory|is_regular_file|exists|remove|remove_all|rename|copy|copy_file|file_size|last_write_time|weakly_canonical|canonical|directory_iterator)\(|^(?!.*#include).*fstream )",
+         R"(^(?=.*(filesystem::|fs::)).*::(create_directories|create_directory|is_directory|is_regular_file|exists|remove|remove_all|rename|copy|copy_file|file_size|last_write_time|weakly_canonical|canonical|directory_iterator|recursive_directory_iterator|absolute|status|equivalent|space|current_path)\(|^(?!.*#include).*fstream )",
          R"(os_path\()",
          {},
          {},
          "ADR 0020",
          {"fs::create_directories(dir);", "std::ifstream in(path);",
-          "for (const auto& e : std::filesystem::directory_iterator(dir)) {"},
+          "for (const auto& e : std::filesystem::directory_iterator(dir)) {",
+          "for (const auto& e : fs::recursive_directory_iterator(root)) {",
+          "std::filesystem::path outpath = std::filesystem::absolute(std::filesystem::u8path(out));",
+          "const fs::file_status st = fs::status(p);", "if (fs::equivalent(a, b)) return;",
+          "const fs::space_info s = fs::space(dir);", "fs::current_path(dir);"},
          {"fs::create_directories(hydra::os_path(dir));", "#include <fstream>",
-          "std::ifstream in(hydra::os_path(path));", "const fs::path p = dir / name;"}},
+          "std::ifstream in(hydra::os_path(path));", "const fs::path p = dir / name;",
+          "for (const auto& e : fs::recursive_directory_iterator(hydra::os_path(root))) {",
+          "std::filesystem::path outpath = std::filesystem::absolute(hydra::os_path(std::filesystem::u8path(out)));",
+          "const RecordStatusView& PathsTabCache::status(const store::RecordLookup& lookup,"}},
 
         // ---- engine facts (step 1 of the 2026-10-03 derivation audit) ----
 
@@ -821,12 +829,6 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        {"Does the Windows shell take a path this long?", "src/app/report_files.cpp",
-         "if (copy.native().size() >= MAX_PATH) return {};",
-         "fix shell-path-owner (audit R7.12)"},
-        {"Does the Windows shell take a path this long?", "src/app/report_files.cpp",
-         "if (path.size() < MAX_PATH) return shell_open(path);",
-         "fix shell-path-owner (audit R7.12)"},
         {"How many bytes does a file hold?", "src/parse/midi.cpp",
          "std::fseek(f, 0, SEEK_END);", "fix read-file-bytes-owner (audit R7.11)"},
         {"How many bytes does a file hold?", "src/parse/midi.cpp",

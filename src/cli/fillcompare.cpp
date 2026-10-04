@@ -109,7 +109,7 @@ int main() {
         return 1;
     }
 
-    std::filesystem::path outpath = std::filesystem::absolute(std::filesystem::u8path(out));
+    std::filesystem::path outpath = std::filesystem::absolute(hydra::os_path(std::filesystem::u8path(out)));
     std::error_code ec;
     std::filesystem::create_directories(hydra::os_path(outpath.parent_path()), ec);
 

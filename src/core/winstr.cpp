@@ -38,7 +38,8 @@ namespace {
 
 // The longest path every wide file function takes without the prefix.
 // CreateDirectoryW's limit is the tightest: MAX_PATH minus room for an 8.3
-// file name, so anything at or past it gets the prefix.
+// file name, so anything at or past it gets the prefix. The shell has its own,
+// looser limit (260); fits_shell owns that one.
 constexpr size_t kPlainPathLimit = MAX_PATH - 12;
 
 bool starts_with(const std::wstring& s, const wchar_t* prefix) {
@@ -67,8 +68,14 @@ std::wstring win32_path(const std::string& utf8_path) {
     return win32_path(utf8_to_wide(utf8_path));
 }
 
+// The shell's own limit, 260 (MAX_PATH), not kPlainPathLimit: the shell takes
+// a plain path up to 259 characters, and never a prefixed one.
+bool fits_shell(const std::wstring& path) {
+    return path.size() < MAX_PATH && !starts_with(path, L"\\\\?\\");
+}
+
 std::wstring shell_path(const std::wstring& path) {
-    if (path.size() < MAX_PATH) return path;
+    if (fits_shell(path)) return path;
     const std::wstring full = win32_path(path);
     const DWORD need = GetShortPathNameW(full.c_str(), nullptr, 0);
     if (need == 0) return L"";  // missing file
@@ -79,7 +86,7 @@ std::wstring shell_path(const std::wstring& path) {
     if (starts_with(s, L"\\\\?\\UNC\\")) s = L"\\\\" + s.substr(8);
     else if (starts_with(s, L"\\\\?\\")) s = s.substr(4);
     // A drive without short names hands the long path back.
-    return s.size() < MAX_PATH ? s : L"";
+    return fits_shell(s) ? s : L"";
 }
 
 std::filesystem::path os_path(const std::filesystem::path& p) {

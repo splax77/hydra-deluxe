@@ -35,6 +35,13 @@ std::string wide_to_utf8(const std::wstring& w);
 std::wstring win32_path(const std::wstring& path);
 std::wstring win32_path(const std::string& utf8_path);
 
+// Whether the Windows shell (ShellExecute, Explorer, a browser's command line)
+// takes this path as it is: under 260 characters (MAX_PATH) and without the
+// \\?\ prefix, which the shell does not understand. The one place that asks;
+// the 248 edge in win32_path answers a different question (file calls, where
+// CreateDirectoryW is the tightest). ADR 0020 records both numbers.
+bool fits_shell(const std::wstring& path);
+
 // A path the Windows shell will take (ShellExecute, Explorer, a browser's
 // command line). The shell accepts no \\?\ path and nothing of 260 characters
 // or more, so a long path is swapped for its short 8.3 form (C:\CLONEH~1\...),
