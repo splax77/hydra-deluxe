@@ -42,6 +42,11 @@ struct DecodedAudio {
     bool empty() const { return samples.empty(); }
 };
 
+// The tag that opens an Ogg Opus stream's identification header (RFC 7845).
+// sniff_format looks for it to tell Opus from Vorbis, and the Opus reader
+// checks that each link's first packet starts with it.
+inline constexpr char kOpusHeadTag[] = "OpusHead";
+
 // The container Hydra recognizes for a stem, decided from its leading bytes.
 enum class AudioFormat { Unknown, Wav, Mp3, Flac, OggVorbis, OggOpus };
 

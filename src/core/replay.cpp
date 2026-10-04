@@ -331,7 +331,7 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
 
 std::vector<std::string> ambiguous_window_warnings(
     const Song& song, const ReplayResult& result,
-    const std::vector<ReplayWindow>& windows) {
+    const std::vector<ReplayWindow>& windows, const core::Rules& rules) {
     const SongTiming& timing = song.timing();
     std::vector<std::string> out;
 
@@ -370,10 +370,24 @@ std::vector<std::string> ambiguous_window_warnings(
                     std::to_string(tick) + " (" + gap + " ms later)";
         }
 
+        // What the squeeze-out would take off the total. It is more than the
+        // chord's own sqout_reduction whenever a chord follows it inside the
+        // window, because Star Power ends before the squeezed-out chord and
+        // every later chord loses its doubling too. So ask replay_path, the
+        // owner of that rule: replay the same windows with this one squeezed
+        // out on this chord, under the same rules, and take the difference.
+        std::vector<ReplayWindow> squeezed = windows;
+        squeezed[static_cast<size_t>(&w - windows.data())].sqout_tick = tick;
+        ReplayOptions scores_only;
+        scores_only.scores_only = true;
+        const int64_t cost = result.final.total() -
+                             replay_path(song, squeezed, rules, scores_only).final.total();
         out.push_back("window " + std::to_string(w.act_tick) + ":" +
                       std::to_string(w.deact_tick) + " ends " + where +
                       " with no squeeze-out offset; if the player squeezed it "
-                      "out, this score is high by that note's first-hit share");
+                      "out, this score is " + std::to_string(cost) +
+                      " points high (the same windows replayed with that "
+                      "squeeze-out, under sqout_rule)");
         }
     }
     return out;
