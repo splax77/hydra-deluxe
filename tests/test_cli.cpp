@@ -24,6 +24,7 @@
 #include "app/config.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "parse/song.h"
 #include "search/graph.h"
 #include "store/record_store.h"
@@ -275,6 +276,27 @@ TEST_CASE("hydra_batch reuses the GUI's scan cache") {
     REQUIRE(r.exit_code == 0);
     CHECK(contains(r.output, "Tester - Title From Cache"));
     CHECK(!contains(r.output, "CLI Fixture"));
+}
+
+TEST_CASE("hydra_batch prints an artist made only of tags as (unknown)") {
+    // D50 item 5: the progress line cleans the artist by the title's rule.
+    // The cached scan row carries the artist, as in the scan-cache case.
+    CliSandbox box("tagartist");
+    const std::string db = box.db("tags.db");
+    {
+        auto [items, errors] = hydra::app::discover_charts({box.folder()});
+        REQUIRE(items.size() == 1);
+        hydra::store::RecordStore store(db);
+        store.rebuild_chart_library({{items[0].md5, items[0].title, hydra::test::kTagOnlyTitle,
+                                      items[0].charter, items[0].notespath,
+                                      items[0].rootfolder, items[0].sig}});
+    }
+
+    RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
+    INFO(r.output);
+    REQUIRE(r.exit_code == 0);
+    CHECK(contains(r.output, "(unknown) - CLI Fixture"));
+    CHECK(!contains(r.output, "<b>"));
 }
 
 TEST_CASE("hydra_batch names the cap with the one count rule") {

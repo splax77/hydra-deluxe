@@ -107,6 +107,10 @@ std::string strip_rich_tags(std::string_view text);
 // fallback, so a title made only of tags or spaces reads kUnknownTitle.
 std::string display_title(std::string_view title);
 
+// The one cleaned artist every screen shows (D50 item 5): display_title's
+// rule, so an artist made only of tags or spaces reads kUnknownTitle.
+inline std::string display_artist(std::string_view artist) { return display_title(artist); }
+
 // What a song with no usable artist or charter shows everywhere it is shown.
 inline constexpr const char* kUnknownArtist = "<unknown artist>";
 inline constexpr const char* kUnknownCharter = "<unknown charter>";

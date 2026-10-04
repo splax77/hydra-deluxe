@@ -254,10 +254,25 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
         INFO(row.hyhash);
         const size_t i = static_cast<size_t>(std::stoi(row.hyhash.substr(1)));
         CHECK(row.song == names[i].second);
-        // Artist and charter lose their tags too, with no fallback.
+        // Artist and charter lose their tags too.
         CHECK(row.artist == "Artist");
         CHECK(row.charter == "Charter");
     }
+
+    // An artist made only of tags reads "(unknown)" by the title's rule
+    // (D50 item 5); a charter made only of tags keeps today's blank.
+    // add_song keeps the latest names it is given.
+    store.add_song("u0", "Song", test::kTagOnlyTitle, test::kTagOnlyTitle,
+                   test::beat_song({}, {}, 13440));
+    rows = report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
+    bool saw_u0 = false;
+    for (const report::ReportRow& row : rows) {
+        if (row.hyhash != "u0") continue;
+        saw_u0 = true;
+        CHECK(row.artist == kUnknownTitle);
+        CHECK(row.charter == "");
+    }
+    CHECK(saw_u0);
 }
 
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {

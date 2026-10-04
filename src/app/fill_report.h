@@ -34,7 +34,8 @@ struct FillCompareRow {
     std::string old_path, new_path;
     std::optional<int> old_acts, new_acts;
     std::optional<int> notes;
-    // "same" | "1.0 higher" | "1.1 higher" | "only 1.0" | "only 1.1".
+    // "same" | "1.0 higher" | "1.1 higher" | "only 1.0" | "only 1.1" |
+    // "in both" (a record on each side, a score on one only).
     // Exact literals: tally_fill_rows and the page's chip colors compare them.
     std::string status;
 };
@@ -59,6 +60,7 @@ struct FillCompareStats {
     int ch11_higher = 0;
     int only_old = 0;
     int only_new = 0;
+    int in_both = 0;
 };
 FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows);
 

@@ -51,6 +51,7 @@ const char* const kBody = R"page(<div class="wrap fill">
       <option value="same">Same score</option>
       <option value="only 1.0">Only in 1.0 db</option>
       <option value="only 1.1">Only in 1.1 db</option>
+      <option value="in both">In both</option>
     </select>
     <span class="count" id="count"></span>
   </div>
@@ -69,7 +70,14 @@ const char* const kBody = R"page(<div class="wrap fill">
 )page";
 
 const char* const kPageJs = R"page(const STATUS_CLASS = {'1.1 higher':'s-newhigh', '1.0 higher':'s-oldhigh',
-                      'same':'s-same', 'only 1.0':'s-only', 'only 1.1':'s-only'};
+                      'same':'s-same', 'only 1.0':'s-only', 'only 1.1':'s-only',
+                      'in both':'s-only'};
+
+// A chart in both databases with a score on one side reads "no score" on the
+// other; any other missing score reads as a dash.
+function scoreText(r, s) {
+  return s === null && r.status === 'in both' ? 'no score' : fmt(s);
+}
 
 const PAGE = {
   rows: DATA,
@@ -108,8 +116,8 @@ const PAGE = {
       ['song trunc', r.song],
       ['dim trunc artist', r.artist],
       ['dim trunc charter', r.charter],
-      ['num', fmt(r.s10)],
-      ['num', fmt(r.s11)],
+      ['num', scoreText(r, r.s10)],
+      ['num', scoreText(r, r.s11)],
       [deltaCls, deltaTxt],
       ['path trunc', r.p10 || DASH],
       ['path trunc', r.p11 || DASH],
@@ -183,7 +191,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         // Identity prefers the 1.1 side; either side names the same chart.
         const store::RecordListing* id = new_rec ? new_rec : old_rec;
         row.song = display_title(id->ref_name);
-        row.artist = strip_rich_tags(id->ref_artist);
+        row.artist = display_artist(id->ref_artist);
         row.charter = strip_rich_tags(id->ref_charter);
 
         if (old_rec) {
@@ -200,9 +208,9 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 
         // A chart with a score on both sides compares them. A chart only one
         // database holds a record for is labelled by that database, score or
-        // not. When both hold a record but only one has a score, the label
-        // still goes by the score, as before; what that case should read is
-        // waiting on a decision.
+        // not. When both hold a record but only one has a score, the chart
+        // is in both, and the page writes "no score" on the empty side
+        // (D50 item 2).
         if (row.old_score && row.new_score) {
             int64_t delta = *row.new_score - *row.old_score;
             row.delta = delta;
@@ -212,7 +220,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         } else if (!old_rec) {
             row.status = "only 1.1";
         } else {
-            row.status = row.old_score ? "only 1.0" : "only 1.1";
+            row.status = "in both";
         }
         rows.push_back(std::move(row));
     }
@@ -228,6 +236,7 @@ FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows) {
         else if (r.status == "1.1 higher") ++stats.ch11_higher;
         else if (r.status == "only 1.0") ++stats.only_old;
         else if (r.status == "only 1.1") ++stats.only_new;
+        else if (r.status == "in both") ++stats.in_both;
     }
     return stats;
 }

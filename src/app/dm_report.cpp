@@ -204,7 +204,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             row.charter = s.charter;
         } else if (rec) {
             row.song = display_title(rec->ref_name);
-            row.artist = strip_rich_tags(rec->ref_artist);
+            row.artist = display_artist(rec->ref_artist);
             row.charter = strip_rich_tags(rec->ref_charter);
         } else {
             row.song = s.song_name;

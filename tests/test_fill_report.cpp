@@ -236,7 +236,7 @@ TEST_CASE("collect_fill_rows: each side reads only its own rule, even from one s
 }
 
 TEST_CASE("tally_fill_rows counts every status") {
-    std::vector<FillCompareRow> rows(7);
+    std::vector<FillCompareRow> rows(8);
     rows[0].status = "same";
     rows[1].status = "1.0 higher";
     rows[2].status = "1.0 higher";
@@ -246,15 +246,17 @@ TEST_CASE("tally_fill_rows counts every status") {
     // Every status is counted by its own name: a status the page does not
     // know lands in no bucket, not in "only 1.1".
     rows[6].status = "no such status";
+    rows[7].status = "in both";
 
     app::fill_report::FillCompareStats stats =
         app::fill_report::tally_fill_rows(rows);
-    CHECK(stats.total == 7);
+    CHECK(stats.total == 8);
     CHECK(stats.same == 1);
     CHECK(stats.ch10_higher == 2);
     CHECK(stats.ch11_higher == 1);
     CHECK(stats.only_old == 1);
     CHECK(stats.only_new == 1);
+    CHECK(stats.in_both == 1);
 }
 
 TEST_CASE("build_fill_html substitutes every placeholder") {
@@ -365,4 +367,55 @@ TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
     CHECK(rows[0].song == "Bold Title");
     CHECK(rows[0].artist == "Tagged Artist");
     CHECK(rows[0].charter == "Tagged Charter");
+
+    // An artist made only of tags reads "(unknown)" by the title's rule
+    // (D50 item 5); a charter made only of tags keeps today's blank.
+    new_store.add_song(kBoth, "Song", test::kTagOnlyTitle, test::kTagOnlyTitle,
+                       sample_chart().song);
+    rows = compare(old_store, new_store);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].artist == kUnknownTitle);
+    CHECK(rows[0].charter == "");
+}
+
+TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in both") {
+    // D50 item 2: both databases hold a record for the chart, but the 1.0
+    // record is a Ready record with no paths, so it has no score. The row is
+    // listed under "in both", not under "only 1.1".
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+    HydraRecord empty;
+    empty.sp_cap = kCloneHeroSpCap;
+    empty.ms_limit = app::Settings{}.mslimit_value;
+    empty.legacy_fills = true;
+    old_store.add_song(kBoth, "Song aa11", "Test Artist", "Test Charter",
+                       sample_chart().song);
+    old_store.add_record(key_for(kBoth, true), empty);
+    put_ch11(new_store, kBoth, 1050000, 4, "new-path-F");
+
+    std::vector<FillCompareRow> rows = compare(old_store, new_store);
+    REQUIRE(rows.size() == 1);
+    CHECK_FALSE(rows[0].old_score.has_value());
+    CHECK(rows[0].new_score == 1050000);
+    CHECK_FALSE(rows[0].delta.has_value());
+    CHECK(rows[0].status == "in both");
+
+    // The same the other way round: the 1.1 record has no score.
+    store::RecordStore old2(":memory:");
+    store::RecordStore new2(":memory:");
+    put_ch10(old2, kBoth, 1000000, 3, "old-path-F");
+    HydraRecord empty11 = empty;
+    empty11.legacy_fills = false;
+    new2.add_song(kBoth, "Song aa11", "Test Artist", "Test Charter", sample_chart().song);
+    new2.add_record(key_for(kBoth, false), empty11);
+    rows = compare(old2, new2);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].status == "in both");
+
+    // The tally counts it by name, and the page lists it under "In both" and
+    // writes "no score" on the side that has none.
+    CHECK(app::fill_report::tally_fill_rows(rows).in_both == 1);
+    const std::string html = app::fill_report::build_fill_html(rows, "sub", "foot");
+    CHECK(html.find("<option value=\"in both\">In both</option>") != std::string::npos);
+    CHECK(html.find("'no score'") != std::string::npos);
 }
