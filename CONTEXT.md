@@ -109,9 +109,12 @@ Squeezing an SP phrase's note into (+) or out of (-) an active Star Power
 window, written as the `+`/`-` symbols in path notation. Only a phrase after
 the activation chord can be squeezed: one at or before it was banked before
 SP started (core/sqout_chord.h, `activation_can_squeeze`). A phrase is
-squeezed in only once. Each SP end offers the first phrase in its 500 ms
-window that the window has not banked or already squeezed in, or nothing if
-none is left (`offered_phrase`, D34).
+squeezed in only once (D34). An SP end offers a window at most one phrase
+(`offered_phrase`, D36): its newest phrase, when collecting it is what moved
+the window's end away from this SP end; or, when the window's end is this SP
+end, the first phrase after it that the window has not squeezed in. An older
+phrase can't be squeezed out while a newer one stays in: the newer one is hit
+later, so it would be hit after Star Power ran out too.
 
 **Multiplier squeeze**:
 Ordering the hits of a multi-note chord on a combo-multiplier boundary so the
