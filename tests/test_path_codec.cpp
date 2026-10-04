@@ -160,7 +160,7 @@ TEST_CASE("path codec: a node carries activations only, never totals") {
     CHECK(encode_path_node(changed) == encode_path_node(root));
 
     REQUIRE_FALSE(changed.activations.empty());
-    test::set_skips(changed.activations.front(), changed.activations.front().skips + 1);
+    test::set_skips(changed.activations.front(), changed.activations.front().skips() + 1);
     CHECK(encode_path_node(changed) != encode_path_node(root));
 }
 
@@ -469,6 +469,17 @@ TEST_CASE("path codec: a node keeps bank_rise_ticks") {
     const Path back = decode_path_node(encode_path_node(path));
     REQUIRE(back.activations.size() == 1);
     CHECK((back.activations.front().bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
+}
+
+TEST_CASE("path codec: a node keeps skipped_fill_ticks") {
+    Activation act;
+    act.timecode = Timecode::raw(28800);
+    act.skipped_fill_ticks = {19200, 24960};
+    Path path;
+    path.activations.push_back(act);
+    const Path back = decode_path_node(encode_path_node(path));
+    REQUIRE(back.activations.size() == 1);
+    CHECK((back.activations.front().skipped_fill_ticks == std::vector<int64_t>{19200, 24960}));
 }
 
 TEST_CASE("path codec: a root keeps trailing_bank_ticks") {

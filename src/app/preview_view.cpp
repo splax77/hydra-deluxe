@@ -329,7 +329,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
             PreviewActivation pa;
             pa.tick = a.timecode.ticks();
             pa.ms = song.timecode(pa.tick).ms();
-            pa.skips = a.skips;
+            pa.skips = a.skips();
             pa.bank_rise_ticks = a.bank_rise_ticks;
             for (size_t k = 0; k < a.sp_end_steps.size(); ++k)
                 pa.sp_end_changes.push_back({a.refill_tick(k), a.sp_end_steps[k].end_tick});

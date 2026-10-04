@@ -102,7 +102,6 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint32_t seed,
 // One activation. The fields the search always sets carry no presence
 // byte; the three ticks that can be missing keep theirs.
 void write_activation(BinaryWriter& w, const Activation& act) {
-    w.i32(act.skips);
     w.i64(act.timecode.ticks());
     w.str(act.chord.code());
     w.i32(act.frontend_points);
@@ -142,11 +141,13 @@ void write_activation(BinaryWriter& w, const Activation& act) {
     // Where each bar the activation spends arrived (sp_meter() is the count).
     w.u32(static_cast<uint32_t>(act.bank_rise_ticks.size()));
     for (int64_t t : act.bank_rise_ticks) w.i64(t);
+    // The fills passed over before the activation (skips() is the count).
+    w.u32(static_cast<uint32_t>(act.skipped_fill_ticks.size()));
+    for (int64_t t : act.skipped_fill_ticks) w.i64(t);
 }
 
 Activation read_activation(BinaryReader& r) {
     Activation act;
-    act.skips = r.i32();
     act.timecode = Timecode::raw(r.i64());
     act.chord = Chord::from_code(r.str());
     act.frontend_points = r.i32();
@@ -194,6 +195,10 @@ Activation read_activation(BinaryReader& r) {
     const uint32_t nbank = r.u32();
     act.bank_rise_ticks.reserve(nbank);
     for (uint32_t i = 0; i < nbank; ++i) act.bank_rise_ticks.push_back(r.i64());
+    // The passed-over fills (see write_activation).
+    const uint32_t nfills = r.u32();
+    act.skipped_fill_ticks.reserve(nfills);
+    for (uint32_t i = 0; i < nfills; ++i) act.skipped_fill_ticks.push_back(r.i64());
     return act;
 }
 

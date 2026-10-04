@@ -836,7 +836,7 @@ TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating (D13
     HydraRecord rec;
     auto sentence_at = [&rec](double offset) {
         Activation act;
-        act.skips = 0;
+        test::set_skips(act, 0);
         act.e_offset = 300.0;  // not e-critical
         // Only the early (free) side scaled: a figure means the rating read it.
         act.transfer_pre = TransferScale{1.6, 1.0};

@@ -1169,25 +1169,6 @@ TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
     CHECK(path.trailing_bank_ticks.empty());
 }
 
-// R2's check, stage one: the lists hold exactly what the counts count.
-TEST_CASE("Bank: the lists match the stored counts on every corpus record") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song =
-            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        std::vector<const Path*> all = rec.all_paths();
-        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
-        for (const Path* p : all) {
-            CAPTURE(chart);
-            CHECK(p->trailing_bank_ticks.size() == static_cast<size_t>(p->leftover_sp()));
-            for (const Activation& act : p->walk_activations())
-                CHECK(act.bank_rise_ticks.size() == static_cast<size_t>(act.sp_meter()));
-        }
-    }
-}
-
 // The lasting order checks, on root paths. A variant's tail activations are
 // its leader's; their order against the variant's own windows is Part B's
 // job, and Part B extends this case to variants.
@@ -1221,4 +1202,51 @@ TEST_CASE("Bank: every corpus root banks in order") {
         }
     }
     CHECK(acts > 1000);
+}
+
+TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
+    // Fill A (19200) was shown and passed over; fill B (24960) has the earlier
+    // 1.0 deadline and never spawned. The nearest-fill guess would name B.
+    Song song = test::make_ch10_fill_song();
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
+    EngineOptions opts;
+    opts.target_act_ticks = std::vector<int64_t>{28800};
+    const std::vector<Path> paths = run_search(graph, opts);
+    REQUIRE(!paths.empty());
+    REQUIRE(paths.front().activations.size() == 1);
+    const Activation& act = paths.front().activations.front();
+    CHECK((act.skipped_fill_ticks == std::vector<int64_t>{19200}));
+}
+
+// The lasting order checks, on root paths. A tied variant still carries its
+// leader's list until finding 97 gets its own plan (Q3).
+TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int skipped = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song =
+            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        for (const Path& root : corpus::analyzed(chart, cfg).paths) {
+            const Activation* prev = nullptr;
+            for (const Activation& act : root.walk_activations()) {
+                CAPTURE(chart);
+                CAPTURE(act.timecode.ticks());
+                for (size_t k = 0; k < act.skipped_fill_ticks.size(); ++k) {
+                    const int64_t t = act.skipped_fill_ticks[k];
+                    ++skipped;
+                    CHECK(t < act.timecode.ticks());
+                    if (prev) CHECK(t > prev->timecode.ticks());
+                    if (k > 0) CHECK(t > act.skipped_fill_ticks[k - 1]);
+                    CHECK(std::any_of(song.sequence.begin(), song.sequence.end(),
+                                      [t](const SongTimestamp& ts) {
+                                          return ts.timecode.ticks() == t &&
+                                                 ts.activation_length.has_value();
+                                      }));
+                }
+                prev = &act;
+            }
+        }
+    }
+    CHECK(skipped > 100);
 }

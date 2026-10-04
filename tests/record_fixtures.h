@@ -210,9 +210,11 @@ inline void set_sp_meter(Activation& a, int bars) {
 }
 
 // The fills an activation passed over before it, for a test that needs only
-// the count.
+// the count: one fill per skip on placeholder ticks just before the
+// activation. Only the count (skips()) matters to such a test.
 inline void set_skips(Activation& a, int skips) {
-    a.skips = skips;
+    a.skipped_fill_ticks.clear();
+    for (int k = skips; k > 0; --k) a.skipped_fill_ticks.push_back(a.timecode.ticks() - k);
 }
 
 // The bars banked after a path's last window, for a test that needs only the

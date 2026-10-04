@@ -513,7 +513,7 @@ TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads pre's earl
     // Only one side scaled, so the figure shows which side was read.
     auto figure = [](TransferScale pre, double offset) {
         Activation act;
-        act.skips = 0;
+        test::set_skips(act, 0);
         act.e_offset = 300.0;
         act.transfer_pre = pre;
         act.transfer_post = TransferScale{};

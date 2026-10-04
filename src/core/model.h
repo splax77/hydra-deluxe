@@ -312,7 +312,6 @@ struct SpEndStep {
 struct Activation {
     // The search sets these on every activation it makes, so they are
     // plain values (record format v7, docs/adr/0017).
-    int skips = 0;
     Timecode timecode;
     Chord chord;
     int frontend_points = 0;
@@ -354,6 +353,16 @@ struct Activation {
 
     // Bars of SP this activation spends: one per stored arrival.
     int sp_meter() const { return static_cast<int>(bank_rise_ticks.size()); }
+
+    // The fills the path was shown and passed over before this activation,
+    // in chart order. The search charges a skip only on a fill it could have
+    // taken (enough SP, deadline open) and stamps that fill's tick here.
+    // Under the 1.0 fill rule these need not be the fills nearest the
+    // activation. skips() is its size. The Preview lights exactly these.
+    std::vector<int64_t> skipped_fill_ticks;
+
+    // Fills passed over before this activation: one per stored fill.
+    int skips() const { return static_cast<int>(skipped_fill_ticks.size()); }
 
     // Read from sp_end_steps; see each body in model.cpp.
     //   deact_tick()             - the deactivation node D: where this
