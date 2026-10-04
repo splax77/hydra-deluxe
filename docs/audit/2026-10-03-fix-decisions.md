@@ -138,7 +138,9 @@ None of these changes a score, a path or a stored record. The results stamp stay
 
 **D49 (developer-tool tuning numbers, M0 review), 2026-10-04.** The user chose to record these as they are. They control only how two developer tools behave; none touches a score, a display or a record.
 - `tools/new_worktree.ps1` and its shared build-slot script: at most 3 cold builds at once (the approved phase 3-5 plan's "Cold builds start at most three at a time"), a free-slot check every 15 s, and a "still waiting" line every 60 s.
-- `tools/derive_once_precheck.ps1`: helper bodies under 30 tokens are matched by name only, not by body; a C++ statement split over up to 4 lines is read as one; a typed 500 counts only within 2 lines of a squeeze, window, SqIn/SqOut, leeway, deact or fabs( word; and a decision cited on the line or the 3 lines above it is the one the number must appear in.
+- `tools/derive_once_precheck.ps1`: helper bodies under 30 tokens are matched by name only, not by body; a C++ statement split over up to 4 lines is read as one; a typed 500 counts only within 2 lines of a squeeze, window, SqIn/SqOut, leeway, deact or fabs( word, and the same 2-line reach applies to a typed 2.0 beside a hit window (the 500 rule later moved into a scan row, leaving the 2.0 rule as the reach's only user); and a decision cited on the line or the 3 lines above it is the one the number must appear in.
+- Also in the precheck (added after the M0 round-2 review, same kind of tool tuning): the numbers 0, 1 and 2 are never listed as needing a decision, because they are counts, first and second, and off-by-one, not thresholds; 1000, 1024 and 1000000 next to `*` or `/` are unit factors (ms to s, KiB), not limits; and a cited decision is looked for in the 200 characters before a number on its line.
+- The precheck's run on main is the range run, which prints nothing on a clean merge. A whole-tree run lists every copy already in the tree, as backlog for the audit, not as something a branch added.
 
 **D50 (phase 3 display follow-ups), 2026-10-04.** The user answered "all recommended" to seven display choices D48 did not settle, raised by the phase 3 task briefs and reviews. Each one changes only text or placement on screen; none touches a score, a path or a stored record.
 1. The path report's footer (finding 2) reads: "Timing tiers measure how big each squeeze is, in steps of your hit window. The Paths tab's row labels measure how far a hit lands from the Star Power end, so the two can differ. 'Beyond' means past the N ms window."
@@ -148,3 +150,45 @@ None of these changes a score, a path or a stored record. The results stamp stay
 5. An artist made only of Clone Hero tags reads "(unknown)", by the same rule as titles (finding 8).
 6. Two paths are the same path when their score and every activation's tick and SP-end tick match (`path_identity`, finding 249). Measured on the 97 corpus charts: no all-0 list changes.
 7. On the Paths timeline (finding 3), a difficult activation keeps its orange outline; any other badged activation gets a grey outline matching its grey badge.
+
+**D51 (phase 7), 2026-10-04.** The user answered "all recommended" to every question in `docs/audit/2026-10-04-phase-7-questions.md`, including 4b. Each question's Recommended line is the decision. The user added two notes in their own words.
+- On 4- and 5-note chords (Q3, findings 49 and 50): "those should never appear in a real drums chart. but it's valid in clone hero so hydra should account for it correctly." So `MultSqueeze` follows `to_multiplier` for every chord size, and shows the real gain.
+- On the early-fill window (Q7, finding 313): "60 is fine because it doesnt change anything. lots of paths were getting cluttered with early fills that will never matter so i tightened it from 85 to 60." So `kEarlyFillWindowMs` stays 60 ms. It was tightened from 85 ms to drop early fills that never matter.
+
+The calls in short:
+1. The tie limit is one count per score. When some tied paths are inside the Path limit and some are over, the inside ones lead (Q1, 95; changes stored results).
+2. A path that ties the best score stays shown even when it is over the Path limit, and the guide says so (Q2, 330).
+3. See the 4- and 5-note chord note above (Q3, 49 and 50; changes stored results).
+4. A path with nothing to time shows no timing figure. A squeeze-out at exactly 0.0 ms still needs timing, and the all-0 list follows D13 (Q4, 22; may change stored all-0 lists, and the counts go to the user before the merge). One duplicate hides only itself, not the whole "Best all-0 path" section (Q4b, 324).
+5. A required early fill counts against the Path limit like a squeeze, and the words say "hardest squeeze or required early fill" (Q5, 23).
+6. A phrase that fills the meter exactly to the cap is not an overfill (Q6, 307).
+7. See the early-fill window note above (Q7, 313).
+8. Results made under other rules are kept, and read Ready again when the rules match (Q8, 65).
+9. Song length is stored per difficulty (Q9, 62).
+10. The first copy the scan lists names a duplicate chart, and a batch analyzes each chart once (Q10, 63).
+11. A Ready chart with no paths stays under Analyzed. The filters see no facts for it, and the leaderboard and fill pages say "no paths" (Q11, 88).
+12. Each analysis rewrites the stored tempo map, and the scan cache carries its own version stamp (Q12, 343 and 345).
+13. Recorded as they are (Q13). Six items:
+    - The stars column is a cache of `path_stars` (129).
+    - Custom-ladder Auto rows read Stale until re-analyzed (317).
+    - The scan reads .sng and .srb names from the first 1 MB (321).
+    - `squeeze<N` means "at most N" (323).
+    - The six hydra_rules.ini lower bounds stay as they are (325).
+    - The scoring values: cymbal +15, solo 100 per note, multiplier steps at combos 10, 20 and 30 (335).
+14. A hand-edited setting outside its range is pulled to the nearest edge of the range its box enforces, both on load and on typing. The Preview volume is 0 to 100 everywhere (Q14: 322, 311, 31, 56, 72, 138).
+15. A `#` comment after a value in hydra_settings.ini is ignored, and the hit window may hold a decimal (Q15, 66 and 140).
+16. A 1-bar SP cap stays allowed, and the Paths tab says "A 1-bar cap can never activate Star Power." (Q16, 139).
+17. Jumping back after the audio ends brings the sound back (Q17, 73).
+18. A chart file that changed since it was analyzed opens with the path overlay hidden and one line: "This chart changed since it was analyzed. Analyze it again to see its path." (Q18, 126).
+19. A FLAC whose header length is 0 is counted by decoding it once on open (Q19, R7.8).
+20. A damaged Opus stem comes back after a scrub to before the damage, like every other format (Q20, R7.9).
+21. Preview clips are left out of the song mix everywhere, and one "is this playable audio" rule (`audio::sniff_format`) decides (Q21, 74 and 101).
+22. The SP gauge measures a mid-measure meter-change tick under the engine's side, the earlier section (Q22, 58).
+23. "Open automatically" keeps its behaviour. Its hint reads "Open each report in your browser as soon as it's built." (Q23, R7.2).
+24. "Scan now" and "Rescan library" are blocked during a batch, and the status line says "A batch is running." (Q24, R7.3).
+25. Errors carry their kind, and each kind has one plain sentence. A Preview asset problem reads "Reinstall Hydra" (Q25, 193).
+26. The batch reports its own analyzed, skipped and failed counts (Q26, 142).
+
+The code-only calls at the end of the sheet are approved as written. They cover findings 38, 59, 68, 78 to 85, 86, 98, 103, 108, 109, 170, 174, 198 and 202. In particular, the six old probe scripts are deleted.
+
+**D52 (phase 3, fill comparison counts), 2026-10-04.** The user chose the recommended answer. D50 item 2 puts a chart with a score on only one side under "In both". The fill page's subtitle, its tiles and hydra_fillcompare's "Compared N charts: …" line now count those charts as "N with a score on one side only", with a matching tile. The parts add up to the total again. No score, path or record changes.
