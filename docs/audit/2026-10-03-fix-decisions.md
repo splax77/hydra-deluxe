@@ -110,3 +110,28 @@ D44 addendum, 2026-10-04 (T10 on the step 1+2 base): real charts still show 0 ch
 
 **D47 (step-2 review, .chart note order), 2026-10-04.** A `.chart` whose drum notes are written out of tick order is read in tick order: the reader settles chord order once, before the phrase rule (D21) and the fill rule (D30), so a phrase's pay-out and a fill's landing always pick the same "last" chord. None of the library's 4,338 loose `.chart` files is out of order, so no saved result changes; the `.sng`/`.srb` containers are checked when the fix lands. Clone Hero's own ordering is not in the evidence file.
 D36 addendum, 2026-10-04 (measured, user said land it): one rule in `core::offered_phrase` — an SP end offers a window at most one phrase: before the end, only the window's newest phrase, at the SP end that collecting it moved; after the end, when the window ends here, the first phrase after it the window hasn't squeezed in (the old rule let an older phrase block it — the design had said that side was unchanged). It replaces T10's clamp-origin guard. Whole library (about 19,900 charts, caps 2 to 4, four difficulties): every stored record byte-identical, including squeeze offsets and backend rows; Thrice - Deadbolt and SoundHaven - Triad identical; speed unchanged within run-to-run noise. Hand-made 2,000 to 4,000 BPM test charts only gain: clamped_sqin_a 12,950 to 13,150 (cap 2), 13,350 to 13,550 (cap 3), 13,350 to 13,950 (cap 4); clamped_sqin_b 12,750 to 12,950 (caps 3 and 4); seed 36 9,550 to 9,950 (caps 3 and 4); some same-score labels gain a "+" or a free "-". Ships under 2.1.0.
+
+## Phases 3 to 5: display, docs, shell path
+
+**D48 (phase 3-5 questions), 2026-10-04.** The user answered "all recommended" to all 33 questions in `docs/audit/2026-10-04-phase-3-5-questions.md`. Each question's "Recommended" line is the decision. In short:
+- Tied top-score paths are all optimal, in the report too (Q1).
+- Whole-ms text rounds to nearest everywhere (Q2).
+- A timing on a tier edge counts as inside (Q3).
+- The ±10 ms backend band stays a named constant, not tied to the leeway (Q4).
+- The report footer is reworded (Q5).
+- Uncounted SqOut rows get the "(uncounted)" tag (Q6).
+- The "Tightest squeeze" tile becomes "Hardest ms" (Q7).
+- The timeline is orange only for difficult rows (Q8).
+- A row's bars mean "banked when you activate" (Q9).
+- The early-fill badge stays and is recorded (Q10).
+- Note names follow the Dynamics wording (Q11).
+- Counts are singular at 1 with commas from 1,000, whatever the browser's language (Q12).
+- Fill rules are named "Clone Hero 1.0" or "CH 1.0" from one owner, and "(legacy)" goes (Q13).
+- Titles are cleaned, with "(unknown)" when nothing is left (Q14).
+- The library and settings-bar items Q15 to Q21 take their recommended forms.
+- The Preview items Q22 to Q27 take theirs. Position is measured against the last note, the beat lines run to the audio end, teal means SP running, and a chord on the playhead counts as hit.
+- The report items Q28 to Q31 take theirs.
+- The nine wording fixes in Q32 are approved.
+- Every number in Q33 is kept as it is and recorded. That includes the 10 ms Path limit on, 50 ms backend hide off, and both path cut-offs (248 and 260).
+
+None of these changes a score, a path or a stored record. The results stamp stays "2.1.0".
