@@ -88,8 +88,8 @@ typing, and a running batch refreshes the library at most once a second
 confirmed as they are, D48, Q33).
 
 **Leaderboard fetch**:
-The download of real scores from dmleaderboards.com for the leaderboard
-report. It waits at most 15 s to resolve the host, 20 s to connect, 30 s to
+The download of real scores for the leaderboard report. It comes from the
+DMBot API, the backend behind dmleaderboards.com, not from the site itself. It waits at most 15 s to resolve the host, 20 s to connect, 30 s to
 send and 120 s to receive, because the backend cold-starts after idle; it
 checks Cancel every 50 ms; and it accepts only HTTP status 200
 (src/net/dmbot_client.cpp; D48, Q33).
