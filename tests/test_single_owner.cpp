@@ -40,6 +40,7 @@ struct Exempt {
 struct OwnerLine {
     std::string file;       // repo-relative, forward slashes
     std::string line_text;  // the line with leading and trailing space trimmed
+    std::string why;        // the owner, or the recorded decision that allows it
 };
 
 struct OwnerRule {
@@ -68,12 +69,13 @@ const std::vector<OwnerRule>& rules() {
         // (GetTempPathW in copy_to_short_temp) asks whether a result fitted,
         // which audit R7.12 calls a different question. The limit may be
         // spelled 260, and either side may carry a little arithmetic
-        // (size() - 4 < MAX_PATH).
+        // (size() - 4 < MAX_PATH). winstr.cpp is not exempt as a file: only
+        // shell_path's two lines are listed.
         {"Does the Windows shell take a path this long?",
          "shell_path in src/core/winstr.cpp",
          R"((\.(size|length)\(\)|\b(wcs|str)len\s*\([^()]*\))(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*(MAX_PATH|260)\b|\b(MAX_PATH|260)(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*[\w.:>()-]*(\.(size|length)\(\)|\b(wcs|str)len\s*\())",
          "",
-         {"src/core/winstr.cpp"},
+         {},
          {},
          "ADR 0020 (the shell takes nothing of 260 or more); one owner put on the fix "
          "list by the user 2026-10-03 (audit R7.12 addendum)",
@@ -89,18 +91,22 @@ const std::vector<OwnerRule>& rules() {
          {"wchar_t tmp[MAX_PATH + 1];", "GetTempPathW(MAX_PATH + 1, tmp);",
           "if (n == 0 || n > MAX_PATH) return {};",
           "constexpr size_t kPlainPathLimit = MAX_PATH - 12;", "const int kWidth = 260;",
-          "if (n > 260) return;", "if (rows.size() > 2600) return;"}},
+          "if (n > 260) return;", "if (rows.size() > 2600) return;"},
+         {{"src/core/winstr.cpp", "if (path.size() < MAX_PATH) return path;",
+           "shell_path, the owner: a short path goes to the shell as it is"},
+          {"src/core/winstr.cpp", "return s.size() < MAX_PATH ? s : L\"\";",
+           "shell_path, the owner: a short form still too long is refused"}}},
         // Every way this codebase works out a file's size: the stdio seek and
         // tell (32- and 64-bit), stream seekg/tellg, the Win32 size calls and
         // the size fields of their find and attribute data, the CRT's
         // filelength and fstat, std::filesystem's file_size, and a seek to the
-        // end. A file already open is sized by open_file_size_bytes (a
-        // stdio stream) or open_handle_size_bytes (a Win32 handle);
-        // file_size_bytes and read_file_bytes both go through them. winstr.cpp
-        // is not exempt as a file: only its two answering lines are listed.
+        // end. open_handle_size_bytes owns sizing a file, open or by path:
+        // open_file_size_bytes (a stdio stream), file_size_bytes and
+        // read_file_bytes call it. list_dir uses the listing's size by D39.
+        // winstr.cpp is not exempt as a file: only those two lines are listed.
         {"How many bytes does a file hold?",
-         "file_size_bytes, open_file_size_bytes and open_handle_size_bytes in "
-         "src/core/winstr.cpp",
+         "open_handle_size_bytes in src/core/winstr.cpp (list_dir uses the folder "
+         "listing's size by decision D39)",
          R"((^|[^\w])(std::)?(_?f(tell|seek)(i64|o)?|GetFileSize(Ex)?|GetCompressedFileSize[AW]?|GetFileInformationByHandle(Ex)?|_?filelength(i64)?|_?fstat(64|i64)?|(tell|seek)g|file_size)\s*\(|\b(nFileSize(High|Low)|st_size|SEEK_END|FILE_END)\b)",
          "",
          {},
@@ -119,14 +125,14 @@ const std::vector<OwnerRule>& rules() {
           "MA_DR_MP3_SEEK_END,", "const size_t n = bytes.size();",
           "return hydra::open_file_size_bytes(f).value_or(static_cast<ImU64>(-1));",
           "const std::optional<uint64_t> size = hydra::open_handle_size_bytes(file);"},
-         // open_handle_size_bytes, which every other size helper calls, and
-         // list_dir's size straight from the find data it already has (the
-         // rescan cache's fingerprint; sizing each entry by handle would open
-         // every file in the library).
          {{"src/core/winstr.cpp",
-           "if (!GetFileSizeEx(h, &size) || size.QuadPart < 0) return std::nullopt;"},
+           "if (!GetFileSizeEx(h, &size) || size.QuadPart < 0) return std::nullopt;",
+           "open_handle_size_bytes, the owner: the other size helpers call it"},
           {"src/core/winstr.cpp",
-           "e.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;"}}},
+           "e.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;",
+           "list_dir keeps the folder listing's size for the rescan cache, because "
+           "opening every library file would slow scans: the user's decision D39 "
+           "(2026-10-04)"}}},
         {"How is a long path prefixed for Win32?",
          "win32_path in src/core/winstr.cpp",
          R"(\\\\\\\\\?\\\\)",
@@ -244,6 +250,7 @@ TEST_CASE("single-owner rules match their own examples") {
         for (const OwnerLine& o : c.rule->owner_lines) {
             INFO(c.rule->question << " owner line the rule does not flag: " << o.line_text);
             CHECK(flags_line(c, o.line_text));
+            CHECK_FALSE(o.why.empty());
         }
     }
     // Every baseline entry names a real rule, and every question is unique.

@@ -110,8 +110,9 @@ TEST_CASE("the open-file size helpers say nothing for something that is not a fi
     CloseHandle(write_end);
 }
 
-// file_size_bytes asks an open handle now; before, GetFileAttributesExW asked
-// the path. These pin that the answers did not change.
+// file_size_bytes opens the file for its metadata only, so a file someone else
+// holds open exclusively still answers, and a folder answers rather than
+// throwing (a fresh empty folder on NTFS holds 0 bytes).
 TEST_CASE("file_size_bytes answers for a file held open exclusively, and for a folder") {
     TempFile tmp(L"hydra_file_size_locked.bin");
     std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
@@ -124,12 +125,11 @@ TEST_CASE("file_size_bytes answers for a file held open exclusively, and for a f
     CHECK(hydra::file_size_bytes(tmp.utf8()) == 5);
     CloseHandle(lock);
 
-    wchar_t dir[MAX_PATH];
-    REQUIRE(GetTempPathW(MAX_PATH, dir) > 0);
-    WIN32_FILE_ATTRIBUTE_DATA fa{};
-    REQUIRE(GetFileAttributesExW(dir, GetFileExInfoStandard, &fa));
-    const uint64_t old_answer = (static_cast<uint64_t>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow;
-    CHECK(hydra::file_size_bytes(hydra::wide_to_utf8(dir)) == old_answer);
+    TempFile dir(L"hydra_file_size_empty_folder");
+    RemoveDirectoryW(dir.path.c_str());  // a leftover from an aborted run
+    REQUIRE(CreateDirectoryW(dir.path.c_str(), nullptr));
+    CHECK(hydra::file_size_bytes(dir.utf8()) == 0);
+    RemoveDirectoryW(dir.path.c_str());
 }
 
 TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing one") {

@@ -117,6 +117,7 @@ std::vector<DirEntry> list_dir(const std::string& dir_utf8) {
         DirEntry e;
         e.name = wide_to_utf8(name);
         e.is_dir = (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        // The listing's own size, not open_handle_size_bytes: decision D39.
         e.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;
         e.mtime = (static_cast<uint64_t>(fd.ftLastWriteTime.dwHighDateTime) << 32) |
                   fd.ftLastWriteTime.dwLowDateTime;
@@ -140,8 +141,11 @@ std::string exe_path_utf8() {
 }
 
 std::optional<uint64_t> open_handle_size_bytes(void* win32_handle) {
-    // The one place a file's size is worked out; every size helper here ends
-    // up asking it. GetFileSizeEx answers in 64 bits, so sizes past 2 GB and
+    // This owns sizing a file, open or by path: open_file_size_bytes,
+    // file_size_bytes and read_file_bytes all ask it. list_dir is the
+    // exception by decision D39: it keeps the size the folder listing already
+    // reports, for the rescan cache, since opening every library file would
+    // slow scans. GetFileSizeEx answers in 64 bits, so sizes past 2 GB and
     // 4 GB come out right. A pipe or console has no size, as a seek on one
     // has none.
     HANDLE h = static_cast<HANDLE>(win32_handle);
