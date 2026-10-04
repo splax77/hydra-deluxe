@@ -206,7 +206,9 @@ struct TransferScale {
     double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
     double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
                          //      backend squeezes
-    // Bit-exact, so a stored scale compares equal only to itself.
+    // Plain == on both doubles, no tolerance: a stored scale equals only the
+    // same values (not bit-exact: -0.0 equals 0.0 and NaN equals nothing;
+    // real scales are positive and finite, so that never arises).
     bool operator==(const TransferScale& o) const { return early == o.early && late == o.late; }
     bool operator!=(const TransferScale& o) const { return !(*this == o); }
 };

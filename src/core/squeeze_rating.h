@@ -130,6 +130,9 @@ NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
 struct BackendRating {
     BackendSqueeze row;
     bool squeezed_out = false;
+    // Left at its defaults when the row has no offset or the activation's
+    // scales are unknown: then budget_ms is 0.0 and scale x1.00, not real
+    // values. Read them only behind effective_ms.
     NoteRating note;
 };
 

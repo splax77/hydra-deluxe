@@ -102,6 +102,8 @@ ActivationRating rate_activation(const Activation& act,
         BackendRating row;
         row.row = bsq;
         row.squeezed_out = act.is_sqout_backend(bsq);
+        // Unknown scales skip rate_note: the row keeps NoteRating's defaults
+        // (x1.00, budget 0, no figure), which are not real values.
         if (bsq.offset_ms && out.scales) {
             const double o = *bsq.offset_ms;
             const bool inside = row.squeezed_out
@@ -115,9 +117,9 @@ ActivationRating rate_activation(const Activation& act,
 
     // SqIn phrase notes: each offset is measured from the end before its
     // phrase extended SP, so each reads its own stored scale. A SqOut is not
-    // rated here: its offset is its squeezed-out row's offset (both are the
-    // deact edge's sqinout_timing), and that row was rated above, at the end
-    // it is measured from.
+    // rated here: its offset is copied from its squeezed-out row
+    // (Activation::set_sqout), and that row was rated above, at the end it
+    // is measured from.
     out.note_effective_ms.reserve(act.sqinouts.size());
     size_t j = 0;
     for (const SPSqueeze& sq : act.sqinouts) {
@@ -125,7 +127,7 @@ ActivationRating rate_activation(const Activation& act,
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
-        if (!out.scales) {
+        if (!out.scales) {  // unknown scales: no rate_note, no figure (D4)
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
