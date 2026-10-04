@@ -309,6 +309,7 @@ function Get-Views([string]$Path, [string]$Rev = $tip) {
         CodeText   = $code
         NcText     = $noComments
         LineStarts = $null  # filled by Get-LineOf on first use
+        Braces     = $null  # filled by Get-Braces on first use
     }
     $script:LexCache[$key] = $v
     $v
@@ -328,6 +329,34 @@ function Get-LineOf([object]$V, [int]$Offset) {
     $i = [Array]::BinarySearch($V.LineStarts, $Offset)
     if ($i -ge 0) { $i + 1 } else { -bnot $i }
 }
+# Which "}" closes each "{", and which "{" encloses it. One pass with a stack
+# over the view's code text (comments and string text blanked, so a brace
+# there never counts), built once per view on first use. This is the one
+# place the script matches braces. A "{" that never closes has no Close
+# entry, and stays the enclosing block of everything after it.
+function Get-Braces([object]$V) {
+    if ($null -eq $V.Braces) {
+        $close = @{}; $parent = @{}
+        $stack = [System.Collections.Generic.List[int]]::new()
+        foreach ($m in [regex]::Matches($V.CodeText, '[{}]')) {
+            if ($m.Value -eq '{') {
+                $parent[$m.Index] = if ($stack.Count) { $stack[$stack.Count - 1] } else { -1 }
+                $stack.Add($m.Index)
+            } elseif ($stack.Count -gt 0) {
+                $close[$stack[$stack.Count - 1]] = $m.Index
+                $stack.RemoveAt($stack.Count - 1)
+            }
+        }
+        $V.Braces = [pscustomobject]@{ Close = $close; Parent = $parent }
+    }
+    $V.Braces
+}
+# The offset of the "}" that closes the "{" at $Open, or -1 when it does not
+# close before $Limit.
+function Get-CloseBrace([object]$V, [int]$Open, [int]$Limit) {
+    $c = (Get-Braces $V).Close[$Open]
+    if ($null -eq $c -or $c -ge $Limit) { -1 } else { $c }
+}
 
 # ------------------------------------------------------------------- output
 
@@ -342,14 +371,21 @@ $scanFile = 'tests/test_single_owner.cpp'
 
 # Splits a braced initializer list into its top-level elements, each as
 # (start offset, end offset) in the text, using the string-blanked view so
-# braces and commas inside strings do not count.
-function Get-TopElements([string]$Code, [int]$Open, [int]$Close) {
+# braces and commas inside strings do not count. An element is a braced
+# list outside any parentheses; Get-CloseBrace says where it ends.
+function Get-TopElements([object]$V, [int]$Open, [int]$Close) {
     $out = [System.Collections.Generic.List[object]]::new()
-    $depth = 0; $start = -1
+    $parens = 0
     for ($i = $Open + 1; $i -lt $Close; $i++) {
-        $ch = $Code[$i]
-        if ($ch -eq '{' -or $ch -eq '(') { if ($depth -eq 0 -and $ch -eq '{') { $start = $i }; $depth++ }
-        elseif ($ch -eq '}' -or $ch -eq ')') { $depth--; if ($depth -eq 0 -and $ch -eq '}' -and $start -ge 0) { $out.Add(@($start, $i)); $start = -1 } }
+        $ch = $V.CodeText[$i]
+        if ($ch -eq '(') { $parens++ }
+        elseif ($ch -eq ')') { $parens-- }
+        elseif ($ch -eq '{') {
+            $end = Get-CloseBrace $V $i $Close
+            if ($end -lt 0) { break }
+            if ($parens -eq 0) { $out.Add(@($i, $end)) }
+            $i = $end
+        }
     }
     ,$out
 }
@@ -395,46 +431,39 @@ function Get-FieldText([object]$V, [object]$Field) {
 function Get-ListItems([object]$V, [object]$Field) {
     $open = $V.CodeText.IndexOf('{', $Field[0])
     if ($open -lt 0 -or $open -ge $Field[1]) { return ,@() }
-    $depth = 0; $close = -1
-    for ($i = $open; $i -lt $Field[1]; $i++) {
-        if ($V.CodeText[$i] -eq '{') { $depth++ } elseif ($V.CodeText[$i] -eq '}') { $depth--; if ($depth -eq 0) { $close = $i; break } }
-    }
+    $close = Get-CloseBrace $V $open $Field[1]
     if ($close -lt 0) { return ,@() }
     Split-Fields $V.CodeText $open $close  # one list object, not unrolled
 }
 # The body of a function named $Name in a file: offsets of its opening and
 # closing brace in the string-blanked text.
-function Find-FunctionBody([string]$Code, [string]$Name) {
-    $m = [regex]::Match($Code, "\b$([regex]::Escape($Name))\s*\(\s*\)\s*\{")
+function Find-FunctionBody([object]$V, [string]$Name) {
+    $m = [regex]::Match($V.CodeText, "\b$([regex]::Escape($Name))\s*\(\s*\)\s*\{")
     if (-not $m.Success) { return $null }
     $open = $m.Index + $m.Length - 1
-    $depth = 0
-    for ($i = $open; $i -lt $Code.Length; $i++) {
-        if ($Code[$i] -eq '{') { $depth++ } elseif ($Code[$i] -eq '}') { $depth--; if ($depth -eq 0) { return @($open, $i) } }
-    }
-    $null
+    $close = Get-CloseBrace $V $open $V.CodeText.Length
+    if ($close -lt 0) { return $null }
+    @($open, $close)
 }
-function Get-InitList([string]$Code, [int]$BodyOpen, [int]$BodyClose) {
+function Get-InitList([object]$V, [int]$BodyOpen, [int]$BodyClose) {
     # the first "= {" inside the body is the static table's initializer
-    $m = [regex]::new('=\s*\{').Match($Code, $BodyOpen, $BodyClose - $BodyOpen)
+    $m = [regex]::new('=\s*\{').Match($V.CodeText, $BodyOpen, $BodyClose - $BodyOpen)
     if (-not $m.Success) { return $null }
     $open = $m.Index + $m.Length - 1
-    $depth = 0
-    for ($i = $open; $i -lt $BodyClose; $i++) {
-        if ($Code[$i] -eq '{') { $depth++ } elseif ($Code[$i] -eq '}') { $depth--; if ($depth -eq 0) { return @($open, $i) } }
-    }
-    $null
+    $close = Get-CloseBrace $V $open $BodyClose
+    if ($close -lt 0) { return $null }
+    @($open, $close)
 }
 
 # The elements of the table a function returns (rules() or known_copies()),
 # each with its fields and its first and last line in the scan file.
 function Get-TableElements([object]$V, [string]$Function) {
     $out = [System.Collections.Generic.List[object]]::new()
-    $body = Find-FunctionBody $V.CodeText $Function
+    $body = Find-FunctionBody $V $Function
     if (-not $body) { return ,$out }
-    $init = Get-InitList $V.CodeText $body[0] $body[1]
+    $init = Get-InitList $V $body[0] $body[1]
     if (-not $init) { return ,$out }
-    foreach ($el in (Get-TopElements $V.CodeText $init[0] $init[1])) {
+    foreach ($el in (Get-TopElements $V $init[0] $init[1])) {
         $out.Add([pscustomobject]@{
             Fields = (Split-Fields $V.CodeText $el[0] $el[1])
             Line = (Get-LineOf $V $el[0])
@@ -702,39 +731,40 @@ function Get-Normalised([string]$Text) {
 function Get-Definitions([string]$Path) {
     $v = Get-Views $Path
     $code = $v.CodeText
-    # Brace structure: for each '{', its closing offset and whether every
-    # enclosing block is a namespace (so a function there is a free function).
-    $close = @{}; $top = @{}
-    $stack = [System.Collections.Generic.List[object]]::new()
-    foreach ($m in [regex]::Matches($code, '[{}]')) {
-        if ($m.Value -eq '{') {
+    # Brace structure from Get-Braces: each '{' with its closing offset and
+    # the block that encloses it. A function is a free function when every
+    # enclosing block is a namespace.
+    $braces = Get-Braces $v
+    $nsMemo = @{}
+    $isNs = {
+        param($o)
+        if (-not $nsMemo.ContainsKey($o)) {
             # Look back up to 200 characters for "namespace" or extern "C"
             # before this brace (decision D49): a parse buffer, long enough
             # for any namespace head.
-            $from = [Math]::Max(0, $m.Index - 200)
-            $before = $code.Substring($from, $m.Index - $from)
+            $from = [Math]::Max(0, $o - 200)
+            $before = $code.Substring($from, $o - $from)
             $cut = $before.LastIndexOfAny([char[]]@(';', '{', '}'))
             $head = $before.Substring($cut + 1)
-            $isNs = $head -match '\bnamespace\b[^;{}]*$|\bextern\s*"[^"]*"\s*$'
-            $allNs = $true
-            foreach ($s in $stack) { if (-not $s.Ns) { $allNs = $false; break } }
-            $top[$m.Index] = $allNs
-            $stack.Add([pscustomobject]@{ Pos = $m.Index; Ns = $isNs })
-        } elseif ($stack.Count -gt 0) {
-            $close[$stack[$stack.Count - 1].Pos] = $m.Index
-            $stack.RemoveAt($stack.Count - 1)
+            $nsMemo[$o] = $head -match '\bnamespace\b[^;{}]*$|\bextern\s*"[^"]*"\s*$'
         }
+        $nsMemo[$o]
+    }
+    $atTop = {
+        param($o)
+        for ($p = $braces.Parent[$o]; $p -ge 0; $p = $braces.Parent[$p]) { if (-not (& $isNs $p)) { return $false } }
+        $true
     }
     $defs = [System.Collections.Generic.List[object]]::new()
     $add = {
         param($m, $isLambda)
         $open = $m.Index + $m.Length - 1
-        if (-not $close.ContainsKey($open)) { return }
-        if (-not $isLambda -and -not $top[$open]) { return }
+        $end = Get-CloseBrace $v $open $code.Length
+        if ($end -lt 0) { return }
+        if (-not $isLambda -and -not (& $atTop $open)) { return }
         $name = $m.Groups['name'].Value
         if ($notFunctionNames.Contains($name)) { return }
         if (-not $isLambda -and ($m.Groups['pre'].Value -match '\b(return|else|new|delete|throw|case|do|goto|co_return)\b')) { return }
-        $end = $close[$open]
         $norm = Get-Normalised ($m.Groups['params'].Value + ' ' + $code.Substring($open, $end - $open + 1))
         $first = Get-LineOf $v ($m.Index + ($m.Value.Length - $m.Value.TrimStart().Length))
         $last = Get-LineOf $v $end
