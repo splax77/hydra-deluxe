@@ -92,13 +92,11 @@ const PAGE = {
     {k:'status',  t:'Status',    num:false, d:'Under optimal, At optimal or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap 4. Not in your library: the last scan did not find it. Other speed: played at a speed other than __BASE_SPEED__%. Clone Hero keeps a separate leaderboard per speed, so it is shown but not compared.'},
   ],
   controls: [['q', 'input'], ['status', 'change']],
-  filter(q) {
+  // The search box is matched against each row's search text in the shared
+  // script; this keeps rows by the status control.
+  filter() {
     const status = document.getElementById('status').value;
-    return r => {
-      if (status && r.status !== status) return false;
-      if (!q) return true;
-      return (r.song + ' ' + r.artist + ' ' + r.charter).toLowerCase().includes(q);
-    };
+    return r => !status || r.status === status;
   },
   cells(r) {
     const noDelta = r.delta === null || r.delta === undefined;
@@ -252,6 +250,8 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
         json_escape_into(data, r.artist);
         data += ",\"charter\":";
         json_escape_into(data, r.charter);
+        data += ",\"search\":";
+        json_escape_into(data, html::search_field(r.song, r.artist, r.charter));
         data += ",\"actual\":" + std::to_string(r.actual);
         data += ",\"optimal\":" + (r.optimal ? std::to_string(*r.optimal) : std::string("null"));
         data += ",\"delta\":" + (r.delta ? std::to_string(*r.delta) : std::string("null"));

@@ -170,6 +170,16 @@ TEST_CASE("build_dm_html substitutes every placeholder") {
     CHECK(html.find("Board Title") != std::string::npos);
 }
 
+TEST_CASE("report payload: the search field is folded and tag-free") {
+    DmReportRow row;
+    row.song = "Halo";
+    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
+    row.charter = "<b>Bob</b>";
+    row.status = "not in library";
+    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
+    CHECK(html.find("\"search\":\"halo beyonce bob\"") != std::string::npos);
+}
+
 TEST_CASE("generate_dm_report: tally and framing behind one seam") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);

@@ -98,13 +98,11 @@ const PAGE = {
     {k:'status',  t:'Status',      num:false},
   ],
   controls: [['q', 'input'], ['status', 'change']],
-  filter(q) {
+  // The search box is matched against each row's search text in the shared
+  // script; this keeps rows by the status control.
+  filter() {
     const status = document.getElementById('status').value;
-    return r => {
-      if (status && r.status !== status) return false;
-      if (!q) return true;
-      return (r.song + ' ' + r.artist + ' ' + r.charter).toLowerCase().includes(q);
-    };
+    return r => !status || r.status === status;
   },
   cells(r) {
     const hasDelta = r.delta !== null && r.delta !== undefined;
@@ -263,6 +261,8 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
         json_escape_into(data, r.artist);
         data += ",\"charter\":";
         json_escape_into(data, r.charter);
+        data += ",\"search\":";
+        json_escape_into(data, html::search_field(r.song, r.artist, r.charter));
         data += ",\"s10\":" + opt_num(r.old_score);
         data += ",\"s11\":" + opt_num(r.new_score);
         data += ",\"delta\":" + opt_num(r.delta);

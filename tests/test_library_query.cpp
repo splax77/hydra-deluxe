@@ -109,6 +109,28 @@ TEST_CASE("library query: an accented name is found without its accents") {
     CHECK(matches("beyoncé", row));
 }
 
+TEST_CASE("library query: the report pages' fold table is the fold, one character at a time") {
+    // The report pages fold a typed query with this table, so every entry has
+    // to be exactly what the library's own fold does to that character.
+    const std::vector<FoldEntry> table = search_fold_table();
+    REQUIRE_FALSE(table.empty());
+    for (const FoldEntry& e : table) {
+        CHECK(e.to == fold_for_search(e.from));
+        CHECK(e.to != e.from);  // a character the fold keeps is left out
+    }
+    auto folded = [&](std::string_view from) -> std::optional<std::string> {
+        for (const FoldEntry& e : table)
+            if (e.from == from) return e.to;
+        return std::nullopt;
+    };
+    CHECK(folded("\xc3\x89") == std::optional<std::string>("e"));  // É
+    CHECK(folded("\xc3\x84").has_value());                         // Ä
+    CHECK(folded("B") == std::optional<std::string>("b"));
+    CHECK(folded("\xef\xbc\xa1") == std::optional<std::string>("a"));  // full-width A
+    CHECK_FALSE(folded("\xc3\x97").has_value());  // × is kept, so it is not listed
+    CHECK_FALSE(folded("b").has_value());
+}
+
 TEST_CASE("library query: words match in any order and across fields") {
     const SearchableRow row = burnout();
     CHECK(matches("green burnout", row));

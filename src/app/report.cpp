@@ -113,14 +113,15 @@ const PAGE = {
     {k:'notes',   t:'Notes',    num:true,  d:'Notes in the chart.'},
   ],
   controls: [['q', 'input'], ['tier', 'change'], ['bestonly', 'change']],
-  filter(q) {
+  // The search box is matched against each row's search text in the shared
+  // script; this keeps rows by the tier and best-path controls.
+  filter() {
     const tier = document.getElementById('tier').value;
     const bestOnly = document.getElementById('bestonly').checked;
     return r => {
       if (bestOnly && !r.opt) return false;
       if (tier && r.tier !== tier) return false;
-      if (!q) return true;
-      return (r.song + ' ' + r.artist + ' ' + r.charter + ' ' + r.path).toLowerCase().includes(q);
+      return true;
     };
   },
   // Every path tied at the top score is optimal, as on the Paths tab.
@@ -338,6 +339,8 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
         data += r.optimal ? "true" : "false";
         data += ",\"path\":";
         json_escape_into(data, r.path);
+        data += ",\"search\":";
+        json_escape_into(data, html::search_field(r.song, r.artist, r.charter, r.path));
         data += ",\"score\":" + std::to_string(r.score);
         data += ",\"acts\":" + std::to_string(r.acts);
         data += ",\"skip\":" + std::to_string(r.skip);
