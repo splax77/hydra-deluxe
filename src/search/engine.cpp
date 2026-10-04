@@ -359,10 +359,21 @@ private:
         ends_.push_back(EndNode{prev, tick, end, kind});
         return (int32_t)ends_.size() - 1;
     }
-    // The steps with every one at or after `tick` dropped: a squeeze-out
-    // gives its phrase back, and with it that phrase's step.
+    // A squeeze-out gives its phrase back, and with it every step at or after
+    // the squeezed-out chord. The one statement of that rule: trim_ends and
+    // close_folded_act both ask it.
+    static bool given_back(int64_t step_tick, int64_t sqout_tick) {
+        return step_tick >= sqout_tick;
+    }
+    // A SqIn's step is the step on the squeezed-in chord's tick. The one
+    // statement of that rule: relabel_sqin and close_folded_act both ask it.
+    static bool is_sqin_step(int64_t step_tick, int64_t sqin_tick) {
+        return step_tick == sqin_tick;
+    }
+    // The chain without the steps a squeeze-out at `tick` gives back.
     int32_t trim_ends(int32_t tail, int64_t tick) const {
-        while (tail >= 0 && ends_[(size_t)tail].tick >= tick) tail = ends_[(size_t)tail].prev;
+        while (tail >= 0 && given_back(ends_[(size_t)tail].tick, tick))
+            tail = ends_[(size_t)tail].prev;
         return tail;
     }
     // The chain with the step at `tick` relabelled SqIn. Nodes are shared
@@ -376,7 +387,7 @@ private:
             after.push_back(ends_[(size_t)t]);
             t = ends_[(size_t)t].prev;
         }
-        if (t < 0 || ends_[(size_t)t].tick != tick) return tail;
+        if (t < 0 || !is_sqin_step(ends_[(size_t)t].tick, tick)) return tail;
         const EndNode found = ends_[(size_t)t];
         int32_t out = push_end(found.prev, found.tick, found.end, SpEndKind::SqIn);
         for (size_t k = after.size(); k-- > 0;)
@@ -1055,7 +1066,7 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     own.sq_begin = sq_begin;
     own.sq_end = (int32_t)out_sqs_.size();
 
-    // A closing SqOut gives back its phrase and every step at or after it,
+    // A closing SqOut gives back its phrase and the steps given_back names,
     // the trim create_deactivated_path makes (trim_ends). The deact edge's
     // sqinout_time is the squeezed-out chord.
     int64_t give_back = NO_TIME;
@@ -1063,11 +1074,14 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
         if (out_sqs_[(size_t)k].kind == SQ_OUT && own.deact_edge >= 0)
             give_back = edge(own.deact_edge).sqinout_time;
 
-    // An early SqIn the leader took after the fold may sit on a phrase both
-    // paths collected before it. branch_deactivate relabels that step SqIn on
-    // the leader (relabel_sqin); the variant's own copy of it gets the same
-    // label. The n-th SqIn in the leader's list owns its n-th SqIn step, so
-    // the SqIns from the fold on own the leader's SqIn steps from that rank on.
+    // An early SqIn the leader took after the fold may sit on a phrase from
+    // before the fold. branch_deactivate relabels that step SqIn on the
+    // leader (relabel_sqin); the variant's own step there, if it has one,
+    // gets the same label. A variant that banked the phrase before activating
+    // has no step there and keeps its steps as they are, as relabel_sqin
+    // leaves a lone path's (the folded_sqin test chart). The n-th SqIn in the
+    // leader's list owns its n-th SqIn step, so the SqIns from the fold on
+    // own the leader's SqIn steps from that rank on.
     int32_t sqins_before_fold = 0;
     for (int32_t k = lead.sq_begin; k < lead.sq_begin + var.fold_sq_count; ++k)
         if (out_sqs_[(size_t)k].kind == SQ_IN) ++sqins_before_fold;
@@ -1085,17 +1099,17 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
         SpEndStep s = out_ends_[(size_t)k];
         if (s.tick > var.fold_tick)
             throw std::logic_error("a folded variant holds a step past its fold");
-        if (give_back != NO_TIME && s.tick >= give_back) continue;
-        if (std::find(relabel_at.begin(), relabel_at.end(), s.tick) != relabel_at.end()) {
+        if (give_back != NO_TIME && given_back(s.tick, give_back)) continue;
+        const auto sqin = std::find_if(relabel_at.begin(), relabel_at.end(),
+                                       [&s](int64_t t) { return is_sqin_step(s.tick, t); });
+        if (sqin != relabel_at.end()) {
             if (s.kind != SpEndKind::Collected)
                 throw std::logic_error("a folded variant's SqIn phrase is not a collected step");
             s.kind = SpEndKind::SqIn;
-            relabel_at.erase(std::find(relabel_at.begin(), relabel_at.end(), s.tick));
+            relabel_at.erase(sqin);
         }
         out_ends_.push_back(s);
     }
-    if (!relabel_at.empty())
-        throw std::logic_error("a folded variant never collected its leader's SqIn phrase");
     for (int32_t k = lead.end_begin; k < lead.end_end; ++k) {
         const SpEndStep s = out_ends_[(size_t)k];
         if (s.tick > var.fold_tick) out_ends_.push_back(s);

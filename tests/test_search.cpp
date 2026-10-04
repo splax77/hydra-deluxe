@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -467,6 +468,52 @@ std::vector<Step> steps_of(const Activation& a) {
     std::vector<Step> out;
     for (const SpEndStep& s : a.sp_end_steps) out.emplace_back(s.tick, s.end_tick, s.kind);
     return out;
+}
+
+// Every window of a path written out: activation, SP end steps, squeezes,
+// squeezed-out note and backend rows. Two paths with the same text store the
+// same windows.
+std::string windows_text(const Path& p) {
+    std::ostringstream o;
+    for (const Activation& a : p.walk_activations()) {
+        o << a.timecode.ticks() << " [steps";
+        for (const SpEndStep& s : a.sp_end_steps)
+            o << ' ' << s.tick << '>' << s.end_tick << ':' << static_cast<int>(s.kind);
+        o << " | sq";
+        for (const SPSqueeze& q : a.sqinouts) o << ' ' << q.symbol() << q.offset_ms;
+        o << " | out " << a.sqout_tick.value_or(-1) << " | backends";
+        for (const BackendSqueeze& b : a.backends)
+            o << ' ' << b.timecode.ticks() << '/' << b.points << '/' << b.sqout_points << '/'
+              << (b.offset_ms ? *b.offset_ms : -1.0);
+        o << "] ";
+    }
+    return o.str();
+}
+
+// D3's promise for a tied variant: it stores what the search stores when it
+// prices that path's activations alone (search_target). Returns "" when one
+// lone path has the variant's total and windows, else what differed.
+std::string lone_pricing_mismatch(const Song& song, const SearchSettings& settings,
+                                  const Path& variant) {
+    std::vector<int64_t> ticks;
+    for (const Activation& a : variant.walk_activations()) ticks.push_back(a.timecode.ticks());
+    const std::string mine = windows_text(variant);
+    std::string lone_same_total;
+    for (const Path& t : search_target(song, settings, ticks)) {
+        if (t.totalscore() != variant.totalscore()) continue;
+        const std::string theirs = windows_text(t);
+        if (theirs == mine) return "";
+        lone_same_total += "\n  lone:    " + theirs;
+    }
+    return "'" + variant.pathstring() + "' " + std::to_string(variant.totalscore()) +
+           "\n  variant: " + mine + (lone_same_total.empty() ? "\n  no lone path ties it" : lone_same_total);
+}
+
+void collect_variants(const Path& p, std::vector<const Path*>& out) {
+    for (const Path& v : p.variants) {
+        out.push_back(&v);
+        collect_variants(v, out);
+    }
 }
 
 }  // namespace
@@ -1289,4 +1336,82 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqI
 
     for (const Path* p : every_path(roots))
         CHECK_MESSAGE(replay_stored_path(song, *p).faithful(), p->pathstring());
+}
+
+// Review finding (Task 17): a variant that banked a phrase before activating
+// can fold into a leader that collected the same phrase in its SP, and the
+// leader can later squeeze that phrase in. The variant holds no step there.
+// The chart is hand-made: 120 BPM, then 4000 BPM from tick 9600, so 500 ms
+// spans several SP bars. '1' activates at 10752 and collects the phrase at
+// 12288; '0 E0' activates at 4608, banks 8448 and 12288, and activates again
+// at 13824. Both end at 16896 and fold at 13824. The leader then splits on
+// 12288: '1+' (SqIn) and '1-' (SqOut), with the variant under each.
+//
+// Both variants squeeze a phrase that comes before their own activation at
+// 13824. That is the older, separate bug (a squeeze on a phrase before the
+// window's activation; waiting on the user), so this case pins today's lone
+// pricing and does not judge it: '0 E0+' has a SqIn with no SqIn step, and
+// '0 E0-' gives back its activation step, leaving an empty SP end history.
+TEST_CASE("tied variants: a variant that banked its leader's SqIn phrase prices as alone") {
+    const Song song = load_songpath(std::string(HYDRA_INPUT_DIR) +
+                                        "/test_folded_sqin/folded_sqin.chart",
+                                    true, true);
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = 4;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = std::nullopt;
+    const HydraRecord rec = analyze_chart(song, cfg);
+
+    const Path* in_lead = root_named(rec.paths, "1+");
+    const Path* out_lead = root_named(rec.paths, "1-");
+    REQUIRE(in_lead != nullptr);
+    REQUIRE(out_lead != nullptr);
+    const Path* in_var = variant_at(*in_lead, 13824);
+    const Path* out_var = variant_at(*out_lead, 13824);
+    REQUIRE(in_var != nullptr);
+    REQUIRE(out_var != nullptr);
+    CHECK(in_var->pathstring() == "0 E0+");
+    CHECK(out_var->pathstring() == "0 E0-");
+
+    // The leader's SqIn step sits on 12288, before the fold at 13824.
+    CHECK(steps_of(in_lead->activations.back()) ==
+          std::vector<Step>{{10752, 15360, SpEndKind::Activation}, {12288, 16896, SpEndKind::SqIn}});
+    // The variant banked 12288, so it has no step there to relabel: it keeps
+    // its own activation step, as its lone pricing does.
+    const Activation& a = in_var->activations.back();
+    CHECK(steps_of(a) == std::vector<Step>{{13824, 16896, SpEndKind::Activation}});
+    REQUIRE(a.sqinouts.size() == 1);
+    CHECK(a.sqinouts[0].kind == SqueezeKind::SqIn);
+
+    CHECK_MESSAGE(lone_pricing_mismatch(song, cfg, *in_var).empty(),
+                  lone_pricing_mismatch(song, cfg, *in_var));
+    CHECK_MESSAGE(lone_pricing_mismatch(song, cfg, *out_var).empty(),
+                  lone_pricing_mismatch(song, cfg, *out_var));
+}
+
+// D3 on the corpus: every tied variant stores what the search stores when it
+// prices that path alone, window by window (steps, squeezes, squeezed-out
+// note, backend rows). The settings are ones where mid-SP folds happen; the
+// defaults have none on this corpus.
+TEST_CASE("tied variants: every corpus variant matches its lone pricing") {
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = 4;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = 10.0;
+    int variants = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        std::vector<const Path*> vs;
+        for (const Path& root : rec.paths) collect_variants(root, vs);
+        for (const Path* v : vs) {
+            ++variants;
+            const std::string diff = lone_pricing_mismatch(song, cfg, *v);
+            CHECK_MESSAGE(diff.empty(), chart << " " << diff);
+        }
+    }
+    CHECK(variants > 200);
 }
