@@ -399,10 +399,15 @@ TEST_CASE("print the corpus squeeze facts" * doctest::skip()) {
                     // %.17g so even a last-bit change in an offset shows.
                     for (const SPSqueeze& sq : act.sqinouts)
                         std::printf("    %s %.17g\n", sq.type_name(), sq.offset_ms);
-                    for (const BackendSqueeze& b : act.display_backends())
-                        std::printf("    row %lld %s %d %d %.17g\n",
+                    for (const BackendSqueeze& b : act.display_backends()) {
+                        // A missing offset prints as the word none, not 0, so
+                        // a later change that drops or adds one shows up.
+                        char offset[40] = "none";
+                        if (b.offset_ms) std::snprintf(offset, sizeof offset, "%.17g", *b.offset_ms);
+                        std::printf("    row %lld %s %d %d %s\n",
                                     (long long)b.timecode.ticks(), b.chord.code().c_str(),
-                                    b.points, b.sqout_points, b.offset_ms.value_or(0.0));
+                                    b.points, b.sqout_points, offset);
+                    }
                 }
             }
         };
