@@ -419,16 +419,19 @@ TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
 
 TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
+    // The Preview passes the audio's end, as the load does: here the audio
+    // runs the plan's 5 s past the last note (tick 720, 750 ms), to 5750 ms.
+    PreviewScene scene = build_preview_scene(song, nullptr, kCloneHeroSpCap,
+                                             core::default_rules(), 5750.0);
     CHECK(scene.tick_resolution == 480);
     REQUIRE(scene.tempos.size() == 1);
     CHECK(scene.tempos[0].bpm == doctest::Approx(120.0));
     REQUIRE(!scene.beats.empty());
     CHECK(scene.beats.front().tick == 0);
-    // With no audio end given, the grid extends two measures past the last
-    // note (tick 720 -> through 4560; the last line at or before that is the
-    // beat at 4320). The case below passes the audio's end instead.
-    CHECK(scene.beats.back().tick == 4320);
+    // 5750 ms is tick 5520; the last line at or before it is the beat at
+    // 5280 (no half-beat line is drawn before a beat the grid does not reach).
+    CHECK(scene.beats.back().tick == 5280);
+    CHECK(scene.beats.back().kind == PreviewBeatKind::Beat);
 }
 
 TEST_CASE("build_preview_scene: the beat lines run to the end of the audio") {

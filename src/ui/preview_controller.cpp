@@ -75,7 +75,7 @@ void PreviewController::start_scene_job() {
     render::TrackStateOptions track_opts;
     track_opts.pro = pro_;
     scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_, sp_cap_, rules_,
-                                                   path_key_, track_opts);
+                                                   path_key_, track_opts, audio_end_ms_);
     scene_job_->start();
 }
 
@@ -99,6 +99,7 @@ void PreviewController::close() {
     scene_dirty_ = true;  // the renderer (if kept) must drop the old chart
     pending_track_.reset();  // scene_ is empty now; render() builds its (empty) timeline
     song_.reset();
+    audio_end_ms_.reset();
     scene_base_.reset();
     path_.reset();
     sp_cap_ = kCloneHeroSpCap;
@@ -145,7 +146,7 @@ void PreviewController::poll() {
     if (!base_started_ && !job_ && !scene_job_ && !scene_base_ && song_ && !song_->is_empty()) {
         render::TrackStateOptions track_opts;
         track_opts.pro = pro_;
-        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts);
+        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts, audio_end_ms_);
         base_job_->start();
         base_started_ = true;
     }
@@ -156,6 +157,7 @@ void PreviewController::poll() {
     if (ok) {
         PreviewLoadJob::Result result = job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
+        audio_end_ms_ = result.audio_end_ms;
         scene_ = std::move(result.scene);
         pending_track_ = std::move(result.track_state);
         pending_track_opts_ = result.track_opts;

@@ -7,6 +7,8 @@
 
 #include "uitest_harness.h"
 
+#include "../chart_text.h"
+
 #include "app/preview_view.h"
 #include "core/model.h"
 #include "core/winstr.h"  // fopen_utf8
@@ -611,12 +613,12 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
     if (!h.app->selected) return;
     const std::string chart = h.temp_dir + "\\notes.chart";
     {
+        const std::string text = testchart::chart_text(
+            testchart::section("ExpertDrums", testchart::line(0, "N 0 0")), /*resolution=*/0);
         std::FILE* f = hydra::fopen_utf8(chart, L"wb");
         IM_CHECK(f != nullptr);
         if (f == nullptr) return;
-        std::fputs("[Song]\n{\n  Resolution = 0\n}\n[SyncTrack]\n{\n  0 = B 120000\n}\n"
-                   "[ExpertDrums]\n{\n  0 = N 0 0\n}\n",
-                   f);
+        std::fputs(text.c_str(), f);
         std::fclose(f);
     }
     h.app->selected->notespath = chart;

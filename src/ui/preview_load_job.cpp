@@ -39,6 +39,13 @@ long long whole_mb(uint64_t bytes) {
 
 }  // namespace
 
+std::optional<double> audio_end_chart_ms(const audio::MixSource& mix, double audio_offset_ms) {
+    if (mix.channels() <= 0 || mix.sample_rate() <= 0 || mix.length_frames() <= 0)
+        return std::nullopt;
+    return static_cast<double>(mix.length_frames()) * 1000.0 / mix.sample_rate() -
+           audio_offset_ms;
+}
+
 double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_total) {
     if (window_start_s_ < 0.0) {
         window_start_s_ = now_s;
@@ -165,7 +172,7 @@ void PreviewLoadJob::run() {
             }
         } guard{stop, audio_branch};
 
-        // Branch (a) here: notes, scene, highway.
+        // Branch (a) here: the notes.
         app::PreviewSong ps =
             app::resolve_preview_song(entry_.notespath, container, pro_, bass2x_, difficulty_, rules_);
         container.reset();
@@ -176,17 +183,6 @@ void PreviewLoadJob::run() {
         require_notes(ps.song, difficulty_, pro_);
         reading_done_.store(true);
         throw_if_cancelled();
-        const Path* path = path_ ? &*path_ : nullptr;
-        app::PreviewScene scene = app::build_preview_scene(ps.song, path, sp_cap_, rules_);
-        scene_done_.store(true);
-        throw_if_cancelled();
-        // The highway timeline, built here so the UI thread only uploads it.
-        // The pro-drums setting that picked the drum track also picks how the
-        // pads draw (cymbals or all toms), as the controller would.
-        render::TrackStateOptions track_opts;
-        track_opts.pro = pro_;
-        render::TrackState track_state = render::build_track_state(scene, track_opts);
-        highway_done_.store(true);
 
         // Both branches done: mix. get() rethrows the audio branch's cancel.
         std::vector<std::unique_ptr<audio::StemReader>> readers = audio_branch.get();
@@ -203,8 +199,26 @@ void PreviewLoadJob::run() {
         }
         auto mix = std::make_unique<audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,
                                                       front_pad);
-        result_ = Result{std::move(scene),     std::move(mix),         offset_ms,
-                         std::move(ps.song),   std::move(track_state), track_opts};
+        const std::optional<double> audio_end_ms = audio_end_chart_ms(*mix, offset_ms);
+
+        // The scene and the highway wait for the audio, because the beat
+        // lines run to its end (D48, Q25).
+        const Path* path = path_ ? &*path_ : nullptr;
+        app::PreviewScene scene =
+            app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms);
+        scene_done_.store(true);
+        throw_if_cancelled();
+        // The highway timeline, built here so the UI thread only uploads it.
+        // The pro-drums setting that picked the drum track also picks how the
+        // pads draw (cymbals or all toms), as the controller would.
+        render::TrackStateOptions track_opts;
+        track_opts.pro = pro_;
+        render::TrackState track_state = render::build_track_state(scene, track_opts);
+        highway_done_.store(true);
+
+        result_ = Result{std::move(scene),       std::move(mix),         offset_ms,
+                         audio_end_ms,           std::move(ps.song),     std::move(track_state),
+                         track_opts};
         return true;
     });
 }
@@ -273,10 +287,10 @@ std::string PreviewLoadJob::Progress::time_left_text() const {
 }
 
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
-    const Song& song, render::TrackStateOptions track_opts,
+    const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
     const std::function<void()>& check_cancel) {
     auto built = std::make_shared<PreviewSceneBase>();
-    built->scene = app::build_preview_base(song);
+    built->scene = app::build_preview_base(song, audio_end_ms);
     check_cancel();
     built->track_state = render::build_track_state(built->scene, track_opts);
     built->track_opts = track_opts;
@@ -285,15 +299,17 @@ std::shared_ptr<const PreviewSceneBase> build_scene_base(
 }
 
 PreviewBaseJob::PreviewBaseJob(std::shared_ptr<const Song> song,
-                               render::TrackStateOptions track_opts)
-    : song_(std::move(song)), track_opts_(track_opts) {}
+                               render::TrackStateOptions track_opts,
+                               std::optional<double> audio_end_ms)
+    : song_(std::move(song)), track_opts_(track_opts), audio_end_ms_(audio_end_ms) {}
 
 void PreviewBaseJob::start() { spawn([this] { run(); }); }
 
 void PreviewBaseJob::run() {
     run_guarded([this] {
         throw_if_cancelled();
-        base_ = build_scene_base(*song_, track_opts_, [this] { throw_if_cancelled(); });
+        base_ = build_scene_base(*song_, track_opts_, audio_end_ms_,
+                                 [this] { throw_if_cancelled(); });
         return true;
     });
 }
@@ -301,14 +317,16 @@ void PreviewBaseJob::run() {
 PreviewSceneJob::PreviewSceneJob(std::shared_ptr<const Song> song,
                                  std::shared_ptr<const PreviewSceneBase> base,
                                  std::optional<Path> path, int sp_cap, core::Rules rules,
-                                 std::string key, render::TrackStateOptions track_opts)
+                                 std::string key, render::TrackStateOptions track_opts,
+                                 std::optional<double> audio_end_ms)
     : song_(std::move(song)),
       base_(std::move(base)),
       path_(std::move(path)),
       sp_cap_(sp_cap),
       rules_(std::move(rules)),
       key_(std::move(key)),
-      track_opts_(track_opts) {}
+      track_opts_(track_opts),
+      audio_end_ms_(audio_end_ms) {}
 
 void PreviewSceneJob::start() { spawn([this] { run(); }); }
 
@@ -320,7 +338,8 @@ void PreviewSceneJob::run() {
         // timeline options).
         std::shared_ptr<const PreviewSceneBase> base = base_;
         if (!base || base->track_opts.pro != track_opts_.pro)
-            base = build_scene_base(*song_, track_opts_, [this] { throw_if_cancelled(); });
+            base = build_scene_base(*song_, track_opts_, audio_end_ms_,
+                                    [this] { throw_if_cancelled(); });
         // Only the overlay is built per path: the scene's, then the
         // timeline's on a copy of the base timeline, so the swap on the UI
         // thread is only a move.
