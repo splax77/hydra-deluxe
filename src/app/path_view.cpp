@@ -1,5 +1,6 @@
 #include "app/path_view.h"
 #include "app/display_format.h"
+#include "app/preview_view.h"  // song_fraction
 
 #include <algorithm>
 #include <cmath>
@@ -219,10 +220,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.bars = bars_text(act.sp_meter());
         av.badge = activation_badge(act);
         av.chord = act.chord.rowstr();
-        if (timing && song_length_ms && *song_length_ms > 0.0) {
-            const double at = timing->timecode(act.timecode.ticks()).ms();
-            av.song_fraction = std::clamp(at / *song_length_ms, 0.0, 1.0);
-        }
+        if (timing && song_length_ms && *song_length_ms > 0.0)
+            av.song_fraction =
+                song_fraction(timing->timecode(act.timecode.ticks()).ms(), *song_length_ms);
 
         if (act.is_e_critical()) {
             // Positive = hit early, the same sign as the report:

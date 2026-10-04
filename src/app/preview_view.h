@@ -231,7 +231,10 @@ struct PreviewScene {
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
     int64_t tick_resolution = 0;       // ticks per quarter note
-    double song_length_ms = 0.0;  // last note onset; the scrubber's right edge
+    // The last note's onset: where the SP curve closes and the Preview's own
+    // song end. The scrubber's range is the transport's length instead
+    // (PreviewTransport::load takes the later of this and the audio's end).
+    double song_length_ms = 0.0;
     bool has_notes = false;
 };
 
@@ -309,6 +312,11 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
 // `length_ms` (the transport's length, the scrubber's right edge), clamped to
 // 0..1, in activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
+
+// How far into the song `ms` is: its share of `length_ms`, clamped to 0..1.
+// No value when the length is not positive. The Paths tab's activation
+// timeline and the Preview's scrub marks both ask it.
+std::optional<double> song_fraction(double ms, double length_ms);
 
 // Where "< Act" (direction -1) or "Act >" (+1) moves the playhead from
 // `now_ms`: the onset of the nearest activation strictly before or after it.

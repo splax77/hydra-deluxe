@@ -596,12 +596,17 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
     return scene.timing->ms_index().at(target);
 }
 
+std::optional<double> song_fraction(double ms, double length_ms) {
+    if (length_ms <= 0.0) return std::nullopt;
+    return std::clamp(ms / length_ms, 0.0, 1.0);
+}
+
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms) {
     std::vector<double> marks;
     if (length_ms <= 0.0) return marks;
     marks.reserve(scene.activations.size());
     for (const PreviewActivation& a : scene.activations)
-        marks.push_back(std::clamp(a.ms / length_ms, 0.0, 1.0));
+        marks.push_back(*song_fraction(a.ms, length_ms));
     return marks;
 }
 
