@@ -19,7 +19,6 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import probe_songs as P  # noqa: E402
 from tools.ch_probe.experiments import passive_probe  # noqa: E402
-from tools.ch_probe.experiments import poll_windows  # noqa: E402
 from tools.ch_probe.experiments import watch_window as WW  # noqa: E402
 
 _CSV = os.path.join(_REPO_ROOT, "tools", "ch_probe", "experiments", "results",
@@ -55,18 +54,18 @@ class PassiveEdgesTest(unittest.TestCase):
 
 class PollVerdictTest(unittest.TestCase):
     def test_the_real_capped_run_reads_as_capped_not_unclamped(self):
-        lines = poll_windows.window_verdict(measured_windows(), back_ms=85.0)
+        lines = WW.window_verdict(measured_windows(), back_ms=85.0)
         text = "\n".join(lines)
         self.assertNotIn("NO CLAMP", text)
         self.assertIn("reached the measured cap", text)
         self.assertIn("reached the measured floor", text)
 
     def test_a_reading_past_the_cap_is_no_clamp(self):
-        lines = poll_windows.window_verdict([100.0, C.WINDOW_CAP_MS + 1.0], back_ms=85.0)
+        lines = WW.window_verdict([100.0, C.WINDOW_CAP_MS + 1.0], back_ms=85.0)
         self.assertTrue(any("NO CLAMP" in l for l in lines))
 
     def test_precision_mode_says_the_cap_is_unknown(self):
-        lines = poll_windows.window_verdict([60.0, 70.0], back_ms=40.0)
+        lines = WW.window_verdict([60.0, 70.0], back_ms=40.0)
         self.assertTrue(any("no measured cap" in l for l in lines))
 
 
