@@ -92,6 +92,11 @@ struct ScoreGraphEdge {
     // Set only on activation edges; absent (nullopt / empty) otherwise.
     std::optional<double> activation_fill_deadline_ms;
     std::map<int, Timecode> activation_initial_end_times;  // SP meter -> Timecode
+    // Activation edges only: which banked phrase a later SP end of this
+    // activation could still have in its squeeze window
+    // (core::banked_phrase_in_reach), as its 1-based place among the chart's
+    // phrase chords; 0 when none. The engine groups running paths by it.
+    int banked_phrase_ordinal = 0;
 
     std::optional<Timecode> sqinout_time;
     std::optional<double> sqinout_timing;

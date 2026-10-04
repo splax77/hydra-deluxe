@@ -96,7 +96,9 @@ Hitting a note near the SP end early, so it lands inside Star Power.
 
 **SqIn / SqOut**:
 Squeezing an SP phrase's note into (+) or out of (-) an active Star Power
-window, written as the `+`/`-` symbols in path notation.
+window, written as the `+`/`-` symbols in path notation. Only a phrase after
+the activation chord can be squeezed: one at or before it was banked before
+SP started (docs/adr/0021).
 
 **Multiplier squeeze**:
 Ordering the hits of a multi-note chord on a combo-multiplier boundary so the

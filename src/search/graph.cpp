@@ -337,6 +337,19 @@ ScoreGraphEdge* ScoreGraph::add_act_edge(int frontend_points, int64_t fill_lengt
             plusmeasure(act_edge->dest->timecode, sp_bars_to_measures(sp));
     }
 
+    // A banked phrase some later SP end could still hold in its window
+    // (core/sqout_chord.h). Almost always none: 500 ms has to span an SP bar.
+    if (const SongTimestamp* banked = core::banked_phrase_in_reach(
+            song_, act_edge->dest->timecode.ticks(),
+            plusmeasure(act_edge->dest->timecode, sp_bars_to_measures(1)))) {
+        int ordinal = 0;
+        for (const SongTimestamp& ts : song_.sequence) {
+            if (ts.flag_sp) ++ordinal;
+            if (&ts == banked) break;
+        }
+        act_edge->banked_phrase_ordinal = ordinal;
+    }
+
     base_track_head_->branch_edge = act_edge;
     return act_edge;
 }

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core/backend_value.h"
+#include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
 
 namespace hydra {
@@ -53,6 +54,7 @@ struct EdgeView {
         ghostscore;
     int32_t frontend_points;
     int32_t late_sqin_count;
+    int32_t banked_phrase_ordinal;
     double activation_fill_deadline_ms, sqinout_timing;
     int64_t sqinout_time, sqout_time, sqin_time;
 };
@@ -144,6 +146,7 @@ Enum enumerate(const ScoreGraph& graph) {
         v.ghostscore = (int32_t)o->ghostscore;
         v.frontend_points = o->frontend_points;
         v.late_sqin_count = o->late_sqin_count;
+        v.banked_phrase_ordinal = o->banked_phrase_ordinal;
         v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);
         v.sqinout_timing = o->sqinout_timing.value_or(0.0);
         v.sqinout_time = o->sqinout_time ? o->sqinout_time->ticks() : NO_TIME;
@@ -206,6 +209,9 @@ struct Path {
     // The running activation's SP-end steps so far (an index into ends_),
     // or -1. Handed to the Act at deactivation.
     int32_t end_tail;
+    // The running activation's banked phrase in squeeze reach (the act
+    // edge's banked_phrase_ordinal), 0 for none. Read only while SP runs.
+    int32_t banked_phrase_ordinal;
     double sp_ready_ms;
     double skipped_e_offset;
     double diff_prefix;
@@ -386,7 +392,7 @@ private:
     bool branch_activate(Path& p, Path* child);
     bool branch_deactivate(Path& p, Path* child, bool* has_child);
     void create_deactivated_path(const Path& p, Path* child, bool is_sq_out);
-    int32_t deactivation_type(const EdgeView& e, int64_t sp_end_time) const;
+    int32_t deactivation_type(const EdgeView& e, const Path& p) const;
 
     double act_difficulty(int32_t act) const;
     double search_difficulty(const Path& p) const;
@@ -590,6 +596,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.sp_ready_ms = NO_DOUBLE;
     c.sp_end_time = aiet_val;
     c.end_tail = push_end(-1, n.tick, aiet_val, SpEndKind::Activation);
+    c.banked_phrase_ordinal = e.banked_phrase_ordinal;
 
     p.currentskips += 1;
 
@@ -599,11 +606,16 @@ bool Engine::branch_activate(Path& p, Path* child) {
     return true;
 }
 
-int32_t Engine::deactivation_type(const EdgeView& e, int64_t sp_end_time) const {
-    if (e.sqinout_time != NO_TIME) {
-        return sp_end_time == e.sqout_time ? DEACT_SQINOUT : DEACT_NONE;
+int32_t Engine::deactivation_type(const EdgeView& e, const Path& p) const {
+    // The edge's chord counts only when this activation can squeeze it
+    // (core/sqout_chord.h). One it banked before SP started leaves the SP
+    // end a plain one.
+    if (e.sqinout_time != NO_TIME &&
+        core::activation_can_squeeze(node(acts_[(size_t)p.act_tail].act_node).tick,
+                                     e.sqinout_time)) {
+        return p.sp_end_time == e.sqout_time ? DEACT_SQINOUT : DEACT_NONE;
     }
-    return sp_end_time == node(e.dest).tick ? DEACT_NORMAL : DEACT_NONE;
+    return p.sp_end_time == node(e.dest).tick ? DEACT_NORMAL : DEACT_NONE;
 }
 
 // --- create_deactivated_path ---------------------------------------------
@@ -665,7 +677,7 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     if (n.branch_edge < 0) return true;
 
     const EdgeView e = edge(n.branch_edge);
-    const int32_t deact_type = deactivation_type(e, p.sp_end_time);
+    const int32_t deact_type = deactivation_type(e, p);
 
     if (deact_type == DEACT_NONE) return true;
 
@@ -915,10 +927,23 @@ void Engine::reduce_iteration_paths() {
         // with sp_ready_ms added to the key: 0 score changes and 0
         // variant-list changes across 96 charts (the corpus's 97, less one
         // that hydra_replay could not open, skipped on both sides).
+        // While SP runs, the activation's banked phrase in squeeze reach is
+        // part of that future too: two activations that differ there can
+        // face different squeeze choices at the same SP end
+        // (core::banked_phrase_in_reach). It is 0 on almost every path, which
+        // leaves the groups as they were. An SP end fits in 47 bits and the
+        // ordinal (a phrase count) in 16, so the packed key is exact.
         const bool is_sp = !is_complete && node(p.node).is_sp;
         const int64_t sp_value =
             is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);
-        const uint64_t key = ((uint64_t)sp_value << 1) | (is_sp ? 1ull : 0ull);
+        uint64_t key_value = (uint64_t)sp_value;
+        if (is_sp) {
+            if (sp_value < -(int64_t(1) << 47) || sp_value >= (int64_t(1) << 47) ||
+                p.banked_phrase_ordinal < 0 || p.banked_phrase_ordinal > 0xFFFF)
+                throw std::logic_error("search group key out of range");
+            key_value = (key_value << 16) | (uint64_t)p.banked_phrase_ordinal;
+        }
+        const uint64_t key = (key_value << 1) | (is_sp ? 1ull : 0ull);
 
         bool inserted = false;
         const int32_t g = group_map_.get_or_insert(key, n_groups, &inserted);

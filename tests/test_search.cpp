@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -1114,6 +1115,53 @@ TEST_CASE("SP end history: no activation squeezes a phrase it banked before it s
         }
     }
     CHECK(acts > 0);
+}
+
+namespace {
+// Every path and nested variant, each before its variants.
+void collect_paths(const std::vector<Path>& in, std::vector<const Path*>& out) {
+    for (const Path& p : in) {
+        out.push_back(&p);
+        collect_paths(p.variants, out);
+    }
+}
+}  // namespace
+
+// A path that banked the phrase may not be folded into one that collected it:
+// after the fold the variant would take the leader's squeeze-out, a choice it
+// never had, and store the leader's score under its own windows.
+TEST_CASE("SP end history: a variant never takes a squeeze on a phrase it banked") {
+    Song song = test::banked_phrase_fold_song();
+    ScoreGraph graph(song, 4);
+    std::vector<Path> paths;
+    REQUIRE_NOTHROW(paths = run_search(graph, test::wide_search()));
+    std::vector<const Path*> all;
+    collect_paths(paths, all);
+    // Same activations, same SP ends, same squeezes: same score.
+    std::map<std::string, int64_t> by_windows;
+    bool saw_late_variant = false;
+    for (const Path* p : all) {
+        std::string windows;
+        for (const Activation& act : p->walk_activations()) {
+            CAPTURE(p->pathstring());
+            REQUIRE_FALSE(act.sp_end_steps.empty());
+            if (act.sqout_tick) CHECK(*act.sqout_tick > act.timecode.ticks());
+            windows += std::to_string(act.timecode.ticks()) + ":" +
+                       std::to_string(*act.deact_tick());
+            for (const SPSqueeze& s : act.sqinouts)
+                windows += s.kind == SqueezeKind::SqOut ? "-" : "+";
+            windows += " ";
+            if (act.timecode.ticks() == 13824 && p->walk_activations().size() == 2) {
+                saw_late_variant = true;
+                CHECK(act.sqinouts.empty());
+                CHECK(act.deact_tick() == std::optional<int64_t>(16896));
+            }
+        }
+        CAPTURE(windows);
+        auto [it, inserted] = by_windows.emplace(windows, p->totalscore());
+        if (!inserted) CHECK(it->second == p->totalscore());
+    }
+    CHECK(saw_late_variant);
 }
 
 // The lasting check on every corpus activation's history (R1, D4).
