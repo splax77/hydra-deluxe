@@ -43,9 +43,10 @@ struct ReplayWindow {
 
     // Set when the activation ends on a squeeze-out: the tick of the phrase
     // chord squeezed out (Activation::sqout_tick). That chord is hit after
-    // Star Power has ended, so it and everything after it lose their
-    // doubling, and the chord itself keeps only what its non-first hits are
-    // worth (CategoryScores::sqout_reduction is the first hit's share).
+    // Star Power has ended, so everything after it loses its doubling. The
+    // chord itself loses CategoryScores::sqout_reduction: the doubling of
+    // the notes the rules' sqout_rule names (first_note: only its first
+    // note; whole_chord: every note).
     std::optional<int64_t> sqout_tick;
 
     // The same squeeze-out as an ms offset from D, for display, and as typed
@@ -264,13 +265,15 @@ PathReplay replay_stored_path(const Song& song, const Path& path,
 // first phrase chord after the deactivation node that it did not squeeze
 // in; for a typed window, that one or its newest phrase chord at or before
 // the node. A window with such a chord is ambiguous: the score is right if
-// the player did not squeeze, and high by that chord's squeeze-out cost if
+// the player did not squeeze, and high by what the squeeze-out costs if
 // they did, and nothing in the window list says which. So this reports the doubt
 // and nothing else: it never changes a score and never invents an offset.
-// The line quotes that cost in points: the chord's sqout_reduction under
-// `rules.sqout_rule` (category_scores), so it is the first note's share
-// under first_note and the whole chord's under whole_chord. `rules` must be
-// the rules `result` was replayed under.
+// The line quotes that cost in points: `result`'s total minus the total of
+// the same windows replayed with this one squeezed out on that chord, under
+// `rules`. That is the chord's own sqout_reduction under `rules.sqout_rule`
+// plus the full doubling of every later chord the window paid, since Star
+// Power ends before the squeezed-out chord. `rules` must be the rules
+// `result` was replayed under.
 //
 // It warns only when the window paid that chord (`result` must be the replay
 // of these same windows): a chord past the leeway after D was never doubled,
