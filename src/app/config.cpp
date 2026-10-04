@@ -5,9 +5,13 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include <limits>
+#include <variant>
 
+#include "core/model.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 
@@ -48,6 +52,122 @@ std::string asset_dir() {
 
 Settings Settings::load() { return load_file(ini_path()); }
 
+namespace {
+
+// ---- the key table: every hydra_settings.ini key, once ----------------------
+
+// Where a number outside its range lands.
+enum class Outside {
+    // The nearest edge of the range (D51 Q14).
+    NearestEdge,
+    // The setting's default: the range has no edge to land on.
+    Default,
+    // From the file, a value below the floor reads as the default; anywhere
+    // else (clamp), it lands on the floor. sp_cap only: 0, junk and 1.8.4's
+    // "auto" have always read as Clone Hero's 4 (ui-redesign decision 6).
+    DefaultFromFile,
+};
+
+struct Key {
+    const char* name;
+    std::variant<bool Settings::*, int Settings::*, std::string Settings::*,
+                 std::vector<std::string> Settings::*>
+        member;
+    // Number keys: the allowed range, both edges allowed, and where a value
+    // outside it lands.
+    int lo = 0;
+    int hi = 0;
+    Outside outside = Outside::NearestEdge;
+    // Text keys: whether a # is part of the value (a folder path, a user id)
+    // rather than the start of a comment (D51 Q15).
+    bool free_text = false;
+};
+
+constexpr int kNoCeiling = std::numeric_limits<int>::max();
+// The Path and Backend limits' edge: the engine's squeeze window (D41).
+constexpr int kWindowMs = static_cast<int>(kSqueezeWindowMs);
+
+Key on_off(const char* name, bool Settings::* m) { return Key{name, m}; }
+Key number(const char* name, int Settings::* m, int lo, int hi,
+           Outside outside = Outside::NearestEdge) {
+    return Key{name, m, lo, hi, outside};
+}
+Key word(const char* name, std::string Settings::* m) { return Key{name, m}; }
+Key free_text(const char* name, std::string Settings::* m) {
+    Key k{name, m};
+    k.free_text = true;
+    return k;
+}
+Key free_text_list(const char* name, std::vector<std::string> Settings::* m) {
+    Key k{name, m};
+    k.free_text = true;
+    return k;
+}
+
+// In the order save_file writes them. Each key's default is its field's
+// initializer in config.h; the ranges are the ones the boxes enforce.
+const std::vector<Key>& keys() {
+    static const std::vector<Key> k = {
+        on_off("is_rescan", &Settings::is_rescan),
+        word("view_difficulty", &Settings::view_difficulty),
+        on_off("view_prodrums", &Settings::view_prodrums),
+        on_off("view_bass2x", &Settings::view_bass2x),
+        // Below 0 the search crashes (finding 311).
+        number("depth_value", &Settings::depth_value, 0, kNoCeiling),
+        // A switch: 0 is scores, 1 is points, and anything else is scores,
+        // as the search has always read it (D51 addendum).
+        number("depth_mode", &Settings::depth_mode, 0, 1, Outside::Default),
+        on_off("mslimit_enabled", &Settings::mslimit_enabled),
+        number("mslimit_value", &Settings::mslimit_value, -kWindowMs, kWindowMs),
+        on_off("backendlimit_enabled", &Settings::backendlimit_enabled),
+        number("backendlimit_value", &Settings::backendlimit_value, 0, kWindowMs),
+        // "Above 0": 0 and below have no edge to land on.
+        number("hit_window_ms", &Settings::hit_window_ms, 1, kNoCeiling, Outside::Default),
+        number("preview_volume", &Settings::preview_volume, 0, 100),
+        // The smallest cap is 1 bar: it can never activate SP, but it stays
+        // allowed as a what-if (D51 Q16).
+        number("sp_cap", &Settings::sp_cap, 1, kNoCeiling, Outside::DefaultFromFile),
+        on_off("legacy_fills", &Settings::legacy_fills),
+        on_off("auto_open_report", &Settings::auto_open_report),
+        free_text("dm_last_user", &Settings::dm_last_user),
+        free_text_list("chartfolder", &Settings::chartfolders),
+    };
+    return k;
+}
+
+const Settings& defaults() {
+    static const Settings d;
+    return d;
+}
+
+// `value` pulled into k's range. `from_file` is load_file's call.
+int pull_into_range(const Key& k, int value, bool from_file) {
+    if (value >= k.lo && value <= k.hi) return value;
+    const bool to_default =
+        k.outside == Outside::Default ||
+        (k.outside == Outside::DefaultFromFile && from_file && value < k.lo);
+    if (to_default) return defaults().*std::get<int Settings::*>(k.member);
+    return std::clamp(value, k.lo, k.hi);
+}
+
+// Sets k's field of `s` from one line of the file.
+void read_value(const Key& k, const IniPair& line, Settings& s) {
+    if (auto b = std::get_if<bool Settings::*>(&k.member)) {
+        // Anything but 0 or 1 keeps the setting as it was.
+        if (const std::optional<bool> on = parse_bool(line.value)) s.**b = *on;
+    } else if (auto n = std::get_if<int Settings::*>(&k.member)) {
+        // Junk reads as 0, as atoi always made it, then takes the range.
+        s.**n = pull_into_range(k, std::atoi(line.value.c_str()), true);
+    } else if (auto t = std::get_if<std::string Settings::*>(&k.member)) {
+        s.**t = k.free_text ? line.whole_value : line.value;
+    } else {
+        auto list = std::get<std::vector<std::string> Settings::*>(k.member);
+        (s.*list).push_back(k.free_text ? line.whole_value : line.value);
+    }
+}
+
+}  // namespace
+
 Settings Settings::load_file(const std::string& path) {
     Settings s;
     std::ifstream f(os_path(path));
@@ -55,44 +175,16 @@ Settings Settings::load_file(const std::string& path) {
 
     std::string line;
     while (std::getline(f, line)) {
-        line = trim(line);
-        if (line.empty() || line[0] == '#') continue;
-        size_t eq = line.find('=');
-        if (eq == std::string::npos) continue;
-        std::string key = trim(line.substr(0, eq));
-        std::string value = trim(line.substr(eq + 1));
-
-        if (key == "chartfolder") s.chartfolders.push_back(value);
-        else if (key == "is_rescan") s.is_rescan = (value == "1");
-        else if (key == "view_difficulty") s.view_difficulty = value;
-        else if (key == "view_prodrums") s.view_prodrums = (value == "1");
-        else if (key == "view_bass2x") s.view_bass2x = (value == "1");
-        else if (key == "depth_value") s.depth_value = std::atoi(value.c_str());
-        else if (key == "depth_mode") s.depth_mode = std::atoi(value.c_str());
-        else if (key == "mslimit_enabled") s.mslimit_enabled = (value == "1");
-        else if (key == "mslimit_value") s.mslimit_value = std::atoi(value.c_str());
-        else if (key == "backendlimit_enabled") s.backendlimit_enabled = (value == "1");
-        else if (key == "backendlimit_value")
-            s.backendlimit_value = std::atoi(value.c_str());
-        else if (key == "preview_volume") {
-            int v = std::atoi(value.c_str());
-            if (v >= 0 && v <= 100) s.preview_volume = v;
-        }
-        else if (key == "hit_window_ms") {
-            int v = std::atoi(value.c_str());
-            if (v > 0) s.hit_window_ms = v;
-        }
-        else if (key == "sp_cap") {
-            // "auto" (Auto, removed 2026-09-27) is 0 to atoi, so it keeps
-            // the default 4, like zero and junk.
-            if (int v = std::atoi(value.c_str()); v >= 1) s.sp_cap = v;
-        }
-        else if (key == "legacy_fills") s.legacy_fills = (value == "1");
-        else if (key == "auto_open_report") s.auto_open_report = (value == "1");
-        else if (key == "dm_last_user") s.dm_last_user = value;
+        // A blank, comment-only or "="-less line is skipped.
+        const std::optional<IniPair> kv = split_ini_line(line);
+        if (!kv) continue;
+        // An unknown key (the pre-1.6 sp_cap_enabled/sp_cap_value among
+        // them) is ignored.
+        for (const Key& k : keys())
+            if (kv->key == k.name) read_value(k, *kv, s);
     }
     // Normalize the difficulty word: whatever was in the file, what the app
-    // carries (and bakes into chartmode_key) is one of the four real names.
+    // carries is one of the four real names.
     s.view_difficulty = difficulty_name(s.difficulty());
     return s;
 }
@@ -103,24 +195,37 @@ bool Settings::save_file(const std::string& path) const {
     std::ofstream f(os_path(path), std::ios::trunc);
     if (!f) return false;
 
-    f << "is_rescan=" << (is_rescan ? 1 : 0) << "\n";
-    f << "view_difficulty=" << view_difficulty << "\n";
-    f << "view_prodrums=" << (view_prodrums ? 1 : 0) << "\n";
-    f << "view_bass2x=" << (view_bass2x ? 1 : 0) << "\n";
-    f << "depth_value=" << depth_value << "\n";
-    f << "depth_mode=" << depth_mode << "\n";
-    f << "mslimit_enabled=" << (mslimit_enabled ? 1 : 0) << "\n";
-    f << "mslimit_value=" << mslimit_value << "\n";
-    f << "backendlimit_enabled=" << (backendlimit_enabled ? 1 : 0) << "\n";
-    f << "backendlimit_value=" << backendlimit_value << "\n";
-    f << "hit_window_ms=" << hit_window_ms << "\n";
-    f << "preview_volume=" << preview_volume << "\n";
-    f << "sp_cap=" << sp_cap << "\n";
-    f << "legacy_fills=" << (legacy_fills ? 1 : 0) << "\n";
-    f << "auto_open_report=" << (auto_open_report ? 1 : 0) << "\n";
-    if (!dm_last_user.empty()) f << "dm_last_user=" << dm_last_user << "\n";
-    for (const std::string& folder : chartfolders) f << "chartfolder=" << folder << "\n";
+    for (const Key& k : keys()) {
+        if (auto b = std::get_if<bool Settings::*>(&k.member)) {
+            f << k.name << "=" << (this->**b ? 1 : 0) << "\n";
+        } else if (auto n = std::get_if<int Settings::*>(&k.member)) {
+            f << k.name << "=" << this->**n << "\n";
+        } else if (auto t = std::get_if<std::string Settings::*>(&k.member)) {
+            // An empty text is left out, so it loads as its default.
+            if (!(this->**t).empty()) f << k.name << "=" << this->**t << "\n";
+        } else {
+            for (const std::string& item : this->*std::get<std::vector<std::string> Settings::*>(k.member))
+                f << k.name << "=" << item << "\n";
+        }
+    }
     return f.good();
+}
+
+int Settings::clamp(int Settings::* field, int value) {
+    for (const Key& k : keys()) {
+        auto n = std::get_if<int Settings::*>(&k.member);
+        if (n && *n == field) return pull_into_range(k, value, false);
+    }
+    return value;  // not a number setting: every int field is in the table
+}
+
+DepthMode Settings::search_depth_mode() const {
+    return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;
+}
+
+float Settings::volume_gain(int percent) {
+    // No caller yet: the Preview's volume moves here in wave 2 (task PV).
+    return static_cast<float>(clamp(&Settings::preview_volume, percent)) / 100.0f;
 }
 
 Difficulty Settings::difficulty() const {
@@ -138,7 +243,9 @@ std::string Settings::chartmode_key() const {
     // Below Expert a key ends "2x Bass" with the box on since D20; results
     // stored before that are re-analyzed by step 1's results-stamp bump.
     std::string bass = effective_bass2x() ? "2x Bass" : "1x Bass";
-    return view_difficulty + " " + prodrums + ", " + bass;
+    // The word comes from difficulty(), so an uncleaned view_difficulty
+    // ("easy", "Legendary") still names a real difficulty (finding 134).
+    return std::string(difficulty_name(difficulty())) + " " + prodrums + ", " + bass;
 }
 
 AnalysisSettings Settings::to_analysis_settings() const {
@@ -146,7 +253,7 @@ AnalysisSettings Settings::to_analysis_settings() const {
     s.prodrums = view_prodrums;
     s.bass2x = effective_bass2x();
     s.difficulty = difficulty();
-    s.depth_mode = depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;
+    s.depth_mode = search_depth_mode();
     s.depth_value = depth_value;
     s.ms_filter = mslimit_enabled ? std::optional<double>(mslimit_value) : std::nullopt;
     s.sp_cap = sp_cap;
@@ -156,9 +263,9 @@ AnalysisSettings Settings::to_analysis_settings() const {
 }
 
 std::optional<double> Settings::backend_limit() const {
-    return backendlimit_enabled
-               ? std::optional<double>(std::abs(backendlimit_value))
-               : std::nullopt;
+    // No sign flip: load_file and the box keep the value at 0 or above
+    // (finding 31), so the shown value is the window the tables use.
+    return backendlimit_enabled ? std::optional<double>(backendlimit_value) : std::nullopt;
 }
 
 store::CapQuery Settings::cap_query() const {

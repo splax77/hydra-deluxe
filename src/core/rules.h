@@ -10,6 +10,8 @@
 
 #include <cstdint>
 #include <optional>
+#include <string_view>
+#include <variant>
 #include <vector>
 
 namespace hydra::core {
@@ -57,6 +59,26 @@ struct Rules {
 
 // The defaults above, as one shared value.
 const Rules& default_rules();
+
+// The two words that name a SqOutRule, in hydra_rules.ini and in the
+// fingerprint text: "first_note" and "whole_chord".
+const char* sqout_rule_name(SqOutRule rule);
+// The rule a word names, or nothing for any other word.
+std::optional<SqOutRule> sqout_rule_from_name(std::string_view name);
+
+// One Rules field: its name in hydra_rules.ini and in the fingerprint text,
+// the member it sets, and the smallest value hydra_rules.ini may give it.
+struct RulesField {
+    const char* name;
+    std::variant<double Rules::*, int Rules::*, SqOutRule Rules::*> member;
+    double min = 0.0;           // numbers only
+    bool min_allowed = true;    // false: the value must be above min
+};
+
+// Every Rules field, once, in fingerprint order. The fingerprint and the
+// hydra_rules.ini reader both walk this list, so a field added to one is in
+// the other.
+const std::vector<RulesField>& rules_fields();
 
 // What a store knows about the rules this process runs under. `fixed` is the
 // one fingerprint it accepts as "these rules" (docs/adr/0014). `retired_auto`
