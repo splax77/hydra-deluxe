@@ -75,8 +75,10 @@ public:
     // shown. `path` (may be null) supplies the path overlay; it is copied, so
     // the caller's Path need not outlive the call. `path_key` is
     // app::path_overlay_key(path), which the caller builds once per selection
-    // (it is too heavy to build per frame). Already open for the same chart,
-    // path key and SP cap: a no-op. Same chart, different path or cap: the new
+    // (it is too heavy to build per frame). Already open for the same song
+    // (PreviewSongKey: chart, difficulty, Pro Drums and 2x Bass), path key and
+    // SP cap: a no-op. Another song is a fresh load. Same song, different
+    // path or cap: the new
     // overlay is built on a background job off the retained song and swapped
     // in by a later poll() — no re-parse, no audio re-decode, playback
     // position untouched; the old overlay stays up until then.
@@ -305,7 +307,7 @@ private:
     std::unique_ptr<hydra::audio::PreviewAudioDevice> audio_device_;
 
     bool active_ = false;
-    std::string open_key_;
+    PreviewSongKey open_key_;  // the song open() last loaded
     std::string error_;
     std::string audio_warning_;
     AudioDeviceFactory device_factory_;

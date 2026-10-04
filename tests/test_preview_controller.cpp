@@ -327,6 +327,40 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
     CHECK(pc.overlay_path_key().rfind(best_key, 0) == 0);
 }
 
+// With a chart open on the Preview tab, a mode change used to keep the old
+// mode's notes: open() compared only the md5. Each of difficulty, Pro Drums
+// and 2x Bass now picks another song, so open() starts a new load (D48, Q22).
+TEST_CASE("a difficulty change on the open chart starts a new Preview load") {
+    PreviewController pc(nullptr, nullptr);
+    const ChartLibraryEntry entry = entry_for(corpus::first_chart_with_suffix(".chart"));
+    auto settle = [&pc] {
+        for (int i = 0; i < 1200 && pc.loading(); ++i) {
+            pc.poll();
+            Sleep(10);
+        }
+        REQUIRE_FALSE(pc.loading());
+    };
+    pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
+    settle();
+
+    // The same chart in the same mode is a no-op: nothing reloads.
+    pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
+    CHECK_FALSE(pc.loading());
+
+    // Another difficulty starts a new load at once.
+    pc.open(entry, true, false, Difficulty::Hard, nullptr, "", 4);
+    CHECK(pc.loading());
+    settle();
+
+    // Pro Drums off, then 2x Bass on: each is another song too.
+    pc.open(entry, false, false, Difficulty::Hard, nullptr, "", 4);
+    CHECK(pc.loading());
+    settle();
+    pc.open(entry, false, true, Difficulty::Hard, nullptr, "", 4);
+    CHECK(pc.loading());
+    settle();
+}
+
 TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song") {
     using hydra::ui::PreviewSongKey;
     const PreviewSongKey key{"prevctl", Difficulty::Expert, /*pro=*/true, /*bass2x=*/false};

@@ -9,7 +9,9 @@
 
 #include "app/preview_view.h"
 #include "core/model.h"
+#include "core/winstr.h"  // fopen_utf8
 #include "imgui_internal.h"
+#include "parse/song.h"  // no_notes_message
 #include "render/overlay_layout.h"
 #include "ui/app_state.h"
 #include "ui/fonts.h"  // g_mono_font
@@ -595,38 +597,50 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     IM_CHECK(pc.next_act_box().detail.rfind("at m32.1.0", 0) == 0);
 }
 
-// "Preview failed: …" wraps inside the panel. An error naming a long file
-// path used to run on past the panel's edge, cut off with no way to read it.
+// "Preview failed: …" wraps inside the panel. A long error used to run on
+// past the panel's edge, cut off with no way to read it.
 void test_preview_error_wraps(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;
     auto& pc = *h.app->preview;
-    // The selection now names a chart whose file is gone, in a deep folder,
-    // so the Preview reloads and fails on a message carrying that long path.
+    // The selection now names a chart whose resolution is 0, so the Preview
+    // reloads and fails. The panel prints the plain sentence for it, which
+    // quotes the chart's own refusal and so runs long. (A missing file's
+    // plain sentence no longer carries the path and fits on one line.)
     IM_CHECK(h.app->selected.has_value());
     if (!h.app->selected) return;
-    std::string folder = h.app->selected->rootfolder;
-    for (int i = 0; i < 6; ++i) folder += "\\A folder with a long name to push the path past the edge";
-    h.app->selected->notespath = folder + "\\notes.chart";
+    const std::string chart = h.temp_dir + "\\notes.chart";
+    {
+        std::FILE* f = hydra::fopen_utf8(chart, L"wb");
+        IM_CHECK(f != nullptr);
+        if (f == nullptr) return;
+        std::fputs("[Song]\n{\n  Resolution = 0\n}\n[SyncTrack]\n{\n  0 = B 120000\n}\n"
+                   "[ExpertDrums]\n{\n  0 = N 0 0\n}\n",
+                   f);
+        std::fclose(f);
+    }
+    h.app->selected->notespath = chart;
     h.app->selected->md5 = "0123456789abcdef0123456789abcdef";
     IM_CHECK(wait_until(ctx, [&] { return pc.has_error(); }, 30));
     ctx->Yield(3);
 
-    // The message is wider than the whole screen, so on one line it could fit
-    // in no window: nothing overflowing below means it wrapped.
+    // That sentence is wider than any of the song panel's windows, so on one
+    // line it would overflow whichever one holds it: nothing overflowing
+    // below means it wrapped.
     const std::string message = "Preview failed: " + pc.error();
     IM_CHECK(visible_text(h).find("Preview failed:") != std::string::npos);
-    IM_CHECK_GT(ImGui::CalcTextSize(message.c_str()).x, ImGui::GetIO().DisplaySize.x);
     // The song panel's windows, the message's among them. (The settings bar
     // above the library is another task's.)
     int checked = 0;
     int overflowing = 0;
+    float widest_room = 0.0f;
     for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows) {
         if (!w->WasActive || (w->Flags & ImGuiWindowFlags_Tooltip) ||
             (w->Flags & ImGuiWindowFlags_HorizontalScrollbar) ||
             std::strstr(w->Name, "##songpanel") == nullptr)
             continue;
         ++checked;
+        widest_room = (std::max)(widest_room, w->ContentRegionRect.GetWidth());
         if (w->ContentSize.x > w->ContentRegionRect.GetWidth() + 0.5f) {
             ++overflowing;
             std::fprintf(stderr, "OVERFLOW %s: content %.0f px, room %.0f px\n", w->Name,
@@ -634,7 +648,43 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
         }
     }
     IM_CHECK_GT(checked, 0);
+    IM_CHECK_GT(ImGui::CalcTextSize(message.c_str()).x, widest_room);
     IM_CHECK_EQ(overflowing, 0);
+}
+
+// A mode change on the open chart reloads the Preview (D48, Q22). Evans Blue -
+// Beg charts Expert drums and no Hard, so picking Hard in the settings bar
+// must say so in the Preview, in the no-notes sentence analysis uses, rather
+// than keep drawing Expert's notes. Back on Expert the highway returns.
+void test_preview_mode_reload(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    open_titled(ctx, "Beg", "Beg");
+    if (ctx->IsError()) return;
+    ctx->ItemClick("##DetailsTabs/Preview");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+    if (!h.app->preview) return;
+    auto& pc = *h.app->preview;
+    IM_CHECK(wait_until(ctx, [&] { return !pc.loading(); }, 120));
+    IM_CHECK_STR_EQ(pc.error().c_str(), "");
+
+    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
+    ctx->ComboClick("##difficulty/Hard");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.has_error(); }, 120));
+    const std::string no_hard =
+        hydra::no_notes_message(hydra::Difficulty::Hard, h.app->settings.view_prodrums);
+    IM_CHECK_STR_EQ(pc.error().c_str(), no_hard.c_str());
+    ctx->Yield(2);
+    IM_CHECK(visible_text(h).find(no_hard) != std::string::npos);
+
+    ctx->ComboClick("##difficulty/Expert");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && !pc.has_error() && pc.length_ms() > 0.0; },
+                        120));
+    IM_CHECK_STR_EQ(pc.error().c_str(), "");
 }
 
 // The text boxes keep one size all through a path. The next-activation box
@@ -749,6 +799,7 @@ const std::vector<TestEntry>& preview_tests() {
         {"preview-activation-jumps", test_preview_activation_jumps},
         {"preview-error-wraps", test_preview_error_wraps},
         {"preview-overlay-steady", test_preview_overlay_steady},
+        {"preview-mode-reload", test_preview_mode_reload},
     };
     return entries;
 }

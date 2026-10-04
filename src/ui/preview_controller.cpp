@@ -36,7 +36,8 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
                              const Path* path, const std::string& path_key,
                              int sp_cap, const core::Rules& rules) {
     rules_ = rules;
-    if (active_ && open_key_ == entry.md5) {
+    const PreviewSongKey key{entry.md5, difficulty, pro, bass2x};
+    if (active_ && open_key_ == key) {
         // Same chart, same overlay: nothing to do, and nothing built.
         if (sp_cap == sp_cap_ && path_key == requested_path_key_) return;
         path_ = path ? std::optional<Path>(*path) : std::nullopt;
@@ -51,7 +52,7 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     }
     close();
 
-    open_key_ = entry.md5;
+    open_key_ = key;
     active_ = true;
     error_.clear();
     pro_ = pro;
@@ -108,7 +109,7 @@ void PreviewController::close() {
     active_ = false;
     scrubbing_ = false;
     resume_after_scrub_ = false;
-    open_key_.clear();
+    open_key_ = PreviewSongKey{};
     error_.clear();
     audio_warning_.clear();
 }
