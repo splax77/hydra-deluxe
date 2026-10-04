@@ -90,7 +90,8 @@ void check_deact_node(const Song& song, const Path& p) {
         REQUIRE(a.sqout_row() != nullptr);
         REQUIRE(a.sqout_row()->offset_ms.has_value());
         CHECK(*a.sqout_row()->offset_ms ==
-              song.timecode(*a.sqout_tick).ms() - song.timecode(*a.deact_tick()).ms());
+              offset_from_sp_end(song.timecode(*a.sqout_tick).ms(),
+                                 song.timecode(*a.deact_tick()).ms()));
     }
 }
 

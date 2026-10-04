@@ -116,7 +116,8 @@ The rule lives once, in `core/sqout_chord.h`: `activation_can_squeeze` is
 true only for a phrase chord after the activation chord.
 
 Tied paths. The search folds running paths that share an SP end, because the
-end decides their future. Now the activation can decide it too: a path that
+end decides their future (one exception since D44, in "Tied paths whose
+clamps came from different ends" below). Now the activation can decide it too: a path that
 collected a phrase can squeeze it, and one that banked it cannot. So the
 search groups running paths by one more key. The key is the banked phrase, if
 any, that a later SP end of this activation could still hold in its window.
@@ -192,6 +193,31 @@ window's newest step. That step is Collected, or Clamped when the cap pinned
 the end on that phrase. It is never the Activation step. A folded variant's
 step there gets the leader's SqIn label at the close (`close_folded_act`).
 `is_sqin_step` in the engine states that rule once.
+
+### Tied paths whose clamps came from different ends (D44)
+
+When the meter is full, collecting a phrase pins the SP end to the cap's
+ceiling past that phrase. That ceiling is the same tick whichever end the
+phrase moved. So two paths can tie on score and on their SP end, yet have
+reached it from different ends. At extreme tempos a squeeze-out of that
+phrase is on offer at the old end, and each path may only take it back to
+its own old end (finding 37, D29).
+
+Folded as ties, the variant would follow its leader's squeeze choices and
+lose its own squeeze-out. T10 first stopped that with a guard of its own:
+`reduce_group` kept two such paths apart when their clamps came from
+different ends. The user approved that departure from the plan in D44. It
+left one gap: the group key did not hold the end a clamp moved, so the lower
+path could still be pruned before its own squeeze-out node.
+
+D36's rule (above) now covers this case, and T10's guard is gone. A clamped
+step is one more step that moved the SP end. It remembers that end when the
+end can give the phrase back, and the group key holds it while it is ahead.
+So two paths whose clamps came from different ends sit in different groups
+while either can still squeeze. Neither folds into the other, and neither is
+pruned against the other before its squeeze-out node, which closes T10's
+gap too. Normal charts never reach any of this: the offer needs an SP bar
+inside the 500 ms squeeze window.
 
 ### Two more extreme-tempo crashes (D32)
 

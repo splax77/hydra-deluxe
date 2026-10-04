@@ -7,7 +7,6 @@
 #include "doctest.h"
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <vector>
 
@@ -46,19 +45,7 @@ const std::vector<TailNote> kTwoActivations = {
     {0, true}, {768, true}, {2304, false, true}, {2496, false, true},
     {3456, true}, {4608}, {6000}, {6528}, {7000}, {7680}};
 
-// The deactivation edge whose node sits at `tick`, walking the SP track the
-// way test_search.cpp's squeeze-window test does.
-const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t tick) {
-    const ScoreGraphNode* sp = nullptr;
-    for (const ScoreGraphNode* b = graph.start(); b && !sp;
-         b = b->adv_edge ? b->adv_edge->dest : nullptr)
-        if (b->branch_edge) sp = b->branch_edge->dest;
-    for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr) {
-        const ScoreGraphEdge* e = sp->branch_edge;
-        if (e && e->dest->timecode.ticks() == tick) return e;
-    }
-    return nullptr;
-}
+using test::deact_edge_at;
 
 // The edge's squeeze choice on the phrase chord at `chord_tick`, or nullptr.
 const SqueezeChoice* choice_at(const ScoreGraphEdge& e, int64_t chord_tick) {
@@ -67,20 +54,7 @@ const SqueezeChoice* choice_at(const ScoreGraphEdge& e, int64_t chord_tick) {
     return nullptr;
 }
 
-// Where collecting the phrase on `phrase_tick` moves the SP end `from_tick`,
-// as the SP track's advance edge records it (the step the engine writes),
-// or nullopt.
-std::optional<SpExtension> extension_of(const ScoreGraph& graph, int64_t phrase_tick,
-                                        int64_t from_tick) {
-    const ScoreGraphNode* sp = nullptr;
-    for (const ScoreGraphNode* b = graph.start(); b && !sp;
-         b = b->adv_edge ? b->adv_edge->dest : nullptr)
-        if (b->branch_edge) sp = b->branch_edge->dest;
-    for (; sp && sp->adv_edge; sp = sp->adv_edge->dest)
-        for (const auto& [tc, ext] : sp->adv_edge->sp_times)
-            if (tc.ticks() == phrase_tick && ext.count(from_tick)) return ext.at(from_tick);
-    return std::nullopt;
-}
+using test::extension_of;
 
 struct SqOutSeen {
     int64_t act_tick;
@@ -96,8 +70,8 @@ struct SqOutSeen {
 // phrase; only the row's offset shows which node the engine deactivated at.
 std::vector<SqOutSeen> sqouts_of(const std::vector<Path>& paths, int64_t phrase_tick) {
     std::vector<SqOutSeen> out;
-    auto scan = [&](const Path& p) {
-        for (const Activation& act : p.all_activations()) {
+    for (const Path* p : flatten_paths(paths)) {
+        for (const Activation& act : p->all_activations()) {
             if (!act.sqout_tick || *act.sqout_tick != phrase_tick) continue;
             const std::optional<int64_t> end = act.deact_tick();
             REQUIRE(end.has_value());
@@ -106,20 +80,13 @@ std::vector<SqOutSeen> sqouts_of(const std::vector<Path>& paths, int64_t phrase_
             REQUIRE(row->offset_ms.has_value());
             out.push_back({act.timecode.ticks(), *end, *row->offset_ms});
         }
-    };
-    for (const Path& p : paths) {
-        scan(p);
-        for (const Path& v : p.variants) scan(v);
     }
     return out;
 }
 
-EngineOptions keep_losers() {
-    EngineOptions o;
-    o.depth_mode = DepthMode::Scores;
-    o.depth_value = 50;  // keep the squeeze-out even though it scores lower
-    return o;
-}
+// A squeeze offset in ms, pinned. At 2400 BPM a tick is 25/192 ms, so the
+// offsets below are whole numbers.
+doctest::Approx ms(double v) { return doctest::Approx(v).epsilon(1e-9); }
 
 }  // namespace
 
@@ -147,12 +114,13 @@ TEST_CASE("finding 37: the squeeze-out edge expects extend_deacts' clamped end")
 TEST_CASE("finding 37: a clamped window still offers its squeeze-out") {
     const Song song = build_fast_song(kOneActivation);
     const ScoreGraph graph(song, 2);
-    const std::vector<SqOutSeen> seen = sqouts_of(run_search(graph, keep_losers()), 3456);
+    const std::vector<SqOutSeen> seen =
+        sqouts_of(run_search(graph, test::wide_search()), 3456);
     REQUIRE_FALSE(seen.empty());
     for (const SqOutSeen& s : seen) {
         CHECK(s.act_tick == 2304);
         CHECK(s.end_tick == 5376);
-        CHECK(s.sqout_ms == song.timecode(3456).ms() - song.timecode(5376).ms());
+        CHECK(s.sqout_ms == ms(-250.0));  // 3456 against 5376
     }
 }
 
@@ -165,6 +133,7 @@ TEST_CASE("finding 37: two ends clamped to one tick each keep their own squeeze-
         const std::vector<SqOutSeen> seen =
             sqouts_of(search_target(song, test::scores_settings(2), {act}), 3456);
         const int64_t own_end = act == 2304 ? 5376 : 5568;
+        const double own_ms = act == 2304 ? -250.0 : -275.0;  // 3456 against own_end
         INFO("activation at " << act);
         REQUIRE_FALSE(seen.empty());
         for (const SqOutSeen& s : seen) {
@@ -173,7 +142,7 @@ TEST_CASE("finding 37: two ends clamped to one tick each keep their own squeeze-
             // Deactivated at its own end, never at the other activation's:
             // the 2496 window squeezing out at 5376 is the bug finding 37's
             // guard stops (its record would still say 5568).
-            CHECK(s.sqout_ms == song.timecode(3456).ms() - song.timecode(own_end).ms());
+            CHECK(s.sqout_ms == ms(own_ms));
         }
     }
 }
@@ -197,35 +166,29 @@ const std::vector<TailNote> kTiedClamps = {
 TEST_CASE("finding 37: tied paths clamped from different ends keep their own squeeze-outs") {
     const Song song = build_fast_song(kTiedClamps);
     const ScoreGraph graph(song, 2);
-    const std::vector<Path> paths = run_search(graph, keep_losers());
+    const std::vector<Path> paths = run_search(graph, test::wide_search());
     // Path A is the lone activation at 14208; path B activates at 2304 and
     // 14592. Each must squeeze 14976 out, back to its own end only.
     struct Want {
         std::vector<int64_t> acts;
         int64_t own_end;
+        double own_ms;  // 14976 against own_end
         bool seen;
     };
-    Want want[] = {{{14208}, 17280, false}, {{2304, 14592}, 17664, false}};
-    auto scan = [&](const Path& p) {
-        const std::vector<Activation> acts = p.all_activations();
-        std::vector<int64_t> ticks;
-        for (const Activation& a : acts) ticks.push_back(a.timecode.ticks());
+    Want want[] = {{{14208}, 17280, -300.0, false}, {{2304, 14592}, 17664, -350.0, false}};
+    for (const Path* p : flatten_paths(paths)) {
+        const std::vector<int64_t> ticks = test::act_ticks(*p);
         for (Want& w : want) {
             if (ticks != w.acts) continue;
-            const Activation& last = acts.back();
+            const Activation last = p->all_activations().back();
             if (!last.sqout_tick) continue;
             INFO("window at " << w.acts.back());
             CHECK(*last.sqout_tick == 14976);
             CHECK(last.deact_tick() == std::optional<int64_t>(w.own_end));
             REQUIRE(last.sqout_row() != nullptr);
-            CHECK(*last.sqout_row()->offset_ms ==
-                  song.timecode(14976).ms() - song.timecode(w.own_end).ms());
+            CHECK(*last.sqout_row()->offset_ms == ms(w.own_ms));
             w.seen = true;
         }
-    };
-    for (const Path& p : paths) {
-        scan(p);
-        for (const Path& v : p.variants) scan(v);
     }
     CHECK(want[0].seen);
     CHECK(want[1].seen);
@@ -268,7 +231,7 @@ TEST_CASE("finding 37: a plain bar tying the ceiling squeezes out only for its o
     for (int64_t act : {int64_t{1920}, int64_t{2112}}) {
         const std::vector<Path> paths = search_target(song, test::scores_settings(2), {act});
         const int64_t own_end = act == 1920 ? 4992 : 5184;
-        const double own_ms = song.timecode(3456).ms() - song.timecode(own_end).ms();
+        const double own_ms = act == 1920 ? -200.0 : -225.0;  // 3456 against own_end
         INFO("activation at " << act);
         const std::vector<SqOutSeen> seen = sqouts_of(paths, 3456);
         // The 2112 window was once offered the 4992 squeeze-out (-200 ms,
@@ -278,16 +241,16 @@ TEST_CASE("finding 37: a plain bar tying the ceiling squeezes out only for its o
         for (const SqOutSeen& s : seen) {
             CHECK(s.act_tick == act);
             CHECK(s.end_tick == own_end);
-            CHECK(s.sqout_ms == own_ms);
+            CHECK(s.sqout_ms == ms(own_ms));
         }
         // Every squeeze this window shows, in or out, is 3456 measured from
         // its own end: the fake SqIn sat at -200 ms on the 2112 window.
-        for (const Path& p : paths)
-            for (const Activation& a : p.all_activations()) {
+        for (const Path* p : flatten_paths(paths))
+            for (const Activation& a : p->all_activations()) {
                 REQUIRE(a.timecode.ticks() == act);
                 for (const SPSqueeze& q : a.sqinouts) {
                     CAPTURE(q.type_name());
-                    CHECK(q.offset_ms == own_ms);
+                    CHECK(q.offset_ms == ms(own_ms));
                 }
             }
     }
@@ -317,16 +280,11 @@ const std::vector<TailNote> kFoldSharedClamp = {
 TEST_CASE("finding 37: a folded variant's Clamped step on its leader's SqIn phrase becomes SqIn") {
     const Song song = test::build_tempo_song(kFoldSharedClamp, {{0, 1200.0}});
     const ScoreGraph graph(song, 2);
-    const std::vector<Path> paths = run_search(graph, keep_losers());
+    const std::vector<Path> paths = run_search(graph, test::wide_search());
     const SpEndStep sqin{12864, 15936, SpEndKind::SqIn};
     // The variant's own steps run to the fold, so its 12864 step is its own
     // Clamped step; close_folded_act relabels it as the leader's SqIn
     // (is_sqin_step), the way relabel_sqin does on a lone path.
-    auto ticks_of = [](const Path& p) {
-        std::vector<int64_t> t;
-        for (const Activation& a : p.all_activations()) t.push_back(a.timecode.ticks());
-        return t;
-    };
     auto step_at = [](const Path& p) -> std::optional<SpEndStep> {
         const std::vector<Activation> acts = p.all_activations();
         if (acts.empty()) return std::nullopt;
@@ -337,15 +295,16 @@ TEST_CASE("finding 37: a folded variant's Clamped step on its leader's SqIn phra
     const std::vector<int64_t> a_acts = {9216};
     const std::vector<int64_t> b_acts = {2304, 10752};
     bool folded = false;
-    for (const Path& p : paths) {
-        const std::vector<int64_t> lead = ticks_of(p);
+    // Every returned path that carries tied variants, nested ones included.
+    for (const Path* p : flatten_paths(paths)) {
+        const std::vector<int64_t> lead = test::act_ticks(*p);
         if (lead != a_acts && lead != b_acts) continue;
-        if (step_at(p) != std::optional<SpEndStep>(sqin)) continue;
-        for (const Path& v : p.variants) {
-            const std::vector<int64_t> own = ticks_of(v);
+        if (step_at(*p) != std::optional<SpEndStep>(sqin)) continue;
+        for (const Path& v : p->variants) {
+            const std::vector<int64_t> own = test::act_ticks(v);
             if (own != (lead == a_acts ? b_acts : a_acts)) continue;
             folded = true;
-            CAPTURE(p.pathstring());
+            CAPTURE(p->pathstring());
             CAPTURE(v.pathstring());
             CHECK(step_at(v) == std::optional<SpEndStep>(sqin));
         }
@@ -369,10 +328,11 @@ TEST_CASE("finding 37: an unclamped window is unchanged") {
     CHECK(x->to_tick == 6912);
     CHECK_FALSE(x->clamped);
     CHECK(c->sqin_time.ticks() == 6912);
-    const std::vector<SqOutSeen> seen = sqouts_of(run_search(graph, keep_losers()), 3456);
+    const std::vector<SqOutSeen> seen =
+        sqouts_of(run_search(graph, test::wide_search()), 3456);
     REQUIRE_FALSE(seen.empty());
     for (const SqOutSeen& s : seen) {
         CHECK(s.end_tick == 5376);
-        CHECK(s.sqout_ms == song.timecode(3456).ms() - song.timecode(5376).ms());
+        CHECK(s.sqout_ms == ms(-250.0));  // 3456 against 5376
     }
 }

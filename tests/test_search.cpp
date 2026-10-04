@@ -681,35 +681,8 @@ TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrase
     CHECK(claimed > 0);
 }
 
-namespace {
-
-// The deactivation edge on the SP track whose SP end is `end_tick`.
-const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t end_tick) {
-    const ScoreGraphNode* sp = nullptr;
-    for (const ScoreGraphNode* b = graph.start(); b && !sp;
-         b = b->adv_edge ? b->adv_edge->dest : nullptr)
-        if (b->branch_edge) sp = b->branch_edge->dest;
-    for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr)
-        if (sp->branch_edge && sp->branch_edge->dest->timecode.ticks() == end_tick)
-            return sp->branch_edge;
-    return nullptr;
-}
-
-// Where collecting the phrase on `phrase_tick` moves the SP end `from_tick`,
-// as the SP track's advance edge records it, or nullopt.
-std::optional<SpExtension> extension_of(const ScoreGraph& graph, int64_t phrase_tick,
-                                        int64_t from_tick) {
-    const ScoreGraphNode* sp = nullptr;
-    for (const ScoreGraphNode* b = graph.start(); b && !sp;
-         b = b->adv_edge ? b->adv_edge->dest : nullptr)
-        if (b->branch_edge) sp = b->branch_edge->dest;
-    for (; sp && sp->adv_edge; sp = sp->adv_edge->dest)
-        for (const auto& [tc, ext] : sp->adv_edge->sp_times)
-            if (tc.ticks() == phrase_tick && ext.count(from_tick)) return ext.at(from_tick);
-    return std::nullopt;
-}
-
-}  // namespace
+using test::deact_edge_at;
+using test::extension_of;
 
 // A squeeze choice's facts, pinned on two hand-built songs at 240 BPM (a
 // measure is 1920 ticks and 1000 ms). Both activate at 5760 with two bars,
@@ -1832,10 +1805,7 @@ TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record 
         HydraRecord rec;
         REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
         int sqouts = 0;
-        std::vector<const Path*> every;
-        for (const Path& root : rec.paths) every.push_back(&root);
-        for (const Path* v : test::all_tied(rec.paths)) every.push_back(v);
-        for (const Path* p : every) {
+        for (const Path* p : rec.all_paths()) {
             CAPTURE(p->pathstring());
             for (const Activation& a : p->walk_activations()) {
                 if (!a.sqout_tick) continue;
@@ -1845,7 +1815,8 @@ TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record 
                 REQUIRE(a.deact_tick().has_value());
                 REQUIRE(a.sqout_row() != nullptr);
                 CHECK(*a.sqout_row()->offset_ms ==
-                      song.timecode(*a.sqout_tick).ms() - song.timecode(*a.deact_tick()).ms());
+                      offset_from_sp_end(song.timecode(*a.sqout_tick).ms(),
+                                         song.timecode(*a.deact_tick()).ms()));
             }
         }
         CHECK(sqouts > 0);
@@ -1926,7 +1897,8 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own p
     for (const auto& [act, own_end] : {std::pair<int64_t, int64_t>{19200, 30720},
                                        std::pair<int64_t, int64_t>{21120, 30721}}) {
         CAPTURE(act);
-        const double own_ms = song.timecode(30480).ms() - song.timecode(own_end).ms();
+        const double own_ms =
+            offset_from_sp_end(song.timecode(30480).ms(), song.timecode(own_end).ms());
         int squeezes = 0;
         const std::vector<Path> kept = search_target(song, cfg, {act});
         for (const Path* p : flatten_paths(kept)) {
