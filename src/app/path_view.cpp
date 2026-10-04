@@ -220,7 +220,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.bars = bars_text(act.sp_meter());
         av.badge = activation_badge(act);
         av.chord = act.chord.rowstr();
-        if (timing && song_length_ms && *song_length_ms > 0.0)
+        if (timing && song_length_ms)
             av.song_fraction =
                 song_fraction(timing->timecode(act.timecode.ticks()).ms(), *song_length_ms);
 
@@ -320,7 +320,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 char tip[256];
                 // The budget at identity scale (x1.00): what the combined
                 // budget would be with no frontend-timing scale.
-                const double normal_budget = squeeze_budget_ms(1.0, W);
+                const double normal_budget = nominal_budget_ms(W);
                 std::snprintf(tip, sizeof(tip),
                               "Effectively %.1fms on the normal %.0fms scale:\n"
                               "frontend timing scales %s here, so the combined\n"

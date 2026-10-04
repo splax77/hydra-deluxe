@@ -602,11 +602,12 @@ std::optional<double> song_fraction(double ms, double length_ms) {
 }
 
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms) {
+    // song_fraction alone decides whether the length is usable; with no
+    // usable length it gives nothing, so there are no marks.
     std::vector<double> marks;
-    if (length_ms <= 0.0) return marks;
     marks.reserve(scene.activations.size());
     for (const PreviewActivation& a : scene.activations)
-        marks.push_back(*song_fraction(a.ms, length_ms));
+        if (const std::optional<double> at = song_fraction(a.ms, length_ms)) marks.push_back(*at);
     return marks;
 }
 
