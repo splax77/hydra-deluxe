@@ -40,15 +40,21 @@ samples after a seek match a straight read. A seek costs a few milliseconds of
 decoding.
 
 Vorbis: stb_vorbis's own pull decoder and seek. It never builds a whole-file
-buffer, so the 3.1-hour overflow is gone.
+buffer, so the 3.1-hour overflow is gone. A Vorbis stream over 2 GiB still
+refuses at open, because stb_vorbis takes its length as an `int`. That limit
+was already there before streaming.
 
 WAV and FLAC: miniaudio's `ma_decoder`, whose seeks are exact.
 
 MP3: Hydra builds its own seek points. miniaudio 0.11.25's MP3 seek ignores
 the LAME encoder delay (the silent frames an encoder adds at the start), and
 its built-in seek table lands thousands of frames off. The reader walks the
-frame headers at open, works out exactly where the decoder will land, and
-checks every seek against that.
+frame headers at open and works out exactly where the decoder will land. A
+seek that lands inside the scanned frames is checked against that, and a
+mismatch falls back to the exact slow path: restart and decode forward
+(`Mp3Reader::landed`). A seek past the scanned frames is not checked. A file
+over 4 GiB gets no seek points at all, so every seek in it takes the exact
+slow path.
 
 Resampling: miniaudio 0.11.25's `ma_data_converter_reset` leaves the resampler
 filter broken (it zeroes a filter coefficient instead of the filter history).
@@ -58,13 +64,19 @@ audio callback.
 
 What stays the same:
 
-A straight read with no seek gives exactly the old samples. The Opus decode is
-pinned bit for bit by a test, and that test is unchanged.
+Each reader's straight read with no seek gives exactly the old samples. The
+Opus decode is pinned bit for bit by a test, and that test is unchanged. The
+mix is not bit for bit: a stem that needs resampling is converted block by
+block, so a straight read of the mix matches the old whole-file mix within
+1e-6 per sample.
 
 After a seek, samples may differ slightly from a straight read. Opus and
 Vorbis need a short warm-up, and the converter restarts on its own grid. Tests
-compare post-seek audio with a tolerance (1e-3 per sample after the first 20
-ms), never bit for bit.
+compare post-seek audio with a tolerance, never bit for bit: 1e-3 per sample
+after the first 20 ms for most rates. An odd rate pair (one that lines up
+with 48 kHz only over a long stretch, such as 44,056 Hz) restarts at the
+target itself, within one input frame, so its test allows 0.013 per sample
+(`tests/test_stream_mix.cpp`).
 
 The Opus header's output gain is now applied, as the spec requires. A scan of
 the library found 0 of 3,722 Opus files with a non-zero gain, so nothing

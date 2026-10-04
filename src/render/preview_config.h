@@ -61,7 +61,7 @@ struct PreviewConfig {
     struct Gems {
         Color color_hit{1, 1, 1, 1};
         float secs_fade = 0.1f;
-        LightConfig light{{0, 1, 0.2f}};  // relative to the gem's bottom centre
+        LightConfig light{{0, 1, 0.2f}};  // relative to the gem's top centre
     } gems;
 
     // Onyx's text.time_box. Hydra draws the box in its own monospace font,

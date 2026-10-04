@@ -3,7 +3,8 @@
 An activation's Star Power ends at one exact chart tick. We call it the deact
 node, or D. It is two measures per banked bar past the activation, plus two
 more measures for every Star Power phrase the player collects while Star Power
-is running.
+is running, or earlier, when the cap pins the end (ADR 0013).
+`ScoreGraph::extend_deacts` owns that step.
 
 The search knows D exactly. It has to: D is the graph node the deactivation
 edge points at. But at copy-out it used to copy that edge's backend squeeze

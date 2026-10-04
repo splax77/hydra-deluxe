@@ -50,6 +50,11 @@ the score range, and the path limit.
 Changing one shows the records made under the new combination; changing it
 back brings the old ones back without analyzing again. The backend limit is
 not one of them: it only hides backend rows on screen and never re-analyzes.
+The path limit starts on<!-- default: Settings::mslimit_enabled -->
+at 10 ms<!-- default: Settings::mslimit_value -->. The backend limit ("Hide
+backend rows beyond") starts off<!-- default: Settings::backendlimit_enabled -->
+with 50 ms<!-- default: Settings::backendlimit_value --> in the box. The user
+confirmed both defaults (D48, Q33); `Settings` in src/app/config.h owns them.
 _Avoid_: view options
 
 **Library search**:
@@ -60,6 +65,14 @@ field. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze at most N
 ms) test the stored best path and only ever match ready records. Matching
 folds case and accents away, so `beyonce` finds "Beyoncé", and ignores Clone
 Hero's rich-text tags.
+
+**Batch time left**:
+The batch strip's estimate of how long the rest of a batch will take: the
+average time per finished chart so far, times the charts still to go. It
+shows only once three charts have finished (`kEtaMinFinished` in
+src/ui/library_jobs.h). Decided in the approved
+docs/superpowers/specs/2026-09-27-ui-redesign-design.md ("The estimate appears
+once three charts have finished").
 
 ### Paths
 
@@ -177,10 +190,18 @@ _Avoid_: SP end tick (when the anchored search position is meant)
 **Cap-clamped window**:
 Normally an activation's Star Power window ends a fixed distance (measures)
 past the activation. But if a phrase collected partway through Star Power
-fills the meter all the way to the SP cap (the max bars of SP you can hold),
-the window's end gets pinned to that phrase's note instead — the meter can't
-go any higher, so collecting more SP can't push the end out any further.
-`clamp_tick` stores which note pinned it, so later code doesn't have to guess.
+would overfill the meter past the SP cap (the max bars of SP you can hold),
+the window's end gets pinned to the cap measured from that phrase's note
+instead. A phrase that only fills the meter exactly to the cap is a tie, and a
+tie does not clamp. The end is pinned only while the meter is full: as it
+drains, a later phrase that fits under the cap extends the end again from
+where it was pinned (`ScoreGraph::extend_deacts`, docs/adr/0013).
+`clamp_tick()` names the note that pinned it, so later code doesn't have to
+guess; a later unclamped extension keeps the earlier note.
+The overfill warning in Song Details needs two things: the window is clamped,
+and the activation lists a SqIn/SqOut or an uncounted or squeezed-out backend
+row (`rate_activation` in squeeze_rating.cpp). A clamp with neither shows no
+warning.
 
 **Squeeze rating**:
 The displayed difficulty judgement of a squeeze: its rating label, its
@@ -189,7 +210,8 @@ material enough to warn about.
 
 **Backend leeway**:
 How long after the SP end a note still scores under Star Power without a
-squeeze: less than `backend_leeway_ms` (3 ms by default). A note exactly
+squeeze: less than `backend_leeway_ms`
+(3 ms<!-- default: Rules::backend_leeway_ms --> by default). A note exactly
 3.0 ms after the SP end does not score under SP. Hydra's own rule: no such
 constant was found in the Clone Hero engine methods read; the 3 ms is
 Hydra's own setting.
@@ -296,5 +318,13 @@ silent from that point.
 The Preview's play, pause, and seek control together with its clock. The clock
 is the master: while playing it is the time at play plus the time since; the
 note highway reads it to place the notes, and the audio follows it.
+The audio is shifted by the chart's audio offset, so the notes land on the
+music as they do in Clone Hero. A nonzero song.ini `delay` replaces the
+.chart `Offset`; a delay of 0 counts as unset. A positive value makes the
+notes come later than the music. `preview_audio_offset_ms` in
+src/app/preview_source.cpp is the one owner. This was decided in
+docs/superpowers/plans/2026-09-24-derivation-fixes.md (decision 9; Task 17's
+gate was measured at the game) and extended to .sng and .srb by
+docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md (decision 4).
 _Avoid_: player (the whole Preview), scrubber (the UI control only), playhead
 (the audio follower only)
