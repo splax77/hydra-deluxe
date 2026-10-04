@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "app/config.h"
+#include "app/display_format.h"
 #include "app/rules_file.h"
 #include "core/model.h"
 #include "core/rules.h"
@@ -213,6 +214,90 @@ TEST_CASE("rules: max_tied_paths caps the tied paths the engine keeps") {
         if (++charts == 5) break;
     }
     CHECK(charts > 0);
+}
+
+// Finding 95, D51 call 1: the tie limit is one count per score, whichever
+// side of the Path limit a path falls on, and a path inside the limit leads.
+// On this chart two paths tie the top score under 1.0 fills; only the E0
+// path's early fill puts it over a 0 ms limit, so the inside one is kept.
+TEST_CASE("rules: max_tied_paths is one count per score, inside paths first") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("black midi - Sugar") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.legacy_fill_deadline = true;
+    settings.ms_filter = 0.0;
+    settings.rules.max_tied_paths = 1;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    const Path& best = record.best_path();
+    int at_top = 0;
+    std::string seen;
+    for (const Path* p : record.all_paths()) {
+        if (p->totalscore() != best.totalscore()) continue;
+        seen += "'" + p->pathstring() + "' ";
+    }
+    for (const Path& p : record.paths)
+        if (p.totalscore() == best.totalscore()) at_top += p.tied_pathcount();
+    INFO("paths at the top score: ", seen);
+    CHECK(at_top == 1);
+    CHECK(best.tied_pathcount() == 1);
+    CHECK(best.pathstring() == "0 E3+ E5 E1");
+}
+
+// Finding 330, D51 call 2: a path over the Path limit is still kept when it
+// ties the optimal score, and one over the limit below it is dropped.
+TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal score") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("HopH2O - I Am... All Of Me") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.ms_filter = 10.0;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    const int64_t top = record.best_path().totalscore();
+    CHECK(top == 694985);
+    bool kept = false;
+    bool below_kept = false;
+    std::string seen;
+    for (const Path* p : record.all_paths())
+        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) + "; ";
+    INFO("kept paths: ", seen);
+    for (const Path* p : record.all_paths()) {
+        if (p->pathstring() == "3 E0 1 0- 2 E0") below_kept = true;
+        if (p->totalscore() != top || p->pathstring() != "0+ 2 0 0- 2 E0") continue;
+        REQUIRE(p->difficulty().has_value());
+        CHECK(app::format_ms(*p->difficulty()) == "78.9ms");
+        kept = true;
+    }
+    CHECK(kept);
+    CHECK_FALSE(below_kept);
+}
+
+// Finding 179: the engine's running tie count (bookkeeping for the limit)
+// must equal the recount of the finished tree, which is what is stored.
+// rebuild throws when they differ; this runs it over real charts.
+TEST_CASE("rules: the engine's tied count matches the recount") {
+    int charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, core::default_rules());
+        std::vector<Path> paths;
+        REQUIRE_NOTHROW(paths = run_search(graph, EngineOptions{}));
+        REQUIRE_FALSE(paths.empty());
+        for (const Path& p : paths) CHECK(p.tied_pathcount() >= 1);
+        if (++charts == 5) break;
+    }
+    CHECK(charts == 5);
 }
 
 TEST_CASE("rules: the generated-fill values come from the rules") {
