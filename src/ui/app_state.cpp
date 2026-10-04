@@ -84,8 +84,8 @@ void AppState::refresh_library_summaries() {
                                                settings.cap_query(), settings.lens()));
 }
 
-void AppState::refresh_library_row(const std::string& md5) {
-    library.set_summary_for(md5, store->get_summary(settings.record_key(md5)));
+bool AppState::refresh_library_row(const std::string& md5) {
+    return library.set_summary_for(md5, store->get_summary(settings.record_key(md5))) > 0;
 }
 
 void AppState::set_search(std::string text) {
@@ -118,20 +118,15 @@ void AppState::tick_library(double now) {
             batch_seen_completed_ = snap.completed;
             batch_refreshed_at_ = now;
             // When the batch stored a result for the chart the panel is open
-            // on, its row changes, and the panel shows the new result at once
-            // instead of after a click away (D48, Q16).
-            const std::optional<store::RecordStatus> open_before = selected_row_status();
+            // on, that chart's row changes (its status, or the score and path
+            // a Redo found), and the panel shows the new result at once
+            // instead of after a click away (D48, Q16). The open chart's row
+            // is read first, so its change is seen before the whole library's.
+            const bool open_changed = selected && refresh_library_row(selected->md5);
             refresh_library_summaries();
-            if (selected && selected_row_status() != open_before) reread_viewed_record();
+            if (open_changed) reread_viewed_record();
         }
     }
-}
-
-std::optional<store::RecordStatus> AppState::selected_row_status() const {
-    if (!selected) return std::nullopt;
-    for (const LibraryRow& row : library.rows())
-        if (row.entry.md5 == selected->md5) return row.status;
-    return std::nullopt;
 }
 
 // The rows the library table shows, in its current order and filter.

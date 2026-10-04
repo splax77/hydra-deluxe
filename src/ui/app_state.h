@@ -173,8 +173,9 @@ public:
     void reload_library();
     // Re-reads every row's summary: after a settings change or a batch step.
     void refresh_library_summaries();
-    // Re-reads one chart's summary: after one song's analysis is stored.
-    void refresh_library_row(const std::string& md5);
+    // Re-reads one chart's summary: after one song's analysis is stored, and
+    // for the open chart on each batch refresh. True when its row changed.
+    bool refresh_library_row(const std::string& md5);
     // Once per frame, from the library pane: reloads after a scan finishes,
     // and re-reads summaries while a batch runs -- at most once per
     // kBatchRefreshSeconds, and only when the batch stored something since
@@ -463,8 +464,6 @@ private:
     // one again. A finished single analysis and a batch that stored the open
     // chart both run it.
     void reread_viewed_record();
-    // The library row's status for the selected chart; empty with no selection.
-    std::optional<store::RecordStatus> selected_row_status() const;
 };
 
 }  // namespace hydra::ui

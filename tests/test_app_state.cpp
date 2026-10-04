@@ -467,6 +467,30 @@ TEST_CASE("set_search: a filter that does not parse leaves the query empty") {
     CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
 }
 
+namespace {
+
+// Runs a Redo batch over chart `md5` alone and waits for it to end. The
+// batch's own analysis fails, since the test has no chart file, so it writes
+// nothing: the result the test stored behind the app's back is the one the
+// batch "stored". Redo, so the batch does not skip a chart with a result.
+void run_redo_batch_over(AppState& app, const std::string& md5) {
+    app.set_search(md5);
+    REQUIRE(app.library_shown_count() == 1);
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string&, const hydra::app::AnalysisSettings&,
+           const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+            throw std::runtime_error("no chart file in this test");
+        },
+        1);
+    app.start_batch(true);
+    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    REQUIRE(app.batch_job != nullptr);
+    while (!app.batch_job->snapshot().finished)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+}
+
+}  // namespace
+
 // A batch that stores a result for the chart the panel is open on turns the
 // panel Ready on the batch's next refresh, without clicking away (D48, Q16).
 TEST_CASE("a batch result for the open chart turns the panel Ready") {
@@ -476,27 +500,35 @@ TEST_CASE("a batch result for the open chart turns the panel Ready") {
     app->select(open);
     REQUIRE(app->viewed.status == RecordStatus::NotAnalyzed);
 
-    // A batch over just the open chart. Its result arrives in the store the
-    // way a batch files one (H1's fixture); the batch's own analysis of the
-    // chart fails, since the test has no chart file, so it writes nothing
-    // else. Redo, so the batch does not skip the chart for having a result.
-    app->set_search(open.md5);
-    REQUIRE(app->library_shown_count() == 1);
+    // The result arrives the way a batch files one (H1's fixture).
     hydra::test::store_batch_result(*app->store, open.md5, Settings{}.sp_cap);
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string&, const hydra::app::AnalysisSettings&,
-           const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-            throw std::runtime_error("no chart file in this test");
-        },
-        1);
-    app->start_batch(true);
-    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
-    REQUIRE(app->batch_job != nullptr);
-    while (!app->batch_job->snapshot().finished)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    run_redo_batch_over(*app, open.md5);
 
     app->tick_library(0.0);  // the batch's last refresh
     CHECK(app->viewed.status == RecordStatus::Ready);
+}
+
+// A Redo batch that stores a new result for a chart that was already Ready
+// shows the new result too: the row stays Ready, but what it holds changed.
+TEST_CASE("a batch result for an open Ready chart shows the new result") {
+    ScratchPaths paths("appstate_batchredo");
+    std::unique_ptr<AppState> app = app_on(paths);  // chart 0: Ready, no paths
+    const ChartLibraryEntry open = library_entry(0);
+    app->select(open);
+    REQUIRE(app->viewed.status == RecordStatus::Ready);
+    REQUIRE(app->viewed.record->paths.empty());
+
+    // The new result has two paths (the shared tied-variant record).
+    HydraRecord redone = hydra::test::tied_variant_record();
+    redone.sp_cap = kSeededCap;
+    redone.ms_limit = Settings{}.mslimit_value;
+    app->store->add_record(
+        RecordKey{open.md5, kChartMode, CapQuery::at(kSeededCap), Settings{}.lens()}, redone);
+    run_redo_batch_over(*app, open.md5);
+
+    app->tick_library(0.0);  // the batch's last refresh
+    REQUIRE(app->viewed.status == RecordStatus::Ready);
+    CHECK(app->viewed.record->paths.size() == 2);
 }
 
 // A result stored behind the view's back shows once its row is re-read, and
