@@ -332,13 +332,23 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
           "Frontend timing scales x1.25 (early) / x0.80 (late) at the SP end; "
           "x0.50 (late) at the SqIn's SP end.");
 
-    // Two SqIns that share one scale read as one SqIn clause, as before.
+    // Two SqIns that share one scale read as one clause, but it says "each"
+    // so it doesn't read as a single SqIn (D16).
     Activation shared = base;
     shared.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
     shared.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
     test::set_transfer(shared, TransferScale{1.0, 0.5}, TransferScale{});
     CHECK(row_of(shared).scale_warning ==
-          "Frontend timing scales x0.50 (late) at the SqIn's SP end.");
+          "Frontend timing scales x0.50 (late) at each SqIn's SP end.");
+
+    // The same with the SP end scaled too: the shared clause still says "each".
+    Activation shared_both = base;
+    shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
+    test::set_transfer(shared_both, TransferScale{1.0, 0.5}, TransferScale{1.25, 1.0});
+    CHECK(row_of(shared_both).scale_warning ==
+          "Frontend timing scales x1.25 (early) at the SP end; "
+          "x0.50 (late) at each SqIn's SP end.");
 
     // Two SqIns with different scales: one numbered clause per SqIn (Q5).
     Activation two = base;
@@ -361,6 +371,16 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     CHECK(row_of(one_differs).scale_warning ==
           "Frontend timing scales x1.25 (early) at the SP end; "
           "x0.95 (early) at SqIn 2's SP end.");
+}
+
+TEST_CASE("kTransferScaleHint names the note SP is measured from (D17)") {
+    CHECK(std::string(kTransferScaleHint) ==
+          "SP length is measured in measures, so frontend timing\n"
+          "reaches the SP end scaled by the measure-length ratio.\n"
+          "Early and late hits scale differently when the note SP is\n"
+          "measured from (the activation, or the collecting note when\n"
+          "the cap clamps) or the SP end sits exactly on a signature\n"
+          "or tempo change.");
 }
 
 TEST_CASE("build_activations: overfill warning text") {
