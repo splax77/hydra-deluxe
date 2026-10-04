@@ -508,10 +508,10 @@ TEST_CASE("title_or_unknown: one fallback for a song with no usable name") {
 }
 
 // A multiplier squeeze is a chord whose notes straddle a to_multiplier step.
-// For 2- and 3-note chords, MultSqueeze accepts exactly the straddling
-// combos. For 4-note chords it accepts only 7, 17 and 27; this pins that
-// as-is (see the comment on MultSqueeze::validate).
-TEST_CASE("MultSqueeze accepts exactly the 2- and 3-note chords that straddle a multiplier step") {
+// MultSqueeze accepts exactly the straddling chords of every size, 2 to 5
+// notes (D51 call 3: Clone Hero allows 4- and 5-note chords, so Hydra must
+// get them right).
+TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a multiplier step") {
     const NoteColor order[] = {NoteColor::Red, NoteColor::Yellow, NoteColor::Kick,
                                NoteColor::Blue, NoteColor::Green};
     auto chord_of = [&](int n) {
@@ -528,15 +528,54 @@ TEST_CASE("MultSqueeze accepts exactly the 2- and 3-note chords that straddle a 
             return false;
         }
     };
-    for (int n = 2; n <= 3; ++n)
+    for (int n = 2; n <= 5; ++n)
         for (int combo = 0; combo < 40; ++combo) {
             const bool straddles = to_multiplier(combo + 1) < to_multiplier(combo + n);
             CHECK_MESSAGE(accepted(chord_of(n), combo) == straddles,
                           "n=" << n << " combo=" << combo);
         }
-    for (int combo = 0; combo < 40; ++combo)
-        CHECK_MESSAGE(accepted(chord_of(4), combo) == (combo == 7 || combo == 17 || combo == 27),
-                      "n=4 combo=" << combo);
+}
+
+// Kick and Red (50 each) with yellow and blue cymbals (65 each), hit at
+// combo 7: two notes are paid at 1x and two at 2x. Two notes cross the step,
+// so the right order gains two cymbal bonuses.
+TEST_CASE("MultSqueeze::points is the best order minus the worst order") {
+    Chord kryb;
+    kryb.add_note(NoteColor::Kick);
+    kryb.add_note(NoteColor::Red);
+    kryb.add_note(NoteColor::Yellow);
+    kryb.add_note(NoteColor::Blue);
+    kryb.apply_cymbal(NoteColor::Yellow);
+    kryb.apply_cymbal(NoteColor::Blue);
+    CHECK(MultSqueeze(kryb, 7).points() == 30);
+
+    Chord ry;
+    ry.add_note(NoteColor::Red);
+    ry.add_note(NoteColor::Yellow);
+    ry.apply_cymbal(NoteColor::Yellow);
+    CHECK(MultSqueeze(ry, 8).points() == 15);
+}
+
+// D51 call 3: the advice names every note that has to cross the step.
+TEST_CASE("MultSqueeze::howto names every note that crosses the step") {
+    // Kick and Red (50 each), yellow and blue cymbals (65 each) at combo 7:
+    // both cymbals cross to 2x.
+    Chord kryb;
+    kryb.add_note(NoteColor::Kick);
+    kryb.add_note(NoteColor::Red);
+    kryb.add_note(NoteColor::Yellow);
+    kryb.add_note(NoteColor::Blue);
+    kryb.apply_cymbal(NoteColor::Yellow);
+    kryb.apply_cymbal(NoteColor::Blue);
+    const MultSqueeze ms(kryb, 7);
+    CHECK(ms.howto() == "Hit [YellowCym] and [BlueCym] last.");
+    CHECK(ms.multiplier() == 2);
+
+    // Accent the Red (100): now the two cymbals tie across the step, so
+    // either may cross. The kick must stay before the step and the accented
+    // Red must cross it.
+    kryb.apply_accent(NoteColor::Red);
+    CHECK(MultSqueeze(kryb, 7).howto() == "Hit [Kick] first and [Red (Accent)] last.");
 }
 
 // A 3-note chord splits two and one across the step. When one end holds a
