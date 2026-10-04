@@ -163,7 +163,9 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    IM_CHECK(on_screen(h, "Insane SqOut <-- squeezed out (-260)"));
+    // The stored early x0.99... multiplier isn't 1, so the row shows its
+    // figure, however small the shift (one-squeeze-rating decision 1).
+    IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5ms) <-- squeezed out (-260)"));
     IM_CHECK(on_screen(h, "Timing is how far each note sits from the Star Power end"));
 
     // Off by default, and the number box is inert until it is ticked.
@@ -379,7 +381,7 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     if (!narrowest_panel(ctx)) return;
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(3);
-    IM_CHECK(on_screen(h, "Insane SqOut <-- squeezed out (-260)"));
+    IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5ms) <-- squeezed out (-260)"));
     ImGuiTable* t = backend_table(1);
     IM_CHECK(t != nullptr);
     if (ctx->IsError()) return;
@@ -391,7 +393,8 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     IM_CHECK_LE(content_max, rating.WorkMaxX + 0.5f);
     // The squeezed-out line is longer than the cell, so it did wrap: the
     // cell is narrower than the line.
-    const float line_w = text_w("Insane SqOut <-- squeezed out (-260)", hydra::ui::g_mono_font);
+    const float line_w =
+        text_w("Insane SqOut (eff. 163.5ms) <-- squeezed out (-260)", hydra::ui::g_mono_font);
     IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, line_w);
     // The three fixed columns fit their text: no cell runs past its column.
     for (int c = 0; c < 3; ++c) {

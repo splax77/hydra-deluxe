@@ -372,243 +372,161 @@ TEST_CASE("difficulty is the raw gap, untouched by stored transfer scales") {
     CHECK(*act.difficulty() == doctest::Approx(12.0));
 }
 
-TEST_CASE("rate_activation: SqIns warn late, SqOuts early, with no backend rows") {
-    // A SqIn-only activation must flag the late direction even with no
-    // backend rows at all (the old code only set it via backends): the SqIn
-    // itself needs a late (+) frontend hit. Stored scales of 0.5 make a
-    // 50 ms phrase gap read 66.7 ms, well past the 1 ms materiality floor.
-    Activation act;
-    act.transfer_pre = TransferScale{0.5, 0.5};
-    act.transfer_post = act.transfer_pre;
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
-
-    ActivationRating rate = rate_activation(act, 85.0);
-    CHECK(rate.late_warns);
-    CHECK_FALSE(rate.early_warns);
-    CHECK(rate.late_note_warns);
-    CHECK_FALSE(rate.late_backend_warns);
-    CHECK(rate.backends.empty());
-
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
-    rate = rate_activation(act, 85.0);
-    CHECK(rate.late_warns);
-    CHECK(rate.early_warns);
+TEST_CASE("is_scaled: exactly 1 up to float noise, nothing coarser") {
+    CHECK_FALSE(is_scaled(1.0));
+    CHECK_FALSE(is_scaled(1.0 + 1e-12));
+    CHECK(is_scaled(0.999));
+    CHECK(is_scaled(1.0001));
 }
 
-TEST_CASE("transfer_is_material: impact or budget, not |r - 1|") {
-    // r == 1: the effective ms equals the raw gap, so only a gap past the
-    // combined budget (2*W) makes the identity scale material.
-    CHECK_FALSE(transfer_is_material(50.0, 1.0, 85.0));
-    CHECK(transfer_is_material(200.0, 1.0, 85.0));
-
-    // r == 0.5: a 30 ms gap reads effectively 40 ms — a 10 ms impact.
-    CHECK(effective_backend_ms(30.0, 0.5) == doctest::Approx(40.0));
-    CHECK(transfer_is_material(30.0, 0.5, 85.0));
-
-    // A near-1 ratio on a tiny gap moves it under the 1 ms impact floor.
-    CHECK_FALSE(transfer_is_material(2.0, 0.99, 85.0));
+TEST_CASE("rate_note: the side of the end picks the multiplier") {
+    const TransferScale s{0.5, 2.0};
+    // Inside SP: an early hit is what moves the end across it.
+    NoteRating in = rate_note(-50.0, true, s, 85.0);
+    CHECK(in.early);
+    CHECK(in.scale == 0.5);
+    CHECK(in.budget_ms == doctest::Approx(squeeze_budget_ms(0.5, 85.0)));
+    REQUIRE(in.effective_ms.has_value());
+    CHECK(*in.effective_ms == doctest::Approx(effective_backend_ms(-50.0, 0.5)));
+    // Outside: a late hit.
+    NoteRating out = rate_note(50.0, false, s, 85.0);
+    CHECK_FALSE(out.early);
+    CHECK(out.scale == 2.0);
+    REQUIRE(out.effective_ms.has_value());
+    CHECK(*out.effective_ms == doctest::Approx(effective_backend_ms(50.0, 2.0)));
 }
 
-TEST_CASE("rate_activation: stored scales, materiality-gated warns and rows") {
-    // No timing at hand: the stored (blob v3) scales govern. The flat 1.0
-    // defaults never warn for in-budget gaps.
-    Activation flat;
-    flat.skips = 0;
-    flat.e_offset = 300.0;
-    BackendSqueeze late_row;
-    late_row.offset_ms = 50.0;  // inside the display window, past the leeway floor
-    flat.backends.push_back(late_row);
-
-    ActivationRating r = rate_activation(flat, 85.0);
-    CHECK_FALSE(r.late_warns);
-    CHECK_FALSE(r.early_warns);
-    REQUIRE(r.backends.size() == 1);
-    CHECK_FALSE(r.backends[0].squeezed_out);
-    CHECK(r.backends[0].scale == doctest::Approx(1.0));
-    CHECK_FALSE(r.backends[0].effective_ms.has_value());
-
-    // A stored post.late of 0.5 makes the same +50 ms row material:
-    // effectively 66.7 ms on the nominal scale.
-    Activation scaled = flat;
-    scaled.transfer_post.late = 0.5;
-    r = rate_activation(scaled, 85.0);
-    CHECK(r.late_warns);
-    CHECK(r.late_backend_warns);
-    CHECK_FALSE(r.late_note_warns);
-    CHECK_FALSE(r.early_warns);
-    REQUIRE(r.backends.size() == 1);
-    CHECK(r.backends[0].scale == doctest::Approx(0.5));
-    REQUIRE(r.backends[0].effective_ms.has_value());
-    CHECK(*r.backends[0].effective_ms ==
-          doctest::Approx(effective_backend_ms(50.0, 0.5)));
-
-    // A row inside the backend leeway never engages the late scale.
-    Activation leeway = scaled;
-    leeway.backends.clear();
-    BackendSqueeze leeway_row;
-    leeway_row.offset_ms = 1.5;
-    leeway.backends.push_back(leeway_row);
-    r = rate_activation(leeway, 85.0);
-    CHECK_FALSE(r.late_warns);
-    CHECK_FALSE(r.backends[0].effective_ms.has_value());
-
-    // An over-budget gap at the flat 1.0 scale still warns (it exceeds the
-    // 170 ms combined budget) but reads at face value: an eff. figure would
-    // just repeat the raw ms, so it stays unset.
-    Activation overbudget = flat;
-    overbudget.backends.clear();
-    BackendSqueeze over_row;
-    over_row.offset_ms = 222.2;
-    overbudget.backends.push_back(over_row);
-    r = rate_activation(overbudget, 85.0);
-    CHECK(r.late_backend_warns);
-    REQUIRE(r.backends.size() == 1);
-    CHECK(r.backends[0].scale == doctest::Approx(1.0));
-    CHECK_FALSE(r.backends[0].effective_ms.has_value());
-
-    // A SqOut phrase note reads the pre-end early scale.
-    Activation sqout = flat;
-    sqout.backends.clear();
-    sqout.transfer_pre.early = 0.5;
-    sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
-    r = rate_activation(sqout, 85.0);
-    CHECK(r.early_warns);
-    CHECK(r.early_note_warns);
-    CHECK_FALSE(r.early_backend_warns);
-    CHECK_FALSE(r.late_warns);
+TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close") {
+    // Sinner's Vengeance act 3 shape: 187.5 ms at an early scale just under
+    // 1 moves by under 1 ms, which the old 1 ms floor hid. Full precision.
+    const double r = 0.9912;
+    NoteRating n = rate_note(-187.5, true, TransferScale{r, 1.0}, 85.0);
+    REQUIRE(n.effective_ms.has_value());
+    CHECK(*n.effective_ms == doctest::Approx(375.0 / (1.0 + r)).epsilon(1e-12));
+    // Exactly 1, or float noise around it: no figure.
+    CHECK_FALSE(rate_note(-187.5, true, TransferScale{1.0, 1.0}, 85.0).effective_ms.has_value());
+    CHECK_FALSE(
+        rate_note(-187.5, true, TransferScale{1.0 + 1e-12, 1.0}, 85.0).effective_ms.has_value());
+    // A note on the end itself keeps its figure when scaled: 0 ms.
+    NoteRating z = rate_note(0.0, true, TransferScale{8.59, 8.76}, 85.0);
+    REQUIRE(z.effective_ms.has_value());
+    CHECK(*z.effective_ms == 0.0);
 }
 
-TEST_CASE("rate_activation: free squeezes read the opposite scale direction") {
-    // The governing direction follows the sign of the difficulty, not the
-    // squeeze kind. A squeeze you already have (difficulty <= 0) is not
-    // achieved by a frontend hit — it is destroyed by one, in the opposite
-    // direction, so that is the scale that decides whether it survives.
-
-    // A free sqout: the note sits +300 ms past the SP end already, so a LATE
-    // frontend hit is what could drag the end over it. With late 4.45 the
-    // 300 ms of margin is worth only 110 ms of the nominal budget.
-    Activation freeout;
-    freeout.skips = 0;
-    freeout.transfer_post = TransferScale{1.0, 4.45};
-    freeout.transfer_pre = freeout.transfer_post;
-    freeout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 300.0});
-    BackendSqueeze out_row;
-    out_row.timecode = Timecode::raw(3187);
-    out_row.offset_ms = 300.0;
-    freeout.backends.push_back(out_row);
-    freeout.sqout_tick = 3187;  // this row is the squeezed-out chord
-
-    ActivationRating r = rate_activation(freeout, 85.0);
-    REQUIRE(r.backends.size() == 1);
-    CHECK(r.backends[0].squeezed_out);
-    CHECK(r.backends[0].scale == doctest::Approx(4.45));
-    REQUIRE(r.backends[0].effective_ms.has_value());
-    CHECK(*r.backends[0].effective_ms ==
-          doctest::Approx(effective_backend_ms(300.0, 4.45)));
-    CHECK(r.late_backend_warns);
-    CHECK_FALSE(r.early_backend_warns);
-    // The phrase note flips with the row: same squeeze, same direction.
-    CHECK(r.late_note_warns);
-    CHECK_FALSE(r.early_note_warns);
-
-    // A difficult sqout keeps the achievement direction: the note is inside
-    // SP, so only an early frontend hit pulls the end back before it.
-    Activation hardout;
-    hardout.skips = 0;
-    hardout.transfer_post = TransferScale{0.5, 1.0};
-    hardout.transfer_pre = hardout.transfer_post;
-    hardout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
-    BackendSqueeze hard_row;
-    hard_row.timecode = Timecode::raw(3053);
-    hard_row.offset_ms = -50.0;
-    hardout.backends.push_back(hard_row);
-    hardout.sqout_tick = 3053;
-
-    r = rate_activation(hardout, 85.0);
-    REQUIRE(r.backends.size() == 1);
-    CHECK(r.backends[0].squeezed_out);
-    CHECK(r.backends[0].scale == doctest::Approx(0.5));
-    REQUIRE(r.backends[0].effective_ms.has_value());
-    CHECK(*r.backends[0].effective_ms ==
-          doctest::Approx(effective_backend_ms(50.0, 0.5)));
-    CHECK(r.early_backend_warns);
-    CHECK_FALSE(r.late_backend_warns);
-    CHECK(r.early_note_warns);
-
-    // A free SqIn (the note sits comfortably inside SP) is threatened by an
-    // early frontend hit, so it warns on the early scale.
-    Activation freein;
-    freein.skips = 0;
-    freein.transfer_pre = TransferScale{0.5, 1.0};
-    freein.transfer_post = freein.transfer_pre;
-    freein.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -50.0});
-
-    r = rate_activation(freein, 85.0);
-    CHECK(r.early_note_warns);
-    CHECK_FALSE(r.late_note_warns);
-    CHECK(r.early_warns);
-    CHECK_FALSE(r.late_warns);
-    // The SqIn has no backend row, so its eff. figure lives on the rating:
-    // 50 ms of margin on the early x0.5 scale.
-    REQUIRE(r.note_effective_ms.size() == 1);
-    REQUIRE(r.note_effective_ms[0].has_value());
-    CHECK(*r.note_effective_ms[0] == doctest::Approx(effective_backend_ms(50.0, 0.5)));
-}
-
-TEST_CASE("rate_activation: counted rows before the SP end read the early scale") {
-    // Sun of Nothing act 5: a row 400 ms inside SP already counts, and only
-    // an early frontend hit (x1.60 here) pulls the end back over it. Its
-    // margin is effectively 400 * 2 / 2.6 = 307.7 ms, like the free SqIn's.
+TEST_CASE("rate_activation: every row reads post, by its side of the end") {
+    REQUIRE(core::default_rules().backend_leeway_ms > 1.5);
     Activation act;
     act.skips = 0;
-    act.transfer_pre = TransferScale{1.6, 1.0};
-    act.transfer_post = act.transfer_pre;
-    BackendSqueeze inside;
-    inside.offset_ms = -400.0;
-    act.backends.push_back(inside);
-    BackendSqueeze at_end;
-    at_end.offset_ms = 0.0;
-    act.backends.push_back(at_end);
+    act.e_offset = 300.0;  // not e-critical
+    act.transfer_pre = TransferScale{3.0, 4.0};  // a row never reads pre
+    act.transfer_post = TransferScale{0.5, 2.0};
+    auto add = [&act](int64_t tick, double off) {
+        BackendSqueeze b;
+        b.timecode = Timecode::raw(tick);
+        b.offset_ms = off;
+        act.backends.push_back(b);
+    };
+    add(1000, -40.0);  // counted, inside SP: early
+    add(1001, 0.0);    // counted, on the end: early
+    add(1002, 1.5);    // counted inside the leeway: early (decision 6)
+    add(1003, 50.0);   // uncounted, past the leeway: late
 
     ActivationRating r = rate_activation(act, 85.0);
-    REQUIRE(r.backends.size() == 2);
-    CHECK_FALSE(r.backends[0].squeezed_out);
-    CHECK(r.backends[0].scale == doctest::Approx(1.6));
-    REQUIRE(r.backends[0].effective_ms.has_value());
-    CHECK(*r.backends[0].effective_ms == doctest::Approx(307.692).epsilon(1e-4));
-    CHECK(r.early_backend_warns);
-    CHECK_FALSE(r.late_backend_warns);
-    // A row at the SP end has no margin to scale: no figure.
-    CHECK_FALSE(r.backends[1].effective_ms.has_value());
-
-    // At a flat early scale the figure would repeat the raw ms.
-    act.transfer_pre = TransferScale{1.0, 1.0};
-    act.transfer_post = act.transfer_pre;
-    r = rate_activation(act, 85.0);
-    CHECK_FALSE(r.backends[0].effective_ms.has_value());
+    REQUIRE(r.backends.size() == 4);
+    CHECK(r.backends[0].note.early);
+    CHECK(r.backends[1].note.early);
+    CHECK(r.backends[2].note.early);
+    CHECK(r.backends[2].note.scale == 0.5);
+    CHECK_FALSE(r.backends[3].note.early);
+    CHECK(r.backends[3].note.scale == 2.0);
+    for (const BackendRating& b : r.backends) {
+        REQUIRE(b.note.effective_ms.has_value());
+        CHECK(*b.note.effective_ms ==
+              doctest::Approx(effective_backend_ms(*b.row.offset_ms, b.note.scale)));
+    }
+    CHECK(r.scale_governs);
 }
 
-TEST_CASE("rate_activation: SqIn/SqOut eff. figures, one per squeeze") {
-    // Sun of Nothing act 5: a SqIn free by 400 ms, the activation on a 5/8 ->
-    // 4/4 change, so an early frontend hit reaches the SP end x1.60. The
-    // margin is effectively 400 * 2 / 2.6 = 307.7 ms.
+TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post") {
+    // Sinner's Vengeance act 3 shape: a SqIn extended SP, then the path
+    // squeezed out the [RY] phrase 187.5 ms before the final end. The SqOut
+    // entry and the row hold the same stored number (the deact edge's
+    // sqinout_timing), measured from the final end, so the row's post
+    // multiplier is the only one that applies.
     Activation act;
     act.skips = 0;
-    act.transfer_pre = TransferScale{1.6, 1.0};
-    act.transfer_post = act.transfer_pre;
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -400.0});
-    ActivationRating r = rate_activation(act, 85.0);
-    REQUIRE(r.note_effective_ms.size() == 1);
-    REQUIRE(r.note_effective_ms[0].has_value());
-    CHECK(*r.note_effective_ms[0] == doctest::Approx(307.692).epsilon(1e-4));
+    act.e_offset = 300.0;
+    act.transfer_pre = TransferScale{0.97, 0.974};
+    act.transfer_post = TransferScale{0.9912, 0.98};
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -92.1});
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -187.5});
+    BackendSqueeze ry;
+    ry.timecode = Timecode::raw(5000);
+    ry.offset_ms = -187.5;
+    ry.is_sp = true;
+    act.backends.push_back(ry);
+    act.sqout_tick = 5000;
 
-    // At a flat x1.00 the figure would repeat the raw ms, so it stays unset,
-    // even when the gap is past the budget (same rule as a backend row).
-    act.transfer_pre = TransferScale{1.0, 1.0};
-    act.transfer_post = act.transfer_pre;
+    ActivationRating r = rate_activation(act, 85.0);
+    REQUIRE(r.backends.size() == 1);
+    CHECK(r.backends[0].squeezed_out);
+    CHECK(r.backends[0].note.early);
+    CHECK(r.backends[0].note.scale == 0.9912);
+    REQUIRE(r.backends[0].note.effective_ms.has_value());
+    CHECK(*r.backends[0].note.effective_ms == doctest::Approx(375.0 / 1.9912).epsilon(1e-12));
+    REQUIRE(r.note_effective_ms.size() == 2);
+    // The SqIn: free by 92.1 ms at the pre end, so pre's early side.
+    REQUIRE(r.note_effective_ms[0].has_value());
+    CHECK(*r.note_effective_ms[0] == doctest::Approx(184.2 / 1.97).epsilon(1e-12));
+    // The SqOut: its row above is its only rating.
+    CHECK_FALSE(r.note_effective_ms[1].has_value());
+
+    // A free squeeze-out, already past the end, reads post's late side.
+    act.backends[0].offset_ms = 40.0;
+    act.sqinouts[1] = SPSqueeze{SqueezeKind::SqOut, 40.0};
     r = rate_activation(act, 85.0);
-    REQUIRE(r.note_effective_ms.size() == 1);
-    CHECK_FALSE(r.note_effective_ms[0].has_value());
+    CHECK_FALSE(r.backends[0].note.early);
+    CHECK(r.backends[0].note.scale == 0.98);
+}
+
+TEST_CASE("rate_activation: a SqIn reads pre, by its side of the end") {
+    Activation act;
+    act.skips = 0;
+    act.e_offset = 300.0;
+    act.transfer_pre = TransferScale{1.6, 0.5};
+    act.transfer_post = TransferScale{3.0, 4.0};  // a SqIn never reads post
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -400.0});  // free: early
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});    // to earn: late
+    ActivationRating r = rate_activation(act, 85.0);
+    REQUIRE(r.note_effective_ms.size() == 2);
+    REQUIRE(r.note_effective_ms[0].has_value());
+    REQUIRE(r.note_effective_ms[1].has_value());
+    // Sun of Nothing act 5: 400 ms free at early x1.60 is worth 307.7 ms.
+    CHECK(*r.note_effective_ms[0] == doctest::Approx(800.0 / 2.6).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[1] == doctest::Approx(100.0 / 1.5).epsilon(1e-12));
+    CHECK(r.scale_governs);
+}
+
+TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rated note") {
+    Activation act;
+    act.skips = 0;
+    act.e_offset = 300.0;
+    // The late side is scaled, but the only row is inside SP (early, x1.00).
+    act.transfer_post = TransferScale{1.0, 6.33};
+    act.transfer_pre = act.transfer_post;
+    BackendSqueeze in;
+    in.offset_ms = -40.0;
+    act.backends.push_back(in);
+    ActivationRating r = rate_activation(act, 85.0);
+    CHECK_FALSE(r.scale_governs);
+    CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
+
+    // A flat activation never governs, even with a gap past the budget.
+    Activation flat = act;
+    flat.transfer_post = TransferScale{};
+    flat.transfer_pre = TransferScale{};
+    flat.backends[0].offset_ms = 222.2;
+    CHECK_FALSE(rate_activation(flat, 85.0).scale_governs);
 }
 
 TEST_CASE("rate_activation: the stored scales are the only scales") {
@@ -629,7 +547,7 @@ TEST_CASE("rate_activation: the stored scales are the only scales") {
     ActivationRating r = rate_activation(act, 85.0);
     CHECK(r.scales.post.late == doctest::Approx(0.5));
     CHECK(r.scales.pre.early == doctest::Approx(0.5));
-    CHECK(r.late_warns);
+    CHECK(r.scale_governs);
 }
 
 TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
@@ -752,6 +670,25 @@ TEST_CASE("rate_activation: cap_clamped flag") {
     CHECK_FALSE(r3.cap_clamped);
 }
 
+TEST_CASE("is_frontend_decided: squeezed out, or not counted without a squeeze") {
+    const double leeway = core::default_rules().backend_leeway_ms;
+    BackendRating counted;
+    counted.row.offset_ms = -40.0;
+    CHECK_FALSE(is_frontend_decided(counted, leeway));
+
+    BackendRating uncounted;
+    uncounted.row.offset_ms = leeway + 5.0;
+    CHECK(is_frontend_decided(uncounted, leeway));
+
+    BackendRating squeezed;
+    squeezed.row.offset_ms = -40.0;
+    squeezed.squeezed_out = true;
+    CHECK(is_frontend_decided(squeezed, leeway));
+
+    BackendRating no_offset;
+    CHECK_FALSE(is_frontend_decided(no_offset, leeway));
+}
+
 // The engine counts a plain row less than the leeway past the SP end, so it
 // is not a squeeze the frontend decides. The rating, the late-row warn and
 // the overfill flag all use that same edge (user decision 7).
@@ -770,9 +707,10 @@ TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend sque
 
     ActivationRating r = rate_activation(act, 85.0);
     CHECK_FALSE(r.cap_clamped);
-    CHECK_FALSE(r.late_backend_warns);
+    // Counted inside the leeway, so the early side governs it -- x1.00 here.
+    CHECK_FALSE(r.scale_governs);
     REQUIRE(r.backends.size() == 1);
-    CHECK_FALSE(r.backends[0].effective_ms.has_value());
+    CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
     CHECK(act.backends[0].summarystr(85.0) == "Standard");
 
     // At the leeway edge the row is uncounted, so the frontend decides it.

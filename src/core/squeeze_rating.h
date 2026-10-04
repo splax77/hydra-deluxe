@@ -3,8 +3,8 @@
 // judged for display.
 //
 // One home for all of it: the transfer scales, which scale directions
-// matter, when a scale is material enough to warn about, and what a backend
-// row's effective ms is on the nominal two-hit scale. The search never reads
+// matter, which multiplier governs a note, and what its margin is worth on
+// the nominal two-hit scale. The search never reads
 // the judgement side; difficulty and the ms filter stay raw gap ms (see
 // core/model.h).
 //
@@ -22,6 +22,7 @@
 #ifndef HYDRA_CORE_SQUEEZE_RATING_H
 #define HYDRA_CORE_SQUEEZE_RATING_H
 
+#include <cmath>
 #include <optional>
 #include <vector>
 
@@ -79,55 +80,65 @@ std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
 double effective_backend_ms(double offset_ms, double transfer_r);
 double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWindowMs);
 
-// The transfer scale is shown when it is material to a listed squeeze: the
-// gap's effective size moves by more than this many ms, or the gap exceeds
-// the combined budget outright. Gating on impact (not on |r - 1|) keeps a
-// near-1 ratio visible when a large gap makes even a fraction of a percent
-// decide success.
-constexpr double kTransferImpactMs = 1.0;
-bool transfer_is_material(double gap_ms, double transfer_r,
-                          double hit_window_ms = kDefaultHitWindowMs);
+// A multiplier is x1.00 only when it equals 1 up to the round-off of the
+// measure-length division (two equal measures reached through different
+// tempos). This is not a display cutoff: x0.999 is scaled.
+constexpr double kScaleIdentityTolerance = 1e-9;
+inline bool is_scaled(double r) { return std::abs(r - 1.0) > kScaleIdentityTolerance; }
+
+// The one rule for a single note near a Star Power end. The side of the end
+// it sits on decides which activation-hit direction moves the end across it:
+// a note inside SP is crossed by an early hit pulling the end back, a note
+// outside by a late hit pushing the end past it. That holds whether the
+// crossing loses the note (a counted row, a free squeeze) or wins it (a
+// squeeze still to earn), so the squeeze kind never enters.
+struct NoteRating {
+    bool early = false;                  // which side of the end's TransferScale governs
+    double scale = 1.0;                  // that side's stored multiplier, full precision
+    double budget_ms = 0.0;              // squeeze_budget_ms(scale, W)
+    std::optional<double> effective_ms;  // set exactly when is_scaled(scale)
+};
+
+// offset_ms: the note's ms minus the SP end's ms (negative = before it).
+// inside: whether the note is inside SP on this path, by the counting rule
+// that owns it (core/backend_value.h). at_end: the multipliers stored for
+// the SP end that offset is measured from.
+NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
+                     double hit_window_ms = kDefaultHitWindowMs);
 
 // ---- rate_activation ------------------------------------------------------
 
-// One backend table row, resolved: the display row it judges, whether that
-// row is the squeezed-out note, which scale governs it, the combined squeeze
-// budget that scale buys, and the row's effective ms when the scale
-// materially changes it (unset when the row reads at face value).
+// One backend table row, resolved: the display row, whether it is the
+// squeezed-out note, and its rating at the deact-node end. A row with no
+// offset keeps the default rating (x1.00, no figure).
 struct BackendRating {
     BackendSqueeze row;
     bool squeezed_out = false;
-    double scale = 1.0;
-    double budget_ms = 0.0;
-    std::optional<double> effective_ms;
+    NoteRating note;
 };
+
+// Whether the frontend decides this row: it was squeezed out, or the engine
+// does not count it without a squeeze (at or past the leeway). The overfill
+// warning fires only for an activation that has such a row or a SqIn/SqOut.
+bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms);
 
 // The full transfer-scale story for one activation, as the details display
 // tells it.
 struct ActivationRating {
     // The scales the search stored on the activation (transfer_pre/post).
     ActTransferScales scales;
-    // The materially affected directions: drive the scale-warning line.
-    // late/early_warns aggregate; the per-end flags record which end tripped
-    // them (backend rows are judged at the post end, SqIn/SqOut phrase notes
-    // at the pre end), so the line can print the scale that actually warned.
-    bool late_warns = false;
-    bool early_warns = false;
-    bool late_backend_warns = false;
-    bool early_backend_warns = false;
-    bool late_note_warns = false;
-    bool early_note_warns = false;
-    // True when the activation's SP window was cap-clamped AND the activation
-    // lists a squeeze the frontend decides: any SqIn/SqOut, or any backend
-    // row that rate_activation judges (squeezed_out, or a plain row the engine
-    // does not count: offset at or past the leeway).
-    // Drives the overfill warning in the details view.
+    // True when a multiplier that isn't 1 governs at least one row or SqIn
+    // on this activation: the scale line turns orange.
+    bool scale_governs = false;
+    // True when the SP cap clamped this activation's window AND the frontend
+    // decides at least one of its squeezes: any SqIn/SqOut, or any row
+    // is_frontend_decided accepts. Drives the overfill warning.
     bool cap_clamped = false;
     // One entry per act.display_backends() row, in that order.
     std::vector<BackendRating> backends;
-    // One entry per act.sqinouts, in that order: the phrase note's margin as
-    // effective ms on the nominal scale, set under the same rule as a
-    // backend row's effective_ms (material, and it moves the number).
+    // One entry per act.sqinouts, in that order: a SqIn's figure, rated at
+    // the pre end. Always empty for a SqOut, whose note is its squeezed-out
+    // backend row and is rated there.
     std::vector<std::optional<double>> note_effective_ms;
 };
 
