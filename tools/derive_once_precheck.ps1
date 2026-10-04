@@ -188,9 +188,9 @@ function Invoke-Git([string[]]$GitArgs) {
         ForEach-Object { "$_" })
 }
 
-$script:Root = (& git -C $Repo rev-parse --show-toplevel 2>$null)
-if ($LASTEXITCODE -ne 0 -or -not $script:Root) { throw "not a git repository: $Repo" }
-$script:Root = "$($script:Root)".Trim()
+$script:Root = $Repo
+try { $script:Root = "$(@(Invoke-Git @('rev-parse', '--show-toplevel'))[0])".Trim() } catch { throw "not a git repository: $Repo" }
+if (-not $script:Root) { throw "not a git repository: $Repo" }
 
 # Which commit does this name mean (a branch, a tag, a hash, HEAD~2...)? The
 # one place a name becomes a commit hash.
@@ -236,8 +236,10 @@ function Get-TopFolder([string]$File) {
 }
 # Is this a C++ file? The extensions are the scan's own: the scan in
 # tests/test_single_owner.cpp reads a file only when its extension is exactly
-# .cpp or .h, so the precheck reads the same files and no others.
-function Test-CppPath([string]$p) { $p -cmatch '\.(cpp|h)$' }
+# .cpp or .h, so the precheck reads the same files and no others. Check 4
+# uses the same $cppExt to spot a source file's path written in a test.
+$cppExt = '\.(cpp|h)'
+function Test-CppPath([string]$p) { $p -cmatch ($cppExt + '$') }
 function Test-PyPath([string]$p) { $p -match '\.py$' }
 # Is this a test file? Everything under tests/, and under tools/ a file in a
 # tests folder or a Python file named test_*.py. Any file that is not a test
@@ -598,6 +600,8 @@ foreach ($r in $rows) {
     foreach ($x in $r.MustNotMatch) { if (Test-RowFlags $r $x) { $rowWarnings.Add("row ""$($r.Question)"" flags its must-not-match example here: $x") } }
     foreach ($o in $r.OwnerLines) { if (-not (Test-RowFlags $r $o.Text)) { $rowWarnings.Add("row ""$($r.Question)"" does not flag its owner line here: $($o.Text)") } }
 }
+# How a known copy reads in an item's reason: the fix that removes it.
+function Format-KnownCopy([string]$Fix) { "known copy: $Fix" }
 function Get-KnownCopy([string]$File, [string[]]$LineTexts) {
     if (-not $known.ContainsKey($File)) { return $null }
     foreach ($t in $LineTexts) {
@@ -679,7 +683,7 @@ function Get-RowHits {
                     $note = "this range lists it as an owner line: ""$($o.Why)""; check that reason"
                 } elseif ($nth -le $owners.Count + $copies.Count) {
                     $c = $copies[$nth - $owners.Count - 1]
-                    $note = "known copy: $($c.Fix)" + $(if ($c.Added) { '; this range added that entry' } else { '' })
+                    $note = (Format-KnownCopy $c.Fix) + $(if ($c.Added) { '; this range added that entry' } else { '' })
                 } elseif ($owners.Count + $copies.Count) {
                     $note = 'a second copy of a listed line; each entry covers one line'
                 }
@@ -836,7 +840,7 @@ function Invoke-Check1 {
             $what = "$(if ($anchor.Lambda) { 'lambda' } else { 'helper' }) $($anchor.Name) has the same body, names changed, as $($others -join ', ')"
         }
         $why = 'a test helper written in two files; keep one in a shared header'
-        if ($knownFix) { $why += " (known copy: $knownFix)" }
+        if ($knownFix) { $why += " ($(Format-KnownCopy $knownFix))" }
         Add-Item 'C' $anchor.File $anchor.Line $what $why
     }
 
@@ -863,7 +867,7 @@ function Invoke-Check1 {
                 if ($text -cmatch $s.Rx) {
                     $why = $s.Why
                     $fix = Get-KnownCopy $f @($v.Raw[$ln - 1])
-                    if ($fix) { $why += " (known copy: $fix)" }
+                    if ($fix) { $why += " ($(Format-KnownCopy $fix))" }
                     Add-Item 'C' $f $ln "$($s.What): $($text.Trim())" $why
                 }
             }
@@ -982,8 +986,17 @@ function New-Para([string]$Record, [string]$Text) {
 }
 $limitWords = '(?i)depth|cap|limit|filter|band|toleran|threshold|max|min|floor|ceil|seed|worker|frame|timeout|deadline|window|leeway|slop|budget|retr|repeat|probe|sample|settle|wait|sleep'
 $loopWords = '(?i)seed|trial|repeat|iteration|attempt|sample|probe|frame|retry|round|run\b'
-function Split-Paras([string]$Text) {
-    $Text -split '\n\s*\n|\n(?=\s*(?:\d+\.|[-*])\s)' | Where-Object { $_.Trim() }
+# A doc's paragraphs: split at blank lines and, unless -WholeLists, before
+# each list item, so a number and a word meet only inside one item. The
+# D-records keep their lists whole: a ruling's list items share its words.
+function Split-Paras([string]$Text, [switch]$WholeLists) {
+    $rx = if ($WholeLists) { '\n\s*\n' } else { '\n\s*\n|\n(?=\s*(?:\d+\.|[-*])\s)' }
+    $Text -split $rx | Where-Object { $_.Trim() }
+}
+# The name a decision record goes by ("D49", "ADR 14"), so a citation in code
+# and a record read from the docs meet under one key.
+function Get-RecordName([string]$Kind, [string]$Number) {
+    if ($Kind -eq 'ADR') { "ADR $([int]$Number)" } else { "D$([int]$Number)" }
 }
 
 function Get-DecisionParas {
@@ -992,29 +1005,28 @@ function Get-DecisionParas {
     $docs = Invoke-Git @('ls-tree', '-r', '--name-only', $rev, '--', 'docs/adr', 'CONTEXT.md', 'docs/superpowers/plans', 'docs/audit')
     foreach ($d in $docs) {
         if ($d -notmatch '\.md$') { continue }
-        if ($d -like 'docs/adr/*') {
-            $rec = if ($d -match '/(\d{4})[^/]*$') { "ADR $([int]$Matches[1])" } else { $d }
+        if ($d -like 'docs/adr/*' -or $d -eq 'CONTEXT.md') {
+            # An ADR is named by its number; CONTEXT.md by its own name.
+            $rec = if ($d -match '/(\d{4})[^/]*$') { Get-RecordName 'ADR' $Matches[1] } else { $d }
             foreach ($p in (Split-Paras (Get-TipText $d $rev))) { $paras.Add((New-Para $rec $p)) }
-        } elseif ($d -eq 'CONTEXT.md') {
-            foreach ($p in (Split-Paras (Get-TipText $d $rev))) { $paras.Add((New-Para 'CONTEXT.md' $p)) }
         } elseif ($d -match '^docs/superpowers/plans/[^/]+\.md$') {
-            $lines = (Get-TipText $d $rev).Split("`n")
             $in = $false; $buf = [System.Collections.Generic.List[string]]::new(); $level = 0
-            foreach ($l in $lines) {
+            $flush = { foreach ($p in (Split-Paras ($buf -join "`n"))) { $paras.Add((New-Para "plan $d" $p)) }; $buf.Clear() }
+            foreach ($l in (Get-TipText $d $rev).Split("`n")) {
                 if ($l -match '^\*\*User decisions[^*]*\*\*') { $in = $true; $level = 99; $buf.Add($l); continue }
                 if ($l -match '^(#+)\s+Test limits') { $in = $true; $level = $Matches[1].Length; $buf.Add($l); continue }
                 if ($in) {
                     $endBold = $level -eq 99 -and ($l -match '^\*\*(?!User decisions)[^*]+\*\*' -or $l -match '^#')
                     $endHead = $level -ne 99 -and $l -match '^(#+)\s' -and $Matches[1].Length -le $level
-                    if ($endBold -or $endHead) { $in = $false; foreach ($p in (Split-Paras ($buf -join "`n"))) { $paras.Add((New-Para "plan $d" $p)) }; $buf.Clear() }
+                    if ($endBold -or $endHead) { $in = $false; & $flush }
                     else { $buf.Add($l) }
                 }
             }
-            if ($buf.Count) { foreach ($p in (Split-Paras ($buf -join "`n"))) { $paras.Add((New-Para "plan $d" $p)) } }
+            if ($buf.Count) { & $flush }
         } elseif ($d -match '^docs/audit/[^/]*decisions[^/]*\.md$') {
             $rec = $null
-            foreach ($p in ((Get-TipText $d $rev) -split '\n\s*\n')) {
-                if ($p -match '^\s*\*\*D(\d+)\b') { $rec = "D$([int]$Matches[1])" }
+            foreach ($p in (Split-Paras (Get-TipText $d $rev) -WholeLists)) {
+                if ($p -match '^\s*\*\*D(\d+)\b') { $rec = Get-RecordName 'D' $Matches[1] }
                 elseif ($p -match '^\s*#') { $rec = $null }
                 if ($rec) { $paras.Add((New-Para $rec $p)) }
             }
@@ -1127,8 +1139,8 @@ function Invoke-Check3 {
                 $from = [Math]::Max(1, $ln - 3)
                 $near = ($v.Raw[($from - 1)..($ln - 1)]) -join "`n"
                 $cites = [System.Collections.Generic.List[string]]::new()
-                foreach ($c in [regex]::Matches($near, '\bD(\d{1,3})\b')) { $cites.Add("D$([int]$c.Groups[1].Value)") }
-                foreach ($c in [regex]::Matches($near, '\bADR\s*0*(\d{1,4})\b')) { $cites.Add("ADR $([int]$c.Groups[1].Value)") }
+                foreach ($c in [regex]::Matches($near, '\bD(\d{1,3})\b')) { $cites.Add((Get-RecordName 'D' $c.Groups[1].Value)) }
+                foreach ($c in [regex]::Matches($near, '\bADR\s*0*(\d{1,4})\b')) { $cites.Add((Get-RecordName 'ADR' $c.Groups[1].Value)) }
                 if ($cites.Count) {
                     $found = $false
                     foreach ($r in $cites) { if ($byRecord.ContainsKey($r)) { foreach ($p in $byRecord[$r]) { if ($p.Numbers.Contains($canon)) { $found = $true } } } }
@@ -1181,13 +1193,13 @@ function Invoke-Check4 {
             if ($py) {
                 # No row can own this: the scan reads only .cpp and .h files.
                 if ($t -match '\b(os\.walk|glob\.glob|\.rglob|\.glob|os\.listdir)\s*\([^)]*src' -or
-                    $t -match '\bopen\s*\([^)]*\.(cpp|h)[''"]') { $what = 'reads the source tree' }
+                    $t -match ('\bopen\s*\([^)]*' + $cppExt + '[''"]')) { $what = 'reads the source tree' }
             } else {
                 # No row: "Which test reads the source tree?" matches only
                 # HYDRA_SOURCE_DIR, so a test that opens a source file by a
                 # path built another way (sourcetree::root() / "src" / ...)
                 # passes the scan. When that row widens, this entry goes.
-                if ($t -match '\b(ifstream|fopen|_wfopen|open_file\w*)\b[^;]*(\.(cpp|h)"|"[^"]*/?src/)') { $what = 'opens a source file' }
+                if ($t -match ('\b(ifstream|fopen|_wfopen|open_file\w*)\b[^;]*(' + $cppExt + '"|"[^"]*/?src/)')) { $what = 'opens a source file' }
             }
             if ($what) {
                 Add-Item 'E' $f $ln "$($what): $($t.Trim())" 'tests/test_single_owner.cpp is the one scan of the source tree; make this a row there'

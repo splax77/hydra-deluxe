@@ -108,7 +108,10 @@ $structFields = (Find-PrecheckAst '$ScanStructFields').Right.Expression.SafeGetV
 # The precheck's C++ lexer and its comment blanking, loaded from its text, so
 # a comment is whatever the precheck says it is (strings included).
 . ([scriptblock]::Create((@('$cppLex', 'Blank', 'Remove-Comments') | ForEach-Object { (Find-PrecheckAst $_).Extent.Text }) -join "`n"))
-$repoScanText = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'tests/test_single_owner.cpp'))
+# The scan file's path is the precheck's $scanFile; this repository's copy is
+# read once, for the struct check here and for the fixture below.
+$scanFile = (Find-PrecheckAst '$scanFile').Right.Expression.SafeGetValue()
+$repoScanText = [System.IO.File]::ReadAllText((Join-Path $repoRoot $scanFile))
 $scanSource = Remove-Comments $cppLex $repoScanText
 foreach ($struct in $structFields.Keys) {
     $m = [regex]::Match($scanSource, "\bstruct\s+$struct\s*\{(?<body>[^{}]*)\}\s*;")
@@ -166,7 +169,7 @@ The batch test's deadline is 45 seconds.
 '@
     # The scan rows come from this repository's own scan file, so the
     # fixture tests the rows as they are today and copies none of them.
-    Write-Fixture 'tests/test_single_owner.cpp' $repoScanText
+    Write-Fixture $scanFile $repoScanText
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'main')
     Invoke-FixtureGit @('checkout', '-q', '-b', 'feature')
@@ -218,10 +221,9 @@ TEST_CASE("model.h mentions the window") {
 '@
     # Check 4 again: a new scan row with no must-match examples, read from
     # the rows the script already parsed (M0 review 2, finding 3).
-    $scanText = [System.IO.File]::ReadAllText((Join-Path $fixture 'tests/test_single_owner.cpp'))
     $tableOpen = 'static const std::vector<OwnerRule> r = {'
-    if (-not $scanText.Contains($tableOpen)) { throw "the fixture cannot find '$tableOpen' in tests/test_single_owner.cpp" }
-    Write-Fixture 'tests/test_single_owner.cpp' ($scanText.Replace($tableOpen, $tableOpen +
+    if (-not $repoScanText.Contains($tableOpen)) { throw "the fixture cannot find '$tableOpen' in $scanFile" }
+    Write-Fixture $scanFile ($repoScanText.Replace($tableOpen, $tableOpen +
         "`n        {""Which planted row has no examples?"", ""nobody"", R""re(\bplanted_no_examples\b)re"", """", {}, {}, ""fixture"", {}, {""int planted_must_not = 0;""}},"))
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'feature')
