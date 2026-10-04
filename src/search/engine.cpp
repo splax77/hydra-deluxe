@@ -1427,13 +1427,13 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     // charts), so no variant here lacks the step. The n-th SqIn in the
     // leader's list owns its n-th SqIn step, so the SqIns from the fold on
     // own the leader's SqIn steps from that rank on.
-    int32_t sqins_before_fold = 0;
-    for (int32_t k = lead.sq_begin; k < lead.sq_begin + var.fold_sq_count; ++k)
-        if (out_sqs_[(size_t)k].kind == SQ_IN) ++sqins_before_fold;
+    const auto lead_sqs = out_sqs_.begin() + lead.sq_begin;
+    const size_t sqins_before_fold =
+        sqin_rank(lead_sqs, lead_sqs + var.fold_sq_count,
+                  [](const auto& sq) { return sq.kind == SQ_IN; });
     std::vector<int64_t> relabel_at;
     const auto lead_last = out_ends_.begin() + lead.end_end;
-    for (auto s = nth_sqin_step(out_ends_.begin() + lead.end_begin, lead_last,
-                                (size_t)sqins_before_fold);
+    for (auto s = nth_sqin_step(out_ends_.begin() + lead.end_begin, lead_last, sqins_before_fold);
          s != lead_last; ++s)
         if (is_sqin_kind(s->kind) && s->tick <= var.fold_tick) relabel_at.push_back(s->tick);
 
@@ -1829,9 +1829,10 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             // record stores an unknown transfer scale'.
             if (auto scales = frontend_transfer_scales(act, timing)) {
                 act.transfer_post = scales->post;
-                size_t sqin = 0;
-                for (SPSqueeze& sq : act.sqinouts)
-                    if (sq.kind == SqueezeKind::SqIn) sq.transfer = scales->sqins[sqin++];
+                const auto first = act.sqinouts.begin();
+                for (auto sq = first; sq != act.sqinouts.end(); ++sq)
+                    if (is_sqin_squeeze(*sq))
+                        sq->transfer = scales->sqins[sqin_rank(first, sq, is_sqin_squeeze)];
             }
             path.activations.push_back(std::move(act));
         }

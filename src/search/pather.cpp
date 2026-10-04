@@ -92,6 +92,31 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
     return paths;
 }
 
+namespace {
+
+// search_target's rescue for a dropped path (D45): its tied variants, and
+// theirs under a dropped variant, that pass `keep`, in the search's order.
+// Each comes out standalone: a variant stores only the activations before
+// its fold and reads the rest from its parent (variant_tail), so its whole
+// walk is copied into its own list and the link to the parent cleared. Its
+// own tied variants stay with it; their tails index its walk, which is
+// unchanged.
+template <class Keep>
+void promote_variants(Path& dropped, const Keep& keep, std::vector<Path>& out) {
+    for (Path& v : dropped.variants) {
+        if (!keep(v)) {
+            promote_variants(v, keep, out);
+            continue;
+        }
+        v.activations = v.all_activations();
+        v.variant_tail.clear();
+        v.var_point.reset();
+        out.push_back(std::move(v));
+    }
+}
+
+}  // namespace
+
 std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
                                 const std::vector<int64_t>& act_ticks) {
     std::vector<int64_t> ticks = act_ticks;
@@ -126,17 +151,37 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
     // activations than asked for. Such a path is dropped; the paths that took
     // every named activation stay (decision D45). None left means the set is
     // not realizable. Each kept path's tied variants are kept with it, as the
-    // search folded them.
-    paths.erase(std::remove_if(paths.begin(), paths.end(),
-                               [&ticks](const Path& p) {
-                                   const ActivationWalk acts = p.walk_activations();
-                                   if (acts.size() != ticks.size()) return true;
-                                   for (size_t i = 0; i < acts.size(); ++i)
-                                       if (acts[i].timecode.ticks() != ticks[i]) return true;
-                                   return false;
-                               }),
-                paths.end());
-    return paths;
+    // search folded them. A dropped path's tied variants that took every named
+    // activation are not dropped with it: they become results of their own
+    // (the first leads, the rest are its tied variants, in the search's order).
+    const auto took_all = [&ticks](const Path& p) {
+        const ActivationWalk acts = p.walk_activations();
+        if (acts.size() != ticks.size()) return false;
+        for (size_t i = 0; i < acts.size(); ++i)
+            if (acts[i].timecode.ticks() != ticks[i]) return false;
+        return true;
+    };
+    std::vector<Path> kept;
+    for (Path& p : paths) {
+        if (took_all(p)) {
+            kept.push_back(std::move(p));
+            continue;
+        }
+        std::vector<Path> promoted;
+        promote_variants(p, took_all, promoted);
+        if (promoted.empty()) continue;
+        Path lead = std::move(promoted.front());
+        for (size_t i = 1; i < promoted.size(); ++i) {
+            // A path's variant shares the tail of its walk from var_point on;
+            // pointing past the leader's walk shares nothing, so the promoted
+            // path keeps its whole walk as its own.
+            promoted[i].var_point = static_cast<int>(lead.walk_activations().size());
+            lead.variants.push_back(std::move(promoted[i]));
+        }
+        lead.recount_tied_paths();
+        kept.push_back(std::move(lead));
+    }
+    return kept;
 }
 
 int graph_build_cap(int sp_cap, int sp_phrase_count) {

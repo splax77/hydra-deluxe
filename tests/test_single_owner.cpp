@@ -59,6 +59,11 @@ struct OwnerRule {
     std::vector<std::string> must_not_match;
     std::vector<OwnerLine> owner_lines;    // the owner's own lines; each must still match
     std::vector<std::string> scope;        // top folders scanned; empty means src and tools
+    // When set, the rule checks only one function's body in one file: from
+    // the line in function_file that contains unction to the next line
+    // that is a lone "}". The scan fails if it never finds that line.
+    std::string function_file;
+    std::string function;
 };
 
 struct KnownCopy {
@@ -283,18 +288,40 @@ const std::vector<OwnerRule>& rules() {
         // write to w.sqout_tick or win.sqout_tick is not flagged.
         {"Who writes an activation's sqout_tick?",
          "Activation::set_sqout in src/core/model.cpp",
-         R"((^|[^\w.>])sqout_tick\s*(=(?!=)|\.\s*(reset|emplace)\s*\()|\b(?!(w|win)\s*(\.|->))\w+\s*(\.|->)\s*sqout_tick\s*(=(?!=)|\.\s*(reset|emplace)\s*\())",
+         R"((^|[^\w.>])sqout_tick\s*(=(?!=)|\.\s*(reset|emplace)\s*\()|\b\w+\s*(\.|->)\s*sqout_tick\s*(=(?!=)|\.\s*(reset|emplace)\s*\())",
          "",
          {},
          {},
          "ADR 0014 (the squeeze-out is stored once); step-1 derive-once review finding 12 "
          "(2026-10-04)",
-         {"act.sqout_tick = 200;", "a->sqout_tick.reset();", "sqout_tick.emplace(5);"},
+         {"act.sqout_tick = 200;", "a->sqout_tick.reset();", "sqout_tick.emplace(5);",
+          "w.sqout_tick = 5;"},
          {"if (act.sqout_tick == t)", "w.opt_i64(act.sqout_tick);",
-          "win.sqout_tick = w.sqout_tick;", "if (a.sqout_tick != b.sqout_tick) return false;"},
+          "if (a.sqout_tick != b.sqout_tick) return false;"},
          {{"src/core/model.cpp", "sqout_tick = tick;", "set_sqout, the one writer"},
           {"src/core/model.cpp", "sqout_tick.reset();",
-           "set_sqout, undoing its write when no row is on the tick"}}},
+           "set_sqout, undoing its write when no row is on the tick"},
+          {"src/core/replay.cpp", "win.sqout_tick = w.sqout_tick;",
+           "the replay's own window (ReplayWindow), not an Activation"},
+          {"src/core/replay.cpp", "w.sqout_tick = row->timecode.ticks();",
+           "the replay's own window (replay.cpp's Window), not an Activation"},
+          {"tools/replay.cpp", "w.sqout_tick = n.tick;",
+           "a window typed by hand for hydra_replay (ReplayWindow), not an Activation"},
+          {"tools/replay_json.cpp", "w.sqout_tick = act[\"sqout_tick\"].get<int64_t>();",
+           "a window read from hydra_replay's JSON (ReplayWindow), not an Activation"}}},
+        {"Is this SP-end step a clamp?",
+         "last_clamp_tick in src/core/model.cpp",
+         R"(\bkind\s*==\s*SpEndKind::Clamped\b)",
+         "",
+         {},
+         {},
+         "ADR 0013 (the clamp note is stored); step-1 derive-once review of fb1189b, finding 2 "
+         "(2026-10-04)",
+         {"if (it->kind == SpEndKind::Clamped) return it->tick;",
+          "if (sp_end_steps[s].kind == SpEndKind::Clamped) return sp_end_steps[s].tick;"},
+         {"mit->second.clamped ? SpEndKind::Clamped"},
+         {{"src/core/model.cpp", "if (steps[s].kind == SpEndKind::Clamped) return steps[s].tick;",
+           "last_clamp_tick, the owner"}}},
         // Was part of a walker in test_squeeze_rating.cpp (review finding 12).
         // An optional namespace prefix (hydra::kSqueezeWindowMs) must not
         // hide a comparison.
@@ -389,6 +416,78 @@ const std::vector<OwnerRule>& rules() {
          {"for (const auto& e : std::filesystem::directory_iterator(dir)) {"},
          {},
          {"tests"}},
+        {"Which test reads the source tree?",
+         "this file, tests/test_single_owner.cpp",
+         R"(\bHYDRA_SOURCE_DIR\b)",
+         "",
+         {},
+         {},
+         "this file's own rule (one scan, new rules are rows); step-1 derive-once review of "
+         "fb1189b, finding 5 (2026-10-04)",
+         {"std::ifstream in(std::string(HYDRA_SOURCE_DIR) + \"/src/app/preview_view.cpp\");",
+          "const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);"},
+         {"return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, "
+          "true, true);"},
+         {},
+         {"tests"}},
+        // A test that sets EngineOptions' target ticks runs the engine's
+        // targeted search itself. The lines listed test the engine's target
+        // mode on hand-built songs (each pins its own answer); a test that
+        // wants search_target's answer calls search_target.
+        {"Does a test run its own targeted search?",
+         "search_target in src/search/pather.cpp",
+         R"(\.target_act_ticks\s*=)",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of fb1189b, finding 1 (2026-10-04)",
+         {"o.target_act_ticks = want;", "options.target_act_ticks = ticks;"},
+         {"const std::vector<Path> kept = search_target(song, cfg, want);"},
+         {{"src/search/pather.cpp", "options.target_act_ticks = ticks;", "search_target, the owner"},
+          {"tests/test_search.cpp", "pinned.target_act_ticks = ticks;",
+           "tests EngineOptions' plumbing, not search_target's filter"},
+          {"tests/test_search.cpp", "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_search.cpp", "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_search.cpp", "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_search.cpp", "target.target_act_ticks = std::vector<int64_t>{7680};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_search.cpp", "a_then_late.target_act_ticks = std::vector<int64_t>{2304, 7680};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_search.cpp", "opts.target_act_ticks = std::vector<int64_t>{28800};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_search.cpp", "opts.target_act_ticks = std::vector<int64_t>{19200};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_preview_view.cpp", "opts.target_act_ticks = std::vector<int64_t>{28800};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_preview_view.cpp",
+           "opts.target_act_ticks = std::vector<int64_t>{5760, 17280};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
+          {"tests/test_replay.cpp", "opts.target_act_ticks = std::vector<int64_t>{28800};",
+           "drives the engine's target mode directly on a hand-built song, not search_target's filter"}},
+         {"src", "tools", "tests"}},
+        // Was its own test in test_preview_view.cpp (findings 147 and 159):
+        // the path gauge's body never touches the chart's phrases, the
+        // collected list, the bank count, the cap rule or the squeeze-in rule
+        // (that one lives in refill_tick). Scoped to that one function.
+        {"Does the path gauge work out an SP fact itself?",
+         "the stored facts build_sp_meter_curve reads (bank_rise_ticks, sp_end_steps, "
+         "refill_tick)",
+         R"(sp_phrases|collected_phrase_ticks|sp_meter\(\)|sp_bars_to_measures|std::min\(|SqIn)",
+         "",
+         {},
+         {},
+         "audit findings 147 and 159; step-1 derive-once review of fb1189b, finding 5 "
+         "(2026-10-04)",
+         {"for (int64_t t : song.sp_phrases()) {", "const int bars = act.sp_meter();",
+          "end = std::min(end, cap_end);", "if (s.kind == SpEndKind::SqIn) continue;"},
+         {"const int64_t at = act.refill_tick(k);"},
+         {},
+         {"src"},
+         "src/app/preview_view.cpp",
+         "SpMeterCurve build_sp_meter_curve("},
     };
     return r;
 }
@@ -547,6 +646,7 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     std::vector<bool> used(listed.size(), false);  // which listed entries a line took
     std::vector<std::string> problems;
     int files = 0;
+    std::vector<int> functions_found(compiled.size(), 0);
     for (const std::string sub : {"src", "tools", "tests"}) {
         for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
             const fs::path ext = e.path().extension();
@@ -558,13 +658,24 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
             std::ifstream in(e.path());
             std::string line;
             int lineno = 0;
+            std::vector<bool> in_function(compiled.size(), false);
             while (std::getline(in, line)) {
                 ++lineno;
                 const std::string t = hydra::trim(line);
                 if (t.empty() || t.compare(0, 2, "//") == 0) continue;
-                for (const CompiledRule& c : compiled) {
+                for (size_t ci = 0; ci < compiled.size(); ++ci) {
+                    const CompiledRule& c = compiled[ci];
                     const OwnerRule& rule = *c.rule;
                     if (!in_scope(rule, sub)) continue;
+                    if (!rule.function.empty()) {
+                        if (rel != rule.function_file) continue;
+                        if (!in_function[ci] && line.find(rule.function) != std::string::npos) {
+                            in_function[ci] = true;
+                            ++functions_found[ci];
+                        }
+                        if (!in_function[ci]) continue;
+                        if (line == "}") in_function[ci] = false;
+                    }
                     bool skip = false;
                     for (const std::string& o : rule.owner_files) skip = skip || rel == o;
                     for (const Exempt& x : rule.exempt) skip = skip || rel == x.file;
@@ -586,6 +697,14 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     for (size_t i = 0; i < listed.size(); ++i) {
         if (used[i]) continue;
         problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
+    }
+    // A function-scoped rule found its function exactly once; a renamed or
+    // moved function would otherwise leave the rule checking nothing.
+    for (size_t ci = 0; ci < compiled.size(); ++ci) {
+        const OwnerRule& rule = *compiled[ci].rule;
+        if (rule.function.empty()) continue;
+        INFO(rule.question << ": \"" << rule.function << "\" in " << rule.function_file);
+        CHECK(functions_found[ci] == 1);
     }
     CHECK(files > 100);  // the scan found the sources
     std::ostringstream report;

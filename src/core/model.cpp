@@ -581,10 +581,22 @@ std::optional<int64_t> Activation::deact_tick() const {
     return sp_end_steps.back().end_tick;
 }
 
-std::optional<int64_t> Activation::clamp_tick() const {
-    for (auto it = sp_end_steps.rbegin(); it != sp_end_steps.rend(); ++it)
-        if (it->kind == SpEndKind::Clamped) return it->tick;
+namespace {
+
+// Which note did the SP cap last pin, at or before step `last`? The tick of
+// the latest Clamped step up to there, else unset. clamp_tick (the whole
+// history) and end_anchor_tick (up to one step) both ask it.
+std::optional<int64_t> last_clamp_tick(const std::vector<SpEndStep>& steps, size_t last) {
+    for (size_t s = std::min(last + 1, steps.size()); s-- > 0;)
+        if (steps[s].kind == SpEndKind::Clamped) return steps[s].tick;
     return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<int64_t> Activation::clamp_tick() const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    return last_clamp_tick(sp_end_steps, sp_end_steps.size() - 1);
 }
 
 std::vector<int64_t> Activation::collected_phrase_ticks() const {
@@ -603,9 +615,7 @@ std::optional<size_t> Activation::squeeze_end_step(size_t squeeze_index) const {
     if (sqinouts[squeeze_index].kind == SqueezeKind::SqOut) return sp_end_steps.size() - 1;
     // The k-th SqIn squeeze is the k-th SqIn step (nth_sqin_step). Its end
     // was measured from the step before it.
-    size_t k = 0;
-    for (size_t i = 0; i < squeeze_index; ++i)
-        if (sqinouts[i].kind == SqueezeKind::SqIn) ++k;
+    const size_t k = sqin_rank(sqinouts.begin(), sqinouts.begin() + squeeze_index, is_sqin_squeeze);
     const auto step = nth_sqin_step(sp_end_steps.begin() + 1, sp_end_steps.end(), k);
     if (step == sp_end_steps.end()) return std::nullopt;
     return static_cast<size_t>(step - sp_end_steps.begin()) - 1;
@@ -620,9 +630,7 @@ std::optional<int64_t> Activation::squeeze_end_tick(size_t squeeze_index) const 
 // D1: an end is measured from the note whose timing moves it, the latest
 // clamp at or before the step that set it, else the activation.
 int64_t Activation::end_anchor_tick(size_t step_index) const {
-    for (size_t s = std::min(step_index + 1, sp_end_steps.size()); s-- > 0;)
-        if (sp_end_steps[s].kind == SpEndKind::Clamped) return sp_end_steps[s].tick;
-    return timecode.ticks();
+    return last_clamp_tick(sp_end_steps, step_index).value_or(timecode.ticks());
 }
 
 int64_t Activation::refill_tick(size_t step_index) const {
