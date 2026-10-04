@@ -137,6 +137,12 @@ void write_activation(BinaryWriter& w, const Activation& act) {
     w.opt_i64(act.sqout_tick);
     w.u32(static_cast<uint32_t>(act.collected_phrase_ticks.size()));
     for (int64_t t : act.collected_phrase_ticks) w.i64(t);
+    w.u32(static_cast<uint32_t>(act.sp_end_steps.size()));
+    for (const SpEndStep& s : act.sp_end_steps) {
+        w.i64(s.tick);
+        w.i64(s.end_tick);
+        w.u8(static_cast<uint8_t>(s.kind));
+    }
 }
 
 Activation read_activation(BinaryReader& r) {
@@ -179,6 +185,18 @@ Activation read_activation(BinaryReader& r) {
     const uint32_t n = r.u32();
     act.collected_phrase_ticks.reserve(n);
     for (uint32_t i = 0; i < n; ++i) act.collected_phrase_ticks.push_back(r.i64());
+    const uint32_t nsteps = r.u32();
+    act.sp_end_steps.reserve(nsteps);
+    for (uint32_t i = 0; i < nsteps; ++i) {
+        SpEndStep s;
+        s.tick = r.i64();
+        s.end_tick = r.i64();
+        const uint8_t kind = r.u8();
+        if (kind > static_cast<uint8_t>(SpEndKind::SqIn))
+            throw SerializeError("unknown SP-end step kind");
+        s.kind = static_cast<SpEndKind>(kind);
+        act.sp_end_steps.push_back(s);
+    }
     return act;
 }
 

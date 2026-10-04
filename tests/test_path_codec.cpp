@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -410,4 +411,46 @@ TEST_CASE("print the corpus squeeze facts" * doctest::skip()) {
         print_paths("paths", rec.all_paths());
         print_paths("allzero", rec.all_allzero_paths());
     }
+}
+
+TEST_CASE("path codec: a node keeps the SP-end history") {
+    Activation act;
+    act.timecode = Timecode::raw(2304);
+    act.sp_end_steps = {{2304, 5376, SpEndKind::Activation},
+                        {3072, 6144, SpEndKind::Clamped},
+                        {5280, 6912, SpEndKind::SqIn},
+                        {6144, 8448, SpEndKind::Collected}};
+    Path path;
+    path.activations.push_back(act);
+    const Path back = store::decode_path_node(store::encode_path_node(path));
+    REQUIRE(back.activations.size() == 1);
+    CHECK(back.activations.front().sp_end_steps == act.sp_end_steps);
+    CHECK(back.activations.front().steps_deact_tick() == std::optional<int64_t>(8448));
+    CHECK(back.activations.front().steps_clamp_tick() == std::optional<int64_t>(3072));
+}
+
+TEST_CASE("path codec: an unknown SP-end step kind is refused") {
+    Activation act;
+    act.timecode = Timecode::raw(2304);
+    act.sp_end_steps = {{2304, 5376, SpEndKind::Activation}};
+    Path path;
+    path.activations.push_back(act);
+    std::vector<uint8_t> bytes = store::encode_path_node(path);
+    // The step is written as two 8-byte ticks and a kind byte. Find those
+    // bytes and turn the kind into one no build knows.
+    const std::vector<uint8_t> good = bytes;
+    bool found = false;
+    for (size_t i = 0; i + 17 <= bytes.size(); ++i) {
+        int64_t a = 0, b = 0;
+        std::memcpy(&a, &bytes[i], 8);
+        std::memcpy(&b, &bytes[i + 8], 8);
+        if (a == 2304 && b == 5376 && bytes[i + 16] == 0) {
+            bytes[i + 16] = 4;
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+    CHECK_THROWS_AS(store::decode_path_node(bytes), SerializeError);
+    CHECK_NOTHROW(store::decode_path_node(good));
 }

@@ -168,11 +168,13 @@ inline EngineOptions wide_search() {
     return o;
 }
 
-// The first activation, over every output path, that matches `pred`.
+// The first activation, over every output path, that matches `pred`. It
+// walks the paths in place (walk_activations copies nothing), so the pointer
+// stays valid as long as `paths` does.
 template <typename Pred>
 const Activation* find_act(const std::vector<Path>& paths, Pred pred) {
     for (const Path& p : paths)
-        for (const Activation& a : p.all_activations())
+        for (const Activation& a : p.walk_activations())
             if (pred(a)) return &a;
     return nullptr;
 }
@@ -183,6 +185,7 @@ const Activation* find_act(const std::vector<Path>& paths, Pred pred) {
 
 // A window that collected nothing: SP ends where the banked bars put it.
 inline void set_plain_window(Activation& a, int64_t end_tick) {
+    a.sp_end_steps = {{a.timecode.ticks(), end_tick, SpEndKind::Activation}};
     a.deact_tick = end_tick;
     a.clamp_tick.reset();
     a.collected_phrase_ticks.clear();
@@ -192,6 +195,8 @@ inline void set_plain_window(Activation& a, int64_t end_tick) {
 // test that states only those two facts gets a plain end equal to the final
 // one; nothing it checks reads the plain end.
 inline void set_clamped_window(Activation& a, int64_t clamp_tick, int64_t end_tick) {
+    a.sp_end_steps = {{a.timecode.ticks(), end_tick, SpEndKind::Activation},
+                      {clamp_tick, end_tick, SpEndKind::Clamped}};
     a.deact_tick = end_tick;
     a.clamp_tick = clamp_tick;
     a.collected_phrase_ticks = {clamp_tick};

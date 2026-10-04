@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "app/analysis.h"
+#include "app/config.h"
 #include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
@@ -383,28 +385,10 @@ namespace {
 // A hand-built 4/4 120 BPM song. 192 ticks per beat, so a measure is 768
 // ticks and 2000 ms; one tick is 2000/768 ms. Built directly rather than
 // parsed so the note ticks in the assertions below are exactly these.
-struct TailNote {
-    int64_t tick;
-    bool sp_phrase = false;
-    bool activation = false;
-};
-
-Song build_tail_song(const std::vector<TailNote>& notes) {
-    Song song(192);
-    song.tpm_changes[0] = 768;
-    song.bpm_changes[0] = 120.0;
-    song.build_timing();
-
-    for (const TailNote& n : notes) {
-        SongTimestamp ts;
-        ts.timecode = song.timecode(n.tick);
-        ts.chord.add_note(NoteColor::Red);
-        ts.flag_sp = n.sp_phrase;
-        if (n.activation) ts.activation_length = 384;
-        song.sequence.push_back(ts);
-    }
-    return song;
-}
+// record_fixtures.h owns the note type and the song builder; these names
+// only bring that one copy into this file.
+using test::TailNote;
+using test::build_tail_song;
 
 double tick_ms(const Song& song, int64_t tick) {
     return song.timing().ms_index().at(tick);
@@ -874,10 +858,144 @@ TEST_CASE("collected phrases: the corpus agrees with the squeezes and the SP end
     CHECK(sqouts_seen > 0);
 }
 
+TEST_CASE("SP end history: a late squeeze-in is a SqIn step on its phrase") {
+    Song song = test::make_late_sqin_song();
+    ScoreGraph graph(song, 4);
+    const std::vector<Path> paths = run_search(graph, EngineOptions{});
+    REQUIRE(!paths.empty());
+    REQUIRE(paths.front().activations.size() == 1);
+    const Activation& act = paths.front().activations.front();
+    CHECK((act.sp_end_steps == std::vector<SpEndStep>{
+               {5760, 13440, SpEndKind::Activation}, {13920, 17280, SpEndKind::SqIn}}));
+    // The bar arrives at the old end: the player hits the phrase early.
+    CHECK(act.refill_tick(1) == 13440);
+    CHECK(act.steps_deact_tick() == std::optional<int64_t>(17280));
+    CHECK(act.nominal_end() == std::optional<int64_t>(13440));
+    CHECK((act.steps_collected_phrase_ticks() == std::vector<int64_t>{13920}));
+    REQUIRE(act.sqinouts.size() == 1);
+    CHECK(act.sqinouts[0].offset_ms == doctest::Approx(250.0));
+    CHECK(act.squeeze_end_tick(0) == std::optional<int64_t>(13440));
+}
+
+TEST_CASE("SP end history: an early squeeze-in measures from the end before it") {
+    // Part A's A2 case. The SqIn phrase at 5280 sits 250 ms before X = 5376.
+    Song song = test::sqin_then_collect_song();
+    ScoreGraph graph(song, 4);
+    const std::vector<Path> paths = run_search(graph, test::wide_search());
+    const Activation* act = test::find_act(paths, [](const Activation& a) {
+        for (const SPSqueeze& s : a.sqinouts)
+            if (s.kind == SqueezeKind::SqIn) return true;
+        return false;
+    });
+    REQUIRE(act != nullptr);
+    CHECK((act->sp_end_steps == std::vector<SpEndStep>{
+               {2304, 5376, SpEndKind::Activation},
+               {5280, 6912, SpEndKind::SqIn},
+               {6144, 8448, SpEndKind::Collected}}));
+    CHECK(act->steps_deact_tick() == std::optional<int64_t>(8448));
+    REQUIRE(act->sqinouts.front().kind == SqueezeKind::SqIn);
+    CHECK(act->squeeze_end_tick(0) == std::optional<int64_t>(5376));  // X, not 8448 - 2 measures
+    REQUIRE(act->squeeze_end_step(0).has_value());
+    CHECK(act->end_anchor_tick(*act->squeeze_end_step(0)) == 2304);   // no clamp: the activation
+    CHECK(act->sqinouts.front().offset_ms == doctest::Approx(-250.0).epsilon(1e-9));
+}
+
+TEST_CASE("SP end history: a squeeze-out measures from the deact node") {
+    Song song = test::sqin_then_collect_song();
+    ScoreGraph graph(song, 4);
+    const std::vector<Path> paths = run_search(graph, test::wide_search());
+    const Activation* act = test::find_act(paths, [](const Activation& a) {
+        for (const SPSqueeze& s : a.sqinouts)
+            if (s.kind == SqueezeKind::SqOut) return true;
+        return false;
+    });
+    REQUIRE(act != nullptr);
+    for (size_t i = 0; i < act->sqinouts.size(); ++i) {
+        if (act->sqinouts[i].kind != SqueezeKind::SqOut) continue;
+        CHECK(act->squeeze_end_tick(i) == act->steps_deact_tick());
+        CHECK(act->end_anchor_tick(*act->squeeze_end_step(i)) ==
+              act->steps_clamp_tick().value_or(act->timecode.ticks()));
+    }
+}
+
+TEST_CASE("SP end history: clamps are steps, and the anchor follows them") {
+    Song song = build_tail_song({{0, true, false}, {768, true, false},
+                                 {2304, false, true}, {3072, true, false},
+                                 {3840, true, false}, {4608}, {5376}, {6000},
+                                 {6768}, {7500}});
+    ScoreGraph graph(song, 2);
+    const std::vector<Path> paths = run_search(graph, EngineOptions{});
+    REQUIRE(!paths.empty());
+    const Activation& act = paths.front().activations.front();
+    CHECK((act.sp_end_steps == std::vector<SpEndStep>{
+               {2304, 5376, SpEndKind::Activation},
+               {3072, 6144, SpEndKind::Clamped},
+               {3840, 6912, SpEndKind::Clamped}}));
+    CHECK(act.steps_clamp_tick() == std::optional<int64_t>(3840));
+    CHECK(act.end_anchor_tick(0) == 2304);
+    CHECK(act.end_anchor_tick(1) == 3072);
+    CHECK(act.end_anchor_tick(2) == 3840);
+}
+
+TEST_CASE("SP end history: a squeezed-out phrase leaves no step") {
+    Song song = test::make_early_sqout_song();
+    ScoreGraph graph(song, 4);
+    // The best path collects 12960 instead and keeps SP running over the
+    // second fill, so search wide and pick the activation that squeezed out.
+    EngineOptions opts = test::wide_search();
+    opts.target_act_ticks = std::vector<int64_t>{5760, 17280};
+    const std::vector<Path> paths = run_search(graph, opts);
+    const Activation* found = test::find_act(
+        paths, [](const Activation& a) { return a.sqout_tick.has_value(); });
+    REQUIRE(found != nullptr);
+    const Activation& first = *found;
+    CHECK(first.timecode.ticks() == 5760);
+    CHECK(first.sqout_tick == std::optional<int64_t>(12960));
+    CHECK((first.sp_end_steps ==
+           std::vector<SpEndStep>{{5760, 13440, SpEndKind::Activation}}));
+    CHECK(first.steps_collected_phrase_ticks().empty());
+}
+
+// R1's reader check: before the stored fields go, every corpus activation's
+// history must give exactly what they hold.
+TEST_CASE("SP end history: equals the stored fields on every corpus record") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int acts = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song =
+            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        std::vector<const Path*> all = rec.all_paths();
+        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
+        for (const Path* p : all) {
+            for (const Activation& act : p->walk_activations()) {
+                CAPTURE(chart);
+                CAPTURE(p->pathstring());
+                CAPTURE(act.timecode.ticks());
+                ++acts;
+                REQUIRE_FALSE(act.sp_end_steps.empty());
+                CHECK(act.steps_deact_tick() == act.deact_tick);
+                CHECK(act.steps_clamp_tick() == act.clamp_tick);
+                CHECK(act.steps_collected_phrase_ticks() == act.collected_phrase_ticks);
+                CHECK(act.nominal_end() ==
+                      song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter)).ticks());
+                // Appendix B's first guarantee: one SqIn step per SqIn, so
+                // a relabel that found nothing cannot pass silently.
+                size_t sqins = 0, sqin_steps = 0;
+                for (const SPSqueeze& s : act.sqinouts)
+                    if (s.kind == SqueezeKind::SqIn) ++sqins;
+                for (const SpEndStep& s : act.sp_end_steps)
+                    if (s.kind == SpEndKind::SqIn) ++sqin_steps;
+                CHECK(sqin_steps == sqins);
+            }
+        }
+    }
+    CHECK(acts > 1000);
+}
+
 TEST_CASE("path codec: encode/decode a path node keeps clamp_tick") {
-    // clamp_tick is the newest field on Activation (blob v5 / node v3): a
-    // plain node round trip has to carry it, the same way the deact_tick
-    // round trip above pins the field before it.
+    // A plain node round trip has to carry the clamp, which the history holds.
     Activation act;
     act.timecode = Timecode::raw(2304);
     test::set_clamped_window(act, 3072, 6144);
@@ -887,8 +1005,7 @@ TEST_CASE("path codec: encode/decode a path node keeps clamp_tick") {
 
     Path decoded = store::decode_path_node(store::encode_path_node(path));
     REQUIRE(decoded.activations.size() == 1);
-    REQUIRE(decoded.activations.front().clamp_tick.has_value());
-    CHECK(*decoded.activations.front().clamp_tick == 3072);
+    CHECK(decoded.activations.front().steps_clamp_tick() == std::optional<int64_t>(3072));
 }
 
 TEST_CASE("graph_build_cap: never taller than the song's phrases, never below one") {

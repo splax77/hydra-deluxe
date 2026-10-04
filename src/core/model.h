@@ -262,6 +262,26 @@ struct TransferScale {
                          //      backend squeezes
 };
 
+// Why an activation's SP end moved (Activation::sp_end_steps).
+//   Activation - the activation itself: the end its banked bars give.
+//   Collected  - a phrase collected while active: two measures more.
+//   Clamped    - a phrase collected with the meter full: the end pinned to
+//                the cap's length past that phrase (ADR 0013).
+//   SqIn       - the squeeze-in phrase, early or late.
+enum class SpEndKind : uint8_t { Activation = 0, Collected = 1, Clamped = 2, SqIn = 3 };
+
+// One place an activation's SP end moved: `tick` is the note that moved it,
+// `end_tick` the SP end in force after it.
+struct SpEndStep {
+    int64_t tick = 0;
+    int64_t end_tick = 0;
+    SpEndKind kind = SpEndKind::Activation;
+    bool operator==(const SpEndStep& o) const {
+        return tick == o.tick && end_tick == o.end_tick && kind == o.kind;
+    }
+    bool operator!=(const SpEndStep& o) const { return !(*this == o); }
+};
+
 struct Activation {
     // The search sets these six on every activation it makes, so they are
     // plain values (record format v7, docs/adr/0017).
@@ -300,6 +320,24 @@ struct Activation {
     // (blob v6). Empty when none was collected, or on an older record.
     // Nothing re-derives it.
     std::vector<int64_t> collected_phrase_ticks;
+
+    // Every place this window's SP end moved, in order, as the search did it.
+    // The first step is the activation. A squeezed-out phrase has no step. A
+    // tail activation's last end is the end the search tracked. Stamped at
+    // copy-out; empty only on a hand-built activation. Every SP-end fact the
+    // record holds is read from this list (the accessors below). Nothing
+    // re-derives it.
+    std::vector<SpEndStep> sp_end_steps;
+
+    // Read from sp_end_steps; see each body in model.cpp.
+    std::optional<int64_t> steps_deact_tick() const;           // the last step's end
+    std::optional<int64_t> steps_clamp_tick() const;           // the last Clamped step's tick
+    std::vector<int64_t> steps_collected_phrase_ticks() const; // every step after the first
+    std::optional<int64_t> nominal_end() const;                // the first step's end
+    std::optional<size_t> squeeze_end_step(size_t squeeze_index) const;
+    std::optional<int64_t> squeeze_end_tick(size_t squeeze_index) const;
+    int64_t end_anchor_tick(size_t step_index) const;
+    int64_t refill_tick(size_t step_index) const;
 
     // Frontend transfer scales, computed by the search and stored with the
     // record (blob v3; older blobs default to 1.0 = the flat-tempo identity)
