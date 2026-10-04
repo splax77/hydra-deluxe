@@ -7,16 +7,16 @@
 
 namespace hydra {
 
-std::optional<TransferScale> transfer_scale_between(int64_t act_tick,
+std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
                                                     int64_t end_tick,
                                                     const SongTiming& timing) {
-    TransferScale scale;
-    double front_late = timing.ms_per_measure_at(act_tick);
-    double front_early = timing.ms_per_measure_at(act_tick - 1);
-    if (front_late <= 0.0 || front_early <= 0.0) return std::nullopt;
-    scale.late = timing.ms_per_measure_at(end_tick) / front_late;
-    scale.early = timing.ms_per_measure_at(end_tick - 1) / front_early;
-    return scale;
+    const double front_late = timing.ms_per_measure_at(anchor_tick);
+    const double front_early = timing.ms_per_measure_at(anchor_tick - 1);
+    const double end_late = timing.ms_per_measure_at(end_tick);
+    const double end_early = timing.ms_per_measure_at(end_tick - 1);
+    for (double m : {front_late, front_early, end_late, end_early})
+        if (!std::isfinite(m) || m <= 0.0) return std::nullopt;
+    return TransferScale{end_early / front_early, end_late / front_late};
 }
 
 std::optional<int64_t> activation_deact_tick(const Activation& act) {
@@ -25,40 +25,25 @@ std::optional<int64_t> activation_deact_tick(const Activation& act) {
 
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing) {
-    const std::optional<int64_t> deact = act.deact_tick();
-    if (!deact) return std::nullopt;
-
-    int64_t act_tick = act.timecode.ticks();
-    bool has_sqin = false;
-    for (const SPSqueeze& sq : act.sqinouts) {
-        if (sq.kind == SqueezeKind::SqIn) {
-            has_sqin = true;
-            break;
-        }
-    }
-
-    // The SP end the search recorded, straight off the record.
-    int64_t post_tick = *deact;
-    // The SqIn phrase is judged against the end as it stood before that
-    // phrase extended SP: one 2-measure step down from D. With several
-    // SqIns, or a plain collection after the last one, this is exact only
-    // for the last extension -- one `pre` per activation is all the data
-    // model (and the blob) carries.
-    int64_t pre_tick =
-        has_sqin ? timing.plusmeasure(timing.timecode(post_tick), -sp_bars_to_measures(1)).ticks()
-                 : post_tick;
-
-    std::optional<TransferScale> post =
-        transfer_scale_between(act_tick, post_tick, timing);
+    // D and the note whose timing moves it, from the stored steps.
+    const std::optional<int64_t> d = act.deact_tick();
+    const std::optional<int64_t> d_anchor = act.deact_anchor_tick();
+    if (!d || !d_anchor) return std::nullopt;
+    const std::optional<TransferScale> post = transfer_scale_between(*d_anchor, *d, timing);
     if (!post) return std::nullopt;
-
-    ActTransferScales scales{*post, *post};
-    if (pre_tick != post_tick) {
-        if (std::optional<TransferScale> pre =
-                transfer_scale_between(act_tick, pre_tick, timing))
-            scales.pre = *pre;
+    ActTransferScales out;
+    out.post = *post;
+    // Each SqIn at the end its own offset was measured from.
+    for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+        if (act.sqinouts[k].kind != SqueezeKind::SqIn) continue;
+        const std::optional<int64_t> end = act.squeeze_end_tick(k);
+        const std::optional<int64_t> anchor = act.squeeze_anchor_tick(k);
+        if (!end || !anchor) return std::nullopt;
+        const std::optional<TransferScale> s = transfer_scale_between(*anchor, *end, timing);
+        if (!s) return std::nullopt;
+        out.sqins.push_back(*s);
     }
-    return scales;
+    return out;
 }
 
 double effective_backend_ms(double offset_ms, double transfer_r) {
@@ -92,7 +77,9 @@ ActivationRating rate_activation(const Activation& act,
 
     // The scales the search stamped on the record. A stored fact is read,
     // never re-derived (ADRs 0011, 0013, 0014); every Ready record has them.
-    out.scales = ActTransferScales{act.transfer_pre, act.transfer_post};
+    out.scales.post = act.transfer_post;
+    for (const SPSqueeze& sq : act.sqinouts)
+        if (sq.kind == SqueezeKind::SqIn) out.scales.sqins.push_back(sq.transfer);
 
     // Backend rows: every offset is measured from the deact node D, so they
     // read `post`. A squeezed-out row is about its phrase, which the SP end
@@ -115,19 +102,21 @@ ActivationRating rate_activation(const Activation& act,
         out.backends.push_back(std::move(row));
     }
 
-    // SqIn phrase notes: the offset is measured from the end before the
-    // phrase extended SP, so they read `pre`. A SqOut is not rated here: its
-    // offset is its squeezed-out row's offset (both are the deact edge's
-    // sqinout_timing), and that row was rated above, at the end it is
-    // measured from.
+    // SqIn phrase notes: each offset is measured from the end before its
+    // phrase extended SP, so each reads its own stored scale. A SqOut is not
+    // rated here: its offset is its squeezed-out row's offset (both are the
+    // deact edge's sqinout_timing), and that row was rated above, at the end
+    // it is measured from.
     out.note_effective_ms.reserve(act.sqinouts.size());
+    size_t j = 0;
     for (const SPSqueeze& sq : act.sqinouts) {
         if (sq.kind == SqueezeKind::SqOut) {
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
         // A free SqIn's note is inside SP (SPSqueeze::is_free, D13).
-        const NoteRating n = rate_note(sq.offset_ms, sq.is_free(), out.scales.pre, hit_window_ms);
+        const NoteRating n =
+            rate_note(sq.offset_ms, sq.is_free(), out.scales.sqins[j++], hit_window_ms);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
     }

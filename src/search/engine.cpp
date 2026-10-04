@@ -1265,15 +1265,13 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             act.sp_end_steps.assign(out_ends.begin() + oa.end_begin,
                                     out_ends.begin() + oa.end_end);
 
-            // Stamp the frontend transfer scales through the same function
-            // the details display uses to recompute them, on the same inputs
-            // (timecode, sp_meter, sqinouts and the history just stamped),
-            // so the stored ratios can't drift from a live recomputation.
-            // Both scales anchor on that stored D. A nullopt keeps the 1.0
-            // defaults.
+            // Stamp the frontend transfer scales through the one function
+            // that computes them, from the SP-end steps just stamped.
             if (auto scales = frontend_transfer_scales(act, timing)) {
-                act.transfer_pre = scales->pre;
                 act.transfer_post = scales->post;
+                size_t sqin = 0;
+                for (SPSqueeze& sq : act.sqinouts)
+                    if (sq.kind == SqueezeKind::SqIn) sq.transfer = scales->sqins[sqin++];
             }
             path.activations.push_back(std::move(act));
         }

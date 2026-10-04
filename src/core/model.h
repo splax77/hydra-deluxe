@@ -196,6 +196,18 @@ inline bool is_e0(double e_offset, int skips) {
 // How hard an E0 activation's early fill is, in ms.
 inline double early_fill_difficulty(double e_offset) { return -e_offset + 0.0; }
 
+// How frontend (activation-hit) timing error transfers to the SP end. SP
+// length is measure-based, so hitting the frontend d ms off moves the SP end
+// by r*d ms, where r = ms-per-measure at the SP end / ms-per-measure at the
+// frontend. The two directions differ when the activation or SP end sits
+// exactly on a meter/tempo change: an early (-) hit moves into the section
+// before the tick, a late (+) hit into the section at/after it.
+struct TransferScale {
+    double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
+    double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
+                         //      backend squeezes
+};
+
 // A SqIn (+) or SqOut (-): which way the note is squeezed across the SP end,
 // and by how many ms.
 struct SPSqueeze {
@@ -221,6 +233,12 @@ struct SPSqueeze {
         return kind == SqueezeKind::SqIn ? "SqIn" : "SqOut";
     }
     std::string description() const;
+
+    // A SqIn's frontend transfer scale: at squeeze_end_tick, measured from
+    // squeeze_anchor_tick. Stamped by the search at copy-out through
+    // frontend_transfer_scales and stored, so the details view never needs a
+    // SongTiming. A SqOut stores none: its row is rated at transfer_post.
+    TransferScale transfer;
 };
 
 struct BackendSqueeze {
@@ -276,18 +294,6 @@ private:
 };
 
 // ---- Activation ---------------------------------------------------------
-
-// How frontend (activation-hit) timing error transfers to the SP end. SP
-// length is measure-based, so hitting the frontend d ms off moves the SP end
-// by r*d ms, where r = ms-per-measure at the SP end / ms-per-measure at the
-// frontend. The two directions differ when the activation or SP end sits
-// exactly on a meter/tempo change: an early (-) hit moves into the section
-// before the tick, a late (+) hit into the section at/after it.
-struct TransferScale {
-    double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
-    double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
-                         //      backend squeezes
-};
 
 // Why an activation's SP end moved (Activation::sp_end_steps).
 //   Activation - the activation itself: the end its banked bars give.
@@ -363,18 +369,17 @@ struct Activation {
     std::optional<int64_t> squeeze_end_tick(size_t squeeze_index) const;
     int64_t end_anchor_tick(size_t step_index) const;
     int64_t refill_tick(size_t step_index) const;
+    // The note whose timing moves D: end_anchor_tick of the last step.
+    std::optional<int64_t> deact_anchor_tick() const;
+    // The note whose timing moves the end squeeze k was measured from.
+    std::optional<int64_t> squeeze_anchor_tick(size_t squeeze_index) const;
 
-    // Frontend transfer scales, computed by the search and stored with the
-    // record (blob v3; older blobs default to 1.0 = the flat-tempo identity)
-    // so the details display keeps its ratios when no SongTiming is at hand.
-    // Display-only: difficulty() and everything the search/filter/report
-    // derive stay raw gap ms. Both scales anchor on the search's actual
-    // deactivation node D — which sits +2 measures past the plain
-    // 2*B-measure end for every SP phrase collected mid-activation. `post`
-    // is measured at D and governs the backend rows; `pre` steps one
-    // 2-measure SqIn extension down from D and governs the SqIn/SqOut lines,
-    // equalling `post` when the activation has no SqIn.
-    TransferScale transfer_pre;
+    // The frontend transfer scale at the deact node D, measured from
+    // deact_anchor_tick() (the activation, or the cap's collecting note).
+    // Computed by the search at copy-out and stored, so the details view
+    // never needs a SongTiming. Display-only: difficulty and everything the
+    // search, filter and report derive stay raw gap ms. Each SqIn stores the
+    // scale at its own end (SPSqueeze::transfer).
     TransferScale transfer_post;
 
     std::string notationstr() const;

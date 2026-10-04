@@ -213,11 +213,22 @@ inline void set_leftover(Path& p, int bars) {
     p.leftover_sp = bars;
 }
 
-// The stored transfer scales. `squeeze` is the scale the SqIn lines read,
-// `post` the one the backend rows read. Call it after the activation's
-// squeezes are pushed, so a squeeze that stores its own scale can take it.
+// The stored transfer scales. `squeeze` is the scale every SqIn stores (the
+// SqIn lines read it), `post` the one the backend rows read. Call it after
+// the activation's squeezes are pushed, so each SqIn takes its scale.
 inline void set_transfer(Activation& a, TransferScale squeeze, TransferScale post) {
-    a.transfer_pre = squeeze;
+    for (SPSqueeze& sq : a.sqinouts)
+        if (sq.kind == SqueezeKind::SqIn) sq.transfer = squeeze;
+    a.transfer_post = post;
+}
+
+// One stored scale per SqIn, in sqinouts order, and the SP end's. Call it
+// after the squeezes are pushed; `per_sqin` has one entry per SqIn.
+inline void set_sqin_transfers(Activation& a, const std::vector<TransferScale>& per_sqin,
+                               TransferScale post) {
+    size_t j = 0;
+    for (SPSqueeze& sq : a.sqinouts)
+        if (sq.kind == SqueezeKind::SqIn) sq.transfer = per_sqin.at(j++);
     a.transfer_post = post;
 }
 

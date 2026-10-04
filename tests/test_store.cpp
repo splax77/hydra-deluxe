@@ -149,12 +149,18 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
                 if (again.timecode.ticks() != orig.timecode.ticks() ||
                     again.timecode.ms() != orig.timecode.ms())
                     d = "restored timecode";
-                // The transfer scales ride in the v3 blob bit-exactly.
-                else if (again.transfer_pre.early != orig.transfer_pre.early ||
-                         again.transfer_pre.late != orig.transfer_pre.late ||
-                         again.transfer_post.early != orig.transfer_post.early ||
+                // The transfer scales ride in the blob bit-exactly: the SP
+                // end's, and each SqIn's own.
+                else if (again.transfer_post.early != orig.transfer_post.early ||
                          again.transfer_post.late != orig.transfer_post.late)
                     d = "restored transfer scales";
+                else if (again.sqinouts.size() != orig.sqinouts.size())
+                    d = "restored squeezes";
+                else
+                    for (size_t k = 0; k < orig.sqinouts.size(); ++k)
+                        if (again.sqinouts[k].transfer.early != orig.sqinouts[k].transfer.early ||
+                            again.sqinouts[k].transfer.late != orig.sqinouts[k].transfer.late)
+                            d = "restored SqIn transfer scales";
             }
 
             SummaryLookup summary_row = store.get_summary(RecordKey{hyhash, "mode", cap});
@@ -237,10 +243,19 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
                     ++acts;
                     const std::optional<ActTransferScales> live =
                         frontend_transfer_scales(act, *lookup.timing);
-                    const bool same = live && live->pre.early == act.transfer_pre.early &&
-                                      live->pre.late == act.transfer_pre.late &&
-                                      live->post.early == act.transfer_post.early &&
-                                      live->post.late == act.transfer_post.late;
+                    bool same = live && live->post.early == act.transfer_post.early &&
+                                live->post.late == act.transfer_post.late;
+                    // Each SqIn's stored scale is the j-th live one.
+                    size_t j = 0;
+                    for (const SPSqueeze& sq : act.sqinouts) {
+                        if (!same) break;
+                        if (sq.kind != SqueezeKind::SqIn) continue;
+                        same = j < live->sqins.size() &&
+                               live->sqins[j].early == sq.transfer.early &&
+                               live->sqins[j].late == sq.transfer.late;
+                        ++j;
+                    }
+                    same = same && j == live->sqins.size();
                     if (!same && ++mismatches <= 8)
                         CHECK_MESSAGE(false, path << " [" << cfg.key << "] activation at tick "
                                                   << act.timecode.ticks());
