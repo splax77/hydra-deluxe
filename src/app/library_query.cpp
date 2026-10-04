@@ -1,5 +1,6 @@
-// Library search: folding, rich-tag stripping, the query language, the
-// matcher and the highlight spans. library_query.h describes the rules.
+// Library search: folding, the query language, the matcher and the highlight
+// spans. library_query.h describes the rules. Rich-text tags are stripped by
+// strip_rich_tags in parse/song.cpp.
 
 #include "app/library_query.h"
 
@@ -30,10 +31,6 @@ unsigned char byte_at(std::string_view s, size_t i) {
 
 bool is_ascii_space(unsigned char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
-}
-
-bool is_ascii_alpha(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
 bool is_continuation(unsigned char c) {
@@ -177,44 +174,6 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
     }
 }
 
-// ---- rich-text tags --------------------------------------------------------
-
-struct RichTag {
-    std::string_view name;
-    bool takes_value;  // the opening tag is <name=value>
-};
-
-constexpr RichTag kRichTags[] = {
-    {"color", true}, {"size", true}, {"b", false},   {"i", false},
-    {"u", false},    {"s", false},   {"sub", false}, {"sup", false},
-};
-
-// The byte length of the rich-text tag that starts at text[at] (a '<'), or 0
-// when the text there is not one strip_rich_tags removes.
-size_t rich_tag_length(std::string_view text, size_t at) {
-    size_t i = at + 1;
-    const bool closing = i < text.size() && text[i] == '/';
-    if (closing) ++i;
-    size_t name_end = i;
-    while (name_end < text.size() && is_ascii_alpha(text[name_end])) ++name_end;
-    if (name_end == i || name_end >= text.size()) return 0;
-
-    const std::string_view name = text.substr(i, name_end - i);
-    for (const RichTag& tag : kRichTags) {
-        if (!iequals_ascii(name, tag.name)) continue;
-        if (text[name_end] == '>')
-            return (closing || !tag.takes_value) ? name_end + 1 - at : 0;
-        if (!closing && tag.takes_value && text[name_end] == '=') {
-            const size_t close = text.find('>', name_end);
-            const size_t reopen = text.find('<', name_end);
-            if (close == npos || reopen < close) return 0;
-            return close + 1 - at;
-        }
-        return 0;
-    }
-    return 0;
-}
-
 // ---- parsing ---------------------------------------------------------------
 
 std::optional<QueryField> field_named(std::string_view key) {
@@ -296,23 +255,6 @@ bool term_matches(const QueryTerm& term, const SearchableRow& row) {
 std::string fold_for_search(std::string_view text) {
     std::string out;
     fold_into(text, out, nullptr);
-    return out;
-}
-
-std::string strip_rich_tags(std::string_view text) {
-    std::string out;
-    out.reserve(text.size());
-    size_t i = 0;
-    while (i < text.size()) {
-        if (text[i] == '<') {
-            if (const size_t len = rich_tag_length(text, i)) {
-                i += len;
-                continue;
-            }
-        }
-        out.push_back(text[i]);
-        ++i;
-    }
     return out;
 }
 

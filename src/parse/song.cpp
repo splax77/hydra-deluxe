@@ -306,6 +306,73 @@ std::string title_or_unknown(std::string title) {
     return title;
 }
 
+// ---- rich-text tags ---------------------------------------------------------
+
+namespace {
+
+struct RichTag {
+    std::string_view name;
+    bool takes_value;  // the opening tag is <name=value>
+};
+
+constexpr RichTag kRichTags[] = {
+    {"color", true}, {"size", true}, {"b", false},   {"i", false},
+    {"u", false},    {"s", false},   {"sub", false}, {"sup", false},
+};
+
+bool is_ascii_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+// The byte length of the rich-text tag that starts at text[at] (a '<'), or 0
+// when the text there is not one strip_rich_tags removes.
+size_t rich_tag_length(std::string_view text, size_t at) {
+    size_t i = at + 1;
+    const bool closing = i < text.size() && text[i] == '/';
+    if (closing) ++i;
+    size_t name_end = i;
+    while (name_end < text.size() && is_ascii_alpha(text[name_end])) ++name_end;
+    if (name_end == i || name_end >= text.size()) return 0;
+
+    const std::string name = to_lower_ascii(text.substr(i, name_end - i));
+    for (const RichTag& tag : kRichTags) {
+        if (name != tag.name) continue;
+        if (text[name_end] == '>')
+            return (closing || !tag.takes_value) ? name_end + 1 - at : 0;
+        if (!closing && tag.takes_value && text[name_end] == '=') {
+            const size_t close = text.find('>', name_end);
+            const size_t reopen = text.find('<', name_end);
+            if (close == std::string_view::npos || reopen < close) return 0;
+            return close + 1 - at;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+}  // namespace
+
+std::string strip_rich_tags(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    size_t i = 0;
+    while (i < text.size()) {
+        if (text[i] == '<') {
+            if (const size_t len = rich_tag_length(text, i)) {
+                i += len;
+                continue;
+            }
+        }
+        out.push_back(text[i]);
+        ++i;
+    }
+    return out;
+}
+
+std::string display_title(std::string_view title) {
+    return title_or_unknown(trim(strip_rich_tags(title)));
+}
+
 Song::Song(int64_t resolution) : tick_resolution_(resolution) {
     apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);
 }

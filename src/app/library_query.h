@@ -14,6 +14,8 @@
 #include <string_view>
 #include <vector>
 
+#include "parse/song.h"  // strip_rich_tags
+
 namespace hydra::app {
 
 // Lowercase, accents removed (NFD-style fold for Latin-1 and Latin Extended-A:
@@ -25,11 +27,9 @@ namespace hydra::app {
 // byte; nothing is dropped and nothing throws.
 std::string fold_for_search(std::string_view text);
 
-// Removes Clone Hero rich-text tags: <color=...>, </color>, <b>, </b>, <i>,
-// </i>, <size=...>, </size>, <u>, </u>, <s>, </s>, <sub>, </sub>, <sup>,
-// </sup>, case-insensitive. Anything else in angle brackets is kept, including
-// <color> with no value, a tag that never closes, and "<unknown artist>".
-std::string strip_rich_tags(std::string_view text);
+// Removes Clone Hero rich-text tags. The rule lives in parse/song.h, beside
+// display_title; the library reads the same function under this name.
+using hydra::strip_rich_tags;
 
 enum class QueryField { Any, Title, Artist, Charter, Folder };
 

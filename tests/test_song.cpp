@@ -16,6 +16,7 @@
 #include "core/strutil.h"
 #include "chart_text.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "midi_util.h"
 #include "multidiff_chart.h"
 #include "parse/chart_files.h"
@@ -782,4 +783,22 @@ TEST_CASE("load-and-check throws the no-notes error for a missing difficulty") {
     CHECK_THROWS_WITH_AS(load_songpath_with_notes(no_hard, true, true, Difficulty::Hard),
                          "No Hard Pro Drums notes in this chart.", NoNotesError);
     CHECK_NOTHROW(load_songpath_with_notes(has_hard, true, true, Difficulty::Hard));
+}
+
+// ---- display_title: the one cleaned song title (findings 8 and 111) ----------
+
+TEST_CASE("display_title: a title made only of Clone Hero tags reads (unknown)") {
+    CHECK(display_title(test::kTagOnlyTitle) == "(unknown)");
+    CHECK(display_title("   ") == "(unknown)");
+}
+
+TEST_CASE("display_title: tags go, words stay, spaces are trimmed") {
+    CHECK(display_title("<b>Bold</b>") == "Bold");
+    CHECK(display_title("<color=#e02222>Blood</color>line") == "Bloodline");
+    CHECK(display_title(" Some Song ") == "Some Song");
+}
+
+TEST_CASE("display_title: a clean name and the old placeholder behave like title_or_unknown") {
+    CHECK(display_title("Some Song") == "Some Song");
+    CHECK(display_title("<unknown title>") == "(unknown)");
 }

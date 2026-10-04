@@ -10,6 +10,7 @@
 #include <deque>
 #include <map>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -40,6 +41,28 @@ enum class FillDeadlineRule { Ch11, Ch10 };
 // hydra_fillcompare can tell which rule produced it later (docs/adr/0010).
 inline const char* engine_mode_stamp(FillDeadlineRule rule) {
     return rule == FillDeadlineRule::Ch10 ? "ch10" : "ch11";
+}
+
+// How a fill rule's name is written: Long in sentences and labels, Short in
+// narrow table columns (D48, Q13).
+enum class FillRuleNameStyle { Long, Short };
+
+// The one name of each fill rule wherever it is shown: "Clone Hero 1.0" or
+// "Clone Hero 1.1", and "CH 1.0" or "CH 1.1" in the short style. The "1.0
+// fills" checkbox keeps its own label (docs/adr/0010).
+inline const char* fill_rule_name(FillDeadlineRule rule, FillRuleNameStyle style) {
+    const bool is_short = style == FillRuleNameStyle::Short;
+    if (rule == FillDeadlineRule::Ch10) return is_short ? "CH 1.0" : "Clone Hero 1.0";
+    return is_short ? "CH 1.1" : "Clone Hero 1.1";
+}
+
+// One sentence saying when each rule's fill deadline falls, in the words the
+// fill comparison report's footer uses.
+inline std::string fill_rule_description(FillDeadlineRule rule) {
+    const std::string name = fill_rule_name(rule, FillRuleNameStyle::Long);
+    return rule == FillDeadlineRule::Ch10
+               ? name + " gave you until about one fill-length before the fill."
+               : name + " made it a flat 4 beats.";
 }
 
 // The latest a player's SP may become ready and still have this fill spawn.
