@@ -12,8 +12,6 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
-#include <regex>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,10 +26,6 @@
 #include "miniz.h"
 #include "parse/song.h"
 #include "store/record_store.h"
-
-#ifndef HYDRA_SOURCE_DIR
-#error "HYDRA_SOURCE_DIR must be defined (see CMakeLists.txt)"
-#endif
 
 using namespace hydra;
 
@@ -225,49 +219,9 @@ TEST_CASE("s2 owners: Song's default meter is written once, through apply_timesi
     CHECK(none.denominator == kDefaultTimeSigDenominator);
 }
 
-namespace {
-
-std::string read_source(const std::filesystem::path& p) {
-    std::ifstream in(p, std::ios::binary);
-    std::ostringstream text;
-    text << in.rdbuf();
-    return text.str();
-}
-
-}  // namespace
-
-TEST_CASE("s2 owners: no meter is written by hand outside apply_timesig (258, 319)") {
-    const std::filesystem::path root = HYDRA_SOURCE_DIR;
-    // A hand write into the meter map: `tpm_changes[...] = ...` (not `==`).
-    const std::regex meter_write(R"(tpm_changes\[[^\]]*\]\s*=[^=])");
-    std::vector<std::string> offenders;
-    for (const char* dir : {"src", "tests"}) {
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(root / dir)) {
-            const std::string ext = entry.path().extension().string();
-            if (ext != ".cpp" && ext != ".h") continue;
-            if (entry.path().filename() == "test_s2_parser_owners.cpp") continue;
-            std::istringstream lines(read_source(entry.path()));
-            std::string line;
-            int n = 0;
-            while (std::getline(lines, line)) {
-                ++n;
-                if (!std::regex_search(line, meter_write)) continue;
-                const bool owner = entry.path().filename() == "song.cpp" &&
-                                   line.find("song.tpm_changes[tick] =") != std::string::npos;
-                if (!owner) offenders.push_back(entry.path().string() + ":" + std::to_string(n));
-            }
-        }
-    }
-    CHECK_MESSAGE(offenders.empty(), "meters written by hand: " << offenders.size()
-                                     << (offenders.empty() ? "" : ", first " + offenders[0]));
-
-    // The Preview's time box keeps no 4/4 literal of its own.
-    const std::regex sig_literal(R"((numerator|denominator|ts_num|ts_den)\s*=\s*4\b)");
-    for (const std::string file : {"src/app/preview_view.h", "src/app/preview_view.cpp"}) {
-        CAPTURE(file);
-        CHECK_FALSE(std::regex_search(read_source(root / file), sig_literal));
-    }
-}
+// "No meter is written by hand outside apply_timesig" and "the Preview's time
+// box keeps no 4/4 literal of its own" are rows in test_single_owner.cpp, the
+// one scan of the source tree.
 
 TEST_CASE("s2 owners: a container's notes entry is found by its exact name (61)") {
     using namespace testmidi;

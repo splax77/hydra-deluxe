@@ -40,7 +40,9 @@ TEST_CASE("step 2: a Dynamics blob in the old layout does not decode") {
 // D23: a change under src/parse that alters what a chart reads as must bump
 // the results stamp. The rule is a comment, so this reads the comment: the
 // block between the "Results" banner and the kResultsStamp line must name
-// src/parse, next to src/search and src/core.
+// src/parse, next to src/search and src/core. A comment does not compile, so
+// this one test reads the file; test_single_owner.cpp lists it as the named
+// exemption to "Which test reads the source tree?".
 TEST_CASE("step 2: the results stamp's bump rule names the chart readers") {
     namespace fs = std::filesystem;
     const fs::path file =

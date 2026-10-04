@@ -58,7 +58,9 @@ struct OwnerRule {
     std::vector<std::string> must_match;   // lines the rule flags
     std::vector<std::string> must_not_match;
     std::vector<OwnerLine> owner_lines;    // the owner's own lines; each must still match
-    std::vector<std::string> scope;        // top folders scanned; empty means src and tools
+    // Top folders scanned, or single repo-relative files; empty means src and
+    // tools.
+    std::vector<std::string> scope;
     // When set, the rule checks only one function's body in one file: from
     // the line in function_file that contains unction to the next line
     // that is a lone "}". The scan fails if it never finds that line.
@@ -421,7 +423,10 @@ const std::vector<OwnerRule>& rules() {
          R"(\bHYDRA_SOURCE_DIR\b)",
          "",
          {},
-         {},
+         {{"tests/test_s2_stamps.cpp",
+           "it reads one comment, the results stamp's bump rule in src/store/stored_versions.h "
+           "(decision D23). A comment does not compile, so including the header cannot check "
+           "it, and this scan skips comment lines"}},
          "this file's own rule (one scan, new rules are rows); step-1 derive-once review of "
          "fb1189b, finding 5 (2026-10-04)",
          {"std::ifstream in(std::string(HYDRA_SOURCE_DIR) + \"/src/app/preview_view.cpp\");",
@@ -430,6 +435,39 @@ const std::vector<OwnerRule>& rules() {
           "true, true);"},
          {},
          {"tests"}},
+        // Was its own walker in test_s2_parser_owners.cpp (src and tests,
+        // not tools). A hand write into the meter map is `tpm_changes[...] =`
+        // followed by anything but a second `=`.
+        {"Who writes a meter into Song's tpm_changes?",
+         "apply_timesig in src/parse/song.cpp",
+         R"(tpm_changes\[[^\]]*\]\s*=[^=])",
+         "",
+         {},
+         {},
+         "decision D27 (audit findings 258 and 319: the meter is written once, through "
+         "apply_timesig)",
+         {"song.tpm_changes[0] = 768;", "fixture.tpm_changes[2880] = 1440;",
+          "s.tpm_changes[t]=960;"},
+         {"CHECK(song.tpm_changes[0] == 768);", "CHECK(fixture.tpm_changes.at(2880) == 1440);",
+          "apply_timesig(fixture, 2880, 3, 4);"},
+         {{"src/parse/song.cpp",
+           "song.tpm_changes[tick] = song.tick_resolution() * static_cast<int64_t>(numerator) * 4 /",
+           "apply_timesig, the owner"}},
+         {"src", "tests"}},
+        // Was part of the same walker: the Preview's time box reads Song's
+        // default meter and keeps no 4/4 of its own. Scoped to its two files.
+        {"Does the Preview type its own 4/4 meter?",
+         "kDefaultTimeSigNumerator and kDefaultTimeSigDenominator in src/parse/song.h",
+         R"((numerator|denominator|ts_num|ts_den)\s*=\s*4\b)",
+         "",
+         {},
+         {},
+         "decision D27 (audit findings 258 and 319: one default meter)",
+         {"int numerator = 4;", "sig.denominator = 4;", "int ts_den = 4;"},
+         {"int numerator = kDefaultTimeSigNumerator;", "if (sig.denominator == 4) ok = true;",
+          "const int numerator = 48;"},
+         {},
+         {"src/app/preview_view.h", "src/app/preview_view.cpp"}},
         // A test that sets EngineOptions' target ticks runs the engine's
         // targeted search itself. The lines listed test the engine's target
         // mode on hand-built songs (each pins its own answer); a test that
@@ -630,11 +668,11 @@ TEST_CASE("single-owner rules match their own examples") {
     }
 }
 
-// Does this rule scan files under the top folder `sub`?
-bool in_scope(const OwnerRule& r, const std::string& sub) {
+// Does this rule scan the file `rel`, which sits under the top folder `sub`?
+bool in_scope(const OwnerRule& r, const std::string& sub, const std::string& rel) {
     if (r.scope.empty()) return sub == "src" || sub == "tools";
     for (const std::string& s : r.scope)
-        if (s == sub) return true;
+        if (s == sub || s == rel) return true;
     return false;
 }
 
@@ -666,7 +704,7 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
                 for (size_t ci = 0; ci < compiled.size(); ++ci) {
                     const CompiledRule& c = compiled[ci];
                     const OwnerRule& rule = *c.rule;
-                    if (!in_scope(rule, sub)) continue;
+                    if (!in_scope(rule, sub, rel)) continue;
                     if (!rule.function.empty()) {
                         if (rel != rule.function_file) continue;
                         if (!in_function[ci] && line.find(rule.function) != std::string::npos) {
@@ -705,6 +743,15 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
         if (rule.function.empty()) continue;
         INFO(rule.question << ": \"" << rule.function << "\" in " << rule.function_file);
         CHECK(functions_found[ci] == 1);
+    }
+    // A rule scoped to single files names files that exist; a renamed one
+    // would otherwise leave the rule checking nothing.
+    for (const CompiledRule& c : compiled) {
+        for (const std::string& s : c.rule->scope) {
+            if (s.find('/') == std::string::npos) continue;
+            INFO(c.rule->question << ": scoped to " << s);
+            CHECK(fs::is_regular_file(root / fs::u8path(s)));
+        }
     }
     CHECK(files > 100);  // the scan found the sources
     std::ostringstream report;
