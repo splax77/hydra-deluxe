@@ -846,9 +846,8 @@ struct ChartDataEntry {
     std::optional<int64_t> key_tick;
     std::optional<std::string> key_name;
 
-    // A named property's value: property_str is always the raw (trimmed)
-    // text, and property_int is set too when that text is a whole integer.
-    std::optional<int64_t> property_int;
+    // A named property's value: the raw (trimmed) text. Each reader applies
+    // its own one number rule (Resolution, Offset).
     std::optional<std::string> property_str;
 
     std::optional<int> ts_numerator;
@@ -922,10 +921,7 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
         key_name = std::string(keystr);
 
     if (!key_tick.has_value()) {
-        int64_t iv;
-        std::string value(valuestr);
-        if (try_parse_int(value, iv)) property_int = iv;
-        property_str = std::move(value);
+        property_str = std::string(valuestr);
         return;
     }
 
@@ -1282,7 +1278,6 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     const ChartDataEntry& res_entry = song_sec.prop_data.at("Resolution").at(0);
     // One number rule for Resolution: std::stoll on the raw text (leading
     // digits read, trailing junk ignored, no digits refuses the chart).
-    // property_int would give the same value whenever it is set.
     const int64_t tick_resolution = std::stoll(*res_entry.property_str);
 
     Song song(tick_resolution);
