@@ -41,13 +41,17 @@ public:
         const stb_vorbis_info info = stb_vorbis_get_info(v_);
         channels_ = info.channels;
         rate_ = static_cast<int>(info.sample_rate);
-        length_ = stb_vorbis_stream_length_in_samples(v_);
         if (channels_ <= 0 || rate_ <= 0) {
             stb_vorbis_close(v_);
             throw std::runtime_error("decode_audio: stb_vorbis could not decode the stream");
         }
         scratch_.resize(static_cast<std::size_t>(kChunkFrames) * channels_);
-        if (length_ == 0) count_length();
+        // stb_vorbis says 0 when it finds no end page or the last granule is
+        // -1, and can't seek without a known length: CountedLength counts the
+        // stem and seeks it by decoding.
+        length_ = counted_.length(
+            stb_vorbis_stream_length_in_samples(v_), kChunkFrames, at_end_,
+            [this] { return restart(); }, [this](int64_t n) { return skip(n); });
     }
 
     ~VorbisReader() override { stb_vorbis_close(v_); }
@@ -82,8 +86,11 @@ public:
             pos_ = length_;
             return;
         }
-        if (counted_) {
-            seek_by_decoding(frame);
+        if (counted_.counted()) {
+            // stb_vorbis can't tell a decode error from the end, so a skip that
+            // stops early only ends the stem.
+            counted_.seek(frame, kChunkFrames, pos_, at_end_, [this] { return restart(); },
+                          [this](int64_t n) { return skip(n); });
             return;
         }
         at_end_ = stb_vorbis_seek(v_, static_cast<unsigned>(frame)) == 0;
@@ -91,44 +98,15 @@ public:
     }
 
 private:
-    // stb_vorbis reports 0 when it finds no end page or the last granule is
-    // -1, which means "unknown", not empty. As in MaReader: decode the stem
-    // once, count its frames, and go back to the start. Only this case pays.
-    void count_length() {
-        int64_t total = 0;
-        for (;;) {
-            const int got = stb_vorbis_get_samples_short_interleaved(
-                v_, channels_, scratch_.data(), kChunkFrames * channels_);
-            if (got <= 0) break;
-            total += got;
-        }
-        length_ = total;
-        counted_ = true;
-        at_end_ = stb_vorbis_seek_start(v_) == 0;
-    }
-
-    // stb_vorbis can't seek without a known length, so a counted stem seeks by
-    // decoding: forward from here when the target is ahead, otherwise from
-    // the start. Exact, and slower than a real seek, in this rare case only.
-    void seek_by_decoding(int64_t frame) {
-        if (frame < pos_ || at_end_) {
-            if (stb_vorbis_seek_start(v_) == 0) {
-                at_end_ = true;
-                return;
-            }
-            pos_ = 0;
-            at_end_ = false;
-        }
-        while (pos_ < frame) {
-            const int want = static_cast<int>(std::min<int64_t>(kChunkFrames, frame - pos_));
-            const int got = stb_vorbis_get_samples_short_interleaved(
-                v_, channels_, scratch_.data(), want * channels_);
-            if (got <= 0) {
-                at_end_ = true;
-                return;
-            }
-            pos_ += got;
-        }
+    // CountedLength's two decoder calls.
+    bool restart() { return stb_vorbis_seek_start(v_) != 0; }
+    DecodeStep skip(int64_t frames) {
+        const int got = stb_vorbis_get_samples_short_interleaved(
+            v_, channels_, scratch_.data(), static_cast<int>(frames) * channels_);
+        DecodeStep step;
+        step.frames = got > 0 ? got : 0;
+        step.more = got > 0;
+        return step;
     }
 
     StemBytes bytes_;
@@ -137,7 +115,7 @@ private:
     int rate_ = 0;
     int64_t length_ = 0;
     int64_t pos_ = 0;       // the frame the next read returns
-    bool counted_ = false;  // length_ came from count_length, not the header
+    CountedLength counted_;  // the header said 0 frames, so length_ is a count
     std::vector<short> scratch_;
     bool at_end_ = false;
 };

@@ -564,6 +564,17 @@ TEST_CASE("StemReader: a FLAC whose header says 0 frames is counted on open") {
     o->seek(mid);
     r->seek(mid);
     CHECK(read_to_end(*r) == read_to_end(*o));
+
+    // A seek back to an earlier frame before the stem has ended lands where
+    // the unmodified file's seek lands too.
+    std::vector<float> part(static_cast<std::size_t>(mid) * r->channels());
+    o->seek(mid);
+    r->seek(mid);
+    o->read(part.data(), mid / 2);
+    r->read(part.data(), mid / 2);
+    o->seek(mid / 2);
+    r->seek(mid / 2);
+    CHECK(read_to_end(*r) == read_to_end(*o));
 }
 
 TEST_CASE("StemReader: a damaged Opus stem plays again after a seek to before the damage") {

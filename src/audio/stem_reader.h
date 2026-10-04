@@ -98,6 +98,78 @@ std::unique_ptr<StemReader> open_opus_reader(StemBytes bytes, const OpenProgress
 std::unique_ptr<StemReader> open_vorbis_reader(StemBytes bytes);
 std::unique_ptr<StemReader> open_ma_reader(StemBytes bytes);
 
+// What one decode call did, as CountedLength asks it: the frames it decoded,
+// whether the stem goes on after them, and whether a decode error stopped it.
+struct DecodeStep {
+    int64_t frames = 0;
+    bool more = false;
+    bool error = false;
+};
+
+// A stem whose header says it has 0 frames, shared by MaReader and
+// VorbisReader. The 0 means "unknown" (RFC 9639 for FLAC; stb_vorbis says it
+// when it finds no end page), not empty. So the reader counts the stem by
+// decoding it once on open, then goes back to frame 0. Its decoder still
+// believes the header and can't seek, so a counted stem seeks by decoding:
+// forward from where it is when the target is ahead, otherwise from frame 0.
+// Exact, and slower than a real seek, in this rare case only.
+//
+// The reader passes its decoder in as two calls. restart() goes back to
+// frame 0 and returns false if it could not. decode(n) decodes up to n frames
+// into the reader's scratch buffer and returns a DecodeStep.
+class CountedLength {
+public:
+    // The stem's length: the header's, or, when the header says 0, a count
+    // made by decoding the stem in chunks of `chunk` frames. After a count
+    // the decoder is back at frame 0, and at_end says whether that failed.
+    // A decode error during the count only ends the count.
+    template <class Restart, class Decode>
+    int64_t length(int64_t header_frames, int64_t chunk, bool& at_end, Restart restart,
+                   Decode decode) {
+        if (header_frames != 0) return header_frames;
+        int64_t total = 0;
+        for (;;) {
+            const DecodeStep step = decode(chunk);
+            total += step.frames;
+            if (!step.more) break;
+        }
+        counted_ = true;
+        at_end = !restart();
+        return total;
+    }
+
+    // True when length() counted the stem, so seeks go through seek() below.
+    bool counted() const { return counted_; }
+
+    // Moves a counted stem to `frame` (already clamped below its length) by
+    // decoding. Returns true when a decode error ended the skip; the reader
+    // decides what that means for it.
+    template <class Restart, class Decode>
+    bool seek(int64_t frame, int64_t chunk, int64_t& pos, bool& at_end, Restart restart,
+              Decode decode) const {
+        if (frame < pos || at_end) {
+            if (!restart()) {
+                at_end = true;
+                return false;
+            }
+            pos = 0;
+            at_end = false;
+        }
+        while (pos < frame) {
+            const DecodeStep step = decode(frame - pos < chunk ? frame - pos : chunk);
+            pos += step.frames;
+            if (!step.more) {
+                at_end = true;
+                return step.error;
+            }
+        }
+        return false;
+    }
+
+private:
+    bool counted_ = false;
+};
+
 }  // namespace detail
 
 }  // namespace hydra::audio

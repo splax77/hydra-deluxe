@@ -181,8 +181,15 @@ public:
         }
         ma_uint64 len = 0;
         if (ma_decoder_get_length_in_pcm_frames(&dec_, &len) != MA_SUCCESS) len = 0;
-        length_ = static_cast<int64_t>(len);
-        if (length_ == 0) count_length();
+        // A header length of 0 is counted (CountedLength). A WAV can't land
+        // there with audio in it, because dr_wav takes its length from the
+        // data chunk's size, so in practice it is a FLAC. dr_flac clamps every
+        // seek target to the header's total, so a counted stem's seeks would
+        // all land on frame 0; CountedLength seeks by decoding instead.
+        scratch_.resize(static_cast<std::size_t>(kSkipChunk) * static_cast<std::size_t>(channels_));
+        length_ = counted_.length(
+            static_cast<int64_t>(len), static_cast<int64_t>(kSkipChunk), at_end_,
+            [this] { return restart(); }, [this](int64_t n) { return skip(n); });
     }
 
     ~MaReader() override { ma_decoder_uninit(&dec_); }
@@ -218,8 +225,11 @@ public:
             pos_ = length_;
             return;
         }
-        if (counted_) {
-            seek_by_decoding(frame);
+        if (counted_.counted()) {
+            // As in read(): a decode error ends the stem, and failed() stays true.
+            if (counted_.seek(frame, static_cast<int64_t>(kSkipChunk), pos_, at_end_,
+                              [this] { return restart(); }, [this](int64_t n) { return skip(n); }))
+                failed_ = true;
             return;
         }
         at_end_ = ma_decoder_seek_to_pcm_frame(&dec_, static_cast<ma_uint64>(frame)) != MA_SUCCESS;
@@ -227,54 +237,17 @@ public:
     }
 
 private:
-    // The header said 0 frames, which for FLAC means "unknown" (RFC 9639), not
-    // empty: an encoder writing to a pipe can't go back to fill the total in.
-    // So decode the stem once, count its frames, and go back to the start.
-    // Only this case pays for the extra decode; every other header keeps its
-    // fast open. A WAV can't land here with audio in it, because dr_wav takes
-    // its length from the data chunk's size, so in practice this is a FLAC.
-    void count_length() {
-        scratch_.resize(static_cast<std::size_t>(kSkipChunk) * static_cast<std::size_t>(channels_));
-        int64_t total = 0;
-        for (;;) {
-            ma_uint64 got = 0;
-            const ma_result r = ma_decoder_read_pcm_frames(&dec_, scratch_.data(), kSkipChunk, &got);
-            total += static_cast<int64_t>(got);
-            if (got == 0 || r != MA_SUCCESS) break;
-        }
-        length_ = total;
-        counted_ = true;
-        at_end_ = ma_decoder_seek_to_pcm_frame(&dec_, 0) != MA_SUCCESS;
-    }
-
-    // dr_flac clamps every seek target to the header's total, so with a total
-    // of 0 any seek would land on frame 0. A counted stem seeks by decoding
-    // instead: forward from here when the target is ahead, otherwise from the
-    // start. Exact, and slower than a table seek, in this rare case only.
-    void seek_by_decoding(int64_t frame) {
-        if (frame < pos_ || at_end_) {
-            if (ma_decoder_seek_to_pcm_frame(&dec_, 0) != MA_SUCCESS) {
-                at_end_ = true;
-                return;
-            }
-            pos_ = 0;
-            at_end_ = false;
-        }
-        while (pos_ < frame) {
-            ma_uint64 got = 0;
-            const ma_uint64 want = std::min<ma_uint64>(kSkipChunk, static_cast<ma_uint64>(frame - pos_));
-            const ma_result r = ma_decoder_read_pcm_frames(&dec_, scratch_.data(), want, &got);
-            pos_ += static_cast<int64_t>(got);
-            if (r == MA_AT_END || got == 0) {
-                at_end_ = true;
-                return;
-            }
-            if (r != MA_SUCCESS) {  // as in read(): a decode error ends the stem
-                failed_ = true;
-                at_end_ = true;
-                return;
-            }
-        }
+    // CountedLength's two decoder calls.
+    bool restart() { return ma_decoder_seek_to_pcm_frame(&dec_, 0) == MA_SUCCESS; }
+    DecodeStep skip(int64_t frames) {
+        ma_uint64 got = 0;
+        const ma_result r = ma_decoder_read_pcm_frames(&dec_, scratch_.data(),
+                                                       static_cast<ma_uint64>(frames), &got);
+        DecodeStep step;
+        step.frames = static_cast<int64_t>(got);
+        step.more = r == MA_SUCCESS && got != 0;
+        step.error = r != MA_SUCCESS && r != MA_AT_END && got != 0;
+        return step;
     }
 
     StemBytes bytes_;
@@ -283,7 +256,7 @@ private:
     int rate_ = 0;
     int64_t length_ = 0;
     int64_t pos_ = 0;         // the frame the next read returns
-    bool counted_ = false;    // length_ came from count_length, not the header
+    CountedLength counted_;   // the header said 0 frames, so length_ is a count
     std::vector<float> scratch_;  // decode target for counted and skipped frames
     bool at_end_ = false;
     bool failed_ = false;
