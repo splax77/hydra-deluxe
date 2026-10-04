@@ -12,6 +12,7 @@
 
 #include "core/squeeze_rating.h"
 #include "core/rules.h"
+#include "record_fixtures.h"
 
 using namespace hydra;
 
@@ -27,11 +28,11 @@ TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
 
     Activation act;
     act.timecode = st.timecode(0);
-    act.sp_meter = 8;  // 16 measures: 10 of 7/8 + 6 of 7/16 -> tick 21840
+    test::set_sp_meter(act, 8);  // 16 measures: 10 of 7/8 + 6 of 7/16 -> tick 21840
     // The node the search would have stamped: no SqIn yet, so the plain
     // act + 2*B measures (this is what the old activation_deact_tick fallback
     // computed for a no-backend-rows, no-SqIn activation).
-    act.deact_tick = st.plusmeasure(act.timecode, 16).ticks();
+    test::set_plain_window(act, st.plusmeasure(act.timecode, 16).ticks());
 
     // End reconstruction matches plusmeasure.
     CHECK(st.plusmeasure(act.timecode, 16).ticks() == 21840);
@@ -53,7 +54,7 @@ TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     // With a SqIn present, the old fallback's node was act + 2*B + 2 measures;
     // re-stamp deact_tick to match (frontend_transfer_scales now reads it
     // straight off the record and steps `pre` back down itself).
-    act.deact_tick = st.plusmeasure(act.timecode, 18).ticks();
+    test::set_plain_window(act, st.plusmeasure(act.timecode, 18).ticks());
     auto sqin_scales = frontend_transfer_scales(act, st);
     REQUIRE(sqin_scales.has_value());
     CHECK(sqin_scales->pre.late == doctest::Approx(scales->pre.late));
@@ -63,7 +64,7 @@ TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     act.sqinouts.clear();
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
     // No SqIn any more (a SqOut doesn't count): back to act + 2*B measures.
-    act.deact_tick = st.plusmeasure(act.timecode, 16).ticks();
+    test::set_plain_window(act, st.plusmeasure(act.timecode, 16).ticks());
     auto sqout_scales = frontend_transfer_scales(act, st);
     REQUIRE(sqout_scales.has_value());
     CHECK(sqout_scales->pre.late == doctest::Approx(scales->pre.late));
@@ -74,7 +75,7 @@ TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     // cannot say where SP ended, and nothing guesses any more.
     Activation partial;
     partial.timecode = st.timecode(0);
-    partial.sp_meter = 2;
+    test::set_sp_meter(partial, 2);
     CHECK(!frontend_transfer_scales(partial, st).has_value());
 }
 
@@ -88,13 +89,13 @@ TEST_CASE("frontend_transfer_scales: a SqIn splits the two ends") {
 
     Activation act;
     act.timecode = st.timecode(0);
-    act.sp_meter = 2;
+    test::set_sp_meter(act, 2);
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 5.0});
     // The node the old fallback derived (act + 2*B + 2 measures, the SqIn
     // present): 6 measures -> tick 11520. A 0-offset backend row placed at
     // the same tick below recovers the identical node, so this one value
     // covers both calls in this test.
-    act.deact_tick = st.plusmeasure(act.timecode, 6).ticks();
+    test::set_plain_window(act, st.plusmeasure(act.timecode, 6).ticks());
 
     auto scales = frontend_transfer_scales(act, st);
     REQUIRE(scales.has_value());
@@ -130,9 +131,9 @@ TEST_CASE("frontend_transfer_scales: direction-dependent at boundaries") {
 
     Activation act;
     act.timecode = st.timecode(2880);
-    act.sp_meter = 3;  // 6 measures of 7/8 -> end tick 12960
+    test::set_sp_meter(act, 3);  // 6 measures of 7/8 -> end tick 12960
     // No SqIn, no backend rows: the old fallback's node, act + 2*B measures.
-    act.deact_tick = st.plusmeasure(act.timecode, 6).ticks();
+    test::set_plain_window(act, st.plusmeasure(act.timecode, 6).ticks());
 
     CHECK(st.plusmeasure(act.timecode, 6).ticks() == 12960);
 
@@ -155,9 +156,9 @@ TEST_CASE("frontend_transfer_scales: direction-dependent at boundaries") {
 
     Activation act2;
     act2.timecode = st2.timecode(1920);
-    act2.sp_meter = 2;  // 4 measures -> end tick 9600
+    test::set_sp_meter(act2, 2);  // 4 measures -> end tick 9600
     // No SqIn, no backend rows: the old fallback's node, act + 2*B measures.
-    act2.deact_tick = st2.plusmeasure(act2.timecode, 4).ticks();
+    test::set_plain_window(act2, st2.plusmeasure(act2.timecode, 4).ticks());
 
     auto scale2 = frontend_transfer_scales(act2, st2);
     REQUIRE(scale2.has_value());
@@ -169,9 +170,9 @@ TEST_CASE("frontend_transfer_scales: direction-dependent at boundaries") {
     SongTiming flat(480, tpm44, bpm120);
     Activation act3;
     act3.timecode = flat.timecode(0);
-    act3.sp_meter = 2;
+    test::set_sp_meter(act3, 2);
     // No SqIn, no backend rows: the old fallback's node, act + 2*B measures.
-    act3.deact_tick = flat.plusmeasure(act3.timecode, 4).ticks();
+    test::set_plain_window(act3, flat.plusmeasure(act3.timecode, 4).ticks());
     auto flat_scale = frontend_transfer_scales(act3, flat);
     REQUIRE(flat_scale.has_value());
     CHECK(flat_scale->pre.early == doctest::Approx(1.0).epsilon(1e-12));
@@ -194,11 +195,11 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
 
     Activation act;
     act.timecode = st.timecode(57600);
-    act.sp_meter = 3;  // 6 measures -> tick 69120
+    test::set_sp_meter(act, 3);  // 6 measures -> tick 69120
     // No SqIn, no backend rows yet: the old fallback's node, act + 2*B
     // measures -- this activation collects no phrase mid-SP, so it is also
     // exactly the node a 0.0-offset backend row would name (see below).
-    act.deact_tick = st.plusmeasure(act.timecode, 6).ticks();
+    test::set_plain_window(act, st.plusmeasure(act.timecode, 6).ticks());
     CHECK(st.plusmeasure(act.timecode, 6).ticks() == 69120);
 
     auto scales = frontend_transfer_scales(act, st);
@@ -246,11 +247,10 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
 
     // Stored transfer scales are display-only: difficulty stays the raw gap.
     Activation stamped = act;
-    stamped.skips = 1;
+    test::set_skips(stamped, 1);
     stamped.e_offset = 300.0;  // not e-critical
-    stamped.transfer_pre = TransferScale{r, 1.0};
-    stamped.transfer_post = stamped.transfer_pre;
     stamped.sqinouts.push_back(sqout);
+    test::set_transfer(stamped, TransferScale{r, 1.0});
     REQUIRE(stamped.difficulty().has_value());
     CHECK(*stamped.difficulty() == doctest::Approx(191.0825).epsilon(1e-5));
     CHECK(stamped.is_difficult());
@@ -298,7 +298,7 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
 
     Activation act;
     act.timecode = st.timecode(34560);
-    act.sp_meter = 2;
+    test::set_sp_meter(act, 2);
     BackendSqueeze d0;  // the 0.0-offset row at the deact node
     d0.timecode = st.timecode(46080);
     d0.offset_ms = 0.0;
@@ -307,7 +307,7 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     // to act + 6 measures (tick 46080), matching the 0.0-offset row above --
     // this is the whole point of the fixture (act + 2*B alone would be
     // 42240).
-    act.deact_tick = 46080;
+    test::set_plain_window(act, 46080);
 
     auto scales = frontend_transfer_scales(act, st);
     REQUIRE(scales.has_value());
@@ -358,7 +358,7 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
 
 TEST_CASE("difficulty is the raw gap, untouched by stored transfer scales") {
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -12.0});
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 7.0});
@@ -367,8 +367,7 @@ TEST_CASE("difficulty is the raw gap, untouched by stored transfer scales") {
     CHECK(*act.difficulty() == doctest::Approx(12.0));
 
     // The scales are display-only; the metric must not move with them.
-    act.transfer_pre = TransferScale{0.5, 3.0};
-    act.transfer_post = act.transfer_pre;
+    test::set_transfer(act, TransferScale{0.5, 3.0});
     CHECK(*act.difficulty() == doctest::Approx(12.0));
 }
 
@@ -416,10 +415,10 @@ TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close")
 TEST_CASE("rate_activation: every row reads post, by its side of the end") {
     REQUIRE(core::default_rules().backend_leeway_ms > 1.5);
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
-    act.transfer_pre = TransferScale{3.0, 4.0};  // a row never reads pre
-    act.transfer_post = TransferScale{0.5, 2.0};
+    // A row never reads the SqIn scale.
+    test::set_transfer(act, TransferScale{3.0, 4.0}, TransferScale{0.5, 2.0});
     auto add = [&act](int64_t tick, double off) {
         BackendSqueeze b;
         b.timecode = Timecode::raw(tick);
@@ -454,12 +453,11 @@ TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post")
     // sqinout_timing), measured from the final end, so the row's post
     // multiplier is the only one that applies.
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;
-    act.transfer_pre = TransferScale{0.97, 0.974};
-    act.transfer_post = TransferScale{0.9912, 0.98};
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -92.1});
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -187.5});
+    test::set_transfer(act, TransferScale{0.97, 0.974}, TransferScale{0.9912, 0.98});
     BackendSqueeze ry;
     ry.timecode = Timecode::raw(5000);
     ry.offset_ms = -187.5;
@@ -491,12 +489,12 @@ TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post")
 
 TEST_CASE("rate_activation: a SqIn reads pre, by its side of the end") {
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;
-    act.transfer_pre = TransferScale{1.6, 0.5};
-    act.transfer_post = TransferScale{3.0, 4.0};  // a SqIn never reads post
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -400.0});  // free: early
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});    // to earn: late
+    // A SqIn never reads the backend rows' scale.
+    test::set_transfer(act, TransferScale{1.6, 0.5}, TransferScale{3.0, 4.0});
     ActivationRating r = rate_activation(act, 85.0);
     REQUIRE(r.note_effective_ms.size() == 2);
     REQUIRE(r.note_effective_ms[0].has_value());
@@ -509,11 +507,10 @@ TEST_CASE("rate_activation: a SqIn reads pre, by its side of the end") {
 
 TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rated note") {
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;
     // The late side is scaled, but the only row is inside SP (early, x1.00).
-    act.transfer_post = TransferScale{1.0, 6.33};
-    act.transfer_pre = act.transfer_post;
+    test::set_transfer(act, TransferScale{1.0, 6.33});
     BackendSqueeze in;
     in.offset_ms = -40.0;
     act.backends.push_back(in);
@@ -523,8 +520,7 @@ TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rate
 
     // A flat activation never governs, even with a gap past the budget.
     Activation flat = act;
-    flat.transfer_post = TransferScale{};
-    flat.transfer_pre = TransferScale{};
+    test::set_transfer(flat, TransferScale{});
     flat.backends[0].offset_ms = 222.2;
     CHECK_FALSE(rate_activation(flat, 85.0).scale_governs);
 }
@@ -534,10 +530,9 @@ TEST_CASE("rate_activation: the stored scales are the only scales") {
     // 0.5s. The rating reads what the search stored and never recomputes.
     Activation act;
     act.timecode = Timecode::raw(0);
-    act.sp_meter = 2;
-    act.deact_tick = 7680;
-    act.transfer_pre = TransferScale{0.5, 0.5};
-    act.transfer_post = TransferScale{0.5, 0.5};
+    test::set_sp_meter(act, 2);
+    test::set_plain_window(act, 7680);
+    test::set_transfer(act, TransferScale{0.5, 0.5});
 
     BackendSqueeze row;
     row.timecode = Timecode::raw(7728);
@@ -616,7 +611,7 @@ TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search gr
 
     Activation act;
     act.timecode = st.timecode(0);
-    act.sp_meter = 2;
+    test::set_sp_meter(act, 2);
 
     const double offsets[] = {0.0, 180.0, -300.0, kSqueezeWindowMs - 1.0,
                               kSqueezeWindowMs + 20.0};
@@ -645,8 +640,9 @@ TEST_CASE("rate_activation: cap_clamped flag") {
 
     // clamp_tick set, plus a SqOut -- both halves true, so this is the case
     // the overfill warning is for.
+    // The SP end itself is never read here; 6144 is any end past the clamp.
     Activation clamped_with_squeeze;
-    clamped_with_squeeze.clamp_tick = 3072;
+    test::set_clamped_window(clamped_with_squeeze, 3072, 6144);
     clamped_with_squeeze.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
     ActivationRating r1 = rate_activation(clamped_with_squeeze, 85.0);
     CHECK(r1.cap_clamped);
@@ -655,7 +651,7 @@ TEST_CASE("rate_activation: cap_clamped flag") {
     // SP window, so the engine counts it and it isn't a squeeze the frontend
     // decides. No SqIn/SqOut either, so cap_clamped stays false.
     Activation clamped_no_squeeze;
-    clamped_no_squeeze.clamp_tick = 3072;
+    test::set_clamped_window(clamped_no_squeeze, 3072, 6144);
     BackendSqueeze mild_row;
     mild_row.offset_ms = -30.0;
     clamped_no_squeeze.backends.push_back(mild_row);
@@ -694,12 +690,13 @@ TEST_CASE("is_frontend_decided: squeezed out, or not counted without a squeeze")
 // the overfill flag all use that same edge (user decision 7).
 TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend squeeze") {
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
-    act.clamp_tick = 3072;
+    // The row below sits 2.5 ms past the end; 3077 is any end before it.
+    test::set_clamped_window(act, 3072, 3077);
     // A late scale this small would make a row treated as late material:
     // 2.5 ms reads as 4.2 ms, past the 1 ms impact floor.
-    act.transfer_post.late = 0.2;
+    test::set_transfer(act, TransferScale{}, TransferScale{1.0, 0.2});
     BackendSqueeze row;
     row.timecode = Timecode::raw(3080);
     row.offset_ms = 2.5;

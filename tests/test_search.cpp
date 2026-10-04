@@ -16,6 +16,7 @@
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
@@ -879,7 +880,7 @@ TEST_CASE("path codec: encode/decode a path node keeps clamp_tick") {
     // round trip above pins the field before it.
     Activation act;
     act.timecode = Timecode::raw(2304);
-    act.clamp_tick = 3072;
+    test::set_clamped_window(act, 3072, 6144);
 
     Path path;
     path.activations.push_back(act);

@@ -26,6 +26,7 @@
 #include "core/timing.h"  // sp_bars_to_measures
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
 
@@ -106,7 +107,7 @@ Song make_fill_song() {
 Activation act_at(const Song& song, int64_t tick, int skips) {
     Activation a;
     a.timecode = song.timecode(tick);
-    a.skips = skips;
+    test::set_skips(a, skips);
     return a;
 }
 
@@ -152,10 +153,10 @@ Song make_sp_song(const std::vector<int64_t>& phrase_ends, int64_t last_tick,
 Activation sp_act_at(const Song& song, int64_t tick, int sp_meter) {
     Activation a;
     a.timecode = song.timecode(tick);
-    a.sp_meter = sp_meter;
-    a.skips = 0;
-    a.deact_tick =
-        song.timing().plusmeasure(a.timecode, sp_bars_to_measures(sp_meter)).ticks();
+    test::set_sp_meter(a, sp_meter);
+    test::set_skips(a, 0);
+    test::set_plain_window(
+        a, song.timing().plusmeasure(a.timecode, sp_bars_to_measures(sp_meter)).ticks());
     return a;
 }
 
@@ -753,7 +754,7 @@ TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures
         Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
         Path collected;
         Activation act = sp_act_at(song, 3840, 2);
-        act.deact_tick = 3840 + 6 * 1920;
+        test::set_plain_window(act, 3840 + 6 * 1920);
         act.collected_phrase_ticks = {5760};
         collected.activations = {act};
         Path plain = priced_path(song, {sp_act_at(song, 3840, 2)});
@@ -864,7 +865,7 @@ TEST_CASE("sp meter curve: a phrase collected mid-activation jumps the meter a b
     Path path;
     Activation act = sp_act_at(song, 3840, /*sp_meter=*/2);
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 0.0});
-    act.deact_tick = 3840 + 6 * 1920;  // 4 measures banked, 2 for the collection
+    test::set_plain_window(act, 3840 + 6 * 1920);  // 4 measures banked, 2 for the collection
     act.collected_phrase_ticks = {5760};  // the engine's record of that collection
     path.activations = {act};
 
@@ -945,7 +946,7 @@ TEST_CASE("sp meter curve: a full bank that collects a phrase and stores no row"
                              /*step=*/120);
     Path path;
     Activation act = sp_act_at(song, act_tick, /*sp_meter=*/4);
-    act.deact_tick = deact;
+    test::set_plain_window(act, deact);
     act.collected_phrase_ticks = {phrase_tick};
     REQUIRE(act.backends.empty());
     path.activations = {act};
@@ -1420,7 +1421,7 @@ TEST_CASE("drain box: empties in reads the stored end, not a recount") {
     Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
     Path path;
     Activation act = sp_act_at(song, 3840, /*sp_meter=*/2);
-    act.deact_tick = 3840 + 6 * 1920;
+    test::set_plain_window(act, 3840 + 6 * 1920);
     act.collected_phrase_ticks = {5760};
     path.activations = {act};
     PreviewScene scene = build_preview_scene(song, &path);
@@ -1839,7 +1840,7 @@ BusyChart make_busy_chart(std::mt19937& rng, int64_t measures) {
         if (!ts.activation_length || t < after) continue;
         if (gap(rng) != 0) continue;
         Activation a = sp_act_at(song, t, sp(rng));
-        a.skips = skips(rng);
+        test::set_skips(a, skips(rng));
         a.chord.add_note(NoteColor::Red);
         for (const SongTimestamp& p : song.sequence) {
             const int64_t pt = p.timecode.ticks();

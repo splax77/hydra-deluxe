@@ -22,6 +22,7 @@
 #include "parse/song.h"
 #include "search/pather.h"
 #include "record_bytes.h"
+#include "record_fixtures.h"
 #include "store/path_codec.h"
 #include "store/record_store.h"
 #include "store/serialize.h"
@@ -154,11 +155,11 @@ TEST_CASE("path codec: a node carries activations only, never totals") {
     changed.score_base += 1;
     changed.score_sp += 7;
     changed.notecount += 1;
-    changed.leftover_sp += 1;
+    test::set_leftover(changed, changed.leftover_sp + 1);
     CHECK(encode_path_node(changed) == encode_path_node(root));
 
     REQUIRE_FALSE(changed.activations.empty());
-    changed.activations.front().skips += 1;
+    test::set_skips(changed.activations.front(), changed.activations.front().skips + 1);
     CHECK(encode_path_node(changed) != encode_path_node(root));
 }
 
@@ -167,7 +168,7 @@ TEST_CASE("path codec: root totals ride in the structure, once per root") {
     const FlatRecord before = flatten_record(rec);
     rec.paths.front().score_base += 1;
     rec.paths.front().notecount += 2;
-    rec.paths.front().leftover_sp += 3;
+    test::set_leftover(rec.paths.front(), rec.paths.front().leftover_sp + 3);
     const FlatRecord after = flatten_record(rec);
 
     CHECK(after.structure != before.structure);
