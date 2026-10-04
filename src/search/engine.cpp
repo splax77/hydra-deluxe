@@ -193,6 +193,14 @@ struct Variant {
     int32_t tied_count;
     int64_t sp_end;
     int32_t end_tail;
+    // Folded while its last activation's SP was still running. From the fold
+    // on, the leader's closing of that window is the variant's own (D3).
+    bool open_sp;
+    // The chart tick of the node both paths stood on at the fold.
+    int64_t fold_tick;
+    // How many squeezes the leader's running window held at the fold. Any
+    // later ones happened after it, on both paths.
+    int32_t fold_sq_count;
 };
 struct Path {
     int32_t node;
@@ -357,10 +365,21 @@ private:
         ends_.push_back(EndNode{prev, tick, end, kind});
         return (int32_t)ends_.size() - 1;
     }
-    // The steps with every one at or after `tick` dropped: a squeeze-out
-    // gives its phrase back, and with it that phrase's step.
+    // A squeeze-out gives its phrase back, and with it every step at or after
+    // the squeezed-out chord. The one statement of that rule: trim_ends and
+    // close_folded_act both ask it.
+    static bool given_back(int64_t step_tick, int64_t sqout_tick) {
+        return step_tick >= sqout_tick;
+    }
+    // A SqIn's step is the step on the squeezed-in chord's tick. The one
+    // statement of that rule: relabel_sqin and close_folded_act both ask it.
+    static bool is_sqin_step(int64_t step_tick, int64_t sqin_tick) {
+        return step_tick == sqin_tick;
+    }
+    // The chain without the steps a squeeze-out at `tick` gives back.
     int32_t trim_ends(int32_t tail, int64_t tick) const {
-        while (tail >= 0 && ends_[(size_t)tail].tick >= tick) tail = ends_[(size_t)tail].prev;
+        while (tail >= 0 && given_back(ends_[(size_t)tail].tick, tick))
+            tail = ends_[(size_t)tail].prev;
         return tail;
     }
     // The chain with the step at `tick` relabelled SqIn. Nodes are shared
@@ -376,7 +395,7 @@ private:
             after.push_back(ends_[(size_t)t]);
             t = ends_[(size_t)t].prev;
         }
-        if (t < 0 || ends_[(size_t)t].tick != tick) return false;
+        if (t < 0 || !is_sqin_step(ends_[(size_t)t].tick, tick)) return false;
         const EndNode found = ends_[(size_t)t];
         int32_t out = push_end(found.prev, found.tick, found.end, SpEndKind::SqIn);
         for (size_t k = after.size(); k-- > 0;)
@@ -386,6 +405,11 @@ private:
     }
     int32_t act_count(const Path& p) const {
         return p.act_tail < 0 ? 0 : acts_[(size_t)p.act_tail].depth;
+    }
+    int32_t sq_count(int32_t sq_tail) const {
+        int32_t n = 0;
+        for (int32_t s = sq_tail; s >= 0; s = sqs_[(size_t)s].prev) ++n;
+        return n;
     }
 
     void advance(Path& p);
@@ -403,7 +427,8 @@ private:
     void reduce_group(const int32_t* members, int32_t n);
 
     void emit_path(const Path& p);
-    void emit_variant(int32_t v, int32_t depth);
+    void emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk);
+    void close_folded_act(int32_t own, int32_t lead, const Variant& var);
     void emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
                    int32_t* begin, int32_t* end);
     void emit_ends(int32_t tail, int32_t* begin, int32_t* end) {
@@ -803,6 +828,12 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
             v.tied_count = p.tied_count;
             v.sp_end = p.sp_end_time;
             v.end_tail = p.end_tail;
+            // Both paths stand on the same node. On an SP node the window is
+            // still open, and the leader will close it for both.
+            v.open_sp = p.node >= 0 && node(p.node).is_sp && leader.act_tail >= 0;
+            v.fold_tick = p.node >= 0 ? node(p.node).tick : NO_TIME;
+            v.fold_sq_count =
+                v.open_sp ? sq_count(acts_[(size_t)leader.act_tail].sq_tail) : 0;
             variants_.push_back(v);
             leader.var_head = (int32_t)variants_.size() - 1;
             leader.tied_count += p.tied_count;
@@ -1036,7 +1067,90 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
     }
 }
 
-void Engine::emit_variant(int32_t v, int32_t depth) {
+// D3: the variant was folded while its last activation's SP was running. From
+// the fold node on, both paths met the same notes with the same SP end, so the
+// leader's closing of that window is the variant's: its later SP end steps,
+// its deactivation and (D7) its closing squeeze. Before the fold the variant
+// keeps its own: activation, bank, skips, early-fill offset, squeezes, steps.
+// `own` and `lead` index out_acts_. `lead` is the same window on the path the
+// variant folded into, already closed.
+void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var) {
+    // Work on copies and write back once. Each entry is copied to a local
+    // before its push, because a push can reallocate the vector it reads.
+    const OutAct lead = out_acts_[(size_t)lead_i];
+    OutAct own = out_acts_[(size_t)own_i];
+
+    own.deact_edge = lead.deact_edge;
+    // Set only when the leader's SP outlasted the chart: the end it tracked.
+    own.final_sp_end = lead.final_sp_end;
+
+    const int32_t sq_begin = (int32_t)out_sqs_.size();
+    for (int32_t k = own.sq_begin; k < own.sq_end; ++k) {
+        const OutSq s = out_sqs_[(size_t)k];
+        out_sqs_.push_back(s);
+    }
+    for (int32_t k = lead.sq_begin + var.fold_sq_count; k < lead.sq_end; ++k) {
+        const OutSq s = out_sqs_[(size_t)k];
+        out_sqs_.push_back(s);
+    }
+    own.sq_begin = sq_begin;
+    own.sq_end = (int32_t)out_sqs_.size();
+
+    // A closing SqOut gives back its phrase and the steps given_back names,
+    // the trim create_deactivated_path makes (trim_ends). The deact edge's
+    // sqinout_time is the squeezed-out chord.
+    int64_t give_back = NO_TIME;
+    for (int32_t k = own.sq_begin; k < own.sq_end; ++k)
+        if (out_sqs_[(size_t)k].kind == SQ_OUT && own.deact_edge >= 0)
+            give_back = edge(own.deact_edge).sqinout_time;
+
+    // An early SqIn the leader took after the fold may sit on a phrase from
+    // before the fold. branch_deactivate relabels that step SqIn on the
+    // leader (relabel_sqin); the variant's own step there, if it has one,
+    // gets the same label. A variant that banked the phrase before activating
+    // has no step there and keeps its steps as they are, as relabel_sqin
+    // leaves a lone path's (the folded_sqin test chart). The n-th SqIn in the
+    // leader's list owns its n-th SqIn step, so the SqIns from the fold on
+    // own the leader's SqIn steps from that rank on.
+    int32_t sqins_before_fold = 0;
+    for (int32_t k = lead.sq_begin; k < lead.sq_begin + var.fold_sq_count; ++k)
+        if (out_sqs_[(size_t)k].kind == SQ_IN) ++sqins_before_fold;
+    std::vector<int64_t> relabel_at;
+    int32_t sqin_rank = 0;
+    for (int32_t k = lead.end_begin; k < lead.end_end; ++k) {
+        const SpEndStep& s = out_ends_[(size_t)k];
+        if (s.kind != SpEndKind::SqIn) continue;
+        if (sqin_rank++ >= sqins_before_fold && s.tick <= var.fold_tick)
+            relabel_at.push_back(s.tick);
+    }
+
+    const int32_t end_begin = (int32_t)out_ends_.size();
+    for (int32_t k = own.end_begin; k < own.end_end; ++k) {
+        SpEndStep s = out_ends_[(size_t)k];
+        if (s.tick > var.fold_tick)
+            throw std::logic_error("a folded variant holds a step past its fold");
+        if (give_back != NO_TIME && given_back(s.tick, give_back)) continue;
+        const auto sqin = std::find_if(relabel_at.begin(), relabel_at.end(),
+                                       [&s](int64_t t) { return is_sqin_step(s.tick, t); });
+        if (sqin != relabel_at.end()) {
+            if (s.kind != SpEndKind::Collected)
+                throw std::logic_error("a folded variant's SqIn phrase is not a collected step");
+            s.kind = SpEndKind::SqIn;
+            relabel_at.erase(sqin);
+        }
+        out_ends_.push_back(s);
+    }
+    for (int32_t k = lead.end_begin; k < lead.end_end; ++k) {
+        const SpEndStep s = out_ends_[(size_t)k];
+        if (s.tick > var.fold_tick) out_ends_.push_back(s);
+    }
+    own.end_begin = end_begin;
+    own.end_end = (int32_t)out_ends_.size();
+
+    out_acts_[(size_t)own_i] = own;
+}
+
+void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk) {
     std::vector<int32_t> order;
     for (int32_t i = v; i >= 0; i = variants_[(size_t)i].prev)
         order.push_back(i);
@@ -1050,9 +1164,24 @@ void Engine::emit_variant(int32_t v, int32_t depth) {
         op.var_point = var.var_point;
         op.depth = depth;
         emit_acts(var.act_tail, var.sp_end, var.end_tail, &op.act_begin, &op.act_end);
+        // At the fold the leader held var_point activations and its newest was
+        // the open one. In the leader's final walk that window, now closed,
+        // sits at var_point - 1.
+        if (var.open_sp) {
+            if (op.act_end <= op.act_begin || var.var_point < 1 ||
+                (size_t)var.var_point > parent_walk.size())
+                throw std::logic_error("a variant folded mid-SP has no window to close");
+            close_folded_act(op.act_end - 1, parent_walk[(size_t)var.var_point - 1], var);
+        }
         out_paths_.push_back(op);
 
-        emit_variant(var.var_head, depth + 1);
+        // This variant's activations as its own variants read them: its own,
+        // then its parent's from its var_point on (prepare_variants' order).
+        std::vector<int32_t> walk;
+        for (int32_t j = op.act_begin; j < op.act_end; ++j) walk.push_back(j);
+        for (size_t j = (size_t)op.var_point; j < parent_walk.size(); ++j)
+            walk.push_back(parent_walk[j]);
+        emit_variant(var.var_head, depth + 1, walk);
     }
 }
 
@@ -1071,7 +1200,9 @@ void Engine::emit_path(const Path& p) {
     emit_acts(p.act_tail, p.sp_end_time, p.end_tail, &op.act_begin, &op.act_end);
     out_paths_.push_back(op);
 
-    emit_variant(p.var_head, 1);
+    std::vector<int32_t> walk;
+    for (int32_t j = op.act_begin; j < op.act_end; ++j) walk.push_back(j);
+    emit_variant(p.var_head, 1, walk);
 }
 
 // --- BFS driver ----------------------------------------------------------
