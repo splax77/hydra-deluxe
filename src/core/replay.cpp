@@ -223,12 +223,11 @@ std::vector<ReplayWindow> windows_for_path(const Path& path) {
         ReplayWindow w;
         w.act_tick = act.timecode.ticks();
         w.deact_tick = *deact;
-        for (const SPSqueeze& sq : act.sqinouts)
-            if (sq.kind == SqueezeKind::SqOut) w.sqout_offset_ms = sq.offset();
-        // A squeeze-out with no stored chord tick is a record from before v6.
-        // It is skipped like one with no deact node: never guessed at.
-        if (w.sqout_offset_ms && !act.sqout_tick) continue;
-        w.sqout_tick = act.sqout_tick;
+        // The squeeze-out's one stored form: its row's tick and offset.
+        if (const BackendSqueeze* row = act.sqout_row()) {
+            w.sqout_tick = row->timecode.ticks();
+            w.sqout_offset_ms = row->offset_ms;
+        }
         out.push_back(w);
     }
     return out;

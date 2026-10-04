@@ -6,9 +6,13 @@
 #include "doctest.h"
 
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <optional>
+#include <regex>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "core/model.h"
@@ -560,4 +564,93 @@ TEST_CASE("MultSqueeze::applies answers exactly when the constructor accepts") {
             }
         }
     }
+}
+
+TEST_CASE("Activation: set_sqout stamps the tick, trims later rows, builds the SqOut from its row") {
+    Activation act;
+    const std::tuple<int64_t, double> rows[] = {{100, -40.0}, {200, -12.5}, {300, 30.0}};
+    for (const auto& [tick, off] : rows) {
+        BackendSqueeze b;
+        b.timecode = Timecode::raw(tick);
+        b.offset_ms = off;
+        act.backends.push_back(b);
+    }
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 7.0});
+
+    act.set_sqout(200);
+    CHECK(act.sqout_tick == std::optional<int64_t>(200));
+    REQUIRE(act.backends.size() == 2);  // the row past the squeezed-out chord is gone
+    REQUIRE(act.sqinouts.size() == 2);
+    CHECK(act.sqinouts[1].kind == SqueezeKind::SqOut);
+    CHECK(act.sqinouts[1].offset_ms == -12.5);  // read off the row, not typed twice
+    REQUIRE(act.sqout_row() != nullptr);
+    CHECK(act.sqout_row()->timecode.ticks() == 200);
+
+    Activation none;
+    CHECK(none.sqout_row() == nullptr);
+    CHECK_THROWS_AS(none.set_sqout(200), std::logic_error);  // no row on that tick
+}
+
+// The one-writer rule, checked: in src/ and tools/, only model.cpp (set_sqout)
+// writes Activation::sqout_tick. Tests may build odd shapes by hand. The
+// replay keeps its own windows (ReplayWindow, and replay.cpp's Window), which
+// have a field of the same name; those are always named w or win there.
+TEST_CASE("only set_sqout writes an activation's sqout_tick") {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
+    // An assignment, reset or emplace, with the object it's on (if any).
+    const std::regex write(
+        R"((?:(\w+)\s*(?:\.|->)\s*)?\bsqout_tick\s*(?:=(?!=)|\.\s*(?:reset|emplace)\s*\())");
+    std::smatch m;
+    // The pattern itself: writes are seen, reads are not.
+    CHECK(std::regex_search(std::string("    act.sqout_tick = 200;"), write));
+    CHECK(std::regex_search(std::string("a->sqout_tick.reset();"), write));
+    CHECK(std::regex_search(std::string("sqout_tick.emplace(5);"), write));
+    CHECK_FALSE(std::regex_search(std::string("if (act.sqout_tick == t)"), write));
+    CHECK_FALSE(std::regex_search(std::string("w.opt_i64(act.sqout_tick);"), write));
+    std::string probe = "        win.sqout_tick = w.sqout_tick;";
+    REQUIRE(std::regex_search(probe, m, write));
+    CHECK(m[1].str() == "win");
+    probe = "    const std::optional<int64_t> sqout_tick =";
+    REQUIRE(std::regex_search(probe, m, write));
+    CHECK(m[1].str().empty());  // a local: no object it's on
+
+    const auto replay_window_file = [](const std::string& rel) {
+        return rel == "src/core/replay.cpp" || rel == "tools/replay.cpp" ||
+               rel == "tools/replay_json.cpp";
+    };
+    std::vector<std::string> problems;
+    int files = 0, model_writes = 0;
+    for (const char* sub : {"src", "tools"}) {
+        for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
+            const fs::path ext = e.path().extension();
+            if (ext != ".cpp" && ext != ".h") continue;
+            ++files;
+            const std::string rel = fs::relative(e.path(), root).generic_u8string();
+            std::ifstream in(e.path());
+            std::string line;
+            int lineno = 0;
+            while (std::getline(in, line)) {
+                ++lineno;
+                const std::string code = line.substr(0, line.find("//"));
+                if (!std::regex_search(code, m, write)) continue;
+                if (rel == "src/core/model.cpp") {
+                    ++model_writes;
+                    continue;
+                }
+                const std::string on = m[1].str();
+                // A bare name is a local of the same name (engine.cpp has
+                // one) unless it's inside Activation, whose members live in
+                // model.cpp and model.h.
+                if (on.empty() && rel != "src/core/model.h") continue;
+                if (replay_window_file(rel) && (on == "w" || on == "win")) continue;
+                problems.push_back(rel + ":" + std::to_string(lineno) + ": " + line);
+            }
+        }
+    }
+    CHECK(files > 50);
+    CHECK(model_writes > 0);  // the scan does see the one writer
+    INFO(problems.size() << " problem lines; first: "
+                         << (problems.empty() ? std::string() : problems.front()));
+    CHECK(problems.empty());
 }

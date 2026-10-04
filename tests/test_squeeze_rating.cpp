@@ -530,10 +530,14 @@ TEST_CASE("rate_activation: each SqIn reads its own stored scale") {
     SPSqueeze second{SqueezeKind::SqIn, -400.0};
     second.transfer = TransferScale{0.6, 1.0};
     act.sqinouts = {first, second};
+    // Every scale is stored or none is read (D4), so the SP end's is stored
+    // too, flat.
+    act.transfer_post = TransferScale{1.0, 1.0};
     ActivationRating r = rate_activation(act, 85.0);
-    REQUIRE(r.scales.sqins.size() == 2);
-    CHECK(r.scales.sqins[0].early == 1.6);
-    CHECK(r.scales.sqins[1].early == 0.6);
+    REQUIRE(r.scales.has_value());
+    REQUIRE(r.scales->sqins.size() == 2);
+    CHECK(r.scales->sqins[0].early == 1.6);
+    CHECK(r.scales->sqins[1].early == 0.6);
     REQUIRE(r.note_effective_ms.size() == 2);
     REQUIRE(r.note_effective_ms[0].has_value());
     REQUIRE(r.note_effective_ms[1].has_value());
@@ -622,8 +626,9 @@ TEST_CASE("rate_activation: the stored scales are the only scales") {
     act.backends.push_back(row);
 
     ActivationRating r = rate_activation(act, 85.0);
-    CHECK(r.scales.post.late == doctest::Approx(0.5));
-    CHECK(r.scales.post.early == doctest::Approx(0.5));
+    REQUIRE(r.scales.has_value());
+    CHECK(r.scales->post.late == doctest::Approx(0.5));
+    CHECK(r.scales->post.early == doctest::Approx(0.5));
     CHECK(r.scale_governs);
 }
 
@@ -874,4 +879,23 @@ TEST_CASE("beyond_edge_ms: the last finite timing-tier cutoff") {
     for (const TimingTier& t : timing_tiers(85.0))
         if (t.cutoff) last = *t.cutoff;
     CHECK(beyond_edge_ms(85.0) == last);
+}
+
+TEST_CASE("rate_activation: an unknown scale rates nothing") {
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;
+    // transfer_post left unknown, as copy-out writes it when it can't compute.
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    BackendSqueeze row;
+    row.offset_ms = 40.0;
+    act.backends.push_back(row);
+
+    ActivationRating r = rate_activation(act, 85.0);
+    CHECK_FALSE(r.scales.has_value());
+    REQUIRE(r.backends.size() == 1);
+    CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
+    REQUIRE(r.note_effective_ms.size() == 1);
+    CHECK_FALSE(r.note_effective_ms[0].has_value());
+    CHECK_FALSE(r.scale_governs);
 }

@@ -203,11 +203,11 @@ ReplayScore score_of(const Path& path);
 
 // The Star Power windows a stored path describes: one per activation, with
 // its deactivation node read straight off the record (Activation::deact_tick,
-// stamped by the search) and the SqOut tick and offset copied across when the
-// activation ends on one. An activation with no stored deact node — only a
-// record written before blob v4 — is skipped, and so is a squeeze-out with no
-// stored sqout_tick (a record from before v6), so a path that yields fewer
-// windows than it has activations cannot be replayed faithfully.
+// stamped by the search) and, when the activation squeezed out, the SqOut
+// tick and offset read from Activation::sqout_row (the squeeze-out's one
+// stored form). An activation with no SP-end steps, which only a hand-built
+// one can be, is skipped, so a path that yields fewer windows than it has
+// activations cannot be replayed faithfully.
 // replay_stored_path below checks that before a score is trusted.
 std::vector<ReplayWindow> windows_for_path(const Path& path);
 

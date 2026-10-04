@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -1300,15 +1301,20 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                     act.backends.push_back(copy);
                 }
             }
+            // The SqIns go in here. A SqOut is always the last squeeze, and
+            // set_sqout below builds its entry from its row, so its offset is
+            // stored once. The search ranked the path by its own SqOut offset
+            // (the edge's sqinout_timing), so keep it to check against the row.
             bool took_sqout = false;
+            double searched_sqout_ms = 0.0;
             for (int k = oa.sq_begin; k < oa.sq_end; ++k) {
                 const OutSq& os = out_sqs[(size_t)k];
-                SPSqueeze sq;
-                sq.kind = (os.kind == SQ_IN) ? SqueezeKind::SqIn
-                                             : SqueezeKind::SqOut;
-                sq.offset_ms = os.offset;
-                if (os.kind == SQ_OUT) took_sqout = true;
-                act.sqinouts.push_back(sq);
+                if (os.kind == SQ_OUT) {
+                    took_sqout = true;
+                    searched_sqout_ms = os.offset;
+                    continue;
+                }
+                act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, os.offset});
             }
 
             // A squeezed-out note is hit after SP has already ended, and every
@@ -1316,22 +1322,24 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             // can be a backend squeeze -- there is no way to still be in SP
             // for it. The deact edge's backend list is shared by every path
             // that deactivates there, squeezing out or not, so the trim
-            // belongs here, per activation. This mirrors the is_after_sqout
-            // arm of create_deactivated_path, which already takes those notes
-            // back out of the score.
+            // belongs here, per activation (set_sqout does it). This mirrors
+            // the is_after_sqout arm of create_deactivated_path, which
+            // already takes those notes back out of the score.
             if (took_sqout && oa.deact_edge >= 0) {
                 const std::optional<Timecode>& sqout_at =
                     en.edges[(size_t)oa.deact_edge]->sqinout_time;
                 if (sqout_at.has_value()) {
-                    const int64_t sqout_tick = sqout_at->ticks();
-                    act.sqout_tick = sqout_tick;
-                    act.backends.erase(
-                        std::remove_if(
-                            act.backends.begin(), act.backends.end(),
-                            [sqout_tick](const BackendSqueeze& b) {
-                                return b.timecode.ticks() > sqout_tick;
-                            }),
-                        act.backends.end());
+                    act.set_sqout(sqout_at->ticks());
+                    // The record shows the row's offset; the search ranked by
+                    // its own. They must be the same number, or the record
+                    // would show a squeeze the search didn't rank.
+                    const double stored_ms = *act.sqout_row()->offset_ms;
+                    if (stored_ms != searched_sqout_ms)
+                        throw std::logic_error(
+                            "rebuild: the search's SqOut offset " +
+                            std::to_string(searched_sqout_ms) + " ms differs from its row's " +
+                            std::to_string(stored_ms) + " ms at tick " +
+                            std::to_string(sqout_at->ticks()));
                 }
             }
 
@@ -1344,7 +1352,10 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                                     out_ends.begin() + oa.end_end);
 
             // Stamp the frontend transfer scales through the one function
-            // that computes them, from the SP-end steps just stamped.
+            // that computes them, from the SP-end steps just stamped. When the
+            // scales can't be computed, every one stays unknown, never a
+            // silent x1.00 (D4). No fresh record reaches this: see 'no fresh
+            // record stores an unknown transfer scale'.
             if (auto scales = frontend_transfer_scales(act, timing)) {
                 act.transfer_post = scales->post;
                 size_t sqin = 0;

@@ -651,6 +651,29 @@ bool Activation::is_sqout_backend(const BackendSqueeze& bsq) const {
     return sqout_tick.has_value() && bsq.timecode.ticks() == *sqout_tick;
 }
 
+const BackendSqueeze* Activation::sqout_row() const {
+    if (!sqout_tick) return nullptr;
+    for (const BackendSqueeze& b : backends)
+        if (b.timecode.ticks() == *sqout_tick) return &b;
+    return nullptr;
+}
+
+void Activation::set_sqout(int64_t tick) {
+    backends.erase(std::remove_if(backends.begin(), backends.end(),
+                                  [tick](const BackendSqueeze& b) {
+                                      return b.timecode.ticks() > tick;
+                                  }),
+                   backends.end());
+    sqout_tick = tick;
+    const BackendSqueeze* row = sqout_row();
+    if (!row || !row->offset_ms) {
+        sqout_tick.reset();
+        throw std::logic_error("set_sqout: no backend row with an offset on tick " +
+                               std::to_string(tick));
+    }
+    sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, *row->offset_ms});
+}
+
 std::vector<BackendSqueeze> Activation::display_backends() const {
     // Nothing past a squeezed-out note can be a backend: the sqout note is hit
     // after SP has ended, and every later note is hit after that one. The

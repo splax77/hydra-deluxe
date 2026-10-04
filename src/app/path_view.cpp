@@ -246,33 +246,40 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             }
             return out;
         };
-        const std::string post_part = sides(rate.scales.post);
-        // Each SqIn's scale, when it prints differently from the SP end's.
-        // When every SqIn prints alike, one clause covers them: "the SqIn's
-        // SP end" for a single SqIn, "each SqIn's SP end" for two or more
-        // (D16). When they differ, each gets its own clause, numbered by its
-        // place among the SqIns (Q5).
-        std::vector<std::string> sqin_parts;
-        bool sqins_alike = true;
-        for (const TransferScale& s : rate.scales.sqins) {
-            sqin_parts.push_back(sides(s));
-            sqins_alike = sqins_alike && sqin_parts.back() == sqin_parts.front();
-        }
-        std::string clauses;
-        if (!post_part.empty()) clauses = post_part + " at the SP end";
-        for (size_t i = 0; i < sqin_parts.size(); ++i) {
-            const std::string& part = sqin_parts[i];
-            if (part.empty() || part == post_part) continue;
-            if (!clauses.empty()) clauses += "; ";
-            if (sqins_alike) {
-                clauses += part + (sqin_parts.size() > 1 ? " at each SqIn's SP end"
-                                                         : " at the SqIn's SP end");
-                break;
+        if (!rate.scales) {
+            // D4: a guard that shows a bug. A test proves fresh records never
+            // reach it.
+            av.scale_warning = "Transfer scale unknown.";
+            av.scale_warn = true;
+        } else {
+            const std::string post_part = sides(rate.scales->post);
+            // Each SqIn's scale, when it prints differently from the SP
+            // end's. When every SqIn prints alike, one clause covers them:
+            // "the SqIn's SP end" for a single SqIn, "each SqIn's SP end" for
+            // two or more (D16). When they differ, each gets its own clause,
+            // numbered by its place among the SqIns (Q5).
+            std::vector<std::string> sqin_parts;
+            bool sqins_alike = true;
+            for (const TransferScale& s : rate.scales->sqins) {
+                sqin_parts.push_back(sides(s));
+                sqins_alike = sqins_alike && sqin_parts.back() == sqin_parts.front();
             }
-            clauses += part + " at SqIn " + std::to_string(i + 1) + "'s SP end";
+            std::string clauses;
+            if (!post_part.empty()) clauses = post_part + " at the SP end";
+            for (size_t i = 0; i < sqin_parts.size(); ++i) {
+                const std::string& part = sqin_parts[i];
+                if (part.empty() || part == post_part) continue;
+                if (!clauses.empty()) clauses += "; ";
+                if (sqins_alike) {
+                    clauses += part + (sqin_parts.size() > 1 ? " at each SqIn's SP end"
+                                                             : " at the SqIn's SP end");
+                    break;
+                }
+                clauses += part + " at SqIn " + std::to_string(i + 1) + "'s SP end";
+            }
+            if (!clauses.empty()) av.scale_warning = "Frontend timing scales " + clauses + ".";
+            av.scale_warn = rate.scale_governs;
         }
-        if (!clauses.empty()) av.scale_warning = "Frontend timing scales " + clauses + ".";
-        av.scale_warn = rate.scale_governs;
 
         // When the SP window was cap-clamped and this activation lists a
         // squeeze the frontend decides, warn that the anchor is the

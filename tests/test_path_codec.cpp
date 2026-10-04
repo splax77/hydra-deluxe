@@ -489,3 +489,101 @@ TEST_CASE("path codec: a root keeps trailing_bank_ticks") {
     CHECK((back.paths.front().trailing_bank_ticks == std::vector<int64_t>{111, 222}));
     CHECK(back.paths.front().leftover_sp() == 2);
 }
+
+TEST_CASE("path codec: an unknown transfer scale stays unknown") {
+    Path p;
+    Activation unknown;
+    Activation flat;
+    flat.transfer_post = TransferScale{1.0, 1.0};
+    SPSqueeze s{SqueezeKind::SqIn, 5.0};
+    s.transfer = TransferScale{1.0, 1.0};
+    flat.sqinouts.push_back(s);
+    p.activations = {unknown, flat};
+    Path back = store::decode_path_node(store::encode_path_node(p));
+    CHECK_FALSE(back.activations[0].transfer_post.has_value());
+    REQUIRE(back.activations[1].transfer_post.has_value());
+    CHECK(back.activations[1].transfer_post->late == 1.0);
+    REQUIRE(back.activations[1].sqinouts[0].transfer.has_value());
+}
+
+TEST_CASE("path codec: a squeeze-out is stored once, as its tick") {
+    Activation act;
+    act.timecode = Timecode::raw(0);
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(3036);
+    row.offset_ms = -93.75;
+    row.points = 460;
+    row.sqout_points = 260;
+    act.backends.push_back(row);
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.5});
+
+    Activation plain = act;  // the same activation, not squeezed out
+    act.set_sqout(3036);
+
+    Path with, without;
+    with.activations.push_back(act);
+    without.activations.push_back(plain);
+    const std::vector<uint8_t> a = encode_path_node(with);
+    const std::vector<uint8_t> b = encode_path_node(without);
+    CHECK(a.size() - b.size() == 8);  // the tick, and no second copy of the offset
+
+    const Path back = decode_path_node(a);
+    const Activation& got = back.activations.front();
+    CHECK(got.sqout_tick == std::optional<int64_t>(3036));
+    REQUIRE(got.sqinouts.size() == 2);
+    CHECK(got.sqinouts[0].kind == SqueezeKind::SqIn);
+    CHECK(got.sqinouts[0].offset_ms == 12.5);
+    CHECK(got.sqinouts[1].kind == SqueezeKind::SqOut);
+    CHECK(got.sqinouts[1].offset_ms == -93.75);
+
+    // The writer refuses a squeeze-out it cannot store as one fact.
+    Activation no_tick = act;
+    no_tick.sqout_tick.reset();
+    Path p1;
+    p1.activations.push_back(no_tick);
+    CHECK_THROWS_AS(encode_path_node(p1), std::logic_error);
+    Activation drift = act;
+    drift.sqinouts.back().offset_ms = -90.0;
+    Path p2;
+    p2.activations.push_back(drift);
+    CHECK_THROWS_AS(encode_path_node(p2), std::logic_error);
+}
+
+// The writer refuses every squeeze-out shape the reader would refuse or
+// change, so a record it writes always reads back as written.
+TEST_CASE("path codec: the writer refuses a squeeze-out the reader can't read back") {
+    Activation act;
+    act.timecode = Timecode::raw(0);
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(3036);
+    row.offset_ms = -93.75;
+    act.backends.push_back(row);
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.5});
+
+    // A tick with no row on it and no SqOut entry. The reader would throw
+    // on that tick, so the writer must not store it. (Set by hand here:
+    // only set_sqout writes sqout_tick in src/.)
+    Activation stray = act;
+    stray.sqout_tick = 4000;
+    Path p1;
+    p1.activations.push_back(stray);
+    CHECK_THROWS_AS(encode_path_node(p1), std::logic_error);
+
+    // A SqOut that isn't the last squeeze. The reader always puts it last,
+    // so it would quietly move.
+    Activation middle = act;
+    middle.set_sqout(3036);
+    std::swap(middle.sqinouts[0], middle.sqinouts[1]);
+    REQUIRE(middle.sqinouts[0].kind == SqueezeKind::SqOut);
+    Path p2;
+    p2.activations.push_back(middle);
+    CHECK_THROWS_AS(encode_path_node(p2), std::logic_error);
+
+    // The well-formed one still writes and reads back.
+    Activation good = act;
+    good.set_sqout(3036);
+    Path p3;
+    p3.activations.push_back(good);
+    const Path back = decode_path_node(encode_path_node(p3));
+    CHECK(back.activations.front().sqout_tick == std::optional<int64_t>(3036));
+}

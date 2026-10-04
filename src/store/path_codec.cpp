@@ -99,6 +99,23 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint32_t seed,
 
 // ---- node and structure pieces (record format v7, docs/adr/0017) ------------
 
+// A transfer scale that may be unknown (D4): a presence byte, then the two
+// doubles only when present, the way opt_f64 writes one double.
+void write_opt_scale(BinaryWriter& w, const std::optional<TransferScale>& s) {
+    w.boolean(s.has_value());
+    if (!s) return;
+    w.f64(s->early);
+    w.f64(s->late);
+}
+
+std::optional<TransferScale> read_opt_scale(BinaryReader& r) {
+    if (!r.boolean()) return std::nullopt;
+    TransferScale s;
+    s.early = r.f64();
+    s.late = r.f64();
+    return s;
+}
+
 // One activation. The fields the search always sets carry no presence
 // byte; the three ticks that can be missing keep theirs.
 void write_activation(BinaryWriter& w, const Activation& act) {
@@ -118,20 +135,40 @@ void write_activation(BinaryWriter& w, const Activation& act) {
         w.opt_f64(b.offset_ms);
     }
 
-    w.u32(static_cast<uint32_t>(act.sqinouts.size()));
-    for (const SPSqueeze& sq : act.sqinouts) {
-        w.u8(sq.kind == SqueezeKind::SqIn ? 0 : 1);
-        w.f64(sq.offset_ms);
-        // A SqIn stores its own transfer scale; a SqOut has none.
+    // The squeeze-out is stored once: sqout_tick below, with its offset in
+    // its row. Refuse anything the reader would refuse or change: a SqOut
+    // entry whose row is missing or disagrees, a tick with no SqOut entry
+    // (with or without a row on it), or a SqOut that isn't the last squeeze
+    // (the reader always puts it last). So nothing is lost by not writing
+    // the entry.
+    const BackendSqueeze* sqout = act.sqout_row();
+    size_t nsqout = 0, nsqin = 0;
+    for (size_t i = 0; i < act.sqinouts.size(); ++i) {
+        const SPSqueeze& sq = act.sqinouts[i];
         if (sq.kind == SqueezeKind::SqIn) {
-            w.f64(sq.transfer.early);
-            w.f64(sq.transfer.late);
+            ++nsqin;
+            continue;
         }
+        ++nsqout;
+        if (i + 1 != act.sqinouts.size())
+            throw std::logic_error("write_activation: a SqOut that isn't the last squeeze");
+        if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)
+            throw std::logic_error("write_activation: squeeze-out stored twice and disagreeing");
+    }
+    if (nsqout > 1 || act.sqout_tick.has_value() != (nsqout == 1))
+        throw std::logic_error("write_activation: squeeze-out stored twice and disagreeing");
+
+    // The SqIns only, each with its offset and its own transfer scale behind
+    // a presence byte (unset means unknown, D4).
+    w.u32(static_cast<uint32_t>(nsqin));
+    for (const SPSqueeze& sq : act.sqinouts) {
+        if (sq.kind != SqueezeKind::SqIn) continue;
+        w.f64(sq.offset_ms);
+        write_opt_scale(w, sq.transfer);
     }
 
     w.f64(act.e_offset);
-    w.f64(act.transfer_post.early);
-    w.f64(act.transfer_post.late);
+    write_opt_scale(w, act.transfer_post);
     w.opt_i64(act.sqout_tick);
     // The SP-end history holds the deact node, the clamp note and the
     // collected phrases (Activation's accessors read them from it).
@@ -170,20 +207,22 @@ Activation read_activation(BinaryReader& r) {
     const uint32_t nsq = r.u32();
     act.sqinouts.reserve(nsq);
     for (uint32_t i = 0; i < nsq; ++i) {
-        const SqueezeKind kind = r.u8() == 0 ? SqueezeKind::SqIn : SqueezeKind::SqOut;
-        const double offset = r.f64();
-        SPSqueeze sq{kind, offset};
-        if (kind == SqueezeKind::SqIn) {
-            sq.transfer.early = r.f64();
-            sq.transfer.late = r.f64();
-        }
+        SPSqueeze sq{SqueezeKind::SqIn, r.f64()};
+        sq.transfer = read_opt_scale(r);
         act.sqinouts.push_back(sq);
     }
 
     act.e_offset = r.f64();
-    act.transfer_post.early = r.f64();
-    act.transfer_post.late = r.f64();
-    act.sqout_tick = r.opt_i64();
+    act.transfer_post = read_opt_scale(r);
+    // The squeeze-out comes back through its one writer, which rebuilds the
+    // SqOut entry from its row. A tick with no row is a malformed node.
+    if (const std::optional<int64_t> sqout = r.opt_i64()) {
+        try {
+            act.set_sqout(*sqout);
+        } catch (const std::logic_error& e) {
+            throw SerializeError(e.what());
+        }
+    }
     // The SP-end history (see write_activation).
     const uint32_t nsteps = r.u32();
     act.sp_end_steps.reserve(nsteps);

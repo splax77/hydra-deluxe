@@ -50,6 +50,7 @@ struct Config {
     DepthMode dmode;
     int dvalue;
     std::optional<double> ms;
+    bool legacy_fills = false;  // Clone Hero 1.0's fill deadline
 };
 
 // The config matrix the GUI/CLI expose: score depth, points depth, the ms
@@ -151,15 +152,13 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
                     d = "restored timecode";
                 // The transfer scales ride in the blob bit-exactly: the SP
                 // end's, and each SqIn's own.
-                else if (again.transfer_post.early != orig.transfer_post.early ||
-                         again.transfer_post.late != orig.transfer_post.late)
+                else if (again.transfer_post != orig.transfer_post)
                     d = "restored transfer scales";
                 else if (again.sqinouts.size() != orig.sqinouts.size())
                     d = "restored squeezes";
                 else
                     for (size_t k = 0; k < orig.sqinouts.size(); ++k)
-                        if (again.sqinouts[k].transfer.early != orig.sqinouts[k].transfer.early ||
-                            again.sqinouts[k].transfer.late != orig.sqinouts[k].transfer.late)
+                        if (again.sqinouts[k].transfer != orig.sqinouts[k].transfer)
                             d = "restored SqIn transfer scales";
             }
 
@@ -202,14 +201,19 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
 // written by this build, which stamps the scales with
 // frontend_transfer_scales at copy-out, and the store hands back every input
 // that function reads. This pins it through a real store round trip, for
-// every activation of every path, all-0 paths included.
+// every activation of every path, all-0 paths included. Uncapped (a cap no
+// chart reaches) and the 1.0 fill rule are in so D4's "no fresh record
+// stores unknown" is proven beyond cap 4.
 TEST_CASE("stored transfer scales equal a live recompute after a store round trip") {
     const std::vector<Config> configs = {
         {"cap4", 4, DepthMode::Scores, 4, std::nullopt},
         {"cap4.ms10", 4, DepthMode::Scores, 4, 10.0},
+        {"uncapped", 999, DepthMode::Scores, 4, std::nullopt},
+        {"cap4.fills10", 4, DepthMode::Scores, 4, std::nullopt, true},
     };
     RecordStore store(":memory:");
     int acts = 0, mismatches = 0;
+    std::vector<int> acts_per_config(configs.size(), 0);
 
     for (const std::string& path : corpus::chart_paths()) {
         Song song = load_songpath(path, true, true);
@@ -223,16 +227,19 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
                 settings.depth_mode = cfg.dmode;
                 settings.depth_value = cfg.dvalue;
                 settings.ms_filter = cfg.ms;
+                settings.legacy_fill_deadline = cfg.legacy_fills;
                 record = analyze_chart(song, settings);
             } catch (const ChartFileError&) {
                 continue;
             }
             const CapQuery cap = CapQuery::at(*record->sp_cap);
             const std::string hyhash = path + "|scales|" + cfg.key;
+            Lens lens;  // the store refuses a key whose fill rule isn't the record's
+            lens.legacy_fills = cfg.legacy_fills ? 1 : 0;
             store.add_song(hyhash, "Title", "Artist", "Charter", song);
-            store.add_record(RecordKey{hyhash, "mode", cap}, *record);
+            store.add_record(RecordKey{hyhash, "mode", cap, lens}, *record);
 
-            const RecordLookup lookup = store.get_record(RecordKey{hyhash, "mode", cap});
+            const RecordLookup lookup = store.get_record(RecordKey{hyhash, "mode", cap, lens});
             REQUIRE(lookup.status == RecordStatus::Ready);
             REQUIRE(lookup.timing.has_value());
 
@@ -241,18 +248,20 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
             for (const Path* p : all) {
                 for (const Activation& act : p->walk_activations()) {
                     ++acts;
+                    ++acts_per_config[static_cast<size_t>(&cfg - configs.data())];
+                    // D4: read back from the store, nothing is unknown.
+                    const std::string why = corpus::unknown_scale_reason(act);
+                    CHECK_MESSAGE(why.empty(), path << " [" << cfg.key << "] activation at tick "
+                                                    << act.timecode.ticks() << ": " << why);
                     const std::optional<ActTransferScales> live =
                         frontend_transfer_scales(act, *lookup.timing);
-                    bool same = live && live->post.early == act.transfer_post.early &&
-                                live->post.late == act.transfer_post.late;
+                    bool same = live && act.transfer_post == live->post;
                     // Each SqIn's stored scale is the j-th live one.
                     size_t j = 0;
                     for (const SPSqueeze& sq : act.sqinouts) {
                         if (!same) break;
                         if (sq.kind != SqueezeKind::SqIn) continue;
-                        same = j < live->sqins.size() &&
-                               live->sqins[j].early == sq.transfer.early &&
-                               live->sqins[j].late == sq.transfer.late;
+                        same = j < live->sqins.size() && sq.transfer == live->sqins[j];
                         ++j;
                     }
                     same = same && j == live->sqins.size();
@@ -266,6 +275,10 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
 
     CHECK(mismatches == 0);
     REQUIRE(acts > 0);
+    for (size_t i = 0; i < configs.size(); ++i) {
+        CAPTURE(configs[i].key);
+        CHECK(acts_per_config[i] > 0);  // every config really ran
+    }
     MESSAGE("compared " << acts << " stored activations with a live recompute");
 }
 

@@ -206,6 +206,11 @@ struct TransferScale {
     double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
     double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
                          //      backend squeezes
+    // Plain == on both doubles, no tolerance: a stored scale equals only the
+    // same values (not bit-exact: -0.0 equals 0.0 and NaN equals nothing;
+    // real scales are positive and finite, so that never arises).
+    bool operator==(const TransferScale& o) const { return early == o.early && late == o.late; }
+    bool operator!=(const TransferScale& o) const { return !(*this == o); }
 };
 
 // A SqIn (+) or SqOut (-): which way the note is squeezed across the SP end,
@@ -237,8 +242,11 @@ struct SPSqueeze {
     // A SqIn's frontend transfer scale: at squeeze_end_tick, measured from
     // squeeze_anchor_tick. Stamped by the search at copy-out through
     // frontend_transfer_scales and stored, so the details view never needs a
-    // SongTiming. A SqOut stores none: its row is rated at transfer_post.
-    TransferScale transfer;
+    // SongTiming. Unset means the search could not compute it, a bug guard
+    // like transfer_post's (D4). A SqOut's is always unset: that is not an
+    // unknown, because no reader asks a SqOut for one. Its row is rated at
+    // transfer_post.
+    std::optional<TransferScale> transfer;
 };
 
 struct BackendSqueeze {
@@ -397,8 +405,10 @@ struct Activation {
     // Computed by the search at copy-out and stored, so the details view
     // never needs a SongTiming. Display-only: difficulty and everything the
     // search, filter and report derive stay raw gap ms. Each SqIn stores the
-    // scale at its own end (SPSqueeze::transfer).
-    TransferScale transfer_post;
+    // scale at its own end (SPSqueeze::transfer). Unset means the search
+    // could not compute it. That is a bug guard, never an expected state
+    // (D4): a test proves no fresh record has it.
+    std::optional<TransferScale> transfer_post;
 
     std::string notationstr() const;
     std::string notationstr_verbose() const;
@@ -411,6 +421,18 @@ struct Activation {
     // Is this backend the note squeezed out of SP? Compares against the
     // sqout_tick the engine stored (record format v6), so no display re-derives it.
     bool is_sqout_backend(const BackendSqueeze& bsq) const;
+
+    // The squeezed-out chord's row, or nullptr when the activation did not
+    // squeeze out. The one way to ask "which row, and how far from the SP
+    // end": its offset_ms is the SqOut's offset.
+    const BackendSqueeze* sqout_row() const;
+
+    // Mark this activation as squeezing out the phrase chord at `tick`. The
+    // only writer of a squeeze-out: it stamps sqout_tick, drops every row
+    // past the chord (hit after SP ended), and appends the SqOut entry built
+    // from the chord's own row. Throws std::logic_error when no row with an
+    // offset sits on `tick`. The engine's copy-out and the codec call it.
+    void set_sqout(int64_t tick);
 
     // Backends worth keeping: those near the deactivation, plus whatever note
     // is being squeezed out of SP however far out it lands. The details view
