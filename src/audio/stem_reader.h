@@ -38,14 +38,22 @@ public:
     virtual ~StemReader() = default;
     virtual int channels() const = 0;
     virtual int sample_rate() const = 0;
+    // The number of frames the stem decodes to. A header that says 0 means
+    // "unknown" (RFC 9639 for FLAC), not empty, so the reader replaces it on
+    // open with a count from decoding the stem once; every other header keeps
+    // today's fast open.
     virtual int64_t length_frames() const = 0;
     // Reads up to `frames` frames into `out`; returns frames read (0 at the
     // end). Never throws: a decode error ends the stem early.
     virtual int64_t read(float* out, int64_t frames) = 0;
-    // Moves to `frame`, clamped to [0, length_frames()]. Never throws.
+    // Moves to `frame`, clamped to [0, length_frames()]. Never throws. A seek
+    // to a frame before a decode error plays again from there, even after the
+    // error has ended the stem once.
     virtual void seek(int64_t frame) = 0;
-    // True once a decode error has ended the stem early. decode_audio uses it
-    // to keep failing loudly on a damaged stream, as the old decoders did.
+    // True once any decode error has ended the stem early, and stays true for
+    // the reader's life, even after a seek plays the stem again. decode_audio
+    // uses it to keep failing loudly on a damaged stream, as the old decoders
+    // did.
     virtual bool failed() const { return false; }
 };
 

@@ -364,6 +364,22 @@ TEST_CASE("StreamMix: real fixtures mix and seek like the decoded mix") {
     }
 }
 
+// The FLAC fixture with its header length set to 0 ("unknown"); defined once,
+// in test_stem_reader.cpp.
+namespace hydra::audio_test {
+std::vector<uint8_t> flac_with_unknown_length();
+}
+
+TEST_CASE("StreamMix: a FLAC stem whose header says 0 plays for its real length") {
+    StreamMix plain = make_mix({fixture("sine220.flac")}, 0);
+    StreamMix zeroed = make_mix({hydra::audio_test::flac_with_unknown_length()}, 0);
+    CHECK(zeroed.length_frames() == plain.length_frames());
+    const std::vector<float> want = read_frames(plain, plain.length_frames());
+    const std::vector<float> got = read_frames(zeroed, plain.length_frames());
+    REQUIRE(got.size() == want.size());
+    CHECK(max_diff(got, want.data(), 0, got.size()) <= 1e-6);
+}
+
 TEST_CASE("StreamMix: a stem that stops early goes silent, the others keep playing") {
     const auto good = tone_wav(2, 48000, 1.0, 220);
     for (int bad_rate : {48000, 44100}) {
