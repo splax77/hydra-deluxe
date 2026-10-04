@@ -5,6 +5,8 @@
 
 #include "core/model.h"
 #include "imgui.h"
+#include "parse/song.h"    // display_title
+#include "search/graph.h"  // fill_rule_name
 #include "ui/app_state.h"
 #include "ui/fonts.h"
 #include "ui/library_parts.h"
@@ -95,10 +97,13 @@ void render_sp_cap(AppState& app, bool locked) {
     begin_disabled_checkbox(locked);
     if (ImGui::Checkbox("1.0 fills", &app.settings.legacy_fills)) app.commit_settings();
     end_disabled_checkbox(locked);
-    help_marker("Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only "
-                "appears if your Star Power was ready in time: 1.1 wants it 4 beats "
-                "before the fill, 1.0 about one fill-length before. For runs played on "
-                "1.0; current Clone Hero plays by 1.1.");
+    help_marker((std::string("Spawn drum fills by ") +
+                 fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
+                 "'s rule instead of 1.1's. A fill only appears if your Star Power was "
+                 "ready in time: 1.1 wants it 4 beats before the fill, 1.0 about one "
+                 "fill-length before. For runs played on 1.0; current Clone Hero plays "
+                 "by 1.1.")
+                    .c_str());
 }
 
 void render_score_range(AppState& app, bool locked) {
@@ -229,15 +234,20 @@ void render_settings_bar(AppState& app) {
     // The lock message is a fifth block, right-aligned on whichever line it
     // lands on.
     if (locked) {
-        const char* why = app.batch_running() ? "Stop the batch to change these."
-                                              : "Settings are locked while this song analyzes.";
-        const float w = ImGui::CalcTextSize(why).x;
+        // A single analysis names its song, which may not be the one on
+        // screen (D48, Q17).
+        const std::string why =
+            app.batch_running()
+                ? "Stop the batch to change these."
+                : "Settings are locked while " + display_title(app.analyze_job->song().title) +
+                      " analyzes.";
+        const float w = ImGui::CalcTextSize(why.c_str()).x;
         if (line_end + ImGui::GetStyle().ItemSpacing.x + w <= right_edge) ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         const float right = ImGui::GetContentRegionMax().x - w;
         if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
-        ImGui::TextUnformatted(why);
+        ImGui::TextUnformatted(why.c_str());
         ImGui::PopStyleColor();
     }
     ImGui::EndChild();

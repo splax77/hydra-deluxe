@@ -8,6 +8,7 @@
 #include "app/report_files.h"
 #include "app/user_messages.h"
 #include "core/winstr.h"
+#include "parse/song.h"  // display_title
 #include "ui/preview_controller.h"
 
 namespace hydra::ui {
@@ -83,8 +84,8 @@ void AppState::refresh_library_summaries() {
                                                settings.cap_query(), settings.lens()));
 }
 
-void AppState::refresh_library_row(const std::string& md5) {
-    library.set_summary_for(md5, store->get_summary(settings.record_key(md5)));
+bool AppState::refresh_library_row(const std::string& md5) {
+    return library.set_summary_for(md5, store->get_summary(settings.record_key(md5))) > 0;
 }
 
 void AppState::set_search(std::string text) {
@@ -116,7 +117,14 @@ void AppState::tick_library(double now) {
             (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds)) {
             batch_seen_completed_ = snap.completed;
             batch_refreshed_at_ = now;
+            // When the batch stored a result for the chart the panel is open
+            // on, that chart's row changes (its status, or the score and path
+            // a Redo found), and the panel shows the new result at once
+            // instead of after a click away (D48, Q16). The open chart's row
+            // is read first, so its change is seen before the whole library's.
+            const bool open_changed = selected && refresh_library_row(selected->md5);
             refresh_library_summaries();
+            if (open_changed) reread_viewed_record();
         }
     }
 }
@@ -210,6 +218,11 @@ void AppState::refresh_viewed_record() {
     viewed_key_ = std::move(key);
     record_generation.bump();
     refresh_viewed_summary();
+}
+
+void AppState::reread_viewed_record() {
+    parked_lookups_.clear();  // a record just changed
+    refresh_viewed_record();
 }
 
 void AppState::show_record_for_settings() {
@@ -322,7 +335,7 @@ void AppState::update_analyze_job(double now) {
     // A result or error for a song the panel isn't showing goes to the status
     // line; one for the shown song stays in the panel until Continue.
     const bool shown = analyze_job_shown();
-    const std::string title = job->song().title;
+    const std::string title = display_title(job->song().title);
     if (!job->ok()) {
         if (!shown) {
             // message() is T4's plain sentence; the raw error() stays in the
@@ -539,8 +552,7 @@ std::string AppState::store_finished_analysis() {
                              app::dynamics_entry_from_analysis(song.md5, result.song,
                                                                as.bass2x, as.difficulty,
                                                                as.prodrums));
-        parked_lookups_.clear();  // a record just changed
-        refresh_viewed_record();
+        reread_viewed_record();
         refresh_library_row(song.md5);  // its row's Best path cell and chip
         return "";
     } catch (const std::exception& e) {

@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "store/record_store.h"
 #include "ui/library_model.h"
 
@@ -88,6 +89,13 @@ TEST_CASE("library model: every chart shows, sorted by title, with its Best path
     CHECK(m.counts().not_analyzed == 4);
     CHECK(m.counts().stale == 1);
     CHECK(m.counts().analyzed == 1);
+}
+
+TEST_CASE("library model: a title made only of tags reads (unknown)") {
+    LibraryModel m;
+    m.set_charts({chart("tags", hydra::test::kTagOnlyTitle, "Artist", "Charter", "common")});
+    REQUIRE(m.rows().size() == 1);
+    CHECK(m.rows()[0].title == "(unknown)");
 }
 
 TEST_CASE("library model: status_label is the one source of the three status words") {
