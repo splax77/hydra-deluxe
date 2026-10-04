@@ -213,8 +213,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.number = static_cast<int>(view.acts.size()) + 1;
         av.notation = ntn;
         av.measure = meas;
-        av.sp_bars = act.sp_meter;
-        av.bars = bars_text(act.sp_meter);
+        av.sp_bars = act.sp_meter();
+        av.bars = bars_text(act.sp_meter());
         av.badge = activation_badge(act);
         av.chord = act.chord.rowstr();
         if (timing && song_length_ms && *song_length_ms > 0.0) {
@@ -351,9 +351,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
     // The line beside the heading: how many, and what is left.
     if (!view.acts.empty()) {
-        const std::string left = path.leftover_sp == 0
+        const std::string left = path.leftover_sp() == 0
                                      ? std::string("no SP left over")
-                                     : bars_text(path.leftover_sp) + " of SP left over";
+                                     : bars_text(path.leftover_sp()) + " of SP left over";
         view.summary = std::to_string(view.acts.size()) + kDot + left;
     }
     if (timing && song_length_ms && *song_length_ms > 0.0) {

@@ -196,9 +196,17 @@ inline void set_clamped_window(Activation& a, int64_t clamp_tick, int64_t end_ti
                       {clamp_tick, end_tick, SpEndKind::Clamped}};
 }
 
+// The bank an activation spends, for a test that needs only the count: one
+// arrival per bar on the ticks just before the activation. Only the count
+// (sp_meter()) matters to such a test.
+inline void set_bank(Activation& a, int bars) {
+    a.bank_rise_ticks.clear();
+    for (int k = bars; k > 0; --k) a.bank_rise_ticks.push_back(a.timecode.ticks() - k);
+}
+
 // The bars of SP an activation spends, for a test that needs only the count.
 inline void set_sp_meter(Activation& a, int bars) {
-    a.sp_meter = bars;
+    set_bank(a, bars);
 }
 
 // The fills an activation passed over before it, for a test that needs only
@@ -208,9 +216,12 @@ inline void set_skips(Activation& a, int skips) {
 }
 
 // The bars banked after a path's last window, for a test that needs only the
-// count.
+// count: one arrival per bar on placeholder ticks just after the path's last
+// activation. Only the count (leftover_sp()) matters to such a test.
 inline void set_leftover(Path& p, int bars) {
-    p.leftover_sp = bars;
+    const int64_t after = p.activations.empty() ? 0 : p.activations.back().timecode.ticks();
+    p.trailing_bank_ticks.clear();
+    for (int k = 1; k <= bars; ++k) p.trailing_bank_ticks.push_back(after + k);
 }
 
 // The stored transfer scales. `squeeze` is the scale the SqIn lines read,

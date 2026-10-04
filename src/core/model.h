@@ -310,12 +310,11 @@ struct SpEndStep {
 };
 
 struct Activation {
-    // The search sets these six on every activation it makes, so they are
+    // The search sets these on every activation it makes, so they are
     // plain values (record format v7, docs/adr/0017).
     int skips = 0;
     Timecode timecode;
     Chord chord;
-    int sp_meter = 0;
     int frontend_points = 0;
     std::vector<BackendSqueeze> backends;
     std::vector<SPSqueeze> sqinouts;
@@ -352,6 +351,9 @@ struct Activation {
     // later of the previous deact node and that phrase, when the player hits
     // it. Stamped by the search. sp_meter() is its size.
     std::vector<int64_t> bank_rise_ticks;
+
+    // Bars of SP this activation spends: one per stored arrival.
+    int sp_meter() const { return static_cast<int>(bank_rise_ticks.size()); }
 
     // Read from sp_end_steps; see each body in model.cpp.
     //   deact_tick()             - the deactivation node D: where this
@@ -471,10 +473,13 @@ private:
 struct Path {
     std::vector<Activation> activations;
     int notecount = 0;
-    int leftover_sp = 0;
-    // The same after the path's last window closed. leftover_sp() is its
-    // size. A variant copies its root's (prepare_variants).
+    // Where each bar banked after the path's last window closed arrived, in
+    // order, as Activation::bank_rise_ticks. leftover_sp() is its size. A
+    // variant copies its root's (prepare_variants).
     std::vector<int64_t> trailing_bank_ticks;
+
+    // Bars left after the last window: one per stored arrival.
+    int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
 
     int64_t score_base = 0;
     int64_t score_combo = 0;

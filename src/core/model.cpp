@@ -550,7 +550,6 @@ void Path::prepare_variants() {
         v.score_accents = score_accents;
         v.score_ghosts = score_ghosts;
         v.notecount = notecount;
-        v.leftover_sp = leftover_sp;
         v.trailing_bank_ticks = trailing_bank_ticks;
         v.prepare_variants();
     }

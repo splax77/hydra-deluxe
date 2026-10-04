@@ -99,13 +99,12 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint32_t seed,
 
 // ---- node and structure pieces (record format v7, docs/adr/0017) ------------
 
-// One activation. The six fields the search always sets carry no presence
+// One activation. The fields the search always sets carry no presence
 // byte; the three ticks that can be missing keep theirs.
 void write_activation(BinaryWriter& w, const Activation& act) {
     w.i32(act.skips);
     w.i64(act.timecode.ticks());
     w.str(act.chord.code());
-    w.i32(act.sp_meter);
     w.i32(act.frontend_points);
 
     // Only the rows the details view shows (display_backends). Backends are
@@ -150,7 +149,6 @@ Activation read_activation(BinaryReader& r) {
     act.skips = r.i32();
     act.timecode = Timecode::raw(r.i64());
     act.chord = Chord::from_code(r.str());
-    act.sp_meter = r.i32();
     act.frontend_points = r.i32();
 
     const uint32_t nbackends = r.u32();
@@ -210,8 +208,8 @@ void write_root_totals(BinaryWriter& w, const Path& p) {
     w.i64(p.score_accents);
     w.i64(p.score_ghosts);
     w.i32(p.notecount);
-    w.i32(p.leftover_sp);
-    // Where each bar left after the last window arrived.
+    // Where each bar left after the last window arrived (leftover_sp() is
+    // the count).
     w.u32(static_cast<uint32_t>(p.trailing_bank_ticks.size()));
     for (int64_t t : p.trailing_bank_ticks) w.i64(t);
 }
@@ -224,7 +222,6 @@ void read_root_totals(BinaryReader& r, Path& p) {
     p.score_accents = r.i64();
     p.score_ghosts = r.i64();
     p.notecount = r.i32();
-    p.leftover_sp = r.i32();
     const uint32_t ntrail = r.u32();
     p.trailing_bank_ticks.clear();
     p.trailing_bank_ticks.reserve(ntrail);

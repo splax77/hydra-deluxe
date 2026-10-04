@@ -272,7 +272,7 @@ TEST_CASE("activation_deact_tick: the stored node, read back") {
     // point of the change -- there is no measure-count fallback any more.
     Activation stale;
     stale.timecode = Timecode::raw(3840);
-    stale.sp_meter = 2;
+    test::set_sp_meter(stale, 2);
     CHECK(!activation_deact_tick(stale).has_value());
 
     // A bare, default-constructed activation: nullopt.

@@ -426,7 +426,7 @@ TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
     CHECK(act.timecode.ticks() == 2304);
 
     const int64_t end_tick = 5376;
@@ -477,7 +477,7 @@ TEST_CASE("SP past the last note: a mid-activation phrase extends the end") {
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
 
     const int64_t extended_tick = 6912;
     const int64_t plain_tick = 5376;
@@ -796,7 +796,7 @@ TEST_CASE("SP cap overfill: a mid-SP phrase that clamps records the "
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
     CHECK(act.timecode.ticks() == 2304);
 
     auto deact = activation_deact_tick(act);
@@ -828,7 +828,7 @@ TEST_CASE("SP cap overfill: a mid-SP phrase that only ties the cap does "
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
 
     auto deact = activation_deact_tick(act);
     REQUIRE(deact.has_value());
@@ -865,7 +865,7 @@ TEST_CASE("SP cap overfill: a later unclamped extension keeps the earlier "
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
 
     // The chart ends at 7500, before the SP end at 7680, so this is the same
     // "SP outlasts the chart" case as the tests above: the tail rows are
@@ -1113,7 +1113,7 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                     CHECK(act.refill_tick(k) <= st.tick);
                 }
                 CHECK(act.nominal_end() ==
-                      song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter)).ticks());
+                      song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter())).ticks());
                 // Appendix B's first guarantee: one SqIn step per SqIn, so
                 // a relabel that found nothing cannot pass silently.
                 size_t sqins = 0, sqin_steps = 0;
@@ -1181,9 +1181,9 @@ TEST_CASE("Bank: the lists match the stored counts on every corpus record") {
         for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
         for (const Path* p : all) {
             CAPTURE(chart);
-            CHECK(p->trailing_bank_ticks.size() == static_cast<size_t>(p->leftover_sp));
+            CHECK(p->trailing_bank_ticks.size() == static_cast<size_t>(p->leftover_sp()));
             for (const Activation& act : p->walk_activations())
-                CHECK(act.bank_rise_ticks.size() == static_cast<size_t>(act.sp_meter));
+                CHECK(act.bank_rise_ticks.size() == static_cast<size_t>(act.sp_meter()));
         }
     }
 }

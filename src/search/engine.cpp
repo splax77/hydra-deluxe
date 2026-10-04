@@ -160,7 +160,6 @@ struct Act {
     int32_t parent;
     int32_t act_node;
     int32_t skips;
-    int32_t sp_meter;
     int32_t deact_edge;
     int32_t sq_tail;
     int32_t depth;
@@ -227,13 +226,13 @@ struct Path {
 struct OutPath {
     int32_t score_base, score_combo, score_sp, score_solo, score_accents,
         score_ghosts;
-    int32_t notecount, leftover_sp;
+    int32_t notecount;
     int32_t var_point, depth, act_begin, act_end;
     // The bars banked after the last window: out_ticks_[bank_begin, bank_end).
     int32_t bank_begin, bank_end;
 };
 struct OutAct {
-    int32_t act_node, skips, sp_meter, deact_edge, sq_begin, sq_end;
+    int32_t act_node, skips, deact_edge, sq_begin, sq_end;
     double e_offset;
     // Only set (non-NO_TIME) on a path's last activation when it never
     // deactivated: the engine's tracked SP end, extensions included.
@@ -336,13 +335,11 @@ private:
     const EdgeView& edge(int32_t i) const { return en_.edge_views[(size_t)i]; }
     const ScoreGraphEdge* eobj(int32_t i) const { return en_.edges[(size_t)i]; }
 
-    int32_t new_act(int32_t parent, int32_t act_node, int32_t skips,
-                    int32_t sp_meter, double e_offset) {
+    int32_t new_act(int32_t parent, int32_t act_node, int32_t skips, double e_offset) {
         Act a;
         a.parent = parent;
         a.act_node = act_node;
         a.skips = skips;
-        a.sp_meter = sp_meter;
         a.deact_edge = -1;
         a.sq_tail = -1;
         a.depth = (parent < 0 ? 0 : acts_[(size_t)parent].depth) + 1;
@@ -622,7 +619,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
 
     close_last_activation(c);
 
-    c.act_tail = new_act(p.act_tail, p.node, p.currentskips, p.sp,
+    c.act_tail = new_act(p.act_tail, p.node, p.currentskips,
                          has_value(p.skipped_e_offset) ? p.skipped_e_offset
                                                        : e_offset);
     acts_[(size_t)c.act_tail].bank_tail = p.bank_tail;
@@ -1026,7 +1023,6 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
         OutAct oa;
         oa.act_node = a.act_node;
         oa.skips = a.skips;
-        oa.sp_meter = a.sp_meter;
         oa.deact_edge = a.deact_edge;
         oa.e_offset = a.e_offset;
         oa.sq_begin = (int32_t)out_sqs_.size();
@@ -1086,7 +1082,6 @@ void Engine::emit_path(const Path& p) {
     op.score_accents = p.sc[4];
     op.score_ghosts = p.sc[5];
     op.notecount = p.notecount;
-    op.leftover_sp = p.sp;
     op.var_point = -1;
     op.depth = 0;
     emit_ticks(banks_, p.bank_tail, &op.bank_begin, &op.bank_end);
@@ -1243,7 +1238,6 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
         path.score_accents = op.score_accents;
         path.score_ghosts = op.score_ghosts;
         path.notecount = op.notecount;
-        path.leftover_sp = op.leftover_sp;
         path.trailing_bank_ticks.assign(out_ticks.begin() + op.bank_begin,
                                         out_ticks.begin() + op.bank_end);
 
@@ -1257,7 +1251,6 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             // An activation node is a chart note, so it always carries the
             // chord hit there.
             act.chord = node->chord.value();
-            act.sp_meter = oa.sp_meter;
             act.bank_rise_ticks.assign(out_ticks.begin() + oa.bank_begin,
                                        out_ticks.begin() + oa.bank_end);
             act.frontend_points = node->branch_edge->frontend_points;

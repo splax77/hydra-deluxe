@@ -771,7 +771,7 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
                         "sp_meter %d  skips %d  backends %zu  sqinouts %zu\n",
                         k, (long long)act_tick,
                         (long long)act.deact_tick().value_or(-1),
-                        (long long)nominal, act.sp_meter,
+                        (long long)nominal, act.sp_meter(),
                         act.skips, act.backends.size(),
                         act.sqinouts.size());
                 }

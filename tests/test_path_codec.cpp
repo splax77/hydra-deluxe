@@ -134,7 +134,7 @@ TEST_CASE("path codec: a rebuilt record flattens to the same bytes") {
     for (size_t i = 0; i < want.size(); ++i) {
         CHECK(got[i]->totalscore() == want[i]->totalscore());
         CHECK(got[i]->notecount == want[i]->notecount);
-        CHECK(got[i]->leftover_sp == want[i]->leftover_sp);
+        CHECK(got[i]->leftover_sp() == want[i]->leftover_sp());
         CHECK(got[i]->tied_pathcount() == want[i]->tied_pathcount());
     }
 
@@ -156,7 +156,7 @@ TEST_CASE("path codec: a node carries activations only, never totals") {
     changed.score_base += 1;
     changed.score_sp += 7;
     changed.notecount += 1;
-    test::set_leftover(changed, changed.leftover_sp + 1);
+    test::set_leftover(changed, changed.leftover_sp() + 1);
     CHECK(encode_path_node(changed) == encode_path_node(root));
 
     REQUIRE_FALSE(changed.activations.empty());
@@ -169,7 +169,7 @@ TEST_CASE("path codec: root totals ride in the structure, once per root") {
     const FlatRecord before = flatten_record(rec);
     rec.paths.front().score_base += 1;
     rec.paths.front().notecount += 2;
-    test::set_leftover(rec.paths.front(), rec.paths.front().leftover_sp + 3);
+    test::set_leftover(rec.paths.front(), rec.paths.front().leftover_sp() + 3);
     const FlatRecord after = flatten_record(rec);
 
     CHECK(after.structure != before.structure);
@@ -180,7 +180,7 @@ TEST_CASE("path codec: root totals ride in the structure, once per root") {
     const HydraRecord back = rebuild_record(after);
     CHECK(back.paths.front().score_base == rec.paths.front().score_base);
     CHECK(back.paths.front().notecount == rec.paths.front().notecount);
-    CHECK(back.paths.front().leftover_sp == rec.paths.front().leftover_sp);
+    CHECK(back.paths.front().leftover_sp() == rec.paths.front().leftover_sp());
 }
 
 TEST_CASE("path codec: the multiplier squeezes are stored once per record") {
@@ -476,4 +476,5 @@ TEST_CASE("path codec: a root keeps trailing_bank_ticks") {
     rec.paths.front().trailing_bank_ticks = {111, 222};
     const HydraRecord back = rebuild_record(flatten_record(rec));
     CHECK((back.paths.front().trailing_bank_ticks == std::vector<int64_t>{111, 222}));
+    CHECK(back.paths.front().leftover_sp() == 2);
 }
