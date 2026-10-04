@@ -43,6 +43,7 @@ if (-not $SkipBuild) {
     & (Join-Path $repo "build_cpp.ps1") -Preset ship
 }
 $build = Get-PresetBuildDir $repo ship
+$config = Get-PresetBuildConfig $repo ship
 
 # 2. Version from the single source of truth in CMakeLists.txt.
 $cmakeLists = Get-Content (Join-Path $repo "CMakeLists.txt") -Raw
@@ -55,7 +56,7 @@ Write-Host "Hydra version: $version"
 $cmake = Find-CMake
 $stage = Join-Path $build "stage"
 if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
-& $cmake --install $build --config Release --prefix $stage
+& $cmake --install $build --config $config --prefix $stage
 if ($LASTEXITCODE -ne 0) { throw "cmake --install failed" }
 
 # Guard the invariant: no user data may ever ship.

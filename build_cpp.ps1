@@ -14,7 +14,8 @@ param(
     [switch]$Configure,
     [switch]$Package,
     [string]$Target = "",
-    [string]$Config = "Release",
+    # default: the build preset's configuration in CMakePresets.json (Release).
+    [string]$Config = "",
     # default: dev build in build-cpp. vs2022: the VS 2022 generator, in its
     # own folder. ship: the installer's build (no attached GUI tests).
     [ValidateSet("default", "vs2022", "ship")]
@@ -30,6 +31,7 @@ $cmake = Find-CMake
 Write-Host "Using cmake: $cmake"
 
 $buildDir = Get-PresetBuildDir $root $Preset
+if ($Config -eq "") { $Config = Get-PresetBuildConfig $root $Preset }
 
 # cmake reads CMakePresets.json from the current folder, so run it from the
 # script's own checkout; otherwise a call from another worktree builds that one.
