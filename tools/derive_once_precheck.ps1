@@ -283,9 +283,25 @@ function Get-Views([string]$Path, [string]$Rev = $tip) {
         Code       = $code.Split("`n")
         CodeText   = $code
         NcText     = $noComments
+        LineStarts = $null  # filled by Get-LineOf on first use
     }
     $script:LexCache[$key] = $v
     $v
+}
+# Which line (1-based) a character offset in a view's text is on. Every view
+# keeps the file's newlines where they were, so one list of line starts
+# serves them all; it is built once per view, on first use. This is the one
+# place the script turns an offset into a line.
+function Get-LineOf([object]$V, [int]$Offset) {
+    if ($null -eq $V.LineStarts) {
+        $starts = [System.Collections.Generic.List[int]]::new(); $starts.Add(0)
+        foreach ($m in [regex]::Matches($V.CodeText, "`n")) { $starts.Add($m.Index + 1) }
+        $V.LineStarts = $starts.ToArray()
+    }
+    # An exact hit is a line's first character; otherwise BinarySearch gives
+    # the complement of the next line's index, which is this line's number.
+    $i = [Array]::BinarySearch($V.LineStarts, $Offset)
+    if ($i -ge 0) { $i + 1 } else { -bnot $i }
 }
 
 # ------------------------------------------------------------------- output
@@ -396,8 +412,8 @@ function Get-TableElements([object]$V, [string]$Function) {
     foreach ($el in (Get-TopElements $V.CodeText $init[0] $init[1])) {
         $out.Add([pscustomobject]@{
             Fields = (Split-Fields $V.CodeText $el[0] $el[1])
-            Line = ($V.CodeText.Substring(0, $el[0]) -split "`n").Count
-            LastLine = ($V.CodeText.Substring(0, $el[1]) -split "`n").Count
+            Line = (Get-LineOf $V $el[0])
+            LastLine = (Get-LineOf $V $el[1])
         })
     }
     ,$out
@@ -436,8 +452,8 @@ function Get-RowStructs([object]$V, [object]$Fields, [int]$K) {
         foreach ($i in (Get-ListItems $V $Fields[$K])) {
             $out.Add([pscustomobject]@{
                 Strings = [string[]]@(foreach ($s in (Get-ListItems $V $i)) { Get-FieldText $V $s })
-                Line = ($V.CodeText.Substring(0, $i[0]) -split "`n").Count
-                LastLine = ($V.CodeText.Substring(0, $i[1]) -split "`n").Count
+                Line = (Get-LineOf $V $i[0])
+                LastLine = (Get-LineOf $V $i[1])
             })
         }
     }
@@ -661,11 +677,6 @@ function Get-Definitions([string]$Path) {
             $stack.RemoveAt($stack.Count - 1)
         }
     }
-    $lineStarts = [System.Collections.Generic.List[int]]::new(); $lineStarts.Add(0)
-    for ($i = 0; $i -lt $code.Length; $i++) { if ($code[$i] -eq "`n") { $lineStarts.Add($i + 1) } }
-    $lineOf = { param($off) $lo = 0; $hi = $lineStarts.Count - 1
-        while ($lo -lt $hi) { $mid = [int][Math]::Floor(($lo + $hi + 1) / 2); if ($lineStarts[$mid] -le $off) { $lo = $mid } else { $hi = $mid - 1 } }
-        $lo + 1 }
     $defs = [System.Collections.Generic.List[object]]::new()
     $add = {
         param($m, $isLambda)
@@ -677,8 +688,8 @@ function Get-Definitions([string]$Path) {
         if (-not $isLambda -and ($m.Groups['pre'].Value -match '\b(return|else|new|delete|throw|case|do|goto|co_return)\b')) { return }
         $end = $close[$open]
         $norm = Get-Normalised ($m.Groups['params'].Value + ' ' + $code.Substring($open, $end - $open + 1))
-        $first = & $lineOf ($m.Index + ($m.Value.Length - $m.Value.TrimStart().Length))
-        $last = & $lineOf $end
+        $first = Get-LineOf $v ($m.Index + ($m.Value.Length - $m.Value.TrimStart().Length))
+        $last = Get-LineOf $v $end
         $defs.Add([pscustomobject]@{
             File = $Path; Name = $name; Line = $first; LastLine = $last; Key = $norm.Key; Tokens = $norm.Tokens
             Lambda = $isLambda
