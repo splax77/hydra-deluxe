@@ -29,7 +29,10 @@ struct Rules {
     // (decision D29, 2026-10-03).
     double backend_leeway_ms = 3.0;
     SqOutRule sqout_rule = SqOutRule::FirstNote;
-    // Tied paths the engine folds into one leader before it drops the rest.
+    // How many paths the engine keeps at one score: one count per score,
+    // whichever side of the Path limit each path falls on (D51 call 1). A path
+    // inside the limit leads when one exists; the ones over it come after, so
+    // they are the ones dropped once the count is reached.
     int max_tied_paths = 4;
     // Generated fills (Song::check_activations): the fewest measures between
     // two fills, how far from a downbeat the chosen chord may sit, and the
