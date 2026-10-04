@@ -350,6 +350,15 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     CHECK(effective_backend_ms(gap, r) ==
           doctest::Approx(2.0 * gap / (1.0 + r)).epsilon(1e-12));  // ~147.9
     CHECK(effective_backend_ms(gap, r) == doctest::Approx(147.94).epsilon(1e-3));
+    // The factor of two is the identity budget over the budget at this
+    // scale; the window cancels, so any window gives the same figure.
+    CHECK(effective_backend_ms(gap, r) ==
+          doctest::Approx(gap * squeeze_budget_ms(1.0, kDefaultHitWindowMs) /
+                          squeeze_budget_ms(r, kDefaultHitWindowMs))
+              .epsilon(1e-12));
+    CHECK(effective_backend_ms(gap, r) ==
+          doctest::Approx(gap * squeeze_budget_ms(1.0, 70.0) / squeeze_budget_ms(r, 70.0))
+              .epsilon(1e-12));
     CHECK(gap / (1.0 + r) == doctest::Approx(73.96).epsilon(1e-3));
     CHECK(74.1 * r + 75.1 > gap);         // the video's successful split
     CHECK(74.1 * 0.890911 + 75.1 < gap);  // the old scale called it a miss
@@ -681,6 +690,37 @@ TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
     }
     CHECK_FALSE(t70[5].cutoff.has_value());
     CHECK_FALSE(t70[6].cutoff.has_value());
+}
+
+TEST_CASE("timing_tiers: the Insane+ cutoff is the identity squeeze budget") {
+    // The ladder's top cutoff is the two-hit budget itself, read from its
+    // one owner, not twice the window written again.
+    std::vector<TimingTier> t85 = timing_tiers(kDefaultHitWindowMs);
+    REQUIRE(t85.size() == 7);
+    CHECK(std::string(t85[4].name) == "Insane+");
+    REQUIRE(t85[4].cutoff.has_value());
+    CHECK(*t85[4].cutoff == squeeze_budget_ms(1.0, kDefaultHitWindowMs));
+    CHECK(*t85[4].cutoff == 170.0);
+
+    std::vector<TimingTier> t70 = timing_tiers(70.0);
+    REQUIRE(t70.size() == 7);
+    REQUIRE(t70[4].cutoff.has_value());
+    CHECK(*t70[4].cutoff == squeeze_budget_ms(1.0, 70.0));
+
+    // Beyond and None still carry no cutoff.
+    CHECK_FALSE(t85[5].cutoff.has_value());
+    CHECK_FALSE(t85[6].cutoff.has_value());
+    CHECK_FALSE(t70[5].cutoff.has_value());
+    CHECK_FALSE(t70[6].cutoff.has_value());
+}
+
+TEST_CASE("effective_backend_ms: the factor of two is the identity budget over the scaled budget") {
+    // At the identity scale the figure is the raw gap: the budget there is
+    // 170.0 ms at the default window, the same as the nominal scale.
+    CHECK(squeeze_budget_ms(1.0, kDefaultHitWindowMs) == 170.0);
+    CHECK(effective_backend_ms(170.0, 1.0) == 170.0);
+    // A scaled row is pinned against the owner in the Dumpweed field
+    // fixture above, at the scale that fixture computes.
 }
 
 TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search graph collects") {
