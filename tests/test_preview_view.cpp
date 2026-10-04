@@ -681,7 +681,9 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
         !std::equal(a.score.steps.begin(), a.score.steps.end(), b.score.steps.begin(),
                     b.score.steps.end(), [](const PreviewScoreStep& x, const PreviewScoreStep& y) {
                         return x.ms == y.ms && x.total == y.total &&
-                               x.multiplier == y.multiplier && x.combo == y.combo;
+                               x.multiplier == y.multiplier &&
+                               x.multiplier_plain == y.multiplier_plain &&
+                               x.combo == y.combo;
                     }))
         return "score";
     if (a.timing.has_value() != b.timing.has_value()) return "timing (presence)";
@@ -1287,8 +1289,18 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
     // Each step carries exactly what the replay says the disc shows.
     const ReplayResult r = replay_stored_path(song, path).result;
     REQUIRE(r.chords.size() == scene.score.steps.size());
-    for (size_t i = 0; i < r.chords.size(); ++i)
+    for (size_t i = 0; i < r.chords.size(); ++i) {
         CHECK(scene.score.steps[i].multiplier == r.chords[i].multiplier_shown);
+        // And the plain disc, which the box shows once SP has ended.
+        CHECK(scene.score.steps[i].multiplier_plain == r.chords[i].multiplier_after);
+    }
+
+    // The SP end itself: the chord on it (6500 ms) was paid doubled, but from
+    // this instant on the box is plain. A hair earlier it is still doubled.
+    CHECK(build_score_box(scene, 6499.0).detail == "x4 " + kDot + " combo 13");
+    CHECK(build_score_box(scene, 6500.0).detail == "x2 " + kDot + " combo 14");
+    CHECK(build_score_box(scene, scene.activations[0].sp_end_ms).detail ==
+          "x2 " + kDot + " combo 14");
 
     // 2000 ms: five notes hit, before the activation.
     CHECK(build_score_box(scene, 2000.0).detail == "x1 " + kDot + " combo 5");
@@ -1300,6 +1312,53 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
     CHECK(build_score_box(scene, 6600.0).detail == "x2 " + kDot + " combo 14");
     // 7000 ms: the first chord Star Power doesn't pay: the plain x2 of combo 15.
     CHECK(build_score_box(scene, 7000.0).detail == "x2 " + kDot + " combo 15");
+}
+
+// User decision D11 (docs/audit/2026-10-03-fix-decisions.md): a chord just past
+// the SP end that Hydra's leeway still pays doubled is paid doubled in the
+// score, but the box reads plain from the SP end on.
+TEST_CASE("score box: a leeway chord past the SP end is paid doubled, the box stays plain") {
+    // Same song as above, plus one extra chord 1 tick (about 1 ms) after the
+    // SP end at tick 6240, inside the 3 ms leeway.
+    Song song = make_sp_song({1920}, 9600);
+    const int64_t leeway_tick = 6241;
+    const auto at = std::find_if(song.sequence.begin(), song.sequence.end(),
+                                 [&](const SongTimestamp& ts) {
+                                     return ts.timecode.ticks() > 6240;
+                                 });
+    REQUIRE(at != song.sequence.end());
+    SongTimestamp extra;
+    extra.timecode = song.timecode(leeway_tick);
+    extra.chord.add_note(NoteColor::Red);
+    song.sequence.insert(at, std::move(extra));
+
+    Path path = priced_path(song, {sp_act_at(song, 2400, 1)});
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.score.state == PreviewScore::State::Ready);
+    REQUIRE(scene.activations.size() == 1);
+    const double sp_end = scene.activations[0].sp_end_ms;
+    CHECK(sp_end == doctest::Approx(6500.0));
+
+    const ReplayResult r = replay_stored_path(song, path).result;
+    REQUIRE(r.chords.size() == scene.score.steps.size());
+    size_t idx = r.chords.size();
+    for (size_t i = 0; i < r.chords.size(); ++i)
+        if (r.chords[i].tick == leeway_tick) idx = i;
+    REQUIRE(idx < r.chords.size());
+    const ReplayChord& leeway = r.chords[idx];
+
+    // The replay paid it doubled, a hair after the SP end.
+    CHECK(leeway.ms > sp_end);
+    CHECK(leeway.ms - sp_end < core::default_rules().backend_leeway_ms);
+    CHECK(leeway.in_sp);
+    CHECK(leeway.multiplier_shown == leeway.multiplier_after * kStarPowerMultiplier);
+    CHECK(scene.score.steps[idx].multiplier == leeway.multiplier_shown);
+    CHECK(scene.score.steps[idx].multiplier_plain == leeway.multiplier_after);
+
+    // The box, at its own instant, reads plain.
+    const PreviewScoreBox box = build_score_box(scene, leeway.ms);
+    CHECK(box.detail == "x" + std::to_string(leeway.multiplier_after) + " " + kDot +
+                            " combo " + std::to_string(leeway.combo_after));
 }
 
 TEST_CASE("score box: a path the replay can't reproduce says so") {
