@@ -79,7 +79,19 @@ The ordering rule is one writer per file per wave across both phases, and an idl
 - **After M7-1:** phase 6 folds the wave 1 files: `tools/ch_probe`, the audio readers, preview_source, scoring, config/strutil/rules_file, and tools/replay and bench.
 - **Before wave 4:** all of phase 6 lands, so ER rebases onto the folds once.
 
-The phase 6 planner promised its full per-task file list. If it arrives in a later session, check it against the plan's tables.
+Phase 6's plan is committed as `docs/superpowers/plans/2026-10-04-phase-6.md`. The user hasn't approved it yet. Its appendix, "Files per wave for phase 7", lists every file each phase 6 wave owns. Its waves map onto phase 7's like this:
+- J1 runs alongside wave 1.
+- J2 runs after M_D and M7-1, alongside wave 2. Phase 7's wave 3 forks after M6-J2.
+- J3 runs after M7-2, alongside wave 3.
+- J4 runs after M7-3, before ER.
+
+The appendix was checked against the nine briefs and this plan. Four collisions came out of that check. I proposed the fixes below to the phase 6 planner, and its yes on the first three hadn't arrived when this was written. Check for its reply before launching T1, AU1 or SE2:
+1. **`tests/test_replay.cpp`** is edited by both J1-1 and T1. T1 forks from J1-1's commit, as well as from SE1's.
+2. **`tests/test_stream_mix.cpp`** is edited by both J1-4 and AU1. AU1 forks from J1-4's commit.
+3. **`tests/test_app_state.cpp`** is edited by both J2-4 and SE2. SE2 forks from J2-4's commit. ST2 stays out of `tests/test_cli.cpp`, which is J2-3's; if it can't, it forks from J2-3's commit.
+4. **Finding 88's flag.** The "has a scored best path" flag set in `summarize_record` moves from wave 3 into ST2, in wave 2, because phase 6's J3-6 owns `record_store.cpp` during wave 3. The plan's ST2 row includes it.
+
+Phase 7's wave 2 tasks add no new test files, because J2-1 owns `CMakeLists.txt`. Decision numbers: D52 went to phase 3, so take the next free number when the user answers anything.
 
 ## How to run it (the user's global rules)
 
@@ -93,7 +105,7 @@ The phase 6 planner promised its full per-task file list. If it arrives in a lat
 ### Wave by wave
 
 - **Wave 1** (E1, E2, ST1, SE1, AU1, PS1, PR1 from 81a2519, or main's head if only docs moved):
-  - First, put the three user questions above to the user in one message. E1, AU1, PS1 and PR1 don't depend on them, so they can launch while the user answers. ST1, SE1 and E2 launch once their question is answered; write each answer into its brief and into D51 as an addendum.
+  - First, put the three user questions above to the user in one message. E1, PS1 and PR1 don't depend on them, so they can launch while the user answers. AU1 doesn't either, but it waits for phase 6's J1-4 commit; see collision 2 above. ST1, SE1 and E2 launch once their question is answered; write each answer into its brief and into D51 as an addendum.
   - Otherwise, launch them together in one Workflow.
   - T1 forks from SE1's first commit, and PR2 from PR1's; launch each as soon as that commit exists.
   - Cold builds go through phase 3's slot helper, which the preamble names, so at most three run at once across both phases.
