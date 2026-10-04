@@ -80,7 +80,7 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
     for (ImGuiTest* t : tests) {
         if (std::strcmp(t->Name, "script") == 0) continue;
         for (const std::string& w : wanted) {
-            if (w == "all" || w == t->Name) {
+            if (uitest::selects(w, t->Name)) {
                 Child c;
                 c.name = t->Name;
                 c.log = h.temp_dir + "\\" + c.name + ".log";
@@ -90,8 +90,8 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
         }
     }
     for (const std::string& w : wanted) {
-        bool found = w == "all";
-        for (const Child& c : children) found = found || c.name == w;
+        bool found = false;
+        for (const Child& c : children) found = found || uitest::selects(w, c.name.c_str());
         if (!found) {
             std::fprintf(stderr,
                          "hydra_uitest: no test \"%s\" (--jobs runs named tests, not scripts)\n",

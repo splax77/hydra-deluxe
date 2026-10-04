@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -151,6 +152,13 @@ TEST_CASE("app_shell: the [Hydra][Layout] text round-trips and refuses junk") {
     CHECK_FALSE(layout.library_hidden);
 }
 
+TEST_CASE("app_shell: share_is_valid takes only the open interval") {
+    CHECK_FALSE(hydra::ui::share_is_valid(0.0f));
+    CHECK_FALSE(hydra::ui::share_is_valid(1.0f));
+    CHECK(hydra::ui::share_is_valid(0.5f));
+    CHECK_FALSE(hydra::ui::share_is_valid(std::numeric_limits<float>::quiet_NaN()));
+}
+
 TEST_CASE("app_shell: hydra_ui.ini remembers the library split, not the child's own width") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "hydra_app_shell_split_test";
@@ -184,11 +192,11 @@ TEST_CASE("app_shell: hydra_ui.ini remembers the library split, not the child's 
 
 TEST_CASE("app_shell: set_ui_scale rescales sizes, fonts and px() together") {
     hydra::ui::setup_imgui(test_options("-"));
-    const float before = ImGui::GetStyle().FramePadding.x;
+    const ImGuiStyle base = ImGui::GetStyle();
+    const float before = base.FramePadding.x;
 
     hydra::ui::set_ui_scale(2.0f);
-    CHECK(ImGui::GetStyle().FramePadding.x ==
-          static_cast<float>(static_cast<int>(before * 2.0f)));
+    CHECK(ImGui::GetStyle().FramePadding.x == hydra::ui::scaled_style(base, 2.0f).FramePadding.x);
     CHECK(ImGui::GetStyle().FontScaleDpi == doctest::Approx(2.0f));
     CHECK(hydra::ui::g_ui_scale == doctest::Approx(2.0f));
     CHECK(hydra::ui::px(10.0f) == doctest::Approx(20.0f));
