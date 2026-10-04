@@ -197,6 +197,11 @@ TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole b
     CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(buf), kSrbHeaderSize,
                                                  1 << 20, nullptr),
                       "SRB stream exceeds size limit.");
+    // A short read ends the source, even when later reads would be whole.
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(
+                          testbytes::short_first_read(memory_byte_source(buf), 32768),
+                          kSrbHeaderSize, kSrbMaxStream, nullptr),
+                      "SRB stream is truncated.");
     std::vector<uint8_t> junk = buf;
     for (size_t i = kSrbHeaderSize; i < kSrbHeaderSize + 64; ++i) junk[i] = 0xFF;
     CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(junk), kSrbHeaderSize,

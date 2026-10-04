@@ -182,16 +182,10 @@ uint64_t file_size_bytes(const std::string& utf8_path) {
     return *size;
 }
 
-namespace {
-
-// How many of `length` bytes from `offset` a source of `size` bytes holds:
-// fewer where it ends, none at or past its end.
 size_t range_length(uint64_t size, uint64_t offset, size_t length) {
     const uint64_t available = offset < size ? size - offset : 0;
     return static_cast<size_t>(std::min<uint64_t>(length, available));
 }
-
-}  // namespace
 
 ByteSource file_byte_source(const std::string& utf8_path) {
     // Shared for reading and writing, as _wfopen's "rb" shares, so a file

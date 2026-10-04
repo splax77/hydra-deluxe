@@ -110,6 +110,11 @@ struct ByteSource {
 // Every byte of the source, from its start to where a read stops.
 std::vector<uint8_t> read_all(const ByteSource& src);
 
+// How many of `length` bytes from `offset` something of `size` bytes holds:
+// fewer where it ends, none at or past its end. Both sources answer by it,
+// and so does the .srb inflater's whole-buffer input.
+size_t range_length(uint64_t size, uint64_t offset, size_t length);
+
 // The file, opened once and held open while the source (or a copy of it)
 // lives, read at any offset (past 4 GB included). Shared for reading and
 // writing, as a C "rb" open is. Throws std::runtime_error when the open fails

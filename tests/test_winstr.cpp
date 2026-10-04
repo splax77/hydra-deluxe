@@ -201,7 +201,8 @@ TEST_CASE("file_byte_source reads at an offset past 4 GB") {
 }
 
 TEST_CASE("next_piece_read doubles and never wraps") {
-    CHECK(hydra::next_piece_read(hydra::kFirstPieceRead) == 2 * hydra::kFirstPieceRead);
+    CHECK(hydra::kFirstPieceRead == 65536);  // ADR 0024
+    CHECK(hydra::next_piece_read(65536) == 131072);
     CHECK(hydra::next_piece_read(SIZE_MAX / 2 + 1) == SIZE_MAX);
 }
 

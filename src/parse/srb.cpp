@@ -87,8 +87,7 @@ std::vector<uint8_t> srb_inflate_stream(const uint8_t* data, size_t size,
                                         size_t* end_offset) {
     size_t pos = offset;
     const NextInput next = [&]() -> std::pair<const uint8_t*, size_t> {
-        if (pos >= size) return {nullptr, 0};
-        const size_t n = std::min(size - pos, kMaxPiece);
+        const size_t n = range_length(size, pos, kMaxPiece);
         pos += n;
         return {data + pos - n, n};
     };
@@ -103,8 +102,12 @@ std::vector<uint8_t> srb_inflate_stream_reading(const ByteSource& src, uint64_t 
     std::vector<uint8_t> piece;
     uint64_t pos = offset;
     size_t ask = kFirstPieceRead;
+    bool ended = false;  // a read came back short: the source ends there
     const NextInput next = [&]() -> std::pair<const uint8_t*, size_t> {
-        piece = src.read(pos, std::min(ask, kMaxPiece));
+        if (ended) return {nullptr, 0};
+        const size_t asked = std::min(ask, kMaxPiece);
+        piece = src.read(pos, asked);
+        ended = piece.size() < asked;
         pos += piece.size();
         ask = next_piece_read(ask);
         return {piece.data(), piece.size()};

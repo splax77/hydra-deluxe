@@ -238,6 +238,10 @@ TEST_CASE("sng: a source shorter than its stated size ends the header read") {
     CHECK(sng_read_head(shrunk) == cut);
     CHECK_THROWS_WITH(load_songpath_reading(shrunk, "shrunk.sng", true, true),
                       "No chart files found in SNG file.");
+
+    // A short first read ends the header even when later reads would be whole.
+    CHECK(sng_read_head(testbytes::short_first_read(memory_byte_source(whole), 10)) ==
+          std::vector<uint8_t>(whole.begin(), whole.begin() + 10));
 }
 
 TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does") {
