@@ -11,7 +11,7 @@ clamp sits on the formula's input, not its output. Step 3: the window uses
 both gaps; each is halved and held between 37.5 and 85 ms, and the two
 halves are summed. The evidence (addresses 0x20F7210 and 0x20DDDA0, the
 formula's constants, and the CSV rows) is in
-`.superpowers/sdd/2026-10-03-step1-engine-facts/ch-evidence.md`, section 77.
+`docs/audit/ch-evidence.md`, section 77.
 The values live in `tools/ch_probe/constants.py` (WINDOW_CAP_MS,
 WINDOW_FLOOR_MS), which every probe script reads.
 

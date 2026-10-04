@@ -7,9 +7,7 @@ from Clone Hero 1.1 in ways nobody had chosen.
 
 In October 2026 Clone Hero 1.1's GameAssembly.dll was read statically (not
 run) and each reading rule was compared with Hydra's. The evidence, with
-code addresses, is in
-`.superpowers/sdd/2026-10-03-step1-engine-facts/ch-evidence.md` (a local
-working file, not checked in) and the step-2 briefs.
+code addresses, is in `docs/audit/ch-evidence.md` and the step-2 briefs.
 
 ## The decision
 

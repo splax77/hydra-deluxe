@@ -45,13 +45,15 @@ inline constexpr Difficulty kAllDifficulties[] = {Difficulty::Expert, Difficulty
 struct DifficultyChartCodes {
     // .mid: the kick's pitch. The four pads follow it (kick + 1 is red).
     int kick_pitch;
-    // .mid: the 2x kick's pitch, one below the kick. Clone Hero reads 59, 71,
-    // 83 and 95, each into its own difficulty (0x2155050 at 0x21555CD).
-    int kick2x_pitch;
     // The N in a disco-flip marker `[mix N drums...]`. Clone Hero applies a
     // marker only to the difficulty it names (0x215C750, digit mapped by
     // 0x210D990).
     char mix_digit;
+
+    // .mid: the 2x kick's pitch, always one below the kick. Clone Hero reads
+    // 59, 71, 83 and 95, each into its own difficulty (0x2155050 at
+    // 0x21555CD). Worked out here, the one place, instead of stored.
+    constexpr int kick2x_pitch() const { return kick_pitch - 1; }
 };
 
 // The row for `difficulty`. An out-of-range value reads as Expert, as the

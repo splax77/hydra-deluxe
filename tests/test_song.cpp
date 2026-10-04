@@ -581,11 +581,12 @@ TEST_CASE(".chart: [Song] Offset is read in seconds") {
 // ---- the parsers' hand matchers against the regexes they replaced ----------
 //
 // The parsers used std::regex for the disco-flip markers and the .chart section
-// header, and still match them exactly as those regexes did. The dynamics tag
-// is now Clone Hero's two exact strings (finding 64). All of them match by
-// hand now, for speed. These cases keep the old regexes as the oracle and
-// drive the real parsers with strings built around every byte value, so any
-// difference in what matches shows up.
+// header, and still match them exactly as those regexes did. All of them match
+// by hand now, for speed. The disco and section-header cases keep the old
+// regexes as the oracle. The dynamics tag has no regex oracle any more: it is
+// Clone Hero's two exact strings (finding 64, D24), so its cases check against
+// those two strings. Every case drives the real parsers with strings built
+// around every byte value, so any difference in what matches shows up.
 
 namespace {
 

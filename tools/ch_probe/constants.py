@@ -164,7 +164,7 @@ CONST_MATCH_TOLERANCE_MS = 0.5
 # constants gives 171.4313075 at 170 and 96.2931672 at 75, and
 # experiments/results/poll_windows.csv agrees: it tops out at 171.431308 ms
 # (6 rows) and bottoms out at 96.293167 ms (22 rows). Evidence:
-# .superpowers/sdd/2026-10-03-step1-engine-facts/ch-evidence.md, section 77.
+# docs/audit/ch-evidence.md, section 77.
 # Normal mode only; nobody has read precision mode's cap.
 WINDOW_CAP_MS = 171.4313
 WINDOW_FLOOR_MS = 96.2932
