@@ -1,6 +1,6 @@
 #include "app/path_view.h"
 #include "app/display_format.h"
-#include "app/preview_view.h"  // song_fraction
+#include "app/preview_view.h"  // song_fraction, has_song_length
 #include "app/user_messages.h"  // kNoPathsFound
 
 #include <algorithm>
@@ -389,7 +389,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                                      : bars_text(path.leftover_sp()) + " of SP left over";
         view.summary = std::to_string(view.acts.size()) + kDot + left;
     }
-    if (timing && song_length_ms && *song_length_ms > 0.0) {
+    if (timing && song_length_ms && has_song_length(*song_length_ms)) {
         const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));
         view.timeline_end =
             "m" + std::to_string((long long)timing->timecode(end_tick).measure_beats_ticks()[0] + 1);

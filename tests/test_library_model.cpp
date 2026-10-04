@@ -199,6 +199,15 @@ TEST_CASE("library model: status_label is the one source of the three status wor
     CHECK(hydra::ui::best_path_label(RecordStatus::NotAnalyzed, "", none) == "Not analyzed");
 }
 
+TEST_CASE("library model: status_of names the one status each chip groups") {
+    using hydra::ui::StatusChip;
+    using hydra::ui::status_of;
+    CHECK(status_of(StatusChip::Analyzed) == RecordStatus::Ready);
+    CHECK(status_of(StatusChip::Stale) == RecordStatus::Stale);
+    CHECK(status_of(StatusChip::NotAnalyzed) == RecordStatus::NotAnalyzed);
+    CHECK_FALSE(status_of(StatusChip::All).has_value());
+}
+
 TEST_CASE("library model: the search narrows the rows and the chip counts follow it") {
     LibraryModel m = sample();
     m.set_query("\"tier 4\"");

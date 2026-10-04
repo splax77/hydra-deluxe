@@ -44,18 +44,25 @@ inline AudioTailChart audio_tail_chart() {
 
 // ---- a batch result stored for one chart -------------------------------------
 
+// The key a result for chart `md5` is filed under at SP cap `cap`, with every
+// other setting at its default. Settings::record_key builds it, so a test
+// never spells the key's parts out itself.
+inline store::RecordKey batch_result_key(const std::string& md5, int cap) {
+    app::Settings settings;
+    settings.sp_cap = cap;
+    return settings.record_key(md5);
+}
+
 // Stores a finished result for chart `md5` the way a batch does, behind the
-// app's back: an empty current-version record at SP cap `cap`, under the chart
-// mode, cap and lens a default Settings asks for. An empty current-version
-// record reads back Ready. Returns the key it stored under.
+// app's back: an empty current-version record at SP cap `cap`, under
+// batch_result_key. An empty current-version record reads back Ready.
+// Returns the key it stored under.
 inline store::RecordKey store_batch_result(store::RecordStore& store, const std::string& md5,
                                            int cap) {
-    const app::Settings settings;
     HydraRecord record;
     record.sp_cap = cap;
-    record.ms_limit = settings.mslimit_value;
-    const store::RecordKey key{md5, settings.chartmode_key(), store::CapQuery::at(cap),
-                               settings.lens()};
+    record.ms_limit = app::Settings{}.mslimit_value;
+    const store::RecordKey key = batch_result_key(md5, cap);
     store.add_record(key, record);
     return key;
 }

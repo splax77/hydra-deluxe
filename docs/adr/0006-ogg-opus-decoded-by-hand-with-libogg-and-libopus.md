@@ -4,8 +4,8 @@ The Preview must decode `.opus` stems, and the usual library for this is
 opusfile, which reads an Ogg-Opus file and hands back PCM. Hydra does not vendor
 opusfile: its MSVC and CMake build is awkward, and it would add a third media
 library on top of the libogg and libopus that ADR 0004 already vendors. So the
-audio engine demuxes Ogg-Opus by hand (`src/audio/decode.cpp`,
-`decode_ogg_opus`). It walks the Ogg pages with libogg, assembles the packets,
+audio engine demuxes Ogg-Opus by hand (first in `src/audio/decode.cpp`, now
+the `OpusReader` class in `src/audio/opus_reader.cpp`; see the update below). It walks the Ogg pages with libogg, assembles the packets,
 and decodes them with libopus directly: it reads the channel count and the
 16-bit pre-skip from the OpusHead identification packet, skips the OpusTags
 packet, decodes each audio packet to 48 kHz float, and drops the pre-skip
@@ -28,6 +28,8 @@ records where each page starts and how many samples come before it. Seeks: a
 binary search of that index, then decoding forward from at least 400 ms before
 the target and throwing the warm-up away. The OpusHead output gain, applied as
 the spec requires (zero in every library file scanned, so nothing changed
-audibly). Chained files: each link plays in turn with its own pre-skip and
-gain. A straight read with no seek is still bit for bit the old output, and the
+audibly). Chained files: the links that match the first link's channel count
+play in turn, each with its own pre-skip and gain. The reader stops keeping
+links at the first one with another channel count or with no audio page
+(D48, Q33). A straight read with no seek is still bit for bit the old output, and the
 pinned fixture test is unchanged.

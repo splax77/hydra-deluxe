@@ -319,9 +319,14 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
 // 0..1, in activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
 
+// Is `length_ms` a song length the timeline can use? Only a positive length
+// is. song_fraction and the Paths tab's end-measure label both ask it, so the
+// marks and the label appear and vanish together.
+bool has_song_length(double length_ms);
+
 // How far into the song `ms` is: its share of `length_ms`, clamped to 0..1.
-// No value when the length is not positive. The Paths tab's activation
-// timeline and the Preview's scrub marks both ask it.
+// No value when has_song_length says the length is unusable. The Paths tab's
+// activation timeline and the Preview's scrub marks both ask it.
 std::optional<double> song_fraction(double ms, double length_ms);
 
 // Where "< Act" (direction -1) or "Act >" (+1) moves the playhead from

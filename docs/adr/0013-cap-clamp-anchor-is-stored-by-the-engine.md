@@ -1,11 +1,16 @@
 # The cap-clamp anchor is stored by the engine, never re-derived
 
 An activation's Star Power window normally ends a fixed distance past the
-activation. But when a phrase collected mid-Star-Power fills the meter all
-the way to the SP cap (the most bars of SP you can hold), the window's end
-gets pinned to that phrase's note instead — the meter can't grow past the
-cap, so nothing collected after that note can push the end out any further.
-We call that note the clamp anchor.
+activation. But when a phrase collected mid-Star-Power would overfill the
+meter past the SP cap (the most bars of SP you can hold), the window's end
+gets pinned to the cap measured from that phrase's note instead. We call that
+note the clamp anchor. A phrase that only fills the meter exactly to the cap
+is a tie, and a tie does not clamp. The end is pinned only while the meter is
+full. As the meter drains, a later phrase that fits under the cap extends the
+end again from where it was pinned, and the clamp anchor stays the earlier
+note.
+`ScoreGraph::extend_deacts` owns this rule, and the test "SP cap overfill: a
+later unclamped extension keeps the earlier clamp_tick" pins it.
 
 The search knows the clamp anchor exactly: it is the collecting note it
 compared against the cap while extending the window. But at copy-out it

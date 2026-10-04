@@ -1715,6 +1715,12 @@ TEST_CASE("song_fraction: a clamped share, none without a length") {
     CHECK_FALSE(song_fraction(2000.0, 0.0).has_value());
 }
 
+TEST_CASE("song_fraction: has_song_length takes only a positive length") {
+    CHECK(has_song_length(10000.0));
+    CHECK_FALSE(has_song_length(0.0));
+    CHECK_FALSE(has_song_length(-1.0));
+}
+
 TEST_CASE("activation jumps: nearest activation before or after the playhead") {
     TwoActs t;
     CHECK(activation_jump_ms(t.scene, 0.0, +1) == doctest::Approx(2000.0));

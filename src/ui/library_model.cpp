@@ -71,14 +71,12 @@ const char* status_label(store::RecordStatus status) {
     return "Not analyzed";
 }
 
-// The inverse of chip_of above: each status chip groups exactly one status.
+// The inverse of chip_of above, read from it: the status whose chip is
+// `chip`. All groups every status, so it has none.
 std::optional<store::RecordStatus> status_of(StatusChip chip) {
-    switch (chip) {
-        case StatusChip::NotAnalyzed: return store::RecordStatus::NotAnalyzed;
-        case StatusChip::Stale: return store::RecordStatus::Stale;
-        case StatusChip::Analyzed: return store::RecordStatus::Ready;
-        case StatusChip::All: break;
-    }
+    for (store::RecordStatus s : {store::RecordStatus::NotAnalyzed, store::RecordStatus::Stale,
+                                  store::RecordStatus::Ready})
+        if (chip_of(s) == chip) return s;
     return std::nullopt;
 }
 

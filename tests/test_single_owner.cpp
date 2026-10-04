@@ -10,7 +10,8 @@
 // tools/ unless it names its own scope; the rows about tests (a test that
 // recomputes an engine fact, or walks the source tree itself) cover tests/.
 // The long-path rules (ADR 0020) are rows here too, so a new one-place rule
-// is a new row, not a new walker.
+// is a new row, not a new walker. The walk itself, and the repo root, come
+// from tests/source_tree.h.
 #include "doctest.h"
 
 #include <filesystem>
@@ -23,10 +24,7 @@
 #include <vector>
 
 #include "core/strutil.h"
-
-#ifndef HYDRA_SOURCE_DIR
-#error "HYDRA_SOURCE_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "source_tree.h"
 
 namespace fs = std::filesystem;
 
@@ -82,17 +80,21 @@ const std::vector<OwnerRule>& rules() {
     static const std::vector<OwnerRule> r = {
         // Only length comparisons count. Sizing a buffer against MAX_PATH
         // (GetTempPathW in copy_to_short_temp) asks whether a result fitted,
-        // which audit R7.12 calls a different question. The limit may be
-        // spelled 260, and either side may carry a little arithmetic
-        // (size() - 4 < MAX_PATH). winstr.cpp is not exempt as a file: only
-        // shell_path's two lines are listed.
+        // which audit R7.12 calls a different question. A length is .size(),
+        // .length() (through . or ->), strlen or wcslen. The limit may be
+        // spelled MAX_PATH, 260 or 259, on either side of any comparison
+        // (<, <=, >, >=, ==, !=), and either side may carry a little
+        // arithmetic (size() - 4 < MAX_PATH). A length held in a plain
+        // variable is not caught: `n > MAX_PATH` is also how a buffer-fit
+        // check reads. winstr.cpp is not exempt as a file: only fits_shell's
+        // one line is listed.
         {"Does the Windows shell take a path this long?",
-         "shell_path in src/core/winstr.cpp",
-         R"((\.(size|length)\(\)|\b(wcs|str)len\s*\([^()]*\))(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*(MAX_PATH|260)\b|\b(MAX_PATH|260)(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*[\w.:>()-]*(\.(size|length)\(\)|\b(wcs|str)len\s*\())",
+         "fits_shell in src/core/winstr.cpp",
+         R"(((\.|->)(size|length)\(\)|\b(wcs|str)len\s*\(([^()]|\([^()]*\))*\))(\s*[-+]\s*[\w.]+)*\s*(==|!=|[<>]=?)\s*(MAX_PATH|259|260)\b|\b(MAX_PATH|259|260)(\s*[-+]\s*[\w.]+)*\s*(==|!=|[<>]=?)\s*[\w.:>()-]*((\.|->)(size|length)\(\)|\b(wcs|str)len\s*\())",
          "",
          {},
          {},
-         "ADR 0020 (the shell takes nothing of 260 or more); one owner put on the fix "
+         "ADR 0020 (the shell takes nothing of 260 or more, and no prefixed path); one owner put on the fix "
          "list by the user 2026-10-03 (audit R7.12 addendum)",
          {"if (path.size() < MAX_PATH) return path;",
           "if (copy.native().size() >= MAX_PATH) return {};",
@@ -102,15 +104,24 @@ const std::vector<OwnerRule>& rules() {
           "if (path.size() - 4 < MAX_PATH) return path;",
           "if (name.length() >= 260) return false;",
           "if (260 <= s.size()) ok = false;",
-          "if (MAX_PATH - 1 > wcslen(p)) ok = true;"},
+          "if (MAX_PATH - 1 > wcslen(p)) ok = true;",
+          "if (path.size() <= 259) return path;", "if (path.size() > 259) return {};",
+          "if (path.size() == 260) return {};", "if (path.size() != 260) ok = true;",
+          "if (259 >= s.length()) ok = true;", "if (260 == p->size()) return {};",
+          "if (p->size() < MAX_PATH) return p;",
+          "if (wcslen(path.c_str()) >= MAX_PATH) return false;",
+          "if (MAX_PATH <= strlen(s.c_str())) ok = false;"},
          {"wchar_t tmp[MAX_PATH + 1];", "GetTempPathW(MAX_PATH + 1, tmp);",
           "if (n == 0 || n > MAX_PATH) return {};",
           "constexpr size_t kPlainPathLimit = MAX_PATH - 12;", "const int kWidth = 260;",
-          "if (n > 260) return;", "if (rows.size() > 2600) return;"},
-         {{"src/core/winstr.cpp", "if (path.size() < MAX_PATH) return path;",
-           "shell_path, the owner: a short path goes to the shell as it is"},
-          {"src/core/winstr.cpp", "return s.size() < MAX_PATH ? s : L\"\";",
-           "shell_path, the owner: a short form still too long is refused"}}},
+          "if (n > 260) return;", "if (rows.size() > 2600) return;",
+          "if (rows.size() == 2590) return;", "if (12600 < rows.size()) return;",
+          "std::wstring buf(MAX_PATH, L'\\0');",
+          "if (fits_shell(path)) return path;", "if (!fits_shell(copy.native())) return {};"},
+         {{"src/core/winstr.cpp",
+           R"(return path.size() < MAX_PATH && !has_namespace_prefix(path);)",
+           "fits_shell, the owner: shell_path, open_in_browser and copy_to_short_temp "
+           "call it"}}},
         // Every way this codebase works out a file's size: the stdio seek and
         // tell (32- and 64-bit), stream seekg/tellg, the Win32 size calls and
         // the size fields of their find and attribute data, the CRT's
@@ -179,8 +190,8 @@ const std::vector<OwnerRule>& rules() {
           "FILE* f = _wfopen(w.c_str(), L\"rb\");"},
          {"HANDLE h = CreateFileW(win32_path(p).c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);",
           "std::FILE* f = hydra::fopen_utf8(path, L\"rb\");"}},
-        // The shell takes no long path, so only the two report buttons launch
-        // it, each with shell_path's short form.
+        // The shell takes no long or prefixed path (fits_shell), so only the
+        // two report buttons launch it, each with shell_path's short form.
         {"Which code launches the Windows shell?",
          "open_in_browser (src/app/report_files.cpp) and show_in_folder "
          "(src/ui/win32_dialogs.cpp)",
@@ -193,19 +204,54 @@ const std::vector<OwnerRule>& rules() {
           "CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);"},
          {"hydra::app::open_in_browser(page);"}},
         // A std::filesystem call (a line naming filesystem:: or fs:: that
-        // calls one of these) or a file stream. No file is exempt, winstr
-        // included.
+        // calls one of these) or a file stream. The list is every
+        // std::filesystem free function that takes a path, plus the two
+        // directory iterators and directory_entry, which read the disk when
+        // built from a path: as a temporary, a named variable or with
+        // braces. An empty argument list is no path (fs::current_path(), an
+        // end iterator), so it passes. No file is exempt, winstr included.
         {"How does a std::filesystem call or file stream get a path it accepts at any length?",
          "os_path in src/core/winstr.cpp",
-         R"(^(?=.*(filesystem::|fs::)).*::(create_directories|create_directory|is_directory|is_regular_file|exists|remove|remove_all|rename|copy|copy_file|file_size|last_write_time|weakly_canonical|canonical|directory_iterator)\(|^(?!.*#include).*fstream )",
+         R"(^(?=.*(filesystem::|fs::)).*::((absolute|canonical|weakly_canonical|relative|proximate|copy|copy_file|copy_symlink|create_directory|create_directories|create_directory_symlink|create_hard_link|create_symlink|current_path|equivalent|exists|file_size|hard_link_count|is_block_file|is_character_file|is_directory|is_empty|is_fifo|is_other|is_regular_file|is_socket|is_symlink|last_write_time|permissions|read_symlink|remove|remove_all|rename|resize_file|space|status|symlink_status)\s*\(|((recursive_)?directory_iterator|directory_entry)\s*(\w+\s*)?[({])(?!\s*[)}])|^(?!.*#include).*fstream(\s|[({](?!\s*[)}])))",
          R"(os_path\()",
          {},
          {},
          "ADR 0020",
          {"fs::create_directories(dir);", "std::ifstream in(path);",
-          "for (const auto& e : std::filesystem::directory_iterator(dir)) {"},
+          "for (const auto& e : std::filesystem::directory_iterator(dir)) {",
+          "for (const auto& e : fs::recursive_directory_iterator(root)) {",
+          "std::filesystem::path outpath = std::filesystem::absolute(std::filesystem::u8path(out));",
+          "const fs::file_status st = fs::status(p);", "if (fs::equivalent(a, b)) return;",
+          "const fs::space_info s = fs::space(dir);", "fs::current_path(dir);",
+          "std::filesystem::directory_iterator it(dir);",
+          "std::filesystem::recursive_directory_iterator it(root, ec);",
+          "for (auto& e : std::filesystem::directory_iterator{dir}) {",
+          "for (auto& e : fs::recursive_directory_iterator{root}) {",
+          "const fs::directory_entry entry(p);", "if (fs::is_empty(dir)) return;",
+          "const fs::path rel = fs::relative(p, base);",
+          "const fs::path rel = fs::proximate(p, base);", "fs::resize_file(p, 0);",
+          "fs::permissions(p, fs::perms::owner_write);",
+          "const auto st = fs::symlink_status(p);", "fs::create_symlink(target, link);",
+          "fs::create_directory_symlink(target, link);", "fs::create_hard_link(target, link);",
+          "fs::copy_symlink(from, to);", "const fs::path t = fs::read_symlink(p);",
+          "const auto n = fs::hard_link_count(p);", "if (fs::is_symlink(p)) return;",
+          "if (fs::is_block_file(p) || fs::is_character_file(p)) return;",
+          "if (fs::is_fifo(p) || fs::is_socket(p) || fs::is_other(p)) return;",
+          "if (fs::exists (p)) return;", "const std::string s = slurp(std::ifstream(path));",
+          "std::ofstream{path} << text;"},
          {"fs::create_directories(hydra::os_path(dir));", "#include <fstream>",
-          "std::ifstream in(hydra::os_path(path));", "const fs::path p = dir / name;"}},
+          "#include <filesystem>",
+          "std::ifstream in(hydra::os_path(path));", "const fs::path p = dir / name;",
+          "for (const auto& e : fs::recursive_directory_iterator(hydra::os_path(root))) {",
+          "std::filesystem::path outpath = std::filesystem::absolute(hydra::os_path(std::filesystem::u8path(out)));",
+          "std::filesystem::directory_iterator it(hydra::os_path(dir), ec);",
+          "for (; it != fs::directory_iterator(); ++it) {",
+          "const fs::path cwd = fs::current_path();",
+          "for (const fs::directory_entry& e : list) {",
+          "const fs::file_status st = e.status();", "if (e.is_directory()) continue;",
+          "const fs::path tmp = fs::temp_directory_path(ec);",
+          "void write(std::ofstream& out);",
+          "const RecordStatusView& PathsTabCache::status(const store::RecordLookup& lookup,"}},
 
         // ---- engine facts (step 1 of the 2026-10-03 derivation audit) ----
 
@@ -538,26 +584,28 @@ const std::vector<OwnerRule>& rules() {
          {},
          {"src", "tools", "tests"}},
         {"Which test walks the source tree?",
-         "this file, tests/test_single_owner.cpp",
+         "sourcetree::for_each_source_file in tests/source_tree.h",
          R"(recursive_directory_iterator\(root\s*/\s*sub\))",
          "",
-         {},
+         {"tests/source_tree.h"},
          {},
          "this file's own rule (one scan, new rules are rows); step-1 derive-once review "
-         "finding 12 (2026-10-04)",
+         "finding 12 (2026-10-04); one walker for the docs test too (phase 4 join, "
+         "2026-10-04)",
          {"for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {",
           "for (const auto& e : fs::recursive_directory_iterator(root/sub))"},
          {"for (const auto& e : std::filesystem::directory_iterator(dir)) {"},
          {},
          {"tests"}},
         {"Which test reads the source tree?",
-         "this file, tests/test_single_owner.cpp",
+         "sourcetree::root in tests/source_tree.h",
          R"(\bHYDRA_SOURCE_DIR\b)",
          "",
-         {},
+         {"tests/source_tree.h"},
          {},
          "this file's own rule (one scan, new rules are rows); step-1 derive-once review of "
-         "fb1189b, finding 5 (2026-10-04)",
+         "fb1189b, finding 5 (2026-10-04); one reader for the docs test too (phase 4 join, "
+         "2026-10-04)",
          {"std::ifstream in(std::string(HYDRA_SOURCE_DIR) + \"/src/app/preview_view.cpp\");",
           "const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);"},
          {"return load_songpath(std::string(HYDRA_INPUT_DIR) + \"/test_fast_tempo/\" + name, "
@@ -1056,20 +1104,26 @@ const std::vector<OwnerRule>& rules() {
          {"marks.push_back(*song_fraction(a.ms, length_ms));"},
          {{"src/app/preview_view.cpp", "return std::clamp(ms / length_ms, 0.0, 1.0);",
            "song_fraction, the owner"}}},
-        // The two-hit budget written out as twice the window, or the backend
-        // rescale written out as 2 / (1 + r), instead of nominal_budget_ms and
-        // squeeze_budget_ms.
+        // The two-hit budget written out as twice the window (either way
+        // round), as squeeze_budget_ms at a hand-typed identity scale, or the
+        // backend rescale written out as 2 / (1 + r), instead of
+        // nominal_budget_ms and squeeze_budget_ms.
         {"What is the two-hit budget at the identity scale?",
          "nominal_budget_ms beside squeeze_budget_ms in src/core/squeeze_rating.cpp",
-         R"re(\b2(\.0)?\s*\*\s*w\b|\*\s*2\.0\s*/\s*\(1\.0\s*\+)re",
+         R"re(\b2(\.0)?\s*\*\s*(w|hit_window\w*|kDefaultHitWindowMs)\b|\b(w|hit_window\w*|kDefaultHitWindowMs)\s*\*\s*2(\.0)?\b|squeeze_budget_ms\(\s*(1(\.0)?|kIdentityScale)\s*,|\*\s*2\.0\s*/\s*\(1\.0\s*\+)re",
          "",
          {},
          {},
-         "phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3 (2026-10-04)",
+         "phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3, and round 2, "
+         "finding 2 (2026-10-04)",
          {"{\"Insane+\", \"t4\", 2 * w},",
+          "{\"Insane+\", \"t4\", squeeze_budget_ms(1.0, w)},",
+          "const double budget = hit_window_ms * 2;",
           "return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);"},
-         {"{\"Insane+\", \"t4\", squeeze_budget_ms(1.0, w)},",
-          "{\"Insane+\", \"t4\", nominal_budget_ms(w)},"}},
+         {"{\"Insane+\", \"t4\", nominal_budget_ms(w)},"},
+         {{"src/core/squeeze_rating.cpp",
+           "return squeeze_budget_ms(kIdentityScale, hit_window_ms);",
+           "nominal_budget_ms, the owner"}}},
         // A ByteSource's reads come from a file or from memory, and tests
         // count them through one wrapper; a lambda written elsewhere would be
         // a second reader of the same bytes.
@@ -1183,12 +1237,6 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        {"Does the Windows shell take a path this long?", "src/app/report_files.cpp",
-         "if (copy.native().size() >= MAX_PATH) return {};",
-         "fix shell-path-owner (audit R7.12)"},
-        {"Does the Windows shell take a path this long?", "src/app/report_files.cpp",
-         "if (path.size() < MAX_PATH) return shell_open(path);",
-         "fix shell-path-owner (audit R7.12)"},
         {"How many bytes does a file hold?", "src/parse/midi.cpp",
          "std::fseek(f, 0, SEEK_END);", "fix read-file-bytes-owner (audit R7.11)"},
         {"How many bytes does a file hold?", "src/parse/midi.cpp",
@@ -1338,7 +1386,7 @@ bool in_scope(const OwnerRule& r, const std::string& sub, const std::string& rel
 }
 
 TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
-    const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
+    const fs::path root = sourcetree::root();
     const std::vector<CompiledRule> compiled = compile_rules();
 
     const std::vector<ListedLine> listed = listed_lines();
@@ -1346,15 +1394,14 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     std::vector<std::string> problems;
     int files = 0;
     std::vector<int> functions_found(compiled.size(), 0);
-    for (const std::string sub : {"src", "tools", "tests"}) {
-        for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
-            const fs::path ext = e.path().extension();
-            if (ext != ".cpp" && ext != ".h") continue;
-            const std::string rel = fs::relative(e.path(), root).generic_u8string();
+    sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+            const fs::path ext = path.extension();
+            if (ext != ".cpp" && ext != ".h") return;
             // This file holds every rule's examples as text.
-            if (rel == "tests/test_single_owner.cpp") continue;
+            if (rel == "tests/test_single_owner.cpp") return;
+            const std::string sub = rel.substr(0, rel.find('/'));  // the top folder
             ++files;
-            std::ifstream in(e.path());
+            std::ifstream in(path);
             std::string line;
             int lineno = 0;
             std::vector<bool> in_function(compiled.size(), false);
@@ -1393,8 +1440,7 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
                                            "\", which belongs to " + rule.owner + ": " + t);
                 }
             }
-        }
-    }
+    });
     for (size_t i = 0; i < listed.size(); ++i) {
         if (used[i]) continue;
         problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
@@ -1428,9 +1474,9 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
 // the row scan skips, so this case reads it: the block between the "Results"
 // banner and the kResultsStamp line in src/store/stored_versions.h must name
 // src/parse next to src/search and src/core. Moved here from
-// test_s2_stamps.cpp, so this file stays the one test that reads the tree.
+// test_s2_stamps.cpp; the repo root comes from tests/source_tree.h.
 TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (D23)") {
-    std::ifstream in(fs::u8path(HYDRA_SOURCE_DIR) / "src" / "store" / "stored_versions.h");
+    std::ifstream in(sourcetree::root() / "src" / "store" / "stored_versions.h");
     REQUIRE(in.good());
     std::stringstream ss;
     ss << in.rdbuf();

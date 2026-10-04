@@ -8,8 +8,8 @@
 // settings, taken from app::Settings so the two cannot drift -- parse,
 // search, and DB store timed separately:
 //   hydra_bench.exe "C:\Clone Hero\songs\...\blink-182 - Discography"
-// With no argument it best-of-3 times the testdata corpus search across
-// configs.
+// With no argument it best-of-3 times the testdata corpus search at one
+// fixed config, labelled "cap4 d4 no-ms" (corpus_bench).
 
 #include <algorithm>
 #include <chrono>
@@ -185,7 +185,12 @@ static void corpus_bench() {
     }
     std::printf("Test corpus: %zu charts. Engine = src/search/engine.cpp.\n\n",
                 songs.size());
-    auto bench = [&](const char* name, int cap, int dvalue) {
+    // Fixed on purpose: this is the before/after yardstick, so it runs the
+    // same search every time -- Clone Hero's SP cap, a 4-score range and no
+    // timing limit -- whatever the GUI's defaults are. The label says so.
+    auto bench = [&](int cap, int dvalue) {
+        char name[32];
+        std::snprintf(name, sizeof(name), "cap%d d%d no-ms", cap, dvalue);
         SearchSettings settings;
         settings.sp_cap = cap;
         settings.depth_mode = DepthMode::Scores;
@@ -204,7 +209,7 @@ static void corpus_bench() {
         }
         std::printf("  %-16s : %7.2fs (best of 3)\n", name, best);
     };
-    bench("cap4 d4", 4, 4);
+    bench(kCloneHeroSpCap, 4);
 }
 
 // Dump a store's charts table as the same JSON shape --dump writes, so two

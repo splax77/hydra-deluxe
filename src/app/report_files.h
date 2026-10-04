@@ -46,15 +46,15 @@ using OpenInBrowserFn = std::function<bool(const std::wstring& path)>;
 void set_open_in_browser(OpenInBrowserFn fn);
 
 // Hands one file to the default browser through that seam. Returns false when
-// the shell refuses (e.g. the file doesn't exist yet). A path of 260
-// characters or more goes to the browser as its short 8.3 name, since the
-// shell opens no long path; on a drive without short names the browser gets
-// copy_to_short_temp's copy instead (docs/adr/0020).
+// the shell refuses (e.g. the file doesn't exist yet). A path fits_shell
+// refuses (too long, or prefixed) goes to the browser as its short 8.3 name;
+// with no short name the browser gets copy_to_short_temp's copy instead
+// (docs/adr/0020).
 bool open_in_browser(const std::wstring& path);
 
 // Copies a report page to %TEMP%\Hydra\<its name>, overwriting an older copy,
-// and returns the copy's path; empty when the copy fails or would itself be
-// 260 characters or more. A report is one self-contained file, so the copy
+// and returns the copy's path; empty when the copy fails or its path is one
+// fits_shell refuses. A report is one self-contained file, so the copy
 // shows the same page.
 std::filesystem::path copy_to_short_temp(const std::filesystem::path& page);
 

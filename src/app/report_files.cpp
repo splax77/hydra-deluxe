@@ -102,7 +102,7 @@ std::filesystem::path copy_to_short_temp(const std::filesystem::path& page) {
     if (n == 0 || n > MAX_PATH) return {};
     const std::filesystem::path dir = std::filesystem::path(tmp) / L"Hydra";
     const std::filesystem::path copy = dir / page.filename();
-    if (copy.native().size() >= MAX_PATH) return {};
+    if (!fits_shell(copy.native())) return {};
     std::error_code ec;
     std::filesystem::create_directories(os_path(dir), ec);
     std::filesystem::copy_file(os_path(page), os_path(copy),
@@ -112,9 +112,10 @@ std::filesystem::path copy_to_short_temp(const std::filesystem::path& page) {
 
 bool open_in_browser(const std::wstring& path) {
     if (g_open_in_browser) return g_open_in_browser(path);
-    if (path.size() < MAX_PATH) return shell_open(path);
-    // Past 260 characters the shell can't open the page, so hand the browser
-    // the page's short name, or failing that a copy at a short path.
+    if (fits_shell(path)) return shell_open(path);
+    // The shell can't open the page at this path, so hand the browser the
+    // page's short name. When there is no short name, or the .html viewer
+    // won't launch, open a copy at a short path instead.
     const std::wstring short_form = shell_path(path);
     if (!short_form.empty() && launch_html_viewer(short_form)) return true;
     const std::filesystem::path copy = copy_to_short_temp(path);
