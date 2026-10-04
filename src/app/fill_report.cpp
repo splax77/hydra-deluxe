@@ -136,6 +136,7 @@ const PAGE = {
       ['1.0 higher', fmt(n('1.0 higher'))],
       ['Same', fmt(n('same'))],
       ['Only one side', fmt(n('only 1.0') + n('only 1.1'))],
+      ['Score on one side only', fmt(n('in both'))],
       ['Points gained in 1.1', fmt(gains)],
       ['Points lost in 1.1', fmt(losses)],
     ];
@@ -313,7 +314,8 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         group_thousands(out.stats.ch10_higher) + " higher under 1.0, " +
         group_thousands(out.stats.same) + " unchanged, " +
         group_thousands(out.stats.only_old + out.stats.only_new) +
-        " in one database only";
+        " in one database only, " + group_thousands(out.stats.in_both) +
+        " with a score on one side only";
     std::string footer =
         "A drum fill only appears if your Star Power meter filled up in time. " +
         fill_rule_description(FillDeadlineRule::Ch10) + " " +

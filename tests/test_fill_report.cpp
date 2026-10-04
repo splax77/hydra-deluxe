@@ -431,3 +431,45 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     CHECK(html.find("<option value=\"in both\">In both</option>") != std::string::npos);
     CHECK(html.find("'no score'") != std::string::npos);
 }
+
+TEST_CASE("generate_fill_report: a score on one side only is counted, and the parts add up") {
+    // D52: the subtitle and the tiles count the "in both" rows as charts with
+    // a score on one side only, so every chart lands in exactly one part.
+    constexpr const char* kOneSided = "dd44ee55ff6677889900aa11bb22cc33";
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+    put_ch10(old_store, kBoth, 1000000, 3, "old-path-G");
+    put_ch11(new_store, kBoth, 1050000, 4, "new-path-G");   // 1.1 higher
+    put_ch10(old_store, kOldOnly, 900000, 2, "only-old");   // only 1.0
+    put_ch11(new_store, kNewOnly, 800000, 5, "only-new");   // only 1.1
+    // A record on both sides, but the 1.0 one has no paths and so no score.
+    HydraRecord empty;
+    empty.sp_cap = kCloneHeroSpCap;
+    empty.ms_limit = app::Settings{}.mslimit_value;
+    empty.legacy_fills = true;
+    old_store.add_song(kOneSided, "Song dd44", "Test Artist", "Test Charter",
+                       sample_chart().song);
+    old_store.add_record(key_for(kOneSided, true), empty);
+    put_ch11(new_store, kOneSided, 700000, 2, "one-sided");
+
+    app::fill_report::GeneratedFillReport result =
+        app::fill_report::generate_fill_report(old_store, new_store, kMode,
+                                               store::CapQuery::at(kCloneHeroSpCap),
+                                               store::Lens{});
+    const app::fill_report::FillCompareStats& s = result.stats;
+    CHECK(s.total == 4);
+    CHECK(s.in_both == 1);
+    CHECK(s.same + s.ch10_higher + s.ch11_higher + s.only_old + s.only_new + s.in_both ==
+          s.total);
+
+    // The subtitle names the part after "in one database only".
+    CHECK(result.html.find(
+              "4 charts in Expert Pro Drums, 2x Bass: 1 score higher under 1.1, "
+              "0 higher under 1.0, 0 unchanged, 2 in one database only, "
+              "1 with a score on one side only") != std::string::npos);
+    // The tiles get a matching one after "Only one side", counted from the
+    // rows the table shows, like the tiles before it.
+    CHECK(result.html.find("['Only one side', fmt(n('only 1.0') + n('only 1.1'))],\n"
+                           "      ['Score on one side only', fmt(n('in both'))],") !=
+          std::string::npos);
+}
