@@ -355,6 +355,13 @@ struct Activation {
     // Bars of SP this activation spends: one per stored arrival.
     int sp_meter() const { return static_cast<int>(bank_rise_ticks.size()); }
 
+    // The fills the path was shown and passed over before this activation,
+    // in chart order. The search charges a skip only on a fill it could have
+    // taken (enough SP, deadline open) and stamps that fill's tick here.
+    // Under the 1.0 fill rule these need not be the fills nearest the
+    // activation. skips() is its size. The Preview lights exactly these.
+    std::vector<int64_t> skipped_fill_ticks;
+
     // Read from sp_end_steps; see each body in model.cpp.
     //   deact_tick()             - the deactivation node D: where this
     //                              window's SP ends, every extension included.

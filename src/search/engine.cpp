@@ -171,13 +171,17 @@ struct Act {
     // Where each bar this activation spends arrived (an index into banks_),
     // or -1. Taken off the live path when the activation is made.
     int32_t bank_tail;
+    // The fills passed over before this activation (an index into fills_),
+    // or -1. Taken off the live path when the activation is made.
+    int32_t skip_tail;
 };
 struct SqNode {
     int32_t prev;
     int32_t kind;
     double offset;
 };
-// One tick in a chain of ticks (a bank arrival), linked to the one before.
+// One tick in a chain of ticks (a bank arrival or a passed-over fill),
+// linked to the one before.
 struct ColNode {
     int32_t prev;
     int64_t tick;
@@ -217,6 +221,10 @@ struct Path {
     // (an index into banks_), or -1. Always holds p.sp entries. Handed to
     // the Act at activation.
     int32_t bank_tail;
+    // The fills passed over since the last activation, one tick each (an
+    // index into fills_), or -1. Always holds currentskips entries. Handed to
+    // the Act at activation.
+    int32_t skip_tail;
     double sp_ready_ms;
     double skipped_e_offset;
     double diff_prefix;
@@ -241,6 +249,8 @@ struct OutAct {
     int32_t end_begin, end_end;
     // Where each bar it spends arrived: out_ticks_[bank_begin, bank_end).
     int32_t bank_begin, bank_end;
+    // The fills passed over before it: out_ticks_[skip_begin, skip_end).
+    int32_t skip_begin, skip_end;
 };
 struct OutSq {
     int32_t kind;
@@ -346,6 +356,7 @@ private:
         a.e_offset = e_offset;
         a.end_tail = -1;
         a.bank_tail = -1;
+        a.skip_tail = -1;
         acts_.push_back(a);
         return (int32_t)acts_.size() - 1;
     }
@@ -463,6 +474,8 @@ private:
     std::vector<EndNode> ends_;
     // Every bank arrival any path made, as linked chains.
     std::vector<ColNode> banks_;
+    // Every fill any path passed over, as linked chains.
+    std::vector<ColNode> fills_;
     std::vector<Variant> variants_;
 
     std::vector<Path> cur_;
@@ -489,7 +502,7 @@ private:
     std::vector<OutAct> out_acts_;
     std::vector<OutSq> out_sqs_;
     std::vector<SpEndStep> out_ends_;
-    // Every tick list copied out (bank arrivals), as ranges.
+    // Every tick list copied out (bank arrivals, passed-over fills), as ranges.
     std::vector<int64_t> out_ticks_;
     std::vector<int32_t> chain_scratch_;
     std::vector<int32_t> sq_scratch_;
@@ -624,6 +637,8 @@ bool Engine::branch_activate(Path& p, Path* child) {
                                                        : e_offset);
     acts_[(size_t)c.act_tail].bank_tail = p.bank_tail;
     c.bank_tail = -1;
+    acts_[(size_t)c.act_tail].skip_tail = p.skip_tail;
+    c.skip_tail = -1;
     c.sc[2] += e.frontend_points;
     c.score += e.frontend_points;
     c.skipped_e_offset = NO_DOUBLE;
@@ -632,6 +647,8 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.end_tail = push_end(-1, n.tick, aiet_val, SpEndKind::Activation);
 
     p.currentskips += 1;
+    // The fill just passed over, for the record: the Preview lights it.
+    p.skip_tail = push_tick(fills_, p.skip_tail, n.tick);
 
     if (!has_value(p.skipped_e_offset)) p.skipped_e_offset = e_offset;
 
@@ -1036,6 +1053,7 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
         oa.final_sp_end = NO_TIME;
         emit_ends(a.end_tail, &oa.end_begin, &oa.end_end);
         emit_ticks(banks_, a.bank_tail, &oa.bank_begin, &oa.bank_end);
+        emit_ticks(fills_, a.skip_tail, &oa.skip_begin, &oa.skip_end);
         out_acts_.push_back(oa);
     }
     *end = (int32_t)out_acts_.size();
@@ -1102,6 +1120,7 @@ bool Engine::run() {
     root.sp_end_time = NO_TIME;
     root.end_tail = -1;
     root.bank_tail = -1;
+    root.skip_tail = -1;
     root.sp_ready_ms = NO_DOUBLE;
     root.skipped_e_offset = NO_DOUBLE;
     root.diff_prefix = NO_DOUBLE;
@@ -1253,6 +1272,8 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             act.chord = node->chord.value();
             act.bank_rise_ticks.assign(out_ticks.begin() + oa.bank_begin,
                                        out_ticks.begin() + oa.bank_end);
+            act.skipped_fill_ticks.assign(out_ticks.begin() + oa.skip_begin,
+                                          out_ticks.begin() + oa.skip_end);
             act.frontend_points = node->branch_edge->frontend_points;
             act.e_offset = oa.e_offset;
             if (oa.deact_edge >= 0) {
