@@ -220,7 +220,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.bars = bars_text(act.sp_meter());
         av.badge = activation_badge(act);
         av.chord = act.chord.rowstr();
-        if (timing && song_length_ms && *song_length_ms > 0.0)
+        if (timing && song_length_ms)
             av.song_fraction =
                 song_fraction(timing->timecode(act.timecode.ticks()).ms(), *song_length_ms);
 
