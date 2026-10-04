@@ -1157,6 +1157,20 @@ const std::vector<OwnerRule>& rules() {
          {{"src/store/record_store.cpp",
            "return record.paths.empty() ? std::string() : record.best_path().pathstring();",
            "best_path_text, the owner"}}},
+        // rules_fp_of builds the SQL from the column or parameter it is
+        // given, so its own line never spells structure's bytes 5 to 12.
+        {"Which rules was a stored row made under (SQL)?",
+         "rules_fp_of in src/store/record_store.cpp",
+         R"(substr\(\s*structure\s*,\s*5\s*,\s*8\s*\))",
+         "",
+         {},
+         {},
+         "ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 4 (2026-10-04)",
+         {"\" WHERE substr(structure,5,8) = ?\");",
+          "\"DELETE FROM results WHERE substr(structure,5,8) = ?\"}) {"},
+         {"\") AND substr(structure,1,4) IN (\" + placeholders(kPathFormatStamp.accepted.size()) +"},
+         {},
+         {"src"}},
     };
     return r;
 }

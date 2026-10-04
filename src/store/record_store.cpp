@@ -1133,24 +1133,24 @@ void RecordStore::delete_auto_results() {
     // rules' own fingerprint is ever an Auto one. A new result for the same
     // chart, cap and lens outranks such a row (WinnerPicker).
     const std::vector<uint8_t> auto_fp = write_le(rules_fingerprint_.retired_auto, 8);
+    const std::string is_auto = rules_fp_of("structure") + " = ?";
     exec("BEGIN");
     try {
         // The charts that hold one, so their orphaned paths can be collected.
         std::vector<std::pair<std::string, std::string>> charts;
         {
             Stmt s = prepare(db_,
-                "SELECT DISTINCT hyhash, chartmode FROM results"
-                " WHERE substr(structure,5,8) = ?");
+                             ("SELECT DISTINCT hyhash, chartmode FROM results WHERE " + is_auto).c_str());
             bind_blob(s, 1, auto_fp);
             while (sqlite3_step(s) == SQLITE_ROW)
                 charts.emplace_back(column_text(s, 0), column_text(s, 1));
         }
         // Refs first, always: they are what keep a result's paths alive.
-        for (const char* sql :
+        for (const std::string& sql :
              {"DELETE FROM path_refs WHERE result_id IN"
-              " (SELECT result_id FROM results WHERE substr(structure,5,8) = ?)",
-              "DELETE FROM results WHERE substr(structure,5,8) = ?"}) {
-            Stmt s = prepare(db_, sql);
+              " (SELECT result_id FROM results WHERE " + is_auto + ")",
+              "DELETE FROM results WHERE " + is_auto}) {
+            Stmt s = prepare(db_, sql.c_str());
             bind_blob(s, 1, auto_fp);
             if (sqlite3_step(s) != SQLITE_DONE)
                 throw std::runtime_error(std::string("deleting Auto results failed: ") +
