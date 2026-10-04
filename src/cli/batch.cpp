@@ -154,20 +154,15 @@ int main() {
     // One database holds one fill rule (docs/adr/0010). A file with results
     // but no stamp was written before hydra_batch stamped, by the normal rule;
     // hydra_fillcompare reads it the same way. A file with neither is new.
-    const char* ch10 = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch10);
-    const char* ch11 = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch11);
-    const std::string run_mode = legacy_fills ? ch10 : ch11;
+    const hydra::FillDeadlineRule run_rule = hydra::fill_rule_for(legacy_fills);
+    const std::string run_mode = hydra::engine_mode_stamp(run_rule);
     std::optional<std::string> file_mode = store.engine_mode();
-    if (!file_mode && store.counts().second > 0) file_mode = ch11;
+    if (!file_mode && store.counts().second > 0)
+        file_mode = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch11);
     if (file_mode && *file_mode != run_mode) {
-        auto rule_name = [&](const std::string& mode) -> const char* {
-            if (mode == ch10)
-                return hydra::fill_rule_name(hydra::FillDeadlineRule::Ch10,
-                                             hydra::FillRuleNameStyle::Long);
-            if (mode == ch11)
-                return hydra::fill_rule_name(hydra::FillDeadlineRule::Ch11,
-                                             hydra::FillRuleNameStyle::Long);
-            return "unknown";
+        auto rule_name = [](const std::string& mode) -> const char* {
+            const std::optional<hydra::FillDeadlineRule> rule = hydra::fill_rule_from_stamp(mode);
+            return rule ? hydra::fill_rule_name(*rule, hydra::FillRuleNameStyle::Long) : "unknown";
         };
         std::fprintf(stderr,
                      "This database holds results scored by the %s fill rule "
@@ -206,9 +201,7 @@ int main() {
         std::printf("Timing cap : none\n");
     std::printf("Squeeze win: %d ms\n", static_cast<int>(hydra::kSqueezeWindowMs));
     std::printf("Fill rule  : %s\n",
-                hydra::fill_rule_name(legacy_fills ? hydra::FillDeadlineRule::Ch10
-                                                   : hydra::FillDeadlineRule::Ch11,
-                                      hydra::FillRuleNameStyle::Long));
+                hydra::fill_rule_name(run_rule, hydra::FillRuleNameStyle::Long));
     std::printf("Folders    : %zu\n", folders.size());
     for (const std::string& f : folders) std::printf("    %s\n", f.c_str());
 

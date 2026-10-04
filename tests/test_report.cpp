@@ -289,6 +289,17 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
     CHECK(saw_u0);
 }
 
+TEST_CASE("fill_rule_for: the legacy_fills flag and the file stamp each name one fill rule") {
+    // legacy_fills on is the Clone Hero 1.0 rule; off is the normal 1.1 rule.
+    CHECK(fill_rule_for(true) == FillDeadlineRule::Ch10);
+    CHECK(fill_rule_for(false) == FillDeadlineRule::Ch11);
+    // A stamp reads back as the rule that wrote it; any other text is no rule.
+    CHECK(fill_rule_from_stamp("ch10") == FillDeadlineRule::Ch10);
+    CHECK(fill_rule_from_stamp("ch11") == FillDeadlineRule::Ch11);
+    CHECK_FALSE(fill_rule_from_stamp("ch12").has_value());
+    CHECK_FALSE(fill_rule_from_stamp("").has_value());
+}
+
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     using report::tier_for;
 

@@ -382,8 +382,7 @@ GeneratedReport generate_report(store::RecordStore& store,
         out.empty_reason = EmptyReason::Cancelled;
         return out;
     }
-    const FillDeadlineRule rule =
-        options.lens.legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;
+    const FillDeadlineRule rule = fill_rule_for(options.lens.legacy_fills);
     out.rows = static_cast<int64_t>(rows.size());
     if (rows.empty()) {
         // Nothing listed. Either the database is empty, or it holds results
