@@ -53,6 +53,10 @@ std::vector<ReplayWindow> windows_from_json(const nlohmann::json& path) {
             for (const nlohmann::json& t : act["sqin_ticks"])
                 if (t.is_number()) w.sqin_ticks.push_back(t.get<int64_t>());
 
+        // A dumped window came off a record, so it says how it ended (D36).
+        // No key (an older dump, or a typed list) reads as a typed window.
+        w.from_record = act.value("from_record", false);
+
         if (act.contains("sqinouts") && act["sqinouts"].is_array()) {
             for (const nlohmann::json& sq : act["sqinouts"]) {
                 if (!sq.is_object()) continue;
@@ -109,6 +113,7 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                 {"chord_code", act.chord.code()},
                 {"sqinouts", sq},
                 {"sqin_ticks", sqins},
+                {"from_record", true},
             });
         }
         paths.push_back(nlohmann::json{

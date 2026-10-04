@@ -59,6 +59,13 @@ struct ReplayWindow {
     // ambiguous_window_warnings skip these when they name the engine's chord.
     // replay_path does not read it.
     std::vector<int64_t> sqin_ticks;
+
+    // The window comes off a stored record (windows_for_path, or a dump of
+    // one), so its record says how it ended: with the squeeze-out above, or
+    // plainly at D. A plainly ended window's end was D, so the only chord
+    // the engine could have squeezed out there is a late one (D36). A typed
+    // window has no history and may mean either side (core::sqout_chords).
+    bool from_record = false;
 };
 
 // The phrase chord a typed SqOut offset means.
@@ -69,10 +76,10 @@ struct SqOutNote {
 
 // Resolve w.sqout_offset_ms to the phrase chord nearest D + offset, among
 // the phrase chords strictly within kSqueezeWindowMs of D on either side.
-// The engine only ever squeezes out one of those (core::sqout_chord): the
-// first that the window did not bank before its activation and did not
-// already squeeze in (w.sqin_ticks; D34). When the nearest one is any other
-// chord this refuses (plan decision 20 of 2026-09-24). Throws
+// The engine only ever squeezes out its newest phrase at or before D or the
+// first one after D that it did not already squeeze in (core::sqout_chords;
+// w.sqin_ticks, D34; D36); a typed window may mean either. When the nearest
+// one is any other chord this refuses (plan decision 20 of 2026-09-24). Throws
 // std::runtime_error, with a message naming both chords, in that case; also
 // when there is no candidate, or when w has no offset.
 SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w);
@@ -252,13 +259,13 @@ PathReplay replay_stored_path(const Song& song, const Path& path,
 //
 // A squeeze-out lives on the note that ends a Star Power phrase: the player
 // delays that note until after Star Power has run out, so it is not doubled.
-// The chord it can be about is the one the engine would squeeze out there
-// (core::sqout_chord): the first phrase chord strictly within
-// kSqueezeWindowMs of the deactivation node that the window did not bank or
-// already squeeze in. A window with such a chord is ambiguous: the score is
-// right if the player did not squeeze, and high by that chord's first-hit
-// share if they
-// did, and nothing in the window list says which. So this reports the doubt
+// The chords it can be about are the ones the engine could squeeze out there
+// (core::sqout_chords, D36): for a stored window that ended plainly, the
+// first phrase chord after the deactivation node that it did not squeeze
+// in; for a typed window, that one or its newest phrase chord at or before
+// the node. A window with such a chord is ambiguous: the score is right if
+// the player did not squeeze, and high by that chord's first-hit share if
+// they did, and nothing in the window list says which. So this reports the doubt
 // and nothing else: it never changes a score and never invents an offset.
 //
 // It warns only when the window paid that chord (`result` must be the replay

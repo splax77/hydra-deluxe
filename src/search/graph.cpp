@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <set>
 #include <stdexcept>
 
 #include "core/backend_value.h"
@@ -140,11 +141,16 @@ void ScoreGraph::build() {
 
         if (timestamp.flag_sp) {
             // Deacts within the squeeze window keep a non-extended copy (SqOut).
+            // The one statement of "this end can give this phrase back": each
+            // extension from such an end says so (SpExtension::sqout_node).
             std::vector<Timecode> sqout_deacts;
+            std::set<int64_t> sqout_ticks;
             for (const auto& kv : pending_deacts_)
                 if (within_squeeze_window(
-                        offset_from_sp_end(timestamp.timecode.ms(), kv.second.ms())))
+                        offset_from_sp_end(timestamp.timecode.ms(), kv.second.ms()))) {
                     sqout_deacts.push_back(kv.second);
+                    sqout_ticks.insert(kv.first);
+                }
 
             // Timecodes this SP phrase can extend: pending deacts plus very
             // recently handled deacts (SqIn). Deduped by ticks via std::map.
@@ -173,7 +179,8 @@ void ScoreGraph::build() {
                 // still holding that end has already ended on it
                 // (Engine::deactivation_type).
                 if (sqin_end_by_phrase(de.to.ticks(), timestamp.timecode.ticks())) continue;
-                ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped};
+                ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped,
+                                                       sqout_ticks.count(de.from.ticks()) == 1};
                 new_pending[de.to.ticks()] = de.to;
             }
             for (const Timecode& t : sqout_deacts)
@@ -388,28 +395,26 @@ void ScoreGraph::add_deact_edge() {
     }
 
     // The phrase chords this SP end can squeeze, in chart order
-    // (core/sqout_chord.h). The engine offers a path the first one its
-    // running window can still squeeze. Where collecting a chord moves this
-    // end is extend_deacts' answer, the same one the chord's own advance edge
-    // carries, cap included (finding 37). On or before the end, both
-    // branches' ends move there. After the end, only a late SqIn reaches it,
-    // so only the SqIn end moves; a chord after the end can never reach the
-    // ceiling (it sits 2 x cap measures past a note later than the end).
+    // (core/sqout_chord.h). The engine offers a path at most one of them
+    // (core::offered_phrase, D36). Where a late squeeze-in moves this end is
+    // extend_deacts' answer, the same one the chord's own advance edge
+    // carries, cap included (finding 37); a chord after the end can never
+    // reach the ceiling (it sits 2 x cap measures past a note later than the
+    // end). An early chord's moved end is on the path's own step already.
     const std::vector<const SongTimestamp*> window = core::squeeze_window_phrases(song_, end);
     for (const SongTimestamp* c : window) {
-        const DeactExtension moved = extend_deacts({end}, c->timecode).front();
         SqueezeChoice choice;
         choice.chord = c->timecode;
         choice.timing = offset_from_sp_end(c->timecode.ms(), end.ms());
         choice.late = core::after_sp_end(c->timecode.ticks(), end.ticks());
-        choice.sqout_time = choice.late ? end : moved.to;
-        choice.sqin_time = moved.to;
-        choice.clamped = moved.clamped;
         deact_edge->squeeze_choices.push_back(choice);
+        if (!choice.late) continue;
+        const DeactExtension moved = extend_deacts({end}, c->timecode).front();
+        deact_edge->squeeze_choices.back().sqin_time = moved.to;
         // A late SqIn's end can come before its own phrase: add its node
         // now, while it is still ahead (sqin_end_by_phrase). Any late
         // chord in the window can be the one offered.
-        if (choice.late && sqin_end_by_phrase(moved.to.ticks(), c->timecode.ticks()) &&
+        if (sqin_end_by_phrase(moved.to.ticks(), c->timecode.ticks()) &&
             pending_deacts_.find(moved.to.ticks()) == pending_deacts_.end()) {
             pending_deacts_[moved.to.ticks()] = moved.to;
             deact_heap_.push_back(moved.to);

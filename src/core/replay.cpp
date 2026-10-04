@@ -25,8 +25,8 @@ struct Window {
 
 // Every phrase chord strictly within kSqueezeWindowMs of deactivation node D,
 // in chart order: the list the graph puts on D's edge
-// (core::squeeze_window_phrases). The engine squeezes out only one of them,
-// the one core::sqout_chord names. A typed offset is matched to the chord
+// (core::squeeze_window_phrases). The engine squeezes out only the ones
+// core::sqout_chords names. A typed offset is matched to the chord
 // nearest it, which is the replay's own question.
 std::vector<const SongTimestamp*> sqout_candidates(const Song& song,
                                                    int64_t deact_tick) {
@@ -232,6 +232,7 @@ std::vector<ReplayWindow> windows_for_path(const Path& path) {
             w.sqout_offset_ms = row->offset_ms;
         }
         w.sqin_ticks = sqin_phrase_ticks(act);
+        w.from_record = true;
         out.push_back(w);
     }
     return out;
@@ -277,8 +278,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     const SqOutNote typed{best->timecode.ticks(),
                           offset_from_sp_end(best->timecode.ms(), d_ms)};
 
-    // The engine squeezes out only the chord core::sqout_chord names for this
-    // window. Anything else is a squeeze-out the search can never produce:
+    // The engine squeezes out only the chords core::sqout_chords names for
+    // this window. Anything else is a squeeze-out the search can never produce:
     // refuse, never price it.
     const Timecode deact_tc = song.timing().timecode(w.deact_tick);
     const bool typed_squeezed_in =
@@ -302,30 +303,27 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
                       where.c_str(), *w.sqout_offset_ms, (long long)typed.tick);
         throw std::runtime_error(buf);
     }
-    const SongTimestamp* engine = core::sqout_chord(song, deact_tc, w.act_tick, w.sqin_ticks);
-    if (!engine) {
-        // best exists, so the window holds a phrase chord, and this window
-        // banked or already squeezed in every one before the typed one. The
-        // typed one is squeezable, so it would be offered: unreachable.
-        throw std::logic_error(where + ": no phrase chord to squeeze out, yet the typed one can be");
-    }
-    if (best != engine) {
-        // The engine's chord comes before the typed one in the window. Say
-        // why the ones before it are passed over, when any are (D34).
-        const std::vector<const SongTimestamp*> window = sqout_candidates(song, w.deact_tick);
-        const bool first = !window.empty() && window.front() == engine;
+    // D36: a window squeezes out only its newest phrase at or before the SP
+    // end, or the first phrase after it. A typed window has no history, so
+    // either is accepted (core::sqout_chords).
+    const std::vector<const SongTimestamp*> offered =
+        core::sqout_chords(song, deact_tc, w.act_tick, w.sqin_ticks, false);
+    if (std::find(offered.begin(), offered.end(), best) == offered.end()) {
+        std::string can;
+        for (const SongTimestamp* c : offered) {
+            char one[96];
+            std::snprintf(one, sizeof(one), "%stick %lld (%.2f ms)", can.empty() ? "" : " or ",
+                          (long long)c->timecode.ticks(), offset_from_sp_end(c->timecode.ms(), d_ms));
+            can += one;
+        }
         std::snprintf(
             buf, sizeof(buf),
             "%s: the SqOut offset %.2f ms lands on the phrase chord at tick "
             "%lld (%.2f ms from the SP end), which the engine never squeezes "
-            "out. The only chord it can squeeze out here is the first phrase "
-            "chord within %.0f ms of the SP end%s, at tick %lld (%.2f ms). "
-            "Not priced.",
-            where.c_str(), *w.sqout_offset_ms, (long long)typed.tick,
-            typed.offset_ms, kSqueezeWindowMs,
-            first ? "" : " that this window did not bank or squeeze in",
-            (long long)engine->timecode.ticks(),
-            offset_from_sp_end(engine->timecode.ms(), d_ms));
+            "out. A window squeezes out only its newest phrase chord at or "
+            "before the SP end or the first one after it%s%s. Not priced.",
+            where.c_str(), *w.sqout_offset_ms, (long long)typed.tick, typed.offset_ms,
+            can.empty() ? "; here neither is left" : ": here ", can.c_str());
         throw std::runtime_error(buf);
     }
     return typed;
@@ -341,11 +339,12 @@ std::vector<std::string> ambiguous_window_warnings(
         // A squeeze-out offset or chord settles the question.
         if (w.sqout_offset_ms || w.sqout_tick) continue;
 
-        // The one chord the engine could squeeze out at this D, for this
-        // window (its activation and the phrases it squeezed in).
-        const SongTimestamp* engine =
-            core::sqout_chord(song, timing.timecode(w.deact_tick), w.act_tick, w.sqin_ticks);
-        if (!engine) continue;
+        // The chords the engine could squeeze out at this D, for this window
+        // (core::sqout_chords, D36): for a stored window that ended plainly,
+        // only a late one; for a typed one, up to two.
+        for (const SongTimestamp* engine :
+             core::sqout_chords(song, timing.timecode(w.deact_tick), w.act_tick, w.sqin_ticks,
+                                w.from_record)) {
         const int64_t tick = engine->timecode.ticks();
 
         // Only a chord the window paid can make the score too high: one at or
@@ -375,6 +374,7 @@ std::vector<std::string> ambiguous_window_warnings(
                       std::to_string(w.deact_tick) + " ends " + where +
                       " with no squeeze-out offset; if the player squeezed it "
                       "out, this score is high by that note's first-hit share");
+        }
     }
     return out;
 }

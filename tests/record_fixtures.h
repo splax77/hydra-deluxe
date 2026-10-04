@@ -230,18 +230,36 @@ inline EngineOptions wide_search() {
     return o;
 }
 
+// Where the graph's SP track starts: the SP track is one chain, opened by
+// the first branch edge on the base track (the first activation). nullptr
+// when the base track has no branch edge.
+inline const ScoreGraphNode* sp_track_start(const ScoreGraph& graph) {
+    for (const ScoreGraphNode* b = graph.start(); b; b = b->adv_edge ? b->adv_edge->dest : nullptr)
+        if (b->branch_edge) return b->branch_edge->dest;
+    return nullptr;
+}
+
 // The deactivation edge on the SP track whose SP end is `end_tick`: the
-// first branch edge, walking the track the first activation opens, whose
-// destination sits at that tick. nullptr when there is none.
+// first branch edge, walking the SP track, whose destination sits at that
+// tick. nullptr when there is none.
 inline const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t end_tick) {
-    const ScoreGraphNode* sp = nullptr;
-    for (const ScoreGraphNode* b = graph.start(); b && !sp;
-         b = b->adv_edge ? b->adv_edge->dest : nullptr)
-        if (b->branch_edge) sp = b->branch_edge->dest;
-    for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr)
+    for (const ScoreGraphNode* sp = sp_track_start(graph); sp;
+         sp = sp->adv_edge ? sp->adv_edge->dest : nullptr)
         if (sp->branch_edge && sp->branch_edge->dest->timecode.ticks() == end_tick)
             return sp->branch_edge;
     return nullptr;
+}
+
+// Where collecting the phrase on `phrase_tick` moves the SP end `from_tick`,
+// as the SP track's advance edge records it (the step the engine writes),
+// or nullopt.
+inline std::optional<SpExtension> extension_of(const ScoreGraph& graph, int64_t phrase_tick,
+                                               int64_t from_tick) {
+    for (const ScoreGraphNode* sp = sp_track_start(graph); sp && sp->adv_edge;
+         sp = sp->adv_edge->dest)
+        for (const auto& [tc, ext] : sp->adv_edge->sp_times)
+            if (tc.ticks() == phrase_tick && ext.count(from_tick)) return ext.at(from_tick);
+    return std::nullopt;
 }
 
 // ---- lone pricing (decision D3) --------------------------------------------

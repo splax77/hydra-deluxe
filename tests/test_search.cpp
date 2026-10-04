@@ -648,7 +648,9 @@ TEST_CASE("SP past the last note: tail rows use the 500 ms window from the SP en
 
 // The graph lists, for every deactivation edge, exactly the phrase chords
 // core::squeeze_window_phrases names, in chart order, so the engine can offer
-// the first one a window can still squeeze (D34). This guards against drift.
+// a window the one phrase core::offered_phrase picks (D36): its newest phrase
+// before the end, or the first after it not yet squeezed in. This guards
+// against drift.
 TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrases names") {
     int edges = 0, claimed = 0;
     for (const std::string& path : corpus::chart_paths()) {
@@ -656,14 +658,9 @@ TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrase
         if (song.is_empty()) continue;
         const ScoreGraph graph(song, 4);
 
-        // The SP track is one chain; it starts at the first activation's node.
-        const ScoreGraphNode* sp = nullptr;
-        for (const ScoreGraphNode* b = graph.start(); b && !sp;
-             b = b->adv_edge ? b->adv_edge->dest : nullptr)
-            if (b->branch_edge) sp = b->branch_edge->dest;
-
         std::set<const ScoreGraphEdge*> seen;
-        for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr) {
+        for (const ScoreGraphNode* sp = test::sp_track_start(graph); sp;
+             sp = sp->adv_edge ? sp->adv_edge->dest : nullptr) {
             const ScoreGraphEdge* e = sp->branch_edge;
             if (!e || !seen.insert(e).second) continue;
             ++edges;
@@ -682,6 +679,7 @@ TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrase
 }
 
 using test::deact_edge_at;
+using test::extension_of;
 
 // A squeeze choice's facts, pinned on two hand-built songs at 240 BPM (a
 // measure is 1920 ticks and 1000 ms). Both activate at 5760 with two bars,
@@ -695,11 +693,17 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         REQUIRE(e->squeeze_choices.size() == 1);
         const SqueezeChoice& c = e->squeeze_choices[0];
         CHECK(c.chord.ticks() == 12960);
-        CHECK(c.sqin_time.ticks() == 17280);
-        CHECK_FALSE(c.clamped);
         CHECK(c.timing == doctest::Approx(-250.0).epsilon(1e-9));
         CHECK_FALSE(c.late);
-        CHECK(c.sqout_time.ticks() == 17280);
+        // An early chord's moved end is its own step's, not the choice's.
+        CHECK_FALSE(c.sqin_time.has_value());
+        // The phrase's own step moves 13440 to 17280, and 13440 can give it
+        // back: the step offers the squeeze there (D36).
+        const std::optional<SpExtension> x = extension_of(graph, 12960, 13440);
+        REQUIRE(x.has_value());
+        CHECK(x->to_tick == 17280);
+        CHECK_FALSE(x->clamped);
+        CHECK(x->sqout_node);
     }
     SUBCASE("a phrase 250 ms after the end: a late squeeze-in only") {
         const Song song = test::make_late_sqin_song();
@@ -709,11 +713,10 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         REQUIRE(e->squeeze_choices.size() == 1);
         const SqueezeChoice& c = e->squeeze_choices[0];
         CHECK(c.chord.ticks() == 13920);
-        CHECK(c.sqin_time.ticks() == 17280);
-        CHECK_FALSE(c.clamped);
+        REQUIRE(c.sqin_time.has_value());
+        CHECK(c.sqin_time->ticks() == 17280);
         CHECK(c.timing == doctest::Approx(250.0).epsilon(1e-9));
         CHECK(c.late);
-        CHECK(c.sqout_time.ticks() == 13440);
     }
     SUBCASE("no phrase in the window: the path just ends at the SP end") {
         // Two bars from the fill at 5760, and the next phrase is past the
@@ -1512,16 +1515,8 @@ TEST_CASE("Bank: every corpus path banks in order") {
         const Song& song =
             corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
         if (song.is_empty()) continue;
-        const std::set<int64_t> phrase_ends = bank_check::phrase_ends(song);
-        const int64_t chart_end = song.sequence.back().timecode.ticks();
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        std::vector<const Path*> all = rec.all_paths();
-        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
-        for (const Path* p : all) {
-            CAPTURE(chart);
-            CAPTURE(p->pathstring());
-            acts += bank_check::check_path_banks(*p, phrase_ends, chart_end);
-        }
+        CAPTURE(chart);
+        acts += bank_check::check_record_banks(song, corpus::analyzed(chart, cfg));
     }
     CHECK(acts > 1000);  // a floor the user approved (D43)
 }
@@ -1873,6 +1868,49 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D
     CHECK(rec.best_path().totalscore() == 2950);
     CHECK(test::path_named(rec.paths, "0++") == nullptr);
     CHECK(test::path_named(rec.paths, "0+-") == nullptr);
+}
+
+// D36 gap c, on the same chart. '0' activates at 19200 and its phrase 30480
+// moves its end from 30720; '1' activates at 21120 and 30480 moves its end
+// from 30721. Both land on 34560, so both SP ends hold a choice of 30480 for
+// a path whose end is 34560. Each window may squeeze 30480 only at the end
+// its own step moved: before D36 the first matching node, 30720, took '1's
+// squeeze too, so its SqIn or SqOut sat 1.04 ms off and a SqOut ended SP at
+// a node its record never names. Each window is checked in a targeted
+// search (search_target) of its own activation, so no fold hides it.
+TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own path (D36)") {
+    const Song song = load_songpath(
+        std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/twin_end_nodes.chart", true, true);
+    const app::AnalysisSettings cfg = test::scores_settings(2);
+    const ScoreGraph graph(song, 2);
+    CHECK(deact_edge_at(graph, 30720) != nullptr);
+    CHECK(deact_edge_at(graph, 30721) != nullptr);
+    // 120 BPM at 480 ticks a beat: 30480 is 31750 ms, 30720 is 32000 ms and
+    // 30721 is 32001.0417 ms, so each window's squeeze sits 250 ms or
+    // 251.0417 ms (250 + 25/24) before its own end.
+    struct Window {
+        int64_t act, own_end;
+        double own_ms;
+    };
+    for (const Window& w : {Window{19200, 30720, -250.0}, Window{21120, 30721, -251.0 - 1.0 / 24.0}}) {
+        const int64_t act = w.act, own_end = w.own_end;
+        CAPTURE(act);
+        const doctest::Approx own_ms = doctest::Approx(w.own_ms).epsilon(1e-9);
+        int squeezes = 0;
+        const std::vector<Path> kept = search_target(song, cfg, {act});
+        for (const Path* p : flatten_paths(kept)) {
+            CAPTURE(p->pathstring());
+            for (const Activation& a : p->walk_activations()) {
+                REQUIRE(a.timecode.ticks() == act);
+                for (const SPSqueeze& q : a.sqinouts) {
+                    ++squeezes;
+                    CHECK(q.offset_ms == own_ms);
+                }
+                if (a.sqout_tick) CHECK(a.deact_tick() == std::optional<int64_t>(own_end));
+            }
+        }
+        CHECK(squeezes > 0);
+    }
 }
 
 // The corpus-wide lone-pricing check for tied variants (D3) lives in
