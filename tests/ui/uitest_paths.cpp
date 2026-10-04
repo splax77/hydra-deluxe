@@ -164,25 +164,35 @@ std::vector<DrawnMark> drawn_marks(ImGuiTestContext* ctx) {
     return marks;
 }
 
-// Each mark's outline follows its row: orange when the row is difficult (its
-// badge is orange), grey when it has a badge that is not, none without one.
-void check_marks_follow_rows(ImGuiTestContext* ctx, hydra::ui::AppState& app) {
-    const hydra::app::ActivationsView& view =
-        app.details_ui.paths_tab
-            .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
-                     app.viewed.timing ? &*app.viewed.timing : nullptr,
-                     static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
-                     app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums)
-            .activations;
+// The open record's activation rows: the same call the Paths tab makes, so
+// this is the cached view it draws.
+const hydra::app::ActivationsView& shown_activations(hydra::ui::AppState& app) {
+    return app.details_ui.paths_tab
+        .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
+                 app.viewed.timing ? &*app.viewed.timing : nullptr,
+                 static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
+                 app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums)
+        .activations;
+}
+
+// The outline a timeline mark is drawn with.
+enum class Outline { None, Orange, Grey };
+
+// Each mark's drawn outline, against the colours this chart's rows are known
+// to have, one per activation in order.
+void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
+                 const std::vector<Outline>& expected) {
+    const hydra::app::ActivationsView& view = shown_activations(app);
     const std::vector<DrawnMark> marks = drawn_marks(ctx);
-    IM_CHECK_EQ(marks.size(), view.acts.size());
-    if (marks.size() != view.acts.size()) return;
+    IM_CHECK_EQ(marks.size(), expected.size());
+    if (marks.size() != expected.size() || view.acts.size() != expected.size()) return;
+    // Every mark is logged before any check, so a failure shows them all.
+    for (size_t i = 0; i < marks.size(); ++i)
+        ctx->LogInfo("mark %d at %.1f: badge \"%s\", orange %d, grey %d", view.acts[i].number,
+                     marks[i].x, view.acts[i].badge.c_str(), marks[i].orange, marks[i].grey);
     for (size_t i = 0; i < marks.size(); ++i) {
-        const hydra::app::ActivationRowView& a = view.acts[i];
-        ctx->LogInfo("mark %d at %.1f: badge \"%s\", difficult %d, orange %d, grey %d", a.number,
-                     marks[i].x, a.badge.c_str(), a.difficult, marks[i].orange, marks[i].grey);
-        IM_CHECK_EQ(marks[i].orange, a.difficult);
-        IM_CHECK_EQ(marks[i].grey, !a.badge.empty() && !a.difficult);
+        IM_CHECK_EQ(marks[i].orange, expected[i] == Outline::Orange);
+        IM_CHECK_EQ(marks[i].grey, expected[i] == Outline::Grey);
     }
 }
 
@@ -207,8 +217,9 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, "6 notes near the SP end"));
     IM_CHECK(!on_screen(h, "SqOut: Note timing"));
     IM_CHECK(!on_screen(h, "Frontend:"));
-    // The timeline outlines follow the rows: row 1's 163 ms squeeze is orange.
-    check_marks_follow_rows(ctx, *h.app);
+    // The timeline outlines: row 1's 163 ms squeeze is orange, rows 2 and 3
+    // have no badge and no outline.
+    check_marks(ctx, *h.app, {Outline::Orange, Outline::None, Outline::None});
 
     // "Show in Preview" asks the Preview for activation 1 (Task 11 consumes it)
     // and switches to the Preview tab, which starts the Preview.
@@ -247,7 +258,8 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     analyze_open_song(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(2);
-    check_marks_follow_rows(ctx, *h.app);
+    // Row 1 is the squeeze-out, row 4 the early fill; rows 2 and 3 have no badge.
+    check_marks(ctx, *h.app, {Outline::Grey, Outline::None, Outline::None, Outline::Grey});
 }
 
 // The backend table folds per activation, and the Backend limit moved here.
@@ -524,15 +536,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK_GE(l.bars_x, hydra::ui::px(hydra::ui::kRowMinBarsX));
         if (!badge.empty()) IM_CHECK_LT(bars_end, l.badge_pill_min);
     };
-    // The same call the tab makes, so this is the cached view it draws.
-    hydra::ui::AppState& app = *h.app;
-    const hydra::app::ActivationsView& view =
-        app.details_ui.paths_tab
-            .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
-                     app.viewed.timing ? &*app.viewed.timing : nullptr,
-                     static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
-                     app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums)
-            .activations;
+    const hydra::app::ActivationsView& view = shown_activations(*h.app);
     std::string widest;
     for (const hydra::app::ActivationRowView& a : view.acts)
         if (text_w(a.measure.c_str(), mono) > text_w(widest.c_str(), mono)) widest = a.measure;
