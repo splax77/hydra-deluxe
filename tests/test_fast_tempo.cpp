@@ -397,6 +397,11 @@ std::string target_text(const std::vector<Path>& kept) {
 // variant of a root that took only 3168, so search_target promotes it to a
 // result of its own (the next test's case). Two other path strings gain a
 // sign for that phrase ('0++- E0+' reads '0++- E0++'); no total moves.
+// T10 (finding 37, D44 addendum) reads six: the squeeze choices now offer a
+// squeeze at the cap's ceiling, where a full meter pins the SP end when a
+// phrase is hit mid-SP. Seed 5's second window starts full, so it gains
+// '0- 0+-' (in place of '0- 0', same 6,750), '0- 0++' (a tied variant at
+// 7,150) and '0- 0-' (6,550). The best, 7,550, is unchanged.
 TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept (D45)") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
@@ -406,12 +411,13 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
 
     std::vector<bool> promoted;
     const std::vector<Path> kept = search_target(song, cfg, want, &promoted);
-    CHECK(kept.size() == 5);
+    CHECK(kept.size() == 6);
     CHECK(target_text(kept) ==
-          "0+- 0++ 7550 | 0++- E0++ 7350 [0++- E0+- 7350] | 0++- E0- 7150 [0+- 0+- 7150] | "
-          "0+- 0- 6950 | 0- 0 6750 | ");
-    // '0+- 0++' is the promoted variant; the other four are the engine's roots.
-    CHECK(promoted == std::vector<bool>{true, false, false, false, false});
+          "0+- 0++ 7550 | 0++- E0++ 7350 [0++- E0+- 7350] | "
+          "0++- E0- 7150 [0+- 0+- 7150; 0- 0++ 7150] | 0+- 0- 6950 | 0- 0+- 6750 | "
+          "0- 0- 6550 | ");
+    // '0+- 0++' is the promoted variant; the other five are the engine's roots.
+    CHECK(promoted == std::vector<bool>{true, false, false, false, false, false});
     for (const Path& p : kept) {
         CHECK(act_ticks(p) == want);
         std::vector<const Path*> tied;
@@ -432,7 +438,11 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
 // takes 3168 and 12864. Before the fix the variant went with the root.
 // Under step 2, D21 already awards that phrase on seed 5 alone (the test
 // above promotes '0+- 0++' too). The extra note stays: with it, every value
-// pinned below reads the same as under step 1.
+// pinned below reads the same as under step 1, except the list of results:
+// T10 (finding 37, D44 addendum) offers squeezes at the cap's ceiling, so
+// seed 5 gains '0- 0+-' (in place of '0- 0', same 6,950), '0- 0++' (a tied
+// variant at 7,350) and '0- 0-' (6,750), as in the test above. The best,
+// 7,750, is unchanged.
 TEST_CASE("search_target: a variant that took every named activation outlives its dropped root") {
     FuzzChart fc = fuzz_chart(5);
     const std::string last_phrase = "  22848 = N 1 0\n";
@@ -447,10 +457,11 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
     std::vector<bool> was_promoted;
     const std::vector<Path> kept = search_target(song, cfg, want, &was_promoted);
     CHECK(target_text(kept) ==
-          "0+- 0++ 7750 | 0++- E0++ 7550 [0++- E0+- 7550] | 0++- E0- 7350 [0+- 0+- 7350] | "
-          "0+- 0- 7150 | 0- 0 6950 | ");
+          "0+- 0++ 7750 | 0++- E0++ 7550 [0++- E0+- 7550] | "
+          "0++- E0- 7350 [0+- 0+- 7350; 0- 0++ 7350] | 0+- 0- 7150 | 0- 0+- 6950 | "
+          "0- 0- 6750 | ");
     // search_target says which result it promoted: only the first.
-    CHECK(was_promoted == std::vector<bool>{true, false, false, false, false});
+    CHECK(was_promoted == std::vector<bool>{true, false, false, false, false, false});
     const Path* promoted = test::path_named(kept, "0+- 0++");
     REQUIRE(promoted != nullptr);
     CHECK(promoted->totalscore() == 7750);
