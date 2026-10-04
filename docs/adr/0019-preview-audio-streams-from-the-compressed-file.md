@@ -83,9 +83,9 @@ the library found 0 of 3,722 Opus files with a non-zero gain, so nothing
 audible changes today. A chained Opus file (several streams glued end to end)
 plays only the links that match the first link's channel count. The reader
 stops keeping links at the first one with another channel count or with no
-audio page, because a mixer can't switch channel count mid-stem
-(src/audio/opus_reader.cpp; the user chose to correct this text and keep the
-code, D48, Q33).
+audio page (src/audio/opus_reader.cpp; the user chose to correct this text and
+keep the code, D48, Q33). The reason for the channel-count stop is the one the
+reader's header comment gives: a mixer can't change channel count mid-stem.
 
 Opus end trimming (stopping at the last page's sample count instead of playing
 the encoder's padding at the very end) is built but switched off. The Preview
