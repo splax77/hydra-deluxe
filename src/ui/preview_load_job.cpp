@@ -11,6 +11,7 @@
 #include "core/winstr.h"
 #include "render/track_state.h"
 #include "ui/library_parts.h"  // time_left_text
+#include "ui/preview_transport.h"  // audio_end_chart_ms
 #include "ui/widgets.h"        // progress_fraction
 
 namespace hydra::ui {
@@ -38,13 +39,6 @@ long long whole_mb(uint64_t bytes) {
 }
 
 }  // namespace
-
-std::optional<double> audio_end_chart_ms(const audio::MixSource& mix, double audio_offset_ms) {
-    if (mix.channels() <= 0 || mix.sample_rate() <= 0 || mix.length_frames() <= 0)
-        return std::nullopt;
-    return static_cast<double>(mix.length_frames()) * 1000.0 / mix.sample_rate() -
-           audio_offset_ms;
-}
 
 double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_total) {
     if (window_start_s_ < 0.0) {

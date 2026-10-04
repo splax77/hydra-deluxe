@@ -164,10 +164,6 @@ struct PreviewSceneBase {
     render::TrackStateOptions track_opts;
 };
 
-// Where `mix` stops in chart time: its length in ms minus `audio_offset_ms`
-// (audio_ms = chart_ms + audio_offset_ms). Empty when the mix has no audio.
-std::optional<double> audio_end_chart_ms(const audio::MixSource& mix, double audio_offset_ms);
-
 // Builds a song's PreviewSceneBase. `audio_end_ms` is the load's
 // Result::audio_end_ms, where the beat lines end (app::build_preview_base).
 // `check_cancel` runs between the steps and may throw to stop the build.
