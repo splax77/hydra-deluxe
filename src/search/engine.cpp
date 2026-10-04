@@ -38,6 +38,14 @@ const int32_t DEACT_SQINOUT = 2;
 
 const int32_t NODE_BROKEN = -2;
 
+// Clone Hero's early-fill rule, stated once. A fill spawns only when SP was
+// ready by the fill's deadline, give or take kEarlyFillWindowMs. The e_offset
+// is how long before the deadline SP became ready (negative: after it).
+// branch_activate applies the rule; the search's group key (ready_class)
+// counts the upcoming fills it refuses.
+inline double fill_e_offset(double deadline_ms, double ready_ms) { return deadline_ms - ready_ms; }
+inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillWindowMs; }
+
 // ---- the graph, enumerated ----------------------------------------------
 // The search is index-based (indices pack into memo keys and the output act
 // records), so the graph is enumerated into index->object arrays, plus one
@@ -348,7 +356,9 @@ public:
           no_skips_(options.no_skips),
           hard_ms_filter_(options.hard_ms_filter),
           target_act_ticks_(options.target_act_ticks ? &*options.target_act_ticks
-                                                     : nullptr) {}
+                                                     : nullptr) {
+        index_fills();
+    }
 
     bool run();
 
@@ -462,6 +472,12 @@ private:
     double act_difficulty(int32_t act) const;
     double search_difficulty(const Path& p) const;
     bool passes_ms_filter(const Path& p) const;
+    // The ms limit's test on one difficulty: within it, or no limit set.
+    bool within_ms_limit(double d) const { return !has_ms_filter_ || d <= ms_filter_; }
+
+    // The fills on the base track in chart order, for ready_class.
+    void index_fills();
+    uint64_t ready_class(const Path& p) const;
     void close_last_activation(Path& p) const;
 
     void reduce_iteration_paths();
@@ -585,7 +601,67 @@ private:
 
     std::function<void(float)> progress_cb_;
     float progress_reported_ = -1.0f;
+
+    // The base track's fills in chart order: each one's deadline, and the
+    // earliest deadline from it on (so ready_class can stop early). Per node,
+    // the first fill after it. Built once, by index_fills.
+    std::vector<double> fill_deadline_;
+    std::vector<double> fill_min_deadline_;
+    std::vector<int32_t> next_fill_;
 };
+
+// --- index_fills ---------------------------------------------------------
+void Engine::index_fills() {
+    std::vector<std::pair<int64_t, double>> fills;  // tick, deadline
+    for (const NodeView& n : en_.node_views)
+        if (!n.is_sp && n.branch_edge >= 0)
+            fills.emplace_back(n.tick, edge(n.branch_edge).activation_fill_deadline_ms);
+    std::sort(fills.begin(), fills.end());
+    std::vector<int64_t> ticks;
+    ticks.reserve(fills.size());
+    fill_deadline_.reserve(fills.size());
+    for (const auto& f : fills) {
+        ticks.push_back(f.first);
+        fill_deadline_.push_back(f.second);
+    }
+    fill_min_deadline_ = fill_deadline_;
+    for (size_t k = fill_min_deadline_.size(); k-- > 1;)
+        fill_min_deadline_[k - 1] = std::min(fill_min_deadline_[k - 1], fill_min_deadline_[k]);
+    next_fill_.reserve(en_.node_views.size());
+    for (const NodeView& n : en_.node_views)
+        next_fill_.push_back(
+            (int32_t)(std::upper_bound(ticks.begin(), ticks.end(), n.tick) - ticks.begin()));
+}
+
+// --- ready_class ---------------------------------------------------------
+// What a waiting path's SP-ready time decides about its future, as a group
+// key part. Two paths with the same meter, standing on the same node, can
+// differ only in which upcoming fills spawn for them (the early-fill rule)
+// and, under an ms limit, which of those early fills would put them over it
+// (an E0's difficulty is its ready time past the deadline). Each of those is
+// one cut-off ready time per fill: a later ready time is refused, or over
+// the limit, at every fill an earlier one is, and more. So the number of
+// upcoming fills on the far side of each cut-off names the set exactly, and
+// two paths with equal counts are interchangeable. Low 16 bits: fills whose
+// early fill would be over the limit (only while nothing was passed over, so
+// the next activation can be an E0). High 16: fills that refuse it. 0 for a
+// path under 2 bars: its ready time is not set yet.
+uint64_t Engine::ready_class(const Path& p) const {
+    if (p.sp < 2 || !has_value(p.sp_ready_ms)) return 0;
+    const bool can_be_e0 = has_ms_filter_ && p.currentskips == 0;
+    uint64_t refused = 0, over = 0;
+    for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
+        // Every deadline from here on is at least this one: none refuses,
+        // and none is an E0 (is_e0 needs less slack than this).
+        if (fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms) >= kEarlyFillWindowMs) break;
+        const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
+        if (fill_refuses(e_offset)) ++refused;
+        if (can_be_e0 && is_e0(e_offset, 0) && !within_ms_limit(early_fill_difficulty(e_offset)))
+            ++over;
+    }
+    if (refused > 0xFFFF || over > 0xFFFF) throw std::logic_error("search group key out of range");
+    return (refused << 16) | over;
+}
 
 // --- advance -------------------------------------------------------------
 void Engine::advance(Path& p) {
@@ -689,8 +765,8 @@ bool Engine::branch_activate(Path& p, Path* child) {
     const EdgeView e = edge(n.branch_edge);
     const ScoreGraphEdge* eo = eobj(n.branch_edge);
 
-    const double e_offset = e.activation_fill_deadline_ms - p.sp_ready_ms;
-    if (e_offset < -kEarlyFillWindowMs) return false;
+    const double e_offset = fill_e_offset(e.activation_fill_deadline_ms, p.sp_ready_ms);
+    if (fill_refuses(e_offset)) return false;
 
     // activation_initial_end_times, keyed by SP meter. The flat form was a list
     // with NO_TIME gaps in range [0, top]; here the map has meters 2..max.
@@ -903,7 +979,7 @@ double Engine::search_difficulty(const Path& p) const {
 bool Engine::passes_ms_filter(const Path& p) const {
     const double d = search_difficulty(p);
     if (!has_value(d)) return true;
-    return d <= ms_filter_;
+    return within_ms_limit(d);
 }
 
 // --- reduce_group --------------------------------------------------------
@@ -1085,11 +1161,12 @@ void Engine::reduce_iteration_paths() {
         if (p.buffered != 0) continue;
 
         // Group by what decides the path's future: its SP meter, or its SP end
-        // while active. sp_ready_ms is left out, although branch_activate reads
-        // it for the early-fill window. Measured 2026-09 over the corpus
-        // with sp_ready_ms added to the key: 0 score changes and 0
-        // variant-list changes across 96 charts (the corpus's 97, less one
-        // that hydra_replay could not open, skipped on both sides).
+        // while active. While waiting, also which upcoming fills its SP-ready
+        // time decides (ready_class), not the time itself: branch_activate
+        // reads it for the early-fill rule, and a higher-scoring path that
+        // became ready later must not knock out one an upcoming fill still
+        // spawns for. The raw time in the key splits paths no fill tells
+        // apart; over the library it grew the frontier 13-22x (2026-10).
         // While SP runs, the activation's banked phrase in squeeze reach is
         // part of that future too: two activations that differ there can
         // face different squeeze choices at the same SP end
@@ -1107,6 +1184,11 @@ void Engine::reduce_iteration_paths() {
                 p.banked_phrase_ordinal < 0 || p.banked_phrase_ordinal > 0xFFFF)
                 throw std::logic_error("search group key out of range");
             key_value = (key_value << 16) | (uint64_t)p.banked_phrase_ordinal;
+        } else if (!is_complete) {
+            // The meter in the high bits, ready_class's 32 below it.
+            if (p.sp < 0 || p.sp >= (1 << 30))
+                throw std::logic_error("search group key out of range");
+            key_value = (key_value << 32) | ready_class(p);
         }
         const uint64_t key = (key_value << 1) | (is_sp ? 1ull : 0ull);
 
