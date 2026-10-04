@@ -650,7 +650,7 @@ TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
             CHECK(pa.lane == lane_of(a.chord.activation_note().colortype));
         }
         CHECK(pa.measure == format_measure(r.song.timing(), pa.tick));
-        CHECK(pa.chord == (a.chord.count() > 0 ? a.chord.rowstr() : std::string()));
+        CHECK(pa.chord == a.chord);  // named by the box, in the Pro Drums setting's words
     }
 
     // Same song, no path: identical notes, empty overlay.
@@ -1730,33 +1730,43 @@ TEST_CASE("activation jumps: nearest activation before or after the playhead") {
 
 TEST_CASE("next activation box: the activation at or after the playhead") {
     TwoActs t;
-    PreviewNextActBox box = build_next_act_box(t.scene, 0.0);
+    PreviewNextActBox box = build_next_act_box(t.scene, 0.0, /*pro_drums=*/true);
     CHECK(box.shown);
     CHECK(box.header == "Next: activation 1 of 2");
     CHECK(box.detail == "at m2.1.0 " + kDot + " [Red snare]");
-    CHECK(build_next_act_box(t.scene, 2000.0).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0).header == "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0).detail == "at m5.1.0 " + kDot + " [Red snare]");
-    CHECK_FALSE(build_next_act_box(t.scene, 9000.0).shown);
-    CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0).shown);
+    CHECK(build_next_act_box(t.scene, 2000.0, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, 2001.0, true).header == "Next: activation 2 of 2");
+    CHECK(build_next_act_box(t.scene, 2001.0, true).detail == "at m5.1.0 " + kDot + " [Red snare]");
+    CHECK_FALSE(build_next_act_box(t.scene, 9000.0, true).shown);
+    CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0, true).shown);
+}
+
+TEST_CASE("next activation box: the note names follow the Pro Drums setting") {
+    // The Dynamics wording (note_label): with Pro Drums off the red pad is
+    // plain "Red", with it on "Red snare" (D48, Q11).
+    TwoActs t;
+    CHECK(build_next_act_box(t.scene, 0.0, /*pro_drums=*/false).detail ==
+          "at m2.1.0 " + kDot + " [Red]");
+    CHECK(build_next_act_box(t.scene, 0.0, /*pro_drums=*/true).detail ==
+          "at m2.1.0 " + kDot + " [Red snare]");
 }
 
 TEST_CASE("next activation box: on an activation within half a millisecond, and no chord") {
     TwoActs t;
     // The playhead counts as on an activation up to half a millisecond past
     // it: at 2000.5 ms the box still names activation 1, a hair later 2.
-    CHECK(build_next_act_box(t.scene, -100.0).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, 2000.5).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300)).header ==
+    CHECK(build_next_act_box(t.scene, -100.0, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, 2000.5, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300), true).header ==
           "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 8000.5).header == "Next: activation 2 of 2");
-    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300)).shown);
+    CHECK(build_next_act_box(t.scene, 8000.5, true).header == "Next: activation 2 of 2");
+    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300), true).shown);
 
     // An activation with no chord names only its measure.
     Song song = make_sp_song({960}, /*last_tick=*/13440);
     Path path;
     path.activations = {sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760)};
-    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0);
+    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0, true);
     CHECK(box.header == "Next: activation 1 of 1");
     CHECK(box.detail == "at m2.1.0");
 }

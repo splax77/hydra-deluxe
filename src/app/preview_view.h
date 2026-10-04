@@ -107,9 +107,10 @@ struct PreviewActivation {
     PreviewLane lane = PreviewLane::Kick;
     bool has_lane = false;
     // The activation's position as the Paths tab prints it (format_measure)
-    // and its chord (Chord::rowstr); chord is empty when the record has none.
+    // and its chord, which build_next_act_box names in the Pro Drums
+    // setting's words; chord is empty when the record has none.
     std::string measure;
-    std::string chord;
+    Chord chord;
 };
 
 // A beat line on the highway: a bar line, a beat line, or the fainter
@@ -333,14 +334,16 @@ std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_m
 
 // The box at the highway's bottom-left: the first activation at or after the
 // playhead (the same half-millisecond slack), "Next: activation 1 of 3" and
-// "at m32.1.0 · [Kick - GreenCym]". Hidden past the last activation and when
-// the scene has no path.
+// "at m32.1.0 · [Kick - Green cymbal]". The chord's notes are named by
+// Chord::rowstr in the words of `pro_drums`, the Pro Drums setting: "Red
+// snare" with it on, plain "Red" with it off (D48, Q11). Hidden past the last
+// activation and when the scene has no path.
 struct PreviewNextActBox {
     bool shown = false;
     std::string header;
     std::string detail;
 };
-PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms);
+PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, bool pro_drums);
 
 // The number under the SP gauge: bars banked at `now_ms` over the cap, one
 // decimal ("2.5/4"). Empty when the curve has no segments.

@@ -319,7 +319,7 @@ const std::vector<double>& PreviewController::scrub_marks() const {
 }
 
 hydra::app::PreviewNextActBox PreviewController::next_act_box() const {
-    return hydra::app::build_next_act_box(scene_, transport_.now_ms());
+    return hydra::app::build_next_act_box(scene_, transport_.now_ms(), pro_);
 }
 
 const std::vector<hydra::app::PreviewNextActBox>& PreviewController::next_act_boxes() const {
@@ -327,7 +327,7 @@ const std::vector<hydra::app::PreviewNextActBox>& PreviewController::next_act_bo
         next_act_boxes_.clear();
         next_act_boxes_.reserve(scene_.activations.size());
         for (const hydra::app::PreviewActivation& a : scene_.activations)
-            next_act_boxes_.push_back(hydra::app::build_next_act_box(scene_, a.ms));
+            next_act_boxes_.push_back(hydra::app::build_next_act_box(scene_, a.ms, pro_));
         stamp(next_act_boxes_cache_);
     }
     return next_act_boxes_;

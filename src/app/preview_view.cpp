@@ -352,7 +352,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
             if (a.chord.count() > 0) {
                 pa.has_lane = true;
                 pa.lane = lane_of(a.chord.activation_note().colortype);
-                pa.chord = a.chord.rowstr();
+                pa.chord = a.chord;
             }
             pa.measure = format_measure(timing, pa.tick);
             scene.activations.push_back(pa);
@@ -625,7 +625,7 @@ std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_m
     return std::nullopt;
 }
 
-PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms) {
+PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, bool pro_drums) {
     PreviewNextActBox box;
     // The first activation not yet behind the playhead. The activations are
     // in time order, so a binary search finds it.
@@ -638,7 +638,7 @@ PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms) {
     box.shown = true;
     box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(acts.size());
     box.detail = "at " + next->measure;
-    if (!next->chord.empty()) box.detail += " \xC2\xB7 " + next->chord;
+    if (next->chord.count() > 0) box.detail += " \xC2\xB7 " + next->chord.rowstr(pro_drums);
     return box;
 }
 
