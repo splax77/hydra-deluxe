@@ -416,8 +416,7 @@ void Song::check_activations(const core::Rules& rules) {
 
 namespace {
 
-enum class MPhase { None, Time, Pre, PreDelayed, Notes, Post, PostDelayed,
-                    PreTimestamp };
+enum class MPhase { None, Time, Pre, PreDelayed, Notes, Post, PostDelayed };
 
 // What a MIDI message does to the parser, decided once when the message is
 // classified and carried out later in its phase. A plain tagged struct, so a
@@ -597,8 +596,7 @@ private:
     std::vector<const Message*> msg_buffer_;
     // One bucket per phase that push_timestamp runs, reused tick to tick so
     // their storage is allocated once per parse, not once per tick.
-    std::vector<MOp> pre_, pre_delayed_, notes_, pre_timestamp_, post_,
-        post_delayed_;
+    std::vector<MOp> pre_, pre_delayed_, notes_, post_, post_delayed_;
     bool flag_solo_ = false;
     std::array<NoteCymbalType, 5> flag_cymbals_{};
     bool flag_flam_ = false;
@@ -745,7 +743,6 @@ void MidiParser::push_timestamp(int64_t tick) {
     pre_.clear();
     pre_delayed_.clear();
     notes_.clear();
-    pre_timestamp_.clear();
     post_.clear();
     post_delayed_.clear();
     for (const Message* msg : msg_buffer_) {
@@ -757,7 +754,6 @@ void MidiParser::push_timestamp(int64_t tick) {
             case MPhase::Notes: notes_.push_back(op); break;
             case MPhase::Post: post_.push_back(op); break;
             case MPhase::PostDelayed: post_delayed_.push_back(op); break;
-            case MPhase::PreTimestamp: pre_timestamp_.push_back(op); break;
             default: break;  // Time / None: not run from push_timestamp.
         }
     }
@@ -765,7 +761,6 @@ void MidiParser::push_timestamp(int64_t tick) {
     run_ops(pre_);
     run_ops(pre_delayed_);
     run_ops(notes_);
-    run_ops(pre_timestamp_);
 
     if (chord_.count())
         emit_chord_timestamp(*song_, chord_, tick, flag_flam_, mode_pro_, flag_disco_,
