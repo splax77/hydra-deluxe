@@ -186,9 +186,6 @@ const Activation* find_act(const std::vector<Path>& paths, Pred pred) {
 // A window that collected nothing: SP ends where the banked bars put it.
 inline void set_plain_window(Activation& a, int64_t end_tick) {
     a.sp_end_steps = {{a.timecode.ticks(), end_tick, SpEndKind::Activation}};
-    a.deact_tick = end_tick;
-    a.clamp_tick.reset();
-    a.collected_phrase_ticks.clear();
 }
 
 // A window the cap clamped at `clamp_tick`, ending at `end_tick`. A display
@@ -197,9 +194,6 @@ inline void set_plain_window(Activation& a, int64_t end_tick) {
 inline void set_clamped_window(Activation& a, int64_t clamp_tick, int64_t end_tick) {
     a.sp_end_steps = {{a.timecode.ticks(), end_tick, SpEndKind::Activation},
                       {clamp_tick, end_tick, SpEndKind::Clamped}};
-    a.deact_tick = end_tick;
-    a.clamp_tick = clamp_tick;
-    a.collected_phrase_ticks = {clamp_tick};
 }
 
 // The bars of SP an activation spends, for a test that needs only the count.

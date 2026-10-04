@@ -213,11 +213,12 @@ ReplayScore score_of(const Path& path) {
 std::vector<ReplayWindow> windows_for_path(const Path& path) {
     std::vector<ReplayWindow> out;
     for (const Activation& act : path.walk_activations()) {
-        if (!act.deact_tick) continue;
+        const std::optional<int64_t> deact = act.deact_tick();
+        if (!deact) continue;
 
         ReplayWindow w;
         w.act_tick = act.timecode.ticks();
-        w.deact_tick = *act.deact_tick;
+        w.deact_tick = *deact;
         for (const SPSqueeze& sq : act.sqinouts)
             if (sq.kind == SqueezeKind::SqOut) w.sqout_offset_ms = sq.offset();
         // A squeeze-out with no stored chord tick is a record from before v6.

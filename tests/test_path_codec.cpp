@@ -140,7 +140,7 @@ TEST_CASE("path codec: a rebuilt record flattens to the same bytes") {
 
     const ActivationWalk acts = back.best_path().walk_activations();
     REQUIRE_FALSE(acts.empty());
-    CHECK(acts.front().deact_tick == rec.best_path().walk_activations().front().deact_tick);
+    CHECK(acts.front().deact_tick() == rec.best_path().walk_activations().front().deact_tick());
 
     // Raw ticks until restored; after the restore the strings still agree.
     restore_timecodes(back, fixture().song.timing());
@@ -240,8 +240,8 @@ TEST_CASE("path codec: node payloads are flat and content-addressed") {
     // plain encode_path_node/decode_path_node round trip must keep it, not
     // just the fields that existed before it.
     REQUIRE_FALSE(root.activations.empty());
-    REQUIRE(root.activations.front().deact_tick.has_value());
-    CHECK(node.activations.front().deact_tick == root.activations.front().deact_tick);
+    REQUIRE(root.activations.front().deact_tick().has_value());
+    CHECK(node.activations.front().deact_tick() == root.activations.front().deact_tick());
 
     // The hash is 32 lowercase hex characters, and it names the bytes: the
     // same payload always hashes the same, a different one does not.
@@ -396,7 +396,7 @@ TEST_CASE("print the corpus squeeze facts" * doctest::skip()) {
                 for (const Activation& act : p->walk_activations()) {
                     std::printf("  act %lld deact %lld sqout %lld\n",
                                 (long long)act.timecode.ticks(),
-                                (long long)act.deact_tick.value_or(-1),
+                                (long long)act.deact_tick().value_or(-1),
                                 (long long)act.sqout_tick.value_or(-1));
                     // %.17g so even a last-bit change in an offset shows.
                     for (const SPSqueeze& sq : act.sqinouts)
@@ -430,8 +430,8 @@ TEST_CASE("path codec: a node keeps the SP-end history") {
     const Path back = store::decode_path_node(store::encode_path_node(path));
     REQUIRE(back.activations.size() == 1);
     CHECK(back.activations.front().sp_end_steps == act.sp_end_steps);
-    CHECK(back.activations.front().steps_deact_tick() == std::optional<int64_t>(8448));
-    CHECK(back.activations.front().steps_clamp_tick() == std::optional<int64_t>(3072));
+    CHECK(back.activations.front().deact_tick() == std::optional<int64_t>(8448));
+    CHECK(back.activations.front().clamp_tick() == std::optional<int64_t>(3072));
 }
 
 TEST_CASE("path codec: an unknown SP-end step kind is refused") {

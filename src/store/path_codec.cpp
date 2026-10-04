@@ -132,11 +132,9 @@ void write_activation(BinaryWriter& w, const Activation& act) {
     w.f64(act.transfer_pre.late);
     w.f64(act.transfer_post.early);
     w.f64(act.transfer_post.late);
-    w.opt_i64(act.deact_tick);
-    w.opt_i64(act.clamp_tick);
     w.opt_i64(act.sqout_tick);
-    w.u32(static_cast<uint32_t>(act.collected_phrase_ticks.size()));
-    for (int64_t t : act.collected_phrase_ticks) w.i64(t);
+    // The SP-end history holds the deact node, the clamp note and the
+    // collected phrases (Activation's accessors read them from it).
     w.u32(static_cast<uint32_t>(act.sp_end_steps.size()));
     for (const SpEndStep& s : act.sp_end_steps) {
         w.i64(s.tick);
@@ -179,12 +177,8 @@ Activation read_activation(BinaryReader& r) {
     act.transfer_pre.late = r.f64();
     act.transfer_post.early = r.f64();
     act.transfer_post.late = r.f64();
-    act.deact_tick = r.opt_i64();
-    act.clamp_tick = r.opt_i64();
     act.sqout_tick = r.opt_i64();
-    const uint32_t n = r.u32();
-    act.collected_phrase_ticks.reserve(n);
-    for (uint32_t i = 0; i < n; ++i) act.collected_phrase_ticks.push_back(r.i64());
+    // The SP-end history (see write_activation).
     const uint32_t nsteps = r.u32();
     act.sp_end_steps.reserve(nsteps);
     for (uint32_t i = 0; i < nsteps; ++i) {

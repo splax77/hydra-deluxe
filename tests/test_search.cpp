@@ -222,7 +222,7 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                 // Copy-out stamps deact_tick on every activation it produces
                 // (blob v4), so a record fresh off the engine should never be
                 // missing it.
-                if (!act.deact_tick.has_value()) {
+                if (!act.deact_tick().has_value()) {
                     d = "activation missing deact_tick";
                     break;
                 }
@@ -239,7 +239,7 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                             ? b.timecode.ticks()
                             : std::llround(song.timing().ms_index().tick_at_ms(
                                   b.timecode.ms() - *b.offset_ms));
-                    if (implied != *act.deact_tick) {
+                    if (implied != *act.deact_tick()) {
                         d = "backend-implied deact tick disagrees with the stored one";
                         break;
                     }
@@ -534,8 +534,8 @@ TEST_CASE("SP past the last note: synthesized rows survive a store round-trip") 
     // deact_tick itself is stored data (blob v4), not something the reader
     // rederives -- so the round trip has to hand back the exact tick the
     // engine stamped, not just an equivalent one.
-    REQUIRE(act.deact_tick.has_value());
-    CHECK(ract.deact_tick == act.deact_tick);
+    REQUIRE(act.deact_tick().has_value());
+    CHECK(ract.deact_tick() == act.deact_tick());
 }
 
 // run_search takes its knobs in one EngineOptions value, so no two flags can
@@ -678,8 +678,8 @@ TEST_CASE("SP cap overfill: a mid-SP phrase that clamps records the "
     REQUIRE(deact.has_value());
     CHECK(*deact == 6144);
 
-    REQUIRE(act.clamp_tick.has_value());
-    CHECK(*act.clamp_tick == 3072);
+    REQUIRE(act.clamp_tick().has_value());
+    CHECK(*act.clamp_tick() == 3072);
 }
 
 TEST_CASE("SP cap overfill: a mid-SP phrase that only ties the cap does "
@@ -709,7 +709,7 @@ TEST_CASE("SP cap overfill: a mid-SP phrase that only ties the cap does "
     REQUIRE(deact.has_value());
     CHECK(*deact == 6912);
 
-    CHECK_FALSE(act.clamp_tick.has_value());
+    CHECK_FALSE(act.clamp_tick().has_value());
 }
 
 TEST_CASE("SP cap overfill: a later unclamped extension keeps the earlier "
@@ -749,8 +749,8 @@ TEST_CASE("SP cap overfill: a later unclamped extension keeps the earlier "
     REQUIRE(deact.has_value());
     CHECK(*deact == 7680);
 
-    REQUIRE(act.clamp_tick.has_value());
-    CHECK(*act.clamp_tick == 3072);
+    REQUIRE(act.clamp_tick().has_value());
+    CHECK(*act.clamp_tick() == 3072);
 }
 
 TEST_CASE("SP cap overfill: a second clamp in the same window replaces "
@@ -782,8 +782,8 @@ TEST_CASE("SP cap overfill: a second clamp in the same window replaces "
     REQUIRE(deact.has_value());
     CHECK(*deact == 6912);
 
-    REQUIRE(act.clamp_tick.has_value());
-    CHECK(*act.clamp_tick == 3840);
+    REQUIRE(act.clamp_tick().has_value());
+    CHECK(*act.clamp_tick() == 3840);
 }
 
 TEST_CASE("collected phrases: none when no phrase lands during the activation") {
@@ -795,7 +795,7 @@ TEST_CASE("collected phrases: none when no phrase lands during the activation") 
     // it, so it has to outlive the checks below.
     const std::vector<Path> paths = run_search(graph, EngineOptions{});
     const Activation& act = last_act(paths);
-    CHECK(act.collected_phrase_ticks.empty());
+    CHECK(act.collected_phrase_ticks().empty());
     CHECK_FALSE(act.sqout_tick.has_value());
 }
 
@@ -808,7 +808,7 @@ TEST_CASE("collected phrases: one phrase mid-activation is recorded") {
     ScoreGraph graph(song, 4);
     const std::vector<Path> paths = run_search(graph, EngineOptions{});
     const Activation& act = last_act(paths);
-    CHECK(act.collected_phrase_ticks == std::vector<int64_t>{3840});
+    CHECK(act.collected_phrase_ticks() == std::vector<int64_t>{3840});
 }
 
 TEST_CASE("collected phrases: two phrases under a full meter are both recorded, in order") {
@@ -823,9 +823,9 @@ TEST_CASE("collected phrases: two phrases under a full meter are both recorded, 
     std::vector<Path> paths = run_search(graph, EngineOptions{});
     REQUIRE(!paths.empty());
     const Activation& act = paths.front().activations.front();
-    CHECK(act.collected_phrase_ticks == std::vector<int64_t>{3072, 3840});
-    REQUIRE(act.clamp_tick.has_value());
-    CHECK(act.collected_phrase_ticks.back() == *act.clamp_tick);
+    CHECK(act.collected_phrase_ticks() == std::vector<int64_t>{3072, 3840});
+    REQUIRE(act.clamp_tick().has_value());
+    CHECK(act.collected_phrase_ticks().back() == *act.clamp_tick());
 }
 
 TEST_CASE("collected phrases: the corpus agrees with the squeezes and the SP end") {
@@ -844,7 +844,7 @@ TEST_CASE("collected phrases: the corpus agrees with the squeezes and the SP end
                 if (act.sqout_tick) ++sqouts_seen;
 
                 int64_t prev = -1;
-                for (int64_t t : act.collected_phrase_ticks) {
+                for (int64_t t : act.collected_phrase_ticks()) {
                     CHECK(t > prev);  // strictly ascending
                     CHECK(t >= act.timecode.ticks());
                     // A squeezed-out phrase, and anything after it, was
@@ -869,9 +869,9 @@ TEST_CASE("SP end history: a late squeeze-in is a SqIn step on its phrase") {
                {5760, 13440, SpEndKind::Activation}, {13920, 17280, SpEndKind::SqIn}}));
     // The bar arrives at the old end: the player hits the phrase early.
     CHECK(act.refill_tick(1) == 13440);
-    CHECK(act.steps_deact_tick() == std::optional<int64_t>(17280));
+    CHECK(act.deact_tick() == std::optional<int64_t>(17280));
     CHECK(act.nominal_end() == std::optional<int64_t>(13440));
-    CHECK((act.steps_collected_phrase_ticks() == std::vector<int64_t>{13920}));
+    CHECK((act.collected_phrase_ticks() == std::vector<int64_t>{13920}));
     REQUIRE(act.sqinouts.size() == 1);
     CHECK(act.sqinouts[0].offset_ms == doctest::Approx(250.0));
     CHECK(act.squeeze_end_tick(0) == std::optional<int64_t>(13440));
@@ -892,7 +892,7 @@ TEST_CASE("SP end history: an early squeeze-in measures from the end before it")
                {2304, 5376, SpEndKind::Activation},
                {5280, 6912, SpEndKind::SqIn},
                {6144, 8448, SpEndKind::Collected}}));
-    CHECK(act->steps_deact_tick() == std::optional<int64_t>(8448));
+    CHECK(act->deact_tick() == std::optional<int64_t>(8448));
     REQUIRE(act->sqinouts.front().kind == SqueezeKind::SqIn);
     CHECK(act->squeeze_end_tick(0) == std::optional<int64_t>(5376));  // X, not 8448 - 2 measures
     REQUIRE(act->squeeze_end_step(0).has_value());
@@ -912,9 +912,9 @@ TEST_CASE("SP end history: a squeeze-out measures from the deact node") {
     REQUIRE(act != nullptr);
     for (size_t i = 0; i < act->sqinouts.size(); ++i) {
         if (act->sqinouts[i].kind != SqueezeKind::SqOut) continue;
-        CHECK(act->squeeze_end_tick(i) == act->steps_deact_tick());
+        CHECK(act->squeeze_end_tick(i) == act->deact_tick());
         CHECK(act->end_anchor_tick(*act->squeeze_end_step(i)) ==
-              act->steps_clamp_tick().value_or(act->timecode.ticks()));
+              act->clamp_tick().value_or(act->timecode.ticks()));
     }
 }
 
@@ -931,7 +931,7 @@ TEST_CASE("SP end history: clamps are steps, and the anchor follows them") {
                {2304, 5376, SpEndKind::Activation},
                {3072, 6144, SpEndKind::Clamped},
                {3840, 6912, SpEndKind::Clamped}}));
-    CHECK(act.steps_clamp_tick() == std::optional<int64_t>(3840));
+    CHECK(act.clamp_tick() == std::optional<int64_t>(3840));
     CHECK(act.end_anchor_tick(0) == 2304);
     CHECK(act.end_anchor_tick(1) == 3072);
     CHECK(act.end_anchor_tick(2) == 3840);
@@ -953,12 +953,11 @@ TEST_CASE("SP end history: a squeezed-out phrase leaves no step") {
     CHECK(first.sqout_tick == std::optional<int64_t>(12960));
     CHECK((first.sp_end_steps ==
            std::vector<SpEndStep>{{5760, 13440, SpEndKind::Activation}}));
-    CHECK(first.steps_collected_phrase_ticks().empty());
+    CHECK(first.collected_phrase_ticks().empty());
 }
 
-// R1's reader check: before the stored fields go, every corpus activation's
-// history must give exactly what they hold.
-TEST_CASE("SP end history: equals the stored fields on every corpus record") {
+// The lasting check on every corpus activation's history (R1, D4).
+TEST_CASE("SP end history: every corpus activation is consistent") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts = 0;
     for (const std::string& chart : corpus::chart_paths()) {
@@ -974,10 +973,20 @@ TEST_CASE("SP end history: equals the stored fields on every corpus record") {
                 CAPTURE(p->pathstring());
                 CAPTURE(act.timecode.ticks());
                 ++acts;
+                // D4's condition: no fresh record leaves the history out.
                 REQUIRE_FALSE(act.sp_end_steps.empty());
-                CHECK(act.steps_deact_tick() == act.deact_tick);
-                CHECK(act.steps_clamp_tick() == act.clamp_tick);
-                CHECK(act.steps_collected_phrase_ticks() == act.collected_phrase_ticks);
+                CHECK(act.sp_end_steps.front().kind == SpEndKind::Activation);
+                CHECK(act.sp_end_steps.front().tick == act.timecode.ticks());
+                for (size_t k = 1; k < act.sp_end_steps.size(); ++k) {
+                    const SpEndStep& prev = act.sp_end_steps[k - 1];
+                    const SpEndStep& st = act.sp_end_steps[k];
+                    CHECK(st.kind != SpEndKind::Activation);
+                    CHECK(st.tick > prev.tick);
+                    // SP never runs dry inside a window: every step takes
+                    // effect at or before the end in force.
+                    CHECK(act.refill_tick(k) <= prev.end_tick);
+                    CHECK(act.refill_tick(k) <= st.tick);
+                }
                 CHECK(act.nominal_end() ==
                       song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter)).ticks());
                 // Appendix B's first guarantee: one SqIn step per SqIn, so
@@ -994,7 +1003,7 @@ TEST_CASE("SP end history: equals the stored fields on every corpus record") {
     CHECK(acts > 1000);
 }
 
-TEST_CASE("path codec: encode/decode a path node keeps clamp_tick") {
+TEST_CASE("path codec: encode/decode a path node keeps clamp_tick()") {
     // A plain node round trip has to carry the clamp, which the history holds.
     Activation act;
     act.timecode = Timecode::raw(2304);
@@ -1005,7 +1014,7 @@ TEST_CASE("path codec: encode/decode a path node keeps clamp_tick") {
 
     Path decoded = store::decode_path_node(store::encode_path_node(path));
     REQUIRE(decoded.activations.size() == 1);
-    CHECK(decoded.activations.front().steps_clamp_tick() == std::optional<int64_t>(3072));
+    CHECK(decoded.activations.front().clamp_tick() == std::optional<int64_t>(3072));
 }
 
 TEST_CASE("graph_build_cap: never taller than the song's phrases, never below one") {

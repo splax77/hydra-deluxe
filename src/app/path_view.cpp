@@ -258,9 +258,10 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         // squeeze the frontend decides, warn that the anchor is the
         // collecting note, not the activation.
         if (rate.cap_clamped) {
-            if (timing && act.clamp_tick) {
+            const std::optional<int64_t> clamp = act.clamp_tick();
+            if (timing && clamp) {
                 av.overfill_warning =
-                    "SP overfilled at " + format_measure(*timing, *act.clamp_tick);
+                    "SP overfilled at " + format_measure(*timing, *clamp);
             } else {
                 av.overfill_warning = "SP overfilled";
             }

@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "core/timing.h"  // sp_bars_to_measures
+#include "core/timing.h"  // SongTiming
 
 namespace hydra {
 
@@ -69,8 +69,9 @@ nlohmann::json score_json(const ReplayScore& s) {
 }
 
 // The path list `dump` and `target` both print. One shape, so anything that
-// reads dump's JSON reads target's too.
-nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& timing) {
+// reads dump's JSON reads target's too. The chart timing is no longer read
+// here: nominal_deact_tick comes off the stored history (nominal_end()).
+nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& /*timing*/) {
     nlohmann::json paths = nlohmann::json::array();
     int index = 0;
     for (const Path* p : all) {
@@ -82,9 +83,9 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                                             {"offset_ms", s2.offset()}});
 
             const int64_t act_tick = act.timecode.ticks();
-            const std::optional<int64_t>& d = act.deact_tick;
-            const int64_t nominal =
-                timing.plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter)).ticks();
+            const std::optional<int64_t> d = act.deact_tick();
+            // The plain end the activation's bars gave, read off the history.
+            const int64_t nominal = act.nominal_end().value_or(-1);
 
             acts.push_back(nlohmann::json{
                 {"act_tick", act_tick},

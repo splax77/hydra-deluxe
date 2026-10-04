@@ -149,7 +149,7 @@ Song make_sp_song(const std::vector<int64_t>& phrase_ends, int64_t last_tick,
 // spends, and the deactivation node the search stamped on it. Nothing derives
 // that node any more, so the fixture has to state it. The default is the plain
 // act + 2*sp_meter measures — an activation that collects no phrase mid-SP.
-// A fixture that collects one overwrites `deact_tick` and sets `collected_phrase_ticks` itself.
+// A fixture that collects one states its whole SP-end history itself.
 Activation sp_act_at(const Song& song, int64_t tick, int sp_meter) {
     Activation a;
     a.timecode = song.timecode(tick);
@@ -754,8 +754,7 @@ TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures
         Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
         Path collected;
         Activation act = sp_act_at(song, 3840, 2);
-        test::set_plain_window(act, 3840 + 6 * 1920);
-        act.collected_phrase_ticks = {5760};
+        act.sp_end_steps = {{3840, 11520, SpEndKind::Activation}, {5760, 15360, SpEndKind::Collected}};
         collected.activations = {act};
         Path plain = priced_path(song, {sp_act_at(song, 3840, 2)});
         for (int cap : {kCloneHeroSpCap, 2, 6}) {
@@ -865,8 +864,8 @@ TEST_CASE("sp meter curve: a phrase collected mid-activation jumps the meter a b
     Path path;
     Activation act = sp_act_at(song, 3840, /*sp_meter=*/2);
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 0.0});
-    test::set_plain_window(act, 3840 + 6 * 1920);  // 4 measures banked, 2 for the collection
-    act.collected_phrase_ticks = {5760};  // the engine's record of that collection
+    // 4 measures banked, then 2 more for the collection at 5760.
+    act.sp_end_steps = {{3840, 11520, SpEndKind::Activation}, {5760, 15360, SpEndKind::Collected}};
     path.activations = {act};
 
     PreviewScene scene = build_preview_scene(song, &path);
@@ -946,8 +945,8 @@ TEST_CASE("sp meter curve: a full bank that collects a phrase and stores no row"
                              /*step=*/120);
     Path path;
     Activation act = sp_act_at(song, act_tick, /*sp_meter=*/4);
-    test::set_plain_window(act, deact);
-    act.collected_phrase_ticks = {phrase_tick};
+    act.sp_end_steps = {{act_tick, act_tick + 8 * 1920, SpEndKind::Activation},
+                        {phrase_tick, deact, SpEndKind::Collected}};
     REQUIRE(act.backends.empty());
     path.activations = {act};
 
@@ -991,7 +990,7 @@ TEST_CASE("sp meter curve: two clamped collections refill twice and empty at the
     REQUIRE(act.timecode.ticks() == 2304);
     REQUIRE(activation_deact_tick(act) == std::optional<int64_t>(6912));
     // Extra parentheses: the braced list's comma would split the macro.
-    REQUIRE((act.collected_phrase_ticks == std::vector<int64_t>{3072, 3840}));
+    REQUIRE((act.collected_phrase_ticks() == std::vector<int64_t>{3072, 3840}));
 
     PreviewScene scene = build_preview_scene(song, &paths.front(), /*sp_cap=*/2);
     const SpMeterCurve& c = scene.sp_meter;
@@ -1421,8 +1420,7 @@ TEST_CASE("drain box: empties in reads the stored end, not a recount") {
     Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
     Path path;
     Activation act = sp_act_at(song, 3840, /*sp_meter=*/2);
-    test::set_plain_window(act, 3840 + 6 * 1920);
-    act.collected_phrase_ticks = {5760};
+    act.sp_end_steps = {{3840, 11520, SpEndKind::Activation}, {5760, 15360, SpEndKind::Collected}};
     path.activations = {act};
     PreviewScene scene = build_preview_scene(song, &path);
 
@@ -1844,10 +1842,11 @@ BusyChart make_busy_chart(std::mt19937& rng, int64_t measures) {
         a.chord.add_note(NoteColor::Red);
         for (const SongTimestamp& p : song.sequence) {
             const int64_t pt = p.timecode.ticks();
-            if (p.flag_sp && pt > t && pt < *a.deact_tick && collect(rng))
-                a.collected_phrase_ticks.push_back(pt);
+            // A collection step that keeps the end: only lookups are tested.
+            if (p.flag_sp && pt > t && pt < *a.deact_tick() && collect(rng))
+                a.sp_end_steps.push_back({pt, *a.deact_tick(), SpEndKind::Collected});
         }
-        after = *a.deact_tick + 1;
+        after = *a.deact_tick() + 1;
         c.path.activations.push_back(a);
     }
     return c;

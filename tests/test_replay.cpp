@@ -146,7 +146,7 @@ TEST_CASE("targeted search reproduces every corpus path") {
                 if (qa.size() != want_acts.size()) continue;
                 bool same = true;
                 for (size_t i = 0; i < qa.size() && same; ++i) {
-                    if (qa[i].deact_tick != want_acts[i].deact_tick) same = false;
+                    if (qa[i].deact_tick() != want_acts[i].deact_tick()) same = false;
                     if (qa[i].sqinouts.size() != want_acts[i].sqinouts.size())
                         same = false;
                     for (size_t k = 0; k < qa[i].sqinouts.size() && same; ++k) {

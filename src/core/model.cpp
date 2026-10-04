@@ -574,18 +574,18 @@ bool Path::is_difficult() const {
 // Each one reads sp_end_steps and nothing else (R1). An empty list (a
 // hand-built activation) gives "unset", never a guess.
 
-std::optional<int64_t> Activation::steps_deact_tick() const {
+std::optional<int64_t> Activation::deact_tick() const {
     if (sp_end_steps.empty()) return std::nullopt;
     return sp_end_steps.back().end_tick;
 }
 
-std::optional<int64_t> Activation::steps_clamp_tick() const {
+std::optional<int64_t> Activation::clamp_tick() const {
     for (auto it = sp_end_steps.rbegin(); it != sp_end_steps.rend(); ++it)
         if (it->kind == SpEndKind::Clamped) return it->tick;
     return std::nullopt;
 }
 
-std::vector<int64_t> Activation::steps_collected_phrase_ticks() const {
+std::vector<int64_t> Activation::collected_phrase_ticks() const {
     std::vector<int64_t> out;
     for (size_t k = 1; k < sp_end_steps.size(); ++k) out.push_back(sp_end_steps[k].tick);
     return out;

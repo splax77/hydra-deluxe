@@ -20,12 +20,13 @@ std::optional<TransferScale> transfer_scale_between(int64_t act_tick,
 }
 
 std::optional<int64_t> activation_deact_tick(const Activation& act) {
-    return act.deact_tick;
+    return act.deact_tick();
 }
 
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing) {
-    if (!act.deact_tick) return std::nullopt;
+    const std::optional<int64_t> deact = act.deact_tick();
+    if (!deact) return std::nullopt;
 
     int64_t act_tick = act.timecode.ticks();
     bool has_sqin = false;
@@ -37,7 +38,7 @@ std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
     }
 
     // The SP end the search recorded, straight off the record.
-    int64_t post_tick = *act.deact_tick;
+    int64_t post_tick = *deact;
     // The SqIn phrase is judged against the end as it stood before that
     // phrase extended SP: one 2-measure step down from D. With several
     // SqIns, or a plain collection after the last one, this is exact only
@@ -131,10 +132,10 @@ ActivationRating rate_activation(const Activation& act,
         out.note_effective_ms.push_back(n.effective_ms);
     }
 
-    // The cap-clamped flag fires when the activation has a clamp_tick AND at
-    // least one squeeze the frontend decides: any SqIn/SqOut, or any backend
-    // row is_frontend_decided accepts.
-    if (act.clamp_tick.has_value()) {
+    // The cap-clamped flag fires when the activation has a clamp_tick() AND
+    // at least one squeeze the frontend decides: any SqIn/SqOut, or any
+    // backend row is_frontend_decided accepts.
+    if (act.clamp_tick().has_value()) {
         bool decided = !act.sqinouts.empty();
         for (const BackendRating& br : out.backends)
             decided = decided || is_frontend_decided(br, backend_leeway_ms);

@@ -165,26 +165,15 @@ struct Act {
     int32_t sq_tail;
     int32_t depth;
     double e_offset;
-    // The collecting note the SP cap pinned this activation's end to, or
-    // NO_TIME when the window never hit the cap. Copied off the live path
-    // when the activation closes.
-    int64_t clamp_tick;
-    // The last SP phrase this activation collected (an index into cols_), or
-    // -1 when it collected none.
-    int32_t col_tail;
     // The SP-end steps so far, an index into ends_, or -1. Copied off the
-    // live path when the activation closes.
+    // live path when the activation closes. The clamp note and the collected
+    // phrases are steps of it.
     int32_t end_tail;
 };
 struct SqNode {
     int32_t prev;
     int32_t kind;
     double offset;
-};
-// One collected SP phrase, linked to the one collected before it.
-struct ColNode {
-    int32_t prev;
-    int64_t tick;
 };
 // One SP-end step of the running activation, linked to the one before.
 struct EndNode {
@@ -200,8 +189,6 @@ struct Variant {
     int32_t var_head;
     int32_t tied_count;
     int64_t sp_end;
-    int64_t clamp_tick;
-    int32_t col_tail;
     int32_t end_tail;
 };
 struct Path {
@@ -216,12 +203,6 @@ struct Path {
     int32_t sc[6];
     int64_t score;
     int64_t sp_end_time;
-    // The collecting note the SP cap pinned the window's end to, or NO_TIME
-    // when the window never hit the cap. Stamped onto the Act at deactivation.
-    int64_t clamp_tick;
-    // The last SP phrase the running activation collected (an index into
-    // cols_), or -1. Handed to the Act at deactivation.
-    int32_t col_tail;
     // The running activation's SP-end steps so far (an index into ends_),
     // or -1. Handed to the Act at deactivation.
     int32_t end_tail;
@@ -243,10 +224,6 @@ struct OutAct {
     // Only set (non-NO_TIME) on a path's last activation when it never
     // deactivated: the engine's tracked SP end, extensions included.
     int64_t final_sp_end;
-    // The collecting note the SP cap pinned the window to, or NO_TIME.
-    int64_t clamp_tick;
-    // The phrases collected while active: out_cols_[col_begin, col_end).
-    int32_t col_begin, col_end;
     // The SP-end history: out_ends_[end_begin, end_end).
     int32_t end_begin, end_end;
 };
@@ -335,7 +312,6 @@ public:
     const std::vector<OutPath>& out_paths() const { return out_paths_; }
     const std::vector<OutAct>& out_acts() const { return out_acts_; }
     const std::vector<OutSq>& out_sqs() const { return out_sqs_; }
-    const std::vector<int64_t>& out_cols() const { return out_cols_; }
     const std::vector<SpEndStep>& out_ends() const { return out_ends_; }
 
 private:
@@ -354,8 +330,6 @@ private:
         a.sq_tail = -1;
         a.depth = (parent < 0 ? 0 : acts_[(size_t)parent].depth) + 1;
         a.e_offset = e_offset;
-        a.clamp_tick = NO_TIME;
-        a.col_tail = -1;
         a.end_tail = -1;
         acts_.push_back(a);
         return (int32_t)acts_.size() - 1;
@@ -372,17 +346,6 @@ private:
         s.offset = offset;
         sqs_.push_back(s);
         return (int32_t)sqs_.size() - 1;
-    }
-    int32_t push_col(int32_t prev, int64_t tick) {
-        cols_.push_back(ColNode{prev, tick});
-        return (int32_t)cols_.size() - 1;
-    }
-    // The chain with every phrase at or after `tick` dropped. Nodes are never
-    // edited, so this only walks the tail pointer back.
-    int32_t trim_cols(int32_t tail, int64_t tick) const {
-        while (tail >= 0 && cols_[(size_t)tail].tick >= tick)
-            tail = cols_[(size_t)tail].prev;
-        return tail;
     }
     int32_t push_end(int32_t prev, int64_t tick, int64_t end, SpEndKind kind) {
         ends_.push_back(EndNode{prev, tick, end, kind});
@@ -432,8 +395,8 @@ private:
 
     void emit_path(const Path& p);
     void emit_variant(int32_t v, int32_t depth);
-    void emit_acts(int32_t act_tail, int64_t sp_end_time, int64_t clamp_tick,
-                   int32_t col_tail, int32_t end_tail, int32_t* begin, int32_t* end);
+    void emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
+                   int32_t* begin, int32_t* end);
     void emit_ends(int32_t tail, int32_t* begin, int32_t* end) {
         end_scratch_.clear();
         for (int32_t s = tail; s >= 0; s = ends_[(size_t)s].prev) end_scratch_.push_back(s);
@@ -443,14 +406,6 @@ private:
             out_ends_.push_back(SpEndStep{e.tick, e.end, e.kind});
         }
         *end = (int32_t)out_ends_.size();
-    }
-    void emit_cols(int32_t tail, int32_t* begin, int32_t* end) {
-        col_scratch_.clear();
-        for (int32_t c = tail; c >= 0; c = cols_[(size_t)c].prev) col_scratch_.push_back(c);
-        *begin = (int32_t)out_cols_.size();
-        for (size_t k = col_scratch_.size(); k-- > 0;)
-            out_cols_.push_back(cols_[(size_t)col_scratch_[k]].tick);
-        *end = (int32_t)out_cols_.size();
     }
 
     const Enum& en_;
@@ -476,8 +431,6 @@ private:
 
     std::vector<Act> acts_;
     std::vector<SqNode> sqs_;
-    // Every SP phrase any path collected while active, as linked chains.
-    std::vector<ColNode> cols_;
     // Every SP-end step any path took, as linked chains.
     std::vector<EndNode> ends_;
     std::vector<Variant> variants_;
@@ -505,11 +458,9 @@ private:
     std::vector<OutPath> out_paths_;
     std::vector<OutAct> out_acts_;
     std::vector<OutSq> out_sqs_;
-    std::vector<int64_t> out_cols_;
     std::vector<SpEndStep> out_ends_;
     std::vector<int32_t> chain_scratch_;
     std::vector<int32_t> sq_scratch_;
-    std::vector<int32_t> col_scratch_;
     std::vector<int32_t> end_scratch_;
 
     std::function<void(float)> progress_cb_;
@@ -546,10 +497,8 @@ void Engine::advance(Path& p) {
         if (sp_n > 0) {
             int64_t sp_end_time = p.sp_end_time;
             for (int32_t i = 0; i < sp_n; ++i) {
-                // Every phrase the gauge receives counts as collected: a
-                // buffered (late-SqIn) phrase too, whose extension is already
-                // in sp_end_time, and a phrase the cap clamps.
-                p.col_tail = push_col(p.col_tail, eo->sp_times[(size_t)i].first.ticks());
+                // A buffered (late-SqIn) phrase's extension is already in
+                // sp_end_time, and its step was written at the deact node.
                 if (buffered > 0) {
                     --buffered;
                     continue;
@@ -561,10 +510,8 @@ void Engine::advance(Path& p) {
                     return;
                 }
                 sp_end_time = mit->second.to_tick;
-                if (mit->second.clamped)
-                    p.clamp_tick = eo->sp_times[(size_t)i].first.ticks();
-                // A buffered (late-SqIn) phrase skipped above already has its
-                // step, written at the deact node.
+                // Every other phrase the gauge receives is one step: Clamped
+                // when the cap pinned the end to it, else Collected.
                 p.end_tail = push_end(p.end_tail, eo->sp_times[(size_t)i].first.ticks(),
                                       sp_end_time,
                                       mit->second.clamped ? SpEndKind::Clamped
@@ -639,8 +586,6 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.skipped_e_offset = NO_DOUBLE;
     c.sp_ready_ms = NO_DOUBLE;
     c.sp_end_time = aiet_val;
-    c.clamp_tick = NO_TIME;
-    c.col_tail = -1;
     c.end_tail = push_end(-1, n.tick, aiet_val, SpEndKind::Activation);
 
     p.currentskips += 1;
@@ -668,18 +613,14 @@ void Engine::create_deactivated_path(const Path& p, Path* child, bool is_sq_out)
     c.node = e.dest;
     c.sp = is_sq_out ? 1 : 0;
     c.sp_end_time = NO_TIME;
-    c.clamp_tick = NO_TIME;
-    c.col_tail = -1;
     c.end_tail = -1;
 
     c.act_tail = clone_tail(p.act_tail);
     if (c.act_tail >= 0) {
         Act& a = acts_[(size_t)c.act_tail];
         a.deact_edge = deact_edge;
-        a.clamp_tick = p.clamp_tick;
         // A squeeze-out gives back the phrase at sqinout_time and everything
-        // after it, so the activation keeps only what came before.
-        a.col_tail = is_sq_out ? trim_cols(p.col_tail, e.sqinout_time) : p.col_tail;
+        // after it, so the activation keeps only the steps before it.
         a.end_tail = is_sq_out ? trim_ends(p.end_tail, e.sqinout_time) : p.end_tail;
         if (is_sq_out) {
             a.sq_tail = push_sq(a.sq_tail, SQ_OUT, e.sqinout_timing);
@@ -844,8 +785,6 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
             v.var_head = p.var_head;
             v.tied_count = p.tied_count;
             v.sp_end = p.sp_end_time;
-            v.clamp_tick = p.clamp_tick;
-            v.col_tail = p.col_tail;
             v.end_tail = p.end_tail;
             variants_.push_back(v);
             leader.var_head = (int32_t)variants_.size() - 1;
@@ -1018,8 +957,7 @@ void Engine::reduce_iteration_paths() {
 }
 
 // --- output --------------------------------------------------------------
-void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time,
-                       int64_t clamp_tick, int32_t col_tail, int32_t end_tail,
+void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
                        int32_t* begin, int32_t* end) {
     chain_scratch_.clear();
     for (int32_t a = act_tail; a >= 0; a = acts_[(size_t)a].parent) {
@@ -1050,8 +988,6 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time,
         }
         oa.sq_end = (int32_t)out_sqs_.size();
         oa.final_sp_end = NO_TIME;
-        oa.clamp_tick = a.clamp_tick;
-        emit_cols(a.col_tail, &oa.col_begin, &oa.col_end);
         emit_ends(a.end_tail, &oa.end_begin, &oa.end_end);
         out_acts_.push_back(oa);
     }
@@ -1064,9 +1000,7 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time,
         OutAct& last = out_acts_[(size_t)(*end - 1)];
         if (last.deact_edge < 0) {
             last.final_sp_end = sp_end_time;
-            last.clamp_tick = clamp_tick;
-            // Still running at the song's end: its phrases are on the live path.
-            emit_cols(col_tail, &last.col_begin, &last.col_end);
+            // Still running at the song's end: its steps are on the live path.
             emit_ends(end_tail, &last.end_begin, &last.end_end);
         }
     }
@@ -1085,8 +1019,7 @@ void Engine::emit_variant(int32_t v, int32_t depth) {
         OutPath op{};
         op.var_point = var.var_point;
         op.depth = depth;
-        emit_acts(var.act_tail, var.sp_end, var.clamp_tick, var.col_tail, var.end_tail,
-                  &op.act_begin, &op.act_end);
+        emit_acts(var.act_tail, var.sp_end, var.end_tail, &op.act_begin, &op.act_end);
         out_paths_.push_back(op);
 
         emit_variant(var.var_head, depth + 1);
@@ -1105,8 +1038,7 @@ void Engine::emit_path(const Path& p) {
     op.leftover_sp = p.sp;
     op.var_point = -1;
     op.depth = 0;
-    emit_acts(p.act_tail, p.sp_end_time, p.clamp_tick, p.col_tail, p.end_tail,
-              &op.act_begin, &op.act_end);
+    emit_acts(p.act_tail, p.sp_end_time, p.end_tail, &op.act_begin, &op.act_end);
     out_paths_.push_back(op);
 
     emit_variant(p.var_head, 1);
@@ -1121,8 +1053,6 @@ bool Engine::run() {
     root.var_head = -1;
     root.tied_count = 1;
     root.sp_end_time = NO_TIME;
-    root.clamp_tick = NO_TIME;
-    root.col_tail = -1;
     root.end_tail = -1;
     root.sp_ready_ms = NO_DOUBLE;
     root.skipped_e_offset = NO_DOUBLE;
@@ -1242,7 +1172,6 @@ struct BuildNode {
 std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths,
                            const std::vector<OutAct>& out_acts,
                            const std::vector<OutSq>& out_sqs,
-                           const std::vector<int64_t>& out_cols,
                            const std::vector<SpEndStep>& out_ends,
                            const std::vector<BackendSqueeze>& tail_backends,
                            const SongTiming& timing) {
@@ -1324,35 +1253,17 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                 }
             }
 
-            // Stamp the deactivation node D: the tick where this
-            // activation's Star Power actually ends, phrases collected
-            // mid-SP included. The search knows it exactly, so it is written
-            // down here and no display layer ever reconstructs it. It is
-            // also the node every backend row's offset was measured against
-            // (graph.cpp add_deact_edge: offset_ms = ts.ms - dest.ms).
-            if (oa.deact_edge >= 0) {
-                act.deact_tick =
-                    en.edges[(size_t)oa.deact_edge]->dest->timecode.ticks();
-            } else if (oa.final_sp_end != NO_TIME) {
-                // SP outlasted the chart: the end the search tracked, which
-                // is already a tick.
-                act.deact_tick = oa.final_sp_end;
-            }
-            // Otherwise it stays unset. Nothing here invents a value.
-
-            // The collecting note the SP cap pinned this window to, if any.
-            if (oa.clamp_tick != NO_TIME) act.clamp_tick = oa.clamp_tick;
-            // The phrases this activation collected while active, as the
-            // search recorded them (blob v6).
-            act.collected_phrase_ticks.assign(out_cols.begin() + oa.col_begin,
-                                              out_cols.begin() + oa.col_end);
             // Every place this window's SP end moved, as the search did it.
+            // Its last end is the deactivation node D (deact_tick()): the node
+            // every backend row's offset was measured against (graph.cpp
+            // add_deact_edge), or, when SP outlasted the chart, the end the
+            // search tracked. Nothing here invents a value.
             act.sp_end_steps.assign(out_ends.begin() + oa.end_begin,
                                     out_ends.begin() + oa.end_end);
 
             // Stamp the frontend transfer scales through the same function
             // the details display uses to recompute them, on the same inputs
-            // (timecode, sp_meter, sqinouts and the deact_tick just stamped),
+            // (timecode, sp_meter, sqinouts and the history just stamped),
             // so the stored ratios can't drift from a live recomputation.
             // Both scales anchor on that stored D. A nullopt keeps the 1.0
             // defaults.
@@ -1417,7 +1328,7 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
         throw std::runtime_error("search reached a broken state");
 
     return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
-                   engine.out_cols(), engine.out_ends(), graph.tail_backends(),
+                   engine.out_ends(), graph.tail_backends(),
                    graph.timing());
 }
 

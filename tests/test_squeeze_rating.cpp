@@ -258,11 +258,11 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
 
 TEST_CASE("activation_deact_tick: the stored node, read back") {
     // activation_deact_tick derives nothing any more: it just hands back
-    // act.deact_tick. No SongTiming is needed to test that.
+    // act.deact_tick(). No SongTiming is needed to test that.
 
     // Set: returns exactly what was stored.
     Activation act;
-    act.deact_tick = 46080;
+    test::set_plain_window(act, 46080);
     CHECK(activation_deact_tick(act) == 46080);
 
     // A timecode and sp_meter at hand but no deact_tick: nullopt. This is the
