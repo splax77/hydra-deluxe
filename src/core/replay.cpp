@@ -331,7 +331,7 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
 
 std::vector<std::string> ambiguous_window_warnings(
     const Song& song, const ReplayResult& result,
-    const std::vector<ReplayWindow>& windows) {
+    const std::vector<ReplayWindow>& windows, const core::Rules& rules) {
     const SongTiming& timing = song.timing();
     std::vector<std::string> out;
 
@@ -370,10 +370,17 @@ std::vector<std::string> ambiguous_window_warnings(
                     std::to_string(tick) + " (" + gap + " ms later)";
         }
 
+        // What squeezing this chord out takes off its SP doubling, under the
+        // rules the replay ran with (category_scores owns it, sqout_rule
+        // included), at the combo the walk reached it with.
+        const int cost = category_scores(engine->chord, chord->combo_before, nullptr,
+                                         rules.sqout_rule)
+                             .sqout_reduction;
         out.push_back("window " + std::to_string(w.act_tick) + ":" +
                       std::to_string(w.deact_tick) + " ends " + where +
                       " with no squeeze-out offset; if the player squeezed it "
-                      "out, this score is high by that note's first-hit share");
+                      "out, this score is " + std::to_string(cost) +
+                      " points high (that chord's squeeze-out cost under sqout_rule)");
         }
     }
     return out;

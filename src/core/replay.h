@@ -264,9 +264,13 @@ PathReplay replay_stored_path(const Song& song, const Path& path,
 // first phrase chord after the deactivation node that it did not squeeze
 // in; for a typed window, that one or its newest phrase chord at or before
 // the node. A window with such a chord is ambiguous: the score is right if
-// the player did not squeeze, and high by that chord's first-hit share if
+// the player did not squeeze, and high by that chord's squeeze-out cost if
 // they did, and nothing in the window list says which. So this reports the doubt
 // and nothing else: it never changes a score and never invents an offset.
+// The line quotes that cost in points: the chord's sqout_reduction under
+// `rules.sqout_rule` (category_scores), so it is the first note's share
+// under first_note and the whole chord's under whole_chord. `rules` must be
+// the rules `result` was replayed under.
 //
 // It warns only when the window paid that chord (`result` must be the replay
 // of these same windows): a chord past the leeway after D was never doubled,
@@ -274,7 +278,7 @@ PathReplay replay_stored_path(const Song& song, const Path& path,
 // squeeze-out offset or chord is settled and is never reported.
 std::vector<std::string> ambiguous_window_warnings(
     const Song& song, const ReplayResult& result,
-    const std::vector<ReplayWindow>& windows);
+    const std::vector<ReplayWindow>& windows, const core::Rules& rules);
 
 // Not offered: a simulated SP meter and skip count. A straightforward
 // simulation (one bar per phrase completed outside Star Power, capped at 4,

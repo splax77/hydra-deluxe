@@ -343,7 +343,7 @@ int cmd_score(const Args& a) {
     // Say so when a window could be hiding a squeeze-out. The score is left
     // exactly as it is: only the player knows whether they squeezed.
     const std::vector<std::string> warnings =
-        ambiguous_window_warnings(song, r, windows);
+        ambiguous_window_warnings(song, r, windows, s.rules);
     for (const std::string& w : warnings)
         std::fprintf(stderr, "warning: %s\n", w.c_str());
 
