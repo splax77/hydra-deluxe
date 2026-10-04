@@ -84,6 +84,38 @@ function Assert-Expectations([string]$Label, [string[]]$Lines, [object[]]$Expect
     }
 }
 
+# ------------------------------------------- part 0: the scan structs' order
+#
+# The precheck reads each scan row by position, in the member order its
+# $ScanStructFields table gives. That table is read here from the precheck's
+# own text (as a literal, without running the script), and each struct's
+# member names are read, in order, from tests/test_single_owner.cpp. A member
+# added, removed or moved there fails here by name, instead of as a pile of
+# "precheck:" warnings.
+$tokens = $null; $parseErrors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile($precheck, [ref]$tokens, [ref]$parseErrors)
+$tableAst = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                        "$($n.Left)" -eq '$ScanStructFields' }, $true)
+if (-not $tableAst) { throw "the self-test cannot find `$ScanStructFields in $precheck" }
+$structFields = $tableAst.Right.Expression.SafeGetValue()
+$scanSource = [regex]::Replace([System.IO.File]::ReadAllText((Join-Path $repoRoot 'tests/test_single_owner.cpp')),
+                               '//[^\n]*|/\*[\s\S]*?\*/', '')
+foreach ($struct in $structFields.Keys) {
+    $m = [regex]::Match($scanSource, "\bstruct\s+$struct\s*\{(?<body>[^{}]*)\}\s*;")
+    $inStruct = @(if ($m.Success) {
+        foreach ($decl in ($m.Groups['body'].Value -split ';')) {
+            $d = ($decl -replace '=[\s\S]*$', '').Trim()
+            if ($d -match '([A-Za-z_]\w*)$') { $Matches[1] }
+        }
+    })
+    $inPrecheck = @($structFields[$struct])
+    if (($inStruct -join ',') -ne ($inPrecheck -join ',')) {
+        $script:Failures.Add("${struct}'s fields changed; update the column positions in derive_once_precheck.ps1 " +
+            "(tests/test_single_owner.cpp has: $(if ($inStruct.Count) { $inStruct -join ', ' } else { 'no such struct' }); " +
+            "`$ScanStructFields has: $($inPrecheck -join ', '))")
+    } else { $script:Passes++ }
+}
+
 # ------------------------------------------------------------ part 1: fixture
 
 $fixture = Join-Path ([System.IO.Path]::GetTempPath()) ("precheck_fixture_" + [guid]::NewGuid().ToString('N').Substring(0, 8))

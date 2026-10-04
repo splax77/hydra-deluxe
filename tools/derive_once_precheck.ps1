@@ -43,8 +43,9 @@ tools/ is A; in tests/, a row owned by tests/source_tree.h is E, a row owned
 by another test header is C, and a row owned by production code is B. Checks
 1, 2 and 4 print the C, the B and A, and the E lines of this list. Each
 row's must-match and must-not-match examples are tried too; a line starting
-"precheck:" says when .NET reads a row's pattern differently from the scan's
-std::regex. The patterns the checks below still hold are for questions no
+"precheck:" says a row could not be read as expected, either because .NET
+reads its pattern differently from the scan's std::regex or because a scan
+struct's members moved (the self-test names that case). The patterns the checks below still hold are for questions no
 row asks, each with a comment saying why.
 
 Scoring an old range against today's rows: -RulesAt HEAD. At the range's own
@@ -429,7 +430,26 @@ function Test-ElementAdded([object]$El) {
 # The scan's rows, read from tests/test_single_owner.cpp at $rulesRev. The
 # scan file owns every question its rows ask; checks 1, 2 and 4 apply these
 # rows to the added lines the way the scan does, and keep their own patterns
-# only for questions no row asks. The field order is OwnerRule's.
+# only for questions no row asks.
+#
+# A row is a braced list read by position, so the reader needs the order of
+# each struct's members. This table is the one place that order is written
+# here: the reader asks it for a column by member name, and the self-test
+# reads this table and checks it against the structs in the scan file, so a
+# member added or moved there fails the self-test by name.
+$ScanStructFields = @{
+    OwnerRule = @('question', 'owner', 'pattern', 'calls_owner', 'owner_files', 'exempt', 'decided_by',
+                  'must_match', 'must_not_match', 'owner_lines', 'scope', 'function_file', 'function', 'scan_comments')
+    Exempt    = @('file', 'why')
+    OwnerLine = @('file', 'line_text', 'why')
+    KnownCopy = @('question', 'file', 'line_text', 'removed_by')
+}
+# The column of one member of one of those structs.
+function Get-Col([string]$Struct, [string]$Member) {
+    $i = [array]::IndexOf($ScanStructFields[$Struct], $Member)
+    if ($i -lt 0) { throw "precheck: $Struct has no member $Member in `$ScanStructFields" }
+    $i
+}
 $rows = [System.Collections.Generic.List[object]]::new()
 $rowWarnings = [System.Collections.Generic.List[string]]::new()
 # One field of a row as text, as a list of strings, and as a list of structs
@@ -468,31 +488,38 @@ function New-StdRegex([string]$Pattern) {
 $scanAt = @(Invoke-Git @('ls-tree', '--name-only', $rulesRev, '--', $scanFile))
 if ($scanAt.Count) {
     $sv = Get-Views $scanFile $rulesRev
+    $ex = @{ File = (Get-Col Exempt file) }
+    $ol = @{ File = (Get-Col OwnerLine file); Text = (Get-Col OwnerLine line_text); Why = (Get-Col OwnerLine why) }
+    $sc = Get-Col OwnerRule scan_comments
     foreach ($el in (Get-TableElements $sv 'rules')) {
         $f = $el.Fields
-        if ($f.Count -lt 3) { continue }
+        if ($f.Count -le (Get-Col OwnerRule pattern)) { continue }
         $row = [pscustomobject]@{
-            Question = (Get-RowText $sv $f 0); Owner = (Get-RowText $sv $f 1); Pattern = (Get-RowText $sv $f 2); CallsOwner = (Get-RowText $sv $f 3)
-            OwnerFiles = (Get-RowList $sv $f 4)
-            Exempt = [string[]]@(foreach ($e in (Get-RowStructs $sv $f 5)) { if ($e.Strings.Count) { $e.Strings[0] } })
-            MustMatch = (Get-RowList $sv $f 7); MustNotMatch = (Get-RowList $sv $f 8)
-            OwnerLines = [object[]]@(foreach ($o in (Get-RowStructs $sv $f 9)) {
-                if ($o.Strings.Count -lt 3) { continue }
-                [pscustomobject]@{ File = $o.Strings[0]; Text = $o.Strings[1].Trim(); Why = $o.Strings[2]; Added = (Test-ElementAdded $o) }
+            Question = (Get-RowText $sv $f (Get-Col OwnerRule question)); Owner = (Get-RowText $sv $f (Get-Col OwnerRule owner))
+            Pattern = (Get-RowText $sv $f (Get-Col OwnerRule pattern)); CallsOwner = (Get-RowText $sv $f (Get-Col OwnerRule calls_owner))
+            OwnerFiles = (Get-RowList $sv $f (Get-Col OwnerRule owner_files))
+            Exempt = [string[]]@(foreach ($e in (Get-RowStructs $sv $f (Get-Col OwnerRule exempt))) { if ($e.Strings.Count -gt $ex.File) { $e.Strings[$ex.File] } })
+            MustMatch = (Get-RowList $sv $f (Get-Col OwnerRule must_match)); MustNotMatch = (Get-RowList $sv $f (Get-Col OwnerRule must_not_match))
+            OwnerLines = [object[]]@(foreach ($o in (Get-RowStructs $sv $f (Get-Col OwnerRule owner_lines))) {
+                if ($o.Strings.Count -le $ol.Why) { continue }
+                [pscustomobject]@{ File = $o.Strings[$ol.File]; Text = $o.Strings[$ol.Text].Trim(); Why = $o.Strings[$ol.Why]; Added = (Test-ElementAdded $o) }
             })
-            Scope = (Get-RowList $sv $f 10); FunctionFile = (Get-RowText $sv $f 11); Function = (Get-RowText $sv $f 12)
-            ScanComments = ($f.Count -gt 13 -and $sv.CodeText.Substring($f[13][0], $f[13][1] - $f[13][0]).Trim() -eq 'true')
+            Scope = (Get-RowList $sv $f (Get-Col OwnerRule scope))
+            FunctionFile = (Get-RowText $sv $f (Get-Col OwnerRule function_file)); Function = (Get-RowText $sv $f (Get-Col OwnerRule function))
+            ScanComments = ($f.Count -gt $sc -and $sv.CodeText.Substring($f[$sc][0], $f[$sc][1] - $f[$sc][0]).Trim() -eq 'true')
             Line = $el.Line; Added = (Test-ElementAdded $el); Rx = $null; CallsRx = $null
         }
         $row.Rx = New-StdRegex $row.Pattern
         if ($row.CallsOwner) { $row.CallsRx = New-StdRegex $row.CallsOwner }
         $rows.Add($row)
     }
+    $kc = @{ Question = (Get-Col KnownCopy question); File = (Get-Col KnownCopy file); Text = (Get-Col KnownCopy line_text); Fix = (Get-Col KnownCopy removed_by) }
     foreach ($el in (Get-TableElements $sv 'known_copies')) {
         $vals = @(foreach ($x in $el.Fields) { Get-FieldText $sv $x })
-        if ($vals.Count -lt 4) { continue }
-        if (-not $known.ContainsKey($vals[1])) { $known[$vals[1]] = [System.Collections.Generic.List[object]]::new() }
-        $known[$vals[1]].Add([pscustomobject]@{ Question = $vals[0]; Text = $vals[2].Trim(); Fix = $vals[3]; Added = (Test-ElementAdded $el) })
+        if ($vals.Count -le $kc.Fix) { continue }
+        $file = $vals[$kc.File]
+        if (-not $known.ContainsKey($file)) { $known[$file] = [System.Collections.Generic.List[object]]::new() }
+        $known[$file].Add([pscustomobject]@{ Question = $vals[$kc.Question]; Text = $vals[$kc.Text].Trim(); Fix = $vals[$kc.Fix]; Added = (Test-ElementAdded $el) })
     }
 }
 # The scan's one verdict (flags_line): the line matches the pattern and does
@@ -1114,7 +1141,7 @@ if ($Disable -notcontains 2) { Invoke-Check2 }
 if ($Disable -notcontains 3) { Invoke-Check3 }
 if ($Disable -notcontains 4) { Invoke-Check4 }
 
-foreach ($w in $rowWarnings) { Write-Host "precheck: $w (std::regex and .NET read this pattern differently; trust the scan)" }
+foreach ($w in $rowWarnings) { Write-Host "precheck: $w (this row could not be read as expected: std::regex and .NET may read its pattern differently, or a scan struct's members moved and `$ScanStructFields is out of date; trust the scan)" }
 if (-not $scanAt.Count) { Write-Host "precheck: $scanFile is not at $($rulesRev.Substring(0, 7)), so no scan rows were applied" }
 
 $order = @{ C = 0; B = 1; A = 2; D = 3; E = 4 }
