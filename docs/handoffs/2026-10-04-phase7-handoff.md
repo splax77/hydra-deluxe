@@ -85,7 +85,7 @@ Phase 6's plan is committed as `docs/superpowers/plans/2026-10-04-phase-6.md`. T
 - J3 runs after M7-2, alongside wave 3.
 - J4 runs after M7-3, before ER.
 
-The appendix was checked against the nine briefs and this plan. Four collisions came out of that check. I proposed the fixes below to the phase 6 planner, and its yes on the first three hadn't arrived when this was written. Check for its reply before launching T1, AU1 or SE2:
+The appendix was checked against the nine briefs and this plan. Four collisions came out of that check. The phase 6 planner agreed to all four fixes below and wrote the same rules into `docs/handoffs/2026-10-04-phase6-handoff.md`. That handoff launches J1-1 and J1-4 no later than this wave 1, and sends their commit hashes when they land. Phase 6 isn't approved yet. If phase 7's wave 1 is ready before then, the two sessions agree to swap the order: T1 and AU1 go first, and J1-1 and J1-4 fork from them. Don't leave T1 and AU1 waiting.
 1. **`tests/test_replay.cpp`** is edited by both J1-1 and T1. T1 forks from J1-1's commit, as well as from SE1's.
 2. **`tests/test_stream_mix.cpp`** is edited by both J1-4 and AU1. AU1 forks from J1-4's commit.
 3. **`tests/test_app_state.cpp`** is edited by both J2-4 and SE2. SE2 forks from J2-4's commit. ST2 stays out of `tests/test_cli.cpp`, which is J2-3's; if it can't, it forks from J2-3's commit.
