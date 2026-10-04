@@ -100,10 +100,6 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
     MESSAGE("checked " << charts << " charts");
 }
 
-// The engine stamps each activation with its frontend transfer scales at
-// copy-out; the details view recomputes them from the song timing on demand.
-// Both go through frontend_transfer_scales, so this pins the stored values
-// against a live recompute across the corpus -- and with them the ratios the
 // The legacy Clone Hero 1.0 fill rule is a whole different spawn deadline, so
 // it reshapes which activations exist at all. That must still produce a normal,
 // complete record -- the score itself is not pinned here (it is a different
@@ -177,7 +173,11 @@ TEST_CASE("legacy fill deadline analyzes a chart end to end") {
     CHECK(analyzed > 0);
 }
 
-// squeeze detail lines and eff. figures show.
+// The engine stamps each activation with its frontend transfer scales at
+// copy-out, through frontend_transfer_scales, from the SP-end steps it just
+// stored. This pins the stored values against a live recompute from those
+// steps across the corpus -- and with them the ratios the squeeze detail
+// lines and eff. figures show.
 TEST_CASE("stored transfer scales match the display-layer recomputation") {
     int charts = 0, acts = 0, nonflat = 0, mismatches = 0;
 
@@ -202,26 +202,52 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
         for (const Path* p : record->all_paths()) {
             for (const Activation& act : p->all_activations()) {
                 ++acts;
-                if (act.transfer_pre.early != 1.0 || act.transfer_pre.late != 1.0)
-                    ++nonflat;
+                // Non-flat counts the SP end's scale and every SqIn's scale.
+                auto flat = [](const TransferScale& s) {
+                    return s.early == 1.0 && s.late == 1.0;
+                };
+                bool any_scaled = !flat(act.transfer_post);
+                for (const SPSqueeze& sq : act.sqinouts)
+                    if (sq.kind == SqueezeKind::SqIn && !flat(sq.transfer)) any_scaled = true;
+                if (any_scaled) ++nonflat;
 
                 auto scales = frontend_transfer_scales(act, song.timing());
                 if (!scales) {
                     d = "display recomputation returned no scales";
                     break;
                 }
-                if (std::abs(scales->pre.early - act.transfer_pre.early) > 1e-9 ||
-                    std::abs(scales->pre.late - act.transfer_pre.late) > 1e-9 ||
-                    std::abs(scales->post.early - act.transfer_post.early) > 1e-9 ||
-                    std::abs(scales->post.late - act.transfer_post.late) > 1e-9) {
+                auto differs = [](const TransferScale& a, const TransferScale& b) {
+                    return std::abs(a.early - b.early) > 1e-9 ||
+                           std::abs(a.late - b.late) > 1e-9;
+                };
+                auto non_positive = [](const TransferScale& s) {
+                    return s.early <= 0.0 || s.late <= 0.0;
+                };
+                if (differs(scales->post, act.transfer_post)) {
                     d = "stored scales diverge from recomputation";
                     break;
                 }
-                if (act.transfer_pre.early <= 0.0 || act.transfer_pre.late <= 0.0 ||
-                    act.transfer_post.early <= 0.0 || act.transfer_post.late <= 0.0) {
+                if (non_positive(act.transfer_post)) {
                     d = "non-positive transfer scale";
                     break;
                 }
+                // Each SqIn's stored scale is the j-th recomputed one.
+                size_t j = 0;
+                for (const SPSqueeze& sq : act.sqinouts) {
+                    if (sq.kind != SqueezeKind::SqIn) continue;
+                    if (j >= scales->sqins.size() || differs(scales->sqins[j], sq.transfer)) {
+                        d = "a SqIn's stored scale diverges from recomputation";
+                        break;
+                    }
+                    if (non_positive(sq.transfer)) {
+                        d = "non-positive SqIn transfer scale";
+                        break;
+                    }
+                    ++j;
+                }
+                if (!d.empty()) break;
+                // No count check: the recomputation walks this same
+                // activation's SqIns, so both sides always have j of them.
 
                 // Copy-out stamps deact_tick on every activation it produces
                 // (blob v4), so a record fresh off the engine should never be
@@ -1072,6 +1098,51 @@ TEST_CASE("SP end history: clamps are steps, and the anchor follows them") {
     CHECK(act.end_anchor_tick(2) == 3840);
 }
 
+TEST_CASE("search: scales anchor on the collecting note and the SqIn's own end") {
+    {
+        Song song = test::clamp_song();
+        ScoreGraph graph(song, 2);
+        std::vector<Path> paths = run_search(graph, test::wide_search());
+        const Activation* act = test::find_act(
+            paths, [](const Activation& a) { return a.timecode.ticks() == 2304; });
+        REQUIRE(act != nullptr);
+        CHECK(act->clamp_tick() == std::optional<int64_t>(3072));
+        CHECK(act->deact_tick() == std::optional<int64_t>(6144));
+        // 3072 and 6144 are both in the 60 BPM section: x1.00, not x2.00.
+        CHECK(act->transfer_post.late == doctest::Approx(1.0).epsilon(1e-12));
+        CHECK(act->transfer_post.early == doctest::Approx(1.0).epsilon(1e-12));
+    }
+    {
+        Song song = test::sqin_then_collect_song();
+        ScoreGraph graph(song, 4);
+        std::vector<Path> paths = run_search(graph, test::wide_search());
+        const Activation* act = test::find_act(paths, [](const Activation& a) {
+            return !a.sqinouts.empty() && a.sqinouts.front().kind == SqueezeKind::SqIn;
+        });
+        REQUIRE(act != nullptr);
+        CHECK(act->deact_tick() == std::optional<int64_t>(8448));
+        CHECK(act->squeeze_end_tick(0) == std::optional<int64_t>(5376));   // X
+        CHECK(act->squeeze_anchor_tick(0) == std::optional<int64_t>(2304));
+        // 2304 -> 5376, both 120 BPM.
+        CHECK(act->sqinouts.front().transfer.late == doctest::Approx(1.0).epsilon(1e-12));
+        CHECK(act->sqinouts.front().transfer.early == doctest::Approx(1.0).epsilon(1e-12));
+        // 2304 (120) -> 8448 (60): measures last twice as long at D.
+        CHECK(act->transfer_post.late == doctest::Approx(2.0).epsilon(1e-12));
+        // A SqOut stores no scale of its own: it reads transfer_post.
+        const Activation* out = test::find_act(paths, [](const Activation& a) {
+            for (const SPSqueeze& s : a.sqinouts)
+                if (s.kind == SqueezeKind::SqOut) return true;
+            return false;
+        });
+        REQUIRE(out != nullptr);
+        for (const SPSqueeze& s : out->sqinouts) {
+            if (s.kind != SqueezeKind::SqOut) continue;
+            CHECK(s.transfer.early == 1.0);
+            CHECK(s.transfer.late == 1.0);
+        }
+    }
+}
+
 TEST_CASE("SP end history: a squeezed-out phrase leaves no step") {
     Song song = test::make_early_sqout_song();
     ScoreGraph graph(song, 4);
@@ -1150,6 +1221,32 @@ TEST_CASE("path codec: encode/decode a path node keeps clamp_tick()") {
     Path decoded = store::decode_path_node(store::encode_path_node(path));
     REQUIRE(decoded.activations.size() == 1);
     CHECK(decoded.activations.front().clamp_tick() == std::optional<int64_t>(3072));
+}
+
+TEST_CASE("path codec: each SqIn keeps its own scale; a SqOut stores none") {
+    Activation act;
+    act.timecode = Timecode::raw(2304);
+    act.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -50.0}, SPSqueeze{SqueezeKind::SqIn, 20.0},
+                    SPSqueeze{SqueezeKind::SqOut, -30.0}};
+    test::set_sqin_transfers(act, {TransferScale{0.97, 1.5}, TransferScale{0.95, 2.5}},
+                             TransferScale{1.25, 0.8});
+    // A SqOut's own field is never written, so a value left on it is dropped.
+    act.sqinouts[2].transfer = TransferScale{9.0, 9.0};
+
+    Path path;
+    path.activations.push_back(act);
+    Path decoded = store::decode_path_node(store::encode_path_node(path));
+    REQUIRE(decoded.activations.size() == 1);
+    const Activation& got = decoded.activations.front();
+    REQUIRE(got.sqinouts.size() == 3);
+    CHECK(got.sqinouts[0].transfer.early == 0.97);
+    CHECK(got.sqinouts[0].transfer.late == 1.5);
+    CHECK(got.sqinouts[1].transfer.early == 0.95);
+    CHECK(got.sqinouts[1].transfer.late == 2.5);
+    CHECK(got.sqinouts[2].transfer.early == 1.0);
+    CHECK(got.sqinouts[2].transfer.late == 1.0);
+    CHECK(got.transfer_post.early == 1.25);
+    CHECK(got.transfer_post.late == 0.8);
 }
 
 TEST_CASE("graph_build_cap: never taller than the song's phrases, never below one") {

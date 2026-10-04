@@ -181,8 +181,10 @@ std::string multsqueeze_summary(const std::vector<MultSqueezeView>& squeezes) {
 const char* const kTransferScaleHint =
     "SP length is measured in measures, so frontend timing\n"
     "reaches the SP end scaled by the measure-length ratio.\n"
-    "Early and late hits scale differently when the activation\n"
-    "or SP end sits exactly on a signature or tempo change.";
+    "Early and late hits scale differently when the note SP is\n"
+    "measured from (the activation, or the collecting note when\n"
+    "the cap clamps) or the SP end sits exactly on a signature\n"
+    "or tempo change.";
 
 const char* const kOverfillHint =
     "SP lasts a set number of measures from the note it is\n"
@@ -245,12 +247,29 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             return out;
         };
         const std::string post_part = sides(rate.scales.post);
-        const std::string pre_part = sides(rate.scales.pre);
+        // Each SqIn's scale, when it prints differently from the SP end's.
+        // When every SqIn prints alike, one clause covers them: "the SqIn's
+        // SP end" for a single SqIn, "each SqIn's SP end" for two or more
+        // (D16). When they differ, each gets its own clause, numbered by its
+        // place among the SqIns (Q5).
+        std::vector<std::string> sqin_parts;
+        bool sqins_alike = true;
+        for (const TransferScale& s : rate.scales.sqins) {
+            sqin_parts.push_back(sides(s));
+            sqins_alike = sqins_alike && sqin_parts.back() == sqin_parts.front();
+        }
         std::string clauses;
         if (!post_part.empty()) clauses = post_part + " at the SP end";
-        if (!pre_part.empty() && pre_part != post_part) {
+        for (size_t i = 0; i < sqin_parts.size(); ++i) {
+            const std::string& part = sqin_parts[i];
+            if (part.empty() || part == post_part) continue;
             if (!clauses.empty()) clauses += "; ";
-            clauses += pre_part + " at the SqIn's SP end";
+            if (sqins_alike) {
+                clauses += part + (sqin_parts.size() > 1 ? " at each SqIn's SP end"
+                                                         : " at the SqIn's SP end");
+                break;
+            }
+            clauses += part + " at SqIn " + std::to_string(i + 1) + "'s SP end";
         }
         if (!clauses.empty()) av.scale_warning = "Frontend timing scales " + clauses + ".";
         av.scale_warn = rate.scale_governs;

@@ -630,6 +630,21 @@ int64_t Activation::refill_tick(size_t step_index) const {
     return std::min(s.tick, sp_end_steps[step_index - 1].end_tick);
 }
 
+// The note whose timing moves the final SP end D: the latest Clamped step,
+// else the activation (D1). Unset when the history is empty (old records).
+std::optional<int64_t> Activation::deact_anchor_tick() const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    return end_anchor_tick(sp_end_steps.size() - 1);
+}
+
+// The note whose timing moves the SP end squeeze k was measured from.
+// Unset together with squeeze_end_tick(k).
+std::optional<int64_t> Activation::squeeze_anchor_tick(size_t squeeze_index) const {
+    const std::optional<size_t> s = squeeze_end_step(squeeze_index);
+    if (!s) return std::nullopt;
+    return end_anchor_tick(*s);
+}
+
 // The engine stamps the squeezed-out chord's tick at copy-out (record v6).
 // A record without it is Stale and is never guessed at.
 bool Activation::is_sqout_backend(const BackendSqueeze& bsq) const {

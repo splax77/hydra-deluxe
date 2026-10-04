@@ -122,11 +122,14 @@ void write_activation(BinaryWriter& w, const Activation& act) {
     for (const SPSqueeze& sq : act.sqinouts) {
         w.u8(sq.kind == SqueezeKind::SqIn ? 0 : 1);
         w.f64(sq.offset_ms);
+        // A SqIn stores its own transfer scale; a SqOut has none.
+        if (sq.kind == SqueezeKind::SqIn) {
+            w.f64(sq.transfer.early);
+            w.f64(sq.transfer.late);
+        }
     }
 
     w.f64(act.e_offset);
-    w.f64(act.transfer_pre.early);
-    w.f64(act.transfer_pre.late);
     w.f64(act.transfer_post.early);
     w.f64(act.transfer_post.late);
     w.opt_i64(act.sqout_tick);
@@ -169,12 +172,15 @@ Activation read_activation(BinaryReader& r) {
     for (uint32_t i = 0; i < nsq; ++i) {
         const SqueezeKind kind = r.u8() == 0 ? SqueezeKind::SqIn : SqueezeKind::SqOut;
         const double offset = r.f64();
-        act.sqinouts.push_back(SPSqueeze{kind, offset});
+        SPSqueeze sq{kind, offset};
+        if (kind == SqueezeKind::SqIn) {
+            sq.transfer.early = r.f64();
+            sq.transfer.late = r.f64();
+        }
+        act.sqinouts.push_back(sq);
     }
 
     act.e_offset = r.f64();
-    act.transfer_pre.early = r.f64();
-    act.transfer_pre.late = r.f64();
     act.transfer_post.early = r.f64();
     act.transfer_post.late = r.f64();
     act.sqout_tick = r.opt_i64();

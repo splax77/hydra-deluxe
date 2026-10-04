@@ -137,6 +137,64 @@ TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
     CHECK_FALSE(edge.is_difficult());  // exactly at the floor is not past it
 }
 
+TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps") {
+    using K = SpEndKind;
+    Activation a;
+    a.timecode = Timecode::raw(2304);
+
+    // Case 3 of the SqIn-plus-clamp table: clamp at C1, SqIn, clamp at C2.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {3072, 6144, K::Clamped},     // C1 pins X
+                      {6100, 7680, K::SqIn},        // early SqIn: X = 6144
+                      {6912, 9984, K::Clamped}};    // C2 pins D
+    a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -50.0}};
+    CHECK(a.end_anchor_tick(0) == 2304);
+    CHECK(a.end_anchor_tick(1) == 3072);
+    CHECK(a.end_anchor_tick(3) == 6912);
+    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(6144));
+    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(3072));  // C1
+    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(6912));     // C2
+
+    // Case 2: SqIn, then a clamp. The SqIn's end was the activation's.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {5400, 6912, K::SqIn},        // late SqIn: X = 5376
+                      {6144, 12288, K::Clamped}};
+    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(5376));
+    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(2304));
+    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(6144));
+
+    // Case 1: clamp at C, then a SqIn. X was pinned to C, so both anchors
+    // are C.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {3072, 6144, K::Clamped},
+                      {6100, 7680, K::SqIn}};
+    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(3072));
+    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(3072));
+
+    // A SqOut is measured from D, with D's anchor.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {5400, 6912, K::SqIn},
+                      {6144, 12288, K::Clamped}};
+    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -20.0});
+    CHECK(a.squeeze_end_tick(1) == a.deact_tick());
+    CHECK(a.squeeze_anchor_tick(1) == a.deact_anchor_tick());
+
+    // Two SqIns map to the two SqIn steps in order.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {5400, 6912, K::SqIn},
+                      {6950, 8448, K::SqIn}};
+    a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 24.0}, SPSqueeze{SqueezeKind::SqIn, 38.0}};
+    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(5376));
+    CHECK(a.squeeze_end_tick(1) == std::optional<int64_t>(6912));
+
+    // An old record (no steps) answers nothing.
+    Activation old;
+    old.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 5.0}};
+    CHECK_FALSE(old.squeeze_end_tick(0).has_value());
+    CHECK_FALSE(old.squeeze_anchor_tick(0).has_value());
+    CHECK_FALSE(old.deact_anchor_tick().has_value());
+}
+
 TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
     Activation a;
     test::set_skips(a, 2);

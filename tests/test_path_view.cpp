@@ -314,8 +314,8 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     CHECK(av.scale_warning == "Frontend timing scales x0.50 (late) at the SP end.");
     CHECK(av.scale_warn);
 
-    // A SqIn is judged at the pre (pre-extension) end. With post at identity,
-    // the line names only the SqIn's end.
+    // A SqIn is judged at its own stored end, the end before its phrase
+    // extended SP. With post at identity, the line names only the SqIn's end.
     Activation sqin = base;
     sqin.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
     test::set_transfer(sqin, TransferScale{1.0, 0.5}, TransferScale{});
@@ -331,6 +331,56 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     CHECK(row_of(both).scale_warning ==
           "Frontend timing scales x1.25 (early) / x0.80 (late) at the SP end; "
           "x0.50 (late) at the SqIn's SP end.");
+
+    // Two SqIns that share one scale read as one clause, but it says "each"
+    // so it doesn't read as a single SqIn (D16).
+    Activation shared = base;
+    shared.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    shared.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
+    test::set_transfer(shared, TransferScale{1.0, 0.5}, TransferScale{});
+    CHECK(row_of(shared).scale_warning ==
+          "Frontend timing scales x0.50 (late) at each SqIn's SP end.");
+
+    // The same with the SP end scaled too: the shared clause still says "each".
+    Activation shared_both = base;
+    shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
+    test::set_transfer(shared_both, TransferScale{1.0, 0.5}, TransferScale{1.25, 1.0});
+    CHECK(row_of(shared_both).scale_warning ==
+          "Frontend timing scales x1.25 (early) at the SP end; "
+          "x0.50 (late) at each SqIn's SP end.");
+
+    // Two SqIns with different scales: one numbered clause per SqIn (Q5).
+    Activation two = base;
+    two.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -50.0});
+    two.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -30.0});
+    test::set_sqin_transfers(two, {TransferScale{0.97, 1.0}, TransferScale{0.95, 1.0}},
+                             TransferScale{});
+    CHECK(row_of(two).scale_warning ==
+          "Frontend timing scales x0.97 (early) at SqIn 1's SP end; "
+          "x0.95 (early) at SqIn 2's SP end.");
+
+    // A SqIn whose scale prints like the SP end's gets no clause of its own;
+    // the other keeps its own number in the SqIn order.
+    Activation one_differs = base;
+    one_differs.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -50.0});
+    one_differs.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -30.0});
+    test::set_sqin_transfers(one_differs,
+                             {TransferScale{1.25, 1.0}, TransferScale{0.95, 1.0}},
+                             TransferScale{1.25, 1.0});
+    CHECK(row_of(one_differs).scale_warning ==
+          "Frontend timing scales x1.25 (early) at the SP end; "
+          "x0.95 (early) at SqIn 2's SP end.");
+}
+
+TEST_CASE("kTransferScaleHint names the note SP is measured from (D17)") {
+    CHECK(std::string(kTransferScaleHint) ==
+          "SP length is measured in measures, so frontend timing\n"
+          "reaches the SP end scaled by the measure-length ratio.\n"
+          "Early and late hits scale differently when the note SP is\n"
+          "measured from (the activation, or the collecting note when\n"
+          "the cap clamps) or the SP end sits exactly on a signature\n"
+          "or tempo change.");
 }
 
 TEST_CASE("build_activations: overfill warning text") {
@@ -839,9 +889,8 @@ TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating (D13
         test::set_skips(act, 0);
         act.e_offset = 300.0;  // not e-critical
         // Only the early (free) side scaled: a figure means the rating read it.
-        act.transfer_pre = TransferScale{1.6, 1.0};
-        act.transfer_post = act.transfer_pre;
         act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, offset});
+        test::set_transfer(act, TransferScale{1.6, 1.0});
         Path p;
         p.activations.push_back(act);
         ActivationsView v = build_activations(p, rec, nullptr, 85.0);
@@ -919,7 +968,6 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     // Just past the 1e-9 tolerance (D14) the line still never reads x1: it
     // prints as many decimals as kScaleIdentityDigits allows.
     act.transfer_post = TransferScale{1.0 - 2e-9, 1.0};
-    act.transfer_pre = act.transfer_post;
     p.activations[0] = act;
     v = build_activations(p, rec, nullptr, 85.0);
     REQUIRE(v.acts.size() == 1);

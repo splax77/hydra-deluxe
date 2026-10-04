@@ -14,8 +14,9 @@
 // Three functions are the module's entries:
 //   rate_activation()          -- the details display's only interface.
 //   activation_deact_tick()    -- the Preview's, for the active SP window.
-//   frontend_transfer_scales() -- the engine's copy-out stamp, so a record's
-//                                 stored ratios and a live recompute agree.
+//   frontend_transfer_scales() -- the engine's copy-out stamp, read from the
+//                                 stored SP-end steps, so a record's stored
+//                                 ratios and a live recompute agree.
 // Everything else below is an internal piece, declared only so its own tests
 // can reach it directly. No production caller should use them.
 
@@ -34,23 +35,18 @@ namespace hydra {
 
 // ---- transfer scales ------------------------------------------------------
 
-// Two SP ends coexist in one activation, so two transfer scales do too:
-// `post` is measured at the deactivation node D (the end the backend rows'
-// offsets are measured against, mid-SP phrase extensions included); `pre`
-// is measured one 2-measure step before D and governs the SqIn feasibility
-// (the phrase note must land inside SP as it stands *before* the phrase is
-// collected). Without a SqIn the two are identical. With several SqIns, or
-// a plain collection after the last one, `pre` is exact only for the last
-// extension — one pair per activation is all this carries.
+// An activation's transfer scales, all from stored ticks: `post` at the
+// deact node, and one per SqIn (in sqinouts order) at the end that SqIn's
+// offset was measured from. Nothing is stepped back from D.
 struct ActTransferScales {
-    TransferScale pre;
     TransferScale post;
+    std::vector<TransferScale> sqins;
 };
 
-// The transfer scale between two ticks: mspm(end)/mspm(act), probed at the
-// tick (late direction) and tick-1 (early direction). nullopt when either
-// front measure duration is non-positive.
-std::optional<TransferScale> transfer_scale_between(int64_t act_tick,
+// The transfer scale between two ticks: mspm(end)/mspm(anchor), probed at
+// the tick (late direction) and tick-1 (early direction). nullopt when any
+// of the four measure lengths is not a positive finite number.
+std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
                                                     int64_t end_tick,
                                                     const SongTiming& timing);
 
@@ -61,12 +57,11 @@ std::optional<TransferScale> transfer_scale_between(int64_t act_tick,
 // before blob v4 and simply does not say.
 std::optional<int64_t> activation_deact_tick(const Activation& act);
 
-// The activation's transfer scales, both anchored on the record's stored
-// deact node D. The `post` scale is measured at D itself; `pre` steps one
-// 2-measure SqIn extension down from it. The engine stamps the stored
-// transfer_pre/post through this same function at copy-out, so a live
-// recompute can't drift from the record. Display-only; nullopt when the
-// activation has no deact_tick.
+// The activation's transfer scales, from the stored SP-end steps only:
+// `post` from deact_anchor_tick() to deact_tick(), each SqIn from
+// squeeze_anchor_tick(k) to squeeze_end_tick(k). The engine stamps the
+// stored scales through this function at copy-out. nullopt when a tick is
+// missing or a measure length is not a positive finite number.
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing);
 
@@ -141,7 +136,8 @@ bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms);
 // The full transfer-scale story for one activation, as the details display
 // tells it.
 struct ActivationRating {
-    // The scales the search stored on the activation (transfer_pre/post).
+    // The scales the search stored on the activation (transfer_post and
+    // each SqIn's transfer).
     ActTransferScales scales;
     // True when a multiplier that isn't 1 governs at least one row or SqIn
     // on this activation: the scale line turns orange.
@@ -153,15 +149,16 @@ struct ActivationRating {
     // One entry per act.display_backends() row, in that order.
     std::vector<BackendRating> backends;
     // One entry per act.sqinouts, in that order: a SqIn's figure, rated at
-    // the pre end. Always empty for a SqOut, whose note is its squeezed-out
-    // backend row and is rated there.
+    // its own stored scale. Always empty for a SqOut, whose note is its
+    // squeezed-out backend row and is rated there.
     std::vector<std::optional<double>> note_effective_ms;
 };
 
 // The display's whole view of an activation's squeezes: it builds the backend
 // rows itself (act.display_backends()), so the caller renders and nothing
-// more. It reads the scales the search stored on the activation. Backend rows are judged at the post (deact-node) end, SqIn/SqOut
-// phrase notes at the pre (pre-extension) end.
+// more. It reads the scales the search stored on the activation. Backend
+// rows are judged at the post (deact-node) end, each SqIn phrase note at
+// its own end's scale.
 // backend_leeway_ms: Rules::backend_leeway_ms. A plain row less than this
 // past the SP end is counted by the engine, so it is not a late squeeze.
 ActivationRating rate_activation(
