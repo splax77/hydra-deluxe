@@ -33,7 +33,9 @@
 #include "core/timing.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 #include "search/engine.h"
+#include "search/graph.h"
 #include "core/model.h"  // kSqueezeWindowMs, the horizon the warning uses
 #include "search/pather.h"
 
@@ -666,13 +668,41 @@ TEST_CASE("paths_json writes every field the dump readers use") {
         REQUIRE(!p0["activations"].empty());
         const json& a0 = p0["activations"][0];
         for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
-                              "sp_meter", "skips", "chord_code", "sqinouts"})
+                              "sp_meter", "skips", "skipped_fill_ticks", "chord_code", "sqinouts"})
             CHECK_MESSAGE(a0.contains(k), k);
 
         checked = true;
         break;  // one chart's first path is the whole contract
     }
     CHECK(checked);
+}
+
+// dump prints each activation's passed-over fills as the record stores them.
+// On the 1.0-rule fill song the stored fill (19200) is not the one nearest
+// the activation (24960), so a dump that guessed would print the wrong tick.
+TEST_CASE("paths_json prints the stored passed-over fills, not a guess") {
+    const Song song = test::make_ch10_fill_song();
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
+    EngineOptions opts;
+    opts.target_act_ticks = std::vector<int64_t>{28800};
+    HydraRecord rec;
+    rec.paths = run_search(graph, opts);
+    REQUIRE(!rec.paths.empty());
+    const std::vector<const Path*> all = rec.all_paths();
+    const json dumped = paths_json(all, song.timing());
+    REQUIRE(dumped.size() == all.size());
+    for (size_t k = 0; k < all.size(); ++k) {
+        const ActivationWalk acts = all[k]->walk_activations();
+        REQUIRE(dumped[k]["activations"].size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) {
+            const json& a = dumped[k]["activations"][i];
+            CHECK(a["skipped_fill_ticks"].get<std::vector<int64_t>>() ==
+                  acts[i].skipped_fill_ticks);
+            CHECK(a["skips"].get<int>() == acts[i].skips());
+        }
+    }
+    CHECK((dumped[0]["activations"][0]["skipped_fill_ticks"].get<std::vector<int64_t>>() ==
+           std::vector<int64_t>{19200}));
 }
 
 // A window that ends on the note closing a Star Power phrase is exactly where

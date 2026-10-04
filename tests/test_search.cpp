@@ -1603,6 +1603,47 @@ TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
     CHECK((act.skipped_fill_ticks == std::vector<int64_t>{19200}));
 }
 
+// The 1.1 rule at the exact edge. A fill spawns when SP is ready no later
+// than kEarlyFillWindowMs past its deadline (the engine refuses it only when
+// e_offset < -kEarlyFillWindowMs). 125 BPM at 480 ticks a beat makes a tick
+// one millisecond. Fill A ends at 9600 and is 480 ticks long, so its 1.1
+// deadline is 4 beats before its start: tick 7200, 7200 ms. The first phrase
+// (480) banks a bar; the second, at `ready`, banks the other. Fill C (19200)
+// is the one taken. With SP ready at 7260 (exactly 60 ms late) A is shown and
+// passed over; one tick later it never spawns.
+TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the window edge is stored") {
+    auto passed_over = [](int64_t ready) {
+        std::vector<test::FixtureNote> notes;
+        for (int64_t t = 0; t <= 28800; t += 480) {
+            test::FixtureNote n{t};
+            n.phrase = t == 480;
+            if (t == 9600 || t == 19200) n.fill_length = 480;
+            notes.push_back(n);
+        }
+        notes.push_back({ready, true, 0});
+        std::sort(notes.begin(), notes.end(),
+                  [](const test::FixtureNote& a, const test::FixtureNote& b) {
+                      return a.tick < b.tick;
+                  });
+        const Song song = test::build_fixture_song(480, 125.0, notes);
+        // The arithmetic above, checked against the rule itself.
+        REQUIRE(activation_fill_deadline_ms(song.timing(), 9600, 480, FillDeadlineRule::Ch11) ==
+                7200.0);
+        REQUIRE(song.timecode(ready).ms() == static_cast<double>(ready));
+        ScoreGraph graph(song, 4, FillDeadlineRule::Ch11);
+        EngineOptions opts;
+        opts.target_act_ticks = std::vector<int64_t>{19200};
+        const std::vector<Path> paths = run_search(graph, opts);
+        REQUIRE(!paths.empty());
+        REQUIRE(paths.front().activations.size() == 1);
+        REQUIRE(paths.front().activations.front().timecode.ticks() == 19200);
+        return paths.front().activations.front().skipped_fill_ticks;
+    };
+    const int64_t edge = 7200 + static_cast<int64_t>(kEarlyFillWindowMs);
+    CHECK((passed_over(edge) == std::vector<int64_t>{9600}));
+    CHECK(passed_over(edge + 1).empty());
+}
+
 // The lasting order checks, on root paths. A tied variant still carries its
 // leader's list until finding 97 gets its own plan (Q3).
 TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
