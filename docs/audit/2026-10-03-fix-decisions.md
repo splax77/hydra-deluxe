@@ -139,3 +139,12 @@ None of these changes a score, a path or a stored record. The results stamp stay
 **D49 (developer-tool tuning numbers, M0 review), 2026-10-04.** The user chose to record these as they are. They control only how two developer tools behave; none touches a score, a display or a record.
 - `tools/new_worktree.ps1` and its shared build-slot script: at most 3 cold builds at once (the approved phase 3-5 plan's "Cold builds start at most three at a time"), a free-slot check every 15 s, and a "still waiting" line every 60 s.
 - `tools/derive_once_precheck.ps1`: helper bodies under 30 tokens are matched by name only, not by body; a C++ statement split over up to 4 lines is read as one; a typed 500 counts only within 2 lines of a squeeze, window, SqIn/SqOut, leeway, deact or fabs( word; and a decision cited on the line or the 3 lines above it is the one the number must appear in.
+
+**D50 (phase 3 display follow-ups), 2026-10-04.** The user answered "all recommended" to seven display choices D48 did not settle, raised by the phase 3 task briefs and reviews. Each one changes only text or placement on screen; none touches a score, a path or a stored record.
+1. The path report's footer (finding 2) reads: "Timing tiers measure how big each squeeze is, in steps of your hit window. The Paths tab's row labels measure how far a hit lands from the Star Power end, so the two can differ. 'Beyond' means past the N ms window."
+2. In the fill comparison (finding 312), a chart with a record in both databases but paths in only one is listed under "In both", with "no score" on the empty side.
+3. An empty fill comparison (finding 105) says: "Nothing is analyzed under these settings (SP cap N, <mode>) in either database. Analyze with these settings, or change them."
+4. The Preview scrubber's right edge is the last note (finding 9), so activations sit at the same fraction as on the Paths timeline. Playback runs on into the audio tail with the thumb parked at the right end; the tail cannot be dragged into.
+5. An artist made only of Clone Hero tags reads "(unknown)", by the same rule as titles (finding 8).
+6. Two paths are the same path when their score and every activation's tick and SP-end tick match (`path_identity`, finding 249). Measured on the 97 corpus charts: no all-0 list changes.
+7. On the Paths timeline (finding 3), a difficult activation keeps its orange outline; any other badged activation gets a grey outline matching its grey badge.
