@@ -18,15 +18,47 @@ Phase 7 is the audit's step 7: 75 findings. Four Fable scouts rechecked them at 
 
 The scouts' reports were not saved to the repo. Their transcripts were empty when this session tried to extract them. The facts they found are in the plan's task tables and in the brief writers' prompts below.
 
-Wave 1 briefs: three Fable writers were writing `docs/superpowers/plans/tasks/p7-<id>.md` for E1, E2, ST1, SE1, T1, AU1, PS1, PR1 and PR2 when the user asked for this handoff. They write only those brief files, never code. Journal state at handoff, pasted as the hook gave it:
+## Wave 1 briefs: all nine are written
 
-```
-Subagents active in the last 30 minutes and not finished:
-  agent-aecaf70e353802eee: unfinished, last tool call Grep, touched 18:28
-  agent-af5a9e63c46a65be5: unfinished, last tool call PowerShell, touched 18:28
-```
+Three Fable writers wrote the nine wave 1 briefs. Each writer checked its briefs against the code at 81a2519, and all three finished before this handoff was final. Nothing from this session is still running. The briefs are committed with this handoff, in `docs/superpowers/plans/tasks/`:
+- **`p7-e1.md`**, the tie key (95, 330, 173, 179). It adds `Path::recount_tied_paths` in `model.cpp` to E1's owned files.
+- **`p7-e2.md`**, multiplier squeezes (49, 50, 247, 335). The codec stores only the chord code and combo, so the points are worked out again on read. Stored bytes change only where a chart holds a chord the new rule lists.
+- **`p7-st1.md`**, the store cache and other-rules rows (65, 343, 116, 129, 130, 132, 133).
+- **`p7-se1.md`**, the settings owner. It adds `src/core/rules.h` beside `rules.cpp` for the field table.
+- **`p7-t1.md`**, hydra_replay and hydra_bench. It adds `tools/replay_json.h`. It forks from SE1's commit.
+- **`p7-au1.md`**, stem length and damage (R7.8, R7.9).
+- **`p7-ps1.md`**, song stems (74, 101).
+- **`p7-pr1.md`**, the probe helpers, which delete the six old scripts.
+- **`p7-pr2.md`**, play_chart reads Hydra's dump. It forks from PR1's commit.
 
-The third writer (E1, E2 and ST1) was also running at 18:27. **Before you launch anything**, check which of the nine `p7-*.md` files exist. Read each one against the plan row, D51 and the "Rules for the brief" in this session's writer brief (copied under "Brief writer rules" below). Write any missing brief with a fresh Fable agent. The briefs are untracked until you commit them.
+Read each brief's "Open questions" before launching. The writers raised the items below. The first three need the user, because they change a stored record or something on screen that D51 didn't spell out. The rest are code-only calls; take the recommendation unless you see a reason not to, and report it afterwards.
+
+### Ask the user before launching the task
+
+1. **ST1, the schema change (finding 65).** D51 keeps results made under other rules, but the scout was wrong about the table. The results table has a UNIQUE key (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills) without the rules fingerprint. So rows from two rules setups can't sit side by side without changing the stored layout. The brief recommends schema 4, built like `add_fill_rule_column`: rebuild the table with a `rules_fp` column filled from `substr(structure,5,8)` and added to the key. Blobs and result ids stay untouched, so no re-analysis is needed. The user hasn't seen this layout change, so ask before ST1 starts. E1, E2, SE1, AU1, PS1, PR1 and PR2 don't depend on it.
+2. **SE1, `depth_mode=2` in a hand-edited INI.** D51 Q14 says pull a value to the nearest edge. For depth_mode, that turns 2 into 1, which means points, but today a 2 searches by scores. The scout recommended "anything not 1 is scores". Ask which; I recommend scores, since that's what such a file has always searched.
+3. **E2, the how-to line for a chord with several crossing notes.** D51 says the line names every note that crosses the step, but gives no sentence. The brief recommends "Hit [A] and [B] last." Ask for a yes, or the user's wording.
+
+### Code-only calls (recommendation given)
+
+- **SE1, the SP cap reading.** Keep the pinned rule that 0, junk and `auto` read as 4. That rule is an earlier user decision with its own test, and D51's clamp covers only values with a range. The minimum cap of 1 goes in the key table in `config.h`, not in `model.h`.
+- **The single-owner scan rows.** The scan file, `tests/test_single_owner.cpp`, has no phase 7 owner. Let each wave 1 task add its own rows at the end of the file, and fix the joins on the integration branch.
+- **T1:**
+  - The shared result-block writer lives in `replay_json`, which `hydra_tests` links, so `test_replay.cpp` can pin it.
+  - `--cap 0` keeps refusing, even though the INI reads 0 as 4, because a typed 0 is a mistake on the command line.
+  - `hydra_bench` has no test target, so the brief has the implementer diff the two dumps by hand instead.
+- **PS1, the link question.** `preview_source.cpp` is in `hydra_core`; `sniff_format` is in `hydra_audio`, which depends on `hydra_core`. The call links today only because the only code that pulls in `preview_source` lives in `src/ui` and `src/audio`. The cleaner fix is to move the pure byte check out of `decode.cpp` into `hydra_core`. But `decode.cpp` and `CMakeLists.txt` aren't PS1's files. So either add both files to PS1's owned list at launch (recommended, since no other wave 1 task owns them), or accept the hidden dependency and note it.
+- **PR1:**
+  - `poll_windows.window_verdict` moves into `watch_window.py`, because `tests/test_s2_window_constants.py` imports it.
+  - `InputDriver.schedule_hit` is deleted, because only its own tests call it.
+  - `watch_window` shares only the "has the song stopped" check with the runners, at 5 s.
+  - A jump back raises its own error, so play_chart can re-sync where the edge runners stop.
+- **PR2:**
+  - The plan's file paths are wrong; the real ones are `tools/ch_probe/experiments/play_chart.py` and `tools/ch_probe/tests/test_play_chart.py`.
+  - play_chart reads a dump JSON, because `hydra_replay` is an `EXCLUDE_FROM_ALL` exe that needs a database path to run. The dump's `ms` has no Offset or song.ini delay, just like play_chart today, so nothing shifts.
+  - The 2x kick follows the dump's bass2x setting.
+  - The mid-song start changes to D51's 150 ms rule.
+- **E1, the cap for finding 95.** Finding 95's example ("Sugar/Tzu" keeping two paths at limit 1) came from hydra_replay's default cap. The brief assumes cap 4; if the two paths appear only at another cap, the implementer stops and reports.
 
 Phase 3 is still running in another session ("Phase 3 continuation"). Wave C merged as 16c836c; wave D (O1 to K5, then S1) is on the `claude/p3-*` worktrees. Phase 7's wave 2 waits for phase 3's merge M_D.
 
@@ -61,7 +93,8 @@ The phase 6 planner promised its full per-task file list. If it arrives in a lat
 ### Wave by wave
 
 - **Wave 1** (E1, E2, ST1, SE1, AU1, PS1, PR1 from 81a2519, or main's head if only docs moved):
-  - Launch all seven together in one Workflow.
+  - First, put the three user questions above to the user in one message. E1, AU1, PS1 and PR1 don't depend on them, so they can launch while the user answers. ST1, SE1 and E2 launch once their question is answered; write each answer into its brief and into D51 as an addendum.
+  - Otherwise, launch them together in one Workflow.
   - T1 forks from SE1's first commit, and PR2 from PR1's; launch each as soon as that commit exists.
   - Cold builds go through phase 3's slot helper, which the preamble names, so at most three run at once across both phases.
 - **M7-1:**
