@@ -139,19 +139,19 @@ bool chip_button(const char* label, bool on, bool disabled) {
     return clicked;
 }
 
-// All (N), Not analyzed (N), Stale (N), Analyzed (N): counts over what the
-// search matches. A group with nothing in it can't be picked.
+// All, then one chip per record status, each with its count over what the
+// search matches. A status chip shows status_label's word; All keeps its
+// own. A group with nothing in it can't be picked.
 void render_chips(AppState& app) {
     struct Chip {
         StatusChip chip;
-        const char* name;
         const char* id;
     };
     static constexpr Chip kChips[] = {
-        {StatusChip::All, "All", "chipall"},
-        {StatusChip::NotAnalyzed, "Not analyzed", "chipnew"},
-        {StatusChip::Stale, "Stale", "chipstale"},
-        {StatusChip::Analyzed, "Analyzed", "chipdone"},
+        {StatusChip::All, "chipall"},
+        {StatusChip::NotAnalyzed, "chipnew"},
+        {StatusChip::Stale, "chipstale"},
+        {StatusChip::Analyzed, "chipdone"},
     };
     const ChipCounts& counts = app.library.counts();
     // A chip that doesn't fit after the last one starts a new line. A
@@ -162,7 +162,9 @@ void render_chips(AppState& app) {
     for (size_t i = 0; i < std::size(kChips); ++i) {
         const Chip& c = kChips[i];
         const size_t n = counts.of(c.chip);
-        const std::string label = std::string(c.name) + " (" +
+        const std::optional<store::RecordStatus> status = status_of(c.chip);
+        const char* name = status ? status_label(*status) : "All";
+        const std::string label = std::string(name) + " (" +
                                   group_thousands(static_cast<int64_t>(n)) + ")##" + c.id;
         if (i > 0) {
             const float w =
