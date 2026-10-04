@@ -18,7 +18,7 @@ Also read `C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preambl
 - **Scores and stored results.** Only E1 and E2 change stored results in wave 1. Every other task leaves scores, paths and stored records byte-identical. The results stamp stays "2.1.0", because no release carries it yet; never change a stamp yourself.
 - **Edits.** Edit source with the Edit tool. Read with offset and limit, never `sed`, `head` or `tail`. Never write source through a patch script. To replace most of a file, Write `<file>.new` and `Move-Item` it over the old one; the shrink guard blocks big deletions through Edit. A "file modified on disk" notice after your own edit is expected, not an outsider.
 - **Commits.** Stage files by name; never `git add -A` or `git add .`, and never pass the message through stdin. The trailers must be one block at the end of the message, so pass each with `--trailer`:
-  `git commit -m "<plain subject>" -m "<body>" --trailer "Task: <task id>" --trailer "Agent: <your agent id>" --trailer "Session: b9839bd7-dd4d-42dc-b313-c0a3c6723f61" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`.
+  `git commit -m "<plain subject>" -m "<body>" --trailer "Task: <task id>" --trailer "Agent: <your agent id>" --trailer "Session: 6c7ec44b-dbe0-4806-91ce-84c598754004" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`.
   Commit before your 110th tool call, and after each finished step. Never amend, rebase or move a branch. Never push.
 - **Helpers in the foreground.** Never use `run_in_background`, and never end your turn waiting for a job.
 - **When blocked,** stop and report the exact command and error. Never wait, and never guess a way around it.

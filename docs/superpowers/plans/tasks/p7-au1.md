@@ -2,7 +2,7 @@ Read docs/superpowers/plans/tasks/_phase7-preamble.md first; it holds the rules.
 
 # Task AU1: stem length and damage (findings R7.8, R7.9)
 
-Task id: AU1. Base: main at 81a2519. Branch: claude/p7-au1 (worktree `.claude\worktrees\p7-au1`, made as the preamble says).
+Task id: AU1. Base: main at 6a1bb49. Branch: claude/p7-au1 (worktree `.claude\worktrees\p7-au1`, made as the preamble says).
 
 Plan row: `docs/superpowers/plans/2026-10-04-phase-7.md`, wave 1 table, "AU1 Stem length and damage". Decisions: D51 Q19 (a FLAC whose header length is 0 is counted by decoding it once on open) and Q20 (a damaged Opus stem comes back after a scrub to before the damage, like every other format) in `docs/audit/2026-10-04-phase-7-questions.md`. Finding texts: `docs/audit/2026-10-03-derivation-audit.md`, headings `#### R7.8` and `#### R7.9`.
 
@@ -22,7 +22,7 @@ Two questions about a Preview stem get one written answer in the `StemReader` co
 
 **`MaReader`** (owner of R7.8 for FLAC and WAV): when the length miniaudio reports is 0, read the stream through once on open, count the frames, then seek back to 0. Only the zero case pays for this. A WAV cannot say 0 with data (dr_wav clamps to the chunk), so in practice this is the FLAC case; say so in a comment.
 
-**`VorbisReader`**: give it the same zero-length branch, so the contract holds for every reader and not just the one with a fixture. See Open questions on whether to pin it.
+**`VorbisReader`**: give it the same zero-length branch, so the contract holds for every reader and not just the one with a fixture. It is not pinned (see "Decided at launch").
 
 **`OpusReader::seek`** (owner of R7.9): drop the early return on `failed_`. `start_link` already resets the decoder state and clears `at_end_`; a seek to exactly `length_` still sets `at_end_`. Keep `failed_` sticky, so `read_all` keeps throwing on a damaged stream and the `decode_audio` error message is unchanged.
 
@@ -35,6 +35,7 @@ No scan row: the contract is prose and the tests below guard both readers.
 - `src/audio/stem_reader.h`
 - `src/audio/opus_reader.cpp`, `src/audio/ma_reader.cpp`, `src/audio/vorbis_reader.cpp`
 - `tests/test_stem_reader.cpp`, `tests/test_stream_mix.cpp`
+- `tests/test_single_owner.cpp`: add your own scan rows at the end of the file only; the main session joins every task's rows at M7-1.
 
 Not yours: `stream_mix.cpp`/`.h`, `decode.cpp`, `preview_transport.cpp`, `docs/adr/0019-*.md`, `testdata/audio/*`.
 
@@ -76,12 +77,14 @@ Nothing else. Never the full suite.
 
 - `stem_reader.h` states both rules; `MaReader` and `VorbisReader` count a zero-length header on open; `OpusReader::seek` has no `failed_` early return and `failed_` stays sticky.
 - The three new cases are green with their red lines recorded, and every existing case in both filters passes with no pin edited.
-- `git diff --stat 81a2519..HEAD` lists only the owned files. No score, path or stored record changes; the results stamp stays "2.1.0".
+- `git diff --stat 6a1bb49..HEAD` lists only the owned files. No score, path or stored record changes; the results stamp stays "2.1.0".
 
-## Open questions
+## Decided at launch (D51 addendum)
 
-- The Vorbis zero-length branch has no fixture: making one means an Ogg whose last page carries granule -1 or no end page, and stb_vorbis's answer to a hand-cut file is by reading only (audit R7.8). Recommended: add the branch for the contract's sake and pin only the FLAC case; if the main session wants a Vorbis pin, it needs a decision on how to build that fixture.
-- If libopus decodes the chosen bad packet without an error, stop and report rather than searching for a byte pattern; the fixture rule needs one named recipe, not a guess.
+The user answered "go with recommended answers to everything". These replace the open questions:
+
+- Vorbis zero length: add the branch for the contract's sake and pin only the FLAC case. No Vorbis fixture.
+- If libopus decodes the chosen bad packet without an error, stop and report. Do not search for another byte pattern.
 
 ## Commits
 

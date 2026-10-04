@@ -2,7 +2,7 @@ Read docs/superpowers/plans/tasks/_phase7-preamble.md first; it holds the rules.
 
 # Task PS1: song stems (findings 74 and 101)
 
-Task id: PS1. Base: main at 81a2519. Branch: claude/p7-ps1 (worktree `.claude\worktrees\p7-ps1`, made as the preamble says).
+Task id: PS1. Base: main at 6a1bb49. Branch: claude/p7-ps1 (worktree `.claude\worktrees\p7-ps1`, made as the preamble says).
 
 Plan row: `docs/superpowers/plans/2026-10-04-phase-7.md`, wave 1 table, "PS1 Song stems". Decision: D51 Q21 in `docs/audit/2026-10-04-phase-7-questions.md`: preview clips are left out of the song mix everywhere, and one "is this playable audio" rule, `audio::sniff_format`, decides. Finding texts: `docs/audit/2026-10-03-derivation-audit.md`, headings `#### 74.` and `#### 101.`.
 
@@ -28,8 +28,12 @@ No scan row: `tests/test_single_owner.cpp` is not yours. The pins below guard bo
 
 - `src/app/preview_source.cpp`, `src/app/preview_source.h`
 - `tests/test_preview_source.cpp` (the plan's filter points at it, and every case below lives there)
+- `src/core/audio_sniff.h`, `src/core/audio_sniff.cpp` (new: the byte check moved out of decode.cpp)
+- `src/audio/decode.h`, `src/audio/decode.cpp` (the byte check moves out; nothing else)
+- `CMakeLists.txt` (one line: the new .cpp in the `hydra_core` source list)
+- `tests/test_single_owner.cpp`: add your own scan rows at the end of the file only; the main session joins every task's rows at M7-1.
 
-Not yours: `src/audio/decode.cpp`/`.h` (PS1 only calls it), `src/audio/stem_reader.cpp`, `tests/srb_util.h`, `CMakeLists.txt`, `CONTEXT.md`, ADR 0019.
+Not yours: `src/audio/stem_reader.cpp`, `src/audio/ma_reader.cpp` (AU1's), `tests/test_audio_decode.cpp` (run only), `tests/srb_util.h`, `CONTEXT.md`, ADR 0019, and any `CMakeLists.txt` line other than the one source-list entry.
 
 ## Test cases to add or change (in `tests/test_preview_source.cpp`)
 
@@ -65,13 +69,15 @@ Nothing else. Never the full suite.
 
 - `looks_like_audio` has no magic-byte list of its own; it returns the sniff's answer. `find_loose_audio` and `sng_audio_from` both call `is_song_stem`; no `"preview"` comparison remains outside it.
 - The cases above are green, and every existing case in the filter passes with no pin edited beyond the codec tags and the preview.ogg entry named here.
-- `git diff --stat 81a2519..HEAD` lists only the three owned files.
+- `git diff --stat 6a1bb49..HEAD` lists only the three owned files.
 - No score, path or stored record changes; the results stamp stays "2.1.0".
 
-## Open questions
+## Decided at launch (D51 addendum)
 
-- Link shape. `preview_source.cpp` is in the `hydra_core` library and `sniff_format` is in `hydra_audio`, which already depends on `hydra_core` and is kept out of the CLI tools on purpose (CMakeLists.txt comment near line 204). The call links today because only `src/ui` and `src/audio` pull `preview_source` in, and both link `hydra_audio`; the CLI tools never reference it. So no CMake change is needed for this task, but the dependency is now implicit. `CMakeLists.txt` and `decode.cpp` are not PS1's; if the main session wants the sniff moved into `hydra_core` so the dependency is declared, that is a follow-up.
-- The header's top comment (`preview_source.h`, lines 1 to 18) says nothing about preview clips. Recommended: one clause under the loose-folder bullet; not a display change.
+The user answered "go with recommended answers to everything". These replace the open questions:
+
+- Link shape, decided: move the pure byte check out of `src/audio/decode.cpp` into `hydra_core`, so `preview_source.cpp`'s dependency is declared. Put it in a new `src/core/audio_sniff.h`/`.cpp` (it keeps the `audio` namespace and the `AudioFormat` enum), add the .cpp to the `hydra_core` source list in `CMakeLists.txt`, and have `src/audio/decode.h` include the new header so every existing caller (`ma_reader.cpp`, `stem_reader.cpp`) compiles unchanged. Those callers are not yours; do not edit them. Run `-sf=*test_audio_decode*` (run only, not edited) to show the sniff still answers the same.
+- The header's top comment: add one clause under the loose-folder bullet about preview clips.
 
 ## Commits
 

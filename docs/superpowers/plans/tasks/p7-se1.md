@@ -2,7 +2,7 @@ Read docs/superpowers/plans/tasks/_phase7-preamble.md first; it holds the rules.
 
 # Task SE1: the Settings owner (findings 322, 311, 31, 56, 138, 139, 72, 66, 68, 134, 200, 199)
 
-Task id: SE1. Base: main at 81a2519. Branch: claude/p7-se1 (worktree `.claude\worktrees\p7-se1`, made as the preamble says).
+Task id: SE1. Base: main at 6a1bb49. Branch: claude/p7-se1 (worktree `.claude\worktrees\p7-se1`, made as the preamble says).
 
 Plan row: `docs/superpowers/plans/2026-10-04-phase-7.md`, wave 1 table, "SE1 Settings owner". Decisions: D51 Q14 (clamp to the nearest edge of the range the box enforces; volume 0 to 100 everywhere), Q15 (a `#` comment after a value in hydra_settings.ini is ignored) and Q16 (a 1-bar cap stays allowed) in `docs/audit/2026-10-04-phase-7-questions.md`, plus the code-only call for 68 (on/off text is 0 or 1 only). Finding texts: `docs/audit/2026-10-03-derivation-audit.md`, headings `#### 322.` and so on.
 
@@ -22,7 +22,7 @@ Every question about a setting gets one answer in `app::Settings`: what each key
 
 **One key table in `Settings`** (`src/app/config.h`/`.cpp`) carries each key's name, its default and its range. `load_file` and `save_file` both walk it, so no key name is typed twice. The ranges are the ones the boxes enforce today, built from the constants in `src/core/model.h`, never from a typed 500 or 4: Path limit (`mslimit_value`) from -`kSqueezeWindowMs` to `kSqueezeWindowMs`; Backend limit (`backendlimit_value`) 0 to `kSqueezeWindowMs`; `depth_value` 0 and up; `depth_mode` 0 or 1; `preview_volume` 0 to 100; `sp_cap` 1 and up; `hit_window_ms` above 0.
 
-**One clamp, run on load**, pulls a value outside its range to the nearest edge (D51 Q14). It is a public member, so the boxes (SE2) and `hydra_replay` (T1) can call the same one later. Two keys keep today's reading for a value below the floor, because existing tests and earlier decisions pin them: `sp_cap` at 0 or junk (and the retired `auto`) reads as the default `kCloneHeroSpCap`, not 1 (the ui-redesign decision 6 and the test named below); `hit_window_ms` at 0 or below reads as the default, because "above 0" has no edge to land on. Say so in the table's comment. A `kMinSpCap` constant beside `kCloneHeroSpCap` would belong in `src/core/model.h`, which you do not own; keep the floor in the table and see Open questions.
+**One clamp, run on load**, pulls a value outside its range to the nearest edge (D51 Q14). It is a public member, so the boxes (SE2) and `hydra_replay` (T1) can call the same one later. Two keys keep today's reading for a value below the floor, because existing tests and earlier decisions pin them: `sp_cap` at 0 or junk (and the retired `auto`) reads as the default `kCloneHeroSpCap`, not 1 (the ui-redesign decision 6 and the test named below); `hit_window_ms` at 0 or below reads as the default, because "above 0" has no edge to land on. Say so in the table's comment. A `kMinSpCap` constant beside `kCloneHeroSpCap` would belong in `src/core/model.h`, which you do not own; keep the floor in the table and see "Decided at launch".
 
 **Three small owners.** `backend_limit()` drops `std::abs`; the clamp already made the value non-negative. `chartmode_key()` builds its difficulty word from `difficulty_name(difficulty())`, so an uncleaned word can no longer reach a key. `depth_mode` gets one enum reader on `Settings` that turns the stored int into the search's `DepthMode` (1 is points, anything else scores, as `to_analysis_settings` does today); `to_analysis_settings` calls it, and wave 2 and 3 callers (`within_label`, `batch_settings_summary`) will too. Add one percent-to-gain helper for the volume (a 0..100 percent to a 0.0..1.0 gain) for the Preview to call in wave 2; it is the only new function with no caller in this task, and you say so in a comment.
 
@@ -30,7 +30,7 @@ Every question about a setting gets one answer in `app::Settings`: what each key
 
 **One rules field table.** `src/core/rules.h`/`.cpp` gains one (name, member) table of the seven rules fields. `fixed_cap_text` walks it to write the fingerprint, and `load_rules_file` walks it to match keys, so a field added to one side cannot be missed by the other. The fingerprint text must stay byte for byte what it is today (the `%.17g` number form, `sqout_rule=first_note` / `whole_chord`, the line order), or every stored result reads Stale. The retired `auto_cap_ladder` / `auto_budget_s` keys stay accepted and ignored, as today. This task changes no stored result; the pinned fingerprint tests prove it.
 
-No scan row: `tests/test_single_owner.cpp` is not yours (see Open questions).
+No scan row: `tests/test_single_owner.cpp` is not yours (see "Decided at launch").
 
 ## Owned files (only these may change)
 
@@ -39,6 +39,7 @@ No scan row: `tests/test_single_owner.cpp` is not yours (see Open questions).
 - `src/app/rules_file.cpp`
 - `src/core/rules.h`, `src/core/rules.cpp` (the field table; the plan row says "the fingerprint's field list in `src/core/rules.*`")
 - `tests/test_config.cpp`, `tests/test_rules.cpp`, `tests/test_strutil.cpp`
+- `tests/test_single_owner.cpp`: add your own scan rows at the end of the file only; the main session joins every task's rows at M7-1.
 
 Not yours: `settings_bar.cpp`, `paths_tab.cpp`, the preview files, `path_view.cpp`, `library_dialogs.cpp`, `tools/replay.cpp`, `src/core/model.h`.
 
@@ -78,14 +79,16 @@ Nothing else. Never the full suite.
 - `load_file` and `save_file` share one key table; no key name appears in both by hand. Every number in `load_file` goes through the one clamp; no `== "1"` remains in `config.cpp`; no `std::abs` in `backend_limit`; `chartmode_key` reads `difficulty()`.
 - `load_file` and `load_rules_file` both call the strutil splitter; the rules reader and `fixed_cap_text` walk one field table.
 - Every case above is green, every existing case in the three filters passes with no pin edited, and the two fingerprint literals match today's.
-- `git diff --stat 81a2519..HEAD` lists only the owned files. No score, path or stored record changes; the results stamp stays "2.1.0".
+- `git diff --stat 6a1bb49..HEAD` lists only the owned files. No score, path or stored record changes; the results stamp stays "2.1.0".
 
-## Open questions
+## Decided at launch (D51 addendum)
 
-- D51 Q14's nearest-edge rule and the pinned `sp_cap` reading (0, junk and `auto` read as 4, not 1) are two rules in one table. The brief keeps both, since the cap rule traces to the user (ui-redesign decision 6). Confirm, or say the cap clamps to 1 like the rest.
-- `depth_mode=2` in the file now loads as 1 (points) by nearest edge, where today it searches scores and files under 2. That follows Q14 literally; say if "anything not 1 is scores" should win on load instead.
-- A scan row for the `== "1"` and typed-500 copies would live in `tests/test_single_owner.cpp`, which no phase 7 task owns. Recommended: the main session adds it at M7-1, or SE2 adds it with the box callers.
-- `kMinSpCap` (finding 139's proposed home, `src/core/model.h`) is not in the plan row; the floor stays in the key table unless you say to add the file.
+The user answered "go with recommended answers to everything". These replace the open questions:
+
+- `sp_cap`: keep the pinned rule that 0, junk and `auto` read as 4. D51's nearest-edge clamp covers only values with a range.
+- `depth_mode`: any value other than 1 reads as scores (2 stays scores, as it has always searched). The nearest-edge rule applies to the ranged number fields, not to this mode switch.
+- The scan rows for the `== "1"` and typed-500 copies: add them yourself at the end of `tests/test_single_owner.cpp` (now owned, append only).
+- `kMinSpCap`: the minimum cap of 1 lives in the key table in `config.h`, not in `model.h`.
 
 ## Commits
 

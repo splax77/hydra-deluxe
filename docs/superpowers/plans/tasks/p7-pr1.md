@@ -2,7 +2,7 @@ Read docs/superpowers/plans/tasks/_phase7-preamble.md first; it holds the rules.
 
 # Task PR1: probe helpers (findings 78, 79, 80, 81, 82, 83, 84, 85, 174)
 
-Task id: PR1. Base: main at 81a2519. Branch: claude/p7-pr1 (worktree `.claude\worktrees\p7-pr1`, made as the preamble says). Python only: no build.
+Task id: PR1. Base: main at 6a1bb49. Branch: claude/p7-pr1 (worktree `.claude\worktrees\p7-pr1`, made as the preamble says). Python only: no build.
 
 Plan row: `docs/superpowers/plans/2026-10-04-phase-7.md`, wave 1 table, "PR1 Probe helpers". Decisions: the "Probe scripts" code-only calls at the end of `docs/audit/2026-10-04-phase-7-questions.md`, approved by D51. Test limits (plan): the 5 s stall, the 150 ms start lead, the 2 ms play_chart lead, the 1e-6 ms window tolerance. Finding texts: `docs/audit/2026-10-03-derivation-audit.md`, headings `#### 78.` to `#### 85.` and `#### 174.`.
 
@@ -74,14 +74,17 @@ From the worktree root: `python -m pytest tools/ch_probe/tests/test_hit_window_s
 
 - No `wait_until`, start-cursor comparison, hit-offset formula, `5.0`/`8.0` stall, `150` lead or `1e-6` literal remains outside `live.py` and `constants.py` in `tools/ch_probe` (play_chart excepted until PR2). The six scripts are gone and nothing imports them.
 - The cases above are green and every other case in the files named passes.
-- `git diff --stat 81a2519..HEAD` lists only files under `tools/ch_probe/`, none of them play_chart's.
+- `git diff --stat 6a1bb49..HEAD` lists only files under `tools/ch_probe/`, none of them play_chart's.
 
-## Open questions
+## Decided at launch (D51 addendum)
 
-- `schedule_hit` is deleted rather than repointed, on this brief's call (nothing live uses it). Say at launch if it should instead call `live.wait_until` and keep its tests.
-- `watch_window` is a sampler, not a wait loop; it shares only the "has the song stopped" half. If the main session wants it left on its own 8 s, say so; D51 reads as one 5 s limit.
-- The one-second jump-back figure is today's value in all four loops, named but not newly pinned as a number; test 3 reads it from `live`.
-- `README.md` describes play_chart's route (lines 21 to 34); PR2 changes how play_chart reads notes, and README is yours in this wave. Leave the paragraph true as it stands; the main session adds PR2's sentence at M7-1 (see PR2's brief).
+The user answered "go with recommended answers to everything". These replace the open questions:
+
+- `InputDriver.schedule_hit` is deleted, with its own tests, because nothing live uses it.
+- `watch_window` shares only the "has the song stopped" check, at D51's one 5 s limit.
+- `poll_windows.window_verdict` moves into `watch_window.py`, because `tests/test_s2_window_constants.py` imports it.
+- A jump back raises its own error, so play_chart can re-sync where the edge runners stop.
+- `README.md`: leave play_chart's paragraph true as it stands; the main session adds PR2's sentence at M7-1.
 
 ## Commits
 

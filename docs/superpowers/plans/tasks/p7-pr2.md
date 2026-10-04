@@ -53,7 +53,7 @@ From the worktree root: `python -m pytest tools/ch_probe/tests/test_play_chart.p
 
 - `hydra_replay`'s settings and output (103, 198, 68, 38, 98) are T1's. The dump's `ms` stays what it is.
 - The shared helpers themselves are PR1's; if one is missing a seam you need (for example the jump-back error is not told apart from the stall), stop and report rather than adding a copy.
-- `README.md` is PR1's in this wave; see Open questions.
+- `README.md` is PR1's in this wave; see "Decided at launch".
 
 ## Done when
 
@@ -61,12 +61,14 @@ From the worktree root: `python -m pytest tools/ch_probe/tests/test_play_chart.p
 - It fires through `live.wait_until` with `PRESS_LEAD_MS = 2.0`, stops through `live.STALL_S`, starts through `live.first_note_index`, and presses the 2x kick on L.
 - The five cases are green. `git diff --stat <PR1 commit>..HEAD` lists only the two owned files.
 
-## Open questions
+## Decided at launch (D51 addendum)
 
-- Mid-song start changes: today play_chart keeps notes up to 50 ms behind the clock; with the one rule it skips notes less than 150 ms ahead. The main session confirmed this as D51's code-only call (one start-cursor rule). Its full-song playing is unchanged, since the first note is always more than 150 ms ahead when the run starts before the song.
-- Stall detection changes in a small way: a clock creeping in steps of 1 ms or less counted as frozen before and counts as moving now, under the shared rule. Code-only; no decision needed unless the main session objects.
-- The dump's 2x kick depends on the dump's bass2x setting (T1 makes `hydra_replay` read the app's settings): when 2x is off, Hydra drops the 2x kick and play_chart will not press it, which is "exactly the notes Hydra analyzed".
-- `README.md`'s play_chart paragraph (lines 21 to 34) should say it reads a `hydra_replay dump`. README is PR1's; recommended: the main session adds that sentence at M7-1.
+The user answered "go with recommended answers to everything". These replace the open questions:
+
+- The real paths are `tools/ch_probe/experiments/play_chart.py` and `tools/ch_probe/tests/test_play_chart.py`.
+- play_chart reads a `hydra_replay dump` JSON. The dump's `ms` has no Offset or song.ini delay, the same as play_chart today, so nothing shifts.
+- The 2x kick follows the dump's bass2x setting. The mid-song start uses D51's 150 ms rule. The 1 ms stall change is accepted.
+- `README.md` is not yours; the main session adds the "reads a hydra_replay dump" sentence at M7-1.
 
 ## Commits
 

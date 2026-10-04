@@ -2,7 +2,7 @@ Read docs/superpowers/plans/tasks/_phase7-preamble.md first; it holds the rules.
 
 # Task ST1: the store cache and other-rules rows (findings 65, 343, 116, 129, 130 store half, 132, 133)
 
-Task id: ST1. Base: main at 81a2519. Branch: claude/p7-st1 (worktree `.claude\worktrees\p7-st1`, made as the preamble says).
+Task id: ST1. Base: main at 6a1bb49. Branch: claude/p7-st1 (worktree `.claude\worktrees\p7-st1`, made as the preamble says).
 
 Plan row: `docs/superpowers/plans/2026-10-04-phase-7.md`, wave 1 table, "ST1 Store cache and other-rules rows". Decisions: D51 calls 8, 12 and 13 in `docs/audit/2026-10-03-fix-decisions.md` (questions 8, 12 and 13 of `docs/audit/2026-10-04-phase-7-questions.md`). Finding texts: `docs/audit/2026-10-03-derivation-audit.md`, headings `#### 65.`, `#### 343.`, `#### 116.`, `#### 129.`, `#### 130.`, `#### 132.` and `#### 133.`.
 
@@ -12,7 +12,7 @@ Two questions, both answered in `src/store/record_store.cpp`: which stored rows 
 
 ## What the code does today
 
-**65.** `RecordStore::write_row` purges twice before it inserts. Purge (1) deletes every row of the chart and mode that fails `row_ready_sql()`. That predicate includes the rules fingerprint (bytes 5 to 12 of the structure blob), so a row analyzed under other rules dies with the old-version rows. Purge (2) deletes the row with the same key (chart, mode, cap, lens) whatever its rules, so a rules-A row and a rules-B row can never sit side by side. ADR 0014 and `docs/UserGuide.md` promise they do. One more fact the scouts missed: `kResultsColumnDefs` declares a UNIQUE constraint over (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills). It has no fingerprint, so two rows for one key cannot both be inserted today even if purge (2) spared one. See Open questions.
+**65.** `RecordStore::write_row` purges twice before it inserts. Purge (1) deletes every row of the chart and mode that fails `row_ready_sql()`. That predicate includes the rules fingerprint (bytes 5 to 12 of the structure blob), so a row analyzed under other rules dies with the old-version rows. Purge (2) deletes the row with the same key (chart, mode, cap, lens) whatever its rules, so a rules-A row and a rules-B row can never sit side by side. ADR 0014 and `docs/UserGuide.md` promise they do. One more fact the scouts missed: `kResultsColumnDefs` declares a UNIQUE constraint over (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills). It has no fingerprint, so two rows for one key cannot both be inserted today even if purge (2) spared one. "Decided at launch" settles it: schema 4.
 
 **343.** `upsert_song` writes the tempo map on insert only. On conflict it refreshes the names and the length and leaves the map, with a comment saying it cannot have changed.
 
@@ -26,7 +26,7 @@ Two questions, both answered in `src/store/record_store.cpp`: which stored rows 
 
 Owner: `RecordStore` in `src/store/record_store.cpp`, with `src/store/record_store.h` for declarations.
 
-**65.** Purge (1) narrows to rows this build can never read: another results stamp or another path format, without the rules clause. Keep one SQL spelling: split `row_ready_sql()` into a build-readable part and the rules part, so the purge uses the first and `row_ready_sql()` is the two joined; `bind_ready_params` follows. Purge (2) adds the fingerprint (`substr(structure,5,8)` against the store's own fingerprint), so it replaces only this build's row under these rules. Resolve the UNIQUE constraint as the open question decides before you start.
+**65.** Purge (1) narrows to rows this build can never read: another results stamp or another path format, without the rules clause. Keep one SQL spelling: split `row_ready_sql()` into a build-readable part and the rules part, so the purge uses the first and `row_ready_sql()` is the two joined; `bind_ready_params` follows. Purge (2) adds the fingerprint (`substr(structure,5,8)` against the store's own fingerprint), so it replaces only this build's row under these rules. Resolve the UNIQUE constraint as "Decided at launch" says before you start.
 
 **343.** `upsert_song` writes `tempomap = excluded.tempomap` on conflict and the comment says each analysis rewrites the map (D51 call 12). The length rule is untouched (finding 62 is ST2's, wave 2).
 
@@ -44,6 +44,7 @@ Owner: `RecordStore` in `src/store/record_store.cpp`, with `src/store/record_sto
 - `src/store/record_store.h`
 - `src/store/stored_versions.h` (the one cache sentence; no stamp value changes)
 - `tests/test_store.cpp`
+- `tests/test_single_owner.cpp`: add your own scan rows at the end of the file only; the main session joins every task's rows at M7-1.
 
 The plan row names the first three. The test file comes with the plan's filter. `tests/test_cli.cpp` is not yours; its reindex case is run, not edited.
 
@@ -84,11 +85,13 @@ None. Every existing row keeps its bytes; only rows that would have been deleted
 
 - A rules-B row survives a rules-A write and reads Ready under rules B; `upsert_song` rewrites the map; one `decode_record`; `prepare_row` checks the ms limit both ways; `reindex` rewrites `bestpath`; the two comments are in place.
 - The five cases above pass, every other case in `-sf=*test_store*` passes, and the reindex CLI case passes.
-- `git diff --stat 81a2519..HEAD` lists only the four owned files.
+- `git diff --stat 6a1bb49..HEAD` lists only the four owned files.
 
-## Open questions
+## Decided at launch (D51 addendum)
 
-1. **The UNIQUE constraint (blocking).** The results table's unique key has no rules fingerprint, so a rules-A row and a rules-B row for one key cannot coexist without a schema change. Recommended: a schema 4 rebuild in the style of `add_fill_rule_column`, adding a `rules_fp` column filled from `substr(structure,5,8)` and a UNIQUE key that includes it, with every row and `result_id` kept and blobs untouched; `write_row` then fills the column and purge (2) compares it. The alternative is dropping the UNIQUE key and trusting purge (2). The main session decides before launch; the implementer does not pick.
+The user answered "go with recommended answers to everything". These replace the open questions:
+
+1. **The UNIQUE constraint, decided:** schema 4. Rebuild the results table the way `add_fill_rule_column` does: add a `rules_fp` column filled from `substr(structure,5,8)`, and put it in the UNIQUE key. Keep every row and every `result_id`; blobs are untouched, so nothing is re-analyzed. `write_row` fills the column and purge (2) compares it. Pin the migration with a case that opens a schema 3 file and finds every row, id and blob unchanged and the new column filled.
 2. Case 1's rules-B store opened on the same file must find the row Ready; if `WinnerPicker::only_winner` refuses two candidate rows for one key when only one is Ready, report it rather than widening the picker.
 
 ## Commits
