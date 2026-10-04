@@ -54,8 +54,9 @@ last commit the scan already passes, so its rows mostly show known copies.
 THE FOUR CHECKS
 
 1. Helpers defined twice (kind C). Every function defined at namespace level
-   in a .cpp or .h under tests/, and every named lambda (auto f = [..](..) {),
-   is matched against the rest of tests/ two ways: by name, and by body. For
+   in a C++ test file (a .cpp or .h under tests/, or in a tests folder under
+   tools/), and every named lambda (auto f = [..](..) {), is matched against
+   the other test files two ways: by name, and by body. For
    the body match, comments and the text inside string literals are dropped,
    namespace prefixes (std::, hydra::) are dropped, and every name that is not
    a C++ keyword or a member after "." or "->" is renamed in order of first
@@ -220,7 +221,29 @@ function Get-TipText([string]$Path, [string]$Rev = $tip) {
     $script:FileCache[$key]
 }
 
-$allFiles = @(Invoke-Git @('ls-tree', '-r', '--name-only', $tip, '--', 'src', 'tests', 'tools'))
+# ---------------------------------------------------------------- file kinds
+#
+# What kind of file is this, and where does it sit? Every check asks through
+# these four functions, so each answer is written once.
+
+# Which top folder of the repo is this file in (src, tools, tests...)? Empty
+# for a file at the repo root.
+function Get-TopFolder([string]$File) {
+    $i = $File.IndexOf('/')
+    if ($i -lt 0) { return '' }
+    $File.Substring(0, $i)
+}
+# Is this a C++ file? The extensions are the scan's own: the scan in
+# tests/test_single_owner.cpp reads a file only when its extension is exactly
+# .cpp or .h, so the precheck reads the same files and no others.
+function Test-CppPath([string]$p) { $p -cmatch '\.(cpp|h)$' }
+function Test-PyPath([string]$p) { $p -match '\.py$' }
+# Is this a test file? Everything under tests/, and under tools/ a file in a
+# tests folder or a Python file named test_*.py. Any file that is not a test
+# is production code.
+function Test-TestFile([string]$p) { (Get-TopFolder $p) -eq 'tests' -or $p -match '^tools/.*(/tests/|/test_[^/]*\.py$)' }
+
+$allFiles =@(Invoke-Git @('ls-tree', '-r', '--name-only', $tip, '--', 'src', 'tests', 'tools'))
 
 # Added lines per file: path -> HashSet[int] (1-based, in the tip's numbering).
 $added = @{}
@@ -275,7 +298,7 @@ function Get-Views([string]$Path, [string]$Rev = $tip) {
     $key = "${Rev}:$Path"
     if ($script:LexCache.ContainsKey($key)) { return $script:LexCache[$key] }
     $text = Get-TipText $Path $Rev
-    $rx = if ($Path -match '\.py$') { $pyLex } else { $cppLex }
+    $rx = if (Test-PyPath $Path) { $pyLex } else { $cppLex }
     $noComments = $rx.Replace($text, { param($m) if ($m.Groups['c'].Success) { Blank $m.Value } else { $m.Value } })
     $code = $rx.Replace($text, { param($m) if ($m.Groups['c'].Success) { Blank $m.Value } else { Blank-Inner $m.Value } })
     $v = [pscustomobject]@{
@@ -542,14 +565,6 @@ function Get-KnownCopy([string]$File, [string[]]$LineTexts) {
     $null
 }
 
-# Which top folder of the repo is this file in (src, tools, tests...)? Empty
-# for a file at the repo root.
-function Get-TopFolder([string]$File) {
-    $i = $File.IndexOf('/')
-    if ($i -lt 0) { return '' }
-    $File.Substring(0, $i)
-}
-
 # Does the scan read this file under this row (in_scope, the function a row
 # is limited to, owner files and exempt files)?
 function Test-RowCovers([object]$Row, [string]$File) {
@@ -574,9 +589,9 @@ function Get-FunctionLines([object]$Row, [object]$V) {
     ,$set
 }
 
-# Every added line in a .cpp or .h file that a scan row flags, as the scan
-# would see it. Kind: a line in src/ or tools/ is a production copy (A); in
-# tests/, a row whose owner is tests/source_tree.h is a stray scan (E), a row
+# Every added line in a C++ file that a scan row flags, as the scan would see
+# it. Kind: a line in production code (not a test file) is a production copy
+# (A); in a test file, a row whose owner is tests/source_tree.h is a stray scan (E), a row
 # whose owner is another test header is a copied fixture (C), and a row whose
 # owner is production code is a recompute (B). Checks 1, 2 and 4 each print
 # their own kinds from this one list.
@@ -585,7 +600,7 @@ function Get-RowHits {
     if ($null -ne $script:RowHits) { return $script:RowHits }
     $hits = [System.Collections.Generic.List[object]]::new()
     foreach ($f in $added.Keys) {
-        if (-not ($f -match '\.(cpp|h)$') -or $f -eq $scanFile) { continue }
+        if (-not (Test-CppPath $f) -or $f -eq $scanFile) { continue }
         $covering = @($rows | Where-Object { Test-RowCovers $_ $f })
         if (-not $covering.Count) { continue }
         $v = Get-Views $f
@@ -625,8 +640,7 @@ function Get-RowHits {
                 } elseif ($owners.Count + $copies.Count) {
                     $note = 'a second copy of a listed line; each entry covers one line'
                 }
-                $sub = Get-TopFolder $f
-                $kind = if ($sub -ne 'tests') { 'A' } elseif ($r.Owner -match 'tests/source_tree\.h') { 'E' } elseif ($r.Owner -match '\btests/') { 'C' } else { 'B' }
+                $kind = if (-not (Test-TestFile $f)) { 'A' } elseif ($r.Owner -match 'tests/source_tree\.h') { 'E' } elseif ($r.Owner -match '\btests/') { 'C' } else { 'B' }
                 $hits.Add([pscustomobject]@{ Kind = $kind; File = $f; Line = $ln; Text = $t; Row = $r; Note = $note })
             }
         }
@@ -643,8 +657,6 @@ function Add-RowItems([string[]]$Kinds) {
     }
 }
 
-function Test-CppPath([string]$p) { $p -match '\.(cpp|h|hpp|cc)$' }
-function Test-PyPath([string]$p) { $p -match '\.py$' }
 $selfFiles = @('tools/derive_once_precheck.ps1', 'tools/test_derive_once_precheck.ps1')
 
 # ------------------------------------------- check 1: helpers defined twice
@@ -736,7 +748,7 @@ function Get-Definitions([string]$Path) {
 }
 
 function Invoke-Check1 {
-    $testFiles = @($allFiles | Where-Object { (Get-TopFolder $_) -eq 'tests' -and (Test-CppPath $_) })
+    $testFiles = @($allFiles | Where-Object { (Test-TestFile $_) -and (Test-CppPath $_) })
     $defs = [System.Collections.Generic.List[object]]::new()
     foreach ($f in $testFiles) { foreach ($d in (Get-Definitions $f)) { $defs.Add($d) } }
 
@@ -791,7 +803,7 @@ function Invoke-Check1 {
            What = 'a MIDI variable-length delta encoded by hand'; Why = 'the varlen writer belongs in tests/midi_util.h' }
     )
     foreach ($f in $added.Keys) {
-        if ($f -notlike 'tests/*' -or -not (Test-CppPath $f) -or $f -eq $scanFile) { continue }
+        if (-not (Test-TestFile $f) -or -not (Test-CppPath $f) -or $f -eq $scanFile) { continue }
         $v = Get-Views $f
         foreach ($ln in (Get-AddedLines $f $v.NoComments.Count)) {
             $text = $v.NoComments[$ln - 1]
@@ -849,8 +861,8 @@ function Invoke-Check2 {
            What = 'a module constant checked against a formula of other constants'; Why = 'the test restates the module''s formula; pin the value' }
     )
     foreach ($f in $added.Keys) {
-        $isCppTest = (Get-TopFolder $f) -eq 'tests' -and (Test-CppPath $f) -and $f -ne $scanFile
-        $isPyTest = (Test-PyPath $f) -and ((Get-TopFolder $f) -eq 'tests' -or $f -match '^tools/.*(/tests/|/test_[^/]*\.py$)')
+        $isCppTest = (Test-TestFile $f) -and (Test-CppPath $f) -and $f -ne $scanFile
+        $isPyTest = (Test-TestFile $f) -and (Test-PyPath $f)
         if (-not ($isCppTest -or $isPyTest)) { continue }
         $v = Get-Views $f
         $rules = if ($isPyTest) { $py } else { $cpp }
@@ -996,7 +1008,7 @@ function Invoke-Check3 {
     foreach ($f in $added.Keys) {
         if (-not ((Test-CppPath $f) -or (Test-PyPath $f))) { continue }
         if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
-        $isTest = (Get-TopFolder $f) -eq 'tests' -or $f -match '^tools/.*(/tests/|/test_[^/]*\.py$)'
+        $isTest = Test-TestFile $f
         $v = Get-Views $f
         # Sizes of arrays this file declares: a loop or a bound that matches one is the container's size.
         $containerSizes = [System.Collections.Generic.HashSet[string]]::new()
