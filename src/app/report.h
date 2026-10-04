@@ -55,14 +55,6 @@ struct ReportRow {
     std::string hyhash;
 };
 
-// Strips Clone Hero's <color=...> markup from a charter credit / title and
-// trims whitespace. Mirrors hydra_report.plain.
-std::string plain(const std::string& text);
-
-// "1 record" / "12,345 records": the count with thousands grouped, then the
-// singular or plural noun. The report subtitles use it.
-std::string counted(int64_t n, const char* one, const char* many);
-
 // (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2).
 // nullopt -> (None, tn). Bands derive from the two-hit budget
 // (nominal_budget_ms): below kDifficultMs is Normal (an absolute floor), then

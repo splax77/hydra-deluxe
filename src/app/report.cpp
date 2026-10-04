@@ -194,45 +194,6 @@ void ms_text_into(std::string& data, const std::optional<double>& ms) {
 
 }  // namespace
 
-std::string plain(const std::string& text) {
-    if (text.empty()) return text;
-
-    // re.sub(r'</?color[^>]*>', '', text, flags=IGNORECASE)
-    std::string out;
-    out.reserve(text.size());
-    size_t i = 0;
-    while (i < text.size()) {
-        if (text[i] == '<') {
-            size_t j = i + 1;
-            if (j < text.size() && text[j] == '/') ++j;
-            static const char* kWord = "color";
-            bool word = true;
-            for (int k = 0; k < 5; ++k) {
-                if (j + k >= text.size() ||
-                    std::tolower(static_cast<unsigned char>(text[j + k])) != kWord[k]) {
-                    word = false;
-                    break;
-                }
-            }
-            if (word) {
-                size_t close = text.find('>', j + 5);
-                if (close != std::string::npos) {
-                    i = close + 1;  // drop the whole tag
-                    continue;
-                }
-            }
-        }
-        out.push_back(text[i]);
-        ++i;
-    }
-
-    return trim(out);
-}
-
-std::string counted(int64_t n, const char* one, const char* many) {
-    return group_thousands(n) + " " + (n == 1 ? one : many);
-}
-
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              double hit_window_ms) {
     // The ladder itself lives in core/squeeze_rating.h (timing_tiers) so
