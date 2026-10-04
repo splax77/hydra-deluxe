@@ -130,6 +130,32 @@ inline const hydra::Song& song(const std::string& path, bool pro, bool bass2x,
     return *o.value;
 }
 
+namespace detail {
+
+// First corpus chart whose song at `difficulty` (pro drums, 2x bass) has
+// notes when `with_notes` is true, or has none when it is false.
+inline std::string first_chart_where(hydra::Difficulty difficulty, bool with_notes) {
+    for (const std::string& p : chart_paths()) {
+        if (song(p, true, true, difficulty).is_empty() != with_notes) return p;
+    }
+    throw std::runtime_error(std::string("no corpus chart ") +
+                             (with_notes ? "has" : "lacks") + " notes at that difficulty");
+}
+
+}  // namespace detail
+
+// First corpus chart with notes at `difficulty` (pro drums, 2x bass).
+inline std::string first_chart_with_notes(
+    hydra::Difficulty difficulty = hydra::Difficulty::Expert) {
+    return detail::first_chart_where(difficulty, true);
+}
+
+// First corpus chart with no notes at `difficulty` (pro drums, 2x bass), the
+// chart a missing-difficulty test needs.
+inline std::string first_chart_without_notes(hydra::Difficulty difficulty) {
+    return detail::first_chart_where(difficulty, false);
+}
+
 // One corpus chart analyzed under `settings`, once per run: the record
 // analyze_chart_file would return (parsed with settings.prodrums, bass2x,
 // difficulty and rules, checked with require_notes, then analyze_chart).
