@@ -152,7 +152,8 @@ void test_settings_and_reports(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->dm_report_job && h.app->dm_report_job->finished(); }, 60));
     IM_CHECK_STR_EQ(h.app->dm_report_job->error().c_str(), "");
     IM_CHECK(fs::exists(hydra::app::dm_report_html_path()));
-    IM_CHECK_EQ(h.app->dm_report_job->stats().matched, 1);
+    // The canned score (100,000) is under the chart's optimal.
+    IM_CHECK_EQ(h.app->dm_report_job->stats().under_optimal, 1);
     IM_CHECK_EQ(h.opened_urls.size(), (size_t)1);  // still: auto-open is off
 }
 
@@ -216,6 +217,10 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     }, 60));
     IM_CHECK(h.app->dm_report_job->ok());
     IM_CHECK(visible_text(h).find("not analyzed") != std::string::npos);
+    // The counts read under, at and above optimal; nothing is "matched".
+    IM_CHECK(visible_text(h).find("0 under optimal, 0 at optimal, 0 above optimal") !=
+             std::string::npos);
+    IM_CHECK(visible_text(h).find("matched") == std::string::npos);
     IM_CHECK_STR_EQ(h.app->settings.dm_last_user.c_str(), "111");
     IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).dm_last_user.c_str(), "111");
     IM_CHECK_EQ(h.opened_urls.size(), (size_t)0);
