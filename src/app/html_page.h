@@ -34,7 +34,7 @@ std::string render_page(const char* page_template, std::string data_json,
 // ASCII: this file compiles into hydra_core, so a glyph goes in as an HTML
 // entity or a \uXXXX JavaScript escape.
 extern const char* const kReportCss;     // every rule the three pages use
-extern const char* const kReportJsHead;  // the data tag, DATA, DASH, fmt, fmtMs
+extern const char* const kReportJsHead;  // the data tag, DATA, DASH, fmt
 extern const char* const kReportJs;      // sorting, filtering, drawing, first render
 
 // One page's template: a whole standards-mode document (doctype, <html

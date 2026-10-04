@@ -606,7 +606,7 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
         r.status = status;
         dm.push_back(r);
     };
-    add_dm("Song A", 120000, 123456, "matched", true, 3);
+    add_dm("Song A", 120000, 123456, "under optimal", true, 3);
     add_dm("Song B", 251000, 250000, "above optimal", false, 1);
     add_dm("Song C", 90000, std::nullopt, "not in library", false, std::nullopt);
     add_dm("Song D", 80000, std::nullopt, "not analyzed", false, std::nullopt);

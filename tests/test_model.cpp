@@ -689,6 +689,37 @@ TEST_CASE("MultSqueeze::howto names the lone note of a 3-note chord") {
     CHECK(MultSqueeze(kya, 18).howto() == "Hit [Kick] first.");
 }
 
+// The advice names its note in the Pro Drums setting's words, as the chord
+// rows do (D48 Q11, finding 17): with Pro Drums off a pad has no tom or snare.
+TEST_CASE("MultSqueeze::howto names the note in the Pro Drums setting's words") {
+    // Kick (50) + accented yellow tom (100) + blue cymbal (65): combo 17
+    // carries the dear yellow over.
+    Chord kyb;
+    kyb.add_note(NoteColor::Kick);
+    kyb.add_note(NoteColor::Yellow);
+    kyb.add_note(NoteColor::Blue);
+    kyb.apply_cymbal(NoteColor::Blue);
+    kyb.apply_accent(NoteColor::Yellow);
+    CHECK(MultSqueeze(kyb, 17).howto(true) == "Hit [Yellow tom (Accent)] last.");
+    CHECK(MultSqueeze(kyb, 17).howto(false) == "Hit [Yellow (Accent)] last.");
+
+    // Kick (50) + accented red (100) + yellow cymbal (65).
+    Chord kya;
+    kya.add_note(NoteColor::Kick);
+    kya.add_note(NoteColor::Red);
+    kya.add_note(NoteColor::Yellow);
+    kya.apply_cymbal(NoteColor::Yellow);
+    kya.apply_accent(NoteColor::Red);
+    CHECK(MultSqueeze(kya, 17).howto(false) == "Hit [Red (Accent)] last.");
+    // A cymbal says cymbal either way.
+    Chord kry;
+    kry.add_note(NoteColor::Kick);
+    kry.add_note(NoteColor::Red);
+    kry.add_note(NoteColor::Yellow);
+    kry.apply_cymbal(NoteColor::Yellow);
+    CHECK(MultSqueeze(kry, 17).howto(false) == "Hit [Yellow cymbal] last.");
+}
+
 // The graph asks applies() of every chord instead of catching a throw.
 // It must answer exactly as the constructor decides, for every shape.
 TEST_CASE("MultSqueeze::applies answers exactly when the constructor accepts") {

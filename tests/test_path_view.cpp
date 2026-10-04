@@ -1142,6 +1142,29 @@ TEST_CASE("multiplier squeeze: Burnout's one squeeze and the fold's summary") {
     CHECK(multsqueeze_summary(three) == "3" + kDot + "+45");
 }
 
+TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
+    // The Paths tab builds its squeeze rows through the cache, which passes
+    // the Pro Drums setting the record was analyzed with (D48 Q11, finding 17).
+    const AnalysisResult& ar = burnout();
+    const HydraRecord& rec = ar.record;
+    const SongTiming& timing = ar.song.timing();
+    auto squeezes_of = [&](bool pro_drums) {
+        PathsTabCache cache;
+        return cache.details(rec.best_path(), rec, 1, &timing, 70.0, std::nullopt,
+                             core::default_rules(), std::nullopt, pro_drums).squeezes;
+    };
+    const std::vector<MultSqueezeView> on = squeezes_of(true);
+    REQUIRE(on.size() == 1);
+    CHECK(on[0].label == "2x   (+15 pts):   [Red snare - Yellow cymbal]");
+    CHECK(on[0].howto == "Hit [Red snare] first.");
+    // With Pro Drums off the red pad has no snare; the cymbal still says cymbal.
+    const std::vector<MultSqueezeView> off = squeezes_of(false);
+    REQUIRE(off.size() == 1);
+    CHECK(off[0].label == "2x   (+15 pts):   [Red - Yellow cymbal]");
+    CHECK(off[0].howto == "Hit [Red] first.");
+    CHECK(off[0].points == 15);
+}
+
 TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all") {
     PathsTabUi ui;
     ui.reset(3);

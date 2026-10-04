@@ -150,18 +150,31 @@ RecordStatusView build_record_status(const store::RecordLookup& lookup) {
     return view;
 }
 
-std::vector<MultSqueezeView> build_multsqueezes(const HydraRecord& record) {
+namespace {
+
+// The squeeze rows, naming each note in the words of the Pro Drums setting
+// `pro_drums` (note_label, through Chord::rowstr and MultSqueeze::howto).
+// The Paths tab's cache passes the record's setting.
+std::vector<MultSqueezeView> multsqueeze_views(const HydraRecord& record, bool pro_drums) {
     std::vector<MultSqueezeView> out;
     out.reserve(record.multsqueezes.size());
     for (const MultSqueeze& msq : record.multsqueezes) {
         MultSqueezeView v;
         v.label = msq.notationstr() + "   (+" + std::to_string(msq.points()) +
-                  " pts):   " + msq.chord().rowstr();
-        v.howto = msq.howto();
+                  " pts):   " + msq.chord().rowstr(pro_drums);
+        v.howto = msq.howto(pro_drums);
         v.points = msq.points();
         out.push_back(std::move(v));
     }
     return out;
+}
+
+}  // namespace
+
+// In the Pro Drums-on words; the Paths tab goes through PathsTabCache::details,
+// which passes the record's own setting.
+std::vector<MultSqueezeView> build_multsqueezes(const HydraRecord& record) {
+    return multsqueeze_views(record, /*pro_drums=*/true);
 }
 
 std::string multsqueeze_summary(const std::vector<MultSqueezeView>& squeezes) {
@@ -531,7 +544,7 @@ const PathsTabCache::Details& PathsTabCache::details(
     if (new_path || hit_window_ms != details_hit_window_ms_ ||
         backend_limit_ms != details_backend_limit_ms_ ||
         song_length_ms != details_song_length_ms_ || pro_drums != details_pro_drums_) {
-        details_.squeezes = build_multsqueezes(record);
+        details_.squeezes = multsqueeze_views(record, pro_drums);
         details_.activations = build_activations(path, record, timing, hit_window_ms,
                                                  backend_limit_ms, rules, song_length_ms,
                                                  pro_drums);
