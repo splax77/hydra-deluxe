@@ -75,8 +75,10 @@ It offered_phrase(It first, It last, int64_t act_tick, TickOf tick_of, SqueezedI
 // hold in its squeeze window, or nullptr.
 // `earliest_end` is the first SP end at which the activation can squeeze
 // anything: one SP bar after it (an SP end X decides a squeeze-out or a
-// plain end only for a path whose end is X or X plus one bar, and the end is
-// never under two bars past the activation). Two running activations whose
+// plain end only for a path whose end is X or X's moved end: one bar on, or
+// the cap's ceiling when that comes first (ScoreGraph::extend_deacts). The
+// moved end is never more than one bar past X, and the end is never under two
+// bars past the activation). Two running activations whose
 // answer here is the same face the same squeeze choices at every later SP
 // end, because activation_can_squeeze then gives the same answer for every
 // window chord. The search groups paths by it (engine.cpp). One tick of

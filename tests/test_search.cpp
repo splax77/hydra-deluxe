@@ -706,11 +706,11 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         const ScoreGraph graph(song, 4);
         const ScoreGraphEdge* e = deact_edge_at(graph, 13440);
         REQUIRE(e != nullptr);
-        REQUIRE(e->sqin_time.has_value());
-        CHECK(e->sqin_time->ticks() == 17280);
         REQUIRE(e->squeeze_choices.size() == 1);
         const SqueezeChoice& c = e->squeeze_choices[0];
         CHECK(c.chord.ticks() == 12960);
+        CHECK(c.sqin_time.ticks() == 17280);
+        CHECK_FALSE(c.clamped);
         CHECK(c.timing == doctest::Approx(-250.0).epsilon(1e-9));
         CHECK_FALSE(c.late);
         CHECK(c.sqout_time.ticks() == 17280);
@@ -720,11 +720,11 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         const ScoreGraph graph(song, 4);
         const ScoreGraphEdge* e = deact_edge_at(graph, 13440);
         REQUIRE(e != nullptr);
-        REQUIRE(e->sqin_time.has_value());
-        CHECK(e->sqin_time->ticks() == 17280);
         REQUIRE(e->squeeze_choices.size() == 1);
         const SqueezeChoice& c = e->squeeze_choices[0];
         CHECK(c.chord.ticks() == 13920);
+        CHECK(c.sqin_time.ticks() == 17280);
+        CHECK_FALSE(c.clamped);
         CHECK(c.timing == doctest::Approx(250.0).epsilon(1e-9));
         CHECK(c.late);
         CHECK(c.sqout_time.ticks() == 13440);
@@ -736,8 +736,6 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         const ScoreGraph graph(song, 4);
         const ScoreGraphEdge* e = deact_edge_at(graph, 13440);
         REQUIRE(e != nullptr);
-        REQUIRE(e->sqin_time.has_value());
-        CHECK(e->sqin_time->ticks() == 13440);
         CHECK(e->squeeze_choices.empty());
     }
 }
@@ -1794,27 +1792,46 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
 // check every variant against its lone pricing: at these tempos many variants
 // already differ from it (the review's fuzz found such charts by the hundred),
 // for reasons apart from this fold.
-TEST_CASE("tied variants: a Clamped step on the leader's SqIn phrase folds like a lone search") {
+//
+// Finding 37 (D29) changed what these charts produce. The pinned variant step
+// ({16128, 20736, SqIn} on chart a, {15744, 20352, SqIn} on chart b) came from
+// a squeeze the old graph offered by mistake: a deact node whose window held
+// the clamped phrase offered it to any path whose end was one plain bar past
+// the node, even when a later phrase, not the clamped one, had put the path's
+// end there (on chart b, 15744 offered at node 20928 to a path whose end
+// 22464 came from collecting 18048). Its squeeze-out then ended SP at a node
+// the record never names. The squeeze choices now read extend_deacts, cap
+// included, so those offers are gone. What these charts still check: they
+// analyze, and every squeeze-out ends SP at the end its record names. The
+// fold this test was written for (a variant's Clamped step on its leader's
+// SqIn phrase, relabelled SqIn) no longer happens on them; test_s2_deact_
+// extension.cpp's "folded variant's Clamped step" case covers it now.
+TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record names") {
     const app::AnalysisSettings cfg = test::scores_settings(3);
-    const std::map<std::string, SpEndStep> clamped = {
-        {"clamped_sqin_a.chart", SpEndStep{16128, 20736, SpEndKind::SqIn}},
-        {"clamped_sqin_b.chart", SpEndStep{15744, 20352, SpEndKind::SqIn}},
-    };
     for (const std::string name : {"clamped_sqin_a.chart", "clamped_sqin_b.chart"}) {
         CAPTURE(name);
         const Song song = load_songpath(
             std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/" + name, true, true);
         HydraRecord rec;
         REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
-        // The variant whose Clamped step sat on its leader's SqIn phrase
-        // stores that step as SqIn, with the end the clamp set, as
-        // relabel_sqin writes it on a lone path.
-        const SpEndStep want = clamped.at(name);
-        bool found = false;
-        for (const Path* v : test::all_tied(rec.paths))
-            for (const Activation& a : v->walk_activations())
-                for (const SpEndStep& s : a.sp_end_steps) found = found || s == want;
-        CHECK(found);
+        int sqouts = 0;
+        std::vector<const Path*> every;
+        for (const Path& root : rec.paths) every.push_back(&root);
+        for (const Path* v : test::all_tied(rec.paths)) every.push_back(v);
+        for (const Path* p : every) {
+            CAPTURE(p->pathstring());
+            for (const Activation& a : p->walk_activations()) {
+                if (!a.sqout_tick) continue;
+                ++sqouts;
+                // The squeezed-out row's offset is measured from the node SP
+                // really ended on; the record's end must be that node.
+                REQUIRE(a.deact_tick().has_value());
+                REQUIRE(a.sqout_row() != nullptr);
+                CHECK(*a.sqout_row()->offset_ms ==
+                      song.timecode(*a.sqout_tick).ms() - song.timecode(*a.deact_tick()).ms());
+            }
+        }
+        CHECK(sqouts > 0);
     }
 }
 
