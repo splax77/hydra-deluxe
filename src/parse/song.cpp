@@ -20,6 +20,13 @@
 
 namespace hydra {
 
+bool is_timing_refusal(std::string_view what) {
+    for (std::string_view prefix :
+         {kResolutionRefusalPrefix, kTimeSignatureRefusalPrefix, kTempoRefusalPrefix})
+        if (what.substr(0, prefix.size()) == prefix) return true;
+    return false;
+}
+
 // The timing maps Hydra can measure time with: a positive resolution, every
 // measure at least one tick long, every tempo a positive, finite BPM. Both
 // parsers reach this through Song::build_timing, so no chart with a zero,
@@ -28,16 +35,22 @@ void check_timing_maps(int64_t tick_resolution,
                        const std::map<int64_t, int64_t>& tpm_changes,
                        const std::map<int64_t, double>& bpm_changes) {
     if (tick_resolution <= 0)
-        throw ChartFileError("the chart's resolution is " + std::to_string(tick_resolution) +
-                             ", and it must be above 0");
+        throw ChartFileError(std::string(kResolutionRefusalPrefix) +
+                             std::to_string(tick_resolution) + ", and it must be above 0");
     for (const auto& [tick, len] : tpm_changes)
         if (len <= 0)
-            throw ChartFileError("the time signature at tick " + std::to_string(tick) +
+            throw ChartFileError(std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
                                  " makes a measure " + std::to_string(len) + " ticks long");
-    for (const auto& [tick, bpm] : bpm_changes)
+    for (const auto& [tick, bpm] : bpm_changes) {
+        // A .mid tempo of 0 microseconds per beat reads back as an infinite BPM
+        // (D12): say so, rather than "not above 0 BPM".
+        if (std::isinf(bpm) && bpm > 0.0)
+            throw ChartFileError(std::string(kTempoRefusalPrefix) + std::to_string(tick) +
+                                 " is infinite (0 microseconds per beat)");
         if (!std::isfinite(bpm) || bpm <= 0.0)
-            throw ChartFileError("the tempo at tick " + std::to_string(tick) +
+            throw ChartFileError(std::string(kTempoRefusalPrefix) + std::to_string(tick) +
                                  " is not above 0 BPM");
+    }
 }
 
 // ---- shared helpers -----------------------------------------------------
@@ -148,7 +161,7 @@ bool fill_lands_on_chord(const Song& song, int64_t fill_end_tick, int64_t tick,
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
     if (numerator == 0) return;
     if (denominator <= 0)
-        throw ChartFileError("the time signature at tick " + std::to_string(tick) +
+        throw ChartFileError(std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
                              " has a bottom number that is out of range");
     song.tpm_changes[tick] = song.tick_resolution() * static_cast<int64_t>(numerator) * 4 /
                              static_cast<int64_t>(denominator);

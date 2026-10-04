@@ -6,6 +6,7 @@
 #include "app/rules_file.h"
 #include "core/model.h"
 #include "parse/midi.h"
+#include "parse/song.h"
 #include "store/serialize.h"
 
 namespace hydra::app {
@@ -125,8 +126,7 @@ std::string plain_error_text(std::string_view what) {
     if (is_no_notes_message(what)) return std::string(what);
     // parse/song.cpp check_timing_maps and apply_timesig: timing that can't
     // measure time. The raw text names the line, so the user sees it.
-    if (starts_with_any(what, {"the tempo at tick ", "the time signature at tick ",
-                               "the chart's resolution is "}))
+    if (is_timing_refusal(what))
         return "Hydra can't analyze this chart because " + std::string(what) +
                ". Fix that line in the chart file or download the song again.";
     if (what == "Duplicate note." || what == "expected a [section] header" ||

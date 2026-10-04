@@ -83,9 +83,22 @@ struct SongSection {
     std::string name;
 };
 
+// How a refused-timing message starts. check_timing_maps and apply_timesig
+// build their messages from these, and app/user_messages reads them through
+// is_timing_refusal, so the wording has one owner.
+inline constexpr std::string_view kResolutionRefusalPrefix = "the chart's resolution is ";
+inline constexpr std::string_view kTimeSignatureRefusalPrefix = "the time signature at tick ";
+inline constexpr std::string_view kTempoRefusalPrefix = "the tempo at tick ";
+
+// True when `what` is the message of a ChartFileError that check_timing_maps
+// or apply_timesig threw: the text already names the line, so it can be shown
+// to the user as written.
+bool is_timing_refusal(std::string_view what);
+
 // Throws ChartFileError, naming the tick, unless every measure in these maps
 // lasts a positive, finite time: resolution above 0, every measure at least
-// one tick long, every tempo a finite BPM above 0. Song::build_timing calls it
+// one tick long, every tempo a finite BPM above 0 (a .mid tempo of 0
+// microseconds per beat is named infinite). Song::build_timing calls it
 // first, so both parsers pass through it.
 void check_timing_maps(int64_t tick_resolution,
                        const std::map<int64_t, int64_t>& tpm_changes,
