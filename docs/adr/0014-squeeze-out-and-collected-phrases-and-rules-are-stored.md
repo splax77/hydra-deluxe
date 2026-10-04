@@ -180,6 +180,18 @@ Three changes fix them:
 - A phrase a late squeeze-in already spent is not offered again. The path
   ends SP before reaching it, and hitting it later adds nothing to the meter.
 
+The engine tracks two kinds of phrase that are still ahead of a path but
+already paid for. A spent phrase is one a late squeeze-in took: its extension
+is in the SP end, so reaching it adds no step and no bar. A banked phrase is
+one a late squeeze-out took: its bar is already in the meter, so reaching it
+adds nothing, and an edge that passes without it hands the bar back until its
+own edge adds it again. They are separate fields (`spent`, `banked_ahead`),
+and the spent ones always come first in chart order. Since D34 one window can
+spend two late phrases that both lie past its final SP end. Its SqOut sibling
+then leaves SP with two spent phrases and one banked bar ahead. With the two
+kinds kept apart, the meter can never go below zero off SP. If it does, the
+engine throws instead of skipping a phrase.
+
 None of these fire on any of the 19,343 library charts. The charts in
 `testdata/input/test_fast_tempo` are fuzzed at those tempos. They exist only
 to keep these rules from breaking again.

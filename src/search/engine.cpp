@@ -248,7 +248,18 @@ struct Path {
     int32_t node;
     int32_t sp;
     int32_t currentskips;
-    int32_t buffered;
+    // Phrases still ahead of the path that a squeeze already accounted for.
+    // They are the first phrases on the edges to come, in chart order: the
+    // spent ones first, then the banked one.
+    //  - spent: late-SqIn phrases (D32, D34). Their SP extension is already
+    //    in sp_end_time and their SqIn step is written, so reaching one adds
+    //    no step and no bar, on SP or off it.
+    //  - banked_ahead: 0 or 1, off SP only. A late squeeze-out's phrase,
+    //    whose bar the squeeze-out already banked (it is in sp and
+    //    bank_tail). Reaching it adds nothing. An edge that passes without it
+    //    hands that bar back, and the phrase's own edge adds it again.
+    int32_t spent;
+    int32_t banked_ahead;
     int32_t act_tail;
     int32_t var_head;
     int32_t tied_count;
@@ -540,8 +551,9 @@ private:
     // A variant folded between windows (or at the song's end): its own banked
     // bars at the fold, m of them, then the leader's list from position m on,
     // into out_ticks_[*begin, *end). Both held m bars at the fold, and the
-    // leader's list only grew after it (a bar is given back only on a buffered
-    // squeeze-out edge, and the search never folds a buffered path), so its
+    // leader's list only grew after it (a bar is handed back only on the edge
+    // after a squeeze-out, and the search never folds a path holding a
+    // banked or spent phrase ahead), so its
     // first m are its own past. Counting, not ticks, marks the split: a
     // squeezed-out bar can sit past the fold node.
     void splice_bank(int32_t own_tail, int32_t lead_begin, int32_t lead_end,
@@ -722,16 +734,19 @@ void Engine::advance(Path& p) {
     p.notecount += e.notecount;
 
     const int32_t sp_n = (int32_t)eo->sp_times.size();
-    int32_t buffered = p.buffered;
 
     if (n.is_sp) {
+        // A squeeze-out's banked bar exists only between its SP end and the
+        // first edge off SP, which settles it (below).
+        if (p.banked_ahead != 0) throw std::logic_error("a banked squeeze-out phrase on SP");
         if (sp_n > 0) {
+            int32_t spent = p.spent;
             int64_t sp_end_time = p.sp_end_time;
             for (int32_t i = 0; i < sp_n; ++i) {
-                // A buffered (late-SqIn) phrase's extension is already in
+                // A spent (late-SqIn) phrase's extension is already in
                 // sp_end_time, and its step was written at the deact node.
-                if (buffered > 0) {
-                    --buffered;
+                if (spent > 0) {
+                    --spent;
                     continue;
                 }
                 const auto& emap = eo->sp_times[(size_t)i].second;
@@ -749,51 +764,52 @@ void Engine::advance(Path& p) {
                                                           : SpEndKind::Collected);
             }
             p.sp_end_time = sp_end_time;
-            p.buffered = buffered;
+            p.spent = spent;
         }
     } else {
+        // The edge's phrases, in chart order: first any spent ones, then the
+        // banked one, then fresh phrases. D32/D34: a path that late-squeezed
+        // phrases in can end SP before reaching them (deactivation_type), so
+        // spent phrases can still be ahead here, with the meter empty or
+        // holding only a squeeze-out's bar. A spent phrase adds nothing when
+        // its edge comes; until then it stays spent. A banked phrase not on
+        // this edge hands its bar back (the only loss) and its own edge adds
+        // it again as a fresh phrase. Either way the spent or banked phrases
+        // this edge passes without stay first in line, so nothing fresh can
+        // be on it.
         const int32_t old_sp = p.sp;
-        int32_t sp = old_sp + sp_n - buffered;
-        // D32: a path that late-squeezed a phrase in can end SP before
-        // reaching it (deactivation_type). Its meter is empty and the phrase
-        // stays buffered: that SqIn spent it, so hitting it adds nothing. An
-        // edge before the phrase would take the meter below zero, and no bar
-        // could be handed back. Keep the spent phrase buffered until its own
-        // edge instead. Only fires when an SP bar is shorter than the squeeze
-        // window; the meter it ends with is the same as letting it dip.
-        // That state is exactly an empty meter, no phrase on this edge and the
-        // one spent phrase buffered. Any other negative meter is a bug: fail
-        // loudly instead of quietly skipping a phrase the path should bank.
-        int32_t still_buffered = 0;
-        if (sp < 0) {
-            if (!(old_sp == 0 && sp_n == 0 && buffered == 1))
-                throw std::logic_error("the SP meter went below zero off SP");
-            still_buffered = -sp;
-            sp = 0;
-        }
+        const int32_t spent_here = std::min(sp_n, p.spent);
+        const int32_t banked_here = std::min(sp_n - spent_here, p.banked_ahead);
+        const int32_t fresh = sp_n - spent_here - banked_here;
+        const int32_t handed_back = p.banked_ahead - banked_here;
+        const int32_t kept = old_sp - handed_back;
+        // The meter holds the banked bar it hands back, so this never goes
+        // below zero. If it does, the bookkeeping above is wrong: fail loudly
+        // instead of quietly skipping a phrase the path should bank.
+        if (kept < 0) throw std::logic_error("the SP meter went below zero off SP");
+        int32_t sp = kept + fresh;
         if (has_sp_cap_ && sp > sp_cap_) sp = sp_cap_;
         p.sp = sp;
-        // Keep the banked bars in step with p.sp. Off SP, `buffered` means one
-        // of two things. After a squeeze-out it is a bar already banked: if
-        // the phrase is not on this edge, the bar is handed back here (the
-        // only loss) and the phrase's own edge adds it again. After a D32 early
-        // end (above) it is a spent phrase: the meter stays empty, nothing is
-        // popped, and the phrase's own edge adds no bar and no tick. A gain is
-        // a phrase past the buffered ones, so it never pushes the spent one.
-        for (int32_t k = sp; k < old_sp; ++k) p.bank_tail = banks_[(size_t)p.bank_tail].prev;
-        for (int32_t k = 0; k < sp - old_sp; ++k)
-            p.bank_tail = push_tick(banks_, p.bank_tail,
-                                    eo->sp_times[(size_t)(buffered + k)].first.ticks());
+        // Keep the banked bars in step with p.sp: the handed-back bar is the
+        // newest (a squeeze-out banks onto an empty list), and each gain is a
+        // fresh phrase past the spent and banked ones.
+        for (int32_t k = 0; k < handed_back; ++k)
+            p.bank_tail = banks_[(size_t)p.bank_tail].prev;
+        for (int32_t k = 0; k < sp - kept; ++k)
+            p.bank_tail = push_tick(
+                banks_, p.bank_tail,
+                eo->sp_times[(size_t)(spent_here + banked_here + k)].first.ticks());
 
-        if (old_sp < 2 && sp >= 2) {
-            const int32_t k = 1 - old_sp + buffered;
+        if (kept < 2 && sp >= 2) {
+            const int32_t k = spent_here + banked_here + 1 - kept;
             if (k < 0 || k >= sp_n) {
                 p.node = NODE_BROKEN;
                 return;
             }
             p.sp_ready_ms = eo->sp_times[(size_t)k].first.ms();
         }
-        p.buffered = still_buffered;
+        p.spent -= spent_here;
+        p.banked_ahead = 0;
     }
 
     p.node = e.dest;
@@ -868,7 +884,7 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
     // offered the first one its running window can still squeeze
     // (core::offered_phrase, D34): not one it banked before SP started, not
     // one it already squeezed in. A late SqIn's phrase still ahead of the
-    // path (buffered) holds its SqIn step already, so it is spent too (D32:
+    // path (Path::spent) holds its SqIn step already, so it is spent too (D32:
     // when the SqIn's new end, one SP bar on, comes before its phrase, that
     // phrase was once squeezed in a second time there and the search broke).
     // The offer is a squeeze choice for a path whose end is its sqout_time.
@@ -977,7 +993,7 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     }
 
     // The squeeze-in's step. A late one's phrase comes after this node and is
-    // buffered, so advance skips it: its step is written here, on the phrase.
+    // spent, so advance skips it: its step is written here, on the phrase.
     // An early one's phrase is already a Collected step (advance collected it
     // before this branch point, and the SqOut child above shares that step):
     // relabel it on this branch only.
@@ -988,12 +1004,14 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
         return false;
     }
 
-    // A late phrase joins any still buffered: the path may already hold a
-    // late SqIn's phrase ahead of it, spent, when this one is offered after
-    // it (D34). Both branches skip every buffered phrase's bar.
+    // The path may already hold a late SqIn's phrase ahead of it, spent, when
+    // this one is offered after it (D34). Both branches keep those spent. A
+    // late phrase is the next one in line: this branch spends it too, and the
+    // SqOut child holds it banked (its bar is already in the child's meter).
     p.sp_end_time = e.sqin_time;
-    p.buffered += sq->late;
-    child->buffered = p.buffered;
+    child->spent = p.spent;
+    child->banked_ahead = sq->late;
+    p.spent += sq->late;
     return true;
 }
 
@@ -1210,7 +1228,7 @@ void Engine::reduce_iteration_paths() {
             optimal_score_ = p.score;
         }
 
-        if (p.buffered != 0) continue;
+        if (p.spent != 0 || p.banked_ahead != 0) continue;
 
         // Group by what decides the path's future: its SP meter, or its SP end
         // while active. While waiting, also which upcoming fills its SP-ready

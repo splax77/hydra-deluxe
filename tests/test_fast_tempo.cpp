@@ -444,3 +444,66 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
     CHECK(analyzed == 48);
     CHECK(variants > 50);
 }
+
+// The phrases still ahead when SP ends, pinned (s1-fix-merge). D34 lets one
+// window squeeze in two late phrases that both come after its final SP end:
+// the path leaves SP with two spent phrases ahead and an empty meter. Its
+// SqOut sibling squeezes a third phrase out at that end instead, so it leaves
+// SP with two spent phrases and one banked bar ahead. Before the engine kept
+// spent and banked phrases apart, the first edge after either end threw "the
+// SP meter went below zero off SP". The record shows both states: SqIn steps
+// on phrases past the window's deact tick, and for the second a squeezed-out
+// phrase past it too. Each path that shows one must price as it does alone,
+// bank no spent phrase, and bank the squeezed-out phrase's bar once, on its
+// own tick. The seeds come from the fuzz generator above.
+TEST_CASE("fast tempo: two spent phrases ahead, with or without a banked one, price as alone") {
+    struct Case {
+        uint64_t seed;
+        int cap;
+        bool banked;  // the SqOut sibling's state: two spent plus one banked
+    };
+    for (const Case& c : {Case{23, 2, false}, Case{23, 3, false}, Case{23, 4, false},
+                          Case{39, 3, true}, Case{39, 4, true}}) {
+        CAPTURE(c.seed);
+        CAPTURE(c.cap);
+        const FuzzChart fc = fuzz_chart(c.seed);
+        const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
+        const Song song = load_songbytes_chart(bytes, true, true);
+        const app::AnalysisSettings cfg = fast_settings(c.cap);
+        HydraRecord rec;
+        if (!analyzes(song, cfg, rec)) continue;
+        check_banks(rec);
+        int shown = 0;
+        for (const Path* p : rec.all_paths()) {
+            const ActivationWalk walk = p->walk_activations();
+            for (size_t i = 0; i < walk.size(); ++i) {
+                const Activation& a = walk[i];
+                const std::optional<int64_t> d = a.deact_tick();
+                if (!d) continue;
+                int spent_ahead = 0;
+                for (const SpEndStep& s : a.sp_end_steps)
+                    if (s.kind == SpEndKind::SqIn && s.tick > *d) ++spent_ahead;
+                if (spent_ahead < 2) continue;
+                const bool banked_ahead = a.sqout_tick && *a.sqout_tick > *d;
+                if (banked_ahead != c.banked || (!c.banked && a.sqout_tick)) continue;
+                ++shown;
+                CAPTURE(p->pathstring());
+                CAPTURE(a.timecode.ticks());
+                if (banked_ahead) {
+                    const std::vector<int64_t>& next =
+                        i + 1 < walk.size() ? walk[i + 1].bank_rise_ticks : p->trailing_bank_ticks;
+                    CHECK(std::count(next.begin(), next.end(), *a.sqout_tick) == 1);
+                }
+                const std::string diff = lone_mismatch(song, cfg, *p);
+                CHECK_MESSAGE(diff.empty(), diff);
+            }
+        }
+        CHECK(shown > 0);
+        std::vector<const Path*> all;
+        for (const Path& r : rec.paths) collect_variants(r, all);
+        for (const Path* v : all) {
+            const std::string diff = lone_mismatch(song, cfg, *v);
+            CHECK_MESSAGE(diff.empty(), diff);
+        }
+    }
+}
