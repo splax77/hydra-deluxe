@@ -176,8 +176,9 @@ public:
     // Re-reads one chart's summary: after one song's analysis is stored.
     void refresh_library_row(const std::string& md5);
     // Once per frame, from the library pane: reloads after a scan finishes,
-    // and re-reads summaries while a batch runs -- at most once a second, and
-    // only when the batch stored something since the last look.
+    // and re-reads summaries while a batch runs -- at most once per
+    // kBatchRefreshSeconds, and only when the batch stored something since
+    // the last look.
     void tick_library(double now);
 
     // The rows on screen, in order, as indices into library.rows().

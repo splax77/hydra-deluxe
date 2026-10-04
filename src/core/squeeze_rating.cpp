@@ -61,7 +61,7 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act) {
 double effective_backend_ms(double offset_ms, double transfer_r) {
     // The gap rescaled by the identity budget over the budget at this scale.
     // The window cancels in that ratio, so a unit window is used: it keeps
-    // the arithmetic exactly what the plain "2 / (1 + r)" form gave.
+    // the arithmetic bit-identical to the older written-out form.
     constexpr double kUnitWindow = 1.0;
     return std::abs(offset_ms) * nominal_budget_ms(kUnitWindow) /
            squeeze_budget_ms(transfer_r, kUnitWindow);

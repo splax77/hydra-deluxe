@@ -101,7 +101,8 @@ void render_search_box(AppState& app) {
     hint("Ctrl+F jumps here. Escape clears it.");
     if (edited) ui.search_pending = true;
 
-    // An emptied box applies at once; typing applies at most every 150 ms.
+    // An emptied box applies at once; typing applies at most once per the
+    // named constant's interval.
     const double now = ImGui::GetTime();
     if (ui.search_pending &&
         (buf[0] == '\0' || now - ui.search_applied_at >= AppState::kSearchThrottleSeconds)) {

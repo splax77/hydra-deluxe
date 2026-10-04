@@ -75,11 +75,11 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act);
 // The identity transfer scale, x1.00: frontend timing that stretches nothing.
 constexpr double kIdentityScale = 1.0;
 
-// A backend squeeze's raw ms mapped onto the nominal 2*W scale the ratings
-// assume. With frontend timing scaling by r at the SP end, the real combined
-// squeeze budget is squeeze_budget_ms(r, W) = W*(1+r) rather than 2*W, so a
-// raw |offset| counts for |offset| * 2 / (1+r) of the nominal budget (a
-// W-free quantity).
+// A backend squeeze's raw ms mapped onto the nominal budget the ratings
+// assume (nominal_budget_ms). With frontend timing scaling by r at the SP
+// end, the real combined squeeze budget is squeeze_budget_ms(r, W) instead,
+// so a raw |offset| is rescaled by nominal_budget_ms over squeeze_budget_ms
+// at r. The window W cancels in that ratio.
 double effective_backend_ms(double offset_ms, double transfer_r);
 double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWindowMs);
 // The two-hit budget at the identity scale: squeeze_budget_ms at
@@ -184,9 +184,9 @@ ActivationRating rate_activation(
 // ---- timing tiers ---------------------------------------------------------
 
 // The report's timing tiers: raw squeeze ms banded against the two-hit
-// budget 2*W, quarters of the budget after the kDifficultMs "Normal" floor
-// (at the historical W = 70 this is the 2/35/70/105/140 ladder). In payload
-// order; `cutoff` is the band's exclusive upper edge, unset for the open
+// budget (nominal_budget_ms), quarters of it after the kDifficultMs
+// "Normal" floor (at the historical W = 70 this is the 2/35/70/105/140
+// ladder). In payload order; `cutoff` is the band's exclusive upper edge, unset for the open
 // "Beyond" band and the "None" (no squeeze) entry.
 struct TimingTier { const char* name; const char* tok; std::optional<double> cutoff; };
 std::vector<TimingTier> timing_tiers(double hit_window_ms = kDefaultHitWindowMs);
