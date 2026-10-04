@@ -117,7 +117,7 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "m88.1.0"));
     IM_CHECK(on_screen(h, "squeeze out 163 ms"));
     // Row 1 starts open: its chord and sentence show, rows 2 and 3 are shut.
-    IM_CHECK(on_screen(h, "[Kick - GreenCym]"));
+    IM_CHECK(on_screen(h, "[Kick - Green cymbal]"));
     IM_CHECK(on_screen(h, "Hit the [  Y  ] note more than 163.0 ms late so it lands after "
                           "Star Power ends."));
     IM_CHECK(on_screen(h, "3 notes near the SP end"));
@@ -205,11 +205,11 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     FakeClipboard clipboard;
 
     IM_CHECK(on_screen(h, "+15"));  // beside the Multiplier squeeze fold
-    IM_CHECK(!on_screen(h, "Hit [Red] first."));
+    IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Hit [Red] first."));
-    IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red - YellowCym]"));
+    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
+    IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red snare - Yellow cymbal]"));
 
     IM_CHECK(!on_screen(h, "Total Score:"));
     ctx->ItemClick("**/Score breakdown##breakdown");
