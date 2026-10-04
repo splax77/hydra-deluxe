@@ -127,14 +127,16 @@ Difficulty Settings::difficulty() const {
     return difficulty_from_name(view_difficulty).value_or(Difficulty::Expert);
 }
 
-bool Settings::effective_bass2x() const {
-    return view_bass2x && difficulty() == Difficulty::Expert;
-}
+// 2x Bass applies at every difficulty, as Clone Hero's Double Kick modifier
+// does (D20; its only gate, 0x20D32B7, has no difficulty check). Each
+// difficulty has its own 2x kicks; the box decides whether they are read.
+bool Settings::effective_bass2x() const { return view_bass2x; }
 
 std::string Settings::chartmode_key() const {
     std::string prodrums = view_prodrums ? "Pro Drums" : "Drums";
-    // Only Expert can be 2x, so every other difficulty's key ends "1x Bass" —
-    // and the four Expert keys are byte-for-byte the ones already in the store.
+    // The four Expert keys are byte-for-byte the ones already in the store.
+    // Below Expert a key ends "2x Bass" with the box on since D20; results
+    // stored before that are re-analyzed by step 1's results-stamp bump.
     std::string bass = effective_bass2x() ? "2x Bass" : "1x Bass";
     return view_difficulty + " " + prodrums + ", " + bass;
 }

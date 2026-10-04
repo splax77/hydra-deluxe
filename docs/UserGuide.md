@@ -38,7 +38,7 @@ While a batch runs, the bar is locked and says `Stop the batch to change these.`
 
 **Pro Drums.** Analyze with cymbals and toms as separate notes, the way Clone Hero scores Pro Drums.
 
-**2x Bass.** Include the chart's 2x kicks. 2x Bass only exists on Expert, so it is greyed out on the other difficulties.
+**2x Bass.** Include the chart's 2x kicks, like Clone Hero's Double Kick modifier. It works at every difficulty. Each difficulty has its own 2x kicks, though few charts have any below Expert.
 
 For example, say you analyzed a song with 2x Bass on and want to see it with 1x bass. Untick 2x Bass and analyze again. Tick it again and the 2x result comes back.
 
@@ -165,7 +165,7 @@ The boxes on the highway:
 
 This tab counts the chart's ghost and accent notes. Ghosts and accents are the soft and hard hits that score double in Clone Hero.
 
-The **Pads** table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. **Kicks** does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. When 2x Bass is off, the 2x kick row stays visible but greyed out and is left out of the totals. **Totals** adds them up.
+The **Pads** table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. **Kicks** does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. When 2x Bass is off, the 2x kick row stays visible but greyed out, and both All kicks and the totals leave it out. **Totals** adds them up.
 
 The **Chart** box says whether the chart has dynamics turned on. A MIDI chart has to opt in. Without that flag Clone Hero ignores the velocity markings, so Hydra Deluxe shows the counts but notes that the game won't apply them.
 

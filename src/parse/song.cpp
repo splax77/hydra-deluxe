@@ -431,14 +431,17 @@ int difficulty_base_pitch(Difficulty difficulty) {
     return difficulty_chart_codes(difficulty).kick_pitch;
 }
 
-// `base` is the difficulty's kick pitch. The five note pitches follow it; every
-// other pitch here is a marker shared by all four difficulties (95 is the 2x
-// kick, which only Expert charts carry). A pitch outside this set belongs to
-// another difficulty (or to another instrument) and is dropped.
-bool is_handled_note(int note, int base) {
+// `base` is the difficulty's kick pitch and `kick2x` its 2x kick pitch, both
+// from difficulty_chart_codes. The five note pitches follow the kick, and the
+// 2x kick sits one below it. Every other pitch here is a marker shared by all
+// four difficulties. A pitch outside this set belongs to another difficulty
+// (or to another instrument) and is dropped, so Expert's 95 is never read
+// below Expert: Clone Hero reads each 2x kick only into its own difficulty
+// (D20; 0x2155050 at 0x21555CD).
+bool is_handled_note(int note, int base, int kick2x) {
     if (note >= base && note <= base + 4) return true;
+    if (note == kick2x) return true;
     switch (note) {
-        case 95:
         case 103:
         case 109: case 110: case 111: case 112:
         case 116:
@@ -499,7 +502,8 @@ private:
     Song* song_ = nullptr;
     bool mode_pro_ = false;
     bool mode_bass2x_ = false;
-    int base_ = 96;
+    int base_ = 0;          // set by parse() from difficulty_chart_codes
+    int kick2x_pitch_ = 0;  // set by parse() from difficulty_chart_codes
     // The parsed difficulty's disco digit: only `[mix N drums...]` markers
     // with this N open or close a disco section here. parse() sets it from
     // difficulty_chart_codes.
@@ -527,7 +531,7 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
 
     if (is_channel) {
         int note = msg.note;
-        if (!is_handled_note(note, base_)) return {};
+        if (!is_handled_note(note, base_, kick2x_pitch_)) return {};
 
         int velocity = msg.velocity;
         bool is_noteon = (msg.type == MType::NoteOn && velocity > 0);
@@ -551,10 +555,12 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 NoteColor color = static_cast<NoteColor>(note - base_ + 1);
                 return mop_note(color, vel_dyn, false);
             }
+            // The difficulty's own 2x kick, read only with 2x Bass on.
+            if (note == kick2x_pitch_) {
+                if (mode_bass2x_) return mop_note(NoteColor::Kick, vel_dyn, true);
+                return {};
+            }
             switch (note) {
-                case 95:
-                    if (mode_bass2x_) return mop_note(NoteColor::Kick, vel_dyn, true);
-                    return {};
                 case 120:
                     return mop_tick(MPhase::PostDelayed, MAct::FillStart, tick);
                 case 116:
@@ -703,6 +709,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
     base_ = difficulty_base_pitch(difficulty);
+    kick2x_pitch_ = difficulty_chart_codes(difficulty).kick2x_pitch;
     mix_digit_ = difficulty_chart_codes(difficulty).mix_digit;
 
     Song song(mid.ticks_per_beat);

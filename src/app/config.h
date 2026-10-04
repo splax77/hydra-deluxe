@@ -125,9 +125,9 @@ struct Settings {
     // can never put a junk word into chartmode_key().
     Difficulty difficulty() const;
 
-    // 2x Bass with the Expert-only rule applied. A second kick pedal is an
-    // Expert charting concept, so the other three difficulties always analyze
-    // (and preview, and file their records) as 1x.
+    // Whether an analysis, the Preview and a record's key read 2x kicks: the
+    // 2x Bass box, at every difficulty (D20). Callers ask here rather than
+    // reading view_bass2x, so the rule has one owner.
     bool effective_bass2x() const;
 
     // "Expert Pro Drums, 2x Bass" — mirrors HyAppUserSettings.chartmode_key.

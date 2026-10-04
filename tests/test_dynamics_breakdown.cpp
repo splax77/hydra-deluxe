@@ -145,8 +145,9 @@ TEST_CASE("dynamics_breakdown: played_total includes/excludes 2x kick") {
     CHECK(bd.played_total(false).ghost == 4);
     CHECK(bd.played_total(true).ghost  == 4);
 
-    // kicks_total = Kick(3) + Kick2x(1)
-    CHECK(bd.kicks_total().all() == 4);
+    // kicks_total(true) = Kick(3) + Kick2x(1); kicks_total(false) = Kick(3)
+    CHECK(bd.kicks_total(true).all() == 4);
+    CHECK(bd.kicks_total(false).all() == 3);
 }
 
 // ---------------------------------------------------------------------------

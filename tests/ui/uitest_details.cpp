@@ -267,6 +267,42 @@ void test_dynamics_stored(ImGuiTestContext* ctx) {
              text.find("Accents:") != std::string::npos);
 }
 
+// At Hard the Dynamics tab counts Hard's own kicks (findings 10, 12, 255).
+// Pathfinder - When The Sunrise Breaks The Darkness has 1,613 Expert 2x kicks
+// (pitch 95) and no Hard ones; 139 of its 972 Hard kicks share a tick with a
+// 95. Before D20 the tab showed 833 kicks, a phantom row of 1,613 "2x kicks"
+// and Totals of 3,287.
+void test_dynamics_hard(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    h.app->settings.view_difficulty = "Hard";
+    h.app->commit_settings();
+    IM_CHECK(h.app->settings.effective_bass2x());  // the default, now at Hard too
+    open_titled(ctx, "Sunrise Breaks", "When The Sunrise Breaks The Darkness");
+    if (ctx->IsError()) return;
+
+    ctx->ItemClick("##DetailsTabs/Dynamics");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->dynamics_result.has_value(); }, 60));
+    std::string text = visible_text(h);
+    IM_CHECK(text.find("2x kicks: 0 of 972 kick notes (0%)") != std::string::npos);
+    IM_CHECK(text.find(" of 3,426 (") != std::string::npos);  // Dynamic notes: X of 3,426
+
+    // 2x Bass off: Totals is unchanged, because Hard has no 2x kicks to drop.
+    h.app->settings.view_bass2x = false;
+    h.app->commit_settings();
+    IM_CHECK(wait_until(ctx, [&] {
+        return visible_text(h).find("not counted (2x Bass off)") != std::string::npos;
+    }, 5));
+    IM_CHECK(visible_text(h).find(" of 3,426 (") != std::string::npos);
+
+    // Restore the defaults the next test relies on.
+    h.app->settings.view_bass2x = true;
+    h.app->settings.view_difficulty = "Expert";
+    h.app->commit_settings();
+}
+
 // The Stars tab: a prompt before analysis, then the base score, the solo
 // bonus and the seven cutoffs from star_cutoffs(). "87" has a drum solo;
 // "I'm A Believer" has a solo only on guitar, so its drums show none.
@@ -767,6 +803,7 @@ const std::vector<TestEntry>& details_tests() {
         {"legacy-fills", test_legacy_fills},
         {"dynamics", test_dynamics},
         {"dynamics-stored", test_dynamics_stored},
+        {"dynamics-hard", test_dynamics_hard},
         {"stars", test_stars},
         {"details-close-teardown", test_details_close_teardown},
         {"preview-load-bar", test_preview_load_bar},
