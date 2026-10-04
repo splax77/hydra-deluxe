@@ -506,6 +506,37 @@ const std::vector<OwnerRule>& rules() {
           {"tests/test_replay.cpp", "opts.target_act_ticks = std::vector<int64_t>{28800};",
            "drives the engine's target mode directly on a hand-built song, not search_target's filter"}},
          {"src", "tools", "tests"}},
+        // A SqIn's transfer scale sits at its SqIn rank. Indexing the list
+        // with a hand-kept counter restates that rank; index it with
+        // sqin_rank, or compare whole lists (stored_transfer_scales pairs
+        // them). Literal-index pins in tests do not match.
+        {"Which transfer scale belongs to this SqIn?",
+         "sqin_rank in src/core/model.h",
+         R"(\bsqins\[\s*[a-z_]\w*(\+\+)?\s*\])",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of de4e23a, finding 2 (2026-10-04)",
+         {"rate_note(sq.offset_ms, sq.is_free(), out.scales->sqins[j++], hit_window_ms);",
+          "if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {"},
+         {"sq->transfer = scales->sqins[sqin_rank(first, sq, is_sqin_squeeze)];",
+          "CHECK(scales->sqins[0].late == doctest::Approx(1.0));"},
+         {},
+         {"src", "tools", "tests"}},
+        {"Which test walks a path's tied variants?",
+         "collect_tied in tests/record_fixtures.h",
+         R"(^\s*(inline\s+)?void\s+collect_(variants|tied)\s*\()",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of de4e23a, finding 4 (2026-10-04)",
+         {"void collect_variants(const Path& p, std::vector<const Path*>& out) {",
+          "inline void collect_tied(const Path& p, std::vector<const Path*>& out) {"},
+         {"void collect_paths(const Path& p, std::vector<const Path*>& out) {"},
+         {{"tests/record_fixtures.h",
+           "inline void collect_tied(const Path& p, std::vector<const Path*>& out) {",
+           "collect_tied, the owner"}},
+         {"tests"}},
         // Was its own test in test_preview_view.cpp (findings 147 and 159):
         // the path gauge's body never touches the chart's phrases, the
         // collected list, the bank count, the cap rule or the squeeze-in rule

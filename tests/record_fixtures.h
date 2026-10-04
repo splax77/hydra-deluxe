@@ -257,10 +257,12 @@ inline std::string windows_text(const Path& p) {
 
 // What a search pricing a variant's activations alone (search_target) says
 // about it. A lone match is a root of that search with the variant's total
-// and windows_text: only a root is an oracle, because a root was never
-// folded. When no root matches but one of the lone search's own tied
-// variants does, the lone search folded it too: `tied_under_root` is set,
-// and a caller that cannot judge such a variant may skip it.
+// and windows_text: only a root the engine itself left unfolded is an
+// oracle. A root search_target promoted (a variant of a root it dropped,
+// D45) was folded, so it is no oracle. When no oracle matches but a
+// promoted root or one of the lone search's own tied variants does, the
+// lone search folded it too: `tied_under_root` is set, and a caller that
+// cannot judge such a variant may skip it.
 struct LonePricing {
     std::string diff;              // "" on a lone match, else what differed
     bool tied_under_root = false;  // no root matches, a lone variant does
@@ -278,17 +280,21 @@ inline LonePricing lone_pricing(const Song& song, const SearchSettings& settings
     std::vector<int64_t> ticks;
     for (const Activation& a : variant.walk_activations()) ticks.push_back(a.timecode.ticks());
     const std::string mine = windows_text(variant);
-    const std::vector<Path> lone = search_target(song, settings, ticks);
+    std::vector<bool> promoted;
+    const std::vector<Path> lone = search_target(song, settings, ticks, &promoted);
     LonePricing out;
     std::string seen;
-    for (const Path& t : lone) {
-        if (t.totalscore() != variant.totalscore()) continue;
+    for (size_t i = 0; i < lone.size(); ++i) {
+        const Path& t = lone[i];
+        if (promoted[i] || t.totalscore() != variant.totalscore()) continue;
         const std::string theirs = windows_text(t);
         if (theirs == mine) return out;
         seen += "\n  lone:    " + theirs;
     }
-    for (const Path& r : lone) {
+    for (size_t i = 0; i < lone.size(); ++i) {
+        const Path& r = lone[i];
         std::vector<const Path*> tied;
+        if (promoted[i]) tied.push_back(&r);
         collect_tied(r, tied);
         for (const Path* t : tied)
             if (t->totalscore() == variant.totalscore() && windows_text(*t) == mine)

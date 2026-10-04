@@ -45,13 +45,8 @@ Song fixture(const std::string& name) {
     return load_songpath(std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/" + name, true, true);
 }
 
-// A root's tied variants, theirs, and so on (roots are their own lone pricing).
-void collect_variants(const Path& p, std::vector<const Path*>& out) {
-    for (const Path& v : p.variants) {
-        out.push_back(&v);
-        collect_variants(v, out);
-    }
-}
+// A root's tied variants, theirs, and so on (record_fixtures.h).
+using test::collect_tied;
 
 std::vector<int64_t> act_ticks(const Path& p) {
     std::vector<int64_t> at;
@@ -251,7 +246,7 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
         check_banks(rec);
         std::vector<const Path*> all;
-        for (const Path& r : rec.paths) collect_variants(r, all);
+        for (const Path& r : rec.paths) collect_tied(r, all);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);
@@ -350,7 +345,7 @@ TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent 
         CHECK(next_in);
         CHECK(next_out);
         std::vector<const Path*> all;
-        for (const Path& r : rec.paths) collect_variants(r, all);
+        for (const Path& r : rec.paths) collect_tied(r, all);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);
@@ -389,7 +384,7 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
                                         seed) != kSpReadyGapSeeds.end();
         if (gap_seed) continue;
         std::vector<const Path*> all;
-        for (const Path& r : rec.paths) collect_variants(r, all);
+        for (const Path& r : rec.paths) collect_tied(r, all);
         for (const Path* v : all) {
             ++variants;
             const std::string diff = lone_mismatch(song, cfg, *v);
@@ -409,7 +404,7 @@ std::string target_text(const std::vector<Path>& kept) {
     for (const Path& p : kept) {
         o << p.pathstring() << ' ' << p.totalscore();
         std::vector<const Path*> tied;
-        collect_variants(p, tied);
+        collect_tied(p, tied);
         if (!tied.empty()) {
             o << " [";
             for (size_t i = 0; i < tied.size(); ++i)
@@ -440,15 +435,18 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
     const app::AnalysisSettings cfg = fast_settings(fc.cap);
     const std::vector<int64_t> want = {3168, 12864};
 
-    const std::vector<Path> kept = search_target(song, cfg, want);
+    std::vector<bool> promoted;
+    const std::vector<Path> kept = search_target(song, cfg, want, &promoted);
     CHECK(kept.size() == 5);
     CHECK(target_text(kept) ==
           "0+- 0++ 7550 | 0++- E0++ 7350 [0++- E0+- 7350] | 0++- E0- 7150 [0+- 0+- 7150] | "
           "0+- 0- 6950 | 0- 0 6750 | ");
+    // '0+- 0++' is the promoted variant; the other four are the engine's roots.
+    CHECK(promoted == std::vector<bool>{true, false, false, false, false});
     for (const Path& p : kept) {
         CHECK(act_ticks(p) == want);
         std::vector<const Path*> tied;
-        collect_variants(p, tied);
+        collect_tied(p, tied);
         for (const Path* v : tied) CHECK(act_ticks(*v) == want);
     }
 
@@ -477,10 +475,13 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
     const app::AnalysisSettings cfg = fast_settings(fc.cap);
     const std::vector<int64_t> want = {3168, 12864};
 
-    const std::vector<Path> kept = search_target(song, cfg, want);
+    std::vector<bool> was_promoted;
+    const std::vector<Path> kept = search_target(song, cfg, want, &was_promoted);
     CHECK(target_text(kept) ==
           "0+- 0++ 7750 | 0++- E0++ 7550 [0++- E0+- 7550] | 0++- E0- 7350 [0+- 0+- 7350] | "
           "0+- 0- 7150 | 0- 0 6950 | ");
+    // search_target says which result it promoted: only the first.
+    CHECK(was_promoted == std::vector<bool>{true, false, false, false, false});
     const Path* promoted = nullptr;
     for (const Path& p : kept)
         if (p.pathstring() == "0+- 0++") promoted = &p;
@@ -507,6 +508,99 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
     CHECK(full->var_point.has_value());
     CHECK(full->totalscore() == 7750);
     CHECK(test::windows_text(*promoted) == test::windows_text(*full));
+
+    // So the promoted copy would pass for the full search's variant, but it
+    // came out of the same fold, so it is no oracle. The lone-pricing helper
+    // reads search_target's promoted flag and reports the variant as tied
+    // under a root (skipped), not as a lone match against its own fold.
+    const test::LonePricing lone = test::lone_pricing(song, cfg, *full);
+    CHECK(lone.tied_under_root);
+    CHECK_FALSE(lone.diff.empty());
+}
+
+// D45 addendum, a kept root's variants: every tied path search_target
+// returns has exactly the named activations. On fuzz seed 199, told to
+// activate at 4896, 12288 and 21792, the engine ties '0+- E0++++' (it takes
+// only 4896 and 12288) under the root '0++- E0++- 0', which takes all three,
+// and '0- 0+++-' under '0++- E0- 0'. Both are dropped and their roots kept;
+// before the addendum they stayed in brackets. The answer is pinned as read
+// from one run.
+TEST_CASE("search_target: a kept root's tied variant that missed a named activation is dropped") {
+    const FuzzChart fc = fuzz_chart(199);
+    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
+    const Song song = load_songbytes_chart(bytes, true, true);
+    const app::AnalysisSettings cfg = fast_settings(fc.cap);
+    const std::vector<int64_t> want = {4896, 12288, 21792};
+
+    std::vector<bool> promoted;
+    const std::vector<Path> kept = search_target(song, cfg, want, &promoted);
+    CHECK(target_text(kept) ==
+          "0++- E0++- 0 12350 | 0++- E0+- 0 11750 | 0++- E0- 0 11350 [0+- E0+- 0 11350] | "
+          "0- 0+- 0 11150 | 0+- E0- 0 10750 | 0- 0- 0 10550 | ");
+    CHECK(promoted.size() == kept.size());
+    for (const Path& p : kept) {
+        CHECK(act_ticks(p) == want);
+        std::vector<const Path*> tied;
+        collect_tied(p, tied);
+        for (const Path* v : tied) CHECK(act_ticks(*v) == want);
+        CHECK(p.tied_pathcount() == 1 + static_cast<int>(tied.size()));
+    }
+}
+
+// keep_target_paths on a hand-built list: it reads only each path's
+// activation ticks. Labels ride in notecount, which it never touches.
+TEST_CASE("keep_target_paths: every kept path and tied variant took exactly the named ticks") {
+    auto made = [](int label, std::vector<int64_t> ticks) {
+        Path p;
+        p.notecount = label;
+        for (const int64_t t : ticks) {
+            Activation a;
+            a.timecode = Timecode::raw(t);
+            p.activations.push_back(a);
+        }
+        return p;
+    };
+    // Root 1 takes both. Its variant 2 misses 200, but 2's own variant 3
+    // takes both; its variant 4 takes both and 4's variant 5 misses 100.
+    Path r1 = made(1, {100, 200});
+    Path v2 = made(2, {100});
+    v2.variants.push_back(made(3, {100, 200}));
+    Path v4 = made(4, {100, 200});
+    v4.variants.push_back(made(5, {200}));
+    r1.variants = {v2, v4};
+    // Root 6 misses 200; its variants 7 and 8 take both, 7's variant 9
+    // misses one. Root 10 takes neither and has no qualifying variant.
+    Path r6 = made(6, {100});
+    Path v7 = made(7, {100, 200});
+    v7.variants.push_back(made(9, {300}));
+    r6.variants = {v7, made(8, {100, 200})};
+    const std::vector<Path> in = {r1, r6, made(10, {300})};
+
+    std::vector<bool> promoted;
+    const std::vector<Path> out = keep_target_paths(in, {100, 200}, &promoted);
+    REQUIRE(out.size() == 2);
+    CHECK(promoted == std::vector<bool>{false, true});
+
+    // Root 1 stays. 2 is dropped and its variant 3 rescued in its place,
+    // sharing nothing with root 1; 4 stays as folded, without 5.
+    const Path& k1 = out[0];
+    CHECK(k1.notecount == 1);
+    REQUIRE(k1.variants.size() == 2);
+    CHECK(k1.variants[0].notecount == 3);
+    CHECK(k1.variants[0].var_point == std::optional<int>(2));
+    CHECK(k1.variants[1].notecount == 4);
+    CHECK_FALSE(k1.variants[1].var_point.has_value());
+    CHECK(k1.variants[1].variants.empty());
+    CHECK(k1.tied_pathcount() == 3);
+
+    // Root 6 is dropped: 7 leads, without 9, and 8 is its tied variant.
+    const Path& k7 = out[1];
+    CHECK(k7.notecount == 7);
+    CHECK_FALSE(k7.var_point.has_value());
+    REQUIRE(k7.variants.size() == 1);
+    CHECK(k7.variants[0].notecount == 8);
+    CHECK(k7.variants[0].var_point == std::optional<int>(2));
+    CHECK(k7.tied_pathcount() == 2);
 }
 
 // The phrases still ahead when SP ends, pinned (s1-fix-merge). D34 lets one
@@ -564,7 +658,7 @@ TEST_CASE("fast tempo: two spent phrases ahead, with or without a banked one, pr
         }
         CHECK(shown > 0);
         std::vector<const Path*> all;
-        for (const Path& r : rec.paths) collect_variants(r, all);
+        for (const Path& r : rec.paths) collect_tied(r, all);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);
