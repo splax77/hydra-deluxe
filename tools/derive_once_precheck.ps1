@@ -192,24 +192,25 @@ $script:Root = (& git -C $Repo rev-parse --show-toplevel 2>$null)
 if ($LASTEXITCODE -ne 0 -or -not $script:Root) { throw "not a git repository: $Repo" }
 $script:Root = "$($script:Root)".Trim()
 
+# Which commit does this name mean (a branch, a tag, a hash, HEAD~2...)? The
+# one place a name becomes a commit hash.
+function Resolve-Commit([string]$Name) { @(Invoke-Git @('rev-parse', '--verify', "$Name^{commit}"))[0] }
+
+# One side of "A...B" or "A..B" as a name; as in git, an empty side means HEAD.
+function Get-RangeSide([string]$Side) { if ($Side) { $Side } else { 'HEAD' } }
+
 $left = $null  # the range's left side, whose decisions count too (main, for main...HEAD)
-if ($Range -match '^(.*?)\.\.\.(.*)$') {
-    $a = if ($Matches[1]) { $Matches[1] } else { 'HEAD' }
-    $b = if ($Matches[2]) { $Matches[2] } else { 'HEAD' }
-    $tip = @(Invoke-Git @('rev-parse', '--verify', "$b^{commit}"))[0]
-    $base = @(Invoke-Git @('merge-base', $a, $b))[0]
-    $left = @(Invoke-Git @('rev-parse', '--verify', "$a^{commit}"))[0]
-} elseif ($Range -match '^(.*?)\.\.(.*)$') {
-    $a = if ($Matches[1]) { $Matches[1] } else { 'HEAD' }
-    $b = if ($Matches[2]) { $Matches[2] } else { 'HEAD' }
-    $tip = @(Invoke-Git @('rev-parse', '--verify', "$b^{commit}"))[0]
-    $base = @(Invoke-Git @('rev-parse', '--verify', "$a^{commit}"))[0]
-    $left = $base
+if ($Range -match '^(.*?)(\.\.\.?)(.*)$') {
+    $dots = $Matches[2]
+    $tip = Resolve-Commit (Get-RangeSide $Matches[3])
+    $left = Resolve-Commit (Get-RangeSide $Matches[1])
+    # Three dots: what B adds since it forked from A. Two dots: over A itself.
+    $base = if ($dots -eq '...') { @(Invoke-Git @('merge-base', $left, $tip))[0] } else { $left }
 } else {
-    $tip = @(Invoke-Git @('rev-parse', '--verify', "$Range^{commit}"))[0]
-    $base = if ($WholeTree) { $null } else { @(Invoke-Git @('rev-parse', '--verify', "$Range^1"))[0] }
+    $tip = Resolve-Commit $Range
+    $base = if ($WholeTree) { $null } else { Resolve-Commit "$Range^1" }
 }
-$rulesRev = if ($RulesAt) { @(Invoke-Git @('rev-parse', '--verify', "$RulesAt^{commit}"))[0] } else { $tip }
+$rulesRev = if ($RulesAt) { Resolve-Commit $RulesAt } else { $tip }
 
 $script:FileCache = @{}
 function Get-TipText([string]$Path, [string]$Rev = $tip) {

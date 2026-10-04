@@ -244,11 +244,16 @@ TEST_CASE("model.h mentions the window") {
 
 # ------------------------------------------------- part 2: the two real ranges
 
+# Is this commit in this repository? A shallow or partial clone may lack the
+# two old ranges.
+function Test-HaveCommit([string]$Name) {
+    & git -C $repoRoot cat-file -e "$Name^{commit}" 2>$null
+    $LASTEXITCODE -eq 0
+}
+
 if (-not $FixtureOnly) {
-    & git -C $repoRoot cat-file -e 'c6debcd^{commit}' 2>$null
-    $haveS1 = $LASTEXITCODE -eq 0
-    & git -C $repoRoot cat-file -e '11b9d44^{commit}' 2>$null
-    $haveS2 = $LASTEXITCODE -eq 0
+    $haveS1 = Test-HaveCommit 'c6debcd'
+    $haveS2 = Test-HaveCommit '11b9d44'
     if ($haveS1) {
         $s1 = Invoke-Precheck $repoRoot 'c6debcd^2...c6debcd' $DisableCheck 'HEAD'
         Assert-Expectations 'step 1' $s1 @(
