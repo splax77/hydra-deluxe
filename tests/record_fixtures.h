@@ -419,8 +419,9 @@ inline void set_transfer(Activation& a, TransferScale scale) {
 // ---- shared test helpers ----------------------------------------------------
 
 // The app's default settings at SP cap `cap`, keeping the top 40 scores
-// (D43's test depth) with no ms limit: the settings the hand-made D-tests
-// analyze at.
+// (the D-tests' depth, approved in D43's addendum: wide enough that a small
+// chart keeps every tied variant) with no ms limit: the settings the
+// hand-made D-tests analyze at.
 inline app::AnalysisSettings scores_settings(int cap) {
     app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     cfg.sp_cap = cap;

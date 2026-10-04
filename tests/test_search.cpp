@@ -1778,9 +1778,7 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
                     CHECK(act.sp_end_steps[k].tick > act.timecode.ticks());
             }
         }
-        std::vector<const Path*> vs;
-        for (const Path& root : rec.paths) collect_tied(root, vs);
-        for (const Path* v : vs) {
+        for (const Path* v : test::all_tied(rec.paths)) {
             const std::string diff = lone_pricing_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);
         }
@@ -1813,9 +1811,7 @@ TEST_CASE("tied variants: a Clamped step on the leader's SqIn phrase folds like 
         // relabel_sqin writes it on a lone path.
         const SpEndStep want = clamped.at(name);
         bool found = false;
-        std::vector<const Path*> vs;
-        for (const Path& root : rec.paths) collect_tied(root, vs);
-        for (const Path* v : vs)
+        for (const Path* v : test::all_tied(rec.paths))
             for (const Activation& a : v->walk_activations())
                 for (const SpEndStep& s : a.sp_end_steps) found = found || s == want;
         CHECK(found);
