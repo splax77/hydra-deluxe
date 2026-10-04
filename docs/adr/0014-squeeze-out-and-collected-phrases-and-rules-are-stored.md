@@ -28,7 +28,11 @@ phrase in `create_deactivated_path`. A late-SqIn phrase and a cap-clamped
 phrase both count, because the gauge received them.
 
 The pather stamps `HydraRecord::rules_fingerprint` with the fingerprint of the
-rules the run used. The store writes it into the structure blob right after
+rules the run used. The fingerprint is FNV-1a 64 over one `name=value` line
+per rule, each number written with 17 significant digits; a hash that lands
+on 0 becomes 1, because 0 means "no usable rules" (`Rules::fingerprint()` in
+src/core/rules.cpp; the user confirmed this format, D48, Q33).
+The store writes it into the structure blob right after
 the format version, so version and rules make one 12-byte head. That head is
 what decides Ready, in C++ (`structure_is_current`) and in SQL
 (`row_ready_sql()` in `src/store/record_store.cpp`). The rules part of both

@@ -28,6 +28,8 @@ records where each page starts and how many samples come before it. Seeks: a
 binary search of that index, then decoding forward from at least 400 ms before
 the target and throwing the warm-up away. The OpusHead output gain, applied as
 the spec requires (zero in every library file scanned, so nothing changed
-audibly). Chained files: each link plays in turn with its own pre-skip and
-gain. A straight read with no seek is still bit for bit the old output, and the
+audibly). Chained files: the links that match the first link's channel count
+play in turn, each with its own pre-skip and gain. The reader stops keeping
+links at the first one with another channel count or with no audio page
+(D48, Q33). A straight read with no seek is still bit for bit the old output, and the
 pinned fixture test is unchanged.

@@ -80,8 +80,12 @@ target itself, within one input frame, so its test allows 0.013 per sample
 
 The Opus header's output gain is now applied, as the spec requires. A scan of
 the library found 0 of 3,722 Opus files with a non-zero gain, so nothing
-audible changes today. Chained Opus files (several streams glued end to end)
-now play every link.
+audible changes today. A chained Opus file (several streams glued end to end)
+plays only the links that match the first link's channel count. The reader
+stops keeping links at the first one with another channel count or with no
+audio page, because a mixer can't switch channel count mid-stem
+(src/audio/opus_reader.cpp; the user chose to correct this text and keep the
+code, D48, Q33).
 
 Opus end trimming (stopping at the last page's sample count instead of playing
 the encoder's padding at the very end) is built but switched off. The Preview
@@ -89,6 +93,17 @@ has always played that padding, so playback is unchanged.
 
 The audio callback never throws, never allocates after its first call, and
 never reads a file directly; it only touches mapped or in-memory bytes.
+
+The reader numbers, confirmed as they are (D48, Q33). A zero-byte Opus packet
+counts as 120 ms, the largest Opus packet, because the decoder conceals a lost
+packet for that whole length (`packet_samples` in src/audio/opus_reader.cpp).
+The Opus reader takes at most 512 packets out of one page, more than an Ogg
+page's 255 segments can carry. MP3 seek points sit about every 0.5 s, and an
+MP3 seek up to one second ahead decodes forward instead of using them
+(src/audio/ma_reader.cpp). The mixer works in 4096-frame blocks
+(`StreamMix::kBlockFrames`). The 4 GiB MP3 and 2 GiB Vorbis limits above stay.
+The format sniff looks for the OpusHead or vorbis tag only in a file's first
+64 bytes (`sniff_format` in src/audio/decode.cpp).
 
 A stem with a decode error in the middle plays up to the damage, then goes
 silent while the other stems carry on. The old full decode threw on that
