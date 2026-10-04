@@ -1172,6 +1172,36 @@ TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
 // The lasting order checks, on root paths. A variant's tail activations are
 // its leader's; their order against the variant's own windows is Part B's
 // job, and Part B extends this case to variants.
+//
+// These are facts the chart and the window give on their own. The test does
+// not restate when the engine says a bar arrives. A banked bar arrives on a
+// real SP-phrase-end note, or, for a squeezed-out bar, at the deact node;
+// every list is strictly ascending (a phrase banks once); and nothing arrives
+// before the window that precedes it closed. The fixture case above pins the
+// exact ticks.
+namespace {
+// Checks one bank list: the bars banked after `prev` closed (nullptr: since the
+// chart began), up to `last_tick`.
+void check_bank_list(const std::vector<int64_t>& ticks, const Activation* prev,
+                     int64_t last_tick, const std::set<int64_t>& phrase_ends) {
+    const std::optional<int64_t> deact = prev ? prev->deact_tick() : std::nullopt;
+    const int64_t floor = deact ? *deact : std::numeric_limits<int64_t>::min();
+    // A squeeze-out leaves one bar, banked by the player's hit on the phrase.
+    // That hit can land at the deact node itself.
+    const bool squeezed_out = prev && prev->sqout_tick.has_value();
+    if (squeezed_out) REQUIRE_FALSE(ticks.empty());
+    for (size_t k = 0; k < ticks.size(); ++k) {
+        CAPTURE(k);
+        CAPTURE(ticks[k]);
+        CHECK(ticks[k] >= floor);
+        CHECK(ticks[k] <= last_tick);
+        if (k > 0) CHECK(ticks[k] > ticks[k - 1]);
+        const bool at_deact_node = squeezed_out && k == 0 && deact && ticks[k] == *deact;
+        CHECK((phrase_ends.count(ticks[k]) == 1 || at_deact_node));
+    }
+}
+}  // namespace
+
 TEST_CASE("Bank: every corpus root banks in order") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts = 0;
@@ -1179,26 +1209,23 @@ TEST_CASE("Bank: every corpus root banks in order") {
         const Song& song =
             corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
         if (song.is_empty()) continue;
+        std::set<int64_t> phrase_ends;
+        for (const SongTimestamp& ts : song.sequence)
+            if (ts.flag_sp) phrase_ends.insert(ts.timecode.ticks());
+        const int64_t chart_end = song.sequence.back().timecode.ticks();
         for (const Path& root : corpus::analyzed(chart, cfg).paths) {
             const Activation* prev = nullptr;
             for (const Activation& act : root.walk_activations()) {
                 CAPTURE(chart);
                 CAPTURE(act.timecode.ticks());
                 ++acts;
-                const int64_t floor =
-                    prev ? *prev->deact_tick() : std::numeric_limits<int64_t>::min();
-                for (size_t k = 0; k < act.bank_rise_ticks.size(); ++k) {
-                    CHECK(act.bank_rise_ticks[k] >= floor);
-                    CHECK(act.bank_rise_ticks[k] <= act.timecode.ticks());
-                    if (k > 0) CHECK(act.bank_rise_ticks[k] >= act.bank_rise_ticks[k - 1]);
-                }
-                if (prev && prev->sqout_tick) {
-                    REQUIRE_FALSE(act.bank_rise_ticks.empty());
-                    CHECK(act.bank_rise_ticks.front() ==
-                          std::max(*prev->deact_tick(), *prev->sqout_tick));
-                }
+                check_bank_list(act.bank_rise_ticks, prev, act.timecode.ticks(), phrase_ends);
                 prev = &act;
             }
+            // The bars still banked when the last window closed (or from the
+            // start, for a path with no window) follow the same rules.
+            CAPTURE(chart);
+            check_bank_list(root.trailing_bank_ticks, prev, chart_end, phrase_ends);
         }
     }
     CHECK(acts > 1000);
