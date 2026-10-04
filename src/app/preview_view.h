@@ -173,6 +173,7 @@ struct PreviewScoreStep {
     double ms = 0.0;      // the chord's onset
     int64_t total = 0;    // on-screen total: a solo's bonus lands on its last chord
     int multiplier = 1;   // the game's disc once the chord is hit (ReplayChord::multiplier_shown)
+    int multiplier_plain = 1;  // the combo multiplier alone, never doubled (ReplayChord::multiplier_after)
     int combo = 0;        // notes hit so far, this chord included
 };
 
@@ -246,10 +247,12 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
 // The score box the Preview draws under the time box, at `now_ms`. `score`
 // is the total with thousands separators ("12,345"), and `detail` is
 // "x<multiplier> · combo <n>", both as the last chord hit left them. The
-// multiplier is the replay's: doubled on the chords the engine pays Star
-// Power on, not by where the playhead sits. Hidden (`shown` false) when the scene has no
-// path; "Score unavailable" with an empty `detail` when the replay could not
-// be trusted.
+// multiplier is the replay's. While Star Power runs at the playhead (the
+// same test the drain box uses) it is the disc as that chord left it:
+// doubled when SP paid the chord. Once SP has ended it is the plain combo
+// multiplier, as the game's disc drops at the SP end rather than at the next
+// chord. Hidden (`shown` false) when the scene has no path; "Score
+// unavailable" with an empty `detail` when the replay could not be trusted.
 struct PreviewScoreBox {
     bool shown = false;
     bool available = false;

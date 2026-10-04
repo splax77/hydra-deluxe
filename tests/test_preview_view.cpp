@@ -1295,9 +1295,9 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
     // 2500 ms: the activation chord is hit and paid, so x1 shows as x2.
     CHECK(build_score_box(scene, 2500.0).detail == "x2 " + kDot + " combo 6");
     CHECK(build_score_box(scene, 3000.0).detail == "x2 " + kDot + " combo 7");
-    // 6600 ms: the tint has ended, but the last chord hit (6500 ms, on the
-    // deactivation node) was paid, so its x2 still shows doubled.
-    CHECK(build_score_box(scene, 6600.0).detail == "x4 " + kDot + " combo 14");
+    // 6600 ms: Star Power has ended, so the disc is plain even though the
+    // last chord hit (6500 ms, on the deactivation node) was paid doubled.
+    CHECK(build_score_box(scene, 6600.0).detail == "x2 " + kDot + " combo 14");
     // 7000 ms: the first chord Star Power doesn't pay: the plain x2 of combo 15.
     CHECK(build_score_box(scene, 7000.0).detail == "x2 " + kDot + " combo 15");
 }
