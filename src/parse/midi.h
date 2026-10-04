@@ -81,8 +81,8 @@ public:
     explicit MidiFile(const std::vector<uint8_t>& data);
     MidiFile(const uint8_t* data, size_t size);
 
-    // Read and parse a file from disk. Throws MidiError if it cannot be read
-    // or is not a MIDI file.
+    // Read and parse a file from disk. A file that cannot be read throws
+    // read_file_bytes' error; one that is not a MIDI file throws MidiError.
     static MidiFile from_file(const std::string& path);
 
     int ticks_per_beat = 0;
