@@ -1,10 +1,10 @@
 # A tied variant's facts are its own
 
 A tied variant is a path that scores exactly what another path scores. The
-search keeps one of the two as the leader and stores the other as a branch of
-it: the variant stores its own activations up to the fold (the point where
-the search merged the two), and reads the rest from its leader on load
-(`var_point` marks where). Until this change, every fact after the fold was
+search keeps one of the two as the leader. It stores the other, the variant,
+as a branch of the leader. The variant stores its own activations up to the
+fold, the point where the search merged the two. On load it reads the rest
+from its leader, and `var_point` marks where. Until this change, every fact after the fold was
 the leader's, even where the variant's real fact differed. A variant folded
 while SP was running showed its SP end frozen at the fold (finding 90). Every
 variant showed its leader's leftover SP (finding 89).
@@ -35,8 +35,14 @@ Either way its path string, score and place in the list do not change.
 The trailing list sits next to `var_point` in the structure blob, because a
 node holds activations only (ADR 0017).
 
-A guard test prices each corpus variant alone with a targeted search and
-requires the same stored facts. It runs at the app's defaults and at score
+A guard test checks each corpus variant against a lone search. That is a
+targeted search told to activate exactly where the variant does, so it works
+out the variant's score and facts on its own. The guard then compares the
+trailing bank, the squeeze kinds, and each activation's SP-end steps, bank
+arrivals, squeeze-out tick and backend rows. It does not compare transfer
+scales, SqIn offsets, the early-fill offset or skipped fills. Transfer scales
+come from the activation note and the steps, so they match when those match.
+The last three are finding 97, below. The guard runs at the app's defaults and at score
 range 40 with caps 4 and 2, because the defaults hold almost no ties. Only a
 root of that search is an answer, because a root was never folded. A variant
 whose activations match a root but whose squeeze kinds do not is a failure.

@@ -256,8 +256,20 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
     }
 }
 
+// Seeds whose only lone-pricing mismatch is the known SP-ready grouping gap.
+// The search groups running paths without their SP-ready time (see the
+// grouping key in Engine::reduce_group), so at these tempos a variant can
+// inherit its leader's earlier SP-ready time and take a fill that a lone
+// search refuses ("no lone path ties it"; the D32 review's fuzz chart 6006
+// shows it).
+// That gap is an open question with the user, not part of D32. A seed that
+// fails only on it is listed here by number, so the check stays exact for
+// every other seed. Seeds 1 to 48 hit none today, so the list is empty.
+const std::vector<uint64_t> kSpReadyGapSeeds = {};
+
 // A small deterministic fuzz: every chart analyzes, keeps one SqIn step per
-// SqIn, and every tied variant prices as it does alone.
+// SqIn, and every tied variant prices as it does alone ("prices": gets the
+// same score and stored facts as a search told to take its activations).
 TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone") {
     int analyzed = 0, variants = 0;
     for (uint64_t seed = 1; seed <= 48; ++seed) {
@@ -270,6 +282,9 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
         if (!analyzes(song, cfg, rec)) continue;
         ++analyzed;
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
+        const bool gap_seed = std::find(kSpReadyGapSeeds.begin(), kSpReadyGapSeeds.end(),
+                                        seed) != kSpReadyGapSeeds.end();
+        if (gap_seed) continue;
         std::vector<const Path*> all;
         for (const Path& r : rec.paths) collect_variants(r, all);
         for (const Path* v : all) {

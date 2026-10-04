@@ -56,9 +56,16 @@ inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.1.0", {"2.1.0"}
 // squeezes and root totals into the structure and left a node holding its
 // activations alone (ADR 0017). 7 stored the SP-end history and the bank and
 // fill lists, stored the squeeze-out once, and gave each SqIn its own
-// transfer scale (ADR 0021). It also dropped each row's is_sp flag, let a
-// transfer scale be stored as unknown, and gave each tied variant its own
-// trailing bank in its tree entry (ADR 0022).
+// transfer scale (ADR 0021). The history replaced three node fields: the
+// deact node, the clamp note and the collected phrases. The single
+// transfer_pre pair is gone. A squeeze entry lost its kind byte, since only
+// SqIns are stored now. The squeeze-out tick now comes before the history,
+// where it used to follow the deact and clamp ticks. A root's leftover SP
+// changed from one number to its list of bank ticks. Format 7 also dropped
+// each row's is_sp flag, and a transfer scale now starts with a presence
+// byte (one byte saying whether the value follows), so it can be stored as
+// unknown. Each tied variant got its own trailing bank in its tree entry
+// (ADR 0022).
 inline constexpr StampRule<uint32_t, 1> kPathFormatStamp{7, {7}};
 
 // ---- Dynamics counts (the dynamics table) ----------------------------------

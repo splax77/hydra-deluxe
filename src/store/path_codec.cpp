@@ -97,7 +97,7 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint32_t seed,
     for (int i = 0; i < 8; ++i) out[8 + i] = static_cast<uint8_t>(h2 >> (8 * i));
 }
 
-// ---- node and structure pieces (record format v7, docs/adr/0017) ------------
+// ---- node and structure pieces (path format 7: docs/adr/0017, 0021) -------
 
 // A transfer scale that may be unknown (D4): a presence byte, then the two
 // doubles only when present, the way opt_f64 writes one double.

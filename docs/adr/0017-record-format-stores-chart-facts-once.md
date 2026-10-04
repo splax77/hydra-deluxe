@@ -44,11 +44,23 @@ shows afterwards is unchanged.
 ## Amendment, 2026-10: format 7
 
 The path format stamp is now 7 itself (`kPathFormatStamp`, ADR 0021). So
-"record format v7" above means stamp 6, the 1.8.1 to 2.0.0 layout.
+"record format v7" above means stamp 6, the 1.8.2 to 2.0.0 layout.
 
-Format 7 changed the activation fields above. The skip count and the SP meter
-are now the sizes of two stored lists, the passed-over fills and the bank
-arrivals. The deactivation node and the cap-clamp tick are no longer stored:
-both are read from the stored SP-end history (ADR 0021). The squeeze-out tick
-keeps its presence byte. A transfer scale gained one, because it may be
-unknown.
+Format 7 changed the activation fields above. A presence byte is one byte
+that says whether a value follows; a field without one is always there.
+
+- The skip count and the SP meter are now the sizes of two stored lists: the
+  passed-over fills and the bank arrivals.
+- The deactivation node, the cap-clamp tick and the collected phrases are no
+  longer stored. All three are read from the stored SP-end history (ADR 0021).
+- The single `transfer_pre` pair is gone. Each SqIn stores its own scale.
+- A squeeze entry lost its kind byte. Only SqIns are stored now; the
+  squeeze-out is stored once, as its tick.
+- The squeeze-out tick keeps its presence byte. It now comes before the
+  history, where it used to follow the deact and clamp ticks.
+- Each backend row lost its `is_sp` flag.
+- A transfer scale gained a presence byte, because it may be unknown.
+
+Two changes sit outside the node. A root's leftover SP changed from one
+number to its list of bank ticks. Each tied variant stores its own such list
+in its tree entry (ADR 0022).

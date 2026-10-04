@@ -68,13 +68,14 @@ The Rolling in the Deep FC video proved it (docs/cap-clamped-squeeze-frontend-an
 Each SqIn now stores its own scale, measured to the end that SqIn was
 measured from. The old single `transfer_pre` is gone, so two SqIns in one
 window are each exact. The scale at the deact node stays in `transfer_post`.
-The engine stamps both at copy-out through `frontend_transfer_scales`, which
-reads only the stored history.
+The engine stamps both at copy-out, the step where the search turns its
+finished paths into the stored record. It uses `frontend_transfer_scales`,
+which reads only the stored history.
 
 ## "Unknown" is a guard, not a state
 
-A stored scale may be unknown. The record keeps a presence byte for it, and
-the details view shows "Transfer scale unknown." in orange. But no fresh
+A stored scale may be unknown. The record keeps a presence byte for it: one
+byte that says whether the scale follows. The details view shows "Transfer scale unknown." in orange. But no fresh
 record should ever hold it (D4). Every way to reach it is closed where it
 starts, and a test analyzes the corpus and proves no record stores it. If the
 note ever shows, it is a bug.
@@ -86,8 +87,8 @@ with the tick. So a chart whose timing breaks that is refused when it loads,
 with a plain error that names the tick (`check_timing_maps`). That covers a
 resolution of 0 or less, a measure 0 ticks long or shorter, and a tempo that
 is 0, negative, or infinite. A time signature with a top number of 0 names no
-meter, so it is ignored in both formats, as `.chart` already did. Every chart
-in `testdata` loads and scores as before.
+meter, so it is ignored in both formats, as `.chart` already did. Every
+corpus chart loads and scores as before.
 
 ## What this costs
 
@@ -98,5 +99,6 @@ Scores, path strings and the list of paths did not change on the corpus. The
 scale line and the eff. figures change only where a tempo or meter change
 sits between the activation and the note that moves the end.
 
-An old record has an empty history. Its views say they cannot tell, the same
-"no fallback" rule as ADR 0011. It reads Stale anyway, so nobody sees that.
+A record from before format 7 is never read: it reads Stale first. Only a
+hand-built activation has an empty history, and then its views say they
+cannot tell, the same "no fallback" rule as ADR 0011.

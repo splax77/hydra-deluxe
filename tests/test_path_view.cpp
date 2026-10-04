@@ -158,7 +158,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     e0.e_offset = -12.3;
     ActivationRowView av = view_of(e0);
     // The fixture sets no timecode, so it sits at tick 0 (m1.1.0); an
-    // activation always has one now (record format v7, docs/adr/0017).
+    // activation always has one now (since path format 6, docs/adr/0017).
     CHECK(av.notation == "E0");
     CHECK(av.measure == "m1.1.0");
     CHECK(av.badge == "early fill 12 ms");

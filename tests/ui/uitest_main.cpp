@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -210,6 +211,14 @@ int main() {
             passthrough.push_back(h.shots_dir);
         } else if (a == "--db") {
             if (!next(h.seed_db)) return usage();
+            // A mistyped path must not quietly run every test on an empty
+            // database, where a "reads Stale" check could still pass.
+            std::error_code ec;
+            if (!std::filesystem::is_regular_file(std::filesystem::u8path(h.seed_db), ec)) {
+                std::fprintf(stderr, "hydra_uitest: --db \"%s\" is not a database file\n",
+                             h.seed_db.c_str());
+                return 1;
+            }
             passthrough.push_back(a);
             passthrough.push_back(h.seed_db);
         } else if (a == "--jobs") {

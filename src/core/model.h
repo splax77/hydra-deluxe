@@ -325,7 +325,7 @@ struct SpEndStep {
 
 struct Activation {
     // The search sets these on every activation it makes, so they are
-    // plain values (record format v7, docs/adr/0017).
+    // plain values (since path format 6, docs/adr/0017).
     Timecode timecode;
     Chord chord;
     int frontend_points = 0;
@@ -342,8 +342,9 @@ struct Activation {
 
     // The chart tick of the SP phrase chord this activation squeezed out:
     // the deact edge's sqinout_time when the path took the SqOut branch.
-    // Stamped by the search at copy-out (blob v6). Unset when the activation
-    // did not squeeze out, or on an older record. Nothing re-derives it.
+    // Stamped by the search at copy-out (since path format 4, ADR 0014).
+    // Unset when the activation did not squeeze out, or on an older record.
+    // Nothing re-derives it.
     std::optional<int64_t> sqout_tick;
 
     // Each phrase chord collected while active is a step of sp_end_steps,
@@ -419,7 +420,7 @@ struct Activation {
     bool is_difficult() const;
 
     // Is this backend the note squeezed out of SP? Compares against the
-    // sqout_tick the engine stored (record format v6), so no display re-derives it.
+    // sqout_tick the engine stored (path format 4 on, ADR 0014), so no display re-derives it.
     bool is_sqout_backend(const BackendSqueeze& bsq) const;
 
     // The squeezed-out chord's row, or nullptr when the activation did not
@@ -577,8 +578,8 @@ struct HydraRecord {
     // structure carries it (store/path_codec.cpp); dropping it would change
     // the record format.
     bool sp_cap_converged = true;
-    // The fingerprint of the rules the search ran under (blob v6, path
-    // structure v4): Rules::fingerprint(). Results Hydra 1.8.4's Auto saved
+    // The fingerprint of the rules the search ran under (stored since path
+    // format 4): Rules::fingerprint(). Results Hydra 1.8.4's Auto saved
     // carry Rules::retired_auto_fingerprint() and are deleted when the store
     // opens (RecordStore::delete_auto_results). A record built in memory
     // starts with the default rules' fixed-cap fingerprint, computed once

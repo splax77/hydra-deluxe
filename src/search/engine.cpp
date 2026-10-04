@@ -749,7 +749,10 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p) const {
     // chord (core/sqout_chord.h). A phrase it banked before SP started
     // leaves this SP end a plain one. So does a late SqIn's phrase still
     // ahead of the path (buffered): that SqIn spent it, and it is this
-    // edge's chord, as nothing lies between the SqIn's SP end and it. D32:
+    // edge's chord, as nothing lies between the SqIn's SP end and it. That
+    // last step relies on core::sqout_chord picking the window's first
+    // phrase (core/sqout_chord.h); if it ever picks another, this check
+    // would block a real squeeze. D32:
     // only reachable when the SqIn's new end, one SP bar on, comes before
     // its phrase (500 ms spanning an SP bar); the phrase was squeezed in a
     // second time there and the search broke.

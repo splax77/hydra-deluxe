@@ -128,21 +128,42 @@ that SP end, even if a later phrase sits in the same window. That case needs
 two phrases within a second and an activation between them, at a tempo where
 500 ms spans an SP bar. We leave it.
 
-An early squeeze-in's step is the step on the squeezed-in chord: Collected,
-Clamped when the cap pinned the end on that phrase, or already SqIn when an
-earlier SP end squeezed the same chord in. It is never the Activation step.
-`is_sqin_step` in the engine states that rule once.
+An early squeeze-in's step is the step on the squeezed-in chord. That step is
+Collected, or Clamped when the cap pinned the end on that phrase. It is
+already SqIn when an earlier SP end squeezed the same chord in. It is never
+the Activation step. `is_sqin_step` in the engine states that rule once.
 
 Tied paths. The search folds running paths that share an SP end, because the
 end decides their future. Now the activation can decide it too: a path that
 collected a phrase can squeeze it, and one that banked it cannot. So the
-search also groups running paths by which banked phrase, if any, a later SP
-end of the activation could still hold in its window
-(`core::banked_phrase_in_reach`, which asks `activation_can_squeeze`). On a
-normal chart that is none for every activation, so the groups are unchanged.
+search groups running paths by one more key. The key is the banked phrase, if
+any, that a later SP end of this activation could still hold in its window.
+`core::banked_phrase_in_reach` works it out by asking
+`activation_can_squeeze`. On a normal chart the key is "none" for every
+activation, so the groups are unchanged.
 
-Scores change only on charts where 500 ms spans an SP bar and a window
-reaches a banked phrase. None of the 97 corpus charts has one, and a count
+### Two more extreme-tempo crashes (D32)
+
+At 2,000 to 4,000 BPM the search could still crash in two ways. Both come
+from an SP bar shorter than the 500 ms window. A late squeeze-in moves the SP
+end one bar past the old end, and at these tempos that new end can land
+before the phrase it squeezed.
+
+- The graph used to add the new end's node only when it reached the phrase.
+  By then the end was behind it. The graph now adds that node when it moves
+  the SP end (`sqin_end_by_phrase` in graph.cpp).
+- A path now ends where its SP end says. Before, a squeezable phrase in the
+  window kept the path in SP past its own end (`deactivation_type`).
+- A phrase a late squeeze-in already spent is not offered again. The path
+  ends SP before reaching it, and hitting it later adds nothing to the meter.
+
+None of these fire on any of the 19,343 library charts. The charts in
+`testdata/input/test_fast_tempo` are fuzzed at those tempos. They exist only
+to keep these rules from breaking again.
+
+Scores change only on charts where 500 ms spans an SP bar. On such a chart,
+either a window reaches a banked phrase, or a late squeeze-in's new end lands
+before its phrase (D32). None of the 97 corpus charts has one, and a count
 across 19,343 library charts found none either. Old records of such a chart
 keep their wrong squeeze until they are analyzed again, and the format 7
 bump makes every record read Stale anyway.

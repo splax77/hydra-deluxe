@@ -166,7 +166,10 @@ void ScoreGraph::build() {
                 // handled SP end (a squeeze-in's) can move to here or before.
                 // That end is no node to add now: add_deact_edge already added
                 // it when it is the end's own squeeze-in, and otherwise no
-                // path squeezes this phrase in there.
+                // path squeezes this phrase in there. That holds because an
+                // end squeezes only core::sqout_chord's pick, the window's
+                // first phrase (core/sqout_chord.h), and a path still holding
+                // that end has already ended on it (Engine::deactivation_type).
                 if (sqin_end_by_phrase(de.to.ticks(), timestamp.timecode.ticks())) continue;
                 ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped};
                 new_pending[de.to.ticks()] = de.to;

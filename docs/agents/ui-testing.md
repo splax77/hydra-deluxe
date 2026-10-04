@@ -23,7 +23,7 @@ Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a sc
 | `hydra_uitest --script file.txt` | run a command file (see below) |
 | `--keep-temp` | keep the scratch folder (DB, INI, report HTML) and print its path |
 | `--shots <dir>` | where `screenshot` files go (default: the scratch folder) |
-| `--db <file>` | start each test from a copy of this database instead of an empty one (the file itself is never opened) |
+| `--db <file>` | start each test from a copy of this database instead of an empty one (the file itself is never opened). A missing file is an error. Close Hydra first: a database it has open is not a clean copy |
 
 Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The log names the check that failed (like `uitest_library.cpp:120`) and every action before it. The exit code is 0 only when everything passed. `ctest` runs it too.
 

@@ -646,8 +646,8 @@ std::optional<int64_t> Activation::squeeze_anchor_tick(size_t squeeze_index) con
     return end_anchor_tick(*s);
 }
 
-// The engine stamps the squeezed-out chord's tick at copy-out (record v6).
-// A record without it is Stale and is never guessed at.
+// The engine stamps the squeezed-out chord's tick at copy-out (since path
+// format 4, ADR 0014). A record without it is Stale and is never guessed at.
 bool Activation::is_sqout_backend(const BackendSqueeze& bsq) const {
     return sqout_tick.has_value() && bsq.timecode.ticks() == *sqout_tick;
 }

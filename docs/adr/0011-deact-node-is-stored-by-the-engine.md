@@ -75,9 +75,9 @@ activation's SP-end history, and `Activation::deact_tick()` is the end its
 last step set (ADR 0021). The rule above is unchanged: the engine writes D,
 and nothing outside the search reconstructs it.
 
-No fallback still holds. A record whose history is empty has no D, and a
-consumer says it cannot tell. Only a record from before format 7 has an
-empty history, and such a record reads Stale.
+No fallback still holds. An activation whose history is empty has no D, and
+a consumer says it cannot tell. Only a hand-built activation has an empty
+history. A record from before format 7 is never read: it reads Stale first.
 
 Every fresh activation now has a D. A squeeze-out used to be able to name a
 phrase the activation had banked before it started, at an extreme tempo. That

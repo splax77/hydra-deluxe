@@ -6,6 +6,7 @@
 #include <windows.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -265,14 +266,20 @@ void reset_app(Harness& h, const std::string& rules_text) {
     std::error_code ec;
     fs::remove(fs::u8path(h.db_path), ec);
     // --db: start from a copy of the given database (and its WAL, if any),
-    // so the app never opens the original.
+    // so the app never opens the original. main() already refused a missing
+    // database file. A copy that fails (a locked file, say) stops the run:
+    // the tests must not go on against an empty database.
     if (!h.seed_db.empty()) {
         for (const char* suffix : {"", "-wal", "-shm"}) {
             fs::remove(fs::u8path(h.db_path + suffix), ec);
             const fs::path from = fs::u8path(h.seed_db + suffix);
-            if (fs::exists(from))
-                fs::copy_file(from, fs::u8path(h.db_path + suffix),
-                              fs::copy_options::overwrite_existing);
+            if (!fs::exists(from, ec)) continue;
+            if (!fs::copy_file(from, fs::u8path(h.db_path + suffix),
+                               fs::copy_options::overwrite_existing, ec)) {
+                std::fprintf(stderr, "hydra_uitest: could not copy --db file \"%s\": %s\n",
+                             (h.seed_db + suffix).c_str(), ec.message().c_str());
+                std::exit(1);
+            }
         }
     }
     fs::remove(fs::u8path(h.temp_dir + "\\hydra_paths.html"), ec);

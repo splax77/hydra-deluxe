@@ -39,9 +39,13 @@ In the engine this is `extend_deacts` (`src/search/graph.cpp`): the end is
 second term is the smaller one, the window is **cap-clamped** and the collection
 note is its anchor.
 
-## How Hydra prices it
+## How Hydra measures it
 
-The search records each cap clamp as a step in the activation's SP-end history (ADR 0021). The transfer scales are measured from the latest clamp note at or before the end they describe, or from the activation when the cap never bound, so the scale line and the eff. figures read the note that really moves the end.
+The search records each cap clamp as a step in the activation's SP-end
+history (ADR 0021). A transfer scale is measured from the latest clamp note at
+or before the end it describes. When the cap never bound, it is measured from
+the activation. So the scale line and the eff. figures read the note that
+really moves the end.
 
 ## The case that proved it
 
