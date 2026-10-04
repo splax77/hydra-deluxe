@@ -1853,8 +1853,11 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
 // 22464 came from collecting 18048). Its squeeze-out then ended SP at a node
 // the record never names. The squeeze choices now read extend_deacts, cap
 // included, so those offers are gone. What these charts still check: they
-// analyze, and every squeeze-out ends SP at the end its record names.
-TEST_CASE("tied variants: a Clamped step on the leader's SqIn phrase folds like a lone search") {
+// analyze, and every squeeze-out ends SP at the end its record names. The
+// fold this test was written for (a variant's Clamped step on its leader's
+// SqIn phrase, relabelled SqIn) no longer happens on them; test_s2_deact_
+// extension.cpp's "folded variant's Clamped step" case covers it now.
+TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record names") {
     app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     cfg.sp_cap = 3;
     cfg.depth_mode = DepthMode::Scores;

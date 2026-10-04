@@ -171,14 +171,7 @@ void ScoreGraph::build() {
                 // still holding that end has already ended on it
                 // (Engine::deactivation_type).
                 if (sqin_end_by_phrase(de.to.ticks(), timestamp.timecode.ticks())) continue;
-                // A clamp on a phrase in the moved end's own window (the SqOut
-                // copies above): that end's deactivation edge offers this
-                // phrase as a squeeze-out back to it (finding 37).
-                const bool sqout_reach =
-                    de.clamped && timestamp.timecode.ticks() <= de.from.ticks() &&
-                    within_squeeze_window(
-                        offset_from_sp_end(timestamp.timecode.ms(), de.from.ms()));
-                ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped, sqout_reach};
+                ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped};
                 new_pending[de.to.ticks()] = de.to;
             }
             for (const Timecode& t : sqout_deacts)

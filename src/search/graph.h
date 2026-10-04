@@ -60,12 +60,6 @@ struct ScoreGraphEdge;
 struct SpExtension {
     int64_t to_tick = 0;
     bool clamped = false;
-    // Clamped, and the phrase also sits in the squeeze window of the end it
-    // moved, at or before that end. That end's deactivation edge then offers
-    // the phrase as a squeeze-out back to it, and a clamped end is the same
-    // tick whichever end the phrase moved, so the engine remembers which end
-    // this was (finding 37). Needs 2 x (cap - 1) measures inside 500 ms.
-    bool sqout_reach = false;
 };
 
 // One phrase chord an SP end can squeeze in or out, as its deactivation edge
@@ -89,7 +83,8 @@ struct SqueezeChoice {
     // The cap's ceiling, not the plain bar, set sqin_time (and sqout_time for
     // a chord at or before the end): the chord filled the meter. A clamped
     // end is the same tick whichever end the chord moved, so the engine also
-    // checks that the path moved from this edge's node (finding 37). Never
+    // checks where the path's end came from (Engine::deactivation_type,
+    // finding 37). Never
     // set on a late chord: it sits after the end, so its ceiling is too.
     bool clamped = false;
     bool late = false;

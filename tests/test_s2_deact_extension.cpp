@@ -7,6 +7,7 @@
 #include "doctest.h"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -206,6 +207,125 @@ TEST_CASE("finding 37: tied paths clamped from different ends keep their own squ
     }
     CHECK(want[0].seen);
     CHECK(want[1].seen);
+}
+
+// One end moves a plain bar onto the cap's ceiling; a later end clamps onto
+// the same tick. Phrases at 0 and 768 bank 2 bars. Activating at 1920 ends
+// SP at 4992; collecting 3456 moves it 4992 + 1536 = 6528, which ties the
+// cap-2 ceiling 3456 + 4 * 768, so it is not clamped. Activating at 2112 ends
+// at 5184; collecting 3456 clamps it to the same 6528. Both ends hold 3456 in
+// their squeeze window (200 and 225 ms).
+const std::vector<TailNote> kPlainTiesClamp = {
+    {0, true},  {768, true}, {1920, false, true}, {2112, false, true}, {3456, true},
+    {4608},     {6000},      {6528},              {7000},              {7680}};
+
+TEST_CASE("finding 37: a plain bar tying the ceiling squeezes out only for its own end") {
+    const Song song = build_fast_song(kPlainTiesClamp);
+    const ScoreGraph graph(song, 2);
+    const ScoreGraphEdge* plain = deact_edge_at(graph, 4992);
+    const ScoreGraphEdge* clamp = deact_edge_at(graph, 5184);
+    REQUIRE(plain != nullptr);
+    REQUIRE(clamp != nullptr);
+    const SqueezeChoice* pc = choice_at(*plain, 3456);
+    const SqueezeChoice* cc = choice_at(*clamp, 3456);
+    REQUIRE(pc != nullptr);
+    REQUIRE(cc != nullptr);
+    // Both choices are for a path whose end is 6528; only one is clamped.
+    CHECK(pc->sqout_time.ticks() == 6528);
+    CHECK_FALSE(pc->clamped);
+    CHECK(cc->sqout_time.ticks() == 6528);
+    CHECK(cc->clamped);
+
+    for (int64_t act : {int64_t{1920}, int64_t{2112}}) {
+        EngineOptions o = keep_losers();
+        o.target_act_ticks = std::vector<int64_t>{act};
+        const std::vector<Path> paths = run_search(graph, o);
+        const int64_t own_end = act == 1920 ? 4992 : 5184;
+        const double own_ms = song.timecode(3456).ms() - song.timecode(own_end).ms();
+        INFO("activation at " << act);
+        const std::vector<SqOutSeen> seen = sqouts_of(paths, 3456);
+        // The 2112 window was once offered the 4992 squeeze-out (-200 ms,
+        // record still 5184), and its SqIn branch then spent 3456, so its
+        // own squeeze-out at 5184 never came.
+        REQUIRE_FALSE(seen.empty());
+        for (const SqOutSeen& s : seen) {
+            CHECK(s.act_tick == act);
+            CHECK(s.end_tick == own_end);
+            CHECK(s.sqout_ms == own_ms);
+        }
+        // Every squeeze this window shows, in or out, is 3456 measured from
+        // its own end: the fake SqIn sat at -200 ms on the 2112 window.
+        for (const Path& p : paths)
+            for (const Activation& a : p.all_activations()) {
+                REQUIRE(a.timecode.ticks() == act);
+                for (const SPSqueeze& q : a.sqinouts) {
+                    CAPTURE(q.type_name());
+                    CHECK(q.offset_ms == own_ms);
+                }
+            }
+    }
+}
+
+// Two paths end at one tick by different routes, then both clamp the same
+// phrase from that same end, so they fold mid-SP as tied paths; the leader
+// then squeezes that phrase in. 1200 BPM: a measure is 768 ticks and 200 ms.
+//  - B activates at 2304, doubling 2304 and 3072, and rebanks 6144 and 6912.
+//  - A passes 2304 (the cap wastes 6144 and 6912) and activates at 9216 (end
+//    12288). 9984 clamps it to 9984 + 3072 = 13056; 11520 then moves it a
+//    plain bar to 14592, tying the ceiling 11520 + 3072.
+//  - B passes 9216 (the cap wastes 9984) and activates at 10752 (end 13824);
+//    11520 clamps it to 14592.
+// A doubled 9216 and 9984 where B doubled 2304 and 3072, all under the
+// 10-note multiplier, so they tie. After 11520 they stay apart: the 13056
+// edge offers 11520 to A alone. 12864 then clamps both from 14592 to 15936;
+// it sits 450 ms before 14592, and 11520 sits 800 ms before, outside that
+// window. Same state, same score: they fold at 12864, and the 14592 edge
+// offers the leader 12864 (squeeze_window_phrases).
+const std::vector<TailNote> kFoldSharedClamp = {
+    {0, true},     {768, true},          {2304, false, true}, {3072},
+    {6144, true},  {6912, true},         {9216, false, true}, {9984, true},
+    {10752, false, true},                {11520, true},       {12864, true},
+    {13824},       {16896},              {17664},             {18432}};
+
+TEST_CASE("finding 37: a folded variant's Clamped step on its leader's SqIn phrase becomes SqIn") {
+    const Song song = test::build_tempo_song(kFoldSharedClamp, {{0, 1200.0}});
+    const ScoreGraph graph(song, 2);
+    const std::vector<Path> paths = run_search(graph, keep_losers());
+    const SpEndStep sqin{12864, 15936, SpEndKind::SqIn};
+    // The variant's own steps run to the fold, so its 12864 step is its own
+    // Clamped step; close_folded_act relabels it as the leader's SqIn
+    // (is_sqin_step), the way relabel_sqin does on a lone path.
+    auto ticks_of = [](const Path& p) {
+        std::vector<int64_t> t;
+        for (const Activation& a : p.all_activations()) t.push_back(a.timecode.ticks());
+        return t;
+    };
+    auto step_at = [](const Path& p) -> std::optional<SpEndStep> {
+        const std::vector<Activation> acts = p.all_activations();
+        if (acts.empty()) return std::nullopt;
+        for (const SpEndStep& s : acts.back().sp_end_steps)
+            if (s.tick == 12864) return s;
+        return std::nullopt;
+    };
+    const std::vector<int64_t> a_acts = {9216};
+    const std::vector<int64_t> b_acts = {2304, 10752};
+    bool folded = false;
+    for (const Path& p : paths) {
+        const std::vector<int64_t> lead = ticks_of(p);
+        if (lead != a_acts && lead != b_acts) continue;
+        if (step_at(p) != std::optional<SpEndStep>(sqin)) continue;
+        for (const Path& v : p.variants) {
+            const std::vector<int64_t> own = ticks_of(v);
+            if (own != (lead == a_acts ? b_acts : a_acts)) continue;
+            folded = true;
+            CAPTURE(p.pathstring());
+            CAPTURE(v.pathstring());
+            CHECK(step_at(v) == std::optional<SpEndStep>(sqin));
+        }
+    }
+    // The fold happened: the leader squeezed 12864 in and carries the other
+    // route as its tied variant.
+    CHECK(folded);
 }
 
 TEST_CASE("finding 37: an unclamped window is unchanged") {
