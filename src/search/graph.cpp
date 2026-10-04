@@ -229,7 +229,6 @@ void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
     backend.chord = ts.chord;
     backend.points = sp_points;
     backend.sqout_points = sqout_points;
-    backend.is_sp = ts.flag_sp;
 
     recent_backends_.push_back(backend);
 

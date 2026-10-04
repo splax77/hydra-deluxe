@@ -117,7 +117,6 @@ void write_activation(BinaryWriter& w, const Activation& act) {
         w.str(b.chord.code());
         w.i32(b.points);
         w.i32(b.sqout_points);
-        w.boolean(b.is_sp);
         w.opt_f64(b.offset_ms);
     }
 
@@ -159,7 +158,6 @@ Activation read_activation(BinaryReader& r) {
         b.chord = Chord::from_code(r.str());
         b.points = r.i32();
         b.sqout_points = r.i32();
-        b.is_sp = r.boolean();
         b.offset_ms = r.opt_f64();
         act.backends.push_back(std::move(b));
     }
