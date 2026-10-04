@@ -149,10 +149,12 @@ struct ReplayChord {
     // What category_scores applied to the chord's last note: the multiplier
     // the game's disc shows once this chord is hit.
     int multiplier_after = 1;
-    // Star Power pays this chord (at least one window claims it).
+    // Star Power paid this chord something: at least one window's
+    // core::paid_by_sp is true for it (decision D2). A squeezed-out chord
+    // whose SP points are 0 reads false; a partly paid one reads true.
     bool in_sp = false;
     // What the game's disc shows once this chord is hit: multiplier_after,
-    // doubled when in_sp (shown_multiplier).
+    // doubled when in_sp (shown_multiplier), so only when SP paid something.
     int multiplier_shown = 1;
 
     ReplayScore points;
