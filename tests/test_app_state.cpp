@@ -366,6 +366,16 @@ TEST_CASE("the chart-file check runs on open and then every two seconds") {
     std::remove(chart.c_str());
 }
 
+// The four short UI timings the user confirmed (D48, Q33): how long "Done!"
+// and "Copied!" stay, how often typing re-filters the library, and how often
+// a running batch refreshes its results.
+TEST_CASE("UI timings: Done!, Copied!, search re-filter and batch refresh keep their seconds") {
+    CHECK(AppState::kDoneFlashSeconds == 0.5);
+    CHECK(AppState::kCopiedSeconds == 2.0);
+    CHECK(AppState::kSearchThrottleSeconds == 0.15);
+    CHECK(AppState::kBatchRefreshSeconds == 1.0);
+}
+
 // The number boxes apply each step at once (the shown record follows live)
 // but leave the INI until the edit ends: holding +/- used to rewrite the
 // file every frame.
