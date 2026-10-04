@@ -166,13 +166,28 @@ TEST_CASE("is_audio_filename / looks_like_audio recognize the formats") {
     CHECK_FALSE(is_audio_filename("album.png"));
     CHECK_FALSE(is_audio_filename("notes.chart"));
 
-    CHECK(looks_like_audio(bytes_of("OggS\x00\x02")));
+    // The decoder's rule (audio::sniff_format): an Ogg stream counts only when
+    // its first page names a codec the decoder has, and a RIFF only when it
+    // holds a WAVE.
+    CHECK_FALSE(looks_like_audio(bytes_of("OggS\x00\x02")));
+    CHECK(looks_like_audio(bytes_of("OggS OpusHead")));
+    CHECK(looks_like_audio(bytes_of("OggS vorbis")));
     CHECK(looks_like_audio(bytes_of("RIFF....WAVE")));
+    CHECK_FALSE(looks_like_audio(bytes_of("RIFF....AVI ")));
     CHECK(looks_like_audio(bytes_of("fLaC")));
     CHECK(looks_like_audio(bytes_of("ID3\x03")));
     CHECK(looks_like_audio({0xFF, 0xFB, 0x90, 0x00}));  // MP3 frame sync
     CHECK_FALSE(looks_like_audio(bytes_of("\x89PNG\r\n")));
     CHECK_FALSE(looks_like_audio({}));
+}
+
+TEST_CASE("is_song_stem: an audio file that is not a standalone preview clip") {
+    CHECK(is_song_stem("song.ogg"));
+    CHECK_FALSE(is_song_stem("Preview.OGG"));
+    CHECK_FALSE(is_song_stem("preview.opus"));
+    CHECK(is_song_stem("preview2.ogg"));
+    CHECK_FALSE(is_song_stem("album.jpg"));
+    CHECK_FALSE(is_song_stem("notes.chart"));
 }
 
 TEST_CASE("find_loose_audio: stems beside the notes, preview and art excluded") {
@@ -202,12 +217,15 @@ TEST_CASE("extract_sng_audio: audio entries come back XOR-demasked") {
     std::vector<uint8_t> sng = make_sng({{"notes.chart", notes},
                                          {"song.ogg", song},
                                          {"drums.opus", drums},
+                                         {"preview.ogg", bytes_of("OggS vorbis preview clip")},
                                          {"album.jpg", bytes_of("\xFF\xD8" "art")}});
     std::string path = fixture_dir() + "\\bundle.sng";
     write_bytes(path, sng);
 
     std::vector<PreviewAudioStem> stems = extract_sng_audio(path);
-    REQUIRE(stems.size() == 2);  // notes and the .jpg are not audio
+    // The notes and the .jpg are not audio; the preview clip is not part of
+    // the song.
+    REQUIRE(stems.size() == 2);
     CHECK(stems[0].label == "song");
     CHECK(stems[0].bytes == song);
     CHECK(stems[1].label == "drums");
@@ -222,7 +240,7 @@ TEST_CASE("extract_sng_audio: audio entries come back XOR-demasked") {
 TEST_CASE("extract_srb_audio: trailing audio streams inflate; art is skipped") {
     std::vector<uint8_t> notes = hydra::read_file_bytes(
         corpus::first_chart_with_suffix(".mid"));
-    std::vector<uint8_t> ogg = bytes_of("OggS opus payload for the preview");
+    std::vector<uint8_t> ogg = bytes_of("OggS OpusHead payload for the preview");
     std::vector<uint8_t> art(512, 0);
     std::memcpy(art.data(), "\x89PNG\r\n\x1a\n", 8);
 
@@ -241,6 +259,22 @@ TEST_CASE("extract_srb_audio: trailing audio streams inflate; art is skipped") {
     PreviewSource src = resolve_preview_source(path, true, true);
     CHECK_FALSE(src.song.is_empty());
     CHECK(src.stems.size() == 1);
+}
+
+TEST_CASE("extract_srb_audio: a stream with an audio magic but no codec is not a stem") {
+    // The decoder could not open the bare Ogg stream, so it is not kept, and
+    // the walk goes on to the tagged stream behind it.
+    std::vector<uint8_t> notes = hydra::read_file_bytes(
+        corpus::first_chart_with_suffix(".mid"));
+    std::vector<uint8_t> bare_ogg = bytes_of("OggS");
+    std::vector<uint8_t> tagged_ogg = bytes_of("OggS vorbis the real song");
+
+    std::string path = fixture_dir() + "\\untagged.srb";
+    write_bytes(path, make_srb(notes, {bare_ogg, tagged_ogg}));
+
+    std::vector<PreviewAudioStem> stems = extract_srb_audio(path);
+    REQUIRE(stems.size() == 1);
+    CHECK(stems[0].bytes == tagged_ogg);
 }
 
 TEST_CASE("resolve_preview_source: a .srb with no extractable audio falls "
@@ -438,7 +472,7 @@ struct CountingReader {
 
 TEST_CASE("resolve_preview_source reads a .sng or .srb from disk once") {
     const std::vector<uint8_t> notes = chart_with_offset("0.25");
-    const std::vector<uint8_t> ogg = bytes_of("OggS the one stem");
+    const std::vector<uint8_t> ogg = bytes_of("OggS vorbis the one stem");
 
     const std::string sng = fixture_dir() + "\\readonce.sng";
     write_bytes(sng, make_sng({{"notes.chart", notes}, {"song.ogg", ogg}},
@@ -470,7 +504,7 @@ TEST_CASE("resolve_preview_source reads a .sng or .srb from disk once") {
 // The Preview load runs the two halves side by side on one container read.
 TEST_CASE("the song and stem halves share one container read and match the whole") {
     const std::vector<uint8_t> notes = chart_with_offset("0.25");
-    const std::vector<uint8_t> ogg = bytes_of("OggS the one stem");
+    const std::vector<uint8_t> ogg = bytes_of("OggS vorbis the one stem");
     const std::string sng = fixture_dir() + "\\halves.sng";
     write_bytes(sng, make_sng({{"notes.chart", notes}, {"song.ogg", ogg}}, {{"delay", "500"}}));
     const std::string srb = fixture_dir() + "\\halves.srb";
@@ -505,8 +539,8 @@ TEST_CASE("container charts give the same Song, stems and offset as the chart in
     const std::vector<uint8_t> chart = chart_with_offset("0.25");
     const std::vector<uint8_t> mid =
         hydra::read_file_bytes(corpus::first_chart_with_suffix(".mid"));
-    const std::vector<uint8_t> song_ogg = bytes_of("OggS song stem");
-    const std::vector<uint8_t> drums_ogg = bytes_of("OggS drums stem, a bit longer");
+    const std::vector<uint8_t> song_ogg = bytes_of("OggS vorbis song stem");
+    const std::vector<uint8_t> drums_ogg = bytes_of("OggS vorbis drums stem, a bit longer");
 
     struct Case {
         const char* file;
