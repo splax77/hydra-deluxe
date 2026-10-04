@@ -15,6 +15,11 @@
 // from CMakeLists.txt.
 #include "doctest.h"
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 #include <cctype>
 #include <cmath>
 #include <filesystem>
@@ -366,7 +371,10 @@ TEST_CASE("docs match code: the User Guide's hydra_rules.ini sample is the defau
     REQUIRE_MESSAGE(found, "docs/UserGuide.md: no fenced block under the \"Scoring rules\" heading");
     REQUIRE(sample.find('=') != std::string::npos);
 
-    const fs::path p = fs::temp_directory_path() / "hydra_docs_match_code_rules.ini";
+    // The process id keeps two runs at once from sharing the file.
+    const fs::path p = fs::temp_directory_path() /
+                       ("hydra_docs_match_code_rules_" + std::to_string(GetCurrentProcessId()) +
+                        ".ini");
     {
         std::ofstream f(p, std::ios::trunc);
         f << sample;
