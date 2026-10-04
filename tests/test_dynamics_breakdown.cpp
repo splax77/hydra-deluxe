@@ -236,4 +236,11 @@ TEST_CASE("dynamics_breakdown: row labels pro vs non-pro") {
     CHECK(std::string(dynamics_row_label(DynamicsRow::YellowTom, false)) == "Yellow");
     CHECK(std::string(dynamics_row_label(DynamicsRow::BlueTom, false)) == "Blue");
     CHECK(std::string(dynamics_row_label(DynamicsRow::GreenTom, false)) == "Green");
+    CHECK(std::string(dynamics_row_label(DynamicsRow::GreenTom, true)) == "Green tom");
+
+    // The words come from note_label, the one name of a drum note, so a
+    // change there moves the Dynamics tab with it.
+    const ChordNote green_tom{NoteColor::Green};
+    CHECK(std::string(dynamics_row_label(DynamicsRow::GreenTom, true)) ==
+          note_label(green_tom, true));
 }

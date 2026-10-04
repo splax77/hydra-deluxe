@@ -34,29 +34,40 @@ DynamicsCounts DynamicsBreakdown::played_total(bool bass2x) const {
 
 // ---- labels -------------------------------------------------------------
 
-const char* dynamics_row_label(DynamicsRow r, bool pro) {
+namespace {
+
+// One note that belongs in this row: its lane, cymbal flag and 2x flag.
+// nullopt for DynamicsRow::Count, which is not a row.
+std::optional<ChordNote> row_note(DynamicsRow r) {
+    const auto pad = [](NoteColor c, NoteCymbalType cym) {
+        ChordNote n{c};
+        n.cymbaltype = cym;
+        return n;
+    };
     switch (r) {
-        case DynamicsRow::RedSnare:
-            return pro ? "Red snare" : "Red";
-        case DynamicsRow::YellowCymbal:
-            return "Yellow cymbal";
-        case DynamicsRow::YellowTom:
-            return pro ? "Yellow tom" : "Yellow";
-        case DynamicsRow::BlueCymbal:
-            return "Blue cymbal";
-        case DynamicsRow::BlueTom:
-            return pro ? "Blue tom" : "Blue";
-        case DynamicsRow::GreenCymbal:
-            return "Green cymbal";
-        case DynamicsRow::GreenTom:
-            return pro ? "Green tom" : "Green";
-        case DynamicsRow::Kick:
-            return "Kick";
-        case DynamicsRow::Kick2x:
-            return "2x kick";
+        case DynamicsRow::RedSnare:     return pad(NoteColor::Red, NoteCymbalType::Normal);
+        case DynamicsRow::YellowCymbal: return pad(NoteColor::Yellow, NoteCymbalType::Cymbal);
+        case DynamicsRow::YellowTom:    return pad(NoteColor::Yellow, NoteCymbalType::Normal);
+        case DynamicsRow::BlueCymbal:   return pad(NoteColor::Blue, NoteCymbalType::Cymbal);
+        case DynamicsRow::BlueTom:      return pad(NoteColor::Blue, NoteCymbalType::Normal);
+        case DynamicsRow::GreenCymbal:  return pad(NoteColor::Green, NoteCymbalType::Cymbal);
+        case DynamicsRow::GreenTom:     return pad(NoteColor::Green, NoteCymbalType::Normal);
+        case DynamicsRow::Kick:         return pad(NoteColor::Kick, NoteCymbalType::Normal);
+        case DynamicsRow::Kick2x: {
+            ChordNote n{NoteColor::Kick};
+            n.is2x = true;
+            return n;
+        }
         default:
-            return "";
+            return std::nullopt;
     }
+}
+
+}  // namespace
+
+std::string dynamics_row_label(DynamicsRow r, bool pro) {
+    const std::optional<ChordNote> note = row_note(r);
+    return note ? note_label(*note, pro) : std::string();
 }
 
 // ---- counting -----------------------------------------------------------

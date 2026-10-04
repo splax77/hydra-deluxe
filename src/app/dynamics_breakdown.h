@@ -67,7 +67,10 @@ struct DynamicsBreakdown {
     DynamicsCounts played_total(bool bass2x) const;
 };
 
-const char* dynamics_row_label(DynamicsRow r, bool pro);
+// A row's name in the Dynamics tab, from note_label (core/model.h), the one
+// name of a drum note: "Red snare", "Yellow cymbal", "2x kick", and "Red" or
+// "Yellow" for a pad with Pro Drums off.
+std::string dynamics_row_label(DynamicsRow r, bool pro);
 
 DynamicsBreakdown count_dynamics(const Song& song);
 
