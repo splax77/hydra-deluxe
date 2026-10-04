@@ -122,6 +122,7 @@ bool jobs_busy(Harness& h);
 // reaches the gate, so started() == n means chart n is on screen and held.
 // Make the gate before starting the batch. Its destructor opens the gate and
 // removes the seam, so a check that fails early leaves nothing stuck.
+// Only one gate can exist at a time (it resets shared counters): make it after reset_app.
 class BatchGate {
 public:
     BatchGate();
