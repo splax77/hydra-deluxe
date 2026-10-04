@@ -110,11 +110,11 @@ THE FOUR CHECKS
    500, and "2^46" in a doc decides a 46.
    Skipped, and why:
    - 0, 1, 2 and their negatives: counts, first/second, off-by-one and
-     halving are arithmetic, not thresholds.
+     halving are arithmetic, not thresholds (D49).
    - A number directly inside [ ]: an array size or an index. A number equal
      to an array size the file declares (key[256], std::array<T, 4>): a loop
      bound or limit that matches its container.
-   - 1000, 1024 and 1000000 next to * or /: unit factors (ms to s, KiB).
+   - 1000, 1024 and 1000000 next to * or /: unit factors (ms to s, KiB; D49).
    - In src/ and tools/, a number inside other arithmetic or passed to a
      call: that computes a layout or a conversion (pos += 8, fits(buf, 16)).
      Production numbers are checked where a threshold, limit, tolerance,
@@ -644,6 +644,9 @@ function Get-Definitions([string]$Path) {
     $stack = [System.Collections.Generic.List[object]]::new()
     foreach ($m in [regex]::Matches($code, '[{}]')) {
         if ($m.Value -eq '{') {
+            # Look back up to 200 characters for "namespace" or extern "C"
+            # before this brace (decision D49): a parse buffer, long enough
+            # for any namespace head.
             $from = [Math]::Max(0, $m.Index - 200)
             $before = $code.Substring($from, $m.Index - $from)
             $cut = $before.LastIndexOfAny([char[]]@(';', '{', '}'))
@@ -938,7 +941,11 @@ function Invoke-Check3 {
     $byRecord = @{}
     foreach ($p in $paras) { if (-not $byRecord.ContainsKey($p.Record)) { $byRecord[$p.Record] = [System.Collections.Generic.List[object]]::new() }; $byRecord[$p.Record].Add($p) }
     $litRx = [regex]::new('(?<![\w.''])(?:0[xX][0-9a-fA-F'']+|\d[\d'']*(?:\.\d*)?(?:[eE][-+]?\d+)?|\.\d+(?:[eE][-+]?\d+)?)(?:[uUlLfF]+)?(?![\w.''])', 'Compiled')
+    # 0, 1 and 2 are counts, first and second, and off-by-one, not
+    # thresholds (decision D49).
     $skip = [System.Collections.Generic.HashSet[string]]::new([string[]]@('0', '1', '2'))
+    # 1000, 1024 and 1000000 next to * or / are unit factors, ms to s and
+    # KiB, not limits (decision D49).
     $unitFactors = [System.Collections.Generic.HashSet[string]]::new([string[]]@('1000', '1024', '1000000'))
     foreach ($f in $added.Keys) {
         if (-not ((Test-CppPath $f) -or (Test-PyPath $f))) { continue }
