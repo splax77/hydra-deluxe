@@ -576,7 +576,7 @@ TEST_CASE("tail rows: every corpus activation keeps exactly the rows the old dis
         for (const Path& p : run_search(graph, EngineOptions{DepthMode::Scores, 4})) {
             for (const Activation& act : p.all_activations()) {
                 // The SP end the engine stamped on this activation.
-                const std::optional<int64_t> end_tick = act.deact_tick;
+                const std::optional<int64_t> end_tick = act.deact_tick();
                 if (!end_tick) continue;
                 if (*end_tick <= last_tick) {
                     // A deactivation edge: its rows were gathered inside the window.
