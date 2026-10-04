@@ -500,7 +500,8 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     begin_disabled_input(limit_off);
     ImGui::SetNextItemWidth(px(100.0f));
     if (ImGui::InputInt("##backendlimitvalue", &app.settings.backendlimit_value)) {
-        app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0, 500);
+        app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,
+                                                       static_cast<int>(kSqueezeWindowMs));
         app.commit_settings();
     }
     ImGui::SameLine();

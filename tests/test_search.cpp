@@ -553,6 +553,68 @@ TEST_CASE("SP past the last note: synthesized rows survive a store round-trip") 
     CHECK(ract.deact_tick == act.deact_tick);
 }
 
+// D5: a tail row is kept on the same window as every other row, measured
+// from this activation's own SP end. The graph keeps 5136 (375 ms before the
+// last note), but it sits 625 ms before the SP end at 5376, so the engine
+// must not copy it into the activation.
+TEST_CASE("SP past the last note: tail rows use the 500 ms window from the SP end") {
+    Song song = build_tail_song({{0, true, false}, {768, true, false}, {1536},
+                                 {2304, false, true}, {3072}, {3840}, {4608},
+                                 {5136}, {5280}});
+    ScoreGraph graph(song, 4);
+    const std::vector<Path> paths = run_search(graph, EngineOptions{});
+    const Activation& act = last_act(paths);
+
+    bool graph_kept_5136 = false;
+    for (const BackendSqueeze& b : graph.tail_backends())
+        if (b.timecode.ticks() == 5136) graph_kept_5136 = true;
+    REQUIRE(graph_kept_5136);
+
+    REQUIRE(act.backends.size() == 1);
+    CHECK(act.backends[0].timecode.ticks() == 5280);
+    // Nothing is left for the display to drop.
+    CHECK(act.display_backends() == act.backends);
+}
+
+// D5 moves where tail rows are filtered, not which rows survive. The old
+// rule is written out here: every graph tail note, measured from the SP end,
+// kept when it is strictly less than 500 ms away.
+TEST_CASE("tail rows: every corpus activation keeps exactly the rows the old display kept") {
+    int tails = 0, edges = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        ScoreGraph graph(song, 4);
+        const int64_t last_tick = song.sequence.back().timecode.ticks();
+        for (const Path& p : run_search(graph, EngineOptions{DepthMode::Scores, 4})) {
+            for (const Activation& act : p.all_activations()) {
+                // The SP end the engine stamped on this activation.
+                const std::optional<int64_t> end_tick = act.deact_tick;
+                if (!end_tick) continue;
+                if (*end_tick <= last_tick) {
+                    // A deactivation edge: its rows were gathered inside the window.
+                    ++edges;
+                    for (const BackendSqueeze& b : act.backends)
+                        CHECK((std::fabs(*b.offset_ms) < 500.0 || act.is_sqout_backend(b)));
+                    continue;
+                }
+                ++tails;
+                const double end_ms = song.timing().ms_index().at(*end_tick);
+                std::vector<BackendSqueeze> want;
+                for (const BackendSqueeze& b : graph.tail_backends()) {
+                    BackendSqueeze copy = b;
+                    copy.offset_ms = b.timecode.ms() - end_ms;
+                    if (std::fabs(*copy.offset_ms) < 500.0) want.push_back(copy);
+                }
+                CHECK(act.display_backends() == want);  // what is stored and shown: unchanged
+                CHECK(act.backends == want);            // and now nothing extra in memory
+            }
+        }
+    }
+    CHECK(edges > 0);
+    CHECK(tails > 0);
+}
+
 // run_search takes its knobs in one EngineOptions value, so no two flags can
 // be swapped at a call site. Each knob must still do its own job.
 TEST_CASE("run_search: EngineOptions carries each knob to the engine") {

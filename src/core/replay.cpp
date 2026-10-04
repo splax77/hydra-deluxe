@@ -31,7 +31,7 @@ std::vector<const SongTimestamp*> sqout_candidates(const Song& song,
     const double d_ms = song.timing().timecode(deact_tick).ms();
     std::vector<const SongTimestamp*> out;
     for (const SongTimestamp& ts : song.sequence)
-        if (ts.flag_sp && std::fabs(ts.timecode.ms() - d_ms) < kSqueezeWindowMs)
+        if (ts.flag_sp && within_squeeze_window(offset_from_sp_end(ts.timecode.ms(), d_ms)))
             out.push_back(&ts);
     return out;
 }
@@ -147,8 +147,8 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
             // chord on or before the deactivation node is inside the window
             // whatever its ms says.
             const bool past_deact = row.tick > w.deact_tick;
-            const double offset = past_deact ? row.ms - w.deact_ms
-                                             : std::min(row.ms - w.deact_ms, 0.0);
+            const double offset = past_deact ? offset_from_sp_end(row.ms, w.deact_ms)
+                                             : std::min(offset_from_sp_end(row.ms, w.deact_ms), 0.0);
             const core::SqOutPosition pos =
                 core::sqout_position(row.tick, w.sqout_tick);
             const bool pays =
@@ -264,7 +264,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
                       where.c_str(), *w.sqout_offset_ms, kSqueezeWindowMs);
         throw std::runtime_error(buf);
     }
-    const SqOutNote typed{best->timecode.ticks(), best->timecode.ms() - d_ms};
+    const SqOutNote typed{best->timecode.ticks(),
+                          offset_from_sp_end(best->timecode.ms(), d_ms)};
 
     // The engine squeezes out only the first candidate. Anything else is a
     // squeeze-out the search can never produce: refuse, never price it.
@@ -279,7 +280,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
             "Not priced.",
             where.c_str(), *w.sqout_offset_ms, (long long)typed.tick,
             typed.offset_ms, kSqueezeWindowMs,
-            (long long)engine->timecode.ticks(), engine->timecode.ms() - d_ms);
+            (long long)engine->timecode.ticks(),
+            offset_from_sp_end(engine->timecode.ms(), d_ms));
         throw std::runtime_error(buf);
     }
     return typed;

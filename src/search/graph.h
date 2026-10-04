@@ -121,7 +121,10 @@ public:
     // The notes left in the squeeze window (kSqueezeWindowMs) before the song's
     // last timestamp, i.e. the trailing notes no deactivation edge ever got to
     // claim. offset_ms is unset on these: offsets are only stamped on the copies
-    // an edge keeps, measured against that edge's own destination.
+    // an edge keeps, measured against that edge's own destination. This list
+    // is wider than any one activation needs: the engine narrows it to the
+    // window around each activation's own SP end (within_squeeze_window)
+    // when it copies the rows in.
     const std::vector<BackendSqueeze>& tail_backends() const {
         return recent_backends_;
     }
@@ -153,9 +156,6 @@ private:
     std::vector<DeactExtension> extend_deacts(
         const std::vector<Timecode>& deact_tcs, const Timecode& sp_timecode);
 
-    double head_time_offset(const Timecode& tc) const {
-        return head_time_.ms() - tc.ms();
-    }
     bool is_recent_to_head(const Timecode& tc) const;
     void set_head_time(const Timecode& tc);
     void handle_deact(const Timecode& deact_tc,

@@ -128,7 +128,8 @@ void ScoreGraph::build() {
             // Deacts within the squeeze window keep a non-extended copy (SqOut).
             std::vector<Timecode> sqout_deacts;
             for (const auto& kv : pending_deacts_)
-                if (kv.second.ms() - timestamp.timecode.ms() < kSqueezeWindowMs)
+                if (within_squeeze_window(
+                        offset_from_sp_end(timestamp.timecode.ms(), kv.second.ms())))
                     sqout_deacts.push_back(kv.second);
 
             // Timecodes this SP phrase can extend: pending deacts plus very
@@ -233,7 +234,7 @@ void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
 
     for (ScoreGraphEdge* recent_edge : recent_deact_edges_) {
         double offset_ms =
-            ts.timecode.ms() - recent_edge->dest->timecode.ms();
+            offset_from_sp_end(ts.timecode.ms(), recent_edge->dest->timecode.ms());
         BackendSqueeze copy = backend;
         copy.offset_ms = offset_ms;
         recent_edge->backends.push_back(copy);
@@ -278,7 +279,10 @@ std::vector<ScoreGraph::DeactExtension> ScoreGraph::extend_deacts(
 }
 
 bool ScoreGraph::is_recent_to_head(const Timecode& tc) const {
-    return head_time_offset(tc) < kSqueezeWindowMs;
+    // The distance is symmetric, so this one check serves both an edge's
+    // end (is the SP end still near the head?) and a note (is the note
+    // still near the head?). tc is never after the head here.
+    return within_squeeze_window(offset_from_sp_end(tc.ms(), head_time_.ms()));
 }
 
 void ScoreGraph::set_head_time(const Timecode& tc) {
@@ -352,8 +356,8 @@ void ScoreGraph::add_deact_edge() {
 
     for (const BackendSqueeze& recent_backend : recent_backends_) {
         BackendSqueeze copy = recent_backend;
-        double offset_ms =
-            recent_backend.timecode.ms() - deact_edge->dest->timecode.ms();
+        double offset_ms = offset_from_sp_end(recent_backend.timecode.ms(),
+                                              deact_edge->dest->timecode.ms());
         copy.offset_ms = offset_ms;
         deact_edge->backends.push_back(copy);
 

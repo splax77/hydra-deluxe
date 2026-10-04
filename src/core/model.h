@@ -13,6 +13,7 @@
 #define HYDRA_CORE_MODEL_H
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -73,6 +74,20 @@ constexpr double kDefaultHitWindowMs = 85.0;
 // stored and shown, so nothing the engine collects is trimmed. The Backend
 // limit setting narrows the display from here. hydra_batch prints it.
 constexpr double kSqueezeWindowMs = 500.0;
+
+// How far a note sits from a Star Power end, in ms: negative before it,
+// positive after. Every backend row's offset_ms is this number.
+inline double offset_from_sp_end(double note_ms, double sp_end_ms) {
+    return note_ms - sp_end_ms;
+}
+
+// Is a note close enough to a Star Power end to matter for a squeeze?
+// Strictly inside kSqueezeWindowMs on either side; exactly 500 ms away is
+// out. The one window check: the search graph, the engine's tail rows, the
+// stored rows (Activation::display_backends) and hydra_replay all ask it.
+inline bool within_squeeze_window(double offset_from_sp_end_ms) {
+    return std::fabs(offset_from_sp_end_ms) < kSqueezeWindowMs;
+}
 
 // Early-fill (E) timing window, applied to e_offset in both directions:
 // an activation with e_offset < -window is illegal (the fill can't be

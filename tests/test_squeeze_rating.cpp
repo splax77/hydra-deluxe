@@ -6,7 +6,10 @@
 
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <map>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -715,6 +718,52 @@ TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search gr
     CHECK(kept[1].offset_ms == doctest::Approx(180.0));
     CHECK(kept[2].offset_ms == doctest::Approx(-300.0));
     CHECK(kept[3].offset_ms == doctest::Approx(kSqueezeWindowMs - 1.0));
+
+    // Exactly 500 ms away is outside, on both sides.
+    Activation edge;
+    for (double off : {-kSqueezeWindowMs, kSqueezeWindowMs}) {
+        BackendSqueeze row;
+        row.timecode = st.timecode(0);
+        row.offset_ms = off;
+        edge.backends.push_back(row);
+    }
+    CHECK(edge.display_backends().empty());
+    CHECK(within_squeeze_window(kSqueezeWindowMs - 0.001));
+    CHECK_FALSE(within_squeeze_window(-kSqueezeWindowMs));
+    CHECK(offset_from_sp_end(1000.0, 1250.0) == -250.0);
+}
+
+// The one-place rule, checked: only core/model.h compares against the
+// squeeze window, and nothing types its value by hand.
+TEST_CASE("the squeeze window is compared in one place and never typed as 500") {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
+    const std::regex compare(R"([<>]=?\s*kSqueezeWindowMs|kSqueezeWindowMs\s*[<>])");
+    std::vector<std::string> problems;
+    for (const char* sub : {"src", "tools"}) {
+        for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
+            const fs::path ext = e.path().extension();
+            if (ext != ".cpp" && ext != ".h") continue;
+            const std::string rel = fs::relative(e.path(), root).generic_u8string();
+            std::ifstream in(e.path());
+            std::string line;
+            int lineno = 0;
+            while (std::getline(in, line)) {
+                ++lineno;
+                const std::string where = rel + ":" + std::to_string(lineno) + ": ";
+                if (rel != "src/core/model.h" && std::regex_search(line, compare))
+                    problems.push_back(where + line);
+                // Only the Backend limit clamp: the Path limit's own -500..500
+                // clamp (settings_bar.cpp) is a different setting.
+                if (line.find("backendlimit_value, 0, 500") != std::string::npos ||
+                    line.find("within 500 ms") != std::string::npos)
+                    problems.push_back(where + line);
+            }
+        }
+    }
+    INFO(problems.size() << " problem lines; first: "
+                         << (problems.empty() ? std::string() : problems.front()));
+    CHECK(problems.empty());
 }
 
 TEST_CASE("rate_activation: cap_clamped flag") {
