@@ -312,6 +312,44 @@ TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multipli
     CHECK(r2.chords[4].multiplier_shown == r2.chords[4].multiplier_after * kStarPowerMultiplier);
 }
 
+// ambiguous_window_warnings reads in_sp, so D2 changed it a little: a chord that
+// no window pays anything for is no longer "paid" just because a squeezed-out
+// window reached it. Here window A has no squeeze-out offset and ends on tick
+// 768; the phrase chord 250 ms later is one note, and only window B (which
+// squeezes it out, so it pays 0) reaches it. A pays nothing for it, so there is
+// nothing for the warning to say. The old every-window gate flagged it.
+TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying window reached") {
+    Song song(192);
+    song.tpm_changes[0] = 768;
+    song.bpm_changes[0] = 120.0;
+    song.build_timing();
+    for (int64_t tick : {0, 768, 864, 1536}) {
+        SongTimestamp ts;
+        ts.timecode = song.timecode(tick);
+        ts.chord.add_note(NoteColor::Red);  // one note: a squeeze-out loses all its doubling
+        ts.flag_sp = tick == 864;
+        song.sequence.push_back(ts);
+    }
+    ReplayWindow a;  // no squeeze-out offset: the warning looks at it
+    a.act_tick = 0;
+    a.deact_tick = 768;
+    ReplayWindow b;  // squeezes the chord at 864 out
+    b.act_tick = 864;
+    b.deact_tick = 1536;
+    b.sqout_tick = 864;
+
+    const ReplayResult r = replay_path(song, {a, b});
+    REQUIRE(r.chords.size() == 4);
+    CHECK(r.chords[2].points.sp == 0);
+    CHECK_FALSE(r.chords[2].in_sp);
+    CHECK(ambiguous_window_warnings(song, r, {a, b}).empty());
+
+    // With no squeezed-out window the chord still is not paid (250 ms is past
+    // the leeway), so the answer is the same.
+    const ReplayResult alone = replay_path(song, {a});
+    CHECK(ambiguous_window_warnings(song, alone, {a}).empty());
+}
+
 TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power") {
     CHECK(shown_multiplier(1, false) == 1);
     CHECK(shown_multiplier(1, true) == 2);
@@ -1127,6 +1165,9 @@ TEST_CASE("D2: only a squeezed-out chord SP pays nothing loses its doubled disc"
         }
     }
     MESSAGE(changed << " corpus chords now show the plain multiplier");
+    // Pinned, so a change that made this 0 (the test proving nothing) or moved
+    // more chords fails loudly. If the corpus grows, update it on purpose.
+    CHECK(changed == 9);
 }
 
 TEST_CASE("replay: the open-window walk equals the every-window walk on hand-built windows") {
@@ -1197,6 +1238,47 @@ TEST_CASE("replay: the open-window walk equals the every-window walk with 2,000 
             CHECK(want.final.sp > 0);
         }
     }
+}
+
+// The random windows above overlap freely, so nearly every squeezed-out chord
+// is also paid by another window and its in_sp is the same under the old and
+// the new rule: that test cannot see decision D2. These windows never overlap,
+// and each ends on a one-note chord it squeezes out, which SP pays 0 for. The
+// open-window walk must match the paid-based reference walk, and the old
+// claim-based walk must differ from it somewhere, or this proves nothing.
+TEST_CASE("replay: disjoint squeezed-out windows are told apart from the old in_sp rule") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const Song* longest = nullptr;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (!longest || song.sequence.size() > longest->sequence.size()) longest = &song;
+    }
+    REQUIRE(longest != nullptr);
+
+    std::vector<ReplayWindow> wl;
+    size_t free_from = 0;  // the first chord the next window may start on
+    for (size_t i = 0; i < longest->sequence.size(); ++i) {
+        if (i < free_from + 2 || longest->sequence[i].chord.count() != 1) continue;
+        ReplayWindow w;
+        w.act_tick = longest->sequence[free_from].timecode.ticks();
+        w.deact_tick = longest->sequence[i].timecode.ticks();
+        w.sqout_tick = w.deact_tick;
+        wl.push_back(w);
+        free_from = i + 1;
+    }
+    REQUIRE(wl.size() > 50);
+
+    size_t differing_chords = 0;
+    for (const core::Rules& rules : leeway_variants()) {
+        const ReplayResult paid = reference_replay_path(*longest, wl, rules, true);
+        const ReplayResult claimed = reference_replay_path(*longest, wl, rules, false);
+        INFO("leeway " << rules.backend_leeway_ms);
+        CHECK(first_result_difference(paid, replay_path(*longest, wl, rules)).empty());
+        REQUIRE(paid.chords.size() == claimed.chords.size());
+        for (size_t i = 0; i < paid.chords.size(); ++i)
+            if (paid.chords[i].in_sp != claimed.chords[i].in_sp) ++differing_chords;
+    }
+    CHECK(differing_chords > 0);
 }
 
 TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score the same") {
