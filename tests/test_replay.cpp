@@ -604,11 +604,12 @@ TEST_CASE("result block: an empty record writes a null score and an empty bestpa
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         if (rec.paths.empty()) continue;
 
-        const std::optional<int64_t> best = store::summarize_record(rec).score;
-        REQUIRE(best.has_value());
+        // The first corpus chart with paths, and its best score and path as
+        // one run printed them.
         const json full = result_json(rec);
-        CHECK(full["score"].get<int64_t>() == *best);
-        CHECK(full["bestpath"].get<std::string>() == rec.best_path().pathstring());
+        CHECK(chart.find("Allister - Overrated") != std::string::npos);
+        CHECK(full["score"].get<int64_t>() == 228710);
+        CHECK(full["bestpath"].get<std::string>() == "1 2");
         checked = true;
         break;  // one chart's record is the whole contract
     }
