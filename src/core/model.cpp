@@ -529,6 +529,18 @@ std::string Path::pathstring_verbose(const std::vector<MultSqueeze>& multsqueeze
     return out;
 }
 
+std::string path_identity(const Path& path) {
+    // "score|tick>deact tick ..." with "-" for an activation that has no
+    // deact tick. Only compared, so the form just has to be unambiguous.
+    std::string out = std::to_string(path.totalscore()) + "|";
+    for (const Activation& act : path.walk_activations()) {
+        const std::optional<int64_t> deact = act.deact_tick();
+        out += std::to_string(act.timecode.ticks()) + ">" +
+               (deact ? std::to_string(*deact) : std::string("-")) + " ";
+    }
+    return out;
+}
+
 int Path::recount_tied_paths() {
     tied_count = 1;
     for (Path& v : variants) {
