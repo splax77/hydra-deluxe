@@ -1106,10 +1106,12 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
 
     // An early SqIn the leader took after the fold may sit on a phrase from
     // before the fold. branch_deactivate relabels that step SqIn on the
-    // leader (relabel_sqin); the variant's own step there, if it has one,
-    // gets the same label. A variant that banked the phrase before activating
-    // has no step there and keeps its steps as they are, as relabel_sqin
-    // leaves a lone path's (the folded_sqin test chart). The n-th SqIn in the
+    // leader (relabel_sqin); the variant's own step there gets the same label.
+    // The variant always holds that step: it ran SP over the phrase, so it
+    // collected it. A path that banked the phrase before activating cannot
+    // squeeze it (core::activation_can_squeeze), and the search never folds
+    // it into one that can (banked_phrase_ordinal in the group key; the
+    // folded_sqin test charts), so no variant here lacks the step. The n-th SqIn in the
     // leader's list owns its n-th SqIn step, so the SqIns from the fold on
     // own the leader's SqIn steps from that rank on.
     int32_t sqins_before_fold = 0;

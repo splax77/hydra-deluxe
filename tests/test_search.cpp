@@ -1432,15 +1432,15 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqI
 // The chart is hand-made: 120 BPM, then 4000 BPM from tick 9600, so 500 ms
 // spans several SP bars. '1' activates at 10752 and collects the phrase at
 // 12288; '0 E0' activates at 4608, banks 8448 and 12288, and activates again
-// at 13824. Both end at 16896 and fold at 13824. The leader then splits on
-// 12288: '1+' (SqIn) and '1-' (SqOut), with the variant under each.
+// at 13824. Both end at 16896 with the same score at 13824, and the leader
+// later splits on 12288: '1+' (SqIn) and '1-' (SqOut). Before the activation
+// rule they folded there, and the variant took each of the leader's squeezes.
 //
-// Both variants squeeze a phrase that comes before their own activation at
-// 13824. That is the older, separate bug (a squeeze on a phrase before the
-// window's activation; waiting on the user), so this case pins today's lone
-// pricing and does not judge it: '0 E0+' has a SqIn with no SqIn step, and
-// '0 E0-' gives back its activation step, leaving an empty SP end history.
-TEST_CASE("tied variants: a variant that banked its leader's SqIn phrase prices as alone") {
+// '0 E0' banked 12288 before activating at 13824, so it cannot squeeze that
+// phrase in or out (core::activation_can_squeeze), while '1' can. The search
+// groups the two apart (banked_phrase_in_reach), so '0 E0' is never folded
+// into '1+' or '1-' and prices as its own root path with a plain SP end.
+TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not folded into it") {
     const Song song = load_songpath(std::string(HYDRA_INPUT_DIR) +
                                         "/test_folded_sqin/folded_sqin.chart",
                                     true, true);
@@ -1449,33 +1449,59 @@ TEST_CASE("tied variants: a variant that banked its leader's SqIn phrase prices 
     cfg.depth_mode = DepthMode::Scores;
     cfg.depth_value = 40;
     cfg.ms_filter = std::nullopt;
-    const HydraRecord rec = analyze_chart(song, cfg);
+    HydraRecord rec;
+    REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
 
     const Path* in_lead = root_named(rec.paths, "1+");
-    const Path* out_lead = root_named(rec.paths, "1-");
     REQUIRE(in_lead != nullptr);
-    REQUIRE(out_lead != nullptr);
-    const Path* in_var = variant_at(*in_lead, 13824);
-    const Path* out_var = variant_at(*out_lead, 13824);
-    REQUIRE(in_var != nullptr);
-    REQUIRE(out_var != nullptr);
-    CHECK(in_var->pathstring() == "0 E0+");
-    CHECK(out_var->pathstring() == "0 E0-");
-
-    // The leader's SqIn step sits on 12288, before the fold at 13824.
+    // The leader's SqIn step sits on 12288, which it collected.
     CHECK(steps_of(in_lead->activations.back()) ==
           std::vector<Step>{{10752, 15360, SpEndKind::Activation}, {12288, 16896, SpEndKind::SqIn}});
-    // The variant banked 12288, so it has no step there to relabel: it keeps
-    // its own activation step, as its lone pricing does.
-    const Activation& a = in_var->activations.back();
-    CHECK(steps_of(a) == std::vector<Step>{{13824, 16896, SpEndKind::Activation}});
-    REQUIRE(a.sqinouts.size() == 1);
-    CHECK(a.sqinouts[0].kind == SqueezeKind::SqIn);
+    CHECK(variant_at(*in_lead, 13824) == nullptr);
 
-    CHECK_MESSAGE(lone_pricing_mismatch(song, cfg, *in_var).empty(),
-                  lone_pricing_mismatch(song, cfg, *in_var));
-    CHECK_MESSAGE(lone_pricing_mismatch(song, cfg, *out_var).empty(),
-                  lone_pricing_mismatch(song, cfg, *out_var));
+    const Path* banked = root_named(rec.paths, "0 E0");
+    REQUIRE(banked != nullptr);
+    const Activation& a = banked->activations.back();
+    CHECK(steps_of(a) == std::vector<Step>{{13824, 16896, SpEndKind::Activation}});
+    CHECK(a.sqinouts.empty());
+    CHECK(banked->totalscore() == 6750);  // what hydra_replay prices 4608:7680,13824:16896 at
+}
+
+// The same family with the leader's SqIn phrase on the variant's own
+// activation note: phrases at 8448, 9000 and 13824, none at 12288. The
+// leader collects 13824 while its SP runs; the other path banks it on its
+// activation chord. Before the activation rule, the two folded at 13824 and
+// the leader's later SqIn on 13824 met the variant's Activation step there
+// (the "not a collected step" throw). Both hand-made charts must analyze, and
+// every variant on them must price as it does alone.
+TEST_CASE("tied variants: the banked-phrase charts analyze and every variant prices as alone") {
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = 4;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = std::nullopt;
+    for (const char* name : {"folded_sqin.chart", "relabel_case.chart"}) {
+        CAPTURE(name);
+        const Song song = load_songpath(
+            std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/" + name, true, true);
+        HydraRecord rec;
+        REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
+        for (const Path* p : rec.all_paths()) {
+            CAPTURE(p->pathstring());
+            for (const Activation& act : p->walk_activations()) {
+                REQUIRE_FALSE(act.sp_end_steps.empty());
+                if (act.sqout_tick) CHECK(*act.sqout_tick > act.timecode.ticks());
+                for (size_t k = 1; k < act.sp_end_steps.size(); ++k)
+                    CHECK(act.sp_end_steps[k].tick > act.timecode.ticks());
+            }
+        }
+        std::vector<const Path*> vs;
+        for (const Path& root : rec.paths) collect_variants(root, vs);
+        for (const Path* v : vs) {
+            const std::string diff = lone_pricing_mismatch(song, cfg, *v);
+            CHECK_MESSAGE(diff.empty(), diff);
+        }
+    }
 }
 
 // D3 on the corpus: every tied variant stores what the search stores when it
