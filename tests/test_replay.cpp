@@ -232,7 +232,6 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
 TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
     // 4/4, 120 BPM, 192 ticks per beat: 768 ticks and 2000 ms per measure.
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (int64_t tick : {0, 768, 1536, 2304, 3072, 3256}) {
@@ -483,7 +482,6 @@ namespace {
 // 36 ticks are exactly 93.75 ms and 192 ticks exactly 500 ms.
 Song song_with(const std::vector<std::pair<int64_t, bool>>& chords) {
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (const auto& [tick, phrase] : chords) {
@@ -1043,7 +1041,6 @@ TEST_CASE("replay: the open-window walk equals the every-window walk on hand-bui
     // nothing", under every leeway variant, with its window and with a
     // squeeze-out that sits before D.
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (int64_t tick : {0, 768, 1536, 2304, 3072, 3256}) {

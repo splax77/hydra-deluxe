@@ -206,3 +206,65 @@ TEST_CASE("s2 owners: .mid practice sections come out in tick order (R7.7)") {
     CHECK(app::build_time_box(scene, 1041.7, 3000.0).section_line == "Section Verse");
     CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Chorus");
 }
+
+TEST_CASE("s2 owners: Song's default meter is written once, through apply_timesig (258, 319)") {
+    const Song song(192);
+    CHECK(song.tpm_changes == std::map<int64_t, int64_t>{{0, 768}});
+    CHECK(song.timesig_changes.at(0) ==
+          std::make_pair(kDefaultTimeSigNumerator, kDefaultTimeSigDenominator));
+
+    // Fixtures set a meter and its signature together, through the owner.
+    Song fixture(480);
+    apply_timesig(fixture, 2880, 3, 4);
+    CHECK(fixture.tpm_changes.at(2880) == 1440);
+    CHECK(fixture.timesig_changes.at(2880) == std::make_pair(3, 4));
+
+    // A scene built from nothing reads Song's default, not a literal of its own.
+    const app::PreviewTimeSig none;
+    CHECK(none.numerator == kDefaultTimeSigNumerator);
+    CHECK(none.denominator == kDefaultTimeSigDenominator);
+}
+
+namespace {
+
+std::string read_source(const std::filesystem::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    return text.str();
+}
+
+}  // namespace
+
+TEST_CASE("s2 owners: no meter is written by hand outside apply_timesig (258, 319)") {
+    const std::filesystem::path root = HYDRA_SOURCE_DIR;
+    // A hand write into the meter map: `tpm_changes[...] = ...` (not `==`).
+    const std::regex meter_write(R"(tpm_changes\[[^\]]*\]\s*=[^=])");
+    std::vector<std::string> offenders;
+    for (const char* dir : {"src", "tests"}) {
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(root / dir)) {
+            const std::string ext = entry.path().extension().string();
+            if (ext != ".cpp" && ext != ".h") continue;
+            if (entry.path().filename() == "test_s2_parser_owners.cpp") continue;
+            std::istringstream lines(read_source(entry.path()));
+            std::string line;
+            int n = 0;
+            while (std::getline(lines, line)) {
+                ++n;
+                if (!std::regex_search(line, meter_write)) continue;
+                const bool owner = entry.path().filename() == "song.cpp" &&
+                                   line.find("song.tpm_changes[tick] =") != std::string::npos;
+                if (!owner) offenders.push_back(entry.path().string() + ":" + std::to_string(n));
+            }
+        }
+    }
+    CHECK_MESSAGE(offenders.empty(), "meters written by hand: " << offenders.size()
+                                     << (offenders.empty() ? "" : ", first " + offenders[0]));
+
+    // The Preview's time box keeps no 4/4 literal of its own.
+    const std::regex sig_literal(R"((numerator|denominator|ts_num|ts_den)\s*=\s*4\b)");
+    for (const std::string file : {"src/app/preview_view.h", "src/app/preview_view.cpp"}) {
+        CAPTURE(file);
+        CHECK_FALSE(std::regex_search(read_source(root / file), sig_literal));
+    }
+}

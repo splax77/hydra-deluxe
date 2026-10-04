@@ -516,17 +516,16 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
         [](double v, const PreviewTempo& t) { return v < t.ms; });
     if (tempo_past != scene.tempos.begin()) bpm = (tempo_past - 1)->bpm;
     // The time signature in force at the playhead's tick, as the chart wrote
-    // it; 4/4 before any, the chart default.
-    int ts_num = 4, ts_den = 4;
+    // it. A scene from a song always has one at tick 0; a scene built from
+    // nothing shows PreviewTimeSig's default, which is Song's.
+    PreviewTimeSig sig;
     const auto sig_past = std::upper_bound(
         scene.time_sigs.begin(), scene.time_sigs.end(), now_tick,
         [](int64_t v, const PreviewTimeSig& t) { return v < t.tick; });
-    if (sig_past != scene.time_sigs.begin()) {
-        ts_num = (sig_past - 1)->numerator;
-        ts_den = (sig_past - 1)->denominator;
-    }
+    if (sig_past != scene.time_sigs.begin()) sig = *(sig_past - 1);
     char buf[64];
-    std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, ts_num, ts_den);
+    std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, sig.numerator,
+                  sig.denominator);
     box.tempo = buf;
 
     // Both parsers hand sections over in tick order (sort_practice_sections),

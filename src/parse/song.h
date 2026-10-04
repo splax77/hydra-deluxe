@@ -104,15 +104,20 @@ void check_timing_maps(int64_t tick_resolution,
                        const std::map<int64_t, int64_t>& tpm_changes,
                        const std::map<int64_t, double>& bpm_changes);
 
+// The meter a chart has before its first time signature: 4/4. Song's
+// constructor writes it through apply_timesig, and the Preview's
+// PreviewTimeSig reads it for a scene with no song.
+inline constexpr int kDefaultTimeSigNumerator = 4;
+inline constexpr int kDefaultTimeSigDenominator = 4;
+
 // A parsed chart: the timestamp sequence plus the tempo/meter maps it was built
 // from. Timing is snapshotted once the maps are complete (build_timing), which
 // mirrors Python building timecodes only after the whole tempo track is read.
 class Song {
 public:
-    explicit Song(int64_t resolution) : tick_resolution_(resolution) {
-        tpm_changes[0] = resolution * 4;
-        timesig_changes[0] = {4, 4};
-    }
+    // Starts at the default meter (kDefaultTimeSig*), written by apply_timesig
+    // like every other meter.
+    explicit Song(int64_t resolution);
 
     int64_t tick_resolution() const { return tick_resolution_; }
 
@@ -162,6 +167,12 @@ private:
     int64_t tick_resolution_;
     std::optional<SongTiming> timing_;
 };
+
+// A time signature at `tick`: ticks per measure = resolution * 4 * num / den,
+// and the signature itself for display, written together. The one owner of
+// the meter rule: both parsers, Song's default and test fixtures call it. A
+// numerator of 0 is ignored; a bottom number of 0 or less refuses the chart.
+void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 
 Song load_songpath_mid(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty = Difficulty::Expert,

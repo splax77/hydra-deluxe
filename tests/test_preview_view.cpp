@@ -117,16 +117,16 @@ Activation act_at(const Song& song, int64_t tick, int skips) {
 // measure is 1920 ticks = 2000 ms, so one SP bar (two measures) burns 4000 ms
 // at this tempo. `extra_bpm` adds tempo changes before the timing is built.
 // A phrase can only end on a note, so `step` is there for a fixture that needs
-// a phrase off the quarter-note grid. `extra_tpm` adds meter changes (ticks per
-// measure) the same way.
+// a phrase off the quarter-note grid. `extra_sigs` adds time signatures (tick ->
+// numerator, denominator) the same way.
 Song make_sp_song(const std::vector<int64_t>& phrase_ends, int64_t last_tick,
                   const std::map<int64_t, double>& extra_bpm = {},
                   int64_t step = 480,
-                  const std::map<int64_t, int64_t>& extra_tpm = {}) {
+                  const std::map<int64_t, std::pair<int, int>>& extra_sigs = {}) {
     Song song(480);
     song.bpm_changes[0] = 120.0;
     for (const auto& kv : extra_bpm) song.bpm_changes[kv.first] = kv.second;
-    for (const auto& kv : extra_tpm) song.tpm_changes[kv.first] = kv.second;
+    for (const auto& [tick, sig] : extra_sigs) apply_timesig(song, tick, sig.first, sig.second);
     song.build_timing();
 
     for (int64_t t = 0; t <= last_tick; t += step) {
@@ -185,7 +185,6 @@ Song make_overfill_song() {
                                   {5376, false, false}, {6000, false, false},
                                   {6768, false, false}, {7500, false, false}};
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (const N& n : notes) {
@@ -459,7 +458,7 @@ TEST_CASE("build_time_box: a mid-measure meter change follows the engine") {
     // does rather than by a count of its own.
     Song song(480);
     song.bpm_changes[0] = 120.0;
-    song.tpm_changes[2880] = 1440;
+    apply_timesig(song, 2880, 3, 4);
     song.build_timing();
     {
         Chord c;
@@ -498,10 +497,8 @@ TEST_CASE("build_time_box: the time signature in force, as the chart wrote it") 
     // stored signature tells them apart.
     Song song(480);
     song.bpm_changes[0] = 120.0;
-    song.tpm_changes[1920] = 1440;
-    song.timesig_changes[1920] = {6, 8};
-    song.tpm_changes[3360] = 1440;
-    song.timesig_changes[3360] = {3, 4};
+    apply_timesig(song, 1920, 6, 8);
+    apply_timesig(song, 3360, 3, 4);
     song.build_timing();
     {
         Chord c;
@@ -1382,7 +1379,7 @@ TEST_CASE("drain box: the rate switches exactly at a tempo change") {
 TEST_CASE("drain box: a 7/8 section drains faster at the same BPM") {
     // 7/8 from tick 3840 (4000 ms, a barline): 1680 ticks = 1750 ms a
     // measure, so a bar lasts 3500 ms instead of 4000.
-    Song song = make_sp_song({960}, /*last_tick=*/13440, {}, 480, {{3840, 1680}});
+    Song song = make_sp_song({960}, /*last_tick=*/13440, {}, 480, {{3840, {7, 8}}});
     PreviewScene scene = build_preview_scene(song, nullptr);
 
     CHECK(build_drain_box(scene, 2000.0).rate == "1 bar / 4.0 s");
@@ -1809,8 +1806,7 @@ BusyChart make_busy_chart(std::mt19937& rng, int64_t measures) {
     std::uniform_int_distribution<int> bars(2, 6);
     for (int64_t t = 1920 * 4; t < last; t += 1920 * bars(rng)) {
         const bool three = (t / 1920) % 2 == 0;
-        song.tpm_changes[t] = three ? 1440 : 1920;
-        song.timesig_changes[t] = three ? std::make_pair(3, 4) : std::make_pair(4, 4);
+        apply_timesig(song, t, three ? 3 : 4, 4);
     }
     for (int64_t t = 1920 * 2, n = 1; t < last; t += 1920 * bars(rng), ++n)
         song.practice_sections.push_back({t, "part " + std::to_string(n)});

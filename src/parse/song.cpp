@@ -160,6 +160,8 @@ bool fill_lands_on_chord(const Song& song, int64_t fill_end_tick, int64_t tick,
 // The parser handlers MIDI and .chart share. Each parser decides when to
 // call them (its own event phases); what they do to the Song lives here once.
 
+}  // namespace
+
 // A time signature: ticks per measure = resolution * 4 * num / den. The
 // signature itself is kept too, for display. A numerator of 0 names no meter,
 // so the line is ignored and the previous meter stays, in both formats
@@ -176,6 +178,8 @@ void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
                              static_cast<int64_t>(denominator);
     song.timesig_changes[tick] = {numerator, denominator};
 }
+
+namespace {
 
 // A fill ending: the last chord becomes an activation chord whose fill began
 // at `starttick`.
@@ -246,6 +250,10 @@ std::string title_or_unknown(std::string title) {
     static constexpr const char* kOldPlaceholder = "<unknown title>";
     if (title.empty() || title == kOldPlaceholder) return kUnknownTitle;
     return title;
+}
+
+Song::Song(int64_t resolution) : tick_resolution_(resolution) {
+    apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);
 }
 
 // ---- Song::sp_phrase_count ----------------------------------------------
