@@ -643,6 +643,18 @@ void Engine::advance(Path& p) {
     } else {
         const int32_t old_sp = p.sp;
         int32_t sp = old_sp + sp_n - buffered;
+        // D32: a path that late-squeezed a phrase in can end SP before
+        // reaching it (deactivation_type). Its meter is empty and the phrase
+        // stays buffered: that SqIn spent it, so hitting it adds nothing. An
+        // edge before the phrase would take the meter below zero, and no bar
+        // could be handed back. Keep the spent phrase buffered until its own
+        // edge instead. Only fires when an SP bar is shorter than the squeeze
+        // window; the meter it ends with is the same as letting it dip.
+        int32_t still_buffered = 0;
+        if (sp < 0) {
+            still_buffered = -sp;
+            sp = 0;
+        }
         if (has_sp_cap_ && sp > sp_cap_) sp = sp_cap_;
         p.sp = sp;
         // Keep the banked bars in step with p.sp. A gain is a phrase past the
@@ -662,7 +674,7 @@ void Engine::advance(Path& p) {
             }
             p.sp_ready_ms = eo->sp_times[(size_t)k].first.ms();
         }
-        p.buffered = 0;
+        p.buffered = still_buffered;
     }
 
     p.node = e.dest;
