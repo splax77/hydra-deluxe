@@ -689,13 +689,13 @@ TEST_CASE("timing_tiers: the Insane+ cutoff is the identity squeeze budget") {
     REQUIRE(t85.size() == 7);
     CHECK(std::string(t85[4].name) == "Insane+");
     REQUIRE(t85[4].cutoff.has_value());
-    CHECK(*t85[4].cutoff == squeeze_budget_ms(1.0, kDefaultHitWindowMs));
+    CHECK(*t85[4].cutoff == nominal_budget_ms(kDefaultHitWindowMs));
     CHECK(*t85[4].cutoff == 170.0);
 
     std::vector<TimingTier> t70 = timing_tiers(70.0);
     REQUIRE(t70.size() == 7);
     REQUIRE(t70[4].cutoff.has_value());
-    CHECK(*t70[4].cutoff == squeeze_budget_ms(1.0, 70.0));
+    CHECK(*t70[4].cutoff == nominal_budget_ms(70.0));
 
     // Beyond and None still carry no cutoff.
     CHECK_FALSE(t85[5].cutoff.has_value());
