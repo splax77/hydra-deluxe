@@ -1,13 +1,16 @@
-"""play_chart.py's .chart path turns each tick's notes into input lanes.
+"""play_chart.py plays the chords Hydra analyzed, read from a dump file.
 
-On a pro-drums .chart, notes 66/67/68 on the same tick as a yellow, blue or
-green gem make that gem a CYMBAL; without its marker the gem is a tom. Note 32
-is the 2x kick. One gem is one key: pressing a tom and a cymbal key for one
-gem is an overhit. These tests feed a tiny .chart through parse_chart.
+The notes, lanes and times come from a `hydra_replay dump` JSON: each entry of
+its "chords" list gives the chord's time (`ms`) and its five-character code
+(`chord_code`, ADR 0015: kick, red, yellow, blue, green; "." empty, upper case
+a cymbal or a 2x kick). One gem is one key: pressing a tom and a cymbal key for
+one gem is an overhit. Waiting for a note, noticing the song stopped and
+picking the first note when a run joins mid-song are live.py's.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -18,68 +21,48 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe.experiments import play_chart  # noqa: E402
+from tools.ch_probe.experiments import live, play_chart  # noqa: E402
+from tools.ch_probe.input_driver import Lane  # noqa: E402
 
-# Resolution 192 at 120 BPM: 192 ticks = one beat = 0.5 s.
-_CHART = """[Song]
-{
-  Resolution = 192
-}
-[SyncTrack]
-{
-  0 = TS 4
-  0 = B 120000
-}
-[ExpertDrums]
-{
-  0 = N 2 0
-  192 = N 2 0
-  192 = N 66 0
-  384 = N 3 0
-  384 = N 67 0
-  576 = N 4 0
-  576 = N 68 0
-  768 = N 32 0
-  960 = N 0 0
-  960 = N 1 0
-  1152 = N 4 0
-  1152 = N 37 0
-}
-"""
+# Only the keys play_chart reads; a real dump carries many more per chord.
+_DUMP = {"chords": [
+    {"ms": 0.0, "chord_code": "..n.."},      # yellow tom
+    {"ms": 500.0, "chord_code": "..N.."},    # yellow cymbal
+    {"ms": 1000.0, "chord_code": "...N."},   # blue cymbal
+    {"ms": 1500.0, "chord_code": "....N"},   # green cymbal
+    {"ms": 2000.0, "chord_code": "N...."},   # 2x kick
+    {"ms": 2500.0, "chord_code": "nn..."},   # red + kick
+    {"ms": 3000.0, "chord_code": "....a"},   # green accent
+]}
 
 
-def _parse():
+def _load():
     with tempfile.TemporaryDirectory() as d:
-        path = os.path.join(d, "notes.chart")
+        path = os.path.join(d, "dump.json")
         with open(path, "w", encoding="utf-8") as f:
-            f.write(_CHART)
-        return play_chart.parse_chart(path)
+            json.dump(_DUMP, f)
+        return play_chart.load_dump_notes(path)
 
 
-class ChartPathTest(unittest.TestCase):
-    def test_each_tick_gets_one_lane_per_gem(self):
-        resolution, _tempos, notes = _parse()
-        self.assertEqual(resolution, 192)
-        self.assertEqual([(n.tick, list(n.lanes)) for n in notes], [
-            (0, [2]),       # yellow tom (J)
-            (192, [5]),     # yellow cymbal (U)
-            (384, [6]),     # blue cymbal (Y)
-            (576, [7]),     # green cymbal (T)
-            (768, [4]),     # 2x kick presses the kick (L)
-            (960, [1, 4]),  # red + kick
-            (1152, [0]),    # green tom (A); the accent marker 37 presses nothing
+class DumpPathTest(unittest.TestCase):
+    def test_dump_chords_become_timed_lanes(self):
+        self.assertEqual([(ms, list(lanes)) for ms, lanes in _load()], [
+            (0.0, [Lane.YELLOW]),
+            (500.0, [Lane.YELLOW_CYMBAL]),
+            (1000.0, [Lane.BLUE_CYMBAL]),
+            (1500.0, [Lane.GREEN_CYMBAL]),
+            (2000.0, [Lane.KICK]),             # the 2x kick presses L
+            (2500.0, [Lane.KICK, Lane.RED]),
+            (3000.0, [Lane.GREEN]),            # an accent is still the green pad
         ])
 
-    def test_times_follow_the_tempo(self):
-        _resolution, _tempos, notes = _parse()
-        self.assertAlmostEqual(notes[1].time_s, 0.5)
-        self.assertAlmostEqual(notes[-1].time_s, 3.0)
-
     def test_lane_helper(self):
-        self.assertEqual(play_chart.chart_notes_to_lanes([2, 66]), [5])
-        self.assertEqual(play_chart.chart_notes_to_lanes([3]), [3])
-        self.assertEqual(play_chart.chart_notes_to_lanes([66]), [])
-        self.assertEqual(play_chart.chart_notes_to_lanes([0, 32]), [4])
+        self.assertEqual(play_chart.lanes_for_code(".nN.N"),
+                         [Lane.RED, Lane.YELLOW_CYMBAL, Lane.GREEN_CYMBAL])
+        self.assertEqual(play_chart.lanes_for_code("N...."), [Lane.KICK])
+        self.assertEqual(play_chart.lanes_for_code("n...."), [Lane.KICK])
+        self.assertEqual(play_chart.lanes_for_code("...n."), [Lane.BLUE])
+        self.assertEqual(play_chart.lanes_for_code("....."), [])
 
 
 class SharedPiecesTest(unittest.TestCase):
@@ -87,12 +70,27 @@ class SharedPiecesTest(unittest.TestCase):
 
     def test_no_private_copies_are_left(self):
         for name in ("find_active_engine", "OFF_SONG_CLOCK", "OFF_SCORE",
-                     "NOTE_TO_LANE", "scan_for_engine"):
+                     "NOTE_TO_LANE", "scan_for_engine",
+                     "parse_chart", "parse_midi", "_read_vlq",
+                     "midi_notes_to_lanes", "chart_notes_to_lanes",
+                     "ticks_to_seconds", "TempoEvent", "CHART_DRUM_NOTES",
+                     "DRUM_NOTES", "SYNOVIAL_DIR",
+                     "wait_until", "first_note_index", "STALL_S"):
             self.assertFalse(hasattr(play_chart, name), name)
 
     def test_lane_names_come_from_the_key_table(self):
         from tools.ch_probe import input_driver
         self.assertIs(play_chart.LANE_NAMES, input_driver.LANE_NAMES)
+
+    def test_press_lead_is_two_ms(self):
+        self.assertEqual(play_chart.PRESS_LEAD_MS, 2.0)
+
+    def test_waiting_and_the_start_cursor_come_from_live(self):
+        from tools.ch_probe.experiments import walk_edges
+        self.assertIs(play_chart.live, live)
+        self.assertIs(play_chart.live.wait_until, live.wait_until)
+        self.assertIs(play_chart.live.first_note_index, live.first_note_index)
+        self.assertIs(play_chart.SongClock, walk_edges.SongClock)
 
 
 if __name__ == "__main__":
