@@ -297,14 +297,22 @@ function Blank-Inner([string]$s) {
     if ($open -lt 0 -or $open -ge $s.Length - 1) { return $s }
     $s.Substring(0, $open + 1) + (Blank $s.Substring($open + 1, $s.Length - $open - 2)) + $s[$s.Length - 1]
 }
+# A text with its comments blanked, read with one of the two lexers above;
+# with -AndStrings the text inside each string or char literal is blanked
+# too. The self-test loads this function from this file's text to read the
+# scan structs, so it never strips comments its own way.
+function Remove-Comments([regex]$Lex, [string]$Text, [switch]$AndStrings) {
+    $Lex.Replace($Text, { param($m)
+        if ($m.Groups['c'].Success) { Blank $m.Value } elseif ($AndStrings) { Blank-Inner $m.Value } else { $m.Value } })
+}
 $script:LexCache = @{}
 function Get-Views([string]$Path, [string]$Rev = $tip) {
     $key = "${Rev}:$Path"
     if ($script:LexCache.ContainsKey($key)) { return $script:LexCache[$key] }
     $text = Get-TipText $Path $Rev
     $rx = if (Test-PyPath $Path) { $pyLex } else { $cppLex }
-    $noComments = $rx.Replace($text, { param($m) if ($m.Groups['c'].Success) { Blank $m.Value } else { $m.Value } })
-    $code = $rx.Replace($text, { param($m) if ($m.Groups['c'].Success) { Blank $m.Value } else { Blank-Inner $m.Value } })
+    $noComments = Remove-Comments $rx $text
+    $code = Remove-Comments $rx $text -AndStrings
     $v = [pscustomobject]@{
         Raw        = $text.Split("`n")
         NoComments = $noComments.Split("`n")

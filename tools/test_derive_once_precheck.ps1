@@ -94,12 +94,22 @@ function Assert-Expectations([string]$Label, [string[]]$Lines, [object[]]$Expect
 # "precheck:" warnings.
 $tokens = $null; $parseErrors = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($precheck, [ref]$tokens, [ref]$parseErrors)
-$tableAst = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-                        "$($n.Left)" -eq '$ScanStructFields' }, $true)
-if (-not $tableAst) { throw "the self-test cannot find `$ScanStructFields in $precheck" }
-$structFields = $tableAst.Right.Expression.SafeGetValue()
-$scanSource = [regex]::Replace([System.IO.File]::ReadAllText((Join-Path $repoRoot 'tests/test_single_owner.cpp')),
-                               '//[^\n]*|/\*[\s\S]*?\*/', '')
+# One definition in the precheck's text, by name: a variable's assignment
+# ('$cppLex') or a function ('Blank'). The self-test reads the precheck's own
+# owners this way instead of keeping copies of them.
+function Find-PrecheckAst([string]$Name) {
+    $found = $ast.Find({ param($n)
+        ($n -is [System.Management.Automation.Language.AssignmentStatementAst] -and "$($n.Left)" -eq $Name) -or
+        ($n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $Name) }, $true)
+    if (-not $found) { throw "the self-test cannot find $Name in $precheck" }
+    $found
+}
+$structFields = (Find-PrecheckAst '$ScanStructFields').Right.Expression.SafeGetValue()
+# The precheck's C++ lexer and its comment blanking, loaded from its text, so
+# a comment is whatever the precheck says it is (strings included).
+. ([scriptblock]::Create((@('$cppLex', 'Blank', 'Remove-Comments') | ForEach-Object { (Find-PrecheckAst $_).Extent.Text }) -join "`n"))
+$repoScanText = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'tests/test_single_owner.cpp'))
+$scanSource = Remove-Comments $cppLex $repoScanText
 foreach ($struct in $structFields.Keys) {
     $m = [regex]::Match($scanSource, "\bstruct\s+$struct\s*\{(?<body>[^{}]*)\}\s*;")
     $inStruct = @(if ($m.Success) {
@@ -156,7 +166,7 @@ The batch test's deadline is 45 seconds.
 '@
     # The scan rows come from this repository's own scan file, so the
     # fixture tests the rows as they are today and copies none of them.
-    Write-Fixture 'tests/test_single_owner.cpp' ([System.IO.File]::ReadAllText((Join-Path $repoRoot 'tests/test_single_owner.cpp')))
+    Write-Fixture 'tests/test_single_owner.cpp' $repoScanText
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'main')
     Invoke-FixtureGit @('checkout', '-q', '-b', 'feature')
