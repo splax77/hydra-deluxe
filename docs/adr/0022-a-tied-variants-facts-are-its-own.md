@@ -52,8 +52,16 @@ many there are at each setting. The best all-0 path's variants
 (`allzero_paths`) are not covered.
 
 Not decided here: a variant's skip state, early-fill offset and skipped fills
-after a fold between windows (finding 97). Until that gets its own plan, a
-variant still shows its leader's on that activation.
+after a fold between windows (finding 97). D38 (2026-10-04) settled it. At the
+fold the search keeps the variant's own SP-ready time, its passed fills and
+the e_offset at the first of them. The activation its leader takes next is
+stored with the variant's own facts: its own passed fills, then the ones both
+passed after the fold, and the e_offset the early-fill rule gives its own
+ready time. The display reads those stored facts. The tied-variant
+lone-pricing tests in test_search.cpp and test_fast_tempo.cpp now compare the
+early-fill offset and passed fills too. No score moved. On the corpus, one
+listed path changes (The Agonist - Thank You, Pain, cap 4, score range 40,
+10 ms limit: '2 0 2' becomes '2 0 5'), and no "Early fill" line changes.
 
 ## What this costs
 

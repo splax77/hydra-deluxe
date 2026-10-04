@@ -648,6 +648,54 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
     CHECK(checked > 0);
 }
 
+// D34: a window never squeezes out a phrase it already squeezed in, and the
+// replay's squeeze-out lookup and warnings skip those phrases
+// (ReplayWindow::sqin_ticks). `score --path <dump>` reads its windows from the
+// dump, so the dump has to carry each window's SqIn phrases. Without them the
+// replay fell back to "the window's first phrase": on spent_then_next.chart at
+// cap 2, path '0++' warned that 17360 might have been squeezed out, though it
+// was squeezed in. A dump written before the field reads as no SqIns, as
+// before.
+TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
+    const Song song = load_songpath(
+        std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/spent_then_next.chart", true, true);
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = 2;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = std::nullopt;
+    const HydraRecord rec = analyze_chart(song, cfg);
+    const std::vector<const Path*> all = rec.all_paths();
+    const json dumped = paths_json(all, song.timing());
+    REQUIRE(dumped.size() == all.size());
+    int with_sqins = 0;
+    bool saw_0pp = false;
+    for (size_t k = 0; k < all.size(); ++k) {
+        CAPTURE(all[k]->pathstring());
+        const std::vector<ReplayWindow> want = windows_for_path(*all[k]);
+        const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
+        REQUIRE(got.size() == want.size());
+        for (size_t i = 0; i < got.size(); ++i) {
+            CHECK(got[i].sqin_ticks == want[i].sqin_ticks);
+            with_sqins += want[i].sqin_ticks.empty() ? 0 : 1;
+        }
+        if (all[k]->pathstring() != "0++") continue;
+        saw_0pp = true;
+        // Its last window squeezed 17360 in, so no warning may name it.
+        for (const std::string& warn :
+             ambiguous_window_warnings(song, replay_path(song, got), got))
+            CHECK_MESSAGE(warn.find("17360") == std::string::npos, warn);
+    }
+    CHECK(with_sqins > 0);
+    CHECK(saw_0pp);
+
+    // An older dump, without the key, still reads: no SqIn phrases.
+    const std::vector<ReplayWindow> old = windows_from_json(json::parse(
+        R"({"activations": [{"act_tick": 480, "deact_tick": 3840, "sqinouts": []}]})"));
+    REQUIRE(old.size() == 1);
+    CHECK(old[0].sqin_ticks.empty());
+}
+
 // fcvideo and `hydra_replay score --path` read these fields out of a dump. A
 // dump-format change that drops one has to fail here, not in the video tools.
 TEST_CASE("paths_json writes every field the dump readers use") {
@@ -674,7 +722,8 @@ TEST_CASE("paths_json writes every field the dump readers use") {
         REQUIRE(!p0["activations"].empty());
         const json& a0 = p0["activations"][0];
         for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
-                              "sp_meter", "skips", "skipped_fill_ticks", "chord_code", "sqinouts"})
+                              "sp_meter", "skips", "skipped_fill_ticks", "chord_code", "sqinouts",
+                              "sqin_ticks"})
             CHECK_MESSAGE(a0.contains(k), k);
 
         checked = true;

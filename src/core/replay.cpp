@@ -209,6 +209,13 @@ ReplayScore score_of(const Path& path) {
     return s;
 }
 
+std::vector<int64_t> sqin_phrase_ticks(const Activation& act) {
+    std::vector<int64_t> out;
+    for (const SpEndStep& s : act.sp_end_steps)
+        if (s.kind == SpEndKind::SqIn) out.push_back(s.tick);
+    return out;
+}
+
 // The deact node comes off the record, so the chart is not consulted.
 std::vector<ReplayWindow> windows_for_path(const Path& path) {
     std::vector<ReplayWindow> out;
@@ -224,9 +231,7 @@ std::vector<ReplayWindow> windows_for_path(const Path& path) {
             w.sqout_tick = row->timecode.ticks();
             w.sqout_offset_ms = row->offset_ms;
         }
-        // The phrases it squeezed in: its SqIn steps.
-        for (const SpEndStep& s : act.sp_end_steps)
-            if (s.kind == SpEndKind::SqIn) w.sqin_ticks.push_back(s.tick);
+        w.sqin_ticks = sqin_phrase_ticks(act);
         out.push_back(w);
     }
     return out;

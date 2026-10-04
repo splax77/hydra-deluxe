@@ -510,6 +510,9 @@ std::string windows_text(const Path& p) {
         for (const BackendSqueeze& b : a.backends)
             o << ' ' << b.timecode.ticks() << '/' << b.points << '/' << b.sqout_points << '/'
               << (b.offset_ms ? *b.offset_ms : -1.0);
+        // The early-fill facts (D38): the offset and the fills passed over.
+        o << " | e " << a.e_offset << " | passed";
+        for (const int64_t t : a.skipped_fill_ticks) o << ' ' << t;
         o << "] ";
     }
     return o.str();
@@ -2066,7 +2069,9 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
             ++again;
             REQUIRE(acts.size() == 2);
             CHECK(acts[1].timecode.ticks() == 10752);
-            CHECK(p->pathstring() == (first == 2304 ? "0 0" : "1 0"));
+            // '0' passed the fill at 9984 before the fold ('1' was refused
+            // there), so its second activation is "1", its own (D38).
+            CHECK(p->pathstring() == (first == 2304 ? "0 1" : "1 0"));
             CHECK(acts[1].bank_rise_ticks == own);
             CHECK(acts[1].sp_meter() == 2);
             CHECK(p->trailing_bank_ticks.empty());
@@ -2084,6 +2089,60 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
     CHECK(again == 2);
     CHECK(never == 2);
     CHECK(variants == 2);  // each pair is one root and its variant
+}
+
+// D38: a variant folded between windows keeps its own early-fill facts for
+// the activation its leader takes next. The case above with the last phrase
+// moved from 9216 to 9619 (25,049.5 ms). Fills end 6 beats (3,000 ms) after
+// their deadline: 9984's is 23,000 ms, 10752's 25,000 ms. '0' is ready at
+// 8448 (22,000 ms), so it passes the fill at 9984 1,000 ms early and its
+// next activation at 10752 is '0 1', no early fill. '1' is ready at 9619,
+// too late for 9984 (refused), and 49.5 ms late for 10752: an E0, "Early
+// fill: 49.5 ms (required)". Both stand on 9984 with 2 bars, the same score
+// and the same verdict at every fill ahead, so the search folds one into the
+// other there, and the variant used to show its leader's offset and passed
+// fills.
+TEST_CASE("tied variants: a variant folded between windows keeps its own early fill (D38)") {
+    const Song song = build_tail_song({{0, true, false}, {768, true, false},
+                                       {2304, false, true}, {3072, false, true},
+                                       {5760, true, false}, {8448, true, false},
+                                       {9619, true, false}, {9984, false, true},
+                                       {10752, false, true},
+                                       {11520}, {12288}, {16128}});
+    ScoreGraph graph(song, 2);
+    const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
+    const double ready_1 = tick_ms(song, 9619);
+    int seen = 0, variants = 0;
+    for (const Path* p : every_path(roots)) {
+        const ActivationWalk acts = p->walk_activations();
+        if (acts.size() != 2 || acts[1].timecode.ticks() != 10752) continue;
+        const int64_t first = acts[0].timecode.ticks();
+        if (first != 2304 && first != 3072) continue;
+        CAPTURE(p->pathstring());
+        ++seen;
+        variants += p->var_point.has_value() ? 1 : 0;
+        const Activation& a = acts[1];
+        if (first == 2304) {
+            CHECK(p->pathstring() == "0 1");
+            CHECK(a.skipped_fill_ticks == std::vector<int64_t>{9984});
+            CHECK(a.e_offset == fill_e_offset(23000.0, 22000.0));
+            CHECK_FALSE(a.is_e_critical());
+        } else {
+            CHECK(p->pathstring() == "1 E0");
+            CHECK(a.skipped_fill_ticks.empty());
+            CHECK(a.e_offset == fill_e_offset(25000.0, ready_1));
+            CHECK(a.is_E0());
+            CHECK(*a.e_difficulty(true) == doctest::Approx(49.479).epsilon(1e-4));
+        }
+        SearchSettings s;
+        s.sp_cap = 2;
+        s.depth_mode = DepthMode::Scores;
+        s.depth_value = 10;
+        const std::string diff = lone_pricing_mismatch(song, s, *p);
+        CHECK_MESSAGE(diff.empty(), diff);
+    }
+    CHECK(seen == 2);
+    CHECK(variants == 1);  // one root and its folded variant
 }
 
 TEST_CASE("tied variants: Don Broco - Actors at depth 40 shows each tied path's own bank") {
