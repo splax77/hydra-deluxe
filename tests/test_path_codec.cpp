@@ -459,3 +459,19 @@ TEST_CASE("path codec: an unknown SP-end step kind is refused") {
     CHECK_THROWS_AS(store::decode_path_node(bytes), SerializeError);
     CHECK_NOTHROW(store::decode_path_node(good));
 }
+
+TEST_CASE("path codec: an unknown transfer scale stays unknown") {
+    Path p;
+    Activation unknown;
+    Activation flat;
+    flat.transfer_post = TransferScale{1.0, 1.0};
+    SPSqueeze s{SqueezeKind::SqIn, 5.0};
+    s.transfer = TransferScale{1.0, 1.0};
+    flat.sqinouts.push_back(s);
+    p.activations = {unknown, flat};
+    Path back = store::decode_path_node(store::encode_path_node(p));
+    CHECK_FALSE(back.activations[0].transfer_post.has_value());
+    REQUIRE(back.activations[1].transfer_post.has_value());
+    CHECK(back.activations[1].transfer_post->late == 1.0);
+    REQUIRE(back.activations[1].sqinouts[0].transfer.has_value());
+}

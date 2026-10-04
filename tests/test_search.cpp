@@ -200,7 +200,11 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
         for (const Path* p : record->all_paths()) {
             for (const Activation& act : p->all_activations()) {
                 ++acts;
-                if (act.transfer_post.early != 1.0 || act.transfer_post.late != 1.0)
+                if (!act.transfer_post) {
+                    d = "transfer_post unknown";
+                    break;
+                }
+                if (act.transfer_post->early != 1.0 || act.transfer_post->late != 1.0)
                     ++nonflat;
 
                 auto scales = frontend_transfer_scales(act, song.timing());
@@ -215,11 +219,11 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                 auto non_positive = [](const TransferScale& s) {
                     return s.early <= 0.0 || s.late <= 0.0;
                 };
-                if (differs(scales->post, act.transfer_post)) {
+                if (differs(scales->post, *act.transfer_post)) {
                     d = "stored scales diverge from recomputation";
                     break;
                 }
-                if (non_positive(act.transfer_post)) {
+                if (non_positive(*act.transfer_post)) {
                     d = "non-positive transfer scale";
                     break;
                 }
@@ -227,11 +231,15 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                 size_t j = 0;
                 for (const SPSqueeze& sq : act.sqinouts) {
                     if (sq.kind != SqueezeKind::SqIn) continue;
-                    if (j >= scales->sqins.size() || differs(scales->sqins[j], sq.transfer)) {
+                    if (!sq.transfer) {
+                        d = "SqIn transfer unknown";
+                        break;
+                    }
+                    if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {
                         d = "a SqIn's stored scale diverges from recomputation";
                         break;
                     }
-                    if (non_positive(sq.transfer)) {
+                    if (non_positive(*sq.transfer)) {
                         d = "non-positive SqIn transfer scale";
                         break;
                     }
@@ -1093,8 +1101,9 @@ TEST_CASE("search: scales anchor on the collecting note and the SqIn's own end")
         CHECK(act->clamp_tick() == std::optional<int64_t>(3072));
         CHECK(act->deact_tick() == std::optional<int64_t>(6144));
         // 3072 and 6144 are both in the 60 BPM section: x1.00, not x2.00.
-        CHECK(act->transfer_post.late == doctest::Approx(1.0).epsilon(1e-12));
-        CHECK(act->transfer_post.early == doctest::Approx(1.0).epsilon(1e-12));
+        REQUIRE(act->transfer_post.has_value());
+        CHECK(act->transfer_post->late == doctest::Approx(1.0).epsilon(1e-12));
+        CHECK(act->transfer_post->early == doctest::Approx(1.0).epsilon(1e-12));
     }
     {
         Song song = test::sqin_then_collect_song();
@@ -1108,10 +1117,12 @@ TEST_CASE("search: scales anchor on the collecting note and the SqIn's own end")
         CHECK(act->squeeze_end_tick(0) == std::optional<int64_t>(5376));   // X
         CHECK(act->squeeze_anchor_tick(0) == std::optional<int64_t>(2304));
         // 2304 -> 5376, both 120 BPM.
-        CHECK(act->sqinouts.front().transfer.late == doctest::Approx(1.0).epsilon(1e-12));
-        CHECK(act->sqinouts.front().transfer.early == doctest::Approx(1.0).epsilon(1e-12));
+        REQUIRE(act->sqinouts.front().transfer.has_value());
+        CHECK(act->sqinouts.front().transfer->late == doctest::Approx(1.0).epsilon(1e-12));
+        CHECK(act->sqinouts.front().transfer->early == doctest::Approx(1.0).epsilon(1e-12));
         // 2304 (120) -> 8448 (60): measures last twice as long at D.
-        CHECK(act->transfer_post.late == doctest::Approx(2.0).epsilon(1e-12));
+        REQUIRE(act->transfer_post.has_value());
+        CHECK(act->transfer_post->late == doctest::Approx(2.0).epsilon(1e-12));
         // A SqOut stores no scale of its own: it reads transfer_post.
         const Activation* out = test::find_act(paths, [](const Activation& a) {
             for (const SPSqueeze& s : a.sqinouts)
@@ -1121,8 +1132,7 @@ TEST_CASE("search: scales anchor on the collecting note and the SqIn's own end")
         REQUIRE(out != nullptr);
         for (const SPSqueeze& s : out->sqinouts) {
             if (s.kind != SqueezeKind::SqOut) continue;
-            CHECK(s.transfer.early == 1.0);
-            CHECK(s.transfer.late == 1.0);
+            CHECK_FALSE(s.transfer.has_value());
         }
     }
 }
@@ -1223,14 +1233,16 @@ TEST_CASE("path codec: each SqIn keeps its own scale; a SqOut stores none") {
     REQUIRE(decoded.activations.size() == 1);
     const Activation& got = decoded.activations.front();
     REQUIRE(got.sqinouts.size() == 3);
-    CHECK(got.sqinouts[0].transfer.early == 0.97);
-    CHECK(got.sqinouts[0].transfer.late == 1.5);
-    CHECK(got.sqinouts[1].transfer.early == 0.95);
-    CHECK(got.sqinouts[1].transfer.late == 2.5);
-    CHECK(got.sqinouts[2].transfer.early == 1.0);
-    CHECK(got.sqinouts[2].transfer.late == 1.0);
-    CHECK(got.transfer_post.early == 1.25);
-    CHECK(got.transfer_post.late == 0.8);
+    REQUIRE(got.sqinouts[0].transfer.has_value());
+    REQUIRE(got.sqinouts[1].transfer.has_value());
+    CHECK(got.sqinouts[0].transfer->early == 0.97);
+    CHECK(got.sqinouts[0].transfer->late == 1.5);
+    CHECK(got.sqinouts[1].transfer->early == 0.95);
+    CHECK(got.sqinouts[1].transfer->late == 2.5);
+    CHECK_FALSE(got.sqinouts[2].transfer.has_value());
+    REQUIRE(got.transfer_post.has_value());
+    CHECK(got.transfer_post->early == 1.25);
+    CHECK(got.transfer_post->late == 0.8);
 }
 
 TEST_CASE("graph_build_cap: never taller than the song's phrases, never below one") {

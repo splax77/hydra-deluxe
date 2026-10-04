@@ -281,6 +281,8 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     // budget (which trips materiality on its own).
     Activation overbudget = base;
     overbudget.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 250.0});
+    // Stored x1.00, not left unknown (D4).
+    test::set_transfer(overbudget, TransferScale{1.0, 1.0});
     CHECK(row_of(overbudget).scale_warning.empty());
 
     // Gore act 4: the only row sits exactly on the SP end. It is inside SP,
@@ -953,6 +955,25 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning ==
           "Frontend timing scales x0.999999998 (early) at the SP end.");
+}
+
+TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
+    HydraRecord rec;
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;
+    BackendSqueeze row;
+    row.offset_ms = -40.0;
+    act.backends.push_back(row);
+    Path p;
+    p.activations.push_back(act);
+
+    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning == "Transfer scale unknown.");
+    CHECK(v.acts[0].scale_warn);  // Q6: orange
+    REQUIRE(v.acts[0].backends.size() == 1);
+    CHECK(v.acts[0].backends[0].rating.find("eff.") == std::string::npos);
 }
 
 TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {

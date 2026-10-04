@@ -46,6 +46,18 @@ std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
     return out;
 }
 
+std::optional<ActTransferScales> stored_transfer_scales(const Activation& act) {
+    if (!act.transfer_post) return std::nullopt;
+    ActTransferScales s;
+    s.post = *act.transfer_post;
+    for (const SPSqueeze& sq : act.sqinouts) {
+        if (sq.kind != SqueezeKind::SqIn) continue;
+        if (!sq.transfer) return std::nullopt;
+        s.sqins.push_back(*sq.transfer);
+    }
+    return s;
+}
+
 double effective_backend_ms(double offset_ms, double transfer_r) {
     return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);
 }
@@ -76,10 +88,9 @@ ActivationRating rate_activation(const Activation& act,
     ActivationRating out;
 
     // The scales the search stamped on the record. A stored fact is read,
-    // never re-derived (ADRs 0011, 0013, 0014); every Ready record has them.
-    out.scales.post = act.transfer_post;
-    for (const SPSqueeze& sq : act.sqinouts)
-        if (sq.kind == SqueezeKind::SqIn) out.scales.sqins.push_back(sq.transfer);
+    // never re-derived (ADRs 0011, 0013, 0014). Unset when any one is
+    // unknown: then nothing below gets a figure (D4).
+    out.scales = stored_transfer_scales(act);
 
     // Backend rows: every offset is measured from the deact node D, so they
     // read `post`. A squeezed-out row is about its phrase, which the SP end
@@ -91,12 +102,12 @@ ActivationRating rate_activation(const Activation& act,
         BackendRating row;
         row.row = bsq;
         row.squeezed_out = act.is_sqout_backend(bsq);
-        if (bsq.offset_ms) {
+        if (bsq.offset_ms && out.scales) {
             const double o = *bsq.offset_ms;
             const bool inside = row.squeezed_out
                                     ? core::paid_by_sp_walk(o)
                                     : core::counted_without_squeeze(o, backend_leeway_ms);
-            row.note = rate_note(o, inside, out.scales.post, hit_window_ms);
+            row.note = rate_note(o, inside, out.scales->post, hit_window_ms);
             out.scale_governs |= row.note.effective_ms.has_value();
         }
         out.backends.push_back(std::move(row));
@@ -114,9 +125,13 @@ ActivationRating rate_activation(const Activation& act,
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
+        if (!out.scales) {
+            out.note_effective_ms.push_back(std::nullopt);
+            continue;
+        }
         // A free SqIn's note is inside SP (SPSqueeze::is_free, D13).
         const NoteRating n =
-            rate_note(sq.offset_ms, sq.is_free(), out.scales.sqins[j++], hit_window_ms);
+            rate_note(sq.offset_ms, sq.is_free(), out.scales->sqins[j++], hit_window_ms);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
     }

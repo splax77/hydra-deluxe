@@ -151,15 +151,13 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
                     d = "restored timecode";
                 // The transfer scales ride in the blob bit-exactly: the SP
                 // end's, and each SqIn's own.
-                else if (again.transfer_post.early != orig.transfer_post.early ||
-                         again.transfer_post.late != orig.transfer_post.late)
+                else if (again.transfer_post != orig.transfer_post)
                     d = "restored transfer scales";
                 else if (again.sqinouts.size() != orig.sqinouts.size())
                     d = "restored squeezes";
                 else
                     for (size_t k = 0; k < orig.sqinouts.size(); ++k)
-                        if (again.sqinouts[k].transfer.early != orig.sqinouts[k].transfer.early ||
-                            again.sqinouts[k].transfer.late != orig.sqinouts[k].transfer.late)
+                        if (again.sqinouts[k].transfer != orig.sqinouts[k].transfer)
                             d = "restored SqIn transfer scales";
             }
 
@@ -243,16 +241,13 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
                     ++acts;
                     const std::optional<ActTransferScales> live =
                         frontend_transfer_scales(act, *lookup.timing);
-                    bool same = live && live->post.early == act.transfer_post.early &&
-                                live->post.late == act.transfer_post.late;
+                    bool same = live && act.transfer_post == live->post;
                     // Each SqIn's stored scale is the j-th live one.
                     size_t j = 0;
                     for (const SPSqueeze& sq : act.sqinouts) {
                         if (!same) break;
                         if (sq.kind != SqueezeKind::SqIn) continue;
-                        same = j < live->sqins.size() &&
-                               live->sqins[j].early == sq.transfer.early &&
-                               live->sqins[j].late == sq.transfer.late;
+                        same = j < live->sqins.size() && sq.transfer == live->sqins[j];
                         ++j;
                     }
                     same = same && j == live->sqins.size();

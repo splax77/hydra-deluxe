@@ -99,6 +99,23 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint32_t seed,
 
 // ---- node and structure pieces (record format v7, docs/adr/0017) ------------
 
+// A transfer scale that may be unknown (D4): a presence byte, then the two
+// doubles only when present, the way opt_f64 writes one double.
+void write_opt_scale(BinaryWriter& w, const std::optional<TransferScale>& s) {
+    w.boolean(s.has_value());
+    if (!s) return;
+    w.f64(s->early);
+    w.f64(s->late);
+}
+
+std::optional<TransferScale> read_opt_scale(BinaryReader& r) {
+    if (!r.boolean()) return std::nullopt;
+    TransferScale s;
+    s.early = r.f64();
+    s.late = r.f64();
+    return s;
+}
+
 // One activation. The six fields the search always sets carry no presence
 // byte; the three ticks that can be missing keep theirs.
 void write_activation(BinaryWriter& w, const Activation& act) {
@@ -124,16 +141,13 @@ void write_activation(BinaryWriter& w, const Activation& act) {
     for (const SPSqueeze& sq : act.sqinouts) {
         w.u8(sq.kind == SqueezeKind::SqIn ? 0 : 1);
         w.f64(sq.offset_ms);
-        // A SqIn stores its own transfer scale; a SqOut has none.
-        if (sq.kind == SqueezeKind::SqIn) {
-            w.f64(sq.transfer.early);
-            w.f64(sq.transfer.late);
-        }
+        // A SqIn stores its own transfer scale behind a presence byte (unset
+        // means unknown, D4); a SqOut stores no scale and no byte.
+        if (sq.kind == SqueezeKind::SqIn) write_opt_scale(w, sq.transfer);
     }
 
     w.f64(act.e_offset);
-    w.f64(act.transfer_post.early);
-    w.f64(act.transfer_post.late);
+    write_opt_scale(w, act.transfer_post);
     w.opt_i64(act.sqout_tick);
     // The SP-end history holds the deact node, the clamp note and the
     // collected phrases (Activation's accessors read them from it).
@@ -171,16 +185,12 @@ Activation read_activation(BinaryReader& r) {
         const SqueezeKind kind = r.u8() == 0 ? SqueezeKind::SqIn : SqueezeKind::SqOut;
         const double offset = r.f64();
         SPSqueeze sq{kind, offset};
-        if (kind == SqueezeKind::SqIn) {
-            sq.transfer.early = r.f64();
-            sq.transfer.late = r.f64();
-        }
+        if (kind == SqueezeKind::SqIn) sq.transfer = read_opt_scale(r);
         act.sqinouts.push_back(sq);
     }
 
     act.e_offset = r.f64();
-    act.transfer_post.early = r.f64();
-    act.transfer_post.late = r.f64();
+    act.transfer_post = read_opt_scale(r);
     act.sqout_tick = r.opt_i64();
     // The SP-end history (see write_activation).
     const uint32_t nsteps = r.u32();

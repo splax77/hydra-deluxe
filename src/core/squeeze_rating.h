@@ -65,6 +65,11 @@ std::optional<int64_t> activation_deact_tick(const Activation& act);
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing);
 
+// The scales the search stored on the activation (transfer_post and each
+// SqIn's transfer), or nothing when any one is unknown: all or nothing, so a
+// reader never mixes a stored scale with a missing one (D4).
+std::optional<ActTransferScales> stored_transfer_scales(const Activation& act);
+
 // ---- rating pieces --------------------------------------------------------
 
 // A backend squeeze's raw ms mapped onto the nominal 2*W scale the ratings
@@ -137,8 +142,9 @@ bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms);
 // tells it.
 struct ActivationRating {
     // The scales the search stored on the activation (transfer_post and
-    // each SqIn's transfer).
-    ActTransferScales scales;
+    // each SqIn's transfer), through stored_transfer_scales. Unset when any
+    // one is unknown: then no row or SqIn gets a figure (D4).
+    std::optional<ActTransferScales> scales;
     // True when a multiplier that isn't 1 governs at least one row or SqIn
     // on this activation: the scale line turns orange.
     bool scale_governs = false;

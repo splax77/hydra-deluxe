@@ -206,6 +206,9 @@ struct TransferScale {
     double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
     double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
                          //      backend squeezes
+    // Bit-exact, so a stored scale compares equal only to itself.
+    bool operator==(const TransferScale& o) const { return early == o.early && late == o.late; }
+    bool operator!=(const TransferScale& o) const { return !(*this == o); }
 };
 
 // A SqIn (+) or SqOut (-): which way the note is squeezed across the SP end,
@@ -237,8 +240,11 @@ struct SPSqueeze {
     // A SqIn's frontend transfer scale: at squeeze_end_tick, measured from
     // squeeze_anchor_tick. Stamped by the search at copy-out through
     // frontend_transfer_scales and stored, so the details view never needs a
-    // SongTiming. A SqOut stores none: its row is rated at transfer_post.
-    TransferScale transfer;
+    // SongTiming. Unset means the search could not compute it, a bug guard
+    // like transfer_post's (D4). A SqOut's is always unset: that is not an
+    // unknown, because no reader asks a SqOut for one. Its row is rated at
+    // transfer_post.
+    std::optional<TransferScale> transfer;
 };
 
 struct BackendSqueeze {
@@ -379,8 +385,10 @@ struct Activation {
     // Computed by the search at copy-out and stored, so the details view
     // never needs a SongTiming. Display-only: difficulty and everything the
     // search, filter and report derive stay raw gap ms. Each SqIn stores the
-    // scale at its own end (SPSqueeze::transfer).
-    TransferScale transfer_post;
+    // scale at its own end (SPSqueeze::transfer). Unset means the search
+    // could not compute it. That is a bug guard, never an expected state
+    // (D4): a test proves no fresh record has it.
+    std::optional<TransferScale> transfer_post;
 
     std::string notationstr() const;
     std::string notationstr_verbose() const;

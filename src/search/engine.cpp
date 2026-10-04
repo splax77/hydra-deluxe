@@ -1266,7 +1266,10 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                                     out_ends.begin() + oa.end_end);
 
             // Stamp the frontend transfer scales through the one function
-            // that computes them, from the SP-end steps just stamped.
+            // that computes them, from the SP-end steps just stamped. When the
+            // scales can't be computed, every one stays unknown, never a
+            // silent x1.00 (D4). No fresh record reaches this: see 'no fresh
+            // record stores an unknown transfer scale'.
             if (auto scales = frontend_transfer_scales(act, timing)) {
                 act.transfer_post = scales->post;
                 size_t sqin = 0;
