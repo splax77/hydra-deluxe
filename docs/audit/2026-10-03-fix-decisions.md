@@ -199,3 +199,22 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 - **Code-only calls, approved as recommended.** Each wave 1 task adds its own rows at the end of `tests/test_single_owner.cpp`, joined at M7-1. T1's result writer lives in `replay_json`, `--cap 0` still refuses on the command line, and `hydra_bench` is diffed by hand. AU1 pins only the FLAC zero-length case and stops if libopus accepts the bad packet. PS1 moves the byte check behind `audio::sniff_format` into `hydra_core`, so the Preview's dependency on it is declared. PR1 deletes `schedule_hit`, moves `window_verdict` into `watch_window.py`, and uses one 5 s stall limit. PR2 reads a `hydra_replay dump`, and the main session adds its README sentence at M7-1.
 
 **D52 (phase 3, fill comparison counts), 2026-10-04.** The user chose the recommended answer. D50 item 2 puts a chart with a score on only one side under "In both". The fill page's subtitle, its tiles and hydra_fillcompare's "Compared N charts: …" line now count those charts as "N with a score on one side only", with a matching tile. The parts add up to the total again. No score, path or record changes.
+
+**D53 (phase 6 questions), 2026-10-04.** The user answered "use recommended answers to everything" to the four questions in `docs/audit/2026-10-04-phase-6-questions.md`. Each question's Recommended line is the decision.
+1. The database's `user_version` slot (finding 298): Hydra stops writing it. A new database carries 0 there, an existing one keeps its 3, and the column checks stay the only upgrade gate. The two tests that check for 3 and the "schema user_version 3" header wording go.
+2. The Score range box (finding 112) is sized by `widest_digits(6)`, the rule the Analyze button and the Preview already use. It grows by about half a pixel times the DPI scale.
+3. When two taken fills touch (findings 76 and R7.14), each span carries its own pad, so each fill lights its own lane colour. No library chart reaches the case; the one-fill case is unchanged.
+4. The Preview's xN disc at the Star Power end (finding 1's second half) is left as it is and recorded as a known gap: the disc shows the multiplier the last hit chord earned until the next chord, so it reads doubled for a moment after SP ends while the drain box says idle. Changing it would need a new rule checked against Clone Hero video first.
+
+**D54 (phase 6 code-only calls), 2026-10-04.** Approved with D53: the "Recorded as recommended" list in `docs/superpowers/plans/2026-10-04-phase-6.md`, as written. In short:
+- 220: a `3d-config.json` missing a key is refused with an error naming the key (ADR 0008).
+- 207: the chart-file and report-file checks share one 2-second interval and one caching helper.
+- 340: "is the overlay the selected path's" compares the path part and ignores the cap, as today's prefix match does.
+- 210: the startup UI scale comes from `ui_scale_for_dpi`.
+- R7.13: `toggle_at` is deleted, not kept as a test oracle (D42).
+- 288: the contrast formula uses the WCAG 2.2 threshold, 0.04045.
+- 341: closed as "single owner, ImGui internal".
+- Developer-tool and pool numbers are recorded as they are, D49-style: the probe cut-offs in 328, the probe pacing in 273, the 250 ms settle in 232, R7.22's worker rule (hardware threads minus one, 1 when Windows reports 0, the same count for hashing) and R7.28's miniaudio converter defaults.
+- `kSpActivationBars = 2` (finding 334) and `kDefaultDepthValue = 4` (finding 181) get a name and a CONTEXT.md sentence, written by the M6-J4 merge.
+- Two dev-tool wordings change: `hydra_bench`'s header adopts `describe_settings`' words (206), and `MidiFile::from_file`'s raw error becomes winstr's "cannot open file:" (R7.11).
+- 75: `widest_word` takes `wrap_words`' answer.
