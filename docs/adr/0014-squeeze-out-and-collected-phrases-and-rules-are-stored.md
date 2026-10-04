@@ -17,18 +17,26 @@ have read Ready while holding answers to a different question.
 
 ## The decision
 
-The engine stamps both facts at copy-out. `Activation::sqout_tick` is the deact
-edge's `sqinout_time` when the path took the SqOut branch.
+The engine stamps both facts at copy-out. `Activation::sqout_tick` is the
+phrase chord the path squeezed out when it took the SqOut branch. It was first
+read off the deact edge's squeeze time; since D34 and D36 it is the chord the
+engine offered that window (`sqout_phrase` in engine.cpp), written through
+`Activation::set_sqout`.
 `Activation::collected_phrase_ticks` is every phrase tick the path crossed on
 the SP track, recorded in `advance()` and trimmed back past the squeezed-out
 phrase in `create_deactivated_path`. A late-SqIn phrase and a cap-clamped
 phrase both count, because the gauge received them.
 
 The pather stamps `HydraRecord::rules_fingerprint` with the fingerprint of the
-rules the run used. The store writes it into the structure blob right after
+rules the run used. The fingerprint is FNV-1a 64 over one `name=value` line
+per rule, each number written with 17 significant digits; a hash that lands
+on 0 becomes 1, because 0 means "no usable rules" (`Rules::fingerprint()` in
+src/core/rules.cpp; the user confirmed this format, D48, Q33).
+The store writes it into the structure blob right after
 the format version, so version and rules make one 12-byte head. That head is
 what decides Ready, in C++ (`structure_is_current`) and in SQL
-(`kRowReadySql`).
+(`row_ready_sql()` in `src/store/record_store.cpp`). The rules part of both
+compares one fingerprint, the store's `RulesStamp::fixed`.
 
 Blob format 6, path-node format 4 and path-structure format 4 carry the three
 fields.
@@ -58,7 +66,14 @@ The limit was 3% on hydra_bench's corpus timing (best of two runs each, cap 4
 and Auto at depth 4). The change was only committed within that limit; a run
 past it stops for the user's call, and no cheaper variant exists.
 
-## Amendment, 2026-09-26: the Auto budget and the Auto ladder
+## Amendment, 2026-09-26: the Auto budget and the Auto ladder (Superseded)
+
+Superseded 2026-09-27 with Auto itself; kept as history. Today a record
+carries one fingerprint, `Rules::fingerprint()`, and both Ready checks
+(`structure_is_current` and `row_ready_sql()`) compare that one value. The
+old Auto fingerprint survives only as `Rules::retired_auto_fingerprint()`,
+which the store reads to delete the results Auto saved; no row carrying it
+reads Ready. The names below are the code as it was then.
 
 The first version put every rules field into one fingerprint, so any edit to
 hydra_rules.ini made the whole library Stale. Two fields were over-reach
@@ -76,8 +91,9 @@ The Auto ladder only changes what an Auto run does. A record now carries one
 of two fingerprints: `Rules::fingerprint()` (every rule except the ladder and
 the budget) for a fixed-cap run, and `Rules::auto_fingerprint()` (that plus
 the ladder) for an Auto run. The store accepts either (`core::RulesStamp`),
-in C++ (`structure_is_current`) and in SQL (`kRowReadySql`, now
-`IN (?, ?)`). A ladder edit marks only Auto runs Stale.
+in C++ (`structure_is_current`) and in SQL (then `kRowReadySql`, with
+`IN (?, ?)`; today `row_ready_sql()`, which compares the one fixed
+fingerprint). A ladder edit marked only Auto runs Stale.
 
 The fingerprint's text changed, so every stored record reads Stale once more
 after this lands. It ships with the record-format bump of the same plan,
@@ -104,7 +120,8 @@ banks a bar. A squeeze-in hits it early, to extend SP. A phrase at or before
 the activation chord was banked before SP started. So no activation can
 squeeze it either way.
 
-The squeeze window is 500 ms around an SP end. Usually that is far shorter
+The squeeze window is 500 ms<!-- default: kSqueezeWindowMs --> around an SP
+end (`kSqueezeWindowMs`). Usually that is far shorter
 than one SP bar (two measures), so the window never reaches back past the
 activation. At a very fast tempo or a very short measure it can. The engine
 then offered a squeeze on a phrase the activation had banked. As a

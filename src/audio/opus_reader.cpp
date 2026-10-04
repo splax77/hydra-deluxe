@@ -30,6 +30,8 @@
 
 #include "audio/stem_reader.h"
 
+#include "audio/decode.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -178,7 +180,7 @@ void build_index(const uint8_t* d, std::size_t size, const OpenProgress& progres
             if (!in_packet) {
                 // A packet starts here. The OpusHead is the link's first.
                 if (packets_seen == 0) {
-                    if (seg[i] < 19 || std::memcmp(pos, "OpusHead", 8) != 0) {
+                    if (seg[i] < 19 || std::memcmp(pos, kOpusHeadTag, sizeof kOpusHeadTag - 1) != 0) {
                         if (links.size() == 1)
                             throw std::runtime_error("decode_audio: Opus stream has no OpusHead");
                         link->channels = -1;  // unusable link: the chain ends before it

@@ -9,6 +9,14 @@ namespace hydra::render {
 
 using json = nlohmann::json;
 
+namespace {
+
+// What a malformed colour draws as: opaque magenta, so the mistake shows
+// (docs/adr/0008).
+constexpr Color kBadColor{1, 0, 1, 1};
+
+}  // namespace
+
 Color parse_hex_color(std::string_view text) {
     auto hex = [](char c) -> int {
         if (c >= '0' && c <= '9') return c - '0';
@@ -17,11 +25,11 @@ Color parse_hex_color(std::string_view text) {
         return -1;
     };
     if (text.empty() || text[0] != '#' || (text.size() != 7 && text.size() != 9))
-        return Color{1, 0, 1, 1};
+        return kBadColor;
     float out[4] = {0, 0, 0, 1};
     for (size_t i = 0; i + 1 < text.size(); i += 2) {
         int hi = hex(text[1 + i]), lo = hex(text[2 + i]);
-        if (hi < 0 || lo < 0) return Color{1, 0, 1, 1};
+        if (hi < 0 || lo < 0) return kBadColor;
         out[i / 2] = static_cast<float>(hi * 16 + lo) / 255.0f;
     }
     return Color{out[0], out[1], out[2], out[3]};

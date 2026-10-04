@@ -127,8 +127,9 @@ void usage() {
         "activation the engine could not make and \"realized_prefix\" how many of\n"
         "the leading ticks it did manage.\n"
         "--legacy-fills prices the chart under Clone Hero 1.0's fill deadline,\n"
-        "which is what a 1.0 run was played under. Every stored row is a 1.1\n"
-        "result, so dump ignores the database and always analyzes fresh; its\n"
+        "which is what a 1.0 run was played under. With it, dump never reads\n"
+        "the database and always analyzes fresh: this path predates stored 1.0\n"
+        "results (the app's \"1.0 fills\" setting) and was kept as it was. Its\n"
         "\"source\" then reads \"analyzed-ch10\".\n"
         "Every command takes --rules <file>: the rule choices to price under\n"
         "(default: hydra_rules.ini next to the exe). A bad file exits with 2.\n"
@@ -343,7 +344,7 @@ int cmd_score(const Args& a) {
     // Say so when a window could be hiding a squeeze-out. The score is left
     // exactly as it is: only the player knows whether they squeezed.
     const std::vector<std::string> warnings =
-        ambiguous_window_warnings(song, r, windows);
+        ambiguous_window_warnings(song, r, windows, s.rules);
     for (const std::string& w : warnings)
         std::fprintf(stderr, "warning: %s\n", w.c_str());
 
