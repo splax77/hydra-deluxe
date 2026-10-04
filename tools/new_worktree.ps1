@@ -1,4 +1,4 @@
-# Make a task worktree and build it, at most three builds at a time.
+# Make a task worktree and build it inside a machine-wide build slot.
 #
 #   pwsh -NoProfile -File tools\new_worktree.ps1 -TaskId p35-c2
 #   pwsh -NoProfile -File tools\new_worktree.ps1 -TaskId p3-k2 -Base claude/p3-k1 -Target hydra_tests
@@ -7,12 +7,9 @@
 # claude/<TaskId> from -Base (default main), then builds -Target (default
 # hydra_tests) there from nothing with build_cpp.ps1.
 #
-# Before the build it takes one of three machine-wide build slots, the same
-# lock files phase 3's cold_build.ps1 uses (C:\Users\Patrick\.claude\hooks\
-# state\build_slots\slot1..3.lock, each holding the owner's process id and
-# worktree). A slot whose owner process is gone is taken over. While all three
-# are busy it waits in the foreground and prints a line each minute. The slot
-# is released when the build ends, pass or fail.
+# The build runs inside one of the machine-wide build slots. tools\
+# build_slot.ps1 holds that rule (how many slots, the lock files, stale-owner
+# takeover, the wait); this script only calls it.
 #
 # Why cold builds and not a copied build folder (P0-4, measured 2026-10-04 on
 # main 876b507, timing configure plus `hydra_tests`, no other compiler running
@@ -53,45 +50,14 @@ if ($LASTEXITCODE -eq 0) { throw "branch already exists: $branch" }
 git -C $main worktree add $wt -b $branch $Base
 if ($LASTEXITCODE -ne 0) { throw "git worktree add failed for $wt" }
 
-# One of three machine-wide build slots (shared with phase 3's cold_build.ps1).
-$slots = "C:\Users\Patrick\.claude\hooks\state\build_slots"
-New-Item -ItemType Directory -Force $slots | Out-Null
-$mine = $null
-$waited = 0
-while (-not $mine) {
-    foreach ($i in 1..3) {
-        $f = Join-Path $slots "slot$i.lock"
-        if (Test-Path $f) {
-            $owner = (Get-Content $f -ErrorAction SilentlyContinue | Select-Object -First 1) -as [int]
-            if ($owner -and (Get-Process -Id $owner -ErrorAction SilentlyContinue)) { continue }
-            Remove-Item $f -Force -ErrorAction SilentlyContinue
-        }
-        try {
-            $fs = [System.IO.File]::Open($f, 'CreateNew', 'Write')
-            $b = [System.Text.Encoding]::ASCII.GetBytes("$PID`n$wt")
-            $fs.Write($b, 0, $b.Length); $fs.Close()
-            $mine = $f; break
-        } catch { }
-    }
-    if (-not $mine) {
-        if ($waited % 60 -eq 0) { Write-Host "waiting for a build slot ($waited s)" }
-        Start-Sleep -Seconds 15; $waited += 15
-    }
-}
-Write-Host "build slot $mine taken"
-
-$failed = $null
+# build_slot.ps1 owns the slot rule: it waits for a free slot, builds, and
+# gives the slot back, pass or fail. The clock includes any wait.
 $clock = [Diagnostics.Stopwatch]::StartNew()
-try {
-    & (Join-Path $wt "build_cpp.ps1") -Target $Target
-} catch {
-    $failed = $_
-} finally {
-    Remove-Item $mine -Force -ErrorAction SilentlyContinue
-}
+& (Join-Path $PSScriptRoot "build_slot.ps1") -Repo $wt -Target $Target
+$code = $LASTEXITCODE
 $secs = [int]$clock.Elapsed.TotalSeconds
-if ($failed) {
-    Write-Host "build of $Target failed in $wt after $secs s: $failed"
+if ($code) {
+    Write-Host "build of $Target failed in $wt after $secs s (exit $code)"
     exit 1
 }
 Write-Host "worktree $wt on $branch, $Target built in $secs s"
