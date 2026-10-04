@@ -1470,7 +1470,10 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
 
 TEST_CASE("score box: a chord exactly on the playhead counts as hit") {
     // The case above: "Act >" from the start lands on the activation chord at
-    // 2500 ms, and the box counts that chord as hit and paid (D48, Q27).
+    // 2500 ms, and the box counts that chord as hit and paid (D48, Q27). The
+    // box already counted it before struck_at existed, so this case guards the
+    // shared rule rather than a fix: make struck_at exclusive and it reads
+    // "x1 · combo 5". The highway's case is the one the fix turned green.
     Song song = make_sp_song({1920}, 9600);
     Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
     PreviewScene scene = build_preview_scene(song, &path);
