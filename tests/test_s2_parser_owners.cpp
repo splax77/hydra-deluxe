@@ -177,3 +177,32 @@ TEST_CASE("s2 owners: a song.ini delay that is not a plain number is absent (R7.
     CHECK_FALSE(delay("250ms").has_value());
     fs::remove_all(dir);
 }
+
+TEST_CASE("s2 owners: .mid practice sections come out in tick order (R7.7)") {
+    using namespace testmidi;
+    const std::vector<uint8_t> tempo = concat({set_tempo(), end_of_track()});
+    const std::vector<uint8_t> drums =
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()});
+    // First EVENTS track: Intro at 0, Chorus at 1920 (VLQ 0x8F 0x00).
+    const std::vector<uint8_t> events1 =
+        concat({track_name("EVENTS"), text_event("[section Intro]"),
+                text_after({0x8F, 0x00}, "[section Chorus]"), end_of_track()});
+    // Second EVENTS track: Verse at 960 (VLQ 0x87 0x40).
+    const std::vector<uint8_t> events2 =
+        concat({track_name("EVENTS"), text_after({0x87, 0x40}, "[section Verse]"),
+                end_of_track()});
+    const Song song = load_songbytes_mid(smf_tracks({tempo, drums, events1, events2}), true, true);
+
+    REQUIRE(song.practice_sections.size() == 3);
+    CHECK(song.practice_sections[0].name == "Intro");
+    CHECK(song.practice_sections[1].name == "Verse");
+    CHECK(song.practice_sections[1].tick == 960);
+    CHECK(song.practice_sections[2].name == "Chorus");
+
+    // The time box names the section the playhead is in. At 120 BPM and 480
+    // ticks a beat, tick 1000 is 1041.67 ms (Verse) and tick 2000 is 2083.33 ms
+    // (Chorus). Before the sort it said Intro, then Verse.
+    const app::PreviewScene scene = app::build_preview_scene(song, nullptr);
+    CHECK(app::build_time_box(scene, 1041.7, 3000.0).section_line == "Section Verse");
+    CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Chorus");
+}

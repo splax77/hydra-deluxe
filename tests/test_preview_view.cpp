@@ -1866,14 +1866,12 @@ TEST_CASE("preview lookups: searches match the old scans on a busy synthetic cha
         }
         check_lookups_match_old_scans(build_preview_scene(c.song, nullptr, 4), false, 4, rng);
 
-        // Sections out of tick order (a MIDI with two EVENTS tracks lists each
-        // track's in turn) keep the old front-to-back answer.
-        PreviewScene shuffled = build_preview_scene(c.song, &c.path, 4);
-        REQUIRE(shuffled.sections.size() > 4);
-        std::rotate(shuffled.sections.begin(),
-                    shuffled.sections.begin() + static_cast<std::ptrdiff_t>(shuffled.sections.size() / 2),
-                    shuffled.sections.end());
-        check_lookups_match_old_scans(shuffled, true, 4, rng);
+        // Sections reach the scene in tick order from both parsers.
+        const PreviewScene sorted = build_preview_scene(c.song, &c.path, 4);
+        CHECK(std::is_sorted(sorted.sections.begin(), sorted.sections.end(),
+                             [](const PreviewSection& a, const PreviewSection& b) {
+                                 return a.tick < b.tick;
+                             }));
     }
 }
 

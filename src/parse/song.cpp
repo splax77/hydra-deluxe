@@ -72,6 +72,15 @@ bool section_name_of(const std::string& body, std::string* name) {
     return false;
 }
 
+// Practice sections in tick order, the order Song promises. A .chart's
+// [Events] need not be sorted, and a .mid lists each EVENTS track's sections
+// in turn, so both parsers call this once at the end. The sort is stable, so
+// two sections on one tick keep the file's order.
+void sort_practice_sections(std::vector<SongSection>& sections) {
+    std::stable_sort(sections.begin(), sections.end(),
+                     [](const SongSection& a, const SongSection& b) { return a.tick < b.tick; });
+}
+
 bool try_parse_int(const std::string& s, int64_t& out) {
     if (s.empty()) return false;
     try {
@@ -714,8 +723,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         break;
     }
 
-    // Pass 3: practice sections, which live on their own track as bracketed
-    // text metas.
+    // Pass 3: practice sections, which live on their own track(s) as bracketed
+    // text metas, sorted once at the end.
     for (const MidiTrack& track : mid.tracks) {
         if (track.name != "EVENTS") continue;
         elapsed = 0;
@@ -729,6 +738,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
                 song.practice_sections.push_back({elapsed, name});
         }
     }
+    sort_practice_sections(song.practice_sections);
 
     song.check_activations(rules_);
     return song;
@@ -1229,7 +1239,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     }
 
     // Practice sections. tick_order follows the file, which is not required to
-    // be sorted, so sort once at the end.
+    // be sorted; sort_practice_sections orders them.
     auto ev_it = sections_.find("Events");
     if (ev_it != sections_.end()) {
         const ChartSection& ev = ev_it->second;
@@ -1241,11 +1251,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
                     song.practice_sections.push_back({tk, name});
             }
         }
-        std::stable_sort(song.practice_sections.begin(),
-                         song.practice_sections.end(),
-                         [](const SongSection& a, const SongSection& b) {
-                             return a.tick < b.tick;
-                         });
+        sort_practice_sections(song.practice_sections);
     }
 
     // .chart ghosts and accents are explicit per-note flags (N 34-37 accent,
