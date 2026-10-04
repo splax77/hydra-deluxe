@@ -596,8 +596,10 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
     return scene.timing->ms_index().at(target);
 }
 
+bool has_song_length(double length_ms) { return length_ms > 0.0; }
+
 std::optional<double> song_fraction(double ms, double length_ms) {
-    if (length_ms <= 0.0) return std::nullopt;
+    if (!has_song_length(length_ms)) return std::nullopt;
     return std::clamp(ms / length_ms, 0.0, 1.0);
 }
 
