@@ -86,8 +86,9 @@ bool try_parse_int(const std::string& s, int64_t& out) {
     return false;
 }
 
-// The three text markers both formats read, matched by hand. Each one is
-// exactly the whole-string regex it replaced (named beside it). The tests
+// The disco markers both formats read are matched by hand, each exactly the
+// whole-string regex it replaced (named beside it). The dynamics marker is not
+// a regex any more: it is Clone Hero's two exact strings (finding 64). The tests
 // "... markers match the regexes they replaced" in test_song.cpp check that
 // through both parsers, with every byte value in every position that matters.
 //
@@ -110,9 +111,12 @@ bool disco_head(std::string_view s) {
            regex_dot(s[5]) && s.substr(6, 5) == "drums";
 }
 
-// \[?ENABLE_CHART_DYNAMICS\]?
+// Clone Hero 1.1 turns dynamics on only when a PART DRUMS text event is
+// exactly one of these two strings (String.op_Equality at 0x21557A5 and
+// 0x21557BB, on the raw text with no trim). One bracket, extra brackets or
+// spaces do nothing (finding 64, D24).
 bool is_dynamics_marker(std::string_view s) {
-    return peel_brackets(s) == "ENABLE_CHART_DYNAMICS";
+    return s == "ENABLE_CHART_DYNAMICS" || s == "[ENABLE_CHART_DYNAMICS]";
 }
 
 // \[?mix.3.drums\d?d\]?
@@ -354,7 +358,7 @@ struct MOp {
     NoteDynamicType dyn = NoteDynamicType::Normal;      // Note
     NoteCymbalType cymbal = NoteCymbalType::Normal;     // Tom
     bool flag = false;     // Note: is2x; Flam/Solo/Disco: on
-    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/Tempo/TimeSig;
+    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/Dynamics/Tempo/TimeSig;
                            // ApplyFill: the fill's start tick
     uint32_t tempo = 0;    // Tempo
     int num = 0, den = 0;  // TimeSig
@@ -439,7 +443,14 @@ private:
     void run_ops(const std::vector<MOp>& ops);
 
     // op_* handlers
-    void op_enable_dynamics() { dynamics_enabled_ = true; }
+    void op_enable_dynamics(int64_t tick) {
+        if (dynamics_enabled_) return;  // a second tag changes nothing
+        dynamics_enabled_ = true;
+        if (marks_before_tag_ > 0) {
+            song_->dynamics_late_tag_tick = tick;
+            song_->dynamics_marks_before_tag = marks_before_tag_;
+        }
+    }
     void op_disco(bool on) { flag_disco_ = on; }
     void op_tempo(int64_t tick, uint32_t miditempo) {
         song_->bpm_changes[tick] = 60000000.0 / static_cast<double>(miditempo);
@@ -467,6 +478,9 @@ private:
     void op_note(NoteColor color, NoteDynamicType dyn, bool is2x) {
         ChordNote& note = chord_.add_note(color);  // may throw ChartFileError
         note.dynamictype = dynamics_enabled_ ? dyn : NoteDynamicType::Normal;
+        // A ghost or accent velocity before the tag: Clone Hero prices it as
+        // plain, and the Dynamics tab reports how many there were.
+        if (!dynamics_enabled_ && dyn != NoteDynamicType::Normal) ++marks_before_tag_;
         if (allows_cymbals(color) && mode_pro_)
             note.cymbaltype = flag_cymbals_[static_cast<int>(color) - 1];
         note.is2x = is2x;
@@ -490,6 +504,7 @@ private:
     std::optional<int64_t> fill_start_tick_;
     std::optional<int64_t> fill_end_tick_;
     bool dynamics_enabled_ = false;
+    int marks_before_tag_ = 0;  // ghost/accent velocities read before the tag
     std::optional<int64_t> sp_start_tick_;
 };
 
@@ -572,7 +587,10 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
     // not match Python's `MetaMessage(text=...)` patterns.
     if (msg.str_attr == Message::StrAttr::Text) {
         const std::string& t = msg.str;
-        if (is_dynamics_marker(t)) return mop(MPhase::Pre, MAct::Dynamics);
+        // The tag runs with the notes, in file order, so a note written
+        // before it at the same tick stays plain, as in Clone Hero, which
+        // reads the flag at each note-on (0x21555F1).
+        if (is_dynamics_marker(t)) return mop_tick(MPhase::Notes, MAct::Dynamics, tick);
         if (is_disco_on_marker(t)) return mop_flag(MAct::Disco, true);
         if (is_disco_off_marker(t)) return mop_flag(MAct::Disco, false);
     }
@@ -602,7 +620,7 @@ void MidiParser::run(const MOp& op) {
         case MAct::Tom: op_tom(op.color, op.cymbal); break;
         case MAct::Flam: op_flam(op.flag); break;
         case MAct::Solo: op_solo(op.flag); break;
-        case MAct::Dynamics: op_enable_dynamics(); break;
+        case MAct::Dynamics: op_enable_dynamics(op.tick); break;
         case MAct::Disco: op_disco(op.flag); break;
         case MAct::Tempo: op_tempo(op.tick, op.tempo); break;
         case MAct::TimeSig: op_timesig(op.tick, op.num, op.den); break;
@@ -702,6 +720,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         flag_cymbals_[static_cast<int>(NoteColor::Yellow) - 1] =
             NoteCymbalType::Cymbal;
         dynamics_enabled_ = false;
+        marks_before_tag_ = 0;
         for (const Message& msg : track.messages) {
             if (msg.time != 0) {
                 push_timestamp(elapsed);

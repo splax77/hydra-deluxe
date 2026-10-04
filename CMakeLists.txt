@@ -427,6 +427,7 @@ add_executable(hydra_tests
     tests/test_preview_load_progress.cpp
     tests/test_utf8_paths.cpp
     tests/test_long_paths.cpp
+    tests/test_s2_dynamics_tag.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.

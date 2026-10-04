@@ -580,17 +580,15 @@ TEST_CASE(".chart: [Song] Offset is read in seconds") {
 
 // ---- the parsers' hand matchers against the regexes they replaced ----------
 //
-// The parsers used std::regex for the disco-flip and dynamics markers and the
-// .chart section header. They match by hand now, for speed. These cases keep
-// the old regexes as the oracle and drive the real parsers with strings built
-// around every byte value, so any difference in what matches shows up.
+// The parsers used std::regex for the disco-flip markers and the .chart section
+// header, and still match them exactly as those regexes did. The dynamics tag
+// is now Clone Hero's two exact strings (finding 64). All of them match by
+// hand now, for speed. These cases keep the old regexes as the oracle and
+// drive the real parsers with strings built around every byte value, so any
+// difference in what matches shows up.
 
 namespace {
 
-const std::regex& oracle_dynamics() {
-    static const std::regex r(R"(\[?ENABLE_CHART_DYNAMICS\]?)");
-    return r;
-}
 const std::regex& oracle_disco_on() {
     static const std::regex r(R"(\[?mix.3.drums\d?d\]?)");
     return r;
@@ -695,7 +693,9 @@ TEST_CASE(".mid: disco and dynamics markers match the regexes they replaced") {
               "ENABLE_CHART_DYNAMICS]", "[[ENABLE_CHART_DYNAMICS]", "[ENABLE_CHART_DYNAMICS]]",
               "", "[]", c + "ENABLE_CHART_DYNAMICS", "ENABLE_CHART_DYNAMICS" + c,
               "ENABLE_CHART" + c + "DYNAMICS"}) {
-            const bool want = std::regex_match(latin1_to_utf8(marker), oracle_dynamics());
+            // Clone Hero's two exact strings (finding 64, D24).
+            const std::string read = latin1_to_utf8(marker);
+            const bool want = read == "ENABLE_CHART_DYNAMICS" || read == "[ENABLE_CHART_DYNAMICS]";
             const Song song = load_songbytes_mid(
                 smf(concat({track_name("PART DRUMS"), set_tempo(), text_event(marker),
                             note_on(97, 127), end_of_track()})),

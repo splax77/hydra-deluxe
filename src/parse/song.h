@@ -129,6 +129,13 @@ public:
     std::vector<SongTimestamp> sequence;
     std::vector<std::string> features;
     bool dynamics_enabled = false;
+    // .mid only (finding 64, D24). When the drum track's dynamics tag came
+    // after at least one ghost- or accent-velocity note, the tag's tick and
+    // how many such notes came before it (Clone Hero prices them as plain).
+    // nullopt and 0 when the tag came before every marked note, or there is
+    // no tag (dynamics_enabled says which). count_dynamics stores them.
+    std::optional<int64_t> dynamics_late_tag_tick;
+    int dynamics_marks_before_tag = 0;
     // .chart [Song] Offset, in seconds, when the file sets one. Only the
     // Preview reads it (to line the audio up); scoring works in chart time.
     std::optional<double> chart_offset_s;
