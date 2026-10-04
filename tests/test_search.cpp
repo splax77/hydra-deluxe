@@ -1870,31 +1870,9 @@ TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refu
     CHECK(on_activation_chord > 0);
 }
 
-// D3 on the corpus: every tied variant stores what the search stores when it
-// prices that path alone, window by window (steps, squeezes, squeezed-out
-// note, backend rows). The settings are ones where mid-SP folds happen; the
-// defaults have none on this corpus.
-TEST_CASE("tied variants: every corpus variant matches its lone pricing") {
-    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    cfg.sp_cap = 4;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 40;
-    cfg.ms_filter = 10.0;
-    int variants = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        std::vector<const Path*> vs;
-        for (const Path& root : rec.paths) collect_variants(root, vs);
-        for (const Path* v : vs) {
-            ++variants;
-            const std::string diff = lone_pricing_mismatch(song, cfg, *v);
-            CHECK_MESSAGE(diff.empty(), chart << " " << diff);
-        }
-    }
-    CHECK(variants > 200);
-}
+// The corpus-wide lone-pricing check for tied variants lives in
+// test_replay.cpp ("every tied variant stores what a search pricing it alone
+// stores"), at these settings and two more.
 
 TEST_CASE("tied variants: a variant that finished the song keeps its own bank") {
     // Cap 4. Two phrases fill 2 bars, then two fills. '0' activates at 2304;

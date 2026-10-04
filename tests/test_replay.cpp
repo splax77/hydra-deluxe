@@ -241,7 +241,9 @@ struct TiedVariantCount {
 
 // Decision D3 for one set of analysis settings, over the whole corpus. Each
 // variant is priced alone with a targeted search, and its stored facts must
-// equal that search's. Only a root of the search is an oracle: a root was
+// equal that search's: score, squeeze kinds and offsets, SP end steps, bank
+// rise ticks, trailing bank, squeezed-out note and every backend row. Only a
+// root of the search is an oracle: a root was
 // never folded. Skips, the early-fill offset and the skipped fills are not
 // compared; they are finding 97. All-zero variants are not visited.
 //
@@ -334,12 +336,19 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
                 if (got[i].sqout_tick != want[i].sqout_tick)
                     diffs.push_back(act + "sqout_tick: stored " + opt_text(want[i].sqout_tick) +
                                     ", alone " + opt_text(got[i].sqout_tick));
-                if (got[i].display_backends() != want[i].display_backends())
+                // Every stored row, not only the shown ones: the shown rows
+                // follow from these and sqout_tick.
+                if (got[i].backends != want[i].backends)
                     diffs.push_back(act + "backend rows: stored " +
-                                    std::to_string(want[i].display_backends().size()) +
-                                    " rows, alone " +
-                                    std::to_string(got[i].display_backends().size()) +
-                                    " rows, not equal");
+                                    std::to_string(want[i].backends.size()) + " rows, alone " +
+                                    std::to_string(got[i].backends.size()) + " rows, not equal");
+                // The kinds already match (same_kinds); the offsets must too.
+                for (size_t k = 0; k < got[i].sqinouts.size(); ++k)
+                    if (got[i].sqinouts[k].offset_ms != want[i].sqinouts[k].offset_ms)
+                        diffs.push_back(act + "squeeze " + std::to_string(k) +
+                                        " offset_ms: stored " +
+                                        std::to_string(want[i].sqinouts[k].offset_ms) +
+                                        ", alone " + std::to_string(got[i].sqinouts[k].offset_ms));
             }
             if (!diffs.empty()) ++n.differing;
             for (const std::string& d : diffs) CHECK_MESSAGE(false, d);
