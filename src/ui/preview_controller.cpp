@@ -11,6 +11,7 @@
 #include "app/user_messages.h"
 #include "audio/device.h"
 #include "audio/player.h"
+#include "store/record_store.h"  // song_length_ms
 #include "ui/preview_load_job.h"
 
 namespace hydra::ui {
@@ -260,7 +261,14 @@ bool PreviewController::playing() const { return transport_.playing(); }
 
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
-double PreviewController::length_ms() const { return transport_.length_ms(); }
+// The scrubber's range (D50 item 4): the song's length as the Paths timeline
+// reads it, so the slider and its gold marks end at the last note. Playback,
+// the clock and the 5 s jumps still run to the transport's length, which
+// reaches the audio's end.
+double PreviewController::length_ms() const {
+    return hydra::app::scrub_end_ms(song_ ? store::song_length_ms(*song_) : std::nullopt,
+                                    transport_.length_ms());
+}
 
 void PreviewController::seek_ms(double ms) { transport_.seek_ms(ms); }
 
@@ -311,7 +319,7 @@ hydra::app::PreviewDrainBox PreviewController::drain_box() const {
 }
 
 const std::vector<double>& PreviewController::scrub_marks() const {
-    const double length = transport_.length_ms();
+    const double length = length_ms();
     if (!cache_fresh(scrub_marks_cache_) || scrub_marks_cache_.length_ms != length) {
         scrub_marks_ = hydra::app::build_scrub_marks(scene_, length);
         stamp(scrub_marks_cache_);

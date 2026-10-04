@@ -1724,6 +1724,42 @@ TEST_CASE("song_fraction: has_song_length takes only a positive length") {
     CHECK_FALSE(has_song_length(-1.0));
 }
 
+// The audio-tail chart: the last note is at 1000 ms and the audio stops 5 s
+// later, at 6000 ms. One activation on the note at tick 1440; one bar of SP
+// runs two measures, so its window ends at tick 5280. The scrubber is built
+// the way the Preview builds it (its right edge from scrub_end_ms over the
+// song's store::song_length_ms, the transport reaching the audio's end) and
+// the Paths timeline the way the Paths tab builds it (the stored last-note
+// length), and the two marks must be the same number.
+TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when the audio outlasts the notes") {
+    const test::AudioTailChart c = test::audio_tail_chart();
+    Path path;
+    path.activations = {sp_act_at(c.song, 1440, /*sp_meter=*/1, /*end_tick=*/5280)};
+    const PreviewScene scene = build_preview_scene(c.song, &path, kCloneHeroSpCap,
+                                                   core::default_rules(), c.audio_end_ms);
+    const std::vector<double> marks =
+        build_scrub_marks(scene, scrub_end_ms(store::song_length_ms(c.song), c.audio_end_ms));
+    REQUIRE(marks.size() == 1);
+    CHECK(marks[0] == doctest::Approx(0.75));
+
+    const ActivationsView view =
+        build_activations(path, HydraRecord{}, &c.song.timing(), Settings{}.hit_window_ms,
+                          std::nullopt, core::default_rules(), c.last_note_ms);
+    REQUIRE(view.acts.size() == 1);
+    REQUIRE(view.acts[0].song_fraction.has_value());
+    CHECK(marks[0] == *view.acts[0].song_fraction);
+}
+
+TEST_CASE("scrub marks: a playhead past the last note parks the thumb at the right end") {
+    const test::AudioTailChart c = test::audio_tail_chart();
+    const double end = scrub_end_ms(c.last_note_ms, c.audio_end_ms);
+    CHECK(end == doctest::Approx(1000.0));
+    // Playback runs on to the audio's end; the thumb waits at the last note.
+    CHECK(scrub_thumb_ms(c.audio_end_ms, end) == doctest::Approx(1000.0));
+    // Before the last note the thumb follows the playhead.
+    CHECK(scrub_thumb_ms(500.0, end) == doctest::Approx(500.0));
+}
+
 TEST_CASE("activation jumps: nearest activation before or after the playhead") {
     TwoActs t;
     CHECK(activation_jump_ms(t.scene, 0.0, +1) == doctest::Approx(2000.0));

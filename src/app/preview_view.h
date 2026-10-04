@@ -233,8 +233,11 @@ struct PreviewScene {
     std::optional<SongTiming> timing;
     int64_t tick_resolution = 0;       // ticks per quarter note
     // The last note's onset: where the SP curve closes and the Preview's own
-    // song end. The scrubber's range is the transport's length instead
+    // song end. Playback runs to the transport's length instead
     // (PreviewTransport::load takes the later of this and the audio's end).
+    // The scrubber's right edge does not read this field: it reads
+    // store::song_length_ms, the length song_fraction and the Paths timeline
+    // read (see scrub_end_ms).
     double song_length_ms = 0.0;
     bool has_notes = false;
 };
@@ -316,9 +319,23 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
                     int delta_ticks);
 
 // Where each activation of the shown path sits on the scrubber: its onset over
-// `length_ms` (the transport's length, the scrubber's right edge), clamped to
-// 0..1, in activation order. Empty with no path or no length.
+// `length_ms` (the scrubber's right edge, scrub_end_ms), clamped to 0..1, in
+// activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
+
+// The Preview scrubber's right edge (D50 item 4). It is the song's length,
+// `song_length_ms`, when has_song_length says that length is usable. Pass the
+// value store::song_length_ms gives for the chart: the same length the Paths
+// tab hands build_activations for song_fraction, so an activation sits at the
+// same fraction on both bars. Otherwise the edge is `playback_length_ms`, the
+// transport's length, as before. Playback still runs on into any audio past
+// the last note; the thumb just cannot be dragged there.
+double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms);
+
+// Where the scrubber's thumb sits with the playhead at `now_ms`. It follows
+// the playhead and stays parked at `scrub_end_ms` while playback runs past it
+// into the audio tail.
+double scrub_thumb_ms(double now_ms, double scrub_end_ms);
 
 // Is `length_ms` a song length the timeline can use? Only a positive length
 // is. song_fraction and the Paths tab's end-measure label both ask it, so the

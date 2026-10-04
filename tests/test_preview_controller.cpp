@@ -343,6 +343,37 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
     CHECK(pc.audio_warning().empty());
 }
 
+// The scrubber ends at the last note while the music plays on (D50 item 4).
+// The chart's last note is at 100 ms and its audio runs 5 s. The slider's
+// range is length_ms(), so it reaches only the last note; a drag to its right
+// end seeks there, not to the audio's end. Playback can still run into the
+// tail, and there the thumb waits at the right end.
+TEST_CASE("scrub marks: the Preview's scrubber ends at the last note while the audio plays on") {
+    PreviewController pc(nullptr, nullptr);
+    pc.set_audio_device_factory(
+        [](int, int, PreviewController::AudioSource)
+            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+            throw std::runtime_error("no device in tests");
+        });
+    pc.open(entry_for(short_chart_with_long_audio()), true, true, Difficulty::Expert, nullptr, "",
+            4);
+    for (int i = 0; i < 1200 && pc.loading(); ++i) {
+        pc.poll();
+        Sleep(50);
+    }
+    REQUIRE_FALSE(pc.loading());
+    REQUIRE(pc.has_audio());
+
+    CHECK(pc.length_ms() == doctest::Approx(100.0));  // the slider's right end
+    pc.seek_ms(pc.length_ms());                        // a drag to that end
+    CHECK(pc.position_ms() == doctest::Approx(100.0));
+
+    pc.jump_ms(4000.0);  // into the tail, which still plays
+    CHECK(pc.position_ms() == doctest::Approx(4100.0));
+    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.length_ms()) ==
+          doctest::Approx(100.0));
+}
+
 // Picking another path with the Preview open used to rebuild the scene inside
 // open(), on the UI thread. It now builds on a job and lands on a later poll().
 TEST_CASE("switching paths builds the new overlay off the UI thread") {

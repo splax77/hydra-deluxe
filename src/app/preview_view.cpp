@@ -610,6 +610,17 @@ std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_m
     return marks;
 }
 
+double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms) {
+    return song_length_ms && has_song_length(*song_length_ms) ? *song_length_ms
+                                                               : playback_length_ms;
+}
+
+double scrub_thumb_ms(double now_ms, double scrub_end_ms) {
+    // With no usable edge there is nothing to park at: the thumb follows the
+    // playhead, as it always did.
+    return has_song_length(scrub_end_ms) ? std::min(now_ms, scrub_end_ms) : now_ms;
+}
+
 namespace {
 // How far from an activation the playhead may sit and still count as on it.
 constexpr double kOnActivationMs = 0.5;

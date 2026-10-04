@@ -5,7 +5,7 @@
 #endif
 #include <windows.h>
 
-#include "app/preview_view.h"  // path_overlay_key
+#include "app/preview_view.h"  // path_overlay_key, scrub_thumb_ms
 #include "core/model.h"        // kCloneHeroSpCap
 #include "imgui.h"
 #include "imgui_internal.h"  // SetKeyOwner, owner-aware IsKeyPressed
@@ -292,9 +292,13 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     if (ImGui::IsItemDeactivatedAfterEdit()) app.commit_settings();
 
     // The clock drives the scrubber, so a chart with no audio still scrubs.
+    // The scrubber ends at the last note (D50 item 4); while the audio plays
+    // on past it, the thumb waits at the right end.
     const hydra::app::PreviewTimeBox box = pc->time_box();
-    float pos_s = static_cast<float>(pc->position_ms() / 1000.0);
-    const float len_s = static_cast<float>(pc->length_ms() / 1000.0);
+    const double scrub_len_ms = pc->length_ms();
+    float pos_s =
+        static_cast<float>(hydra::app::scrub_thumb_ms(pc->position_ms(), scrub_len_ms) / 1000.0);
+    const float len_s = static_cast<float>(scrub_len_ms / 1000.0);
     // The clock's slot fits its widest form: every digit drawn as the widest one.
     std::string readout_sample = box.timestamp;
     const char widest = widest_digits(1)[0];
