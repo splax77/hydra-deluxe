@@ -92,48 +92,142 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
     return paths;
 }
 
+namespace {
+
+template <class Keep>
+void keep_qualifying_variants(Path& p, const Keep& keep);
+
+// keep_target_paths' rescue for a dropped path (D45 addendum): its tied
+// variants, and theirs under a dropped variant, that pass `keep`, appended
+// to `out` in the search's order. Each comes out standalone: a variant
+// stores only the activations before its fold and reads the rest from its
+// parent (variant_tail), so its whole walk is copied into its own list and
+// the link to the parent cleared. Its own tied variants stay with it, kept
+// by the same rule; their tails index its walk, which is unchanged.
+template <class Keep>
+void rescue_variants(Path& dropped, const Keep& keep, std::vector<Path>& out) {
+    for (Path& v : dropped.variants) {
+        if (!keep(v)) {
+            rescue_variants(v, keep, out);
+            continue;
+        }
+        v.activations = v.all_activations();
+        v.variant_tail.clear();
+        v.var_point.reset();
+        keep_qualifying_variants(v, keep);
+        out.push_back(std::move(v));
+    }
+}
+
+// Appends rescued (standalone) paths to `into`, the list that holds
+// `parent`'s tied variants, in order, each sharing nothing with `parent`: a
+// variant shares its parent's walk from var_point on, and pointing past
+// `parent`'s walk shares nothing, so each keeps its whole walk as its own.
+// The one place a rescued path is marked "shares nothing".
+void adopt_unshared(const Path& parent, std::vector<Path> rescued, std::vector<Path>& into) {
+    const int past_walk = static_cast<int>(parent.walk_activations().size());
+    for (Path& r : rescued) {
+        r.var_point = past_walk;
+        into.push_back(std::move(r));
+    }
+}
+
+// Under a kept path, only the tied variants that pass `keep` stay (D45
+// addendum). A kept variant stays as folded, its own variants kept by the
+// same rule. A dropped variant's passing variants are rescued and stay
+// under `p`, in the search's order, sharing nothing with it.
+template <class Keep>
+void keep_qualifying_variants(Path& p, const Keep& keep) {
+    std::vector<Path> stay;
+    for (Path& v : p.variants) {
+        if (keep(v)) {
+            keep_qualifying_variants(v, keep);
+            stay.push_back(std::move(v));
+            continue;
+        }
+        std::vector<Path> rescued;
+        rescue_variants(v, keep, rescued);
+        adopt_unshared(p, std::move(rescued), stay);
+    }
+    p.variants = std::move(stay);
+}
+
+}  // namespace
+
+std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<int64_t>& ticks,
+                                    std::vector<bool>* promoted) {
+    // A tick the search never met as an activation opportunity -- not a fill
+    // node at all, or one the path was already under Star Power for -- does
+    // not empty the frontier: that path just quietly comes back with fewer
+    // activations than asked for. Every returned path, tied variants
+    // included, took exactly the named activations (decision D45 and its
+    // addendum).
+    const auto took_all = [&ticks](const Path& p) {
+        const ActivationWalk acts = p.walk_activations();
+        if (acts.size() != ticks.size()) return false;
+        for (size_t i = 0; i < acts.size(); ++i)
+            if (acts[i].timecode.ticks() != ticks[i]) return false;
+        return true;
+    };
+    std::vector<Path> kept;
+    if (promoted) promoted->clear();
+    for (Path& p : paths) {
+        if (took_all(p)) {
+            keep_qualifying_variants(p, took_all);
+            p.recount_tied_paths();
+            kept.push_back(std::move(p));
+            if (promoted) promoted->push_back(false);
+            continue;
+        }
+        // A dropped root's qualifying variants become a result of their own:
+        // the first leads, the rest are its tied variants, in the search's
+        // order, each sharing nothing with the lead (as above).
+        std::vector<Path> rescued;
+        rescue_variants(p, took_all, rescued);
+        if (rescued.empty()) continue;
+        Path lead = std::move(rescued.front());
+        rescued.erase(rescued.begin());
+        adopt_unshared(lead, std::move(rescued), lead.variants);
+        lead.recount_tied_paths();
+        kept.push_back(std::move(lead));
+        if (promoted) promoted->push_back(true);
+    }
+    return kept;
+}
+
 std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
-                                const std::vector<int64_t>& act_ticks) {
+                                const std::vector<int64_t>& act_ticks,
+                                std::vector<bool>* promoted) {
     std::vector<int64_t> ticks = act_ticks;
     std::sort(ticks.begin(), ticks.end());
     ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());
 
-    ScoreGraph graph(song, std::optional<int>(settings.sp_cap),
+    // Built as tall as the main search builds it (decision D45).
+    ScoreGraph graph(song,
+                     std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
                      settings.legacy_fill_deadline ? FillDeadlineRule::Ch10
                                                    : FillDeadlineRule::Ch11,
                      settings.rules);
 
     // The caller named the path, so nothing may prune it: the widest possible
-    // points band keeps every survivor, and no timing filter is applied. The
-    // band is compared as `score + depth_value < best` in int64 arithmetic, so
-    // a billion cannot overflow.
+    // points band keeps every survivor, and no timing filter is applied.
     std::vector<Path> paths;
     try {
         EngineOptions options;
         options.depth_mode = DepthMode::Points;
-        options.depth_value = 1'000'000'000;
+        options.depth_value = kKeepEveryPathBand;
         options.target_act_ticks = ticks;
         paths = run_search(graph, options);
     } catch (const std::runtime_error&) {
         // The frontier emptied: this activation set is not realizable on this
         // chart. That is the normal failure for a targeted search, not a bug.
+        if (promoted) promoted->clear();
         return {};
     }
 
-    // A tick the search never met as an activation opportunity -- not a fill
-    // node at all, or one the path was already under Star Power for -- does not
-    // empty the frontier: the path just quietly comes back with fewer
-    // activations than asked for. That is still an unrealizable set, so it
-    // reports as one.
-    for (const Path& p : paths) {
-        const ActivationWalk acts = p.walk_activations();
-        if (acts.size() != ticks.size()) return {};
-        for (size_t i = 0; i < acts.size(); ++i) {
-            if (acts[i].timecode.ticks() != ticks[i])
-                return {};
-        }
-    }
-    return paths;
+    // Only the paths that took every named activation stay; none left means
+    // the set is not realizable.
+    return keep_target_paths(std::move(paths), ticks, promoted);
 }
 
 int graph_build_cap(int sp_cap, int sp_phrase_count) {

@@ -96,7 +96,12 @@ Hitting a note near the SP end early, so it lands inside Star Power.
 
 **SqIn / SqOut**:
 Squeezing an SP phrase's note into (+) or out of (-) an active Star Power
-window, written as the `+`/`-` symbols in path notation.
+window, written as the `+`/`-` symbols in path notation. Only a phrase after
+the activation chord can be squeezed: one at or before it was banked before
+SP started (core/sqout_chord.h, `activation_can_squeeze`). A phrase is
+squeezed in only once. Each SP end offers the first phrase in its 500 ms
+window that the window has not banked or already squeezed in, or nothing if
+none is left (`offered_phrase`, D34).
 
 **Multiplier squeeze**:
 Ordering the hits of a multi-note chord on a combo-multiplier boundary so the
@@ -129,7 +134,16 @@ squeeze budgets, ratings, and report tiers, never the search.
 **Transfer scale**:
 How frontend timing error carries to the SP end. SP length is measured in
 measures, so a hit `d` ms off moves the SP end `r*d` ms; early and late hits
-can scale differently on a signature or tempo change.
+can scale differently on a signature or tempo change. It is measured from the
+note whose timing moves the SP end: the activation, or the cap's collecting
+note. Each SqIn stores its own scale, at the SP end it was measured from
+(docs/adr/0021).
+
+**SP-end history**:
+Every place an activation's SP end moved, in order: the activation, each
+phrase collected, each cap clamp and each SqIn, with the end in force after
+it. The engine stores it once per activation. The deact node, the clamp note
+and the collected phrases are read from it (docs/adr/0021).
 
 **Deact node**:
 The exact chart position where an activation's Star Power ends; backend
@@ -199,19 +213,26 @@ fills as a player following the path would see them. A fill the path
 activates on is *taken* (all four lanes lit, the activation note's lane
 highlighted); a fill the path had enough SP for but passed over is *offered*
 (lanes lit dimly); every other candidate fill is hidden, because the game would
-not have shown it. Offered fills come from the activation's skip count, not a
-re-derived SP meter; fills after the last activation are hidden because the
-engine records nothing about them.
+not have shown it. Offered fills are the ones the engine stored on each
+activation as passed over; nothing guesses them from a count. A tied variant's
+activations carry its own passed-over fills and early-fill offset, the next one
+after a fold between windows included (D38), and a fill the path took always
+stays taken. Fills
+after the last activation are hidden because the engine records nothing about
+them.
 
 **SP meter gauge**:
 The vertical gauge on the note highway's right edge showing banked Star Power
-at the playhead: up one bar at each collected phrase, draining through each
-activation to hit empty exactly at the deact node. Anchored to the record's
-per-activation bank, deact node and list of collected phrases, never
-re-derived. Late-SqIn and cap-clamped phrases are in that list. A phrase
-inside the window that the record does not list was squeezed out, so it
-banks when SP ends rather than during the drain.
-Without a path it fills and pins at the cap, since nothing spends it.
+at the playhead. With a path, every value is the record's. Between activations
+it steps up one bar at each tick where the engine stamped a bar's arrival. In
+an active window it shows the measures left until the SP end in force, two
+measures to a bar, and the record lists every place that end moved. It empties
+exactly at the deact node. The gauge counts no phrases and applies no cap. A
+late squeeze-in refills at the old SP end, because the player hits that phrase
+early and SP never stops. A squeezed-out phrase's bar arrives when the player
+hits it: as SP ends for an early phrase, on its own note for a late one.
+Without a path it fills one bar per phrase and pins at the cap, since nothing
+spends it and there is no record to read.
 
 **Stem**:
 One of the several audio files a chart may ship instead of a single mix (e.g.

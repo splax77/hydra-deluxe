@@ -29,6 +29,12 @@ inline SqOutPosition sqout_position(int64_t row_tick,
 // inclusive at the deactivation node), before any backend pricing happens.
 inline bool paid_by_sp_walk(double offset_ms) { return offset_ms <= 0.0; }
 
+// The same edge by tick: is this chord after the SP end? A chord exactly on
+// the end is not, so it agrees with paid_by_sp_walk wherever time runs
+// forwards (parse refuses timing that does not, D6). The graph's late
+// squeeze choice and the engine's squeeze-out bank tick ask it.
+inline bool after_sp_end(int64_t chord_tick, int64_t end_tick) { return chord_tick > end_tick; }
+
 // Counted under Star Power with no squeeze: at or before the SP end, or
 // less than the leeway (Rules::backend_leeway_ms) after it.
 inline bool counted_without_squeeze(double offset_ms, double leeway_ms) {
@@ -42,6 +48,15 @@ inline int backend_row_value(double offset_ms, int points, int sqout_points,
     if (pos == SqOutPosition::After) return 0;
     if (!counted_without_squeeze(offset_ms, leeway_ms)) return 0;
     return pos == SqOutPosition::Exact ? sqout_points : points;
+}
+
+// Did Star Power pay this row anything on this path? The one yes/no for
+// "inside SP", built from the price above. The replay's xN disc doubles
+// exactly when it is true (decision D2): a squeezed-out chord whose
+// sqout_points are 0 reads no, a partly paid one reads yes.
+inline bool paid_by_sp(double offset_ms, int points, int sqout_points,
+                       SqOutPosition pos, double leeway_ms) {
+    return backend_row_value(offset_ms, points, sqout_points, pos, leeway_ms) > 0;
 }
 
 }  // namespace hydra::core

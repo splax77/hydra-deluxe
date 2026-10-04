@@ -9,6 +9,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "core/model.h"
@@ -17,6 +18,7 @@
 #include "core/backend_value.h"
 #include "core/rules.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 
 using namespace hydra;
 
@@ -113,10 +115,26 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
 
     Activation a;
     a.e_offset = 10.0;
-    a.skips = 0;
+    test::set_skips(a, 0);
     CHECK(a.is_E0() == is_e0(10.0, 0));
     REQUIRE(a.e_difficulty().has_value());
     CHECK(*a.e_difficulty() == early_fill_difficulty(10.0));
+}
+
+// The early-fill window has one owner: model.h states both halves of it, the
+// fill that refuses (fill_refuses) and the E0 (is_e0). That only model.h
+// reads kEarlyFillWindowMs is a row of the single-owner scan
+// (test_single_owner.cpp); this checks the two halves' edges.
+TEST_CASE("early-fill window: the refusal and the E0 edges") {
+    CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
+    CHECK_FALSE(fill_refuses(-kEarlyFillWindowMs));  // exactly 60 ms late still spawns
+    CHECK(fill_refuses(-kEarlyFillWindowMs - 0.1));
+    Activation a;
+    a.e_offset = kEarlyFillWindowMs - 0.1;
+    test::set_skips(a, 1);
+    CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
+    a.e_offset = kEarlyFillWindowMs;
+    CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
 }
 
 TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
@@ -124,7 +142,7 @@ TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
     CHECK_FALSE(empty.is_difficult());
 
     Activation a;
-    a.skips = 0;
+    test::set_skips(a, 0);
     a.e_offset = 300.0;  // not e-critical
     a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -(kDifficultMs + 0.5)});
     Path hard;
@@ -136,9 +154,67 @@ TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
     CHECK_FALSE(edge.is_difficult());  // exactly at the floor is not past it
 }
 
+TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps") {
+    using K = SpEndKind;
+    Activation a;
+    a.timecode = Timecode::raw(2304);
+
+    // Case 3 of the SqIn-plus-clamp table: clamp at C1, SqIn, clamp at C2.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {3072, 6144, K::Clamped},     // C1 pins X
+                      {6100, 7680, K::SqIn},        // early SqIn: X = 6144
+                      {6912, 9984, K::Clamped}};    // C2 pins D
+    a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -50.0}};
+    CHECK(a.end_anchor_tick(0) == 2304);
+    CHECK(a.end_anchor_tick(1) == 3072);
+    CHECK(a.end_anchor_tick(3) == 6912);
+    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(6144));
+    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(3072));  // C1
+    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(6912));     // C2
+
+    // Case 2: SqIn, then a clamp. The SqIn's end was the activation's.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {5400, 6912, K::SqIn},        // late SqIn: X = 5376
+                      {6144, 12288, K::Clamped}};
+    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(5376));
+    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(2304));
+    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(6144));
+
+    // Case 1: clamp at C, then a SqIn. X was pinned to C, so both anchors
+    // are C.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {3072, 6144, K::Clamped},
+                      {6100, 7680, K::SqIn}};
+    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(3072));
+    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(3072));
+
+    // A SqOut is measured from D, with D's anchor.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {5400, 6912, K::SqIn},
+                      {6144, 12288, K::Clamped}};
+    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -20.0});
+    CHECK(a.squeeze_end_tick(1) == a.deact_tick());
+    CHECK(a.squeeze_anchor_tick(1) == a.deact_anchor_tick());
+
+    // Two SqIns map to the two SqIn steps in order.
+    a.sp_end_steps = {{2304, 5376, K::Activation},
+                      {5400, 6912, K::SqIn},
+                      {6950, 8448, K::SqIn}};
+    a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 24.0}, SPSqueeze{SqueezeKind::SqIn, 38.0}};
+    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(5376));
+    CHECK(a.squeeze_end_tick(1) == std::optional<int64_t>(6912));
+
+    // An old record (no steps) answers nothing.
+    Activation old;
+    old.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 5.0}};
+    CHECK_FALSE(old.squeeze_end_tick(0).has_value());
+    CHECK_FALSE(old.squeeze_anchor_tick(0).has_value());
+    CHECK_FALSE(old.deact_anchor_tick().has_value());
+}
+
 TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
     Activation a;
-    a.skips = 2;
+    test::set_skips(a, 2);
     a.e_offset = 300.0;  // not e-critical (>= kEarlyFillWindowMs)
     CHECK(a.notationstr() == "2");
 
@@ -159,7 +235,7 @@ TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
 TEST_CASE("Path pathstring and pathstring_verbose") {
     Path p;
     Activation a;
-    a.skips = 1;
+    test::set_skips(a, 1);
     a.e_offset = 400.0;  // not e-critical, no sqinouts -> verbose == notationstr
     p.activations.push_back(a);
     p.score_base = 100000;  // totalscore == 100000
@@ -184,9 +260,9 @@ TEST_CASE("Path pathstring and pathstring_verbose") {
 TEST_CASE("Path::walk_activations: own activations then the variant tail, in place") {
     Path p;
     Activation a1, a2, t1;
-    a1.skips = 0;
-    a2.skips = 1;
-    t1.skips = 2;
+    test::set_skips(a1, 0);
+    test::set_skips(a2, 1);
+    test::set_skips(t1, 2);
     p.activations = {a1, a2};
     p.variant_tail = {t1};
 
@@ -209,7 +285,7 @@ TEST_CASE("Path::walk_activations: own activations then the variant tail, in pla
     // The same sequence the copying all_activations() hands out.
     const std::vector<Activation> copied = p.all_activations();
     REQUIRE(copied.size() == walk.size());
-    for (size_t i = 0; i < copied.size(); ++i) CHECK(copied[i].skips == walk[i].skips);
+    for (size_t i = 0; i < copied.size(); ++i) CHECK(copied[i].skips() == walk[i].skips());
 
     // Nothing on either side.
     Path none;
@@ -366,6 +442,18 @@ TEST_CASE("backend_row_value: every engine case") {
     CHECK_FALSE(core::paid_by_sp_walk(0.5));
 }
 
+TEST_CASE("SPSqueeze::is_free: a note on the SP end is inside SP (D13)") {
+    // A SqIn is free once its note is inside SP: at the end or before it.
+    CHECK(SPSqueeze{SqueezeKind::SqIn, 0.0}.is_free());
+    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.0}.is_free());
+    CHECK(SPSqueeze{SqueezeKind::SqIn, -0.001}.is_free());
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 0.001}.is_free());
+    // A SqOut is free once its note is already outside: past the end only.
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, 0.0}.is_free());
+    CHECK_FALSE(SPSqueeze{SqueezeKind::SqOut, -0.001}.is_free());
+    CHECK(SPSqueeze{SqueezeKind::SqOut, 0.001}.is_free());
+}
+
 TEST_CASE("difficulty names: one list, one spelling") {
     // The dropdown indexes this list by the enum's value, so order matters.
     REQUIRE(std::size(kAllDifficulties) == 4);
@@ -489,4 +577,40 @@ TEST_CASE("MultSqueeze::applies answers exactly when the constructor accepts") {
             }
         }
     }
+}
+
+TEST_CASE("Activation: set_sqout stamps the tick, trims later rows, builds the SqOut from its row") {
+    Activation act;
+    const std::tuple<int64_t, double> rows[] = {{100, -40.0}, {200, -12.5}, {300, 30.0}};
+    for (const auto& [tick, off] : rows) {
+        BackendSqueeze b;
+        b.timecode = Timecode::raw(tick);
+        b.offset_ms = off;
+        act.backends.push_back(b);
+    }
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 7.0});
+
+    act.set_sqout(200);
+    CHECK(act.sqout_tick == std::optional<int64_t>(200));
+    REQUIRE(act.backends.size() == 2);  // the row past the squeezed-out chord is gone
+    REQUIRE(act.sqinouts.size() == 2);
+    CHECK(act.sqinouts[1].kind == SqueezeKind::SqOut);
+    CHECK(act.sqinouts[1].offset_ms == -12.5);  // read off the row, not typed twice
+    REQUIRE(act.sqout_row() != nullptr);
+    CHECK(act.sqout_row()->timecode.ticks() == 200);
+
+    Activation none;
+    CHECK(none.sqout_row() == nullptr);
+    CHECK_THROWS_AS(none.set_sqout(200), std::logic_error);  // no row on that tick
+}
+
+TEST_CASE("refill_tick: a late squeeze-in's bar arrives at the old end") {
+    Activation a;
+    a.timecode = Timecode::raw(5760);
+    a.sp_end_steps = {{5760, 13440, SpEndKind::Activation},
+                      {12000, 15360, SpEndKind::Collected},
+                      {15840, 19200, SpEndKind::SqIn}};
+    CHECK(a.refill_tick(0) == 5760);
+    CHECK(a.refill_tick(1) == 12000);
+    CHECK(a.refill_tick(2) == 15360);  // past the end in force: the old end
 }

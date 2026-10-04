@@ -7,57 +7,55 @@
 
 namespace hydra {
 
-std::optional<TransferScale> transfer_scale_between(int64_t act_tick,
+std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
                                                     int64_t end_tick,
                                                     const SongTiming& timing) {
-    TransferScale scale;
-    double front_late = timing.ms_per_measure_at(act_tick);
-    double front_early = timing.ms_per_measure_at(act_tick - 1);
-    if (front_late <= 0.0 || front_early <= 0.0) return std::nullopt;
-    scale.late = timing.ms_per_measure_at(end_tick) / front_late;
-    scale.early = timing.ms_per_measure_at(end_tick - 1) / front_early;
-    return scale;
+    const double front_late = timing.ms_per_measure_at(anchor_tick);
+    const double front_early = timing.ms_per_measure_at(anchor_tick - 1);
+    const double end_late = timing.ms_per_measure_at(end_tick);
+    const double end_early = timing.ms_per_measure_at(end_tick - 1);
+    for (double m : {front_late, front_early, end_late, end_early})
+        if (!std::isfinite(m) || m <= 0.0) return std::nullopt;
+    return TransferScale{end_early / front_early, end_late / front_late};
 }
 
 std::optional<int64_t> activation_deact_tick(const Activation& act) {
-    return act.deact_tick;
+    return act.deact_tick();
 }
 
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing) {
-    if (!act.deact_tick) return std::nullopt;
-
-    int64_t act_tick = act.timecode.ticks();
-    bool has_sqin = false;
-    for (const SPSqueeze& sq : act.sqinouts) {
-        if (sq.kind == SqueezeKind::SqIn) {
-            has_sqin = true;
-            break;
-        }
-    }
-
-    // The SP end the search recorded, straight off the record.
-    int64_t post_tick = *act.deact_tick;
-    // The SqIn phrase is judged against the end as it stood before that
-    // phrase extended SP: one 2-measure step down from D. With several
-    // SqIns, or a plain collection after the last one, this is exact only
-    // for the last extension -- one `pre` per activation is all the data
-    // model (and the blob) carries.
-    int64_t pre_tick =
-        has_sqin ? timing.plusmeasure(timing.timecode(post_tick), -sp_bars_to_measures(1)).ticks()
-                 : post_tick;
-
-    std::optional<TransferScale> post =
-        transfer_scale_between(act_tick, post_tick, timing);
+    // D and the note whose timing moves it, from the stored steps.
+    const std::optional<int64_t> d = act.deact_tick();
+    const std::optional<int64_t> d_anchor = act.deact_anchor_tick();
+    if (!d || !d_anchor) return std::nullopt;
+    const std::optional<TransferScale> post = transfer_scale_between(*d_anchor, *d, timing);
     if (!post) return std::nullopt;
-
-    ActTransferScales scales{*post, *post};
-    if (pre_tick != post_tick) {
-        if (std::optional<TransferScale> pre =
-                transfer_scale_between(act_tick, pre_tick, timing))
-            scales.pre = *pre;
+    ActTransferScales out;
+    out.post = *post;
+    // Each SqIn at the end its own offset was measured from.
+    for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+        if (act.sqinouts[k].kind != SqueezeKind::SqIn) continue;
+        const std::optional<int64_t> end = act.squeeze_end_tick(k);
+        const std::optional<int64_t> anchor = act.squeeze_anchor_tick(k);
+        if (!end || !anchor) return std::nullopt;
+        const std::optional<TransferScale> s = transfer_scale_between(*anchor, *end, timing);
+        if (!s) return std::nullopt;
+        out.sqins.push_back(*s);
     }
-    return scales;
+    return out;
+}
+
+std::optional<ActTransferScales> stored_transfer_scales(const Activation& act) {
+    if (!act.transfer_post) return std::nullopt;
+    ActTransferScales s;
+    s.post = *act.transfer_post;
+    for (const SPSqueeze& sq : act.sqinouts) {
+        if (sq.kind != SqueezeKind::SqIn) continue;
+        if (!sq.transfer) return std::nullopt;
+        s.sqins.push_back(*sq.transfer);
+    }
+    return s;
 }
 
 double effective_backend_ms(double offset_ms, double transfer_r) {
@@ -68,12 +66,20 @@ double squeeze_budget_ms(double transfer_r, double hit_window_ms) {
     return hit_window_ms * (1.0 + transfer_r);
 }
 
-bool transfer_is_material(double gap_ms, double transfer_r,
-                          double hit_window_ms) {
-    double gap = std::abs(gap_ms);
-    return std::abs(effective_backend_ms(gap, transfer_r) - gap) >
-               kTransferImpactMs ||
-           gap > squeeze_budget_ms(transfer_r, hit_window_ms);
+NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
+                     double hit_window_ms) {
+    NoteRating n;
+    n.early = inside;
+    n.scale = inside ? at_end.early : at_end.late;
+    n.budget_ms = squeeze_budget_ms(n.scale, hit_window_ms);
+    if (is_scaled(n.scale)) n.effective_ms = effective_backend_ms(offset_ms, n.scale);
+    return n;
+}
+
+bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms) {
+    return row.squeezed_out ||
+           (row.row.offset_ms &&
+            !core::counted_without_squeeze(*row.row.offset_ms, backend_leeway_ms));
 }
 
 ActivationRating rate_activation(const Activation& act,
@@ -82,113 +88,66 @@ ActivationRating rate_activation(const Activation& act,
     ActivationRating out;
 
     // The scales the search stamped on the record. A stored fact is read,
-    // never re-derived (ADRs 0011, 0013, 0014); every Ready record has them.
-    out.scales = ActTransferScales{act.transfer_pre, act.transfer_post};
+    // never re-derived (ADRs 0011, 0013, 0014). Unset when any one is
+    // unknown: then nothing below gets a figure (D4).
+    out.scales = stored_transfer_scales(act);
 
-    // The scale that governs each row follows the sign of its offset, not the
-    // kind of squeeze. A sqout row still inside SP (offset < 0) has to be
-    // achieved by an early frontend hit, so it reads the early scale; a sqout
-    // row already past the SP end (offset > 0) is free, and the only thing
-    // that can destroy it is a late frontend hit dragging the end over it, so
-    // it reads the late scale. Plain positive rows want a late frontend hit;
-    // plain rows inside SP (offset < 0) are lost only to an early one.
-    // All of them live at the (possibly SqIn-extended) SP end, so they read
-    // `post`. effective_ms maps the row's raw ms onto the nominal 2*W budget
-    // the ratings assume (the real combined budget is W*(1+r)); it engages
-    // only when the scale actually moves the number (an over-budget row still
-    // warns at x1.00 but reads at face value).
+    // Backend rows: every offset is measured from the deact node D, so they
+    // read `post`. A squeezed-out row is about its phrase, which the SP end
+    // itself decides; every other row is about its points, which the engine
+    // counts up to the leeway.
     std::vector<BackendSqueeze> backends = act.display_backends();
     out.backends.reserve(backends.size());
     for (const BackendSqueeze& bsq : backends) {
         BackendRating row;
         row.row = bsq;
         row.squeezed_out = act.is_sqout_backend(bsq);
-        if (bsq.offset_ms) {
-            bool applies = false;
-            if (row.squeezed_out && *bsq.offset_ms > 0.0) {
-                row.scale = out.scales.post.late;
-                applies = transfer_is_material(*bsq.offset_ms, row.scale,
-                                               hit_window_ms);
-                out.late_backend_warns |= applies;
-            } else if (row.squeezed_out) {
-                row.scale = out.scales.post.early;
-                applies = transfer_is_material(*bsq.offset_ms, row.scale,
-                                               hit_window_ms);
-                out.early_backend_warns |= applies;
-            } else if (!core::counted_without_squeeze(*bsq.offset_ms,
-                                                      backend_leeway_ms)) {
-                row.scale = out.scales.post.late;
-                applies = transfer_is_material(*bsq.offset_ms, row.scale,
-                                               hit_window_ms);
-                out.late_backend_warns |= applies;
-            } else if (*bsq.offset_ms < 0.0) {
-                // A plain row inside SP already counts. Like a free SqIn, the
-                // only thing that can lose it is an early frontend hit pulling
-                // the end back over it, so its margin reads the early scale.
-                row.scale = out.scales.post.early;
-                applies = transfer_is_material(*bsq.offset_ms, row.scale,
-                                               hit_window_ms);
-                out.early_backend_warns |= applies;
-            }
-            if (applies) {
-                double eff = effective_backend_ms(*bsq.offset_ms, row.scale);
-                if (std::abs(eff - std::abs(*bsq.offset_ms)) > kTransferImpactMs)
-                    row.effective_ms = eff;
-            }
+        // Unknown scales skip rate_note: the row keeps NoteRating's defaults
+        // (x1.00, budget 0, no figure), which are not real values.
+        if (bsq.offset_ms && out.scales) {
+            const double o = *bsq.offset_ms;
+            const bool inside = row.squeezed_out
+                                    ? core::paid_by_sp_walk(o)
+                                    : core::counted_without_squeeze(o, backend_leeway_ms);
+            row.note = rate_note(o, inside, out.scales->post, hit_window_ms);
+            out.scale_governs |= row.note.effective_ms.has_value();
         }
-        row.budget_ms = squeeze_budget_ms(row.scale, hit_window_ms);
         out.backends.push_back(std::move(row));
     }
 
-    // The SqIn/SqOut phrase notes are judged at the pre-extension end, in the
-    // direction that decides them. A squeeze you still have to earn
-    // (difficulty > 0) is decided by the hit that achieves it: early (-) for a
-    // SqOut, late (+) for a SqIn. A free one (difficulty <= 0) is already
-    // yours, so the direction that matters is the opposite one -- the frontend
-    // error that would move the SP end far enough to take it away. They have
-    // no display row of their own, so they feed the warning line and carry
-    // their own effective ms, for the squeeze sentence to print.
+    // SqIn phrase notes: each offset is measured from the end before its
+    // phrase extended SP, so each reads its own stored scale. A SqOut is not
+    // rated here: its offset is copied from its squeezed-out row
+    // (Activation::set_sqout), and that row was rated above, at the end it
+    // is measured from.
     out.note_effective_ms.reserve(act.sqinouts.size());
-    for (const SPSqueeze& sq : act.sqinouts) {
-        bool achieved_early = (sq.kind == SqueezeKind::SqOut);
-        // At difficulty 0 the gap is 0 and nothing can be material, so the
-        // achievement direction stands.
-        bool early = sq.difficulty() >= 0.0 ? achieved_early : !achieved_early;
-        double scale = early ? out.scales.pre.early : out.scales.pre.late;
-        bool applies = transfer_is_material(sq.difficulty(), scale, hit_window_ms);
-        if (early)
-            out.early_note_warns |= applies;
-        else
-            out.late_note_warns |= applies;
-        std::optional<double> eff_ms;
-        if (applies) {
-            double eff = effective_backend_ms(sq.difficulty(), scale);
-            if (std::abs(eff - std::abs(sq.difficulty())) > kTransferImpactMs) eff_ms = eff;
+    for (auto it = act.sqinouts.begin(); it != act.sqinouts.end(); ++it) {
+        const SPSqueeze& sq = *it;
+        if (sq.kind == SqueezeKind::SqOut) {
+            out.note_effective_ms.push_back(std::nullopt);
+            continue;
         }
-        out.note_effective_ms.push_back(eff_ms);
+        if (!out.scales) {  // unknown scales: no rate_note, no figure (D4)
+            out.note_effective_ms.push_back(std::nullopt);
+            continue;
+        }
+        // A free SqIn's note is inside SP (SPSqueeze::is_free, D13). Its
+        // stored scale is the one at its SqIn rank.
+        const TransferScale& at_end =
+            out.scales->sqins[sqin_rank(act.sqinouts.begin(), it, is_sqin_squeeze)];
+        const NoteRating n = rate_note(sq.offset_ms, sq.is_free(), at_end, hit_window_ms);
+        out.scale_governs |= n.effective_ms.has_value();
+        out.note_effective_ms.push_back(n.effective_ms);
     }
 
-    out.late_warns = out.late_backend_warns || out.late_note_warns;
-    out.early_warns = out.early_backend_warns || out.early_note_warns;
-
-    // The cap-clamped flag fires when the activation has a clamp_tick AND at
-    // least one squeeze the frontend decides: any SqIn/SqOut, or any backend
-    // row that was squeezed out or that the engine does not count (at or past
-    // the leeway).
-    if (act.clamp_tick.has_value()) {
-        bool has_frontend_squeeze = !act.sqinouts.empty();
-        if (!has_frontend_squeeze) {
-            for (const BackendRating& br : out.backends) {
-                if (br.squeezed_out ||
-                    (br.row.offset_ms &&
-                     !core::counted_without_squeeze(*br.row.offset_ms,
-                                                    backend_leeway_ms))) {
-                    has_frontend_squeeze = true;
-                    break;
-                }
-            }
-        }
-        out.cap_clamped = has_frontend_squeeze;
+    // The cap-clamped flag fires when the activation has a clamp_tick() AND
+    // at least one squeeze the frontend decides: any SqIn/SqOut, or any
+    // backend row is_frontend_decided accepts.
+    if (act.clamp_tick().has_value()) {
+        bool decided = !act.sqinouts.empty();
+        for (const BackendRating& br : out.backends)
+            decided = decided || is_frontend_decided(br, backend_leeway_ms);
+        out.cap_clamped = decided;
     }
 
     return out;

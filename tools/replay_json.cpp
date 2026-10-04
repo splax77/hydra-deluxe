@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "core/timing.h"  // sp_bars_to_measures
+#include "core/timing.h"  // SongTiming
 
 namespace hydra {
 
@@ -47,6 +47,12 @@ std::vector<ReplayWindow> windows_from_json(const nlohmann::json& path) {
             act["sqout_tick"].get<int64_t>() >= 0)
             w.sqout_tick = act["sqout_tick"].get<int64_t>();
 
+        // The phrases this window squeezed in (D34). No key (a dump written
+        // before the field) reads as none, as it always did.
+        if (act.contains("sqin_ticks") && act["sqin_ticks"].is_array())
+            for (const nlohmann::json& t : act["sqin_ticks"])
+                if (t.is_number()) w.sqin_ticks.push_back(t.get<int64_t>());
+
         if (act.contains("sqinouts") && act["sqinouts"].is_array()) {
             for (const nlohmann::json& sq : act["sqinouts"]) {
                 if (!sq.is_object()) continue;
@@ -69,8 +75,9 @@ nlohmann::json score_json(const ReplayScore& s) {
 }
 
 // The path list `dump` and `target` both print. One shape, so anything that
-// reads dump's JSON reads target's too.
-nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& timing) {
+// reads dump's JSON reads target's too. The chart timing is no longer read
+// here: nominal_deact_tick comes off the stored history (nominal_end()).
+nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& /*timing*/) {
     nlohmann::json paths = nlohmann::json::array();
     int index = 0;
     for (const Path* p : all) {
@@ -82,19 +89,26 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                                             {"offset_ms", s2.offset()}});
 
             const int64_t act_tick = act.timecode.ticks();
-            const std::optional<int64_t>& d = act.deact_tick;
-            const int64_t nominal =
-                timing.plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter)).ticks();
+            const std::optional<int64_t> d = act.deact_tick();
+            // The plain end the activation's bars gave, read off the history.
+            const int64_t nominal = act.nominal_end().value_or(-1);
+            // The phrases it squeezed in, so `score --path` skips them as the
+            // engine did (D34).
+            const nlohmann::json sqins = sqin_phrase_ticks(act);
 
             acts.push_back(nlohmann::json{
                 {"act_tick", act_tick},
                 {"deact_tick", d ? *d : -1},
                 {"sqout_tick", act.sqout_tick ? *act.sqout_tick : -1},
                 {"nominal_deact_tick", nominal},
-                {"sp_meter", act.sp_meter},
-                {"skips", act.skips},
+                {"sp_meter", act.sp_meter()},
+                {"skips", act.skips()},
+                // The stored list the engine wrote, never recomputed: under
+                // the 1.0 fill rule it need not be the fills nearest the act.
+                {"skipped_fill_ticks", act.skipped_fill_ticks},
                 {"chord_code", act.chord.code()},
                 {"sqinouts", sq},
+                {"sqin_ticks", sqins},
             });
         }
         paths.push_back(nlohmann::json{

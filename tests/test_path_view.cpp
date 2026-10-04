@@ -14,6 +14,7 @@
 #include "app/display_format.h"
 #include "app/path_view.h"
 #include "corpus_util.h"
+#include "record_fixtures.h"
 
 using namespace hydra;
 using namespace hydra::app;
@@ -152,12 +153,12 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     // E0: 12.3 ms early. The header already showed +12.3; the details line
     // used to print the raw offset, -12.3.
     Activation e0;
-    e0.skips = 0;
-    e0.sp_meter = 2;
+    test::set_skips(e0, 0);
+    test::set_sp_meter(e0, 2);
     e0.e_offset = -12.3;
     ActivationRowView av = view_of(e0);
     // The fixture sets no timecode, so it sits at tick 0 (m1.1.0); an
-    // activation always has one now (record format v7, docs/adr/0017).
+    // activation always has one now (since path format 6, docs/adr/0017).
     CHECK(av.notation == "E0");
     CHECK(av.measure == "m1.1.0");
     CHECK(av.badge == "early fill 12 ms");
@@ -166,8 +167,8 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     // E-critical but not E0: the badge and the details line use the same
     // sign rule, so 20 ms late reads negative. Optional, so never warn-coloured.
     Activation e1;
-    e1.skips = 1;
-    e1.sp_meter = 2;
+    test::set_skips(e1, 1);
+    test::set_sp_meter(e1, 2);
     e1.e_offset = 20.0;
     av = view_of(e1);
     CHECK(av.notation == "E1");
@@ -190,7 +191,7 @@ TEST_CASE("path buttons: each path's own hardest timing, warn past the difficult
 
     Path hard;
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -12.5});
     hard.activations.push_back(act);
@@ -273,39 +274,41 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     };
 
     Activation base;
-    base.skips = 0;
+    test::set_skips(base, 0);
     base.e_offset = 300.0;  // not e-critical
 
     // Identity scales: nothing to say, even with a gap past the combined
     // budget (which trips materiality on its own).
     Activation overbudget = base;
     overbudget.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 250.0});
+    // Stored x1.00, not left unknown (D4).
+    test::set_transfer(overbudget, TransferScale{1.0, 1.0});
     CHECK(row_of(overbudget).scale_warning.empty());
 
-    // Gore act 4: the only row sits exactly on the SP end, so no number on
-    // screen moves -- the line still shows both sides, early first, plain.
+    // Gore act 4: the only row sits exactly on the SP end. It is inside SP,
+    // so the early x8.59 governs it: its 0 ms margin is still 0 ms, and the
+    // line is orange because a shown multiplier governs a row.
     Activation gore = base;
-    gore.transfer_post = TransferScale{8.59, 8.76};
-    gore.transfer_pre = gore.transfer_post;
+    test::set_transfer(gore, TransferScale{8.59, 8.76});
     BackendSqueeze on_end;
     on_end.offset_ms = 0.0;
     gore.backends.push_back(on_end);
     ActivationRowView av = row_of(gore);
     CHECK(av.scale_warning ==
           "Frontend timing scales x8.59 (early) / x8.76 (late) at the SP end.");
-    CHECK_FALSE(av.scale_warn);
+    CHECK(av.scale_warn);
+    REQUIRE(av.backends.size() == 1);
+    CHECK(av.backends[0].rating.find(" (eff. 0.0ms)") != std::string::npos);
 
-    // A side that prints as x1.00 is left out.
+    // A side at exactly x1.00 is left out.
     Activation late_only = base;
-    late_only.transfer_post = TransferScale{1.0, 6.33};
-    late_only.transfer_pre = late_only.transfer_post;
+    test::set_transfer(late_only, TransferScale{1.0, 6.33});
     CHECK(row_of(late_only).scale_warning ==
           "Frontend timing scales x6.33 (late) at the SP end.");
 
     // A backend row the late scale moves turns the line orange.
     Activation backend = base;
-    backend.transfer_post = TransferScale{1.0, 0.5};
-    backend.transfer_pre = backend.transfer_post;
+    test::set_transfer(backend, TransferScale{1.0, 0.5});
     BackendSqueeze row;
     row.offset_ms = 50.0;
     backend.backends.push_back(row);
@@ -313,24 +316,73 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
     CHECK(av.scale_warning == "Frontend timing scales x0.50 (late) at the SP end.");
     CHECK(av.scale_warn);
 
-    // A SqIn is judged at the pre (pre-extension) end. With post at identity,
-    // the line names only the SqIn's end.
+    // A SqIn is judged at its own stored end, the end before its phrase
+    // extended SP. With post at identity, the line names only the SqIn's end.
     Activation sqin = base;
-    sqin.transfer_pre = TransferScale{1.0, 0.5};
     sqin.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    test::set_transfer(sqin, TransferScale{1.0, 0.5}, TransferScale{});
     av = row_of(sqin);
     CHECK(av.scale_warning == "Frontend timing scales x0.50 (late) at the SqIn's SP end.");
     CHECK(av.scale_warn);
 
     // Both ends with different scales: the SP end first, then the SqIn's.
     Activation both = base;
-    both.transfer_pre = TransferScale{1.0, 0.5};
-    both.transfer_post = TransferScale{1.25, 0.8};
     both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    test::set_transfer(both, TransferScale{1.0, 0.5}, TransferScale{1.25, 0.8});
     both.backends.push_back(row);
     CHECK(row_of(both).scale_warning ==
           "Frontend timing scales x1.25 (early) / x0.80 (late) at the SP end; "
           "x0.50 (late) at the SqIn's SP end.");
+
+    // Two SqIns that share one scale read as one clause, but it says "each"
+    // so it doesn't read as a single SqIn (D16).
+    Activation shared = base;
+    shared.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    shared.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
+    test::set_transfer(shared, TransferScale{1.0, 0.5}, TransferScale{});
+    CHECK(row_of(shared).scale_warning ==
+          "Frontend timing scales x0.50 (late) at each SqIn's SP end.");
+
+    // The same with the SP end scaled too: the shared clause still says "each".
+    Activation shared_both = base;
+    shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
+    shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
+    test::set_transfer(shared_both, TransferScale{1.0, 0.5}, TransferScale{1.25, 1.0});
+    CHECK(row_of(shared_both).scale_warning ==
+          "Frontend timing scales x1.25 (early) at the SP end; "
+          "x0.50 (late) at each SqIn's SP end.");
+
+    // Two SqIns with different scales: one numbered clause per SqIn (Q5).
+    Activation two = base;
+    two.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -50.0});
+    two.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -30.0});
+    test::set_sqin_transfers(two, {TransferScale{0.97, 1.0}, TransferScale{0.95, 1.0}},
+                             TransferScale{});
+    CHECK(row_of(two).scale_warning ==
+          "Frontend timing scales x0.97 (early) at SqIn 1's SP end; "
+          "x0.95 (early) at SqIn 2's SP end.");
+
+    // A SqIn whose scale prints like the SP end's gets no clause of its own;
+    // the other keeps its own number in the SqIn order.
+    Activation one_differs = base;
+    one_differs.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -50.0});
+    one_differs.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -30.0});
+    test::set_sqin_transfers(one_differs,
+                             {TransferScale{1.25, 1.0}, TransferScale{0.95, 1.0}},
+                             TransferScale{1.25, 1.0});
+    CHECK(row_of(one_differs).scale_warning ==
+          "Frontend timing scales x1.25 (early) at the SP end; "
+          "x0.95 (early) at SqIn 2's SP end.");
+}
+
+TEST_CASE("kTransferScaleHint names the note SP is measured from (D17)") {
+    CHECK(std::string(kTransferScaleHint) ==
+          "SP length is measured in measures, so frontend timing\n"
+          "reaches the SP end scaled by the measure-length ratio.\n"
+          "Early and late hits scale differently when the note SP is\n"
+          "measured from (the activation, or the collecting note when\n"
+          "the cap clamps) or the SP end sits exactly on a signature\n"
+          "or tempo change.");
 }
 
 TEST_CASE("build_activations: overfill warning text") {
@@ -346,9 +398,8 @@ TEST_CASE("build_activations: overfill warning text") {
     // have something to attach to (see the cap_clamped tests above).
     Activation act;
     act.timecode = timing.timecode(0);
-    act.sp_meter = 2;
-    act.clamp_tick = 960;
-    act.deact_tick = 6144;
+    test::set_sp_meter(act, 2);
+    test::set_clamped_window(act, 960, 6144);
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
 
     Path path;
@@ -372,7 +423,7 @@ TEST_CASE("build_activations: overfill warning text") {
     // No clamp_tick at all -- the window was never cap-clamped, so there is
     // nothing to warn about even with the same SqOut present.
     Activation unclamped = act;
-    unclamped.clamp_tick.reset();
+    test::set_plain_window(unclamped, 6144);
     Path plain_path;
     plain_path.activations.push_back(unclamped);
     ActivationsView plain = build_activations(plain_path, record, &timing, 85.0);
@@ -385,7 +436,7 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     HydraRecord rec;  // only feeds the footer; irrelevant here
 
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
     const std::pair<double, int64_t> rows_at[] = {{-30.0, 200}, {-100.0, 100},
                                                    {60.0, 300}};
@@ -434,13 +485,12 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     // 479.999 ms past the SP end. The engine never counts it, so the table
     // must not claim it banks 260 and loses 200, and must not highlight it.
     Activation far;
-    far.skips = 0;
+    test::set_skips(far, 0);
     far.e_offset = 300.0;  // not e-critical
     BackendSqueeze far_row;
     far_row.timecode = Timecode::raw(3256);
     far_row.points = 460;
     far_row.sqout_points = 260;
-    far_row.is_sp = true;
     far_row.offset_ms = 479.999;
     far.backends.push_back(far_row);
     far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 479.999});
@@ -477,7 +527,7 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     HydraRecord rec;  // only feeds the footer
 
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
     // Inside SP, inside the 3 ms leeway, just past it, far past it.
     const std::pair<int64_t, double> rows_at[] = {
@@ -490,12 +540,12 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
         row.offset_ms = ms;
         act.backends.push_back(row);
     }
-    // A phrase chord past the leeway that this path did not squeeze out.
+    // A phrase chord past the leeway that this path did not squeeze out: a
+    // plain row (finding 29).
     BackendSqueeze phrase;
     phrase.timecode = Timecode::raw(500);
     phrase.points = 460;
     phrase.sqout_points = 260;
-    phrase.is_sp = true;
     phrase.offset_ms = 150.0;
     act.backends.push_back(phrase);
 
@@ -514,7 +564,7 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     CHECK(b[3].points == "0");
     CHECK(b[3].rating == "Insane (uncounted)");
     CHECK(b[4].points == "0");
-    CHECK(b[4].rating == "Free SqOut");
+    CHECK(b[4].rating == "Insane (uncounted)");
     for (const BackendRowView& row : b) CHECK_FALSE(row.warn);
 }
 
@@ -702,8 +752,8 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     SongTiming timing(192, tpm, bpm);
     Activation act;
     act.timecode = timing.timecode(768);  // measure 2, 2000 ms
-    act.sp_meter = 2;
-    act.skips = 0;
+    test::set_sp_meter(act, 2);
+    test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
     Path p;
     p.activations.push_back(act);
@@ -726,7 +776,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
 
 TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     Activation none;
-    none.skips = 0;
+    test::set_skips(none, 0);
     none.e_offset = 300.0;  // not e-critical
     CHECK(activation_badge(none).empty());
 
@@ -748,7 +798,7 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     // An optional (E1) fill still gets a badge: its timing decides whether the
     // first fill shows up, which is how the skips are counted.
     Activation e1 = none;
-    e1.skips = 1;
+    test::set_skips(e1, 1);
     e1.e_offset = -30.0;
     CHECK(activation_badge(e1) == "early fill 30 ms");
     // A squeeze the activation needs outranks an optional fill.
@@ -767,7 +817,7 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
         return v.acts[0].squeeze_sentences[0];
     };
     Activation base;
-    base.skips = 0;
+    test::set_skips(base, 0);
     base.e_offset = 300.0;  // not e-critical
 
     Activation sqin = base;
@@ -790,9 +840,8 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     // the one a squeezed-out row shows in the backend table (Sun of Nothing
     // act 5: free by 400 ms, early hits scale x1.60 -> eff. 307.7 ms).
     Activation scaled_in = base;
-    scaled_in.transfer_pre = TransferScale{1.6, 1.0};
-    scaled_in.transfer_post = scaled_in.transfer_pre;
     scaled_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -400.0});
+    test::set_transfer(scaled_in, TransferScale{1.6, 1.0});
     s = sentence_of(scaled_in);
     CHECK(s.text.rfind("Hit the SP phrase's last note no more than 400.0 ms late "
                        "(eff. 307.7 ms) so it lands before Star Power ends.", 0) == 0);
@@ -813,7 +862,6 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     row.chord.add_note(NoteColor::Yellow);
     row.points = 460;
     row.sqout_points = 260;
-    row.is_sp = true;
     row.offset_ms = 479.999;
     far.backends.push_back(row);
     far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 479.999});
@@ -836,15 +884,42 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     CHECK(s.warn);
 }
 
+TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating (D13)") {
+    HydraRecord rec;
+    auto sentence_at = [&rec](double offset) {
+        Activation act;
+        test::set_skips(act, 0);
+        act.e_offset = 300.0;  // not e-critical
+        // Only the early (free) side scaled: a figure means the rating read it.
+        act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, offset});
+        test::set_transfer(act, TransferScale{1.6, 1.0});
+        Path p;
+        p.activations.push_back(act);
+        ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+        REQUIRE(v.acts.size() == 1);
+        REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
+        return v.acts[0].squeeze_sentences[0].text;
+    };
+    const std::string lands = " so it lands before Star Power ends.";
+    // Exactly on the end: free wording, and the early side's figure.
+    CHECK(sentence_at(0.0).rfind(
+              "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + lands, 0) == 0);
+    // Just before the end: free.
+    CHECK(sentence_at(-0.04).rfind(
+              "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + lands, 0) == 0);
+    // Just past the end: still to earn, on the unscaled late side, so no figure.
+    CHECK(sentence_at(0.04).rfind("Hit the SP phrase's last note more than 0.0 ms early" + lands,
+                                  0) == 0);
+}
+
 TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
     // Sun of Nothing act 5: early frontend hits reach the SP end x1.60, so
     // the note 400 ms inside SP is effectively 307.7 ms from being lost.
     HydraRecord rec;
     Activation act;
-    act.skips = 0;
+    test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
-    act.transfer_pre = TransferScale{1.6, 1.0};
-    act.transfer_post = act.transfer_pre;
+    test::set_transfer(act, TransferScale{1.6, 1.0});
     BackendSqueeze row;
     row.chord.add_note(NoteColor::Green);
     row.points = 260;
@@ -861,6 +936,64 @@ TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. fig
     CHECK(r.rating.find(" (eff. 307.7ms)") != std::string::npos);
     CHECK_FALSE(r.tooltip.empty());
     CHECK(v.acts[0].scale_warning.find("x1.60") != std::string::npos);
+}
+
+TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its row's figure") {
+    HydraRecord rec;
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -187.5});
+    test::set_transfer(act, TransferScale{0.9973, 1.0});
+    BackendSqueeze ry;
+    ry.timecode = Timecode::raw(5000);
+    ry.offset_ms = -187.5;
+    act.backends.push_back(ry);
+    act.sqout_tick = 5000;
+    Path p;
+    p.activations.push_back(act);
+
+    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning == "Frontend timing scales x0.997 (early) at the SP end.");
+    CHECK(v.acts[0].scale_warn);
+    REQUIRE(v.acts[0].backends.size() == 1);
+    // 187.5 ms at x0.9973 is worth 187.753... ms.
+    CHECK(v.acts[0].backends[0].rating.find(" (eff. 187.8ms)") != std::string::npos);
+    const std::string& tip = v.acts[0].backends[0].tooltip;
+    CHECK(tip.find("scales x0.997 here") != std::string::npos);
+    CHECK(tip.find("budget is 169.8ms, not 170.0ms") != std::string::npos);
+    // The squeeze-out's figure lives on its row only (decision 2).
+    REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
+    CHECK(v.acts[0].squeeze_sentences[0].text.find("eff.") == std::string::npos);
+
+    // Just past the 1e-9 tolerance (D14) the line still never reads x1: it
+    // prints as many decimals as kScaleIdentityDigits allows.
+    act.transfer_post = TransferScale{1.0 - 2e-9, 1.0};
+    p.activations[0] = act;
+    v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning ==
+          "Frontend timing scales x0.999999998 (early) at the SP end.");
+}
+
+TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
+    HydraRecord rec;
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;
+    BackendSqueeze row;
+    row.offset_ms = -40.0;
+    act.backends.push_back(row);
+    Path p;
+    p.activations.push_back(act);
+
+    ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning == "Transfer scale unknown.");
+    CHECK(v.acts[0].scale_warn);  // Q6: orange
+    REQUIRE(v.acts[0].backends.size() == 1);
+    CHECK(v.acts[0].backends[0].rating.find("eff.") == std::string::npos);
 }
 
 TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {

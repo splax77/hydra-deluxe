@@ -12,7 +12,7 @@
 #include <limits>
 #include <map>
 #include <optional>
-#include <random>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -26,6 +26,7 @@
 #include "core/timing.h"  // sp_bars_to_measures
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
 
@@ -103,10 +104,11 @@ Song make_fill_song() {
     return song;
 }
 
-Activation act_at(const Song& song, int64_t tick, int skips) {
+// An activation at `tick` that passed over the fills ending at `skipped_fills`.
+Activation act_at(const Song& song, int64_t tick, std::vector<int64_t> skipped_fills) {
     Activation a;
     a.timecode = song.timecode(tick);
-    a.skips = skips;
+    a.skipped_fill_ticks = std::move(skipped_fills);
     return a;
 }
 
@@ -145,17 +147,16 @@ Song make_sp_song(const std::vector<int64_t>& phrase_ends, int64_t last_tick,
 }
 
 // An activation the engine could have recorded: a timecode, the bars it
-// spends, and the deactivation node the search stamped on it. Nothing derives
-// that node any more, so the fixture has to state it. The default is the plain
-// act + 2*sp_meter measures — an activation that collects no phrase mid-SP.
-// A fixture that collects one overwrites `deact_tick` and sets `collected_phrase_ticks` itself.
-Activation sp_act_at(const Song& song, int64_t tick, int sp_meter) {
+// spends, and the SP end the search stamped on it. Nothing derives that end
+// any more, so the fixture states it as a literal tick. The window is plain:
+// an activation that collects no phrase mid-SP. A fixture that collects one
+// states its whole SP-end history itself.
+Activation sp_act_at(const Song& song, int64_t tick, int sp_meter, int64_t end_tick) {
     Activation a;
     a.timecode = song.timecode(tick);
-    a.sp_meter = sp_meter;
-    a.skips = 0;
-    a.deact_tick =
-        song.timing().plusmeasure(a.timecode, sp_bars_to_measures(sp_meter)).ticks();
+    test::set_sp_meter(a, sp_meter);
+    test::set_skips(a, 0);
+    test::set_plain_window(a, end_tick);
     return a;
 }
 
@@ -303,8 +304,8 @@ TEST_CASE("build_preview_scene: an unanalyzed chart offers every candidate fill"
 TEST_CASE("build_preview_scene: skips say which fills the path was offered") {
     Song song = make_fill_song();
     Path path;
-    // The path activates on the third fill after passing over one before it.
-    path.activations = {act_at(song, 1440, 1)};
+    // The path activates on the third fill after passing over the one at 960.
+    path.activations = {act_at(song, 1440, {960})};
 
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE(scene.fills.size() == 4);
@@ -318,7 +319,7 @@ TEST_CASE("build_preview_scene: skips say which fills the path was offered") {
 TEST_CASE("build_preview_scene: a second activation with skips 0 hides what lies between") {
     Song song = make_fill_song();
     Path path;
-    path.activations = {act_at(song, 960, 0), act_at(song, 1920, 0)};
+    path.activations = {act_at(song, 960, {}), act_at(song, 1920, {})};
 
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE(scene.fills.size() == 4);
@@ -327,14 +328,49 @@ TEST_CASE("build_preview_scene: a second activation with skips 0 hides what lies
     CHECK(scene.fills[2].state == PreviewFillState::Hidden);  // SP was still active
     CHECK(scene.fills[3].state == PreviewFillState::Taken);
 
-    // With one skip charged to the second activation, the fill between them is
-    // offered instead.
+    // With the fill at 1440 passed over before the second activation, the fill
+    // between them is offered instead.
     Path skipped;
-    skipped.activations = {act_at(song, 960, 0), act_at(song, 1920, 1)};
+    skipped.activations = {act_at(song, 960, {}), act_at(song, 1920, {1440})};
     PreviewScene s2 = build_preview_scene(song, &skipped);
     CHECK(s2.fills[1].state == PreviewFillState::Taken);
     CHECK(s2.fills[2].state == PreviewFillState::Offered);
     CHECK(s2.fills[3].state == PreviewFillState::Taken);
+}
+
+TEST_CASE("build_preview_scene: a fill an activation took stays taken when a later one lists it") {
+    // A tied variant takes its activations after the fold, and their stored
+    // passed-over fills, from its leader (finding 97). If the variant
+    // activated on a fill its leader passed over, the variant's next
+    // activation lists that fill as passed over. The fill was taken; it must
+    // not turn offered.
+    Song song = make_fill_song();
+    Path path;
+    path.activations = {act_at(song, 960, {}), act_at(song, 1920, {960, 1440})};
+
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.fills.size() == 4);
+    CHECK(scene.fills[0].state == PreviewFillState::Hidden);
+    CHECK(scene.fills[1].state == PreviewFillState::Taken);    // taken, though listed later
+    CHECK(scene.fills[2].state == PreviewFillState::Offered);
+    CHECK(scene.fills[3].state == PreviewFillState::Taken);
+}
+
+TEST_CASE("build_preview_scene: under the 1.0 rule the offered fill is the one the engine charged") {
+    // Finding 52. Fill B's 1.0 deadline falls before fill A's, so B never
+    // spawned and A was shown and passed over. The nearest-n guess lit B.
+    Song song = test::make_ch10_fill_song();
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
+    EngineOptions opts;
+    opts.target_act_ticks = std::vector<int64_t>{28800};
+    std::vector<Path> paths = run_search(graph, opts);
+    REQUIRE(!paths.empty());
+    PreviewScene scene = build_preview_scene(song, &paths.front());
+    REQUIRE(scene.fills.size() == 3);
+    CHECK(scene.fills[0].span.end_tick == 19200);
+    CHECK(scene.fills[0].state == PreviewFillState::Offered);
+    CHECK(scene.fills[1].state == PreviewFillState::Hidden);
+    CHECK(scene.fills[2].state == PreviewFillState::Taken);
 }
 
 TEST_CASE("build_beat_events: bars, beats, and half-beats from the timing alone") {
@@ -635,14 +671,17 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
     if (!std::equal(a.activations.begin(), a.activations.end(), b.activations.begin(),
                     b.activations.end(),
                     [](const PreviewActivation& x, const PreviewActivation& y) {
-                        return x.tick == y.tick && x.ms == y.ms && x.sp_meter == y.sp_meter &&
-                               x.skips == y.skips && x.has_sp_end == y.has_sp_end &&
+                        return x.tick == y.tick && x.ms == y.ms &&
+                               x.skipped_fill_ticks == y.skipped_fill_ticks &&
+                               x.has_sp_end == y.has_sp_end &&
                                x.sp_end_tick == y.sp_end_tick && x.sp_end_ms == y.sp_end_ms &&
-                               x.collected_phrase_ticks == y.collected_phrase_ticks &&
+                               x.sp_end_changes == y.sp_end_changes &&
+                               x.bank_rise_ticks == y.bank_rise_ticks &&
                                x.lane == y.lane && x.has_lane == y.has_lane &&
                                x.measure == y.measure && x.chord == y.chord;
                     }))
         return "activations";
+    if (a.trailing_bank_ticks != b.trailing_bank_ticks) return "trailing_bank_ticks";
     if (!std::equal(a.beats.begin(), a.beats.end(), b.beats.begin(), b.beats.end(),
                     [](const PreviewBeat& x, const PreviewBeat& y) {
                         return x.tick == y.tick && x.ms == y.ms && x.kind == y.kind;
@@ -681,7 +720,9 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
         !std::equal(a.score.steps.begin(), a.score.steps.end(), b.score.steps.begin(),
                     b.score.steps.end(), [](const PreviewScoreStep& x, const PreviewScoreStep& y) {
                         return x.ms == y.ms && x.total == y.total &&
-                               x.multiplier == y.multiplier && x.combo == y.combo;
+                               x.multiplier == y.multiplier &&
+                               x.multiplier_plain == y.multiplier_plain &&
+                               x.combo == y.combo;
                     }))
         return "score";
     if (a.timing.has_value() != b.timing.has_value()) return "timing (presence)";
@@ -740,8 +781,8 @@ TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures
     {
         Song song = make_fill_song();
         Path one, two;
-        one.activations = {act_at(song, 1440, 1)};
-        two.activations = {act_at(song, 960, 0), act_at(song, 1920, 1)};
+        one.activations = {act_at(song, 1440, {960})};
+        two.activations = {act_at(song, 960, {}), act_at(song, 1920, {1440})};
         check_split(song, &one, kCloneHeroSpCap, rules, &two, "fills, one activation");
         check_split(song, &two, kCloneHeroSpCap, rules, &one, "fills, two activations");
         check_split(song, nullptr, kCloneHeroSpCap, rules, &two, "fills, path dropped");
@@ -752,11 +793,10 @@ TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures
     {
         Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
         Path collected;
-        Activation act = sp_act_at(song, 3840, 2);
-        act.deact_tick = 3840 + 6 * 1920;
-        act.collected_phrase_ticks = {5760};
+        Activation act = sp_act_at(song, 3840, 2, 11520);
+        act.sp_end_steps = {{3840, 11520, SpEndKind::Activation}, {5760, 15360, SpEndKind::Collected}};
         collected.activations = {act};
-        Path plain = priced_path(song, {sp_act_at(song, 3840, 2)});
+        Path plain = priced_path(song, {sp_act_at(song, 3840, 2, 11520)});
         for (int cap : {kCloneHeroSpCap, 2, 6}) {
             check_split(song, &collected, cap, rules, &plain, "sp, collected");
             check_split(song, &plain, cap, rules, nullptr, "sp, priced");
@@ -765,13 +805,13 @@ TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures
     }
     {
         Song song = make_sp_song({960}, /*last_tick=*/15360, /*extra_bpm=*/{{5760, 180.0}});
-        Path path = priced_path(song, {sp_act_at(song, 3840, 1)});
+        Path path = priced_path(song, {sp_act_at(song, 3840, 1, 7680)});
         check_split(song, &path, kCloneHeroSpCap, rules, nullptr, "sp, tempo change");
     }
     {
         Song song = make_overfill_song();
         Path path;
-        path.activations = {act_at(song, 2304, 0)};
+        path.activations = {act_at(song, 2304, {})};
         check_split(song, &path, kCloneHeroSpCap, rules, nullptr, "overfill");
     }
 
@@ -829,12 +869,17 @@ TEST_CASE("sp meter curve: each phrase's last note banks one bar") {
     CHECK(sp_meter_bars_at(c, 6000.0) == doctest::Approx(2.0));
 }
 
-TEST_CASE("sp meter curve: an activation snaps to the recorded bars, then drains") {
-    // One phrase banked (1000 ms), but the record says the activation at tick
-    // 3840 (4000 ms) spent two bars. The record wins.
-    Song song = make_sp_song({960}, /*last_tick=*/13440);
+TEST_CASE("sp meter curve: the bank between windows is the record's, not a phrase count") {
+    // The chart has one phrase, at 960 (1000 ms). The record says bars
+    // arrived at 960 and at 1920 (2000 ms), and one more after the window at
+    // 12480 (13000 ms). Neither of the last two has a phrase. The gauge
+    // follows the record.
+    Song song = make_sp_song({960}, /*last_tick=*/15360);
     Path path;
-    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2)};
+    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520);
+    act.bank_rise_ticks = {960, 1920};            // two bars; no phrase at 1920
+    path.activations = {act};
+    path.trailing_bank_ticks = {12480};           // a bar after the window; no phrase there
 
     PreviewScene scene = build_preview_scene(song, &path);
     const SpMeterCurve& c = scene.sp_meter;
@@ -846,26 +891,29 @@ TEST_CASE("sp meter curve: an activation snaps to the recorded bars, then drains
     CHECK(scene.activations[0].sp_end_tick == 11520);
     CHECK(scene.activations[0].sp_end_ms == doctest::Approx(12000.0));
 
-    CHECK(sp_meter_bars_at(c, 3999.0) == doctest::Approx(1.0));  // the phrase count
-    CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(2.0));  // the record's bars
+    CHECK(sp_meter_bars_at(c, 999.0) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 1000.0) == doctest::Approx(1.0));
+    CHECK(sp_meter_bars_at(c, 1999.0) == doctest::Approx(1.0));
+    CHECK(sp_meter_bars_at(c, 2000.0) == doctest::Approx(2.0));
+    CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(2.0));
     // One bar's worth of drain is two measures = 4000 ms.
     CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(1.0));
-    CHECK(sp_meter_bars_at(c, 10000.0) == doctest::Approx(0.5));
     CHECK(sp_meter_bars_at(c, 12000.0) == doctest::Approx(0.0));
-    CHECK(sp_meter_bars_at(c, 14000.0) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 13000.0 - 1e-6) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 13000.0) == doctest::Approx(1.0));
 }
 
 TEST_CASE("sp meter curve: a phrase collected mid-activation jumps the meter a bar") {
     // Phrases at 1000 ms and 6000 ms; the second lands inside the activation's
-    // window. The record's deact node is what says it was collected during SP:
-    // it sits two measures past the plain end, so the window runs six measures
-    // instead of four and the meter steps up a bar at the phrase.
+    // window. The record's second SP-end step is what says it was collected
+    // during SP: at 5760 the end moves two measures later, so the window runs
+    // six measures instead of four and the meter steps up a bar there.
     Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
     Path path;
-    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2);
+    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520);
     act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 0.0});
-    act.deact_tick = 3840 + 6 * 1920;  // 4 measures banked, 2 for the collection
-    act.collected_phrase_ticks = {5760};  // the engine's record of that collection
+    // 4 measures banked, then 2 more for the collection at 5760.
+    act.sp_end_steps = {{3840, 11520, SpEndKind::Activation}, {5760, 15360, SpEndKind::Collected}};
     path.activations = {act};
 
     PreviewScene scene = build_preview_scene(song, &path);
@@ -900,7 +948,8 @@ TEST_CASE("sp meter curve: a squeezed-out phrase does not bank mid-drain") {
     // plain line across it, and the bar must arrive when the window closes.
     Song song = make_sp_song({960, 9600}, /*last_tick=*/15360);
     Path path;
-    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2)};
+    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520)};
+    path.trailing_bank_ticks = {11520};  // its bar arrives at the deact node
 
     PreviewScene scene = build_preview_scene(song, &path);
     const SpMeterCurve& c = scene.sp_meter;
@@ -944,9 +993,9 @@ TEST_CASE("sp meter curve: a full bank that collects a phrase and stores no row"
     Song song = make_sp_song({phrase_tick}, /*last_tick=*/28800, /*extra_bpm=*/{},
                              /*step=*/120);
     Path path;
-    Activation act = sp_act_at(song, act_tick, /*sp_meter=*/4);
-    act.deact_tick = deact;
-    act.collected_phrase_ticks = {phrase_tick};
+    Activation act = sp_act_at(song, act_tick, /*sp_meter=*/4, /*end_tick=*/19200);
+    act.sp_end_steps = {{act_tick, act_tick + 8 * 1920, SpEndKind::Activation},
+                        {phrase_tick, deact, SpEndKind::Collected}};
     REQUIRE(act.backends.empty());
     path.activations = {act};
 
@@ -990,14 +1039,14 @@ TEST_CASE("sp meter curve: two clamped collections refill twice and empty at the
     REQUIRE(act.timecode.ticks() == 2304);
     REQUIRE(activation_deact_tick(act) == std::optional<int64_t>(6912));
     // Extra parentheses: the braced list's comma would split the macro.
-    REQUIRE((act.collected_phrase_ticks == std::vector<int64_t>{3072, 3840}));
+    REQUIRE((act.collected_phrase_ticks() == std::vector<int64_t>{3072, 3840}));
 
     PreviewScene scene = build_preview_scene(song, &paths.front(), /*sp_cap=*/2);
     const SpMeterCurve& c = scene.sp_meter;
     check_curve_well_formed(c);
     CHECK(c.cap == 2);
 
-    // The activation snaps to the 2 bars the engine recorded.
+    // The window starts at the 2 bars the record's first SP end leaves.
     CHECK(sp_meter_bars_at(c, 6000.0) == doctest::Approx(2.0));
     // One measure of drain, then the first collection tops back up to the cap.
     CHECK(sp_meter_bars_at(c, 8000.0 - 1e-6) == doctest::Approx(1.5));
@@ -1012,13 +1061,16 @@ TEST_CASE("sp meter curve: two clamped collections refill twice and empty at the
     CHECK(sp_meter_bars_at(c, 19000.0) == doctest::Approx(0.0));
 }
 
-TEST_CASE("sp meter curve: a phrase ending on the activation note is not counted twice") {
-    // The SP phrase's last note sits exactly on the activation tick. That bar
-    // is already inside the engine's recorded sp_meter, so it must not also
-    // be counted as a mid-SP collection -- the snap should read 2.0, not 3.0.
-    Song song = make_sp_song({3840}, /*last_tick=*/13440);
+TEST_CASE("sp meter curve: a bar that arrives on the activation note is spent there, not counted twice") {
+    // The second phrase's last note sits exactly on the activation tick, and
+    // the record says its bar arrived there. That arrival and the spend are
+    // at the same instant: the window starts at the record's 2 bars, not 3,
+    // and the bar is not left in the bank once the window closes.
+    Song song = make_sp_song({960, 3840}, /*last_tick=*/13440);
     Path path;
-    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2)};
+    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520);
+    act.bank_rise_ticks = {960, 3840};  // the second bar arrives on the activation note
+    path.activations = {act};
 
     PreviewScene scene = build_preview_scene(song, &path);
     const SpMeterCurve& c = scene.sp_meter;
@@ -1030,10 +1082,12 @@ TEST_CASE("sp meter curve: a phrase ending on the activation note is not counted
     CHECK(scene.activations[0].sp_end_tick == 11520);
     CHECK(scene.activations[0].sp_end_ms == doctest::Approx(12000.0));
 
-    CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(2.0));   // the snap, no extra bar
+    CHECK(sp_meter_bars_at(c, 1000.0) == doctest::Approx(1.0));         // the first bar
+    CHECK(sp_meter_bars_at(c, 4000.0 - 1e-6) == doctest::Approx(1.0));  // the second not yet in
+    CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(2.0));         // 2, not 3
     CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(1.0));   // one bar's drain later
     CHECK(sp_meter_bars_at(c, 12000.0) == doctest::Approx(0.0));  // the deact node
-    CHECK(sp_meter_bars_at(c, 14000.0) == doctest::Approx(0.0));  // still 0: no double-step
+    CHECK(sp_meter_bars_at(c, 14000.0) == doctest::Approx(0.0));  // the bar was spent, not banked
 }
 
 TEST_CASE("sp meter curve: the drain is linear in measures across a tempo change") {
@@ -1041,7 +1095,7 @@ TEST_CASE("sp meter curve: the drain is linear in measures across a tempo change
     // before the change and 4000 ms after, so the ms slope halves there.
     Song song = make_sp_song({960}, /*last_tick=*/13440, {{5760, 60.0}});
     Path path;
-    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2)};
+    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520)};
 
     PreviewScene scene = build_preview_scene(song, &path);
     const SpMeterCurve& c = scene.sp_meter;
@@ -1062,12 +1116,14 @@ TEST_CASE("sp meter curve: the drain is linear in measures across a tempo change
     CHECK(sp_meter_bars_at(c, 18000.0) == doctest::Approx(0.0));
 }
 
-TEST_CASE("sp meter curve: an activation with no recorded bars empties the meter at once") {
-    // A stale record: the activation has a timecode but no sp_meter, so there
-    // is no deact node and no drain to draw. The bank still goes.
+TEST_CASE("sp meter curve: an activation the record stamped nothing on draws nothing") {
+    // A hand-built activation with a timecode and nothing else: no bar
+    // arrivals, no SP end steps. The gauge reads the record and counts no
+    // phrase, so there is nothing to draw. A fresh record always stamps both
+    // (the search tests prove it).
     Song song = make_sp_song({960, 1920, 5760}, /*last_tick=*/9600);
     Path path;
-    path.activations = {act_at(song, 3840, /*skips=*/0)};
+    path.activations = {act_at(song, 3840, /*skipped_fills=*/{})};
 
     PreviewScene scene = build_preview_scene(song, &path);
     const SpMeterCurve& c = scene.sp_meter;
@@ -1076,10 +1132,10 @@ TEST_CASE("sp meter curve: an activation with no recorded bars empties the meter
     REQUIRE(scene.activations.size() == 1);
     CHECK_FALSE(scene.activations[0].has_sp_end);
 
-    CHECK(sp_meter_bars_at(c, 3999.0) == doctest::Approx(2.0));
+    CHECK(sp_meter_bars_at(c, 3999.0) == doctest::Approx(0.0));
     CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(0.0));
     CHECK(sp_meter_bars_at(c, 5999.0) == doctest::Approx(0.0));
-    CHECK(sp_meter_bars_at(c, 6000.0) == doctest::Approx(1.0));  // banking resumes
+    CHECK(sp_meter_bars_at(c, 6000.0) == doctest::Approx(0.0));
 }
 
 TEST_CASE("sp meter curve: the bank stops at the cap") {
@@ -1125,6 +1181,76 @@ TEST_CASE("sp meter curve: a chart with no SP and no path has no curve at all") 
     PreviewScene scene = build_preview_scene(song, nullptr);
     CHECK(scene.sp_meter.segments.empty());
     CHECK(sp_meter_bars_at(scene.sp_meter, 1000.0) == doctest::Approx(0.0));
+}
+
+TEST_CASE("sp meter curve: a late squeeze-in refills at the old SP end") {
+    // Finding 5. The player hits the late phrase early, so SP never stops:
+    // the engine extends one bar from the old end (7000 ms). At the phrase
+    // (7250 ms) a quarter measure of that bar is gone: 0.875, not 1.0.
+    Song song = test::make_late_sqin_song();
+    ScoreGraph graph(song, 4);
+    std::vector<Path> paths = run_search(graph, EngineOptions{});
+    REQUIRE(!paths.empty());
+    const Path& best = paths.front();
+    REQUIRE(best.activations.size() == 1);
+    REQUIRE(best.activations.front().deact_tick() == std::optional<int64_t>(17280));
+
+    PreviewScene scene = build_preview_scene(song, &best);
+    const SpMeterCurve& c = scene.sp_meter;
+    check_curve_well_formed(c);
+    CHECK(sp_meter_bars_at(c, 3000.0) == doctest::Approx(2.0));   // the activation
+    CHECK(sp_meter_bars_at(c, 5000.0) == doctest::Approx(1.0));   // a bar per 2000 ms
+    CHECK(sp_meter_bars_at(c, 7000.0 - 1e-6) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(1.0));   // the refill, at the old end
+    CHECK(sp_meter_bars_at(c, 7250.0) == doctest::Approx(0.875)); // the late phrase
+    CHECK(sp_meter_readout(c, 7250.0) == "0.9/4");
+    CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(0.5));
+    CHECK(sp_meter_bars_at(c, 9000.0) == doctest::Approx(0.0));   // the deact node
+    CHECK(sp_meter_bars_at(c, 9500.0) == doctest::Approx(0.0));   // collected: nothing banks after
+}
+
+TEST_CASE("sp meter curve: a squeezed-out bar arrives at the deact node") {
+    Song song = test::make_early_sqout_song();
+    ScoreGraph graph(song, 4);
+    // The best path collects 12960 instead and keeps SP running over the
+    // second fill, so search wide and pick the path that squeezed out.
+    EngineOptions opts = test::wide_search();
+    opts.target_act_ticks = std::vector<int64_t>{5760, 17280};
+    std::vector<Path> paths = run_search(graph, opts);
+    const Path* found = nullptr;
+    for (const Path& p : paths)
+        if (!p.activations.empty() && p.activations.front().sqout_tick) found = &p;
+    REQUIRE(found != nullptr);
+    REQUIRE(found->activations.size() == 2);
+    PreviewScene scene = build_preview_scene(song, found);
+    const SpMeterCurve& c = scene.sp_meter;
+    check_curve_well_formed(c);
+    // Straight through the squeezed-out phrase (6750 ms): no step there.
+    CHECK(sp_meter_bars_at(c, 6750.0 - 1e-6) == doctest::Approx(0.125));
+    CHECK(sp_meter_bars_at(c, 6750.0) == doctest::Approx(0.125));
+    CHECK(sp_meter_bars_at(c, 7000.0 - 1e-6) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(1.0));   // its bar, as SP ends
+    CHECK(sp_meter_bars_at(c, 7500.0) == doctest::Approx(2.0));   // the next phrase
+    CHECK(sp_meter_bars_at(c, 9000.0) == doctest::Approx(2.0));   // the second activation
+    CHECK(sp_meter_bars_at(c, 11000.0) == doctest::Approx(1.0));
+}
+
+TEST_CASE("sp meter curve: the drain follows the stored steps, not the collected list") {
+    // The record moves the end at 7680 (8000 ms) from 11520 to 15360, and no
+    // phrase ends there. The gauge still steps there.
+    Song song = make_sp_song({960}, /*last_tick=*/17280);
+    Path path;
+    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520);
+    act.bank_rise_ticks = {960, 1920};
+    act.sp_end_steps = {{3840, 11520, SpEndKind::Activation},
+                        {7680, 15360, SpEndKind::Collected}};  // no phrase ends at 7680
+    path.activations = {act};
+    PreviewScene scene = build_preview_scene(song, &path);
+    const SpMeterCurve& c = scene.sp_meter;
+    check_curve_well_formed(c);
+    CHECK(sp_meter_bars_at(c, 8000.0 - 1e-6) == doctest::Approx(1.0));
+    CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(2.0));
+    CHECK(sp_meter_bars_at(c, 16000.0) == doctest::Approx(0.0));
 }
 
 TEST_CASE("sp_meter_bars_at: before the curve, after it, and on a shared boundary") {
@@ -1277,7 +1403,7 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
     // A Red note every 500 ms (tick 480 steps). One bar of SP activated at
     // tick 2400 (2500 ms) runs two measures, to tick 6240 (6500 ms).
     Song song = make_sp_song({1920}, 9600);
-    Path path = priced_path(song, {sp_act_at(song, 2400, 1)});
+    Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE(scene.score.state == PreviewScore::State::Ready);
     REQUIRE(scene.activations.size() == 1);
@@ -1287,19 +1413,76 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
     // Each step carries exactly what the replay says the disc shows.
     const ReplayResult r = replay_stored_path(song, path).result;
     REQUIRE(r.chords.size() == scene.score.steps.size());
-    for (size_t i = 0; i < r.chords.size(); ++i)
+    for (size_t i = 0; i < r.chords.size(); ++i) {
         CHECK(scene.score.steps[i].multiplier == r.chords[i].multiplier_shown);
+        // And the plain disc, which the box shows once SP has ended.
+        CHECK(scene.score.steps[i].multiplier_plain == r.chords[i].multiplier_after);
+    }
+
+    // The SP end itself: the chord on it (6500 ms) was paid doubled, but from
+    // this instant on the box is plain. A hair earlier it is still doubled.
+    CHECK(build_score_box(scene, 6499.0).detail == "x4 " + kDot + " combo 13");
+    CHECK(build_score_box(scene, 6500.0).detail == "x2 " + kDot + " combo 14");
+    CHECK(build_score_box(scene, scene.activations[0].sp_end_ms).detail ==
+          "x2 " + kDot + " combo 14");
 
     // 2000 ms: five notes hit, before the activation.
     CHECK(build_score_box(scene, 2000.0).detail == "x1 " + kDot + " combo 5");
     // 2500 ms: the activation chord is hit and paid, so x1 shows as x2.
     CHECK(build_score_box(scene, 2500.0).detail == "x2 " + kDot + " combo 6");
     CHECK(build_score_box(scene, 3000.0).detail == "x2 " + kDot + " combo 7");
-    // 6600 ms: the tint has ended, but the last chord hit (6500 ms, on the
-    // deactivation node) was paid, so its x2 still shows doubled.
-    CHECK(build_score_box(scene, 6600.0).detail == "x4 " + kDot + " combo 14");
+    // 6600 ms: Star Power has ended, so the disc is plain even though the
+    // last chord hit (6500 ms, on the deactivation node) was paid doubled.
+    CHECK(build_score_box(scene, 6600.0).detail == "x2 " + kDot + " combo 14");
     // 7000 ms: the first chord Star Power doesn't pay: the plain x2 of combo 15.
     CHECK(build_score_box(scene, 7000.0).detail == "x2 " + kDot + " combo 15");
+}
+
+// User decision D11 (docs/audit/2026-10-03-fix-decisions.md): a chord just past
+// the SP end that Hydra's leeway still pays doubled is paid doubled in the
+// score, but the box reads plain from the SP end on.
+TEST_CASE("score box: a leeway chord past the SP end is paid doubled, the box stays plain") {
+    // Same song as above, plus one extra chord 1 tick (about 1 ms) after the
+    // SP end at tick 6240, inside the 3 ms leeway.
+    Song song = make_sp_song({1920}, 9600);
+    const int64_t leeway_tick = 6241;
+    const auto at = std::find_if(song.sequence.begin(), song.sequence.end(),
+                                 [&](const SongTimestamp& ts) {
+                                     return ts.timecode.ticks() > 6240;
+                                 });
+    REQUIRE(at != song.sequence.end());
+    SongTimestamp extra;
+    extra.timecode = song.timecode(leeway_tick);
+    extra.chord.add_note(NoteColor::Red);
+    song.sequence.insert(at, std::move(extra));
+
+    Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.score.state == PreviewScore::State::Ready);
+    REQUIRE(scene.activations.size() == 1);
+    const double sp_end = scene.activations[0].sp_end_ms;
+    CHECK(sp_end == doctest::Approx(6500.0));
+
+    const ReplayResult r = replay_stored_path(song, path).result;
+    REQUIRE(r.chords.size() == scene.score.steps.size());
+    size_t idx = r.chords.size();
+    for (size_t i = 0; i < r.chords.size(); ++i)
+        if (r.chords[i].tick == leeway_tick) idx = i;
+    REQUIRE(idx < r.chords.size());
+    const ReplayChord& leeway = r.chords[idx];
+
+    // The replay paid it doubled, a hair after the SP end.
+    CHECK(leeway.ms > sp_end);
+    CHECK(leeway.ms - sp_end < core::default_rules().backend_leeway_ms);
+    CHECK(leeway.in_sp);
+    CHECK(leeway.multiplier_shown == leeway.multiplier_after * kStarPowerMultiplier);
+    CHECK(scene.score.steps[idx].multiplier == leeway.multiplier_shown);
+    CHECK(scene.score.steps[idx].multiplier_plain == leeway.multiplier_after);
+
+    // The box, at its own instant, reads plain.
+    const PreviewScoreBox box = build_score_box(scene, leeway.ms);
+    CHECK(box.detail == "x" + std::to_string(leeway.multiplier_after) + " " + kDot +
+                            " combo " + std::to_string(leeway.combo_after));
 }
 
 TEST_CASE("score box: a path the replay can't reproduce says so") {
@@ -1319,7 +1502,7 @@ TEST_CASE("score box: a path the replay can't reproduce says so") {
     // An activation with no deactivation node (a record from before blob v4)
     // yields no window, so the replay can't stand for the path.
     Path old;
-    old.activations.push_back(act_at(song, 720, 0));
+    old.activations.push_back(act_at(song, 720, {}));
     PreviewScene b = build_preview_scene(song, &old);
     CHECK(b.score.state == PreviewScore::State::Unavailable);
     CHECK(build_score_box(b, 600.0).score == "Score unavailable");
@@ -1394,7 +1577,7 @@ TEST_CASE("drain box: active inside the stored SP window, idle outside it") {
     // Two bars at tick 3840 (4000 ms): the stored end is tick 11520 (12000 ms).
     Song song = make_sp_song({960}, /*last_tick=*/13440);
     Path path;
-    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2)};
+    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520)};
     PreviewScene scene = build_preview_scene(song, &path);
 
     PreviewDrainBox before = build_drain_box(scene, 3999.0);
@@ -1419,9 +1602,8 @@ TEST_CASE("drain box: empties in reads the stored end, not a recount") {
     // plain act + 4 measures: 16000 ms, not 12000. Only the record knows.
     Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
     Path path;
-    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2);
-    act.deact_tick = 3840 + 6 * 1920;
-    act.collected_phrase_ticks = {5760};
+    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520);
+    act.sp_end_steps = {{3840, 11520, SpEndKind::Activation}, {5760, 15360, SpEndKind::Collected}};
     path.activations = {act};
     PreviewScene scene = build_preview_scene(song, &path);
 
@@ -1434,7 +1616,7 @@ TEST_CASE("drain box: an activation with no stored end stays idle") {
     // A pre-v4 record: no deact node, so nothing says SP is running.
     Song song = make_sp_song({960, 1920}, /*last_tick=*/9600);
     Path path;
-    path.activations = {act_at(song, 3840, /*skips=*/0)};
+    path.activations = {act_at(song, 3840, /*skipped_fills=*/{})};
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE_FALSE(scene.activations[0].has_sp_end);
 
@@ -1455,9 +1637,10 @@ struct TwoActs {
     Path path;
     PreviewScene scene;
     TwoActs() {
-        Activation a = sp_act_at(song, 1920, /*sp_meter=*/1);
+        Activation a = sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760);
+        a.bank_rise_ticks = {960};  // the phrase's bar, as the engine stamps it
         a.chord.add_note(NoteColor::Red);
-        Activation b = sp_act_at(song, 7680, /*sp_meter=*/1);
+        Activation b = sp_act_at(song, 7680, /*sp_meter=*/1, /*end_tick=*/11520);
         b.chord.add_note(NoteColor::Red);
         path.activations = {a, b};
         scene = build_preview_scene(song, &path);
@@ -1504,402 +1687,342 @@ TEST_CASE("next activation box: the activation at or after the playhead") {
     CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0).shown);
 }
 
-// ---- Old scan versus new search ------------------------------------------
-//
-// The time box, the next-activation box, the fill states and the SP meter
-// used to scan their lists from the front (and the fills and the meter did so
-// once per activation). They now search or walk with a moving index. The old
-// scans are copied here verbatim as the reference, and every result must
-// match them exactly: on every corpus chart with each of its paths, and on a
-// busy synthetic chart with random tempos, meters, sections and activations.
+TEST_CASE("next activation box: on an activation within half a millisecond, and no chord") {
+    TwoActs t;
+    // The playhead counts as on an activation up to half a millisecond past
+    // it: at 2000.5 ms the box still names activation 1, a hair later 2.
+    CHECK(build_next_act_box(t.scene, -100.0).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, 2000.5).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300)).header ==
+          "Next: activation 2 of 2");
+    CHECK(build_next_act_box(t.scene, 8000.5).header == "Next: activation 2 of 2");
+    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300)).shown);
+
+    // An activation with no chord names only its measure.
+    Song song = make_sp_song({960}, /*last_tick=*/13440);
+    Path path;
+    path.activations = {sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760)};
+    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0);
+    CHECK(box.header == "Next: activation 1 of 1");
+    CHECK(box.detail == "at m2.1.0");
+}
 
 namespace {
 
-namespace old_scan {
-
-constexpr double kOnActivationMs = 0.5;
-
-std::string clock_str(double ms) {
-    double secs = ms / 1000.0;
-    int minutes = static_cast<int>(secs / 60.0);
-    double rem = secs - minutes * 60.0;
-    char buf[48];
-    std::snprintf(buf, sizeof buf, "%d:%06.3f", minutes, rem);
-    return buf;
-}
-
-int64_t tick_at(const SongTiming& timing, double ms) {
-    const int64_t tick = std::llround(timing.ms_index().tick_at_ms(ms));
-    return tick < 0 ? 0 : tick;
-}
-
-double shown_length(double length_ms) { return length_ms < 0.0 ? 0.0 : length_ms; }
-
-double shown_ms(double now_ms, double length_ms) {
-    const double len = shown_length(length_ms);
-    return now_ms < 0.0 ? 0.0 : (now_ms > len ? len : now_ms);
-}
-
-PreviewTimeBox time_box(const PreviewScene& scene, double now_ms, double length_ms) {
-    PreviewTimeBox box;
-    const double len = shown_length(length_ms);
-    const double now = shown_ms(now_ms, length_ms);
-    box.timestamp = clock_str(now) + " / " + clock_str(len);
-    const int64_t now_tick = scene.timing ? tick_at(*scene.timing, now) : 0;
-    const int64_t end_tick = scene.timing ? tick_at(*scene.timing, len) : 0;
-    box.position = scene.timing ? format_measure(*scene.timing, now_tick) : "m1.1.0";
-    box.length = scene.timing ? format_measure(*scene.timing, end_tick) : "m1.1.0";
-    double bpm = scene.tempos.empty() ? 0.0 : scene.tempos.front().bpm;
-    for (const PreviewTempo& t : scene.tempos) {
-        if (t.ms > now) break;
-        bpm = t.bpm;
-    }
-    int ts_num = 4, ts_den = 4;
-    for (const PreviewTimeSig& t : scene.time_sigs) {
-        if (t.tick > now_tick) break;
-        ts_num = t.numerator;
-        ts_den = t.denominator;
-    }
-    char buf[64];
-    std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, ts_num, ts_den);
-    box.tempo = buf;
-    std::string section;
-    for (const PreviewSection& s : scene.sections) {
-        if (s.tick > now_tick) break;
-        section = s.name;
-    }
-    if (!section.empty()) box.section_line = "Section " + section;
-    return box;
-}
-
-PreviewNextActBox next_act_box(const PreviewScene& scene, double now_ms) {
-    PreviewNextActBox box;
-    const size_t count = scene.activations.size();
-    for (size_t i = 0; i < count; ++i) {
-        const PreviewActivation& a = scene.activations[i];
-        if (a.ms < now_ms - kOnActivationMs) continue;
-        box.shown = true;
-        box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(count);
-        box.detail = "at " + a.measure;
-        if (!a.chord.empty()) box.detail += " \xC2\xB7 " + a.chord;
-        break;
-    }
-    return box;
-}
-
-// The fill states as the old nested scans set them, from scratch.
-std::vector<PreviewFillState> fill_states(const PreviewScene& scene, bool has_path) {
-    std::vector<PreviewFill> fills = scene.fills;
-    for (PreviewFill& f : fills) f.state = PreviewFillState::Hidden;
-    if (!has_path) {
-        for (PreviewFill& f : fills) f.state = PreviewFillState::Offered;
-    } else {
-        int64_t prev_tick = std::numeric_limits<int64_t>::min();
-        for (const PreviewActivation& a : scene.activations) {
-            for (PreviewFill& f : fills)
-                if (f.span.end_tick == a.tick) {
-                    f.state = PreviewFillState::Taken;
-                    break;
-                }
-            int left = a.skips;
-            for (auto it = fills.rbegin(); it != fills.rend() && left > 0; ++it) {
-                if (it->span.end_tick >= a.tick || it->span.end_tick <= prev_tick) continue;
-                it->state = PreviewFillState::Offered;
-                --left;
-            }
-            prev_tick = a.tick;
-        }
-    }
-    std::vector<PreviewFillState> out;
-    for (const PreviewFill& f : fills) out.push_back(f.state);
-    return out;
-}
-
-struct DrainSplit {
-    int64_t tick = 0;
-    double ms = 0.0;
-    bool collection = false;
-};
-
-void push_segment(SpMeterCurve& curve, double start_ms, double end_ms, double start_bars,
-                  double end_bars) {
-    if (end_ms <= start_ms) return;
-    curve.segments.push_back({start_ms, end_ms, start_bars, end_bars});
-}
-
-SpMeterCurve sp_meter_curve(const PreviewScene& scene, const SongTiming& timing, int sp_cap) {
-    SpMeterCurve curve;
-    curve.cap = sp_cap < 1 ? 1 : sp_cap;
-    if (scene.sp_phrases.empty() && scene.activations.empty()) return curve;
-    const double cap = static_cast<double>(curve.cap);
-    const std::vector<PreviewSpan>& phrases = scene.sp_phrases;
-    size_t next_phrase = 0;
-    double bank = 0.0;
-    double cursor_ms = 0.0;
-    auto run_flat_to = [&](double until_ms) {
-        while (next_phrase < phrases.size() && phrases[next_phrase].end_ms < until_ms) {
-            push_segment(curve, cursor_ms, phrases[next_phrase].end_ms, bank, bank);
-            cursor_ms = phrases[next_phrase].end_ms;
-            bank = std::min(bank + 1.0, cap);
-            ++next_phrase;
-        }
-        push_segment(curve, cursor_ms, until_ms, bank, bank);
-        if (until_ms > cursor_ms) cursor_ms = until_ms;
-    };
-    for (const PreviewActivation& act : scene.activations) {
-        run_flat_to(act.ms);
-        bank = static_cast<double>(act.sp_meter);
-        if (act.sp_meter <= 0 || !act.has_sp_end) {
-            bank = 0.0;
-            continue;
-        }
-        std::vector<const PreviewSpan*> window;
-        for (size_t i = next_phrase; i < phrases.size(); ++i) {
-            if (phrases[i].end_ms >= act.sp_end_ms) break;
-            if (phrases[i].end_tick > act.tick) window.push_back(&phrases[i]);
-            ++next_phrase;
-        }
-        std::vector<DrainSplit> splits;
-        for (int64_t t : act.collected_phrase_ticks)
-            if (t > act.tick && t < act.sp_end_tick)
-                splits.push_back({t, timing.ms_index().at(t), true});
-        int64_t squeezed_out = 0;
-        for (const PreviewSpan* p : window)
-            if (std::find(act.collected_phrase_ticks.begin(), act.collected_phrase_ticks.end(),
-                          p->end_tick) == act.collected_phrase_ticks.end())
-                ++squeezed_out;
-        for (const PreviewTempo& t : scene.tempos)
-            if (t.tick > act.tick && t.tick < act.sp_end_tick)
-                splits.push_back({t.tick, t.ms, false});
-        for (const PreviewMeter& m : scene.meters)
-            if (m.tick > act.tick && m.tick < act.sp_end_tick)
-                splits.push_back({m.tick, timing.ms_index().at(m.tick), false});
-        std::stable_sort(splits.begin(), splits.end(),
-                         [](const DrainSplit& a, const DrainSplit& b) { return a.tick < b.tick; });
-        double remaining = static_cast<double>(sp_bars_to_measures(act.sp_meter));
-        int64_t prev_tick = act.tick;
-        double prev_ms = act.ms;
-        double prev_measures = timing.measures_at_tick_f(static_cast<double>(prev_tick));
-        for (const DrainSplit& s : splits) {
-            const double measures = timing.measures_at_tick_f(static_cast<double>(s.tick));
-            const double elapsed = measures - prev_measures;
-            const double left = std::max(0.0, remaining - elapsed);
-            push_segment(curve, prev_ms, s.ms, remaining / static_cast<double>(kMeasuresPerSpBar),
-                         left / static_cast<double>(kMeasuresPerSpBar));
-            remaining = left;
-            if (s.collection)
-                remaining = std::min(remaining + static_cast<double>(kMeasuresPerSpBar),
-                                     static_cast<double>(sp_bars_to_measures(curve.cap)));
-            prev_tick = s.tick;
-            prev_ms = s.ms;
-            prev_measures = measures;
-        }
-        push_segment(curve, prev_ms, act.sp_end_ms,
-                     remaining / static_cast<double>(kMeasuresPerSpBar), 0.0);
-        bank = std::min(static_cast<double>(squeezed_out), cap);
-        cursor_ms = std::max(cursor_ms, act.sp_end_ms);
-    }
-    while (next_phrase < phrases.size()) {
-        push_segment(curve, cursor_ms, phrases[next_phrase].end_ms, bank, bank);
-        cursor_ms = std::max(cursor_ms, phrases[next_phrase].end_ms);
-        bank = std::min(bank + 1.0, cap);
-        ++next_phrase;
-    }
-    const double end_ms = std::max(cursor_ms, scene.song_length_ms);
-    curve.segments.push_back({cursor_ms, end_ms, bank, bank});
-    return curve;
-}
-
-}  // namespace old_scan
-
-// Every lookup on `scene` against the old scans: the fill states and the SP
-// meter once, then the time box and next-activation box at random times plus
-// every boundary where a lookup's answer can flip (tempo, signature, section
-// and activation times, and a hair either side).
-void check_lookups_match_old_scans(const PreviewScene& scene, bool has_path, int sp_cap,
-                                   std::mt19937& rng) {
-    const std::vector<PreviewFillState> want_fills = old_scan::fill_states(scene, has_path);
-    REQUIRE(want_fills.size() == scene.fills.size());
-    for (size_t i = 0; i < want_fills.size(); ++i) {
-        CAPTURE(i);
-        CHECK(scene.fills[i].state == want_fills[i]);
-    }
-
-    REQUIRE(scene.timing.has_value());
-    const SpMeterCurve want_curve = old_scan::sp_meter_curve(scene, *scene.timing, sp_cap);
-    CHECK(scene.sp_meter.cap == want_curve.cap);
-    REQUIRE(scene.sp_meter.segments.size() == want_curve.segments.size());
-    for (size_t i = 0; i < want_curve.segments.size(); ++i) {
-        CAPTURE(i);
-        const SpMeterSegment& g = scene.sp_meter.segments[i];
-        const SpMeterSegment& w = want_curve.segments[i];
-        CHECK(g.start_ms == w.start_ms);
-        CHECK(g.end_ms == w.end_ms);
-        CHECK(g.start_bars == w.start_bars);
-        CHECK(g.end_bars == w.end_bars);
-    }
-
-    // At most this many boundaries per list, spread evenly, so a chart with
-    // thousands of tempo changes stays quick.
-    constexpr size_t kPerList = 150;
-    std::vector<double> times;
-    auto around = [&times](double ms) {
-        times.push_back(ms);
-        times.push_back(std::nextafter(ms, -1e300));
-        times.push_back(std::nextafter(ms, 1e300));
-    };
-    auto sample = [&](size_t n, auto&& ms_of) {
-        const size_t step = n > kPerList ? n / kPerList : 1;
-        for (size_t i = 0; i < n; i += step) around(ms_of(i));
-    };
-    const SongTiming& timing = *scene.timing;
-    sample(scene.tempos.size(), [&](size_t i) { return scene.tempos[i].ms; });
-    sample(scene.time_sigs.size(), [&](size_t i) { return timing.ms_index().at(scene.time_sigs[i].tick); });
-    sample(scene.sections.size(), [&](size_t i) { return scene.sections[i].ms; });
-    sample(scene.activations.size(), [&](size_t i) {
-        const double ms = scene.activations[i].ms;
-        around(ms + old_scan::kOnActivationMs);
-        return ms - old_scan::kOnActivationMs;
-    });
-    const double len = scene.song_length_ms;
-    std::uniform_real_distribution<double> any_time(-1000.0, len + 3000.0);
-    for (int i = 0; i < 300; ++i) times.push_back(any_time(rng));
-
-    for (double length_ms : {len, len + 2500.0}) {
-        for (double now : times) {
-            CAPTURE(now);
-            CAPTURE(length_ms);
-            const PreviewTimeBox g = build_time_box(scene, now, length_ms);
-            const PreviewTimeBox w = old_scan::time_box(scene, now, length_ms);
-            CHECK(g.timestamp == w.timestamp);
-            CHECK(g.position == w.position);
-            CHECK(g.length == w.length);
-            CHECK(g.tempo == w.tempo);
-            CHECK(g.section_line == w.section_line);
-        }
-    }
-    for (double now : times) {
-        CAPTURE(now);
-        const PreviewNextActBox g = build_next_act_box(scene, now);
-        const PreviewNextActBox w = old_scan::next_act_box(scene, now);
-        CHECK(g.shown == w.shown);
-        CHECK(g.header == w.header);
-        CHECK(g.detail == w.detail);
-    }
-}
-
-// A busy chart for the comparison: a tempo change every one to six beats, a
-// meter change (with its written signature) every few measures, sections
-// every few measures, an SP phrase every eight notes and a fill on every
-// third note. Then a path of activations on fills, in time order, each with
-// a random bar count, skip count and some phrases collected inside it.
-struct BusyChart {
-    Song song{480};
-    Path path;
-};
-
-BusyChart make_busy_chart(std::mt19937& rng, int64_t measures) {
-    BusyChart c;
-    Song& song = c.song;
-    const int64_t last = measures * 1920;
+// A chart whose lookups have many entries to search: four tempos, three
+// meters (with the signature the chart wrote) and four sections, at 480
+// ticks a beat. Tempo 120 BPM to tick 1920, 90 to 4800, 150 to 7680, then 60.
+// 4/4, then 3/4 from tick 3840, then 4/4 again from 6720 (both barlines).
+// So ticks 960, 1920, 2880, 3840, 4800, 5760, 6720, 7680, 8640 and 9600 are
+// 1000, 2000, 3333.3, 4666.7, 6000, 6800, 7600, 8400, 10400 and 12400 ms.
+Song make_lookup_song() {
+    Song song(480);
     song.bpm_changes[0] = 120.0;
-    std::uniform_int_distribution<int> beats(1, 6);
-    std::uniform_int_distribution<int> bpm(60, 240);
-    for (int64_t t = 480 * 3; t < last; t += 480 * beats(rng)) song.bpm_changes[t] = bpm(rng);
-    std::uniform_int_distribution<int> bars(2, 6);
-    for (int64_t t = 1920 * 4; t < last; t += 1920 * bars(rng)) {
-        const bool three = (t / 1920) % 2 == 0;
-        song.tpm_changes[t] = three ? 1440 : 1920;
-        song.timesig_changes[t] = three ? std::make_pair(3, 4) : std::make_pair(4, 4);
-    }
-    for (int64_t t = 1920 * 2, n = 1; t < last; t += 1920 * bars(rng), ++n)
-        song.practice_sections.push_back({t, "part " + std::to_string(n)});
+    song.bpm_changes[1920] = 90.0;
+    song.bpm_changes[4800] = 150.0;
+    song.bpm_changes[7680] = 60.0;
+    song.tpm_changes[3840] = 1440;
+    song.timesig_changes[3840] = {3, 4};
+    song.tpm_changes[6720] = 1920;
+    song.timesig_changes[6720] = {4, 4};
+    song.practice_sections = {{960, "Intro"}, {2880, "Verse"}, {5760, "Chorus"},
+                              {8640, "Outro"}};
     song.build_timing();
-
-    int note = 0;
-    for (int64_t t = 0; t <= last; t += 240, ++note) {
+    for (int64_t t = 0; t <= 9600; t += 960) {
         SongTimestamp ts;
         ts.timecode = song.timecode(t);
         ts.chord.add_note(NoteColor::Red);
-        if (note % 8 == 7) {
-            ts.flag_sp = true;
-            ts.sp_phrase_start = t - 240 * 7;
-        }
-        if (note % 3 == 2) ts.activation_length = 480;
         song.sequence.push_back(std::move(ts));
     }
-
-    std::uniform_int_distribution<int> sp(1, 4);
-    std::uniform_int_distribution<int> skips(0, 3);
-    std::uniform_int_distribution<int> gap(0, 12);
-    std::bernoulli_distribution collect(0.5);
-    int64_t after = 0;
-    for (const SongTimestamp& ts : song.sequence) {
-        const int64_t t = ts.timecode.ticks();
-        if (!ts.activation_length || t < after) continue;
-        if (gap(rng) != 0) continue;
-        Activation a = sp_act_at(song, t, sp(rng));
-        a.skips = skips(rng);
-        a.chord.add_note(NoteColor::Red);
-        for (const SongTimestamp& p : song.sequence) {
-            const int64_t pt = p.timecode.ticks();
-            if (p.flag_sp && pt > t && pt < *a.deact_tick && collect(rng))
-                a.collected_phrase_ticks.push_back(pt);
-        }
-        after = *a.deact_tick + 1;
-        c.path.activations.push_back(a);
-    }
-    return c;
+    return song;
 }
+
+// The time box at `now` as one line: timestamp | position | length | tempo
+// line | section line.
+std::string time_box_line(const PreviewScene& scene, double now, double length_ms) {
+    const PreviewTimeBox b = build_time_box(scene, now, length_ms);
+    return b.timestamp + " | " + b.position + " | " + b.length + " | " + b.tempo + " | " +
+           b.section_line;
+}
+
+// Built lines against pinned ones, printed as literals on a mismatch
+// (record_fixtures.h).
+using test::check_lines;
 
 }  // namespace
 
-TEST_CASE("preview lookups: searches match the old scans on a busy synthetic chart") {
-    std::mt19937 rng(20261003);
-    for (int round = 0; round < 3; ++round) {
-        CAPTURE(round);
-        const BusyChart c = make_busy_chart(rng, 400);
-        REQUIRE(c.path.activations.size() > 20);
-        for (int cap : {1, 4, 6}) {
-            CAPTURE(cap);
-            check_lookups_match_old_scans(build_preview_scene(c.song, &c.path, cap), true, cap, rng);
-        }
-        check_lookups_match_old_scans(build_preview_scene(c.song, nullptr, 4), false, 4, rng);
+TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many changes") {
+    const Song song = make_lookup_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.tempos.size() == 4);
+    REQUIRE(scene.time_sigs.size() == 3);
+    REQUIRE(scene.sections.size() == 4);
+    const double len = 12400.0;
 
-        // Sections out of tick order (a MIDI with two EVENTS tracks lists each
-        // track's in turn) keep the old front-to-back answer.
-        PreviewScene shuffled = build_preview_scene(c.song, &c.path, 4);
-        REQUIRE(shuffled.sections.size() > 4);
-        std::rotate(shuffled.sections.begin(),
-                    shuffled.sections.begin() + static_cast<std::ptrdiff_t>(shuffled.sections.size() / 2),
-                    shuffled.sections.end());
-        check_lookups_match_old_scans(shuffled, true, 4, rng);
-    }
+    // Each change at its own moment and a hair before it. The playhead's
+    // tick is rounded to the nearest one, so a section, signature or measure
+    // shows from half a tick before its tick: at 90 BPM a tick is 1.389 ms,
+    // so 3332.7 ms is tick 2879.54 and shows Verse at m2.3.0, while 3332.6 ms
+    // is tick 2879.47, still Intro at m2.2.479. Likewise 999.9 ms is tick
+    // 959.9 (Intro) and 4666.0 ms tick 3839.5 (3/4). The tempo is looked up
+    // by ms, so a hair before 2000 ms the box reads tick 1920 (m2.1.0) at the
+    // old 120 BPM. In 3/4 a measure is 1440 ticks: measure 3 starts at 3840,
+    // 4 at 5280, so tick 5759 (6799 ms at 150 BPM) is m4.1.479. Past the
+    // length the playhead is held at 12400 ms, tick 9600, m6.3.0.
+    std::vector<std::string> got;
+    for (double now : {-500.0, 0.0, 999.9, 1000.0, std::nextafter(2000.0, -1e300), 2000.0,
+                       3332.6, 3332.7, 4666.0, 4666.7, std::nextafter(6000.0, -1e300), 6000.0,
+                       6799.0, 6800.0, 7600.0, std::nextafter(8400.0, -1e300), 8400.0, 10400.0,
+                       20000.0})
+        got.push_back(time_box_line(scene, now, len));
+    const std::string d = " " + kDot + " ";
+    check_lines(got,
+                {"0:00.000 / 0:12.400 | m1.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | ",
+                 "0:00.000 / 0:12.400 | m1.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | ",
+                 "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
+                 "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
+                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
+                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
+                 "0:03.333 / 0:12.400 | m2.2.479 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
+                 "0:03.333 / 0:12.400 | m2.3.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Verse",
+                 "0:04.666 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
+                 "0:04.667 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
+                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
+                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
+                 "0:06.799 / 0:12.400 | m4.1.479 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
+                 "0:06.800 / 0:12.400 | m4.2.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Chorus",
+                 "0:07.600 / 0:12.400 | m5.1.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
+                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
+                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Chorus",
+                 "0:10.400 / 0:12.400 | m6.1.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro",
+                 "0:12.400 / 0:12.400 | m6.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
+                "time box");
+
+    // A negative length shows zero. A length past the last note keeps
+    // counting at the last tempo and meter: 60 BPM from tick 9600 (12400
+    // ms), so 15000 ms is tick 10848, 288 into measure 7 (from 10560), and
+    // 16400 ms is tick 11520, its third beat.
+    check_lines({time_box_line(scene, 500.0, -1.0), time_box_line(scene, 15000.0, 16400.0)},
+                {"0:00.000 / 0:00.000 | m1.1.0 | m1.1.0 | BPM 120.000" + d + "4/4 | ",
+                 "0:15.000 / 0:16.400 | m7.1.288 | m7.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
+                "time box lengths");
+
+    // Sections out of tick order (a MIDI with two EVENTS tracks lists each
+    // track's in turn) keep the front-to-back answer: the one before the
+    // first section past the playhead. Listed Chorus, Outro, Intro, Verse,
+    // the first entry is already past the playhead until 6800 ms, so nothing
+    // shows; at 7000 ms Outro is the first past it, so Chorus; at 11000 ms
+    // none is past it and the last listed, Verse, shows.
+    PreviewScene shuffled = scene;
+    std::rotate(shuffled.sections.begin(), shuffled.sections.begin() + 2,
+                shuffled.sections.end());
+    check_lines({build_time_box(shuffled, 1500.0, len).section_line,
+                 build_time_box(shuffled, 7000.0, len).section_line,
+                 build_time_box(shuffled, 11000.0, len).section_line},
+                {"", "Section Chorus", "Section Verse"}, "shuffled sections");
 }
 
-TEST_CASE("preview lookups: searches match the old scans on every corpus chart and path") {
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 3;
-    settings.ms_filter = 10.0;
-    std::mt19937 rng(7);
-    int charts_with_paths = 0;
+TEST_CASE("build_preview_scene: passed-over fills on several activations, and a tick that is no fill") {
+    // Fills end at 480, 960, 1440 and 1920. The first activation takes 480,
+    // the second passes over 960 and takes 1440, the third lists a tick (1700)
+    // that is no fill, which lights nothing, and takes 1920.
+    Song song = make_fill_song();
+    Path path;
+    path.activations = {act_at(song, 480, {}), act_at(song, 1440, {960}),
+                        act_at(song, 1920, {1700})};
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.fills.size() == 4);
+    CHECK(scene.fills[0].state == PreviewFillState::Taken);
+    CHECK(scene.fills[1].state == PreviewFillState::Offered);
+    CHECK(scene.fills[2].state == PreviewFillState::Taken);
+    CHECK(scene.fills[3].state == PreviewFillState::Taken);
+}
+
+TEST_CASE("sp meter curve: a meter change inside the window changes the drain rate") {
+    // 4/4 to tick 7680 (8000 ms, a barline), then 3/4: 1440 ticks, 1500 ms a
+    // measure. Two bars from tick 3840 (measure 2) are four measures: two of
+    // 4/4 to tick 7680, then two of 3/4 to tick 10560 (11000 ms). One bar is
+    // 4000 ms of 4/4 and 3000 ms of 3/4.
+    Song song = make_sp_song({960, 1920}, /*last_tick=*/13440, {}, 480, {{7680, 1440}});
+    Path path;
+    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/10560);
+    act.bank_rise_ticks = {960, 1920};
+    path.activations = {act};
+    PreviewScene scene = build_preview_scene(song, &path);
+    const SpMeterCurve& c = scene.sp_meter;
+    check_curve_well_formed(c);
+    REQUIRE(scene.activations.size() == 1);
+    CHECK(scene.activations[0].sp_end_ms == doctest::Approx(11000.0));
+
+    CHECK(sp_meter_bars_at(c, 2000.0) == doctest::Approx(2.0));
+    CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(2.0));
+    CHECK(sp_meter_bars_at(c, 6000.0) == doctest::Approx(1.5));   // 2000 ms of 4/4
+    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(1.25));
+    CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(1.0));   // the meter change
+    CHECK(sp_meter_bars_at(c, 8750.0) == doctest::Approx(0.75));  // 750 ms of 3/4
+    CHECK(sp_meter_bars_at(c, 9500.0) == doctest::Approx(0.5));
+    CHECK(sp_meter_bars_at(c, std::nextafter(11000.0, -1e300)) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 11000.0) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 12000.0) == doctest::Approx(0.0));
+}
+
+// D15 and D42. The engine stores each SP end as a whole tick, dropping the
+// fraction of a measure (SongTiming::plusmeasure). The gauge drains at
+// exactly one bar per two measures to that stored end, so inside the window
+// it may sit up to one tick's worth of drain per stored SP-end step below a
+// gauge that starts at exactly the banked bars. Between windows it is exact.
+TEST_CASE("sp meter curve: a stored SP end that drops a fraction of a tick") {
+    // 120 BPM, 480 ticks a beat; 4/4 to tick 7680 (8000 ms), then 3/4 (1440
+    // ticks a measure). The activation is two ticks into measure 3: measure
+    // 2 + 2/1920. Two bars later is measure 6 + 2/1920, which in 3/4 is tick
+    // 7680 + (2 + 2/1920) x 1440 = 10561.5. The engine stores 10561.
+    Song song(480);
+    song.bpm_changes[0] = 120.0;
+    song.tpm_changes[7680] = 1440;
+    song.build_timing();
+    for (int64_t t : {0, 960, 1920, 3842, 4800, 7680, 9000, 12000, 14000}) {
+        SongTimestamp ts;
+        ts.timecode = song.timecode(t);
+        ts.chord.add_note(NoteColor::Red);
+        if (t == 960 || t == 1920) {
+            ts.flag_sp = true;
+            ts.sp_phrase_start = t - 480;
+        }
+        song.sequence.push_back(std::move(ts));
+    }
+    CHECK(song.timing().plusmeasure(song.timecode(3842), 4).ticks() == 10561);
+
+    Path path;
+    Activation act = sp_act_at(song, 3842, /*sp_meter=*/2, /*end_tick=*/10561);
+    act.bank_rise_ticks = {960, 1920};
+    path.activations = {act};
+    path.trailing_bank_ticks = {12000};  // a bar after the window (12500 ms)
+    PreviewScene scene = build_preview_scene(song, &path);
+    const SpMeterCurve& c = scene.sp_meter;
+    check_curve_well_formed(c);
+    REQUIRE(scene.activations.size() == 1);
+    // Tick 3842 is 4002.083 ms; tick 10561 is 8000 + 2881 x 500/480 =
+    // 11001.042 ms.
+    const double act_ms = scene.activations[0].ms;
+    const double end_ms = scene.activations[0].sp_end_ms;
+    CHECK(act_ms == doctest::Approx(4002.0833333));
+    CHECK(end_ms == doctest::Approx(11001.0416667));
+
+    // One tick of drain at the smallest measure here (1440 ticks): a bar is
+    // two measures, so 1 / 2880 bars. The window has one stored step.
+    const double one_tick = 1.0 / 2880.0;
+    // At the activation: the stored end is measure 4 + 2881/1440 = 6.0006944
+    // and the activation 2 + 2/1920 = 2.0010417, so 3.9996528 measures are
+    // left, 1.9998264 bars. Exactly 2 bars would start at 2.
+    const double at_act = sp_meter_bars_at(c, act_ms);
+    CHECK(at_act == doctest::Approx(1.99982638889).epsilon(1e-10));
+    CHECK(std::fabs(at_act - 2.0) <= one_tick);
+    // At the meter change (tick 7680, 8000 ms): 2881/1440 measures left =
+    // 1.0003472 bars. Exactly 2 bars less the 1.9989583 measures gone would
+    // be 1.0005208.
+    const double at_meter = sp_meter_bars_at(c, 8000.0);
+    CHECK(at_meter == doctest::Approx(1.00034722222).epsilon(1e-10));
+    CHECK(std::fabs(at_meter - 1.0005208) <= one_tick);
+    // Empty at the stored end, as both would be.
+    CHECK(sp_meter_bars_at(c, std::nextafter(end_ms, -1e300)) == doctest::Approx(0.0));
+    // Between windows, exact whole bars: two before, none after, then the
+    // trailing bar.
+    CHECK(sp_meter_bars_at(c, 3000.0) == 2.0);
+    CHECK(sp_meter_bars_at(c, end_ms) == 0.0);
+    CHECK(sp_meter_bars_at(c, 12000.0) == 0.0);
+    CHECK(sp_meter_bars_at(c, 12500.0) == 1.0);
+}
+
+// The gauge on every stored path of every corpus chart, held to what the
+// record says, through the record's own facts. At each activation it starts
+// at the bars the activation spent (Activation::sp_meter), up to one tick's
+// worth of drain lower (D15: the stored end drops a fraction of a tick); it
+// is empty at the stored deact node; and between windows it holds whole bars,
+// never over the cap. Without a path it holds whole bars that never fall.
+TEST_CASE("sp meter curve: every corpus gauge starts at its spent bars and empties at its deact node") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int charts = 0, windows = 0;
     for (const std::string& chart : corpus::chart_paths()) {
         CAPTURE(chart);
-        std::optional<AnalysisResult> r;
-        try {
-            r.emplace(analyze_chart_file(chart, settings));
-        } catch (const std::exception&) {
-            continue;  // a chart the analysis rejects has no scene to compare
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        ++charts;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+
+        const PreviewScene bare = build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules);
+        check_curve_well_formed(bare.sp_meter);
+        double prev = 0.0;
+        for (const SpMeterSegment& s : bare.sp_meter.segments) {
+            CHECK(s.start_bars == s.end_bars);
+            CHECK(s.start_bars == std::floor(s.start_bars));
+            CHECK(s.start_bars >= prev);
+            prev = s.start_bars;
         }
-        if (r->song.is_empty()) continue;
-        check_lookups_match_old_scans(build_preview_scene(r->song, nullptr, 4), false, 4, rng);
-        if (!r->record.paths.empty()) ++charts_with_paths;
-        for (const Path& p : r->record.paths)
-            check_lookups_match_old_scans(build_preview_scene(r->song, &p, 4), true, 4, rng);
+
+        for (const Path* p : rec.all_paths()) {
+            CAPTURE(p->pathstring());
+            const PreviewScene scene = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+            const SpMeterCurve& c = scene.sp_meter;
+            check_curve_well_formed(c);
+            int64_t min_tpm = std::numeric_limits<int64_t>::max();
+            for (const PreviewMeter& m : scene.meters) min_tpm = std::min(min_tpm, m.tpm);
+            REQUIRE(min_tpm > 0);
+            const double one_tick = 1.0 / (static_cast<double>(kMeasuresPerSpBar) *
+                                           static_cast<double>(min_tpm));
+            size_t i = 0;
+            for (const Activation& a : p->walk_activations()) {
+                const PreviewActivation& pa = scene.activations.at(i++);
+                REQUIRE(pa.has_sp_end);
+                ++windows;
+                const double at_act = sp_meter_bars_at(c, pa.ms);
+                CHECK(at_act <= a.sp_meter() + 1e-9);
+                CHECK(at_act >= a.sp_meter() - one_tick - 1e-9);
+                CHECK(sp_meter_bars_at(c, std::nextafter(pa.sp_end_ms, -1e300)) < 1e-6);
+            }
+            for (const SpMeterSegment& s : c.segments) {
+                bool in_window = false;
+                for (const PreviewActivation& pa : scene.activations)
+                    if (s.end_ms > pa.ms && s.start_ms < pa.sp_end_ms) in_window = true;
+                if (in_window) continue;
+                CHECK(s.start_bars == s.end_bars);
+                CHECK(s.start_bars == std::floor(s.start_bars));
+            }
+        }
     }
-    CHECK(charts_with_paths > 10);
+    CHECK(charts > 0);
+    CHECK(windows > charts);
 }
+
+// The Preview lights a stored passed-over fill by matching its tick to a fill
+// in the scene, and drops a tick that matches none. A miss would mean the
+// record and the chart disagree, so on the corpus there must be none.
+TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene") {
+    // The app's default settings, as "base + overlay" reads the corpus.
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int ticks_checked = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        if (rec.paths.empty()) continue;
+        std::set<int64_t> fill_ends;
+        for (const PreviewFill& f : build_preview_base(song).fills) fill_ends.insert(f.span.end_tick);
+        for (size_t pi = 0; pi < rec.paths.size(); ++pi) {
+            for (const Activation& a : rec.paths[pi].walk_activations()) {
+                for (int64_t t : a.skipped_fill_ticks) {
+                    ++ticks_checked;
+                    if (fill_ends.count(t) == 0)
+                        MESSAGE(chart << " | root " << pi << " | activation "
+                                      << a.timecode.ticks() << " | stored fill tick " << t);
+                    CHECK(fill_ends.count(t) == 1);
+                }
+            }
+        }
+    }
+    MESSAGE("stored passed-over fill ticks checked: " << ticks_checked);
+    CHECK(ticks_checked > 0);
+}
+
 
 TEST_CASE("sp meter readout: bars banked over the cap") {
     TwoActs t;

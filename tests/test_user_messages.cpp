@@ -12,6 +12,7 @@
 #include "app/user_messages.h"
 #include "core/model.h"
 #include "parse/midi.h"
+#include "parse/song.h"
 #include "store/serialize.h"
 
 using hydra::app::plain_error;
@@ -67,6 +68,47 @@ TEST_CASE("user_messages: a missing or unreadable song file") {
           kChartUnreadable);
     // A chart-file error Hydra doesn't know yet still reads as a chart problem.
     CHECK(plain_error(hydra::ChartFileError("a brand new parse failure")) == kChartUnreadable);
+}
+
+TEST_CASE("user_messages: refused chart timing names the tick") {
+    CHECK(plain_error(hydra::ChartFileError("the tempo at tick 384 is not above 0 BPM")) ==
+          "Hydra can't analyze this chart because the tempo at tick 384 is not above 0 "
+          "BPM. Fix that line in the chart file or download the song again.");
+    CHECK(plain_error(hydra::ChartFileError(
+              "the time signature at tick 768 makes a measure 0 ticks long")) ==
+          "Hydra can't analyze this chart because the time signature at tick 768 makes a "
+          "measure 0 ticks long. Fix that line in the chart file or download the song "
+          "again.");
+    CHECK(plain_error(hydra::ChartFileError(
+              "the chart's resolution is 0, and it must be above 0")) ==
+          "Hydra can't analyze this chart because the chart's resolution is 0, and it must "
+          "be above 0. Fix that line in the chart file or download the song again.");
+}
+
+// The messages above are typed by hand. This one is thrown by a real refused
+// load, so rewording the throw in parse/song.cpp cannot quietly drop the user
+// back to the generic "couldn't read this chart file" text.
+TEST_CASE("user_messages: a real refused load shows the tick sentence") {
+    const std::string chart =
+        "[Song]\n{\n  Resolution = 192\n}\n"
+        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 0\n}\n"
+        "[ExpertDrums]\n{\n  0 = N 0 0\n}\n";
+    try {
+        hydra::load_songbytes_chart(std::vector<uint8_t>(chart.begin(), chart.end()), true, true);
+        FAIL("a chart with B 0 loaded");
+    } catch (const std::exception& e) {
+        CHECK(plain_error(e) ==
+              "Hydra can't analyze this chart because the tempo at tick 0 is not above 0 "
+              "BPM. Fix that line in the chart file or download the song again.");
+    }
+}
+
+TEST_CASE("user_messages: an infinite .mid tempo says so") {
+    CHECK(plain_error(hydra::ChartFileError(
+              "the tempo at tick 96 is infinite (0 microseconds per beat)")) ==
+          "Hydra can't analyze this chart because the tempo at tick 96 is infinite (0 "
+          "microseconds per beat). Fix that line in the chart file or download the song "
+          "again.");
 }
 
 TEST_CASE("user_messages: the no-notes message is already plain and passes through") {

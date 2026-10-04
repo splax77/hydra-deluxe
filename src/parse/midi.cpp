@@ -4,6 +4,7 @@
 #include <cstdio>
 
 #include "core/winstr.h"  // fopen_utf8
+#include "parse/timesig.h"
 
 namespace hydra {
 namespace {
@@ -115,7 +116,9 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
         out->type = MType::TimeSignature;
         out->time = time;
         out->numerator = payload[0];
-        out->denominator = 1 << payload[1];  // stored as a power of two, as mido
+        // Stored as a power of two, as mido. An exponent past 30 has no int
+        // power, so it reads as 0, which the song parser refuses.
+        out->denominator = timesig_denominator(payload[1]);
         return true;
     }
 

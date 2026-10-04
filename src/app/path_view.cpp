@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <optional>
 
 #include "core/backend_value.h"
@@ -19,6 +20,19 @@ std::string bars_text(int bars) {
 
 // The separator the new labels use: " · " (U+00B7 in UTF-8).
 const char* const kDot = " \xC2\xB7 ";
+
+// A multiplier as the scale line prints it: two decimals, or as many more as
+// it takes not to read as x1.00, up to kScaleIdentityDigits (derived from
+// is_scaled's tolerance), so a multiplier that governs a figure never prints
+// as 1.
+std::string format_scale(double r) {
+    char buf[32];
+    for (int digits = 2; digits <= kScaleIdentityDigits; ++digits) {
+        std::snprintf(buf, sizeof(buf), "x%.*f", digits, r);
+        if (std::strtod(buf + 1, nullptr) != 1.0) break;
+    }
+    return buf;
+}
 
 }  // namespace
 
@@ -62,16 +76,17 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
     for (size_t i = 0; i < act.sqinouts.size(); ++i) {
         const SPSqueeze& sq = act.sqinouts[i];
         // timing() is the edge SPSqueeze::description() prints: a SqOut must
-        // be hit later than it, a SqIn earlier than it.
+        // be hit later than it, a SqIn earlier than it. Which wording applies
+        // is SPSqueeze::is_free's answer, the one the rating reads too (D13).
         const double t = sq.timing();
+        const std::string edge = format_ms_spaced(std::fabs(t));
         std::string text;
         if (sq.kind == SqueezeKind::SqOut) {
             const std::string note =
                 squeezed_out ? "the " + squeezed_out->row.chord.notationstr() + " note"
                              : std::string("the SP phrase's last note");
-            const std::string when = t >= 0.0
-                                         ? "more than " + format_ms_spaced(std::fabs(t)) + " late"
-                                         : "no more than " + format_ms_spaced(std::fabs(t)) + " early";
+            const std::string when = sq.is_free() ? "no more than " + edge + " early"
+                                                  : "more than " + edge + " late";
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
             if (squeezed_out) {
                 // What the squeeze-out costs, from the same function the
@@ -94,9 +109,8 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                 text += " Its SP phrase banks for later.";
             }
         } else {
-            std::string when = t <= 0.0
-                                   ? "more than " + format_ms_spaced(std::fabs(t)) + " early"
-                                   : "no more than " + format_ms_spaced(std::fabs(t)) + " late";
+            std::string when = sq.is_free() ? "no more than " + edge + " late"
+                                            : "more than " + edge + " early";
             // A SqIn has no backend row to carry its eff. figure (a SqOut's
             // sits on its squeezed-out row), so the sentence carries it.
             if (i < note_effective_ms.size() && note_effective_ms[i])
@@ -167,8 +181,10 @@ std::string multsqueeze_summary(const std::vector<MultSqueezeView>& squeezes) {
 const char* const kTransferScaleHint =
     "SP length is measured in measures, so frontend timing\n"
     "reaches the SP end scaled by the measure-length ratio.\n"
-    "Early and late hits scale differently when the activation\n"
-    "or SP end sits exactly on a signature or tempo change.";
+    "Early and late hits scale differently when the note SP is\n"
+    "measured from (the activation, or the collecting note when\n"
+    "the cap clamps) or the SP end sits exactly on a signature\n"
+    "or tempo change.";
 
 const char* const kOverfillHint =
     "SP lasts a set number of measures from the note it is\n"
@@ -199,8 +215,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.number = static_cast<int>(view.acts.size()) + 1;
         av.notation = ntn;
         av.measure = meas;
-        av.sp_bars = act.sp_meter;
-        av.bars = bars_text(act.sp_meter);
+        av.sp_bars = act.sp_meter();
+        av.bars = bars_text(act.sp_meter());
         av.badge = activation_badge(act);
         av.chord = act.chord.rowstr();
         if (timing && song_length_ms && *song_length_ms > 0.0) {
@@ -218,53 +234,61 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
         ActivationRating rate = rate_activation(act, W, rules.backend_leeway_ms);
 
-        // The line shows every scale that isn't x1.00, early first. Backend
-        // rows are judged at the post (deact-node) end, SqIn/SqOut phrase
-        // notes at the pre (pre-extension) end; the two differ only when a
-        // SqIn extended SP, and then the SqIn's end gets its own clause.
-        // 0.005 is half the last digit of %.2f: a scale within it prints as
-        // x1.00, and two scales within it print the same.
-        auto shows = [](double r) { return std::abs(r - 1.0) >= 0.005; };
-        auto same = [](double a, double b) { return std::abs(a - b) < 0.005; };
-        auto sides = [&shows](const TransferScale& s) {
-            char buf[64];
+        // The line names every multiplier that isn't 1, early first: at the
+        // SP end, then at the SqIn's end when that prints differently. It is
+        // orange when one of them governs a row or SqIn on this activation.
+        auto sides = [](const TransferScale& s) {
             std::string out;
-            if (shows(s.early)) {
-                std::snprintf(buf, sizeof(buf), "x%.2f (early)", s.early);
-                out = buf;
-            }
-            if (shows(s.late)) {
-                std::snprintf(buf, sizeof(buf), "x%.2f (late)", s.late);
+            if (is_scaled(s.early)) out = format_scale(s.early) + " (early)";
+            if (is_scaled(s.late)) {
                 if (!out.empty()) out += " / ";
-                out += buf;
+                out += format_scale(s.late) + " (late)";
             }
             return out;
         };
-        const TransferScale& post = rate.scales.post;
-        const TransferScale& pre = rate.scales.pre;
-        const std::string post_part = sides(post);
-        const bool pre_differs = !same(pre.early, post.early) || !same(pre.late, post.late);
-        const std::string pre_part = pre_differs ? sides(pre) : std::string();
-        std::string clauses;
-        if (!post_part.empty()) clauses = post_part + " at the SP end";
-        if (!pre_part.empty()) {
-            if (!clauses.empty()) clauses += "; ";
-            clauses += pre_part + " at the SqIn's SP end";
+        if (!rate.scales) {
+            // D4: a guard that shows a bug. A test proves fresh records never
+            // reach it.
+            av.scale_warning = "Transfer scale unknown.";
+            av.scale_warn = true;
+        } else {
+            const std::string post_part = sides(rate.scales->post);
+            // Each SqIn's scale, when it prints differently from the SP
+            // end's. When every SqIn prints alike, one clause covers them:
+            // "the SqIn's SP end" for a single SqIn, "each SqIn's SP end" for
+            // two or more (D16). When they differ, each gets its own clause,
+            // numbered by its place among the SqIns (Q5).
+            std::vector<std::string> sqin_parts;
+            bool sqins_alike = true;
+            for (const TransferScale& s : rate.scales->sqins) {
+                sqin_parts.push_back(sides(s));
+                sqins_alike = sqins_alike && sqin_parts.back() == sqin_parts.front();
+            }
+            std::string clauses;
+            if (!post_part.empty()) clauses = post_part + " at the SP end";
+            for (size_t i = 0; i < sqin_parts.size(); ++i) {
+                const std::string& part = sqin_parts[i];
+                if (part.empty() || part == post_part) continue;
+                if (!clauses.empty()) clauses += "; ";
+                if (sqins_alike) {
+                    clauses += part + (sqin_parts.size() > 1 ? " at each SqIn's SP end"
+                                                             : " at the SqIn's SP end");
+                    break;
+                }
+                clauses += part + " at SqIn " + std::to_string(i + 1) + "'s SP end";
+            }
+            if (!clauses.empty()) av.scale_warning = "Frontend timing scales " + clauses + ".";
+            av.scale_warn = rate.scale_governs;
         }
-        if (!clauses.empty()) av.scale_warning = "Frontend timing scales " + clauses + ".";
-        // Orange only when a shown scale moves a figure on screen.
-        av.scale_warn = (rate.late_backend_warns && shows(post.late)) ||
-                        (rate.early_backend_warns && shows(post.early)) ||
-                        (rate.late_note_warns && shows(pre.late)) ||
-                        (rate.early_note_warns && shows(pre.early));
 
         // When the SP window was cap-clamped and this activation lists a
         // squeeze the frontend decides, warn that the anchor is the
         // collecting note, not the activation.
         if (rate.cap_clamped) {
-            if (timing && act.clamp_tick) {
+            const std::optional<int64_t> clamp = act.clamp_tick();
+            if (timing && clamp) {
                 av.overfill_warning =
-                    "SP overfilled at " + format_measure(*timing, *act.clamp_tick);
+                    "SP overfilled at " + format_measure(*timing, *clamp);
             } else {
                 av.overfill_warning = "SP overfilled";
             }
@@ -292,17 +316,18 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             char tbuf[32];
             std::snprintf(tbuf, sizeof(tbuf), "%.1f", bsq.offset_ms.value_or(0.0));
             row.timing = tbuf;
-            if (br.effective_ms) {
+            if (br.note.effective_ms) {
                 char tip[256];
                 // The budget at identity scale (x1.00): what the combined
                 // budget would be with no frontend-timing scale.
                 const double normal_budget = squeeze_budget_ms(1.0, W);
                 std::snprintf(tip, sizeof(tip),
                               "Effectively %.1fms on the normal %.0fms scale:\n"
-                              "frontend timing scales x%.2f here, so the combined\n"
-                              "squeeze budget is %.0fms, not %.0fms.",
-                              *br.effective_ms, normal_budget, br.scale,
-                              br.budget_ms, normal_budget);
+                              "frontend timing scales %s here, so the combined\n"
+                              "squeeze budget is %.1fms, not %.1fms.",
+                              *br.note.effective_ms, normal_budget,
+                              format_scale(br.note.scale).c_str(), br.note.budget_ms,
+                              normal_budget);
                 row.tooltip = tip;
             }
             row.chord = bsq.chord.notationstr();
@@ -319,11 +344,11 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                                 : core::SqOutPosition::NoSqOut,
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
-            row.rating = bsq.summarystr(W, rules.backend_leeway_ms);
-            if (br.effective_ms) {
+            row.rating = bsq.summarystr(br.squeezed_out, W, rules.backend_leeway_ms);
+            if (br.note.effective_ms) {
                 char effbuf[32];
                 std::snprintf(effbuf, sizeof(effbuf), " (eff. %.1fms)",
-                              *br.effective_ms);
+                              *br.note.effective_ms);
                 row.rating += effbuf;
             }
             if (br.squeezed_out) {
@@ -352,9 +377,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
     // The line beside the heading: how many, and what is left.
     if (!view.acts.empty()) {
-        const std::string left = path.leftover_sp == 0
+        const std::string left = path.leftover_sp() == 0
                                      ? std::string("no SP left over")
-                                     : bars_text(path.leftover_sp) + " of SP left over";
+                                     : bars_text(path.leftover_sp()) + " of SP left over";
         view.summary = std::to_string(view.acts.size()) + kDot + left;
     }
     if (timing && song_length_ms && *song_length_ms > 0.0) {

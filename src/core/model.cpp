@@ -304,14 +304,14 @@ std::string SPSqueeze::description() const {
 
 bool BackendSqueeze::operator==(const BackendSqueeze& o) const {
     return timecode == o.timecode && chord == o.chord && points == o.points &&
-           sqout_points == o.sqout_points && is_sp == o.is_sp &&
-           offset_ms == o.offset_ms;
+           sqout_points == o.sqout_points && offset_ms == o.offset_ms;
 }
 
-std::string BackendSqueeze::summarystr(double hit_window_ms, double leeway_ms) const {
+std::string BackendSqueeze::summarystr(bool squeezed_out, double hit_window_ms,
+                                       double leeway_ms) const {
     double off = offset_ms.value_or(0.0);
     const double w = hit_window_ms;
-    if (is_sp) {
+    if (squeezed_out) {
         if (off < -w) return "Insane SqOut";
         if (off < -10) return "Hard SqOut";
         if (off < 10) return "Standard SqOut";
@@ -410,11 +410,10 @@ std::string MultSqueeze::howto() const {
 
 // ---- Activation ---------------------------------------------------------
 
-bool Activation::is_e_critical() const {
-    return e_offset < kEarlyFillWindowMs;
-}
+// Inside the early-fill window, skipped fills or not: is_e0 with none skipped.
+bool Activation::is_e_critical() const { return is_e0(e_offset, 0); }
 
-bool Activation::is_E0() const { return is_e0(e_offset, skips); }
+bool Activation::is_E0() const { return is_e0(e_offset, skips()); }
 
 std::optional<double> Activation::e_difficulty(bool verbose) const {
     if (is_E0() || verbose) return early_fill_difficulty(e_offset);
@@ -440,7 +439,7 @@ std::string Activation::notationstr() const {
     std::string e = is_e_critical() ? "E" : "";
     std::string syms;
     for (const SPSqueeze& sq : sqinouts) syms += sq.symbol();
-    return e + std::to_string(skips) + syms;
+    return e + std::to_string(skips()) + syms;
 }
 
 std::string Activation::notationstr_verbose() const {
@@ -550,7 +549,8 @@ void Path::prepare_variants() {
         v.score_accents = score_accents;
         v.score_ghosts = score_ghosts;
         v.notecount = notecount;
-        v.leftover_sp = leftover_sp;
+        // trailing_bank_ticks is the variant's own: the engine stores it and
+        // the record keeps it per variant (D3, finding 89).
         v.prepare_variants();
     }
 }
@@ -570,10 +570,119 @@ bool Path::is_difficult() const {
     return d && *d > kDifficultMs;
 }
 
-// The engine stamps the squeezed-out chord's tick at copy-out (record v6).
-// A record without it is Stale and is never guessed at.
+// ---- the SP-end history's readers -----------------------------------------
+// Each one reads sp_end_steps and nothing else (R1). An empty list (a
+// hand-built activation) gives "unset", never a guess.
+
+std::optional<int64_t> Activation::deact_tick() const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    return sp_end_steps.back().end_tick;
+}
+
+namespace {
+
+// Which note did the SP cap last pin, at or before step `last`? The tick of
+// the latest Clamped step up to there, else unset. clamp_tick (the whole
+// history) and end_anchor_tick (up to one step) both ask it.
+std::optional<int64_t> last_clamp_tick(const std::vector<SpEndStep>& steps, size_t last) {
+    for (size_t s = std::min(last + 1, steps.size()); s-- > 0;)
+        if (steps[s].kind == SpEndKind::Clamped) return steps[s].tick;
+    return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<int64_t> Activation::clamp_tick() const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    return last_clamp_tick(sp_end_steps, sp_end_steps.size() - 1);
+}
+
+std::vector<int64_t> Activation::collected_phrase_ticks() const {
+    std::vector<int64_t> out;
+    for (size_t k = 1; k < sp_end_steps.size(); ++k) out.push_back(sp_end_steps[k].tick);
+    return out;
+}
+
+std::optional<int64_t> Activation::nominal_end() const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    return sp_end_steps.front().end_tick;
+}
+
+std::optional<size_t> Activation::squeeze_end_step(size_t squeeze_index) const {
+    if (squeeze_index >= sqinouts.size() || sp_end_steps.empty()) return std::nullopt;
+    if (sqinouts[squeeze_index].kind == SqueezeKind::SqOut) return sp_end_steps.size() - 1;
+    // The k-th SqIn squeeze is the k-th SqIn step (nth_sqin_step). Its end
+    // was measured from the step before it.
+    const size_t k = sqin_rank(sqinouts.begin(), sqinouts.begin() + squeeze_index, is_sqin_squeeze);
+    const auto step = nth_sqin_step(sp_end_steps.begin() + 1, sp_end_steps.end(), k);
+    if (step == sp_end_steps.end()) return std::nullopt;
+    return static_cast<size_t>(step - sp_end_steps.begin()) - 1;
+}
+
+std::optional<int64_t> Activation::squeeze_end_tick(size_t squeeze_index) const {
+    const std::optional<size_t> s = squeeze_end_step(squeeze_index);
+    if (!s) return std::nullopt;
+    return sp_end_steps[*s].end_tick;
+}
+
+// D1: an end is measured from the note whose timing moves it, the latest
+// clamp at or before the step that set it, else the activation.
+int64_t Activation::end_anchor_tick(size_t step_index) const {
+    return last_clamp_tick(sp_end_steps, step_index).value_or(timecode.ticks());
+}
+
+int64_t Activation::refill_tick(size_t step_index) const {
+    const SpEndStep& s = sp_end_steps.at(step_index);
+    if (step_index == 0 || !is_sqin_kind(s.kind)) return s.tick;
+    // A late squeeze-in: the phrase sits past the end in force, and the
+    // player hits it early, so the bar arrives at that end.
+    return std::min(s.tick, sp_end_steps[step_index - 1].end_tick);
+}
+
+// The note whose timing moves the final SP end D: the latest Clamped step,
+// else the activation (D1). Unset when the history is empty (old records).
+std::optional<int64_t> Activation::deact_anchor_tick() const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    return end_anchor_tick(sp_end_steps.size() - 1);
+}
+
+// The note whose timing moves the SP end squeeze k was measured from.
+// Unset together with squeeze_end_tick(k).
+std::optional<int64_t> Activation::squeeze_anchor_tick(size_t squeeze_index) const {
+    const std::optional<size_t> s = squeeze_end_step(squeeze_index);
+    if (!s) return std::nullopt;
+    return end_anchor_tick(*s);
+}
+
+// The engine stamps the squeezed-out chord's tick at copy-out (since path
+// format 4, ADR 0014). A record without it is Stale and is never guessed at.
 bool Activation::is_sqout_backend(const BackendSqueeze& bsq) const {
-    return sqout_tick.has_value() && bsq.timecode.ticks() == *sqout_tick;
+    return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;
+}
+
+const BackendSqueeze* Activation::sqout_row() const {
+    if (!sqout_tick) return nullptr;
+    for (const BackendSqueeze& b : backends)
+        if (is_sqout_backend(b)) return &b;
+    return nullptr;
+}
+
+void Activation::set_sqout(int64_t tick) {
+    // Rows past the squeezed-out chord are hit after SP ended: drop them.
+    backends.erase(std::remove_if(backends.begin(), backends.end(),
+                                  [tick](const BackendSqueeze& b) {
+                                      return core::sqout_position(b.timecode.ticks(), tick) ==
+                                             core::SqOutPosition::After;
+                                  }),
+                   backends.end());
+    sqout_tick = tick;
+    const BackendSqueeze* row = sqout_row();
+    if (!row || !row->offset_ms) {
+        sqout_tick.reset();
+        throw std::logic_error("set_sqout: no backend row with an offset on tick " +
+                               std::to_string(tick));
+    }
+    sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, *row->offset_ms});
 }
 
 std::vector<BackendSqueeze> Activation::display_backends() const {
@@ -588,8 +697,7 @@ std::vector<BackendSqueeze> Activation::display_backends() const {
     std::vector<BackendSqueeze> out;
     for (const BackendSqueeze& bsq : backends) {
         if (is_beyond_sqout(bsq)) continue;
-        if (std::fabs(bsq.offset_ms.value_or(0.0)) < kSqueezeWindowMs ||
-            is_sqout_backend(bsq))
+        if (within_squeeze_window(bsq.offset_ms.value_or(0.0)) || is_sqout_backend(bsq))
             out.push_back(bsq);
     }
     return out;
@@ -599,7 +707,7 @@ bool Path::is_allzero() const {
     const ActivationWalk acts = walk_activations();
     if (acts.empty()) return false;
     for (const Activation& act : acts)
-        if (act.skips != 0) return false;
+        if (act.skips() != 0) return false;
     return true;
 }
 
@@ -615,8 +723,6 @@ double Path::avg_mult() const {
 }
 
 // ---- HydraRecord ---------------------------------------------------------
-
-namespace {
 
 // Depth-first walk over a root list and its nested variants, each path
 // before its variants. Shared by all_paths() and all_allzero_paths()
@@ -636,8 +742,6 @@ std::vector<const Path*> flatten_paths(const std::vector<Path>& roots) {
     }
     return out;
 }
-
-}  // namespace
 
 std::vector<const Path*> HydraRecord::all_paths() const {
     return flatten_paths(paths);

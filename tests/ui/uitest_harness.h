@@ -45,6 +45,9 @@ struct Harness {
     std::string rules_path;
     std::string shots_dir;  // where `screenshot` files go (default: temp_dir)
     bool keep_temp = false;
+    // --db: each test starts from a copy of this database instead of an
+    // empty one. The file itself is only read, never opened by the app.
+    std::string seed_db;
 
     std::unique_ptr<hydra::ui::AppState> app;
     ImGuiTestEngine* engine = nullptr;
@@ -109,6 +112,30 @@ bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double
 // True while any background job (scan, batch, analyze, report, DM fetch/report)
 // or the Preview's load is still running.
 bool jobs_busy(Harness& h);
+
+// Holds a batch's charts at a gate until the test lets them through. The test
+// library analyzes in a blink, so an ungated run can start and finish between
+// two frames, and a test that looks at the running batch races it. While a
+// gate lives, every batch the app starts runs on `workers` workers (default
+// one). Each chart waits at the gate, ticking progress so Stop still reaches
+// it, until allow() has let that many charts through, counted in the order
+// they reached it. The "Now:" title is set before a chart reaches the gate,
+// so with one worker started() == n means chart n is on screen and held.
+// With several, started() - allowed is how many are held at once.
+// Make the gate before starting the batch. Its destructor opens the gate and
+// removes the seam, so a check that fails early leaves nothing stuck.
+// Only one gate can exist at a time (it resets shared counters): make it after reset_app.
+class BatchGate {
+public:
+    explicit BatchGate(int workers = 1);
+    ~BatchGate();
+    BatchGate(const BatchGate&) = delete;
+    BatchGate& operator=(const BatchGate&) = delete;
+    // Let the first `charts` charts of the run through the gate.
+    void allow(int charts);
+    // Charts that have reached the gate so far (1 = the first is held there).
+    int started() const;
+};
 
 // All text ImGui drew last frame plus the status line, for substring checks.
 std::string visible_text(Harness& h);

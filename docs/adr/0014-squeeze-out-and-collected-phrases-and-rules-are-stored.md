@@ -82,3 +82,144 @@ in C++ (`structure_is_current`) and in SQL (`kRowReadySql`, now
 The fingerprint's text changed, so every stored record reads Stale once more
 after this lands. It ships with the record-format bump of the same plan,
 which asks for the same one re-analysis.
+
+## Amendment, 2026-10: the squeeze-out is stored once
+
+The squeeze-out used to be stored twice: as `sqout_tick`, and as a SqOut
+entry in the squeeze list with its own offset. Now the node stores
+`sqout_tick` only. The SqOut's offset is its row's `offset_ms`. The squeeze
+list stores SqIn offsets only. `Activation::set_sqout` is the one writer, and
+`Activation::sqout_row` the one reader. The SP end the offset was measured
+from is `deact_tick()`, read from the SP-end history (ADR 0021).
+
+`collected_phrase_ticks` is no longer a stored field either. Each collected
+phrase is a step in the SP-end history, and `collected_phrase_ticks()` reads
+them back (ADR 0021).
+
+## Amendment, 2026-10: a squeeze needs a phrase collected after the activation
+
+A squeeze moves a phrase the player collects while Star Power runs. A
+squeeze-out hits the phrase's last note late, so it lands after SP ends and
+banks a bar. A squeeze-in hits it early, to extend SP. A phrase at or before
+the activation chord was banked before SP started. So no activation can
+squeeze it either way.
+
+The squeeze window is 500 ms around an SP end. Usually that is far shorter
+than one SP bar (two measures), so the window never reaches back past the
+activation. At a very fast tempo or a very short measure it can. The engine
+then offered a squeeze on a phrase the activation had banked. As a
+squeeze-out, it cost a bar the activation never had and left it with no SP
+end at all. As a squeeze-in, it had no step to relabel and broke the whole
+search (D18).
+
+The rule lives once, in `core/sqout_chord.h`: `activation_can_squeeze` is
+true only for a phrase chord after the activation chord.
+
+Tied paths. The search folds running paths that share an SP end, because the
+end decides their future. Now the activation can decide it too: a path that
+collected a phrase can squeeze it, and one that banked it cannot. So the
+search groups running paths by one more key. The key is the banked phrase, if
+any, that a later SP end of this activation could still hold in its window.
+`core::banked_phrase_in_reach` works it out by asking
+`activation_can_squeeze`. On a normal chart the key is "none" for every
+activation, so the groups are unchanged.
+
+### A phrase is squeezed in only once (D34)
+
+Two SP ends can sit one tick apart. plusmeasure rounds down, so both move one
+bar on to the same tick. Both then offered the same phrase to the same path.
+The path squeezed it in at the first end, then in or out again at the second.
+That printed an extra "+" (Thrice - Deadbolt at cap 4, SoundHaven - Triad at
+cap 2) for a squeeze that never moved anything.
+
+The rule now: an SP end offers the first phrase in its 500 ms window that the
+running window can still squeeze. A phrase banked before the activation is
+skipped (D18). So is a phrase this window already squeezed in. If nothing is
+left, the SP end is a plain one. The banked case used to stop at the first
+phrase; it now moves on to the next one too, so both cases follow the same
+rule.
+
+It lives in one function, `core::offered_phrase` in `core/sqout_chord.h`.
+The graph lists every phrase in each SP end's window on its deactivation
+edge (`squeeze_window_phrases`), because the edge is shared by every path.
+The engine picks from that list with `offered_phrase`; "already squeezed in"
+means the window holds an SqIn step on that phrase. The engine remembers
+which phrase each window squeezed out, since it is no longer always the
+window's first. `hydra_replay` asks the same function. A stored path tells it
+which phrases each window squeezed in; a typed window says none.
+
+On the library at caps 2 to 4 this changes exactly 7 listed paths on those
+two charts, each losing one "+", and no score. The next-phrase offer never
+fires there. It needs 500 ms to span an SP bar, so only the hand-made
+4,000 BPM test charts reach it.
+
+One gap stays open at those extreme tempos. The search groups running paths
+without the phrases their window already squeezed in, so a tied variant can
+take its leader's squeeze of the next phrase where alone it would squeeze the
+first (the early_sqin_twice test chart). Normal charts never reach it.
+
+An early squeeze-in's step is the step on the squeezed-in chord. That step is
+Collected, or Clamped when the cap pinned the end on that phrase. It is never
+the Activation step. A lone path never meets an SqIn step there since D34; a
+folded variant still can at extreme tempos (the gap above), and the step
+stays SqIn. `is_sqin_step` in the engine states that rule once.
+
+### Two more extreme-tempo crashes (D32)
+
+At 2,000 to 4,000 BPM the search could still crash in two ways, one in the
+graph and one in the engine. Both come from an SP bar shorter than the
+500 ms window. A late squeeze-in moves the SP end one bar past the old end,
+and at these tempos that new end can land before the phrase it squeezed.
+Three changes fix them:
+
+- The graph used to add the new end's node only when it reached the phrase.
+  By then the end was behind it. The graph now adds that node when it moves
+  the SP end (`sqin_end_by_phrase` in graph.cpp).
+- A path now ends where its SP end says. Before, a squeezable phrase in the
+  window kept the path in SP past its own end (`deactivation_type`).
+- A phrase a late squeeze-in already spent is not offered again. The path
+  ends SP before reaching it, and hitting it later adds nothing to the meter.
+
+The engine tracks two kinds of phrase that are still ahead of a path but
+already paid for. A spent phrase is one a late squeeze-in took: its extension
+is in the SP end, so reaching it adds no step and no bar. A banked phrase is
+one a late squeeze-out took: its bar is already in the meter, so reaching it
+adds nothing, and an edge that passes without it hands the bar back until its
+own edge adds it again. They are separate fields (`spent`, `banked_ahead`),
+and the spent ones always come first in chart order. Since D34 one window can
+spend two late phrases that both lie past its final SP end. Its SqOut sibling
+then leaves SP with two spent phrases and one banked bar ahead. With the two
+kinds kept apart, the meter can never go below zero off SP. If it does, the
+engine throws instead of skipping a phrase.
+
+None of these fire on any of the 19,343 library charts. The charts in
+`testdata/input/test_fast_tempo` are fuzzed at those tempos. They exist only
+to keep these rules from breaking again.
+
+Scores change only on charts where 500 ms spans an SP bar. On such a chart,
+either a window reaches a banked phrase, or a late squeeze-in's new end lands
+before its phrase (D32). None of the 97 corpus charts has one, and a count
+across 19,343 library charts found none either. Old records of such a chart
+keep their wrong squeeze until they are analyzed again, and the format 7
+bump makes every record read Stale anyway.
+
+### Three numbers the extreme-tempo rules use (D40)
+
+The user recorded these as they are on 2026-10-04 (decision D40). None
+changes a score on the library.
+
+- The banked phrase in reach looks one tick before the first SP end that
+  can squeeze (`banked_phrase_in_reach`). plusmeasure rounds down, so the
+  real end can come out a tick early; the extra tick keeps the reach wide
+  enough. It decides which tied running paths fold at extreme tempos. D36's
+  follow-up may revisit it.
+- An SP end exactly on its phrase's tick counts as reaching that phrase
+  (`sqin_end_by_phrase` uses `<=`). The graph then adds that end's node
+  when it moves the end, as for an end before the phrase.
+- The search's group key packs each path into 64 bits
+  (`reduce_iteration_paths` and `ready_class` in engine.cpp). While SP
+  runs: the SP end must lie within ±2^46 ticks and the banked-phrase
+  ordinal must be at most 65,535. While waiting: the meter must be under
+  2^30, and each of `ready_class`'s two fill counts gets 16 bits. A chart
+  past any of these fails to analyze with an error. It never folds paths
+  wrongly. These widths come with D35's ready-time key.

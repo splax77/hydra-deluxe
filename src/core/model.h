@@ -13,6 +13,7 @@
 #define HYDRA_CORE_MODEL_H
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -21,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "core/backend_value.h"
 #include "core/rules.h"
 #include "core/timing.h"
 
@@ -73,6 +75,20 @@ constexpr double kDefaultHitWindowMs = 85.0;
 // stored and shown, so nothing the engine collects is trimmed. The Backend
 // limit setting narrows the display from here. hydra_batch prints it.
 constexpr double kSqueezeWindowMs = 500.0;
+
+// How far a note sits from a Star Power end, in ms: negative before it,
+// positive after. Every backend row's offset_ms is this number.
+inline double offset_from_sp_end(double note_ms, double sp_end_ms) {
+    return note_ms - sp_end_ms;
+}
+
+// Is a note close enough to a Star Power end to matter for a squeeze?
+// Strictly inside kSqueezeWindowMs on either side; exactly 500 ms away is
+// out. The one window check: the search graph, the engine's tail rows, the
+// stored rows (Activation::display_backends) and hydra_replay all ask it.
+inline bool within_squeeze_window(double offset_from_sp_end_ms) {
+    return std::fabs(offset_from_sp_end_ms) < kSqueezeWindowMs;
+}
 
 // Early-fill (E) timing window, applied to e_offset in both directions:
 // an activation with e_offset < -window is illegal (the fill can't be
@@ -172,13 +188,41 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
     return is_sqin ? offset_ms : (-offset_ms + 0.0);
 }
 
+// ---- the early-fill window ----------------------------------------------
+// Clone Hero's early-fill rule and the E0, stated once around
+// kEarlyFillWindowMs. A fill spawns only when SP was ready by the fill's
+// deadline, give or take the window. The e_offset is how long before the
+// deadline SP became ready (negative: after it). The search's branch_activate
+// and its group key (ready_class) ask these; so do Activation's E tests.
+inline double fill_e_offset(double deadline_ms, double ready_ms) { return deadline_ms - ready_ms; }
+// The fill refuses to spawn: SP became ready more than the window too late.
+inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillWindowMs; }
+
 // E0: the early fill lands inside its window and nothing was skipped.
+// is_e0(e_offset, 0) alone is "E-critical": the fill is inside the window.
 inline bool is_e0(double e_offset, int skips) {
     return e_offset < kEarlyFillWindowMs && skips == 0;
 }
 
 // How hard an E0 activation's early fill is, in ms.
 inline double early_fill_difficulty(double e_offset) { return -e_offset + 0.0; }
+
+// How frontend (activation-hit) timing error transfers to the SP end. SP
+// length is measure-based, so hitting the frontend d ms off moves the SP end
+// by r*d ms, where r = ms-per-measure at the SP end / ms-per-measure at the
+// frontend. The two directions differ when the activation or SP end sits
+// exactly on a meter/tempo change: an early (-) hit moves into the section
+// before the tick, a late (+) hit into the section at/after it.
+struct TransferScale {
+    double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
+    double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
+                         //      backend squeezes
+    // Plain == on both doubles, no tolerance: a stored scale equals only the
+    // same values (not bit-exact: -0.0 equals 0.0 and NaN equals nothing;
+    // real scales are positive and finite, so that never arises).
+    bool operator==(const TransferScale& o) const { return early == o.early && late == o.late; }
+    bool operator!=(const TransferScale& o) const { return !(*this == o); }
+};
 
 // A SqIn (+) or SqOut (-): which way the note is squeezed across the SP end,
 // and by how many ms.
@@ -193,10 +237,27 @@ struct SPSqueeze {
         return kind == SqueezeKind::SqIn ? "+" : "-";
     }
     bool is_difficult() const { return difficulty() > kDifficultMs; }
+    // Whether the squeeze is already done with no frontend timing: the one
+    // answer the rating and the sentence both read. The SP walk pays a note
+    // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in
+    // and free, and a SqOut there still has to be hit late (D13).
+    bool is_free() const {
+        const bool inside_sp = core::paid_by_sp_walk(offset_ms);
+        return kind == SqueezeKind::SqIn ? inside_sp : !inside_sp;
+    }
     const char* type_name() const {
         return kind == SqueezeKind::SqIn ? "SqIn" : "SqOut";
     }
     std::string description() const;
+
+    // A SqIn's frontend transfer scale: at squeeze_end_tick, measured from
+    // squeeze_anchor_tick. Stamped by the search at copy-out through
+    // frontend_transfer_scales and stored, so the details view never needs a
+    // SongTiming. Unset means the search could not compute it, a bug guard
+    // like transfer_post's (D4). A SqOut's is always unset: that is not an
+    // unknown, because no reader asks a SqOut for one. Its row is rated at
+    // transfer_post.
+    std::optional<TransferScale> transfer;
 };
 
 struct BackendSqueeze {
@@ -204,16 +265,19 @@ struct BackendSqueeze {
     Chord chord;
     int points = 0;
     int sqout_points = 0;
-    bool is_sp = false;
     std::optional<double> offset_ms;
 
     bool operator==(const BackendSqueeze& o) const;
     // Rating label. The outer +/-W edges come from the hit window; the inner
     // -10/3/10 edges are absolute (they encode leeway/near-deact semantics,
     // not the window).
+    // squeezed_out: this row is the activation's squeezed-out chord
+    // (Activation::is_sqout_backend). Only that row reads the SqOut ladder;
+    // every other row, phrase chord or not, reads the plain one.
     // leeway_ms: the backend leeway edge (Rules::backend_leeway_ms); a
-    // non-SP row under it rates "Standard".
-    std::string summarystr(double hit_window_ms = kDefaultHitWindowMs,
+    // plain row under it rates "Standard".
+    std::string summarystr(bool squeezed_out,
+                           double hit_window_ms = kDefaultHitWindowMs,
                            double leeway_ms = core::default_rules().backend_leeway_ms) const;
 };
 
@@ -250,81 +314,178 @@ private:
 
 // ---- Activation ---------------------------------------------------------
 
-// How frontend (activation-hit) timing error transfers to the SP end. SP
-// length is measure-based, so hitting the frontend d ms off moves the SP end
-// by r*d ms, where r = ms-per-measure at the SP end / ms-per-measure at the
-// frontend. The two directions differ when the activation or SP end sits
-// exactly on a meter/tempo change: an early (-) hit moves into the section
-// before the tick, a late (+) hit into the section at/after it.
-struct TransferScale {
-    double early = 1.0;  // r- : early (-) hits — difficult SqOuts, free SqIns
-    double late = 1.0;   // r+ : late (+) hits — difficult SqIns, free SqOuts,
-                         //      backend squeezes
+// Why an activation's SP end moved (Activation::sp_end_steps).
+//   Activation - the activation itself: the end its banked bars give.
+//   Collected  - a phrase collected while active: two measures more.
+//   Clamped    - a phrase collected with the meter full: the end pinned to
+//                the cap's length past that phrase (ADR 0013).
+//   SqIn       - the squeeze-in phrase, early or late.
+enum class SpEndKind : uint8_t { Activation = 0, Collected = 1, Clamped = 2, SqIn = 3 };
+// The last valid kind: the codec refuses any stored value past it.
+constexpr SpEndKind kLastSpEndKind = SpEndKind::SqIn;
+
+// Is this step a squeeze-in? The one statement of that rule: the engine's
+// running window (Engine::squeezed_in), the stored list
+// (core::sqin_phrase_ticks) and nth_sqin_step all ask it.
+inline bool is_sqin_kind(SpEndKind kind) { return kind == SpEndKind::SqIn; }
+
+// Did this step squeeze in the phrase on `tick`?
+inline bool is_sqin_step_on(int64_t step_tick, SpEndKind kind, int64_t tick) {
+    return step_tick == tick && is_sqin_kind(kind);
+}
+
+// One place an activation's SP end moved: `tick` is the note that moved it,
+// `end_tick` the SP end in force after it.
+struct SpEndStep {
+    int64_t tick = 0;
+    int64_t end_tick = 0;
+    SpEndKind kind = SpEndKind::Activation;
+    bool operator==(const SpEndStep& o) const {
+        return tick == o.tick && end_tick == o.end_tick && kind == o.kind;
+    }
+    bool operator!=(const SpEndStep& o) const { return !(*this == o); }
 };
 
+// The n-th SqIn step (counting from 0) in a run of SP-end steps: the n-th
+// SqIn squeeze owns it, because both lists are kept in time order. `last`
+// when the run holds fewer. Activation::squeeze_end_step and the engine's
+// folded-variant copy-out (Engine::close_folded_act) both pair them here.
+template <class It>
+It nth_sqin_step(It first, It last, size_t n) {
+    for (; first != last; ++first)
+        if (is_sqin_kind(first->kind) && n-- == 0) return first;
+    return last;
+}
+
+// Which SqIn a squeeze is, counting from 0 in list order: how many SqIn
+// squeezes come before position `at`. That rank picks its step
+// (nth_sqin_step) and its transfer scale. `is_sqin` says which entries are
+// SqIns, so the engine's own squeeze records can be counted too.
+// Activation::squeeze_end_step, the engine's folded-variant copy-out and its
+// transfer-scale stamp all count here.
+template <class It, class IsSqIn>
+size_t sqin_rank(It first, It at, IsSqIn is_sqin) {
+    size_t n = 0;
+    for (; first != at; ++first)
+        if (is_sqin(*first)) ++n;
+    return n;
+}
+
+// Is this squeeze a squeeze-in? For sqin_rank over an activation's sqinouts.
+inline bool is_sqin_squeeze(const SPSqueeze& q) { return q.kind == SqueezeKind::SqIn; }
+
 struct Activation {
-    // The search sets these six on every activation it makes, so they are
-    // plain values (record format v7, docs/adr/0017).
-    int skips = 0;
+    // The search sets these on every activation it makes, so they are
+    // plain values (since path format 6, docs/adr/0017).
     Timecode timecode;
     Chord chord;
-    int sp_meter = 0;
     int frontend_points = 0;
     std::vector<BackendSqueeze> backends;
     std::vector<SPSqueeze> sqinouts;
     double e_offset = 0.0;
 
-    // The deactivation node D: the chart tick where this activation's Star
-    // Power ends, extensions from phrases collected mid-SP included. Stamped
-    // by the search at copy-out (blob v4). Unset only on a record written
-    // before v4; nothing in the codebase re-derives it.
-    std::optional<int64_t> deact_tick;
+    // The deactivation node, the cap's clamp note and the collected phrases
+    // are not fields: they are read from sp_end_steps, below.
 
-    // The collecting note the SP cap pinned this window's end to: when the
-    // meter was full and a phrase extended the window, the end sat a fixed
-    // distance from that phrase's note, not from the activation. Stamped by
-    // the search (blob v5). Unset when the window never hit the cap or on
-    // an older record. Nothing re-derives it.
-    std::optional<int64_t> clamp_tick;
+    // The cap's clamp: when the meter was full and a phrase extended the
+    // window, the end sat a fixed distance from that phrase's note, not from
+    // the activation. That note is a Clamped step (clamp_tick()).
 
     // The chart tick of the SP phrase chord this activation squeezed out:
-    // the deact edge's sqinout_time when the path took the SqOut branch.
-    // Stamped by the search at copy-out (blob v6). Unset when the activation
-    // did not squeeze out, or on an older record. Nothing re-derives it.
+    // the phrase its deact edge offered it when the path took the SqOut
+    // branch (core::offered_phrase).
+    // Stamped by the search at copy-out (since path format 4, ADR 0014).
+    // Unset when the activation did not squeeze out, or on an older record.
+    // Nothing re-derives it.
     std::optional<int64_t> sqout_tick;
 
-    // The ticks of the SP phrase-end chords this activation collected while
-    // active, in chart order: every phrase the gauge received, a late-SqIn
-    // phrase and a cap-clamped phrase included. A squeezed-out phrase is not
-    // among them. The search records each one as its path crosses the phrase
-    // (blob v6). Empty when none was collected, or on an older record.
-    // Nothing re-derives it.
-    std::vector<int64_t> collected_phrase_ticks;
+    // Each phrase chord collected while active is a step of sp_end_steps,
+    // a late-SqIn phrase and a cap-clamped phrase included. A squeezed-out
+    // phrase has no step (collected_phrase_ticks()).
 
-    // Frontend transfer scales, computed by the search and stored with the
-    // record (blob v3; older blobs default to 1.0 = the flat-tempo identity)
-    // so the details display keeps its ratios when no SongTiming is at hand.
-    // Display-only: difficulty() and everything the search/filter/report
-    // derive stay raw gap ms. Both scales anchor on the search's actual
-    // deactivation node D — which sits +2 measures past the plain
-    // 2*B-measure end for every SP phrase collected mid-activation. `post`
-    // is measured at D and governs the backend rows; `pre` steps one
-    // 2-measure SqIn extension down from D and governs the SqIn/SqOut lines,
-    // equalling `post` when the activation has no SqIn.
-    TransferScale transfer_pre;
-    TransferScale transfer_post;
+    // Every place this window's SP end moved, in order, as the search did it.
+    // The first step is the activation. A squeezed-out phrase has no step. A
+    // tail activation's last end is the end the search tracked. Stamped at
+    // copy-out; empty only on a hand-built activation. Every SP-end fact the
+    // record holds is read from this list (the accessors below). Nothing
+    // re-derives it.
+    std::vector<SpEndStep> sp_end_steps;
+
+    // Where each bar this activation spends arrived, since the previous window
+    // closed (or the chart began), in order. A phrase hit at the cap gains
+    // nothing and is not here. A squeezed-out phrase's bar is here at the
+    // later of the previous deact node and that phrase, when the player hits
+    // it. Stamped by the search. sp_meter() is its size.
+    std::vector<int64_t> bank_rise_ticks;
+
+    // Bars of SP this activation spends: one per stored arrival.
+    int sp_meter() const { return static_cast<int>(bank_rise_ticks.size()); }
+
+    // The fills the path was shown and passed over before this activation,
+    // in chart order. The search charges a skip only on a fill it could have
+    // taken (enough SP, deadline open) and stamps that fill's tick here.
+    // Under the 1.0 fill rule these need not be the fills nearest the
+    // activation. skips() is its size. The Preview lights exactly these.
+    std::vector<int64_t> skipped_fill_ticks;
+
+    // Fills passed over before this activation: one per stored fill.
+    int skips() const { return static_cast<int>(skipped_fill_ticks.size()); }
+
+    // Read from sp_end_steps; see each body in model.cpp.
+    //   deact_tick()             - the deactivation node D: where this
+    //                              window's SP ends, every extension included.
+    //   clamp_tick()             - the collecting note the SP cap last pinned
+    //                              the end to (ADR 0013); unset if none.
+    //   collected_phrase_ticks() - every phrase chord the gauge received while
+    //                              active, in chart order, a late-SqIn phrase
+    //                              and a clamped phrase included; never a
+    //                              squeezed-out phrase.
+    std::optional<int64_t> deact_tick() const;           // the last step's end
+    std::optional<int64_t> clamp_tick() const;           // the last Clamped step's tick
+    std::vector<int64_t> collected_phrase_ticks() const; // every step after the first
+    std::optional<int64_t> nominal_end() const;          // the first step's end
+    std::optional<size_t> squeeze_end_step(size_t squeeze_index) const;
+    std::optional<int64_t> squeeze_end_tick(size_t squeeze_index) const;
+    int64_t end_anchor_tick(size_t step_index) const;
+    int64_t refill_tick(size_t step_index) const;
+    // The note whose timing moves D: end_anchor_tick of the last step.
+    std::optional<int64_t> deact_anchor_tick() const;
+    // The note whose timing moves the end squeeze k was measured from.
+    std::optional<int64_t> squeeze_anchor_tick(size_t squeeze_index) const;
+
+    // The frontend transfer scale at the deact node D, measured from
+    // deact_anchor_tick() (the activation, or the cap's collecting note).
+    // Computed by the search at copy-out and stored, so the details view
+    // never needs a SongTiming. Display-only: difficulty and everything the
+    // search, filter and report derive stay raw gap ms. Each SqIn stores the
+    // scale at its own end (SPSqueeze::transfer). Unset means the search
+    // could not compute it. That is a bug guard, never an expected state
+    // (D4): a test proves no fresh record has it.
+    std::optional<TransferScale> transfer_post;
 
     std::string notationstr() const;
     std::string notationstr_verbose() const;
-    bool is_e_critical() const;  // e_offset < kEarlyFillWindowMs
+    bool is_e_critical() const;  // inside the early-fill window: is_e0(e_offset, 0)
     bool is_E0() const;
     std::optional<double> e_difficulty(bool verbose = false) const;
     std::optional<double> difficulty() const;
     bool is_difficult() const;
 
     // Is this backend the note squeezed out of SP? Compares against the
-    // sqout_tick the engine stored (record format v6), so no display re-derives it.
+    // sqout_tick the engine stored (path format 4 on, ADR 0014), so no display re-derives it.
     bool is_sqout_backend(const BackendSqueeze& bsq) const;
+
+    // The squeezed-out chord's row, or nullptr when the activation did not
+    // squeeze out. The one way to ask "which row, and how far from the SP
+    // end": its offset_ms is the SqOut's offset.
+    const BackendSqueeze* sqout_row() const;
+
+    // Mark this activation as squeezing out the phrase chord at `tick`. The
+    // only writer of a squeeze-out: it stamps sqout_tick, drops every row
+    // past the chord (hit after SP ended), and appends the SqOut entry built
+    // from the chord's own row. Throws std::logic_error when no row with an
+    // offset sits on `tick`. The engine's copy-out and the codec call it.
+    void set_sqout(int64_t tick);
 
     // Backends worth keeping: those near the deactivation, plus whatever note
     // is being squeezed out of SP however far out it lands. The details view
@@ -333,11 +494,11 @@ struct Activation {
     std::vector<BackendSqueeze> display_backends() const;
 };
 
-// deact_tick and the scales above are stored data only. Everything that
+// sp_end_steps and the scales above are stored data only. Everything that
 // derives or judges them — transfer_scale_between, frontend_transfer_scales,
 // and the display-layer rating built on them — lives in
 // core/squeeze_rating.h. activation_deact_tick lives there too, but it
-// derives nothing: it just hands back the stored deact_tick.
+// derives nothing: it just hands back deact_tick().
 
 // A read-only walk over a path's activations: its own, then the variant tail
 // it shares with its parent -- the order all_activations() copies them in.
@@ -401,7 +562,14 @@ private:
 struct Path {
     std::vector<Activation> activations;
     int notecount = 0;
-    int leftover_sp = 0;
+    // Where each bar banked after the path's last window closed arrived, in
+    // order, as Activation::bank_rise_ticks. leftover_sp() is its size. A
+    // variant's is its own: the engine stores it and the record keeps it per
+    // variant (D3, finding 89), so prepare_variants leaves it alone.
+    std::vector<int64_t> trailing_bank_ticks;
+
+    // Bars left after the last window: one per stored arrival.
+    int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
 
     int64_t score_base = 0;
     int64_t score_combo = 0;
@@ -462,8 +630,8 @@ struct HydraRecord {
     // structure carries it (store/path_codec.cpp); dropping it would change
     // the record format.
     bool sp_cap_converged = true;
-    // The fingerprint of the rules the search ran under (blob v6, path
-    // structure v4): Rules::fingerprint(). Results Hydra 1.8.4's Auto saved
+    // The fingerprint of the rules the search ran under (stored since path
+    // format 4): Rules::fingerprint(). Results Hydra 1.8.4's Auto saved
     // carry Rules::retired_auto_fingerprint() and are deleted when the store
     // opens (RecordStore::delete_auto_results). A record built in memory
     // starts with the default rules' fixed-cap fingerprint, computed once
@@ -504,6 +672,10 @@ struct HydraRecord {
     // The same traversal over allzero_paths.
     std::vector<const Path*> all_allzero_paths() const;
 };
+
+// The traversal all_paths() uses, over any root list (a search's output, for
+// one): each path, then its nested variants. Pointers into `roots`.
+std::vector<const Path*> flatten_paths(const std::vector<Path>& roots);
 
 // Format an integer with thousands separators, matching Python's `{:,}`.
 std::string group_thousands(int64_t n);

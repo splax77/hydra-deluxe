@@ -17,8 +17,10 @@
 // Flat storage is safe because tree-contextual data is rebuilt on load, not
 // read from a node. A node holds a path's own activations and nothing else.
 // A root's totals (six score categories, note count, leftover SP) sit next to
-// it in the structure blob, and Path::prepare_variants() copies them onto
-// each variant and rebuilds variant_tail from var_point. The chart's
+// it in the structure blob, and Path::prepare_variants() copies the score
+// totals and note count onto each variant and rebuilds variant_tail from
+// var_point. A variant's leftover SP (its trailing bank) is its own, so it is
+// stored with the variant's tree entry, next to its var_point. The chart's
 // multiplier squeezes are stored once, in the structure (docs/adr/0017).
 //
 // A deserialized record carries raw-tick Timecodes only — call

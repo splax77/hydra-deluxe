@@ -41,9 +41,11 @@ struct StampRule {
 // the scoring (src/core), or what a record holds. Then shrink `accepted` to
 // the new stamp alone. A stale result reads Stale and asks for re-analysis.
 //
-// "1.8.3" is accepted because 1.8.3 stamped its app version on results that
-// are identical to 1.8.2's.
-inline constexpr StampRule<std::string_view, 2> kResultsStamp{"1.8.2", {"1.8.2", "1.8.3"}};
+// "2.1.0": the engine now stores each activation's SP-end history and
+// re-anchors the transfer scales on it (ADR 0021), and each tied variant
+// keeps its own facts (ADR 0022). Every release from 1.8.4 to 2.0.0 stamped
+// "1.8.2", and those results hold different values, so they read Stale.
+inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.1.0", {"2.1.0"}};
 
 // The stored path layout: the structure blob and the node payloads it points
 // at share this one number, because a node is only ever read through its
@@ -52,8 +54,19 @@ inline constexpr StampRule<std::string_view, 2> kResultsStamp{"1.8.2", {"1.8.2",
 // the version and added sqout_tick and collected_phrase_ticks (ADR 0014).
 // 5 spelled every chord as its lane code (ADR 0015). 6 moved the multiplier
 // squeezes and root totals into the structure and left a node holding its
-// activations alone (ADR 0017).
-inline constexpr StampRule<uint32_t, 1> kPathFormatStamp{6, {6}};
+// activations alone (ADR 0017). 7 stored the SP-end history and the bank and
+// fill lists, stored the squeeze-out once, and gave each SqIn its own
+// transfer scale (ADR 0021). The history replaced three node fields: the
+// deact node, the clamp note and the collected phrases. The single
+// transfer_pre pair is gone. A squeeze entry lost its kind byte, since only
+// SqIns are stored now. The squeeze-out tick now comes before the history,
+// where it used to follow the deact and clamp ticks. A root's leftover SP
+// changed from one number to its list of bank ticks. Format 7 also dropped
+// each row's is_sp flag, and a transfer scale now starts with a presence
+// byte (one byte saying whether the value follows), so it can be stored as
+// unknown. Each tied variant got its own trailing bank in its tree entry
+// (ADR 0022).
+inline constexpr StampRule<uint32_t, 1> kPathFormatStamp{7, {7}};
 
 // ---- Dynamics counts (the dynamics table) ----------------------------------
 

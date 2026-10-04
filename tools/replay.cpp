@@ -109,7 +109,7 @@ void usage() {
         "squeeze-out offset, which an --acts string typed by hand usually drops\n"
         "and which is worth real points. --index picks the entry of that file's\n"
         "\"paths\" array (default 0). --path and --acts cannot both be given.\n"
-        "A typed SqOut offset is matched to the nearest phrase chord within 500 ms of the SP end and the chord used is printed on stderr; a chord the engine would never squeeze out is refused.\n"
+        "A typed SqOut offset is matched to the nearest phrase chord within %.0f ms of the SP end and the chord used is printed on stderr; a chord the engine would never squeeze out is refused.\n"
         "Where a window ends on a Star Power phrase note but carries no\n"
         "squeeze-out offset, score prints a warning: the score is right if the\n"
         "player did not squeeze that note out, and high if they did. The\n"
@@ -132,7 +132,8 @@ void usage() {
         "\"source\" then reads \"analyzed-ch10\".\n"
         "Every command takes --rules <file>: the rule choices to price under\n"
         "(default: hydra_rules.ini next to the exe). A bad file exits with 2.\n"
-        "JSON is printed compact by default; --pretty indents it.\n");
+        "JSON is printed compact by default; --pretty indents it.\n",
+        kSqueezeWindowMs);
 }
 
 // ---- shared settings -----------------------------------------------------
@@ -643,7 +644,10 @@ int cmd_target(const Args& a) {
 
     // When the set is unrealizable, walk the prefixes to name the activation
     // that broke it. Each run is milliseconds, so this costs nothing worth
-    // saving and turns "it failed" into "it failed here".
+    // saving and turns "it failed" into "it failed here". A prefix comes back
+    // empty only when no path takes all of its activations (D45 drops just
+    // the paths that miss one), so the first empty prefix ends on the
+    // activation no path can take.
     const bool realized = !rec.paths.empty();
     int64_t failed_tick = -1;
     size_t realized_prefix = ticks.size();
@@ -716,7 +720,6 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
     }
     ++tally->charts;
 
-    const SongTiming& timing = song.timing();
     int index = 0, chart_fail = 0;
     for (const Path* p : rec.all_paths()) {
         const int i = index++;
@@ -765,16 +768,14 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
                 for (size_t k = 0; k < acts.size(); ++k) {
                     const Activation& act = acts[k];
                     const int64_t act_tick = act.timecode.ticks();
-                    const int64_t nominal =
-                        timing.plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter))
-                            .ticks();
+                    const int64_t nominal = act.nominal_end().value_or(-1);
                     std::printf(
                         "       act %zu: tick %lld  deact %lld  nominal %lld  "
                         "sp_meter %d  skips %d  backends %zu  sqinouts %zu\n",
                         k, (long long)act_tick,
-                        (long long)act.deact_tick.value_or(-1),
-                        (long long)nominal, act.sp_meter,
-                        act.skips, act.backends.size(),
+                        (long long)act.deact_tick().value_or(-1),
+                        (long long)nominal, act.sp_meter(),
+                        act.skips(), act.backends.size(),
                         act.sqinouts.size());
                 }
             }

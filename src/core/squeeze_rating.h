@@ -3,8 +3,8 @@
 // judged for display.
 //
 // One home for all of it: the transfer scales, which scale directions
-// matter, when a scale is material enough to warn about, and what a backend
-// row's effective ms is on the nominal two-hit scale. The search never reads
+// matter, which multiplier governs a note, and what its margin is worth on
+// the nominal two-hit scale. The search never reads
 // the judgement side; difficulty and the ms filter stay raw gap ms (see
 // core/model.h).
 //
@@ -14,14 +14,16 @@
 // Three functions are the module's entries:
 //   rate_activation()          -- the details display's only interface.
 //   activation_deact_tick()    -- the Preview's, for the active SP window.
-//   frontend_transfer_scales() -- the engine's copy-out stamp, so a record's
-//                                 stored ratios and a live recompute agree.
+//   frontend_transfer_scales() -- the engine's copy-out stamp, read from the
+//                                 stored SP-end steps, so a record's stored
+//                                 ratios and a live recompute agree.
 // Everything else below is an internal piece, declared only so its own tests
 // can reach it directly. No production caller should use them.
 
 #ifndef HYDRA_CORE_SQUEEZE_RATING_H
 #define HYDRA_CORE_SQUEEZE_RATING_H
 
+#include <cmath>
 #include <optional>
 #include <vector>
 
@@ -33,23 +35,18 @@ namespace hydra {
 
 // ---- transfer scales ------------------------------------------------------
 
-// Two SP ends coexist in one activation, so two transfer scales do too:
-// `post` is measured at the deactivation node D (the end the backend rows'
-// offsets are measured against, mid-SP phrase extensions included); `pre`
-// is measured one 2-measure step before D and governs the SqIn feasibility
-// (the phrase note must land inside SP as it stands *before* the phrase is
-// collected). Without a SqIn the two are identical. With several SqIns, or
-// a plain collection after the last one, `pre` is exact only for the last
-// extension — one pair per activation is all this carries.
+// An activation's transfer scales, all from stored ticks: `post` at the
+// deact node, and one per SqIn (in sqinouts order) at the end that SqIn's
+// offset was measured from. Nothing is stepped back from D.
 struct ActTransferScales {
-    TransferScale pre;
     TransferScale post;
+    std::vector<TransferScale> sqins;
 };
 
-// The transfer scale between two ticks: mspm(end)/mspm(act), probed at the
-// tick (late direction) and tick-1 (early direction). nullopt when either
-// front measure duration is non-positive.
-std::optional<TransferScale> transfer_scale_between(int64_t act_tick,
+// The transfer scale between two ticks: mspm(end)/mspm(anchor), probed at
+// the tick (late direction) and tick-1 (early direction). nullopt when any
+// of the four measure lengths is not a positive finite number.
+std::optional<TransferScale> transfer_scale_between(int64_t anchor_tick,
                                                     int64_t end_tick,
                                                     const SongTiming& timing);
 
@@ -60,14 +57,18 @@ std::optional<TransferScale> transfer_scale_between(int64_t act_tick,
 // before blob v4 and simply does not say.
 std::optional<int64_t> activation_deact_tick(const Activation& act);
 
-// The activation's transfer scales, both anchored on the record's stored
-// deact node D. The `post` scale is measured at D itself; `pre` steps one
-// 2-measure SqIn extension down from it. The engine stamps the stored
-// transfer_pre/post through this same function at copy-out, so a live
-// recompute can't drift from the record. Display-only; nullopt when the
-// activation has no deact_tick.
+// The activation's transfer scales, from the stored SP-end steps only:
+// `post` from deact_anchor_tick() to deact_tick(), each SqIn from
+// squeeze_anchor_tick(k) to squeeze_end_tick(k). The engine stamps the
+// stored scales through this function at copy-out. nullopt when a tick is
+// missing or a measure length is not a positive finite number.
 std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
                                                           const SongTiming& timing);
+
+// The scales the search stored on the activation (transfer_post and each
+// SqIn's transfer), or nothing when any one is unknown: all or nothing, so a
+// reader never mixes a stored scale with a missing one (D4).
+std::optional<ActTransferScales> stored_transfer_scales(const Activation& act);
 
 // ---- rating pieces --------------------------------------------------------
 
@@ -79,62 +80,94 @@ std::optional<ActTransferScales> frontend_transfer_scales(const Activation& act,
 double effective_backend_ms(double offset_ms, double transfer_r);
 double squeeze_budget_ms(double transfer_r, double hit_window_ms = kDefaultHitWindowMs);
 
-// The transfer scale is shown when it is material to a listed squeeze: the
-// gap's effective size moves by more than this many ms, or the gap exceeds
-// the combined budget outright. Gating on impact (not on |r - 1|) keeps a
-// near-1 ratio visible when a large gap makes even a fraction of a percent
-// decide success.
-constexpr double kTransferImpactMs = 1.0;
-bool transfer_is_material(double gap_ms, double transfer_r,
-                          double hit_window_ms = kDefaultHitWindowMs);
+// A multiplier is x1.00 only when it equals 1 up to the round-off of the
+// measure-length division (two equal measures reached through different
+// tempos). This is not a display cutoff: x0.999 is scaled. The user chose
+// 1e-9 (docs/audit/2026-10-03-fix-decisions.md, D14): no test-set multiplier
+// is that close to 1.
+constexpr double kScaleIdentityTolerance = 1e-9;
+inline bool is_scaled(double r) { return std::abs(r - 1.0) > kScaleIdentityTolerance; }
+
+// The most decimals the scale line needs so a scaled multiplier never prints
+// as 1: rounding to d decimals moves a value by at most half a unit,
+// 0.5 * 10^-d, so d must bring that within the tolerance. Derived from the
+// tolerance, so lowering it raises this (1e-9 gives 9).
+constexpr int kScaleIdentityDigits = [] {
+    int digits = 0;
+    double half_unit = 0.5;
+    while (half_unit > kScaleIdentityTolerance) {
+        half_unit /= 10.0;
+        ++digits;
+    }
+    return digits;
+}();
+
+// The one rule for a single note near a Star Power end. The side of the end
+// it sits on decides which activation-hit direction moves the end across it:
+// a note inside SP is crossed by an early hit pulling the end back, a note
+// outside by a late hit pushing the end past it. That holds whether the
+// crossing loses the note (a counted row, a free squeeze) or wins it (a
+// squeeze still to earn), so the squeeze kind never enters.
+struct NoteRating {
+    bool early = false;                  // which side of the end's TransferScale governs
+    double scale = 1.0;                  // that side's stored multiplier, full precision
+    double budget_ms = 0.0;              // squeeze_budget_ms(scale, W)
+    std::optional<double> effective_ms;  // set exactly when is_scaled(scale)
+};
+
+// offset_ms: the note's ms minus the SP end's ms (negative = before it).
+// inside: whether the note is inside SP on this path, by the counting rule
+// that owns it (core/backend_value.h). at_end: the multipliers stored for
+// the SP end that offset is measured from.
+NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
+                     double hit_window_ms = kDefaultHitWindowMs);
 
 // ---- rate_activation ------------------------------------------------------
 
-// One backend table row, resolved: the display row it judges, whether that
-// row is the squeezed-out note, which scale governs it, the combined squeeze
-// budget that scale buys, and the row's effective ms when the scale
-// materially changes it (unset when the row reads at face value).
+// One backend table row, resolved: the display row, whether it is the
+// squeezed-out note, and its rating at the deact-node end. A row with no
+// offset keeps the default rating (x1.00, no figure).
 struct BackendRating {
     BackendSqueeze row;
     bool squeezed_out = false;
-    double scale = 1.0;
-    double budget_ms = 0.0;
-    std::optional<double> effective_ms;
+    // Left at its defaults when the row has no offset or the activation's
+    // scales are unknown: then budget_ms is 0.0 and scale x1.00, not real
+    // values. Read them only behind effective_ms.
+    NoteRating note;
 };
+
+// Whether the frontend decides this row: it was squeezed out, or the engine
+// does not count it without a squeeze (at or past the leeway). The overfill
+// warning fires only for an activation that has such a row or a SqIn/SqOut.
+bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms);
 
 // The full transfer-scale story for one activation, as the details display
 // tells it.
 struct ActivationRating {
-    // The scales the search stored on the activation (transfer_pre/post).
-    ActTransferScales scales;
-    // The materially affected directions: drive the scale-warning line.
-    // late/early_warns aggregate; the per-end flags record which end tripped
-    // them (backend rows are judged at the post end, SqIn/SqOut phrase notes
-    // at the pre end), so the line can print the scale that actually warned.
-    bool late_warns = false;
-    bool early_warns = false;
-    bool late_backend_warns = false;
-    bool early_backend_warns = false;
-    bool late_note_warns = false;
-    bool early_note_warns = false;
-    // True when the activation's SP window was cap-clamped AND the activation
-    // lists a squeeze the frontend decides: any SqIn/SqOut, or any backend
-    // row that rate_activation judges (squeezed_out, or a plain row the engine
-    // does not count: offset at or past the leeway).
-    // Drives the overfill warning in the details view.
+    // The scales the search stored on the activation (transfer_post and
+    // each SqIn's transfer), through stored_transfer_scales. Unset when any
+    // one is unknown: then no row or SqIn gets a figure (D4).
+    std::optional<ActTransferScales> scales;
+    // True when a multiplier that isn't 1 governs at least one row or SqIn
+    // on this activation: the scale line turns orange.
+    bool scale_governs = false;
+    // True when the SP cap clamped this activation's window AND the frontend
+    // decides at least one of its squeezes: any SqIn/SqOut, or any row
+    // is_frontend_decided accepts. Drives the overfill warning.
     bool cap_clamped = false;
     // One entry per act.display_backends() row, in that order.
     std::vector<BackendRating> backends;
-    // One entry per act.sqinouts, in that order: the phrase note's margin as
-    // effective ms on the nominal scale, set under the same rule as a
-    // backend row's effective_ms (material, and it moves the number).
+    // One entry per act.sqinouts, in that order: a SqIn's figure, rated at
+    // its own stored scale. Always empty for a SqOut, whose note is its
+    // squeezed-out backend row and is rated there.
     std::vector<std::optional<double>> note_effective_ms;
 };
 
 // The display's whole view of an activation's squeezes: it builds the backend
 // rows itself (act.display_backends()), so the caller renders and nothing
-// more. It reads the scales the search stored on the activation. Backend rows are judged at the post (deact-node) end, SqIn/SqOut
-// phrase notes at the pre (pre-extension) end.
+// more. It reads the scales the search stored on the activation. Backend
+// rows are judged at the post (deact-node) end, each SqIn phrase note at
+// its own end's scale.
 // backend_leeway_ms: Rules::backend_leeway_ms. A plain row less than this
 // past the SP end is counted by the engine, so it is not a late squeeze.
 ActivationRating rate_activation(
