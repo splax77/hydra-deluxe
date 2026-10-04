@@ -256,6 +256,14 @@ Song::Song(int64_t resolution) : tick_resolution_(resolution) {
     apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);
 }
 
+std::string artist_or_unknown(std::string artist) {
+    return artist.empty() ? std::string(kUnknownArtist) : artist;
+}
+
+std::string charter_or_unknown(std::string charter) {
+    return charter.empty() ? std::string(kUnknownCharter) : charter;
+}
+
 // ---- Song::sp_phrase_count ----------------------------------------------
 
 int Song::sp_phrase_count() const {

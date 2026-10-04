@@ -138,10 +138,11 @@ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
 std::tuple<std::string, std::string, std::string> read_metadata_ini(const std::string& path) {
     const std::map<std::string, std::string> ini = read_song_ini_keys(path);
 
-    // Empty = no usable name; discover_charts applies the one fallback.
+    // Empty = missing or blank; discover_charts applies the one fallback for
+    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
     std::string title;
-    std::string artist = "<unknown artist>";
-    std::string charter = "<unknown charter>";
+    std::string artist;
+    std::string charter;
 
     if (auto it = ini.find("name"); it != ini.end()) title = it->second;
     if (auto it = ini.find("artist"); it != ini.end()) artist = it->second;
@@ -157,7 +158,7 @@ std::tuple<std::string, std::string, std::string> read_metadata_ini(const std::s
 // being hashed — the old version read the entire archive (chart + audio, can
 // be hundreds of MB) a second time to get three strings from its first few
 // KB. A truncated buffer degrades exactly like a truncated file did: the
-// bounds checks stop early and a missing name stays empty and the other keys keep their <unknown> defaults.
+// bounds checks stop early and missing keys stay empty.
 
 // How much of a .sng/.srb to keep for metadata. A .sng block starts at offset
 // 34 and a .srb's deflated block at offset 16; real metadata is a few KB, so
@@ -166,10 +167,11 @@ constexpr size_t kSngHeadCapture = 1 << 20;
 
 std::tuple<std::string, std::string, std::string> parse_sng_metadata(
     const std::vector<uint8_t>& buf) {
-    // Empty = no usable name; discover_charts applies the one fallback.
+    // Empty = missing or blank; discover_charts applies the one fallback for
+    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
     std::string title;
-    std::string artist = "<unknown artist>";
-    std::string charter = "<unknown charter>";
+    std::string artist;
+    std::string charter;
 
     for (const auto& [raw_key, value] : sng_read_metadata(buf)) {
         const std::string key = to_lower_ascii(raw_key);
@@ -186,15 +188,16 @@ std::tuple<std::string, std::string, std::string> parse_sng_metadata(
 // Clone Hero's bundled songs (see parse/srb.h for the reverse-engineered
 // container layout). The metadata block is a deflate stream starting right
 // after the 16-byte header, so the head bytes captured while hashing always
-// contain it. Any parse failure degrades to the <unknown> defaults, matching
-// the .sng path.
+// contain it. Any parse failure leaves the fields empty, matching the .sng
+// path.
 
 std::tuple<std::string, std::string, std::string> parse_srb_metadata(
     const std::vector<uint8_t>& buf) {
-    // Empty = no usable name; discover_charts applies the one fallback.
+    // Empty = missing or blank; discover_charts applies the one fallback for
+    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
     std::string title;
-    std::string artist = "<unknown artist>";
-    std::string charter = "<unknown charter>";
+    std::string artist;
+    std::string charter;
 
     try {
         std::vector<uint8_t> meta = srb_inflate_stream(
@@ -202,8 +205,8 @@ std::tuple<std::string, std::string, std::string> parse_srb_metadata(
         SrbMetadata md;
         if (srb_parse_metadata(meta, md)) {
             if (!md.name.empty()) title = md.name;
-            if (!md.artist.empty()) artist = md.artist;
-            if (!md.charter.empty()) charter = md.charter;
+            artist = md.artist;
+            charter = md.charter;
         }
     } catch (const std::exception&) {
         // Corrupt/truncated container: keep the defaults.
@@ -443,10 +446,12 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     scanitems.reserve(results.size());
     for (std::optional<ScanItem>& r : results) {
         if (!r) continue;
-        // The one fallback, whichever source produced the title: a fresh
-        // song.ini, .sng or .srb read, or the rescan cache holding an older
-        // scan's blank or "<unknown title>".
+        // The one fallback for each field, whichever source produced it: a
+        // fresh song.ini, .sng or .srb read, or the rescan cache holding an
+        // older scan's blank or "<unknown title>".
         r->title = title_or_unknown(std::move(r->title));
+        r->artist = artist_or_unknown(std::move(r->artist));
+        r->charter = charter_or_unknown(std::move(r->charter));
         scanitems.push_back(std::move(*r));
     }
     return {scanitems, errors};

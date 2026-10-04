@@ -58,6 +58,17 @@ inline constexpr const char* kUnknownTitle = "(unknown)";
 // place that shows a stored name reads it through this.
 std::string title_or_unknown(std::string title);
 
+// What a song with no usable artist or charter shows everywhere it is shown.
+inline constexpr const char* kUnknownArtist = "<unknown artist>";
+inline constexpr const char* kUnknownCharter = "<unknown charter>";
+
+// The one fallback for a song's artist and charter, beside title_or_unknown:
+// a blank value (an empty `artist =`, a missing key, an empty .sng or .srb
+// field) becomes the placeholder. discover_charts applies both once, after
+// the rescan cache, so cached rows from older scans are covered too.
+std::string artist_or_unknown(std::string artist);
+std::string charter_or_unknown(std::string charter);
+
 // A timecode paired with a chord and gameplay modifiers, mirroring
 // hysong.SongTimestamp.
 struct SongTimestamp {

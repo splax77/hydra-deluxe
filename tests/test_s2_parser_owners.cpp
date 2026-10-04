@@ -280,3 +280,59 @@ TEST_CASE("s2 owners: a container's notes entry is found by its exact name (61)"
     // The exact names decide, in any case.
     CHECK(load_songbytes_srb(srb_with("NOTES.MID", mid), true, true).sequence.size() == 1);
 }
+
+TEST_CASE("s2 owners: a blank artist or charter reads the placeholder (60)") {
+    CHECK(artist_or_unknown("") == kUnknownArtist);
+    CHECK(charter_or_unknown("") == kUnknownCharter);
+    CHECK(artist_or_unknown("X") == "X");
+    CHECK(std::string(kUnknownArtist) == "<unknown artist>");
+    CHECK(std::string(kUnknownCharter) == "<unknown charter>");
+
+    namespace fs = std::filesystem;
+    const std::string chart = corpus::first_chart_with_suffix(".chart");
+    REQUIRE(!chart.empty());
+    const fs::path root = fs::temp_directory_path() /
+                          ("hydra_s2_blank_meta_" + std::to_string(GetCurrentProcessId()));
+    fs::remove_all(root);
+    // "artist =" and "charter =" present but blank (56 library song.ini files
+    // have a blank charter).
+    fs::create_directories(root / "blank");
+    fs::copy_file(fs::u8path(chart), root / "blank" / "notes.chart");
+    {
+        std::ofstream ini(root / "blank" / "song.ini", std::ios::binary);
+        ini << "[song]\nname = N\nartist =\ncharter =\n";
+    }
+    // Both keys missing.
+    fs::create_directories(root / "missing");
+    fs::copy_file(fs::u8path(chart), root / "missing" / "notes.chart");
+    {
+        std::ofstream ini(root / "missing" / "song.ini", std::ios::binary);
+        ini << "[song]\nname = N\n";
+    }
+
+    auto [items, errors] = app::discover_charts({root.u8string()});
+    CHECK(errors.empty());
+    REQUIRE(items.size() == 2);
+    for (const app::ScanItem& it : items) {
+        CAPTURE(it.notespath);
+        CHECK(it.artist == kUnknownArtist);
+        CHECK(it.charter == kUnknownCharter);
+    }
+
+    // A rescan-cache row from before this change still holds the blanks. The
+    // scan reads it through the same fallback.
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> entries;
+    for (const app::ScanItem& it : items)
+        entries.push_back({it.md5, it.title, "", "", it.notespath, it.rootfolder, it.sig});
+    store.rebuild_chart_library(entries);
+    store::ChartLibraryCache cache = store.chart_library_cache();
+    auto [cached, errors2] = app::discover_charts({root.u8string()}, app::ScanCallbacks{}, &cache);
+    CHECK(errors2.empty());
+    REQUIRE(cached.size() == 2);
+    for (const app::ScanItem& it : cached) {
+        CHECK(it.artist == kUnknownArtist);
+        CHECK(it.charter == kUnknownCharter);
+    }
+    fs::remove_all(root);
+}
