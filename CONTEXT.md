@@ -201,19 +201,25 @@ fills as a player following the path would see them. A fill the path
 activates on is *taken* (all four lanes lit, the activation note's lane
 highlighted); a fill the path had enough SP for but passed over is *offered*
 (lanes lit dimly); every other candidate fill is hidden, because the game would
-not have shown it. Offered fills come from the activation's skip count, not a
-re-derived SP meter; fills after the last activation are hidden because the
-engine records nothing about them.
+not have shown it. Offered fills are the ones the engine stored on each
+activation as passed over; nothing guesses them from a count. For a tied
+variant, the activations after the fold carry its leader's passed-over fills
+until finding 97 is fixed, and a fill the path took always stays taken. Fills
+after the last activation are hidden because the engine records nothing about
+them.
 
 **SP meter gauge**:
 The vertical gauge on the note highway's right edge showing banked Star Power
-at the playhead: up one bar at each collected phrase, draining through each
-activation to hit empty exactly at the deact node. Anchored to the record's
-per-activation bank, deact node and list of collected phrases, never
-re-derived. Late-SqIn and cap-clamped phrases are in that list. A phrase
-inside the window that the record does not list was squeezed out, so it
-banks when SP ends rather than during the drain.
-Without a path it fills and pins at the cap, since nothing spends it.
+at the playhead. With a path, every value is the record's. Between activations
+it steps up one bar at each tick where the engine stamped a bar's arrival. In
+an active window it shows the measures left until the SP end in force, two
+measures to a bar, and the record lists every place that end moved. It empties
+exactly at the deact node. The gauge counts no phrases and applies no cap. A
+late squeeze-in refills at the old SP end, because the player hits that phrase
+early and SP never stops. A squeezed-out phrase's bar arrives when the player
+hits it: as SP ends for an early phrase, on its own note for a late one.
+Without a path it fills one bar per phrase and pins at the cap, since nothing
+spends it and there is no record to read.
 
 **Stem**:
 One of the several audio files a chart may ship instead of a single mix (e.g.
