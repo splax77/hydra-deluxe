@@ -29,6 +29,7 @@
 #include "env_util.h"
 #include "app/fill_report.h"
 #include "app/html_page.h"
+#include "app/library_query.h"
 #include "app/report.h"
 #include "app/report_files.h"
 #include "app/user_messages.h"
@@ -348,6 +349,9 @@ TEST_CASE("report payload carries the hit window and the tier table") {
     // text, so an exact half rounds the way the app rounds it (D48 Q2, Q5).
     // The numbers stay beside the text for sorting and the tiles.
     report::ReportRow timed;
+    timed.song = "Through The Fire";
+    timed.artist = "DragonForce";
+    timed.charter = "Some Charter";
     timed.path = "1";
     timed.tier = "Hard";
     timed.tok = "t1";
@@ -368,6 +372,25 @@ TEST_CASE("report payload carries the hit window and the tier table") {
           std::string::npos);
     CHECK(rows.find("fmtMs") == std::string::npos);
     CHECK(rows.find("toFixed(1)") == std::string::npos);
+
+    // Each row carries its search text: the library's fold of the shown song,
+    // artist, charter and path (D48 Q31).
+    const std::string search = fold_for_search(timed.song + " " + timed.artist + " " +
+                                               timed.charter + " " + timed.path);
+    CHECK(search == "through the fire dragonforce some charter 1");
+    CHECK(occurrences(rows, "\"search\":\"" + search + "\"") == 2);
+}
+
+TEST_CASE("report payload: the search field is folded and tag-free") {
+    report::ReportRow row;
+    row.song = "Halo";
+    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
+    row.charter = "<b>Bob</b>";
+    row.path = "1";
+    row.tier = "None";
+    row.tok = "tn";
+    const std::string html = report::build_html({row}, "sub", "foot", 85.0);
+    CHECK(html.find("\"search\":\"halo beyonce bob 1\"") != std::string::npos);
 }
 
 TEST_CASE("report page reads the Beyond edge from the tier table") {
@@ -527,7 +550,24 @@ TEST_CASE("the three report pages share one stylesheet and one script") {
         CHECK(page->find(".delta {") == std::string::npos);
         CHECK(page->find(".rank {") == std::string::npos);
         CHECK(page->find("data-theme") == std::string::npos);
+        // The pages search the Library's way (D48 Q31): no page joins its
+        // fields and looks for the query as one lowercased run, and every page
+        // carries the fold table Hydra built from the library's fold.
+        CHECK(page->find("toLowerCase().includes(") == std::string::npos);
+        CHECK(page->find("const FOLD = {\"A\":\"a\",") != std::string::npos);
     }
+    // The shared script folds the query through that table, splits it into
+    // words and keeps a row when every word is in its search text. It holds no
+    // fold of its own: no lowercasing and no accented letter, raw or escaped.
+    const std::string script = html::kReportJs;
+    CHECK(script.find("FOLD[ch]") != std::string::npos);
+    CHECK(script.find(".split(/\\s+/)") != std::string::npos);
+    CHECK(script.find("words.every(w => r.search.includes(w))") != std::string::npos);
+    CHECK(script.find("toLowerCase") == std::string::npos);
+    CHECK(std::none_of(script.begin(), script.end(),
+                       [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
+    for (const char* range : {"\\u00", "\\u01", "\\uff", "\\uFF"})
+        CHECK(script.find(range) == std::string::npos);
     CHECK(paths.find("<div class=\"wrap\">") != std::string::npos);
     CHECK(dm.find("<div class=\"wrap dm\">") != std::string::npos);
     CHECK(fill.find("<div class=\"wrap fill\">") != std::string::npos);

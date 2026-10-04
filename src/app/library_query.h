@@ -27,6 +27,19 @@ namespace hydra::app {
 // byte; nothing is dropped and nothing throws.
 std::string fold_for_search(std::string_view text);
 
+// One character fold_for_search changes, and what it becomes. Both are UTF-8.
+struct FoldEntry {
+    std::string from;
+    std::string to;
+};
+
+// Every single character fold_for_search changes, with its folded form: A to
+// Z, U+00C0 to U+017F and U+FF01 to U+FF5E, run through fold_for_search one at
+// a time, keeping only those that come out different. The report pages fold a
+// typed query by looking each character up in this table, so they search the
+// way the library does without a second copy of the fold. In code point order.
+std::vector<FoldEntry> search_fold_table();
+
 // Removes Clone Hero rich-text tags. The rule lives in parse/song.h, beside
 // display_title; the library reads the same function under this name.
 using hydra::strip_rich_tags;

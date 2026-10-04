@@ -7,6 +7,7 @@
 #define HYDRA_APP_HTML_PAGE_H
 
 #include <string>
+#include <string_view>
 
 namespace hydra::app::html {
 
@@ -40,11 +41,22 @@ extern const char* const kReportJs;      // sorting, filtering, drawing, first r
 // One page's template: a whole standards-mode document (doctype, <html
 // lang="en">, head, body) with the shared stylesheet and script around the
 // page's <title> text, its body markup and its `const PAGE = {...};` script.
+// Between the data tag and PAGE it writes `const FOLD = {...};`, the
+// search_fold_table the search box folds a typed query with. Every row in
+// PAGE.rows carries `search`, its search_field text; PAGE.filter() takes no
+// query and keeps rows by the page's own controls only.
 // A column in PAGE.cols may carry `d:'...'`, its definition: the header's
 // hover text and the footer legend (#legend, when the body has one) show it.
 // The result still carries __SUBTITLE__, __FOOTER__ and __DATA__ for
 // render_page to fill.
 std::string page_template(const char* title, const char* body, const char* page_js);
+
+// A row's search text on a report page: each field the page searches, folded
+// and tag-free the way the library stores its rows (make_searchable in
+// app/library_query.h), joined by single spaces. Empty fields are left out.
+// The page keeps a row when every word of the folded query appears in it.
+std::string search_field(std::string_view song, std::string_view artist,
+                         std::string_view charter, std::string_view path = {});
 
 }  // namespace hydra::app::html
 

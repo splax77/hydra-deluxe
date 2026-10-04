@@ -301,6 +301,16 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
     CHECK(html.find("'+' + r.delta.toLocaleString()") == std::string::npos);
 }
 
+TEST_CASE("report payload: the search field is folded and tag-free") {
+    FillCompareRow row;
+    row.song = "Halo";
+    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
+    row.charter = "<b>Bob</b>";
+    row.status = "only 1.1";
+    const std::string html = app::fill_report::build_fill_html({row}, "sub", "foot");
+    CHECK(html.find("\"search\":\"halo beyonce bob\"") != std::string::npos);
+}
+
 TEST_CASE("generate_fill_report: tally and framing behind one seam") {
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");

@@ -258,6 +258,36 @@ std::string fold_for_search(std::string_view text) {
     return out;
 }
 
+std::vector<FoldEntry> search_fold_table() {
+    // The three runs of characters fold_into changes one for one. Whitespace
+    // is left to the page, which splits the query on it.
+    struct Run {
+        unsigned first, last;
+    };
+    constexpr Run kRuns[] = {{'A', 'Z'}, {0x00C0, 0x017F}, {0xFF01, 0xFF5E}};
+
+    std::vector<FoldEntry> table;
+    for (const Run& run : kRuns) {
+        for (unsigned cp = run.first; cp <= run.last; ++cp) {
+            // UTF-8 for a code point below U+10000: one, two or three bytes.
+            std::string from;
+            if (cp < 0x80) {
+                from.push_back(static_cast<char>(cp));
+            } else if (cp < 0x800) {
+                from.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+                from.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            } else {
+                from.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+                from.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+                from.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+            }
+            std::string to = fold_for_search(from);
+            if (to != from) table.push_back(FoldEntry{std::move(from), std::move(to)});
+        }
+    }
+    return table;
+}
+
 bool LibraryQuery::empty() const {
     return terms.empty() && !stars && !squeeze_max_ms;
 }
