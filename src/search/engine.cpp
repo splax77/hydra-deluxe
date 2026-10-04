@@ -650,17 +650,25 @@ void Engine::advance(Path& p) {
         // could be handed back. Keep the spent phrase buffered until its own
         // edge instead. Only fires when an SP bar is shorter than the squeeze
         // window; the meter it ends with is the same as letting it dip.
+        // That state is exactly an empty meter, no phrase on this edge and the
+        // one spent phrase buffered. Any other negative meter is a bug: fail
+        // loudly instead of quietly skipping a phrase the path should bank.
         int32_t still_buffered = 0;
         if (sp < 0) {
+            if (!(old_sp == 0 && sp_n == 0 && buffered == 1))
+                throw std::logic_error("the SP meter went below zero off SP");
             still_buffered = -sp;
             sp = 0;
         }
         if (has_sp_cap_ && sp > sp_cap_) sp = sp_cap_;
         p.sp = sp;
-        // Keep the banked bars in step with p.sp. A gain is a phrase past the
-        // buffered ones (a squeeze-out already paid for those). A loss happens
-        // only when a buffered phrase is not on this edge: the engine hands the
-        // squeeze-out's bar back here and the phrase's own edge adds it again.
+        // Keep the banked bars in step with p.sp. Off SP, `buffered` means one
+        // of two things. After a squeeze-out it is a bar already banked: if
+        // the phrase is not on this edge, the bar is handed back here (the
+        // only loss) and the phrase's own edge adds it again. After a D32 early
+        // end (above) it is a spent phrase: the meter stays empty, nothing is
+        // popped, and the phrase's own edge adds no bar and no tick. A gain is
+        // a phrase past the buffered ones, so it never pushes the spent one.
         for (int32_t k = sp; k < old_sp; ++k) p.bank_tail = banks_[(size_t)p.bank_tail].prev;
         for (int32_t k = 0; k < sp - old_sp; ++k)
             p.bank_tail = push_tick(banks_, p.bank_tail,
