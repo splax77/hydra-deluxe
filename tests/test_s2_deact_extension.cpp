@@ -108,7 +108,6 @@ TEST_CASE("finding 37: the squeeze-out edge expects extend_deacts' clamped end")
     CHECK(x->to_tick == 6528);  // was 6912
     CHECK(x->clamped);
     CHECK(x->sqout_node);
-    CHECK(c->sqin_time.ticks() == 6528);
 }
 
 TEST_CASE("finding 37: a clamped window still offers its squeeze-out") {
@@ -327,7 +326,6 @@ TEST_CASE("finding 37: an unclamped window is unchanged") {
     REQUIRE(x.has_value());
     CHECK(x->to_tick == 6912);
     CHECK_FALSE(x->clamped);
-    CHECK(c->sqin_time.ticks() == 6912);
     const std::vector<SqOutSeen> seen =
         sqouts_of(run_search(graph, test::wide_search()), 3456);
     REQUIRE_FALSE(seen.empty());

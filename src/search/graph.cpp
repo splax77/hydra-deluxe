@@ -403,17 +403,18 @@ void ScoreGraph::add_deact_edge() {
     // end). An early chord's moved end is on the path's own step already.
     const std::vector<const SongTimestamp*> window = core::squeeze_window_phrases(song_, end);
     for (const SongTimestamp* c : window) {
-        const DeactExtension moved = extend_deacts({end}, c->timecode).front();
         SqueezeChoice choice;
         choice.chord = c->timecode;
         choice.timing = offset_from_sp_end(c->timecode.ms(), end.ms());
         choice.late = core::after_sp_end(c->timecode.ticks(), end.ticks());
-        choice.sqin_time = moved.to;
         deact_edge->squeeze_choices.push_back(choice);
+        if (!choice.late) continue;
+        const DeactExtension moved = extend_deacts({end}, c->timecode).front();
+        deact_edge->squeeze_choices.back().sqin_time = moved.to;
         // A late SqIn's end can come before its own phrase: add its node
         // now, while it is still ahead (sqin_end_by_phrase). Any late
         // chord in the window can be the one offered.
-        if (choice.late && sqin_end_by_phrase(moved.to.ticks(), c->timecode.ticks()) &&
+        if (sqin_end_by_phrase(moved.to.ticks(), c->timecode.ticks()) &&
             pending_deacts_.find(moved.to.ticks()) == pending_deacts_.end()) {
             pending_deacts_[moved.to.ticks()] = moved.to;
             deact_heap_.push_back(moved.to);

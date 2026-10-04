@@ -66,6 +66,9 @@ struct OwnerRule {
     // that is a lone "}". The scan fails if it never finds that line.
     std::string function_file;
     std::string function;
+    // Whole-line comments are skipped unless this is set (a rule about a
+    // name that comments must not use).
+    bool scan_comments = false;
 };
 
 struct KnownCopy {
@@ -342,11 +345,8 @@ const std::vector<OwnerRule>& rules() {
           "return s.sqout_at != node_tick;"},
          {"const int64_t at = ends_[(size_t)p.end_tail].sqout_at;",
           "newest.sqout_at == NO_TIME ? std::nullopt : std::optional<int64_t>(newest.sqout_at),"},
-         {{"src/core/sqout_chord.h", "if (newest_moved_from == sp_end)",
-           "offered_phrase, the owner"},
-          {"src/search/engine.cpp", "if (newest.sqout_at == d)",
-           "deactivation_type's guard after offered_phrase answered none: the graph listed no "
-           "choice for the phrase the step says it can give back, an impossible state"}}},
+         {{"src/core/sqout_chord.h", "if (newest_moved_from == sp_end && !squeezed_in(newest_tick)) {",
+           "offered_phrase, the owner"}}},
         // Was part of a walker in test_squeeze_rating.cpp (review finding 12).
         // An optional namespace prefix (hydra::kSqueezeWindowMs) must not
         // hide a comparison.
@@ -440,6 +440,62 @@ const std::vector<OwnerRule>& rules() {
          {"for (const Path& v : path.variants) collect_payloads(v, out);"},
          {},
          {"tests"}},
+        // all_paths already walks every root's tied variants (flatten_paths),
+        // so adding all_tied's list to it checks each variant twice.
+        {"Every stored path of a record, tied variants included, in a test?",
+         "HydraRecord::all_paths in src/core/model.cpp",
+         R"(for \(const (hydra::)?Path\* \w+ : all_tied\(\w+\.paths\)\) \w+\.push_back\()",
+         "",
+         {},
+         {},
+         "D36 derive-once review finding 1 (2026-10-04)",
+         {"for (const Path* p : all_tied(rec.paths)) all.push_back(p);",
+          "for (const hydra::Path* v : all_tied(r.paths)) out.push_back(v);"},
+         {"for (const Path* p : rec.all_allzero_paths()) all.push_back(p);"},
+         {},
+         {"tests"}},
+        {"Where does the graph's SP track start, in a test?",
+         "sp_track_start in tests/record_fixtures.h",
+         R"(branch_edge\)\s*\w+\s*=\s*\w+->branch_edge->dest;)",
+         "",
+         {},
+         {},
+         "D36 derive-once review finding 3 (2026-10-04)",
+         {"if (b->branch_edge) sp = b->branch_edge->dest;",
+          "if (!sp_start && n->branch_edge) sp_start = n->branch_edge->dest;"},
+         {"if (sp->branch_edge && sp->branch_edge->dest->timecode.ticks() == end_tick)"},
+         {},
+         {"tests"}},
+        {"Does every stored path of one record bank in order, in a test?",
+         "bank_check::check_record_banks in tests/bank_check.h",
+         R"(=\s*bank_check::phrase_ends\(\w+\);)",
+         "",
+         {},
+         {},
+         "D36 derive-once review finding 2 (2026-10-04)",
+         {"const std::set<int64_t> phrase_ends = bank_check::phrase_ends(song);",
+          "std::set<int64_t> ends = bank_check::phrase_ends(s);"},
+         {"inline std::set<int64_t> phrase_ends(const hydra::Song& song) {"},
+         {},
+         {"tests"}},
+        // D36 deleted core::sqout_chord; a comment that still names it points
+        // at nothing. Comments are scanned too, since that is where it lived.
+        {"Which chords can this SP end squeeze out (the deleted sqout_chord's name)?",
+         "core::sqout_chords in src/core/sqout_chord.h",
+         R"(\bsqout_chord\b(?![s.]))",
+         "",
+         {},
+         {},
+         "D36 derive-once review finding 10 (2026-10-04)",
+         {"// the one core::sqout_chord names. A typed offset is matched",
+          "// The engine squeezes out only the chord core::sqout_chord names for this"},
+         {"core::sqout_chords(song, deact_tc, w.act_tick, w.sqin_ticks, false);",
+          "#include \"core/sqout_chord.h\""},
+         {},
+         {"src", "tools", "tests"},
+         "",
+         "",
+         true},
         {"Which ticks does a path activate on, in a test?",
          "act_ticks in tests/record_fixtures.h",
          R"(for \(const Activation&\s*\w+\s*:.*\)\s*\w+\.push_back\(\w+\.timecode\.ticks\(\)\))",
@@ -939,11 +995,13 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
             while (std::getline(in, line)) {
                 ++lineno;
                 const std::string t = hydra::trim(line);
-                if (t.empty() || t.compare(0, 2, "//") == 0) continue;
+                if (t.empty()) continue;
+                const bool comment = t.compare(0, 2, "//") == 0;
                 for (size_t ci = 0; ci < compiled.size(); ++ci) {
                     const CompiledRule& c = compiled[ci];
                     const OwnerRule& rule = *c.rule;
                     if (!in_scope(rule, sub, rel)) continue;
+                    if (comment && !rule.scan_comments) continue;
                     if (!rule.function.empty()) {
                         if (rel != rule.function_file) continue;
                         if (!in_function[ci] && line.find(rule.function) != std::string::npos) {

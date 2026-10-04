@@ -76,7 +76,7 @@ struct EdgeView {
 struct ChoiceView {
     int64_t chord;
     double timing;
-    int64_t sqin_time;
+    int64_t sqin_time;  // a late chord's (SqueezeChoice::sqin_time), else NO_TIME
     int32_t late;
 };
 
@@ -172,8 +172,9 @@ Enum enumerate(const ScoreGraph& graph) {
         v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);
         v.choice_begin = (int32_t)en.choices.size();
         for (const SqueezeChoice& c : o->squeeze_choices)
-            en.choices.push_back(
-                ChoiceView{c.chord.ticks(), c.timing, c.sqin_time.ticks(), c.late ? 1 : 0});
+            en.choices.push_back(ChoiceView{c.chord.ticks(), c.timing,
+                                            c.sqin_time ? c.sqin_time->ticks() : NO_TIME,
+                                            c.late ? 1 : 0});
         v.choice_end = (int32_t)en.choices.size();
         en.edge_views.push_back(v);
     }
@@ -226,8 +227,9 @@ struct EndNode {
     // A Collected or Clamped step: the end it moved from, when that end can
     // give this phrase back (SpExtension::sqout_node), else NO_TIME. Only
     // there is the phrase offered as a squeeze (core::offered_phrase, D36).
-    // An SqIn step clears it: a phrase is squeezed in only once. Engine
-    // state only; the record's SpEndStep does not carry it.
+    // A step relabelled SqIn keeps it: offered_phrase itself skips a phrase
+    // the window squeezed in (D34). Engine state only; the record's
+    // SpEndStep does not carry it.
     int64_t sqout_at;
 };
 struct Variant {
@@ -511,7 +513,7 @@ private:
         if (t < 0 || !is_sqin_step(ends_[(size_t)t].tick, ends_[(size_t)t].kind, tick))
             return false;
         const EndNode found = ends_[(size_t)t];
-        int32_t out = push_end(found.prev, found.tick, found.end, SpEndKind::SqIn);
+        int32_t out = push_end(found.prev, found.tick, found.end, SpEndKind::SqIn, found.sqout_at);
         for (size_t k = after.size(); k-- > 0;)
             out = push_end(out, after[k].tick, after[k].end, after[k].kind, after[k].sqout_at);
         tail = out;
@@ -931,33 +933,31 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
     // The edge lists the phrase chords in this SP end's window. The path is
     // offered at most one (core::offered_phrase, D36): its newest phrase,
     // when that phrase's step moved its end from this node (EndNode::
-    // sqout_at), or, when its end is this node, the first phrase after it
-    // that it has not squeezed in (D34). A late SqIn's phrase still ahead of
-    // the path (Path::spent) holds its SqIn step already, so it is skipped
-    // (D32: that phrase was once squeezed in a second time at the next end
-    // and the search broke). The newest-step rule also tells apart two ends
-    // that move to one tick: two clamped to one ceiling, or a plain bar
-    // tying it (finding 37), or two ends a tick apart (plusmeasure's
-    // rounding). Each offers the phrase only to the path that moved from it.
+    // sqout_at) and it has not squeezed that phrase in, or, when its end is
+    // this node, the first phrase after it that it has not squeezed in
+    // (D34). A late SqIn's phrase still ahead of the path (Path::spent)
+    // holds its SqIn step already, so it is skipped (D32: that phrase was
+    // once squeezed in a second time at the next end and the search broke).
+    // The newest-step rule also tells apart two ends that move to one tick:
+    // two clamped to one ceiling, or a plain bar tying it (finding 37), or
+    // two ends a tick apart (plusmeasure's rounding). Each offers the phrase
+    // only to the path that moved from it. The graph keeps an end as a node,
+    // and lists the phrase on its edge, exactly when the step says so
+    // (SpExtension::sqout_node), so offered_phrase is asked on an empty
+    // list too: it throws when the step's phrase is missing.
     const int64_t d = node(e.dest).tick;
     const EndNode& newest = ends_[(size_t)p.end_tail];
-    if (e.choice_begin < e.choice_end) {
-        const ChoiceView* first = &en_.choices[(size_t)e.choice_begin];
-        const ChoiceView* last = first + (e.choice_end - e.choice_begin);
-        const ChoiceView* c = core::offered_phrase(
-            first, last, d, p.sp_end_time, newest.tick,
-            newest.sqout_at == NO_TIME ? std::nullopt : std::optional<int64_t>(newest.sqout_at),
-            [](const ChoiceView& v) { return v.chord; },
-            [this, &p](int64_t tick) { return squeezed_in(p, tick); });
-        if (c != last) {
-            *offered = c;
-            return DEACT_SQINOUT;
-        }
+    const ChoiceView* first = en_.choices.data() + e.choice_begin;
+    const ChoiceView* last = en_.choices.data() + e.choice_end;
+    const ChoiceView* c = core::offered_phrase(
+        first, last, d, p.sp_end_time, newest.tick,
+        newest.sqout_at == NO_TIME ? std::nullopt : std::optional<int64_t>(newest.sqout_at),
+        [](const ChoiceView& v) { return v.chord; },
+        [this, &p](int64_t tick) { return squeezed_in(p, tick); });
+    if (c != last) {
+        *offered = c;
+        return DEACT_SQINOUT;
     }
-    // The graph keeps an end as a node, and lists the phrase on its edge,
-    // exactly when the step says so (SpExtension::sqout_node).
-    if (newest.sqout_at == d)
-        throw std::logic_error("an SP end holds no choice for the phrase its step moved");
     // Otherwise SP ends here exactly when the path's end is this node. D32:
     // that includes a path whose end is this node while the window holds a
     // chord it could squeeze. At a normal tempo no such path exists: its end
@@ -990,11 +990,10 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
         a.deact_edge = deact_edge;
         // A squeeze-out gives back its phrase and everything after it, so
         // the activation keeps only the steps before it.
-        a.end_tail = sq ? trim_ends(p.end_tail, sq->chord) : p.end_tail;
         // D36: what is left ends on this node. An early squeeze-out gives
         // back only its own step, the newest, which moved the end from here.
-        if (a.end_tail < 0 || ends_[(size_t)a.end_tail].end != sp_end)
-            throw std::logic_error("a closed window's steps end off its deactivation node");
+        // rebuild checks it once for every stored window, variants included.
+        a.end_tail = sq ? trim_ends(p.end_tail, sq->chord) : p.end_tail;
         if (sq) {
             a.sq_tail = push_sq(a.sq_tail, SQ_OUT, sq->timing);
             a.sqout_phrase = sq->chord;

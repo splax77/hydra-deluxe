@@ -25,8 +25,8 @@ struct Window {
 
 // Every phrase chord strictly within kSqueezeWindowMs of deactivation node D,
 // in chart order: the list the graph puts on D's edge
-// (core::squeeze_window_phrases). The engine squeezes out only one of them,
-// the one core::sqout_chord names. A typed offset is matched to the chord
+// (core::squeeze_window_phrases). The engine squeezes out only the ones
+// core::sqout_chords names. A typed offset is matched to the chord
 // nearest it, which is the replay's own question.
 std::vector<const SongTimestamp*> sqout_candidates(const Song& song,
                                                    int64_t deact_tick) {
@@ -278,8 +278,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     const SqOutNote typed{best->timecode.ticks(),
                           offset_from_sp_end(best->timecode.ms(), d_ms)};
 
-    // The engine squeezes out only the chord core::sqout_chord names for this
-    // window. Anything else is a squeeze-out the search can never produce:
+    // The engine squeezes out only the chords core::sqout_chords names for
+    // this window. Anything else is a squeeze-out the search can never produce:
     // refuse, never price it.
     const Timecode deact_tc = song.timing().timecode(w.deact_tick);
     const bool typed_squeezed_in =

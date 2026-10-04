@@ -856,9 +856,10 @@ TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refus
     CHECK(warned[0].rfind("window 0:2950 ", 0) == 0);
 }
 
-// D34: when the window's first phrase chord was banked before the
-// activation, the engine offers the next one instead. The replay accepts a
-// typed squeeze-out on it, and warns about it, as the engine would squeeze it.
+// D34: a phrase chord banked before the activation is never the window's to
+// squeeze. Before the end the engine offers the window's newest phrase
+// (D36), here the one after the banked chord. The replay accepts a typed
+// squeeze-out on it, and warns about it, as the engine would squeeze it.
 TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's (D34)") {
     // Phrase chords at 2928 (banked: the activation is on 3000) and 3036,
     // 375 ms and 93.75 ms before D = 3072.
@@ -949,8 +950,10 @@ TEST_CASE("squeeze_window_phrases: the phrase chords strictly inside the window,
 
 // The one rule for which phrase an SP end offers a window (D36), on plain
 // ticks: the newest step's phrase when that step moved the end from this SP
-// end; else, when the window's end is this SP end, the first phrase after it
-// not squeezed in (D34); else nothing.
+// end and the window has not squeezed it in (D34); else, when the window's
+// end is this SP end, the first phrase after it not squeezed in; else
+// nothing. A step that moved the end from here while the list lacks its
+// phrase is an impossible state, and throws.
 TEST_CASE("offered_phrase: the newest step's phrase early, the first unsqueezed one late (D36)") {
     const std::vector<int64_t> window = {2928, 3036, 3100, 3200};  // the end is 3072
     const auto tick = [](int64_t t) { return t; };
@@ -965,10 +968,12 @@ TEST_CASE("offered_phrase: the newest step's phrase early, the first unsqueezed 
     CHECK(at(4000, 3036, 3072, none) == 3036);          // newest moved from here
     CHECK(at(4000, 2928, 3072, none) == 2928);          // whichever it is
     CHECK(at(4000, 3036, 3071, none) == -1);            // moved from a twin end
-    CHECK(at(4000, 3036, std::nullopt, none) == -1);    // no squeeze node, or SqIn
+    CHECK(at(4000, 3036, std::nullopt, none) == -1);    // no squeeze node
+    CHECK(at(4000, 3036, 3072, [](int64_t t) { return t == 3036; }) == -1);  // squeezed in
     CHECK(at(3072, 3036, std::nullopt, none) == 3100);  // the end is here: late
     CHECK(at(3072, 3036, std::nullopt, in_3100) == 3200);
     CHECK(at(3072, 0, std::nullopt, [](int64_t) { return true; }) == -1);
+    CHECK_THROWS_AS(at(4000, 3000, 3072, none), std::logic_error);  // 3000 is not listed
 }
 
 // The replay's form of the rule (core::sqout_chords): a typed window has no

@@ -75,11 +75,11 @@ struct SqueezeChoice {
     // The chord's ms minus the SP end's ms: what the search ranks by and the
     // record shows.
     double timing = 0.0;
-    // Where a squeeze-in on this chord leaves the SP end: extend_deacts'
-    // answer for this end and this chord, the same one the chord's own
-    // advance edge carries (finding 37). Read for a late chord: an early
-    // one's squeeze-in keeps the end its own step already moved (D36).
-    Timecode sqin_time;
+    // A late chord only: where a squeeze-in on it leaves the SP end,
+    // extend_deacts' answer for this end and this chord (finding 37). An
+    // early chord has none: its squeeze-in keeps the end its own step
+    // already moved (SpExtension::to_tick, D36).
+    std::optional<Timecode> sqin_time;
     // After the SP end (core::after_sp_end). Which chord a path is offered,
     // early or late, is core::offered_phrase's answer (D36): an early chord
     // only to the path whose newest step moved its end from here, a late one
@@ -128,7 +128,7 @@ struct ScoreGraphEdge {
     // Deactivation edges only: every phrase chord in this SP end's squeeze
     // window, in chart order (core::squeeze_window_phrases). The engine
     // offers a path at most one of them (core::offered_phrase, D36).
-    // Each choice carries where a squeeze-in on it moves this SP end
+    // Each late choice carries where a squeeze-in on it moves this SP end
     // (SqueezeChoice::sqin_time): under a cap it depends on the chord.
     std::vector<SqueezeChoice> squeeze_choices;
 };

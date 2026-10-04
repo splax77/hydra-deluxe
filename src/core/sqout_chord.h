@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <iterator>
 #include <optional>
+#include <stdexcept>
 #include <vector>
 
 #include "core/backend_value.h"
@@ -56,11 +57,12 @@ inline bool activation_can_squeeze(int64_t act_tick, int64_t chord_tick) {
 // note is hit, and every later phrase is hit after that note. So:
 //  - Early side: the only phrase at or before the end a window can squeeze
 //    is its newest one, and only at the end that phrase's step moved its SP
-//    end from. `newest_tick` is the window's newest SP-end step's phrase;
-//    `newest_moved_from` is the end that step moved, when that end holds
-//    the phrase in its squeeze window (nullopt otherwise, and for an
-//    Activation or SqIn step: a phrase is squeezed in only once, D34).
-//    Banked phrases never have a step, so they are never offered (D18).
+//    end from, and only when the window has not squeezed it in already (a
+//    phrase is squeezed in only once, D34). `newest_tick` is the window's
+//    newest SP-end step's phrase; `newest_moved_from` is the end that step
+//    moved, when that end holds the phrase in its squeeze window (nullopt
+//    otherwise, and for an Activation step). Banked phrases never have a
+//    step, so they are never offered (D18).
 //  - Late side: when the window's end `path_end` is this end, the first
 //    phrase after it that the window has not squeezed in (D34).
 // Two SP ends one tick apart that move one bar on to the same tick each
@@ -69,15 +71,21 @@ inline bool activation_can_squeeze(int64_t act_tick, int64_t chord_tick) {
 // [first, last) is the end's window phrase chords in chart order; `tick_of`
 // reads a chord's tick, `squeezed_in(tick)` says whether this window
 // already squeezed that chord in. Returns `last` when nothing is offered.
-// The search and the replay both pick through this one function.
+// The search and the replay both pick through this one function. When the
+// early side holds but the range lacks the newest phrase, the caller's
+// window list and its step disagree, an impossible state: this throws.
 template <class It, class TickOf, class SqueezedIn>
 It offered_phrase(It first, It last, int64_t sp_end, std::optional<int64_t> path_end,
                   int64_t newest_tick, std::optional<int64_t> newest_moved_from, TickOf tick_of,
                   SqueezedIn squeezed_in) {
     using Ref = decltype(*first);
-    if (newest_moved_from == sp_end)
-        return std::find_if(first, last,
-                            [&](Ref c) { return tick_of(c) == newest_tick; });
+    if (newest_moved_from == sp_end && !squeezed_in(newest_tick)) {
+        const It it = std::find_if(first, last,
+                                   [&](Ref c) { return tick_of(c) == newest_tick; });
+        if (it == last)
+            throw std::logic_error("an SP end holds no choice for the phrase its step moved");
+        return it;
+    }
     if (path_end != sp_end) return last;
     return std::find_if(first, last, [&](Ref c) {
         const int64_t tick = tick_of(c);
@@ -143,7 +151,7 @@ inline std::vector<const SongTimestamp*> sqout_chords(const Song& song, const Ti
         for (const SongTimestamp* c : window)
             if (!after_sp_end(tick_of(c), d) && activation_can_squeeze(act_tick, tick_of(c)))
                 newest = c;
-        if (newest && !is_in(tick_of(newest))) {
+        if (newest) {
             const auto it = offered_phrase(window.begin(), window.end(), d, std::nullopt,
                                            tick_of(newest), d, tick_of, is_in);
             if (it != window.end()) out.push_back(*it);

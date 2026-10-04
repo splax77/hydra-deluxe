@@ -76,43 +76,16 @@ bool analyzes(const Song& song, const app::AnalysisSettings& cfg, HydraRecord& r
 // (tests/bank_check.h).
 using bank_check::check_one_step_per_sqin;
 
-// Every closed window ends where its record says (D36 gap a). A squeezed-out
-// row's offset is measured from the node SP really ended on, so the record's
-// end, deact_tick(), must be that node: the chord's ms minus the offset.
-// Before D36 the search could squeeze out a phrase while keeping a later
-// one's step, so the trimmed record named an end one bar early (on
+// The corpus test's bank checks (bank_check::check_record_banks) on every
+// stored path, tied variants included: no bank list holds a phrase a
+// squeeze-in spent, and every list banks in order between its windows. The
+// corpus never reaches the D32 states, so these charts are where they are
+// checked. The order check came back with D36: until then a squeezed-out bar
+// could land on the real deact node past the record's deact_tick() (on
 // node_before_phrase at cap 3, path "0-" stored 13440 and ended at 15648).
-void check_deact_node(const Song& song, const Path& p) {
-    for (const Activation& a : p.walk_activations()) {
-        if (!a.sqout_tick) continue;
-        CAPTURE(a.timecode.ticks());
-        REQUIRE(a.deact_tick().has_value());
-        REQUIRE(a.sqout_row() != nullptr);
-        REQUIRE(a.sqout_row()->offset_ms.has_value());
-        CHECK(*a.sqout_row()->offset_ms ==
-              offset_from_sp_end(song.timecode(*a.sqout_tick).ms(),
-                                 song.timecode(*a.deact_tick()).ms()));
-    }
-}
-
-// The corpus test's bank checks (tests/bank_check.h) on every stored path,
-// tied variants included: no bank list holds a phrase a squeeze-in spent,
-// and every list banks in order between its windows. The corpus never
-// reaches the D32 states, so these charts are where they are checked. The
-// order check came back with D36: until then a squeezed-out bar could land
-// on the real deact node past the record's deact_tick() (check_deact_node).
-void check_banks(const Song& song, const HydraRecord& rec) {
-    std::vector<const Path*> all = rec.all_paths();
-    for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
-    for (const Path* p : all_tied(rec.paths)) all.push_back(p);
-    const std::set<int64_t> phrase_ends = bank_check::phrase_ends(song);
-    const int64_t chart_end = song.sequence.back().timecode.ticks();
-    for (const Path* p : all) {
-        CAPTURE(p->pathstring());
-        bank_check::check_path_banks(*p, phrase_ends, chart_end);
-        check_deact_node(song, *p);
-    }
-}
+// That a closed window's record ends on the node SP ended at is rebuild's
+// own check (engine.cpp), so analyze_chart throws when it breaks.
+using bank_check::check_record_banks;
 
 // The window activated on `act_tick`, if `p` has one.
 const Activation* window_at(const Path& p, int64_t act_tick) {
@@ -191,11 +164,9 @@ TEST_CASE("fast tempo: graph tracks run forward and every phrase sits on its own
             CAPTURE(name);
             CAPTURE(cap);
             ScoreGraph graph(song, cap);
-            const ScoreGraphNode* sp_start = nullptr;
-            for (const ScoreGraphNode* n = graph.start(); n; n = n->adv_edge ? n->adv_edge->dest : nullptr) {
-                if (!sp_start && n->branch_edge) sp_start = n->branch_edge->dest;
+            for (const ScoreGraphNode* n = graph.start(); n; n = n->adv_edge ? n->adv_edge->dest : nullptr)
                 if (n->adv_edge) CHECK(n->adv_edge->dest->timecode.ticks() > n->timecode.ticks());
-            }
+            const ScoreGraphNode* sp_start = test::sp_track_start(graph);
             REQUIRE(sp_start != nullptr);
             for (const ScoreGraphNode* n = sp_start; n && n->adv_edge; n = n->adv_edge->dest) {
                 const int64_t from = n->timecode.ticks(), to = n->adv_edge->dest->timecode.ticks();
@@ -239,7 +210,7 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
         if (!analyzes(song, cfg, rec)) continue;
         REQUIRE_FALSE(rec.paths.empty());
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
-        check_banks(song, rec);
+        check_record_banks(song, rec);
         const std::vector<const Path*> all = all_tied(rec.paths);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
@@ -292,9 +263,10 @@ TEST_CASE("fast tempo: a phrase a SqIn spent banks no bar when SP ends before it
     CHECK(found >= 1);
 }
 
-// D34: a phrase can be squeezed in only once. An SP end offers the first
-// phrase in its squeeze window that the running activation can still squeeze:
-// not one banked before SP started (D18), not one this window already
+// D34: a phrase can be squeezed in only once. A phrase banked before SP
+// started is never offered (D18), and neither is one this window already
+// squeezed in: an SP end offers the window's newest phrase before it (D36),
+// or, when the window's end is this end, the first phrase after it not yet
 // squeezed in. Both hand-made charts run at 4,000 BPM from tick 9600, so
 // 500 ms spans about four SP bars. The activation is on 12288 with 2 bars.
 //   banked_then_next  the phrase on 12000 is banked before the activation and
@@ -338,7 +310,7 @@ TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent 
         }
         CHECK(next_in);
         CHECK(next_out);
-        check_banks(song, rec);
+        check_record_banks(song, rec);
         const std::vector<const Path*> all = all_tied(rec.paths);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
@@ -361,9 +333,7 @@ TEST_CASE("fast tempo: a squeeze-out at an SP end gives back only the newest phr
     HydraRecord rec;
     REQUIRE(analyzes(song, cfg, rec));
     int at_15648 = 0;
-    std::vector<const Path*> all = rec.all_paths();
-    for (const Path* p : all_tied(rec.paths)) all.push_back(p);
-    for (const Path* p : all) {
+    for (const Path* p : rec.all_paths()) {
         CAPTURE(p->pathstring());
         const Activation* a = window_at(*p, 8832);
         if (!a || !a->sqout_tick) continue;
@@ -389,9 +359,7 @@ TEST_CASE("fast tempo: early_sqin_twice offers its window one squeeze, 13248 at 
     HydraRecord rec;
     REQUIRE(analyzes(song, cfg, rec));
     bool in = false, out = false;
-    std::vector<const Path*> all = rec.all_paths();
-    for (const Path* p : all_tied(rec.paths)) all.push_back(p);
-    for (const Path* p : all) {
+    for (const Path* p : rec.all_paths()) {
         CAPTURE(p->pathstring());
         const Activation* a = window_at(*p, 10176);
         if (!a) continue;
@@ -432,7 +400,7 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
         if (!analyzes(song, cfg, rec)) continue;
         ++analyzed;
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
-        check_banks(song, rec);
+        check_record_banks(song, rec);
         const bool gap_seed = std::find(kSpReadyGapSeeds.begin(), kSpReadyGapSeeds.end(),
                                         seed) != kSpReadyGapSeeds.end();
         if (gap_seed) continue;
@@ -692,7 +660,7 @@ TEST_CASE("fast tempo: two spent phrases ahead, with or without a banked one, pr
         const app::AnalysisSettings cfg = scores_settings(c.cap);
         HydraRecord rec;
         if (!analyzes(song, cfg, rec)) continue;
-        check_banks(song, rec);
+        check_record_banks(song, rec);
         int shown = 0;
         for (const Path* p : rec.all_paths()) {
             const ActivationWalk walk = p->walk_activations();
