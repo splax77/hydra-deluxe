@@ -78,9 +78,10 @@ THE FOUR CHECKS
    on a transfer scale, the plain SP end rebuilt with plusmeasure, a test
    setting target_act_ticks) and their A lines. Then added lines under tests/
    (C++ and Python) and in Python test files under tools/ are matched against
-   the kind-B spellings of merge-gate.md section 4 that no row asks about: a
+   the kind-B spellings of merge-gate.md section 4 that no row matches: a
    typed 2.0 within two lines of a hit window (D49 records that two-line
-   reach for the typed 500, now a row); a tied-path count checked against a
+   reach for the typed 500, now a row; the two-hit budget row catches only
+   the budget's product shapes, and only in src/ and tools/); a tied-path count checked against a
    second count; a CHECK whose expected side is arithmetic over other calls;
    an expected answer built from the predicate's own comparisons ("want = a
    == x || ..."); and, in Python tests, a fixture that decides with the
@@ -771,8 +772,13 @@ function Invoke-Check2 {
     # Recompute spellings no scan row asks about. Each is a question the
     # scan has no row for yet; when a row lands, its entry here goes.
     $cpp = @(
-        # No row: no production function owns the hit-window arithmetic as a
-        # row's owner yet, so the scan cannot name one.
+        # A row owns part of this question, not this spelling. The row "What
+        # is the two-hit budget at the identity scale?" gives the budget to
+        # nominal_budget_ms and catches its product shapes (2 * w,
+        # hit_window * 2, squeeze_budget_ms(1.0, ...)) in src/ and tools/.
+        # It does not read tests/ and does not match a bare 2.0. This entry
+        # covers that: a typed 2.0 near the words "hit window" in a test.
+        # When the row widens to tests/, this entry goes.
         @{ Rx = '(?<![\w.''])2\.0*(?![\w.''])'; Ctx = '(?i)hit.?window'
            What = 'a typed 2.0 beside a hit-window check'; Why = 'the hit-window rule has one owner; call it or pin the literal' },
         # No row: the scan has no row for counting tied paths a second way.
