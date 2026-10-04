@@ -492,7 +492,6 @@ TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multipli
     // 120 BPM, 192 ticks per beat: 96 ticks are 250 ms.
     auto build = [](bool two_notes) {
         Song song(192);
-        song.tpm_changes[0] = 768;
         song.bpm_changes[0] = 120.0;
         song.build_timing();
         for (int64_t tick : {0, 768, 1536, 2304, 2976, 3072}) {
@@ -535,7 +534,6 @@ TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multipli
 // nothing for the warning to say. The old every-window gate flagged it.
 TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying window reached") {
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (int64_t tick : {0, 768, 864, 1536}) {

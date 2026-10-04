@@ -117,7 +117,6 @@ struct TailNote {
 inline Song build_tempo_song(const std::vector<TailNote>& notes,
                              const std::map<int64_t, double>& bpm) {
     Song song(192);
-    song.tpm_changes[0] = 768;
     for (const auto& kv : bpm) song.bpm_changes[kv.first] = kv.second;
     song.build_timing();
     for (const TailNote& n : notes) {
