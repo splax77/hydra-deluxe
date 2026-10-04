@@ -588,7 +588,7 @@ namespace {
 // history) and end_anchor_tick (up to one step) both ask it.
 std::optional<int64_t> last_clamp_tick(const std::vector<SpEndStep>& steps, size_t last) {
     for (size_t s = std::min(last + 1, steps.size()); s-- > 0;)
-        if (steps[s].kind == SpEndKind::Clamped) return steps[s].tick;
+        if (is_clamp_kind(steps[s].kind)) return steps[s].tick;
     return std::nullopt;
 }
 

@@ -36,7 +36,8 @@ inline bool paid_by_sp_walk(double offset_ms) { return offset_ms <= 0.0; }
 inline bool after_sp_end(int64_t chord_tick, int64_t end_tick) { return chord_tick > end_tick; }
 
 // Counted under Star Power with no squeeze: at or before the SP end, or
-// less than the leeway (Rules::backend_leeway_ms) after it.
+// less than the leeway (Rules::backend_leeway_ms) after it. Exactly the
+// leeway after it is not counted; the edge is strict (decision D29).
 inline bool counted_without_squeeze(double offset_ms, double leeway_ms) {
     return paid_by_sp_walk(offset_ms) || offset_ms < leeway_ms;
 }

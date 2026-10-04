@@ -116,7 +116,8 @@ The rule lives once, in `core/sqout_chord.h`: `activation_can_squeeze` is
 true only for a phrase chord after the activation chord.
 
 Tied paths. The search folds running paths that share an SP end, because the
-end decides their future. Now the activation can decide it too: a path that
+end decides their future (one exception since D44, in "Tied paths whose
+clamps came from different ends" below). Now the activation can decide it too: a path that
 collected a phrase can squeeze it, and one that banked it cannot. So the
 search groups running paths by one more key. The key is the banked phrase, if
 any, that a later SP end of this activation could still hold in its window.
@@ -163,6 +164,32 @@ Collected, or Clamped when the cap pinned the end on that phrase. It is never
 the Activation step. A lone path never meets an SqIn step there since D34; a
 folded variant still can at extreme tempos (the gap above), and the step
 stays SqIn. `is_sqin_step` in the engine states that rule once.
+
+### Tied paths whose clamps came from different ends (D44)
+
+When the meter is full, collecting a phrase pins the SP end to the cap's
+ceiling past that phrase. That ceiling is the same tick whichever end the
+phrase moved. So two paths can tie on score and on their SP end, yet have
+reached it from different ends. At extreme tempos a squeeze-out of that
+phrase is on offer at the old end, and each path may only take it back to
+its own old end (finding 37, D29).
+
+Folded as ties, the variant would follow its leader's squeeze choices and
+lose its own squeeze-out. So `reduce_group` keeps two such paths apart. It
+does this only when the last SP-end step of either path is a clamp, the two
+clamps differ in phrase or in the end they moved, and some deactivation edge
+offers that phrase as a squeeze-out at that end (`clamp_offered`). Otherwise
+they fold as before. The engine reads each path's clamp off its SP-end
+chain (`last_step_clamp`). An early squeeze-in on the clamped phrase ends
+the clamp, because the path has spent that phrase. The user approved this
+departure from the plan in D44.
+
+A gap stays open, like the D34 gap above. The group key does not hold the
+end a clamp moved. So two paths that reach one end from different ends
+share a group, and the lower one can still be pruned before it reaches its
+own squeeze-out node. The key was the same before finding 37, so this is no
+regression. Normal charts never reach it: the offer needs an SP bar inside
+the 500 ms squeeze window.
 
 ### Two more extreme-tempo crashes (D32)
 

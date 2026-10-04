@@ -442,6 +442,27 @@ TEST_CASE("backend_row_value: every engine case") {
     CHECK_FALSE(core::paid_by_sp_walk(0.5));
 }
 
+// D29 (finding 304): the backend leeway's edge is strict. A note less than
+// the leeway after the SP end still scores under Star Power; a note exactly
+// the leeway after it does not. No such constant was found in the engine
+// methods read (no 0.003 in the 126 Clone Hero engine methods read); the
+// 3 ms is Hydra's own setting (Rules::backend_leeway_ms), so the edge is
+// Hydra's call, and this is it.
+TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not (D29)") {
+    const double lw = core::default_rules().backend_leeway_ms;
+    REQUIRE(lw == 3.0);
+    CHECK(core::counted_without_squeeze(2.999, lw));
+    CHECK_FALSE(core::counted_without_squeeze(3.0, lw));
+
+    // The details table labels a plain (not squeezed-out) row by the same
+    // rule.
+    BackendSqueeze row;
+    row.offset_ms = 2.999;
+    CHECK(row.summarystr(false, 85.0, lw) == "Standard");
+    row.offset_ms = 3.0;
+    CHECK(row.summarystr(false, 85.0, lw) == "Hard (uncounted)");
+}
+
 TEST_CASE("SPSqueeze::is_free: a note on the SP end is inside SP (D13)") {
     // A SqIn is free once its note is inside SP: at the end or before it.
     CHECK(SPSqueeze{SqueezeKind::SqIn, 0.0}.is_free());

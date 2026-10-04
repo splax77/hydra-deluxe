@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/backend_value.h"
@@ -70,14 +71,16 @@ struct EdgeView {
     // A deactivation edge's squeeze choices: Enum::choices[choice_begin,
     // choice_end), in chart order (ScoreGraphEdge::squeeze_choices).
     int32_t choice_begin, choice_end;
-    int64_t sqin_time;
 };
 // One squeeze choice of a deactivation edge, in ticks.
 struct ChoiceView {
     int64_t chord;
     double timing;
     int64_t sqout_time;
+    int64_t sqin_time;
     int32_t late;
+    // The cap's ceiling set the moved end (SqueezeChoice::clamped).
+    int32_t clamped;
 };
 
 struct Enum {
@@ -90,6 +93,11 @@ struct Enum {
     std::vector<EdgeView> edge_views;
     // Every deactivation edge's squeeze choices, back to back.
     std::vector<ChoiceView> choices;
+    // Each early choice as (chord, sqout_time), sorted: some deactivation
+    // edge offers a squeeze-out of that chord to a path whose end is that
+    // tick. Read straight off the choice lists, so it follows their window
+    // rule (core::squeeze_window_phrases) wherever that goes.
+    std::vector<std::pair<int64_t, int64_t>> early_offers;
     int32_t start = -1;
 };
 
@@ -170,14 +178,19 @@ Enum enumerate(const ScoreGraph& graph) {
         v.frontend_points = o->frontend_points;
         v.banked_phrase_ordinal = o->banked_phrase_ordinal;
         v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);
-        v.sqin_time = o->sqin_time ? o->sqin_time->ticks() : NO_TIME;
         v.choice_begin = (int32_t)en.choices.size();
         for (const SqueezeChoice& c : o->squeeze_choices)
             en.choices.push_back(ChoiceView{c.chord.ticks(), c.timing, c.sqout_time.ticks(),
-                                            c.late ? 1 : 0});
+                                            c.sqin_time.ticks(), c.late ? 1 : 0,
+                                            c.clamped ? 1 : 0});
         v.choice_end = (int32_t)en.choices.size();
         en.edge_views.push_back(v);
     }
+    for (const ChoiceView& c : en.choices)
+        if (!c.late) en.early_offers.emplace_back(c.chord, c.sqout_time);
+    std::sort(en.early_offers.begin(), en.early_offers.end());
+    en.early_offers.erase(std::unique(en.early_offers.begin(), en.early_offers.end()),
+                          en.early_offers.end());
     return en;
 }
 
@@ -278,7 +291,9 @@ struct Path {
     int64_t score;
     int64_t sp_end_time;
     // The running activation's SP-end steps so far (an index into ends_),
-    // or -1. Handed to the Act at deactivation.
+    // or -1. Handed to the Act at deactivation. Whether the end is under a
+    // clamp, and which end that clamp moved, is read off it
+    // (Engine::last_step_clamp).
     int32_t end_tail;
     // The bars banked since the last window closed, one arrival tick each
     // (an index into banks_), or -1. Always holds p.sp entries. Handed to
@@ -504,6 +519,42 @@ private:
             if (is_sqin_step_on(s.tick, s.kind, tick)) return true;
         }
         return false;
+    }
+    // The clamp the running window's end is under, read off the end chain:
+    // when its last SP-end step is a clamp (is_clamp_kind), that phrase's
+    // tick and the end the clamp moved (the step before's end). Both are
+    // NO_TIME otherwise: after a plain step, an activation, a squeeze-in, or
+    // off SP. A clamped end is the same tick whichever end the phrase moved,
+    // and an end one plain bar short of the ceiling also lands on it, so a
+    // squeeze-out of that phrase back to a node is offered only to the path
+    // that moved from that node's tick (deactivation_type, finding 37).
+    // An early SqIn relabels the clamped step SqIn (relabel_sqin): the path
+    // spent that phrase and is never offered it again (squeezed_in), so no
+    // clamp is in force. Only the last step counts, unlike
+    // Activation::clamp_tick(), the latest Clamped step in the history.
+    struct LastStepClamp {
+        int64_t phrase_tick = NO_TIME;
+        int64_t moved_from = NO_TIME;
+        bool operator==(const LastStepClamp& o) const {
+            return phrase_tick == o.phrase_tick && moved_from == o.moved_from;
+        }
+    };
+    LastStepClamp last_step_clamp(const Path& p) const {
+        if (p.end_tail < 0) return {};
+        const EndNode& s = ends_[(size_t)p.end_tail];
+        // A window's first step is always its Activation step, so a clamp
+        // always has a step before it.
+        if (!is_clamp_kind(s.kind) || s.prev < 0) return {};
+        return {s.tick, ends_[(size_t)s.prev].end};
+    }
+    // Whether the path's end is under a clamp of a phrase that some
+    // deactivation edge offers as a squeeze-out to paths at the path's end
+    // (Enum::early_offers). Only then does the clamp's origin change an offer.
+    bool clamp_offered(const Path& p) const {
+        const LastStepClamp k = last_step_clamp(p);
+        return k.phrase_tick != NO_TIME &&
+               std::binary_search(en_.early_offers.begin(), en_.early_offers.end(),
+                                  std::make_pair(k.phrase_tick, p.sp_end_time));
     }
     int32_t act_count(const Path& p) const {
         return p.act_tail < 0 ? 0 : acts_[(size_t)p.act_tail].depth;
@@ -907,6 +958,14 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
     // when the SqIn's new end, one SP bar on, comes before its phrase, that
     // phrase was once squeezed in a second time there and the search broke).
     // The offer is a squeeze choice for a path whose end is its sqout_time.
+    // A clamped end is the cap's ceiling whichever end the chord moved, and
+    // an end exactly one plain bar short of it lands there too. So an early
+    // choice also asks where the path's end came from (finding 37):
+    //  - the path's last step clamped this chord: only from this node;
+    //  - otherwise: only a plain bar from this node, an unclamped choice.
+    // Any other path would stop at an end it never had, and its SqIn branch
+    // would spend the phrase its own end can still squeeze out. Refusing
+    // gives such a path what it got before the clamp was priced: no offer.
     if (e.choice_begin < e.choice_end) {
         const ChoiceView* first = &en_.choices[(size_t)e.choice_begin];
         const ChoiceView* last = first + (e.choice_end - e.choice_begin);
@@ -914,7 +973,10 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
             first, last, node(acts_[(size_t)p.act_tail].act_node).tick,
             [](const ChoiceView& v) { return v.chord; },
             [this, &p](int64_t tick) { return squeezed_in(p, tick); });
-        if (c != last && p.sp_end_time == c->sqout_time) {
+        const LastStepClamp k = last_step_clamp(p);
+        if (c != last && p.sp_end_time == c->sqout_time &&
+            (c->late || (k.phrase_tick == c->chord ? k.moved_from == node(e.dest).tick
+                                                   : !c->clamped))) {
             *offered = c;
             return DEACT_SQINOUT;
         }
@@ -1018,9 +1080,9 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // An early one's phrase is already a Collected step (advance collected it
     // before this branch point, and the SqOut child above shares that step):
     // relabel it on this branch only.
-    if (sq->late)
-        p.end_tail = push_end(p.end_tail, sq->chord, e.sqin_time, SpEndKind::SqIn);
-    else if (!relabel_sqin(p.end_tail, sq->chord)) {
+    if (sq->late) {
+        p.end_tail = push_end(p.end_tail, sq->chord, sq->sqin_time, SpEndKind::SqIn);
+    } else if (!relabel_sqin(p.end_tail, sq->chord)) {
         p.node = NODE_BROKEN;  // run() sees it and refuses the search
         return false;
     }
@@ -1029,7 +1091,7 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // this one is offered after it (D34). Both branches keep those spent. A
     // late phrase is the next one in line: this branch spends it too, and the
     // SqOut child holds it banked (its bar is already in the child's meter).
-    p.sp_end_time = e.sqin_time;
+    p.sp_end_time = sq->sqin_time;
     child->spent = p.spent;
     child->banked_ahead = sq->late;
     p.spent += sq->late;
@@ -1116,6 +1178,19 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
 
         Path& leader = cur_[(size_t)leader_idx];
         const Path& p = cur_[(size_t)idx];
+        // Two running paths whose ends tie but came from different ends are
+        // not one future when a squeeze-out of the clamping phrase is offered
+        // at that end: each may take it only back to its own end (finding
+        // 37). Folded, the variant would follow the leader's squeeze choices
+        // and lose its own squeeze-out (the tied-clamps test). Keep both.
+        // Where no edge offers the phrase at that end (clamp_offered), the
+        // origin changes no offer, and the two fold as before. An offer needs
+        // an SP bar inside the squeeze window, so only at extreme tempos.
+        if (p.node >= 0 && !(last_step_clamp(leader) == last_step_clamp(p)) &&
+            (clamp_offered(leader) || clamp_offered(p))) {
+            survivors_.push_back(idx);
+            continue;
+        }
         if (leader.tied_count + p.tied_count <= max_tied_paths_) {
             Variant v;
             v.prev = leader.var_head;
@@ -1273,6 +1348,13 @@ void Engine::reduce_iteration_paths() {
         // [-2^46, 2^46) packs exactly; the check below refuses the rest.
         // These widths, the meter's 2^30 and ready_class's 16 bits per count
         // are decision D40 (recorded in ADR 0014).
+        // The end a clamp moved (last_step_clamp) is not in the key: two
+        // paths that reach one end from different ends share a group, and
+        // the lower one can be pruned before its own squeeze-out node. The
+        // key was the same before finding 37, so that is no regression;
+        // reduce_group never folds the two as ties where the origin changes
+        // an offer (clamp_offered). ADR 0014 records both the exception and
+        // this gap (D44).
         const bool is_sp = !is_complete && node(p.node).is_sp;
         const int64_t sp_value =
             is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);

@@ -324,7 +324,7 @@ TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
     ReplayWindow w;
     w.act_tick = 0;
     w.deact_tick = 3072;
-    w.sqout_offset_ms = song.timecode(3256).ms() - song.timecode(3072).ms();
+    w.sqout_offset_ms = offset_from_sp_end(song.timecode(3256).ms(), song.timecode(3072).ms());
     w.sqout_tick = 3256;
 
     const ReplayResult r = replay_path(song, {w});

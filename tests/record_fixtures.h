@@ -24,6 +24,7 @@
 #include "core/model.h"
 #include "parse/song.h"
 #include "search/engine.h"
+#include "search/graph.h"
 #include "search/pather.h"
 
 namespace hydra::test {
@@ -227,6 +228,20 @@ inline EngineOptions wide_search() {
     o.depth_mode = DepthMode::Points;
     o.depth_value = kKeepEveryPathBand;
     return o;
+}
+
+// The deactivation edge on the SP track whose SP end is `end_tick`: the
+// first branch edge, walking the track the first activation opens, whose
+// destination sits at that tick. nullptr when there is none.
+inline const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t end_tick) {
+    const ScoreGraphNode* sp = nullptr;
+    for (const ScoreGraphNode* b = graph.start(); b && !sp;
+         b = b->adv_edge ? b->adv_edge->dest : nullptr)
+        if (b->branch_edge) sp = b->branch_edge->dest;
+    for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr)
+        if (sp->branch_edge && sp->branch_edge->dest->timecode.ticks() == end_tick)
+            return sp->branch_edge;
+    return nullptr;
 }
 
 // ---- lone pricing (decision D3) --------------------------------------------
