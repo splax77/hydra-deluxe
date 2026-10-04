@@ -6,7 +6,8 @@
 // Audio is never stored either: this module locates it. Three sources, matching
 // the chart kinds Hydra scans:
 //   * a loose folder — audio sits beside the notes file (song.ogg, drums.opus,
-//     stems, ...);
+//     stems, ...); a standalone preview clip (preview.ogg) is not part of the
+//     song, so it is left out here and in a .sng alike (is_song_stem);
 //   * a .sng container — audio lives in the same XOR-masked file table the
 //     notes come from;
 //   * a .srb container — art streams follow the notes stream in the DEFLATE
@@ -131,17 +132,27 @@ double preview_audio_offset_ms(std::optional<double> ini_delay_ms,
 // (.ogg/.opus/.mp3/.wav/.flac), case-insensitive.
 bool is_audio_filename(const std::string& filename);
 
-// True if `bytes` begins with a recognized audio container's magic (OggS, RIFF,
-// fLaC, an ID3 tag, or an MP3 frame sync). Used to pick audio streams out of a
-// .srb's unnamed trailing streams and skip album art.
+// True if `filename` is a song stem: an audio file (is_audio_filename) whose
+// base name is not "preview" in any case. A standalone preview clip is a short
+// clip, not part of the song, so every named source (a loose folder, a .sng)
+// leaves it out of the mix through this one test.
+bool is_song_stem(const std::string& filename);
+
+// True if the decoder can open `bytes`: it asks the decoder's own rule
+// (audio::sniff_format, core/audio_sniff.h), so what the extractor keeps is
+// exactly what the decoder can play. Used to pick audio streams out of a .srb's
+// unnamed trailing streams and skip album art.
 bool looks_like_audio(const std::vector<uint8_t>& bytes);
 
-// Audio files sitting beside a loose notes file: every decodable audio file in
-// `folder` except a standalone "preview" clip. Labels are the base filename.
+// Audio files sitting beside a loose notes file: every song stem in `folder`
+// (is_song_stem), so a standalone "preview" clip is left out, since it is a
+// short clip and not part of the song. Labels are the base filename.
 std::vector<PreviewAudioStem> find_loose_audio(const std::string& folder);
 
-// Audio blobs embedded in a .sng container: its file table's audio entries,
-// XOR-demasked to their original bytes. Labels are the entries' base filenames.
+// Audio blobs embedded in a .sng container: its file table's song stems
+// (is_song_stem), XOR-demasked to their original bytes. A standalone "preview"
+// clip is left out, as in a loose folder, since it is a short clip and not part
+// of the song. Labels are the entries' base filenames.
 std::vector<PreviewAudioStem> extract_sng_audio(const std::string& path);
 
 // Audio from a .srb container's encrypted section.  Walks past the DEFLATE

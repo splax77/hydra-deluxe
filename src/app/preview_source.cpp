@@ -16,6 +16,7 @@
 #include <optional>
 
 #include "app/analysis.h"
+#include "core/audio_sniff.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "parse/chart_files.h"
@@ -139,7 +140,7 @@ std::vector<PreviewAudioStem> sng_audio_from(const std::vector<uint8_t>& buf,
     std::vector<PreviewAudioStem> stems;
     for (const SngFileEntry& e : sng_read_file_table(buf)) {
         if (keep_going && !keep_going()) break;
-        if (!is_audio_filename(e.name)) continue;
+        if (!is_song_stem(e.name)) continue;
         PreviewAudioStem s;
         if (!sng_decode_file_into(buf, e, s.bytes)) continue;  // corrupt entry
         s.label = stem_of(e.name);
@@ -164,28 +165,21 @@ bool is_audio_filename(const std::string& filename) {
            ends_with_ci(filename, ".flac");
 }
 
+bool is_song_stem(const std::string& filename) {
+    // "preview.*" is a short clip, not part of the song mix.
+    return is_audio_filename(filename) && to_lower_ascii(stem_of(filename)) != "preview";
+}
+
 bool looks_like_audio(const std::vector<uint8_t>& b) {
-    auto starts = [&](const char* magic, size_t n) {
-        return b.size() >= n && std::memcmp(b.data(), magic, n) == 0;
-    };
-    if (starts("OggS", 4)) return true;  // Ogg (Vorbis / Opus)
-    if (starts("RIFF", 4)) return true;  // WAV
-    if (starts("fLaC", 4)) return true;  // FLAC
-    if (starts("ID3", 3)) return true;   // MP3 with an ID3 tag
-    // A bare MP3 frame sync: 11 set bits at the start of a frame header.
-    if (b.size() >= 2 && b[0] == 0xFF && (b[1] & 0xE0) == 0xE0) return true;
-    return false;
+    return audio::sniff_format(b) != audio::AudioFormat::Unknown;
 }
 
 std::vector<PreviewAudioStem> find_loose_audio(const std::string& folder) {
     std::vector<PreviewAudioStem> stems;
     for (const DirEntry& e : list_dir(folder)) {
-        if (e.is_dir || !is_audio_filename(e.name)) continue;
-        std::string stem = stem_of(e.name);
-        // "preview.*" is a short clip, not part of the song mix.
-        if (to_lower_ascii(stem) == "preview") continue;
+        if (e.is_dir || !is_song_stem(e.name)) continue;
         PreviewAudioStem s;
-        s.label = stem;
+        s.label = stem_of(e.name);
         s.path = folder + "\\" + e.name;
         stems.push_back(std::move(s));
     }
@@ -222,8 +216,8 @@ std::vector<PreviewAudioStem> srb_audio_from(const std::vector<uint8_t>& buf,
     if (buf.size() <= kSrbHeaderSize) return stems;
 
     // Walk the DEFLATE stream chain past metadata (1) and notes (2).  Any
-    // trailing stream whose payload looks like audio is kept (this handles
-    // synthetic / future SRBs that embed audio in the chain itself).
+    // trailing stream the decoder would open (looks_like_audio) is kept; this
+    // handles synthetic / future SRBs that embed audio in the chain itself.
     size_t offset = 0;
     try {
         srb_inflate_stream(buf.data(), buf.size(), kSrbHeaderSize,
@@ -251,7 +245,10 @@ std::vector<PreviewAudioStem> srb_audio_from(const std::vector<uint8_t>& buf,
         // A malformed trailing stream ends the DEFLATE walk.
     }
 
-    // If the DEFLATE chain already yielded audio we're done.
+    // If the DEFLATE chain already yielded audio we're done. A stream counts
+    // only when the decoder would open it, so an odd stream with an audio
+    // magic but no codec it knows never stops the walk short of the
+    // encrypted section below.
     if (!stems.empty()) return stems;
 
     // Real Clone Hero .srb files store audio in an AES-128-CFB-encrypted
