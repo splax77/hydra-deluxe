@@ -839,6 +839,35 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     CHECK(s.warn);
 }
 
+TEST_CASE("squeeze sentences: a SqIn on the SP end is free, like its rating (D13)") {
+    HydraRecord rec;
+    auto sentence_at = [&rec](double offset) {
+        Activation act;
+        act.skips = 0;
+        act.e_offset = 300.0;  // not e-critical
+        // Only the early (free) side scaled: a figure means the rating read it.
+        act.transfer_pre = TransferScale{1.6, 1.0};
+        act.transfer_post = act.transfer_pre;
+        act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, offset});
+        Path p;
+        p.activations.push_back(act);
+        ActivationsView v = build_activations(p, rec, nullptr, 85.0);
+        REQUIRE(v.acts.size() == 1);
+        REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
+        return v.acts[0].squeeze_sentences[0].text;
+    };
+    const std::string lands = " so it lands before Star Power ends.";
+    // Exactly on the end: free wording, and the early side's figure.
+    CHECK(sentence_at(0.0).rfind(
+              "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + lands, 0) == 0);
+    // Just before the end: free.
+    CHECK(sentence_at(-0.04).rfind(
+              "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + lands, 0) == 0);
+    // Just past the end: still to earn, on the unscaled late side, so no figure.
+    CHECK(sentence_at(0.04).rfind("Hit the SP phrase's last note more than 0.0 ms early" + lands,
+                                  0) == 0);
+}
+
 TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
     // Sun of Nothing act 5: early frontend hits reach the SP end x1.60, so
     // the note 400 ms inside SP is effectively 307.7 ms from being lost.
@@ -888,16 +917,24 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     CHECK(v.acts[0].scale_warning == "Frontend timing scales x0.997 (early) at the SP end.");
     CHECK(v.acts[0].scale_warn);
     REQUIRE(v.acts[0].backends.size() == 1);
-    // 375 / 1.9973 = 187.75... -> "187.7" or "187.8" per %.1f; compute it.
-    char want[32];
-    std::snprintf(want, sizeof(want), " (eff. %.1fms)", 375.0 / 1.9973);
-    CHECK(v.acts[0].backends[0].rating.find(want) != std::string::npos);
+    // 187.5 ms at x0.9973 is worth 187.753... ms.
+    CHECK(v.acts[0].backends[0].rating.find(" (eff. 187.8ms)") != std::string::npos);
     const std::string& tip = v.acts[0].backends[0].tooltip;
     CHECK(tip.find("scales x0.997 here") != std::string::npos);
     CHECK(tip.find("budget is 169.8ms, not 170.0ms") != std::string::npos);
     // The squeeze-out's figure lives on its row only (decision 2).
     REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
     CHECK(v.acts[0].squeeze_sentences[0].text.find("eff.") == std::string::npos);
+
+    // Just past the 1e-9 tolerance (D14) the line still never reads x1: it
+    // prints as many decimals as kScaleIdentityDigits allows.
+    act.transfer_post = TransferScale{1.0 - 2e-9, 1.0};
+    act.transfer_pre = act.transfer_post;
+    p.activations[0] = act;
+    v = build_activations(p, rec, nullptr, 85.0);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning ==
+          "Frontend timing scales x0.999999998 (early) at the SP end.");
 }
 
 TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {

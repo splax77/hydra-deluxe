@@ -125,8 +125,8 @@ ActivationRating rate_activation(const Activation& act,
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
-        const NoteRating n = rate_note(sq.offset_ms, core::paid_by_sp_walk(sq.offset_ms),
-                                       out.scales.pre, hit_window_ms);
+        // A free SqIn's note is inside SP (SPSqueeze::is_free, D13).
+        const NoteRating n = rate_note(sq.offset_ms, sq.is_free(), out.scales.pre, hit_window_ms);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
     }

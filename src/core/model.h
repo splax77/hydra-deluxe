@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "core/backend_value.h"
 #include "core/rules.h"
 #include "core/timing.h"
 
@@ -193,6 +194,14 @@ struct SPSqueeze {
         return kind == SqueezeKind::SqIn ? "+" : "-";
     }
     bool is_difficult() const { return difficulty() > kDifficultMs; }
+    // Whether the squeeze is already done with no frontend timing: the one
+    // answer the rating and the sentence both read. The SP walk pays a note
+    // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in
+    // and free, and a SqOut there still has to be hit late (D13).
+    bool is_free() const {
+        const bool inside_sp = core::paid_by_sp_walk(offset_ms);
+        return kind == SqueezeKind::SqIn ? inside_sp : !inside_sp;
+    }
     const char* type_name() const {
         return kind == SqueezeKind::SqIn ? "SqIn" : "SqOut";
     }
