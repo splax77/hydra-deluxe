@@ -1,5 +1,6 @@
 #include "ui/details_parts.h"
 
+#include "app/display_format.h"  // format_percent
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
@@ -147,7 +148,7 @@ void render_dynamics_panel(AppState& app) {
             const app::DynamicsCounts& c = bd.row(r);
             bool disabled = !c.has_dynamics();
             ImVec4 dot = pad_color(r);
-            dynamics_table_row(app::dynamics_row_label(r, pro), c,
+            dynamics_table_row(app::dynamics_row_label(r, pro).c_str(), c,
                                disabled, &dot);
         }
         ImGui::EndTable();
@@ -161,12 +162,11 @@ void render_dynamics_panel(AppState& app) {
         // about the chart, so it asks for every kick.
         const app::DynamicsCounts k2x = bd.row(app::DynamicsRow::Kick2x);
         const app::DynamicsCounts ktot = bd.kicks_total(/*bass2x=*/true);
-        int pct = ktot.all() > 0
-                      ? static_cast<int>(100.0 * k2x.all() / ktot.all())
-                      : 0;
-        ImGui::TextWrapped("2x kicks: %s of %s kick notes (%d%%)",
+        const std::string pct =
+            ktot.all() > 0 ? app::format_percent(k2x.all(), ktot.all(), 0) : "0%";
+        ImGui::TextWrapped("2x kicks: %s of %s kick notes (%s)",
                     group_thousands(k2x.all()).c_str(),
-                    group_thousands(ktot.all()).c_str(), pct);
+                    group_thousands(ktot.all()).c_str(), pct.c_str());
     }
 
     if (ImGui::BeginTable("##kicktable", 5, table_flags)) {
@@ -180,7 +180,8 @@ void render_dynamics_panel(AppState& app) {
         {
             const app::DynamicsCounts& k = bd.row(app::DynamicsRow::Kick);
             ImVec4 kdot = pad_color(app::DynamicsRow::Kick);
-            dynamics_table_row("Kick", k, !k.has_dynamics(), &kdot);
+            dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick, pro).c_str(), k,
+                               !k.has_dynamics(), &kdot);
         }
         {
             const app::DynamicsCounts& k2 = bd.row(app::DynamicsRow::Kick2x);
@@ -188,7 +189,8 @@ void render_dynamics_panel(AppState& app) {
             // but keep its numbers.
             bool disabled = !bass2x || !k2.has_dynamics();
             ImVec4 k2dot = pad_color(app::DynamicsRow::Kick2x);
-            dynamics_table_row("2x kick", k2, disabled, &k2dot);
+            dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick2x, pro).c_str(),
+                               k2, disabled, &k2dot);
         }
         {
             // The same kicks Totals counts (finding 12).
@@ -214,10 +216,10 @@ void render_dynamics_panel(AppState& app) {
     {
         int dyn = played.ghost + played.accent;
         int total = played.all();
-        int pct = total > 0 ? static_cast<int>(100.0 * dyn / total) : 0;
-        ImGui::TextWrapped("Dynamic notes: %s of %s (%d%%)",
+        const std::string pct = total > 0 ? app::format_percent(dyn, total, 0) : "0%";
+        ImGui::TextWrapped("Dynamic notes: %s of %s (%s)",
                            group_thousands(dyn).c_str(),
-                           group_thousands(total).c_str(), pct);
+                           group_thousands(total).c_str(), pct.c_str());
     }
 
     // Chart section.

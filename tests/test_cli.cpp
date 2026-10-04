@@ -153,6 +153,10 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
     CHECK(contains(r.output, "Tester - CLI Fixture"));
+    CHECK(contains(r.output, "Fill rule  : Clone Hero 1.1"));
+    CHECK(contains(r.output, "Found 1 chart."));
+    // The closing count is every row in the file, at every setting.
+    CHECK(contains(r.output, "Store now holds 1 record across 1 song, rows for every setting."));
     {
         hydra::store::RecordStore store(normal);
         CHECK(store.engine_mode() == std::optional<std::string>(kCh11));
@@ -163,6 +167,8 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     r = run_exe(box.batch, {"--legacy-fills", "--db", legacy, box.folder()});
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
+    CHECK(contains(r.output, "Fill rule  : Clone Hero 1.0"));
+    CHECK(!contains(r.output, "(legacy)"));
     hydra::store::RecordStore store(legacy);
     CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
 }
@@ -175,6 +181,9 @@ TEST_CASE("hydra_batch --legacy-fills refuses the tool's own hydra.db") {
     INFO(r.output);
     CHECK(r.exit_code == 2);
     CHECK(contains(r.output, "--db legacy.db"));
+    CHECK(contains(r.output, "hydra_batch keeps 1.0 results out of hydra.db by design; use "
+                             "the app's 1.0 fills setting for that"));
+    CHECK(!contains(r.output, "not tagged as legacy"));
 }
 
 TEST_CASE("hydra_batch --reindex keeps a legacy database's stamp") {
@@ -186,7 +195,7 @@ TEST_CASE("hydra_batch --reindex keeps a legacy database's stamp") {
     RunResult r = run_exe(box.batch, {"--reindex", "--db", legacy});
     INFO(r.output);
     CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Reindexed 1 records."));
+    CHECK(contains(r.output, "Reindexed 1 record."));
     hydra::store::RecordStore store(legacy);
     CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
 }
@@ -202,6 +211,8 @@ TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database
     INFO(r.output);
     CHECK(r.exit_code == 2);
     CHECK(contains(r.output, "Add --legacy-fills"));
+    CHECK(contains(r.output, "This file is stamped with the other rule"));
+    CHECK(!contains(r.output, "not stored on each result"));
     {
         hydra::store::RecordStore store(legacy);
         CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
@@ -215,6 +226,8 @@ TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database
     INFO(r.output);
     CHECK(r.exit_code == 2);
     CHECK(contains(r.output, "Drop --legacy-fills"));
+    CHECK(contains(r.output, "This file is stamped with the other rule"));
+    CHECK(!contains(r.output, "not stored on each result"));
     hydra::store::RecordStore store(normal);
     CHECK(store.engine_mode() == std::optional<std::string>(kCh11));
 }
@@ -262,6 +275,24 @@ TEST_CASE("hydra_batch reuses the GUI's scan cache") {
     REQUIRE(r.exit_code == 0);
     CHECK(contains(r.output, "Tester - Title From Cache"));
     CHECK(!contains(r.output, "CLI Fixture"));
+}
+
+TEST_CASE("hydra_batch names the cap with the one count rule") {
+    // The sandboxed exe reads its SP cap from hydra_settings.ini beside it.
+    CliSandbox box("cap");
+    auto header_at_cap = [&](int cap, const char* db_name) {
+        hydra::app::Settings settings{};
+        settings.sp_cap = cap;
+        REQUIRE(settings.save_file((box.dir / "hydra_settings.ini").u8string()));
+        RunResult r = run_exe(box.batch, {"--db", box.db(db_name), box.folder()});
+        INFO(r.output);
+        REQUIRE(r.exit_code == 0);
+        return r.output;
+    };
+    const std::string at_one = header_at_cap(1, "cap1.db");
+    CHECK(contains(at_one, "SP cap     : 1 bar"));
+    CHECK(!contains(at_one, "SP cap     : 1 bars"));
+    CHECK(contains(header_at_cap(1000, "cap1000.db"), "SP cap     : 1,000 bars"));
 }
 
 TEST_CASE("hydra_report writes a page for a filled database and says so for an empty one") {
