@@ -10,7 +10,10 @@
 
 #include <io.h>  // _get_osfhandle
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <memory>
 #include <stdexcept>
 
 namespace hydra {
@@ -149,7 +152,7 @@ std::string exe_path_utf8() {
 
 std::optional<uint64_t> open_handle_size_bytes(void* win32_handle) {
     // This owns sizing a file, open or by path: open_file_size_bytes,
-    // file_size_bytes and read_file_bytes all ask it. list_dir is the
+    // file_size_bytes and file_byte_source (so read_file_bytes) all ask it. list_dir is the
     // exception by decision D39: it keeps the size the folder listing already
     // reports, for the rescan cache, since opening every library file would
     // slow scans. GetFileSizeEx answers in 64 bits, so sizes past 2 GB and
@@ -186,20 +189,71 @@ uint64_t file_size_bytes(const std::string& utf8_path) {
     return *size;
 }
 
-std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
-    std::FILE* f = fopen_utf8(utf8_path, L"rb");
-    if (f == nullptr) throw std::runtime_error("cannot open file: " + utf8_path);
+size_t range_length(uint64_t size, uint64_t offset, size_t length) {
+    const uint64_t available = offset < size ? size - offset : 0;
+    return static_cast<size_t>(std::min<uint64_t>(length, available));
+}
+
+ByteSource file_byte_source(const std::string& utf8_path) {
+    // Shared for reading and writing, as _wfopen's "rb" shares, so a file
+    // another program holds open still reads.
+    HANDLE h = CreateFileW(win32_path(utf8_path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) throw std::runtime_error("cannot open file: " + utf8_path);
+    std::shared_ptr<void> file(h, [](void* p) { CloseHandle(static_cast<HANDLE>(p)); });
     // std::ftell returns a 32-bit long on Windows and fails past 2 GB, which
     // used to hand back an empty buffer; the 64-bit size has no such limit.
-    const std::optional<uint64_t> size = open_file_size_bytes(f);
-    if (!size) {
-        std::fclose(f);
-        throw std::runtime_error("cannot read file size: " + utf8_path);
-    }
-    std::vector<uint8_t> buf(static_cast<size_t>(*size));
-    if (size > 0) buf.resize(std::fread(buf.data(), 1, buf.size(), f));
-    std::fclose(f);
-    return buf;
+    const std::optional<uint64_t> size = open_handle_size_bytes(h);
+    if (!size) throw std::runtime_error("cannot read file size: " + utf8_path);
+
+    ByteSource src;
+    src.size = *size;
+    src.read = [file, total = *size](uint64_t offset, size_t length) {
+        std::vector<uint8_t> buf(range_length(total, offset, length));
+        size_t got = 0;
+        while (got < buf.size()) {
+            // ReadFile takes its position in the OVERLAPPED block, so nothing
+            // seeks, and at most a DWORD of bytes per call.
+            const uint64_t at = offset + got;
+            OVERLAPPED ov{};
+            ov.Offset = static_cast<DWORD>(at);
+            ov.OffsetHigh = static_cast<DWORD>(at >> 32);
+            const DWORD want = static_cast<DWORD>(
+                std::min<size_t>(buf.size() - got, std::numeric_limits<DWORD>::max()));
+            DWORD n = 0;
+            if (!ReadFile(static_cast<HANDLE>(file.get()), buf.data() + got, want, &n, &ov) ||
+                n == 0)
+                break;
+            got += n;
+        }
+        buf.resize(got);
+        return buf;
+    };
+    return src;
+}
+
+ByteSource memory_byte_source(const std::vector<uint8_t>& bytes) {
+    ByteSource src;
+    src.size = bytes.size();
+    src.read = [&bytes](uint64_t offset, size_t length) {
+        const size_t n = range_length(bytes.size(), offset, length);
+        if (n == 0) return std::vector<uint8_t>{};
+        const auto from = bytes.begin() + static_cast<std::ptrdiff_t>(offset);
+        return std::vector<uint8_t>(from, from + static_cast<std::ptrdiff_t>(n));
+    };
+    return src;
+}
+
+size_t next_piece_read(size_t last) {
+    return last > std::numeric_limits<size_t>::max() / 2 ? std::numeric_limits<size_t>::max()
+                                                         : last * 2;
+}
+
+std::vector<uint8_t> read_all(const ByteSource& src) {
+    return src.read(0, static_cast<size_t>(src.size));
+}
+
+std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
+    return read_all(file_byte_source(utf8_path));
 }
 
 std::string read_file_text(const std::string& utf8_path) {

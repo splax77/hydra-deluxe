@@ -23,10 +23,12 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "byte_source_util.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "parse/srb.h"
+#include "song_equal.h"
 #include "srb_util.h"
 
 using namespace hydra;
@@ -65,23 +67,7 @@ std::string fixture_dir() {
 
 using testsrb::make_metadata;
 using testsrb::make_srb;
-
-bool songs_equal(const Song& a, const Song& b) {
-    if (a.tick_resolution() != b.tick_resolution()) return false;
-    if (a.tpm_changes != b.tpm_changes) return false;
-    if (a.bpm_changes != b.bpm_changes) return false;
-    if (a.features != b.features) return false;
-    if (a.sequence.size() != b.sequence.size()) return false;
-    for (size_t i = 0; i < a.sequence.size(); ++i) {
-        const SongTimestamp& x = a.sequence[i];
-        const SongTimestamp& y = b.sequence[i];
-        if (x.timecode.ticks() != y.timecode.ticks()) return false;
-        if (x.chord.code() != y.chord.code()) return false;
-        if (x.flag_solo != y.flag_solo || x.flag_sp != y.flag_sp) return false;
-        if (x.activation_length != y.activation_length) return false;
-    }
-    return true;
-}
+using testsong::songs_equal;
 
 // First corpus chart with the given extension.
 std::string corpus_chart_path(const std::string& ext) {
@@ -147,6 +133,80 @@ TEST_CASE("srb: malformed containers throw instead of crashing") {
     write_bytes(truncated, whole);
     CHECK_THROWS_AS(load_songpath_srb(truncated, true, true),
                     std::runtime_error);
+}
+
+namespace {
+
+// Bytes that deflate barely at all, so their compressed stream is as long as
+// they are.
+std::vector<uint8_t> noise(size_t n, uint32_t seed) {
+    std::vector<uint8_t> out(n);
+    for (size_t i = 0; i < n; ++i) {
+        seed = seed * 1664525u + 1013904223u;
+        out[i] = static_cast<uint8_t>(seed >> 24);
+    }
+    return out;
+}
+
+}  // namespace
+
+// The real bundles are 12-57 MB, nearly all of it audio and art past a notes
+// stream of a few hundred KB.
+TEST_CASE("srb: the note loader reads the metadata and notes streams, not the rest") {
+    const std::vector<uint8_t> notes = read_bytes(corpus_chart_path(".mid"));
+    const std::vector<uint8_t> srb =
+        make_srb(make_metadata("notes.mid", "N", "A", "C"), notes, {noise(16 << 20, 1)});
+    const std::string path = fixture_dir() + "\\big_tail.srb";
+    write_bytes(path, srb);
+
+    uint64_t bytes_read = 0;
+    const Song via_reads = load_songpath_reading(
+        testbytes::counting(file_byte_source(path), bytes_read), path, true, true);
+    CHECK(songs_equal(via_reads, load_songbytes_srb(srb, true, true)));
+    CHECK(bytes_read < (2u << 20));
+}
+
+TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole buffer") {
+    // A 3 MB stream crosses many reads; the stream after it must not be eaten.
+    const std::vector<uint8_t> payload = noise(3 << 20, 7);
+    std::vector<uint8_t> buf(kSrbHeaderSize, 0xAB);
+    const std::vector<uint8_t> d = testsrb::deflate_raw(payload);
+    buf.insert(buf.end(), d.begin(), d.end());
+    const std::vector<uint8_t> tail = testsrb::deflate_raw({1, 2, 3});
+    buf.insert(buf.end(), tail.begin(), tail.end());
+
+    size_t end_whole = 0;
+    const std::vector<uint8_t> whole =
+        srb_inflate_stream(buf.data(), buf.size(), kSrbHeaderSize, kSrbMaxStream, &end_whole);
+    uint64_t end_reads = 0;
+    const std::vector<uint8_t> reads = srb_inflate_stream_reading(
+        memory_byte_source(buf), kSrbHeaderSize, kSrbMaxStream, &end_reads);
+    CHECK(whole == payload);
+    CHECK(reads == payload);
+    CHECK(end_reads == end_whole);
+    CHECK(end_whole == kSrbHeaderSize + d.size());
+
+    // The same failures, by the same words.
+    std::vector<uint8_t> cut(buf.begin(), buf.begin() + buf.size() / 2);
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(cut), kSrbHeaderSize,
+                                                 kSrbMaxStream, nullptr),
+                      "SRB stream is truncated.");
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(buf), buf.size(),
+                                                 kSrbMaxStream, nullptr),
+                      "SRB stream starts past end of file.");
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(buf), kSrbHeaderSize,
+                                                 1 << 20, nullptr),
+                      "SRB stream exceeds size limit.");
+    // A short read ends the source, even when later reads would be whole.
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(
+                          testbytes::short_first_read(memory_byte_source(buf), 32768),
+                          kSrbHeaderSize, kSrbMaxStream, nullptr),
+                      "SRB stream is truncated.");
+    std::vector<uint8_t> junk = buf;
+    for (size_t i = kSrbHeaderSize; i < kSrbHeaderSize + 64; ++i) junk[i] = 0xFF;
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(junk), kSrbHeaderSize,
+                                                 kSrbMaxStream, nullptr),
+                      "SRB stream is corrupt.");
 }
 
 TEST_CASE("srb: metadata parser reads the string table") {
