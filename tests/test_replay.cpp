@@ -906,6 +906,30 @@ TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refus
     CHECK(warned[0].rfind("window 0:2950 ", 0) == 0);
 }
 
+// D34: when the window's first phrase chord was banked before the
+// activation, the engine offers the next one instead. The replay accepts a
+// typed squeeze-out on it, and warns about it, as the engine would squeeze it.
+TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's (D34)") {
+    // Phrase chords at 2928 (banked: the activation is on 3000) and 3036,
+    // 375 ms and 93.75 ms before D = 3072.
+    const Song song = song_with({{0, false}, {768, false}, {2928, true},
+                                 {3000, false}, {3036, true}, {3072, false}});
+    ReplayWindow w;
+    w.act_tick = 3000;
+    w.deact_tick = 3072;
+    w.sqout_offset_ms = -93.73;
+    const SqOutNote n = resolve_sqout_note(song, w);
+    CHECK(n.tick == 3036);
+
+    ReplayWindow plain;
+    plain.act_tick = 3000;
+    plain.deact_tick = 3072;
+    const ReplayResult r = replay_path(song, {plain});
+    const std::vector<std::string> warned = ambiguous_window_warnings(song, r, {plain});
+    REQUIRE(warned.size() == 1);
+    CHECK(warned[0].find("tick 3036") != std::string::npos);
+}
+
 // The graph lets a deactivation squeeze out exactly one chord: the first
 // phrase chord strictly within 500 ms of the SP end (core::sqout_chord, which
 // graph.cpp add_deact_edge calls). The warning names that chord, and only

@@ -127,7 +127,9 @@ bool analyzes(const Song& song, const app::AnalysisSettings& cfg, HydraRecord& r
 
 // A late squeeze-in writes its own SqIn step on its phrase. The phrase is
 // spent then, so no window holds two SqIn steps on one phrase (a late SqIn's
-// phrase squeezed in again at the next SP end wrote a second one).
+// phrase squeezed in again at the next SP end wrote a second one). D34: a
+// phrase is squeezed in once, so each SqIn has its own step, and the phrase
+// a window squeezes out is none it squeezed in.
 void check_one_step_per_sqin(const Path& p) {
     for (const Activation& a : p.walk_activations()) {
         std::vector<int64_t> ticks;
@@ -136,7 +138,27 @@ void check_one_step_per_sqin(const Path& p) {
         std::sort(ticks.begin(), ticks.end());
         CHECK_MESSAGE(std::adjacent_find(ticks.begin(), ticks.end()) == ticks.end(),
                       p.pathstring() << " at " << a.timecode.ticks());
+        const size_t sqins = static_cast<size_t>(
+            std::count_if(a.sqinouts.begin(), a.sqinouts.end(),
+                          [](const SPSqueeze& q) { return q.kind == SqueezeKind::SqIn; }));
+        CHECK_MESSAGE(sqins == ticks.size(), p.pathstring() << " at " << a.timecode.ticks());
+        if (a.sqout_tick)
+            CHECK_MESSAGE(!std::binary_search(ticks.begin(), ticks.end(), *a.sqout_tick),
+                          p.pathstring() << " at " << a.timecode.ticks());
     }
+}
+
+// The window activated on `act_tick`, if `p` has one.
+const Activation* window_at(const Path& p, int64_t act_tick) {
+    for (const Activation& a : p.walk_activations())
+        if (a.timecode.ticks() == act_tick) return &a;
+    return nullptr;
+}
+
+bool has_sqin_step(const Activation& a, int64_t tick) {
+    for (const SpEndStep& s : a.sp_end_steps)
+        if (s.kind == SpEndKind::SqIn && s.tick == tick) return true;
+    return false;
 }
 
 // The reviewer's fuzz chart shape (review-sqout fuzz.cpp), on a fixed
@@ -247,6 +269,61 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
         if (!analyzes(song, cfg, rec)) continue;
         REQUIRE_FALSE(rec.paths.empty());
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
+        std::vector<const Path*> all;
+        for (const Path& r : rec.paths) collect_variants(r, all);
+        for (const Path* v : all) {
+            const std::string diff = lone_mismatch(song, cfg, *v);
+            CHECK_MESSAGE(diff.empty(), diff);
+        }
+    }
+}
+
+// D34: a phrase can be squeezed in only once. An SP end offers the first
+// phrase in its squeeze window that the running activation can still squeeze:
+// not one banked before SP started (D18), not one this window already
+// squeezed in. Both hand-made charts run at 4,000 BPM from tick 9600, so
+// 500 ms spans about four SP bars. The activation is on 12288 with 2 bars.
+//   banked_then_next  the phrase on 12000 is banked before the activation and
+//                     sits in the window of the SP end 15360. The next phrase,
+//                     16000, comes after that end. Before D34 the banked
+//                     phrase hid it, so nothing was squeezed there.
+//   spent_then_next   the phrase on 17360 is squeezed in late at the SP end
+//                     15360, which moves the end to 16896, still before it.
+//                     The next phrase, 18360, sits in the window of 16896.
+//                     Before D34 the spent phrase hid it, and SP just ended
+//                     at 16896.
+// Each chart must offer the next phrase both ways (in and out), analyze, and
+// keep every variant priced as it is alone.
+TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent one (D34)") {
+    struct Want {
+        std::string name;
+        int64_t skipped;  // the banked or spent phrase
+        int64_t next;     // the window's next phrase, which must be offered
+    };
+    for (const Want& w : {Want{"banked_then_next.chart", 12000, 16000},
+                          Want{"spent_then_next.chart", 17360, 18360}}) {
+        CAPTURE(w.name);
+        const Song song = fixture(w.name);
+        const app::AnalysisSettings cfg = fast_settings(2);
+        HydraRecord rec;
+        if (!analyzes(song, cfg, rec)) continue;
+        bool next_in = false, next_out = false;
+        for (const Path* p : rec.all_paths()) {
+            check_one_step_per_sqin(*p);
+            const Activation* a = window_at(*p, 12288);
+            if (!a) continue;
+            if (has_sqin_step(*a, w.next)) next_in = true;
+            if (a->sqout_tick && *a->sqout_tick == w.next) next_out = true;
+            // The banked phrase is never squeezed by this window. The spent
+            // one is squeezed in at most once, and never out after that
+            // (check_one_step_per_sqin).
+            if (w.name == "banked_then_next.chart") {
+                CHECK_FALSE(has_sqin_step(*a, w.skipped));
+                CHECK(a->sqout_tick.value_or(-1) != w.skipped);
+            }
+        }
+        CHECK(next_in);
+        CHECK(next_out);
         std::vector<const Path*> all;
         for (const Path& r : rec.paths) collect_variants(r, all);
         for (const Path* v : all) {

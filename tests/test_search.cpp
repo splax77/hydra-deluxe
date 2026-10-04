@@ -1909,6 +1909,52 @@ TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refu
     CHECK(on_activation_chord > 0);
 }
 
+// D34 at a normal tempo. Two SP ends sit one tick apart, 30720 and 30721:
+// '0' ends at 30720 (19200 plus two bars, plus one bar for the phrase on
+// 23042), and '1' ends at 30721 (the cap pins it to 23042 plus two bars).
+// plusmeasure rounds both one bar on to the same tick, 34560, so both ends
+// offered the phrase on 30480 to the same path. It was squeezed in at the
+// first and in or out again at the second: '0++' and '0+-', '1++' and '1+-'.
+// Real charts do this (Thrice - Deadbolt, SoundHaven - Triad). A phrase is
+// squeezed in once, so the second end offers the window's next phrase, and
+// here there is none. The chart is hand-made (120 BPM, resolution 480).
+TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D34)") {
+    const Song song = load_songpath(
+        std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/twin_end_nodes.chart", true, true);
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = 2;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = std::nullopt;
+    HydraRecord rec;
+    REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
+    for (const Path* p : rec.all_paths()) {
+        CAPTURE(p->pathstring());
+        for (const Activation& a : p->walk_activations()) {
+            std::vector<int64_t> sqin_steps;
+            for (const SpEndStep& s : a.sp_end_steps)
+                if (s.kind == SpEndKind::SqIn) sqin_steps.push_back(s.tick);
+            const size_t sqins = static_cast<size_t>(
+                std::count_if(a.sqinouts.begin(), a.sqinouts.end(),
+                              [](const SPSqueeze& q) { return q.kind == SqueezeKind::SqIn; }));
+            // One SqIn per phrase, and never out again once in.
+            CHECK(sqins == sqin_steps.size());
+            CHECK(std::set<int64_t>(sqin_steps.begin(), sqin_steps.end()).size() ==
+                  sqin_steps.size());
+            if (a.sqout_tick)
+                CHECK(std::find(sqin_steps.begin(), sqin_steps.end(), *a.sqout_tick) ==
+                      sqin_steps.end());
+        }
+    }
+    // The best path keeps its score: the second "+" never moved anything.
+    const Path* best = root_named(rec.paths, "0+");
+    REQUIRE(best != nullptr);
+    CHECK(best->totalscore() == 2950);
+    CHECK(rec.best_path().totalscore() == 2950);
+    CHECK(root_named(rec.paths, "0++") == nullptr);
+    CHECK(root_named(rec.paths, "0+-") == nullptr);
+}
+
 // D3 on the corpus: every tied variant stores what the search stores when it
 // prices that path alone, window by window (steps, squeezes, squeezed-out
 // note, backend rows). The settings are ones where mid-SP folds happen; the
