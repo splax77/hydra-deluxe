@@ -38,8 +38,10 @@ struct StampRule {
 // The analysis version. BUMP IT, to the version of the release that ships the
 // change, whenever analysis output changes in a way the path format and the
 // hydra_rules.ini fingerprint don't already catch: the engine (src/search),
-// the scoring (src/core), or what a record holds. Then shrink `accepted` to
-// the new stamp alone. A stale result reads Stale and asks for re-analysis.
+// the scoring (src/core), the chart readers (src/parse) when a chart reads
+// differently, or what a record holds. Then shrink `accepted` to the new stamp
+// alone. A stale result reads Stale and asks for re-analysis. Changes that
+// ship in the same release share one bump (decision D23, 2026-10-03).
 //
 // "1.8.3" is accepted because 1.8.3 stamped its app version on results that
 // are identical to 1.8.2's.
@@ -64,10 +66,16 @@ inline constexpr StampRule<uint32_t, 1> kPathFormatStamp{6, {6}};
 // move activation marks, never which notes a chart has. A stale count reads as
 // missing, and the Dynamics tab recounts it in the background.
 // 0 = rows saved before the stamp existed. 1 = the first stamp.
-inline constexpr StampRule<int, 1> kDynamicsCountStamp{1, {1}};
+// 2 = step 2: disco flip and 2x kicks are read per difficulty, and the
+// dynamics tag counts only in Clone Hero's two spellings, in file order
+// (decisions D19, D20 and D24, 2026-10-03).
+inline constexpr StampRule<int, 1> kDynamicsCountStamp{2, {2}};
 
 // The dynamics blob's byte layout. BUMP IT when encode_dynamics changes.
-inline constexpr StampRule<uint8_t, 1> kDynamicsBlobStamp{1, {1}};
+// 2 added late_tag_ms (a late dynamics tag's time in ms) and
+// marks_before_tag (the marked notes before it), for the "from <time> on"
+// line (D24).
+inline constexpr StampRule<uint8_t, 1> kDynamicsBlobStamp{2, {2}};
 
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));
