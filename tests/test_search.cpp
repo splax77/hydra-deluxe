@@ -1171,6 +1171,37 @@ TEST_CASE("search: no fresh record stores an unknown transfer scale (constructed
                        << " SqOuts, " << clamps << " clamps)");
 }
 
+TEST_CASE("squeeze-out: one SqOut, last, and its offset is its row's, on every corpus path") {
+    int sqouts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        ScoreGraph graph(song, 4);
+        for (const Path& p : run_search(graph, EngineOptions{DepthMode::Scores, 4})) {
+            for (const Activation& act : p.all_activations()) {
+                int n = 0;
+                for (size_t i = 0; i < act.sqinouts.size(); ++i) {
+                    if (act.sqinouts[i].kind != SqueezeKind::SqOut) continue;
+                    ++n;
+                    CHECK(i + 1 == act.sqinouts.size());  // always the last squeeze
+                }
+                CHECK(n <= 1);
+                CHECK(act.sqout_tick.has_value() == (n == 1));
+                if (n != 1 || !act.sqout_tick) continue;
+                ++sqouts;
+                const BackendSqueeze* row = nullptr;
+                for (const BackendSqueeze& b : act.backends)
+                    if (b.timecode.ticks() == *act.sqout_tick) row = &b;
+                REQUIRE(row != nullptr);
+                REQUIRE(row->offset_ms.has_value());
+                CHECK(*row->offset_ms == act.sqinouts.back().offset_ms);  // exact
+            }
+        }
+    }
+    CHECK(sqouts > 0);
+    MESSAGE("checked " << sqouts << " squeeze-outs");
+}
+
 TEST_CASE("SP end history: a squeezed-out phrase leaves no step") {
     Song song = test::make_early_sqout_song();
     ScoreGraph graph(song, 4);
@@ -1254,10 +1285,15 @@ TEST_CASE("path codec: encode/decode a path node keeps clamp_tick()") {
 TEST_CASE("path codec: each SqIn keeps its own scale; a SqOut stores none") {
     Activation act;
     act.timecode = Timecode::raw(2304);
-    act.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -50.0}, SPSqueeze{SqueezeKind::SqIn, 20.0},
-                    SPSqueeze{SqueezeKind::SqOut, -30.0}};
+    act.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -50.0}, SPSqueeze{SqueezeKind::SqIn, 20.0}};
     test::set_sqin_transfers(act, {TransferScale{0.97, 1.5}, TransferScale{0.95, 2.5}},
                              TransferScale{1.25, 0.8});
+    // The squeeze-out goes in through its one writer, from its row.
+    BackendSqueeze sqout_row;
+    sqout_row.timecode = Timecode::raw(6000);
+    sqout_row.offset_ms = -30.0;
+    act.backends.push_back(sqout_row);
+    act.set_sqout(6000);
     // A SqOut's own field is never written, so a value left on it is dropped.
     act.sqinouts[2].transfer = TransferScale{9.0, 9.0};
 

@@ -9,6 +9,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "core/model.h"
@@ -560,4 +561,29 @@ TEST_CASE("MultSqueeze::applies answers exactly when the constructor accepts") {
             }
         }
     }
+}
+
+TEST_CASE("Activation: set_sqout stamps the tick, trims later rows, builds the SqOut from its row") {
+    Activation act;
+    const std::tuple<int64_t, double> rows[] = {{100, -40.0}, {200, -12.5}, {300, 30.0}};
+    for (const auto& [tick, off] : rows) {
+        BackendSqueeze b;
+        b.timecode = Timecode::raw(tick);
+        b.offset_ms = off;
+        act.backends.push_back(b);
+    }
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 7.0});
+
+    act.set_sqout(200);
+    CHECK(act.sqout_tick == std::optional<int64_t>(200));
+    REQUIRE(act.backends.size() == 2);  // the row past the squeezed-out chord is gone
+    REQUIRE(act.sqinouts.size() == 2);
+    CHECK(act.sqinouts[1].kind == SqueezeKind::SqOut);
+    CHECK(act.sqinouts[1].offset_ms == -12.5);  // read off the row, not typed twice
+    REQUIRE(act.sqout_row() != nullptr);
+    CHECK(act.sqout_row()->timecode.ticks() == 200);
+
+    Activation none;
+    CHECK(none.sqout_row() == nullptr);
+    CHECK_THROWS_AS(none.set_sqout(200), std::logic_error);  // no row on that tick
 }

@@ -402,6 +402,18 @@ struct Activation {
     // sqout_tick the engine stored (record format v6), so no display re-derives it.
     bool is_sqout_backend(const BackendSqueeze& bsq) const;
 
+    // The squeezed-out chord's row, or nullptr when the activation did not
+    // squeeze out. The one way to ask "which row, and how far from the SP
+    // end": its offset_ms is the SqOut's offset.
+    const BackendSqueeze* sqout_row() const;
+
+    // Mark this activation as squeezing out the phrase chord at `tick`. The
+    // only writer of a squeeze-out: it stamps sqout_tick, drops every row
+    // past the chord (hit after SP ended), and appends the SqOut entry built
+    // from the chord's own row. Throws std::logic_error when no row with an
+    // offset sits on `tick`. The engine's copy-out and the codec call it.
+    void set_sqout(int64_t tick);
+
     // Backends worth keeping: those near the deactivation, plus whatever note
     // is being squeezed out of SP however far out it lands. The details view
     // shows exactly these, and the path codec stores only these, so a stored

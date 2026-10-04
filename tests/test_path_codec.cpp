@@ -475,3 +475,46 @@ TEST_CASE("path codec: an unknown transfer scale stays unknown") {
     CHECK(back.activations[1].transfer_post->late == 1.0);
     REQUIRE(back.activations[1].sqinouts[0].transfer.has_value());
 }
+
+TEST_CASE("path codec: a squeeze-out is stored once, as its tick") {
+    Activation act;
+    act.timecode = Timecode::raw(0);
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(3036);
+    row.offset_ms = -93.75;
+    row.points = 460;
+    row.sqout_points = 260;
+    act.backends.push_back(row);
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.5});
+
+    Activation plain = act;  // the same activation, not squeezed out
+    act.set_sqout(3036);
+
+    Path with, without;
+    with.activations.push_back(act);
+    without.activations.push_back(plain);
+    const std::vector<uint8_t> a = encode_path_node(with);
+    const std::vector<uint8_t> b = encode_path_node(without);
+    CHECK(a.size() - b.size() == 8);  // the tick, and no second copy of the offset
+
+    const Path back = decode_path_node(a);
+    const Activation& got = back.activations.front();
+    CHECK(got.sqout_tick == std::optional<int64_t>(3036));
+    REQUIRE(got.sqinouts.size() == 2);
+    CHECK(got.sqinouts[0].kind == SqueezeKind::SqIn);
+    CHECK(got.sqinouts[0].offset_ms == 12.5);
+    CHECK(got.sqinouts[1].kind == SqueezeKind::SqOut);
+    CHECK(got.sqinouts[1].offset_ms == -93.75);
+
+    // The writer refuses a squeeze-out it cannot store as one fact.
+    Activation no_tick = act;
+    no_tick.sqout_tick.reset();
+    Path p1;
+    p1.activations.push_back(no_tick);
+    CHECK_THROWS_AS(encode_path_node(p1), std::logic_error);
+    Activation drift = act;
+    drift.sqinouts.back().offset_ms = -90.0;
+    Path p2;
+    p2.activations.push_back(drift);
+    CHECK_THROWS_AS(encode_path_node(p2), std::logic_error);
+}

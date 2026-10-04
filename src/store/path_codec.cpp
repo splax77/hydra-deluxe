@@ -137,13 +137,30 @@ void write_activation(BinaryWriter& w, const Activation& act) {
         w.opt_f64(b.offset_ms);
     }
 
-    w.u32(static_cast<uint32_t>(act.sqinouts.size()));
+    // The squeeze-out is stored once: sqout_tick below, with its offset in
+    // its row. Refuse an activation whose SqOut entry and row disagree, so
+    // nothing is lost by not writing the entry.
+    const BackendSqueeze* sqout = act.sqout_row();
+    size_t nsqout = 0, nsqin = 0;
     for (const SPSqueeze& sq : act.sqinouts) {
-        w.u8(sq.kind == SqueezeKind::SqIn ? 0 : 1);
+        if (sq.kind == SqueezeKind::SqIn) {
+            ++nsqin;
+            continue;
+        }
+        ++nsqout;
+        if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)
+            throw std::logic_error("write_activation: squeeze-out stored twice and disagreeing");
+    }
+    if (nsqout > 1 || (sqout != nullptr) != (nsqout == 1))
+        throw std::logic_error("write_activation: squeeze-out stored twice and disagreeing");
+
+    // The SqIns only, each with its offset and its own transfer scale behind
+    // a presence byte (unset means unknown, D4).
+    w.u32(static_cast<uint32_t>(nsqin));
+    for (const SPSqueeze& sq : act.sqinouts) {
+        if (sq.kind != SqueezeKind::SqIn) continue;
         w.f64(sq.offset_ms);
-        // A SqIn stores its own transfer scale behind a presence byte (unset
-        // means unknown, D4); a SqOut stores no scale and no byte.
-        if (sq.kind == SqueezeKind::SqIn) write_opt_scale(w, sq.transfer);
+        write_opt_scale(w, sq.transfer);
     }
 
     w.f64(act.e_offset);
@@ -182,16 +199,22 @@ Activation read_activation(BinaryReader& r) {
     const uint32_t nsq = r.u32();
     act.sqinouts.reserve(nsq);
     for (uint32_t i = 0; i < nsq; ++i) {
-        const SqueezeKind kind = r.u8() == 0 ? SqueezeKind::SqIn : SqueezeKind::SqOut;
-        const double offset = r.f64();
-        SPSqueeze sq{kind, offset};
-        if (kind == SqueezeKind::SqIn) sq.transfer = read_opt_scale(r);
+        SPSqueeze sq{SqueezeKind::SqIn, r.f64()};
+        sq.transfer = read_opt_scale(r);
         act.sqinouts.push_back(sq);
     }
 
     act.e_offset = r.f64();
     act.transfer_post = read_opt_scale(r);
-    act.sqout_tick = r.opt_i64();
+    // The squeeze-out comes back through its one writer, which rebuilds the
+    // SqOut entry from its row. A tick with no row is a malformed node.
+    if (const std::optional<int64_t> sqout = r.opt_i64()) {
+        try {
+            act.set_sqout(*sqout);
+        } catch (const std::logic_error& e) {
+            throw SerializeError(e.what());
+        }
+    }
     // The SP-end history (see write_activation).
     const uint32_t nsteps = r.u32();
     act.sp_end_steps.reserve(nsteps);
