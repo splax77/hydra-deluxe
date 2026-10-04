@@ -141,28 +141,32 @@ TEST_CASE("chartmode_key names the view flags") {
     CHECK(s.chartmode_key() == "Expert Drums, 2x Bass");
 }
 
-TEST_CASE("chartmode_key: a non-Expert difficulty is always 1x Bass") {
+TEST_CASE("chartmode_key: 2x Bass applies at every difficulty (D20)") {
     Settings s;
     s.view_difficulty = "Hard";
     s.view_prodrums = true;
-    s.view_bass2x = true;  // stored true, but 2x is an Expert-only concept
+    s.view_bass2x = true;  // Clone Hero's Double Kick works at every difficulty
     CHECK(s.difficulty() == hydra::Difficulty::Hard);
-    CHECK(s.effective_bass2x() == false);
-    CHECK(s.chartmode_key() == "Hard Pro Drums, 1x Bass");
-    CHECK(s.to_analysis_settings().bass2x == false);
+    CHECK(s.effective_bass2x());
+    CHECK(s.chartmode_key() == "Hard Pro Drums, 2x Bass");
+    CHECK(s.to_analysis_settings().bass2x);
     CHECK(s.to_analysis_settings().difficulty == hydra::Difficulty::Hard);
 
+    s.view_bass2x = false;
+    CHECK_FALSE(s.effective_bass2x());
+    CHECK(s.chartmode_key() == "Hard Pro Drums, 1x Bass");
     s.view_prodrums = false;
     CHECK(s.chartmode_key() == "Hard Drums, 1x Bass");
     s.view_difficulty = "Medium";
     CHECK(s.chartmode_key() == "Medium Drums, 1x Bass");
+    s.view_bass2x = true;
+    CHECK(s.chartmode_key() == "Medium Drums, 2x Bass");
     s.view_difficulty = "Easy";
-    CHECK(s.chartmode_key() == "Easy Drums, 1x Bass");
+    CHECK(s.chartmode_key() == "Easy Drums, 2x Bass");
 
-    // Back on Expert the stored 2x flag is still there and takes effect again.
+    // Expert's keys don't move (the case above pins all four byte for byte).
     s.view_difficulty = "Expert";
     s.view_prodrums = true;
-    CHECK(s.effective_bass2x() == true);
     CHECK(s.chartmode_key() == "Expert Pro Drums, 2x Bass");
 }
 
@@ -201,7 +205,8 @@ TEST_CASE("view_difficulty matches any case and loads as the real name") {
         // What the app carries, and bakes into the store key, is the real name.
         CHECK(r.view_difficulty == "Hard");
         CHECK(r.difficulty() == hydra::Difficulty::Hard);
-        CHECK(r.chartmode_key() == "Hard Pro Drums, 1x Bass");
+        // view_bass2x defaults on, and applies at Hard too (D20).
+        CHECK(r.chartmode_key() == "Hard Pro Drums, 2x Bass");
     }
     std::remove(path.c_str());
 

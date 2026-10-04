@@ -16,36 +16,19 @@ const DynamicsCounts& DynamicsBreakdown::row(DynamicsRow r) const {
 
 DynamicsCounts DynamicsBreakdown::pads_total() const {
     DynamicsCounts t;
-    for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) {
-        t.ghost += rows[i].ghost;
-        t.accent += rows[i].accent;
-        t.normal += rows[i].normal;
-    }
+    for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) t += rows[i];
     return t;
 }
 
-DynamicsCounts DynamicsBreakdown::kicks_total() const {
-    DynamicsCounts t;
-    const auto& k = row(DynamicsRow::Kick);
-    const auto& k2 = row(DynamicsRow::Kick2x);
-    t.ghost = k.ghost + k2.ghost;
-    t.accent = k.accent + k2.accent;
-    t.normal = k.normal + k2.normal;
+DynamicsCounts DynamicsBreakdown::kicks_total(bool bass2x) const {
+    DynamicsCounts t = row(DynamicsRow::Kick);
+    if (bass2x) t += row(DynamicsRow::Kick2x);
     return t;
 }
 
 DynamicsCounts DynamicsBreakdown::played_total(bool bass2x) const {
     DynamicsCounts t = pads_total();
-    const auto& k = row(DynamicsRow::Kick);
-    t.ghost += k.ghost;
-    t.accent += k.accent;
-    t.normal += k.normal;
-    if (bass2x) {
-        const auto& k2 = row(DynamicsRow::Kick2x);
-        t.ghost += k2.ghost;
-        t.accent += k2.accent;
-        t.normal += k2.normal;
-    }
+    t += kicks_total(bass2x);
     return t;
 }
 

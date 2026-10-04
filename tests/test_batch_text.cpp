@@ -32,14 +32,14 @@ TEST_CASE("batch text: the confirm lists the settings a batch runs with") {
     CHECK(d.score_range == "4 scores");
     CHECK(d.path_limit == "10 ms");
 
-    s.view_difficulty = "Hard";  // 2x Bass is Expert-only, so it drops out
+    s.view_difficulty = "Hard";  // 2x Bass (still on) applies at Hard too (D20)
     s.view_prodrums = false;
     s.sp_cap = 1;
     s.depth_mode = 1;
     s.depth_value = 2000;
     s.mslimit_enabled = false;
     d = batch_settings_summary(s);
-    CHECK(d.difficulty == "Hard");
+    CHECK(d.difficulty == "Hard \xC2\xB7 2x Bass");
     CHECK(d.sp_cap == "1 bar (a what-if)");
     CHECK(d.score_range == "2,000 points");
     CHECK(d.path_limit == "off");

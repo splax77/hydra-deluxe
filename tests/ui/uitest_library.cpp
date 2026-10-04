@@ -31,8 +31,8 @@ void test_scan(ImGuiTestContext* ctx) {
 }
 
 // The settings bar's difficulty dropdown: it drives the chartmode everything
-// else is keyed by, and it disables 2x Bass (an Expert-only charting concept)
-// without forgetting the user's stored setting.
+// else is keyed by. 2x Bass stays live at every difficulty (D20) and is part
+// of the key there too.
 void test_difficulty(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -47,17 +47,20 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
     IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).view_difficulty.c_str(),
                     "Hard");
+    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
+
+    // Live at Hard: unticking it changes Hard's key, and ticking it restores it.
+    IM_CHECK((ctx->ItemInfo("2x Bass").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK(h.app->settings.effective_bass2x());
+    ctx->ItemClick("2x Bass");
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_bass2x; }, 5));
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 1x Bass");
+    ctx->ItemClick("2x Bass");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_bass2x; }, 5));
 
-    // Visibly disabled, unchecked, and the stored flag is untouched.
-    ImGuiTestItemInfo bass = ctx->ItemInfo("2x Bass");
-    IM_CHECK((bass.ItemFlags & ImGuiItemFlags_Disabled) != 0);
-    IM_CHECK(h.app->settings.view_bass2x);
-    IM_CHECK(!h.app->settings.effective_bass2x());
-
-    // Back on Expert the box is live again, still carrying the user's own
-    // setting. (Checked here rather than at the end of the test: the details
-    // modal opened below has no close button the harness can address.)
+    // Back on Expert the box still carries the user's own setting. (Checked
+    // here rather than at the end of the test: the details modal opened below
+    // has no close button the harness can address.)
     ctx->ComboClick("##difficulty/Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
     IM_CHECK((ctx->ItemInfo("2x Bass").ItemFlags & ImGuiItemFlags_Disabled) == 0);
@@ -76,7 +79,7 @@ void test_difficulty(ImGuiTestContext* ctx) {
     open_details(ctx, 0);
     if (ctx->IsError()) return;
     // The settings bar, not the panel, names the difficulty now.
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 1x Bass");
+    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
 
     ctx->ItemClick(analyze_button_ref(h).c_str());
     IM_CHECK(wait_until(ctx, [&] { return h.app->analyze_job == nullptr; }, 300));

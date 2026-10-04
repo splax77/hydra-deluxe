@@ -25,6 +25,13 @@ struct DynamicsCounts {
     int ghost = 0, accent = 0, normal = 0;
     int all() const { return ghost + accent + normal; }
     bool has_dynamics() const { return ghost + accent > 0; }
+    // Field-by-field addition: the one sum every total below is built from.
+    DynamicsCounts& operator+=(const DynamicsCounts& o) {
+        ghost += o.ghost;
+        accent += o.accent;
+        normal += o.normal;
+        return *this;
+    }
 };
 
 enum class DynamicsRow {
@@ -46,7 +53,11 @@ struct DynamicsBreakdown {
 
     const DynamicsCounts& row(DynamicsRow r) const;
     DynamicsCounts pads_total() const;
-    DynamicsCounts kicks_total() const;
+    // The kick notes that count under this 2x Bass setting: the Kick row,
+    // plus the 2x kick row when 2x Bass is on. The one answer to "which kicks
+    // count" (finding 12): "All kicks" and Totals both read it.
+    DynamicsCounts kicks_total(bool bass2x) const;
+    // Every note that counts: pads_total() plus kicks_total(bass2x).
     DynamicsCounts played_total(bool bass2x) const;
 };
 
@@ -65,7 +76,9 @@ std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blo
 // ---- the cache rules, in one place ----------------------------------------
 
 // The Dynamics tab's background count always parses with 2x kicks kept, so
-// the "2x kick" row is known even while the "2x Bass" box is off.
+// the "2x kick" row is known even while the "2x Bass" box is off. The parser
+// reads only the parsed difficulty's own 2x kicks (D20), so below Expert this
+// row never holds Expert's.
 constexpr bool kDynamicsParseBass2x = true;
 
 // Stored counts carry store::kDynamicsCountStamp and their blobs start with

@@ -148,8 +148,10 @@ void render_dynamics_panel(AppState& app) {
     ImGui::SeparatorText("Kicks");
 
     {
+        // How many of the chart's kick notes are 2x, counted or not: a fact
+        // about the chart, so it asks for every kick.
         const app::DynamicsCounts k2x = bd.row(app::DynamicsRow::Kick2x);
-        const app::DynamicsCounts ktot = bd.kicks_total();
+        const app::DynamicsCounts ktot = bd.kicks_total(/*bass2x=*/true);
         int pct = ktot.all() > 0
                       ? static_cast<int>(100.0 * k2x.all() / ktot.all())
                       : 0;
@@ -180,7 +182,8 @@ void render_dynamics_panel(AppState& app) {
             dynamics_table_row("2x kick", k2, disabled, &k2dot);
         }
         {
-            const app::DynamicsCounts ktot = bd.kicks_total();
+            // The same kicks Totals counts (finding 12).
+            const app::DynamicsCounts ktot = bd.kicks_total(bass2x);
             dynamics_table_row("All kicks", ktot, !ktot.has_dynamics());
         }
         ImGui::EndTable();
