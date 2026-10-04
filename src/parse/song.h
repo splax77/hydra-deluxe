@@ -83,6 +83,14 @@ struct SongSection {
     std::string name;
 };
 
+// Throws ChartFileError, naming the tick, unless every measure in these maps
+// lasts a positive, finite time: resolution above 0, every measure at least
+// one tick long, every tempo a finite BPM above 0. Song::build_timing calls it
+// first, so both parsers pass through it.
+void check_timing_maps(int64_t tick_resolution,
+                       const std::map<int64_t, int64_t>& tpm_changes,
+                       const std::map<int64_t, double>& bpm_changes);
+
 // A parsed chart: the timestamp sequence plus the tempo/meter maps it was built
 // from. Timing is snapshotted once the maps are complete (build_timing), which
 // mirrors Python building timecodes only after the whole tempo track is read.
@@ -117,8 +125,10 @@ public:
     std::vector<SongSection> practice_sections;
 
     // Snapshot the timing indexes from the current maps. Called once the tempo
-    // track has been fully mapped and before any timecode is made.
+    // track has been fully mapped and before any timecode is made. Timing
+    // that can't measure time is refused here (check_timing_maps).
     void build_timing() {
+        check_timing_maps(tick_resolution_, tpm_changes, bpm_changes);
         timing_.emplace(tick_resolution_, tpm_changes, bpm_changes);
     }
     const SongTiming& timing() const { return *timing_; }

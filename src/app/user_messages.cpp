@@ -123,6 +123,12 @@ std::string plain_error_text(std::string_view what) {
     // The chart readers: core/model.cpp, parse/song.cpp, parse/srb.cpp,
     // parse/midi.cpp. The no-notes message is already plain.
     if (is_no_notes_message(what)) return std::string(what);
+    // parse/song.cpp check_timing_maps and apply_timesig: timing that can't
+    // measure time. The raw text names the line, so the user sees it.
+    if (starts_with_any(what, {"the tempo at tick ", "the time signature at tick ",
+                               "the chart's resolution is "}))
+        return "Hydra can't analyze this chart because " + std::string(what) +
+               ". Fix that line in the chart file or download the song again.";
     if (what == "Duplicate note." || what == "expected a [section] header" ||
         what == "No chart files found in SNG file." || what == "Truncated SNG file." ||
         what == "Truncated SRB file." || what == "SMPTE time division is not supported" ||

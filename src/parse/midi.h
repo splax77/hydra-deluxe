@@ -58,7 +58,8 @@ struct Message {
     uint32_t tempo = 0;        // set_tempo (microseconds per quarter note)
 
     int numerator = 0;         // time_signature
-    int denominator = 0;       // time_signature (already 2**b, as in mido)
+    int denominator = 0;       // time_signature (already 2**b, as in mido;
+                               // 0 when b is past 30, see parse/timesig.h)
 
     // Text/name payload, UTF-8 (latin-1 decoded). Only text and name metas
     // fill it; every other message leaves it empty, so it never allocates.
