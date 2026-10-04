@@ -271,7 +271,7 @@ td.path { max-width: 230px; }
 }
 .t0{color:var(--t0)} .t1{color:var(--t1)} .t2{color:var(--t2)}
 .t3{color:var(--t3)} .t4{color:var(--t4)} .t5{color:var(--t5)} .tn{color:var(--tn); border-color:transparent}
-.s-matched{color:var(--t0)} .s-above{color:var(--t1)} .s-notanalyzed{color:var(--muted)} .s-unmatched{color:var(--tn); border-color:transparent}
+.s-matched{color:var(--t0)} .s-above{color:var(--t1)} .s-notanalyzed{color:var(--muted)} .s-unmatched{color:var(--tn); border-color:transparent} .s-otherspeed{color:var(--muted)}
 /* "1.1 higher" is the interesting, rare case, so it gets the strong green;
    "1.0 higher" (the common drop) is red, ties are neutral, and the two
    one-sided statuses are muted so they read as missing data, not a result. */

@@ -217,7 +217,7 @@ The finished strip offers:
 
 `Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list; Hydra Deluxe remembers the last pick. Hydra Deluxe fetches their scores, matches them to your analyzed songs by chart hash, and saves a sortable page, `hydra_dmcompare.html`, in the same Documents\Hydra folder. The page lists each score, Hydra Deluxe's optimal, the points left, and a status per row.
 
-When it's done, the window counts the scores that matched, the ones above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library.
+When it's done, the window counts the scores that matched, the ones above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library. Scores played at a speed other than 100% get their own status, Other speed. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed, so those rows show Hydra's numbers but don't count as matched or above optimal.
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 

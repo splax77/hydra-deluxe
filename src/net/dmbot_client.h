@@ -28,6 +28,12 @@ namespace hydra::net {
 // in without touching callers.
 inline constexpr const char* kDefaultApiBase = "https://dmbot-kb5j.onrender.com/api";
 
+// The playback speed, in percent, that counts as normal play. Clone Hero keeps
+// a separate leaderboard per speed, and Hydra's optimal is computed at this
+// speed only, so only these scores can be compared with it.
+inline constexpr int kBaseSpeedPercent = 100;
+inline bool is_base_speed(int speed_percent) { return speed_percent == kBaseSpeedPercent; }
+
 // One user on the ladder, from GET /api/all-users.
 struct DmUser {
     std::string id;             // Discord ID — the /scores path parameter
@@ -50,7 +56,7 @@ struct DmScore {
     int64_t score = 0;          // the score the player actually achieved
     bool is_fc = false;
     int percent = 0;
-    int speed = 100;            // playback speed %, 100 = base
+    int speed = kBaseSpeedPercent;  // playback speed %
     std::optional<int> rank;    // leaderboard rank for this chart, if any
     std::string posted;         // ISO-8601 timestamp
     bool known = true;          // false for entries from unknown_scores

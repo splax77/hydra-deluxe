@@ -557,13 +557,7 @@ void render_dm_picker_modal(AppState& app) {
             ImGui::Spacing();
             if (ImGui::Button("Back to list") || escape) app.dm_report_job.reset();
         } else {
-            const auto& st = job.stats();
-            ImGui::TextWrapped("Done: %s matched, %s above optimal, %s not analyzed, %s not in "
-                               "your library.",
-                               group_thousands(st.matched).c_str(),
-                               group_thousands(st.above_optimal).c_str(),
-                               group_thousands(st.not_analyzed).c_str(),
-                               group_thousands(st.not_in_library).c_str());
+            ImGui::TextWrapped("Done: %s.", app::dm_report::counts_phrase(job.stats()).c_str());
             if (job.opened())
                 ImGui::TextDisabled("The report opened in your browser.");
             else if (!job.open_problem().empty())
