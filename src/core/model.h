@@ -102,6 +102,9 @@ constexpr double kEarlyFillWindowMs = 60.0;
 // ---- note value ----------------------------------------------------------
 // What one note is worth before any multiplier. ChordNote::basescore and
 // category_scores both read these, so the price has one home.
+// The cymbal's +15, the solo's 100 per note, and the multiplier steps at
+// combos 10, 20 and 30 (to_multiplier) are Clone Hero's values, recorded as
+// they are by D51 call 13 (audit finding 335).
 inline constexpr int kNoteBasePoints = 50;
 inline constexpr int kCymbalBonusPoints = 15;
 // Solo bonus: this many points per note hit inside a solo section.
@@ -293,11 +296,11 @@ public:
     // asks this of every chord, and "no" is the usual answer.
     static bool applies(const Chord& chord, int combo);
 
-    int multiplier() const;     // to_multiplier(combo) + 1
+    int multiplier() const;     // the multiplier past the step, from the payout
     std::string direction() const;
     int points() const;
     std::string notationstr() const;
-    // "Hit X or Y last/first." guidance text, mirroring MultSqueeze.howto.
+    // "Hit X and Y last/first." guidance text: the notes that must be placed.
     std::string howto() const;
 
     const Chord& chord() const { return chord_; }

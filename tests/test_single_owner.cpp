@@ -1078,6 +1078,23 @@ const std::vector<OwnerRule>& rules() {
          {"return static_cast<size_t>(std::min<uint64_t>(length, available));"},
          {},
          {"src"}},
+        // Task E2: the multiplier steps live in to_multiplier only. A combo
+        // tested against 10, 20 or 30, or taken mod 10, is a second answer
+        // (MultSqueeze::applies held one before D51 call 3).
+        {"Where does the combo multiplier step up?",
+         "to_multiplier in src/core/timing.cpp",
+         R"(\bcombo\w*\)?\s*%\s*10\b|\bcombo\w*\s*[<>]=?\s*(10|20|30)\b|\b(10|20|30)\s*[<>]=?\s*combo)",
+         "",
+         {},
+         {},
+         "D51 calls 3 and 13 (audit findings 49 and 335), 2026-10-04",
+         {"const int mod = (chord.count() + combo) % 10;", "return (combo_ % 10 == 7) ? \"high\" : \"low\";",
+          "if (combo >= 20) return 3;", "if (30 <= combo_after) ok = true;"},
+         {"if (to_multiplier(combo + 1) < to_multiplier(combo + chord.count())) ok = true;",
+          "if (count % 10 == 0) return;", "if (combo > 100) return;"},
+         {{"src/core/timing.cpp", "if (combo < 10) return 1;", "to_multiplier, the owner"},
+          {"src/core/timing.cpp", "if (combo < 20) return 2;", "to_multiplier, the owner"},
+          {"src/core/timing.cpp", "if (combo < 30) return 3;", "to_multiplier, the owner"}}},
     };
     return r;
 }
