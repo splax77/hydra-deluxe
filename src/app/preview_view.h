@@ -372,9 +372,14 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 //
 // `rules` prices the running score (the replay reads the backend leeway and
 // the squeeze-out rule from it); nothing else in the scene depends on it.
+//
+// `audio_end_ms` is where the song's audio stops. The beat lines run to it, so
+// they keep scrolling through music that outlasts the notes (D48, Q25). See
+// build_preview_base for what happens without it.
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
-                                 const core::Rules& rules = core::default_rules());
+                                 const core::Rules& rules = core::default_rules(),
+                                 std::optional<double> audio_end_ms = std::nullopt);
 
 // The same scene in two halves, so a path change rebuilds only what the path
 // changes. build_preview_scene(song, path, cap, rules) is exactly
@@ -393,7 +398,13 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // apply_preview_overlay clears whatever overlay `base` already carries before
 // it builds the new one, so a scene built for another path works as a base too.
 // An empty song gives the empty scene build_preview_scene gives.
-PreviewScene build_preview_base(const Song& song);
+//
+// The beat lines end at the barline or beat on the tick a playhead at
+// `audio_end_ms` shows (SongTiming::display_tick_at_ms), or at the last note
+// if the audio stops sooner. With no audio end given, they run two measures
+// past the last note, as before the audio length was passed in.
+PreviewScene build_preview_base(const Song& song,
+                                std::optional<double> audio_end_ms = std::nullopt);
 PreviewScene apply_preview_overlay(PreviewScene base, const Song& song, const Path* path,
                                    int sp_cap = kCloneHeroSpCap,
                                    const core::Rules& rules = core::default_rules());

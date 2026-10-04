@@ -231,11 +231,12 @@ const PreviewActivation* running_activation(const PreviewScene& scene, double no
 }  // namespace
 
 PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
-                                 const core::Rules& rules) {
-    return apply_preview_overlay(build_preview_base(song), song, path, sp_cap, rules);
+                                 const core::Rules& rules, std::optional<double> audio_end_ms) {
+    return apply_preview_overlay(build_preview_base(song, audio_end_ms), song, path, sp_cap,
+                                 rules);
 }
 
-PreviewScene build_preview_base(const Song& song) {
+PreviewScene build_preview_base(const Song& song, std::optional<double> audio_end_ms) {
     PreviewScene scene;
     if (song.is_empty()) return scene;
 
@@ -279,16 +280,23 @@ PreviewScene build_preview_base(const Song& song) {
     scene.has_notes = !scene.notes.empty();
     if (scene.has_notes) scene.song_length_ms = scene.notes.back().ms;
 
-    // The beat grid runs two measures past the last note so lines keep
-    // scrolling through the look-ahead after the chart ends.
+    // The beat grid runs to the end of the audio, so lines keep scrolling
+    // while music plays past the last note (D48, Q25). The end is the tick a
+    // playhead there shows, the same rule the time box uses. Without the
+    // audio's end it runs two measures past the last note.
     const SongTiming& timing = song.timing();
     scene.timing = timing;  // the time box names ticks with the engine's math
     scene.tick_resolution = timing.tick_resolution();
     if (scene.has_notes) {
-        int64_t last_tick = scene.notes.back().tick;
-        const MeasureIndex& mi = timing.measure_index();
-        int64_t tpm = mi.tpm_at(mi.section_at(last_tick));
-        scene.beats = build_beat_events(timing, last_tick + 2 * tpm);
+        const int64_t last_tick = scene.notes.back().tick;
+        int64_t grid_end = last_tick;
+        if (audio_end_ms.has_value()) {
+            grid_end = std::max(last_tick, timing.display_tick_at_ms(*audio_end_ms));
+        } else {
+            const MeasureIndex& mi = timing.measure_index();
+            grid_end = last_tick + 2 * mi.tpm_at(mi.section_at(last_tick));
+        }
+        scene.beats = build_beat_events(timing, grid_end);
     }
     for (const auto& kv : song.bpm_changes) {
         PreviewTempo t;

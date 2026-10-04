@@ -425,9 +425,26 @@ TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     CHECK(scene.tempos[0].bpm == doctest::Approx(120.0));
     REQUIRE(!scene.beats.empty());
     CHECK(scene.beats.front().tick == 0);
-    // Extends two measures past the last note (tick 720 -> through 4560; the
-    // last line at or before that is the beat at 4320).
+    // With no audio end given, the grid extends two measures past the last
+    // note (tick 720 -> through 4560; the last line at or before that is the
+    // beat at 4320). The case below passes the audio's end instead.
     CHECK(scene.beats.back().tick == 4320);
+}
+
+TEST_CASE("build_preview_scene: the beat lines run to the end of the audio") {
+    // The audio-tail chart: the last note is at tick 1920 (1000 ms) and the
+    // audio stops 5 s later, at 6000 ms, which is tick 11520 (six measures of
+    // 1920 ticks). The beat lines keep scrolling through that tail and stop at
+    // the barline on the audio's end (D48, Q25).
+    const test::AudioTailChart c = test::audio_tail_chart();
+    const PreviewScene scene =
+        build_preview_scene(c.song, nullptr, kCloneHeroSpCap, core::default_rules(), c.audio_end_ms);
+    REQUIRE(!scene.beats.empty());
+    CHECK(scene.beats.back().tick == 11520);
+    CHECK(scene.beats.back().kind == PreviewBeatKind::Bar);
+    CHECK(scene.beats.back().ms == doctest::Approx(6000.0));
+    // The base alone gives the same grid: the overlay never touches beats.
+    CHECK(build_preview_base(c.song, c.audio_end_ms).beats.back().tick == 11520);
 }
 
 TEST_CASE("build_time_box: timestamp, measure, tempo") {
