@@ -104,14 +104,12 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
                      settings.rules);
 
     // The caller named the path, so nothing may prune it: the widest possible
-    // points band keeps every survivor, and no timing filter is applied. The
-    // band is compared as `score + depth_value < best` in int64 arithmetic, so
-    // a billion cannot overflow.
+    // points band keeps every survivor, and no timing filter is applied.
     std::vector<Path> paths;
     try {
         EngineOptions options;
         options.depth_mode = DepthMode::Points;
-        options.depth_value = 1'000'000'000;
+        options.depth_value = kKeepEveryPathBand;
         options.target_act_ticks = ticks;
         paths = run_search(graph, options);
     } catch (const std::runtime_error&) {

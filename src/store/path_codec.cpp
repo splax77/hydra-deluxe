@@ -231,7 +231,7 @@ Activation read_activation(BinaryReader& r) {
         s.tick = r.i64();
         s.end_tick = r.i64();
         const uint8_t kind = r.u8();
-        if (kind > static_cast<uint8_t>(SpEndKind::SqIn))
+        if (kind > static_cast<uint8_t>(kLastSpEndKind))
             throw SerializeError("unknown SP-end step kind");
         s.kind = static_cast<SpEndKind>(kind);
         act.sp_end_steps.push_back(s);

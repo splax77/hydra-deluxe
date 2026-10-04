@@ -38,18 +38,18 @@ node holds activations only (ADR 0017).
 A guard test checks each corpus variant against a lone search. That is a
 targeted search told to activate exactly where the variant does, so it works
 out the variant's score and facts on its own. The guard then compares the
-trailing bank, the squeeze kinds, and each activation's SP-end steps, bank
-arrivals, squeeze-out tick and backend rows. It does not compare transfer
-scales, SqIn offsets, the early-fill offset or skipped fills. Transfer scales
-come from the activation note and the steps, so they match when those match.
-The last three are finding 97, below. The guard runs at the app's defaults and at score
-range 40 with caps 4 and 2, because the defaults hold almost no ties. Only a
-root of that search is an answer, because a root was never folded. A variant
-whose activations match a root but whose squeeze kinds do not is a failure.
-Sometimes the lone search ties the variant under another root too, so no root
-can answer for it. The guard skips such a variant, prints it, and pins how
-many there are at each setting. The best all-0 path's variants
-(`allzero_paths`) are not covered.
+score and every window fact: each activation's SP-end steps, squeezes and
+their offsets, squeeze-out tick, backend rows, bank arrivals, early-fill
+offset and passed fills, and the trailing bank. It does not compare transfer
+scales; they come from the activation note and the steps, so they match when
+those match. One helper in tests/record_fixtures.h (`lone_pricing`) holds
+that comparison for this guard and the test_search.cpp fixtures. The guard
+runs at the app's defaults and at score range 40 with caps 4 and 2, because
+the defaults hold almost no ties. Only a root of that search is an answer,
+because a root was never folded. Sometimes the lone search ties the variant
+under a root of its own, so no root can answer for it. The guard skips such
+a variant, prints it, and pins how many there are at each setting. The best
+all-0 path's variants (`allzero_paths`) are not covered.
 
 Not decided here: a variant's skip state, early-fill offset and skipped fills
 after a fold between windows (finding 97). D38 (2026-10-04) settled it. At the

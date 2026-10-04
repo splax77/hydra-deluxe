@@ -35,6 +35,12 @@ struct SearchSettings {
     core::Rules rules = core::default_rules();
 };
 
+// A points band wide enough to keep every path: a real chart scores a few
+// million at most. The band is compared as `score + depth_value < best` in
+// int64 arithmetic, so it cannot overflow. search_target uses it, and so do
+// the tests that ask the engine to keep everything (audit R7.29).
+constexpr int kKeepEveryPathBand = 1'000'000'000;
+
 // How tall to build the search graph: the SP cap, but never more levels than
 // the song has phrases to bank, and never fewer than one.
 int graph_build_cap(int sp_cap, int sp_phrase_count);

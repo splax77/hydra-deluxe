@@ -23,6 +23,7 @@
 #include "bank_check.h"
 #include "core/model.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
@@ -44,11 +45,6 @@ Song fixture(const std::string& name) {
     return load_songpath(std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/" + name, true, true);
 }
 
-void collect_all(const Path& p, std::vector<const Path*>& out) {
-    out.push_back(&p);
-    for (const Path& v : p.variants) collect_all(v, out);
-}
-
 // A root's tied variants, theirs, and so on (roots are their own lone pricing).
 void collect_variants(const Path& p, std::vector<const Path*>& out) {
     for (const Path& v : p.variants) {
@@ -57,47 +53,33 @@ void collect_variants(const Path& p, std::vector<const Path*>& out) {
     }
 }
 
+void collect_all(const Path& p, std::vector<const Path*>& out) {
+    out.push_back(&p);
+    for (const Path& v : p.variants) collect_all(v, out);
+}
+
 std::vector<int64_t> act_ticks(const Path& p) {
     std::vector<int64_t> at;
     for (const Activation& a : p.walk_activations()) at.push_back(a.timecode.ticks());
     return at;
 }
 
-// Every window of a path written out: activation, SP-end steps, squeezes,
-// squeezed-out note and backend rows.
-std::string windows_text(const Path& p) {
-    std::ostringstream o;
-    for (const Activation& a : p.walk_activations()) {
-        o << a.timecode.ticks() << " [steps";
-        for (const SpEndStep& s : a.sp_end_steps)
-            o << ' ' << s.tick << '>' << s.end_tick << ':' << static_cast<int>(s.kind);
-        o << " | sq";
-        for (const SPSqueeze& q : a.sqinouts) o << ' ' << q.symbol() << q.offset_ms;
-        o << " | out " << a.sqout_tick.value_or(-1) << " | backends";
-        for (const BackendSqueeze& b : a.backends)
-            o << ' ' << b.timecode.ticks() << '/' << b.points << '/' << b.sqout_points << '/'
-              << (b.offset_ms ? *b.offset_ms : -1.0);
-        // The early-fill facts (D38): the offset and the fills passed over.
-        o << " | e " << a.e_offset << " | passed";
-        for (const int64_t t : a.skipped_fill_ticks) o << ' ' << t;
-        o << "] ";
-    }
-    return o.str();
-}
-
 // D3's promise, checked without the corpus: the variant stores what the
 // search stores when it is told to activate exactly where the variant does.
-// A targeted search keeps ties as variants too, and can also return paths
-// that dropped an activation it could not take, so every lone path is
-// looked at and only those with the variant's activations count. Returns ""
-// on a match, else what differed.
+// Returns "" on a match, else what differed.
+//
+// PENDING USER RULING (step-1 derive-once review finding 11): this still
+// runs the targeted search itself instead of test::lone_pricing, because
+// search_target returns nothing at all when any lone path comes back short
+// of an activation, and on fuzz seeds 5 and 16 that leaves seven variants
+// with no lone answer. It shares windows_text and the band with the helper.
 std::string lone_mismatch(const Song& song, const app::AnalysisSettings& cfg, const Path& variant) {
     const std::vector<int64_t> at = act_ticks(variant);
     const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
                            FillDeadlineRule::Ch11, cfg.rules);
     EngineOptions o;
     o.depth_mode = DepthMode::Points;
-    o.depth_value = 1'000'000'000;
+    o.depth_value = kKeepEveryPathBand;
     o.target_act_ticks = at;
     std::vector<Path> lone;
     try {
@@ -107,11 +89,11 @@ std::string lone_mismatch(const Song& song, const app::AnalysisSettings& cfg, co
     }
     std::vector<const Path*> all;
     for (const Path& r : lone) collect_all(r, all);
-    const std::string mine = windows_text(variant);
+    const std::string mine = test::windows_text(variant);
     std::string seen;
     for (const Path* t : all) {
         if (act_ticks(*t) != at || t->totalscore() != variant.totalscore()) continue;
-        const std::string theirs = windows_text(*t);
+        const std::string theirs = test::windows_text(*t);
         if (theirs == mine) return "";
         seen += "\n  lone:    " + theirs;
     }

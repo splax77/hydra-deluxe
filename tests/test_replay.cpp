@@ -186,54 +186,6 @@ TEST_CASE("targeted search reproduces every corpus path") {
 
 namespace {
 
-std::string ticks_text(const std::vector<int64_t>& ticks) {
-    std::string s = "{";
-    for (size_t i = 0; i < ticks.size(); ++i)
-        s += (i ? ", " : "") + std::to_string(ticks[i]);
-    return s + "}";
-}
-
-std::string steps_text(const std::vector<SpEndStep>& steps) {
-    std::string s = "{";
-    for (size_t i = 0; i < steps.size(); ++i)
-        s += (i ? ", " : "") + std::to_string(steps[i].tick) + "->" +
-             std::to_string(steps[i].end_tick) + " kind " +
-             std::to_string(static_cast<int>(steps[i].kind));
-    return s + "}";
-}
-
-std::string opt_text(const std::optional<int64_t>& t) {
-    return t ? std::to_string(*t) : std::string("unset");
-}
-
-// Each activation's squeeze symbols, e.g. "{+, -, .}" ("." for none).
-std::string kinds_text(const std::vector<Activation>& acts) {
-    std::string s = "{";
-    for (size_t i = 0; i < acts.size(); ++i) {
-        s += i ? ", " : "";
-        if (acts[i].sqinouts.empty()) s += ".";
-        for (const SPSqueeze& q : acts[i].sqinouts) s += q.symbol();
-    }
-    return s + "}";
-}
-
-bool same_ticks(const std::vector<Activation>& a, const std::vector<Activation>& b) {
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i)
-        if (a[i].timecode.ticks() != b[i].timecode.ticks()) return false;
-    return true;
-}
-
-bool same_kinds(const std::vector<Activation>& a, const std::vector<Activation>& b) {
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i) {
-        if (a[i].sqinouts.size() != b[i].sqinouts.size()) return false;
-        for (size_t k = 0; k < a[i].sqinouts.size(); ++k)
-            if (a[i].sqinouts[k].kind != b[i].sqinouts[k].kind) return false;
-    }
-    return true;
-}
-
 struct TiedVariantCount {
     int variants = 0;  // tied variants the analysis listed
     int compared = 0;  // of those, the ones a lone search could price
@@ -243,15 +195,14 @@ struct TiedVariantCount {
 
 // Decision D3 for one set of analysis settings, over the whole corpus. Each
 // variant is priced alone with a targeted search, and its stored facts must
-// equal that search's: score, squeeze kinds and offsets, SP end steps, bank
-// rise ticks, trailing bank, squeezed-out note and every backend row. Only a
-// root of the search is an oracle: a root was
-// never folded. Skips, the early-fill offset and the skipped fills are not
-// compared; they are finding 97. All-zero variants are not visited.
+// equal a lone root's (test::lone_pricing in record_fixtures.h: the score
+// and every window fact, early-fill facts included). All-zero variants are
+// not visited.
 //
-// A variant with no oracle is skipped, and each skip is printed with its
-// reason. The caller pins how many there are, so a regression that turns a
-// compared variant into a skipped one fails instead of passing quietly.
+// A variant the lone search folded under a root of its own has no oracle,
+// so it is skipped, and each skip is printed. The caller pins how many there
+// are, so a regression that turns a compared variant into a skipped one
+// fails instead of passing quietly.
 TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
     TiedVariantCount n;
     for (const std::string& path : corpus::chart_paths()) {
@@ -263,97 +214,15 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
         for (const Path* p : rec.all_paths()) {
             if (!p->var_point) continue;
             ++n.variants;
-            const std::vector<Activation> want = p->all_activations();
-            std::vector<int64_t> ticks;
-            for (const Activation& a : want) ticks.push_back(a.timecode.ticks());
-            const std::string where = path + " [" + p->pathstring() + "] ";
-
-            HydraRecord alone;
-            alone.paths = search_target(song, cfg, ticks);
-            // The oracle: a root with the same score and squeeze kinds.
-            const Path* match = nullptr;
-            // A root with the same score and ticks but other squeeze kinds.
-            const Path* other_kinds = nullptr;
-            for (const Path& q : alone.paths) {
-                if (q.totalscore() != p->totalscore()) continue;
-                const std::vector<Activation> qa = q.all_activations();
-                if (same_kinds(qa, want)) { match = &q; break; }
-                if (!other_kinds && same_ticks(qa, want)) other_kinds = &q;
-            }
-
-            if (!match) {
-                // The lone search may itself have tied the variant's kinds
-                // under a root with other kinds. Then there is no oracle, and
-                // that is a skip. Otherwise the variant holds squeeze kinds a
-                // lone search never gives it, and that is a difference.
-                bool tied_alone = false;
-                for (const Path* q : alone.all_paths())
-                    if (q->totalscore() == p->totalscore() &&
-                        same_kinds(q->all_activations(), want))
-                        tied_alone = true;
-                if (other_kinds && !tied_alone) {
-                    ++n.compared;
-                    ++n.differing;
-                    const std::string d = where + "squeeze kinds: stored " + kinds_text(want) +
-                                          ", alone " +
-                                          kinds_text(other_kinds->all_activations());
-                    CHECK_MESSAGE(false, d);
-                    continue;
-                }
-                std::string why;
-                if (alone.paths.empty()) why = "the lone search found no path";
-                else if (tied_alone) why = "the lone search tied it under a root too";
-                else why = "no lone root has its score and squeeze kinds";
-                std::string roots;
-                for (const Path& q : alone.paths)
-                    roots += " [" + q.pathstring() + "] score " +
-                             std::to_string(q.totalscore()) + " kinds " +
-                             kinds_text(q.all_activations()) + ";";
-                MESSAGE("skipped " << where << "score " << p->totalscore() << " kinds "
-                                   << kinds_text(want) << ": " << why << ". Lone roots:"
-                                   << roots);
+            const test::LonePricing lone = test::lone_pricing(song, cfg, *p);
+            if (!lone.diff.empty() && lone.tied_under_root) {
+                MESSAGE("skipped " << path << ": " << lone.diff);
                 continue;
             }
             ++n.compared;
-
-            // Every difference, spelled out with both values, so a failure
-            // names the chart, the path, the field and what each side holds.
-            std::vector<std::string> diffs;
-            if (match->trailing_bank_ticks != p->trailing_bank_ticks)
-                diffs.push_back(where + "trailing_bank_ticks: stored " +
-                                ticks_text(p->trailing_bank_ticks) + ", alone " +
-                                ticks_text(match->trailing_bank_ticks));
-            const std::vector<Activation> got = match->all_activations();
-            for (size_t i = 0; i < got.size(); ++i) {
-                const std::string act = where + "activation at " +
-                                        std::to_string(want[i].timecode.ticks()) + " ";
-                if (got[i].sp_end_steps != want[i].sp_end_steps)
-                    diffs.push_back(act + "sp_end_steps: stored " +
-                                    steps_text(want[i].sp_end_steps) + ", alone " +
-                                    steps_text(got[i].sp_end_steps));
-                if (got[i].bank_rise_ticks != want[i].bank_rise_ticks)
-                    diffs.push_back(act + "bank_rise_ticks: stored " +
-                                    ticks_text(want[i].bank_rise_ticks) + ", alone " +
-                                    ticks_text(got[i].bank_rise_ticks));
-                if (got[i].sqout_tick != want[i].sqout_tick)
-                    diffs.push_back(act + "sqout_tick: stored " + opt_text(want[i].sqout_tick) +
-                                    ", alone " + opt_text(got[i].sqout_tick));
-                // Every stored row, not only the shown ones: the shown rows
-                // follow from these and sqout_tick.
-                if (got[i].backends != want[i].backends)
-                    diffs.push_back(act + "backend rows: stored " +
-                                    std::to_string(want[i].backends.size()) + " rows, alone " +
-                                    std::to_string(got[i].backends.size()) + " rows, not equal");
-                // The kinds already match (same_kinds); the offsets must too.
-                for (size_t k = 0; k < got[i].sqinouts.size(); ++k)
-                    if (got[i].sqinouts[k].offset_ms != want[i].sqinouts[k].offset_ms)
-                        diffs.push_back(act + "squeeze " + std::to_string(k) +
-                                        " offset_ms: stored " +
-                                        std::to_string(want[i].sqinouts[k].offset_ms) +
-                                        ", alone " + std::to_string(got[i].sqinouts[k].offset_ms));
-            }
-            if (!diffs.empty()) ++n.differing;
-            for (const std::string& d : diffs) CHECK_MESSAGE(false, d);
+            if (lone.diff.empty()) continue;
+            ++n.differing;
+            CHECK_MESSAGE(false, path << ": " << lone.diff);
         }
     }
     return n;

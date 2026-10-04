@@ -3,6 +3,7 @@
 // is filed under the settings it ran with -- changing SP cap mid-run used to
 // hide the result it had just made.
 
+#include "core/model.h"
 #include "imgui.h"
 #include "ui/app_state.h"
 #include "ui/fonts.h"
@@ -141,7 +142,9 @@ void render_path_limit(AppState& app, bool locked) {
     begin_disabled_input(off);
     ImGui::SetNextItemWidth(px(100));
     if (ImGui::InputInt("##mslimitvalue", &app.settings.mslimit_value)) {
-        app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -500, 500);
+        // The ceiling is the engine's squeeze window either way (decision D41).
+        const int window = static_cast<int>(kSqueezeWindowMs);
+        app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -window, window);
         app.edit_settings();
     }
     ImGui::SameLine();

@@ -599,13 +599,14 @@ std::optional<int64_t> Activation::nominal_end() const {
 std::optional<size_t> Activation::squeeze_end_step(size_t squeeze_index) const {
     if (squeeze_index >= sqinouts.size() || sp_end_steps.empty()) return std::nullopt;
     if (sqinouts[squeeze_index].kind == SqueezeKind::SqOut) return sp_end_steps.size() - 1;
-    // The k-th SqIn squeeze is the k-th SqIn step: both are kept in time order.
+    // The k-th SqIn squeeze is the k-th SqIn step (nth_sqin_step). Its end
+    // was measured from the step before it.
     size_t k = 0;
     for (size_t i = 0; i < squeeze_index; ++i)
         if (sqinouts[i].kind == SqueezeKind::SqIn) ++k;
-    for (size_t s = 1; s < sp_end_steps.size(); ++s)
-        if (sp_end_steps[s].kind == SpEndKind::SqIn && k-- == 0) return s - 1;
-    return std::nullopt;
+    const auto step = nth_sqin_step(sp_end_steps.begin() + 1, sp_end_steps.end(), k);
+    if (step == sp_end_steps.end()) return std::nullopt;
+    return static_cast<size_t>(step - sp_end_steps.begin()) - 1;
 }
 
 std::optional<int64_t> Activation::squeeze_end_tick(size_t squeeze_index) const {
@@ -624,7 +625,7 @@ int64_t Activation::end_anchor_tick(size_t step_index) const {
 
 int64_t Activation::refill_tick(size_t step_index) const {
     const SpEndStep& s = sp_end_steps.at(step_index);
-    if (step_index == 0 || s.kind != SpEndKind::SqIn) return s.tick;
+    if (step_index == 0 || !is_sqin_kind(s.kind)) return s.tick;
     // A late squeeze-in: the phrase sits past the end in force, and the
     // player hits it early, so the bar arrives at that end.
     return std::min(s.tick, sp_end_steps[step_index - 1].end_tick);
@@ -648,20 +649,22 @@ std::optional<int64_t> Activation::squeeze_anchor_tick(size_t squeeze_index) con
 // The engine stamps the squeezed-out chord's tick at copy-out (since path
 // format 4, ADR 0014). A record without it is Stale and is never guessed at.
 bool Activation::is_sqout_backend(const BackendSqueeze& bsq) const {
-    return sqout_tick.has_value() && bsq.timecode.ticks() == *sqout_tick;
+    return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;
 }
 
 const BackendSqueeze* Activation::sqout_row() const {
     if (!sqout_tick) return nullptr;
     for (const BackendSqueeze& b : backends)
-        if (b.timecode.ticks() == *sqout_tick) return &b;
+        if (is_sqout_backend(b)) return &b;
     return nullptr;
 }
 
 void Activation::set_sqout(int64_t tick) {
+    // Rows past the squeezed-out chord are hit after SP ended: drop them.
     backends.erase(std::remove_if(backends.begin(), backends.end(),
                                   [tick](const BackendSqueeze& b) {
-                                      return b.timecode.ticks() > tick;
+                                      return core::sqout_position(b.timecode.ticks(), tick) ==
+                                             core::SqOutPosition::After;
                                   }),
                    backends.end());
     sqout_tick = tick;

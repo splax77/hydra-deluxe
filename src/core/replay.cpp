@@ -212,7 +212,7 @@ ReplayScore score_of(const Path& path) {
 std::vector<int64_t> sqin_phrase_ticks(const Activation& act) {
     std::vector<int64_t> out;
     for (const SpEndStep& s : act.sp_end_steps)
-        if (s.kind == SpEndKind::SqIn) out.push_back(s.tick);
+        if (is_sqin_kind(s.kind)) out.push_back(s.tick);
     return out;
 }
 
