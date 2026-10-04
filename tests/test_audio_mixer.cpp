@@ -17,20 +17,14 @@
 #include "audio/mixer.h"
 #include "audio/stem_reader.h"
 #include "audio/stream_mix.h"
-#include "core/winstr.h"
+#include "audio_util.h"
 
 using namespace hydra::audio;
+using testaudio::estimate_freq_hz;
+using testaudio::fixture_path;
+using testaudio::read_fixture;
 
 namespace {
-
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-
-std::vector<uint8_t> read_fixture(const std::string& name) {
-    return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/" +
-                                  name);
-}
 
 DecodedAudio make_pcm(std::vector<float> samples, int channels, int rate) {
     DecodedAudio a;
@@ -53,56 +47,13 @@ DecodedAudio synth_tone(double freq, int rate, double seconds) {
     return a;
 }
 
-// Dominant frequency of one channel via zero crossings over the middle half.
-double estimate_freq_hz(const DecodedAudio& a, int channel) {
-    if (a.channels <= 0 || a.frames() < 4) return 0.0;
-    int64_t n = a.frames(), lo = n / 4, hi = n - n / 4;
-    int crossings = 0;
-    float prev = a.samples[static_cast<size_t>(lo) * a.channels + channel];
-    for (int64_t i = lo + 1; i < hi; ++i) {
-        float s = a.samples[static_cast<size_t>(i) * a.channels + channel];
-        if ((prev < 0.0f && s >= 0.0f) || (prev >= 0.0f && s < 0.0f)) ++crossings;
-        prev = s;
-    }
-    double dur = static_cast<double>(hi - lo) / a.sample_rate;
-    return (crossings / 2.0) / dur;
-}
-
-// Today's mixer, rebuilt from the public API: convert every stem on its own
-// (a one-stem mix is 0.0f plus the converted stem), keep every converted copy,
-// then sum them in stem order into a zeroed buffer as long as the longest.
-// The one-at-a-time mixer must match it bit for bit.
-DecodedAudio reference_mix(const std::vector<DecodedAudio>& stems, int rate,
-                           int channels) {
-    std::vector<std::vector<float>> converted;
-    std::size_t longest = 0;
-    for (const DecodedAudio& s : stems) {
-        converted.push_back(mix_stems({s}, rate, channels).samples);
-        longest = std::max(longest, converted.back().size());
-    }
-    DecodedAudio out;
-    out.sample_rate = rate;
-    out.channels = channels;
-    out.samples.assign(longest, 0.0f);
-    for (const std::vector<float>& c : converted)
-        for (std::size_t i = 0; i < c.size(); ++i) out.samples[i] += c[i];
-    return out;
-}
-
-// A whole MixSource read start to end, in odd-sized blocks.
+// A whole MixSource read start to end (through the shared block reader), as
+// audio at the source's format.
 DecodedAudio read_all(MixSource& src) {
     DecodedAudio out;
     out.channels = src.channels();
     out.sample_rate = src.sample_rate();
-    out.samples.resize(static_cast<std::size_t>(src.length_frames()) * src.channels());
-    int64_t at = 0;
-    while (at < src.length_frames()) {
-        const int64_t n = src.read(out.samples.data() + at * src.channels(),
-                                   std::min<int64_t>(511, src.length_frames() - at));
-        if (n <= 0) break;
-        at += n;
-    }
-    out.samples.resize(static_cast<std::size_t>(at) * src.channels());
+    out.samples = testaudio::read_frames(src, src.length_frames());
     return out;
 }
 
@@ -129,6 +80,18 @@ TEST_CASE("mix_stems sums same-format stems and zero-extends the shorter") {
     CHECK(out.samples[0] == doctest::Approx(0.11f));
     CHECK(out.samples[1] == doctest::Approx(0.22f));
     CHECK(out.samples[2] == doctest::Approx(0.30f));  // s2 silent past its end
+}
+
+TEST_CASE("stem_converter_config: same rate and channels is a passthrough, anything else converts") {
+    CHECK(stem_converter_config(48000, 2, 48000, 2).passthrough);
+    CHECK_FALSE(stem_converter_config(44100, 2, 48000, 2).passthrough);
+    CHECK_FALSE(stem_converter_config(48000, 1, 48000, 2).passthrough);
+    // The config echoes the formats it was given.
+    const StemConverter c = stem_converter_config(44100, 1, 48000, 2);
+    CHECK(c.config.sampleRateIn == 44100);
+    CHECK(c.config.channelsIn == 1);
+    CHECK(c.config.sampleRateOut == 48000);
+    CHECK(c.config.channelsOut == 2);
 }
 
 TEST_CASE("mix_stems of no stems is empty at the requested format") {
@@ -161,7 +124,7 @@ TEST_CASE("mix_stems resamples to the output rate and unifies channels") {
 TEST_CASE("StreamMix of the stems that open: an undecodable stem is skipped") {
     hydra::app::PreviewAudioStem ogg;  // a file-path stem
     ogg.label = "song";
-    ogg.path = std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg";
+    ogg.path = fixture_path("sine220.ogg");
 
     hydra::app::PreviewAudioStem mp3;  // a container-bytes stem
     mp3.label = "drums";
@@ -194,22 +157,23 @@ TEST_CASE("StreamMix of the stems that open: an undecodable stem is skipped") {
     CHECK(none.channels() == 2);
 }
 
-TEST_CASE("mix_stems matches the convert-all-then-sum mix bit for bit") {
-    // Mixed rates, channel counts and lengths, so resampling, upmixing and
-    // the grow-with-silence path all run. The middle stem is the longest.
-    DecodedAudio a = synth_tone(300.0, 24000, 0.5);   // mono 24 kHz, short
-    DecodedAudio b = synth_tone(440.0, 44100, 1.2);   // mono 44.1 kHz, longest
-    DecodedAudio c = make_pcm(std::vector<float>(48000 * 2, 0.25f), 2, 48000);
-    const std::vector<DecodedAudio> stems = {a, b, c};
+TEST_CASE("mix_stems adds hand-built stems bit for bit; a zero-channel stem adds nothing") {
+    // Mono stems already at the output rate, so no resampler runs. Quarters
+    // and eighths add exactly in a float, so the hand sum below is exact.
+    const DecodedAudio a = make_pcm({0.25f, 0.5f, 1.0f}, 1, 48000);
+    const DecodedAudio b = make_pcm({0.125f, 0.25f}, 1, 48000);
+    const DecodedAudio c = make_pcm({0.5f}, 0, 48000);  // no channels: adds nothing
+    // A plus B for two frames, then A alone past B's end.
+    const DecodedAudio want = make_pcm({0.375f, 0.75f, 1.0f}, 1, 48000);
 
-    CHECK(same_bits(mix_stems(stems, 48000, 2), reference_mix(stems, 48000, 2)));
-    CHECK(same_bits(mix_stems(stems, 44100, 1), reference_mix(stems, 44100, 1)));
+    CHECK(same_bits(mix_stems({a, b, c}, 48000, 1), want));
+    CHECK(same_bits(mix_stems({c, a, b}, 48000, 1), want));
 }
 
 TEST_CASE("StreamMix of real stems matches decoding every stem then mixing") {
     hydra::app::PreviewAudioStem ogg;
     ogg.label = "song";
-    ogg.path = std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg";
+    ogg.path = fixture_path("sine220.ogg");
     hydra::app::PreviewAudioStem mp3;
     mp3.label = "drums";
     mp3.bytes = read_fixture("sine220.mp3");
@@ -238,8 +202,5 @@ TEST_CASE("StreamMix of real stems matches decoding every stem then mixing") {
     const DecodedAudio want = mix_stems(decoded, 48000, 2);
     const DecodedAudio got = read_all(mix);
     REQUIRE(got.samples.size() == want.samples.size());
-    double worst = 0.0;
-    for (std::size_t i = 0; i < got.samples.size(); ++i)
-        worst = std::max(worst, static_cast<double>(std::fabs(got.samples[i] - want.samples[i])));
-    CHECK(worst <= 1e-6);
+    CHECK(testaudio::max_diff(got.samples, want.samples.data(), 0, got.samples.size()) <= 1e-6);
 }

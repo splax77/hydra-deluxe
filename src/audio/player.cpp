@@ -1,9 +1,10 @@
 #include "audio/player.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <utility>
+
+#include "audio/frames.h"
 
 namespace hydra::audio {
 
@@ -24,17 +25,19 @@ void Playhead::seek_frames(int64_t frame) {
     position_ = std::clamp<int64_t>(frame, 0, length_);
 }
 
+// A rate of 0 means no source; the three ms calls below answer that here and
+// leave the conversion itself to audio/frames.h.
 void Playhead::seek_ms(double ms) {
     if (sample_rate_ <= 0) return;
-    seek_frames(static_cast<int64_t>(std::llround(ms * sample_rate_ / 1000.0)));
+    seek_frames(frames_of_ms(ms, sample_rate_));
 }
 
 double Playhead::position_ms() const {
-    return sample_rate_ > 0 ? position_ * 1000.0 / sample_rate_ : 0.0;
+    return sample_rate_ > 0 ? ms_of_frames(position_, sample_rate_) : 0.0;
 }
 
 double Playhead::length_ms() const {
-    return sample_rate_ > 0 ? length_ * 1000.0 / sample_rate_ : 0.0;
+    return sample_rate_ > 0 ? ms_of_frames(length_, sample_rate_) : 0.0;
 }
 
 int64_t Playhead::read_frames(float* out, int64_t frame_count) {
