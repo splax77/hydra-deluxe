@@ -1341,7 +1341,11 @@ Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
     std::vector<uint8_t> notebytes = srb_inflate_stream(
         buf.data(), buf.size(), notes_offset, kSrbMaxStream, nullptr);
 
-    const ChartFormat named = chart_format_of(md.notes_filename);
+    // The notes stream's format comes from its name, by the exact-name rule a
+    // .sng entry and a loose folder use (notes_file_format). An .srb's notes
+    // are always stream 2, so a name outside that rule is not fatal: the
+    // stream's own bytes decide below.
+    const ChartFormat named = notes_file_format(md.notes_filename);
     bool is_mid;
     if (named == ChartFormat::Mid)
         is_mid = true;

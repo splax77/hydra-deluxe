@@ -268,3 +268,15 @@ TEST_CASE("s2 owners: no meter is written by hand outside apply_timesig (258, 31
         CHECK_FALSE(std::regex_search(read_source(root / file), sig_literal));
     }
 }
+
+TEST_CASE("s2 owners: a container's notes entry is found by its exact name (61)") {
+    using namespace testmidi;
+    const std::vector<uint8_t> mid =
+        smf(concat({track_name("PART DRUMS"), set_tempo(), note_on(96, 100), end_of_track()}));
+    // "song.chart" is not a notes name. Before, the .srb trusted the extension
+    // and read these MIDI bytes as .chart text, which failed. Now the name
+    // decides nothing, so the stream's bytes do, and it loads as MIDI.
+    CHECK(load_songbytes_srb(srb_with("song.chart", mid), true, true).sequence.size() == 1);
+    // The exact names decide, in any case.
+    CHECK(load_songbytes_srb(srb_with("NOTES.MID", mid), true, true).sequence.size() == 1);
+}
