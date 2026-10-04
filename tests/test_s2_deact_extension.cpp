@@ -16,6 +16,7 @@
 #include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
+#include "search/pather.h"
 
 using namespace hydra;
 
@@ -135,13 +136,12 @@ TEST_CASE("finding 37: a clamped window still offers its squeeze-out") {
 
 TEST_CASE("finding 37: two ends clamped to one tick each keep their own squeeze-out") {
     const Song song = build_fast_song(kTwoActivations);
-    const ScoreGraph graph(song, 2);
     for (int64_t act : {int64_t{2304}, int64_t{2496}}) {
-        // A targeted search: only this activation exists, so no other path
-        // can crowd it out of its group, and a wrong squeeze-out would show.
-        EngineOptions o = keep_losers();
-        o.target_act_ticks = std::vector<int64_t>{act};
-        const std::vector<SqOutSeen> seen = sqouts_of(run_search(graph, o), 3456);
+        // A targeted search (search_target): only this activation exists, so
+        // no other path can crowd it out of its group, and a wrong squeeze-out
+        // would show.
+        const std::vector<SqOutSeen> seen =
+            sqouts_of(search_target(song, test::scores_settings(2), {act}), 3456);
         const int64_t own_end = act == 2304 ? 5376 : 5568;
         INFO("activation at " << act);
         REQUIRE_FALSE(seen.empty());
@@ -237,9 +237,7 @@ TEST_CASE("finding 37: a plain bar tying the ceiling squeezes out only for its o
     CHECK(cc->clamped);
 
     for (int64_t act : {int64_t{1920}, int64_t{2112}}) {
-        EngineOptions o = keep_losers();
-        o.target_act_ticks = std::vector<int64_t>{act};
-        const std::vector<Path> paths = run_search(graph, o);
+        const std::vector<Path> paths = search_target(song, test::scores_settings(2), {act});
         const int64_t own_end = act == 1920 ? 4992 : 5184;
         const double own_ms = song.timecode(3456).ms() - song.timecode(own_end).ms();
         INFO("activation at " << act);
