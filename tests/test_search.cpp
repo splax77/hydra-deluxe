@@ -1563,9 +1563,9 @@ TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
     CHECK(path.trailing_bank_ticks.empty());
 }
 
-// The lasting order checks, on root paths. A variant's tail activations are
-// its leader's; their order against the variant's own windows is Part B's
-// job, and Part B extends this case to variants.
+// The lasting order checks, on every path, tied variants included (D3,
+// finding 89). A variant's walk is its own windows, then its leader's from
+// the fold on, so its banked bars must still fall between its own windows.
 //
 // These are facts the chart and the window give on their own. The test does
 // not restate when the engine says a bar arrives. A banked bar arrives on a
@@ -1596,7 +1596,29 @@ void check_bank_list(const std::vector<int64_t>& ticks, const Activation* prev,
 }
 }  // namespace
 
-TEST_CASE("Bank: every corpus root banks in order") {
+// R2's check, stage one: the lists hold exactly what the counts count.
+TEST_CASE("Bank: the lists match the stored counts on every corpus record") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song =
+            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        std::vector<const Path*> all = rec.all_paths();
+        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
+        for (const Path* p : all) {
+            CAPTURE(chart);
+            CHECK(p->trailing_bank_ticks.size() == static_cast<size_t>(p->leftover_sp()));
+            for (const Activation& act : p->walk_activations())
+                CHECK(act.bank_rise_ticks.size() == static_cast<size_t>(act.sp_meter()));
+        }
+    }
+}
+
+// The lasting order checks, on every path, tied variants included (D3,
+// finding 89). A variant's walk is its own windows, then its leader's from
+// the fold on, so its banked bars must still fall between its own windows.
+TEST_CASE("Bank: every corpus path banks in order") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts = 0;
     for (const std::string& chart : corpus::chart_paths()) {
@@ -1607,10 +1629,14 @@ TEST_CASE("Bank: every corpus root banks in order") {
         for (const SongTimestamp& ts : song.sequence)
             if (ts.flag_sp) phrase_ends.insert(ts.timecode.ticks());
         const int64_t chart_end = song.sequence.back().timecode.ticks();
-        for (const Path& root : corpus::analyzed(chart, cfg).paths) {
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        std::vector<const Path*> all = rec.all_paths();
+        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
+        for (const Path* p : all) {
+            CAPTURE(chart);
+            CAPTURE(p->pathstring());
             const Activation* prev = nullptr;
-            for (const Activation& act : root.walk_activations()) {
-                CAPTURE(chart);
+            for (const Activation& act : p->walk_activations()) {
                 CAPTURE(act.timecode.ticks());
                 ++acts;
                 check_bank_list(act.bank_rise_ticks, prev, act.timecode.ticks(), phrase_ends);
@@ -1618,8 +1644,7 @@ TEST_CASE("Bank: every corpus root banks in order") {
             }
             // The bars still banked when the last window closed (or from the
             // start, for a path with no window) follow the same rules.
-            CAPTURE(chart);
-            check_bank_list(root.trailing_bank_ticks, prev, chart_end, phrase_ends);
+            check_bank_list(p->trailing_bank_ticks, prev, chart_end, phrase_ends);
         }
     }
     CHECK(acts > 1000);
@@ -1923,4 +1948,123 @@ TEST_CASE("tied variants: every corpus variant matches its lone pricing") {
         }
     }
     CHECK(variants > 200);
+}
+
+TEST_CASE("tied variants: a variant that finished the song keeps its own bank") {
+    // Cap 4. Two phrases fill 2 bars, then two fills. '0' activates at 2304;
+    // its SP ends at 5376, so the phrase at 5760 is banked: 1 bar left. '1'
+    // activates at 3072; its SP still runs at 5760, so that phrase extends it
+    // instead: nothing left. Each doubles two notes, so both score 400, and
+    // the search folds one into the other once both finish.
+    const Song song = build_tail_song({{0, true, false}, {768, true, false},
+                                       {2304, false, true}, {3072, false, true},
+                                       {5760, true, false}, {8448}});
+    ScoreGraph graph(song, 4);
+    const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 3});
+
+    auto check_banks = [](const std::vector<const Path*>& all) {
+        int tied = 0;
+        for (const Path* p : all) {
+            if (p->totalscore() != 400) continue;
+            ++tied;
+            REQUIRE(p->walk_activations().size() == 1);
+            const int64_t at = p->walk_activations().front().timecode.ticks();
+            const std::vector<int64_t> want =
+                at == 2304 ? std::vector<int64_t>{5760} : std::vector<int64_t>{};
+            CHECK_MESSAGE(p->trailing_bank_ticks == want, "activation at " << at);
+            CHECK(p->leftover_sp() == static_cast<int>(want.size()));
+        }
+        CHECK(tied == 2);
+    };
+    const std::vector<const Path*> all = every_path(roots);
+    int variants = 0;
+    for (const Path* p : all) variants += p->var_point.has_value() ? 1 : 0;
+    REQUIRE(variants == 1);  // the two ties are one root and its variant
+    check_banks(all);
+
+    HydraRecord rec;
+    rec.paths = roots;
+    const HydraRecord back = store::rebuild_record(store::flatten_record(rec));
+    check_banks(back.all_paths());
+}
+
+TEST_CASE("tied variants: a variant folded between windows keeps its own banked bars") {
+    // Cap 2. '0' activates at 2304 (SP to 5376), then banks 5760 and 8448;
+    // the phrase at 9216 finds the meter full. '1' activates at 3072 (SP to
+    // 7680, extended by 5760), then banks 8448 and 9216. At the fill at 9984
+    // both hold 2 bars with the same score, outside SP, so the search folds
+    // '0' into '1' there. The leader then activates at 10752 ('1 0' and its
+    // variant '0 0', 1100) or never again ('1' and its variant '0', 850).
+    // Either way the variant's 2 bars are its own, banked at 5760 and 8448.
+    //
+    // The plan's draft had no fill at 9984. Without it the two windows meet
+    // only on the SP node after both activate at 10752, a fold mid-SP, so the
+    // draft's case passed before the fix and tested nothing new.
+    const Song song = build_tail_song({{0, true, false}, {768, true, false},
+                                       {2304, false, true}, {3072, false, true},
+                                       {5760, true, false}, {8448, true, false},
+                                       {9216, true, false}, {9984, false, true},
+                                       {10752, false, true},
+                                       {11520}, {12288}, {16128}});
+    ScoreGraph graph(song, 2);
+    const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
+
+    const std::vector<int64_t> own_0{5760, 8448};
+    const std::vector<int64_t> own_1{8448, 9216};
+    int again = 0, never = 0, variants = 0;
+    for (const Path* p : every_path(roots)) {
+        const ActivationWalk acts = p->walk_activations();
+        if (acts.empty()) continue;
+        const int64_t first = acts[0].timecode.ticks();
+        if (first != 2304 && first != 3072) continue;
+        const std::vector<int64_t>& own = first == 2304 ? own_0 : own_1;
+        CAPTURE(p->pathstring());
+        CAPTURE(first);
+        if (p->totalscore() == 1100) {
+            ++again;
+            REQUIRE(acts.size() == 2);
+            CHECK(acts[1].timecode.ticks() == 10752);
+            CHECK(p->pathstring() == (first == 2304 ? "0 0" : "1 0"));
+            CHECK(acts[1].bank_rise_ticks == own);
+            CHECK(acts[1].sp_meter() == 2);
+            CHECK(p->trailing_bank_ticks.empty());
+        } else if (p->totalscore() == 850) {
+            ++never;
+            REQUIRE(acts.size() == 1);
+            CHECK(p->pathstring() == (first == 2304 ? "0" : "1"));
+            CHECK(p->trailing_bank_ticks == own);
+        } else {
+            continue;
+        }
+        variants += p->var_point.has_value() ? 1 : 0;
+        CHECK(replay_stored_path(song, *p).faithful());
+    }
+    CHECK(again == 2);
+    CHECK(never == 2);
+    CHECK(variants == 2);  // each pair is one root and its variant
+}
+
+TEST_CASE("tied variants: Don Broco - Actors at depth 40 shows each tied path's own bank") {
+    // Audit finding 89: paths 29 '7' and 30 '3' tie at 233,100. '7' ends the
+    // song with 1 bar of SP, '3' with 3. Today both read 1.
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("Don Broco - Actors") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings s;
+    s.sp_cap = 4;
+    s.depth_mode = DepthMode::Scores;
+    s.depth_value = 40;
+    s.ms_filter = 10.0;
+    const HydraRecord& rec = corpus::analyzed(chart, s);
+
+    int seen = 0;
+    for (const Path* p : rec.all_paths()) {
+        if (p->totalscore() != 233100) continue;
+        const int64_t first = p->walk_activations().front().timecode.ticks();
+        if (first == 150720) { CHECK(p->leftover_sp() == 1); ++seen; }
+        if (first == 82560) { CHECK(p->leftover_sp() == 3); ++seen; }
+    }
+    CHECK(seen == 2);
 }

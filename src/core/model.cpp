@@ -550,7 +550,8 @@ void Path::prepare_variants() {
         v.score_accents = score_accents;
         v.score_ghosts = score_ghosts;
         v.notecount = notecount;
-        v.trailing_bank_ticks = trailing_bank_ticks;
+        // trailing_bank_ticks is the variant's own: the engine stores it and
+        // the record keeps it per variant (D3, finding 89).
         v.prepare_variants();
     }
 }

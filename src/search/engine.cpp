@@ -215,6 +215,11 @@ struct Variant {
     // How many squeezes the leader's running window held at the fold. Any
     // later ones happened after it, on both paths.
     int32_t fold_sq_count;
+    // The path had finished the song when it folded.
+    bool finished;
+    // Its banked bars at the fold (an index into banks_, or -1). For a finished
+    // path this is its whole trailing list; between windows, its first m bars.
+    int32_t bank_tail;
 };
 struct Path {
     int32_t node;
@@ -463,7 +468,8 @@ private:
     void reduce_group(const int32_t* members, int32_t n);
 
     void emit_path(const Path& p);
-    void emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk);
+    void emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
+                      int32_t parent_trail_begin, int32_t parent_trail_end);
     void close_folded_act(int32_t own, int32_t lead, const Variant& var);
     void emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
                    int32_t* begin, int32_t* end);
@@ -478,6 +484,30 @@ private:
         *begin = (int32_t)out_ticks_.size();
         for (size_t k = tick_scratch_.size(); k-- > 0;)
             out_ticks_.push_back(pool[(size_t)tick_scratch_[k]].tick);
+        *end = (int32_t)out_ticks_.size();
+    }
+    // A variant folded between windows (or at the song's end): its own banked
+    // bars at the fold, m of them, then the leader's list from position m on,
+    // into out_ticks_[*begin, *end). Both held m bars at the fold, and the
+    // leader's list only grew after it (a bar is given back only on a buffered
+    // squeeze-out edge, and the search never folds a buffered path), so its
+    // first m are its own past. Counting, not ticks, marks the split: a
+    // squeezed-out bar can sit past the fold node.
+    void splice_bank(int32_t own_tail, int32_t lead_begin, int32_t lead_end,
+                     int32_t* begin, int32_t* end) {
+        tick_scratch_.clear();
+        for (int32_t c = own_tail; c >= 0; c = banks_[(size_t)c].prev) tick_scratch_.push_back(c);
+        const int32_t m = (int32_t)tick_scratch_.size();
+        if (lead_end - lead_begin < m)
+            throw std::logic_error("a folded variant banked more bars than its leader");
+        *begin = (int32_t)out_ticks_.size();
+        for (size_t k = tick_scratch_.size(); k-- > 0;)
+            out_ticks_.push_back(banks_[(size_t)tick_scratch_[k]].tick);
+        for (int32_t k = lead_begin + m; k < lead_end; ++k) {
+            // Copied to a local first: the push can reallocate out_ticks_.
+            const int64_t t = out_ticks_[(size_t)k];
+            out_ticks_.push_back(t);
+        }
         *end = (int32_t)out_ticks_.size();
     }
     void emit_ends(int32_t tail, int32_t* begin, int32_t* end) {
@@ -908,6 +938,8 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
             v.fold_tick = p.node >= 0 ? node(p.node).tick : NO_TIME;
             v.fold_sq_count =
                 v.open_sp ? sq_count(acts_[(size_t)leader.act_tail].sq_tail) : 0;
+            v.finished = p.node < 0;
+            v.bank_tail = p.bank_tail;
             variants_.push_back(v);
             leader.var_head = (int32_t)variants_.size() - 1;
             leader.tied_count += p.tied_count;
@@ -1232,7 +1264,8 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     out_acts_[(size_t)own_i] = own;
 }
 
-void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk) {
+void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
+                          int32_t parent_trail_begin, int32_t parent_trail_end) {
     std::vector<int32_t> order;
     for (int32_t i = v; i >= 0; i = variants_[(size_t)i].prev)
         order.push_back(i);
@@ -1240,8 +1273,9 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
     for (size_t k = order.size(); k-- > 0;) {
         const Variant& var = variants_[(size_t)order[k]];
         // A variant ties its parent's score, and prepare_variants copies the
-        // parent's totals, note count and leftover SP onto it, so the engine
-        // hands none of its own (docs/adr/0017).
+        // parent's score totals and note count onto it, so the engine hands
+        // none of those (docs/adr/0017). Its banked bars are its own (D3,
+        // finding 89), set below.
         OutPath op{};
         op.var_point = var.var_point;
         op.depth = depth;
@@ -1255,6 +1289,41 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
                 throw std::logic_error("a variant folded mid-SP has no window to close");
             close_folded_act(op.act_end - 1, parent_walk[(size_t)var.var_point - 1], var);
         }
+
+        // The variant's banked bars (D3, finding 89). Which are its own
+        // depends on where it folded.
+        if (var.finished) {
+            // Both had finished the song: its bank at the fold is its whole
+            // trailing list, whatever the leader's holds.
+            emit_ticks(banks_, var.bank_tail, &op.bank_begin, &op.bank_end);
+        } else if (var.open_sp) {
+            // Folded inside SP, where both banks are empty: every bar banked
+            // later is shared.
+            op.bank_begin = parent_trail_begin;
+            op.bank_end = parent_trail_end;
+        } else if ((size_t)var.var_point < parent_walk.size()) {
+            // Folded between windows, and the leader activated again. That
+            // activation spent the variant's own bars up to the fold, so the
+            // variant stores its own copy of it and reads its parent from the
+            // one after. The copy lands right after the variant's own
+            // activations (nothing else is pushed to out_acts_ in between),
+            // so [act_begin, act_end) stays one range. After it both banks
+            // reset, so later activations stay shared.
+            if (op.act_end != (int32_t)out_acts_.size())
+                throw std::logic_error("a variant's activations are not one range");
+            OutAct next = out_acts_[(size_t)parent_walk[(size_t)var.var_point]];
+            splice_bank(var.bank_tail, next.bank_begin, next.bank_end, &next.bank_begin,
+                        &next.bank_end);
+            out_acts_.push_back(next);
+            op.act_end = (int32_t)out_acts_.size();
+            op.var_point = var.var_point + 1;
+            op.bank_begin = parent_trail_begin;
+            op.bank_end = parent_trail_end;
+        } else {
+            // Folded between windows; the leader never activated again.
+            splice_bank(var.bank_tail, parent_trail_begin, parent_trail_end, &op.bank_begin,
+                        &op.bank_end);
+        }
         out_paths_.push_back(op);
 
         // This variant's activations as its own variants read them: its own,
@@ -1263,7 +1332,7 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
         for (int32_t j = op.act_begin; j < op.act_end; ++j) walk.push_back(j);
         for (size_t j = (size_t)op.var_point; j < parent_walk.size(); ++j)
             walk.push_back(parent_walk[j]);
-        emit_variant(var.var_head, depth + 1, walk);
+        emit_variant(var.var_head, depth + 1, walk, op.bank_begin, op.bank_end);
     }
 }
 
@@ -1284,7 +1353,7 @@ void Engine::emit_path(const Path& p) {
 
     std::vector<int32_t> walk;
     for (int32_t j = op.act_begin; j < op.act_end; ++j) walk.push_back(j);
-    emit_variant(p.var_head, 1, walk);
+    emit_variant(p.var_head, 1, walk, op.bank_begin, op.bank_end);
 }
 
 // --- BFS driver ----------------------------------------------------------
