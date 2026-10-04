@@ -31,21 +31,29 @@ Write-Host "Using cmake: $cmake"
 # Must match each preset's binaryDir in CMakePresets.json.
 $buildDirs = @{ default = "build-cpp"; vs2022 = "build-cpp-vs2022"; ship = "build-ship" }
 $buildDir = Join-Path $root $buildDirs[$Preset]
-if ($Configure -or -not (Test-Path (Join-Path $buildDir "CMakeCache.txt"))) {
-    & $cmake --preset $Preset
-    if ($LASTEXITCODE -ne 0) { throw "configure failed" }
-}
 
-$buildArgs = @("--build", "--preset", $Preset, "--config", $Config)
-if ($Target -ne "") {
-    $buildArgs += @("--target", $Target)
-} else {
-    # hydra_bench and hydra_replay are EXCLUDE_FROM_ALL (not shipped), so a
-    # plain build names them too; otherwise they could break unnoticed.
-    $buildArgs += @("--target", "ALL_BUILD", "hydra_bench", "hydra_replay")
+# cmake reads CMakePresets.json from the current folder, so run it from the
+# script's own checkout; otherwise a call from another worktree builds that one.
+Push-Location $root
+try {
+    if ($Configure -or -not (Test-Path (Join-Path $buildDir "CMakeCache.txt"))) {
+        & $cmake --preset $Preset
+        if ($LASTEXITCODE -ne 0) { throw "configure failed" }
+    }
+
+    $buildArgs = @("--build", "--preset", $Preset, "--config", $Config)
+    if ($Target -ne "") {
+        $buildArgs += @("--target", $Target)
+    } else {
+        # hydra_bench and hydra_replay are EXCLUDE_FROM_ALL (not shipped), so a
+        # plain build names them too; otherwise they could break unnoticed.
+        $buildArgs += @("--target", "ALL_BUILD", "hydra_bench", "hydra_replay")
+    }
+    & $cmake @buildArgs
+    if ($LASTEXITCODE -ne 0) { throw "build failed" }
+} finally {
+    Pop-Location
 }
-& $cmake @buildArgs
-if ($LASTEXITCODE -ne 0) { throw "build failed" }
 
 Write-Host "Build succeeded. Artifacts in $buildDir\$Config\"
 
