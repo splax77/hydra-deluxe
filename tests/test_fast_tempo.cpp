@@ -1,8 +1,9 @@
 // Charts so fast that one SP bar lasts less than the 500 ms squeeze window
 // (D32). No library chart comes close: its shortest SP bar, measured from a
 // phrase chord or an SP-end node, is about 600 ms. These charts only exist to
-// keep the search's own rules consistent, so it never throws and a tied
-// variant still stores what a lone search stores.
+// keep the search's own rules consistent, so it never throws, a tied variant
+// still stores what a lone search stores, and no bar is banked on a phrase a
+// squeeze-in spent.
 //
 // The fixtures in testdata/input/test_fast_tempo are fuzzed charts at 2,000
 // or 4,000 BPM, untrimmed. They have no song.ini, so the corpus scan skips
@@ -12,12 +13,14 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "app/config.h"
+#include "bank_check.h"
 #include "core/model.h"
 #include "parse/song.h"
 #include "search/engine.h"
@@ -139,6 +142,26 @@ void check_one_step_per_sqin(const Path& p) {
     }
 }
 
+// The corpus test's spent-phrase check (tests/bank_check.h) on every stored
+// path: no bank list holds a phrase a squeeze-in spent. The corpus never
+// reaches the D32 states, so these charts are where it is checked.
+//
+// The corpus test's order checks are not run here yet. They fail on a known
+// D32 gap: when a squeeze-out's 500 ms window holds a second phrase after the
+// squeezed one, the search deactivates one bar later than the stored steps
+// say (the squeeze-out drops the second phrase's step), so the squeezed-out
+// bar lands on the real deact node, not on deact_tick(). On
+// node_before_phrase at cap 3, path "0-" stores deact_tick 13440 and banks
+// the bar at 15648. Whether to fix that is an open question with the user.
+void check_banks(const HydraRecord& rec) {
+    std::vector<const Path*> all = rec.all_paths();
+    for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
+    for (const Path* p : all) {
+        CAPTURE(p->pathstring());
+        bank_check::check_spent_phrases(*p);
+    }
+}
+
 // The reviewer's fuzz chart shape (review-sqout fuzz.cpp), on a fixed
 // generator so the charts are the same on every build: four measures at
 // 120 BPM with two or three phrases, then 2,000 or 4,000 BPM from a random
@@ -247,6 +270,7 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
         if (!analyzes(song, cfg, rec)) continue;
         REQUIRE_FALSE(rec.paths.empty());
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
+        check_banks(rec);
         std::vector<const Path*> all;
         for (const Path& r : rec.paths) collect_variants(r, all);
         for (const Path* v : all) {
@@ -254,6 +278,50 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
             CHECK_MESSAGE(diff.empty(), diff);
         }
     }
+}
+
+// The engine's "spent phrase stays buffered" branch, pinned. On this chart at
+// cap 3, the path that activates at 5472 late-squeezes in the phrase at 13920,
+// and its new SP end is 11616, before that phrase. So SP ends first, with an
+// empty meter and the phrase still spent. The graph has a node between the
+// two, so the path then walks an edge without the phrase: the meter math
+// would go below zero there, and the engine keeps the phrase buffered instead.
+// Hitting the phrase later must add nothing, so no bank list holds 13920 (a
+// tick there would light a bar the SqIn already used).
+TEST_CASE("fast tempo: a phrase a SqIn spent banks no bar when SP ends before it") {
+    const Song song = fixture("sqin_end_before_phrase.chart");
+    const app::AnalysisSettings cfg = fast_settings(3);
+    constexpr int64_t kAct = 5472, kPhrase = 13920, kEnd = 11616;
+
+    const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
+                           FillDeadlineRule::Ch11, cfg.rules);
+    bool node_between = false;
+    for (const ScoreGraphNode* n = graph.start(); n; n = n->adv_edge ? n->adv_edge->dest : nullptr) {
+        const int64_t t = n->timecode.ticks();
+        if (t > kEnd && t < kPhrase) node_between = true;
+    }
+    CHECK(node_between);
+
+    HydraRecord rec;
+    REQUIRE(analyzes(song, cfg, rec));
+    int found = 0;
+    for (const Path* p : rec.all_paths()) {
+        bool ends_early = false;
+        for (const Activation& a : p->walk_activations())
+            for (const SpEndStep& s : a.sp_end_steps)
+                if (a.timecode.ticks() == kAct && s.kind == SpEndKind::SqIn && s.tick == kPhrase &&
+                    s.end_tick == kEnd)
+                    ends_early = true;
+        if (!ends_early) continue;
+        ++found;
+        CAPTURE(p->pathstring());
+        for (const Activation& a : p->walk_activations()) {
+            CAPTURE(a.timecode.ticks());
+            CHECK(std::count(a.bank_rise_ticks.begin(), a.bank_rise_ticks.end(), kPhrase) == 0);
+        }
+        CHECK(std::count(p->trailing_bank_ticks.begin(), p->trailing_bank_ticks.end(), kPhrase) == 0);
+    }
+    CHECK(found >= 1);
 }
 
 // Seeds whose only lone-pricing mismatch is the known SP-ready grouping gap.
@@ -282,6 +350,7 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
         if (!analyzes(song, cfg, rec)) continue;
         ++analyzed;
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
+        check_banks(rec);
         const bool gap_seed = std::find(kSpReadyGapSeeds.begin(), kSpReadyGapSeeds.end(),
                                         seed) != kSpReadyGapSeeds.end();
         if (gap_seed) continue;

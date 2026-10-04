@@ -20,6 +20,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "bank_check.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/sqout_chord.h"
@@ -1563,39 +1564,10 @@ TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
     CHECK(path.trailing_bank_ticks.empty());
 }
 
-// The lasting order checks, on every path, tied variants included (D3,
-// finding 89). A variant's walk is its own windows, then its leader's from
-// the fold on, so its banked bars must still fall between its own windows.
-//
-// These are facts the chart and the window give on their own. The test does
-// not restate when the engine says a bar arrives. A banked bar arrives on a
-// real SP-phrase-end note, or, for a squeezed-out bar, at the deact node;
-// every list is strictly ascending (a phrase banks once); and nothing arrives
-// before the window that precedes it closed. The fixture case above pins the
-// exact ticks.
-namespace {
-// Checks one bank list: the bars banked after `prev` closed (nullptr: since the
-// chart began), up to `last_tick`.
-void check_bank_list(const std::vector<int64_t>& ticks, const Activation* prev,
-                     int64_t last_tick, const std::set<int64_t>& phrase_ends) {
-    const std::optional<int64_t> deact = prev ? prev->deact_tick() : std::nullopt;
-    const int64_t floor = deact ? *deact : std::numeric_limits<int64_t>::min();
-    // A squeeze-out leaves one bar, banked by the player's hit on the phrase.
-    // That hit can land at the deact node itself.
-    const bool squeezed_out = prev && prev->sqout_tick.has_value();
-    if (squeezed_out) REQUIRE_FALSE(ticks.empty());
-    for (size_t k = 0; k < ticks.size(); ++k) {
-        CAPTURE(k);
-        CAPTURE(ticks[k]);
-        CHECK(ticks[k] >= floor);
-        CHECK(ticks[k] <= last_tick);
-        if (k > 0) CHECK(ticks[k] > ticks[k - 1]);
-        const bool at_deact_node = squeezed_out && k == 0 && deact && ticks[k] == *deact;
-        CHECK((phrase_ends.count(ticks[k]) == 1 || at_deact_node));
-    }
-}
-}  // namespace
-
+// The lasting order checks (tests/bank_check.h), on every path, tied variants
+// included (D3, finding 89). A variant's walk is its own windows, then its
+// leader's from the fold on, so its banked bars must still fall between its
+// own windows. The fixture case above pins the exact ticks.
 TEST_CASE("Bank: every corpus path banks in order") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts = 0;
@@ -1603,9 +1575,7 @@ TEST_CASE("Bank: every corpus path banks in order") {
         const Song& song =
             corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
         if (song.is_empty()) continue;
-        std::set<int64_t> phrase_ends;
-        for (const SongTimestamp& ts : song.sequence)
-            if (ts.flag_sp) phrase_ends.insert(ts.timecode.ticks());
+        const std::set<int64_t> phrase_ends = bank_check::phrase_ends(song);
         const int64_t chart_end = song.sequence.back().timecode.ticks();
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         std::vector<const Path*> all = rec.all_paths();
@@ -1613,16 +1583,7 @@ TEST_CASE("Bank: every corpus path banks in order") {
         for (const Path* p : all) {
             CAPTURE(chart);
             CAPTURE(p->pathstring());
-            const Activation* prev = nullptr;
-            for (const Activation& act : p->walk_activations()) {
-                CAPTURE(act.timecode.ticks());
-                ++acts;
-                check_bank_list(act.bank_rise_ticks, prev, act.timecode.ticks(), phrase_ends);
-                prev = &act;
-            }
-            // The bars still banked when the last window closed (or from the
-            // start, for a path with no window) follow the same rules.
-            check_bank_list(p->trailing_bank_ticks, prev, chart_end, phrase_ends);
+            acts += bank_check::check_path_banks(*p, phrase_ends, chart_end);
         }
     }
     CHECK(acts > 1000);
