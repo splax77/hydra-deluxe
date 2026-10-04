@@ -199,9 +199,9 @@ fills as a player following the path would see them. A fill the path
 activates on is *taken* (all four lanes lit, the activation note's lane
 highlighted); a fill the path had enough SP for but passed over is *offered*
 (lanes lit dimly); every other candidate fill is hidden, because the game would
-not have shown it. Offered fills come from the activation's skip count, not a
-re-derived SP meter; fills after the last activation are hidden because the
-engine records nothing about them.
+not have shown it. Offered fills are the ones the engine stored on each
+activation as passed over; nothing guesses them from a count. Fills after the
+last activation are hidden because the engine records nothing about them.
 
 **SP meter gauge**:
 The vertical gauge on the note highway's right edge showing banked Star Power

@@ -60,7 +60,7 @@ struct PreviewSpan {
 };
 
 // What the game would have done with one candidate activation fill, read off
-// the path's own skip counts (see build_preview_scene):
+// the path's stored passed-over fills (see build_preview_scene):
 //   Hidden  — never shown: not enough SP banked, or SP was already running.
 //   Offered — shown and passed over: the path could have activated here.
 //   Taken   — the fill the path activates on.
@@ -76,7 +76,9 @@ struct PreviewFill {
 struct PreviewActivation {
     int64_t tick = 0;
     double ms = 0.0;
-    int skips = 0;    // fills passed over before this activation, 0 if unknown
+    // The fills the path was shown and passed over before this activation,
+    // copied from the record (Activation::skipped_fill_ticks).
+    std::vector<int64_t> skipped_fill_ticks;
     // The deact node: where this activation's SP runs out, read off the
     // record (the search stamps it). The active SP window the highway tints
     // runs from `ms` to `sp_end_ms`. has_sp_end is false only for a record
@@ -346,7 +348,8 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // selected chart. When `path` is given, its activations (those carrying a
 // timecode) become the overlay, their ms resolved against the song's own
 // timing so they line up with the notes exactly, and each candidate fill is
-// classified Hidden / Offered / Taken from the activations' skip counts.
+// classified Hidden / Offered / Taken from the activations' stored
+// passed-over fills.
 //
 // `sp_cap` is the SP meter's ceiling in bars — the viewed record's own sp_cap,
 // which is 4 for any normal Clone Hero run and differs only on a what-if

@@ -7,7 +7,6 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
-#include <limits>
 #include <optional>
 
 #include "core/squeeze_rating.h"
@@ -329,7 +328,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
             PreviewActivation pa;
             pa.tick = a.timecode.ticks();
             pa.ms = song.timecode(pa.tick).ms();
-            pa.skips = a.skips();
+            pa.skipped_fill_ticks = a.skipped_fill_ticks;
             pa.bank_rise_ticks = a.bank_rise_ticks;
             for (size_t k = 0; k < a.sp_end_steps.size(); ++k)
                 pa.sp_end_changes.push_back({a.refill_tick(k), a.sp_end_steps[k].end_tick});
@@ -354,36 +353,21 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
     if (path == nullptr) {
         for (PreviewFill& f : scene.fills) f.state = PreviewFillState::Offered;
     } else {
-        // `skips` counts the real opportunities the path passed over right
-        // before an activation: the search charges a skip only when the player
-        // had enough SP and the deadline still allowed it, and resets the count
-        // at each activation. So for an activation with skips == n, the n
-        // candidates nearest before it (and after the previous activation) were
-        // offered, its own candidate was taken, and every other candidate was
-        // hidden — the game would not have shown it. Candidates after the last
-        // activation stay hidden: the engine records nothing about them.
-        //
-        // The fills are in chart order (one per note, by end tick) and so are
-        // the activations, so one index walks the fills alongside them:
-        // `next_fill` is the first fill ending at or after the activation
-        // note. That fill is the taken one when it ends on the note itself,
-        // and the offered ones are the fills just before it, back to the
-        // previous activation.
+        // Which fills the game showed is engine truth: each activation lists
+        // the fills its path passed over, and its own fill is the taken one.
+        // Every other fill stays hidden, including those after the last
+        // activation, which the engine records nothing about. Fills and the
+        // stored ticks are both in chart order, so one index walks them.
         std::vector<PreviewFill>& fills = scene.fills;
-        int64_t prev_tick = std::numeric_limits<int64_t>::min();
         size_t next_fill = 0;
+        auto mark = [&](int64_t tick, PreviewFillState state) {
+            while (next_fill < fills.size() && fills[next_fill].span.end_tick < tick) ++next_fill;
+            if (next_fill < fills.size() && fills[next_fill].span.end_tick == tick)
+                fills[next_fill].state = state;
+        };
         for (const PreviewActivation& a : scene.activations) {
-            while (next_fill < fills.size() && fills[next_fill].span.end_tick < a.tick) ++next_fill;
-            if (next_fill < fills.size() && fills[next_fill].span.end_tick == a.tick)
-                fills[next_fill].state = PreviewFillState::Taken;
-            int left = a.skips;
-            for (size_t i = next_fill; i > 0 && left > 0; --i) {
-                PreviewFill& f = fills[i - 1];
-                if (f.span.end_tick <= prev_tick) break;
-                f.state = PreviewFillState::Offered;
-                --left;
-            }
-            prev_tick = a.tick;
+            for (int64_t t : a.skipped_fill_ticks) mark(t, PreviewFillState::Offered);
+            mark(a.tick, PreviewFillState::Taken);
         }
     }
 

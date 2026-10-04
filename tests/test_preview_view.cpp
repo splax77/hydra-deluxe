@@ -106,10 +106,11 @@ Song make_fill_song() {
     return song;
 }
 
-Activation act_at(const Song& song, int64_t tick, int skips) {
+// An activation at `tick` that passed over the fills ending at `skipped_fills`.
+Activation act_at(const Song& song, int64_t tick, std::vector<int64_t> skipped_fills) {
     Activation a;
     a.timecode = song.timecode(tick);
-    test::set_skips(a, skips);
+    a.skipped_fill_ticks = std::move(skipped_fills);
     return a;
 }
 
@@ -307,8 +308,7 @@ TEST_CASE("build_preview_scene: skips say which fills the path was offered") {
     Song song = make_fill_song();
     Path path;
     // The path activates on the third fill after passing over the one at 960.
-    path.activations = {act_at(song, 1440, 0)};
-    path.activations[0].skipped_fill_ticks = {960};
+    path.activations = {act_at(song, 1440, {960})};
 
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE(scene.fills.size() == 4);
@@ -322,7 +322,7 @@ TEST_CASE("build_preview_scene: skips say which fills the path was offered") {
 TEST_CASE("build_preview_scene: a second activation with skips 0 hides what lies between") {
     Song song = make_fill_song();
     Path path;
-    path.activations = {act_at(song, 960, 0), act_at(song, 1920, 0)};
+    path.activations = {act_at(song, 960, {}), act_at(song, 1920, {})};
 
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE(scene.fills.size() == 4);
@@ -334,12 +334,28 @@ TEST_CASE("build_preview_scene: a second activation with skips 0 hides what lies
     // With the fill at 1440 passed over before the second activation, the fill
     // between them is offered instead.
     Path skipped;
-    skipped.activations = {act_at(song, 960, 0), act_at(song, 1920, 0)};
-    skipped.activations[1].skipped_fill_ticks = {1440};
+    skipped.activations = {act_at(song, 960, {}), act_at(song, 1920, {1440})};
     PreviewScene s2 = build_preview_scene(song, &skipped);
     CHECK(s2.fills[1].state == PreviewFillState::Taken);
     CHECK(s2.fills[2].state == PreviewFillState::Offered);
     CHECK(s2.fills[3].state == PreviewFillState::Taken);
+}
+
+TEST_CASE("build_preview_scene: under the 1.0 rule the offered fill is the one the engine charged") {
+    // Finding 52. Fill B's 1.0 deadline falls before fill A's, so B never
+    // spawned and A was shown and passed over. The nearest-n guess lit B.
+    Song song = test::make_ch10_fill_song();
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
+    EngineOptions opts;
+    opts.target_act_ticks = std::vector<int64_t>{28800};
+    std::vector<Path> paths = run_search(graph, opts);
+    REQUIRE(!paths.empty());
+    PreviewScene scene = build_preview_scene(song, &paths.front());
+    REQUIRE(scene.fills.size() == 3);
+    CHECK(scene.fills[0].span.end_tick == 19200);
+    CHECK(scene.fills[0].state == PreviewFillState::Offered);
+    CHECK(scene.fills[1].state == PreviewFillState::Hidden);
+    CHECK(scene.fills[2].state == PreviewFillState::Taken);
 }
 
 TEST_CASE("build_beat_events: bars, beats, and half-beats from the timing alone") {
@@ -641,7 +657,8 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                     b.activations.end(),
                     [](const PreviewActivation& x, const PreviewActivation& y) {
                         return x.tick == y.tick && x.ms == y.ms &&
-                               x.skips == y.skips && x.has_sp_end == y.has_sp_end &&
+                               x.skipped_fill_ticks == y.skipped_fill_ticks &&
+                               x.has_sp_end == y.has_sp_end &&
                                x.sp_end_tick == y.sp_end_tick && x.sp_end_ms == y.sp_end_ms &&
                                x.sp_end_changes == y.sp_end_changes &&
                                x.bank_rise_ticks == y.bank_rise_ticks &&
@@ -749,8 +766,8 @@ TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures
     {
         Song song = make_fill_song();
         Path one, two;
-        one.activations = {act_at(song, 1440, 1)};
-        two.activations = {act_at(song, 960, 0), act_at(song, 1920, 1)};
+        one.activations = {act_at(song, 1440, {960})};
+        two.activations = {act_at(song, 960, {}), act_at(song, 1920, {1440})};
         check_split(song, &one, kCloneHeroSpCap, rules, &two, "fills, one activation");
         check_split(song, &two, kCloneHeroSpCap, rules, &one, "fills, two activations");
         check_split(song, nullptr, kCloneHeroSpCap, rules, &two, "fills, path dropped");
@@ -779,7 +796,7 @@ TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures
     {
         Song song = make_overfill_song();
         Path path;
-        path.activations = {act_at(song, 2304, 0)};
+        path.activations = {act_at(song, 2304, {})};
         check_split(song, &path, kCloneHeroSpCap, rules, nullptr, "overfill");
     }
 
@@ -1086,7 +1103,7 @@ TEST_CASE("sp meter curve: an activation the record stamped nothing on draws not
     // (the search tests prove it).
     Song song = make_sp_song({960, 1920, 5760}, /*last_tick=*/9600);
     Path path;
-    path.activations = {act_at(song, 3840, /*skips=*/0)};
+    path.activations = {act_at(song, 3840, /*skipped_fills=*/{})};
 
     PreviewScene scene = build_preview_scene(song, &path);
     const SpMeterCurve& c = scene.sp_meter;
@@ -1487,7 +1504,7 @@ TEST_CASE("score box: a path the replay can't reproduce says so") {
     // An activation with no deactivation node (a record from before blob v4)
     // yields no window, so the replay can't stand for the path.
     Path old;
-    old.activations.push_back(act_at(song, 720, 0));
+    old.activations.push_back(act_at(song, 720, {}));
     PreviewScene b = build_preview_scene(song, &old);
     CHECK(b.score.state == PreviewScore::State::Unavailable);
     CHECK(build_score_box(b, 600.0).score == "Score unavailable");
@@ -1601,7 +1618,7 @@ TEST_CASE("drain box: an activation with no stored end stays idle") {
     // A pre-v4 record: no deact node, so nothing says SP is running.
     Song song = make_sp_song({960, 1920}, /*last_tick=*/9600);
     Path path;
-    path.activations = {act_at(song, 3840, /*skips=*/0)};
+    path.activations = {act_at(song, 3840, /*skipped_fills=*/{})};
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE_FALSE(scene.activations[0].has_sp_end);
 
@@ -1769,7 +1786,7 @@ std::vector<PreviewFillState> fill_states(const PreviewScene& scene, bool has_pa
                     f.state = PreviewFillState::Taken;
                     break;
                 }
-            int left = a.skips;
+            int left = static_cast<int>(a.skipped_fill_ticks.size());
             for (auto it = fills.rbegin(); it != fills.rend() && left > 0; ++it) {
                 if (it->span.end_tick >= a.tick || it->span.end_tick <= prev_tick) continue;
                 it->state = PreviewFillState::Offered;
@@ -2103,12 +2120,22 @@ BusyChart make_busy_chart(std::mt19937& rng, int64_t measures) {
     std::uniform_int_distribution<int> gap(0, 12);
     std::bernoulli_distribution collect(0.5);
     int64_t after = 0;
+    int64_t prev_act = std::numeric_limits<int64_t>::min();
     for (const SongTimestamp& ts : song.sequence) {
         const int64_t t = ts.timecode.ticks();
         if (!ts.activation_length || t < after) continue;
         if (gap(rng) != 0) continue;
         Activation a = sp_act_at(song, t, sp(rng));
-        test::set_skips(a, skips(rng));
+        // The passed-over fills are the nearest ones before the activation,
+        // the ticks the old scan would light, so the two agree on made-up data.
+        std::vector<int64_t> before;  // fills after the previous activation, before this one
+        for (const SongTimestamp& f : song.sequence) {
+            const int64_t ft = f.timecode.ticks();
+            if (f.activation_length && ft > prev_act && ft < t) before.push_back(ft);
+        }
+        const int n = std::min(skips(rng), static_cast<int>(before.size()));
+        a.skipped_fill_ticks.assign(before.end() - n, before.end());
+        prev_act = t;
         a.chord.add_note(NoteColor::Red);
         for (const SongTimestamp& p : song.sequence) {
             const int64_t pt = p.timecode.ticks();
