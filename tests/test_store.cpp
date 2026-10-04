@@ -1319,9 +1319,35 @@ HydraRecord legacy_at_cap(int cap) {
     return r;
 }
 
-// Turns a schema 3 file back into schema 2: the results table without its
-// legacy_fills column, every row and result_id kept, user_version 2.
+// Turns a file this build wrote back into schema 3: the results table without
+// its rules_fp column and with a key that leaves it out, every row, result_id
+// and blob kept.
+void downgrade_to_schema3(const std::string& path) {
+    exec_on_file(path,
+                 "ALTER TABLE results RENAME TO r4;"
+                 "CREATE TABLE results ("
+                 "  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
+                 "  chartmode TEXT NOT NULL, hyversion TEXT NOT NULL,"
+                 "  sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
+                 "  ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
+                 "  depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL DEFAULT 0,"
+                 "  bestpath TEXT NOT NULL, structure BLOB NOT NULL, score INTEGER,"
+                 "  actcount INTEGER, maxskip INTEGER, hardest_ms REAL, avgmult REAL,"
+                 "  notecount INTEGER, sqin_count INTEGER, sqout_count INTEGER,"
+                 "  pathcount INTEGER, stars INTEGER,"
+                 "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
+                 "          depth_value, legacy_fills));"
+                 "INSERT INTO results SELECT result_id, hyhash, chartmode, hyversion,"
+                 " sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,"
+                 " bestpath, structure, score, actcount, maxskip, hardest_ms, avgmult,"
+                 " notecount, sqin_count, sqout_count, pathcount, stars FROM r4;"
+                 "DROP TABLE r4;");
+}
+
+// Turns a file this build wrote back into schema 2: schema 3 (above) without
+// its legacy_fills column, every row and result_id kept, user_version 2.
 void downgrade_to_schema2(const std::string& path) {
+    downgrade_to_schema3(path);
     exec_on_file(path,
                  "ALTER TABLE results RENAME TO r3;"
                  "CREATE TABLE results ("
@@ -1465,26 +1491,8 @@ TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
     }
     // Back to the schema 3 table (no rules_fp, a key without it), with a copy
     // of each row's id and blob to compare against afterwards.
-    exec_on_file(path,
-                 "ALTER TABLE results RENAME TO r4;"
-                 "CREATE TABLE results ("
-                 "  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
-                 "  chartmode TEXT NOT NULL, hyversion TEXT NOT NULL,"
-                 "  sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
-                 "  ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
-                 "  depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL DEFAULT 0,"
-                 "  bestpath TEXT NOT NULL, structure BLOB NOT NULL, score INTEGER,"
-                 "  actcount INTEGER, maxskip INTEGER, hardest_ms REAL, avgmult REAL,"
-                 "  notecount INTEGER, sqin_count INTEGER, sqout_count INTEGER,"
-                 "  pathcount INTEGER, stars INTEGER,"
-                 "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
-                 "          depth_value, legacy_fills));"
-                 "INSERT INTO results SELECT result_id, hyhash, chartmode, hyversion,"
-                 " sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,"
-                 " bestpath, structure, score, actcount, maxskip, hardest_ms, avgmult,"
-                 " notecount, sqin_count, sqout_count, pathcount, stars FROM r4;"
-                 "DROP TABLE r4;"
-                 "CREATE TABLE kept AS SELECT result_id, structure FROM results;");
+    downgrade_to_schema3(path);
+    exec_on_file(path, "CREATE TABLE kept AS SELECT result_id, structure FROM results;");
     REQUIRE(scalar(path, "SELECT COUNT(*) FROM pragma_table_info('results')"
                          " WHERE name='rules_fp'") == 0);
     {
