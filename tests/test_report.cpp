@@ -399,9 +399,16 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
                            counted(result.songs, "chart", "charts") +
                            " — every mode at the current cap, top 5 paths per chart and mode";
     CHECK(result.html.find(subtitle) != std::string::npos);
-    CHECK(result.html.find("Generated from hydra.db. Timing tiers match") !=
+    // D50 item 1. The default 85 ms hit window puts Beyond past 170 ms, the
+    // same number the Beyond chip and the "Past 170 ms" tile print. The page
+    // escapes the apostrophes.
+    CHECK(result.html.find(
+              "<p>Generated from hydra.db. Timing tiers measure how big each "
+              "squeeze is, in steps of your hit window. The Paths tab&#x27;s row "
+              "labels measure how far a hit lands from the Star Power end, so the "
+              "two can differ. &#x27;Beyond&#x27; means past the 170 ms window.</p>") !=
           std::string::npos);
-    CHECK(result.html.find("past the 170 ms window") != std::string::npos);
+    CHECK(result.html.find("Timing tiers match") == std::string::npos);
 
     // --all-paths wording.
     options.max_paths = report::kEveryPathSentinel;

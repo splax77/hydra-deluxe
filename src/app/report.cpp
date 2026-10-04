@@ -418,9 +418,13 @@ GeneratedReport generate_report(store::RecordStore& store,
                            " — " + cap_label;
     std::string dbname =
         std::filesystem::u8path(options.db_path).filename().u8string();
+    // D50 item 1. The window named is the Beyond edge, printed whole the way
+    // the page's Beyond chip and "Past N ms" tile print it.
     std::string footer = "Generated from " + dbname +
-                         ". Timing tiers match Hydra's squeeze ratings; "
-                         "'Beyond' is past the " +
+                         ". Timing tiers measure how big each squeeze is, in steps "
+                         "of your hit window. The Paths tab's row labels measure how "
+                         "far a hit lands from the Star Power end, so the two can "
+                         "differ. 'Beyond' means past the " +
                          std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) +
                          " ms window.";
     out.html = build_html(rows, subtitle, footer, w);
