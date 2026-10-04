@@ -1158,6 +1158,25 @@ const std::vector<OwnerRule>& rules() {
          {"return static_cast<size_t>(std::min<uint64_t>(length, available));"},
          {},
          {"src"}},
+        // ---- the report pages (phase 3 task K1a) ----
+        // A bare toLocaleString() groups by the browser's own language, so a
+        // German browser prints 1.234 under a subtitle that says 1,234. The
+        // pages' shared fmt groups with one fixed rule.
+        {"Which locale groups thousands on a report page?",
+         "fmt in src/app/html_page.cpp",
+         R"(\.toLocaleString\(\))",
+         "",
+         {},
+         {},
+         "audit findings 14 and 99; D48, Q12 (phase 3 task K1a)",
+         {"idx.textContent = (++n).toLocaleString();",
+          "['Paths shown', rows.length.toLocaleString()],"},
+         {"const fmt = n => n === null || n === undefined ? DASH : n.toLocaleString('en-US');",
+          "['Paths shown', fmt(rows.length)],"},
+         {},
+         // The pages live in src/app; a scope entry with a slash names one
+         // file, so the row scans all of src, where nothing else has one.
+         {"src"}},
     };
     return r;
 }
@@ -1213,12 +1232,6 @@ const std::vector<KnownCopy>& known_copies() {
          "src/ui/library_toolbar.cpp",
          "if (!app.status_is_problem && ImGui::GetTime() - shown_at > 6.0) return;",
          "finding 219, not yet scheduled"},
-        {"How is a count written next to its noun?", "src/app/report.cpp",
-         "return group_thousands(n) + \" \" + (n == 1 ? one : many);",
-         "task K1a (D48, Q12: report::counted goes, callers read the core counted)"},
-        {"How is a count written next to its noun?", "src/app/report.cpp",
-         "std::string cap_label = \"SP cap \" + std::to_string(options.cap.exact) + \" bars\";",
-         "task K1a (D48, Q12: the report subtitle's cap reads \"1 bar\" at cap 1)"},
         {"How is a count written next to its noun?", "src/ui/library_dialogs.cpp",
          "return group_thousands(n) + \" \" + (n == 1 ? one : many);",
          "task K3 (D48, Q12: count_label goes, callers read counted)"},
@@ -1234,12 +1247,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which rule names a fill deadline?", "src/ui/library_dialogs.cpp",
          "out.fills = s.legacy_fills ? \"Clone Hero 1.0\" : \"Clone Hero 1.1\";",
          "task K3 (finding 55: the settings line reads fill_rule_name)"},
-        {"Which rule names a fill deadline?", "src/app/report.cpp",
-         "if (options.lens.legacy_fills) cap_label += \" — Clone Hero 1.0 fills\";",
-         "task K1a (finding 55: the report's cap label reads fill_rule_name)"},
-        {"Which tags does Hydra strip from a song name?", "src/app/report.cpp",
-         "static const char* kWord = \"color\";",
-         "task K1a (findings 8 and 111: plain gives way to display_title)"},
     };
     return k;
 }

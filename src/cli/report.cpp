@@ -90,8 +90,13 @@ int main() {
         hydra::app::report::generate_report(*store, options);
     store->close();
 
+    // No page: generate_report says why. An empty database keeps the tool's
+    // own sentence; results stored under other settings name the settings.
     if (report.rows == 0) {
-        std::printf("No records stored yet. Run hydra_batch first.\n");
+        if (report.empty_reason == hydra::app::report::EmptyReason::NothingUnderSettings)
+            std::printf("%s\n", report.why_empty.c_str());
+        else
+            std::printf("No records stored yet. Run hydra_batch first.\n");
         return 1;
     }
 
@@ -108,8 +113,8 @@ int main() {
         return 1;
     }
 
-    std::printf("Wrote %s path rows to %s\n",
-                hydra::group_thousands(report.rows).c_str(), out.c_str());
+    std::printf("Wrote %s to %s\n",
+                hydra::counted(report.rows, "path row", "path rows").c_str(), out.c_str());
 
     if (open_when_done) {
         // Hand the page to the default browser (the same call the GUI's

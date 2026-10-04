@@ -379,7 +379,14 @@ void ReportJob::run() {
         // because the store is empty, and it must leave the last report on
         // disk alone.
         if (is_cancelled()) return false;
-        if (report.rows == 0) throw std::runtime_error("no records stored yet");
+        // generate_report says why the page is empty. Results stored under
+        // other settings throw the sentence that names them, which the strip
+        // shows as it is; an empty database keeps the app's own sentence.
+        if (report.rows == 0) {
+            if (report.empty_reason == app::report::EmptyReason::NothingUnderSettings)
+                throw std::runtime_error(report.why_empty);
+            throw std::runtime_error("no records stored yet");
+        }
 
         // A browser that won't open the page is not a failed report: the
         // page is saved, and the finished strip says so (audit B1).
