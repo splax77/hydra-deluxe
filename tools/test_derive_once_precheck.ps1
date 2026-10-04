@@ -11,9 +11,10 @@ one test helper, one ADR that decides a 45-second deadline, and a copy of
 this repository's tests/test_single_owner.cpp, so the scan rows the script
 reads are today's. A feature branch adds one renamed copy of the helper, one
 recomputed offset, one undecided number (37), the decided 45, one stray
-source scan, and two lines the scan rows list as must-not-match (a gap
-between two chart ticks, a "!= SqIn" skip). The script must report the four
-planted items, one per check, and must not report the decided 45 or the two
+source scan, a new scan row with no must-match examples, and two lines the
+scan rows list as must-not-match (a gap between two chart ticks, a "!= SqIn"
+skip). The script must report the five planted items (check 4 has two), and
+must not report the decided 45 or the two
 must-not-match lines. Then the fixture runs again once per check with that check
 turned off, and each of those runs must miss its planted item, which proves
 every check is needed for this test to pass.
@@ -173,6 +174,13 @@ TEST_CASE("model.h mentions the window") {
     CHECK(in.good());
 }
 '@
+    # Check 4 again: a new scan row with no must-match examples, read from
+    # the rows the script already parsed (M0 review 2, finding 3).
+    $scanText = [System.IO.File]::ReadAllText((Join-Path $fixture 'tests/test_single_owner.cpp'))
+    $tableOpen = 'static const std::vector<OwnerRule> r = {'
+    if (-not $scanText.Contains($tableOpen)) { throw "the fixture cannot find '$tableOpen' in tests/test_single_owner.cpp" }
+    Write-Fixture 'tests/test_single_owner.cpp' ($scanText.Replace($tableOpen, $tableOpen +
+        "`n        {""Which planted row has no examples?"", ""nobody"", R""re(\bplanted_no_examples\b)re"", """", {}, {}, ""fixture"", {}, {""int planted_must_not = 0;""}},"))
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'feature')
 
@@ -180,7 +188,8 @@ TEST_CASE("model.h mentions the window") {
         @('C', 'tests/helpers_b.cpp', 'add_up.*same body.*sum_values'),
         @('B', 'tests/test_offsets.cpp', 'How far is a note from an SP end.*end\.ms\(\)'),
         @('D', 'tests/test_offsets.cpp', '\b37 in:'),
-        @('E', 'tests/test_stray_scan.cpp', 'HYDRA_SOURCE_DIR')
+        @('E', 'tests/test_stray_scan.cpp', 'HYDRA_SOURCE_DIR'),
+        @('E', 'tests/test_single_owner.cpp', 'planted row has no examples.*no must-match examples')
     )
     $absent = @('\b45 in:', '^[A-E] tests/helpers_a\.cpp:', '^[A-E] tests/test_offsets\.cpp:\d+  .*timecode\(69120\)',
                 '^[A-E] tests/test_offsets\.cpp:\d+  .*SpEndKind::SqIn')

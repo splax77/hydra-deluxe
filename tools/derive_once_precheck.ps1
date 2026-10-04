@@ -1073,33 +1073,18 @@ function Invoke-Check4 {
             }
         }
     }
-    # New rule rows in the scan file.
-    if (-not $added.ContainsKey($scanFile)) { return }
-    $sv = Get-Views $scanFile
-    $body = Find-FunctionBody $sv.CodeText 'rules'
-    if (-not $body) { return }
-    $init = Get-InitList $sv.CodeText $body[0] $body[1]
-    if (-not $init) { return }
-    foreach ($el in (Get-TopElements $sv.CodeText $init[0] $init[1])) {
-        $line = ($sv.CodeText.Substring(0, $el[0]) -split "`n").Count
-        $last = ($sv.CodeText.Substring(0, $el[1]) -split "`n").Count
-        $isNew = $false
-        for ($i = $line; $i -le $last; $i++) { if (Test-Added $scanFile $i) { $isNew = $true; break } }
-        if (-not $isNew) { continue }
-        $fields = Split-Fields $sv.CodeText $el[0] $el[1]
-        $q = if ($fields.Count) { (Get-Strings $sv.NcText.Substring($fields[0][0], $fields[0][1] - $fields[0][0])) -join '' } else { '?' }
-        $lists = @{ 7 = 'must-match'; 8 = 'must-not-match' }
-        foreach ($k in 7, 8) {
-            $n = if ($fields.Count -gt $k) { @(Get-Strings $sv.NcText.Substring($fields[$k][0], $fields[$k][1] - $fields[$k][0])).Count } else { 0 }
-            if ($n -eq 0) {
-                Add-Item 'E' $scanFile $line "scan row ""$q"" has no $($lists[$k]) examples" 'every scan row ships with lines it must match and must not match, so the self-test proves its pattern'
+    # New rule rows in the scan file: the rows read above, with Added set
+    # when the range wrote any of their lines (only when the rows are read
+    # from the range's own last commit).
+    foreach ($r in ($rows | Where-Object Added)) {
+        $lists = [ordered]@{ 'must-match' = $r.MustMatch; 'must-not-match' = $r.MustNotMatch }
+        foreach ($name in $lists.Keys) {
+            if ($lists[$name].Count -eq 0) {
+                Add-Item 'E' $scanFile $r.Line "scan row ""$($r.Question)"" has no $name examples" 'every scan row ships with lines it must match and must not match, so the self-test proves its pattern'
             }
         }
-        if ($fields.Count -gt 2) {
-            $pat = (Get-Strings $sv.NcText.Substring($fields[2][0], $fields[2][1] - $fields[2][0])) -join ''
-            if ($pat -match '\(\?<?!\(?[A-Za-z_]\w*(\|[A-Za-z_]\w*)*\)?\\s\*\(?\\?\.') {
-                Add-Item 'E' $scanFile $line "scan row ""$q"" exempts variable names inside its pattern ($($Matches[0])...)" 'an exemption in the pattern applies in every file; list the allowed lines as owner lines with their reason'
-            }
+        if ($r.Pattern -match '\(\?<?!\(?[A-Za-z_]\w*(\|[A-Za-z_]\w*)*\)?\\s\*\(?\\?\.') {
+            Add-Item 'E' $scanFile $r.Line "scan row ""$($r.Question)"" exempts variable names inside its pattern ($($Matches[0])...)" 'an exemption in the pattern applies in every file; list the allowed lines as owner lines with their reason'
         }
     }
 }
