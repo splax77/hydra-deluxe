@@ -46,6 +46,11 @@ nlohmann::json score_json(const ReplayScore& s);
 // fcvideo reads the rest.
 nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming& timing);
 
+// The "result" object `dump` and `target` print: the record's best score and
+// best path. The score is summarize_record's, so a record with no paths has
+// none: "score" is null and "bestpath" is "", the way hydra_batch prints "-".
+nlohmann::json result_json(const HydraRecord& rec);
+
 }  // namespace hydra
 
 #endif  // HYDRA_TOOLS_REPLAY_JSON_H

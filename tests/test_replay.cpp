@@ -39,6 +39,7 @@
 #include "search/graph.h"
 #include "core/model.h"  // kSqueezeWindowMs, the horizon the warning uses
 #include "search/pather.h"
+#include "store/record_store.h"
 
 using namespace hydra;
 using json = nlohmann::json;
@@ -583,6 +584,33 @@ TEST_CASE("paths_json writes every field the dump readers use") {
 
         checked = true;
         break;  // one chart's first path is the whole contract
+    }
+    CHECK(checked);
+}
+
+// dump and target print one "result" block. A record with no paths has no best
+// score (summarize_record's answer, which hydra_batch prints as "-"), so the
+// block says null there rather than a real-looking 0 (audit finding 98).
+TEST_CASE("result block: an empty record writes a null score and an empty bestpath") {
+    const json empty = result_json(HydraRecord{});
+    CHECK(empty["score"].is_null());
+    CHECK(empty["bestpath"].get<std::string>() == "");
+
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    bool checked = false;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        if (rec.paths.empty()) continue;
+
+        const std::optional<int64_t> best = store::summarize_record(rec).score;
+        REQUIRE(best.has_value());
+        const json full = result_json(rec);
+        CHECK(full["score"].get<int64_t>() == *best);
+        CHECK(full["bestpath"].get<std::string>() == rec.best_path().pathstring());
+        checked = true;
+        break;  // one chart's record is the whole contract
     }
     CHECK(checked);
 }
