@@ -673,6 +673,41 @@ TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refus
     CHECK(n.offset_ms == doctest::Approx(-375.0));
 }
 
+// A phrase chord at or before the activation was banked before Star Power
+// started, so that window cannot squeeze it out, even when it sits inside the
+// 500 ms window around the SP end. The replay refuses the typed offset and
+// warns about no such chord, as the engine never offers it.
+TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refused") {
+    // Phrase chord at 2928, 375 ms before D = 3072; the window starts at 3000.
+    const Song song = song_with({{0, false}, {768, false}, {2928, true},
+                                 {3000, false}, {3072, false}});
+    ReplayWindow w;
+    w.act_tick = 3000;
+    w.deact_tick = 3072;
+    w.sqout_offset_ms = -375.0;
+    CHECK_THROWS_WITH_AS(
+        resolve_sqout_note(song, w),
+        "window 3000:3072: the SqOut offset -375.00 ms lands on the phrase "
+        "chord at tick 2928, at or before the activation at tick 3000. That "
+        "phrase was banked before Star Power started, so this window cannot "
+        "squeeze it out. Not priced.",
+        std::runtime_error);
+
+    // An earlier window paid the chord. The later window's SP end has it in
+    // range, but cannot squeeze it out, so only the earlier window is flagged.
+    ReplayWindow first;
+    first.act_tick = 0;
+    first.deact_tick = 2950;
+    ReplayWindow second;
+    second.act_tick = 3000;
+    second.deact_tick = 3072;
+    const ReplayResult r = replay_path(song, {first, second});
+    const std::vector<std::string> warned =
+        ambiguous_window_warnings(song, r, {first, second});
+    REQUIRE(warned.size() == 1);
+    CHECK(warned[0].rfind("window 0:2950 ", 0) == 0);
+}
+
 // The graph lets a deactivation squeeze out exactly one chord: the first
 // phrase chord strictly within 500 ms of the SP end (core::sqout_chord, which
 // graph.cpp add_deact_edge calls). The warning names that chord, and only

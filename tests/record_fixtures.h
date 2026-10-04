@@ -160,6 +160,22 @@ inline Song clamp_song() {
                             {{0, 120.0}, {2700, 60.0}});
 }
 
+// A squeeze window that reaches back past the activation. At 4000 BPM a
+// measure (768 ticks) lasts 60 ms, so the 500 ms squeeze window spans more
+// than eight measures. Phrases at 0, 768 and 1536 bank three bars before the
+// fill at 2304 (180 ms) activates, so SP ends at 2304 + 6 measures = 6912
+// (540 ms). The SP end two measures earlier, 5376 (420 ms), has the phrase at
+// 0 inside its window; the one at 6912 has the phrase at 768. Both phrases
+// were banked before SP started, so this activation can squeeze neither in
+// nor out: its SP simply ends at 6912.
+inline Song banked_phrase_window_song() {
+    return build_tempo_song({{0, true},     {768, true},  {1536, true}, {2304, false, true},
+                             {3072},        {3840},       {4608},       {5376},
+                             {6144},        {6912},       {7680},       {8448},
+                             {9216}},
+                            {{0, 4000.0}});
+}
+
 // Keep every path, not only the best score (EngineOptions' default depth is
 // 0), so a SqOut or SqIn branch the fixture creates is in the output even
 // when it is not optimal.

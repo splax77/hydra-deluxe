@@ -1089,6 +1089,33 @@ TEST_CASE("SP end history: a squeezed-out phrase leaves no step") {
     CHECK(first.collected_phrase_ticks().empty());
 }
 
+// A squeeze window can reach back past the activation when 500 ms spans more
+// than one SP bar. The phrases there were banked before SP started, so the
+// activation cannot squeeze them in or out (and before the rule, the SqIn
+// branch found no step to relabel and broke the search).
+TEST_CASE("SP end history: no activation squeezes a phrase it banked before it started") {
+    Song song = test::banked_phrase_window_song();
+    ScoreGraph graph(song, 4);
+    std::vector<Path> paths;
+    REQUIRE_NOTHROW(paths = run_search(graph, test::wide_search()));
+    int acts = 0;
+    for (const Path& p : paths) {
+        for (const Activation& act : p.walk_activations()) {
+            CAPTURE(p.pathstring());
+            ++acts;
+            CHECK(act.timecode.ticks() == 2304);
+            CHECK_FALSE(act.sqout_tick.has_value());
+            CHECK(act.sqinouts.empty());
+            // D4: the history is never empty, and SP ends where the banked
+            // bars put it.
+            CHECK((act.sp_end_steps ==
+                   std::vector<SpEndStep>{{2304, 6912, SpEndKind::Activation}}));
+            CHECK(act.deact_tick() == std::optional<int64_t>(6912));
+        }
+    }
+    CHECK(acts > 0);
+}
+
 // The lasting check on every corpus activation's history (R1, D4).
 TEST_CASE("SP end history: every corpus activation is consistent") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
@@ -1110,6 +1137,9 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                 REQUIRE_FALSE(act.sp_end_steps.empty());
                 CHECK(act.sp_end_steps.front().kind == SpEndKind::Activation);
                 CHECK(act.sp_end_steps.front().tick == act.timecode.ticks());
+                // A phrase at or before the activation chord was banked
+                // before SP started: no activation squeezes it out.
+                if (act.sqout_tick) CHECK(*act.sqout_tick > act.timecode.ticks());
                 for (size_t k = 1; k < act.sp_end_steps.size(); ++k) {
                     const SpEndStep& prev = act.sp_end_steps[k - 1];
                     const SpEndStep& st = act.sp_end_steps[k];
