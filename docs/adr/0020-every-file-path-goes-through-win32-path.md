@@ -13,6 +13,14 @@ back unchanged. A long one is made full first, because Windows stops resolving
 (`\\?\UNC\` for a network share). With that prefix Windows lifts the limit
 whatever the machine setting is.
 
+For file calls, "long" starts at 248 characters, not 260 (`kPlainPathLimit`
+in `winstr.cpp`, which is `MAX_PATH` minus 12). The reason is
+`CreateDirectoryW`, the tightest of the file calls: a new folder's path must
+leave room for an 8.3 file name inside it, so a plain folder path of 248 or
+more already fails. Prefixing from 248 keeps every file call safe with one
+edge. The shell has its own edge, 260, covered below. Both numbers were kept
+as they are by the user's decision D48 (2026-10-04).
+
 Everything else reaches the disk through it:
 
 - The winstr helpers (`fopen_utf8`, `file_exists_utf8`, `is_directory_utf8`,
@@ -35,18 +43,25 @@ on machines that have opted in. Hydra's own calls don't depend on it.
 path even on an opted-in machine, so the long-path tests prove Hydra's handling
 and not the machine's setting.
 
-A test keeps the rule from drifting. "single-owner rules hold across src/ and
-tools/" (tests/test_single_owner.cpp) reads every source file. It
-fails on any raw Windows file call outside winstr.cpp whose line doesn't call
-`win32_path`. It also fails on any `std::filesystem` call or file stream whose
-line doesn't call `os_path`, and on `utf8_to_wide` used anywhere a path could
-pass through it. The DMBot client is the one exception, because it converts a
-URL.
+A test keeps the rule from drifting. "single-owner rules hold across src/,
+tools/ and tests/" (tests/test_single_owner.cpp) reads every source file in
+`src` and `tools`. It fails on any raw Windows file call outside winstr.cpp
+whose line doesn't call `win32_path`. It fails on a file stream, or a
+`std::filesystem` call that takes a path, whose line doesn't call `os_path`.
+That second check works from a list of call names: every `std::filesystem`
+free function that takes a path, both directory iterators and
+`directory_entry` (as a call, a named variable, braces or a temporary), and
+the file streams in the same forms. A call with an empty argument list takes
+no path and passes. A new kind of call needs a new name on the list, and a
+call written with no `std::filesystem` or `fs` on its line (found through the
+argument's type, or a stream's `.open`) is not caught. The test also fails on `utf8_to_wide` used anywhere a
+path could pass through it. The DMBot client is the one exception, because it
+converts a URL.
 
 ## The shell: Open report and Show in folder
 
 The Windows shell (`ShellExecuteW`, Explorer) is the exception. It takes no
-`\\?\` path and nothing of 260 characters or more. We measured this on
+prefixed path and nothing of 260 characters or more. We measured this on
 2026-10-03 with a page that pinged a local listener when it really loaded.
 From a long-path-aware program like Hydra.exe, the shell failed on the long
 path, the `\\?\` path, a long `file:///` link and even the short 8.3 name,
@@ -59,15 +74,32 @@ directly. Firefox, Edge and Chrome all opened it, and Explorer opened the
 folder with the file highlighted. A copy of the page at a short path also
 opened normally through the shell.
 
-So `shell_path` (winstr) turns a long path into its short name, or gives back
-nothing when there isn't one. That happens when the file is missing or the
-drive keeps no short names, which Windows turns off on most drives other than C:.
+The shell's edge is 260 characters, the plain `MAX_PATH`, and it never takes
+a prefixed path: neither `\\?\` nor the device prefix `\\.\`. Its parser
+(`SHParseDisplayName`) refuses both, checked on 2026-10-04 with
+`C:\Windows\win.ini` in each form. One function asks that question: `fits_shell` (winstr) says
+whether the shell takes a path as it is. Nothing else compares a path's
+length against 260 for the shell. `shell_path`, `open_in_browser`,
+`copy_to_short_temp` and the tests all call it. The source-scan test fails on
+a second copy that compares a `size()`, `length()`, `strlen` or `wcslen`
+against 259, 260 or `MAX_PATH`, in either order. It cannot catch a length
+first held in a plain variable, because `n > MAX_PATH` is also how a
+buffer-fit check reads.
 
-- Open report (`app::open_in_browser`): a short path goes to the shell as
-  before. A long one goes to the program Windows opens `.html` files with, as
-  its short name. With no short name, the page is copied to `%TEMP%\Hydra`
-  and that copy is opened. A report is one self-contained file, so the copy
-  shows the same page.
+So `shell_path` (winstr) turns a path the shell won't take into its short
+name, or gives back nothing when there isn't one. That happens when the file
+is missing or the drive keeps no short names, which Windows turns off on most
+drives other than C:. A `\\.\` path also gets nothing, since its short form
+keeps the prefix.
+
+- Open report (`app::open_in_browser`): a path the shell takes goes to the
+  shell as before. Otherwise it goes to the program Windows opens `.html`
+  files with, as its short name. The page is copied to `%TEMP%\Hydra` and
+  that copy is opened through the shell in two cases. One is when there is
+  no short name. The other is when there is a short name but the `.html`
+  program won't launch (no program is set for `.html`, or starting it
+  fails). A report is one self-contained file, so the copy shows the same
+  page.
 - Show in folder (`ui::show_in_folder`): Explorer gets the short name. With
   none, it returns false, and the app's message names the full path.
 
