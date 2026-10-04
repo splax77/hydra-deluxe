@@ -180,8 +180,8 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(first_overlay.rfind(first_key, 0), (size_t)0);
 
     // Park the playhead mid-song: a reload would rewind it to zero.
-    IM_CHECK(h.app->preview->length_ms() > 0.0);
-    h.app->preview->seek_ms(h.app->preview->length_ms() * 0.5);
+    IM_CHECK(h.app->preview->scrub_end_ms() > 0.0);
+    h.app->preview->seek_ms(h.app->preview->scrub_end_ms() * 0.5);
     ctx->Yield(2);
     double held = h.app->preview->position_ms();
     IM_CHECK(held > 0.0);
@@ -236,15 +236,18 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 60));
 
     // At the song's end the box reads the selected path's total.
-    IM_CHECK(pc.length_ms() > 12000.0);
-    pc.seek_ms(pc.length_ms());
+    IM_CHECK(pc.scrub_end_ms() > 12000.0);
+    pc.seek_ms(pc.scrub_end_ms());
     hydra::app::PreviewScoreBox end = pc.score_box();
     IM_CHECK(end.shown);
     IM_CHECK(end.available);
     const hydra::Path* shown = h.app->viewed.record->all_paths().front();
     IM_CHECK_STR_EQ(end.score.c_str(), hydra::group_thousands(shown->totalscore()).c_str());
 
-    // 5 s jumps, clamped to the song's ends.
+    // 5 s jumps, clamped to 0 and to where playback stops (the audio's end,
+    // or the last note when the audio is shorter). The library's charts have
+    // no audio, so here that is the last note; the audio-tail case is pinned
+    // in test_preview_controller.cpp.
     pc.seek_ms(10000.0);
     pc.jump_ms(5000.0);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 15000.0, 0.5);
@@ -252,8 +255,8 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.5);
     pc.jump_ms(-60000.0);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 0.0, 0.5);
-    pc.jump_ms(pc.length_ms() + 60000.0);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.length_ms(), 0.5);
+    pc.jump_ms(pc.playback_end_ms() + 60000.0);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.playback_end_ms(), 0.5);
 
     // A jump while playing keeps playing.
     pc.seek_ms(10000.0);
@@ -306,7 +309,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     // Somewhere the path has SP running. Walk the playhead to find it, so the
     // test needs no timing of its own.
     double active_ms = -1.0;
-    for (double t = 0.0; t <= pc.length_ms() && active_ms < 0.0; t += 50.0) {
+    for (double t = 0.0; t <= pc.scrub_end_ms() && active_ms < 0.0; t += 50.0) {
         pc.seek_ms(t);
         if (pc.drain_box().active) active_ms = t;
     }
@@ -371,7 +374,7 @@ void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     if (!open_preview(ctx)) return;
     auto& pc = *h.app->preview;
     IM_CHECK(!pc.playing());
-    IM_CHECK(pc.length_ms() > 16000.0);
+    IM_CHECK(pc.scrub_end_ms() > 16000.0);
 
     pc.seek_ms(10000.0);
     ctx->ItemClick("**/+5s");
@@ -684,7 +687,7 @@ void test_preview_mode_reload(ImGuiTestContext* ctx) {
 
     ctx->ComboClick("##difficulty/Expert");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && !pc.has_error() && pc.length_ms() > 0.0; },
+    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && !pc.has_error() && pc.scrub_end_ms() > 0.0; },
                         120));
     IM_CHECK_STR_EQ(pc.error().c_str(), "");
 }
@@ -719,7 +722,7 @@ void test_preview_overlay_steady(ImGuiTestContext* ctx) {
             IM_CHECK_EQ(pc.overlay_scale(), scale);
         }
         // Past the last activation the box is gone; the scale stays.
-        pc.seek_ms(pc.length_ms());
+        pc.seek_ms(pc.scrub_end_ms());
         ctx->Yield(2);
         IM_CHECK(!pc.next_act_box().shown);
         IM_CHECK_EQ(pc.overlay_scale(), scale);
@@ -771,7 +774,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     const std::string readout = pc.sp_meter_readout();
     IM_CHECK(readout.size() >= 5);
     IM_CHECK(readout.substr(readout.size() - 2) == "/4");
-    pc.seek_ms(pc.length_ms());
+    pc.seek_ms(pc.playback_end_ms());  // the time box's end is where playback stops
     IM_CHECK_STR_EQ(pc.time_box().length.c_str(), "m96.3.240");
     IM_CHECK_STR_EQ(pc.time_box().position.c_str(), pc.time_box().length.c_str());
     IM_CHECK(pc.time_box().tempo.rfind("BPM ", 0) == 0);

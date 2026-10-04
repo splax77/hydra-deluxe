@@ -12,6 +12,7 @@
 #include "app/display_format.h"  // clock_str
 #include "core/squeeze_rating.h"
 #include "core/replay.h"
+#include "store/record_store.h"  // song_length_ms
 
 namespace hydra::app {
 
@@ -219,12 +220,13 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
 }
 
 // The activation whose Star Power is running at `now`, or nullptr. Running
-// from the activation chord up to, not including, the SP end. The drain box
-// and the score box both ask this, so they cannot disagree. A record with no
-// deact node cannot say, so it never counts as running.
+// from the moment the activation chord is struck (struck_at) up to, not
+// including, the SP end. The drain box and the score box both ask this, so
+// they cannot disagree. A record with no deact node cannot say, so it never
+// counts as running.
 const PreviewActivation* running_activation(const PreviewScene& scene, double now) {
     for (const PreviewActivation& a : scene.activations)
-        if (a.has_sp_end && a.ms <= now && now < a.sp_end_ms) return &a;
+        if (a.has_sp_end && struck_at(now, a.ms) && now < a.sp_end_ms) return &a;
     return nullptr;
 }
 
@@ -278,7 +280,9 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
         scene.solos.push_back(span_from_ticks(song, solo_start, solo_last));
 
     scene.has_notes = !scene.notes.empty();
-    if (scene.has_notes) scene.song_length_ms = scene.notes.back().ms;
+    // The store's song length, the one the scrubber and the Paths timeline
+    // read: the last timestamp's onset.
+    scene.song_length_ms = store::song_length_ms(song).value_or(0.0);
 
     // The beat grid runs to the end of the audio, so lines keep scrolling
     // while music plays past the last note (D48, Q25). The end is the tick a

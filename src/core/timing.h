@@ -47,13 +47,15 @@ public:
     // Continuous (sub-tick) variants of at(): piecewise-linear, monotone,
     // mutually inverse, and agreeing with at() on integer ticks. NOT part of
     // the bit-for-bit scoring surface (see the header comment) -- never use
-    // them in the graph or the engine's scoring path. Today they serve the
-    // Preview's time box (tick_at in app/preview_view.cpp), the playhead tick
-    // (SongTiming::display_tick_at_ms), the Paths timeline's end
-    // (app/path_view.cpp), the end of a shaded span (render/track_state.cpp),
-    // SongTiming::sp_end_ms (which only tests call), and the Clone Hero 1.0
-    // fill deadline (search/graph.cpp), which is off the scoring surface on
-    // purpose.
+    // them in the graph or the engine's scoring path. tick_at_ms serves
+    // SongTiming::display_tick_at_ms, the tick a screen shows at a time,
+    // which the Preview's time box, drain box, tick steps and beat-line end
+    // call. The Paths timeline's end (app/path_view.cpp) still rounds
+    // tick_at_ms itself instead of calling display_tick_at_ms. ms_at_tick_f
+    // serves the end of a shaded span (render/track_state.cpp) and the Clone
+    // Hero 1.0 fill deadline (search/graph.cpp), which is off the scoring
+    // surface on purpose. SongTiming::sp_end_ms (which only tests call) uses
+    // both.
     double ms_at_tick_f(double ticks) const;
     double tick_at_ms(double ms) const;
 
