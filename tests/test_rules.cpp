@@ -263,6 +263,26 @@ TEST_CASE("rules: the retired Auto fingerprint is what Hydra 1.8.4 stamped") {
     CHECK(ties.retired_auto_fingerprint() != ties.fingerprint());
 }
 
+TEST_CASE("rules: the fingerprint text is byte for byte what 1.8.4 wrote") {
+    // Pinned from the build before the field table existed (6a1bb49). Every
+    // stored result carries one of these, so a change to the text's names,
+    // number form or line order would read every row Stale.
+    CHECK(core::default_rules().fingerprint() == 0x70d2e96669604cf2ull);
+    CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
+    // Every field moved off its default, so each line's name and number form
+    // (whole numbers, fractions, the whole_chord word) is in the hash.
+    core::Rules all;
+    all.backend_leeway_ms = 5.0;
+    all.sqout_rule = core::SqOutRule::WholeChord;
+    all.max_tied_paths = 2;
+    all.fill_cooldown_measures = 3;
+    all.fill_max_distance_beats = 0.25;
+    all.fill_length_measures = 0.75;
+    all.fill_land_slop_beats = 0.1;
+    CHECK(all.fingerprint() == 0x786ef3e8a2dbe1e4ull);
+    CHECK(all.retired_auto_fingerprint() == 0x229fa7e95ca76618ull);
+}
+
 TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
     // HydraRecord's default fingerprint used to re-hash the default rules for
     // every record built, which includes every record decoded.
