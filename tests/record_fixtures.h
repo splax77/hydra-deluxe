@@ -38,6 +38,15 @@ struct FixtureNote {
     int64_t fill_length = 0;  // 0 = no fill ends here
 };
 
+// Marks the chord at `tick` as a phrase end the way the parser does: the
+// flag and the phrase's start tick together. A hand-built song has no phrase
+// start of its own, so the phrase starts one beat (one resolution) before the
+// end, clamped at 0. That beat is this header's convention, not a game rule.
+inline void mark_phrase_end(SongTimestamp& ts, int64_t tick, int64_t resolution) {
+    ts.flag_sp = true;
+    ts.sp_phrase_start = tick >= resolution ? tick - resolution : 0;
+}
+
 // One red note per entry, flat tempo and 4/4.
 inline Song build_fixture_song(int resolution, double bpm, const std::vector<FixtureNote>& notes) {
     Song song(resolution);
@@ -47,10 +56,7 @@ inline Song build_fixture_song(int resolution, double bpm, const std::vector<Fix
         SongTimestamp ts;
         ts.timecode = song.timecode(n.tick);
         ts.chord.add_note(NoteColor::Red);
-        if (n.phrase) {
-            ts.flag_sp = true;
-            ts.sp_phrase_start = n.tick >= resolution ? n.tick - resolution : 0;
-        }
+        if (n.phrase) mark_phrase_end(ts, n.tick, resolution);
         if (n.fill_length > 0) ts.activation_length = n.fill_length;
         song.sequence.push_back(std::move(ts));
     }
@@ -132,7 +138,7 @@ inline Song build_tempo_song(const std::vector<TailNote>& notes,
         SongTimestamp ts;
         ts.timecode = song.timecode(n.tick);
         ts.chord.add_note(NoteColor::Red);
-        ts.flag_sp = n.sp_phrase;
+        if (n.sp_phrase) mark_phrase_end(ts, n.tick, song.tick_resolution());
         if (n.activation) ts.activation_length = 384;
         song.sequence.push_back(ts);
     }

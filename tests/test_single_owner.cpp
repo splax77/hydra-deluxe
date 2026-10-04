@@ -1090,12 +1090,6 @@ const std::vector<KnownCopy>& known_copies() {
          "long n = std::ftell(f);", "fix read-file-bytes-owner (audit R7.11)"},
         {"How many bytes does a file hold?", "src/parse/midi.cpp",
          "std::fseek(f, 0, SEEK_SET);", "fix read-file-bytes-owner (audit R7.11)"},
-        {"Is this phrase chord after the SP end?", "src/core/replay.cpp",
-         "const bool past_deact = row.tick > w.deact_tick;",
-         "the replay's past_deact (audit findings 1 and 32, another step)"},
-        {"Is this phrase chord after the SP end?", "src/core/replay.cpp",
-         "} else if (tick > w.deact_tick) {",
-         "the replay's past_deact (audit findings 1 and 32, another step)"},
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
@@ -1471,6 +1465,107 @@ TEST_CASE("single-owner: SE1's rows match their own examples (until M7-1 joins t
         INFO("baseline entry names no SE1 row: " << k.question);
         bool named = false;
         for (const OwnerRule& r : se1_rows()) named = named || r.question == k.question;
+        CHECK(named);
+    }
+}
+
+// ---- phase 6 task J1-1's rows -----------------------------------------------
+// Appended here so parallel tasks never edit the same lines. At the merge the
+// main session moves j1_1_rows() into rules() and j1_1_known_copies() into
+// known_copies(), then deletes this block and its test case: the scan and
+// "single-owner rules match their own examples" cover them from there.
+namespace {
+
+const std::vector<OwnerRule>& j1_1_rows() {
+    static const std::vector<OwnerRule> r = {
+        // The same pattern as "Is a value inside the squeeze window?", over
+        // tests/. That row's scope stays src and tools; rows are append-only.
+        // Arithmetic and == on the constant (test_squeeze_rating.cpp) and
+        // storing it (test_docs_match_code.cpp) answer other questions.
+        {"Is a value inside the squeeze window? (tests)",
+         "within_squeeze_window in src/core/model.h",
+         R"([<>]=?\s*(\w+::)*kSqueezeWindowMs|(\w+::)*kSqueezeWindowMs\s*[<>])",
+         "",
+         {},
+         {},
+         "audit finding 283; phase 6 task J1-1 (D53, D54)",
+         {"c.ms - phrase_note->ms < kSqueezeWindowMs)",
+          "if (!long_after && c.ms - last_phrase->ms > kSqueezeWindowMs)",
+          "if (hydra::kSqueezeWindowMs > gap) continue;"},
+         {"CHECK(kSqueezeWindowMs == 500.0);",
+          "const double offsets[] = {0.0, 180.0, -300.0, kSqueezeWindowMs - 1.0,",
+          "out[\"kSqueezeWindowMs\"] = {false, hydra::kSqueezeWindowMs};",
+          "-static_cast<int>(hydra::kSqueezeWindowMs));",
+          "if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))"},
+         {},
+         {"tests"}},
+        // A hand-built phrase end sets the flag and the phrase start together,
+        // as the parser's close_sp_phrase does, through one fixture helper.
+        // Reads and comparisons of the flag are not assignments.
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "mark_phrase_end in tests/record_fixtures.h",
+         R"(\bflag_sp\s*=(?!=))",
+         "",
+         {},
+         {},
+         "audit finding 300; phase 6 task J1-1 (D53, D54)",
+         {"ts.flag_sp = tick == 3256;", "ts.flag_sp = phrase;", "ts.flag_sp = true;"},
+         {"if (!ts.flag_sp) continue;",
+          "if (x.flag_solo != y.flag_solo || x.flag_sp != y.flag_sp) return false;",
+          "CHECK(song.sequence[0].flag_sp == true);",
+          "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
+         {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
+         {"tests"}},
+    };
+    return r;
+}
+
+const std::vector<KnownCopy>& j1_1_known_copies() {
+    static const std::vector<KnownCopy> k = {
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = n.phrase;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+    };
+    return k;
+}
+
+}  // namespace
+
+TEST_CASE("single-owner: J1-1's rows match their own examples (until the merge joins them)") {
+    const auto flags = std::regex::ECMAScript | std::regex::optimize;
+    std::set<std::string> questions;
+    for (const OwnerRule& r : rules()) questions.insert(r.question);
+    for (const OwnerRule& r : j1_1_rows()) {
+        INFO("question listed twice: " << r.question);
+        CHECK(questions.insert(r.question).second);
+        const CompiledRule c{&r, std::regex(r.pattern, flags),
+                             std::regex(r.calls_owner.empty() ? "$^" : r.calls_owner, flags)};
+        for (const std::string& line : r.must_match) {
+            INFO(r.question << " should flag: " << line);
+            CHECK(flags_line(c, line));
+        }
+        for (const std::string& line : r.must_not_match) {
+            INFO(r.question << " should not flag: " << line);
+            CHECK_FALSE(flags_line(c, line));
+        }
+        for (const OwnerLine& o : r.owner_lines) {
+            INFO(r.question << " owner line the rule does not flag: " << o.line_text);
+            CHECK(flags_line(c, o.line_text));
+        }
+    }
+    for (const KnownCopy& k : j1_1_known_copies()) {
+        INFO("baseline entry names no J1-1 row: " << k.question);
+        bool named = false;
+        for (const OwnerRule& r : j1_1_rows()) named = named || r.question == k.question;
         CHECK(named);
     }
 }

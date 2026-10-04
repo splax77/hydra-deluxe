@@ -37,7 +37,7 @@
 #include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
-#include "core/model.h"  // kSqueezeWindowMs, the horizon the warning uses
+#include "core/model.h"  // within_squeeze_window, the horizon the warning uses
 #include "search/pather.h"
 #include "store/record_store.h"
 
@@ -318,7 +318,7 @@ TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
         ts.timecode = song.timecode(tick);
         ts.chord.add_note(NoteColor::Red);
         ts.chord.add_note(NoteColor::Yellow);
-        ts.flag_sp = tick == 3256;
+        if (tick == 3256) test::mark_phrase_end(ts, tick, song.tick_resolution());
         song.sequence.push_back(ts);
     }
 
@@ -362,7 +362,7 @@ TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multipli
             ts.timecode = song.timecode(tick);
             ts.chord.add_note(NoteColor::Red);
             if (tick != 2976 || two_notes) ts.chord.add_note(NoteColor::Yellow);
-            ts.flag_sp = tick == 2976;
+            if (tick == 2976) test::mark_phrase_end(ts, tick, song.tick_resolution());
             song.sequence.push_back(ts);
         }
         return song;
@@ -403,7 +403,7 @@ TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying wi
         SongTimestamp ts;
         ts.timecode = song.timecode(tick);
         ts.chord.add_note(NoteColor::Red);  // one note: a squeeze-out loses all its doubling
-        ts.flag_sp = tick == 864;
+        if (tick == 864) test::mark_phrase_end(ts, tick, song.tick_resolution());
         song.sequence.push_back(ts);
     }
     ReplayWindow a;  // no squeeze-out offset: the warning looks at it
@@ -671,10 +671,12 @@ TEST_CASE("a window ending on a phrase note with no offset is flagged") {
             if (!no_phrase_yet) no_phrase_yet = &c;
             continue;
         }
+        // Inside or out of reach is asked of the window's owner,
+        // within_squeeze_window, on the gap in ms.
         if (last_phrase == phrase_note && !just_after &&
-            c.ms - phrase_note->ms < kSqueezeWindowMs)
+            within_squeeze_window(c.ms - phrase_note->ms))
             just_after = &c;
-        if (!long_after && c.ms - last_phrase->ms > kSqueezeWindowMs)
+        if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))
             long_after = &c;
     }
     REQUIRE(phrase_note != nullptr);
@@ -755,7 +757,7 @@ Song song_with(const std::vector<std::pair<int64_t, bool>>& chords) {
         ts.timecode = song.timecode(tick);
         ts.chord.add_note(NoteColor::Red);
         ts.chord.add_note(NoteColor::Yellow);
-        ts.flag_sp = phrase;
+        if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());
         song.sequence.push_back(ts);
     }
     return song;
@@ -783,6 +785,20 @@ void add_dynamic_cymbal(Chord& chord, NoteDynamicType dyn) {
 }
 
 }  // namespace
+
+// A hand-built phrase end carries what the parser writes on one: the flag
+// and where the phrase starts (test::mark_phrase_end, one resolution back,
+// clamped at 0).
+TEST_CASE("fixtures: mark_phrase_end sets the flag and the phrase start together") {
+    const Song song = song_with({{0, true}, {768, true}, {1536, false}});
+    REQUIRE(song.sequence.size() == 3);
+    CHECK(song.sequence[0].flag_sp);
+    CHECK(song.sequence[0].sp_phrase_start == 0);
+    CHECK(song.sequence[1].flag_sp);
+    CHECK(song.sequence[1].sp_phrase_start == 576);
+    CHECK_FALSE(song.sequence[2].flag_sp);
+    CHECK_FALSE(song.sequence[2].sp_phrase_start.has_value());
+}
 
 // A typed offset is only ever an approximation of a chord that sits on a
 // tick. The tool resolves it to the phrase chord it means and says which.
@@ -1415,7 +1431,7 @@ Song squeeze_chart() {
         ts.timecode = song.timecode(tick);
         ts.chord.add_note(NoteColor::Red);
         ts.chord.add_note(NoteColor::Yellow);
-        ts.flag_sp = tick == 3256;
+        if (tick == 3256) test::mark_phrase_end(ts, tick, song.tick_resolution());
         song.sequence.push_back(ts);
     }
     return song;
