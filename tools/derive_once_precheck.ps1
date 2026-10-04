@@ -542,10 +542,18 @@ function Get-KnownCopy([string]$File, [string[]]$LineTexts) {
     $null
 }
 
+# Which top folder of the repo is this file in (src, tools, tests...)? Empty
+# for a file at the repo root.
+function Get-TopFolder([string]$File) {
+    $i = $File.IndexOf('/')
+    if ($i -lt 0) { return '' }
+    $File.Substring(0, $i)
+}
+
 # Does the scan read this file under this row (in_scope, the function a row
 # is limited to, owner files and exempt files)?
 function Test-RowCovers([object]$Row, [string]$File) {
-    $sub = $File.Substring(0, $File.IndexOf('/'))
+    $sub = Get-TopFolder $File
     $inScope = if ($Row.Scope.Count -eq 0) { $sub -eq 'src' -or $sub -eq 'tools' } else { ($Row.Scope -contains $sub) -or ($Row.Scope -contains $File) }
     if (-not $inScope) { return $false }
     if ($Row.Function -and $File -ne $Row.FunctionFile) { return $false }
@@ -617,7 +625,7 @@ function Get-RowHits {
                 } elseif ($owners.Count + $copies.Count) {
                     $note = 'a second copy of a listed line; each entry covers one line'
                 }
-                $sub = $f.Substring(0, $f.IndexOf('/'))
+                $sub = Get-TopFolder $f
                 $kind = if ($sub -ne 'tests') { 'A' } elseif ($r.Owner -match 'tests/source_tree\.h') { 'E' } elseif ($r.Owner -match '\btests/') { 'C' } else { 'B' }
                 $hits.Add([pscustomobject]@{ Kind = $kind; File = $f; Line = $ln; Text = $t; Row = $r; Note = $note })
             }
@@ -728,7 +736,7 @@ function Get-Definitions([string]$Path) {
 }
 
 function Invoke-Check1 {
-    $testFiles = @($allFiles | Where-Object { $_ -like 'tests/*' -and (Test-CppPath $_) })
+    $testFiles = @($allFiles | Where-Object { (Get-TopFolder $_) -eq 'tests' -and (Test-CppPath $_) })
     $defs = [System.Collections.Generic.List[object]]::new()
     foreach ($f in $testFiles) { foreach ($d in (Get-Definitions $f)) { $defs.Add($d) } }
 
@@ -841,8 +849,8 @@ function Invoke-Check2 {
            What = 'a module constant checked against a formula of other constants'; Why = 'the test restates the module''s formula; pin the value' }
     )
     foreach ($f in $added.Keys) {
-        $isCppTest = $f -like 'tests/*' -and (Test-CppPath $f) -and $f -ne $scanFile
-        $isPyTest = (Test-PyPath $f) -and ($f -like 'tests/*' -or $f -match '^tools/.*(/tests/|/test_[^/]*\.py$)')
+        $isCppTest = (Get-TopFolder $f) -eq 'tests' -and (Test-CppPath $f) -and $f -ne $scanFile
+        $isPyTest = (Test-PyPath $f) -and ((Get-TopFolder $f) -eq 'tests' -or $f -match '^tools/.*(/tests/|/test_[^/]*\.py$)')
         if (-not ($isCppTest -or $isPyTest)) { continue }
         $v = Get-Views $f
         $rules = if ($isPyTest) { $py } else { $cpp }
@@ -988,7 +996,7 @@ function Invoke-Check3 {
     foreach ($f in $added.Keys) {
         if (-not ((Test-CppPath $f) -or (Test-PyPath $f))) { continue }
         if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
-        $isTest = $f -like 'tests/*' -or $f -match '^tools/.*(/tests/|/test_[^/]*\.py$)'
+        $isTest = (Get-TopFolder $f) -eq 'tests' -or $f -match '^tools/.*(/tests/|/test_[^/]*\.py$)'
         $v = Get-Views $f
         # Sizes of arrays this file declares: a loop or a bound that matches one is the container's size.
         $containerSizes = [System.Collections.Generic.HashSet[string]]::new()
@@ -1093,7 +1101,7 @@ function Invoke-Check4 {
     $rowLines = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($h in (Get-RowHits)) { if ($h.Kind -eq 'E') { [void]$rowLines.Add("$($h.File):$($h.Line)") } }
     foreach ($f in $added.Keys) {
-        if (-not ($f -like 'tests/*' -or $f -like 'tools/*')) { continue }
+        if (-not ((Get-TopFolder $f) -in @('tests', 'tools'))) { continue }
         if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
         $py = Test-PyPath $f
         if (-not ((Test-CppPath $f) -or $py)) { continue }
