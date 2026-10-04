@@ -213,8 +213,26 @@ TEST_CASE("ImGui's own file calls (hydra_ui.ini, fonts) work past 260 characters
     IM_FREE(data);
 }
 
+// fits_shell is the one place that asks whether the shell takes a path: under
+// 260 characters and without a \\?\ or \\.\ prefix. The edge is pinned here as
+// a literal so the test doesn't share the owner's arithmetic.
+TEST_CASE("fits_shell takes 259 characters, not 260, and no prefixed path") {
+    const std::wstring at_259 = L"C:\\" + std::wstring(251, L'a') + L".html";
+    const std::wstring at_260 = L"C:\\" + std::wstring(252, L'a') + L".html";
+    REQUIRE(at_259.size() == 259);
+    REQUIRE(at_260.size() == 260);
+    CHECK(hydra::fits_shell(at_259));
+    CHECK_FALSE(hydra::fits_shell(at_260));
+    CHECK_FALSE(hydra::fits_shell(at_260 + L"x"));
+    CHECK(hydra::fits_shell(L"C:\\Songs\\hydra_paths.html"));
+    CHECK_FALSE(hydra::fits_shell(L"\\\\?\\C:\\Songs\\hydra_paths.html"));
+    CHECK_FALSE(hydra::fits_shell(L"\\\\?\\UNC\\server\\share\\hydra_paths.html"));
+    CHECK_FALSE(hydra::fits_shell(L"\\\\.\\C:\\Songs\\hydra_paths.html"));
+}
+
 // The shell (ShellExecute, Explorer) opens no path of 260 characters or more,
-// \\?\ or not, so the report buttons hand it the short 8.3 name instead.
+// and no \\?\ or \\.\ path at any length (fits_shell), so the report buttons
+// hand it the short 8.3 name instead.
 TEST_CASE("shell_path gives the shell a short name for a long path") {
     CHECK(hydra::shell_path(L"C:\\Songs\\hydra_paths.html") == L"C:\\Songs\\hydra_paths.html");
 
@@ -229,12 +247,13 @@ TEST_CASE("shell_path gives the shell a short name for a long path") {
     std::wstring raw(32768, L'\0');
     raw.resize(GetShortPathNameW(full.c_str(), &raw[0], static_cast<DWORD>(raw.size())));
     REQUIRE(raw.rfind(L"\\\\?\\", 0) == 0);
-    const std::wstring expected = raw.size() - 4 < MAX_PATH ? raw.substr(4) : L"";
+    const std::wstring unprefixed = raw.substr(4);
+    const std::wstring expected = hydra::fits_shell(unprefixed) ? unprefixed : L"";
 
     const std::wstring got = hydra::shell_path(wpage);
     CHECK(got == expected);
     if (!got.empty()) {
-        CHECK(got.size() < MAX_PATH);
+        CHECK(hydra::fits_shell(got));
         CHECK(hydra::read_file_bytes(hydra::wide_to_utf8(got)) == hydra::read_file_bytes(kOpus));
     }
     const std::string has_short = got.empty() ? "no" : "yes";
@@ -250,7 +269,7 @@ TEST_CASE("a long report page is copied to a short temp path for the browser") {
 
     const fs::path copy = hydra::app::copy_to_short_temp(page);
     REQUIRE_FALSE(copy.empty());
-    CHECK(copy.native().size() < MAX_PATH);
+    CHECK(hydra::fits_shell(copy.native()));
     CHECK(copy.filename() == page.filename());
     CHECK(hydra::read_file_text(hydra::wide_to_utf8(copy.wstring())) == "<html>copy</html>");
 

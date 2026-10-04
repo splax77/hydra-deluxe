@@ -22,8 +22,8 @@ std::optional<std::string> browse_for_folder(HWND owner, bool* failed = nullptr)
 
 // Opens Explorer on the file's folder with the file selected
 // (explorer.exe /select,"<path>"). Returns false when the shell refuses. A
-// path of 260 characters or more goes as its short 8.3 name; false when it
-// has none (docs/adr/0020).
+// path fits_shell refuses (too long, or prefixed) goes as its short 8.3 name
+// from shell_path; false when it has none (docs/adr/0020).
 bool show_in_folder(const std::filesystem::path& file);
 
 // The seam behind show_in_folder, like app::set_open_in_browser: a GUI test
