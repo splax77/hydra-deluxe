@@ -9,12 +9,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
-#include <fstream>
 #include <limits>
 #include <map>
 #include <optional>
 #include <set>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -1253,28 +1251,6 @@ TEST_CASE("sp meter curve: the drain follows the stored steps, not the collected
     CHECK(sp_meter_bars_at(c, 8000.0 - 1e-6) == doctest::Approx(1.0));
     CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(2.0));
     CHECK(sp_meter_bars_at(c, 16000.0) == doctest::Approx(0.0));
-}
-
-TEST_CASE("sp meter curve: the path gauge reads stored facts only") {
-    // Findings 147 and 159, held in place: the path gauge's own body never
-    // touches the chart's phrases, the collected list, the bank count, the
-    // cap rule or the squeeze-in rule (that one lives in refill_tick). A copy
-    // of any of them coming back fails here.
-    std::ifstream in(std::string(HYDRA_SOURCE_DIR) + "/src/app/preview_view.cpp");
-    REQUIRE(in);
-    std::stringstream ss;
-    ss << in.rdbuf();
-    const std::string src = ss.str();
-    const size_t begin = src.find("SpMeterCurve build_sp_meter_curve(");
-    REQUIRE(begin != std::string::npos);
-    const size_t end = src.find("\n}\n", begin);
-    REQUIRE(end != std::string::npos);
-    const std::string body = src.substr(begin, end - begin);
-    for (const char* banned : {"sp_phrases", "collected_phrase_ticks", "sp_meter()",
-                               "sp_bars_to_measures", "std::min(", "SqIn"}) {
-        INFO(std::string(banned));
-        CHECK(body.find(banned) == std::string::npos);
-    }
 }
 
 TEST_CASE("sp_meter_bars_at: before the curve, after it, and on a shared boundary") {

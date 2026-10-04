@@ -1547,6 +1547,8 @@ TEST_CASE("replay: window order does not matter and SP points add up window by w
     const std::vector<ReplayWindow> wl = synthetic_windows(*longest, 2000, 1);
     std::vector<ReplayWindow> reversed(wl.rbegin(), wl.rend());
     // The first 120 windows for the window-by-window sum: 120 replays each.
+    // All 2,000 took 5.6 s against 0.5 s for 120 (2026-10-04), so 120 is a
+    // test limit, like the others in D43.
     const std::vector<ReplayWindow> few(wl.begin(), wl.begin() + 120);
     for (const core::Rules& rules : leeway_variants()) {
         const std::string what = rules_label(rules);

@@ -402,12 +402,31 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
     CHECK(variants > 50);
 }
 
+// search_target's answer as text: each root's path string and total, then
+// its tied variants' in brackets, in the order it returns them.
+std::string target_text(const std::vector<Path>& kept) {
+    std::ostringstream o;
+    for (const Path& p : kept) {
+        o << p.pathstring() << ' ' << p.totalscore();
+        std::vector<const Path*> tied;
+        collect_variants(p, tied);
+        if (!tied.empty()) {
+            o << " [";
+            for (size_t i = 0; i < tied.size(); ++i)
+                o << (i ? "; " : "") << tied[i]->pathstring() << ' ' << tied[i]->totalscore();
+            o << ']';
+        }
+        o << " | ";
+    }
+    return o.str();
+}
+
 // D45: a targeted search drops only the paths that came back without one of
 // the named activations, and keeps the ones that took them all. On fuzz seed
-// 5, told to activate at 3168 and 12864, the engine returns paths that miss
-// one of them (SP still runs at the fill) beside paths that take both.
-// Before D45 the one short path made search_target report the whole set
-// unrealizable, and seven variants there had no lone answer.
+// 5, told to activate at 3168 and 12864, the engine also returns paths that
+// take only 3168 (SP still runs at 12864's fill); search_target drops those.
+// Before D45 the one short path made it report the whole set unrealizable.
+// The kept paths are pinned as read from one run.
 TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept (D45)") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
@@ -415,23 +434,69 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
     const app::AnalysisSettings cfg = fast_settings(fc.cap);
     const std::vector<int64_t> want = {3168, 12864};
 
-    // The engine's own answer: some roots take both, some miss one.
-    const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
-                           FillDeadlineRule::Ch11, cfg.rules);
-    EngineOptions o = test::wide_search();
-    o.target_act_ticks = want;
-    int whole = 0, short_of_one = 0;
-    for (const Path& r : run_search(graph, o)) (act_ticks(r) == want ? whole : short_of_one)++;
-    CHECK(whole > 0);
-    CHECK(short_of_one > 0);
-
-    // search_target keeps exactly the roots that took both.
     const std::vector<Path> kept = search_target(song, cfg, want);
-    CHECK(static_cast<int>(kept.size()) == whole);
-    for (const Path& p : kept) CHECK(act_ticks(p) == want);
+    CHECK(kept.size() == 4);
+    CHECK(target_text(kept) ==
+          "0++- E0+ 7350 | 0++- E0- 7150 [0+- 0+ 7150] | 0+- 0- 6950 | 0- 0 6750 | ");
+    for (const Path& p : kept) {
+        CHECK(act_ticks(p) == want);
+        std::vector<const Path*> tied;
+        collect_variants(p, tied);
+        for (const Path* v : tied) CHECK(act_ticks(*v) == want);
+    }
 
     // A tick that is no fill node is still unrealizable: nothing comes back.
     CHECK(search_target(song, cfg, {3168, 12865}).empty());
+}
+
+// D45, a dropped root's variants: the engine can fold a path that takes
+// every named activation under a tied root that missed one. search_target
+// drops that root but keeps the variant, as a result of its own (the first
+// such variant leads, the rest stay its tied variants). The chart is fuzz
+// seed 5 with one more note after its last phrase, so that phrase is
+// awarded: root '0++++-' takes only 3168, and its tied variant '0+- 0++'
+// takes 3168 and 12864. Before the fix the variant went with the root.
+TEST_CASE("search_target: a variant that took every named activation outlives its dropped root") {
+    FuzzChart fc = fuzz_chart(5);
+    const std::string last_phrase = "  22848 = N 1 0\n";
+    const size_t at = fc.text.find(last_phrase);
+    REQUIRE(at != std::string::npos);
+    fc.text.insert(at + last_phrase.size(), "  23040 = N 1 0\n");
+    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
+    const Song song = load_songbytes_chart(bytes, true, true);
+    const app::AnalysisSettings cfg = fast_settings(fc.cap);
+    const std::vector<int64_t> want = {3168, 12864};
+
+    const std::vector<Path> kept = search_target(song, cfg, want);
+    CHECK(target_text(kept) ==
+          "0+- 0++ 7750 | 0++- E0++ 7550 [0++- E0+- 7550] | 0++- E0- 7350 [0+- 0+- 7350] | "
+          "0+- 0- 7150 | 0- 0 6950 | ");
+    const Path* promoted = nullptr;
+    for (const Path& p : kept)
+        if (p.pathstring() == "0+- 0++") promoted = &p;
+    REQUIRE(promoted != nullptr);
+    CHECK(promoted->totalscore() == 7750);
+    CHECK_FALSE(promoted->var_point.has_value());
+    CHECK(promoted->variant_tail.empty());
+
+    // Its windows are its own, not the dropped root's: pinned as read from
+    // one run, and the same as the full search stores for that path (there a
+    // tied variant of '0++++-', read through its root).
+    CHECK(test::windows_text(*promoted) ==
+          "3168 [steps 3168>7776:0 4800>9312:3 | sq +-232.5 -22.5 | out 9600 | backends "
+          "4128/200/0/-405 4800/200/0/-352.5 7008/200/0/-180 9600/200/0/22.5 | bank 768 1536 "
+          "2304 | e 1250 | passed] 12864 [steps 12864>17472:0 13440>19008:3 22848>20544:3 | sq "
+          "+-315 +300 | out -1 | backends 19776/200/0/-60 19968/200/0/-45 22848/200/0/180 "
+          "23040/200/0/195 | bank 9600 10080 11616 | e 127.5 | passed] trailing");
+    HydraRecord rec;
+    REQUIRE(analyzes(song, cfg, rec));
+    const Path* full = nullptr;
+    for (const Path* p : rec.all_paths())
+        if (p->pathstring() == "0+- 0++") full = p;
+    REQUIRE(full != nullptr);
+    CHECK(full->var_point.has_value());
+    CHECK(full->totalscore() == 7750);
+    CHECK(test::windows_text(*promoted) == test::windows_text(*full));
 }
 
 // The phrases still ahead when SP ends, pinned (s1-fix-merge). D34 lets one

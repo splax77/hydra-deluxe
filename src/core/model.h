@@ -357,6 +357,23 @@ It nth_sqin_step(It first, It last, size_t n) {
     return last;
 }
 
+// Which SqIn a squeeze is, counting from 0 in list order: how many SqIn
+// squeezes come before position `at`. That rank picks its step
+// (nth_sqin_step) and its transfer scale. `is_sqin` says which entries are
+// SqIns, so the engine's own squeeze records can be counted too.
+// Activation::squeeze_end_step, the engine's folded-variant copy-out and its
+// transfer-scale stamp all count here.
+template <class It, class IsSqIn>
+size_t sqin_rank(It first, It at, IsSqIn is_sqin) {
+    size_t n = 0;
+    for (; first != at; ++first)
+        if (is_sqin(*first)) ++n;
+    return n;
+}
+
+// Is this squeeze a squeeze-in? For sqin_rank over an activation's sqinouts.
+inline bool is_sqin_squeeze(const SPSqueeze& q) { return q.kind == SqueezeKind::SqIn; }
+
 struct Activation {
     // The search sets these on every activation it makes, so they are
     // plain values (since path format 6, docs/adr/0017).
