@@ -369,6 +369,86 @@ void test_batch_pause_stop(ImGuiTestContext* ctx) {
     dismiss_done(ctx);
 }
 
+// The strip with several workers at once, as the real app runs a batch. Three
+// workers each hold a chart at the gate, so three charts run together. The
+// strip counts each one as it finishes, Pause stops new charts while the
+// running ones finish, Resume refills every worker, and Stop drops the charts
+// still running without counting them.
+void test_batch_strip_workers(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    constexpr int kWorkers = 3;
+    BatchGate gate(kWorkers);
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Start analyzing");
+
+    // Frames run for a while with nothing let through. A fourth chart can
+    // never reach the gate: every worker is busy.
+    auto settle = [&] {
+        for (int i = 0; i < 10; ++i) {
+            ctx->Yield();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+    };
+    auto strip_text = [&] { return visible_text(h); };
+    auto has = [&](const std::string& s) { return strip_text().find(s) != std::string::npos; };
+
+    IM_CHECK(wait_until(ctx, [&] { return gate.started() == kWorkers; }, 30));
+    settle();
+    IM_CHECK_EQ(gate.started(), kWorkers);
+    IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
+    ctx->Yield(2);
+    IM_CHECK(has("Analyzing...  0 of 97"));
+    IM_CHECK(has("Now: "));
+    ImGuiWindow* strip = child_window(ctx, "//Hydra/##batchstrip");
+    IM_CHECK(strip != nullptr);
+    ctx->SetRef(strip);
+    const ImRect stop0 = ctx->ItemInfo("Stop").RectFull;
+
+    // Two charts finish. Their workers each take the next chart, so three
+    // are held again and two are counted.
+    gate.allow(2);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->batch_job->snapshot().completed == 2 && gate.started() == 2 + kWorkers;
+    }, 60));
+    IM_CHECK(has("Analyzing...  2 of 97"));
+    const ImRect stop1 = ctx->ItemInfo("Stop").RectFull;
+    IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.x, stop0.Min.x, 0.01f);
+    IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.y, stop0.Min.y, 0.01f);
+
+    // Pause with three charts running. They finish and are counted, but no
+    // worker starts another.
+    ctx->ItemClick("Pause");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().paused; }, 5));
+    gate.allow(2 + kWorkers);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().completed == 2 + kWorkers; }, 60));
+    settle();
+    IM_CHECK_EQ(gate.started(), 2 + kWorkers);
+    IM_CHECK(has("Paused  5 of 97"));
+    IM_CHECK(!has("Now: "));
+    IM_CHECK(ctx->ItemExists("Resume"));
+
+    // Resume fills every worker again.
+    ctx->ItemClick("Resume");
+    IM_CHECK(wait_until(ctx, [&] { return gate.started() == 2 + 2 * kWorkers; }, 30));
+    IM_CHECK(has("Analyzing...  5 of 97"));
+    IM_CHECK(has("Now: "));
+
+    // Stop: the three held charts are dropped, not counted and not failed.
+    ctx->ItemClick("Stop");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300));
+    const hydra::ui::BatchJob::Snapshot done = h.app->batch_job->snapshot();
+    IM_CHECK_EQ(done.completed, 2 + kWorkers);
+    IM_CHECK_EQ(done.failed, 0);
+    IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchdone") != nullptr; }, 5));
+    IM_CHECK(has("Stopped:"));
+    dismiss_done(ctx);
+}
+
 // The finished strip: where the report went, Open report, Show in folder.
 void test_batch_done_strip(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -505,6 +585,7 @@ const std::vector<TestEntry>& batch_report_tests() {
         {"report-buttons", test_report_buttons},
         {"batch-confirm", test_batch_confirm},
         {"batch-pause-stop", test_batch_pause_stop},
+        {"batch-strip-workers", test_batch_strip_workers},
         {"batch-done-strip", test_batch_done_strip},
         {"batch-open-failure", test_batch_open_failure},
         {"status-line", test_status_line},
