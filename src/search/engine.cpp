@@ -290,16 +290,10 @@ struct Path {
     int32_t sc[6];
     int64_t score;
     int64_t sp_end_time;
-    // When the last phrase step clamped the end to the cap's ceiling: the
-    // phrase's tick and the end it moved. NO_TIME otherwise. A clamped end
-    // is the same tick whichever end the phrase moved, and an end one plain
-    // bar short of the ceiling also lands on it, so a squeeze-out of that
-    // phrase back to a node is offered only to the path that moved from
-    // that node's tick (Engine::deactivation_type, finding 37).
-    int64_t clamp_tick;
-    int64_t clamp_from;
     // The running activation's SP-end steps so far (an index into ends_),
-    // or -1. Handed to the Act at deactivation.
+    // or -1. Handed to the Act at deactivation. Whether the end is under a
+    // clamp, and which end that clamp moved, is read off it
+    // (Engine::last_step_clamp).
     int32_t end_tail;
     // The bars banked since the last window closed, one arrival tick each
     // (an index into banks_), or -1. Always holds p.sp entries. Handed to
@@ -526,13 +520,41 @@ private:
         }
         return false;
     }
-    // Whether the path's last step clamped a phrase that some deactivation
-    // edge offers as a squeeze-out to paths at the path's end (Enum::
-    // early_offers). Only then does the clamp's origin change an offer.
+    // The clamp the running window's end is under, read off the end chain:
+    // when its last SP-end step is a clamp (is_clamp_kind), that phrase's
+    // tick and the end the clamp moved (the step before's end). Both are
+    // NO_TIME otherwise: after a plain step, an activation, a squeeze-in, or
+    // off SP. A clamped end is the same tick whichever end the phrase moved,
+    // and an end one plain bar short of the ceiling also lands on it, so a
+    // squeeze-out of that phrase back to a node is offered only to the path
+    // that moved from that node's tick (deactivation_type, finding 37).
+    // An early SqIn relabels the clamped step SqIn (relabel_sqin): the path
+    // spent that phrase and is never offered it again (squeezed_in), so no
+    // clamp is in force. Only the last step counts, unlike
+    // Activation::clamp_tick(), the latest Clamped step in the history.
+    struct LastStepClamp {
+        int64_t phrase_tick = NO_TIME;
+        int64_t moved_from = NO_TIME;
+        bool operator==(const LastStepClamp& o) const {
+            return phrase_tick == o.phrase_tick && moved_from == o.moved_from;
+        }
+    };
+    LastStepClamp last_step_clamp(const Path& p) const {
+        if (p.end_tail < 0) return {};
+        const EndNode& s = ends_[(size_t)p.end_tail];
+        // A window's first step is always its Activation step, so a clamp
+        // always has a step before it.
+        if (!is_clamp_kind(s.kind) || s.prev < 0) return {};
+        return {s.tick, ends_[(size_t)s.prev].end};
+    }
+    // Whether the path's end is under a clamp of a phrase that some
+    // deactivation edge offers as a squeeze-out to paths at the path's end
+    // (Enum::early_offers). Only then does the clamp's origin change an offer.
     bool clamp_offered(const Path& p) const {
-        return p.clamp_tick != NO_TIME &&
+        const LastStepClamp k = last_step_clamp(p);
+        return k.phrase_tick != NO_TIME &&
                std::binary_search(en_.early_offers.begin(), en_.early_offers.end(),
-                                  std::make_pair(p.clamp_tick, p.sp_end_time));
+                                  std::make_pair(k.phrase_tick, p.sp_end_time));
     }
     int32_t act_count(const Path& p) const {
         return p.act_tail < 0 ? 0 : acts_[(size_t)p.act_tail].depth;
@@ -804,16 +826,6 @@ void Engine::advance(Path& p) {
                     p.node = NODE_BROKEN;
                     return;
                 }
-                // Remember which end every clamp moved, while the old end is
-                // still at hand (finding 37). A plain step leaves no clamp in
-                // force: the end it set is one bar past the end it moved.
-                if (mit->second.clamped) {
-                    p.clamp_tick = eo->sp_times[(size_t)i].first.ticks();
-                    p.clamp_from = sp_end_time;
-                } else {
-                    p.clamp_tick = NO_TIME;
-                    p.clamp_from = NO_TIME;
-                }
                 sp_end_time = mit->second.to_tick;
                 // Every other phrase the gauge receives is one step: Clamped
                 // when the cap pinned the end to it, else Collected.
@@ -923,8 +935,6 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.skipped_e_offset = NO_DOUBLE;
     c.sp_ready_ms = NO_DOUBLE;
     c.sp_end_time = aiet_val;
-    c.clamp_tick = NO_TIME;
-    c.clamp_from = NO_TIME;
     c.end_tail = push_end(-1, n.tick, aiet_val, SpEndKind::Activation);
     c.banked_phrase_ordinal = e.banked_phrase_ordinal;
 
@@ -963,9 +973,10 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
             first, last, node(acts_[(size_t)p.act_tail].act_node).tick,
             [](const ChoiceView& v) { return v.chord; },
             [this, &p](int64_t tick) { return squeezed_in(p, tick); });
+        const LastStepClamp k = last_step_clamp(p);
         if (c != last && p.sp_end_time == c->sqout_time &&
-            (c->late || (p.clamp_tick == c->chord ? p.clamp_from == node(e.dest).tick
-                                                  : !c->clamped))) {
+            (c->late || (k.phrase_tick == c->chord ? k.moved_from == node(e.dest).tick
+                                                   : !c->clamped))) {
             *offered = c;
             return DEACT_SQINOUT;
         }
@@ -989,8 +1000,6 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     c.node = e.dest;
     c.sp = sq ? 1 : 0;
     c.sp_end_time = NO_TIME;
-    c.clamp_tick = NO_TIME;
-    c.clamp_from = NO_TIME;
     c.end_tail = -1;
     // A squeeze-out banks one bar when the player hits the phrase: just after
     // SP ends for an early phrase, on its own tick for a late one.
@@ -1073,9 +1082,6 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // relabel it on this branch only.
     if (sq->late) {
         p.end_tail = push_end(p.end_tail, sq->chord, sq->sqin_time, SpEndKind::SqIn);
-        // The late phrase moved the end by a plain bar: no clamp is in force.
-        p.clamp_tick = NO_TIME;
-        p.clamp_from = NO_TIME;
     } else if (!relabel_sqin(p.end_tail, sq->chord)) {
         p.node = NODE_BROKEN;  // run() sees it and refuses the search
         return false;
@@ -1180,8 +1186,7 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
         // Where no edge offers the phrase at that end (clamp_offered), the
         // origin changes no offer, and the two fold as before. An offer needs
         // an SP bar inside the squeeze window, so only at extreme tempos.
-        if (p.node >= 0 &&
-            (leader.clamp_tick != p.clamp_tick || leader.clamp_from != p.clamp_from) &&
+        if (p.node >= 0 && !(last_step_clamp(leader) == last_step_clamp(p)) &&
             (clamp_offered(leader) || clamp_offered(p))) {
             survivors_.push_back(idx);
             continue;
@@ -1343,7 +1348,7 @@ void Engine::reduce_iteration_paths() {
         // [-2^46, 2^46) packs exactly; the check below refuses the rest.
         // These widths, the meter's 2^30 and ready_class's 16 bits per count
         // are decision D40 (recorded in ADR 0014).
-        // The end a clamp moved (Path::clamp_from) is not in the key: two
+        // The end a clamp moved (last_step_clamp) is not in the key: two
         // paths that reach one end from different ends share a group, and
         // the lower one can be pruned before its own squeeze-out node. The
         // key was the same before finding 37, so that is no regression;
@@ -1685,8 +1690,6 @@ bool Engine::run() {
     root.var_head = -1;
     root.tied_count = 1;
     root.sp_end_time = NO_TIME;
-    root.clamp_tick = NO_TIME;
-    root.clamp_from = NO_TIME;
     root.end_tail = -1;
     root.bank_tail = -1;
     root.skip_tail = -1;

@@ -315,18 +315,19 @@ const std::vector<OwnerRule>& rules() {
           {"tools/replay_json.cpp", "w.sqout_tick = act[\"sqout_tick\"].get<int64_t>();",
            "a window read from hydra_replay's JSON (ReplayWindow), not an Activation"}}},
         {"Is this SP-end step a clamp?",
-         "last_clamp_tick in src/core/model.cpp",
+         "is_clamp_kind in src/core/model.h (last_clamp_tick and the engine ask it)",
          R"(\bkind\s*==\s*SpEndKind::Clamped\b)",
          "",
          {},
          {},
          "ADR 0013 (the clamp note is stored); step-1 derive-once review of fb1189b, finding 2 "
-         "(2026-10-04)",
+         "(2026-10-04); T10+T11 derive-once review finding 6 (2026-10-04)",
          {"if (it->kind == SpEndKind::Clamped) return it->tick;",
           "if (sp_end_steps[s].kind == SpEndKind::Clamped) return sp_end_steps[s].tick;"},
          {"mit->second.clamped ? SpEndKind::Clamped"},
-         {{"src/core/model.cpp", "if (steps[s].kind == SpEndKind::Clamped) return steps[s].tick;",
-           "last_clamp_tick, the owner"}}},
+         {{"src/core/model.h",
+           "inline bool is_clamp_kind(SpEndKind kind) { return kind == SpEndKind::Clamped; }",
+           "is_clamp_kind, the owner"}}},
         // Was part of a walker in test_squeeze_rating.cpp (review finding 12).
         // An optional namespace prefix (hydra::kSqueezeWindowMs) must not
         // hide a comparison.
