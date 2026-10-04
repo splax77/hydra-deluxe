@@ -250,15 +250,17 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     if (!w.sqout_offset_ms)
         throw std::runtime_error(where + " has no SqOut offset to resolve");
     const double d_ms = song.timing().timecode(w.deact_tick).ms();
-    const double want_ms = d_ms + *w.sqout_offset_ms;
 
+    // How far a candidate's offset from the SP end sits from the typed one.
+    const auto miss = [&](const SongTimestamp* ts) {
+        return std::fabs(offset_from_sp_end(ts->timecode.ms(), d_ms) -
+                         *w.sqout_offset_ms);
+    };
     const std::vector<const SongTimestamp*> cands =
         sqout_candidates(song, w.deact_tick);
     const SongTimestamp* best = nullptr;
     for (const SongTimestamp* ts : cands)
-        if (!best || std::fabs(ts->timecode.ms() - want_ms) <
-                         std::fabs(best->timecode.ms() - want_ms))
-            best = ts;
+        if (!best || miss(ts) < miss(best)) best = ts;
 
     char buf[512];
     if (!best) {
@@ -321,11 +323,13 @@ std::vector<std::string> ambiguous_window_warnings(
                             std::to_string(tick);
         char gap[32];
         if (tick < w.deact_tick) {
-            std::snprintf(gap, sizeof(gap), "%.2f", deact_ms - chord->ms);
+            std::snprintf(gap, sizeof(gap), "%.2f",
+                          std::fabs(offset_from_sp_end(chord->ms, deact_ms)));
             where = "just after the Star Power phrase note at tick " +
                     std::to_string(tick) + " (" + gap + " ms earlier)";
         } else if (tick > w.deact_tick) {
-            std::snprintf(gap, sizeof(gap), "%.2f", chord->ms - deact_ms);
+            std::snprintf(gap, sizeof(gap), "%.2f",
+                          std::fabs(offset_from_sp_end(chord->ms, deact_ms)));
             where = "just before the Star Power phrase note at tick " +
                     std::to_string(tick) + " (" + gap + " ms later)";
         }

@@ -738,7 +738,14 @@ TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search gr
 TEST_CASE("the squeeze window is compared in one place and never typed as 500") {
     namespace fs = std::filesystem;
     const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
-    const std::regex compare(R"([<>]=?\s*kSqueezeWindowMs|kSqueezeWindowMs\s*[<>])");
+    // An optional namespace prefix (hydra::kSqueezeWindowMs) must not hide it.
+    const std::regex compare(
+        R"([<>]=?\s*(\w+::)*kSqueezeWindowMs|(\w+::)*kSqueezeWindowMs\s*[<>])");
+    // The pattern itself: bare and qualified spellings, both sides.
+    CHECK(std::regex_search("x < kSqueezeWindowMs", compare));
+    CHECK(std::regex_search("x < hydra::kSqueezeWindowMs", compare));
+    CHECK(std::regex_search("hydra::kSqueezeWindowMs > x", compare));
+    CHECK_FALSE(std::regex_search("clamp(v, 0, hydra::kSqueezeWindowMs)", compare));
     std::vector<std::string> problems;
     for (const char* sub : {"src", "tools"}) {
         for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
