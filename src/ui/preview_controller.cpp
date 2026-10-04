@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "app/config.h"
+#include "app/user_messages.h"
 #include "audio/device.h"
 #include "audio/player.h"
 #include "ui/preview_load_job.h"
@@ -184,7 +185,9 @@ void PreviewController::poll() {
             }
         }
     } else {
-        error_ = job_->error();
+        // The job's text is the raw exception ("StreamMix: ..."); the panel
+        // prints the plain sentence for it, the one every other screen uses.
+        error_ = hydra::app::plain_error_text(job_->error());
     }
     job_.reset();
     job_path_key_.clear();
