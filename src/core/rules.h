@@ -35,7 +35,7 @@ struct Rules {
     int fill_cooldown_measures = 4;
     double fill_max_distance_beats = 0.5;
     double fill_length_measures = 0.5;
-    // Authored-fill placement (fill_lands_on_chord, both parsers): how close
+    // Authored-fill placement (place_authored_fills, both parsers): how close
     // the next chord must be to the fill end to count as the chord the fill
     // lands on, in beats. The parser takes the whole ticks of this and adds
     // one tick, as Clone Hero 1.1 does (finding 315, D22), so 0 still allows

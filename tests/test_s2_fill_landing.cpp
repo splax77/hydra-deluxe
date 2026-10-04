@@ -79,3 +79,116 @@ TEST_CASE("fill landing: the extra tick applies on top of a user's slop of 0") {
     CHECK(chart_landing(192, 1, rules) == 769);
     CHECK(chart_landing(192, 2, rules) == 576);
 }
+
+// Fill B (D30): fills are placed after every chord is read. A fill whose next
+// fill starts before any chord reaches its end used to be forgotten; now both
+// land. Resolution 192: the window is 6 + 1 = 7 ticks.
+TEST_CASE("fill landing: a fill is placed even when the next fill starts before its end chord (.chart)") {
+    const std::string text =
+        "[Song]\n{\n  Resolution = 192\n}\n"
+        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+        "[ExpertDrums]\n{\n"
+        "  0 = N 0 0\n"
+        "  100 = S 64 100\n"   // fill A: 100-200
+        "  150 = N 1 0\n"      // A's only chord, inside A
+        "  180 = S 64 100\n"   // fill B: 180-280, starts before a chord reaches 200
+        "  250 = N 2 0\n"      // B's only chord, inside B
+        "  400 = N 3 0\n"
+        "}\n";
+    const std::vector<uint8_t> data(text.begin(), text.end());
+    const Song song = load_songbytes_chart(data, true, true);
+    REQUIRE(song.sequence.size() == 4);
+    CHECK_FALSE(song.sequence[0].has_activation());
+    REQUIRE(song.sequence[1].has_activation());
+    CHECK(*song.sequence[1].activation_length == 50);
+    REQUIRE(song.sequence[2].has_activation());
+    CHECK(*song.sequence[2].activation_length == 70);
+    CHECK_FALSE(song.sequence[3].has_activation());
+}
+
+TEST_CASE("fill landing: a fill is placed even when the next fill starts before its end chord (.mid)") {
+    // 480 ticks per beat: the window is 15 + 1 = 16 ticks.
+    using namespace testmidi;
+    const std::vector<uint8_t> track = concat({
+        track_name("PART DRUMS"), set_tempo(),
+        note_on(96, 100),                // tick 0: kick
+        {0x81, 0x70, 0x90, 120, 100},    // tick 240: fill A on
+        {0x78, 0x90, 97, 100},           // tick 360: red, inside A
+        {0x78, 0x90, 120, 0},            // tick 480: fill A off
+        {0x14, 0x90, 120, 100},          // tick 500: fill B on, no chord since A's end
+        {0x64, 0x90, 98, 100},           // tick 600: yellow, inside B
+        {0x78, 0x90, 120, 0},            // tick 720: fill B off
+        {0x83, 0x60, 0x90, 99, 100},     // tick 1200: blue
+        end_of_track(),
+    });
+    const Song song = load_songbytes_mid(smf(track), true, true);
+    REQUIRE(song.sequence.size() == 4);
+    CHECK_FALSE(song.sequence[0].has_activation());
+    REQUIRE(song.sequence[1].has_activation());
+    CHECK(*song.sequence[1].activation_length == 120);
+    REQUIRE(song.sequence[2].has_activation());
+    CHECK(*song.sequence[2].activation_length == 100);
+    CHECK_FALSE(song.sequence[3].has_activation());
+}
+
+TEST_CASE("fill landing: an earlier chord before the fill start is no candidate") {
+    // Fill 100-104. The chord at 99 is closer (5 ticks) but before the fill
+    // start, so only the chord at 110 (6 ticks, inside the 7-tick window)
+    // can take it. Before D30 the fill was dropped.
+    const std::string text =
+        "[Song]\n{\n  Resolution = 192\n}\n"
+        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+        "[ExpertDrums]\n{\n"
+        "  99 = N 1 0\n"
+        "  100 = S 64 4\n"
+        "  110 = N 2 0\n"
+        "}\n";
+    const std::vector<uint8_t> data(text.begin(), text.end());
+    const Song song = load_songbytes_chart(data, true, true);
+    REQUIRE(song.sequence.size() == 2);
+    CHECK_FALSE(song.sequence[0].has_activation());
+    REQUIRE(song.sequence[1].has_activation());
+    CHECK(*song.sequence[1].activation_length == 10);
+}
+
+TEST_CASE("fill landing: a fill before the first note keeps the window's bound (B2 not adopted)") {
+    // Fill 0-50 has no chord before its end, and the first chord after it
+    // (192) is far outside the window, so it is dropped. Clone Hero's 0x5DE030
+    // would take the 192 chord; D30 keeps the bound.
+    const std::string text =
+        "[Song]\n{\n  Resolution = 192\n}\n"
+        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+        "[ExpertDrums]\n{\n"
+        "  0 = S 64 50\n"
+        "  192 = N 0 0\n"
+        "  300 = S 64 84\n"    // fill 300-384, lands on 384
+        "  384 = N 1 0\n"
+        "}\n";
+    const std::vector<uint8_t> data(text.begin(), text.end());
+    const Song song = load_songbytes_chart(data, true, true);
+    REQUIRE(song.sequence.size() == 2);
+    CHECK_FALSE(song.sequence[0].has_activation());
+    REQUIRE(song.sequence[1].has_activation());
+    CHECK(*song.sequence[1].activation_length == 84);
+    CHECK(song.features.empty());  // an authored fill landed: no generated ones
+}
+
+TEST_CASE("fill landing: a fill past the last note keeps its start bound (B2 not adopted)") {
+    // Fill 500-600 has no chord after it, and the last chord before its end
+    // (384) is before its start, so it is dropped. Clone Hero's 0x5DE030 would
+    // move 384's fill to it; D30 keeps 384's own fill, 300-384.
+    const std::string text =
+        "[Song]\n{\n  Resolution = 192\n}\n"
+        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+        "[ExpertDrums]\n{\n"
+        "  0 = N 0 0\n"
+        "  300 = S 64 84\n"
+        "  384 = N 1 0\n"
+        "  500 = S 64 100\n"
+        "}\n";
+    const std::vector<uint8_t> data(text.begin(), text.end());
+    const Song song = load_songbytes_chart(data, true, true);
+    REQUIRE(song.sequence.size() == 2);
+    REQUIRE(song.sequence[1].has_activation());
+    CHECK(*song.sequence[1].activation_length == 84);
+}
