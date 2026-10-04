@@ -22,7 +22,7 @@ How it runs:
 The game keeps times in seconds; rows are in milliseconds. +0x20 holds the
 whole window, but whether the formula returns one side or the whole is not
 known until this runs. So the first rows are printed and the verdict is given
-against both edges.
+against the measured whole window (constants.WINDOW_CAP_MS) and its half.
 
     python -m tools.ch_probe.experiments.passive_probe --seconds 20
 """
@@ -116,6 +116,17 @@ class PassiveCollector:
         self._pending = None
 
 
+def clamp_edges(precision: bool) -> list[tuple[str, float]]:
+    """The edges to judge a clamp against, from the measured constants.
+
+    Normal mode: one side (half the whole window) and the whole window.
+    Precision mode: none, because nobody has read its cap.
+    """
+    if precision:
+        return []
+    return [("one side", constants.ONE_SIDE_CAP_MS), ("whole window", constants.WINDOW_CAP_MS)]
+
+
 def run_passive_probe(
     *,
     duration_s: float = 60.0,
@@ -159,12 +170,12 @@ def run_passive_probe(
     _write_rows(rows, out_stub)
     _print_first_rows(rows)
 
-    # Judge against the edge of the mode actually being probed: precision
-    # mode's back window is 40 ms, not normal mode's 85.
-    back_ms = (constants.EXPECT_PRECISION_BACK_MS if engine.precision_mode()
-               else constants.EXPECT_NORMAL_BACK_MS)
+    # Judge against the measured edges of the mode actually being probed.
+    edges = clamp_edges(engine.precision_mode())
+    if not edges:
+        print("Precision mode: no measured cap yet, so no clamp verdict.")
     verdicts = []
-    for label, cap_ms in (("one side", back_ms), ("whole window", 2 * back_ms)):
+    for label, cap_ms in edges:
         verdict = analysis.clamp_verdict(rows, cap_ms=cap_ms)
         _print_verdict(verdict, label)
         verdicts.append(verdict)
@@ -205,7 +216,7 @@ def _print_first_rows(rows: List[PassiveRow], n: int = 10) -> None:
 
 def _print_verdict(verdict: analysis.ClampResult, label: str) -> None:
     """Say the answer in plain English, for one reading of the scale."""
-    head = f"Against the {label} edge ({verdict.cap_ms:.0f} ms): "
+    head = f"Against the {label} edge ({verdict.cap_ms:.2f} ms): "
     if verdict.verdict == analysis.CLAMP_ABSENT:
         print(head + "no clamp. The stored window followed the raw formula past "
               f"the edge ({verdict.tracked_fraction:.0%} of {verdict.n_above} notes).")

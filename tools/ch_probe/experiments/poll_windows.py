@@ -6,8 +6,8 @@ writes the collected data and prints a summary of the window range.
 
 This is the passive probe without the debugger — it sees the STORED
 window (after any clamp the engine applies), not the raw formula output.
-If the stored window exceeds the back-window constant (85 ms), there is
-no clamp. If it caps at 85 ms while note spacings get wider, there is.
+Clone Hero caps the whole window at a measured 171.43 ms (constants.WINDOW_CAP_MS).
+A stored value above that means no cap; values that top out there mean the cap held.
 
 Start a song, then run:
     python tools\\ch_probe\\experiments\\poll_windows.py
@@ -38,6 +38,35 @@ from tools.ch_probe.engine_finder import scan_for_engine
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 POLL_HZ = 200
 DURATION_S = 60
+
+
+def window_verdict(windows: list[float], back_ms: float) -> list[str]:
+    """Plain-English verdict lines for a run's stored windows, in ms.
+
+    Judged against the measured normal-mode cap and floor (constants.py).
+    `back_ms` is the engine's live back constant; when it is not the normal
+    85 ms the game is in precision mode, whose cap nobody has read.
+    """
+    tol = constants.WINDOW_MATCH_TOLERANCE_MS
+    w_min, w_max = min(windows), max(windows)
+    if abs(back_ms - constants.EXPECT_NORMAL_BACK_MS) > constants.CONST_MATCH_TOLERANCE_MS:
+        return [f"  Back window is {back_ms:.1f} ms, not the normal "
+                f"{constants.EXPECT_NORMAL_BACK_MS:.0f}: precision mode, "
+                "which has no measured cap yet."]
+    lines = [f"  Measured cap {constants.WINDOW_CAP_MS} ms, floor {constants.WINDOW_FLOOR_MS} ms."]
+    if w_max > constants.WINDOW_CAP_MS + tol:
+        lines.append(f"  *** Window EXCEEDED the measured cap: max {w_max:.3f} ms. NO CLAMP. ***")
+    elif abs(w_max - constants.WINDOW_CAP_MS) <= tol:
+        lines.append("  The window reached the measured cap and never passed it.")
+    elif len(set(round(w, 2) for w in windows)) == 1:
+        lines.append("  Window never changed: either notes were uniform or no notes hit.")
+    else:
+        lines.append("  The window stayed below the cap: the song may have had no gaps of "
+                     f"{constants.CAP_FROM_GAP_MS:.0f} ms or more.")
+    if abs(w_min - constants.WINDOW_FLOOR_MS) <= tol:
+        lines.append("  It also reached the measured floor (gaps of "
+                     f"{constants.FLOOR_UP_TO_GAP_MS:.0f} ms or less).")
+    return lines
 
 
 def main() -> None:
@@ -119,16 +148,8 @@ def main() -> None:
 
     print(f"  Window range: {w_min:.3f} — {w_max:.3f} ms")
     print(f"  Back window (constant): {back_ms:.1f} ms")
-    print(f"  Total window = 2 × back window: {2*back_ms:.1f} ms")
-
-    if w_max > 2 * back_ms + 0.5:
-        print(f"\n  *** Window EXCEEDED 2×back ({2*back_ms:.1f} ms). ***")
-        print(f"  *** Max observed: {w_max:.3f} ms. NO CLAMP on the stored field. ***")
-    elif len(set(round(w, 2) for w in windows)) == 1:
-        print(f"\n  Window never changed — either notes were uniform or no notes hit.")
-    else:
-        print(f"\n  Window varied but stayed ≤ {2*back_ms:.1f} ms.")
-        print(f"  This could mean a clamp is active, or the song just had close spacings.")
+    for line in window_verdict(windows, back_ms):
+        print(line)
 
     # Write results
     os.makedirs(RESULTS_DIR, exist_ok=True)
