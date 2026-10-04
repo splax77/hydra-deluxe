@@ -215,9 +215,7 @@ void cell_text(const std::string& text, const std::vector<app::MatchSpan>& spans
 // row's Selectable already gave the text log the full title.
 float draw_title_ellipsized(ImVec2 pos, float max_w, const std::string& title) {
     float kept_w = 0.0f;
-    const std::string shown = render::ellipsize(
-        title, max_w, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; },
-        kept_w);
+    const std::string shown = render::ellipsize(title, max_w, text_width, kept_w);
     ImGui::GetWindowDrawList()->AddText(pos, ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
     return kept_w;
 }
@@ -430,8 +428,9 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                     ImGui::SetTooltip("Not analyzed yet. Open the song and press \"Analyze this "
                                       "song\", or use \"Analyze library...\".");
                 else if (row.status == store::RecordStatus::Stale)
-                    ImGui::SetTooltip("Analyzed by another Hydra version, or under different "
-                                      "rules in hydra_rules.ini. Re-analyze to refresh it.");
+                    // This one row's real cause, from the store.
+                    ImGui::SetTooltip(
+                        "%s", app::stale_text(row.stale_build, row.stale_rules).c_str());
             }
             ImGui::PopID();
         }

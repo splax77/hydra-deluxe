@@ -34,6 +34,8 @@ struct LibraryRow {
     std::string title, artist, charter;   // colour tags removed: what the table draws
     app::SearchableRow searchable;        // folded copies, for matching and sorting
     store::RecordStatus status = store::RecordStatus::NotAnalyzed;
+    bool stale_build = false;             // why a Stale row is Stale (the store's
+    bool stale_rules = false;             // SummaryLookup); the tooltip names it
     std::string bestpath;                 // set when Ready
     store::PathSummary summary;           // set when Ready (T7)
     std::string best_label;               // the Best path cell (best_path_label)
