@@ -258,12 +258,10 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
             auto [label, token] = tier_for(s.hardest_ms, tiers);
 
             ReportRow row;
-            // The one cleaned title and artist every screen shows. The
-            // charter loses the same tags but keeps no fallback, so it
-            // strips and trims.
+            // The one cleaned title, artist and charter every screen shows.
             row.song = display_title(meta.ref_name);
             row.artist = display_artist(meta.ref_artist);
-            row.charter = trim(strip_rich_tags(meta.ref_charter));
+            row.charter = display_charter(meta.ref_charter);
             row.mode = meta.chartmode;
             row.rank = static_cast<int>(idx + 1);
             row.optimal = record->is_optimal(*path);

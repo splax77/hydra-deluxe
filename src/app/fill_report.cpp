@@ -7,7 +7,7 @@
 #include "app/html_page.h"
 #include "app/report.h"  // records_by_hash
 #include "core/model.h"  // group_thousands
-#include "parse/song.h"  // display_title, strip_rich_tags
+#include "parse/song.h"  // display_title, display_artist, display_charter
 #include "search/graph.h"  // fill_rule_name, fill_rule_description
 
 namespace hydra::app::fill_report {
@@ -191,7 +191,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         const store::RecordListing* id = new_rec ? new_rec : old_rec;
         row.song = display_title(id->ref_name);
         row.artist = display_artist(id->ref_artist);
-        row.charter = strip_rich_tags(id->ref_charter);
+        row.charter = display_charter(id->ref_charter);
 
         if (old_rec) {
             row.old_score = old_rec->summary.score;

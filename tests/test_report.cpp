@@ -274,6 +274,19 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
         CHECK(row.charter == "");
     }
     CHECK(saw_u0);
+
+    // The scan's artist placeholder reads "(unknown)" too (D56 item 2), and a
+    // charter loses its tags and the spaces at its ends (display_charter).
+    store.add_song("u0", "Song", kUnknownArtist, " <b>Bob</b> ", test::beat_song({}, {}, 13440));
+    rows = report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
+    saw_u0 = false;
+    for (const report::ReportRow& row : rows) {
+        if (row.hyhash != "u0") continue;
+        saw_u0 = true;
+        CHECK(row.artist == kUnknownTitle);
+        CHECK(row.charter == "Bob");
+    }
+    CHECK(saw_u0);
 }
 
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {

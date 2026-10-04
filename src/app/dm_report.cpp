@@ -9,7 +9,7 @@
 #include "app/report.h"  // records_by_hash
 #include "core/model.h"  // counted
 #include "core/strutil.h"  // to_lower_ascii
-#include "parse/song.h"  // display_title, strip_rich_tags
+#include "parse/song.h"  // display_title, display_artist, display_charter
 
 namespace hydra::app::dm_report {
 
@@ -203,13 +203,13 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         } else if (rec) {
             row.song = display_title(rec->ref_name);
             row.artist = display_artist(rec->ref_artist);
-            row.charter = strip_rich_tags(rec->ref_charter);
+            row.charter = display_charter(rec->ref_charter);
         } else {
             row.song = s.song_name;
             row.artist = s.artist;
             row.charter = s.charter;
         }
-        if (row.charter.empty() && rec) row.charter = strip_rich_tags(rec->ref_charter);
+        if (row.charter.empty() && rec) row.charter = display_charter(rec->ref_charter);
 
         // Hydra's optimal is a base-speed answer, and Clone Hero keeps a
         // leaderboard per speed. An off-speed score shows Hydra's numbers when

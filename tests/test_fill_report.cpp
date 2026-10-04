@@ -398,6 +398,16 @@ TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].artist == kUnknownTitle);
     CHECK(rows[0].charter == "");
+
+    // An empty artist and the scan's placeholder read "(unknown)" too (D56
+    // item 2); a charter loses the spaces at its ends (display_charter).
+    for (const char* artist : {"", kUnknownArtist}) {
+        new_store.add_song(kBoth, "Song", artist, " <b>Bob</b> ", sample_chart().song);
+        rows = compare(old_store, new_store);
+        REQUIRE(rows.size() == 1);
+        CHECK(rows[0].artist == kUnknownTitle);
+        CHECK(rows[0].charter == "Bob");
+    }
 }
 
 TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in both") {

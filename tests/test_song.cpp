@@ -800,6 +800,22 @@ TEST_CASE("display_title: an artist reads by the same rule (D50 item 5)") {
     // An artist made only of tags reads "(unknown)", like a title.
     CHECK(display_artist(test::kTagOnlyTitle) == "(unknown)");
     CHECK(display_artist(" <i>Tagged</i> Artist ") == "Tagged Artist");
-    // The scan's own placeholder is not a tag, so it shows as it is.
-    CHECK(display_artist(kUnknownArtist) == kUnknownArtist);
+}
+
+TEST_CASE("display_artist: a missing artist reads (unknown) however it is stored (D56 item 2)") {
+    // Empty, the scan's placeholder, or only tags: all three read "(unknown)".
+    CHECK(display_artist("") == "(unknown)");
+    CHECK(display_artist("<unknown artist>") == "(unknown)");
+    CHECK(display_artist(" <b></b> ") == "(unknown)");
+    // The stored text is not touched: the scan still writes its placeholder.
+    CHECK(artist_or_unknown("") == "<unknown artist>");
+}
+
+TEST_CASE("display_charter: tags go and the ends are trimmed, with no fallback") {
+    CHECK(display_charter(" <b>Bob</b> ") == "Bob");
+    CHECK(display_charter("<color=red> Hoph2o </color>") == "Hoph2o");
+    CHECK(display_charter(test::kTagOnlyTitle) == "");
+    CHECK(display_charter("") == "");
+    // The scan's charter placeholder keeps today's text.
+    CHECK(display_charter("<unknown charter>") == "<unknown charter>");
 }

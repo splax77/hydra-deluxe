@@ -256,6 +256,17 @@ TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].artist == kUnknownTitle);
     CHECK(rows[0].charter == "");
+
+    // An empty artist and the scan's placeholder read "(unknown)" too (D56
+    // item 2); a charter loses the spaces at its ends (display_charter).
+    for (const char* artist : {"", kUnknownArtist}) {
+        tags_only.add_song(kHash, "Stored Title", artist, " <b>Bob</b> ",
+                           test::beat_song({}, {}, 13440));
+        rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
+        REQUIRE(rows.size() == 1);
+        CHECK(rows[0].artist == kUnknownTitle);
+        CHECK(rows[0].charter == "Bob");
+    }
 }
 
 TEST_CASE("collect_dm_rows: a percent rounds once") {
