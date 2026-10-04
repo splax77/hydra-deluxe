@@ -29,6 +29,7 @@
 #include "env_util.h"
 #include "replay_json.h"
 #include "core/scoring.h"
+#include "core/sqout_chord.h"
 #include "core/timing.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -607,7 +608,7 @@ TEST_CASE("a typed squeeze-out offset resolves to the phrase chord") {
 // The engine only ever squeezes out the first phrase chord strictly within
 // 500 ms of the SP end. A typed offset that lands on a later one names a
 // squeeze-out the search can never produce, so it is refused and nothing is
-// priced (user decision 23).
+// priced (plan decision 20 of 2026-09-24).
 TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refused") {
     // Phrase chords 375 ms (tick 2928) and 93.75 ms (tick 3036) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
@@ -635,9 +636,9 @@ TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refus
 }
 
 // The graph lets a deactivation squeeze out exactly one chord: the first
-// phrase chord strictly within 500 ms of the SP end (graph.cpp
-// add_deact_edge, then store_new_backend for chords after the end). The
-// warning names that chord, and only when the window actually paid it.
+// phrase chord strictly within 500 ms of the SP end (core::sqout_chord, which
+// graph.cpp add_deact_edge calls). The warning names that chord, and only
+// when the window actually paid it.
 TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     // Phrase chords 375 ms (tick 2928) and 125 ms (tick 3024) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
@@ -664,6 +665,30 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     const std::vector<std::string> late = ambiguous_window_warnings(after, ra, {w});
     REQUIRE(late.size() == 1);
     CHECK(late[0].find("tick 3073") != std::string::npos);
+}
+
+// The one rule for which phrase chord an SP end can squeeze out.
+TEST_CASE("sqout_chord: the first phrase chord strictly inside the window, in chart order") {
+    const Song two = song_with({{0, false}, {768, false}, {2928, true},
+                                {3036, true}, {3072, false}});
+    const SongTimestamp* c = core::sqout_chord(two, two.timecode(3072));
+    REQUIRE(c != nullptr);
+    CHECK(c->timecode.ticks() == 2928);  // 375 ms before D comes before 93.75 ms
+
+    // Exactly 500 ms before D is outside.
+    const Song edge = song_with({{0, false}, {2880, true}, {3072, false}});
+    CHECK(core::sqout_chord(edge, edge.timecode(3072)) == nullptr);
+
+    // Only a phrase chord after D: that one.
+    const Song after = song_with({{0, false}, {3072, false}, {3073, true}});
+    REQUIRE(core::sqout_chord(after, after.timecode(3072)) != nullptr);
+    CHECK(core::sqout_chord(after, after.timecode(3072))->timecode.ticks() == 3073);
+
+    // An SP end between two chords, and no phrase chord at all.
+    REQUIRE(core::sqout_chord(two, two.timecode(3000)) != nullptr);
+    CHECK(core::sqout_chord(two, two.timecode(3000))->timecode.ticks() == 2928);
+    const Song bare = song_with({{0, false}, {3072, false}});
+    CHECK(core::sqout_chord(bare, bare.timecode(3072)) == nullptr);
 }
 
 TEST_CASE("category_scores reports the multiplier each note was paid at") {

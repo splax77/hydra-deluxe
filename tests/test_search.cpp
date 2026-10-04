@@ -9,10 +9,12 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "core/model.h"
+#include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -613,6 +615,40 @@ TEST_CASE("tail rows: every corpus activation keeps exactly the rows the old dis
     }
     CHECK(edges > 0);
     CHECK(tails > 0);
+}
+
+// The graph claims, for every deactivation edge, exactly the chord
+// core::sqout_chord names. Run before the graph calls it, this proves the
+// function is the graph's old rule; after, it guards against drift.
+TEST_CASE("graph: every deactivation edge claims the chord sqout_chord names") {
+    int edges = 0, claimed = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        const ScoreGraph graph(song, 4);
+
+        // The SP track is one chain; it starts at the first activation's node.
+        const ScoreGraphNode* sp = nullptr;
+        for (const ScoreGraphNode* b = graph.start(); b && !sp;
+             b = b->adv_edge ? b->adv_edge->dest : nullptr)
+            if (b->branch_edge) sp = b->branch_edge->dest;
+
+        std::set<const ScoreGraphEdge*> seen;
+        for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr) {
+            const ScoreGraphEdge* e = sp->branch_edge;
+            if (!e || !seen.insert(e).second) continue;
+            ++edges;
+            const Timecode& end = e->dest->timecode;
+            const SongTimestamp* c = core::sqout_chord(song, end);
+            CHECK(e->sqinout_time.has_value() == (c != nullptr));
+            if (!c || !e->sqinout_time) continue;
+            ++claimed;
+            CHECK(e->sqinout_time->ticks() == c->timecode.ticks());
+            CHECK(*e->sqinout_timing == c->timecode.ms() - end.ms());  // bit for bit
+        }
+    }
+    CHECK(edges > 0);
+    CHECK(claimed > 0);
 }
 
 // run_search takes its knobs in one EngineOptions value, so no two flags can

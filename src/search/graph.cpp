@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include "core/scoring.h"
+#include "core/sqout_chord.h"
 
 namespace hydra {
 
@@ -232,20 +233,14 @@ void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
 
     recent_backends_.push_back(backend);
 
+    // Copy this row onto every deactivation edge still inside its window.
+    // Which phrase chord an edge squeezes out is decided once, in
+    // add_deact_edge (core/sqout_chord.h), not here.
     for (ScoreGraphEdge* recent_edge : recent_deact_edges_) {
-        double offset_ms =
-            offset_from_sp_end(ts.timecode.ms(), recent_edge->dest->timecode.ms());
         BackendSqueeze copy = backend;
-        copy.offset_ms = offset_ms;
+        copy.offset_ms =
+            offset_from_sp_end(ts.timecode.ms(), recent_edge->dest->timecode.ms());
         recent_edge->backends.push_back(copy);
-
-        if (recent_edge->backends.back().is_sp &&
-            !recent_edge->sqinout_time.has_value()) {
-            recent_edge->sqinout_time = ts.timecode;
-            recent_edge->sqinout_timing = offset_ms;
-            recent_edge->late_sqin_count += 1;
-            recent_edge->sqin_time = plusmeasure(*recent_edge->sqin_time, sp_bars_to_measures(1));
-        }
     }
 }
 
@@ -350,23 +345,28 @@ ScoreGraphEdge* ScoreGraph::add_act_edge(int frontend_points, int64_t fill_lengt
 void ScoreGraph::add_deact_edge() {
     ScoreGraphEdge* deact_edge = new_edge();
     deact_edge->dest = base_track_head_;
+    const Timecode& end = deact_edge->dest->timecode;
 
-    deact_edge->sqout_time = deact_edge->dest->timecode;
-    deact_edge->sqin_time = deact_edge->dest->timecode;
+    deact_edge->sqout_time = end;
+    deact_edge->sqin_time = end;
 
     for (const BackendSqueeze& recent_backend : recent_backends_) {
         BackendSqueeze copy = recent_backend;
-        double offset_ms = offset_from_sp_end(recent_backend.timecode.ms(),
-                                              deact_edge->dest->timecode.ms());
-        copy.offset_ms = offset_ms;
+        copy.offset_ms = offset_from_sp_end(recent_backend.timecode.ms(), end.ms());
         deact_edge->backends.push_back(copy);
+    }
 
-        if (recent_backend.is_sp && !deact_edge->sqinout_time.has_value()) {
-            deact_edge->sqinout_time = recent_backend.timecode;
-            deact_edge->sqinout_timing = offset_ms;
-            deact_edge->sqout_time = plusmeasure(*deact_edge->sqout_time, sp_bars_to_measures(1));
-            deact_edge->sqin_time = plusmeasure(*deact_edge->sqin_time, sp_bars_to_measures(1));
-        }
+    // The one phrase chord this SP end can squeeze out (core/sqout_chord.h).
+    // On or before the end, it moves both branches' ends one bar. After the
+    // end, only a late SqIn reaches it, so only the SqIn end moves.
+    if (const SongTimestamp* c = core::sqout_chord(song_, end)) {
+        deact_edge->sqinout_time = c->timecode;
+        deact_edge->sqinout_timing = offset_from_sp_end(c->timecode.ms(), end.ms());
+        deact_edge->sqin_time = plusmeasure(end, sp_bars_to_measures(1));
+        if (c->timecode.ticks() <= end.ticks())
+            deact_edge->sqout_time = plusmeasure(end, sp_bars_to_measures(1));
+        else
+            deact_edge->late_sqin_count = 1;
     }
 
     recent_deact_edges_.push_back(deact_edge);

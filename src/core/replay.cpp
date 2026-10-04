@@ -7,6 +7,7 @@
 
 #include "core/backend_value.h"
 #include "core/scoring.h"
+#include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
 #include "core/timing.h"
 #include "core/model.h"  // kSqueezeWindowMs, the engine's squeeze horizon
@@ -22,10 +23,10 @@ struct Window {
     std::optional<int64_t> sqout_tick;
 };
 
-// The phrase chords the graph could squeeze out at deactivation node D: the
-// ones strictly within kSqueezeWindowMs of D, in chart order. The graph takes
-// the first of them (graph.cpp add_deact_edge for chords up to D, then
-// store_new_backend for chords after it).
+// Every phrase chord strictly within kSqueezeWindowMs of deactivation node D,
+// in chart order. The engine squeezes out only one of them, the one
+// core::sqout_chord names. This list exists only so a typed offset can be
+// matched to the chord nearest it, which is the replay's own question.
 std::vector<const SongTimestamp*> sqout_candidates(const Song& song,
                                                    int64_t deact_tick) {
     const double d_ms = song.timing().timecode(deact_tick).ms();
@@ -270,9 +271,11 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     const SqOutNote typed{best->timecode.ticks(),
                           offset_from_sp_end(best->timecode.ms(), d_ms)};
 
-    // The engine squeezes out only the first candidate. Anything else is a
-    // squeeze-out the search can never produce: refuse, never price it.
-    const SongTimestamp* engine = cands.front();
+    // The engine squeezes out only the chord core::sqout_chord names. Anything
+    // else is a squeeze-out the search can never produce: refuse, never price
+    // it. best exists, so the window holds a phrase chord and engine does too.
+    const SongTimestamp* engine =
+        core::sqout_chord(song, song.timing().timecode(w.deact_tick));
     if (best != engine) {
         std::snprintf(
             buf, sizeof(buf),
@@ -301,10 +304,10 @@ std::vector<std::string> ambiguous_window_warnings(
         if (w.sqout_offset_ms || w.sqout_tick) continue;
 
         // The one chord the graph could squeeze out at this D.
-        const std::vector<const SongTimestamp*> cands =
-            sqout_candidates(song, w.deact_tick);
-        if (cands.empty()) continue;
-        const int64_t tick = cands.front()->timecode.ticks();
+        const SongTimestamp* engine =
+            core::sqout_chord(song, timing.timecode(w.deact_tick));
+        if (!engine) continue;
+        const int64_t tick = engine->timecode.ticks();
 
         // Only a chord the window paid can make the score too high: one at or
         // before D, or inside the leeway after it.

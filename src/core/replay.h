@@ -62,8 +62,9 @@ struct SqOutNote {
 
 // Resolve w.sqout_offset_ms to the phrase chord nearest D + offset, among
 // the phrase chords strictly within kSqueezeWindowMs of D on either side.
-// The engine only ever squeezes out the first of those, so when the nearest
-// one is any other chord this refuses (user decision 23). Throws
+// The engine only ever squeezes out the first of those (core::sqout_chord),
+// so when the nearest one is any other chord this refuses (plan decision 20
+// of 2026-09-24). Throws
 // std::runtime_error, with a message naming both chords, in that case; also
 // when there is no candidate, or when w has no offset.
 SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w);
