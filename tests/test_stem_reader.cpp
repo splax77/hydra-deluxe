@@ -520,3 +520,83 @@ TEST_CASE("StemReader: MP3 seeks through the seek points on a long stream") {
         CHECK(worst <= 1e-3f);
     }
 }
+
+// The FLAC fixture with its STREAMINFO total-samples field set to 0, which
+// RFC 9639 reads as "length unknown" (an encoder writing to a pipe leaves it
+// so). The 36-bit field follows the 20-bit sample rate, 3-bit channels and
+// 5-bit bits-per-sample fields: the low 4 bits of STREAMINFO byte 13 and all of
+// bytes 14 to 17, where STREAMINFO starts 8 bytes into the file ("fLaC" and
+// the block header). Not in the anonymous namespace: test_stream_mix.cpp
+// declares and calls this same function rather than keeping a second copy.
+namespace hydra::audio_test {
+std::vector<uint8_t> flac_with_unknown_length() {
+    std::vector<uint8_t> b = fixture_bytes("sine220.flac");
+    REQUIRE(b.size() > 8 + 18);
+    REQUIRE(std::memcmp(b.data(), "fLaC", 4) == 0);
+    uint8_t* info = b.data() + 8;
+    info[13] = static_cast<uint8_t>(info[13] & 0xF0);
+    for (int i = 14; i <= 17; ++i) info[i] = 0;
+    return b;
+}
+}  // namespace hydra::audio_test
+
+TEST_CASE("StemReader: a FLAC whose header says 0 frames is counted on open") {
+    std::vector<uint8_t> original = fixture_bytes("sine220.flac");
+    auto o = open_stem_reader(StemBytes{original, nullptr});
+    // A wrong byte offset would change the rate or channel count instead of
+    // the length, so the unmodified file is checked first.
+    REQUIRE(o->length_frames() == 44100);
+    const std::vector<float> want = read_to_end(*o);
+
+    std::vector<uint8_t> zeroed = audio_test::flac_with_unknown_length();
+    auto r = open_stem_reader(StemBytes{zeroed, nullptr});
+    CHECK(r->channels() == o->channels());
+    CHECK(r->sample_rate() == o->sample_rate());
+    CHECK(r->length_frames() == o->length_frames());
+    CHECK(r->length_frames() == old_full_decode(original).frames());
+    CHECK(read_to_end(*r) == want);
+    CHECK_FALSE(r->failed());
+    r->seek(0);
+    CHECK(read_to_end(*r) == want);
+
+    // A seek into the middle lands where the unmodified file's seek lands.
+    const int64_t mid = o->length_frames() / 2;
+    o->seek(mid);
+    r->seek(mid);
+    CHECK(read_to_end(*r) == read_to_end(*o));
+}
+
+TEST_CASE("StemReader: a damaged Opus stem plays again after a seek to before the damage") {
+    std::vector<uint8_t> original = fixture_bytes("sine220.opus");
+    DecodedAudio full = old_full_decode(original);
+    std::vector<std::vector<unsigned char>> pk = opus_packets(original);
+    // A code-3 packet (several frames) whose frame count is zero: libopus
+    // rejects it as an invalid packet (RFC 6716 section 3.2.5). The packet
+    // halfway through is an audio packet (the first two are the headers).
+    const std::size_t bad = pk.size() / 2;
+    REQUIRE(bad >= 2);
+    REQUIRE(bad + 1 < pk.size());
+    pk[bad] = {static_cast<unsigned char>(pk[bad][0] | 0x03), 0};
+    std::vector<uint8_t> damaged;
+    page_opus(pk, 7, damaged);
+
+    auto r = open_stem_reader(StemBytes{damaged, nullptr});
+    const int ch = r->channels();
+    const std::vector<float> first = read_to_end(*r);
+    const int64_t first_frames = static_cast<int64_t>(first.size()) / ch;
+    CHECK(first_frames < r->length_frames());
+    CHECK(r->failed());
+
+    r->seek(0);
+    const std::vector<float> again = read_to_end(*r);
+    CHECK(static_cast<int64_t>(again.size()) / ch == first_frames);
+    REQUIRE(static_cast<int64_t>(again.size()) >= 2 * 960 * ch);
+    float worst = 0.0f;
+    for (std::size_t i = 960 * ch; i < 2 * 960 * static_cast<std::size_t>(ch); ++i)
+        worst = std::max(worst, std::fabs(again[i] - full.samples[i]));
+    CHECK(worst <= 1e-3f);
+    CHECK(r->failed());  // the error is still remembered
+
+    // The whole-file path keeps failing loudly on the same bytes.
+    CHECK_THROWS_AS(decode_audio(damaged), std::runtime_error);
+}
