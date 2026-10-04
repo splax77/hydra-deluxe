@@ -34,6 +34,14 @@ struct Exempt {
     std::string why;
 };
 
+// One line inside the owner that answers the question. A rule that lists its
+// owner's lines instead of naming the whole file guards the owner too: a
+// second answer added there fails like one anywhere else.
+struct OwnerLine {
+    std::string file;       // repo-relative, forward slashes
+    std::string line_text;  // the line with leading and trailing space trimmed
+};
+
 struct OwnerRule {
     std::string question;                  // plain English, shown on failure
     std::string owner;                     // the one place that answers it
@@ -44,6 +52,7 @@ struct OwnerRule {
     std::string decided_by;                // ADR, CONTEXT.md, the user's words, or the audit id
     std::vector<std::string> must_match;   // lines the rule flags
     std::vector<std::string> must_not_match;
+    std::vector<OwnerLine> owner_lines;    // the owner's own lines; each must still match
 };
 
 struct KnownCopy {
@@ -57,10 +66,12 @@ const std::vector<OwnerRule>& rules() {
     static const std::vector<OwnerRule> r = {
         // Only length comparisons count. Sizing a buffer against MAX_PATH
         // (GetTempPathW in copy_to_short_temp) asks whether a result fitted,
-        // which audit R7.12 calls a different question.
+        // which audit R7.12 calls a different question. The limit may be
+        // spelled 260, and either side may carry a little arithmetic
+        // (size() - 4 < MAX_PATH).
         {"Does the Windows shell take a path this long?",
          "shell_path in src/core/winstr.cpp",
-         R"((\.(size|length)\(\)|\b(wcs|str)len\s*\([^()]*\))\s*[<>]=?\s*MAX_PATH\b|\bMAX_PATH\s*[<>]=?\s*[\w.:>()-]*(\.(size|length)\(\)|\b(wcs|str)len\s*\())",
+         R"((\.(size|length)\(\)|\b(wcs|str)len\s*\([^()]*\))(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*(MAX_PATH|260)\b|\b(MAX_PATH|260)(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*[\w.:>()-]*(\.(size|length)\(\)|\b(wcs|str)len\s*\())",
          "",
          {"src/core/winstr.cpp"},
          {},
@@ -70,24 +81,34 @@ const std::vector<OwnerRule>& rules() {
           "if (copy.native().size() >= MAX_PATH) return {};",
           "return s.size() < MAX_PATH ? s : L\"\";",
           "if (wcslen(p) >= MAX_PATH) return false;",
-          "if (MAX_PATH > name.length()) ok = true;"},
+          "if (MAX_PATH > name.length()) ok = true;",
+          "if (path.size() - 4 < MAX_PATH) return path;",
+          "if (name.length() >= 260) return false;",
+          "if (260 <= s.size()) ok = false;",
+          "if (MAX_PATH - 1 > wcslen(p)) ok = true;"},
          {"wchar_t tmp[MAX_PATH + 1];", "GetTempPathW(MAX_PATH + 1, tmp);",
           "if (n == 0 || n > MAX_PATH) return {};",
-          "constexpr size_t kPlainPathLimit = MAX_PATH - 12;"}},
+          "constexpr size_t kPlainPathLimit = MAX_PATH - 12;", "const int kWidth = 260;",
+          "if (n > 260) return;", "if (rows.size() > 2600) return;"}},
         // Every way this codebase works out a file's size: the stdio seek and
         // tell (32- and 64-bit), stream seekg/tellg, the Win32 size calls and
         // the size fields of their find and attribute data, the CRT's
         // filelength and fstat, std::filesystem's file_size, and a seek to the
-        // end.
+        // end. A file already open is sized by open_file_size_bytes (a
+        // stdio stream) or open_handle_size_bytes (a Win32 handle);
+        // file_size_bytes and read_file_bytes both go through them. winstr.cpp
+        // is not exempt as a file: only its two answering lines are listed.
         {"How many bytes does a file hold?",
-         "file_size_bytes and read_file_bytes in src/core/winstr.cpp",
+         "file_size_bytes, open_file_size_bytes and open_handle_size_bytes in "
+         "src/core/winstr.cpp",
          R"((^|[^\w])(std::)?(_?f(tell|seek)(i64|o)?|GetFileSize(Ex)?|GetCompressedFileSize[AW]?|GetFileInformationByHandle(Ex)?|_?filelength(i64)?|_?fstat(64|i64)?|(tell|seek)g|file_size)\s*\(|\b(nFileSize(High|Low)|st_size|SEEK_END|FILE_END)\b)",
          "",
-         {"src/core/winstr.cpp"},
+         {},
          {},
          "no ADR records it. Audit R7.11 names read_file_bytes the owner (fix "
          "read-file-bytes-owner); its 64-bit size came from the user's \"make all of "
-         "those fixes\" (2026-10-03, preview-loading-fixes plan)",
+         "those fixes\" (2026-10-03, preview-loading-fixes plan); the open-file "
+         "helpers are the user's decision D39 (2026-10-04, audit R7.25)",
          {"long n = std::ftell(f);", "std::fseek(f, 0, SEEK_END);",
           "const long long size = _ftelli64(f);", "if (!GetFileSizeEx(file, &size)) return;",
           "e.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;",
@@ -95,7 +116,17 @@ const std::vector<OwnerRule>& rules() {
           "return st.st_size;"},
          {"const uint64_t n = hydra::file_size_bytes(path);",
           "const std::vector<uint8_t> bytes = hydra::read_file_bytes(path);",
-          "MA_DR_MP3_SEEK_END,", "const size_t n = bytes.size();"}},
+          "MA_DR_MP3_SEEK_END,", "const size_t n = bytes.size();",
+          "return hydra::open_file_size_bytes(f).value_or(static_cast<ImU64>(-1));",
+          "const std::optional<uint64_t> size = hydra::open_handle_size_bytes(file);"},
+         // open_handle_size_bytes, which every other size helper calls, and
+         // list_dir's size straight from the find data it already has (the
+         // rescan cache's fingerprint; sizing each entry by handle would open
+         // every file in the library).
+         {{"src/core/winstr.cpp",
+           "if (!GetFileSizeEx(h, &size) || size.QuadPart < 0) return std::nullopt;"},
+          {"src/core/winstr.cpp",
+           "e.size = (static_cast<uint64_t>(fd.nFileSizeHigh) << 32) | fd.nFileSizeLow;"}}},
         {"How is a long path prefixed for Win32?",
          "win32_path in src/core/winstr.cpp",
          R"(\\\\\\\\\?\\\\)",
@@ -172,22 +203,6 @@ const std::vector<KnownCopy>& known_copies() {
          "long n = std::ftell(f);", "fix read-file-bytes-owner (audit R7.11)"},
         {"How many bytes does a file hold?", "src/parse/midi.cpp",
          "std::fseek(f, 0, SEEK_SET);", "fix read-file-bytes-owner (audit R7.11)"},
-        // ImFileGetSize and MappedFile::open size a file they already hold
-        // open. Audit R7.25 judged that a read beside its own open, so no fix
-        // on the list removes these yet: it needs a winstr helper that sizes
-        // an open file, or the user's call to exempt it.
-        {"How many bytes does a file hold?", "src/ui/imgui_files.cpp",
-         "const long long off = _ftelli64(f);", "none yet (audit R7.25)"},
-        {"How many bytes does a file hold?", "src/ui/imgui_files.cpp",
-         "if (off < 0 || _fseeki64(f, 0, SEEK_END) != 0) return static_cast<ImU64>(-1);",
-         "none yet (audit R7.25)"},
-        {"How many bytes does a file hold?", "src/ui/imgui_files.cpp",
-         "const long long size = _ftelli64(f);", "none yet (audit R7.25)"},
-        {"How many bytes does a file hold?", "src/ui/imgui_files.cpp",
-         "if (size < 0 || _fseeki64(f, off, SEEK_SET) != 0) return static_cast<ImU64>(-1);",
-         "none yet (audit R7.25)"},
-        {"How many bytes does a file hold?", "src/audio/mapped_file.cpp",
-         "if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 ||", "none yet (audit R7.25)"},
     };
     return k;
 }
@@ -226,6 +241,10 @@ TEST_CASE("single-owner rules match their own examples") {
             INFO(c.rule->question << " should not flag: " << line);
             CHECK_FALSE(flags_line(c, line));
         }
+        for (const OwnerLine& o : c.rule->owner_lines) {
+            INFO(c.rule->question << " owner line the rule does not flag: " << o.line_text);
+            CHECK(flags_line(c, o.line_text));
+        }
     }
     // Every baseline entry names a real rule, and every question is unique.
     std::set<std::string> questions;
@@ -244,6 +263,7 @@ TEST_CASE("single-owner rules hold across src/ and tools/") {
     const std::vector<CompiledRule> compiled = compile_rules();
 
     std::set<size_t> seen;  // indexes into known_copies() that matched a line
+    std::set<const OwnerLine*> owner_seen;
     std::vector<std::string> problems;
     int files = 0;
     for (const char* sub : {"src", "tools"}) {
@@ -265,6 +285,14 @@ TEST_CASE("single-owner rules hold across src/ and tools/") {
                     for (const std::string& o : rule.owner_files) skip = skip || rel == o;
                     for (const Exempt& x : rule.exempt) skip = skip || rel == x.file;
                     if (skip || !flags_line(c, line)) continue;
+                    bool owned = false;
+                    for (const OwnerLine& o : rule.owner_lines) {
+                        if (o.file == rel && o.line_text == t) {
+                            owner_seen.insert(&o);
+                            owned = true;
+                        }
+                    }
+                    if (owned) continue;
                     bool known = false;
                     for (size_t i = 0; i < known_copies().size(); ++i) {
                         const KnownCopy& k = known_copies()[i];
@@ -286,6 +314,13 @@ TEST_CASE("single-owner rules hold across src/ and tools/") {
         const KnownCopy& c = known_copies()[i];
         problems.push_back("baseline entry no longer matches (remove it): " + c.file + ": " +
                            c.line_text);
+    }
+    for (const OwnerRule& r : rules()) {
+        for (const OwnerLine& o : r.owner_lines) {
+            if (owner_seen.count(&o)) continue;
+            problems.push_back("owner line no longer matches (update it): " + o.file + ": " +
+                               o.line_text);
+        }
     }
     CHECK(files > 100);  // the scan found the sources
     std::ostringstream report;

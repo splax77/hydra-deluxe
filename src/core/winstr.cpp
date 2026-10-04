@@ -8,6 +8,9 @@
 #include <windows.h>
 #include <shellapi.h>  // CommandLineToArgvW
 
+#include <io.h>  // _get_osfhandle
+
+#include <cstdint>
 #include <stdexcept>
 
 namespace hydra {
@@ -136,25 +139,53 @@ std::string exe_path_utf8() {
     }
 }
 
+std::optional<uint64_t> open_handle_size_bytes(void* win32_handle) {
+    // The one place a file's size is worked out; every size helper here ends
+    // up asking it. GetFileSizeEx answers in 64 bits, so sizes past 2 GB and
+    // 4 GB come out right. A pipe or console has no size, as a seek on one
+    // has none.
+    HANDLE h = static_cast<HANDLE>(win32_handle);
+    if (h == nullptr || h == INVALID_HANDLE_VALUE || GetFileType(h) != FILE_TYPE_DISK)
+        return std::nullopt;
+    LARGE_INTEGER size{};
+    if (!GetFileSizeEx(h, &size) || size.QuadPart < 0) return std::nullopt;
+    return static_cast<uint64_t>(size.QuadPart);
+}
+
+std::optional<uint64_t> open_file_size_bytes(std::FILE* f) {
+    // Write out anything still in the stream's buffer first, so the answer
+    // matches a seek to the end. On a stream opened for reading this does
+    // nothing.
+    if (f == nullptr || std::fflush(f) != 0) return std::nullopt;
+    const int fd = _fileno(f);
+    if (fd < 0) return std::nullopt;
+    return open_handle_size_bytes(reinterpret_cast<void*>(_get_osfhandle(fd)));
+}
+
 uint64_t file_size_bytes(const std::string& utf8_path) {
-    WIN32_FILE_ATTRIBUTE_DATA fa;
-    if (!GetFileAttributesExW(win32_path(utf8_path).c_str(), GetFileExInfoStandard, &fa))
-        throw std::runtime_error("cannot read file size: " + utf8_path);
-    return (static_cast<uint64_t>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow;
+    // No access asked, metadata only: no sharing clash even with a file
+    // someone holds open exclusively. Backup semantics lets a folder open too,
+    // so every path answers as GetFileAttributesExW used to.
+    HANDLE h = CreateFileW(win32_path(utf8_path).c_str(), 0,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+                           OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    const std::optional<uint64_t> size = open_handle_size_bytes(h);
+    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+    if (!size) throw std::runtime_error("cannot read file size: " + utf8_path);
+    return *size;
 }
 
 std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
     std::FILE* f = fopen_utf8(utf8_path, L"rb");
     if (f == nullptr) throw std::runtime_error("cannot open file: " + utf8_path);
     // std::ftell returns a 32-bit long on Windows and fails past 2 GB, which
-    // used to hand back an empty buffer; the 64-bit pair has no such limit.
-    const bool seeked = _fseeki64(f, 0, SEEK_END) == 0;
-    const long long size = seeked ? _ftelli64(f) : -1;
-    if (size < 0 || _fseeki64(f, 0, SEEK_SET) != 0) {
+    // used to hand back an empty buffer; the 64-bit size has no such limit.
+    const std::optional<uint64_t> size = open_file_size_bytes(f);
+    if (!size) {
         std::fclose(f);
         throw std::runtime_error("cannot read file size: " + utf8_path);
     }
-    std::vector<uint8_t> buf(static_cast<size_t>(size));
+    std::vector<uint8_t> buf(static_cast<size_t>(*size));
     if (size > 0) buf.resize(std::fread(buf.data(), 1, buf.size(), f));
     std::fclose(f);
     return buf;

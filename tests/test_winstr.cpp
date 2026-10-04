@@ -5,7 +5,9 @@
 
 #include "doctest.h"
 
+#include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -32,12 +34,9 @@ struct TempFile {
     std::string utf8() const { return hydra::wide_to_utf8(path); }
 };
 
-}  // namespace
-
-// ftell returns a 32-bit long on Windows, so a file past 2 GB used to read
-// back as empty. The sparse flag makes the 2.5 GB file cost no disk space.
-TEST_CASE("file_size_bytes reports sizes past 2 GB") {
-    TempFile tmp(L"hydra_sparse_test.bin");
+// Makes a file of `bytes` bytes that costs no disk space: the sparse flag
+// leaves the never-written range unallocated.
+void make_sparse(const TempFile& tmp, long long bytes) {
     HANDLE h = CreateFileW(tmp.path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                            FILE_ATTRIBUTE_NORMAL, nullptr);
     REQUIRE(h != INVALID_HANDLE_VALUE);
@@ -45,14 +44,92 @@ TEST_CASE("file_size_bytes reports sizes past 2 GB") {
     const BOOL sparse =
         DeviceIoControl(h, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &ret, nullptr);
     LARGE_INTEGER size;
-    size.QuadPart = 2'500'000'000LL;
+    size.QuadPart = bytes;
     const BOOL moved = SetFilePointerEx(h, size, nullptr, FILE_BEGIN);
     const BOOL ended = SetEndOfFile(h);
     CloseHandle(h);
     REQUIRE(sparse);
     REQUIRE(moved);
     REQUIRE(ended);
+}
+
+}  // namespace
+
+// ftell returns a 32-bit long on Windows, so a file past 2 GB used to read
+// back as empty.
+TEST_CASE("file_size_bytes reports sizes past 2 GB") {
+    TempFile tmp(L"hydra_sparse_test.bin");
+    make_sparse(tmp, 2'500'000'000LL);
     CHECK(hydra::file_size_bytes(tmp.utf8()) == 2'500'000'000ULL);
+}
+
+// Past 4 GB the size needs its high 32 bits; a helper that dropped them would
+// answer 705,032,704 here.
+TEST_CASE("every size helper reports a size past 4 GB, open or not") {
+    TempFile tmp(L"hydra_sparse_test_5gb.bin");
+    make_sparse(tmp, 5'000'000'000LL);
+    CHECK(hydra::file_size_bytes(tmp.utf8()) == 5'000'000'000ULL);
+
+    std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"rb");
+    REQUIRE(f != nullptr);
+    char three[3];
+    REQUIRE(std::fread(three, 1, sizeof(three), f) == sizeof(three));
+    CHECK(hydra::open_file_size_bytes(f) == std::optional<uint64_t>(5'000'000'000ULL));
+    CHECK(_ftelli64(f) == 3);  // the read position did not move
+    std::fclose(f);
+
+    HANDLE h = CreateFileW(tmp.path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(h != INVALID_HANDLE_VALUE);
+    CHECK(hydra::open_handle_size_bytes(h) == std::optional<uint64_t>(5'000'000'000ULL));
+    CloseHandle(h);
+}
+
+// The seek to the end that ImFileGetSize used to do flushed the stream first,
+// so bytes not yet on disk counted. The helper keeps that.
+TEST_CASE("open_file_size_bytes counts bytes still in a stream's write buffer") {
+    TempFile tmp(L"hydra_file_size_buffered.bin");
+    std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
+    REQUIRE(f != nullptr);
+    const char payload[] = "hello, hydra";
+    std::fwrite(payload, 1, sizeof(payload) - 1, f);
+    CHECK(hydra::open_file_size_bytes(f) == std::optional<uint64_t>(sizeof(payload) - 1));
+    std::fclose(f);
+    CHECK(hydra::file_size_bytes(tmp.utf8()) == sizeof(payload) - 1);
+}
+
+TEST_CASE("the open-file size helpers say nothing for something that is not a file") {
+    CHECK_FALSE(hydra::open_file_size_bytes(nullptr).has_value());
+    CHECK_FALSE(hydra::open_handle_size_bytes(nullptr).has_value());
+    CHECK_FALSE(hydra::open_handle_size_bytes(INVALID_HANDLE_VALUE).has_value());
+    HANDLE read_end = nullptr;
+    HANDLE write_end = nullptr;
+    REQUIRE(CreatePipe(&read_end, &write_end, nullptr, 0));
+    CHECK_FALSE(hydra::open_handle_size_bytes(read_end).has_value());
+    CloseHandle(read_end);
+    CloseHandle(write_end);
+}
+
+// file_size_bytes asks an open handle now; before, GetFileAttributesExW asked
+// the path. These pin that the answers did not change.
+TEST_CASE("file_size_bytes answers for a file held open exclusively, and for a folder") {
+    TempFile tmp(L"hydra_file_size_locked.bin");
+    std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
+    REQUIRE(f != nullptr);
+    std::fwrite("12345", 1, 5, f);
+    std::fclose(f);
+    HANDLE lock = CreateFileW(tmp.path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(lock != INVALID_HANDLE_VALUE);
+    CHECK(hydra::file_size_bytes(tmp.utf8()) == 5);
+    CloseHandle(lock);
+
+    wchar_t dir[MAX_PATH];
+    REQUIRE(GetTempPathW(MAX_PATH, dir) > 0);
+    WIN32_FILE_ATTRIBUTE_DATA fa{};
+    REQUIRE(GetFileAttributesExW(dir, GetFileExInfoStandard, &fa));
+    const uint64_t old_answer = (static_cast<uint64_t>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow;
+    CHECK(hydra::file_size_bytes(hydra::wide_to_utf8(dir)) == old_answer);
 }
 
 TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing one") {
