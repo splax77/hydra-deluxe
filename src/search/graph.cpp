@@ -165,11 +165,11 @@ void ScoreGraph::build() {
                 // A pending end is never behind the head, so only a recently
                 // handled SP end (a squeeze-in's) can move to here or before.
                 // That end is no node to add now: add_deact_edge already added
-                // it when it is the end's own squeeze-in, and otherwise no
-                // path squeezes this phrase in there. That holds because an
-                // end squeezes only core::sqout_chord's pick, the window's
-                // first phrase (core/sqout_chord.h), and a path still holding
-                // that end has already ended on it (Engine::deactivation_type).
+                // it. This phrase sits in that SP end's window (the end is
+                // recent), so it is one of the end's squeeze choices, and
+                // add_deact_edge adds the node for every late one. A path
+                // still holding that end has already ended on it
+                // (Engine::deactivation_type).
                 if (sqin_end_by_phrase(de.to.ticks(), timestamp.timecode.ticks())) continue;
                 ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped};
                 new_pending[de.to.ticks()] = de.to;
@@ -379,7 +379,6 @@ void ScoreGraph::add_deact_edge() {
     deact_edge->dest = base_track_head_;
     const Timecode& end = deact_edge->dest->timecode;
 
-    deact_edge->sqout_time = end;
     deact_edge->sqin_time = end;
 
     for (const BackendSqueeze& recent_backend : recent_backends_) {
@@ -388,24 +387,29 @@ void ScoreGraph::add_deact_edge() {
         deact_edge->backends.push_back(copy);
     }
 
-    // The one phrase chord this SP end can squeeze out (core/sqout_chord.h).
-    // On or before the end, it moves both branches' ends one bar. After the
-    // end, only a late SqIn reaches it, so only the SqIn end moves.
-    if (const SongTimestamp* c = core::sqout_chord(song_, end)) {
-        deact_edge->sqinout_time = c->timecode;
-        deact_edge->sqinout_timing = offset_from_sp_end(c->timecode.ms(), end.ms());
-        deact_edge->sqin_time = plusmeasure(end, sp_bars_to_measures(1));
-        if (c->timecode.ticks() <= end.ticks()) {
-            deact_edge->sqout_time = plusmeasure(end, sp_bars_to_measures(1));
-        } else {
-            deact_edge->late_sqin_count = 1;
-            // The late SqIn's end comes before its own phrase: add its node
-            // now, while it is still ahead (sqin_end_by_phrase).
-            const Timecode& sqin_end = *deact_edge->sqin_time;
-            if (sqin_end_by_phrase(sqin_end.ticks(), c->timecode.ticks()) &&
-                pending_deacts_.find(sqin_end.ticks()) == pending_deacts_.end()) {
-                pending_deacts_[sqin_end.ticks()] = sqin_end;
-                deact_heap_.push_back(sqin_end);
+    // The phrase chords this SP end can squeeze, in chart order
+    // (core/sqout_chord.h). The engine offers a path the first one its
+    // running window can still squeeze. On or before the end, a chord moves
+    // both branches' ends one bar. After the end, only a late SqIn reaches
+    // it, so only the SqIn end moves.
+    const std::vector<const SongTimestamp*> window = core::squeeze_window_phrases(song_, end);
+    if (!window.empty()) {
+        const Timecode one_bar = plusmeasure(end, sp_bars_to_measures(1));
+        deact_edge->sqin_time = one_bar;
+        for (const SongTimestamp* c : window) {
+            SqueezeChoice choice;
+            choice.chord = c->timecode;
+            choice.timing = offset_from_sp_end(c->timecode.ms(), end.ms());
+            choice.late = c->timecode.ticks() > end.ticks();
+            choice.sqout_time = choice.late ? end : one_bar;
+            deact_edge->squeeze_choices.push_back(choice);
+            // A late SqIn's end can come before its own phrase: add its node
+            // now, while it is still ahead (sqin_end_by_phrase). Any late
+            // chord in the window can be the one offered.
+            if (choice.late && sqin_end_by_phrase(one_bar.ticks(), c->timecode.ticks()) &&
+                pending_deacts_.find(one_bar.ticks()) == pending_deacts_.end()) {
+                pending_deacts_[one_bar.ticks()] = one_bar;
+                deact_heap_.push_back(one_bar);
                 std::push_heap(deact_heap_.begin(), deact_heap_.end(), TickGreater{});
             }
         }

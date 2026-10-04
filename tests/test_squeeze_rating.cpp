@@ -482,8 +482,8 @@ TEST_CASE("rate_activation: every row reads post, by its side of the end") {
 TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post") {
     // Sinner's Vengeance act 3 shape: a SqIn extended SP, then the path
     // squeezed out the [RY] phrase 187.5 ms before the final end. The SqOut
-    // entry and the row hold the same stored number (the deact edge's
-    // sqinout_timing), measured from the final end, so the row's post
+    // entry and the row hold the same stored number (its squeeze choice's
+    // timing on the deact edge), measured from the final end, so the row's post
     // multiplier is the only one that applies.
     Activation act;
     test::set_skips(act, 0);

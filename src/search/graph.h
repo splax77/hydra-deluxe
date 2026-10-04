@@ -60,6 +60,22 @@ struct SpExtension {
     bool clamped = false;
 };
 
+// One phrase chord an SP end can squeeze in or out, as its deactivation edge
+// lists it (ScoreGraphEdge::squeeze_choices).
+struct SqueezeChoice {
+    Timecode chord;
+    // The chord's ms minus the SP end's ms: what the search ranks by and the
+    // record shows.
+    double timing = 0.0;
+    // The path end this chord is a choice for. A chord at or before the SP
+    // end was collected while SP ran, which moved the end one bar on, so it
+    // is a choice for a path whose end is one bar on. A chord after the end
+    // is a choice for a path whose end is the end itself, and only a late
+    // squeeze-in reaches it.
+    Timecode sqout_time;
+    bool late = false;
+};
+
 struct ScoreGraphNode {
     Timecode timecode;
     ScoreGraphEdge* adv_edge = nullptr;
@@ -98,10 +114,13 @@ struct ScoreGraphEdge {
     // phrase chords; 0 when none. The engine groups running paths by it.
     int banked_phrase_ordinal = 0;
 
-    std::optional<Timecode> sqinout_time;
-    std::optional<double> sqinout_timing;
-    int late_sqin_count = 0;
-    std::optional<Timecode> sqout_time;
+    // Deactivation edges only: every phrase chord in this SP end's squeeze
+    // window, in chart order (core::squeeze_window_phrases). The engine
+    // offers a path the first one its running window can still squeeze
+    // (core::offered_phrase); the rest wait behind it.
+    std::vector<SqueezeChoice> squeeze_choices;
+    // Where a squeeze-in moves this SP end: one SP bar on, the same for every
+    // choice. The end itself when the window holds no phrase chord.
     std::optional<Timecode> sqin_time;
 };
 

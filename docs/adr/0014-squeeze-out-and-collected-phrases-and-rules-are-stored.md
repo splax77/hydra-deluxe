@@ -115,24 +115,6 @@ search (D18).
 The rule lives once, in `core/sqout_chord.h`: `activation_can_squeeze` is
 true only for a phrase chord after the activation chord.
 
-- The search graph still names one chord per SP end (`sqout_chord(song,
-  sp_end)`), since its deactivation edges are shared by every activation.
-- The engine asks `activation_can_squeeze` before it treats that chord as
-  squeezable (`deactivation_type`). When the activation banked it, the SP end
-  is a plain one.
-- `hydra_replay` asks the same rule, so it refuses a typed squeeze-out on a
-  banked phrase and says why.
-
-When the graph's one chord was banked, the activation squeezes nothing at
-that SP end, even if a later phrase sits in the same window. That case needs
-two phrases within a second and an activation between them, at a tempo where
-500 ms spans an SP bar. We leave it.
-
-An early squeeze-in's step is the step on the squeezed-in chord. That step is
-Collected, or Clamped when the cap pinned the end on that phrase. It is
-already SqIn when an earlier SP end squeezed the same chord in. It is never
-the Activation step. `is_sqin_step` in the engine states that rule once.
-
 Tied paths. The search folds running paths that share an SP end, because the
 end decides their future. Now the activation can decide it too: a path that
 collected a phrase can squeeze it, and one that banked it cannot. So the
@@ -141,6 +123,46 @@ any, that a later SP end of this activation could still hold in its window.
 `core::banked_phrase_in_reach` works it out by asking
 `activation_can_squeeze`. On a normal chart the key is "none" for every
 activation, so the groups are unchanged.
+
+### A phrase is squeezed in only once (D34)
+
+Two SP ends can sit one tick apart. plusmeasure rounds down, so both move one
+bar on to the same tick. Both then offered the same phrase to the same path.
+The path squeezed it in at the first end, then in or out again at the second.
+That printed an extra "+" (Thrice - Deadbolt at cap 4, SoundHaven - Triad at
+cap 2) for a squeeze that never moved anything.
+
+The rule now: an SP end offers the first phrase in its 500 ms window that the
+running window can still squeeze. A phrase banked before the activation is
+skipped (D18). So is a phrase this window already squeezed in. If nothing is
+left, the SP end is a plain one. The banked case used to stop at the first
+phrase; it now moves on to the next one too, so both cases follow the same
+rule.
+
+It lives in one function, `core::offered_phrase` in `core/sqout_chord.h`.
+The graph lists every phrase in each SP end's window on its deactivation
+edge (`squeeze_window_phrases`), because the edge is shared by every path.
+The engine picks from that list with `offered_phrase`; "already squeezed in"
+means the window holds an SqIn step on that phrase. The engine remembers
+which phrase each window squeezed out, since it is no longer always the
+window's first. `hydra_replay` asks the same function. A stored path tells it
+which phrases each window squeezed in; a typed window says none.
+
+On the library at caps 2 to 4 this changes exactly 7 listed paths on those
+two charts, each losing one "+", and no score. The next-phrase offer never
+fires there. It needs 500 ms to span an SP bar, so only the hand-made
+4,000 BPM test charts reach it.
+
+One gap stays open at those extreme tempos. The search groups running paths
+without the phrases their window already squeezed in, so a tied variant can
+take its leader's squeeze of the next phrase where alone it would squeeze the
+first (the early_sqin_twice test chart). Normal charts never reach it.
+
+An early squeeze-in's step is the step on the squeezed-in chord. That step is
+Collected, or Clamped when the cap pinned the end on that phrase. It is never
+the Activation step. A lone path never meets an SqIn step there since D34; a
+folded variant still can at extreme tempos (the gap above), and the step
+stays SqIn. `is_sqin_step` in the engine states that rule once.
 
 ### Two more extreme-tempo crashes (D32)
 

@@ -739,10 +739,10 @@ TEST_CASE("tail rows: every corpus activation keeps exactly the rows the old dis
     CHECK(tails > 0);
 }
 
-// The graph claims, for every deactivation edge, exactly the chord
-// core::sqout_chord names. Run before the graph calls it, this proves the
-// function is the graph's old rule; after, it guards against drift.
-TEST_CASE("graph: every deactivation edge claims the chord sqout_chord names") {
+// The graph lists, for every deactivation edge, exactly the phrase chords
+// core::squeeze_window_phrases names, in chart order, so the engine can offer
+// the first one a window can still squeeze (D34). This guards against drift.
+TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrases names") {
     int edges = 0, claimed = 0, before = 0, after = 0;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
@@ -761,35 +761,35 @@ TEST_CASE("graph: every deactivation edge claims the chord sqout_chord names") {
             if (!e || !seen.insert(e).second) continue;
             ++edges;
             const Timecode& end = e->dest->timecode;
-            const SongTimestamp* c = core::sqout_chord(song, end);
-            CHECK(e->sqinout_time.has_value() == (c != nullptr));
+            const std::vector<const SongTimestamp*> window =
+                core::squeeze_window_phrases(song, end);
+            REQUIRE(e->squeeze_choices.size() == window.size());
 
-            // The edge's other three facts, worked out here from the chord and
-            // the song's own timing, not from the graph.
+            // The edge's other facts, worked out here from each chord and the
+            // song's own timing, not from the graph.
             REQUIRE(e->sqin_time.has_value());
-            REQUIRE(e->sqout_time.has_value());
-            if (!c) {
-                // No chord to squeeze: both branches end at the SP end.
+            if (window.empty()) {
+                // No chord to squeeze: the path just ends at the SP end.
                 CHECK(e->sqin_time->ticks() == end.ticks());
-                CHECK(e->sqout_time->ticks() == end.ticks());
-                CHECK(e->late_sqin_count == 0);
                 continue;
             }
-            if (!e->sqinout_time) continue;
             ++claimed;
-            CHECK(e->sqinout_time->ticks() == c->timecode.ticks());
-            CHECK(*e->sqinout_timing == c->timecode.ms() - end.ms());  // bit for bit
-
             // A chord moves the SqIn end one bar. A chord at or before the end
             // moves the SqOut end too; a chord after it is a late SqIn only.
             const int64_t one_bar =
                 song.timing().plusmeasure(end, sp_bars_to_measures(1)).ticks();
             CHECK(one_bar > end.ticks());
             CHECK(e->sqin_time->ticks() == one_bar);
-            const bool at_or_before = c->timecode.ticks() <= end.ticks();
-            CHECK(e->sqout_time->ticks() == (at_or_before ? one_bar : end.ticks()));
-            CHECK(e->late_sqin_count == (at_or_before ? 0 : 1));
-            (at_or_before ? before : after)++;
+            for (size_t k = 0; k < window.size(); ++k) {
+                const SongTimestamp* c = window[k];
+                const SqueezeChoice& got = e->squeeze_choices[k];
+                CHECK(got.chord.ticks() == c->timecode.ticks());
+                CHECK(got.timing == c->timecode.ms() - end.ms());  // bit for bit
+                const bool at_or_before = c->timecode.ticks() <= end.ticks();
+                CHECK(got.sqout_time.ticks() == (at_or_before ? one_bar : end.ticks()));
+                CHECK(got.late == !at_or_before);
+                (at_or_before ? before : after)++;
+            }
         }
     }
     CHECK(edges > 0);
@@ -1302,8 +1302,8 @@ TEST_CASE("search: no fresh record stores an unknown transfer scale (constructed
                        << " SqOuts, " << clamps << " clamps)");
 }
 
-// The search ranks a squeeze-out by its own offset (the deact edge's
-// sqinout_timing); the record stores the row's. rebuild throws if the two
+// The search ranks a squeeze-out by its own offset (its squeeze choice's
+// timing on the deact edge); the record stores the row's. rebuild throws if the two
 // differ, so run_search failing here is that check biting. The stored offset
 // is then measured again, independently, from the deactivation node D.
 TEST_CASE("squeeze-out: one SqOut, last, and its offset is the search's and D's, on every corpus path") {
@@ -1868,6 +1868,52 @@ TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refu
         if (want && want->timecode.ticks() == act_tick) ++on_activation_chord;
     }
     CHECK(on_activation_chord > 0);
+}
+
+// D34 at a normal tempo. Two SP ends sit one tick apart, 30720 and 30721:
+// '0' ends at 30720 (19200 plus two bars, plus one bar for the phrase on
+// 23042), and '1' ends at 30721 (the cap pins it to 23042 plus two bars).
+// plusmeasure rounds both one bar on to the same tick, 34560, so both ends
+// offered the phrase on 30480 to the same path. It was squeezed in at the
+// first and in or out again at the second: '0++' and '0+-', '1++' and '1+-'.
+// Real charts do this (Thrice - Deadbolt, SoundHaven - Triad). A phrase is
+// squeezed in once, so the second end offers the window's next phrase, and
+// here there is none. The chart is hand-made (120 BPM, resolution 480).
+TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D34)") {
+    const Song song = load_songpath(
+        std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/twin_end_nodes.chart", true, true);
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = 2;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = std::nullopt;
+    HydraRecord rec;
+    REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
+    for (const Path* p : rec.all_paths()) {
+        CAPTURE(p->pathstring());
+        for (const Activation& a : p->walk_activations()) {
+            std::vector<int64_t> sqin_steps;
+            for (const SpEndStep& s : a.sp_end_steps)
+                if (s.kind == SpEndKind::SqIn) sqin_steps.push_back(s.tick);
+            const size_t sqins = static_cast<size_t>(
+                std::count_if(a.sqinouts.begin(), a.sqinouts.end(),
+                              [](const SPSqueeze& q) { return q.kind == SqueezeKind::SqIn; }));
+            // One SqIn per phrase, and never out again once in.
+            CHECK(sqins == sqin_steps.size());
+            CHECK(std::set<int64_t>(sqin_steps.begin(), sqin_steps.end()).size() ==
+                  sqin_steps.size());
+            if (a.sqout_tick)
+                CHECK(std::find(sqin_steps.begin(), sqin_steps.end(), *a.sqout_tick) ==
+                      sqin_steps.end());
+        }
+    }
+    // The best path keeps its score: the second "+" never moved anything.
+    const Path* best = root_named(rec.paths, "0+");
+    REQUIRE(best != nullptr);
+    CHECK(best->totalscore() == 2950);
+    CHECK(rec.best_path().totalscore() == 2950);
+    CHECK(root_named(rec.paths, "0++") == nullptr);
+    CHECK(root_named(rec.paths, "0+-") == nullptr);
 }
 
 // D3 on the corpus: every tied variant stores what the search stores when it
