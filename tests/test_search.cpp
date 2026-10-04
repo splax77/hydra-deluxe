@@ -621,7 +621,7 @@ TEST_CASE("tail rows: every corpus activation keeps exactly the rows the old dis
 // core::sqout_chord names. Run before the graph calls it, this proves the
 // function is the graph's old rule; after, it guards against drift.
 TEST_CASE("graph: every deactivation edge claims the chord sqout_chord names") {
-    int edges = 0, claimed = 0;
+    int edges = 0, claimed = 0, before = 0, after = 0;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
         if (song.is_empty()) continue;
@@ -641,14 +641,39 @@ TEST_CASE("graph: every deactivation edge claims the chord sqout_chord names") {
             const Timecode& end = e->dest->timecode;
             const SongTimestamp* c = core::sqout_chord(song, end);
             CHECK(e->sqinout_time.has_value() == (c != nullptr));
-            if (!c || !e->sqinout_time) continue;
+
+            // The edge's other three facts, worked out here from the chord and
+            // the song's own timing, not from the graph.
+            REQUIRE(e->sqin_time.has_value());
+            REQUIRE(e->sqout_time.has_value());
+            if (!c) {
+                // No chord to squeeze: both branches end at the SP end.
+                CHECK(e->sqin_time->ticks() == end.ticks());
+                CHECK(e->sqout_time->ticks() == end.ticks());
+                CHECK(e->late_sqin_count == 0);
+                continue;
+            }
+            if (!e->sqinout_time) continue;
             ++claimed;
             CHECK(e->sqinout_time->ticks() == c->timecode.ticks());
             CHECK(*e->sqinout_timing == c->timecode.ms() - end.ms());  // bit for bit
+
+            // A chord moves the SqIn end one bar. A chord at or before the end
+            // moves the SqOut end too; a chord after it is a late SqIn only.
+            const int64_t one_bar =
+                song.timing().plusmeasure(end, sp_bars_to_measures(1)).ticks();
+            CHECK(one_bar > end.ticks());
+            CHECK(e->sqin_time->ticks() == one_bar);
+            const bool at_or_before = c->timecode.ticks() <= end.ticks();
+            CHECK(e->sqout_time->ticks() == (at_or_before ? one_bar : end.ticks()));
+            CHECK(e->late_sqin_count == (at_or_before ? 0 : 1));
+            (at_or_before ? before : after)++;
         }
     }
     CHECK(edges > 0);
     CHECK(claimed > 0);
+    CHECK(before > 0);  // both halves of the rule are exercised by the corpus
+    CHECK(after > 0);
 }
 
 // run_search takes its knobs in one EngineOptions value, so no two flags can
