@@ -80,6 +80,21 @@ struct SrbMetadata {
 // mid-table keeps the fields read so far and leaves the rest empty.
 bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out);
 
+// What the metadata stream holds, and where the stream after it starts.
+struct SrbMetadataRead {
+    SrbMetadata fields;
+    bool parsed = false;        // srb_parse_metadata's answer on the block
+    uint64_t notes_offset = 0;  // the first byte of stream 2, the notes file
+};
+
+// The one reader of stream 1: inflates the metadata block at kSrbHeaderSize,
+// parses its string table and says where the notes stream starts. A caller
+// holding only the head bytes reads them through memory_byte_source.
+// Throws std::runtime_error("Truncated SRB file.")
+// when the source holds no more than the header, and whatever
+// srb_inflate_stream_reading throws on a corrupt or truncated block.
+SrbMetadataRead srb_read_metadata(const ByteSource& src);
+
 }  // namespace hydra
 
 #endif  // HYDRA_PARSE_SRB_H
