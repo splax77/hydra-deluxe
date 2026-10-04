@@ -11,7 +11,7 @@ Main has steps 1 and 2 of the derivation fixes, plus T10 and T11. Everything was
 - T10 and T11 (a cap-clamped SP end is offered its squeeze; a backend at exactly +3.0 ms stays uncounted) merged as 497770f after three rounds.
 - The results stamp is "2.1.0", the path format is 7 and both Dynamics stamps are 2. No release tag carries 2.1.0 yet, so everything above ships in one re-analysis.
 
-D36 (the extreme-tempo gaps) was still in flight when this was written. It lives on `claude/d36` in worktree `.claude/worktrees/d36`, head ff3a2b6. The user approved landing it after seeing the counts (D36 addendum, commit 2497837). Its first derive-once review came back with 10 findings, all code-only: copied test helpers, a guard that repeats `offered_phrase`, a dead `sqin_time` copy, stale comments, and one ADR line that says "late side, unchanged" when it did change. A fix round was starting. After a CLEAN review, the plan is one full test-suite run by the main session, then a merge to main. If this session ended before that, finish it: review, fix any findings with relevant tests only, re-review, one full suite, merge.
+D36 (the extreme-tempo gaps) is merged too, as 7266643. The user approved it after seeing the counts (D36 addendum, 2497837). It took three review rounds: 10 code-only findings, then one stale comment, then CLEAN at a213d3d. The merge check: 825 tests pass, the UI tests 62 of 62, the selfcheck 382 of 382, and corpus scores identical to main on all 97 charts. Its worktree and branch are removed.
 
 Journal state at handoff, pasted as the hook gave it:
 
@@ -22,6 +22,10 @@ Workflow journals:
 Subagents active in the last 30 minutes and not finished:
   agent-a2e6ddb70767d5389: the D36 derive-once reviewer, last tool call 15:53
 ```
+
+(That reviewer, its fix agent and two more review rounds all finished before D36 merged. Nothing from this session is still running.)
+
+Other sessions own the worktrees `busy-gagarin-49ebe6`, `modest-tharp-559205` and `C:\Users\Patrick\AppData\Local\Temp\claude\mm`. Leave them alone.
 
 A separate session, started from a task chip, is investigating a one-off "bad allocation" for the bundled track `Good Grief Retreat.srb` during a whole-library batch run. Alone, the chart analyzes in 0.1 s with under 10 MB, so the batch path misbehaves now and then.
 

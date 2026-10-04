@@ -154,16 +154,50 @@ two charts, each losing one "+", and no score. The next-phrase offer never
 fires there. It needs 500 ms to span an SP bar, so only the hand-made
 4,000 BPM test charts reach it.
 
-One gap stays open at those extreme tempos. The search groups running paths
-without the phrases their window already squeezed in, so a tied variant can
-take its leader's squeeze of the next phrase where alone it would squeeze the
-first (the early_sqin_twice test chart). Normal charts never reach it.
+D36 replaced the early side of this rule. At those extreme tempos "the first
+phrase in the window" let a window squeeze out an older phrase while keeping
+a newer one's step, which no player can do: the newer phrase is hit later,
+so it is hit after Star Power ran out too. The record then named an end one
+bar early. It also let a tied variant take its leader's squeeze (the search
+grouped paths without the phrases their window had squeezed in), and let one
+of two SP ends a tick apart take the other's path.
 
-An early squeeze-in's step is the step on the squeezed-in chord. That step is
-Collected, or Clamped when the cap pinned the end on that phrase. It is never
-the Activation step. A lone path never meets an SqIn step there since D34; a
-folded variant still can at extreme tempos (the gap above), and the step
-stays SqIn. `is_sqin_step` in the engine states that rule once.
+### The newest phrase, at the end it moved (D36)
+
+An SP end D offers a window at most one phrase (`core::offered_phrase`):
+
+- Early side: the window's newest phrase, and only when collecting it moved
+  the window's end from D. The graph decides once, per phrase and pending
+  end, whether that end keeps a node that lists the phrase
+  (`SpExtension::sqout_node`); the engine copies it into the step
+  (`EndNode::sqout_at`). `offered_phrase` skips a phrase the window already
+  squeezed in, so a phrase is still squeezed in only once. A banked phrase
+  never has a step, so D18 holds too.
+- Late side: when the window's end is D, the first phrase after D that it
+  has not squeezed in. This side changed too. Before D36 an older phrase in
+  D's window could block it: the old rule offered the first phrase the window
+  could squeeze, and when that was an early one a path ending at D got
+  nothing, never the late phrase behind it. Now the late phrase is offered
+  whatever sits before D.
+
+The search's group key on SP nodes gains one word: the end where the newest
+phrase can still be squeezed out, while it is ahead. Paths at one node with
+one SP end and one such end have the same newest phrase, so they face the
+same offers. A squeeze-out now gives back exactly its own step, and the
+rebuild throws if a closed window's record ends anywhere but its
+deactivation node. T10's clamp-origin guard (finding 37) was this rule
+for Clamped steps only, so it went with the edge's `sqout_time` and
+`clamped` fields.
+
+`hydra_replay` asks the same function. A stored window that ended plainly had
+its end at D, so only the late side applies. A typed window has no history,
+so it accepts either side's chord.
+
+An early squeeze-in's step is the step on the squeezed-in chord: the
+window's newest step. That step is Collected, or Clamped when the cap pinned
+the end on that phrase. It is never the Activation step. A folded variant's
+step there gets the leader's SqIn label at the close (`close_folded_act`).
+`is_sqin_step` in the engine states that rule once.
 
 ### Tied paths whose clamps came from different ends (D44)
 
@@ -175,21 +209,20 @@ phrase is on offer at the old end, and each path may only take it back to
 its own old end (finding 37, D29).
 
 Folded as ties, the variant would follow its leader's squeeze choices and
-lose its own squeeze-out. So `reduce_group` keeps two such paths apart. It
-does this only when the last SP-end step of either path is a clamp, the two
-clamps differ in phrase or in the end they moved, and some deactivation edge
-offers that phrase as a squeeze-out at that end (`clamp_offered`). Otherwise
-they fold as before. The engine reads each path's clamp off its SP-end
-chain (`last_step_clamp`). An early squeeze-in on the clamped phrase ends
-the clamp, because the path has spent that phrase. The user approved this
-departure from the plan in D44.
+lose its own squeeze-out. T10 first stopped that with a guard of its own:
+`reduce_group` kept two such paths apart when their clamps came from
+different ends. The user approved that departure from the plan in D44. It
+left one gap: the group key did not hold the end a clamp moved, so the lower
+path could still be pruned before its own squeeze-out node.
 
-A gap stays open, like the D34 gap above. The group key does not hold the
-end a clamp moved. So two paths that reach one end from different ends
-share a group, and the lower one can still be pruned before it reaches its
-own squeeze-out node. The key was the same before finding 37, so this is no
-regression. Normal charts never reach it: the offer needs an SP bar inside
-the 500 ms squeeze window.
+D36's rule (above) now covers this case, and T10's guard is gone. A clamped
+step is one more step that moved the SP end. It remembers that end when the
+end can give the phrase back, and the group key holds it while it is ahead.
+So two paths whose clamps came from different ends sit in different groups
+while either can still squeeze. Neither folds into the other, and neither is
+pruned against the other before its squeeze-out node, which closes T10's
+gap too. Normal charts never reach any of this: the offer needs an SP bar
+inside the 500 ms squeeze window.
 
 ### Two more extreme-tempo crashes (D32)
 

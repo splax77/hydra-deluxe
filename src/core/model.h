@@ -331,8 +331,8 @@ constexpr SpEndKind kLastSpEndKind = SpEndKind::SqIn;
 inline bool is_sqin_kind(SpEndKind kind) { return kind == SpEndKind::SqIn; }
 
 // Is this step a clamp (the cap pinned the end on its phrase)? The one
-// statement of that rule: the stored list's last_clamp_tick (model.cpp) and
-// the engine's running window (Engine::last_step_clamp) both ask it.
+// statement of that rule: the stored list's last_clamp_tick (model.cpp)
+// asks it, for Activation::clamp_tick and end_anchor_tick.
 inline bool is_clamp_kind(SpEndKind kind) { return kind == SpEndKind::Clamped; }
 
 // Did this step squeeze in the phrase on `tick`?
