@@ -47,6 +47,12 @@ std::vector<ReplayWindow> windows_from_json(const nlohmann::json& path) {
             act["sqout_tick"].get<int64_t>() >= 0)
             w.sqout_tick = act["sqout_tick"].get<int64_t>();
 
+        // The phrases this window squeezed in (D34). No key (a dump written
+        // before the field) reads as none, as it always did.
+        if (act.contains("sqin_ticks") && act["sqin_ticks"].is_array())
+            for (const nlohmann::json& t : act["sqin_ticks"])
+                if (t.is_number()) w.sqin_ticks.push_back(t.get<int64_t>());
+
         if (act.contains("sqinouts") && act["sqinouts"].is_array()) {
             for (const nlohmann::json& sq : act["sqinouts"]) {
                 if (!sq.is_object()) continue;
@@ -86,6 +92,9 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
             const std::optional<int64_t> d = act.deact_tick();
             // The plain end the activation's bars gave, read off the history.
             const int64_t nominal = act.nominal_end().value_or(-1);
+            // The phrases it squeezed in, so `score --path` skips them as the
+            // engine did (D34).
+            const nlohmann::json sqins = sqin_phrase_ticks(act);
 
             acts.push_back(nlohmann::json{
                 {"act_tick", act_tick},
@@ -96,6 +105,7 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                 {"skips", act.skips()},
                 {"chord_code", act.chord.code()},
                 {"sqinouts", sq},
+                {"sqin_ticks", sqins},
             });
         }
         paths.push_back(nlohmann::json{

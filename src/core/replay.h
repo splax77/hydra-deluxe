@@ -219,6 +219,11 @@ ReplayScore score_of(const Path& path);
 // replay_stored_path below checks that before a score is trusted.
 std::vector<ReplayWindow> windows_for_path(const Path& path);
 
+// The phrases a stored activation squeezed in: its SqIn steps. The one
+// statement of that rule; windows_for_path and hydra_replay's dump
+// (paths_json) both ask it, so a window read back from a dump knows them too.
+std::vector<int64_t> sqin_phrase_ticks(const Activation& act);
+
 // A stored path replayed, with the two checks that say whether the replay
 // stands for it. The one place those checks live: hydra_replay's selfcheck,
 // the Preview's score and the corpus tests all read them from here.
