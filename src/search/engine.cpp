@@ -42,6 +42,13 @@ const int32_t NODE_BROKEN = -2;
 // fill_refuses, is_e0). branch_activate applies it; the search's group key
 // (ready_class) counts the upcoming fills it refuses.
 
+// Which fill an activation's early-fill offset is measured at: the first fill
+// the path passed over, or the activation's own fill when it passed none.
+// branch_activate and the D38 variant rebuild (own_early_fill) both ask here.
+inline double recorded_e_offset(double first_passed, double own) {
+    return has_value(first_passed) ? first_passed : own;
+}
+
 // ---- the graph, enumerated ----------------------------------------------
 // The search is index-based (indices pack into memo keys and the output act
 // records), so the graph is enumerated into index->object arrays, plus one
@@ -867,8 +874,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
     close_last_activation(c);
 
     c.act_tail = new_act(p.act_tail, p.node, p.currentskips,
-                         has_value(p.skipped_e_offset) ? p.skipped_e_offset
-                                                       : e_offset);
+                         recorded_e_offset(p.skipped_e_offset, e_offset));
     acts_[(size_t)c.act_tail].bank_tail = p.bank_tail;
     c.bank_tail = -1;
     acts_[(size_t)c.act_tail].skip_tail = p.skip_tail;
@@ -1477,13 +1483,18 @@ void Engine::own_early_fill(const Variant& var, OutAct* next) {
     for (int32_t k = next->skip_begin; k < next->skip_end; ++k)
         if (out_ticks_[(size_t)k] > var.fold_tick) shared.push_back(out_ticks_[(size_t)k]);
 
-    if (has_value(var.skipped_e_offset)) {
-        next->e_offset = var.skipped_e_offset;
-    } else if (has_value(var.sp_ready_ms)) {
-        const double deadline =
-            shared.empty() ? edge(node(next->act_node).branch_edge).activation_fill_deadline_ms
-                           : fill_deadline_at(shared.front());
-        next->e_offset = fill_e_offset(deadline, var.sp_ready_ms);
+    // The offset at a fill, from the variant's own ready time.
+    const auto at_ready = [&](double deadline) {
+        return has_value(var.sp_ready_ms) ? fill_e_offset(deadline, var.sp_ready_ms) : NO_DOUBLE;
+    };
+    // The first fill it passed is its own, else the first shared one.
+    const double first_passed =
+        has_value(var.skipped_e_offset) ? var.skipped_e_offset
+        : shared.empty()                ? NO_DOUBLE
+                                        : at_ready(fill_deadline_at(shared.front()));
+    const double own = at_ready(edge(node(next->act_node).branch_edge).activation_fill_deadline_ms);
+    if (has_value(first_passed) || has_value(own)) {
+        next->e_offset = recorded_e_offset(first_passed, own);
     } else if (var.skip_tail >= 0 || (int32_t)shared.size() != next->skip_end - next->skip_begin) {
         // Under 2 bars at the fold, as its leader was (same meter): neither
         // could have passed a fill yet, and both became ready later, at the

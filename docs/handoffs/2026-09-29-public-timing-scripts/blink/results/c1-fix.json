@@ -1,0 +1,51 @@
+{
+ "chart": "C:\\Clone Hero\\songs\\synchotic\\Sync Charts\\Rock Band\\Rock Band Network\\Wretched - Dilated Disappointment (2x Bass Pedal Expert+)\\notes.mid",
+ "ms_limit": 10,
+ "fix": true,
+ "finished": true,
+ "stopped_because": null,
+ "reduce_s": 0.01,
+ "filtercheck_s": 0.0,
+ "filtercheck_calls": 3570,
+ "copy_s": 0.0,
+ "copies": 363,
+ "variant_copies": 0,
+ "steps": 68,
+ "max_frontier": 65,
+ "max_group": 25,
+ "pair_comparisons": 4344,
+ "fix_dropped": 0,
+ "progress": 1.0149,
+ "share": false,
+ "parse_s": 0.134,
+ "graph_s": 0.011,
+ "search_s": 0.008,
+ "paths": 5,
+ "best_score": 588785,
+ "result": [
+  [
+   586525,
+   "0 0 3 1"
+  ],
+  [
+   586925,
+   "2 5 0"
+  ],
+  [
+   586985,
+   "3 3 1"
+  ],
+  [
+   588325,
+   "0 0 5 0"
+  ],
+  [
+   588785,
+   "3 5 0"
+  ]
+ ],
+ "elapsed_s": 0.15,
+ "ws_mb": 32,
+ "peak_mb": 42,
+ "min_free_gb": 14.07
+}
