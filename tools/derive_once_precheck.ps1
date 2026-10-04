@@ -22,11 +22,33 @@ marked as known copies. -Disable turns checks off by number (the self-test
 uses it to prove each check is needed).
 
 Each line reads:  <kind> <file>:<line>  <what was found>  -- <why it counts>
-The kind letters are the merge-gate audit's (2026-10-04, section 4): C a
-copied test helper or fixture, B a test that recomputes what production
-computes, D a number with no decision, E a source scan outside the one scan
-file. A line ending "(known copy: ...)" is already in known_copies() of
-tests/test_single_owner.cpp with the fix that removes it.
+The kind letters are the merge-gate audit's (2026-10-04, section 4): A a
+production rule written twice, C a copied test helper or fixture, B a test
+that recomputes what production computes, D a number with no decision, E a
+source scan outside the one scan file. A line ending "(known copy: ...)" is
+already in known_copies() of tests/test_single_owner.cpp with the fix that
+removes it.
+
+THE SCAN ROWS
+
+tests/test_single_owner.cpp owns every "this is a copy" pattern it has a row
+for. This script does not keep its own copy of those patterns: it reads the
+rows (question, owner, pattern, calls-owner pattern, owner files, exempt
+files, owner lines, scope, function limit, comment rule) and known_copies()
+from that file at the range's last commit, or at -RulesAt, and applies them
+to the added .cpp and .h lines the way the scan does. An owner line passes,
+unless this range wrote that owner line; then it is printed so the reviewer
+judges its reason. The kind comes from the row's owner: a line in src/ or
+tools/ is A; in tests/, a row owned by tests/source_tree.h is E, a row owned
+by another test header is C, and a row owned by production code is B. Checks
+1, 2 and 4 print the C, the B and A, and the E lines of this list. Each
+row's must-match and must-not-match examples are tried too; a line starting
+"precheck:" says when .NET reads a row's pattern differently from the scan's
+std::regex. The patterns the checks below still hold are for questions no
+row asks, each with a comment saying why.
+
+Scoring an old range against today's rows: -RulesAt HEAD. At the range's own
+last commit the scan already passes, so its rows mostly show known copies.
 
 THE FOUR CHECKS
 
@@ -38,38 +60,34 @@ THE FOUR CHECKS
    a C++ keyword or a member after "." or "->" is renamed in order of first
    use, so a copy with its function and variables renamed still matches.
    Bodies under 30 tokens are skipped by body (too many tiny helpers look
-   alike); they still match by name. A group is printed when one of its
+   alike; decision D49); they still match by name. A group is printed when one of its
    definitions starts on a line the range adds. Skipped: member functions
    inside a struct or class, copies inside one file, and the doctest macros
    (TEST_CASE, SUBCASE). Same-named helpers with different bodies are still
    printed, marked "bodies differ": two helpers with one name in two test
    files is how most copies start.
-   The same check also looks for the fixture spellings the audit found copied
-   under other names, outside the shared header that owns each one: a MIDI
-   MThd/MTrk chunk or a hand-encoded variable-length delta (tests/midi_util.h),
-   a raw deflate for a .srb (tests/srb_util.h), a minimal .chart "[Song]\n"
-   or "[SyncTrack]\n" header in a string (tests/chart_text.h), a
-   per-difficulty literal table (tests/difficulty_literals.h), a loop over a
-   path's tied variants (tests/record_fixtures.h), and an SqIn step test
-   typed by hand (tests/bank_check.h, or is_sqin_kind in src/core/model.h).
+   The same check prints the scan rows' C lines (the MIDI chunk tags, the
+   .srb deflate, the .chart header, the per-difficulty table, the tied-variant
+   walks, the SqIn step check and the other fixtures a test header owns), and
+   looks for one fixture spelling no row asks about: a MIDI variable-length
+   delta encoded by hand outside tests/midi_util.h.
    tests/test_single_owner.cpp is skipped: its strings are pattern examples.
 
-2. Recompute spellings in tests (kind B). Added lines under tests/ (C++ and
-   Python) and in Python test files under tools/ are matched against the
-   spellings merge-gate.md section 4 lists for kind B: an SP-end offset
-   rebuilt from two times (".ms() - x.ms()" or "x_ms - y.ms()"); a typed 500
-   (the squeeze window) within two lines of a squeeze, window, SqIn/SqOut,
-   leeway, deact or fabs( word; a typed 2.0 beside a hit window; "== 1.0" or
-   "!= 1.0" on an early, late or transfer scale, where is_scaled exists; the
-   plain SP end rebuilt with plusmeasure(..sp_bars_to_measures(..)); a
-   tied-path count checked against a second count; a test setting
-   target_act_ticks itself (re-running the targeted search's filter); a
-   CHECK whose expected side is arithmetic over other calls; an expected
-   answer built from the predicate's own comparisons ("want = a == x || ...");
-   and, in Python tests, a fixture that decides with the module's own
-   constants or asserts one module constant equals a formula of others.
-   A C++ statement split over up to four lines is read as one. Skipped:
-   comments, the text inside strings, and tests/test_single_owner.cpp.
+2. Recompute spellings in tests (kind B). The same check prints the scan
+   rows' B lines (the SP-end offset, the typed 500 squeeze window, "== 1.0"
+   on a transfer scale, the plain SP end rebuilt with plusmeasure, a test
+   setting target_act_ticks) and their A lines. Then added lines under tests/
+   (C++ and Python) and in Python test files under tools/ are matched against
+   the kind-B spellings of merge-gate.md section 4 that no row asks about: a
+   typed 2.0 within two lines of a hit window (D49 records that two-line
+   reach for the typed 500, now a row); a tied-path count checked against a
+   second count; a CHECK whose expected side is arithmetic over other calls;
+   an expected answer built from the predicate's own comparisons ("want = a
+   == x || ..."); and, in Python tests, a fixture that decides with the
+   module's own constants or asserts one module constant equals a formula of
+   others (the scan reads no Python). A C++ statement split over up to four
+   lines is read as one (D49). Skipped: comments, the text inside strings,
+   and tests/test_single_owner.cpp.
 
 3. New numbers with no decision (kind D). Every numeric literal on an added
    code line under src/, tools/ and tests/ (C++ and Python; not comments,
@@ -82,7 +100,7 @@ THE FOUR CHECKS
    docs/superpowers/plans/, and the D-records in docs/audit/*decisions*.md
    (the user's numbered rulings, which reviewers count as decisions; the
    brief names only the first three places). If the line or the three lines
-   above it cite a
+   above it (D49) cite a
    decision (D43, ADR 0014), the number must appear in that decision.
    Otherwise it must appear in one decision paragraph together with one of
    the line's own words (depth, window, floor...), so "40" in an unrelated
@@ -118,28 +136,33 @@ THE FOUR CHECKS
    "changed == 9" is a test limit the reviewer asked about, but it reads like
    any other pin, so it is not listed.
 
-4. Scans outside the scan file (kind E). Any added line in a C++ or Python
-   file under tests/ or tools/, other than tests/test_single_owner.cpp, that
-   reads the source tree: HYDRA_SOURCE_DIR, a directory iterator in a file
-   that names "src", an ifstream or open() of a .cpp or .h path or of a path
-   under src/, or os.walk/glob/rglob over src. This script and its self-test
-   are skipped: they read source text because they are the pre-review tool,
-   not a test. Then every rule row the range adds to rules() in
+4. Scans outside the scan file (kind E). The scan rows' E lines (a test
+   using HYDRA_SOURCE_DIR or walking the source tree), then two spellings no
+   row asks about, in an added line of a C++ or Python file under tests/ or
+   tools/ other than tests/test_single_owner.cpp: an ifstream or open() of a
+   .cpp or .h path or of a path under src/ (the row matches only
+   HYDRA_SOURCE_DIR), and os.walk/glob/rglob over src in Python. This script
+   and its self-test are skipped: they read source text because they are the
+   pre-review tool, not a test. Then every rule row the range adds to rules() in
    tests/test_single_owner.cpp is checked for an empty or missing must-match
    or must-not-match list, and for a negative lookahead that names variables
    inside its pattern (an exemption no owner line records, which applies in
    every file).
 
-What it cannot see: a production rule written twice (kind A), a copy whose
-shape it does not know, a decision that exists only as a reviewer's
-judgement, and code the range does not add.
+What it cannot see: a production rule written twice (kind A) that no scan
+row spells, a copy whose shape it does not know, a decision that exists only
+as a reviewer's judgement, and code the range does not add.
 #>
 [CmdletBinding()]
 param(
     [string]$Range = 'main...HEAD',
     [string]$Repo = '.',
     [switch]$WholeTree,
-    [string[]]$Disable = @()
+    [string[]]$Disable = @(),
+    # The commit whose tests/test_single_owner.cpp gives the scan rows and
+    # known copies. Default: the range's last commit. Scoring an old range
+    # against today's rows passes -RulesAt HEAD.
+    [string]$RulesAt = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -183,6 +206,7 @@ if ($Range -match '^(.*?)\.\.\.(.*)$') {
     $tip = @(Invoke-Git @('rev-parse', '--verify', "$Range^{commit}"))[0]
     $base = if ($WholeTree) { $null } else { @(Invoke-Git @('rev-parse', '--verify', "$Range^1"))[0] }
 }
+$rulesRev = if ($RulesAt) { @(Invoke-Git @('rev-parse', '--verify', "$RulesAt^{commit}"))[0] } else { $tip }
 
 $script:FileCache = @{}
 function Get-TipText([string]$Path, [string]$Rev = $tip) {
@@ -245,9 +269,10 @@ function Blank-Inner([string]$s) {
     $s.Substring(0, $open + 1) + (Blank $s.Substring($open + 1, $s.Length - $open - 2)) + $s[$s.Length - 1]
 }
 $script:LexCache = @{}
-function Get-Views([string]$Path) {
-    if ($script:LexCache.ContainsKey($Path)) { return $script:LexCache[$Path] }
-    $text = Get-TipText $Path
+function Get-Views([string]$Path, [string]$Rev = $tip) {
+    $key = "${Rev}:$Path"
+    if ($script:LexCache.ContainsKey($key)) { return $script:LexCache[$key] }
+    $text = Get-TipText $Path $Rev
     $rx = if ($Path -match '\.py$') { $pyLex } else { $cppLex }
     $noComments = $rx.Replace($text, { param($m) if ($m.Groups['c'].Success) { Blank $m.Value } else { $m.Value } })
     $code = $rx.Replace($text, { param($m) if ($m.Groups['c'].Success) { Blank $m.Value } else { Blank-Inner $m.Value } })
@@ -258,7 +283,7 @@ function Get-Views([string]$Path) {
         CodeText   = $code
         NcText     = $noComments
     }
-    $script:LexCache[$Path] = $v
+    $script:LexCache[$key] = $v
     $v
 }
 
@@ -299,13 +324,41 @@ function Split-Fields([string]$Code, [int]$Open, [int]$Close) {
     ,$out
 }
 $strRx = [regex]'R"(?<d>[^(\s"\\]{0,16})\((?<r>[\s\S]*?)\)\k<d>"|"(?<s>(?:\\.|[^"\\\n])*)"'
+$escRx = [regex]'\\(x[0-9A-Fa-f]+|[0-7]{1,3}|.)'
 function Get-Strings([string]$Text) {
     $out = [System.Collections.Generic.List[string]]::new()
     foreach ($m in $strRx.Matches($Text)) {
-        if ($m.Groups['r'].Success) { $out.Add($m.Groups['r'].Value) }
-        else { $out.Add(($m.Groups['s'].Value -replace '\\(["\\''])', '$1' -replace '\\n', "`n")) }
+        if ($m.Groups['r'].Success) { $out.Add($m.Groups['r'].Value); continue }
+        # C++ escapes, decoded in one pass so "\\n" stays a backslash and an n.
+        $out.Add($escRx.Replace($m.Groups['s'].Value, {
+            param($e)
+            $c = $e.Groups[1].Value
+            switch -CaseSensitive -Regex ($c) {
+                '^n$' { return "`n" }
+                '^t$' { return "`t" }
+                '^r$' { return "`r" }
+                '^x[0-9A-Fa-f]' { return [string][char][Convert]::ToInt32($c.Substring(1), 16) }
+                '^[0-7]+$' { return [string][char][Convert]::ToInt32($c, 8) }
+                default { return $c }
+            }
+        }))
     }
     ,$out
+}
+# The strings of one field, adjacent literals joined ("a" "b" is "ab").
+function Get-FieldText([object]$V, [object]$Field) {
+    (Get-Strings $V.NcText.Substring($Field[0], $Field[1] - $Field[0])) -join ''
+}
+# The elements of a braced list held in one field, each as its own fields.
+function Get-ListItems([object]$V, [object]$Field) {
+    $open = $V.CodeText.IndexOf('{', $Field[0])
+    if ($open -lt 0 -or $open -ge $Field[1]) { return ,@() }
+    $depth = 0; $close = -1
+    for ($i = $open; $i -lt $Field[1]; $i++) {
+        if ($V.CodeText[$i] -eq '{') { $depth++ } elseif ($V.CodeText[$i] -eq '}') { $depth--; if ($depth -eq 0) { $close = $i; break } }
+    }
+    if ($close -lt 0) { return ,@() }
+    Split-Fields $V.CodeText $open $close  # one list object, not unrolled
 }
 # The body of a function named $Name in a file: offsets of its opening and
 # closing brace in the string-blanked text.
@@ -331,22 +384,88 @@ function Get-InitList([string]$Code, [int]$BodyOpen, [int]$BodyClose) {
     $null
 }
 
-if ($allFiles -contains $scanFile) {
-    $sv = Get-Views $scanFile
-    $body = Find-FunctionBody $sv.CodeText 'known_copies'
-    if ($body) {
-        $init = Get-InitList $sv.CodeText $body[0] $body[1]
-        if ($init) {
-            foreach ($el in (Get-TopElements $sv.CodeText $init[0] $init[1])) {
-                $fields = Split-Fields $sv.CodeText $el[0] $el[1]
-                $vals = foreach ($f in $fields) { (Get-Strings $sv.NcText.Substring($f[0], $f[1] - $f[0])) -join '' }
-                if (@($vals).Count -ge 4) {
-                    if (-not $known.ContainsKey($vals[1])) { $known[$vals[1]] = [System.Collections.Generic.List[object]]::new() }
-                    $known[$vals[1]].Add([pscustomobject]@{ Text = $vals[2].Trim(); Fix = $vals[3] })
-                }
-            }
-        }
+# The elements of the table a function returns (rules() or known_copies()),
+# each with its fields and its first and last line in the scan file.
+function Get-TableElements([object]$V, [string]$Function) {
+    $out = [System.Collections.Generic.List[object]]::new()
+    $body = Find-FunctionBody $V.CodeText $Function
+    if (-not $body) { return ,$out }
+    $init = Get-InitList $V.CodeText $body[0] $body[1]
+    if (-not $init) { return ,$out }
+    foreach ($el in (Get-TopElements $V.CodeText $init[0] $init[1])) {
+        $out.Add([pscustomobject]@{
+            Fields = (Split-Fields $V.CodeText $el[0] $el[1])
+            Line = ($V.CodeText.Substring(0, $el[0]) -split "`n").Count
+            LastLine = ($V.CodeText.Substring(0, $el[1]) -split "`n").Count
+        })
     }
+    ,$out
+}
+# Was any line of this scan-file element added by the range? Only meaningful
+# when the rows are read from the range's own last commit.
+function Test-ElementAdded([object]$El) {
+    if ($rulesRev -ne $tip) { return $false }
+    for ($i = $El.Line; $i -le $El.LastLine; $i++) { if (Test-Added $scanFile $i) { return $true } }
+    $false
+}
+
+# The scan's rows, read from tests/test_single_owner.cpp at $rulesRev. The
+# scan file owns every question its rows ask; checks 1, 2 and 4 apply these
+# rows to the added lines the way the scan does, and keep their own patterns
+# only for questions no row asks. The field order is OwnerRule's.
+$rows = [System.Collections.Generic.List[object]]::new()
+$rowWarnings = [System.Collections.Generic.List[string]]::new()
+function New-StdRegex([string]$Pattern) {
+    # The scan uses std::regex's ECMAScript grammar; .NET's ECMAScript mode is
+    # the nearest reading. A pattern it refuses is read with .NET's own rules,
+    # and the example check below says when the two readings differ.
+    try { [regex]::new($Pattern, 'ECMAScript') } catch { [regex]::new($Pattern) }
+}
+$scanAt = @(Invoke-Git @('ls-tree', '--name-only', $rulesRev, '--', $scanFile))
+if ($scanAt.Count) {
+    $sv = Get-Views $scanFile $rulesRev
+    foreach ($el in (Get-TableElements $sv 'rules')) {
+        $f = $el.Fields
+        if ($f.Count -lt 3) { continue }
+        $text = { param($k) if ($f.Count -gt $k) { Get-FieldText $sv $f[$k] } else { '' } }
+        $list = { param($k) if ($f.Count -gt $k) { @(foreach ($i in (Get-ListItems $sv $f[$k])) { Get-FieldText $sv $i }) } else { @() } }
+        $structs = { param($k) if ($f.Count -gt $k) { @(foreach ($i in (Get-ListItems $sv $f[$k])) { ,@(foreach ($s in (Get-ListItems $sv $i)) { Get-FieldText $sv $s }) }) } else { @() } }
+        $row = [pscustomobject]@{
+            Question = (& $text 0); Owner = (& $text 1); Pattern = (& $text 2); CallsOwner = (& $text 3)
+            OwnerFiles = (& $list 4); Exempt = @((& $structs 5) | ForEach-Object { $_[0] })
+            MustMatch = (& $list 7); MustNotMatch = (& $list 8)
+            OwnerLines = @(if ($f.Count -gt 9) { foreach ($i in (Get-ListItems $sv $f[9])) {
+                $s = @(foreach ($x in (Get-ListItems $sv $i)) { Get-FieldText $sv $x })
+                if ($s.Count -lt 3) { continue }
+                $span = [pscustomobject]@{ Line = ($sv.CodeText.Substring(0, $i[0]) -split "`n").Count; LastLine = ($sv.CodeText.Substring(0, $i[1]) -split "`n").Count }
+                [pscustomobject]@{ File = $s[0]; Text = $s[1].Trim(); Why = $s[2]; Added = (Test-ElementAdded $span) }
+            } })
+            Scope = (& $list 10); FunctionFile = (& $text 11); Function = (& $text 12)
+            ScanComments = ($f.Count -gt 13 -and $sv.CodeText.Substring($f[13][0], $f[13][1] - $f[13][0]).Trim() -eq 'true')
+            Line = $el.Line; Added = (Test-ElementAdded $el); Rx = $null; CallsRx = $null
+        }
+        $row.Rx = New-StdRegex $row.Pattern
+        if ($row.CallsOwner) { $row.CallsRx = New-StdRegex $row.CallsOwner }
+        $rows.Add($row)
+    }
+    foreach ($el in (Get-TableElements $sv 'known_copies')) {
+        $vals = @(foreach ($x in $el.Fields) { Get-FieldText $sv $x })
+        if ($vals.Count -lt 4) { continue }
+        if (-not $known.ContainsKey($vals[1])) { $known[$vals[1]] = [System.Collections.Generic.List[object]]::new() }
+        $known[$vals[1]].Add([pscustomobject]@{ Question = $vals[0]; Text = $vals[2].Trim(); Fix = $vals[3]; Added = (Test-ElementAdded $el) })
+    }
+}
+# The scan's one verdict (flags_line): the line matches the pattern and does
+# not call the owner.
+function Test-RowFlags([object]$Row, [string]$Line) {
+    if (-not $Row.Rx.IsMatch($Line)) { return $false }
+    -not ($Row.CallsRx -and $Row.CallsRx.IsMatch($Line))
+}
+# Each row's own examples must read the same here as in the scan's self-test.
+foreach ($r in $rows) {
+    foreach ($x in $r.MustMatch) { if (-not (Test-RowFlags $r $x)) { $rowWarnings.Add("row ""$($r.Question)"" does not flag its must-match example here: $x") } }
+    foreach ($x in $r.MustNotMatch) { if (Test-RowFlags $r $x) { $rowWarnings.Add("row ""$($r.Question)"" flags its must-not-match example here: $x") } }
+    foreach ($o in $r.OwnerLines) { if (-not (Test-RowFlags $r $o.Text)) { $rowWarnings.Add("row ""$($r.Question)"" does not flag its owner line here: $($o.Text)") } }
 }
 function Get-KnownCopy([string]$File, [string[]]$LineTexts) {
     if (-not $known.ContainsKey($File)) { return $null }
@@ -354,6 +473,99 @@ function Get-KnownCopy([string]$File, [string[]]$LineTexts) {
         foreach ($k in $known[$File]) { if ($t.Trim() -eq $k.Text) { return $k.Fix } }
     }
     $null
+}
+
+# Does the scan read this file under this row (in_scope, the function a row
+# is limited to, owner files and exempt files)?
+function Test-RowCovers([object]$Row, [string]$File) {
+    $sub = $File.Substring(0, $File.IndexOf('/'))
+    $inScope = if ($Row.Scope.Count -eq 0) { $sub -eq 'src' -or $sub -eq 'tools' } else { ($Row.Scope -contains $sub) -or ($Row.Scope -contains $File) }
+    if (-not $inScope) { return $false }
+    if ($Row.Function -and $File -ne $Row.FunctionFile) { return $false }
+    -not (($Row.OwnerFiles -contains $File) -or ($Row.Exempt -contains $File))
+}
+# The lines of a function-limited row's function (the scan's rule: from the
+# line holding the function's text to the next line that is exactly "}").
+function Get-FunctionLines([object]$Row, [object]$V) {
+    $set = [System.Collections.Generic.HashSet[int]]::new()
+    $in = $false
+    for ($i = 0; $i -lt $V.Raw.Count; $i++) {
+        $line = $V.Raw[$i]
+        if (-not $in -and $line.Contains($Row.Function)) { $in = $true }
+        if (-not $in) { continue }
+        [void]$set.Add($i + 1)
+        if ($line -eq '}') { $in = $false }
+    }
+    ,$set
+}
+
+# Every added line in a .cpp or .h file that a scan row flags, as the scan
+# would see it. Kind: a line in src/ or tools/ is a production copy (A); in
+# tests/, a row whose owner is tests/source_tree.h is a stray scan (E), a row
+# whose owner is another test header is a copied fixture (C), and a row whose
+# owner is production code is a recompute (B). Checks 1, 2 and 4 each print
+# their own kinds from this one list.
+$script:RowHits = $null
+function Get-RowHits {
+    if ($null -ne $script:RowHits) { return $script:RowHits }
+    $hits = [System.Collections.Generic.List[object]]::new()
+    foreach ($f in $added.Keys) {
+        if (-not ($f -match '\.(cpp|h)$') -or $f -eq $scanFile) { continue }
+        $covering = @($rows | Where-Object { Test-RowCovers $_ $f })
+        if (-not $covering.Count) { continue }
+        $v = Get-Views $f
+        $trimmed = @($v.Raw | ForEach-Object { $_.Trim() })
+        $funcLines = @{}
+        foreach ($ln in (Get-AddedLines $f $v.Raw.Count)) {
+            $t = $trimmed[$ln - 1]
+            if (-not $t) { continue }
+            $isComment = $t.StartsWith('//')
+            foreach ($r in $covering) {
+                if ($isComment -and -not $r.ScanComments) { continue }
+                if ($r.Function) {
+                    if (-not $funcLines.ContainsKey($r.Question)) { $funcLines[$r.Question] = Get-FunctionLines $r $v }
+                    if (-not $funcLines[$r.Question].Contains($ln)) { continue }
+                }
+                if (-not (Test-RowFlags $r $v.Raw[$ln - 1])) { continue }
+                # A listed line (owner line, then known copy) covers one line
+                # of source: the n-th line with this text takes the n-th entry.
+                $owners = @($r.OwnerLines | Where-Object { $_.File -eq $f -and $_.Text -eq $t })
+                $copies = @(if ($known.ContainsKey($f)) { $known[$f] | Where-Object { $_.Question -eq $r.Question -and $_.Text -eq $t } })
+                $nth = 0
+                for ($k = 1; $k -le $ln; $k++) {
+                    if ($trimmed[$k - 1] -ne $t) { continue }
+                    if ($r.Function -and -not $funcLines[$r.Question].Contains($k)) { continue }
+                    $nth++
+                }
+                $note = $null
+                if ($nth -le $owners.Count) {
+                    # An owner line passes, unless this range wrote it: then
+                    # the reviewer judges its reason.
+                    $o = $owners[$nth - 1]
+                    if (-not $o.Added) { continue }
+                    $note = "this range lists it as an owner line: ""$($o.Why)""; check that reason"
+                } elseif ($nth -le $owners.Count + $copies.Count) {
+                    $c = $copies[$nth - $owners.Count - 1]
+                    $note = "known copy: $($c.Fix)" + $(if ($c.Added) { '; this range added that entry' } else { '' })
+                } elseif ($owners.Count + $copies.Count) {
+                    $note = 'a second copy of a listed line; each entry covers one line'
+                }
+                $sub = $f.Substring(0, $f.IndexOf('/'))
+                $kind = if ($sub -ne 'tests') { 'A' } elseif ($r.Owner -match 'tests/source_tree\.h') { 'E' } elseif ($r.Owner -match '\btests/') { 'C' } else { 'B' }
+                $hits.Add([pscustomobject]@{ Kind = $kind; File = $f; Line = $ln; Text = $t; Row = $r; Note = $note })
+            }
+        }
+    }
+    $script:RowHits = $hits
+    $hits
+}
+function Add-RowItems([string[]]$Kinds) {
+    foreach ($h in (Get-RowHits)) {
+        if ($Kinds -notcontains $h.Kind) { continue }
+        $why = "the scan row in $scanFile gives this question to $($h.Row.Owner)"
+        if ($h.Note) { $why += " ($($h.Note))" }
+        Add-Item $h.Kind $h.File $h.Line "answers ""$($h.Row.Question)"": $($h.Text)" $why
+    }
 }
 
 function Test-CppPath([string]$p) { $p -match '\.(cpp|h|hpp|cc)$' }
@@ -461,7 +673,8 @@ function Invoke-Check1 {
         $files = @($g.Group | Select-Object -ExpandProperty File -Unique)
         if ($files.Count -ge 2) { $groups.Add([pscustomobject]@{ By = 'name'; Defs = @($g.Group) }) }
     }
-    # by body, names normalised
+    # by body, names normalised; bodies under 30 tokens match by name only
+    # (decision D49)
     foreach ($g in ($defs | Where-Object { $_.Tokens -ge 30 } | Group-Object Key)) {
         $files = @($g.Group | Select-Object -ExpandProperty File -Unique)
         if ($files.Count -lt 2) { continue }
@@ -491,22 +704,18 @@ function Invoke-Check1 {
         Add-Item 'C' $anchor.File $anchor.Line $what $why
     }
 
-    # Fixture spellings outside the shared header that owns them.
+    # Copied fixtures a scan row names: the MIDI chunk tags, the .srb
+    # deflate, the .chart header, the per-difficulty table, the tied-variant
+    # walks and the SqIn step check are rows in tests/test_single_owner.cpp.
+    Add-RowItems @('C')
+
+    # Fixture spellings no scan row asks about yet, outside the shared header
+    # that owns them. The MIDI row ("Which test helper writes MThd/MTrk
+    # chunks?") matches only the chunk tags, so a variable-length delta typed
+    # as bytes has no row; when a row for it lands, this entry goes.
     $spellings = @(
-        @{ Rx = '''M'',\s*''T'',\s*''(h'',\s*''d|r'',\s*''k)''|"MT(hd|rk)"'; Owner = 'tests/midi_util.h'
-           What = 'a MIDI MThd/MTrk chunk written by hand'; Why = 'MIDI file writers belong in tests/midi_util.h' },
         @{ Rx = '&\s*0x7[Ff]\b[^;]*\|\s*0x80|0x80\s*\|\s*\(|\{\s*0x8[1-9A-Fa-f],\s*0x[0-7][0-9A-Fa-f]\s*\}'; Owner = 'tests/midi_util.h'
-           What = 'a MIDI variable-length delta encoded by hand'; Why = 'the varlen writer belongs in tests/midi_util.h' },
-        @{ Rx = '\btdefl_compress_mem_to_heap\s*\('; Owner = 'tests/srb_util.h'
-           What = 'a raw deflate for a .srb fixture'; Why = '.srb fixture writers belong in tests/srb_util.h' },
-        @{ Rx = '\[SyncTrack\]\\n|"\[Song\]\\n'; Owner = 'tests/chart_text.h'
-           What = 'a minimal .chart header typed by hand'; Why = 'the minimal .chart writer belongs in tests/chart_text.h' },
-        @{ Rx = '\{\s*(hydra::)?Difficulty::(Expert|Hard|Medium|Easy)\s*,\s*-?\d'; Owner = 'tests/difficulty_literals.h'
-           What = 'a per-difficulty literal table typed in a test'; Why = 'per-difficulty values belong in one pinned table (tests/difficulty_literals.h)' },
-        @{ Rx = 'for\s*\(\s*const\s+(hydra::)?Path\s*[&*]\s*\w+\s*:\s*[^)]*\)\s*collect_\w+\s*\(|:\s*[\w.>()-]*\bvariants\s*\)'; Owner = 'tests/record_fixtures.h'
-           What = 'a hand-written walk over tied variants'; Why = 'walking tied variants belongs to test::collect_tied / test::all_tied (tests/record_fixtures.h)' },
-        @{ Rx = '\bkind\s*[!=]=\s*(hydra::)?SpEndKind::SqIn\b|count_if\([^;]*SqIn'; Owner = 'tests/bank_check.h'
-           What = 'an SqIn step test typed by hand'; Why = 'is_sqin_kind (src/core/model.h) and check_one_step_per_sqin (tests/bank_check.h) own it' }
+           What = 'a MIDI variable-length delta encoded by hand'; Why = 'the varlen writer belongs in tests/midi_util.h' }
     )
     foreach ($f in $added.Keys) {
         if ($f -notlike 'tests/*' -or -not (Test-CppPath $f) -or $f -eq $scanFile) { continue }
@@ -529,26 +738,32 @@ function Invoke-Check1 {
 # --------------------------------------- check 2: recompute spellings (B)
 
 function Invoke-Check2 {
+    # Recomputes a scan row names: the SP-end offset, the typed 500 squeeze
+    # window, "== 1.0" on a transfer scale, the plain SP end rebuilt with
+    # plusmeasure, and a test setting target_act_ticks are rows in
+    # tests/test_single_owner.cpp. A production line a row flags (kind A)
+    # prints here too.
+    Add-RowItems @('B', 'A')
+
+    # Recompute spellings no scan row asks about. Each is a question the
+    # scan has no row for yet; when a row lands, its entry here goes.
     $cpp = @(
-        @{ Rx = '\.ms\(\)\s*-\s*[^;,]*\.ms\(\)|\.ms\(\)\s*-\s*[\w.>]*_ms\b|\b\w*_ms\b\s*-\s*[\w.>()-]*\.ms\(\)|\.ms\s*-\s*[\w.>]+\.\w*_ms\b'
-           What = 'an offset worked out from two times'; Why = 'offset_from_sp_end owns how far a note is from an SP end; call it or pin the literal' },
-        @{ Rx = '(?<![\w.''])500(\.0*)?(?![\w.''])'; Ctx = '(?i)window|squeez|sq_?in|sq_?out|leeway|sp_end|deact|fabs\('
-           What = 'a typed 500 beside a squeeze check'; Why = 'the squeeze window is kSqueezeWindowMs / within_squeeze_window' },
+        # No row: no production function owns the hit-window arithmetic as a
+        # row's owner yet, so the scan cannot name one.
         @{ Rx = '(?<![\w.''])2\.0*(?![\w.''])'; Ctx = '(?i)hit.?window'
            What = 'a typed 2.0 beside a hit-window check'; Why = 'the hit-window rule has one owner; call it or pin the literal' },
-        @{ Rx = '[!=]=\s*1\.0*(?![\d.])(?!\s*[-+*/])|(?<![\w.])1\.0*\s*[!=]='; Ctx = '(?i)\b(early|late)\b|transfer'; Same = $true
-           What = 'x1.00 decided with exact equality'; Why = 'is_scaled (src/core/squeeze_rating.h) owns "is this scale x1.00"' },
-        @{ Rx = 'plusmeasure\s*\([^;]*sp_bars_to_measures\s*\('
-           What = 'the plain SP end rebuilt by hand'; Why = 'the graph owns the plain SP end; read nominal_end() or pin the tick' },
+        # No row: the scan has no row for counting tied paths a second way.
         @{ Rx = 'tied_pathcount\(\)\s*[!=]=\s*[^;]*(\d\s*\+|\+\s*\d|\.size\(\)|count\b)'
            What = 'the tied-path count worked out a second way'; Why = 'Path::recount_tied_paths owns the count; pin it' },
-        @{ Rx = '\.target_act_ticks\s*=(?!=)'
-           What = 'a test runs its own targeted search'; Why = 'search_target owns the targeted search and its filter; call it and pin its answer' },
+        # No row: this is a shape of test, not one rule's question, so no
+        # single owner fits a scan row.
         @{ Rx = '\b(CHECK|REQUIRE|CHECK_EQ|REQUIRE_EQ|CHECK_FALSE)\s*\([^;]*==\s*[^;]*([\w)\]]\s*\([^()]*\)\s*(?:\+|-(?!>)|\*|/)\s*[A-Za-z_(]|[\w)\]]\s*(?:\+|-(?!>)|\*|/)\s*[\w:<>]+\s*\()'
            What = 'an expected value computed from other calls'; Why = 'a test pins literals from one run; it never computes the expected value' },
+        # No row: the same, a shape of test with no single owner.
         @{ Rx = '\b(want|wanted|expect|expected)\w*\s*=\s*[^;]*[!=]=[^;]*(\|\||&&)'
            What = 'the expected answer built from the predicate''s own comparisons'; Why = 'pin a literal list of inputs and answers instead of restating the rule' }
     )
+    # No row can own these: the scan reads only .cpp and .h files.
     $py = @(
         @{ Rx = '[<>]=?\s*[A-Za-z_]\w*\.[A-Z][A-Z0-9_]{2,}\b'
            What = 'a fixture decides with the module''s own constant'; Why = 'the fixture makes the comparison production makes; pin the inputs as literals' },
@@ -564,7 +779,8 @@ function Invoke-Check2 {
         $reported = [System.Collections.Generic.HashSet[string]]::new()  # rule|line already shown
         foreach ($ln in (Get-AddedLines $f $v.Code.Count)) {
             $code = $v.Code[$ln - 1]
-            # A C++ statement split over lines is read whole (up to 4 lines).
+            # A C++ statement split over lines is read whole (up to 4 lines,
+            # decision D49).
             $shown = $v.NoComments[$ln - 1].Trim()
             $lastLn = $ln
             if (-not $isPyTest -and $code.Trim() -and $code -notmatch '[;{}]\s*$') {
@@ -579,8 +795,11 @@ function Invoke-Check2 {
                 if ($reported.Contains("$($r.What)|$ln")) { continue }
                 if ($code -cnotmatch $r.Rx) { continue }
                 if ($r.Ctx) {
-                    $from = if ($r.Same) { $ln } else { [Math]::Max(1, $ln - 2) }
-                    $to = if ($r.Same) { $lastLn } else { [Math]::Min($v.Raw.Count, $lastLn + 2) }
+                    # Context within 2 lines either side. D49 records this
+                    # reach for the typed-500 rule, which is now a scan row;
+                    # the 2.0 hit-window rule kept the same reach.
+                    $from = [Math]::Max(1, $ln - 2)
+                    $to = [Math]::Min($v.Raw.Count, $lastLn + 2)
                     if ((($v.Raw[($from - 1)..($to - 1)]) -join "`n") -notmatch $r.Ctx) { continue }
                 }
                 for ($k = $ln; $k -le $lastLn; $k++) { [void]$reported.Add("$($r.What)|$k") }
@@ -755,7 +974,7 @@ function Invoke-Check3 {
                     $isSample = $before -match '(begin\(\)|\.data\(\))\s*\+$|\bstd::(min|max)\s*(<[^>]*>)?\s*\([^()]*,$'
                     if (-not ($inCompare -or $isLoopLimit -or $isField -or $isDuration -or $isSample)) { continue }
                 }
-                # Cited decision on this line or the three above?
+                # Cited decision on this line or the three above (D49)?
                 $from = [Math]::Max(1, $ln - 3)
                 $near = ($v.Raw[($from - 1)..($ln - 1)]) -join "`n"
                 $cites = [System.Collections.Generic.List[string]]::new()
@@ -793,23 +1012,32 @@ function Invoke-Check3 {
 # ------------------------------------------- check 4: scans outside the scan file
 
 function Invoke-Check4 {
+    # A test reading the source tree through HYDRA_SOURCE_DIR, or walking it,
+    # is a scan row ("Which test reads the source tree?", "Which test walks
+    # the source tree?").
+    Add-RowItems @('E')
+    $rowLines = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($h in (Get-RowHits)) { if ($h.Kind -eq 'E') { [void]$rowLines.Add("$($h.File):$($h.Line)") } }
     foreach ($f in $added.Keys) {
         if (-not ($f -like 'tests/*' -or $f -like 'tools/*')) { continue }
         if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
         $py = Test-PyPath $f
         if (-not ((Test-CppPath $f) -or $py)) { continue }
         $v = Get-Views $f
-        $namesSrc = $v.NcText -match '"src"|''src''|/src\b|\bHYDRA_SOURCE_DIR\b'
         foreach ($ln in (Get-AddedLines $f $v.NoComments.Count)) {
+            if ($rowLines.Contains("${f}:$ln")) { continue }
             $t = $v.NoComments[$ln - 1]
             $what = $null
             if ($py) {
+                # No row can own this: the scan reads only .cpp and .h files.
                 if ($t -match '\b(os\.walk|glob\.glob|\.rglob|\.glob|os\.listdir)\s*\([^)]*src' -or
                     $t -match '\bopen\s*\([^)]*\.(cpp|h)[''"]') { $what = 'reads the source tree' }
             } else {
-                if ($t -match '\bHYDRA_SOURCE_DIR\b') { $what = 'uses HYDRA_SOURCE_DIR' }
-                elseif ($t -match '\b(recursive_)?directory_iterator\b' -and $namesSrc) { $what = 'walks a directory in a file that names src' }
-                elseif ($t -match '\b(ifstream|fopen|_wfopen|open_file\w*)\b[^;]*(\.(cpp|h)"|"[^"]*/?src/)') { $what = 'opens a source file' }
+                # No row: "Which test reads the source tree?" matches only
+                # HYDRA_SOURCE_DIR, so a test that opens a source file by a
+                # path built another way (sourcetree::root() / "src" / ...)
+                # passes the scan. When that row widens, this entry goes.
+                if ($t -match '\b(ifstream|fopen|_wfopen|open_file\w*)\b[^;]*(\.(cpp|h)"|"[^"]*/?src/)') { $what = 'opens a source file' }
             }
             if ($what) {
                 Add-Item 'E' $f $ln "$($what): $($t.Trim())" 'tests/test_single_owner.cpp is the one scan of the source tree; make this a row there'
@@ -854,7 +1082,10 @@ if ($Disable -notcontains 2) { Invoke-Check2 }
 if ($Disable -notcontains 3) { Invoke-Check3 }
 if ($Disable -notcontains 4) { Invoke-Check4 }
 
-$order = @{ C = 0; B = 1; D = 2; E = 3 }
+foreach ($w in $rowWarnings) { Write-Host "precheck: $w (std::regex and .NET read this pattern differently; trust the scan)" }
+if (-not $scanAt.Count) { Write-Host "precheck: $scanFile is not at $($rulesRev.Substring(0, 7)), so no scan rows were applied" }
+
+$order = @{ C = 0; B = 1; A = 2; D = 3; E = 4 }
 $sorted = $items | Sort-Object @{ e = { $order[$_.Kind] } }, File, Line, What -Unique
 foreach ($i in $sorted) {
     "{0} {1}:{2}  {3}  -- {4}" -f $i.Kind, $i.File, $i.Line, $i.What, $i.Why

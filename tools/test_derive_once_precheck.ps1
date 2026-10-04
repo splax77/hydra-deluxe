@@ -7,17 +7,22 @@ Self-test for tools/derive_once_precheck.ps1.
     pwsh tools/test_derive_once_precheck.ps1 -FixtureOnly    # skip the two real ranges
 
 Part 1 builds a tiny git repository in a temp folder. Its main branch holds
-one test helper and one ADR that decides a 45-second deadline. A feature
-branch adds one renamed copy of the helper, one recomputed offset, one
-undecided number (37), the decided 45, and one stray source scan. The script
-must report the four planted items, one per check, and must not report the
-decided 45. Then the fixture runs again once per check with that check
+one test helper, one ADR that decides a 45-second deadline, and a copy of
+this repository's tests/test_single_owner.cpp, so the scan rows the script
+reads are today's. A feature branch adds one renamed copy of the helper, one
+recomputed offset, one undecided number (37), the decided 45, one stray
+source scan, and two lines the scan rows list as must-not-match (a gap
+between two chart ticks, a "!= SqIn" skip). The script must report the four
+planted items, one per check, and must not report the decided 45 or the two
+must-not-match lines. Then the fixture runs again once per check with that check
 turned off, and each of those runs must miss its planted item, which proves
 every check is needed for this test to pass.
 
 Part 2 runs the script on the two first-review ranges of the 2026-10-04
 gate (c6debcd^2...c6debcd and 11b9d44^2...11b9d44) in this repository and
-checks it names the findings the reviewers wrote by hand. It is skipped, with
+checks it names the findings the reviewers wrote by hand. It reads the scan
+rows at this repository's HEAD (-RulesAt HEAD), because the rows that name
+those findings were added after those commits. It is skipped, with
 a note, when those commits are not in the repository.
 
 -DisableCheck N passes "-Disable N" to the script in every run. The test then
@@ -37,9 +42,10 @@ $script:Passes = 0
 $precheck = Join-Path $PSScriptRoot 'derive_once_precheck.ps1'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
-function Invoke-Precheck([string]$Repo, [string]$Range, [int[]]$Disable) {
+function Invoke-Precheck([string]$Repo, [string]$Range, [int[]]$Disable, [string]$RulesAt = '') {
     $args2 = @('-NoProfile', '-File', $precheck, '-Repo', $Repo, '-Range', $Range)
     if ($Disable.Count) { $args2 += @('-Disable', ($Disable -join ',')) }
+    if ($RulesAt) { $args2 += @('-RulesAt', $RulesAt) }
     $out = & pwsh @args2 2>&1
     if ($LASTEXITCODE -ne 0) { throw "precheck failed on $Range ($LASTEXITCODE): $($out | Out-String)" }
     @($out | ForEach-Object { "$_" } | Where-Object { $_ -match '^[A-E] ' })
@@ -106,6 +112,9 @@ int sum_values(const std::vector<int>& values) {
 
 The batch test's deadline is 45 seconds.
 '@
+    # The scan rows come from this repository's own scan file, so the
+    # fixture tests the rows as they are today and copies none of them.
+    Write-Fixture 'tests/test_single_owner.cpp' ([System.IO.File]::ReadAllText((Join-Path $repoRoot 'tests/test_single_owner.cpp')))
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'main')
     Invoke-FixtureGit @('checkout', '-q', '-b', 'feature')
@@ -126,8 +135,12 @@ int add_up(const std::vector<int>& xs) {
 
 }  // namespace
 '@
-    # Check 2: an offset recomputed from two times. Check 3: 37 has no
-    # decision; 45 is decided by ADR 0001 next to "deadline".
+    # Check 2: an offset recomputed from two times, which the scan row "How
+    # far is a note from an SP end, in a test?" flags. The gap between two
+    # chart ticks and the "!= SqIn" skip are must-not-match lines of their
+    # rows, so the precheck must pass them as the scan does (M0 review 1,
+    # finding 1). Check 3: 37 has no decision; 45 is decided by ADR 0001 next
+    # to "deadline".
     Write-Fixture 'tests/test_offsets.cpp' @'
 #include "doctest.h"
 
@@ -136,6 +149,10 @@ TEST_CASE("offsets") {
     CHECK(rows.size() > 37);
     const double offset = note.timecode.ms() - end.ms();
     CHECK(offset < 0.0);
+    double gap = st.timecode(69120).ms() - st.timecode(68880).ms();
+    for (const auto& s : steps) {
+        if (s.kind != SpEndKind::SqIn) continue;
+    }
 }
 '@
     # Check 4: a test that reads the source tree itself.
@@ -152,11 +169,12 @@ TEST_CASE("model.h mentions the window") {
 
     $expect = @(
         @('C', 'tests/helpers_b.cpp', 'add_up.*same body.*sum_values'),
-        @('B', 'tests/test_offsets.cpp', 'offset worked out from two times'),
+        @('B', 'tests/test_offsets.cpp', 'How far is a note from an SP end.*end\.ms\(\)'),
         @('D', 'tests/test_offsets.cpp', '\b37 in:'),
         @('E', 'tests/test_stray_scan.cpp', 'HYDRA_SOURCE_DIR')
     )
-    $absent = @('\b45 in:', '^[A-E] tests/helpers_a\.cpp:')
+    $absent = @('\b45 in:', '^[A-E] tests/helpers_a\.cpp:', '^[A-E] tests/test_offsets\.cpp:\d+  .*timecode\(69120\)',
+                '^[A-E] tests/test_offsets\.cpp:\d+  .*SpEndKind::SqIn')
 
     $lines = Invoke-Precheck $fixture 'main...feature' $DisableCheck
     Assert-Expectations 'fixture' $lines $expect $absent
@@ -182,7 +200,7 @@ if (-not $FixtureOnly) {
     & git -C $repoRoot cat-file -e '11b9d44^{commit}' 2>$null
     $haveS2 = $LASTEXITCODE -eq 0
     if ($haveS1) {
-        $s1 = Invoke-Precheck $repoRoot 'c6debcd^2...c6debcd' $DisableCheck
+        $s1 = Invoke-Precheck $repoRoot 'c6debcd^2...c6debcd' $DisableCheck 'HEAD'
         Assert-Expectations 'step 1' $s1 @(
             @('C', 'tests/test_fast_tempo.cpp', 'collect_variants.*test_search\.cpp'),
             @('C', 'tests/test_fast_tempo.cpp', 'windows_text.*test_search\.cpp'),
@@ -196,7 +214,7 @@ if (-not $FixtureOnly) {
         ) @()
     } else { Write-Host 'step 1 range skipped: c6debcd is not in this repository' }
     if ($haveS2) {
-        $s2 = Invoke-Precheck $repoRoot '11b9d44^2...11b9d44' $DisableCheck
+        $s2 = Invoke-Precheck $repoRoot '11b9d44^2...11b9d44' $DisableCheck 'HEAD'
         Assert-Expectations 'step 2' $s2 @(
             @('C', 'tests/test_s2_parser_owners.cpp', 'deflate_raw.*test_srb\.cpp'),
             @('C', 'tests/test_s2_offspeed.cpp', 'fill_store.*test_dm_report\.cpp'),
