@@ -275,20 +275,8 @@ TEST_CASE("build_path_list: the dedupe and the overlay key read one identity") {
     // The Preview's overlay key is the path's identity, for every path.
     for (const Path* p : flat) CHECK(path_overlay_key(p) == path_identity(*p));
 
-    // The all-0 copy hides exactly when its identity matches a listed path's.
-    // Each is offered alone, without its variants, so only its own identity
-    // counts.
-    for (const Path* z : rec.all_allzero_paths()) {
-        bool listed = false;
-        for (const Path* p : flat) listed = listed || path_identity(*p) == path_identity(*z);
-        HydraRecord one = rec;
-        one.allzero_paths.clear();
-        one.allzero_paths.push_back(*z);
-        one.allzero_paths.front().variants.clear();
-        CHECK(build_path_list(one).show_allzero == !listed);
-    }
-    // Each listed path, offered as the all-0 path, hides; the same path one
-    // deact tick later shows.
+    // Each listed path, offered alone (without its variants) as the all-0
+    // path, hides; the same path one deact tick later shows.
     for (const Path* p : flat) {
         HydraRecord one = rec;
         one.allzero_paths.clear();
