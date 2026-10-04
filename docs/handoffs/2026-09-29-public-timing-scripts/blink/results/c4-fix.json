@@ -1,0 +1,51 @@
+{
+ "chart": "C:\\Clone Hero\\songs\\synchotic\\Sync Charts\\BirdmanExe Drive\\Xane60\\Helloween\\Helloween - Halloween (2x Bass Pedal)\\notes.mid",
+ "ms_limit": 10,
+ "fix": true,
+ "finished": true,
+ "stopped_because": null,
+ "reduce_s": 0.1,
+ "filtercheck_s": 0.06,
+ "filtercheck_calls": 29976,
+ "copy_s": 0.0,
+ "copies": 3206,
+ "variant_copies": 67,
+ "steps": 219,
+ "max_frontier": 110,
+ "max_group": 30,
+ "pair_comparisons": 66980,
+ "fix_dropped": 908,
+ "progress": 1.0046,
+ "share": false,
+ "parse_s": 0.754,
+ "graph_s": 0.082,
+ "elapsed_s": 0.95,
+ "ws_mb": 33,
+ "peak_mb": 46,
+ "min_free_gb": 9.91,
+ "search_s": 0.115,
+ "paths": 5,
+ "best_score": 2281250,
+ "result": [
+  [
+   2266950,
+   "3 1 0+ 1 1 3 1 1 0+ 2 0+ 2 0 2"
+  ],
+  [
+   2267570,
+   "3 1 0+ 1 1 3 1 1 0+ 2 1 1+ 0 2"
+  ],
+  [
+   2267970,
+   "3 1 0+ 1 1 3 1 1 0+ 2 0+ 1 1 2"
+  ],
+  [
+   2268070,
+   "3 1 0+ 1 1 3 1 1 0+ 2 0+ 1 0+ 2"
+  ],
+  [
+   2281250,
+   "3 1 0- 2+ 0+ 3 0- 0+ 3 0 2 0+ 1+ 0 2"
+  ]
+ ]
+}

@@ -1,0 +1,51 @@
+diff --git a/hydra_runfolder.py b/hydra_runfolder_timed.py
+index c3465d2..60b14d4 100644
+--- a/hydra_runfolder.py
++++ b/hydra_runfolder_timed.py
+@@ -2,6 +2,9 @@ import os
+ import sys
+ import json
+ import csv
++import time
++
++T0 = time.perf_counter()
+ 
+ import hydra.hypath as hypath
+ import hydra.hyutil as hyutil
+@@ -42,15 +45,19 @@ def book_from_folder(rootfolder, score_depth):
+             print(f"\t{error}")
+         print("\n", end='')
+     
++    print(f"[timing] discovery done at {time.perf_counter()-T0:.1f}s", flush=True)
+     print(f"Analyzing charts...", end='')
+-    for scanitem in scanitems:
++    for n, scanitem in enumerate(scanitems, 1):
++        if n % 250 == 0:
++            print(f"\n[timing] {n}/{len(scanitems)} at {time.perf_counter()-T0:.1f}s", flush=True)
+         if scanitem.md5 not in book:
+             print(".", end='', flush=True)
+             try:
+                 record, tempomap = hyutil.analyze_chart_file(
+-                    scanitem.notespath, 
++                    scanitem.notespath,
+                     'Expert', True, True,
+                     'scores', score_depth,
++                    10,  # the app's default "limit timings: 10 ms"
+                     export_tempomap=True,
+                 )
+             
+@@ -66,7 +73,8 @@ def book_from_folder(rootfolder, score_depth):
+             except Exception as e:
+                 print(f"\nAn error occurred while trying to process {scanitem.notespath}: {e}")
+     print("\nDone.")
+-    
++    print(f"[timing] analysis done at {time.perf_counter()-T0:.1f}s, {len(book)} records", flush=True)
++
+     return book
+ 
+ def output_csv(book, filename_csv):
+@@ -116,3 +124,4 @@ if __name__ == "__main__":
+     print(f"Done. ({filename_json})")
+     
+     output_csv(book, filename_csv)
++    print(f"[timing] all done at {time.perf_counter()-T0:.1f}s", flush=True)

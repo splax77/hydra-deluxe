@@ -1,0 +1,51 @@
+{
+ "chart": "C:\\Clone Hero\\songs\\synchotic\\Sync Charts\\Fig Drum Charts\\Knocked Loose\\(2024) You Won't Go Before You're Supposed To\\You Won't Go Before You're Supposed To (Full Album)\\notes.chart",
+ "ms_limit": 10,
+ "fix": false,
+ "finished": true,
+ "stopped_because": null,
+ "reduce_s": 0.45,
+ "filtercheck_s": 0.12,
+ "filtercheck_calls": 43982,
+ "copy_s": 0.01,
+ "copies": 9149,
+ "variant_copies": 0,
+ "steps": 294,
+ "max_frontier": 655,
+ "max_group": 323,
+ "pair_comparisons": 1151468,
+ "fix_dropped": 0,
+ "progress": 1.0034,
+ "share": true,
+ "parse_s": 0.221,
+ "graph_s": 0.07,
+ "elapsed_s": 0.78,
+ "ws_mb": 40,
+ "peak_mb": 43,
+ "min_free_gb": 14.01,
+ "search_s": 0.488,
+ "paths": 5,
+ "best_score": 2835265,
+ "result": [
+  [
+   2832225,
+   "0 0 0 3 0 1 2 2 2 0 1- 1 1+ 2 1 0 1 1 1 3"
+  ],
+  [
+   2832365,
+   "0 0 0 3 0 0 2 0 2 2 0 1- 1 1+ 2 1 0 1 1 1 3"
+  ],
+  [
+   2832385,
+   "0 0 2 0 0 1 2 2 2 0 1- 1 1+ 2 1 0 1 1 1 3"
+  ],
+  [
+   2832525,
+   "0 0 2 0 0 0 2 0 2 2 0 1- 1 1+ 2 1 0 1 1 1 3"
+  ],
+  [
+   2835265,
+   "0 0 2 0 0 0 2 0 2 2 1- 0 0- 0 0 2 1 0 1 1 1 3"
+  ]
+ ]
+}

@@ -1,0 +1,35 @@
+{
+ "chart": "C:\\Clone Hero\\songs\\synchotic\\Sync Charts\\BirdmanExe Drive\\MMSRhino\\Metallica - St Anger (Full Album)\\notes.mid",
+ "ms_limit": 10,
+ "fix": false,
+ "finished": true,
+ "stopped_because": null,
+ "reduce_s": 0.0,
+ "filtercheck_s": 0.0,
+ "filtercheck_calls": 1479,
+ "copy_s": 0.0,
+ "copies": 0,
+ "variant_copies": 0,
+ "steps": 1479,
+ "max_frontier": 1,
+ "max_group": 1,
+ "pair_comparisons": 0,
+ "fix_dropped": 0,
+ "progress": 1.0007,
+ "share": false,
+ "min_free_gb": 9.93,
+ "parse_s": 7.12,
+ "graph_s": 1.46,
+ "elapsed_s": 8.59,
+ "ws_mb": 52,
+ "peak_mb": 95,
+ "search_s": 0.009,
+ "paths": 1,
+ "best_score": 7510440,
+ "result": [
+  [
+   7510440,
+   "(No activations.)"
+  ]
+ ]
+}

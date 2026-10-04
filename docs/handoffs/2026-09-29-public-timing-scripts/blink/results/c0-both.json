@@ -1,0 +1,51 @@
+{
+ "chart": "C:\\Clone Hero\\songs\\synchotic\\Sync Charts\\Rock Band\\Rock Band Network\\Wrong Side of Dawn - The Grinder's Tale\\notes.mid",
+ "ms_limit": 10,
+ "fix": true,
+ "finished": true,
+ "stopped_because": null,
+ "reduce_s": 0.02,
+ "filtercheck_s": 0.01,
+ "filtercheck_calls": 6398,
+ "copy_s": 0.0,
+ "copies": 720,
+ "variant_copies": 0,
+ "steps": 84,
+ "max_frontier": 65,
+ "max_group": 25,
+ "pair_comparisons": 8274,
+ "fix_dropped": 0,
+ "progress": 1.012,
+ "share": true,
+ "parse_s": 0.319,
+ "graph_s": 0.018,
+ "search_s": 0.021,
+ "paths": 5,
+ "best_score": 715805,
+ "result": [
+  [
+   715625,
+   "0 0 1 1 0 0 4"
+  ],
+  [
+   715665,
+   "1 0 1 0 0 0 3"
+  ],
+  [
+   715685,
+   "0 0 1 0 0 0 4"
+  ],
+  [
+   715745,
+   "0 0 1 1 0 0 3"
+  ],
+  [
+   715805,
+   "0 0 1 0 0 0 3"
+  ]
+ ],
+ "elapsed_s": 0.36,
+ "ws_mb": 31,
+ "peak_mb": 44,
+ "min_free_gb": 14.06
+}
