@@ -371,10 +371,15 @@ private:
     static bool given_back(int64_t step_tick, int64_t sqout_tick) {
         return step_tick >= sqout_tick;
     }
-    // A SqIn's step is the step on the squeezed-in chord's tick. The one
-    // statement of that rule: relabel_sqin and close_folded_act both ask it.
-    static bool is_sqin_step(int64_t step_tick, int64_t sqin_tick) {
-        return step_tick == sqin_tick;
+    // An early SqIn's step is the step on the squeezed-in chord's tick: a
+    // phrase the gauge received, so Collected, or Clamped when the cap pinned
+    // the end on that phrase. It is already SqIn when an earlier SP end
+    // squeezed the same chord in (500 ms can span more than one SP bar at a
+    // fast tempo); it stays SqIn. Never the Activation step, which stays
+    // first in the window's history. The one statement of that rule:
+    // relabel_sqin and close_folded_act both ask it.
+    static bool is_sqin_step(int64_t step_tick, SpEndKind step_kind, int64_t sqin_tick) {
+        return step_tick == sqin_tick && step_kind != SpEndKind::Activation;
     }
     // The chain without the steps a squeeze-out at `tick` gives back.
     int32_t trim_ends(int32_t tail, int64_t tick) const {
@@ -384,8 +389,9 @@ private:
     }
     // The chain with the step at `tick` relabelled SqIn. Nodes are shared
     // between paths, so the steps from it on are copied, never edited. An
-    // early SqIn's phrase was collected before this point, so a step must sit
-    // at `tick`. When none does the state is impossible: this returns false,
+    // early SqIn's phrase was collected before this point, so an SqIn step
+    // (is_sqin_step) must sit at `tick`. When none does the state is
+    // impossible: this returns false,
     // leaves `tail` alone, and the caller marks the path broken (the run then
     // throws, as for every other impossible state).
     bool relabel_sqin(int32_t& tail, int64_t tick) {
@@ -395,7 +401,8 @@ private:
             after.push_back(ends_[(size_t)t]);
             t = ends_[(size_t)t].prev;
         }
-        if (t < 0 || !is_sqin_step(ends_[(size_t)t].tick, tick)) return false;
+        if (t < 0 || !is_sqin_step(ends_[(size_t)t].tick, ends_[(size_t)t].kind, tick))
+            return false;
         const EndNode found = ends_[(size_t)t];
         int32_t out = push_end(found.prev, found.tick, found.end, SpEndKind::SqIn);
         for (size_t k = after.size(); k-- > 0;)
@@ -962,14 +969,16 @@ void Engine::reduce_iteration_paths() {
         // part of that future too: two activations that differ there can
         // face different squeeze choices at the same SP end
         // (core::banked_phrase_in_reach). It is 0 on almost every path, which
-        // leaves the groups as they were. An SP end fits in 47 bits and the
-        // ordinal (a phrase count) in 16, so the packed key is exact.
+        // leaves the groups as they were. The key keeps the SP end's low 47
+        // bits, the ordinal (a phrase count) in 16 and the SP flag in 1. Any
+        // 2^47 consecutive values differ in their low 47 bits, so an end in
+        // [-2^46, 2^46) packs exactly; the check below refuses the rest.
         const bool is_sp = !is_complete && node(p.node).is_sp;
         const int64_t sp_value =
             is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);
         uint64_t key_value = (uint64_t)sp_value;
         if (is_sp) {
-            if (sp_value < -(int64_t(1) << 47) || sp_value >= (int64_t(1) << 47) ||
+            if (sp_value < -(int64_t(1) << 46) || sp_value >= (int64_t(1) << 46) ||
                 p.banked_phrase_ordinal < 0 || p.banked_phrase_ordinal > 0xFFFF)
                 throw std::logic_error("search group key out of range");
             key_value = (key_value << 16) | (uint64_t)p.banked_phrase_ordinal;
@@ -1107,11 +1116,14 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     // An early SqIn the leader took after the fold may sit on a phrase from
     // before the fold. branch_deactivate relabels that step SqIn on the
     // leader (relabel_sqin); the variant's own step there gets the same label.
-    // The variant always holds that step: it ran SP over the phrase, so it
-    // collected it. A path that banked the phrase before activating cannot
-    // squeeze it (core::activation_can_squeeze), and the search never folds
-    // it into one that can (banked_phrase_ordinal in the group key; the
-    // folded_sqin test charts), so no variant here lacks the step. The n-th SqIn in the
+    // The variant always holds that step: it ran SP over the phrase, so the
+    // gauge received it. The step is Collected, or Clamped when the variant's
+    // longer meter let the cap pin its end there (the clamped_sqin test
+    // charts). is_sqin_step accepts both, as relabel_sqin does on a lone
+    // path. A path that banked the phrase before activating cannot squeeze it
+    // (core::activation_can_squeeze), and the search never folds it into one
+    // that can (banked_phrase_ordinal in the group key; the folded_sqin test
+    // charts), so no variant here lacks the step. The n-th SqIn in the
     // leader's list owns its n-th SqIn step, so the SqIns from the fold on
     // own the leader's SqIn steps from that rank on.
     int32_t sqins_before_fold = 0;
@@ -1132,16 +1144,17 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
         if (s.tick > var.fold_tick)
             throw std::logic_error("a folded variant holds a step past its fold");
         if (give_back != NO_TIME && given_back(s.tick, give_back)) continue;
-        const auto sqin = std::find_if(relabel_at.begin(), relabel_at.end(),
-                                       [&s](int64_t t) { return is_sqin_step(s.tick, t); });
+        const auto sqin =
+            std::find_if(relabel_at.begin(), relabel_at.end(),
+                         [&s](int64_t t) { return is_sqin_step(s.tick, s.kind, t); });
         if (sqin != relabel_at.end()) {
-            if (s.kind != SpEndKind::Collected)
-                throw std::logic_error("a folded variant's SqIn phrase is not a collected step");
             s.kind = SpEndKind::SqIn;
             relabel_at.erase(sqin);
         }
         out_ends_.push_back(s);
     }
+    if (!relabel_at.empty())
+        throw std::logic_error("a folded variant holds no SqIn step on its leader's SqIn phrase");
     for (int32_t k = lead.end_begin; k < lead.end_end; ++k) {
         const SpEndStep s = out_ends_[(size_t)k];
         if (s.tick > var.fold_tick) out_ends_.push_back(s);

@@ -1504,6 +1504,75 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
     }
 }
 
+// A folded variant's step on the leader's SqIn phrase can be Clamped: the
+// variant's longer meter let the cap pin its end on that phrase, where the
+// leader collected it. A lone search relabels a Clamped step SqIn too, so the
+// fold must as well. Two fuzzed charts at 2,000 and 4,000 BPM (several SP bars
+// inside 500 ms) reach this at cap 3; before the shared SqIn-step rule they
+// threw "a folded variant's SqIn phrase is not a collected step". They do not
+// check every variant against its lone pricing: at these tempos many variants
+// already differ from it (the review's fuzz found such charts by the hundred),
+// for reasons apart from this fold.
+TEST_CASE("tied variants: a Clamped step on the leader's SqIn phrase folds like a lone search") {
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = 3;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = std::nullopt;
+    const std::map<std::string, SpEndStep> clamped = {
+        {"clamped_sqin_a.chart", SpEndStep{16128, 20736, SpEndKind::SqIn}},
+        {"clamped_sqin_b.chart", SpEndStep{15744, 20352, SpEndKind::SqIn}},
+    };
+    for (const std::string name : {"clamped_sqin_a.chart", "clamped_sqin_b.chart"}) {
+        CAPTURE(name);
+        const Song song = load_songpath(
+            std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/" + name, true, true);
+        HydraRecord rec;
+        REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
+        // The variant whose Clamped step sat on its leader's SqIn phrase
+        // stores that step as SqIn, with the end the clamp set, as
+        // relabel_sqin writes it on a lone path.
+        const SpEndStep want = clamped.at(name);
+        bool found = false;
+        std::vector<const Path*> vs;
+        for (const Path& root : rec.paths) collect_variants(root, vs);
+        for (const Path* v : vs)
+            for (const Activation& a : v->walk_activations())
+                for (const SpEndStep& s : a.sp_end_steps) found = found || s == want;
+        CHECK(found);
+    }
+}
+
+// The group key's banked phrase and the squeeze rule draw one line: a phrase
+// is banked exactly when activation_can_squeeze says the activation cannot
+// squeeze it. Here the expected answer comes from that rule by a plain scan,
+// so a banked_phrase_in_reach with its own boundary would drift from it. The
+// chart has a phrase on an activation chord (13824), the edge case.
+TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refuses") {
+    const Song song = load_songpath(
+        std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/folded_sqin.chart", true, true);
+    const std::vector<SongTimestamp>& seq = song.sequence;
+    int on_activation_chord = 0;
+    for (const SongTimestamp& act : seq) {
+        const int64_t act_tick = act.timecode.ticks();
+        CAPTURE(act_tick);
+        const SongTimestamp* banked = nullptr;
+        for (const SongTimestamp& c : seq)
+            if (c.flag_sp && !core::activation_can_squeeze(act_tick, c.timecode.ticks()))
+                banked = &c;
+        // A reach at the activation itself: any banked phrase within 500 ms
+        // before it counts.
+        const SongTimestamp* want =
+            banked && within_squeeze_window(offset_from_sp_end(banked->timecode.ms(),
+                                                               act.timecode.ms()))
+                ? banked
+                : nullptr;
+        CHECK(core::banked_phrase_in_reach(song, act_tick, act.timecode) == want);
+        if (want && want->timecode.ticks() == act_tick) ++on_activation_chord;
+    }
+    CHECK(on_activation_chord > 0);
+}
+
 // D3 on the corpus: every tied variant stores what the search stores when it
 // prices that path alone, window by window (steps, squeezes, squeezed-out
 // note, backend rows). The settings are ones where mid-SP folds happen; the

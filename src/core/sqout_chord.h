@@ -47,8 +47,9 @@ inline bool activation_can_squeeze(int64_t act_tick, int64_t chord_tick) {
     return chord_tick > act_tick;
 }
 
-// The last phrase chord at or before `act_tick` that one of this
-// activation's SP ends could still hold in its squeeze window, or nullptr.
+// The last phrase chord the activation on `act_tick` cannot squeeze (the
+// banked side of activation_can_squeeze) that one of its SP ends could still
+// hold in its squeeze window, or nullptr.
 // `earliest_end` is the first SP end at which the activation can squeeze
 // anything: one SP bar after it (an SP end X decides a squeeze-out or a
 // plain end only for a path whose end is X or X plus one bar, and the end is
@@ -60,10 +61,11 @@ inline bool activation_can_squeeze(int64_t act_tick, int64_t chord_tick) {
 inline const SongTimestamp* banked_phrase_in_reach(const Song& song, int64_t act_tick,
                                                    const Timecode& earliest_end) {
     const std::vector<SongTimestamp>& seq = song.sequence;
-    auto it = std::upper_bound(seq.begin(), seq.end(), act_tick,
-                               [](int64_t t, const SongTimestamp& ts) {
-                                   return t < ts.timecode.ticks();
-                               });
+    // The chords this activation cannot squeeze come first in tick order;
+    // activation_can_squeeze says where they stop.
+    auto it = std::partition_point(seq.begin(), seq.end(), [act_tick](const SongTimestamp& ts) {
+        return !activation_can_squeeze(act_tick, ts.timecode.ticks());
+    });
     while (it != seq.begin() && !std::prev(it)->flag_sp) --it;
     if (it == seq.begin()) return nullptr;
     const SongTimestamp& banked = *std::prev(it);
