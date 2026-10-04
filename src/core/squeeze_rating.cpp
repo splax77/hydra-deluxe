@@ -160,6 +160,8 @@ ActivationRating rate_activation(const Activation& act,
 
 std::vector<TimingTier> timing_tiers(double hit_window_ms) {
     const double w = hit_window_ms;
+    // Normal's edge is the difficult floor past_difficult_floor tests, and
+    // it is inclusive: a timing exactly on it (2.0 ms) is Normal (D48 Q3).
     return {
         {"Normal", "t0", kDifficultMs}, {"Hard", "t1", w / 2},
         {"Extreme", "t2", w},           {"Insane", "t3", 3 * w / 2},
