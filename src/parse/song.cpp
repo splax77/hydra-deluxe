@@ -1189,20 +1189,17 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     Song song(tick_resolution);
     song_ = &song;
 
-    // Offset is a decimal number of seconds. ChartDataEntry keeps a
-    // non-integer value in property_str, so parse that.
+    // Offset is a decimal number of seconds. ChartDataEntry keeps an integer
+    // in property_int and anything else in property_str; the rest is read by
+    // the one chart-number rule, so "500ms" or "nan" counts as absent, like
+    // Clone Hero's default 0.
     if (auto it = song_sec.prop_data.find("Offset");
         it != song_sec.prop_data.end() && !it->second.empty()) {
         const ChartDataEntry& e = it->second.at(0);
-        if (e.property_int) {
+        if (e.property_int)
             song.chart_offset_s = static_cast<double>(*e.property_int);
-        } else if (e.property_str) {
-            try {
-                song.chart_offset_s = std::stod(*e.property_str);
-            } catch (const std::exception&) {
-                // An unreadable Offset is treated as absent, like CH's default 0.
-            }
-        }
+        else if (e.property_str)
+            song.chart_offset_s = parse_finite_number(*e.property_str);
     }
 
     // Map tempo and time signatures from the sync track.

@@ -131,3 +131,49 @@ TEST_CASE("s2 owners: a .chart modifier with no note under it is skipped (331)")
     CHECK(song.sequence[1].timecode.ticks() == 768);
     CHECK(song.sequence[1].chord.code() == "..N..");
 }
+
+TEST_CASE("s2 owners: parse_finite_number reads only a whole finite number (R7.5)") {
+    CHECK(parse_finite_number("0.25") == 0.25);
+    CHECK(parse_finite_number(" -250 ") == -250.0);
+    CHECK(parse_finite_number("+500") == 500.0);
+    CHECK(parse_finite_number("1e3") == 1000.0);
+    for (const char* bad : {"", "  ", "500ms", "0.25s", "nan", "NaN", "inf", "-inf",
+                            "1e999", "soon", "+-5", "5 5", "0x1F4"}) {
+        CAPTURE(bad);
+        CHECK_FALSE(parse_finite_number(bad).has_value());
+    }
+}
+
+TEST_CASE("s2 owners: a .chart Offset that is not a plain number is absent (R7.5)") {
+    auto offset = [](const std::string& text) {
+        return load_songbytes_chart(chart_bytes("  Offset = " + text + "\n", "  0 = N 1 0\n"),
+                                    true, true)
+            .chart_offset_s;
+    };
+    CHECK(offset("0.25") == 0.25);
+    CHECK(offset("1") == 1.0);
+    CHECK(offset("-0.5") == -0.5);
+    CHECK_FALSE(offset("500ms").has_value());  // 500 seconds before this change
+    CHECK_FALSE(offset("0.25s").has_value());
+    CHECK_FALSE(offset("nan").has_value());
+}
+
+TEST_CASE("s2 owners: a song.ini delay that is not a plain number is absent (R7.5)") {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() /
+                         ("hydra_s2_delay_" + std::to_string(GetCurrentProcessId()));
+    fs::create_directories(dir);
+    const fs::path ini = dir / "song.ini";
+    auto delay = [&](const std::string& value) {
+        {
+            std::ofstream f(ini, std::ios::binary | std::ios::trunc);
+            f << "[song]\ndelay = " << value << "\n";
+        }
+        return app::read_ini_delay_ms(ini.u8string());
+    };
+    CHECK(delay("1016") == 1016.0);
+    CHECK_FALSE(delay("nan").has_value());  // NaN before, and it beat the Offset
+    CHECK_FALSE(delay("inf").has_value());
+    CHECK_FALSE(delay("250ms").has_value());
+    fs::remove_all(dir);
+}

@@ -1,4 +1,7 @@
 #include "core/strutil.h"
+#include <charconv>
+#include <cmath>
+#include <system_error>
 
 namespace hydra {
 
@@ -39,6 +42,20 @@ bool ends_with_ci(std::string_view s, std::string_view suffix) {
     for (size_t i = 0; i < suffix.size(); ++i)
         if (lower_ascii(tail[i]) != lower_ascii(suffix[i])) return false;
     return true;
+}
+
+std::optional<double> parse_finite_number(std::string_view text) {
+    std::string_view s = trim_view(text);
+    if (!s.empty() && s.front() == '+') {
+        s.remove_prefix(1);
+        if (!s.empty() && (s.front() == '+' || s.front() == '-')) return std::nullopt;
+    }
+    if (s.empty()) return std::nullopt;
+    double value = 0.0;
+    const char* const last = s.data() + s.size();
+    const auto [end, ec] = std::from_chars(s.data(), last, value, std::chars_format::general);
+    if (ec != std::errc() || end != last || !std::isfinite(value)) return std::nullopt;
+    return value;
 }
 
 }  // namespace hydra
