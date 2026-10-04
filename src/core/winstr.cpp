@@ -196,6 +196,26 @@ std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
     return buf;
 }
 
+namespace {
+
+// How many of `length` bytes from `offset` a source of `size` bytes holds:
+// fewer where it ends, none at or past its end.
+size_t range_length(uint64_t size, uint64_t offset, size_t length) {
+    const uint64_t available = offset < size ? size - offset : 0;
+    return static_cast<size_t>(std::min<uint64_t>(length, available));
+}
+
+}  // namespace
+
+ByteRangeReader range_reader_over(const std::vector<uint8_t>& bytes) {
+    return [&bytes](uint64_t offset, size_t length) {
+        const size_t n = range_length(bytes.size(), offset, length);
+        if (n == 0) return std::vector<uint8_t>{};
+        const auto from = bytes.begin() + static_cast<std::ptrdiff_t>(offset);
+        return std::vector<uint8_t>(from, from + static_cast<std::ptrdiff_t>(n));
+    };
+}
+
 std::vector<uint8_t> read_file_range(const std::string& utf8_path, uint64_t offset,
                                      size_t length) {
     // The read shares the file as read_file_bytes's "rb" open does. ReadFile
@@ -207,8 +227,7 @@ std::vector<uint8_t> read_file_range(const std::string& utf8_path, uint64_t offs
         CloseHandle(h);
         throw std::runtime_error("cannot read file size: " + utf8_path);
     }
-    const uint64_t available = offset < *size ? *size - offset : 0;
-    std::vector<uint8_t> buf(static_cast<size_t>(std::min<uint64_t>(length, available)));
+    std::vector<uint8_t> buf(range_length(*size, offset, length));
     size_t got = 0;
     while (got < buf.size()) {
         const uint64_t at = offset + got;

@@ -15,7 +15,6 @@
 #endif
 #include <windows.h>
 
-#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -163,15 +162,6 @@ std::vector<uint8_t> noise(size_t n, uint32_t seed) {
     return out;
 }
 
-// A reader over an in-memory buffer, as read_file_range reads a file.
-ByteRangeReader buffer_reader(const std::vector<uint8_t>& buf) {
-    return [&buf](uint64_t offset, size_t length) {
-        if (offset >= buf.size()) return std::vector<uint8_t>{};
-        const size_t n = std::min<uint64_t>(length, buf.size() - offset);
-        return std::vector<uint8_t>(buf.begin() + offset, buf.begin() + offset + n);
-    };
-}
-
 }  // namespace
 
 // The real bundles are 12-57 MB, nearly all of it audio and art past a notes
@@ -209,7 +199,7 @@ TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole b
         srb_inflate_stream(buf.data(), buf.size(), kSrbHeaderSize, kSrbMaxStream, &end_whole);
     uint64_t end_reads = 0;
     const std::vector<uint8_t> reads = srb_inflate_stream_reading(
-        buffer_reader(buf), kSrbHeaderSize, kSrbMaxStream, &end_reads);
+        range_reader_over(buf), kSrbHeaderSize, kSrbMaxStream, &end_reads);
     CHECK(whole == payload);
     CHECK(reads == payload);
     CHECK(end_reads == end_whole);
@@ -217,18 +207,18 @@ TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole b
 
     // The same failures, by the same words.
     std::vector<uint8_t> cut(buf.begin(), buf.begin() + buf.size() / 2);
-    CHECK_THROWS_WITH(srb_inflate_stream_reading(buffer_reader(cut), kSrbHeaderSize,
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(range_reader_over(cut), kSrbHeaderSize,
                                                  kSrbMaxStream, nullptr),
                       "SRB stream is truncated.");
-    CHECK_THROWS_WITH(srb_inflate_stream_reading(buffer_reader(buf), buf.size(),
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(range_reader_over(buf), buf.size(),
                                                  kSrbMaxStream, nullptr),
                       "SRB stream starts past end of file.");
-    CHECK_THROWS_WITH(srb_inflate_stream_reading(buffer_reader(buf), kSrbHeaderSize,
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(range_reader_over(buf), kSrbHeaderSize,
                                                  1 << 20, nullptr),
                       "SRB stream exceeds size limit.");
     std::vector<uint8_t> junk = buf;
     for (size_t i = kSrbHeaderSize; i < kSrbHeaderSize + 64; ++i) junk[i] = 0xFF;
-    CHECK_THROWS_WITH(srb_inflate_stream_reading(buffer_reader(junk), kSrbHeaderSize,
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(range_reader_over(junk), kSrbHeaderSize,
                                                  kSrbMaxStream, nullptr),
                       "SRB stream is corrupt.");
 }

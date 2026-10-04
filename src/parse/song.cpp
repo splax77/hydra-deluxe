@@ -1386,19 +1386,9 @@ Song load_songpath_chart(const std::string& path, bool pro, bool bass2x,
 
 namespace {
 
-// A reader over a container already in memory: the Preview reads the whole
-// file once and shares it, and its notes are picked out the same way.
-ByteRangeReader reader_over(const std::vector<uint8_t>& buf) {
-    return [&buf](uint64_t offset, size_t length) {
-        if (offset >= buf.size()) return std::vector<uint8_t>{};
-        const size_t n = static_cast<size_t>(std::min<uint64_t>(length, buf.size() - offset));
-        const auto from = buf.begin() + static_cast<std::ptrdiff_t>(offset);
-        return std::vector<uint8_t>(from, from + static_cast<std::ptrdiff_t>(n));
-    };
-}
-
 // The one notes reader for each container kind, whether the bytes come from
-// disk in pieces or from a buffer in memory.
+// disk in pieces or from a buffer in memory (the Preview reads the whole file
+// once and shares it; its notes are picked out the same way).
 Song load_container_sng(const ByteRangeReader& read, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules) {
     // A notes.mid wins over a notes.chart; among .chart entries the last one
@@ -1473,12 +1463,12 @@ ByteRangeReader reader_of_file(const std::string& path) {
 
 Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules) {
-    return load_container_sng(reader_over(buf), pro, bass2x, difficulty, rules);
+    return load_container_sng(range_reader_over(buf), pro, bass2x, difficulty, rules);
 }
 
 Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules) {
-    return load_container_srb(reader_over(buf), pro, bass2x, difficulty, rules);
+    return load_container_srb(range_reader_over(buf), pro, bass2x, difficulty, rules);
 }
 
 Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,

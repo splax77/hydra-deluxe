@@ -104,6 +104,10 @@ std::vector<uint8_t> read_file_range(const std::string& utf8_path, uint64_t offs
 // with the path already chosen. Tests pass an in-memory or counting one.
 using ByteRangeReader = std::function<std::vector<uint8_t>(uint64_t offset, size_t length)>;
 
+// A ByteRangeReader over bytes already in memory, answering as read_file_range
+// would for a file holding them. `bytes` must outlive the reader.
+ByteRangeReader range_reader_over(const std::vector<uint8_t>& bytes);
+
 // The whole file as text, bytes as they are (no newline translation); throws
 // std::runtime_error when the open fails.
 std::string read_file_text(const std::string& utf8_path);

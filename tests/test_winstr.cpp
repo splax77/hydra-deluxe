@@ -180,6 +180,13 @@ TEST_CASE("read_file_range reads a slice, fewer bytes at the end, none past it")
 
     TempFile missing(L"hydra_file_range_missing_does_not_exist.bin");
     CHECK_THROWS_AS(hydra::read_file_range(missing.utf8(), 0, 4), std::runtime_error);
+
+    // The in-memory reader answers as the file does, offset by offset.
+    const std::vector<uint8_t> bytes = hydra::read_file_bytes(tmp.utf8());
+    const hydra::ByteRangeReader over = hydra::range_reader_over(bytes);
+    for (uint64_t offset : {0ULL, 2ULL, 8ULL, 10ULL, 99ULL})
+        for (size_t length : {size_t{0}, size_t{3}, size_t{5}, SIZE_MAX})
+            CHECK(over(offset, length) == hydra::read_file_range(tmp.utf8(), offset, length));
 }
 
 TEST_CASE("read_file_range reads at an offset past 4 GB") {
