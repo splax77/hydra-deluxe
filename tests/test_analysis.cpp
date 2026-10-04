@@ -183,6 +183,64 @@ TEST_CASE("run_work_pool hands every item to the consumer once") {
     for (int n : seen) CHECK(n == 1);
 }
 
+TEST_CASE("run_work_pool: a slow consumer holds the workers back") {
+    // A whole-library hydra_batch once failed a chart with "bad allocation".
+    // The workers analyzed charts faster than the one consumer could write
+    // them to the store, and every finished result waited in memory: about
+    // 6 GB by the end of the run, enough to use up the machine's memory.
+    // Finished results must wait in a bounded line, not an endless one.
+    //
+    // The consumer stalls on its first item until the workers stop making
+    // progress (or have made everything), then counts what they produced.
+    constexpr size_t kItems = 1000;
+    constexpr int kWorkers = 4;
+    std::atomic<size_t> produced{0};
+    size_t produced_while_stalled = 0;
+    bool stalled = false;
+    std::vector<int> seen(kItems, 0);
+    run_work_pool<size_t>(
+        kItems, kWorkers, nullptr,
+        [&](size_t i) {
+            ++produced;
+            return i;
+        },
+        [&](size_t&& i) {
+            ++seen[i];
+            if (stalled) return;
+            stalled = true;
+            size_t last = produced.load();
+            for (int quiet = 0; quiet < 5 && last < kItems;) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                const size_t now = produced.load();
+                quiet = (now == last) ? quiet + 1 : 0;
+                last = now;
+            }
+            produced_while_stalled = last;
+        });
+    for (int n : seen) CHECK(n == 1);
+    // In flight: one item with the consumer, the waiting line (two per
+    // worker), and one finished item per worker waiting for room in it.
+    CHECK(produced_while_stalled <= 3 * kWorkers + 1);
+}
+
+TEST_CASE("run_work_pool: a consumer that throws while workers wait for room") {
+    // Workers blocked on a full line must still leave once the consumer
+    // gives up, or the pool never joins.
+    std::atomic<int> started{0};
+    CHECK_THROWS_AS(run_work_pool<int>(
+                        1000, 4, nullptr,
+                        [&](size_t i) {
+                            ++started;
+                            return static_cast<int>(i);
+                        },
+                        [&](int&&) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                            throw std::runtime_error("consumer failed");
+                        }),
+                    std::runtime_error);
+    CHECK(started.load() < 1000);
+}
+
 TEST_CASE("run_work_pool: a cancel mid-run never strands the consumer") {
     // Hundreds of short runs, each cancelled from inside the work. The old
     // batch pool could leave its consumer waiting forever when every worker
