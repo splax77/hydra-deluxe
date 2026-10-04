@@ -82,13 +82,17 @@ const std::vector<OwnerRule>& rules() {
     static const std::vector<OwnerRule> r = {
         // Only length comparisons count. Sizing a buffer against MAX_PATH
         // (GetTempPathW in copy_to_short_temp) asks whether a result fitted,
-        // which audit R7.12 calls a different question. The limit may be
-        // spelled 260, and either side may carry a little arithmetic
-        // (size() - 4 < MAX_PATH). winstr.cpp is not exempt as a file: only
-        // fits_shell's one line is listed.
+        // which audit R7.12 calls a different question. A length is .size(),
+        // .length() (through . or ->), strlen or wcslen. The limit may be
+        // spelled MAX_PATH, 260 or 259, on either side of any comparison
+        // (<, <=, >, >=, ==, !=), and either side may carry a little
+        // arithmetic (size() - 4 < MAX_PATH). A length held in a plain
+        // variable is not caught: `n > MAX_PATH` is also how a buffer-fit
+        // check reads. winstr.cpp is not exempt as a file: only fits_shell's
+        // one line is listed.
         {"Does the Windows shell take a path this long?",
          "fits_shell in src/core/winstr.cpp",
-         R"((\.(size|length)\(\)|\b(wcs|str)len\s*\([^()]*\))(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*(MAX_PATH|260)\b|\b(MAX_PATH|260)(\s*[-+]\s*[\w.]+)*\s*[<>]=?\s*[\w.:>()-]*(\.(size|length)\(\)|\b(wcs|str)len\s*\())",
+         R"(((\.|->)(size|length)\(\)|\b(wcs|str)len\s*\(([^()]|\([^()]*\))*\))(\s*[-+]\s*[\w.]+)*\s*(==|!=|[<>]=?)\s*(MAX_PATH|259|260)\b|\b(MAX_PATH|259|260)(\s*[-+]\s*[\w.]+)*\s*(==|!=|[<>]=?)\s*[\w.:>()-]*((\.|->)(size|length)\(\)|\b(wcs|str)len\s*\())",
          "",
          {},
          {},
@@ -102,11 +106,19 @@ const std::vector<OwnerRule>& rules() {
           "if (path.size() - 4 < MAX_PATH) return path;",
           "if (name.length() >= 260) return false;",
           "if (260 <= s.size()) ok = false;",
-          "if (MAX_PATH - 1 > wcslen(p)) ok = true;"},
+          "if (MAX_PATH - 1 > wcslen(p)) ok = true;",
+          "if (path.size() <= 259) return path;", "if (path.size() > 259) return {};",
+          "if (path.size() == 260) return {};", "if (path.size() != 260) ok = true;",
+          "if (259 >= s.length()) ok = true;", "if (260 == p->size()) return {};",
+          "if (p->size() < MAX_PATH) return p;",
+          "if (wcslen(path.c_str()) >= MAX_PATH) return false;",
+          "if (MAX_PATH <= strlen(s.c_str())) ok = false;"},
          {"wchar_t tmp[MAX_PATH + 1];", "GetTempPathW(MAX_PATH + 1, tmp);",
           "if (n == 0 || n > MAX_PATH) return {};",
           "constexpr size_t kPlainPathLimit = MAX_PATH - 12;", "const int kWidth = 260;",
           "if (n > 260) return;", "if (rows.size() > 2600) return;",
+          "if (rows.size() == 2590) return;", "if (12600 < rows.size()) return;",
+          "std::wstring buf(MAX_PATH, L'\\0');",
           "if (fits_shell(path)) return path;", "if (!fits_shell(copy.native())) return {};"},
          {{"src/core/winstr.cpp",
            R"(return path.size() < MAX_PATH && !starts_with(path, L"\\\\?\\");)",
@@ -194,11 +206,15 @@ const std::vector<OwnerRule>& rules() {
           "CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);"},
          {"hydra::app::open_in_browser(page);"}},
         // A std::filesystem call (a line naming filesystem:: or fs:: that
-        // calls one of these) or a file stream. No file is exempt, winstr
-        // included.
+        // calls one of these) or a file stream. The list is every
+        // std::filesystem free function that takes a path, plus the two
+        // directory iterators and directory_entry, which read the disk when
+        // built from a path: as a temporary, a named variable or with
+        // braces. An empty argument list is no path (fs::current_path(), an
+        // end iterator), so it passes. No file is exempt, winstr included.
         {"How does a std::filesystem call or file stream get a path it accepts at any length?",
          "os_path in src/core/winstr.cpp",
-         R"(^(?=.*(filesystem::|fs::)).*::(create_directories|create_directory|is_directory|is_regular_file|exists|remove|remove_all|rename|copy|copy_file|file_size|last_write_time|weakly_canonical|canonical|directory_iterator|recursive_directory_iterator|absolute|status|equivalent|space|current_path)\(|^(?!.*#include).*fstream )",
+         R"(^(?=.*(filesystem::|fs::)).*::((absolute|canonical|weakly_canonical|relative|proximate|copy|copy_file|copy_symlink|create_directory|create_directories|create_directory_symlink|create_hard_link|create_symlink|current_path|equivalent|exists|file_size|hard_link_count|is_block_file|is_character_file|is_directory|is_empty|is_fifo|is_other|is_regular_file|is_socket|is_symlink|last_write_time|permissions|read_symlink|remove|remove_all|rename|resize_file|space|status|symlink_status)\s*\(|((recursive_)?directory_iterator|directory_entry)\s*(\w+\s*)?[({])(?!\s*[)}])|^(?!.*#include).*fstream(\s|[({](?!\s*[)}])))",
          R"(os_path\()",
          {},
          {},
@@ -208,11 +224,35 @@ const std::vector<OwnerRule>& rules() {
           "for (const auto& e : fs::recursive_directory_iterator(root)) {",
           "std::filesystem::path outpath = std::filesystem::absolute(std::filesystem::u8path(out));",
           "const fs::file_status st = fs::status(p);", "if (fs::equivalent(a, b)) return;",
-          "const fs::space_info s = fs::space(dir);", "fs::current_path(dir);"},
+          "const fs::space_info s = fs::space(dir);", "fs::current_path(dir);",
+          "std::filesystem::directory_iterator it(dir);",
+          "std::filesystem::recursive_directory_iterator it(root, ec);",
+          "for (auto& e : std::filesystem::directory_iterator{dir}) {",
+          "for (auto& e : fs::recursive_directory_iterator{root}) {",
+          "const fs::directory_entry entry(p);", "if (fs::is_empty(dir)) return;",
+          "const fs::path rel = fs::relative(p, base);",
+          "const fs::path rel = fs::proximate(p, base);", "fs::resize_file(p, 0);",
+          "fs::permissions(p, fs::perms::owner_write);",
+          "const auto st = fs::symlink_status(p);", "fs::create_symlink(target, link);",
+          "fs::create_directory_symlink(target, link);", "fs::create_hard_link(target, link);",
+          "fs::copy_symlink(from, to);", "const fs::path t = fs::read_symlink(p);",
+          "const auto n = fs::hard_link_count(p);", "if (fs::is_symlink(p)) return;",
+          "if (fs::is_block_file(p) || fs::is_character_file(p)) return;",
+          "if (fs::is_fifo(p) || fs::is_socket(p) || fs::is_other(p)) return;",
+          "if (fs::exists (p)) return;", "const std::string s = slurp(std::ifstream(path));",
+          "std::ofstream{path} << text;"},
          {"fs::create_directories(hydra::os_path(dir));", "#include <fstream>",
+          "#include <filesystem>",
           "std::ifstream in(hydra::os_path(path));", "const fs::path p = dir / name;",
           "for (const auto& e : fs::recursive_directory_iterator(hydra::os_path(root))) {",
           "std::filesystem::path outpath = std::filesystem::absolute(hydra::os_path(std::filesystem::u8path(out)));",
+          "std::filesystem::directory_iterator it(hydra::os_path(dir), ec);",
+          "for (; it != fs::directory_iterator(); ++it) {",
+          "const fs::path cwd = fs::current_path();",
+          "for (const fs::directory_entry& e : list) {",
+          "const fs::file_status st = e.status();", "if (e.is_directory()) continue;",
+          "const fs::path tmp = fs::temp_directory_path(ec);",
+          "void write(std::ofstream& out);",
           "const RecordStatusView& PathsTabCache::status(const store::RecordLookup& lookup,"}},
 
         // ---- engine facts (step 1 of the 2026-10-03 derivation audit) ----
