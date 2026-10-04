@@ -733,6 +733,22 @@ TEST_CASE("comparison page explains its columns and splits the missing scores") 
     CHECK(html.find("<option value=\"not in library\">") != std::string::npos);
     CHECK(html.find("value=\"unmatched\"") == std::string::npos);
     CHECK(html.find("'not analyzed':'s-notanalyzed'") != std::string::npos);
+    // A score with a result reads under, at or above optimal; none is "matched".
+    CHECK(html.find("<option value=\"under optimal\">Under optimal</option>") !=
+          std::string::npos);
+    CHECK(html.find("<option value=\"at optimal\">At optimal</option>") != std::string::npos);
+    CHECK(html.find("<option value=\"above optimal\">Above optimal</option>") !=
+          std::string::npos);
+    for (const char* status : {"under optimal", "at optimal", "above optimal"}) {
+        INFO(status);
+        CHECK(html.find(std::string("'") + status + "':'s-") != std::string::npos);
+    }
+    CHECK(html.find("value=\"matched\"") == std::string::npos);
+    CHECK(html.find("'matched'") == std::string::npos);
+    CHECK(html.find("Matched") == std::string::npos);
+    CHECK(col_line(html, "status").find(
+              "d:'Under optimal, At optimal or Above optimal when Hydra has a result.") !=
+          std::string::npos);
     CHECK(html.find("id=\"q\" aria-label=\"Search scores\"") != std::string::npos);
     CHECK(html.find("id=\"status\" aria-label=\"Status\"") != std::string::npos);
     CHECK(html.find("<dl class=\"legend\" id=\"legend\"></dl>") != std::string::npos);

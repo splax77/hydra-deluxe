@@ -104,8 +104,8 @@ int main() {
     old_store->close();
     new_store->close();
 
-    if (report.stats.total == 0) {
-        std::printf("No records to compare. Run hydra_batch into both databases first.\n");
+    if (report.html.empty()) {
+        std::printf("%s\n", report.reason.c_str());
         return 1;
     }
 

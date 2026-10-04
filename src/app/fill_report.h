@@ -43,8 +43,9 @@ struct FillCompareRow {
 // (old_store's 1.0 results, new_store's 1.1 ones; lens.legacy_fills is
 // ignored), indexed by lowercased
 // hyhash, over the union of both key sets — a chart stored on one side only
-// still gets a row. Song/artist/charter prefer the 1.1 (new) side and are run
-// through report::plain to strip Clone Hero color markup.
+// still gets a row, labelled by the side that holds its record. Song, artist
+// and charter prefer the 1.1 (new) side; the song reads display_title, and
+// the artist and charter have their Clone Hero rich-text tags stripped.
 std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
                                               store::RecordStore& new_store,
                                               const std::string& chartmode,
@@ -70,6 +71,9 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
 struct GeneratedFillReport {
     std::string html;  // empty when neither database had a record
     FillCompareStats stats;
+    // Why there is no page, in words a person can act on; empty when there
+    // is a page. hydra_fillcompare prints it as it is.
+    std::string reason;
 };
 
 // The whole comparison in one call: join + tally + the standard page framing.

@@ -5,9 +5,10 @@
 #include <utility>
 
 #include "app/html_page.h"
-#include "app/report.h"  // report::plain -- strips Clone Hero <color> markup
+#include "app/report.h"  // records_by_hash
 #include "core/model.h"  // group_thousands
-#include "parse/song.h"  // title_or_unknown
+#include "parse/song.h"  // display_title, strip_rich_tags
+#include "search/graph.h"  // fill_rule_name, fill_rule_description
 
 namespace hydra::app::fill_report {
 
@@ -23,11 +24,14 @@ namespace {
 // Every literal here is ASCII: this file compiles into hydra_core, which is
 // not built with /utf-8. Glyphs the page needs go in as HTML entities (markup)
 // or \uXXXX escapes (JavaScript).
-const char* const kTitle = "Fill spawn comparison &mdash; CH 1.0 vs CH 1.1";
+//
+// __OLD_RULE__ and __NEW_RULE__ are the two fill rules' short names, filled
+// from fill_rule_name when the page shell is built.
+const char* const kTitle = "Fill spawn comparison &mdash; __OLD_RULE__ vs __NEW_RULE__";
 
 const char* const kBody = R"page(<div class="wrap fill">
   <header>
-    <h1>Fill spawn <span class="accent">CH 1.0 vs CH 1.1</span></h1>
+    <h1>Fill spawn <span class="accent">__OLD_RULE__ vs __NEW_RULE__</span></h1>
     <div class="sub">__SUBTITLE__</div>
   </header>
 
@@ -76,11 +80,11 @@ const PAGE = {
     {k:'song',    t:'Song',        num:false},
     {k:'artist',  t:'Artist',      num:false},
     {k:'charter', t:'Charter',     num:false},
-    {k:'s10',     t:'CH 1.0',      num:true},
-    {k:'s11',     t:'CH 1.1',      num:true},
+    {k:'s10',     t:'__OLD_RULE__',      num:true},
+    {k:'s11',     t:'__NEW_RULE__',      num:true},
     {k:'delta',   t:'Delta',       num:true},
-    {k:'p10',     t:'CH 1.0 path', num:false},
-    {k:'p11',     t:'CH 1.1 path', num:false},
+    {k:'p10',     t:'__OLD_RULE__ path', num:false},
+    {k:'p11',     t:'__NEW_RULE__ path', num:false},
     {k:'acts',    t:'Acts',        num:true},
     {k:'notes',   t:'Notes',       num:true},
     {k:'status',  t:'Status',      num:false},
@@ -99,7 +103,7 @@ const PAGE = {
     const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'
                    : (r.delta < 0 ? 'num neg' : 'num dim'));
     const deltaTxt = !hasDelta ? DASH
-                   : (r.delta > 0 ? '+' + r.delta.toLocaleString() : fmt(r.delta));
+                   : (r.delta > 0 ? '+' : '') + fmt(r.delta);
     return [
       ['song trunc', r.song],
       ['dim trunc artist', r.artist],
@@ -119,21 +123,25 @@ const PAGE = {
     const gains = rows.filter(r => r.delta > 0).reduce((a, r) => a + r.delta, 0);
     const losses = rows.filter(r => r.delta < 0).reduce((a, r) => a - r.delta, 0);
     return [
-      ['Charts', rows.length.toLocaleString()],
-      ['1.1 higher', n('1.1 higher').toLocaleString()],
-      ['1.0 higher', n('1.0 higher').toLocaleString()],
-      ['Same', n('same').toLocaleString()],
-      ['Only one side', (n('only 1.0') + n('only 1.1')).toLocaleString()],
-      ['Points gained in 1.1', gains.toLocaleString()],
-      ['Points lost in 1.1', losses.toLocaleString()],
+      ['Charts', fmt(rows.length)],
+      ['1.1 higher', fmt(n('1.1 higher'))],
+      ['1.0 higher', fmt(n('1.0 higher'))],
+      ['Same', fmt(n('same'))],
+      ['Only one side', fmt(n('only 1.0') + n('only 1.1'))],
+      ['Points gained in 1.1', fmt(gains)],
+      ['Points lost in 1.1', fmt(losses)],
     ];
   },
 };
 )page";
 
-// The page shell, built once on first use.
+// The page shell, built once on first use. The title, heading and column
+// names read each rule's short name from fill_rule_name.
 const std::string& page_template() {
-    static const std::string page = html::page_template(kTitle, kBody, kPageJs);
+    static const std::string page = html::replace_all(
+        html::replace_all(html::page_template(kTitle, kBody, kPageJs), "__OLD_RULE__",
+                          fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Short)),
+        "__NEW_RULE__", fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Short));
     return page;
 }
 
@@ -174,9 +182,9 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 
         // Identity prefers the 1.1 side; either side names the same chart.
         const store::RecordListing* id = new_rec ? new_rec : old_rec;
-        row.song = title_or_unknown(report::plain(id->ref_name));
-        row.artist = report::plain(id->ref_artist);
-        row.charter = report::plain(id->ref_charter);
+        row.song = display_title(id->ref_name);
+        row.artist = strip_rich_tags(id->ref_artist);
+        row.charter = strip_rich_tags(id->ref_charter);
 
         if (old_rec) {
             row.old_score = old_rec->summary.score;
@@ -190,16 +198,21 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         }
         row.notes = new_rec ? new_rec->summary.notecount : old_rec->summary.notecount;
 
-        // A row counts as one-sided when the other database has no record for
-        // the chart, or has one that produced no score at all.
+        // A chart with a score on both sides compares them. A chart only one
+        // database holds a record for is labelled by that database, score or
+        // not. When both hold a record but only one has a score, the label
+        // still goes by the score, as before; what that case should read is
+        // waiting on a decision.
         if (row.old_score && row.new_score) {
             int64_t delta = *row.new_score - *row.old_score;
             row.delta = delta;
             row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");
-        } else if (row.old_score) {
+        } else if (!new_rec) {
             row.status = "only 1.0";
-        } else {
+        } else if (!old_rec) {
             row.status = "only 1.1";
+        } else {
+            row.status = row.old_score ? "only 1.0" : "only 1.1";
         }
         rows.push_back(std::move(row));
     }
@@ -214,7 +227,7 @@ FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows) {
         else if (r.status == "1.0 higher") ++stats.ch10_higher;
         else if (r.status == "1.1 higher") ++stats.ch11_higher;
         else if (r.status == "only 1.0") ++stats.only_old;
-        else ++stats.only_new;
+        else if (r.status == "only 1.1") ++stats.only_new;
     }
     return stats;
 }
@@ -276,7 +289,10 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
     std::vector<FillCompareRow> rows =
         collect_fill_rows(old_store, new_store, chartmode, cap, lens);
     out.stats = tally_fill_rows(rows);
-    if (rows.empty()) return out;
+    if (rows.empty()) {
+        out.reason = "No records to compare. Run hydra_batch into both databases first.";
+        return out;
+    }
 
     std::string subtitle =
         group_thousands(out.stats.total) + " charts in " + chartmode + ": " +
@@ -286,9 +302,10 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         group_thousands(out.stats.only_old + out.stats.only_new) +
         " in one database only";
     std::string footer =
-        "A drum fill only appears if your Star Power meter filled up in time. "
-        "Clone Hero 1.0 gave you until about one fill-length before the fill. "
-        "Clone Hero 1.1 made it a flat 4 beats. Four beats is usually the "
+        "A drum fill only appears if your Star Power meter filled up in time. " +
+        fill_rule_description(FillDeadlineRule::Ch10) + " " +
+        fill_rule_description(FillDeadlineRule::Ch11) +
+        " Four beats is usually the "
         "longer wait, so short fills got stricter and most charts tie or drop. "
         "Long fills got looser, which is where the rare gains come from. "
         "Delta is the 1.1 score minus the 1.0 score.";
