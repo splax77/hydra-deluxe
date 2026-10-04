@@ -289,6 +289,18 @@ TEST_CASE("hydra_report writes a page for a filled database and says so for an e
     CHECK(contains(empty.output, "No records stored yet"));
 
     CHECK(run_exe(box.report, {"--bogus"}).exit_code == 2);
+
+    // The batch stored its record at the default cap 4. Asked at cap 8, the
+    // database is not empty, so the reason names the settings instead.
+    { std::ofstream(box.dir / "hydra_settings.ini", std::ios::binary) << "sp_cap=8\n"; }
+    RunResult off = run_exe(box.report, {"--db", db, "--out",
+                                         (box.dir / "off.html").u8string(), "--no-open"});
+    INFO(off.output);
+    CHECK(off.exit_code == 1);
+    CHECK(contains(off.output,
+                   "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
+                   "Analyze with these settings, or change them."));
+    CHECK(!contains(off.output, "No records stored yet"));
 }
 
 TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {

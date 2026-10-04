@@ -26,7 +26,13 @@ struct ReportRow {
     std::string artist;
     std::string charter;
     std::string mode;
+    // The path's place in its record's list, best score first. The subtitle
+    // counts one record per rank-1 row.
     int rank = 1;
+    // Is the path optimal? Read from HydraRecord::is_optimal, so every path
+    // tied at the top score is, as on the Paths tab (D48 Q1). The page's "Best
+    // path only" box and its bold rows read this, not the rank.
+    bool optimal = false;
     std::string path;
     int64_t score = 0;
     int acts = 0;
@@ -120,11 +126,30 @@ struct ReportOptions {
     const std::atomic<bool>* cancel = nullptr;
 };
 
+// Why a report came out with no page (finding 105, D48 Q28).
+enum class EmptyReason {
+    None,                  // there is a page
+    NothingStored,         // the database holds no results at all
+    NothingUnderSettings,  // it holds results, but none Ready at this cap and fill rule
+    Cancelled,             // the caller stopped the walk
+};
+
+// The start of the sentence an empty report gives when the database holds
+// results under other settings. The app's error mapping knows the sentence
+// by it and shows it as it is.
+inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under these settings";
+
 struct GeneratedReport {
     std::string html;  // empty when the store held no reportable rows
     int64_t songs = 0;    // distinct charts (by chart hash) with rows on the page
     int64_t records = 0;  // records with rows on the page (one rank-1 row each)
     int64_t rows = 0;
+    EmptyReason empty_reason = EmptyReason::None;
+    // For NothingUnderSettings, the sentence that names the settings: "Nothing
+    // is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).
+    // Analyze with these settings, or change them." Empty otherwise: an empty
+    // database and a cancel keep each caller's own words.
+    std::string why_empty;
 };
 
 GeneratedReport generate_report(store::RecordStore& store,

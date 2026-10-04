@@ -3,6 +3,7 @@
 #include <initializer_list>
 #include <new>
 
+#include "app/report.h"  // kNothingUnderSettings
 #include "app/rules_file.h"
 #include "core/model.h"
 #include "parse/midi.h"
@@ -103,6 +104,10 @@ std::string plain_error_text(std::string_view what) {
     // ui/dm_jobs.cpp and ui/library_jobs.cpp.
     if (what == "this user has no scores to compare") return kNoScores;
     if (what == "no records stored yet") return kNoRecords;
+    // app/report.cpp generate_report: results exist, but none under the
+    // report's cap and fill rule. The sentence names them and is already
+    // written for the user.
+    if (starts_with(what, report::kNothingUnderSettings)) return std::string(what);
     // app/report_files.cpp write_report_file.
     if (starts_with(what, "cannot write ")) return kReportWrite;
 

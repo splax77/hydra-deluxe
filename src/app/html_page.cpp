@@ -311,8 +311,10 @@ const char* const kReportJsHead = R"js(<script id="data" type="application/json"
 <script>
 const DATA = JSON.parse(document.getElementById('data').textContent);
 const DASH = '\u2014';
-const fmt = n => n === null || n === undefined ? DASH : n.toLocaleString();
-const fmtMs = n => n === null || n === undefined ? DASH : n.toFixed(1);
+// Every number a page shows groups its thousands here, with one fixed rule
+// (1,234) whatever language the browser is set to, so the table agrees with
+// the subtitle Hydra wrote (D48 Q12).
+const fmt = n => n === null || n === undefined ? DASH : n.toLocaleString('en-US');
 
 )js";
 
@@ -364,7 +366,7 @@ function render() {
     // The "#" column: the row's place in the current sort and filter.
     const idx = document.createElement('td');
     idx.className = 'idx num';
-    idx.textContent = (++n).toLocaleString();
+    idx.textContent = fmt(++n);
     tr.appendChild(idx);
 
     // A cell is [class, text], or [chip class, text, 'chip'] for a coloured
@@ -392,7 +394,7 @@ function render() {
   empty.textContent = 'Nothing matches those filters.';
   empty.hidden = rows.length > 0;
   document.getElementById('count').textContent =
-    rows.length.toLocaleString() + ' of ' + ROWS.length.toLocaleString() + ' ' + PAGE.noun;
+    fmt(rows.length) + ' of ' + fmt(ROWS.length) + ' ' + PAGE.noun;
 
   const el = document.getElementById('stats');
   el.textContent = '';

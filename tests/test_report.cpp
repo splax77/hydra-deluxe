@@ -24,21 +24,32 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/display_format.h"
 #include "app/dm_report.h"
 #include "env_util.h"
 #include "app/fill_report.h"
 #include "app/html_page.h"
 #include "app/report.h"
 #include "app/report_files.h"
+#include "app/user_messages.h"
+#include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "record_fixtures.h"
+#include "search/graph.h"
 #include "store/record_store.h"
 
 using namespace hydra;
 using namespace hydra::app;
 
 namespace {
+
+size_t occurrences(const std::string& text, const std::string& what) {
+    size_t n = 0;
+    for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) ++n;
+    return n;
+}
 
 // Analyze the first `want` non-empty corpus charts into a fresh in-memory
 // store and return how many records landed.
@@ -100,7 +111,47 @@ void check_cap(int cap) {
             << " rows, " << html.size() << " bytes");
 }
 
+// Stores H1's tied-variant record for chart `hyhash` at SP cap `cap` under
+// `lens`, with its song, so the report has three paths to list: two tied at
+// the top score and a lower one.
+void store_tied(store::RecordStore& store, const std::string& hyhash, int cap,
+                store::Lens lens = {}) {
+    HydraRecord record = test::tied_variant_record();
+    record.sp_cap = cap;
+    record.legacy_fills = lens.legacy_fills;
+    store.add_song(hyhash, "Tied " + hyhash, "Artist", "Charter", test::beat_song({}, {}, 13440));
+    store.add_record(store::RecordKey{hyhash, "mode", store::CapQuery::at(cap), lens}, record);
+}
+
 }  // namespace
+
+TEST_CASE("report rows: a tied top-score variant is optimal too") {
+    store::RecordStore store(":memory:");
+    store_tied(store, "tied", 4);
+
+    const std::vector<report::ReportRow> rows =
+        report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
+    REQUIRE(rows.size() == 3);
+    // Best score first: the root and its tied variant, then the lower root.
+    CHECK(rows[0].score == rows[1].score);
+    CHECK(rows[2].score < rows[1].score);
+    CHECK(rows[0].optimal);
+    CHECK(rows[1].optimal);
+    CHECK_FALSE(rows[2].optimal);
+
+    report::ReportOptions options;
+    options.cap = store::CapQuery::at(4);
+    const report::GeneratedReport page = report::generate_report(store, options);
+    // The subtitle still counts one record, however many paths tie.
+    CHECK(page.records == 1);
+    CHECK(occurrences(page.html, "\"opt\":true") == 2);
+    CHECK(occurrences(page.html, "\"opt\":false") == 1);
+    // "Best path only" and the bold row read the flag, not the rank.
+    CHECK(page.html.find("if (bestOnly && !r.opt) return false;") != std::string::npos);
+    CHECK(page.html.find("rowClass: r => r.opt ? 'best' : '',") != std::string::npos);
+    CHECK(page.html.find("r.rank !== 1") == std::string::npos);
+    CHECK(page.html.find("r.rank === 1") == std::string::npos);
+}
 
 TEST_CASE("report page embeds every stored record (4 bars)") { check_cap(4); }
 
@@ -137,6 +188,28 @@ TEST_CASE("report lists only the wanted cap and names it") {
     for (const report::ReportRow& row : report::collect_rows(store, 100, options.cap, options.lens))
         if (row.rank == 1) ++rank1;
     CHECK(rank1 == 1);
+
+    // The cap reads through the house count rule: one bar, and commas from
+    // 1,000 (D48 Q12).
+    store_tied(store, "one", 1);
+    store_tied(store, "thousand", 1000);
+    options.cap = store::CapQuery::at(1);
+    CHECK(report::generate_report(store, options).html.find("SP cap 1 bar<") !=
+          std::string::npos);
+    options.cap = store::CapQuery::at(1000);
+    CHECK(report::generate_report(store, options).html.find("SP cap 1,000 bars") !=
+          std::string::npos);
+
+    // A 1.0 page names its rule by the fill rule's one long name.
+    store::Lens legacy;
+    legacy.legacy_fills = true;
+    store_tied(store, "legacy", 4, legacy);
+    options.cap = store::CapQuery::at(4);
+    options.lens = legacy;
+    CHECK(report::generate_report(store, options)
+              .html.find(std::string("SP cap 4 bars — ") +
+                         fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
+                         " fills") != std::string::npos);
 }
 
 TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") {
@@ -146,16 +219,24 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
     settings.depth_value = 10;
     settings.sp_cap = 4;
 
-    // songmeta names written before the fallback existed.
-    const std::vector<std::string> stored_names = {"", "<unknown title>"};
+    // songmeta names written before the fallback existed, a title with a
+    // bold tag, and H1's title made only of tags. Each pairs with the name
+    // the report shows.
+    const std::vector<std::pair<std::string, std::string>> names = {
+        {"", kUnknownTitle},
+        {"<unknown title>", kUnknownTitle},
+        {"<b>Bold</b> Song", "Bold Song"},
+        {test::kTagOnlyTitle, kUnknownTitle},
+    };
     size_t added = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        if (added == stored_names.size()) break;
+        if (added == names.size()) break;
         try {
             AnalysisResult result = analyze_chart_file(path, settings);
             if (result.song.is_empty() || result.record.paths.empty()) continue;
             const std::string hyhash = "u" + std::to_string(added);
-            store.add_song(hyhash, stored_names[added], "Artist", "Charter", result.song);
+            store.add_song(hyhash, names[added].first, "<i>Artist</i>", "<b>Charter</b>",
+                           result.song);
             store.add_record(
                 store::RecordKey{hyhash, "mode", store::CapQuery::at(settings.sp_cap)},
                 result.record);
@@ -164,50 +245,68 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
             continue;
         }
     }
-    REQUIRE(added == stored_names.size());
+    REQUIRE(added == names.size());
 
     std::vector<report::ReportRow> rows =
         report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
     REQUIRE(!rows.empty());
-    for (const report::ReportRow& row : rows) CHECK(row.song == kUnknownTitle);
+    for (const report::ReportRow& row : rows) {
+        INFO(row.hyhash);
+        const size_t i = static_cast<size_t>(std::stoi(row.hyhash.substr(1)));
+        CHECK(row.song == names[i].second);
+        // Artist and charter lose their tags too, with no fallback.
+        CHECK(row.artist == "Artist");
+        CHECK(row.charter == "Charter");
+    }
 }
 
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     using report::tier_for;
 
     // Default window 85 -> budget 170: bands 2 / 42.5 / 85 / 127.5 / 170.
+    // Each edge belongs to the band below it (D48 Q3): a timing on the
+    // difficult floor is not past it, so 2.0 ms reads Normal, and 170.0 ms is
+    // still inside the two-hit budget, so it reads Insane+.
     CHECK(tier_for(std::nullopt).first == "None");
     CHECK(tier_for(1.9).first == "Normal");
-    CHECK(tier_for(2.0).first == "Hard");
-    CHECK(tier_for(42.4).first == "Hard");
-    CHECK(tier_for(42.5).first == "Extreme");
-    CHECK(tier_for(85.0).first == "Insane");
-    CHECK(tier_for(127.5).first == "Insane+");
-    CHECK(tier_for(169.9).first == "Insane+");
-    CHECK(tier_for(170.0).first == "Beyond");
-    CHECK(tier_for(170.0).second == "t5");
+    CHECK_FALSE(past_difficult_floor(2.0));
+    CHECK(tier_for(2.0).first == "Normal");
+    CHECK(past_difficult_floor(2.1));
+    CHECK(tier_for(2.1).first == "Hard");
+    CHECK(tier_for(42.5).first == "Hard");
+    CHECK(tier_for(42.6).first == "Extreme");
+    CHECK(tier_for(85.0).first == "Extreme");
+    CHECK(tier_for(85.1).first == "Insane");
+    CHECK(tier_for(127.5).first == "Insane");
+    CHECK(tier_for(127.6).first == "Insane+");
+    CHECK(tier_for(170.0).first == "Insane+");
+    CHECK(tier_for(170.0).second == "t4");
+    CHECK(tier_for(170.1).first == "Beyond");
+    CHECK(tier_for(170.1).second == "t5");
 
     // At the historical 70 ms window the original 2/35/70/105/140 ladder
-    // reproduces exactly.
-    CHECK(tier_for(1.9, 70.0).first == "Normal");
-    CHECK(tier_for(34.9, 70.0).first == "Hard");
-    CHECK(tier_for(35.0, 70.0).first == "Extreme");
-    CHECK(tier_for(70.0, 70.0).first == "Insane");
-    CHECK(tier_for(105.0, 70.0).first == "Insane+");
-    CHECK(tier_for(140.0, 70.0).first == "Beyond");
+    // reproduces, with the same edge rule.
+    CHECK(tier_for(2.0, 70.0).first == "Normal");
+    CHECK(tier_for(35.0, 70.0).first == "Hard");
+    CHECK(tier_for(35.1, 70.0).first == "Extreme");
+    CHECK(tier_for(70.1, 70.0).first == "Insane");
+    CHECK(tier_for(105.1, 70.0).first == "Insane+");
+    CHECK(tier_for(140.0, 70.0).first == "Insane+");
+    CHECK(tier_for(140.1, 70.0).first == "Beyond");
 }
 
 TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
     // tier_for and the page's embedded tier table read the one ladder in
     // core/squeeze_rating.h, so every banded entry's cutoff is exactly where
-    // the label flips to the next entry's.
+    // the label flips to the next entry's: the cutoff itself still reads the
+    // entry's own name (D48 Q3), and just past it reads the next one.
     std::vector<TimingTier> tiers = timing_tiers(85.0);
     REQUIRE(tiers.size() >= 2);
     for (size_t i = 0; i + 1 < tiers.size(); ++i) {
         if (!tiers[i].cutoff) continue;
         const double cutoff = *tiers[i].cutoff;
-        CHECK(report::tier_for(cutoff - 0.01, 85.0).first == tiers[i].name);
-        CHECK(report::tier_for(cutoff, 85.0).first == tiers[i + 1].name);
+        CHECK(report::tier_for(cutoff, 85.0).first == tiers[i].name);
+        CHECK(report::tier_for(cutoff + 0.01, 85.0).first == tiers[i + 1].name);
     }
 }
 
@@ -229,6 +328,31 @@ TEST_CASE("report payload carries the hit window and the tier table") {
 
     // The dropdown is payload-built; no hardcoded band strings remain.
     CHECK(html.find("Beyond 140ms") == std::string::npos);
+
+    // The Hardest ms and Early fill cells print the app's own one-decimal
+    // text, so an exact half rounds the way the app rounds it (D48 Q2, Q5).
+    // The numbers stay beside the text for sorting and the tiles.
+    report::ReportRow timed;
+    timed.path = "1";
+    timed.tier = "Hard";
+    timed.tok = "t1";
+    timed.ms = 12.25;
+    timed.efill = -3.25;
+    report::ReportRow untimed = timed;
+    untimed.ms.reset();
+    untimed.efill.reset();
+    const std::string rows = report::build_html({timed, untimed}, "sub", "foot", 85.0);
+    CHECK(rows.find("\"ms\":12.25,\"ms_text\":\"" + format_ms_spaced(12.25) + "\"") !=
+          std::string::npos);
+    CHECK(rows.find("\"efill\":-3.25,\"efill_text\":\"" + format_ms_spaced(-3.25) + "\"") !=
+          std::string::npos);
+    CHECK(rows.find("\"ms\":null,\"ms_text\":null") != std::string::npos);
+    CHECK(rows.find("\"efill\":null,\"efill_text\":null") != std::string::npos);
+    CHECK(rows.find("['num', r.ms_text === null ? DASH : r.ms_text],") != std::string::npos);
+    CHECK(rows.find("['num', r.efill_text === null ? DASH : r.efill_text],") !=
+          std::string::npos);
+    CHECK(rows.find("fmtMs") == std::string::npos);
+    CHECK(rows.find("toFixed(1)") == std::string::npos);
 }
 
 TEST_CASE("report page reads the Beyond edge from the tier table") {
@@ -253,10 +377,12 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
     CHECK(result.rows >= added);
 
     // The framing strings are part of the interface: the CLI and the GUI's
-    // ReportJob both ship exactly this subtitle and footer.
-    std::string subtitle = report::counted(result.records, "record", "records") +
-                           " across " + report::counted(result.songs, "chart", "charts") +
-                           " — top 5 paths per chart";
+    // ReportJob both ship exactly this subtitle and footer. The cut is per
+    // chart and mode, and the page lists every mode at the current cap.
+    CHECK(result.empty_reason == report::EmptyReason::None);
+    std::string subtitle = counted(result.records, "record", "records") + " across " +
+                           counted(result.songs, "chart", "charts") +
+                           " — every mode at the current cap, top 5 paths per chart and mode";
     CHECK(result.html.find(subtitle) != std::string::npos);
     CHECK(result.html.find("Generated from hydra.db. Timing tiers match") !=
           std::string::npos);
@@ -265,14 +391,29 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
     // --all-paths wording.
     options.max_paths = report::kEveryPathSentinel;
     CHECK(report::generate_report(store, options)
-              .html.find(report::counted(result.songs, "chart", "charts") + " — every path") !=
+              .html.find(counted(result.songs, "chart", "charts") + " — every path") !=
           std::string::npos);
 
-    // An empty store yields counts but no page.
+    // An empty store yields no page, and says nothing is stored.
     store::RecordStore empty(":memory:");
     report::GeneratedReport none = report::generate_report(empty, options);
     CHECK(none.rows == 0);
     CHECK(none.html.empty());
+    CHECK(none.empty_reason == report::EmptyReason::NothingStored);
+
+    // Records stored at cap 4, asked at cap 8: the page is empty because of
+    // the settings, and the reason names them (finding 105, D48 Q28).
+    options.cap = store::CapQuery::at(8);
+    report::GeneratedReport off = report::generate_report(store, options);
+    CHECK(off.rows == 0);
+    CHECK(off.html.empty());
+    CHECK(off.empty_reason == report::EmptyReason::NothingUnderSettings);
+    const std::string sentence =
+        "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
+        "Analyze with these settings, or change them.";
+    CHECK(off.why_empty == sentence);
+    // The app's ReportJob throws that sentence, and the strip shows it as it is.
+    CHECK(plain_error(std::runtime_error(off.why_empty)) == sentence);
 }
 
 TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
@@ -290,6 +431,7 @@ TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
     report::GeneratedReport result = report::generate_report(store, options);
     CHECK(result.rows == 0);
     CHECK(result.html.empty());
+    CHECK(result.empty_reason == report::EmptyReason::Cancelled);
 }
 
 TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
@@ -351,6 +493,13 @@ TEST_CASE("the three report pages share one stylesheet and one script") {
     CHECK(paths.find("<div class=\"wrap\">") != std::string::npos);
     CHECK(dm.find("<div class=\"wrap dm\">") != std::string::npos);
     CHECK(fill.find("<div class=\"wrap fill\">") != std::string::npos);
+
+    // Every number on the path report groups through the shared fmt, which
+    // uses one fixed rule (1,234), whatever language the browser is set to
+    // (D48 Q12). The single-owner scan keeps it that way.
+    CHECK(std::string(html::kReportJsHead).find("n.toLocaleString('en-US')") !=
+          std::string::npos);
+    CHECK(paths.find(".toLocaleString()") == std::string::npos);
 }
 
 TEST_CASE("tier_for over a built table matches the window form") {
@@ -578,12 +727,6 @@ std::string col_line(const std::string& page, const std::string& key) {
     return page.substr(at, page.find('\n', at) - at);
 }
 
-size_t occurrences(const std::string& text, const std::string& what) {
-    size_t n = 0;
-    for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) ++n;
-    return n;
-}
-
 // WCAG 2.2 relative luminance of "#rrggbb".
 double luminance(const std::string& hex) {
     auto channel = [&hex](size_t at) {
@@ -671,7 +814,7 @@ TEST_CASE("report pages number their rows in a # column") {
     // The shared script adds the column, so all three pages get it.
     const std::string js = html::kReportJs;
     CHECK(js.find("th.textContent = '#';") != std::string::npos);
-    CHECK(js.find("idx.textContent = (++n).toLocaleString();") != std::string::npos);
+    CHECK(js.find("idx.textContent = fmt(++n);") != std::string::npos);
     // The sort control and the arrows walk the real columns, not the # one.
     CHECK(js.find("document.querySelectorAll('#head th.sortable')") != std::string::npos);
     CHECK(std::string(html::kReportCss).find("th.idx, td.idx {") != std::string::npos);
@@ -698,6 +841,22 @@ TEST_CASE("path report explains and renames its columns") {
     // The search box and the tier dropdown have names a screen reader reads.
     CHECK(html.find("id=\"q\" aria-label=\"Search paths\"") != std::string::npos);
     CHECK(html.find("id=\"tier\" aria-label=\"Timing tier\"") != std::string::npos);
+    // The tile over the table carries the column's name, since it can show an
+    // early fill as well as a squeeze (D48 Q7), and the text of the row with
+    // the largest Hardest ms.
+    CHECK(html.find("['Hardest ms', hardest === null ? DASH : hardest.ms_text],") !=
+          std::string::npos);
+    CHECK(html.find("Tightest squeeze") == std::string::npos);
+    // The "Past N ms" tile counts the Beyond rows: past the edge, not on it.
+    CHECK(html.find("const beyond = rows.filter(r => r.ms !== null && r.ms > BEYOND).length;") !=
+          std::string::npos);
+    CHECK(col_line(html, "tier").find("Beyond means more than twice the hit window.") !=
+          std::string::npos);
+    // The average multiplier's definition opens with its own name.
+    CHECK(col_line(html, "mult").find(
+              "d:'Average multiplier: the score without solo bonuses divided by the base score "
+              "(every note at 1x).'") != std::string::npos);
+    CHECK(html.find("Points per note on average") == std::string::npos);
 }
 
 TEST_CASE("path report counts charts by hash in the tile and the subtitle") {
@@ -717,8 +876,7 @@ TEST_CASE("path report counts charts by hash in the tile and the subtitle") {
     // Each chart gets a small id in order of first appearance.
     CHECK(occurrences(html, "\"c\":0") == 2);
     CHECK(occurrences(html, "\"c\":1") == 1);
-    CHECK(html.find("['Charts', new Set(rows.map(r => r.c)).size.toLocaleString()]") !=
-          std::string::npos);
+    CHECK(html.find("['Charts', fmt(new Set(rows.map(r => r.c)).size)]") != std::string::npos);
     CHECK(html.find("r.song + r.artist))") == std::string::npos);
 }
 
