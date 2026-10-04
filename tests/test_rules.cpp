@@ -282,6 +282,38 @@ TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal
     CHECK_FALSE(below_kept);
 }
 
+// D55 item 5: one count per score must not bring back over-limit paths below
+// the best score. On this chart '2 2+ 0- 3' needs a 428.6 ms squeeze and ties
+// the inside path '2 2+ 3 0+' below the top. It is dropped, not filed under
+// that path as a tie.
+TEST_CASE("rules: a path over the Path limit below the best score is dropped even as a tie") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("Unbound (The Wild Ride)") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.legacy_fill_deadline = false;
+    settings.ms_filter = 10.0;
+    settings.rules.max_tied_paths = 4;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    std::string seen;
+    for (const Path* p : record.all_paths())
+        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) + "; ";
+    INFO("kept paths: ", seen);
+    bool inside_kept = false;
+    bool over_kept = false;
+    for (const Path* p : record.all_paths()) {
+        if (p->pathstring() == "2 2+ 0- 3") over_kept = true;
+        if (p->pathstring() == "2 2+ 3 0+" && p->totalscore() == 859580) inside_kept = true;
+    }
+    CHECK(inside_kept);
+    CHECK_FALSE(over_kept);
+}
+
 // Finding 179: the engine's running tie count (bookkeeping for the limit)
 // must equal the recount of the finished tree, which is what is stored.
 // rebuild throws when they differ; this runs it over real charts.

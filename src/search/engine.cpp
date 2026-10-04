@@ -569,6 +569,7 @@ private:
     void reduce_iteration_paths();
     void reduce_group(const int32_t* members, int32_t n);
     bool outside_depth_band(int64_t score, int64_t best, int32_t outscored_by) const;
+    bool can_outscore(int32_t idx) const;
 
     void emit_path(const Path& p);
     void emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
@@ -1137,20 +1138,44 @@ bool Engine::outside_depth_band(int64_t score, int64_t best, int32_t outscored_b
     return outscored_by > depth_value_;
 }
 
+// Whether a path's score may eliminate another path in its group: it is
+// inside the Path limit, or it ties the optimal score (D51 call 2: an
+// over-limit path that ties the optimal score stays kept).
+bool Engine::can_outscore(int32_t idx) const {
+    return !filtered_[(size_t)idx] ||
+           (has_optimal_ && cur_[(size_t)idx].score == optimal_score_);
+}
+
 void Engine::reduce_group(const int32_t* members, int32_t n) {
+    // The best score in this group that may eliminate a path. An over-limit
+    // path below it is beaten (D55 item 5), whether it leads or ties.
+    bool has_top = false;
+    int64_t top = 0;
+    for (int32_t k = 0; k < n; ++k) {
+        const int32_t idx = members[k];
+        if (!can_outscore(idx)) continue;
+        if (!has_top || cur_[(size_t)idx].score > top) top = cur_[(size_t)idx].score;
+        has_top = true;
+    }
+
     // Fold ties. D51 call 1: the tie limit (max_tied_paths_) is one count per
-    // score, so the key is the score alone and a path inside the Path limit
-    // meets an over-limit path at the same score. The inside paths are offered
-    // first and the over-limit ones after, so an inside path leads whenever
-    // one exists, and when the limit is reached the paths left out are
-    // over-limit ones. Each side keeps the group's own order.
+    // score, so a complete path inside the Path limit meets a complete
+    // over-limit path at the same score. The inside paths are offered first
+    // and the over-limit ones after, so an inside path leads whenever one
+    // exists, and when the limit is reached the paths left out are over-limit
+    // ones. Each side keeps the group's own order.
+    // D55 item 5: a running over-limit path keeps a key of its own. A later
+    // group may still outscore it, and filed under an inside path as a
+    // variant it could no longer be dropped then. It meets the inside paths
+    // at its score once it is complete, where scores are final.
     survivors_.clear();
     tie_map_.reset((size_t)n);
     for (int32_t k = 0; k < 2 * n; ++k) {
         const int32_t idx = members[k % n];
         const bool over_limit_pass = k >= n;
         if ((filtered_[(size_t)idx] != 0) != over_limit_pass) continue;
-        const uint64_t key = (uint64_t)cur_[(size_t)idx].score;
+        const bool apart = over_limit_pass && cur_[(size_t)idx].node >= 0;
+        const uint64_t key = ((uint64_t)cur_[(size_t)idx].score << 1) | (apart ? 1ull : 0ull);
 
         bool inserted = false;
         const int32_t leader_idx = tie_map_.get_or_insert(key, idx, &inserted);
@@ -1161,6 +1186,15 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
 
         Path& leader = cur_[(size_t)leader_idx];
         const Path& p = cur_[(size_t)idx];
+        // D55 item 5: a complete over-limit path tied with an inside leader
+        // rides as its variant only at the top score. Below it the path is
+        // dropped, as it would be if it led its own score. An over-limit
+        // leader that is beaten goes in the final loop below, after its score
+        // has counted toward the depth band.
+        if (over_limit_pass && !filtered_[(size_t)leader_idx] && has_top && p.score < top) {
+            removed_[(size_t)idx] = 1;
+            continue;
+        }
         // Two running paths whose newest phrase can still be squeezed out at
         // different SP ends never meet here: the group key holds that end
         // (pending_sqout_at, D36), so a variant never takes its leader's
@@ -1192,12 +1226,13 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
         removed_[(size_t)idx] = 1;
     }
 
-    // One leader per score now, so a group of one score is already done.
+    // A lone leader has nothing to compete with.
     if (survivors_.size() < 2) return;
 
     // From here on each survivor is a leader with its tied variants riding
-    // along. A leader is filtered only when every path at its score is over
-    // the limit: an inside path at that score would have led.
+    // along. A complete leader is filtered only when every path at its score
+    // is over the limit: an inside path at that score would have led. A
+    // running over-limit leader may share its score with an inside one.
 
     // Distinct scores over the whole group, achievable or not. A filtered
     // leader stays only while it is within the depth band here -- while it
@@ -1217,20 +1252,16 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
                       dominating_.end());
     const int64_t best_all = dominating_.back();
 
-    // The scores allowed to eliminate an achievable path. A filtered leader
-    // can't, unless it ties the optimal score (D51 call 2: an over-limit path
-    // that ties the optimal score stays kept; riding as an inside leader's
-    // variant, it stays with that leader, which nothing outscores either).
+    // The scores allowed to eliminate an achievable path (can_outscore). An
+    // over-limit path riding as an inside leader's variant got here only at
+    // `top`, and its leader is outscored by nothing either.
     // May be empty mid-search (every live path in this group is filtered):
     // there is then no achievable path to prune, and the band above still
     // reins the filtered ones in.
     beating_.clear();
     for (size_t i = 0; i < survivors_.size(); ++i) {
         const int32_t idx = survivors_[i];
-        const int64_t s = cur_[(size_t)idx].score;
-        if (!filtered_[(size_t)idx] || (has_optimal_ && s == optimal_score_)) {
-            beating_.push_back(s);
-        }
+        if (can_outscore(idx)) beating_.push_back(cur_[(size_t)idx].score);
     }
     std::sort(beating_.begin(), beating_.end());
     beating_.erase(std::unique(beating_.begin(), beating_.end()),
