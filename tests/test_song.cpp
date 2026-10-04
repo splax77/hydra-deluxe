@@ -795,3 +795,11 @@ TEST_CASE("display_title: a clean name and the old placeholder behave like title
     CHECK(display_title("Some Song") == "Some Song");
     CHECK(display_title("<unknown title>") == "(unknown)");
 }
+
+TEST_CASE("display_title: an artist reads by the same rule (D50 item 5)") {
+    // An artist made only of tags reads "(unknown)", like a title.
+    CHECK(display_artist(test::kTagOnlyTitle) == "(unknown)");
+    CHECK(display_artist(" <i>Tagged</i> Artist ") == "Tagged Artist");
+    // The scan's own placeholder is not a tag, so it shows as it is.
+    CHECK(display_artist(kUnknownArtist) == kUnknownArtist);
+}

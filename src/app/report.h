@@ -133,6 +133,15 @@ enum class EmptyReason {
 // by it and shows it as it is.
 inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under these settings";
 
+// The whole sentence an empty page gives, built once for every page that
+// lists results (finding 105, D50 item 3): "Nothing is analyzed under these
+// settings (SP cap <cap>, <middle>)<ending>. Analyze with these settings, or
+// change them." The path report passes its fill rule as the middle words and
+// no ending; the fill comparison passes its chart mode and " in either
+// database".
+std::string nothing_under_settings(int cap, const std::string& middle,
+                                   const std::string& ending = std::string());
+
 struct GeneratedReport {
     std::string html;  // empty when the store held no reportable rows
     int64_t songs = 0;    // distinct charts (by chart hash) with rows on the page

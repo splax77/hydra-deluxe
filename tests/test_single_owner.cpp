@@ -994,9 +994,10 @@ const std::vector<OwnerRule>& rules() {
         // constant, or a row of a tag table. Config keys that happen to be
         // called "color" or "size" are not flagged.
         {"Which tags does Hydra strip from a song name?",
-         "strip_rich_tags in src/parse/song.cpp, read through display_title",
+         "strip_rich_tags in src/parse/song.cpp, read through display_title "
+         "(and display_artist, which forwards to it, D50 item 5)",
          R"re("</?(color|size|b|i|u|s|sub|sup)\b|=\s*"(color|size|sub|sup)"\s*;|\{\s*"(color|size|b|i|u|s|sub|sup)"\s*,\s*(true|false)\s*\})re",
-         R"(\b(strip_rich_tags|display_title)\()",
+         R"(\b(strip_rich_tags|display_title|display_artist)\()",
          {},
          {},
          "audit findings 8 and 111; D48, Q14 (phase 3 task O3a)",

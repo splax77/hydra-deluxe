@@ -254,10 +254,25 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
         INFO(row.hyhash);
         const size_t i = static_cast<size_t>(std::stoi(row.hyhash.substr(1)));
         CHECK(row.song == names[i].second);
-        // Artist and charter lose their tags too, with no fallback.
+        // Artist and charter lose their tags too.
         CHECK(row.artist == "Artist");
         CHECK(row.charter == "Charter");
     }
+
+    // An artist made only of tags reads "(unknown)" by the title's rule
+    // (D50 item 5); a charter made only of tags keeps today's blank.
+    // add_song keeps the latest names it is given.
+    store.add_song("u0", "Song", test::kTagOnlyTitle, test::kTagOnlyTitle,
+                   test::beat_song({}, {}, 13440));
+    rows = report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
+    bool saw_u0 = false;
+    for (const report::ReportRow& row : rows) {
+        if (row.hyhash != "u0") continue;
+        saw_u0 = true;
+        CHECK(row.artist == kUnknownTitle);
+        CHECK(row.charter == "");
+    }
+    CHECK(saw_u0);
 }
 
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
@@ -384,9 +399,16 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
                            counted(result.songs, "chart", "charts") +
                            " — every mode at the current cap, top 5 paths per chart and mode";
     CHECK(result.html.find(subtitle) != std::string::npos);
-    CHECK(result.html.find("Generated from hydra.db. Timing tiers match") !=
+    // D50 item 1. The default 85 ms hit window puts Beyond past 170 ms, the
+    // same number the Beyond chip and the "Past 170 ms" tile print. The page
+    // escapes the apostrophes.
+    CHECK(result.html.find(
+              "<p>Generated from hydra.db. Timing tiers measure how big each "
+              "squeeze is, in steps of your hit window. The Paths tab&#x27;s row "
+              "labels measure how far a hit lands from the Star Power end, so the "
+              "two can differ. &#x27;Beyond&#x27; means past the 170 ms window.</p>") !=
           std::string::npos);
-    CHECK(result.html.find("past the 170 ms window") != std::string::npos);
+    CHECK(result.html.find("Timing tiers match") == std::string::npos);
 
     // --all-paths wording.
     options.max_paths = report::kEveryPathSentinel;
@@ -414,6 +436,22 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
     CHECK(off.why_empty == sentence);
     // The app's ReportJob throws that sentence, and the strip shows it as it is.
     CHECK(plain_error(std::runtime_error(off.why_empty)) == sentence);
+}
+
+TEST_CASE("nothing_under_settings frames the cap, the middle words and the ending") {
+    // One frame for every empty page (finding 105, D50 item 3): the path
+    // report passes its fill rule, the fill comparison its chart mode and
+    // " in either database".
+    CHECK(report::nothing_under_settings(8, "Clone Hero 1.1 fills") ==
+          "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
+          "Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings(4, "Expert Pro Drums, 2x Bass",
+                                         " in either database") ==
+          "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, 2x Bass) "
+          "in either database. Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings(1200, "Clone Hero 1.0 fills") ==
+          "Nothing is analyzed under these settings (SP cap 1,200, Clone Hero 1.0 fills). "
+          "Analyze with these settings, or change them.");
 }
 
 TEST_CASE("generate_report hands back nothing when its cancel flag is set") {

@@ -16,6 +16,7 @@
 
 #include "app/analysis.h"
 #include "app/report_files.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
 #include "ui/dm_jobs.h"
@@ -177,6 +178,23 @@ TEST_CASE("jobs: the snapshot names the chart being analyzed and freezes its clo
     CHECK(done.current_artist.empty());
     std::this_thread::sleep_for(50ms);
     CHECK(job.snapshot().elapsed_s == done.elapsed_s);
+}
+
+TEST_CASE("jobs: the progress line's artist reads (unknown) when it is only tags") {
+    // D50 item 5: the batch strip's artist follows the title's rule.
+    std::atomic<int> started{0};
+    std::atomic<bool> release{false};
+    RecordStore store(":memory:");
+    std::vector<ChartLibraryEntry> charts = fake_charts(1);
+    charts[0].artist = hydra::test::kTagOnlyTitle;
+    BatchJob job(charts, test_run(), store, /*redo=*/false);
+    job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
+                              /*workers=*/1);
+    job.start();
+    REQUIRE(wait_until([&] { return started.load() == 1; }));
+    CHECK(job.snapshot().current_artist == "(unknown)");
+    release = true;
+    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
 }
 
 TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {

@@ -9,7 +9,7 @@
 #include "app/report.h"
 #include "app/report_files.h"
 #include "app/user_messages.h"
-#include "parse/song.h"  // display_title
+#include "parse/song.h"  // display_title, display_artist
 
 namespace hydra::ui {
 
@@ -226,7 +226,7 @@ void BatchJob::note_started(const std::string& notespath) {
     const app::ScanItem& item = items_[it->second];
     std::lock_guard<std::mutex> lock(mu_);
     snap_.current_title = display_title(item.title);
-    snap_.current_artist = item.artist;
+    snap_.current_artist = display_artist(item.artist);
 }
 
 BatchJob::Snapshot BatchJob::snapshot() const {

@@ -255,8 +255,9 @@ int main() {
                               const hydra::store::PreparedRow& row) {
         ++analyzed;
         ++done;
-        // The artist prints as it always has; only the title is cleaned.
-        std::string label = item.artist + " - " + hydra::display_title(item.title);
+        // The artist and the title read the one cleaned form every screen shows.
+        std::string label =
+            hydra::display_artist(item.artist) + " - " + hydra::display_title(item.title);
         std::string score =
             row.summary.score ? hydra::group_thousands(*row.summary.score) : "-";
         std::printf("[%d/%d] %10s  %s %s\n", done, total, score.c_str(),

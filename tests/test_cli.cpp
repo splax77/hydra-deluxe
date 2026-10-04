@@ -24,6 +24,7 @@
 #include "app/config.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "parse/song.h"
 #include "search/graph.h"
 #include "store/record_store.h"
@@ -277,6 +278,27 @@ TEST_CASE("hydra_batch reuses the GUI's scan cache") {
     CHECK(!contains(r.output, "CLI Fixture"));
 }
 
+TEST_CASE("hydra_batch prints an artist made only of tags as (unknown)") {
+    // D50 item 5: the progress line cleans the artist by the title's rule.
+    // The cached scan row carries the artist, as in the scan-cache case.
+    CliSandbox box("tagartist");
+    const std::string db = box.db("tags.db");
+    {
+        auto [items, errors] = hydra::app::discover_charts({box.folder()});
+        REQUIRE(items.size() == 1);
+        hydra::store::RecordStore store(db);
+        store.rebuild_chart_library({{items[0].md5, items[0].title, hydra::test::kTagOnlyTitle,
+                                      items[0].charter, items[0].notespath,
+                                      items[0].rootfolder, items[0].sig}});
+    }
+
+    RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
+    INFO(r.output);
+    REQUIRE(r.exit_code == 0);
+    CHECK(contains(r.output, "(unknown) - CLI Fixture"));
+    CHECK(!contains(r.output, "<b>"));
+}
+
 TEST_CASE("hydra_batch names the cap with the one count rule") {
     // The sandboxed exe reads its SP cap from hydra_settings.ini beside it.
     CliSandbox box("cap");
@@ -359,7 +381,11 @@ TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
     INFO(swapped.output);
     CHECK(swapped.exit_code == 1);
     CHECK(contains(swapped.output, "is stamped engine_mode=" + kCh11 + ", not " + kCh10));
-    CHECK(contains(swapped.output, "No records to compare"));
+    CHECK(contains(swapped.output,
+                   "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, "
+                   "2x Bass) in either database. Analyze with these settings, or change "
+                   "them."));
+    CHECK(!contains(swapped.output, "No records to compare"));
 
     CHECK(run_exe(box.fillcompare, {"--old", ch10}).exit_code == 2);
 }
@@ -388,7 +414,33 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     INFO(r.output);
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 charts"));
-    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1"));
+    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 with a score on one side only"));
+
+    // D52: a second chart with a record under both rules but a score under
+    // 1.1 only is counted as "with a score on one side only".
+    {
+        const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
+        const std::string one_sided = "dd44ee55ff6677889900aa11bb22cc33";
+        hydra::store::RecordStore store(db);
+        hydra::app::Settings settings{};
+        hydra::app::AnalysisResult ar =
+            hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
+        store.add_song(one_sided, "One Sided", "Tester", "Nobody", ar.song);
+        store.add_row(hydra::store::prepare_row(settings.record_key(one_sided), ar.record));
+        settings.legacy_fills = true;
+        hydra::HydraRecord empty;  // a Ready record: no paths, so no score
+        empty.sp_cap = settings.sp_cap;
+        empty.ms_limit = settings.mslimit_value;
+        empty.legacy_fills = true;
+        store.add_record(settings.record_key(one_sided), empty);
+    }
+    RunResult two = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
+                                              (box.dir / "two.html").u8string(), "--no-open"});
+    INFO(two.output);
+    CHECK(two.exit_code == 0);
+    // The parts add up to the total: 1 same + 1 with a score on one side.
+    CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
+                               "0 only in 1.0, 0 only in 1.1, 1 with a score on one side only"));
 }
 
 TEST_CASE("hydra_report reports a --legacy-fills database under the 1.0 rule") {

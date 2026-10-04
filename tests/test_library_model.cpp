@@ -188,6 +188,18 @@ TEST_CASE("library model: a title made only of tags reads (unknown)") {
     CHECK(m.rows()[0].title == "(unknown)");
 }
 
+TEST_CASE("library model: an artist made only of tags reads (unknown), and search keeps the stored text") {
+    // D50 item 5: the artist column follows the title's rule. Search and sort
+    // still read the stored text, so "(unknown)" is not a search hit.
+    LibraryModel m;
+    m.set_charts({chart("tags", "Song", hydra::test::kTagOnlyTitle, "Charter", "common")});
+    REQUIRE(m.rows().size() == 1);
+    CHECK(m.rows()[0].artist == "(unknown)");
+    CHECK(m.rows()[0].searchable.artist.find("unknown") == std::string::npos);
+    m.set_query("unknown");
+    CHECK(m.order().empty());
+}
+
 TEST_CASE("library model: status_label is the one source of the three status words") {
     using hydra::ui::status_label;
     CHECK(std::string(status_label(RecordStatus::Ready)) == "Analyzed");

@@ -257,11 +257,11 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
             auto [label, token] = tier_for(s.hardest_ms, tiers);
 
             ReportRow row;
-            // The one cleaned title every screen shows. Artist and charter
-            // lose the same tags but keep no fallback: there is no
-            // fallback-free form of display_title, so they strip and trim.
+            // The one cleaned title and artist every screen shows. The
+            // charter loses the same tags but keeps no fallback, so it
+            // strips and trims.
             row.song = display_title(meta.ref_name);
-            row.artist = trim(strip_rich_tags(meta.ref_artist));
+            row.artist = display_artist(meta.ref_artist);
             row.charter = trim(strip_rich_tags(meta.ref_charter));
             row.mode = meta.chartmode;
             row.rank = static_cast<int>(idx + 1);
@@ -362,6 +362,12 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
                              footer);
 }
 
+std::string nothing_under_settings(int cap, const std::string& middle,
+                                   const std::string& ending) {
+    return std::string(kNothingUnderSettings) + " (SP cap " + group_thousands(cap) + ", " +
+           middle + ")" + ending + ". Analyze with these settings, or change them.";
+}
+
 GeneratedReport generate_report(store::RecordStore& store,
                                 const ReportOptions& options) {
     GeneratedReport out;
@@ -386,10 +392,9 @@ GeneratedReport generate_report(store::RecordStore& store,
             out.empty_reason = EmptyReason::NothingStored;
         } else {
             out.empty_reason = EmptyReason::NothingUnderSettings;
-            out.why_empty = std::string(kNothingUnderSettings) + " (SP cap " +
-                            group_thousands(options.cap.exact) + ", " +
-                            fill_rule_name(rule, FillRuleNameStyle::Long) +
-                            " fills). Analyze with these settings, or change them.";
+            out.why_empty = nothing_under_settings(
+                options.cap.exact,
+                std::string(fill_rule_name(rule, FillRuleNameStyle::Long)) + " fills");
         }
         return out;
     }
@@ -418,9 +423,13 @@ GeneratedReport generate_report(store::RecordStore& store,
                            " — " + cap_label;
     std::string dbname =
         std::filesystem::u8path(options.db_path).filename().u8string();
+    // D50 item 1. The window named is the Beyond edge, printed whole the way
+    // the page's Beyond chip and "Past N ms" tile print it.
     std::string footer = "Generated from " + dbname +
-                         ". Timing tiers match Hydra's squeeze ratings; "
-                         "'Beyond' is past the " +
+                         ". Timing tiers measure how big each squeeze is, in steps "
+                         "of your hit window. The Paths tab's row labels measure how "
+                         "far a hit lands from the Star Power end, so the two can "
+                         "differ. 'Beyond' means past the " +
                          std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) +
                          " ms window.";
     out.html = build_html(rows, subtitle, footer, w);

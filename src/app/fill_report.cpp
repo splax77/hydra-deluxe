@@ -51,6 +51,7 @@ const char* const kBody = R"page(<div class="wrap fill">
       <option value="same">Same score</option>
       <option value="only 1.0">Only in 1.0 db</option>
       <option value="only 1.1">Only in 1.1 db</option>
+      <option value="in both">In both</option>
     </select>
     <span class="count" id="count"></span>
   </div>
@@ -69,7 +70,14 @@ const char* const kBody = R"page(<div class="wrap fill">
 )page";
 
 const char* const kPageJs = R"page(const STATUS_CLASS = {'1.1 higher':'s-newhigh', '1.0 higher':'s-oldhigh',
-                      'same':'s-same', 'only 1.0':'s-only', 'only 1.1':'s-only'};
+                      'same':'s-same', 'only 1.0':'s-only', 'only 1.1':'s-only',
+                      'in both':'s-only'};
+
+// A chart in both databases with a score on one side reads "no score" on the
+// other; any other missing score reads as a dash.
+function scoreText(r, s) {
+  return s === null && r.status === 'in both' ? 'no score' : fmt(s);
+}
 
 const PAGE = {
   rows: DATA,
@@ -108,8 +116,8 @@ const PAGE = {
       ['song trunc', r.song],
       ['dim trunc artist', r.artist],
       ['dim trunc charter', r.charter],
-      ['num', fmt(r.s10)],
-      ['num', fmt(r.s11)],
+      ['num', scoreText(r, r.s10)],
+      ['num', scoreText(r, r.s11)],
       [deltaCls, deltaTxt],
       ['path trunc', r.p10 || DASH],
       ['path trunc', r.p11 || DASH],
@@ -128,6 +136,7 @@ const PAGE = {
       ['1.0 higher', fmt(n('1.0 higher'))],
       ['Same', fmt(n('same'))],
       ['Only one side', fmt(n('only 1.0') + n('only 1.1'))],
+      ['Score on one side only', fmt(n('in both'))],
       ['Points gained in 1.1', fmt(gains)],
       ['Points lost in 1.1', fmt(losses)],
     ];
@@ -183,7 +192,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         // Identity prefers the 1.1 side; either side names the same chart.
         const store::RecordListing* id = new_rec ? new_rec : old_rec;
         row.song = display_title(id->ref_name);
-        row.artist = strip_rich_tags(id->ref_artist);
+        row.artist = display_artist(id->ref_artist);
         row.charter = strip_rich_tags(id->ref_charter);
 
         if (old_rec) {
@@ -200,9 +209,9 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 
         // A chart with a score on both sides compares them. A chart only one
         // database holds a record for is labelled by that database, score or
-        // not. When both hold a record but only one has a score, the label
-        // still goes by the score, as before; what that case should read is
-        // waiting on a decision.
+        // not. When both hold a record but only one has a score, the chart
+        // is in both, and the page writes "no score" on the empty side
+        // (D50 item 2).
         if (row.old_score && row.new_score) {
             int64_t delta = *row.new_score - *row.old_score;
             row.delta = delta;
@@ -212,7 +221,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         } else if (!old_rec) {
             row.status = "only 1.1";
         } else {
-            row.status = row.old_score ? "only 1.0" : "only 1.1";
+            row.status = "in both";
         }
         rows.push_back(std::move(row));
     }
@@ -228,6 +237,7 @@ FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows) {
         else if (r.status == "1.1 higher") ++stats.ch11_higher;
         else if (r.status == "only 1.0") ++stats.only_old;
         else if (r.status == "only 1.1") ++stats.only_new;
+        else if (r.status == "in both") ++stats.in_both;
     }
     return stats;
 }
@@ -290,7 +300,11 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         collect_fill_rows(old_store, new_store, chartmode, cap, lens);
     out.stats = tally_fill_rows(rows);
     if (rows.empty()) {
-        out.reason = "No records to compare. Run hydra_batch into both databases first.";
+        // Same sentence whether the databases are empty or hold results under
+        // other settings (finding 105, D50 item 3); the mode is the chart mode
+        // both sides were looked up under.
+        out.reason =
+            report::nothing_under_settings(cap.exact, chartmode, " in either database");
         return out;
     }
 
@@ -300,7 +314,8 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         group_thousands(out.stats.ch10_higher) + " higher under 1.0, " +
         group_thousands(out.stats.same) + " unchanged, " +
         group_thousands(out.stats.only_old + out.stats.only_new) +
-        " in one database only";
+        " in one database only, " + group_thousands(out.stats.in_both) +
+        " with a score on one side only";
     std::string footer =
         "A drum fill only appears if your Star Power meter filled up in time. " +
         fill_rule_description(FillDeadlineRule::Ch10) + " " +

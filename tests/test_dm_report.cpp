@@ -236,6 +236,16 @@ TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
     rows = app::dm_report::collect_dm_rows(bold, {unknown_meta}, kMode, store::Lens{});
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == "Bold Title");
+
+    // A stored artist made only of tags reads "(unknown)" by the title's
+    // rule (D50 item 5); a charter made only of tags keeps today's blank.
+    // add_song keeps the latest names it is given.
+    tags_only.add_song(kHash, "Stored Title", test::kTagOnlyTitle, test::kTagOnlyTitle,
+                       test::beat_song({}, {}, 13440));
+    rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].artist == kUnknownTitle);
+    CHECK(rows[0].charter == "");
 }
 
 TEST_CASE("collect_dm_rows: a percent rounds once") {
