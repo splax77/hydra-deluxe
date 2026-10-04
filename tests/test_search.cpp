@@ -1171,13 +1171,20 @@ TEST_CASE("search: no fresh record stores an unknown transfer scale (constructed
                        << " SqOuts, " << clamps << " clamps)");
 }
 
-TEST_CASE("squeeze-out: one SqOut, last, and its offset is its row's, on every corpus path") {
+// The search ranks a squeeze-out by its own offset (the deact edge's
+// sqinout_timing); the record stores the row's. rebuild throws if the two
+// differ, so run_search failing here is that check biting. The stored offset
+// is then measured again, independently, from the deactivation node D.
+TEST_CASE("squeeze-out: one SqOut, last, and its offset is the search's and D's, on every corpus path") {
     int sqouts = 0;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
         if (song.is_empty()) continue;
         ScoreGraph graph(song, 4);
-        for (const Path& p : run_search(graph, EngineOptions{DepthMode::Scores, 4})) {
+        CAPTURE(path);
+        std::vector<Path> paths;
+        REQUIRE_NOTHROW(paths = run_search(graph, EngineOptions{DepthMode::Scores, 4}));
+        for (const Path& p : paths) {
             for (const Activation& act : p.all_activations()) {
                 int n = 0;
                 for (size_t i = 0; i < act.sqinouts.size(); ++i) {
@@ -1195,6 +1202,13 @@ TEST_CASE("squeeze-out: one SqOut, last, and its offset is its row's, on every c
                 REQUIRE(row != nullptr);
                 REQUIRE(row->offset_ms.has_value());
                 CHECK(*row->offset_ms == act.sqinouts.back().offset_ms);  // exact
+                // Measured again from D, the SP end every row is measured
+                // against, not read back off the row.
+                const std::optional<int64_t> d = act.deact_tick();
+                REQUIRE(d.has_value());
+                const double from_d = offset_from_sp_end(
+                    row->timecode.ms(), song.timing().timecode(*d).ms());
+                CHECK(*row->offset_ms == from_d);  // exact
             }
         }
     }

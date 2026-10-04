@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -1224,12 +1225,15 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             }
             // The SqIns go in here. A SqOut is always the last squeeze, and
             // set_sqout below builds its entry from its row, so its offset is
-            // stored once.
+            // stored once. The search ranked the path by its own SqOut offset
+            // (the edge's sqinout_timing), so keep it to check against the row.
             bool took_sqout = false;
+            double searched_sqout_ms = 0.0;
             for (int k = oa.sq_begin; k < oa.sq_end; ++k) {
                 const OutSq& os = out_sqs[(size_t)k];
                 if (os.kind == SQ_OUT) {
                     took_sqout = true;
+                    searched_sqout_ms = os.offset;
                     continue;
                 }
                 act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, os.offset});
@@ -1246,7 +1250,19 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             if (took_sqout && oa.deact_edge >= 0) {
                 const std::optional<Timecode>& sqout_at =
                     en.edges[(size_t)oa.deact_edge]->sqinout_time;
-                if (sqout_at.has_value()) act.set_sqout(sqout_at->ticks());
+                if (sqout_at.has_value()) {
+                    act.set_sqout(sqout_at->ticks());
+                    // The record shows the row's offset; the search ranked by
+                    // its own. They must be the same number, or the record
+                    // would show a squeeze the search didn't rank.
+                    const double stored_ms = *act.sqout_row()->offset_ms;
+                    if (stored_ms != searched_sqout_ms)
+                        throw std::logic_error(
+                            "rebuild: the search's SqOut offset " +
+                            std::to_string(searched_sqout_ms) + " ms differs from its row's " +
+                            std::to_string(stored_ms) + " ms at tick " +
+                            std::to_string(sqout_at->ticks()));
+                }
             }
 
             // Every place this window's SP end moved, as the search did it.

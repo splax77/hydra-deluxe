@@ -518,3 +518,42 @@ TEST_CASE("path codec: a squeeze-out is stored once, as its tick") {
     p2.activations.push_back(drift);
     CHECK_THROWS_AS(encode_path_node(p2), std::logic_error);
 }
+
+// The writer refuses every squeeze-out shape the reader would refuse or
+// change, so a record it writes always reads back as written.
+TEST_CASE("path codec: the writer refuses a squeeze-out the reader can't read back") {
+    Activation act;
+    act.timecode = Timecode::raw(0);
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(3036);
+    row.offset_ms = -93.75;
+    act.backends.push_back(row);
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.5});
+
+    // A tick with no row on it and no SqOut entry. The reader would throw
+    // on that tick, so the writer must not store it. (Set by hand here:
+    // only set_sqout writes sqout_tick in src/.)
+    Activation stray = act;
+    stray.sqout_tick = 4000;
+    Path p1;
+    p1.activations.push_back(stray);
+    CHECK_THROWS_AS(encode_path_node(p1), std::logic_error);
+
+    // A SqOut that isn't the last squeeze. The reader always puts it last,
+    // so it would quietly move.
+    Activation middle = act;
+    middle.set_sqout(3036);
+    std::swap(middle.sqinouts[0], middle.sqinouts[1]);
+    REQUIRE(middle.sqinouts[0].kind == SqueezeKind::SqOut);
+    Path p2;
+    p2.activations.push_back(middle);
+    CHECK_THROWS_AS(encode_path_node(p2), std::logic_error);
+
+    // The well-formed one still writes and reads back.
+    Activation good = act;
+    good.set_sqout(3036);
+    Path p3;
+    p3.activations.push_back(good);
+    const Path back = decode_path_node(encode_path_node(p3));
+    CHECK(back.activations.front().sqout_tick == std::optional<int64_t>(3036));
+}

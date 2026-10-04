@@ -138,20 +138,26 @@ void write_activation(BinaryWriter& w, const Activation& act) {
     }
 
     // The squeeze-out is stored once: sqout_tick below, with its offset in
-    // its row. Refuse an activation whose SqOut entry and row disagree, so
-    // nothing is lost by not writing the entry.
+    // its row. Refuse anything the reader would refuse or change: a SqOut
+    // entry whose row is missing or disagrees, a tick with no SqOut entry
+    // (with or without a row on it), or a SqOut that isn't the last squeeze
+    // (the reader always puts it last). So nothing is lost by not writing
+    // the entry.
     const BackendSqueeze* sqout = act.sqout_row();
     size_t nsqout = 0, nsqin = 0;
-    for (const SPSqueeze& sq : act.sqinouts) {
+    for (size_t i = 0; i < act.sqinouts.size(); ++i) {
+        const SPSqueeze& sq = act.sqinouts[i];
         if (sq.kind == SqueezeKind::SqIn) {
             ++nsqin;
             continue;
         }
         ++nsqout;
+        if (i + 1 != act.sqinouts.size())
+            throw std::logic_error("write_activation: a SqOut that isn't the last squeeze");
         if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)
             throw std::logic_error("write_activation: squeeze-out stored twice and disagreeing");
     }
-    if (nsqout > 1 || (sqout != nullptr) != (nsqout == 1))
+    if (nsqout > 1 || act.sqout_tick.has_value() != (nsqout == 1))
         throw std::logic_error("write_activation: squeeze-out stored twice and disagreeing");
 
     // The SqIns only, each with its offset and its own transfer scale behind
