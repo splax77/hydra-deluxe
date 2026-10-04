@@ -2264,13 +2264,10 @@ TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene")
     CHECK(ticks_checked > 0);
 }
 
-// The same gauge comparison on every tied variant. Until each variant keeps
-// its own bank (Task 18), a variant folded between windows carries its
-// leader's bar arrivals, so it is skipped by default and prints each
-// difference. Run it with --no-skip; it should print nothing and pass once
-// Task 18 is in.
-TEST_CASE("preview lookups: every corpus variant's gauge matches the old scan" *
-          doctest::skip()) {
+// The same gauge comparison on every tied variant. Each variant keeps its own
+// bank (Task 18), so its gauge reads its own bar arrivals. Any difference is
+// printed before the check fails.
+TEST_CASE("preview lookups: every corpus variant's gauge matches the old scan") {
     // The app's default settings, as "base + overlay" reads the corpus.
     const AnalysisSettings cfg = Settings().to_analysis_settings();
     std::mt19937 rng(7);
