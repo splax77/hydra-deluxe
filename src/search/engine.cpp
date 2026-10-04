@@ -67,14 +67,16 @@ struct EdgeView {
     // A deactivation edge's squeeze choices: Enum::choices[choice_begin,
     // choice_end), in chart order (ScoreGraphEdge::squeeze_choices).
     int32_t choice_begin, choice_end;
-    int64_t sqin_time;
 };
 // One squeeze choice of a deactivation edge, in ticks.
 struct ChoiceView {
     int64_t chord;
     double timing;
     int64_t sqout_time;
+    int64_t sqin_time;
     int32_t late;
+    // The cap's ceiling set the moved end (SqueezeChoice::clamped).
+    int32_t clamped;
 };
 
 struct Enum {
@@ -167,11 +169,11 @@ Enum enumerate(const ScoreGraph& graph) {
         v.frontend_points = o->frontend_points;
         v.banked_phrase_ordinal = o->banked_phrase_ordinal;
         v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);
-        v.sqin_time = o->sqin_time ? o->sqin_time->ticks() : NO_TIME;
         v.choice_begin = (int32_t)en.choices.size();
         for (const SqueezeChoice& c : o->squeeze_choices)
             en.choices.push_back(ChoiceView{c.chord.ticks(), c.timing, c.sqout_time.ticks(),
-                                            c.late ? 1 : 0});
+                                            c.sqin_time.ticks(), c.late ? 1 : 0,
+                                            c.clamped ? 1 : 0});
         v.choice_end = (int32_t)en.choices.size();
         en.edge_views.push_back(v);
     }
@@ -267,6 +269,14 @@ struct Path {
     int32_t sc[6];
     int64_t score;
     int64_t sp_end_time;
+    // When the last phrase step clamped the end to the cap's ceiling, and
+    // that phrase sits in the squeeze window of the end it moved
+    // (SpExtension::sqout_reach): the phrase's tick and the end it moved.
+    // A clamped end is the same tick whichever end the phrase moved, so only
+    // the path that moved from a node's tick may squeeze that phrase out
+    // there (finding 37). NO_TIME otherwise.
+    int64_t clamp_tick;
+    int64_t clamp_from;
     // The running activation's SP-end steps so far (an index into ends_),
     // or -1. Handed to the Act at deactivation.
     int32_t end_tail;
@@ -755,6 +765,16 @@ void Engine::advance(Path& p) {
                     p.node = NODE_BROKEN;
                     return;
                 }
+                // Remember which end a clamp moved, while the old end is
+                // still at hand (finding 37). Any other step moves the end
+                // somewhere no squeeze-out back to an older end can match.
+                if (mit->second.sqout_reach) {
+                    p.clamp_tick = eo->sp_times[(size_t)i].first.ticks();
+                    p.clamp_from = sp_end_time;
+                } else {
+                    p.clamp_tick = NO_TIME;
+                    p.clamp_from = NO_TIME;
+                }
                 sp_end_time = mit->second.to_tick;
                 // Every other phrase the gauge receives is one step: Clamped
                 // when the cap pinned the end to it, else Collected.
@@ -865,6 +885,8 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.skipped_e_offset = NO_DOUBLE;
     c.sp_ready_ms = NO_DOUBLE;
     c.sp_end_time = aiet_val;
+    c.clamp_tick = NO_TIME;
+    c.clamp_from = NO_TIME;
     c.end_tail = push_end(-1, n.tick, aiet_val, SpEndKind::Activation);
     c.banked_phrase_ordinal = e.banked_phrase_ordinal;
 
@@ -888,6 +910,10 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
     // when the SqIn's new end, one SP bar on, comes before its phrase, that
     // phrase was once squeezed in a second time there and the search broke).
     // The offer is a squeeze choice for a path whose end is its sqout_time.
+    // A clamped end is the cap's ceiling whichever end the chord moved, so
+    // a clamped choice also needs the path to have moved from this node: any
+    // other path would stop at an end it never had (finding 37). Refusing
+    // gives such a path what it got before the clamp was priced: no offer.
     if (e.choice_begin < e.choice_end) {
         const ChoiceView* first = &en_.choices[(size_t)e.choice_begin];
         const ChoiceView* last = first + (e.choice_end - e.choice_begin);
@@ -895,7 +921,9 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
             first, last, node(acts_[(size_t)p.act_tail].act_node).tick,
             [](const ChoiceView& v) { return v.chord; },
             [this, &p](int64_t tick) { return squeezed_in(p, tick); });
-        if (c != last && p.sp_end_time == c->sqout_time) {
+        if (c != last && p.sp_end_time == c->sqout_time &&
+            (c->late || !c->clamped ||
+             (p.clamp_tick == c->chord && p.clamp_from == node(e.dest).tick))) {
             *offered = c;
             return DEACT_SQINOUT;
         }
@@ -919,6 +947,8 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     c.node = e.dest;
     c.sp = sq ? 1 : 0;
     c.sp_end_time = NO_TIME;
+    c.clamp_tick = NO_TIME;
+    c.clamp_from = NO_TIME;
     c.end_tail = -1;
     // A squeeze-out banks one bar when the player hits the phrase: just after
     // SP ends for an early phrase, on its own tick for a late one.
@@ -997,9 +1027,12 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // An early one's phrase is already a Collected step (advance collected it
     // before this branch point, and the SqOut child above shares that step):
     // relabel it on this branch only.
-    if (sq->late)
-        p.end_tail = push_end(p.end_tail, sq->chord, e.sqin_time, SpEndKind::SqIn);
-    else if (!relabel_sqin(p.end_tail, sq->chord)) {
+    if (sq->late) {
+        p.end_tail = push_end(p.end_tail, sq->chord, sq->sqin_time, SpEndKind::SqIn);
+        // The late phrase moved the end by a plain bar: no clamp is in force.
+        p.clamp_tick = NO_TIME;
+        p.clamp_from = NO_TIME;
+    } else if (!relabel_sqin(p.end_tail, sq->chord)) {
         p.node = NODE_BROKEN;  // run() sees it and refuses the search
         return false;
     }
@@ -1008,7 +1041,7 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // this one is offered after it (D34). Both branches keep those spent. A
     // late phrase is the next one in line: this branch spends it too, and the
     // SqOut child holds it banked (its bar is already in the child's meter).
-    p.sp_end_time = e.sqin_time;
+    p.sp_end_time = sq->sqin_time;
     child->spent = p.spent;
     child->banked_ahead = sq->late;
     p.spent += sq->late;
@@ -1095,6 +1128,18 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
 
         Path& leader = cur_[(size_t)leader_idx];
         const Path& p = cur_[(size_t)idx];
+        // Two running paths whose clamped ends tie but came from different
+        // ends are not one future: each may squeeze the clamping phrase out
+        // only back to its own end (finding 37). Folded, the variant would
+        // follow the leader's squeeze choices and lose its own squeeze-out
+        // (the tied-clamps test). Keep both. Only when a clamp
+        // sits in squeeze reach (Path::clamp_from), which needs 2 x (cap - 1)
+        // measures inside 500 ms, so at cap 4 almost never.
+        if (p.node >= 0 &&
+            (leader.clamp_tick != p.clamp_tick || leader.clamp_from != p.clamp_from)) {
+            survivors_.push_back(idx);
+            continue;
+        }
         if (leader.tied_count + p.tied_count <= max_tied_paths_) {
             Variant v;
             v.prev = leader.var_head;
@@ -1247,6 +1292,11 @@ void Engine::reduce_iteration_paths() {
         // bits, the ordinal (a phrase count) in 16 and the SP flag in 1. Any
         // 2^47 consecutive values differ in their low 47 bits, so an end in
         // [-2^46, 2^46) packs exactly; the check below refuses the rest.
+        // The end a clamp moved (Path::clamp_from) is not in the key: two
+        // paths clamped to one end from different ends share a group, and
+        // the lower one can be pruned before its own squeeze-out node. That
+        // loses only a squeeze-out no search offered before finding 37, so
+        // it is no regression; reduce_group never folds the two as ties.
         const bool is_sp = !is_complete && node(p.node).is_sp;
         const int64_t sp_value =
             is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);
@@ -1547,6 +1597,8 @@ bool Engine::run() {
     root.var_head = -1;
     root.tied_count = 1;
     root.sp_end_time = NO_TIME;
+    root.clamp_tick = NO_TIME;
+    root.clamp_from = NO_TIME;
     root.end_tail = -1;
     root.bank_tail = -1;
     root.skip_tail = -1;

@@ -171,7 +171,14 @@ void ScoreGraph::build() {
                 // still holding that end has already ended on it
                 // (Engine::deactivation_type).
                 if (sqin_end_by_phrase(de.to.ticks(), timestamp.timecode.ticks())) continue;
-                ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped};
+                // A clamp on a phrase in the moved end's own window (the SqOut
+                // copies above): that end's deactivation edge offers this
+                // phrase as a squeeze-out back to it (finding 37).
+                const bool sqout_reach =
+                    de.clamped && timestamp.timecode.ticks() <= de.from.ticks() &&
+                    within_squeeze_window(
+                        offset_from_sp_end(timestamp.timecode.ms(), de.from.ms()));
+                ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped, sqout_reach};
                 new_pending[de.to.ticks()] = de.to;
             }
             for (const Timecode& t : sqout_deacts)
@@ -379,8 +386,6 @@ void ScoreGraph::add_deact_edge() {
     deact_edge->dest = base_track_head_;
     const Timecode& end = deact_edge->dest->timecode;
 
-    deact_edge->sqin_time = end;
-
     for (const BackendSqueeze& recent_backend : recent_backends_) {
         BackendSqueeze copy = recent_backend;
         copy.offset_ms = offset_from_sp_end(recent_backend.timecode.ms(), end.ms());
@@ -389,29 +394,31 @@ void ScoreGraph::add_deact_edge() {
 
     // The phrase chords this SP end can squeeze, in chart order
     // (core/sqout_chord.h). The engine offers a path the first one its
-    // running window can still squeeze. On or before the end, a chord moves
-    // both branches' ends one bar. After the end, only a late SqIn reaches
-    // it, so only the SqIn end moves.
+    // running window can still squeeze. Where collecting a chord moves this
+    // end is extend_deacts' answer, the same one the chord's own advance edge
+    // carries, cap included (finding 37). On or before the end, both
+    // branches' ends move there. After the end, only a late SqIn reaches it,
+    // so only the SqIn end moves; a chord after the end can never reach the
+    // ceiling (it sits 2 x cap measures past a note later than the end).
     const std::vector<const SongTimestamp*> window = core::squeeze_window_phrases(song_, end);
-    if (!window.empty()) {
-        const Timecode one_bar = plusmeasure(end, sp_bars_to_measures(1));
-        deact_edge->sqin_time = one_bar;
-        for (const SongTimestamp* c : window) {
-            SqueezeChoice choice;
-            choice.chord = c->timecode;
-            choice.timing = offset_from_sp_end(c->timecode.ms(), end.ms());
-            choice.late = c->timecode.ticks() > end.ticks();
-            choice.sqout_time = choice.late ? end : one_bar;
-            deact_edge->squeeze_choices.push_back(choice);
-            // A late SqIn's end can come before its own phrase: add its node
-            // now, while it is still ahead (sqin_end_by_phrase). Any late
-            // chord in the window can be the one offered.
-            if (choice.late && sqin_end_by_phrase(one_bar.ticks(), c->timecode.ticks()) &&
-                pending_deacts_.find(one_bar.ticks()) == pending_deacts_.end()) {
-                pending_deacts_[one_bar.ticks()] = one_bar;
-                deact_heap_.push_back(one_bar);
-                std::push_heap(deact_heap_.begin(), deact_heap_.end(), TickGreater{});
-            }
+    for (const SongTimestamp* c : window) {
+        const DeactExtension moved = extend_deacts({end}, c->timecode).front();
+        SqueezeChoice choice;
+        choice.chord = c->timecode;
+        choice.timing = offset_from_sp_end(c->timecode.ms(), end.ms());
+        choice.late = c->timecode.ticks() > end.ticks();
+        choice.sqout_time = choice.late ? end : moved.to;
+        choice.sqin_time = moved.to;
+        choice.clamped = moved.clamped;
+        deact_edge->squeeze_choices.push_back(choice);
+        // A late SqIn's end can come before its own phrase: add its node
+        // now, while it is still ahead (sqin_end_by_phrase). Any late
+        // chord in the window can be the one offered.
+        if (choice.late && sqin_end_by_phrase(moved.to.ticks(), c->timecode.ticks()) &&
+            pending_deacts_.find(moved.to.ticks()) == pending_deacts_.end()) {
+            pending_deacts_[moved.to.ticks()] = moved.to;
+            deact_heap_.push_back(moved.to);
+            std::push_heap(deact_heap_.begin(), deact_heap_.end(), TickGreater{});
         }
     }
 
