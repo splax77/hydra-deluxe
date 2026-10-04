@@ -74,7 +74,7 @@ bool show_in_folder(const std::filesystem::path& file) {
     const std::wstring args = L"/select,\"" + target + L"\"";
     HINSTANCE r = ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr,
                                 SW_SHOWNORMAL);
-    return reinterpret_cast<INT_PTR>(r) > 32;  // ShellExecute's documented success test
+    return shell_execute_ok(r);
 }
 
 }  // namespace hydra::ui

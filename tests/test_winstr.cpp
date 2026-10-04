@@ -148,6 +148,23 @@ TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing
     CHECK_THROWS_AS(hydra::read_file_bytes(missing.utf8()), std::runtime_error);
 }
 
+// Finding 251's table, the rule the scan's stored rootfolder has always used.
+TEST_CASE("parent_folder: the audit's four rows") {
+    CHECK(hydra::parent_folder("C:\\a\\b\\notes.mid") == "C:\\a\\b");
+    CHECK(hydra::parent_folder("C:\\a\\b\\") == "C:\\a");
+    CHECK(hydra::parent_folder("notes.mid").empty());
+    CHECK(hydra::parent_folder("").empty());
+}
+
+// Finding 217: 32 and below means failure, 33 and above means success.
+TEST_CASE("shell_execute_ok: 32 and below fail, 33 and above succeed") {
+    // ShellExecute hands the code back as an HINSTANCE.
+    auto ok = [](intptr_t code) { return hydra::shell_execute_ok(reinterpret_cast<void*>(code)); };
+    CHECK_FALSE(ok(0));
+    CHECK_FALSE(ok(32));
+    CHECK(ok(33));
+}
+
 TEST_CASE("read_file_bytes of an empty file is empty, not an error") {
     TempFile tmp(L"hydra_file_size_empty.bin");
     std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");

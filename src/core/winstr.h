@@ -52,6 +52,17 @@ bool fits_shell(const std::wstring& path);
 // than C:), or it is a \\.\ device path.
 std::wstring shell_path(const std::wstring& path);
 
+// Whether a ShellExecute call succeeded, from the HINSTANCE it returned (void*
+// here so this header needs no windows.h): above 32 is success, 32 and below
+// an error code. The one place that reads that documented rule.
+bool shell_execute_ok(void* shell_execute_result);
+
+// A path's parent folder: trailing slashes or backslashes are dropped, then
+// the path is cut at its last one. Empty when no separator is left (a bare
+// name, or an empty path). "C:\a\b\" gives "C:\a", as the library scan has
+// always worked out a song folder's root (audit finding 251).
+std::string parent_folder(const std::string& path);
+
 // win32_path as a std::filesystem::path, for std::filesystem calls and
 // fstreams, which take a path object.
 std::filesystem::path os_path(const std::filesystem::path& p);
