@@ -136,9 +136,13 @@ inline void overflow_tooltip(const char* text) {
     }
 }
 
+// How wide `s` draws in the current font. The measurer every
+// render::ellipsize call in the UI hands over.
+inline float text_width(const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; }
+
 // TextUnformatted that ellipsizes at the available width instead of clipping
 // mid-glyph, with the full text in a tooltip when it didn't fit. The cut is
-// render::ellipsize's, measured in the current font, so every cut label in
+// render::ellipsize's, measured in the current font (text_width), so every cut label in
 // the UI follows the one rule. Uses the current font and text color, so
 // callers can Push either around it. `max_width` caps the space the text may
 // take, for text that shares its line with right-aligned buttons (the song
@@ -148,8 +152,7 @@ inline void text_ellipsized(const char* text, float max_width = FLT_MAX) {
     if (window->SkipItems) return;
 
     const float avail = std::min(ImGui::GetContentRegionAvail().x, max_width);
-    const std::string shown = render::ellipsize(
-        text, avail, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });
+    const std::string shown = render::ellipsize(text, avail, text_width);
     if (shown == text) {
         ImGui::TextUnformatted(text);
         return;

@@ -46,11 +46,14 @@ bool matches_query(const app::LibraryQuery& q, const LibraryRow& row) {
 // filters on changed, so a refresh that finds the same answers costs no
 // re-sort.
 bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
-    if (row.status == lookup.status && row.bestpath == lookup.bestpath &&
+    if (row.status == lookup.status && row.stale_build == lookup.stale_build &&
+        row.stale_rules == lookup.stale_rules && row.bestpath == lookup.bestpath &&
         row.summary.score == lookup.summary.score && row.summary.stars == lookup.summary.stars &&
         row.summary.hardest_ms == lookup.summary.hardest_ms)
         return false;
     row.status = lookup.status;
+    row.stale_build = lookup.stale_build;
+    row.stale_rules = lookup.stale_rules;
     row.bestpath = lookup.bestpath;
     row.summary = lookup.summary;
     row.best_label = best_path_label(row.status, row.bestpath, row.summary);

@@ -10,11 +10,16 @@
 #include <string>
 #include <vector>
 
+#include "app/user_messages.h"  // stale_text, what a Stale row's tooltip shows
+#include "core/rules.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "store/record_store.h"
 #include "ui/library_model.h"
 
+using hydra::store::CapQuery;
 using hydra::store::ChartLibraryEntry;
+using hydra::store::PreparedRow;
+using hydra::store::RecordKey;
 using hydra::store::RecordStatus;
 using hydra::store::SummaryLookup;
 using hydra::ui::LibraryModel;
@@ -74,7 +79,92 @@ std::vector<std::string> titles(const LibraryModel& m) {
     return out;
 }
 
+// A library of three charts whose stored results are Stale, one per cause,
+// read through the store the way the app reads them (get_summaries). Chart
+// "build" came from another Hydra version, "rules" from other rules in
+// hydra_rules.ini, "both" from both. Returns the model's rows, in that order.
+std::vector<hydra::ui::LibraryRow> stale_rows() {
+    hydra::core::Rules other = hydra::core::default_rules();
+    other.max_tied_paths = 2;
+    hydra::HydraRecord here;
+    here.sp_cap = 8;
+    hydra::HydraRecord foreign = here;
+    foreign.rules_fingerprint = other.fingerprint();
+    auto key = [](const char* md5) { return RecordKey{md5, "mode", CapQuery::at(8)}; };
+
+    hydra::store::RecordStore store(":memory:");
+    PreparedRow build = hydra::store::prepare_row(key("build"), here);
+    build.hyversion = "0.0.0";
+    store.add_row(build);
+    store.add_row(hydra::store::prepare_row(key("rules"), foreign));
+    PreparedRow both = hydra::store::prepare_row(key("both"), foreign);
+    both.hyversion = "0.0.0";
+    store.add_row(both);
+
+    LibraryModel m;
+    m.set_charts({chart("build", "Build", "A", "C", "common"),
+                  chart("rules", "Rules", "A", "C", "common"),
+                  chart("both", "Both", "A", "C", "common")});
+    m.set_summaries(
+        store.get_summaries(m.hashes(), "mode", CapQuery::at(8), hydra::store::Lens{}));
+    return m.rows();
+}
+
+// The sentence a Stale row's tooltip shows (library_table.cpp asks
+// stale_text with the row's two flags).
+std::string row_tooltip(const hydra::ui::LibraryRow& row) {
+    return hydra::app::stale_text(row.stale_build, row.stale_rules);
+}
+
 }  // namespace
+
+TEST_CASE("library model: a row Stale from another Hydra version says so in its tooltip") {
+    const std::vector<hydra::ui::LibraryRow> rows = stale_rows();
+    REQUIRE(rows.size() == 3);
+    const hydra::ui::LibraryRow& row = rows[0];
+    REQUIRE(row.status == RecordStatus::Stale);
+    CHECK(row.stale_build);
+    CHECK_FALSE(row.stale_rules);
+    CHECK(row_tooltip(row) ==
+          "Out of date: this result came from another Hydra version. Re-analyze to refresh it.");
+}
+
+TEST_CASE("library model: a row Stale from other rules names hydra_rules.ini in its tooltip") {
+    const std::vector<hydra::ui::LibraryRow> rows = stale_rows();
+    REQUIRE(rows.size() == 3);
+    const hydra::ui::LibraryRow& row = rows[1];
+    REQUIRE(row.status == RecordStatus::Stale);
+    CHECK_FALSE(row.stale_build);
+    CHECK(row.stale_rules);
+    CHECK(row_tooltip(row) ==
+          "Out of date: this result came from different rules in hydra_rules.ini. Re-analyze "
+          "to refresh it.");
+}
+
+TEST_CASE("library model: a row Stale from both causes names both in its tooltip") {
+    const std::vector<hydra::ui::LibraryRow> rows = stale_rows();
+    REQUIRE(rows.size() == 3);
+    const hydra::ui::LibraryRow& row = rows[2];
+    REQUIRE(row.status == RecordStatus::Stale);
+    CHECK(row.stale_build);
+    CHECK(row.stale_rules);
+    CHECK(row_tooltip(row) ==
+          "Out of date: this result came from another Hydra version or from different rules "
+          "in hydra_rules.ini. Re-analyze to refresh it.");
+}
+
+TEST_CASE("library model: a Stale row whose cause changes takes the new cause") {
+    LibraryModel m;
+    m.set_charts({chart("h", "Song", "A", "C", "common")});
+    SummaryLookup by_build = stale();
+    by_build.stale_build = true;
+    REQUIRE(m.set_summaries({by_build}) == 1);
+    SummaryLookup by_rules = stale();
+    by_rules.stale_rules = true;
+    CHECK(m.set_summaries({by_rules}) == 1);
+    CHECK_FALSE(m.rows()[0].stale_build);
+    CHECK(m.rows()[0].stale_rules);
+}
 
 TEST_CASE("library model: every chart shows, sorted by title, with its Best path text") {
     const LibraryModel m = sample();
