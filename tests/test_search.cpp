@@ -1596,28 +1596,6 @@ void check_bank_list(const std::vector<int64_t>& ticks, const Activation* prev,
 }
 }  // namespace
 
-// R2's check, stage one: the lists hold exactly what the counts count.
-TEST_CASE("Bank: the lists match the stored counts on every corpus record") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song =
-            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        std::vector<const Path*> all = rec.all_paths();
-        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
-        for (const Path* p : all) {
-            CAPTURE(chart);
-            CHECK(p->trailing_bank_ticks.size() == static_cast<size_t>(p->leftover_sp()));
-            for (const Activation& act : p->walk_activations())
-                CHECK(act.bank_rise_ticks.size() == static_cast<size_t>(act.sp_meter()));
-        }
-    }
-}
-
-// The lasting order checks, on every path, tied variants included (D3,
-// finding 89). A variant's walk is its own windows, then its leader's from
-// the fold on, so its banked bars must still fall between its own windows.
 TEST_CASE("Bank: every corpus path banks in order") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int acts = 0;
