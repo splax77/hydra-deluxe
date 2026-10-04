@@ -79,14 +79,18 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     // walks `wins` once and a window, once in, stays past its activation.
     //
     // A window leaves for good when the chord is past its deactivation node
-    // and the window does not pay it. Both reasons a window skips a chord
-    // there only grow as the walk moves on, so it can never pay a later one:
+    // and the window does not pay it. Every reason a window pays a chord
+    // nothing there holds for every later chord too, so it can never pay a
+    // later one:
     //   - sqout_position(...) == After means the chord's tick is past the
     //     squeezed-out chord's tick, and ticks only grow.
     //   - Past the deactivation node the offset is row.ms - deact_ms, and ms
     //     never falls as ticks grow (positive tempos). counted_without_squeeze
     //     is true for every offset up to a threshold and false above it
     //     (offset <= 0 || offset < leeway), so once false it stays false.
+    //   - The chord is the squeezed-out chord and its sqout_points are 0 (a
+    //     one-note chord under the first-note rule). Every later chord is
+    //     past it, so sqout_position(...) == After from then on.
     // So the sum below visits exactly the windows the old every-window loop
     // paid, and sums the same integers (order does not change an int sum).
     std::vector<size_t> open;
@@ -134,12 +138,13 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         while (next_win < wins.size() && row.tick >= wins[next_win].act_tick)
             open.push_back(next_win++);
 
-        // How many activations pay this chord's doubling. Normally 0 or 1;
+        // How many activations pay this chord's doubling, asked of the shared
+        // rule core::paid_by_sp (decision D2). Normally 0 or 1;
         // summed rather than flagged because the engine sums too (a chord in
         // one activation's leeway that is also the next activation's frontend
         // is paid by both).
         int64_t sp_points = 0;
-        int sp_claims = 0;
+        int sp_paid = 0;
         size_t kept = 0;
         for (size_t k = 0; k < open.size(); ++k) {
             const Window& w = wins[open[k]];
@@ -151,21 +156,19 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
                                              : std::min(offset_from_sp_end(row.ms, w.deact_ms), 0.0);
             const core::SqOutPosition pos =
                 core::sqout_position(row.tick, w.sqout_tick);
-            const bool pays =
-                pos != core::SqOutPosition::After &&
-                core::counted_without_squeeze(offset, rules.backend_leeway_ms);
-            if (pays) {
-                ++sp_claims;
-                sp_points += core::backend_row_value(
-                    offset, sg.sp, sg.sqout_sp(), pos,
-                    rules.backend_leeway_ms);
+            const bool paid = core::paid_by_sp(offset, sg.sp, sg.sqout_sp(), pos,
+                                               rules.backend_leeway_ms);
+            if (paid) {
+                ++sp_paid;
+                sp_points += core::backend_row_value(offset, sg.sp, sg.sqout_sp(), pos,
+                                                     rules.backend_leeway_ms);
             }
             // Erase-remove in place: keep the window unless it is past its
-            // deactivation node and skipped this chord (see `open` above).
-            if (pays || !past_deact) open[kept++] = open[k];
+            // deactivation node and paid nothing here (see `open` above).
+            if (paid || !past_deact) open[kept++] = open[k];
         }
         open.resize(kept);
-        row.in_sp = sp_claims > 0;
+        row.in_sp = sp_paid > 0;
         row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
 
         row.points.base = sg.base;
