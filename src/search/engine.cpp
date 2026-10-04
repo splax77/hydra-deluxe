@@ -38,13 +38,9 @@ const int32_t DEACT_SQINOUT = 2;
 
 const int32_t NODE_BROKEN = -2;
 
-// Clone Hero's early-fill rule, stated once. A fill spawns only when SP was
-// ready by the fill's deadline, give or take kEarlyFillWindowMs. The e_offset
-// is how long before the deadline SP became ready (negative: after it).
-// branch_activate applies the rule; the search's group key (ready_class)
-// counts the upcoming fills it refuses.
-inline double fill_e_offset(double deadline_ms, double ready_ms) { return deadline_ms - ready_ms; }
-inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillWindowMs; }
+// Clone Hero's early-fill rule lives in core/model.h (fill_e_offset,
+// fill_refuses, is_e0). branch_activate applies it; the search's group key
+// (ready_class) counts the upcoming fills it refuses.
 
 // ---- the graph, enumerated ----------------------------------------------
 // The search is index-based (indices pack into memo keys and the output act
@@ -698,9 +694,10 @@ uint64_t Engine::ready_class(const Path& p) const {
     const bool can_be_e0 = has_ms_filter_ && p.currentskips == 0;
     uint64_t refused = 0, over = 0;
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
-        // Every deadline from here on is at least this one: none refuses,
-        // and none is an E0 (is_e0 needs less slack than this).
-        if (fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms) >= kEarlyFillWindowMs) break;
+        // Every deadline from here on is at least this one. When even this
+        // one leaves too much slack for an E0, none is an E0, and none
+        // refuses (a fill that refuses is always inside the E0 window).
+        if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
         if (fill_refuses(e_offset)) ++refused;
         if (can_be_e0 && is_e0(e_offset, 0) && !within_ms_limit(early_fill_difficulty(e_offset)))

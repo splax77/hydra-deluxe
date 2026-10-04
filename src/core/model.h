@@ -188,7 +188,18 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
     return is_sqin ? offset_ms : (-offset_ms + 0.0);
 }
 
+// ---- the early-fill window ----------------------------------------------
+// Clone Hero's early-fill rule and the E0, stated once around
+// kEarlyFillWindowMs. A fill spawns only when SP was ready by the fill's
+// deadline, give or take the window. The e_offset is how long before the
+// deadline SP became ready (negative: after it). The search's branch_activate
+// and its group key (ready_class) ask these; so do Activation's E tests.
+inline double fill_e_offset(double deadline_ms, double ready_ms) { return deadline_ms - ready_ms; }
+// The fill refuses to spawn: SP became ready more than the window too late.
+inline bool fill_refuses(double e_offset) { return e_offset < -kEarlyFillWindowMs; }
+
 // E0: the early fill lands inside its window and nothing was skipped.
+// is_e0(e_offset, 0) alone is "E-critical": the fill is inside the window.
 inline bool is_e0(double e_offset, int skips) {
     return e_offset < kEarlyFillWindowMs && skips == 0;
 }
@@ -414,7 +425,7 @@ struct Activation {
 
     std::string notationstr() const;
     std::string notationstr_verbose() const;
-    bool is_e_critical() const;  // e_offset < kEarlyFillWindowMs
+    bool is_e_critical() const;  // inside the early-fill window: is_e0(e_offset, 0)
     bool is_E0() const;
     std::optional<double> e_difficulty(bool verbose = false) const;
     std::optional<double> difficulty() const;

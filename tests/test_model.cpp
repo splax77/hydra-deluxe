@@ -124,6 +124,53 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
     CHECK(*a.e_difficulty() == early_fill_difficulty(10.0));
 }
 
+// The early-fill window has one owner: model.h states both halves of it, the
+// fill that refuses (fill_refuses) and the E0 (is_e0), and nothing in src/ or
+// tools/ compares against kEarlyFillWindowMs on its own. A second copy of the
+// cut-off drifts the day one of them changes (review of D35, finding A).
+TEST_CASE("early-fill window: only model.h reads kEarlyFillWindowMs") {
+    CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
+    CHECK_FALSE(fill_refuses(-kEarlyFillWindowMs));  // exactly 60 ms late still spawns
+    CHECK(fill_refuses(-kEarlyFillWindowMs - 0.1));
+    Activation a;
+    a.e_offset = kEarlyFillWindowMs - 0.1;
+    test::set_skips(a, 1);
+    CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
+    a.e_offset = kEarlyFillWindowMs;
+    CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
+
+    namespace fs = std::filesystem;
+    const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
+    std::vector<std::string> problems;
+    int files = 0, owner_uses = 0;
+    for (const char* sub : {"src", "tools"}) {
+        for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
+            const fs::path ext = e.path().extension();
+            if (ext != ".cpp" && ext != ".h") continue;
+            ++files;
+            const std::string rel = fs::relative(e.path(), root).generic_u8string();
+            std::ifstream in(e.path());
+            std::string line;
+            int lineno = 0;
+            while (std::getline(in, line)) {
+                ++lineno;
+                const std::string code = line.substr(0, line.find("//"));
+                if (code.find("kEarlyFillWindowMs") == std::string::npos) continue;
+                if (rel == "src/core/model.h") {
+                    ++owner_uses;
+                    continue;
+                }
+                problems.push_back(rel + ":" + std::to_string(lineno) + ": " + line);
+            }
+        }
+    }
+    CHECK(files > 50);
+    CHECK(owner_uses >= 3);  // the constant, fill_refuses and is_e0
+    INFO(problems.size() << " problem lines; first: "
+                         << (problems.empty() ? std::string() : problems.front()));
+    CHECK(problems.empty());
+}
+
 TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
     Path empty;
     CHECK_FALSE(empty.is_difficult());

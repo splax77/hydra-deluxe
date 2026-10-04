@@ -410,9 +410,8 @@ std::string MultSqueeze::howto() const {
 
 // ---- Activation ---------------------------------------------------------
 
-bool Activation::is_e_critical() const {
-    return e_offset < kEarlyFillWindowMs;
-}
+// Inside the early-fill window, skipped fills or not: is_e0 with none skipped.
+bool Activation::is_e_critical() const { return is_e0(e_offset, 0); }
 
 bool Activation::is_E0() const { return is_e0(e_offset, skips()); }
 
