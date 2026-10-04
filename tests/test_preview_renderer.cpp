@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "app/preview_view.h"
+#include "render/highway_draw.h"  // track_height
 #include "render/preview_renderer.h"
 #include "warp_util.h"
 
@@ -228,15 +229,17 @@ TEST_CASE("PreviewRenderer: resize and a tall target keep the track at the botto
 
     PreviewRenderer r(dev.Get(), ctx.Get(), kAssets);
     r.resize(128, 128);
-    r.resize(100, 300);  // taller than 100 * 1.1666 = 117: the top is background
+    r.resize(100, 300);  // taller than the track is: the top is background
     CHECK(r.width() == 100);
     CHECK(r.height() == 300);
+    // The track's height at this size, from the one rule the renderer sizes by.
+    const int track_h = track_height(r.config(), 100, 300);
     PreviewScene scene;
     r.set_scene(scene);
     r.render(0.0);
     std::vector<uint8_t> img = warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), 100, 300);
     CHECK(img.size() == static_cast<size_t>(100) * 300 * 4);
-    for (int y = 0; y < 300 - 117 - 2; y += 10) CHECK(is_background(warp::pixel(img, 100, 50, y)));
+    for (int y = 0; y < 300 - track_h - 2; y += 10) CHECK(is_background(warp::pixel(img, 100, 50, y)));
     CHECK_FALSE(is_background(warp::pixel(img, 100, 50, 292)));
 }
 
