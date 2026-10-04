@@ -1491,3 +1491,23 @@ TEST_CASE("single-owner: SE1's rows match their own examples (until M7-1 joins t
         CHECK(named);
     }
 }
+
+// ST1 (findings 116 and 132): in record_store.cpp a stored row becomes a
+// record only through decode_record, which sets the fill rule, and the
+// bestpath column's text is spelled only in bestpath_column, which
+// prepare_row and reindex share. Each is one code line in the file; comment
+// lines are skipped like the row scan does.
+TEST_CASE("single-owner: record_store.cpp decodes a row and spells bestpath once (ST1)") {
+    std::ifstream in(sourcetree::root() / "src" / "store" / "record_store.cpp");
+    REQUIRE(in.good());
+    int decodes = 0, bestpaths = 0;
+    std::string line;
+    while (std::getline(in, line)) {
+        const std::string t = hydra::trim(line);
+        if (t.compare(0, 2, "//") == 0) continue;
+        if (t.find("rebuild_record(") != std::string::npos) ++decodes;
+        if (t.find("best_path().pathstring()") != std::string::npos) ++bestpaths;
+    }
+    CHECK(decodes == 1);
+    CHECK(bestpaths == 1);
+}
