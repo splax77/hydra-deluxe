@@ -33,9 +33,9 @@ void apply_theme() {
     colors[ImGuiCol_ButtonActive] = kButtonActiveColor;
     colors[ImGuiCol_TextDisabled] = kDimTextColor;
     colors[ImGuiCol_CheckMark] = kAccentColor;
-    colors[ImGuiCol_FrameBgHovered] = ImVec4(0, 100 / 255.0f, 100 / 255.0f, 1.0f);
+    colors[ImGuiCol_FrameBgHovered] = kFrameHoveredColor;
     colors[ImGuiCol_FrameBgActive] = ImVec4(0, 150 / 255.0f, 150 / 255.0f, 1.0f);
-    colors[ImGuiCol_HeaderHovered] = ImVec4(0, 100 / 255.0f, 100 / 255.0f, 1.0f);
+    colors[ImGuiCol_HeaderHovered] = kFrameHoveredColor;
     colors[ImGuiCol_HeaderActive] = kAccentColor;
     colors[ImGuiCol_TitleBgActive] = ImVec4(100 / 255.0f, 0, 0, 1.0f);
     colors[ImGuiCol_PlotHistogram] = ImVec4(0, 200 / 255.0f, 200 / 255.0f, 1.0f);

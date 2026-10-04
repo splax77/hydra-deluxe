@@ -28,10 +28,6 @@ namespace hydra::ui::detail {
 
 namespace {
 
-// Typing is applied at most this often, so a burst of keys on a big library
-// filters a few times rather than once per key.
-constexpr double kSearchThrottleSeconds = 0.15;
-
 // The table's columns, by index. Each column's user ID is its LibrarySort.
 constexpr int kColumnTitle = 0;
 constexpr int kColumnArtist = 1;
@@ -108,7 +104,7 @@ void render_search_box(AppState& app) {
     // An emptied box applies at once; typing applies at most every 150 ms.
     const double now = ImGui::GetTime();
     if (ui.search_pending &&
-        (buf[0] == '\0' || now - ui.search_applied_at >= kSearchThrottleSeconds)) {
+        (buf[0] == '\0' || now - ui.search_applied_at >= AppState::kSearchThrottleSeconds)) {
         ui.search_pending = false;
         ui.search_applied_at = now;
         app.set_search(buf);

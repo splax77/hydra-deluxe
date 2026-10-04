@@ -94,7 +94,8 @@ struct LibraryViewState {
     // The folder waiting on the "Remove folder?" confirm.
     std::optional<size_t> confirm_remove;
     // The search box's text and whether it was filled from `search` yet.
-    // Typing is applied at most every 150 ms: `search_pending` holds an edit
+    // Typing is applied at most every AppState::kSearchThrottleSeconds:
+    // `search_pending` holds an edit
     // not applied yet, `search_applied_at` when the last one was.
     char search_buf[256] = "";
     bool search_synced = false;
@@ -229,6 +230,15 @@ public:
     // again once `now` (seconds) is kFileCheckSeconds past it.
     bool selected_file_ok(double now);
     static constexpr double kFileCheckSeconds = 2.0;
+    // How long "Done!" stays after an analysis finishes.
+    static constexpr double kDoneFlashSeconds = 0.5;
+    // How long "Copied!" stays after the path is copied.
+    static constexpr double kCopiedSeconds = 2.0;
+    // Typing in the library search re-filters at most this often, so a burst
+    // of keys on a big library filters a few times rather than once per key.
+    static constexpr double kSearchThrottleSeconds = 0.15;
+    // A running batch refreshes the library's results at most this often.
+    static constexpr double kBatchRefreshSeconds = 1.0;
 
     // The details modal's own per-frame state (see DetailsViewState above).
     DetailsViewState details_ui;
