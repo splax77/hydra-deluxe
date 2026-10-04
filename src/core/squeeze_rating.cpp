@@ -68,12 +68,20 @@ double squeeze_budget_ms(double transfer_r, double hit_window_ms) {
     return hit_window_ms * (1.0 + transfer_r);
 }
 
-bool transfer_is_material(double gap_ms, double transfer_r,
-                          double hit_window_ms) {
-    double gap = std::abs(gap_ms);
-    return std::abs(effective_backend_ms(gap, transfer_r) - gap) >
-               kTransferImpactMs ||
-           gap > squeeze_budget_ms(transfer_r, hit_window_ms);
+NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
+                     double hit_window_ms) {
+    NoteRating n;
+    n.early = inside;
+    n.scale = inside ? at_end.early : at_end.late;
+    n.budget_ms = squeeze_budget_ms(n.scale, hit_window_ms);
+    if (is_scaled(n.scale)) n.effective_ms = effective_backend_ms(offset_ms, n.scale);
+    return n;
+}
+
+bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms) {
+    return row.squeezed_out ||
+           (row.row.offset_ms &&
+            !core::counted_without_squeeze(*row.row.offset_ms, backend_leeway_ms));
 }
 
 ActivationRating rate_activation(const Activation& act,
@@ -85,18 +93,10 @@ ActivationRating rate_activation(const Activation& act,
     // never re-derived (ADRs 0011, 0013, 0014); every Ready record has them.
     out.scales = ActTransferScales{act.transfer_pre, act.transfer_post};
 
-    // The scale that governs each row follows the sign of its offset, not the
-    // kind of squeeze. A sqout row still inside SP (offset < 0) has to be
-    // achieved by an early frontend hit, so it reads the early scale; a sqout
-    // row already past the SP end (offset > 0) is free, and the only thing
-    // that can destroy it is a late frontend hit dragging the end over it, so
-    // it reads the late scale. Plain positive rows want a late frontend hit;
-    // plain rows inside SP (offset < 0) are lost only to an early one.
-    // All of them live at the (possibly SqIn-extended) SP end, so they read
-    // `post`. effective_ms maps the row's raw ms onto the nominal 2*W budget
-    // the ratings assume (the real combined budget is W*(1+r)); it engages
-    // only when the scale actually moves the number (an over-budget row still
-    // warns at x1.00 but reads at face value).
+    // Backend rows: every offset is measured from the deact node D, so they
+    // read `post`. A squeezed-out row is about its phrase, which the SP end
+    // itself decides; every other row is about its points, which the engine
+    // counts up to the leeway.
     std::vector<BackendSqueeze> backends = act.display_backends();
     out.backends.reserve(backends.size());
     for (const BackendSqueeze& bsq : backends) {
@@ -104,91 +104,41 @@ ActivationRating rate_activation(const Activation& act,
         row.row = bsq;
         row.squeezed_out = act.is_sqout_backend(bsq);
         if (bsq.offset_ms) {
-            bool applies = false;
-            if (row.squeezed_out && *bsq.offset_ms > 0.0) {
-                row.scale = out.scales.post.late;
-                applies = transfer_is_material(*bsq.offset_ms, row.scale,
-                                               hit_window_ms);
-                out.late_backend_warns |= applies;
-            } else if (row.squeezed_out) {
-                row.scale = out.scales.post.early;
-                applies = transfer_is_material(*bsq.offset_ms, row.scale,
-                                               hit_window_ms);
-                out.early_backend_warns |= applies;
-            } else if (!core::counted_without_squeeze(*bsq.offset_ms,
-                                                      backend_leeway_ms)) {
-                row.scale = out.scales.post.late;
-                applies = transfer_is_material(*bsq.offset_ms, row.scale,
-                                               hit_window_ms);
-                out.late_backend_warns |= applies;
-            } else if (*bsq.offset_ms < 0.0) {
-                // A plain row inside SP already counts. Like a free SqIn, the
-                // only thing that can lose it is an early frontend hit pulling
-                // the end back over it, so its margin reads the early scale.
-                row.scale = out.scales.post.early;
-                applies = transfer_is_material(*bsq.offset_ms, row.scale,
-                                               hit_window_ms);
-                out.early_backend_warns |= applies;
-            }
-            if (applies) {
-                double eff = effective_backend_ms(*bsq.offset_ms, row.scale);
-                if (std::abs(eff - std::abs(*bsq.offset_ms)) > kTransferImpactMs)
-                    row.effective_ms = eff;
-            }
+            const double o = *bsq.offset_ms;
+            const bool inside = row.squeezed_out
+                                    ? core::paid_by_sp_walk(o)
+                                    : core::counted_without_squeeze(o, backend_leeway_ms);
+            row.note = rate_note(o, inside, out.scales.post, hit_window_ms);
+            out.scale_governs |= row.note.effective_ms.has_value();
         }
-        row.budget_ms = squeeze_budget_ms(row.scale, hit_window_ms);
         out.backends.push_back(std::move(row));
     }
 
-    // The SqIn/SqOut phrase notes are judged at the pre-extension end, in the
-    // direction that decides them. A squeeze you still have to earn
-    // (difficulty > 0) is decided by the hit that achieves it: early (-) for a
-    // SqOut, late (+) for a SqIn. A free one (difficulty <= 0) is already
-    // yours, so the direction that matters is the opposite one -- the frontend
-    // error that would move the SP end far enough to take it away. They have
-    // no display row of their own, so they feed the warning line and carry
-    // their own effective ms, for the squeeze sentence to print.
+    // SqIn phrase notes: the offset is measured from the end before the
+    // phrase extended SP, so they read `pre`. A SqOut is not rated here: its
+    // offset is its squeezed-out row's offset (both are the deact edge's
+    // sqinout_timing), and that row was rated above, at the end it is
+    // measured from.
     out.note_effective_ms.reserve(act.sqinouts.size());
     for (const SPSqueeze& sq : act.sqinouts) {
-        bool achieved_early = (sq.kind == SqueezeKind::SqOut);
-        // At difficulty 0 the gap is 0 and nothing can be material, so the
-        // achievement direction stands.
-        bool early = sq.difficulty() >= 0.0 ? achieved_early : !achieved_early;
-        double scale = early ? out.scales.pre.early : out.scales.pre.late;
-        bool applies = transfer_is_material(sq.difficulty(), scale, hit_window_ms);
-        if (early)
-            out.early_note_warns |= applies;
-        else
-            out.late_note_warns |= applies;
-        std::optional<double> eff_ms;
-        if (applies) {
-            double eff = effective_backend_ms(sq.difficulty(), scale);
-            if (std::abs(eff - std::abs(sq.difficulty())) > kTransferImpactMs) eff_ms = eff;
+        if (sq.kind == SqueezeKind::SqOut) {
+            out.note_effective_ms.push_back(std::nullopt);
+            continue;
         }
-        out.note_effective_ms.push_back(eff_ms);
+        const NoteRating n = rate_note(sq.offset_ms, core::paid_by_sp_walk(sq.offset_ms),
+                                       out.scales.pre, hit_window_ms);
+        out.scale_governs |= n.effective_ms.has_value();
+        out.note_effective_ms.push_back(n.effective_ms);
     }
-
-    out.late_warns = out.late_backend_warns || out.late_note_warns;
-    out.early_warns = out.early_backend_warns || out.early_note_warns;
 
     // The cap-clamped flag fires when the activation has a clamp_tick AND at
     // least one squeeze the frontend decides: any SqIn/SqOut, or any backend
-    // row that was squeezed out or that the engine does not count (at or past
-    // the leeway).
+    // row is_frontend_decided accepts.
     if (act.clamp_tick.has_value()) {
-        bool has_frontend_squeeze = !act.sqinouts.empty();
-        if (!has_frontend_squeeze) {
-            for (const BackendRating& br : out.backends) {
-                if (br.squeezed_out ||
-                    (br.row.offset_ms &&
-                     !core::counted_without_squeeze(*br.row.offset_ms,
-                                                    backend_leeway_ms))) {
-                    has_frontend_squeeze = true;
-                    break;
-                }
-            }
-        }
-        out.cap_clamped = has_frontend_squeeze;
+        bool decided = !act.sqinouts.empty();
+        for (const BackendRating& br : out.backends)
+            decided = decided || is_frontend_decided(br, backend_leeway_ms);
+        out.cap_clamped = decided;
     }
 
     return out;
