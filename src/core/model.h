@@ -219,16 +219,19 @@ struct BackendSqueeze {
     Chord chord;
     int points = 0;
     int sqout_points = 0;
-    bool is_sp = false;
     std::optional<double> offset_ms;
 
     bool operator==(const BackendSqueeze& o) const;
     // Rating label. The outer +/-W edges come from the hit window; the inner
     // -10/3/10 edges are absolute (they encode leeway/near-deact semantics,
     // not the window).
+    // squeezed_out: this row is the activation's squeezed-out chord
+    // (Activation::is_sqout_backend). Only that row reads the SqOut ladder;
+    // every other row, phrase chord or not, reads the plain one.
     // leeway_ms: the backend leeway edge (Rules::backend_leeway_ms); a
-    // non-SP row under it rates "Standard".
-    std::string summarystr(double hit_window_ms = kDefaultHitWindowMs,
+    // plain row under it rates "Standard".
+    std::string summarystr(bool squeezed_out,
+                           double hit_window_ms = kDefaultHitWindowMs,
                            double leeway_ms = core::default_rules().backend_leeway_ms) const;
 };
 

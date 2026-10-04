@@ -304,14 +304,14 @@ std::string SPSqueeze::description() const {
 
 bool BackendSqueeze::operator==(const BackendSqueeze& o) const {
     return timecode == o.timecode && chord == o.chord && points == o.points &&
-           sqout_points == o.sqout_points && is_sp == o.is_sp &&
-           offset_ms == o.offset_ms;
+           sqout_points == o.sqout_points && offset_ms == o.offset_ms;
 }
 
-std::string BackendSqueeze::summarystr(double hit_window_ms, double leeway_ms) const {
+std::string BackendSqueeze::summarystr(bool squeezed_out, double hit_window_ms,
+                                       double leeway_ms) const {
     double off = offset_ms.value_or(0.0);
     const double w = hit_window_ms;
-    if (is_sp) {
+    if (squeezed_out) {
         if (off < -w) return "Insane SqOut";
         if (off < -10) return "Hard SqOut";
         if (off < 10) return "Standard SqOut";

@@ -443,7 +443,6 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     far_row.timecode = Timecode::raw(3256);
     far_row.points = 460;
     far_row.sqout_points = 260;
-    far_row.is_sp = true;
     far_row.offset_ms = 479.999;
     far.backends.push_back(far_row);
     far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 479.999});
@@ -493,12 +492,12 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
         row.offset_ms = ms;
         act.backends.push_back(row);
     }
-    // A phrase chord past the leeway that this path did not squeeze out.
+    // A phrase chord past the leeway that this path did not squeeze out: a
+    // plain row (finding 29).
     BackendSqueeze phrase;
     phrase.timecode = Timecode::raw(500);
     phrase.points = 460;
     phrase.sqout_points = 260;
-    phrase.is_sp = true;
     phrase.offset_ms = 150.0;
     act.backends.push_back(phrase);
 
@@ -517,7 +516,7 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     CHECK(b[3].points == "0");
     CHECK(b[3].rating == "Insane (uncounted)");
     CHECK(b[4].points == "0");
-    CHECK(b[4].rating == "Free SqOut");
+    CHECK(b[4].rating == "Insane (uncounted)");
     for (const BackendRowView& row : b) CHECK_FALSE(row.warn);
 }
 
@@ -816,7 +815,6 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     row.chord.add_note(NoteColor::Yellow);
     row.points = 460;
     row.sqout_points = 260;
-    row.is_sp = true;
     row.offset_ms = 479.999;
     far.backends.push_back(row);
     far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 479.999});
@@ -877,7 +875,6 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     BackendSqueeze ry;
     ry.timecode = Timecode::raw(5000);
     ry.offset_ms = -187.5;
-    ry.is_sp = true;
     act.backends.push_back(ry);
     act.sqout_tick = 5000;
     Path p;

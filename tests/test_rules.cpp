@@ -154,10 +154,21 @@ TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") 
 
 TEST_CASE("rules: the leeway moves the Standard edge of a backend rating") {
     BackendSqueeze b;
-    b.is_sp = false;
     b.offset_ms = 4.0;
-    CHECK(b.summarystr(kDefaultHitWindowMs) == "Hard (uncounted)");
-    CHECK(b.summarystr(kDefaultHitWindowMs, 5.0) == "Standard");
+    CHECK(b.summarystr(false, kDefaultHitWindowMs) == "Hard (uncounted)");
+    CHECK(b.summarystr(false, kDefaultHitWindowMs, 5.0) == "Standard");
+}
+
+// Finding 29: the SqOut ladder is for the row the activation squeezed out
+// (Activation::sqout_tick), not for every phrase chord.
+TEST_CASE("BackendSqueeze::summarystr: the SqOut ladder is for the squeezed-out row only") {
+    BackendSqueeze b;
+    b.offset_ms = -50.0;
+    CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
+    CHECK(b.summarystr(false, 85.0) == "Easy");
+    b.offset_ms = 150.0;
+    CHECK(b.summarystr(true, 85.0) == "Free SqOut");
+    CHECK(b.summarystr(false, 85.0) == "Insane (uncounted)");
 }
 
 TEST_CASE("rules: the leeway changes what the engine counts") {

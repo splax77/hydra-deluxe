@@ -340,7 +340,6 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     BackendSqueeze dq;
     dq.timecode = st.timecode(45960);
     dq.offset_ms = st.timecode(45960).ms() - st.timecode(46080).ms();
-    dq.is_sp = true;
     act2.backends.push_back(dq);
     auto scales2 = frontend_transfer_scales(act2, st);
     REQUIRE(scales2.has_value());
@@ -466,7 +465,6 @@ TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post")
     BackendSqueeze ry;
     ry.timecode = Timecode::raw(5000);
     ry.offset_ms = -187.5;
-    ry.is_sp = true;
     act.backends.push_back(ry);
     act.sqout_tick = 5000;
 
@@ -760,13 +758,13 @@ TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend sque
     CHECK_FALSE(r.scale_governs);
     REQUIRE(r.backends.size() == 1);
     CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
-    CHECK(act.backends[0].summarystr(85.0) == "Standard");
+    CHECK(act.backends[0].summarystr(false, 85.0) == "Standard");
 
     // At the leeway edge the row is uncounted, so the frontend decides it.
     act.backends[0].offset_ms = 3.0;
     r = rate_activation(act, 85.0);
     CHECK(r.cap_clamped);
-    CHECK(act.backends[0].summarystr(85.0) == "Hard (uncounted)");
+    CHECK(act.backends[0].summarystr(false, 85.0) == "Hard (uncounted)");
 
     // The edge is the user's rule: a 2 ms leeway makes 2.5 ms uncounted.
     const double narrow = 2.0;
@@ -774,7 +772,7 @@ TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend sque
     act.backends[0].offset_ms = 2.5;
     r = rate_activation(act, 85.0, narrow);
     CHECK(r.cap_clamped);
-    CHECK(act.backends[0].summarystr(85.0, narrow) == "Hard (uncounted)");
+    CHECK(act.backends[0].summarystr(false, 85.0, narrow) == "Hard (uncounted)");
 }
 
 TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {

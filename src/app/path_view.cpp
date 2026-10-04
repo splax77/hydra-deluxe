@@ -316,7 +316,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                                 : core::SqOutPosition::NoSqOut,
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
-            row.rating = bsq.summarystr(W, rules.backend_leeway_ms);
+            row.rating = bsq.summarystr(br.squeezed_out, W, rules.backend_leeway_ms);
             if (br.note.effective_ms) {
                 char effbuf[32];
                 std::snprintf(effbuf, sizeof(effbuf), " (eff. %.1fms)",
