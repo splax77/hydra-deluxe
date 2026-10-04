@@ -1353,7 +1353,8 @@ void Engine::reduce_iteration_paths() {
         // the lower one can be pruned before its own squeeze-out node. The
         // key was the same before finding 37, so that is no regression;
         // reduce_group never folds the two as ties where the origin changes
-        // an offer (clamp_offered).
+        // an offer (clamp_offered). ADR 0014 records both the exception and
+        // this gap (D44).
         const bool is_sp = !is_complete && node(p.node).is_sp;
         const int64_t sp_value =
             is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);
