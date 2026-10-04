@@ -24,7 +24,9 @@ enum class SqOutRule { FirstNote, WholeChord };
 constexpr uint64_t kNoRulesFingerprint = 0;
 
 struct Rules {
-    // A backend note this close after the SP end still scores under SP.
+    // A backend note less than this many ms after the SP end still scores
+    // under SP. Exactly this far after it does not: the edge is strict
+    // (decision D29, 2026-10-03).
     double backend_leeway_ms = 3.0;
     SqOutRule sqout_rule = SqOutRule::FirstNote;
     // Tied paths the engine folds into one leader before it drops the rest.
