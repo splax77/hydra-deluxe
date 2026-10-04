@@ -861,6 +861,22 @@ const std::vector<OwnerRule>& rules() {
          {{"src/ui/theme.h",
            "inline const ImVec4 kStarPowerColor{255 / 255.0f, 204 / 255.0f, 51 / 255.0f, 1.0f};",
            "kStarPowerColor, the owner"}}},
+        // ---- named UI timings (phase 3 task C4b) ----
+        // A time-since (now - x, or ImGui::GetTime() - x) compared against a
+        // bare number of seconds. AppState names each one beside
+        // kFileCheckSeconds; everything else reads the name.
+        {"How long does a UI confirmation stay, and how often does the UI re-check?",
+         "AppState in src/ui/app_state.h",
+         R"(\b(now|GetTime\(\))\s*-\s*[\w.:>-]+\s*[<>]=?\s*\d)",
+         "",
+         {"src/ui/app_state.h"},
+         {},
+         "audit finding R7.33; D48, Q33 (phase 3 task C4b)",
+         {"if (!shown || now - d.done_at > 0.5) analyze_job.reset();",
+          "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < 2.0) {",
+          "(snap.finished || now - batch_refreshed_at_ >= 1.0)) {"},
+         {"now - details_ui.file_checked_at >= kFileCheckSeconds) {",
+          "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {"}},
     };
     return r;
 }
@@ -906,6 +922,10 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which gold is Star Power?", "src/ui/preview_tab.cpp",
          "const ImU32 accent = drain.active ? IM_COL32(255, 204, 51, 255)  // SP gold",
          "task K4a (D48, Q26: the drain box turns teal)"},
+        {"How long does a UI confirmation stay, and how often does the UI re-check?",
+         "src/ui/library_toolbar.cpp",
+         "if (!app.status_is_problem && ImGui::GetTime() - shown_at > 6.0) return;",
+         "finding 219, not yet scheduled"},
     };
     return k;
 }
