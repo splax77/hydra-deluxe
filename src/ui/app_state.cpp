@@ -8,6 +8,7 @@
 #include "app/report_files.h"
 #include "app/user_messages.h"
 #include "core/winstr.h"
+#include "parse/song.h"  // display_title
 #include "ui/preview_controller.h"
 
 namespace hydra::ui {
@@ -116,9 +117,21 @@ void AppState::tick_library(double now) {
             (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds)) {
             batch_seen_completed_ = snap.completed;
             batch_refreshed_at_ = now;
+            // When the batch stored a result for the chart the panel is open
+            // on, its row changes, and the panel shows the new result at once
+            // instead of after a click away (D48, Q16).
+            const std::optional<store::RecordStatus> open_before = selected_row_status();
             refresh_library_summaries();
+            if (selected && selected_row_status() != open_before) reread_viewed_record();
         }
     }
+}
+
+std::optional<store::RecordStatus> AppState::selected_row_status() const {
+    if (!selected) return std::nullopt;
+    for (const LibraryRow& row : library.rows())
+        if (row.entry.md5 == selected->md5) return row.status;
+    return std::nullopt;
 }
 
 // The rows the library table shows, in its current order and filter.
@@ -210,6 +223,11 @@ void AppState::refresh_viewed_record() {
     viewed_key_ = std::move(key);
     record_generation.bump();
     refresh_viewed_summary();
+}
+
+void AppState::reread_viewed_record() {
+    parked_lookups_.clear();  // a record just changed
+    refresh_viewed_record();
 }
 
 void AppState::show_record_for_settings() {
@@ -322,7 +340,7 @@ void AppState::update_analyze_job(double now) {
     // A result or error for a song the panel isn't showing goes to the status
     // line; one for the shown song stays in the panel until Continue.
     const bool shown = analyze_job_shown();
-    const std::string title = job->song().title;
+    const std::string title = display_title(job->song().title);
     if (!job->ok()) {
         if (!shown) {
             // message() is T4's plain sentence; the raw error() stays in the
@@ -539,8 +557,7 @@ std::string AppState::store_finished_analysis() {
                              app::dynamics_entry_from_analysis(song.md5, result.song,
                                                                as.bass2x, as.difficulty,
                                                                as.prodrums));
-        parked_lookups_.clear();  // a record just changed
-        refresh_viewed_record();
+        reread_viewed_record();
         refresh_library_row(song.md5);  // its row's Best path cell and chip
         return "";
     } catch (const std::exception& e) {

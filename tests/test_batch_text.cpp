@@ -50,6 +50,14 @@ TEST_CASE("batch text: the confirm lists the settings a batch runs with") {
     CHECK(d.path_limit == "off");
 }
 
+TEST_CASE("batch text: cap 1 reads 1 bar and cap 1000 reads 1,000 bars") {
+    Settings s;
+    s.sp_cap = 1;
+    CHECK(batch_settings_summary(s).sp_cap == "1 bar (a what-if)");
+    s.sp_cap = 1000;
+    CHECK(batch_settings_summary(s).sp_cap == "1,000 bars (a what-if)");
+}
+
 TEST_CASE("batch text: the empty library says what to do next") {
     Settings s;
     s.chartfolders.clear();

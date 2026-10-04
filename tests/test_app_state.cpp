@@ -10,11 +10,15 @@
 #endif
 #include <windows.h>
 
+#include <chrono>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "app/config.h"
@@ -23,9 +27,11 @@
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // store_batch_result
 #include "store/record_store.h"
 #include "ui/app_state.h"
 #include "ui/generation.h"
+#include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
 
 using hydra::HydraRecord;
 using hydra::app::Settings;
@@ -449,6 +455,48 @@ TEST_CASE("set_search narrows the library and the match count") {
     CHECK(app->library_matches().size() == 1);
     app->set_search("");
     CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
+}
+
+// "stars:9" is not a filter Hydra understands, so the search narrows nothing:
+// the Analyze button keeps reading "Analyze library..." (D48, Q15).
+TEST_CASE("set_search: a filter that does not parse leaves the query empty") {
+    ScratchPaths paths("appstate_badfilter");
+    std::unique_ptr<AppState> app = app_on(paths);
+    app->set_search("stars:9");
+    CHECK(app->library.query().empty());
+    CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
+}
+
+// A batch that stores a result for the chart the panel is open on turns the
+// panel Ready on the batch's next refresh, without clicking away (D48, Q16).
+TEST_CASE("a batch result for the open chart turns the panel Ready") {
+    ScratchPaths paths("appstate_batchpanel");
+    std::unique_ptr<AppState> app = app_on(paths);
+    const ChartLibraryEntry open = library_entry(5);
+    app->select(open);
+    REQUIRE(app->viewed.status == RecordStatus::NotAnalyzed);
+
+    // A batch over just the open chart. Its result arrives in the store the
+    // way a batch files one (H1's fixture); the batch's own analysis of the
+    // chart fails, since the test has no chart file, so it writes nothing
+    // else. Redo, so the batch does not skip the chart for having a result.
+    app->set_search(open.md5);
+    REQUIRE(app->library_shown_count() == 1);
+    hydra::test::store_batch_result(*app->store, open.md5, Settings{}.sp_cap);
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string&, const hydra::app::AnalysisSettings&,
+           const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+            throw std::runtime_error("no chart file in this test");
+        },
+        1);
+    app->start_batch(true);
+    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    REQUIRE(app->batch_job != nullptr);
+    while (!app->batch_job->snapshot().finished)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+
+    app->tick_library(0.0);  // the batch's last refresh
+    CHECK(app->viewed.status == RecordStatus::Ready);
 }
 
 // A result stored behind the view's back shows once its row is re-read, and

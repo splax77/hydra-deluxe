@@ -15,7 +15,8 @@
 #include <vector>
 
 #include "app/library_query.h"
-#include "core/model.h"  // group_thousands
+#include "app/user_messages.h"  // stale_text
+#include "core/model.h"         // group_thousands, counted
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiSelectableFlags_SpanAvailWidth
 #include "ui/app_state.h"
@@ -51,7 +52,7 @@ const ImU32 kMatchTextColor = IM_COL32(0xff, 0xe6, 0x80, 0xff);
 
 // "1 chart", "97 charts", "12,345 charts".
 std::string charts_text(size_t n) {
-    return group_thousands(static_cast<int64_t>(n)) + (n == 1 ? " chart" : " charts");
+    return counted(static_cast<int64_t>(n), "chart", "charts");
 }
 
 void clear_search(AppState& app) {
@@ -175,9 +176,9 @@ void render_chips(AppState& app) {
         }
         const bool on = app.library.chip() == c.chip;
         if (chip_button(label.c_str(), on, !on && n == 0)) app.library.set_chip(c.chip);
-        if (c.chip == StatusChip::Stale)
-            hint("Analyzed by another Hydra version, or under different rules in "
-                 "hydra_rules.ini. Re-analyze to refresh.");
+        // The chip stands for many rows with either cause, so its hint names
+        // both.
+        if (c.chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());
     }
 }
 
@@ -208,23 +209,16 @@ void cell_text(const std::string& text, const std::vector<app::MatchSpan>& spans
     overlay_matches(pos, text, spans, max_x);
 }
 
-// Draws a row's title at `pos` cut to end in "..." within `max_w`, and returns
-// how wide the kept part is, so the search highlight stops before the "...".
-// It goes straight to the draw list: the row's Selectable already gave the
-// text log the full title.
+// Draws a row's title at `pos` cut to fit `max_w` by the one cutting rule
+// (render::ellipsize), and returns how wide the kept part is, so the search
+// highlight stops before the "…". It goes straight to the draw list: the
+// row's Selectable already gave the text log the full title.
 float draw_title_ellipsized(ImVec2 pos, float max_w, const std::string& title) {
-    ImFont* font = ImGui::GetFont();
-    const float size = ImGui::GetFontSize();
-    const float ellipsis_w = ImGui::GetFontBaked()->GetCharAdvance(font->EllipsisChar);
-    const char* kept_end = title.data();
-    const float kept_w =
-        font->CalcTextSizeA(size, std::max(max_w - ellipsis_w, 1.0f), 0.0f, title.data(),
-                            title.data() + title.size(), &kept_end)
-            .x;
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    const ImU32 col = ImGui::GetColorU32(ImGuiCol_Text);
-    draw->AddText(font, size, pos, col, title.data(), kept_end);
-    font->RenderChar(draw, size, ImVec2(IM_TRUNC(pos.x + kept_w), pos.y), col, font->EllipsisChar);
+    float kept_w = 0.0f;
+    const std::string shown = render::ellipsize(
+        title, max_w, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; },
+        kept_w);
+    ImGui::GetWindowDrawList()->AddText(pos, ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
     return kept_w;
 }
 

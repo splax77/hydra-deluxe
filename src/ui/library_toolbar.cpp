@@ -3,6 +3,7 @@
 #include "app/report_files.h"
 #include "core/model.h"
 #include "imgui.h"
+#include "search/graph.h"  // fill_rule_name
 #include "ui/fonts.h"
 #include "ui/generation.h"
 #include "ui/theme.h"
@@ -71,7 +72,9 @@ void render_actions_row(AppState& app) {
     busy_tooltip();
     ImGui::SameLine();
 
-    const bool searching = !app.search.empty();
+    // A search that narrows nothing (empty, or a filter that does not parse,
+    // like "stars:9") leaves the button on the whole library (D48, Q15).
+    const bool searching = !app.library.query().empty();
     const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : app.library_total;
     const std::string label = searching
                                   ? "Analyze search (" + group_thousands(analyzable) + ")..."
@@ -115,8 +118,9 @@ void render_actions_row(AppState& app) {
                               "were played under it.",
                               kCloneHeroSpCap);
         else if (!ch11_fills)
-            ImGui::SetTooltip("Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The "
-                              "leaderboard is played on current Clone Hero.");
+            ImGui::SetTooltip("Needs %s fills: untick \"1.0 fills\". The leaderboard is "
+                              "played on current Clone Hero.",
+                              fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long));
         else
             ImGui::SetTooltip("Compare a dmleaderboards.com player's scores against your library");
     }

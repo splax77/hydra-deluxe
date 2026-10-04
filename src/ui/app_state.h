@@ -459,6 +459,12 @@ private:
     std::string length_tried_md5_;
     // Shows the lookup for the current settings: parked if seen, read otherwise.
     void show_record_for_settings();
+    // A record was just stored: drops the parked lookups and reads the viewed
+    // one again. A finished single analysis and a batch that stored the open
+    // chart both run it.
+    void reread_viewed_record();
+    // The library row's status for the selected chart; empty with no selection.
+    std::optional<store::RecordStatus> selected_row_status() const;
 };
 
 }  // namespace hydra::ui
