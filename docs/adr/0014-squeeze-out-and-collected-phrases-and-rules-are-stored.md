@@ -144,10 +144,11 @@ activation, so the groups are unchanged.
 
 ### Two more extreme-tempo crashes (D32)
 
-At 2,000 to 4,000 BPM the search could still crash in two ways. Both come
-from an SP bar shorter than the 500 ms window. A late squeeze-in moves the SP
-end one bar past the old end, and at these tempos that new end can land
-before the phrase it squeezed.
+At 2,000 to 4,000 BPM the search could still crash in two ways, one in the
+graph and one in the engine. Both come from an SP bar shorter than the
+500 ms window. A late squeeze-in moves the SP end one bar past the old end,
+and at these tempos that new end can land before the phrase it squeezed.
+Three changes fix them:
 
 - The graph used to add the new end's node only when it reached the phrase.
   By then the end was behind it. The graph now adds that node when it moves
