@@ -10,6 +10,8 @@
 #include "core/model.h"
 #include "core/winstr.h"
 #include "render/track_state.h"
+#include "ui/library_parts.h"  // time_left_text
+#include "ui/widgets.h"        // progress_fraction
 
 namespace hydra::ui {
 
@@ -233,16 +235,12 @@ PreviewLoadJob::Progress PreviewLoadJob::progress() const {
 float PreviewLoadJob::Progress::fraction() const {
     switch (step) {
         case Step::Reading: return 0.0f;
-        case Step::Opening: {
-            // A zero total (no stems, empty files) stays at the slice's start:
-            // never a 0/0 NaN into ImGui::ProgressBar (ImGui issue #7451).
-            const float part =
-                bytes_total > 0
-                    ? static_cast<float>(static_cast<double>(std::min(bytes_done, bytes_total)) /
-                                         static_cast<double>(bytes_total))
-                    : 0.0f;
-            return kReadShare + kOpenShare * part;
-        }
+        case Step::Opening:
+            // The audio slice's fill is the shared progress bar rule: a zero
+            // total (no stems, empty files) reads empty, "nothing reported
+            // yet", so the bar stays at the slice's start.
+            return kReadShare + kOpenShare * progress_fraction(static_cast<double>(bytes_done),
+                                                               static_cast<double>(bytes_total));
         case Step::Building: return kReadShare + kOpenShare;
         case Step::Highway: return kReadShare + kOpenShare + kSceneShare;
     }
@@ -266,14 +264,12 @@ std::string PreviewLoadJob::Progress::label() const {
     return "";
 }
 
+// Only the Preview's own gate lives here: opening audio is the one step with a
+// byte rate, and the loader waits 3 s before guessing. The words are the batch
+// strip's (D48, Q20).
 std::string PreviewLoadJob::Progress::time_left_text() const {
     if (step != Step::Opening || elapsed_s < 3.0 || !(time_left_s >= 0.0)) return "";
-    if (time_left_s < 59.5) {
-        const long long s = std::max(1LL, static_cast<long long>(std::ceil(time_left_s)));
-        return "about " + std::to_string(s) + " s left";
-    }
-    const long long m = std::max(1LL, std::llround(time_left_s / 60.0));
-    return "about " + std::to_string(m) + " min left";
+    return detail::time_left_text(time_left_s);
 }
 
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
