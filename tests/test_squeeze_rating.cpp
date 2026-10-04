@@ -505,7 +505,7 @@ TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post")
     REQUIRE(r.backends[0].note.effective_ms.has_value());
     CHECK(*r.backends[0].note.effective_ms == doctest::Approx(188.32864604258737).epsilon(1e-12));
     REQUIRE(r.note_effective_ms.size() == 2);
-    // The SqIn: free by 92.1 ms at the pre end, so pre's early side.
+    // The SqIn: free by 92.1 ms at its own SP end, so its SqIn scale's early side.
     REQUIRE(r.note_effective_ms[0].has_value());
     CHECK(*r.note_effective_ms[0] == doctest::Approx(93.50253807106598).epsilon(1e-12));
     // The SqOut: its row above is its only rating.
@@ -559,14 +559,14 @@ TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end"
     CHECK(r.scale_governs);
 }
 
-TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads pre's early side (D13)") {
+TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads its SqIn scale's early side (D13)") {
     // Only one side scaled, so the figure shows which side was read.
-    auto figure = [](TransferScale pre, double offset) {
+    auto figure = [](TransferScale sqin_scale, double offset) {
         Activation act;
         act.skips = 0;
         act.e_offset = 300.0;
         act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, offset});
-        test::set_transfer(act, pre, TransferScale{});
+        test::set_transfer(act, sqin_scale, TransferScale{});
         ActivationRating r = rate_activation(act, 85.0);
         REQUIRE(r.note_effective_ms.size() == 1);
         return r.note_effective_ms[0];

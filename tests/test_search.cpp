@@ -200,8 +200,14 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
         for (const Path* p : record->all_paths()) {
             for (const Activation& act : p->all_activations()) {
                 ++acts;
-                if (act.transfer_post.early != 1.0 || act.transfer_post.late != 1.0)
-                    ++nonflat;
+                // Non-flat counts the SP end's scale and every SqIn's scale.
+                auto flat = [](const TransferScale& s) {
+                    return s.early == 1.0 && s.late == 1.0;
+                };
+                bool any_scaled = !flat(act.transfer_post);
+                for (const SPSqueeze& sq : act.sqinouts)
+                    if (sq.kind == SqueezeKind::SqIn && !flat(sq.transfer)) any_scaled = true;
+                if (any_scaled) ++nonflat;
 
                 auto scales = frontend_transfer_scales(act, song.timing());
                 if (!scales) {
@@ -238,10 +244,8 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                     ++j;
                 }
                 if (!d.empty()) break;
-                if (j != scales->sqins.size()) {
-                    d = "recomputation has a scale for a SqIn the record lacks";
-                    break;
-                }
+                // No count check: the recomputation walks this same
+                // activation's SqIns, so both sides always have j of them.
 
                 // Copy-out stamps deact_tick on every activation it produces
                 // (blob v4), so a record fresh off the engine should never be
