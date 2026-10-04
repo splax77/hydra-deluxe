@@ -10,6 +10,7 @@
 
 #include <io.h>  // _get_osfhandle
 
+#include <algorithm>
 #include <cstdint>
 #include <stdexcept>
 
@@ -192,6 +193,40 @@ std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
     std::vector<uint8_t> buf(static_cast<size_t>(*size));
     if (size > 0) buf.resize(std::fread(buf.data(), 1, buf.size(), f));
     std::fclose(f);
+    return buf;
+}
+
+std::vector<uint8_t> read_file_range(const std::string& utf8_path, uint64_t offset,
+                                     size_t length) {
+    // The read shares the file as read_file_bytes's "rb" open does. ReadFile
+    // takes its position in the OVERLAPPED block, so nothing seeks.
+    HANDLE h = CreateFileW(win32_path(utf8_path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) throw std::runtime_error("cannot open file: " + utf8_path);
+    const std::optional<uint64_t> size = open_handle_size_bytes(h);
+    if (!size) {
+        CloseHandle(h);
+        throw std::runtime_error("cannot read file size: " + utf8_path);
+    }
+    const uint64_t available = offset < *size ? *size - offset : 0;
+    std::vector<uint8_t> buf(static_cast<size_t>(std::min<uint64_t>(length, available)));
+    size_t got = 0;
+    while (got < buf.size()) {
+        const uint64_t at = offset + got;
+        OVERLAPPED ov{};
+        ov.Offset = static_cast<DWORD>(at);
+        ov.OffsetHigh = static_cast<DWORD>(at >> 32);
+        const DWORD want = static_cast<DWORD>(std::min<size_t>(buf.size() - got, 1u << 30));
+        DWORD n = 0;
+        if (!ReadFile(h, buf.data() + got, want, &n, &ov)) {
+            if (GetLastError() == ERROR_HANDLE_EOF) break;  // shrank since it was sized
+            CloseHandle(h);
+            throw std::runtime_error("cannot read file: " + utf8_path);
+        }
+        if (n == 0) break;
+        got += n;
+    }
+    CloseHandle(h);
+    buf.resize(got);
     return buf;
 }
 

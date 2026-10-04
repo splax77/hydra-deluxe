@@ -32,6 +32,8 @@
 #include <string>
 #include <vector>
 
+#include "core/winstr.h"  // ByteRangeReader
+
 namespace hydra {
 
 constexpr size_t kSrbHeaderSize = 16;
@@ -53,6 +55,13 @@ constexpr size_t kSrbMaxStream = size_t{1} << 30;
 std::vector<uint8_t> srb_inflate_stream(const uint8_t* data, size_t size,
                                         size_t offset, size_t max_out,
                                         size_t* end_offset);
+
+// srb_inflate_stream over a file read in pieces through `read`, for a
+// container too large to read whole: only the stream's own compressed bytes
+// are read (plus at most one read's overshoot). Same result, end offset and
+// errors as srb_inflate_stream on the whole file.
+std::vector<uint8_t> srb_inflate_stream_reading(const ByteRangeReader& read, uint64_t offset,
+                                                size_t max_out, uint64_t* end_offset);
 
 // The string fields of a metadata block, in file order.
 struct SrbMetadata {

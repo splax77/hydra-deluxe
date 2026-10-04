@@ -21,6 +21,7 @@
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/timing.h"
+#include "core/winstr.h"  // ByteRangeReader
 
 namespace hydra {
 
@@ -250,16 +251,27 @@ Song load_songbytes_srb(const std::vector<uint8_t>& container, bool pro, bool ba
 // The file at `path` parsed from `bytes`, its contents already read by the
 // caller: dispatch on path's extension like load_songpath, without touching
 // the disk. The Preview uses it to read a .sng/.srb once and share the bytes
-// between the notes and the audio. load_songpath calls it for containers.
+// between the notes and the audio. Its notes are picked out exactly as
+// load_songpath picks them from the file.
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
                               bool pro, bool bass2x,
                               Difficulty difficulty = Difficulty::Expert,
                               const core::Rules& rules = core::default_rules());
 
 // Dispatch on the file extension (.mid/.chart/.sng/.srb, case-insensitive).
+// A .sng or .srb is read in pieces: its header, then only the notes, never
+// the audio and art that make up the rest of the file.
 Song load_songpath(const std::string& path, bool pro, bool bass2x,
                    Difficulty difficulty = Difficulty::Expert,
                    const core::Rules& rules = core::default_rules());
+
+// load_songpath with a .sng's or .srb's reads going through `read`, which
+// reads the file at `path` (load_songpath passes read_file_range). Tests pass
+// a counting wrapper to prove only the notes are read. Loose charts don't use
+// it.
+Song load_songpath_reading(const ByteRangeReader& read, const std::string& path, bool pro,
+                           bool bass2x, Difficulty difficulty = Difficulty::Expert,
+                           const core::Rules& rules = core::default_rules());
 
 }  // namespace hydra
 

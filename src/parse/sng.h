@@ -26,6 +26,8 @@
 #include <utility>
 #include <vector>
 
+#include "core/winstr.h"  // ByteRangeReader
+
 namespace hydra {
 
 constexpr size_t kSngXorMaskOffset = 10;
@@ -56,6 +58,24 @@ std::optional<std::vector<uint8_t>> sng_decode_file(const std::vector<uint8_t>& 
 // range is outside the buffer.
 bool sng_decode_file_into(const std::vector<uint8_t>& buf, const SngFileEntry& entry,
                           std::vector<uint8_t>& out);
+
+// ---- reading a .sng in pieces ---------------------------------------------
+//
+// A container is mostly audio; the note loader needs only the header and the
+// notes entry. These read just those through `read`.
+
+// The file's leading bytes through the end of its file table: one 64 KB read
+// for any real header, grown until the table fits or the file ends.
+// sng_read_metadata and sng_read_file_table read it exactly as they read the
+// whole file.
+std::vector<uint8_t> sng_read_head(const ByteRangeReader& read);
+
+// One file's decoded bytes, read on their own; `head` is sng_read_head's
+// result (it holds the XOR mask). nullopt when the entry runs past the end of
+// the file, as sng_decode_file answers for the whole file.
+std::optional<std::vector<uint8_t>> sng_read_file(const ByteRangeReader& read,
+                                                  const std::vector<uint8_t>& head,
+                                                  const SngFileEntry& entry);
 
 }  // namespace hydra
 

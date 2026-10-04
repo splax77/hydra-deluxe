@@ -186,6 +186,86 @@ TEST_CASE("sng: unmasking into the caller's buffer matches the byte formula") {
     CHECK_FALSE(sng_decode_file(buf, bad).has_value());
 }
 
+namespace {
+
+void check_same_notes(const Song& got, const Song& want) {
+    REQUIRE(got.sequence.size() == want.sequence.size());
+    for (size_t i = 0; i < want.sequence.size(); ++i) {
+        CHECK(got.sequence[i].timecode.ticks() == want.sequence[i].timecode.ticks());
+        CHECK(got.sequence[i].chord == want.sequence[i].chord);
+    }
+}
+
+// load_songpath_reading with read_file_range underneath, counting the bytes.
+Song load_counting(const std::string& path, uint64_t& bytes_read) {
+    bytes_read = 0;
+    return load_songpath_reading(
+        [&](uint64_t offset, size_t length) {
+            std::vector<uint8_t> b = read_file_range(path, offset, length);
+            bytes_read += b.size();
+            return b;
+        },
+        path, true, true);
+}
+
+}  // namespace
+
+// A real container is mostly audio (the library's Endless Setlist .sng files
+// are about 1 GB each); the notes are a few hundred KB of it.
+TEST_CASE("sng: the note loader reads the header and the notes, not the audio") {
+    std::vector<uint8_t> audio(16 << 20);
+    for (size_t i = 0; i < audio.size(); ++i) audio[i] = static_cast<uint8_t>(i * 131 + 7);
+    const std::vector<uint8_t> buf =
+        make_sng({{"name", "Song"}}, {{"song.ogg", audio}, {"notes.mid", tiny_mid()}});
+    const std::string path = sng_fixture_path("big_audio.sng");
+    write_fixture(path, buf);
+
+    uint64_t bytes_read = 0;
+    const Song via_reads = load_counting(path, bytes_read);
+    check_same_notes(via_reads, load_songbytes_sng(buf, true, true));
+    CHECK(bytes_read < (1u << 20));
+    CHECK(bytes_read > 0);
+}
+
+TEST_CASE("sng: a header longer than the first read still loads") {
+    // A 300 KB metadata value pushes the file table past any small first read.
+    const std::string big(300 * 1024, 'x');
+    const std::vector<uint8_t> buf = make_sng(
+        {{"name", "Song"}, {"loading_phrase", big}},
+        {{"song.ogg", {1, 2, 3}}, {"album.png", {4, 5}}, {"notes.mid", tiny_mid()}});
+    const std::string path = sng_fixture_path("big_header.sng");
+    write_fixture(path, buf);
+
+    uint64_t bytes_read = 0;
+    check_same_notes(load_counting(path, bytes_read), load_songbytes_sng(buf, true, true));
+}
+
+TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does") {
+    const std::vector<uint8_t> whole =
+        make_sng({{"name", "Song"}}, {{"notes.mid", tiny_mid()}});
+
+    // The notes entry runs past the end of the file.
+    std::vector<uint8_t> cut_notes(whole.begin(), whole.end() - 5);
+    const std::string cut_path = sng_fixture_path("cut_notes.sng");
+    write_fixture(cut_path, cut_notes);
+    CHECK_THROWS_WITH(load_songpath(cut_path, true, true), "Truncated SNG file.");
+    CHECK_THROWS_WITH(load_songbytes_sng(cut_notes, true, true), "Truncated SNG file.");
+
+    // The file table is cut: no notes entry is found.
+    std::vector<uint8_t> cut_table(whole.begin(),
+                                   whole.begin() + (whole.size() - tiny_mid().size() - 4));
+    const std::string table_path = sng_fixture_path("cut_table.sng");
+    write_fixture(table_path, cut_table);
+    CHECK_THROWS_WITH(load_songpath(table_path, true, true), "No chart files found in SNG file.");
+
+    // A metadata length far past the end of the file.
+    std::vector<uint8_t> huge_meta = whole;
+    for (int i = 0; i < 8; ++i) huge_meta[kSngMetadataLenOffset + i] = 0x7f;
+    const std::string meta_path = sng_fixture_path("huge_meta.sng");
+    write_fixture(meta_path, huge_meta);
+    CHECK_THROWS_WITH(load_songpath(meta_path, true, true), "No chart files found in SNG file.");
+}
+
 TEST_CASE("sng: a container parses the same from bytes as from its path") {
     const std::vector<uint8_t> buf =
         make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"notes.mid", tiny_mid()}});

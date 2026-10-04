@@ -15,6 +15,7 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -147,6 +148,89 @@ TEST_CASE("srb: malformed containers throw instead of crashing") {
     write_bytes(truncated, whole);
     CHECK_THROWS_AS(load_songpath_srb(truncated, true, true),
                     std::runtime_error);
+}
+
+namespace {
+
+// Bytes that deflate barely at all, so their compressed stream is as long as
+// they are.
+std::vector<uint8_t> noise(size_t n, uint32_t seed) {
+    std::vector<uint8_t> out(n);
+    for (size_t i = 0; i < n; ++i) {
+        seed = seed * 1664525u + 1013904223u;
+        out[i] = static_cast<uint8_t>(seed >> 24);
+    }
+    return out;
+}
+
+// A reader over an in-memory buffer, as read_file_range reads a file.
+ByteRangeReader buffer_reader(const std::vector<uint8_t>& buf) {
+    return [&buf](uint64_t offset, size_t length) {
+        if (offset >= buf.size()) return std::vector<uint8_t>{};
+        const size_t n = std::min<uint64_t>(length, buf.size() - offset);
+        return std::vector<uint8_t>(buf.begin() + offset, buf.begin() + offset + n);
+    };
+}
+
+}  // namespace
+
+// The real bundles are 12-57 MB, nearly all of it audio and art past a notes
+// stream of a few hundred KB.
+TEST_CASE("srb: the note loader reads the metadata and notes streams, not the rest") {
+    const std::vector<uint8_t> notes = read_bytes(corpus_chart_path(".mid"));
+    const std::vector<uint8_t> srb =
+        make_srb(make_metadata("notes.mid", "N", "A", "C"), notes, {noise(16 << 20, 1)});
+    const std::string path = fixture_dir() + "\\big_tail.srb";
+    write_bytes(path, srb);
+
+    uint64_t bytes_read = 0;
+    const Song via_reads = load_songpath_reading(
+        [&](uint64_t offset, size_t length) {
+            std::vector<uint8_t> b = read_file_range(path, offset, length);
+            bytes_read += b.size();
+            return b;
+        },
+        path, true, true);
+    CHECK(songs_equal(via_reads, load_songbytes_srb(srb, true, true)));
+    CHECK(bytes_read < (2u << 20));
+}
+
+TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole buffer") {
+    // A 3 MB stream crosses many reads; the stream after it must not be eaten.
+    const std::vector<uint8_t> payload = noise(3 << 20, 7);
+    std::vector<uint8_t> buf(kSrbHeaderSize, 0xAB);
+    const std::vector<uint8_t> d = testsrb::deflate_raw(payload);
+    buf.insert(buf.end(), d.begin(), d.end());
+    const std::vector<uint8_t> tail = testsrb::deflate_raw({1, 2, 3});
+    buf.insert(buf.end(), tail.begin(), tail.end());
+
+    size_t end_whole = 0;
+    const std::vector<uint8_t> whole =
+        srb_inflate_stream(buf.data(), buf.size(), kSrbHeaderSize, kSrbMaxStream, &end_whole);
+    uint64_t end_reads = 0;
+    const std::vector<uint8_t> reads = srb_inflate_stream_reading(
+        buffer_reader(buf), kSrbHeaderSize, kSrbMaxStream, &end_reads);
+    CHECK(whole == payload);
+    CHECK(reads == payload);
+    CHECK(end_reads == end_whole);
+    CHECK(end_whole == kSrbHeaderSize + d.size());
+
+    // The same failures, by the same words.
+    std::vector<uint8_t> cut(buf.begin(), buf.begin() + buf.size() / 2);
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(buffer_reader(cut), kSrbHeaderSize,
+                                                 kSrbMaxStream, nullptr),
+                      "SRB stream is truncated.");
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(buffer_reader(buf), buf.size(),
+                                                 kSrbMaxStream, nullptr),
+                      "SRB stream starts past end of file.");
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(buffer_reader(buf), kSrbHeaderSize,
+                                                 1 << 20, nullptr),
+                      "SRB stream exceeds size limit.");
+    std::vector<uint8_t> junk = buf;
+    for (size_t i = kSrbHeaderSize; i < kSrbHeaderSize + 64; ++i) junk[i] = 0xFF;
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(buffer_reader(junk), kSrbHeaderSize,
+                                                 kSrbMaxStream, nullptr),
+                      "SRB stream is corrupt.");
 }
 
 TEST_CASE("srb: metadata parser reads the string table") {

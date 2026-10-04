@@ -157,6 +157,38 @@ TEST_CASE("read_file_bytes of an empty file is empty, not an error") {
     CHECK(hydra::read_file_bytes(tmp.utf8()).empty());
 }
 
+// A container's notes sit in a small part of a large file, so the note loader
+// reads only that part.
+TEST_CASE("read_file_range reads a slice, fewer bytes at the end, none past it") {
+    TempFile tmp(L"hydra_file_range.bin");
+    std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
+    REQUIRE(f != nullptr);
+    std::fwrite("0123456789", 1, 10, f);
+    std::fclose(f);
+    auto range = [&](uint64_t offset, size_t length) {
+        const std::vector<uint8_t> b = hydra::read_file_range(tmp.utf8(), offset, length);
+        return std::string(b.begin(), b.end());
+    };
+    CHECK(range(2, 3) == "234");
+    CHECK(range(0, 10) == "0123456789");
+    CHECK(range(8, 5) == "89");
+    CHECK(range(10, 4).empty());
+    CHECK(range(99, 4).empty());
+    CHECK(range(3, 0).empty());
+    // A length far past the end holds only what the file has: no huge buffer.
+    CHECK(range(0, SIZE_MAX) == "0123456789");
+
+    TempFile missing(L"hydra_file_range_missing_does_not_exist.bin");
+    CHECK_THROWS_AS(hydra::read_file_range(missing.utf8(), 0, 4), std::runtime_error);
+}
+
+TEST_CASE("read_file_range reads at an offset past 4 GB") {
+    TempFile tmp(L"hydra_file_range_5gb.bin");
+    make_sparse(tmp, 5'000'000'000LL);
+    const std::vector<uint8_t> tail = hydra::read_file_range(tmp.utf8(), 4'999'999'990ULL, 100);
+    CHECK(tail == std::vector<uint8_t>(10, 0));
+}
+
 TEST_CASE("split_command_line_utf8 keeps a fullwidth slash in a chart path") {
     const std::vector<std::string> args = hydra::split_command_line_utf8(
         L"hydra_replay.exe score --chart "

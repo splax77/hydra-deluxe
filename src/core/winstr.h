@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -90,6 +91,18 @@ std::optional<uint64_t> open_handle_size_bytes(void* win32_handle);
 // The whole file's bytes, files over 2 GB included. Throws std::runtime_error
 // when the open fails or the file's size can't be read.
 std::vector<uint8_t> read_file_bytes(const std::string& utf8_path);
+
+// Up to `length` bytes of the file starting at byte `offset`, at any offset
+// (past 4 GB included): fewer where the file ends, none at or past its end.
+// The buffer is never larger than what the file holds from `offset`. For
+// containers whose notes sit in a small part of a large file. Throws
+// std::runtime_error when the open or a read fails.
+std::vector<uint8_t> read_file_range(const std::string& utf8_path, uint64_t offset,
+                                     size_t length);
+
+// Reads up to `length` bytes of one file from `offset`, like read_file_range
+// with the path already chosen. Tests pass an in-memory or counting one.
+using ByteRangeReader = std::function<std::vector<uint8_t>(uint64_t offset, size_t length)>;
 
 // The whole file as text, bytes as they are (no newline translation); throws
 // std::runtime_error when the open fails.

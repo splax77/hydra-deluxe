@@ -11,7 +11,7 @@
 #include <unordered_map>
 
 #include "core/strutil.h"
-#include "core/winstr.h"  // read_file_bytes
+#include "core/winstr.h"  // read_file_bytes, read_file_range
 #include "parse/midi.h"
 #include "parse/sng.h"
 #include "parse/chart_files.h"
@@ -1384,11 +1384,27 @@ Song load_songpath_chart(const std::string& path, bool pro, bool bass2x,
     return ChartParser(rules).parse(data, pro, bass2x, difficulty);
 }
 
-Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+namespace {
+
+// A reader over a container already in memory: the Preview reads the whole
+// file once and shares it, and its notes are picked out the same way.
+ByteRangeReader reader_over(const std::vector<uint8_t>& buf) {
+    return [&buf](uint64_t offset, size_t length) {
+        if (offset >= buf.size()) return std::vector<uint8_t>{};
+        const size_t n = static_cast<size_t>(std::min<uint64_t>(length, buf.size() - offset));
+        const auto from = buf.begin() + static_cast<std::ptrdiff_t>(offset);
+        return std::vector<uint8_t>(from, from + static_cast<std::ptrdiff_t>(n));
+    };
+}
+
+// The one notes reader for each container kind, whether the bytes come from
+// disk in pieces or from a buffer in memory.
+Song load_container_sng(const ByteRangeReader& read, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules) {
     // A notes.mid wins over a notes.chart; among .chart entries the last one
     // listed wins (the order this loader has always used).
-    const std::vector<SngFileEntry> entries = sng_read_file_table(buf);
+    const std::vector<uint8_t> head = sng_read_head(read);
+    const std::vector<SngFileEntry> entries = sng_read_file_table(head);
     const SngFileEntry* notes = nullptr;
     ChartFormat format = ChartFormat::None;
     for (const SngFileEntry& e : entries) {
@@ -1405,27 +1421,27 @@ Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
     }
     if (!notes) throw std::runtime_error("No chart files found in SNG file.");
 
-    std::optional<std::vector<uint8_t>> notebytes = sng_decode_file(buf, *notes);
+    std::optional<std::vector<uint8_t>> notebytes = sng_read_file(read, head, *notes);
     if (!notebytes) throw std::runtime_error("Truncated SNG file.");
     if (format == ChartFormat::Mid)
         return load_songbytes_mid(*notebytes, pro, bass2x, difficulty, rules);
     return load_songbytes_chart(*notebytes, pro, bass2x, difficulty, rules);
 }
 
-Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+Song load_container_srb(const ByteRangeReader& read, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules) {
-    if (buf.size() <= kSrbHeaderSize)
+    if (read(0, kSrbHeaderSize + 1).size() <= kSrbHeaderSize)
         throw std::runtime_error("Truncated SRB file.");
 
     // Stream 1 (metadata) names the notes file; stream 2 is its bytes.
-    size_t notes_offset = 0;
-    std::vector<uint8_t> meta = srb_inflate_stream(
-        buf.data(), buf.size(), kSrbHeaderSize, kSrbMaxMetadata, &notes_offset);
+    uint64_t notes_offset = 0;
+    std::vector<uint8_t> meta =
+        srb_inflate_stream_reading(read, kSrbHeaderSize, kSrbMaxMetadata, &notes_offset);
     SrbMetadata md;
     srb_parse_metadata(meta, md);
 
-    std::vector<uint8_t> notebytes = srb_inflate_stream(
-        buf.data(), buf.size(), notes_offset, kSrbMaxStream, nullptr);
+    std::vector<uint8_t> notebytes =
+        srb_inflate_stream_reading(read, notes_offset, kSrbMaxStream, nullptr);
 
     // The notes stream's format comes from its name, by the exact-name rule a
     // .sng entry and a loose folder use (notes_file_format). An .srb's notes
@@ -1444,17 +1460,35 @@ Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
     return load_songbytes_chart(notebytes, pro, bass2x, difficulty, rules);
 }
 
-// A container is read from disk once and parsed from those bytes, so the
-// Preview can hand the same buffer to its audio extractor (see
-// load_songpath_from_bytes).
+// A container on disk is read in pieces: its header, then only the notes. The
+// rest is audio and art (about 1 GB for the largest .sng in the library), which
+// the notes never need.
+ByteRangeReader reader_of_file(const std::string& path) {
+    return [path](uint64_t offset, size_t length) {
+        return read_file_range(path, offset, length);
+    };
+}
+
+}  // namespace
+
+Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+                        Difficulty difficulty, const core::Rules& rules) {
+    return load_container_sng(reader_over(buf), pro, bass2x, difficulty, rules);
+}
+
+Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+                        Difficulty difficulty, const core::Rules& rules) {
+    return load_container_srb(reader_over(buf), pro, bass2x, difficulty, rules);
+}
+
 Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty, const core::Rules& rules) {
-    return load_songbytes_sng(read_file_bytes(path), pro, bass2x, difficulty, rules);
+    return load_container_sng(reader_of_file(path), pro, bass2x, difficulty, rules);
 }
 
 Song load_songpath_srb(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty, const core::Rules& rules) {
-    return load_songbytes_srb(read_file_bytes(path), pro, bass2x, difficulty, rules);
+    return load_container_srb(reader_of_file(path), pro, bass2x, difficulty, rules);
 }
 
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
@@ -1470,18 +1504,21 @@ Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t
     throw std::runtime_error("unexpected chart type: " + path);
 }
 
-Song load_songpath(const std::string& path, bool pro, bool bass2x,
-                   Difficulty difficulty, const core::Rules& rules) {
+Song load_songpath_reading(const ByteRangeReader& read, const std::string& path, bool pro,
+                           bool bass2x, Difficulty difficulty, const core::Rules& rules) {
     switch (chart_format_of(path)) {
         case ChartFormat::Mid: return load_songpath_mid(path, pro, bass2x, difficulty, rules);
         case ChartFormat::Chart: return load_songpath_chart(path, pro, bass2x, difficulty, rules);
-        case ChartFormat::Sng:
-        case ChartFormat::Srb:
-            return load_songpath_from_bytes(path, read_file_bytes(path), pro, bass2x,
-                                            difficulty, rules);
+        case ChartFormat::Sng: return load_container_sng(read, pro, bass2x, difficulty, rules);
+        case ChartFormat::Srb: return load_container_srb(read, pro, bass2x, difficulty, rules);
         case ChartFormat::None: break;
     }
     throw std::runtime_error("unexpected chart type: " + path);
+}
+
+Song load_songpath(const std::string& path, bool pro, bool bass2x,
+                   Difficulty difficulty, const core::Rules& rules) {
+    return load_songpath_reading(reader_of_file(path), path, pro, bass2x, difficulty, rules);
 }
 
 }  // namespace hydra

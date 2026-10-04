@@ -1,5 +1,8 @@
 #include "parse/sng.h"
 
+#include <algorithm>
+#include <cstdint>
+
 namespace hydra {
 
 namespace {
@@ -24,6 +27,59 @@ uint32_t u32_at(const std::vector<uint8_t>& buf, size_t pos) {
 std::string string_at(const std::vector<uint8_t>& buf, size_t pos, size_t len) {
     return std::string(reinterpret_cast<const char*>(buf.data() + pos), len);
 }
+
+// The bytes a walk needs to read n more bytes at pos (saturating, not wrapping).
+uint64_t needs(size_t pos, uint64_t n) {
+    return n > UINT64_MAX - pos ? UINT64_MAX : pos + n;
+}
+
+// Walks the header through the end of the file table, putting each entry that
+// fits into `out` when it is given. Returns how many leading bytes of the file
+// the walk needed: where the table ends when buf holds all of it, otherwise
+// more than buf.size() (what the first piece that did not fit needs).
+uint64_t walk_file_table(const std::vector<uint8_t>& buf, std::vector<SngFileEntry>* out) {
+    if (!fits(buf, kSngMetadataLenOffset, 8)) return needs(kSngMetadataLenOffset, 8);
+    const uint64_t metadata_len = u64_at(buf, kSngMetadataLenOffset);
+    if (!fits(buf, kSngMetadataOffset, metadata_len)) return needs(kSngMetadataOffset, metadata_len);
+    size_t pos = kSngMetadataOffset + static_cast<size_t>(metadata_len);
+    if (!fits(buf, pos, 16)) return needs(pos, 16);
+    pos += 8;  // the file section's length; entries carry absolute offsets
+    const uint64_t count = u64_at(buf, pos);
+    pos += 8;
+    for (uint64_t i = 0; i < count; ++i) {
+        if (!fits(buf, pos, 1)) return needs(pos, 1);
+        const size_t name_len = buf[pos];
+        pos += 1;
+        if (!fits(buf, pos, name_len + 16)) return needs(pos, name_len + 16);
+        if (out) {
+            SngFileEntry e;
+            e.name = string_at(buf, pos, name_len);
+            e.length = u64_at(buf, pos + name_len);
+            e.offset = u64_at(buf, pos + name_len + 8);
+            out->push_back(std::move(e));
+        }
+        pos += name_len + 16;
+    }
+    return pos;
+}
+
+// Byte i of a file is stored XORed with mask[i % 16] ^ (i & 0xff). That key
+// repeats every 256 bytes, so it is built once and the bytes are unmasked a
+// block at a time. src and dst may be the same buffer.
+void unmask(const uint8_t* mask, const uint8_t* src, size_t n, uint8_t* dst) {
+    uint8_t key[256];
+    for (size_t j = 0; j < 256; ++j)
+        key[j] = static_cast<uint8_t>(mask[j % kSngXorMaskSize] ^ j);
+    for (size_t base = 0; base < n; base += 256) {
+        const size_t len = n - base < 256 ? n - base : 256;
+        for (size_t j = 0; j < len; ++j)
+            dst[base + j] = static_cast<uint8_t>(src[base + j] ^ key[j]);
+    }
+}
+
+// The first read of a .sng's header: real metadata and file tables are a few
+// KB, so one read almost always holds both.
+constexpr size_t kSngFirstRead = 64 * 1024;
 
 }  // namespace
 
@@ -53,28 +109,7 @@ std::vector<std::pair<std::string, std::string>> sng_read_metadata(const std::ve
 
 std::vector<SngFileEntry> sng_read_file_table(const std::vector<uint8_t>& buf) {
     std::vector<SngFileEntry> out;
-    if (!fits(buf, kSngMetadataLenOffset, 8)) return out;
-    const uint64_t metadata_len = u64_at(buf, kSngMetadataLenOffset);
-    if (!fits(buf, kSngMetadataOffset, metadata_len)) return out;
-    size_t pos = kSngMetadataOffset + static_cast<size_t>(metadata_len);
-    if (!fits(buf, pos, 16)) return out;
-    pos += 8;  // the file section's length; entries carry absolute offsets
-    const uint64_t count = u64_at(buf, pos);
-    pos += 8;
-    for (uint64_t i = 0; i < count; ++i) {
-        if (!fits(buf, pos, 1)) break;
-        const size_t name_len = buf[pos];
-        pos += 1;
-        if (!fits(buf, pos, name_len + 16)) break;
-        SngFileEntry e;
-        e.name = string_at(buf, pos, name_len);
-        pos += name_len;
-        e.length = u64_at(buf, pos);
-        pos += 8;
-        e.offset = u64_at(buf, pos);
-        pos += 8;
-        out.push_back(std::move(e));
-    }
+    walk_file_table(buf, &out);
     return out;
 }
 
@@ -82,22 +117,40 @@ bool sng_decode_file_into(const std::vector<uint8_t>& buf, const SngFileEntry& e
                           std::vector<uint8_t>& out) {
     if (!fits(buf, kSngXorMaskOffset, kSngXorMaskSize)) return false;
     if (entry.offset > buf.size() || entry.length > buf.size() - entry.offset) return false;
-    // Byte i's key, mask[i % 16] ^ (i & 0xff), repeats every 256 bytes, so it
-    // is built once and the bytes are unmasked a block at a time.
-    const uint8_t* mask = buf.data() + kSngXorMaskOffset;
-    uint8_t key[256];
-    for (size_t j = 0; j < 256; ++j)
-        key[j] = static_cast<uint8_t>(mask[j % kSngXorMaskSize] ^ j);
-    const uint8_t* src = buf.data() + static_cast<size_t>(entry.offset);
     const size_t n = static_cast<size_t>(entry.length);
     out.resize(n);
-    uint8_t* dst = out.data();
-    for (size_t base = 0; base < n; base += 256) {
-        const size_t len = n - base < 256 ? n - base : 256;
-        for (size_t j = 0; j < len; ++j)
-            dst[base + j] = static_cast<uint8_t>(src[base + j] ^ key[j]);
-    }
+    unmask(buf.data() + kSngXorMaskOffset, buf.data() + static_cast<size_t>(entry.offset), n,
+           out.data());
     return true;
+}
+
+std::vector<uint8_t> sng_read_head(const ByteRangeReader& read) {
+    size_t asked = kSngFirstRead;
+    std::vector<uint8_t> head = read(0, asked);
+    for (;;) {
+        const uint64_t needed = walk_file_table(head, nullptr);
+        // The whole table is in hand, or the read stopped at the file's end
+        // (so head is the whole file and parses exactly as the file does).
+        if (needed <= head.size() || head.size() < asked) return head;
+        asked = static_cast<size_t>(std::min<uint64_t>(std::max<uint64_t>(needed, uint64_t{asked} * 2),
+                                                       SIZE_MAX));
+        head = read(0, asked);
+    }
+}
+
+std::optional<std::vector<uint8_t>> sng_read_file(const ByteRangeReader& read,
+                                                  const std::vector<uint8_t>& head,
+                                                  const SngFileEntry& entry) {
+    if (!fits(head, kSngXorMaskOffset, kSngXorMaskSize)) return std::nullopt;
+    if (entry.length > SIZE_MAX) return std::nullopt;
+    const size_t n = static_cast<size_t>(entry.length);
+    std::vector<uint8_t> bytes = read(entry.offset, n);
+    if (bytes.size() != n) return std::nullopt;  // runs past the end of the file
+    // An empty entry reads nothing, so ask whether its offset is inside the
+    // file at all, as a whole-file read would.
+    if (n == 0 && entry.offset > 0 && read(entry.offset - 1, 1).empty()) return std::nullopt;
+    unmask(head.data() + kSngXorMaskOffset, bytes.data(), n, bytes.data());
+    return bytes;
 }
 
 std::optional<std::vector<uint8_t>> sng_decode_file(const std::vector<uint8_t>& buf,
