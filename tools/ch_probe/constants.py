@@ -153,6 +153,36 @@ EXPECT_PRECISION_BACK_MS = 40.0
 # Tolerance (ms) for calling a live-read constant "the value we expected".
 CONST_MATCH_TOLERANCE_MS = 0.5
 
+# --- Measured whole-window cap and floor (normal mode) ------------------------
+#
+# Clone Hero 1.1.0.6142 sets each note's window from both neighbouring gaps.
+# 0x20F7210 halves each gap and holds the half between the front and back
+# constants (37.5 and 85 ms). The two halves are summed and passed to the
+# window formula (RVA_WINDOW_FORMULA, 0x20DDDA0). So the formula's input runs
+# from 75 to 170 ms, and its output from 96.2932 to 171.4313 ms: the cap is a
+# clamp on the input, not on the stored window. The formula with the DLL's
+# constants gives 171.4313075 at 170 and 96.2931672 at 75, and
+# experiments/results/poll_windows.csv agrees: it tops out at 171.431308 ms
+# (6 rows) and bottoms out at 96.293167 ms (22 rows). Evidence:
+# .superpowers/sdd/2026-10-03-step1-engine-facts/ch-evidence.md, section 77.
+# Normal mode only; nobody has read precision mode's cap.
+WINDOW_CAP_MS = 171.4313
+WINDOW_FLOOR_MS = 96.2932
+
+# Half the whole window: the per-side reach at the widest spacing (85.72 ms,
+# not the 85 ms back constant).
+ONE_SIDE_CAP_MS = WINDOW_CAP_MS / 2
+
+# A note reads the cap when the gaps on both sides are at least this wide
+# (each half-gap at the back constant), and the floor when both are at most
+# this narrow (each half-gap at the front constant).
+CAP_FROM_GAP_MS = 2 * EXPECT_NORMAL_BACK_MS               # 170
+FLOOR_UP_TO_GAP_MS = 2 * EXPECT_NORMAL_FRONT_S * 1000     # 75
+
+# How close a stored reading must be to count as the cap or the floor. The
+# measured values agree with these to 0.00001 ms.
+WINDOW_MATCH_TOLERANCE_MS = 0.01
+
 # Name of the target module and process.
 MODULE_NAME = "GameAssembly.dll"
 PROCESS_NAME = "Clone Hero.exe"
