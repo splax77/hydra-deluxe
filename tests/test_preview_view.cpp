@@ -14,6 +14,7 @@
 #include <map>
 #include <optional>
 #include <random>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -339,6 +340,24 @@ TEST_CASE("build_preview_scene: a second activation with skips 0 hides what lies
     CHECK(s2.fills[1].state == PreviewFillState::Taken);
     CHECK(s2.fills[2].state == PreviewFillState::Offered);
     CHECK(s2.fills[3].state == PreviewFillState::Taken);
+}
+
+TEST_CASE("build_preview_scene: a fill an activation took stays taken when a later one lists it") {
+    // A tied variant takes its activations after the fold, and their stored
+    // passed-over fills, from its leader (finding 97). If the variant
+    // activated on a fill its leader passed over, the variant's next
+    // activation lists that fill as passed over. The fill was taken; it must
+    // not turn offered.
+    Song song = make_fill_song();
+    Path path;
+    path.activations = {act_at(song, 960, {}), act_at(song, 1920, {960, 1440})};
+
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.fills.size() == 4);
+    CHECK(scene.fills[0].state == PreviewFillState::Hidden);
+    CHECK(scene.fills[1].state == PreviewFillState::Taken);    // taken, though listed later
+    CHECK(scene.fills[2].state == PreviewFillState::Offered);
+    CHECK(scene.fills[3].state == PreviewFillState::Taken);
 }
 
 TEST_CASE("build_preview_scene: under the 1.0 rule the offered fill is the one the engine charged") {
@@ -890,9 +909,9 @@ TEST_CASE("sp meter curve: the bank between windows is the record's, not a phras
 
 TEST_CASE("sp meter curve: a phrase collected mid-activation jumps the meter a bar") {
     // Phrases at 1000 ms and 6000 ms; the second lands inside the activation's
-    // window. The record's deact node is what says it was collected during SP:
-    // it sits two measures past the plain end, so the window runs six measures
-    // instead of four and the meter steps up a bar at the phrase.
+    // window. The record's second SP-end step is what says it was collected
+    // during SP: at 5760 the end moves two measures later, so the window runs
+    // six measures instead of four and the meter steps up a bar there.
     Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
     Path path;
     Activation act = sp_act_at(song, 3840, /*sp_meter=*/2);
@@ -1031,7 +1050,7 @@ TEST_CASE("sp meter curve: two clamped collections refill twice and empty at the
     check_curve_well_formed(c);
     CHECK(c.cap == 2);
 
-    // The activation snaps to the 2 bars the engine recorded.
+    // The window starts at the 2 bars the record's first SP end leaves.
     CHECK(sp_meter_bars_at(c, 6000.0) == doctest::Approx(2.0));
     // One measure of drain, then the first collection tops back up to the cap.
     CHECK(sp_meter_bars_at(c, 8000.0 - 1e-6) == doctest::Approx(1.5));
@@ -1046,13 +1065,16 @@ TEST_CASE("sp meter curve: two clamped collections refill twice and empty at the
     CHECK(sp_meter_bars_at(c, 19000.0) == doctest::Approx(0.0));
 }
 
-TEST_CASE("sp meter curve: a phrase ending on the activation note is not counted twice") {
-    // The SP phrase's last note sits exactly on the activation tick. That bar
-    // is already inside the engine's recorded sp_meter, so it must not also
-    // be counted as a mid-SP collection -- the snap should read 2.0, not 3.0.
-    Song song = make_sp_song({3840}, /*last_tick=*/13440);
+TEST_CASE("sp meter curve: a bar that arrives on the activation note is spent there, not counted twice") {
+    // The second phrase's last note sits exactly on the activation tick, and
+    // the record says its bar arrived there. That arrival and the spend are
+    // at the same instant: the window starts at the record's 2 bars, not 3,
+    // and the bar is not left in the bank once the window closes.
+    Song song = make_sp_song({960, 3840}, /*last_tick=*/13440);
     Path path;
-    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2)};
+    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2);
+    act.bank_rise_ticks = {960, 3840};  // the second bar arrives on the activation note
+    path.activations = {act};
 
     PreviewScene scene = build_preview_scene(song, &path);
     const SpMeterCurve& c = scene.sp_meter;
@@ -1064,10 +1086,12 @@ TEST_CASE("sp meter curve: a phrase ending on the activation note is not counted
     CHECK(scene.activations[0].sp_end_tick == 11520);
     CHECK(scene.activations[0].sp_end_ms == doctest::Approx(12000.0));
 
-    CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(2.0));   // the snap, no extra bar
+    CHECK(sp_meter_bars_at(c, 1000.0) == doctest::Approx(1.0));         // the first bar
+    CHECK(sp_meter_bars_at(c, 4000.0 - 1e-6) == doctest::Approx(1.0));  // the second not yet in
+    CHECK(sp_meter_bars_at(c, 4000.0) == doctest::Approx(2.0));         // 2, not 3
     CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(1.0));   // one bar's drain later
     CHECK(sp_meter_bars_at(c, 12000.0) == doctest::Approx(0.0));  // the deact node
-    CHECK(sp_meter_bars_at(c, 14000.0) == doctest::Approx(0.0));  // still 0: no double-step
+    CHECK(sp_meter_bars_at(c, 14000.0) == doctest::Approx(0.0));  // the bar was spent, not banked
 }
 
 TEST_CASE("sp meter curve: the drain is linear in measures across a tempo change") {
@@ -2206,6 +2230,36 @@ TEST_CASE("preview lookups: searches match the old scans on every corpus chart a
                                           /*compare_gauge=*/true);
     }
     CHECK(charts_with_paths > 10);
+}
+
+// The Preview lights a stored passed-over fill by matching its tick to a fill
+// in the scene, and drops a tick that matches none. A miss would mean the
+// record and the chart disagree, so on the corpus there must be none.
+TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene") {
+    // The app's default settings, as "base + overlay" reads the corpus.
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int ticks_checked = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        if (rec.paths.empty()) continue;
+        std::set<int64_t> fill_ends;
+        for (const PreviewFill& f : build_preview_base(song).fills) fill_ends.insert(f.span.end_tick);
+        for (size_t pi = 0; pi < rec.paths.size(); ++pi) {
+            for (const Activation& a : rec.paths[pi].walk_activations()) {
+                for (int64_t t : a.skipped_fill_ticks) {
+                    ++ticks_checked;
+                    if (fill_ends.count(t) == 0)
+                        MESSAGE(chart << " | root " << pi << " | activation "
+                                      << a.timecode.ticks() << " | stored fill tick " << t);
+                    CHECK(fill_ends.count(t) == 1);
+                }
+            }
+        }
+    }
+    MESSAGE("stored passed-over fill ticks checked: " << ticks_checked);
+    CHECK(ticks_checked > 0);
 }
 
 // The same gauge comparison on every tied variant. Until each variant keeps

@@ -200,8 +200,11 @@ activates on is *taken* (all four lanes lit, the activation note's lane
 highlighted); a fill the path had enough SP for but passed over is *offered*
 (lanes lit dimly); every other candidate fill is hidden, because the game would
 not have shown it. Offered fills are the ones the engine stored on each
-activation as passed over; nothing guesses them from a count. Fills after the
-last activation are hidden because the engine records nothing about them.
+activation as passed over; nothing guesses them from a count. For a tied
+variant, the activations after the fold carry its leader's passed-over fills
+until finding 97 is fixed, and a fill the path took always stays taken. Fills
+after the last activation are hidden because the engine records nothing about
+them.
 
 **SP meter gauge**:
 The vertical gauge on the note highway's right edge showing banked Star Power

@@ -123,8 +123,10 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
         push_segment(curve, cursor_ms, act.ms, bank, bank);
         cursor_ms = std::max(cursor_ms, act.ms);
         bank = 0.0;  // the activation spends the bank
-        // Nothing stamped (a hand-built activation): no window to draw.
-        if (act.sp_end_changes.empty() || !act.has_sp_end) continue;
+        // Nothing stamped (a hand-built activation): no window to draw. The
+        // changes and has_sp_end both come from the record's SP-end steps, so
+        // the list being empty is the one check.
+        if (act.sp_end_changes.empty()) continue;
 
         // Inside the window: the measures left until the SP end in force, two
         // to a bar. Cut where the record says the end changed and at each
@@ -358,11 +360,15 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
         // Every other fill stays hidden, including those after the last
         // activation, which the engine records nothing about. Fills and the
         // stored ticks are both in chart order, so one index walks them.
+        // A taken fill stays taken: a tied variant's later activation can list
+        // a fill the variant activated on, because after the fold it carries
+        // its leader's passed-over fills (finding 97).
         std::vector<PreviewFill>& fills = scene.fills;
         size_t next_fill = 0;
         auto mark = [&](int64_t tick, PreviewFillState state) {
             while (next_fill < fills.size() && fills[next_fill].span.end_tick < tick) ++next_fill;
-            if (next_fill < fills.size() && fills[next_fill].span.end_tick == tick)
+            if (next_fill < fills.size() && fills[next_fill].span.end_tick == tick &&
+                fills[next_fill].state != PreviewFillState::Taken)
                 fills[next_fill].state = state;
         };
         for (const PreviewActivation& a : scene.activations) {
