@@ -11,11 +11,13 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
 #include "core/model.h"
+#include "core/replay.h"
 #include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
@@ -402,6 +404,69 @@ const Activation& last_act(const std::vector<Path>& paths) {
     REQUIRE(!paths.empty());
     REQUIRE(!paths.front().activations.empty());
     return paths.front().activations.back();
+}
+
+// The audit's constructed chart for finding 90 ("midsp"), 120 BPM 4/4, run at
+// cap 2. '1' activates at 10752; '0 1' activates at 4608, then at 11520. The
+// phrase at 11904 clamps both windows to end at 14976, on the same SP node
+// with the same score, so the search folds '0 1' into '1' there. The phrase
+// at 13056 then clamps the window again, to 16128: after the fold.
+//
+// with_squeeze adds four notes. The phrase at 11328 lands in '1''s SP but
+// before '0 1' activates, so only the leader collects it; the note at 6144
+// keeps the two tied. The note at 16032 and the phrase at 16224 sit 250 ms
+// either side of the SP end at 16128, so the leader splits there into '1+'
+// (SqIn) and '1-' (SqOut), and the variant hangs off both.
+std::vector<TailNote> midsp_notes(bool with_squeeze) {
+    std::vector<TailNote> n;
+    for (int64_t t = 0; t < 3072; t += 96) n.push_back({t, t == 768 || t == 2304, false});
+    n.push_back({4608, false, true});
+    if (with_squeeze) n.push_back({6144});
+    n.push_back({8448, true, false});
+    n.push_back({9216, true, false});
+    n.push_back({10752, false, true});
+    if (with_squeeze) n.push_back({11328, true, false});
+    n.push_back({11520, false, true});
+    n.push_back({11904, true, false});
+    n.push_back({12672, false, true});
+    n.push_back({13056, true, false});
+    n.push_back({15360});
+    if (with_squeeze) {
+        n.push_back({16032});
+        n.push_back({16224, true, false});
+    }
+    n.push_back({16896});
+    n.push_back({17664});
+    n.push_back({18432});
+    return n;
+}
+
+void collect_paths(const Path& p, std::vector<const Path*>& out) {
+    out.push_back(&p);
+    for (const Path& v : p.variants) collect_paths(v, out);
+}
+std::vector<const Path*> every_path(const std::vector<Path>& roots) {
+    std::vector<const Path*> out;
+    for (const Path& r : roots) collect_paths(r, out);
+    return out;
+}
+const Path* root_named(const std::vector<Path>& roots, const std::string& s) {
+    for (const Path& r : roots)
+        if (r.pathstring() == s) return &r;
+    return nullptr;
+}
+// The leader's variant whose own last activation is at `tick`.
+const Path* variant_at(const Path& leader, int64_t tick) {
+    for (const Path& v : leader.variants)
+        if (!v.activations.empty() && v.activations.back().timecode.ticks() == tick)
+            return &v;
+    return nullptr;
+}
+using Step = std::tuple<int64_t, int64_t, SpEndKind>;
+std::vector<Step> steps_of(const Activation& a) {
+    std::vector<Step> out;
+    for (const SpEndStep& s : a.sp_end_steps) out.emplace_back(s.tick, s.end_tick, s.kind);
+    return out;
 }
 
 }  // namespace
@@ -1144,4 +1209,84 @@ TEST_CASE("graph_build_cap: never taller than the song's phrases, never below on
     CHECK(graph_build_cap(4, 10) == 4);   // the cap binds
     CHECK(graph_build_cap(32, 3) == 3);   // the song's phrases bind
     CHECK(graph_build_cap(8, 0) == 1);    // a phraseless song still builds one level
+}
+
+// ---- Tied variants keep their own state (decision D3) ------------------
+
+TEST_CASE("tied variants: a variant folded mid-SP takes its leader's steps after the fold") {
+    const Song song = build_tail_song(midsp_notes(false));
+    ScoreGraph graph(song, 2);
+    const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 6});
+
+    const Path* leader = root_named(roots, "1");
+    REQUIRE(leader != nullptr);
+    const Path* variant = variant_at(*leader, 11520);
+    REQUIRE(variant != nullptr);
+    CHECK(variant->totalscore() == leader->totalscore());
+
+    const Activation& mine = variant->activations.back();
+    const Activation& lead = leader->activations.back();
+    CHECK(steps_of(lead) == std::vector<Step>{{10752, 13824, SpEndKind::Activation},
+                                              {11904, 14976, SpEndKind::Clamped},
+                                              {13056, 16128, SpEndKind::Clamped}});
+    // Its own activation step and its own clamp at the fold, then the
+    // leader's clamp at 13056. Today the list stops at the fold: 14976.
+    CHECK(steps_of(mine) == std::vector<Step>{{11520, 14592, SpEndKind::Activation},
+                                              {11904, 14976, SpEndKind::Clamped},
+                                              {13056, 16128, SpEndKind::Clamped}});
+    CHECK(mine.deact_tick() == std::optional<int64_t>(16128));
+    CHECK(mine.clamp_tick() == std::optional<int64_t>(13056));
+    CHECK(mine.collected_phrase_ticks() == std::vector<int64_t>{11904, 13056});
+    // The real deactivation's rows, not the song's last notes.
+    CHECK(mine.backends == lead.backends);
+    CHECK(mine.sqinouts.empty());
+    CHECK(variant->pathstring() == "0 1");
+
+    for (const Path* p : every_path(roots))
+        CHECK_MESSAGE(replay_stored_path(song, *p).faithful(), p->pathstring());
+}
+
+TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqIn or SqOut") {
+    const Song song = build_tail_song(midsp_notes(true));
+    ScoreGraph graph(song, 2);
+    const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 6});
+
+    const Path* in_lead = root_named(roots, "1+");
+    const Path* out_lead = root_named(roots, "1-");
+    REQUIRE(in_lead != nullptr);
+    REQUIRE(out_lead != nullptr);
+    const Path* in_var = variant_at(*in_lead, 11520);
+    const Path* out_var = variant_at(*out_lead, 11520);
+    REQUIRE(in_var != nullptr);
+    REQUIRE(out_var != nullptr);
+
+    // The leader collected 11328 in SP. The variant did not: it banked that
+    // phrase before activating at 11520, so the step is the leader's alone.
+    CHECK(in_lead->activations.back().collected_phrase_ticks() ==
+          std::vector<int64_t>{11328, 11904, 13056, 16224});
+
+    // The SqIn side: a late SqIn on the phrase at 16224 moves the end to 17664.
+    const Activation& a = in_var->activations.back();
+    CHECK(steps_of(a) == std::vector<Step>{{11520, 14592, SpEndKind::Activation},
+                                           {11904, 14976, SpEndKind::Clamped},
+                                           {13056, 16128, SpEndKind::Clamped},
+                                           {16224, 17664, SpEndKind::SqIn}});
+    REQUIRE(a.sqinouts.size() == 1);
+    CHECK(a.sqinouts[0].kind == SqueezeKind::SqIn);
+    CHECK(in_var->pathstring() == "0 1+");
+
+    // The SqOut side: SP ends at 16128 and the phrase at 16224 has no step.
+    const Activation& b = out_var->activations.back();
+    CHECK(steps_of(b) == std::vector<Step>{{11520, 14592, SpEndKind::Activation},
+                                           {11904, 14976, SpEndKind::Clamped},
+                                           {13056, 16128, SpEndKind::Clamped}});
+    REQUIRE(b.sqinouts.size() == 1);
+    CHECK(b.sqinouts[0].kind == SqueezeKind::SqOut);
+    CHECK(b.sqout_tick == std::optional<int64_t>(16224));
+    CHECK_FALSE(b.backends.empty());  // 16032 and the squeezed-out 16224
+    CHECK(b.backends == out_lead->activations.back().backends);
+    CHECK(out_var->pathstring() == "0 1-");
+
+    for (const Path* p : every_path(roots))
+        CHECK_MESSAGE(replay_stored_path(song, *p).faithful(), p->pathstring());
 }
