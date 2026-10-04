@@ -210,7 +210,7 @@ TEST_CASE("Path::walk_activations: own activations then the variant tail, in pla
     // The same sequence the copying all_activations() hands out.
     const std::vector<Activation> copied = p.all_activations();
     REQUIRE(copied.size() == walk.size());
-    for (size_t i = 0; i < copied.size(); ++i) CHECK(copied[i].skips == walk[i].skips);
+    for (size_t i = 0; i < copied.size(); ++i) CHECK(copied[i].skips() == walk[i].skips());
 
     // Nothing on either side.
     Path none;

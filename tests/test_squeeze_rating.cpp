@@ -272,7 +272,7 @@ TEST_CASE("activation_deact_tick: the stored node, read back") {
     // point of the change -- there is no measure-count fallback any more.
     Activation stale;
     stale.timecode = Timecode::raw(3840);
-    stale.sp_meter = 2;
+    test::set_sp_meter(stale, 2);
     CHECK(!activation_deact_tick(stale).has_value());
 
     // A bare, default-constructed activation: nullopt.
@@ -513,7 +513,7 @@ TEST_CASE("rate_activation: a SqIn on the SP end is free, so it reads pre's earl
     // Only one side scaled, so the figure shows which side was read.
     auto figure = [](TransferScale pre, double offset) {
         Activation act;
-        act.skips = 0;
+        test::set_skips(act, 0);
         act.e_offset = 300.0;
         act.transfer_pre = pre;
         act.transfer_post = TransferScale{};

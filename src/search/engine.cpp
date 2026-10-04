@@ -159,8 +159,9 @@ Enum enumerate(const ScoreGraph& graph) {
 struct Act {
     int32_t parent;
     int32_t act_node;
+    // How many fills were passed over before it, for act_difficulty's E0
+    // test. The record stores the fills themselves (skip_tail).
     int32_t skips;
-    int32_t sp_meter;
     int32_t deact_edge;
     int32_t sq_tail;
     int32_t depth;
@@ -169,11 +170,23 @@ struct Act {
     // live path when the activation closes. The clamp note and the collected
     // phrases are steps of it.
     int32_t end_tail;
+    // Where each bar this activation spends arrived (an index into banks_),
+    // or -1. Taken off the live path when the activation is made.
+    int32_t bank_tail;
+    // The fills passed over before this activation (an index into fills_),
+    // or -1. Taken off the live path when the activation is made.
+    int32_t skip_tail;
 };
 struct SqNode {
     int32_t prev;
     int32_t kind;
     double offset;
+};
+// One tick in a chain of ticks (a bank arrival or a passed-over fill),
+// linked to the one before.
+struct ColNode {
+    int32_t prev;
+    int64_t tick;
 };
 // One SP-end step of the running activation, linked to the one before.
 struct EndNode {
@@ -206,6 +219,14 @@ struct Path {
     // The running activation's SP-end steps so far (an index into ends_),
     // or -1. Handed to the Act at deactivation.
     int32_t end_tail;
+    // The bars banked since the last window closed, one arrival tick each
+    // (an index into banks_), or -1. Always holds p.sp entries. Handed to
+    // the Act at activation.
+    int32_t bank_tail;
+    // The fills passed over since the last activation, one tick each (an
+    // index into fills_), or -1. Always holds currentskips entries. Handed to
+    // the Act at activation.
+    int32_t skip_tail;
     double sp_ready_ms;
     double skipped_e_offset;
     double diff_prefix;
@@ -215,17 +236,23 @@ struct Path {
 struct OutPath {
     int32_t score_base, score_combo, score_sp, score_solo, score_accents,
         score_ghosts;
-    int32_t notecount, leftover_sp;
+    int32_t notecount;
     int32_t var_point, depth, act_begin, act_end;
+    // The bars banked after the last window: out_ticks_[bank_begin, bank_end).
+    int32_t bank_begin, bank_end;
 };
 struct OutAct {
-    int32_t act_node, skips, sp_meter, deact_edge, sq_begin, sq_end;
+    int32_t act_node, deact_edge, sq_begin, sq_end;
     double e_offset;
     // Only set (non-NO_TIME) on a path's last activation when it never
     // deactivated: the engine's tracked SP end, extensions included.
     int64_t final_sp_end;
     // The SP-end history: out_ends_[end_begin, end_end).
     int32_t end_begin, end_end;
+    // Where each bar it spends arrived: out_ticks_[bank_begin, bank_end).
+    int32_t bank_begin, bank_end;
+    // The fills passed over before it: out_ticks_[skip_begin, skip_end).
+    int32_t skip_begin, skip_end;
 };
 struct OutSq {
     int32_t kind;
@@ -313,24 +340,25 @@ public:
     const std::vector<OutAct>& out_acts() const { return out_acts_; }
     const std::vector<OutSq>& out_sqs() const { return out_sqs_; }
     const std::vector<SpEndStep>& out_ends() const { return out_ends_; }
+    const std::vector<int64_t>& out_ticks() const { return out_ticks_; }
 
 private:
     const NodeView& node(int32_t i) const { return en_.node_views[(size_t)i]; }
     const EdgeView& edge(int32_t i) const { return en_.edge_views[(size_t)i]; }
     const ScoreGraphEdge* eobj(int32_t i) const { return en_.edges[(size_t)i]; }
 
-    int32_t new_act(int32_t parent, int32_t act_node, int32_t skips,
-                    int32_t sp_meter, double e_offset) {
+    int32_t new_act(int32_t parent, int32_t act_node, int32_t skips, double e_offset) {
         Act a;
         a.parent = parent;
         a.act_node = act_node;
         a.skips = skips;
-        a.sp_meter = sp_meter;
         a.deact_edge = -1;
         a.sq_tail = -1;
         a.depth = (parent < 0 ? 0 : acts_[(size_t)parent].depth) + 1;
         a.e_offset = e_offset;
         a.end_tail = -1;
+        a.bank_tail = -1;
+        a.skip_tail = -1;
         acts_.push_back(a);
         return (int32_t)acts_.size() - 1;
     }
@@ -400,6 +428,19 @@ private:
     void emit_variant(int32_t v, int32_t depth);
     void emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
                    int32_t* begin, int32_t* end);
+    int32_t push_tick(std::vector<ColNode>& pool, int32_t prev, int64_t tick) {
+        pool.push_back(ColNode{prev, tick});
+        return (int32_t)pool.size() - 1;
+    }
+    // A tick chain copied out in order, into out_ticks_[*begin, *end).
+    void emit_ticks(const std::vector<ColNode>& pool, int32_t tail, int32_t* begin, int32_t* end) {
+        tick_scratch_.clear();
+        for (int32_t c = tail; c >= 0; c = pool[(size_t)c].prev) tick_scratch_.push_back(c);
+        *begin = (int32_t)out_ticks_.size();
+        for (size_t k = tick_scratch_.size(); k-- > 0;)
+            out_ticks_.push_back(pool[(size_t)tick_scratch_[k]].tick);
+        *end = (int32_t)out_ticks_.size();
+    }
     void emit_ends(int32_t tail, int32_t* begin, int32_t* end) {
         end_scratch_.clear();
         for (int32_t s = tail; s >= 0; s = ends_[(size_t)s].prev) end_scratch_.push_back(s);
@@ -436,6 +477,10 @@ private:
     std::vector<SqNode> sqs_;
     // Every SP-end step any path took, as linked chains.
     std::vector<EndNode> ends_;
+    // Every bank arrival any path made, as linked chains.
+    std::vector<ColNode> banks_;
+    // Every fill any path passed over, as linked chains.
+    std::vector<ColNode> fills_;
     std::vector<Variant> variants_;
 
     std::vector<Path> cur_;
@@ -462,9 +507,12 @@ private:
     std::vector<OutAct> out_acts_;
     std::vector<OutSq> out_sqs_;
     std::vector<SpEndStep> out_ends_;
+    // Every tick list copied out (bank arrivals, passed-over fills), as ranges.
+    std::vector<int64_t> out_ticks_;
     std::vector<int32_t> chain_scratch_;
     std::vector<int32_t> sq_scratch_;
     std::vector<int32_t> end_scratch_;
+    std::vector<int32_t> tick_scratch_;
 
     std::function<void(float)> progress_cb_;
     float progress_reported_ = -1.0f;
@@ -528,6 +576,14 @@ void Engine::advance(Path& p) {
         int32_t sp = old_sp + sp_n - buffered;
         if (has_sp_cap_ && sp > sp_cap_) sp = sp_cap_;
         p.sp = sp;
+        // Keep the banked bars in step with p.sp. A gain is a phrase past the
+        // buffered ones (a squeeze-out already paid for those). A loss happens
+        // only when a buffered phrase is not on this edge: the engine hands the
+        // squeeze-out's bar back here and the phrase's own edge adds it again.
+        for (int32_t k = sp; k < old_sp; ++k) p.bank_tail = banks_[(size_t)p.bank_tail].prev;
+        for (int32_t k = 0; k < sp - old_sp; ++k)
+            p.bank_tail = push_tick(banks_, p.bank_tail,
+                                    eo->sp_times[(size_t)(buffered + k)].first.ticks());
 
         if (old_sp < 2 && sp >= 2) {
             const int32_t k = 1 - old_sp + buffered;
@@ -581,9 +637,13 @@ bool Engine::branch_activate(Path& p, Path* child) {
 
     close_last_activation(c);
 
-    c.act_tail = new_act(p.act_tail, p.node, p.currentskips, p.sp,
+    c.act_tail = new_act(p.act_tail, p.node, p.currentskips,
                          has_value(p.skipped_e_offset) ? p.skipped_e_offset
                                                        : e_offset);
+    acts_[(size_t)c.act_tail].bank_tail = p.bank_tail;
+    c.bank_tail = -1;
+    acts_[(size_t)c.act_tail].skip_tail = p.skip_tail;
+    c.skip_tail = -1;
     c.sc[2] += e.frontend_points;
     c.score += e.frontend_points;
     c.skipped_e_offset = NO_DOUBLE;
@@ -592,6 +652,8 @@ bool Engine::branch_activate(Path& p, Path* child) {
     c.end_tail = push_end(-1, n.tick, aiet_val, SpEndKind::Activation);
 
     p.currentskips += 1;
+    // The fill just passed over, for the record: the Preview lights it.
+    p.skip_tail = push_tick(fills_, p.skip_tail, n.tick);
 
     if (!has_value(p.skipped_e_offset)) p.skipped_e_offset = e_offset;
 
@@ -617,6 +679,10 @@ void Engine::create_deactivated_path(const Path& p, Path* child, bool is_sq_out)
     c.sp = is_sq_out ? 1 : 0;
     c.sp_end_time = NO_TIME;
     c.end_tail = -1;
+    // A squeeze-out banks one bar when the player hits the phrase: just after
+    // SP ends for an early phrase, on its own tick for a late one.
+    c.bank_tail = is_sq_out ? push_tick(banks_, -1, std::max(node(e.dest).tick, e.sqinout_time))
+                            : -1;
 
     c.act_tail = clone_tail(p.act_tail);
     if (c.act_tail >= 0) {
@@ -980,8 +1046,6 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
 
         OutAct oa;
         oa.act_node = a.act_node;
-        oa.skips = a.skips;
-        oa.sp_meter = a.sp_meter;
         oa.deact_edge = a.deact_edge;
         oa.e_offset = a.e_offset;
         oa.sq_begin = (int32_t)out_sqs_.size();
@@ -994,6 +1058,8 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
         oa.sq_end = (int32_t)out_sqs_.size();
         oa.final_sp_end = NO_TIME;
         emit_ends(a.end_tail, &oa.end_begin, &oa.end_end);
+        emit_ticks(banks_, a.bank_tail, &oa.bank_begin, &oa.bank_end);
+        emit_ticks(fills_, a.skip_tail, &oa.skip_begin, &oa.skip_end);
         out_acts_.push_back(oa);
     }
     *end = (int32_t)out_acts_.size();
@@ -1040,9 +1106,9 @@ void Engine::emit_path(const Path& p) {
     op.score_accents = p.sc[4];
     op.score_ghosts = p.sc[5];
     op.notecount = p.notecount;
-    op.leftover_sp = p.sp;
     op.var_point = -1;
     op.depth = 0;
+    emit_ticks(banks_, p.bank_tail, &op.bank_begin, &op.bank_end);
     emit_acts(p.act_tail, p.sp_end_time, p.end_tail, &op.act_begin, &op.act_end);
     out_paths_.push_back(op);
 
@@ -1059,6 +1125,8 @@ bool Engine::run() {
     root.tied_count = 1;
     root.sp_end_time = NO_TIME;
     root.end_tail = -1;
+    root.bank_tail = -1;
+    root.skip_tail = -1;
     root.sp_ready_ms = NO_DOUBLE;
     root.skipped_e_offset = NO_DOUBLE;
     root.diff_prefix = NO_DOUBLE;
@@ -1179,6 +1247,7 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                            const std::vector<OutAct>& out_acts,
                            const std::vector<OutSq>& out_sqs,
                            const std::vector<SpEndStep>& out_ends,
+                           const std::vector<int64_t>& out_ticks,
                            const std::vector<BackendSqueeze>& tail_backends,
                            const SongTiming& timing) {
     std::vector<BuildNode> pool;
@@ -1195,19 +1264,22 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
         path.score_accents = op.score_accents;
         path.score_ghosts = op.score_ghosts;
         path.notecount = op.notecount;
-        path.leftover_sp = op.leftover_sp;
+        path.trailing_bank_ticks.assign(out_ticks.begin() + op.bank_begin,
+                                        out_ticks.begin() + op.bank_end);
 
         for (int j = op.act_begin; j < op.act_end; ++j) {
             const OutAct& oa = out_acts[(size_t)j];
             const ScoreGraphNode* node = en.nodes[(size_t)oa.act_node];
 
             Activation act;
-            act.skips = oa.skips;
             act.timecode = node->timecode;
             // An activation node is a chart note, so it always carries the
             // chord hit there.
             act.chord = node->chord.value();
-            act.sp_meter = oa.sp_meter;
+            act.bank_rise_ticks.assign(out_ticks.begin() + oa.bank_begin,
+                                       out_ticks.begin() + oa.bank_end);
+            act.skipped_fill_ticks.assign(out_ticks.begin() + oa.skip_begin,
+                                          out_ticks.begin() + oa.skip_end);
             act.frontend_points = node->branch_edge->frontend_points;
             act.e_offset = oa.e_offset;
             if (oa.deact_edge >= 0) {
@@ -1338,7 +1410,7 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
         throw std::runtime_error("search reached a broken state");
 
     return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
-                   engine.out_ends(), graph.tail_backends(),
+                   engine.out_ends(), engine.out_ticks(), graph.tail_backends(),
                    graph.timing());
 }
 

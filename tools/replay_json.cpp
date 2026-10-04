@@ -92,8 +92,8 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                 {"deact_tick", d ? *d : -1},
                 {"sqout_tick", act.sqout_tick ? *act.sqout_tick : -1},
                 {"nominal_deact_tick", nominal},
-                {"sp_meter", act.sp_meter},
-                {"skips", act.skips},
+                {"sp_meter", act.sp_meter()},
+                {"skips", act.skips()},
                 {"chord_code", act.chord.code()},
                 {"sqinouts", sq},
             });

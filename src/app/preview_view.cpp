@@ -352,8 +352,8 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
             PreviewActivation pa;
             pa.tick = a.timecode.ticks();
             pa.ms = song.timecode(pa.tick).ms();
-            pa.sp_meter = a.sp_meter;
-            pa.skips = a.skips;
+            pa.sp_meter = a.sp_meter();
+            pa.skips = a.skips();
             pa.collected_phrase_ticks = a.collected_phrase_ticks();
             if (std::optional<int64_t> d = activation_deact_tick(a)) {
                 pa.has_sp_end = true;

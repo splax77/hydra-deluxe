@@ -310,12 +310,10 @@ struct SpEndStep {
 };
 
 struct Activation {
-    // The search sets these six on every activation it makes, so they are
+    // The search sets these on every activation it makes, so they are
     // plain values (record format v7, docs/adr/0017).
-    int skips = 0;
     Timecode timecode;
     Chord chord;
-    int sp_meter = 0;
     int frontend_points = 0;
     std::vector<BackendSqueeze> backends;
     std::vector<SPSqueeze> sqinouts;
@@ -345,6 +343,26 @@ struct Activation {
     // record holds is read from this list (the accessors below). Nothing
     // re-derives it.
     std::vector<SpEndStep> sp_end_steps;
+
+    // Where each bar this activation spends arrived, since the previous window
+    // closed (or the chart began), in order. A phrase hit at the cap gains
+    // nothing and is not here. A squeezed-out phrase's bar is here at the
+    // later of the previous deact node and that phrase, when the player hits
+    // it. Stamped by the search. sp_meter() is its size.
+    std::vector<int64_t> bank_rise_ticks;
+
+    // Bars of SP this activation spends: one per stored arrival.
+    int sp_meter() const { return static_cast<int>(bank_rise_ticks.size()); }
+
+    // The fills the path was shown and passed over before this activation,
+    // in chart order. The search charges a skip only on a fill it could have
+    // taken (enough SP, deadline open) and stamps that fill's tick here.
+    // Under the 1.0 fill rule these need not be the fills nearest the
+    // activation. skips() is its size. The Preview lights exactly these.
+    std::vector<int64_t> skipped_fill_ticks;
+
+    // Fills passed over before this activation: one per stored fill.
+    int skips() const { return static_cast<int>(skipped_fill_ticks.size()); }
 
     // Read from sp_end_steps; see each body in model.cpp.
     //   deact_tick()             - the deactivation node D: where this
@@ -464,7 +482,13 @@ private:
 struct Path {
     std::vector<Activation> activations;
     int notecount = 0;
-    int leftover_sp = 0;
+    // Where each bar banked after the path's last window closed arrived, in
+    // order, as Activation::bank_rise_ticks. leftover_sp() is its size. A
+    // variant copies its root's (prepare_variants).
+    std::vector<int64_t> trailing_bank_ticks;
+
+    // Bars left after the last window: one per stored arrival.
+    int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
 
     int64_t score_base = 0;
     int64_t score_combo = 0;

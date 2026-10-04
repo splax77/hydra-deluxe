@@ -414,7 +414,7 @@ bool Activation::is_e_critical() const {
     return e_offset < kEarlyFillWindowMs;
 }
 
-bool Activation::is_E0() const { return is_e0(e_offset, skips); }
+bool Activation::is_E0() const { return is_e0(e_offset, skips()); }
 
 std::optional<double> Activation::e_difficulty(bool verbose) const {
     if (is_E0() || verbose) return early_fill_difficulty(e_offset);
@@ -440,7 +440,7 @@ std::string Activation::notationstr() const {
     std::string e = is_e_critical() ? "E" : "";
     std::string syms;
     for (const SPSqueeze& sq : sqinouts) syms += sq.symbol();
-    return e + std::to_string(skips) + syms;
+    return e + std::to_string(skips()) + syms;
 }
 
 std::string Activation::notationstr_verbose() const {
@@ -550,7 +550,7 @@ void Path::prepare_variants() {
         v.score_accents = score_accents;
         v.score_ghosts = score_ghosts;
         v.notecount = notecount;
-        v.leftover_sp = leftover_sp;
+        v.trailing_bank_ticks = trailing_bank_ticks;
         v.prepare_variants();
     }
 }
@@ -658,7 +658,7 @@ bool Path::is_allzero() const {
     const ActivationWalk acts = walk_activations();
     if (acts.empty()) return false;
     for (const Activation& act : acts)
-        if (act.skips != 0) return false;
+        if (act.skips() != 0) return false;
     return true;
 }
 

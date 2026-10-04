@@ -6,8 +6,10 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <set>
 #include <string>
@@ -424,7 +426,7 @@ TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
     CHECK(act.timecode.ticks() == 2304);
 
     const int64_t end_tick = 5376;
@@ -475,7 +477,7 @@ TEST_CASE("SP past the last note: a mid-activation phrase extends the end") {
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
 
     const int64_t extended_tick = 6912;
     const int64_t plain_tick = 5376;
@@ -794,7 +796,7 @@ TEST_CASE("SP cap overfill: a mid-SP phrase that clamps records the "
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
     CHECK(act.timecode.ticks() == 2304);
 
     auto deact = activation_deact_tick(act);
@@ -826,7 +828,7 @@ TEST_CASE("SP cap overfill: a mid-SP phrase that only ties the cap does "
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
 
     auto deact = activation_deact_tick(act);
     REQUIRE(deact.has_value());
@@ -863,7 +865,7 @@ TEST_CASE("SP cap overfill: a later unclamped extension keeps the earlier "
         run_search(graph, EngineOptions{});
 
     const Activation& act = last_act(paths);
-    CHECK(act.sp_meter == 2);
+    CHECK(act.sp_meter() == 2);
 
     // The chart ends at 7500, before the SP end at 7680, so this is the same
     // "SP outlasts the chart" case as the tests above: the tail rows are
@@ -1121,7 +1123,7 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                     CHECK(act.refill_tick(k) >= prev.tick);
                 }
                 CHECK(act.nominal_end() ==
-                      song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter)).ticks());
+                      song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter())).ticks());
                 // Appendix B's first guarantee: one SqIn step per SqIn, so
                 // a relabel that found nothing cannot pass silently.
                 size_t sqins = 0, sqin_steps = 0;
@@ -1154,4 +1156,134 @@ TEST_CASE("graph_build_cap: never taller than the song's phrases, never below on
     CHECK(graph_build_cap(4, 10) == 4);   // the cap binds
     CHECK(graph_build_cap(32, 3) == 3);   // the song's phrases bind
     CHECK(graph_build_cap(8, 0) == 1);    // a phraseless song still builds one level
+}
+
+TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
+    Song song = test::make_early_sqout_song();
+    ScoreGraph graph(song, 4);
+    // The best path collects 12960 instead and keeps SP running over the
+    // second fill, so search wide and pick the path that squeezed out.
+    EngineOptions opts = test::wide_search();
+    opts.target_act_ticks = std::vector<int64_t>{5760, 17280};
+    const std::vector<Path> paths = run_search(graph, opts);
+    const Path* found = nullptr;
+    for (const Path& p : paths)
+        if (!p.activations.empty() && p.activations.front().sqout_tick) found = &p;
+    REQUIRE(found != nullptr);
+    const Path& path = *found;
+    REQUIRE(path.activations.size() == 2);
+    CHECK((path.activations[0].bank_rise_ticks == std::vector<int64_t>{480, 1920}));
+    // The phrase at 12960 was hit late, just after SP ended at 13440: its bar
+    // arrives there. Then the phrase at 14400.
+    CHECK((path.activations[1].bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
+    CHECK(path.trailing_bank_ticks.empty());
+}
+
+// The lasting order checks, on root paths. A variant's tail activations are
+// its leader's; their order against the variant's own windows is Part B's
+// job, and Part B extends this case to variants.
+//
+// These are facts the chart and the window give on their own. The test does
+// not restate when the engine says a bar arrives. A banked bar arrives on a
+// real SP-phrase-end note, or, for a squeezed-out bar, at the deact node;
+// every list is strictly ascending (a phrase banks once); and nothing arrives
+// before the window that precedes it closed. The fixture case above pins the
+// exact ticks.
+namespace {
+// Checks one bank list: the bars banked after `prev` closed (nullptr: since the
+// chart began), up to `last_tick`.
+void check_bank_list(const std::vector<int64_t>& ticks, const Activation* prev,
+                     int64_t last_tick, const std::set<int64_t>& phrase_ends) {
+    const std::optional<int64_t> deact = prev ? prev->deact_tick() : std::nullopt;
+    const int64_t floor = deact ? *deact : std::numeric_limits<int64_t>::min();
+    // A squeeze-out leaves one bar, banked by the player's hit on the phrase.
+    // That hit can land at the deact node itself.
+    const bool squeezed_out = prev && prev->sqout_tick.has_value();
+    if (squeezed_out) REQUIRE_FALSE(ticks.empty());
+    for (size_t k = 0; k < ticks.size(); ++k) {
+        CAPTURE(k);
+        CAPTURE(ticks[k]);
+        CHECK(ticks[k] >= floor);
+        CHECK(ticks[k] <= last_tick);
+        if (k > 0) CHECK(ticks[k] > ticks[k - 1]);
+        const bool at_deact_node = squeezed_out && k == 0 && deact && ticks[k] == *deact;
+        CHECK((phrase_ends.count(ticks[k]) == 1 || at_deact_node));
+    }
+}
+}  // namespace
+
+TEST_CASE("Bank: every corpus root banks in order") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int acts = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song =
+            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        std::set<int64_t> phrase_ends;
+        for (const SongTimestamp& ts : song.sequence)
+            if (ts.flag_sp) phrase_ends.insert(ts.timecode.ticks());
+        const int64_t chart_end = song.sequence.back().timecode.ticks();
+        for (const Path& root : corpus::analyzed(chart, cfg).paths) {
+            const Activation* prev = nullptr;
+            for (const Activation& act : root.walk_activations()) {
+                CAPTURE(chart);
+                CAPTURE(act.timecode.ticks());
+                ++acts;
+                check_bank_list(act.bank_rise_ticks, prev, act.timecode.ticks(), phrase_ends);
+                prev = &act;
+            }
+            // The bars still banked when the last window closed (or from the
+            // start, for a path with no window) follow the same rules.
+            CAPTURE(chart);
+            check_bank_list(root.trailing_bank_ticks, prev, chart_end, phrase_ends);
+        }
+    }
+    CHECK(acts > 1000);
+}
+
+TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
+    // Fill A (19200) was shown and passed over; fill B (24960) has the earlier
+    // 1.0 deadline and never spawned. The nearest-fill guess would name B.
+    Song song = test::make_ch10_fill_song();
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
+    EngineOptions opts;
+    opts.target_act_ticks = std::vector<int64_t>{28800};
+    const std::vector<Path> paths = run_search(graph, opts);
+    REQUIRE(!paths.empty());
+    REQUIRE(paths.front().activations.size() == 1);
+    const Activation& act = paths.front().activations.front();
+    CHECK((act.skipped_fill_ticks == std::vector<int64_t>{19200}));
+}
+
+// The lasting order checks, on root paths. A tied variant still carries its
+// leader's list until finding 97 gets its own plan (Q3).
+TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int skipped = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song =
+            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        for (const Path& root : corpus::analyzed(chart, cfg).paths) {
+            const Activation* prev = nullptr;
+            for (const Activation& act : root.walk_activations()) {
+                CAPTURE(chart);
+                CAPTURE(act.timecode.ticks());
+                for (size_t k = 0; k < act.skipped_fill_ticks.size(); ++k) {
+                    const int64_t t = act.skipped_fill_ticks[k];
+                    ++skipped;
+                    CHECK(t < act.timecode.ticks());
+                    if (prev) CHECK(t > prev->timecode.ticks());
+                    if (k > 0) CHECK(t > act.skipped_fill_ticks[k - 1]);
+                    CHECK(std::any_of(song.sequence.begin(), song.sequence.end(),
+                                      [t](const SongTimestamp& ts) {
+                                          return ts.timecode.ticks() == t &&
+                                                 ts.activation_length.has_value();
+                                      }));
+                }
+                prev = &act;
+            }
+        }
+    }
+    CHECK(skipped > 100);
 }
