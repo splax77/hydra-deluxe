@@ -37,6 +37,12 @@ namespace {
 ImVec4 text_color() { return ImGui::GetStyleColorVec4(ImGuiCol_Text); }
 ImVec4 dim_color() { return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled); }
 
+// The colour of a timing mark: the warning colour when its timing is
+// difficult (or, for the scale line, when the scale moves a figure), the dim
+// grey otherwise. A path button's timing, an activation's badge, its outline
+// on the timeline and its scale line all use it.
+ImVec4 warn_or_dim(bool warn) { return warn ? kWarningColor : dim_color(); }
+
 // Draw `text` at `pos` over an item already submitted. `font` null keeps the
 // current font; `wrap_w` > 0 wraps the text at that width.
 void text_at(const ImVec2& pos, const ImVec4& color, const char* text,
@@ -126,7 +132,7 @@ bool path_button(size_t i, const app::PathButtonView& b, bool selected) {
     if (!b.timing.empty()) {
         const float title_w = std::min(mono_width(b.title), title_wrap_w);
         text_at(ImVec2(top.x + pad + title_w + px(kTimingGap), top.y + pad),
-                b.timing_warn ? kWarningColor : dim_color(), b.timing.c_str(), g_mono_font);
+                warn_or_dim(b.timing_warn), b.timing.c_str(), g_mono_font);
     }
     if (!b.detail.empty())
         text_at(ImVec2(top.x + pad, top.y + pad + title_h + gap),
@@ -188,7 +194,7 @@ void render_timeline(const app::ActivationsView& view) {
         if (!a.badge.empty())
             dl->AddRect(ImVec2(m_min.x - px(2.0f), m_min.y - px(2.0f)),
                         ImVec2(m_max.x + px(2.0f), m_max.y + px(2.0f)),
-                        ImGui::GetColorU32(a.difficult ? kWarningColor : dim_color()), px(1.0f),
+                        ImGui::GetColorU32(warn_or_dim(a.difficult)), px(1.0f),
                         0, px(1.5f));
         const std::string num = std::to_string(a.number);
         centres.push_back(x);
@@ -272,7 +278,7 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
         const ImVec2 b_max(bx + sz.x + px(kRowBadgePad), text_y + sz.y + px(2.0f));
         dl->AddRectFilled(b_min, b_max, IM_COL32(51, 38, 26, 255), px(9.0f));
         dl->AddRect(b_min, b_max, IM_COL32(106, 69, 32, 255), px(9.0f));
-        text_at(ImVec2(bx, text_y), a.difficult ? kWarningColor : dim_color(), a.badge.c_str());
+        text_at(ImVec2(bx, text_y), warn_or_dim(a.difficult), a.badge.c_str());
     }
     end_overlay(top, h);
 }
@@ -377,9 +383,7 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
         squeeze_box(a.number, k, a.squeeze_sentences[k]);
     if (!a.scale_warning.empty()) {
         // Orange when the scale moves a figure on screen, gray otherwise.
-        ImGui::PushStyleColor(ImGuiCol_Text,
-                              a.scale_warn ? kWarningColor
-                                           : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::PushStyleColor(ImGuiCol_Text, warn_or_dim(a.scale_warn));
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextUnformatted(a.scale_warning.c_str());
         ImGui::PopTextWrapPos();

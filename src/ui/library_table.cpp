@@ -209,15 +209,10 @@ void cell_text(const std::string& text, const std::vector<app::MatchSpan>& spans
     overlay_matches(pos, text, spans, max_x);
 }
 
-// Draws a row's title at `pos` cut to fit `max_w` by the one cutting rule
-// (render::ellipsize), and returns how wide the kept part is, so the search
-// highlight stops before the "…". It goes straight to the draw list: the
+// Draws a row's cut title at `pos`. It goes straight to the draw list: the
 // row's Selectable already gave the text log the full title.
-float draw_title_ellipsized(ImVec2 pos, float max_w, const std::string& title) {
-    float kept_w = 0.0f;
-    const std::string shown = render::ellipsize(title, max_w, text_width, kept_w);
+void draw_cut_title(ImVec2 pos, const std::string& shown) {
     ImGui::GetWindowDrawList()->AddText(pos, ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
-    return kept_w;
 }
 
 // Which hidden columns this frame's second lines named, for the footer.
@@ -366,8 +361,14 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             // A title too long for its cell ends in "..." like the other
             // columns: the Selectable keeps its label (its ID, and the text
             // log) but draws it invisibly and lays out only the cell's width,
-            // and the cut title is drawn over it.
-            const bool title_cut = ImGui::CalcTextSize(row.title.c_str()).x > title_w;
+            // and the cut title is drawn over it. The cut is the one cutting
+            // rule (render::ellipsize, measured with text_width), which hands
+            // a title that fits back unchanged: that is the fit test. Its
+            // kept width is where the search highlight stops, before the "…".
+            float title_kept_w = 0.0f;
+            const std::string title_shown =
+                render::ellipsize(row.title, title_w, text_width, title_kept_w);
+            const bool title_cut = title_shown != row.title;
             if (title_cut) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGuiSelectableFlags row_flags = ImGuiSelectableFlags_SpanAllColumns;
             if (title_cut) row_flags |= ImGuiSelectableFlags_SpanAvailWidth;
@@ -377,8 +378,8 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             if (clicked) app.select(row.entry);
             if (ImGui::TableGetHoveredColumn() == kColumnTitle && title_cut)
                 overflow_tooltip(row.title.c_str());
-            const float title_text_w =
-                title_cut ? draw_title_ellipsized(title_pos, title_w, row.title) : title_w;
+            if (title_cut) draw_cut_title(title_pos, title_shown);
+            const float title_text_w = title_cut ? title_kept_w : title_w;
             if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);
             if (searching_words)
                 overlay_matches(title_pos, row.title,
@@ -475,7 +476,7 @@ void render_library(AppState& app) {
         return;
     }
 
-    const bool searching = !app.library.query().empty();
+    const bool searching = app.library.searching();
     const float footer_h = searching ? ImGui::GetFrameHeightWithSpacing() : 0.0f;
     const float table_h = std::max(ImGui::GetContentRegionAvail().y - footer_h,
                                    ImGui::GetTextLineHeightWithSpacing() * 4.0f);

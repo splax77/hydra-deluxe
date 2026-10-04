@@ -1069,6 +1069,32 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
           "Frontend timing scales x0.999999998 (early) at the SP end.");
 }
 
+TEST_CASE("backend table: the tooltip's normal scale is whole ms, a half rounding up") {
+    // A hit window of 85.25 ms makes the normal budget 170.5 ms. Every
+    // whole-ms text rounds that half up (format_ms_whole), so the tooltip
+    // reads 171 too; the one-decimal figures stay as they were.
+    HydraRecord rec;
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    test::set_transfer(act, TransferScale{1.6, 1.0});
+    BackendSqueeze row;
+    row.chord.add_note(NoteColor::Green);
+    row.points = 260;
+    row.offset_ms = -400.0;
+    act.backends.push_back(row);
+    Path p;
+    p.activations.push_back(act);
+
+    ActivationsView v = build_activations(p, rec, nullptr, 85.25);
+    REQUIRE(v.acts.size() == 1);
+    REQUIRE(v.acts[0].backends.size() == 1);
+    const BackendRowView& r = v.acts[0].backends[0];
+    CHECK(r.rating.find(" (eff. 307.7ms)") != std::string::npos);
+    CHECK(r.tooltip.find("Effectively 307.7ms on the normal 171 ms scale:") == 0);
+    CHECK(r.tooltip.find(", not 170.5ms.") != std::string::npos);
+}
+
 TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
     HydraRecord rec;
     Activation act;

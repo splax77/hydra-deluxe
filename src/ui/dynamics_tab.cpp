@@ -16,20 +16,21 @@ namespace {
 
 // ---- Dynamics tab ----------------------------------------------------------
 
-// Pad dot colours — Clone Hero's standard lane colours.
-ImVec4 pad_color(app::DynamicsRow row) {
-    switch (row) {
-        case app::DynamicsRow::RedSnare:     return ImVec4(0.85f, 0.15f, 0.15f, 1.0f);
-        case app::DynamicsRow::YellowCymbal: return ImVec4(0.90f, 0.85f, 0.10f, 1.0f);
-        case app::DynamicsRow::YellowTom:    return ImVec4(0.90f, 0.85f, 0.10f, 1.0f);
-        case app::DynamicsRow::BlueCymbal:   return ImVec4(0.20f, 0.45f, 0.90f, 1.0f);
-        case app::DynamicsRow::BlueTom:      return ImVec4(0.20f, 0.45f, 0.90f, 1.0f);
-        case app::DynamicsRow::GreenCymbal:  return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);
-        case app::DynamicsRow::GreenTom:     return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);
-        case app::DynamicsRow::Kick:         return ImVec4(0.90f, 0.55f, 0.10f, 1.0f);
-        case app::DynamicsRow::Kick2x:       return ImVec4(0.90f, 0.55f, 0.10f, 1.0f);
-        default:                             return ImVec4(0.50f, 0.50f, 0.50f, 1.0f);
+// A lane's dot colour: Clone Hero's standard lane colours.
+ImVec4 lane_color(NoteColor color) {
+    switch (color) {
+        case NoteColor::Red:    return ImVec4(0.85f, 0.15f, 0.15f, 1.0f);
+        case NoteColor::Yellow: return ImVec4(0.90f, 0.85f, 0.10f, 1.0f);
+        case NoteColor::Blue:   return ImVec4(0.20f, 0.45f, 0.90f, 1.0f);
+        case NoteColor::Green:  return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);
+        case NoteColor::Kick:   return ImVec4(0.90f, 0.55f, 0.10f, 1.0f);
     }
+    return ImVec4(0.50f, 0.50f, 0.50f, 1.0f);  // unreachable
+}
+
+// A Dynamics row's dot colour: its lane's colour, read off the row table.
+ImVec4 pad_color(app::DynamicsRow row) {
+    return lane_color(app::dynamics_row_info(row).color);
 }
 
 // Draw a small filled circle in `color` before the next text on this line.
@@ -141,10 +142,7 @@ void render_dynamics_panel(AppState& app) {
         for (int i = 0; i <= static_cast<int>(app::DynamicsRow::GreenTom); ++i) {
             auto r = static_cast<app::DynamicsRow>(i);
             // Skip cymbal rows when not pro.
-            if (!pro && (r == app::DynamicsRow::YellowCymbal ||
-                         r == app::DynamicsRow::BlueCymbal ||
-                         r == app::DynamicsRow::GreenCymbal))
-                continue;
+            if (!pro && app::dynamics_row_info(r).cymbal) continue;
             const app::DynamicsCounts& c = bd.row(r);
             bool disabled = !c.has_dynamics();
             ImVec4 dot = pad_color(r);

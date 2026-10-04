@@ -47,6 +47,23 @@ enum class DynamicsRow {
     Count
 };
 
+// What one Dynamics row holds: the notes of one lane, cymbal or not, 2x kick
+// or not. One table in dynamics_breakdown.cpp lists all nine rows, and every
+// question about a row reads it: which row a note counts in, the row's name,
+// its dot colour and whether it hides with Pro Drums off.
+struct DynamicsRowInfo {
+    DynamicsRow row;
+    NoteColor color;
+    bool cymbal;  // a cymbal row: hidden when Pro Drums is off
+    bool is2x;    // the 2x kick row
+};
+
+// The table entry for row `r`. `r` must be a real row, not Count.
+const DynamicsRowInfo& dynamics_row_info(DynamicsRow r);
+
+// The row a note is counted in.
+DynamicsRow dynamics_row_for(const ChordNote& note);
+
 struct DynamicsBreakdown {
     std::array<DynamicsCounts, static_cast<size_t>(DynamicsRow::Count)> rows{};
     bool dynamics_enabled = false;
