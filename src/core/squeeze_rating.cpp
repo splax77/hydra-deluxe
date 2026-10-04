@@ -59,7 +59,12 @@ std::optional<ActTransferScales> stored_transfer_scales(const Activation& act) {
 }
 
 double effective_backend_ms(double offset_ms, double transfer_r) {
-    return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);
+    // The gap rescaled by the identity budget over the budget at this scale.
+    // The window cancels in that ratio, so a unit window is used: it keeps
+    // the arithmetic exactly what the plain "2 / (1 + r)" form gave.
+    constexpr double kUnitWindow = 1.0;
+    return std::abs(offset_ms) * squeeze_budget_ms(1.0, kUnitWindow) /
+           squeeze_budget_ms(transfer_r, kUnitWindow);
 }
 
 double squeeze_budget_ms(double transfer_r, double hit_window_ms) {
@@ -158,7 +163,8 @@ std::vector<TimingTier> timing_tiers(double hit_window_ms) {
     return {
         {"Normal", "t0", kDifficultMs}, {"Hard", "t1", w / 2},
         {"Extreme", "t2", w},           {"Insane", "t3", 3 * w / 2},
-        {"Insane+", "t4", 2 * w},       {"Beyond", "t5", std::nullopt},
+        {"Insane+", "t4", squeeze_budget_ms(1.0, w)},
+        {"Beyond", "t5", std::nullopt},
         {"None", "tn", std::nullopt},
     };
 }
