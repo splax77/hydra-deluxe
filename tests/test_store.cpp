@@ -33,6 +33,7 @@
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "record_bytes.h"
+#include "record_fixtures.h"
 #include "search/graph.h"
 #include "search/pather.h"
 #include "store/record_store.h"
@@ -109,10 +110,13 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
             const CapQuery cap = CapQuery::at(*record->sp_cap);
 
             const std::string hyhash = path + "|" + cfg.key;
+            // The store refuses a key whose ms limit isn't the record's.
+            const Lens lens = Lens::from(
+                cfg.ms ? std::optional<int>(static_cast<int>(*cfg.ms)) : std::nullopt, 0, 0);
             store.add_song(hyhash, "Title", "Artist", "Charter", song);
-            store.add_record(RecordKey{hyhash, "mode", cap}, *record);
+            store.add_record(RecordKey{hyhash, "mode", cap, lens}, *record);
 
-            RecordLookup lookup = store.get_record(RecordKey{hyhash, "mode", cap});
+            RecordLookup lookup = store.get_record(RecordKey{hyhash, "mode", cap, lens});
             ++checks;
             if (lookup.status != RecordStatus::Ready) {
                 if (++mismatches <= 8)
@@ -162,7 +166,7 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
                             d = "restored SqIn transfer scales";
             }
 
-            SummaryLookup summary_row = store.get_summary(RecordKey{hyhash, "mode", cap});
+            SummaryLookup summary_row = store.get_summary(RecordKey{hyhash, "mode", cap, lens});
             if (d.empty() && (summary_row.status != RecordStatus::Ready ||
                               summary_row.bestpath != bestpath))
                 d = "get_summary bestpath";
@@ -234,8 +238,11 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
             }
             const CapQuery cap = CapQuery::at(*record->sp_cap);
             const std::string hyhash = path + "|scales|" + cfg.key;
-            Lens lens;  // the store refuses a key whose fill rule isn't the record's
-            lens.legacy_fills = cfg.legacy_fills ? 1 : 0;
+            // The store refuses a key whose ms limit or fill rule isn't the
+            // record's.
+            const Lens lens = Lens::from(
+                cfg.ms ? std::optional<int>(static_cast<int>(*cfg.ms)) : std::nullopt, 0, 0,
+                cfg.legacy_fills);
             store.add_song(hyhash, "Title", "Artist", "Charter", song);
             store.add_record(RecordKey{hyhash, "mode", cap, lens}, *record);
 
@@ -276,6 +283,12 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
     }
     MESSAGE("compared " << acts << " stored activations with a live recompute");
 }
+
+namespace {
+// Defined further down, beside the tests that brought them in.
+std::string temp_db(const char* tag);
+void exec_on_file(const std::string& path, const char* sql);
+}  // namespace
 
 TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
     std::optional<Song> song;
@@ -332,6 +345,26 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
     store.add_row(stale);
     CHECK(store.counts().second == 2);
     CHECK_FALSE(store.has_record(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}));
+
+    // reindex rewrites the best path with the other summary columns (finding
+    // 132). A file database, so a second connection can blank the column.
+    const std::string db = temp_db("reindex_bestpath");
+    std::remove(db.c_str());
+    {
+        RecordStore seed(db);
+        seed.add_song("h1", "Song A", "Artist A", "Charter A", *song);
+        seed.add_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}, *record);
+    }
+    exec_on_file(db, "UPDATE results SET bestpath = ''");
+    {
+        RecordStore reopened(db);
+        CHECK(reopened.reindex() == 1);
+        const std::vector<RecordListing> again =
+            reopened.list_records(std::nullopt, at4, Lens{}, SortColumn::Score, true);
+        REQUIRE(again.size() == 1);
+        CHECK(again[0].bestpath == record->best_path().pathstring());
+    }
+    std::remove(db.c_str());
 }
 
 TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others Stale") {
@@ -673,6 +706,43 @@ TEST_CASE("a row analyzed under other rules reads Stale until the rules match ag
     std::filesystem::remove(std::filesystem::u8path(db), ec);
 }
 
+TEST_CASE("a write under rules A keeps the rules-B row") {
+    // D51 call 8 (finding 65): a result made under other rules is kept, and
+    // reads Ready again once the store runs those rules.
+    core::Rules other = core::default_rules();
+    other.max_tied_paths = 2;
+    const RecordKey key{"h", "mode", CapQuery::at(8)};
+    const std::string db = temp_db("keep_rules_b");
+    std::remove(db.c_str());
+    {
+        RecordStore store(db);
+        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
+        HydraRecord foreign = at_cap(8);
+        foreign.rules_fingerprint = other.fingerprint();
+        store.add_row(prepare_row(key, foreign));
+    }
+    const int64_t one_row_refs = scalar(db, "SELECT COUNT(*) FROM path_refs");
+    REQUIRE(one_row_refs > 0);
+
+    {
+        RecordStore store(db);
+        store.add_record(key, at_cap(8));
+        CHECK(store.counts().second == 2);
+        CHECK(store.get_record(key).status == RecordStatus::Ready);
+    }
+    // Each row still holds its own refs, so the rules-B row's paths stay.
+    CHECK(scalar(db, "SELECT COUNT(*) FROM path_refs") == 2 * one_row_refs);
+    {
+        RecordStore store(db, core::RulesStamp::of(other));
+        const RecordLookup lookup = store.get_record(key);
+        CHECK(lookup.status == RecordStatus::Ready);
+        REQUIRE(lookup.record.has_value());
+        CHECK(lookup.record->paths.size() == fixture().record.paths.size());
+        CHECK(store.has_record(key));
+    }
+    std::remove(db.c_str());
+}
+
 TEST_CASE("a Stale lookup says why: another build, other rules, or both") {
     core::Rules other = core::default_rules();
     other.max_tied_paths = 2;
@@ -935,9 +1005,10 @@ TEST_CASE("prepare_row refuses a key whose ms limit isn't the record's") {
     PreparedRow row = prepare_row(RecordKey{"h", "mode", CapQuery::at(4), kLensA}, ten);
     CHECK(row.lens == kLensA);
 
-    // A lens with the limit off says nothing about the record's ms_limit, so
-    // there is nothing to disagree with.
-    CHECK(prepare_row(RecordKey{"h", "mode", CapQuery::at(4), kLensB}, ten).lens == kLensB);
+    // The limit is checked both ways (finding 130): a record analyzed with a
+    // limit is refused under a lens that has the limit off, too.
+    CHECK_THROWS_AS(prepare_row(RecordKey{"h", "mode", CapQuery::at(4), kLensB}, ten),
+                    std::invalid_argument);
 }
 
 TEST_CASE("RecordKey compares on every part of the identity") {
@@ -1283,6 +1354,22 @@ TEST_CASE("prepare_row refuses a key that names the other fill rule") {
     CHECK(prepare_row(ch10, legacy_at_cap(4)).lens.legacy_fills == 1);
 }
 
+TEST_CASE("a walked 1.0 row says 1.0") {
+    // Finding 116: every reader decodes a row the same way, so the walk sets
+    // the fill rule just as get_record does.
+    RecordStore store(":memory:");
+    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
+    store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLegacy}, legacy_at_cap(4));
+    int seen = 0;
+    store.for_each_blob(std::nullopt, CapQuery::at(4), kLegacy,
+                        [&](const RecordStore::BlobRow&, const HydraRecord* rec) {
+                            REQUIRE(rec != nullptr);
+                            CHECK(rec->legacy_fills);
+                            ++seen;
+                        });
+    CHECK(seen == 1);
+}
+
 TEST_CASE("a schema 2 database keeps its results, filed under Clone Hero 1.1") {
     const std::string path = temp_db("schema2");
     std::remove(path.c_str());
@@ -1327,6 +1414,71 @@ TEST_CASE("a schema 2 database hydra_batch --legacy-fills filled is filed under 
         CHECK(store.get_record(ch10).status == RecordStatus::Ready);
         CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4)}).status ==
               RecordStatus::NotAnalyzed);
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
+    // D51 addendum (ST1): schema 4 puts the rules fingerprint in the results
+    // key. The table is rebuilt with every row, result_id and blob kept, so
+    // nothing is analyzed again.
+    core::Rules other = core::default_rules();
+    other.max_tied_paths = 2;
+    const RecordKey at4{"h", "mode", CapQuery::at(4)};
+    const RecordKey at8{"h", "mode", CapQuery::at(8)};
+    const std::string path = temp_db("schema3");
+    std::remove(path.c_str());
+    {
+        RecordStore seed(path);
+        seed.add_song("h", "Song", "Artist", "Charter", fixture().song);
+        seed.add_record(at4, at_cap(4));
+        HydraRecord foreign = at_cap(8);
+        foreign.rules_fingerprint = other.fingerprint();
+        seed.add_row(prepare_row(at8, foreign));
+    }
+    // Back to the schema 3 table (no rules_fp, a key without it), with a copy
+    // of each row's id and blob to compare against afterwards.
+    exec_on_file(path,
+                 "ALTER TABLE results RENAME TO r4;"
+                 "CREATE TABLE results ("
+                 "  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
+                 "  chartmode TEXT NOT NULL, hyversion TEXT NOT NULL,"
+                 "  sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
+                 "  ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
+                 "  depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL DEFAULT 0,"
+                 "  bestpath TEXT NOT NULL, structure BLOB NOT NULL, score INTEGER,"
+                 "  actcount INTEGER, maxskip INTEGER, hardest_ms REAL, avgmult REAL,"
+                 "  notecount INTEGER, sqin_count INTEGER, sqout_count INTEGER,"
+                 "  pathcount INTEGER, stars INTEGER,"
+                 "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
+                 "          depth_value, legacy_fills));"
+                 "INSERT INTO results SELECT result_id, hyhash, chartmode, hyversion,"
+                 " sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,"
+                 " bestpath, structure, score, actcount, maxskip, hardest_ms, avgmult,"
+                 " notecount, sqin_count, sqout_count, pathcount, stars FROM r4;"
+                 "DROP TABLE r4;"
+                 "CREATE TABLE kept AS SELECT result_id, structure FROM results;");
+    REQUIRE(scalar(path, "SELECT COUNT(*) FROM pragma_table_info('results')"
+                         " WHERE name='rules_fp'") == 0);
+    {
+        RecordStore store(path);
+        CHECK(store.get_record(at4).status == RecordStatus::Ready);
+        CHECK(store.get_record(at8).status == RecordStatus::Stale);
+    }
+    CHECK(scalar(path, "SELECT COUNT(*) FROM results") == 2);
+    CHECK(scalar(path, "SELECT COUNT(*) FROM results r JOIN kept k"
+                       " ON k.result_id = r.result_id AND k.structure = r.structure") == 2);
+    CHECK(scalar(path, "SELECT COUNT(DISTINCT rules_fp) FROM results") == 2);
+    // The column holds each row's own rules: a default-rules write at 8 bars
+    // keeps the rules-B row there, which then reads Ready under its rules.
+    {
+        RecordStore store(path);
+        store.add_record(at8, at_cap(8));
+        CHECK(store.counts().second == 3);
+    }
+    {
+        RecordStore store(path, core::RulesStamp::of(other));
+        CHECK(store.get_record(at8).status == RecordStatus::Ready);
     }
     std::remove(path.c_str());
 }
@@ -1900,4 +2052,26 @@ TEST_CASE("a stored song keeps its length, and an old songmeta row reads none") 
     }
     CHECK(song_length_ms(song) == doctest::Approx(expected));
     std::remove(path.c_str());
+}
+
+TEST_CASE("a saved song's tempo map follows the latest analysis") {
+    // D51 call 12 (finding 343): each analysis rewrites the stored tempo map.
+    // The second map is beat_song's 240 BPM, so one tick lands at another ms.
+    const Song& first = fixture().song;
+    const Song second = hydra::test::beat_song({}, {}, 1920);
+    const int64_t tick = 1920;
+    const double first_ms = first.timecode(tick).ms();
+    const double second_ms = second.timecode(tick).ms();
+    REQUIRE(first_ms != second_ms);
+
+    RecordStore store(":memory:");
+    store.add_song("h", "Song", "Artist", "Charter", first);
+    std::optional<SongTiming> timing = store.get_timing("h");
+    REQUIRE(timing.has_value());
+    CHECK(timing->timecode(tick).ms() == first_ms);
+
+    store.add_song("h", "Song", "Artist", "Charter", second);
+    timing = store.get_timing("h");
+    REQUIRE(timing.has_value());
+    CHECK(timing->timecode(tick).ms() == second_ms);
 }
