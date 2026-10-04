@@ -368,7 +368,7 @@ TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
                                             page.u8string(), "--no-open"});
     INFO(r.output);
     CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Compared 1 charts"));
+    CHECK(contains(r.output, "Compared 1 chart:"));
     CHECK(!contains(r.output, "Warning"));
     CHECK(fs::exists(page));
 
@@ -413,7 +413,7 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
                                             (box.dir / "one.html").u8string(), "--no-open"});
     INFO(r.output);
     CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Compared 1 charts"));
+    CHECK(contains(r.output, "Compared 1 chart:"));
     CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 with a score on one side only"));
 
     // D52: a second chart with a record under both rules but a score under

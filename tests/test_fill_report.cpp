@@ -410,6 +410,19 @@ TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
     }
 }
 
+TEST_CASE("generate_fill_report: one chart reads \"1 chart\" in the subtitle") {
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+    put_ch10(old_store, kBoth, 1000000, 3, "old-path-one");
+    put_ch11(new_store, kBoth, 1000000, 3, "new-path-one");
+    const app::fill_report::GeneratedFillReport result =
+        app::fill_report::generate_fill_report(old_store, new_store, kMode,
+                                               store::CapQuery::at(kCloneHeroSpCap),
+                                               store::Lens{});
+    CHECK(result.html.find("1 chart in ") != std::string::npos);
+    CHECK(result.html.find("1 charts") == std::string::npos);
+}
+
 TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in both") {
     // D50 item 2: both databases hold a record for the chart, but the 1.0
     // record is a Ready record with no paths, so it has no score. The row is

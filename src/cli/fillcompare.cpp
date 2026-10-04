@@ -122,9 +122,9 @@ int main() {
 
     const hydra::app::fill_report::FillCompareStats& stats = report.stats;
     std::printf(
-        "Compared %s charts: %s same, %s 1.0 higher, %s 1.1 higher, "
+        "Compared %s: %s same, %s 1.0 higher, %s 1.1 higher, "
         "%s only in 1.0, %s only in 1.1, %s with a score on one side only\n",
-        hydra::group_thousands(stats.total).c_str(),
+        hydra::counted(stats.total, "chart", "charts").c_str(),
         hydra::group_thousands(stats.same).c_str(),
         hydra::group_thousands(stats.ch10_higher).c_str(),
         hydra::group_thousands(stats.ch11_higher).c_str(),

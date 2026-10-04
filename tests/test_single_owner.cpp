@@ -931,17 +931,22 @@ const std::vector<OwnerRule>& rules() {
         // a sentence puts after such a count.
         {"How is a count written next to its noun?",
          "counted (and has_have, for the verb after it) in src/core/model.cpp",
-         R"(==\s*1\s*\?\s*("|one\b)|%\w+ bars?\b|" bars?")",
+         R"(==\s*1\s*\?\s*("|one\b)|%\w+ bars?\b|" bars?"|group_thousands\([^;]*\)\s*\+\s*" (charts?|records?|songs?|paths?|scores?(?! higher)|rows?|notes?)\b|%[sd] (charts|records|songs|paths|scores|rows|notes)\b)",
          R"(\b(counted|has_have)\()",
          {},
          {},
-         "D48, Q12 (audit finding 14; phase 3 task O1)",
+         "D48, Q12 (audit finding 14; phase 3 task O1; M_D review finding 4)",
          {"return group_thousands(n) + \" \" + (n == 1 ? one : many);",
           "view.lines.push_back(\"SP cap:  \" + std::to_string(*record.sp_cap) + \" bars\");",
-          "std::printf(\"SP cap     : %d bars\\n\", settings.sp_cap);"},
+          "std::printf(\"SP cap     : %d bars\\n\", settings.sp_cap);",
+          "group_thousands(out.stats.total) + \" charts in \" + chartmode + \": \" +",
+          "\"Compared %s charts: %s same, %s 1.0 higher, %s 1.1 higher, \""},
          {"view.lines.push_back(\"Path limit:  off\");",
           "s.depth_mode = depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;",
-          "ImGui::TextUnformatted(\"bars\");"},
+          "ImGui::TextUnformatted(\"bars\");",
+          "hydra::counted(report.rows, \"path row\", \"path rows\").c_str());",
+          // "score higher" is the verb after a count of charts, not a noun.
+          "group_thousands(out.stats.ch11_higher) + \" score higher under 1.1, \" +"},
          {{"src/core/model.cpp", "return group_thousands(n) + \" \" + (n == 1 ? one : many);",
            "counted, the owner"},
           {"src/core/model.cpp", "return n == 1 ? \"has\" : \"have\";", "has_have, the owner"}}},
@@ -1238,6 +1243,11 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
+        // The widened count row (M_D review finding 4) also finds the bench
+        // tool's "%d paths"; bench.cpp is outside task FX-R's files.
+        {"How is a count written next to its noun?", "tools/bench.cpp",
+         "std::printf(\"  best score %lld | %d paths | sp_cap %d\\n\\n\", best,",
+         "a follow-up task: tools/bench.cpp prints its path count through counted"},
         {"How many bytes does a file hold?", "src/parse/midi.cpp",
          "std::fseek(f, 0, SEEK_END);", "fix read-file-bytes-owner (audit R7.11)"},
         {"How many bytes does a file hold?", "src/parse/midi.cpp",

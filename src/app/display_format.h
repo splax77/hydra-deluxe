@@ -21,8 +21,9 @@ std::string format_avg_mult(double v);
 std::string format_ms(double ms);
 
 // A timing in ms for a sentence or a label: one decimal, a space, the unit
-// ("163.0 ms"). The new Paths and Preview text uses this; format_ms keeps the
-// older "163.0ms" form the report and the backend table print.
+// ("163.0 ms"). The Paths and Preview text and the path report's timing
+// columns use this; format_ms keeps the older "163.0ms" form of the Paths
+// panel's early-fill line.
 std::string format_ms_spaced(double ms);
 
 // Part over total as a percentage with the sign, rounded to the nearest at
