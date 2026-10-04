@@ -15,6 +15,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string_view>
 
 namespace hydra {
 
@@ -45,15 +46,30 @@ namespace {
 // looser limit (260); fits_shell owns that one.
 constexpr size_t kPlainPathLimit = MAX_PATH - 12;
 
-bool starts_with(const std::wstring& s, const wchar_t* prefix) {
-    return s.rfind(prefix, 0) == 0;
+// The path prefixes, each spelled once. \\?\ (\\?\UNC\ for a share) marks a
+// long path that skips Win32's own parsing; \\.\ marks a device path. A plain
+// network path starts with just two backslashes.
+constexpr std::wstring_view kLongPrefix = L"\\\\?\\";
+constexpr std::wstring_view kLongUncPrefix = L"\\\\?\\UNC\\";
+constexpr std::wstring_view kDevicePrefix = L"\\\\.\\";
+constexpr std::wstring_view kUncLead = L"\\\\";
+
+bool starts_with(const std::wstring& s, std::wstring_view prefix) {
+    return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
+}
+
+// Whether the path already carries \\?\ or \\.\, so Windows takes it as it
+// is. The one place that asks: win32_path leaves such a path alone, and
+// fits_shell refuses it, since the shell parses neither.
+bool has_namespace_prefix(const std::wstring& path) {
+    return starts_with(path, kLongPrefix) || starts_with(path, kDevicePrefix);
 }
 
 }  // namespace
 
 std::wstring win32_path(const std::wstring& path) {
     if (path.size() < kPlainPathLimit) return path;
-    if (starts_with(path, L"\\\\?\\") || starts_with(path, L"\\\\.\\")) return path;
+    if (has_namespace_prefix(path)) return path;
     // Make it full first: under the prefix Windows no longer resolves "." or
     // ".." and no longer accepts '/' as a separator.
     DWORD need = GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
@@ -62,9 +78,10 @@ std::wstring win32_path(const std::wstring& path) {
     DWORD got = GetFullPathNameW(path.c_str(), need, &full[0], nullptr);
     if (got == 0 || got >= need) return path;
     full.resize(got);
-    if (starts_with(full, L"\\\\?\\") || starts_with(full, L"\\\\.\\")) return full;
-    if (starts_with(full, L"\\\\")) return L"\\\\?\\UNC\\" + full.substr(2);  // \\server\share
-    return L"\\\\?\\" + full;
+    if (has_namespace_prefix(full)) return full;
+    if (starts_with(full, kUncLead))  // \\server\share
+        return std::wstring(kLongUncPrefix) + full.substr(kUncLead.size());
+    return std::wstring(kLongPrefix) + full;
 }
 
 std::wstring win32_path(const std::string& utf8_path) {
@@ -72,9 +89,10 @@ std::wstring win32_path(const std::string& utf8_path) {
 }
 
 // The shell's own limit, 260 (MAX_PATH), not kPlainPathLimit: the shell takes
-// a plain path up to 259 characters, and never a prefixed one.
+// a plain path up to 259 characters, and never a prefixed one, \\?\ or \\.\
+// (the shell's parser refuses both: SHParseDisplayName fails on each).
 bool fits_shell(const std::wstring& path) {
-    return path.size() < MAX_PATH && !starts_with(path, L"\\\\?\\");
+    return path.size() < MAX_PATH && !has_namespace_prefix(path);
 }
 
 std::wstring shell_path(const std::wstring& path) {
@@ -86,8 +104,12 @@ std::wstring shell_path(const std::wstring& path) {
     const DWORD got = GetShortPathNameW(full.c_str(), &s[0], need);
     if (got == 0 || got >= need) return L"";
     s.resize(got);
-    if (starts_with(s, L"\\\\?\\UNC\\")) s = L"\\\\" + s.substr(8);
-    else if (starts_with(s, L"\\\\?\\")) s = s.substr(4);
+    // Drop the \\?\ that win32_path added; a \\.\ path keeps its prefix, so
+    // fits_shell below refuses it.
+    if (starts_with(s, kLongUncPrefix))
+        s = std::wstring(kUncLead) + s.substr(kLongUncPrefix.size());
+    else if (starts_with(s, kLongPrefix))
+        s = s.substr(kLongPrefix.size());
     // A drive without short names hands the long path back.
     return fits_shell(s) ? s : L"";
 }
