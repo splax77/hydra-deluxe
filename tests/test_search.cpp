@@ -390,7 +390,6 @@ struct TailNote {
 
 Song build_tail_song(const std::vector<TailNote>& notes) {
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
 

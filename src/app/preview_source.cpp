@@ -125,17 +125,11 @@ std::string find_song_ini(const std::string& folder) {
     return {};
 }
 
-// A delay string in milliseconds, or nullopt when it is not wholly a number.
-// Shared by song.ini's delay and a .sng's metadata delay.
+// A delay in milliseconds, or nullopt when the text is not one finite number
+// (the one chart-number rule, core/strutil). Shared by song.ini's delay and a
+// .sng's metadata delay.
 std::optional<double> parse_delay_ms(const std::string& text) {
-    try {
-        size_t used = 0;
-        const double ms = std::stod(text, &used);
-        if (used != text.size()) return std::nullopt;
-        return ms;
-    } catch (const std::exception&) {
-        return std::nullopt;
-    }
+    return parse_finite_number(text);
 }
 
 // The audio entries of an already-read .sng, XOR-demasked straight into each

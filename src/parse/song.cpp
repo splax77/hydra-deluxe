@@ -72,6 +72,15 @@ bool section_name_of(const std::string& body, std::string* name) {
     return false;
 }
 
+// Practice sections in tick order, the order Song promises. A .chart's
+// [Events] need not be sorted, and a .mid lists each EVENTS track's sections
+// in turn, so both parsers call this once at the end. The sort is stable, so
+// two sections on one tick keep the file's order.
+void sort_practice_sections(std::vector<SongSection>& sections) {
+    std::stable_sort(sections.begin(), sections.end(),
+                     [](const SongSection& a, const SongSection& b) { return a.tick < b.tick; });
+}
+
 bool try_parse_int(const std::string& s, int64_t& out) {
     if (s.empty()) return false;
     try {
@@ -145,6 +154,8 @@ bool is_disco_off_marker(std::string_view s, char mix_digit) {
 // The parser handlers MIDI and .chart share. Each parser decides when to
 // call them (its own event phases); what they do to the Song lives here once.
 
+}  // namespace
+
 // A time signature: ticks per measure = resolution * 4 * num / den. The
 // signature itself is kept too, for display. A numerator of 0 names no meter,
 // so the line is ignored and the previous meter stays, in both formats
@@ -161,6 +172,8 @@ void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
                              static_cast<int64_t>(denominator);
     song.timesig_changes[tick] = {numerator, denominator};
 }
+
+namespace {
 
 // One authored activation fill, as the chart wrote it.
 struct AuthoredFill {
@@ -292,6 +305,18 @@ std::string title_or_unknown(std::string title) {
     static constexpr const char* kOldPlaceholder = "<unknown title>";
     if (title.empty() || title == kOldPlaceholder) return kUnknownTitle;
     return title;
+}
+
+Song::Song(int64_t resolution) : tick_resolution_(resolution) {
+    apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);
+}
+
+std::string artist_or_unknown(std::string artist) {
+    return artist.empty() ? std::string(kUnknownArtist) : artist;
+}
+
+std::string charter_or_unknown(std::string charter) {
+    return charter.empty() ? std::string(kUnknownCharter) : charter;
 }
 
 // ---- Song::sp_phrase_count ----------------------------------------------
@@ -801,8 +826,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         break;
     }
 
-    // Pass 3: practice sections, which live on their own track as bracketed
-    // text metas.
+    // Pass 3: practice sections, which live on their own track(s) as bracketed
+    // text metas, sorted once at the end.
     for (const MidiTrack& track : mid.tracks) {
         if (track.name != "EVENTS") continue;
         elapsed = 0;
@@ -816,6 +841,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
                 song.practice_sections.push_back({elapsed, name});
         }
     }
+    sort_practice_sections(song.practice_sections);
 
     song.check_activations(rules_);
     return song;
@@ -1266,20 +1292,17 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     Song song(tick_resolution);
     song_ = &song;
 
-    // Offset is a decimal number of seconds. ChartDataEntry keeps a
-    // non-integer value in property_str, so parse that.
+    // Offset is a decimal number of seconds. ChartDataEntry keeps an integer
+    // in property_int and anything else in property_str; the rest is read by
+    // the one chart-number rule, so "500ms" or "nan" counts as absent, like
+    // Clone Hero's default 0.
     if (auto it = song_sec.prop_data.find("Offset");
         it != song_sec.prop_data.end() && !it->second.empty()) {
         const ChartDataEntry& e = it->second.at(0);
-        if (e.property_int) {
+        if (e.property_int)
             song.chart_offset_s = static_cast<double>(*e.property_int);
-        } else if (e.property_str) {
-            try {
-                song.chart_offset_s = std::stod(*e.property_str);
-            } catch (const std::exception&) {
-                // An unreadable Offset is treated as absent, like CH's default 0.
-            }
-        }
+        else if (e.property_str)
+            song.chart_offset_s = parse_finite_number(*e.property_str);
     }
 
     // Map tempo and time signatures from the sync track.
@@ -1315,7 +1338,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     }
 
     // Practice sections. tick_order follows the file, which is not required to
-    // be sorted, so sort once at the end.
+    // be sorted; sort_practice_sections orders them.
     auto ev_it = sections_.find("Events");
     if (ev_it != sections_.end()) {
         const ChartSection& ev = ev_it->second;
@@ -1327,11 +1350,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
                     song.practice_sections.push_back({tk, name});
             }
         }
-        std::stable_sort(song.practice_sections.begin(),
-                         song.practice_sections.end(),
-                         [](const SongSection& a, const SongSection& b) {
-                             return a.tick < b.tick;
-                         });
+        sort_practice_sections(song.practice_sections);
     }
 
     // .chart ghosts and accents are explicit per-note flags (N 34-37 accent,
@@ -1413,7 +1432,11 @@ Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
     std::vector<uint8_t> notebytes = srb_inflate_stream(
         buf.data(), buf.size(), notes_offset, kSrbMaxStream, nullptr);
 
-    const ChartFormat named = chart_format_of(md.notes_filename);
+    // The notes stream's format comes from its name, by the exact-name rule a
+    // .sng entry and a loose folder use (notes_file_format). An .srb's notes
+    // are always stream 2, so a name outside that rule is not fatal: the
+    // stream's own bytes decide below.
+    const ChartFormat named = notes_file_format(md.notes_filename);
     bool is_mid;
     if (named == ChartFormat::Mid)
         is_mid = true;

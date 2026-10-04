@@ -4,6 +4,7 @@
 #ifndef HYDRA_CORE_STRUTIL_H
 #define HYDRA_CORE_STRUTIL_H
 
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -27,6 +28,13 @@ bool ends_with(std::string_view s, std::string_view suffix);
 
 // Whether s ends with suffix, ignoring ASCII case (".MID" matches ".mid").
 bool ends_with_ci(std::string_view s, std::string_view suffix);
+
+// The number a chart file's text spells, read one way for every such number
+// (.chart Offset, song.ini and .sng delay): spaces at either end are allowed,
+// then an optional '+', then one finite decimal number and nothing else.
+// Anything else ("500ms", "0.25s", "nan", "inf", "", "0x1F4") is absent.
+// Locale-independent.
+std::optional<double> parse_finite_number(std::string_view text);
 
 }  // namespace hydra
 

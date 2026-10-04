@@ -433,6 +433,7 @@ add_executable(hydra_tests
     tests/test_s2_phrase_end.cpp
     tests/test_s2_fill_landing.cpp
     tests/test_s2_dynamics_tag.cpp
+    tests/test_s2_parser_owners.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.
