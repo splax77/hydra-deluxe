@@ -185,8 +185,6 @@ const std::vector<Allowed>& allowed() {
         // was deleted.
         {"docs/adr/0017", "write_record", "ADR 0017 records that it is gone"},
         {"docs/adr/0017", "read_record", "ADR 0017 records that it is gone"},
-        // The Opus decoder is OpusReader in src/audio/opus_reader.cpp now.
-        {"docs/adr/0006", "decode_ogg_opus", "stale, fixed by p4-k6r"},
     };
     return a;
 }
