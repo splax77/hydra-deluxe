@@ -3,7 +3,8 @@
 // answers it. A matching line anywhere else fails here, unless it calls the
 // owner on that same line, or the baseline lists it with the fix that will
 // remove it. A baseline entry that no longer matches also fails, so the list
-// only shrinks.
+// only shrinks. Each listed line (baseline or owner) covers exactly one line
+// of source, so a word-for-word copy of it fails too.
 //
 // This is the one scan of src/ and tools/. The long-path rules (ADR 0020) are
 // rows here too, so a new one-place rule is a new row, not a new walker.
@@ -292,26 +293,35 @@ TEST_CASE("single-owner rules hold across src/ and tools/") {
                     for (const std::string& o : rule.owner_files) skip = skip || rel == o;
                     for (const Exempt& x : rule.exempt) skip = skip || rel == x.file;
                     if (skip || !flags_line(c, line)) continue;
-                    bool owned = false;
+                    // Each listed line covers exactly one line of source: the
+                    // first unused entry with this file and text takes it. A
+                    // word-for-word copy finds every such entry used and fails.
+                    const std::string where = rel + ":" + std::to_string(lineno);
+                    bool listed = false;
+                    bool taken = false;
                     for (const OwnerLine& o : rule.owner_lines) {
-                        if (o.file == rel && o.line_text == t) {
-                            owner_seen.insert(&o);
-                            owned = true;
+                        if (o.file != rel || o.line_text != t) continue;
+                        listed = true;
+                        if (owner_seen.insert(&o).second) {
+                            taken = true;
+                            break;
                         }
                     }
-                    if (owned) continue;
-                    bool known = false;
-                    for (size_t i = 0; i < known_copies().size(); ++i) {
+                    for (size_t i = 0; !taken && i < known_copies().size(); ++i) {
                         const KnownCopy& k = known_copies()[i];
-                        if (k.question == rule.question && k.file == rel && k.line_text == t) {
-                            seen.insert(i);
-                            known = true;
-                        }
+                        if (k.question != rule.question || k.file != rel || k.line_text != t)
+                            continue;
+                        listed = true;
+                        if (seen.insert(i).second) taken = true;
                     }
-                    if (!known)
-                        problems.push_back(rel + ":" + std::to_string(lineno) + ": answers \"" +
-                                           rule.question + "\", which belongs to " +
-                                           rule.owner + ": " + t);
+                    if (taken) continue;
+                    if (listed)
+                        problems.push_back(where + ": a second copy of a listed line (each "
+                                           "entry covers one line) answers \"" +
+                                           rule.question + "\": " + t);
+                    else
+                        problems.push_back(where + ": answers \"" + rule.question +
+                                           "\", which belongs to " + rule.owner + ": " + t);
                 }
             }
         }
