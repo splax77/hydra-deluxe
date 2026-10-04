@@ -244,7 +244,10 @@ function Test-PyPath([string]$p) { $p -match '\.py$' }
 # is production code.
 function Test-TestFile([string]$p) { (Get-TopFolder $p) -eq 'tests' -or $p -match '^tools/.*(/tests/|/test_[^/]*\.py$)' }
 
-$allFiles =@(Invoke-Git @('ls-tree', '-r', '--name-only', $tip, '--', 'src', 'tests', 'tools'))
+# The top folders the precheck reads, the same three the scan walks. Listing
+# and diffing both use this one list, so a listed file is always diffed.
+$codeFolders = @('src', 'tests', 'tools')
+$allFiles = @(Invoke-Git (@('ls-tree', '-r', '--name-only', $tip, '--') + $codeFolders))
 
 # Added lines per file: path -> HashSet[int] (1-based, in the tip's numbering).
 $added = @{}
@@ -252,7 +255,7 @@ if ($WholeTree) {
     foreach ($f in $allFiles) { $added[$f] = $null }  # $null means every line
 } else {
     $cur = $null
-    foreach ($l in (Invoke-Git @('diff', '--no-color', '--no-ext-diff', '--no-renames', '-U0', $base, $tip, '--', 'src', 'tests', 'tools'))) {
+    foreach ($l in (Invoke-Git (@('diff', '--no-color', '--no-ext-diff', '--no-renames', '-U0', $base, $tip, '--') + $codeFolders))) {
         if ($l.StartsWith('+++ ')) {
             $cur = if ($l -eq '+++ /dev/null') { $null } else { $l.Substring(6) }
             if ($cur -and -not $added.ContainsKey($cur)) { $added[$cur] = [System.Collections.Generic.HashSet[int]]::new() }
@@ -596,7 +599,9 @@ function Get-KnownCopy([string]$File, [string[]]$LineTexts) {
 }
 
 # Does the scan read this file under this row (in_scope, the function a row
-# is limited to, owner files and exempt files)?
+# is limited to, owner files and exempt files)? A row with no scope reads
+# src/ and tools/: that default is the scan's own in_scope rule, mirrored
+# here on purpose because this script applies the scan's rows.
 function Test-RowCovers([object]$Row, [string]$File) {
     $sub = Get-TopFolder $File
     $inScope = if ($Row.Scope.Count -eq 0) { $sub -eq 'src' -or $sub -eq 'tools' } else { ($Row.Scope -contains $sub) -or ($Row.Scope -contains $File) }
@@ -1144,7 +1149,8 @@ function Invoke-Check4 {
     $rowLines = [System.Collections.Generic.HashSet[string]]::new()
     foreach ($h in (Get-RowHits)) { if ($h.Kind -eq 'E') { [void]$rowLines.Add("$($h.File):$($h.Line)") } }
     foreach ($f in $added.Keys) {
-        if (-not ((Get-TopFolder $f) -in @('tests', 'tools'))) { continue }
+        # Every code folder but src: a scan is a test's or a tool's to make.
+        if ((Get-TopFolder $f) -eq 'src') { continue }
         if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
         $py = Test-PyPath $f
         if (-not ((Test-CppPath $f) -or $py)) { continue }
