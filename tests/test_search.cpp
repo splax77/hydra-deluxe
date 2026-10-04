@@ -1169,25 +1169,6 @@ TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
     CHECK(path.trailing_bank_ticks.empty());
 }
 
-// R2's check, stage one: the lists hold exactly what the counts count.
-TEST_CASE("Bank: the lists match the stored counts on every corpus record") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song =
-            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        std::vector<const Path*> all = rec.all_paths();
-        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
-        for (const Path* p : all) {
-            CAPTURE(chart);
-            CHECK(p->trailing_bank_ticks.size() == static_cast<size_t>(p->leftover_sp()));
-            for (const Activation& act : p->walk_activations())
-                CHECK(act.bank_rise_ticks.size() == static_cast<size_t>(act.sp_meter()));
-        }
-    }
-}
-
 // The lasting order checks, on root paths. A variant's tail activations are
 // its leader's; their order against the variant's own windows is Part B's
 // job, and Part B extends this case to variants.
@@ -1235,24 +1216,6 @@ TEST_CASE("Skipped fills: the 1.0 rule's offered fill is the one stored") {
     REQUIRE(paths.front().activations.size() == 1);
     const Activation& act = paths.front().activations.front();
     CHECK((act.skipped_fill_ticks == std::vector<int64_t>{19200}));
-}
-
-// R2's check, stage one: the list holds exactly what the count counts.
-TEST_CASE("Skipped fills: the list matches the stored count on every corpus record") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song =
-            corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        std::vector<const Path*> all = rec.all_paths();
-        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
-        for (const Path* p : all)
-            for (const Activation& act : p->walk_activations()) {
-                CAPTURE(chart);
-                CHECK(act.skipped_fill_ticks.size() == static_cast<size_t>(act.skips));
-            }
-    }
 }
 
 // The lasting order checks, on root paths. A tied variant still carries its

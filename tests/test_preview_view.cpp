@@ -304,8 +304,9 @@ TEST_CASE("build_preview_scene: an unanalyzed chart offers every candidate fill"
 TEST_CASE("build_preview_scene: skips say which fills the path was offered") {
     Song song = make_fill_song();
     Path path;
-    // The path activates on the third fill after passing over one before it.
-    path.activations = {act_at(song, 1440, 1)};
+    // The path activates on the third fill after passing over the one at 960.
+    path.activations = {act_at(song, 1440, 0)};
+    path.activations[0].skipped_fill_ticks = {960};
 
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE(scene.fills.size() == 4);
@@ -328,10 +329,11 @@ TEST_CASE("build_preview_scene: a second activation with skips 0 hides what lies
     CHECK(scene.fills[2].state == PreviewFillState::Hidden);  // SP was still active
     CHECK(scene.fills[3].state == PreviewFillState::Taken);
 
-    // With one skip charged to the second activation, the fill between them is
-    // offered instead.
+    // With the fill at 1440 passed over before the second activation, the fill
+    // between them is offered instead.
     Path skipped;
-    skipped.activations = {act_at(song, 960, 0), act_at(song, 1920, 1)};
+    skipped.activations = {act_at(song, 960, 0), act_at(song, 1920, 0)};
+    skipped.activations[1].skipped_fill_ticks = {1440};
     PreviewScene s2 = build_preview_scene(song, &skipped);
     CHECK(s2.fills[1].state == PreviewFillState::Taken);
     CHECK(s2.fills[2].state == PreviewFillState::Offered);

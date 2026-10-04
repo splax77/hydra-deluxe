@@ -312,7 +312,6 @@ struct SpEndStep {
 struct Activation {
     // The search sets these on every activation it makes, so they are
     // plain values (record format v7, docs/adr/0017).
-    int skips = 0;
     Timecode timecode;
     Chord chord;
     int frontend_points = 0;
@@ -361,6 +360,9 @@ struct Activation {
     // Under the 1.0 fill rule these need not be the fills nearest the
     // activation. skips() is its size. The Preview lights exactly these.
     std::vector<int64_t> skipped_fill_ticks;
+
+    // Fills passed over before this activation: one per stored fill.
+    int skips() const { return static_cast<int>(skipped_fill_ticks.size()); }
 
     // Read from sp_end_steps; see each body in model.cpp.
     //   deact_tick()             - the deactivation node D: where this

@@ -102,7 +102,6 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint32_t seed,
 // One activation. The fields the search always sets carry no presence
 // byte; the three ticks that can be missing keep theirs.
 void write_activation(BinaryWriter& w, const Activation& act) {
-    w.i32(act.skips);
     w.i64(act.timecode.ticks());
     w.str(act.chord.code());
     w.i32(act.frontend_points);
@@ -149,7 +148,6 @@ void write_activation(BinaryWriter& w, const Activation& act) {
 
 Activation read_activation(BinaryReader& r) {
     Activation act;
-    act.skips = r.i32();
     act.timecode = Timecode::raw(r.i64());
     act.chord = Chord::from_code(r.str());
     act.frontend_points = r.i32();

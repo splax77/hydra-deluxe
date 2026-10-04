@@ -159,6 +159,8 @@ Enum enumerate(const ScoreGraph& graph) {
 struct Act {
     int32_t parent;
     int32_t act_node;
+    // How many fills were passed over before it, for act_difficulty's E0
+    // test. The record stores the fills themselves (skip_tail).
     int32_t skips;
     int32_t deact_edge;
     int32_t sq_tail;
@@ -240,7 +242,7 @@ struct OutPath {
     int32_t bank_begin, bank_end;
 };
 struct OutAct {
-    int32_t act_node, skips, deact_edge, sq_begin, sq_end;
+    int32_t act_node, deact_edge, sq_begin, sq_end;
     double e_offset;
     // Only set (non-NO_TIME) on a path's last activation when it never
     // deactivated: the engine's tracked SP end, extensions included.
@@ -1039,7 +1041,6 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
 
         OutAct oa;
         oa.act_node = a.act_node;
-        oa.skips = a.skips;
         oa.deact_edge = a.deact_edge;
         oa.e_offset = a.e_offset;
         oa.sq_begin = (int32_t)out_sqs_.size();
@@ -1265,7 +1266,6 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             const ScoreGraphNode* node = en.nodes[(size_t)oa.act_node];
 
             Activation act;
-            act.skips = oa.skips;
             act.timecode = node->timecode;
             // An activation node is a chart note, so it always carries the
             // chord hit there.

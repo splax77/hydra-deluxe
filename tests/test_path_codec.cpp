@@ -160,7 +160,7 @@ TEST_CASE("path codec: a node carries activations only, never totals") {
     CHECK(encode_path_node(changed) == encode_path_node(root));
 
     REQUIRE_FALSE(changed.activations.empty());
-    test::set_skips(changed.activations.front(), changed.activations.front().skips + 1);
+    test::set_skips(changed.activations.front(), changed.activations.front().skips() + 1);
     CHECK(encode_path_node(changed) != encode_path_node(root));
 }
 
