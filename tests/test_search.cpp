@@ -1024,21 +1024,31 @@ TEST_CASE("SP end history: an early squeeze-in measures from the end before it")
 }
 
 TEST_CASE("SP end history: a squeeze-out measures from the deact node") {
-    Song song = test::sqin_then_collect_song();
+    // The early squeeze-out song: the fill at 5760 activates, SP would end at
+    // 13440, and the phrase at 12960 is squeezed out. The history is trimmed
+    // back to the activation step, so the end a SqOut is measured from is
+    // that step's 13440 (not the 14400 phrase's extension), anchored on the
+    // activation.
+    Song song = test::make_early_sqout_song();
     ScoreGraph graph(song, 4);
-    const std::vector<Path> paths = run_search(graph, test::wide_search());
-    const Activation* act = test::find_act(paths, [](const Activation& a) {
-        for (const SPSqueeze& s : a.sqinouts)
-            if (s.kind == SqueezeKind::SqOut) return true;
-        return false;
-    });
+    EngineOptions opts = test::wide_search();
+    opts.target_act_ticks = std::vector<int64_t>{5760, 17280};
+    const std::vector<Path> paths = run_search(graph, opts);
+    const Activation* act = test::find_act(
+        paths, [](const Activation& a) { return a.sqout_tick.has_value(); });
     REQUIRE(act != nullptr);
+    CHECK((act->sp_end_steps ==
+           std::vector<SpEndStep>{{5760, 13440, SpEndKind::Activation}}));
+    CHECK(act->deact_tick() == std::optional<int64_t>(13440));
+    size_t sqouts = 0;
     for (size_t i = 0; i < act->sqinouts.size(); ++i) {
         if (act->sqinouts[i].kind != SqueezeKind::SqOut) continue;
-        CHECK(act->squeeze_end_tick(i) == act->deact_tick());
-        CHECK(act->end_anchor_tick(*act->squeeze_end_step(i)) ==
-              act->clamp_tick().value_or(act->timecode.ticks()));
+        ++sqouts;
+        CHECK(act->squeeze_end_tick(i) == std::optional<int64_t>(13440));
+        REQUIRE(act->squeeze_end_step(i).has_value());
+        CHECK(act->end_anchor_tick(*act->squeeze_end_step(i)) == 5760);
     }
+    CHECK(sqouts == 1);
 }
 
 TEST_CASE("SP end history: clamps are steps, and the anchor follows them") {
@@ -1108,7 +1118,7 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                     // SP never runs dry inside a window: every step takes
                     // effect at or before the end in force.
                     CHECK(act.refill_tick(k) <= prev.end_tick);
-                    CHECK(act.refill_tick(k) <= st.tick);
+                    CHECK(act.refill_tick(k) >= prev.tick);
                 }
                 CHECK(act.nominal_end() ==
                       song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter)).ticks());

@@ -2,9 +2,11 @@
 //
 // Two kinds of thing live here. The songs are small charts built to give the
 // search one exact shape (a late squeeze-in, an early squeeze-out, a clamp).
-// The fixture helpers are the one place a test writes a stored fact onto a
-// hand-built Activation or Path. A test never assigns those fields itself, so
-// when a stored fact changes shape only the helper's body changes.
+// The fixture helpers are where a test writes a single stored fact onto a
+// hand-built Activation or Path, so when that fact changes shape only the
+// helper's body changes. The exception is a multi-step SP-end history: a test
+// that needs one assigns `sp_end_steps` directly, writing the steps as literal
+// ticks.
 #ifndef HYDRA_TESTS_RECORD_FIXTURES_H
 #define HYDRA_TESTS_RECORD_FIXTURES_H
 

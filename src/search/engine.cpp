@@ -358,22 +358,25 @@ private:
         return tail;
     }
     // The chain with the step at `tick` relabelled SqIn. Nodes are shared
-    // between paths, so the steps from it on are copied, never edited. When
-    // no step sits at `tick` the chain comes back unchanged, and the corpus
-    // test's one-SqIn-step-per-SqIn check catches it.
-    int32_t relabel_sqin(int32_t tail, int64_t tick) {
+    // between paths, so the steps from it on are copied, never edited. An
+    // early SqIn's phrase was collected before this point, so a step must sit
+    // at `tick`. When none does the state is impossible: this returns false,
+    // leaves `tail` alone, and the caller marks the path broken (the run then
+    // throws, as for every other impossible state).
+    bool relabel_sqin(int32_t& tail, int64_t tick) {
         std::vector<EndNode> after;
         int32_t t = tail;
         while (t >= 0 && ends_[(size_t)t].tick > tick) {
             after.push_back(ends_[(size_t)t]);
             t = ends_[(size_t)t].prev;
         }
-        if (t < 0 || ends_[(size_t)t].tick != tick) return tail;
+        if (t < 0 || ends_[(size_t)t].tick != tick) return false;
         const EndNode found = ends_[(size_t)t];
         int32_t out = push_end(found.prev, found.tick, found.end, SpEndKind::SqIn);
         for (size_t k = after.size(); k-- > 0;)
             out = push_end(out, after[k].tick, after[k].end, after[k].kind);
-        return out;
+        tail = out;
+        return true;
     }
     int32_t act_count(const Path& p) const {
         return p.act_tail < 0 ? 0 : acts_[(size_t)p.act_tail].depth;
@@ -688,8 +691,10 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // relabel it on this branch only.
     if (e.late_sqin_count > 0)
         p.end_tail = push_end(p.end_tail, e.sqinout_time, e.sqin_time, SpEndKind::SqIn);
-    else
-        p.end_tail = relabel_sqin(p.end_tail, e.sqinout_time);
+    else if (!relabel_sqin(p.end_tail, e.sqinout_time)) {
+        p.node = NODE_BROKEN;  // run() sees it and refuses the search
+        return false;
+    }
 
     p.sp_end_time = e.sqin_time;
     p.buffered = e.late_sqin_count;
@@ -1103,6 +1108,7 @@ bool Engine::run() {
             bool has_child = false;
             if (node(p.node).is_sp) {
                 const bool can_extend = branch_deactivate(p, &child, &has_child);
+                if (p.node == NODE_BROKEN) return false;
                 if (can_extend) next_.push_back(p);
             } else {
                 // Read the fill's tick before branching: a refused activation
