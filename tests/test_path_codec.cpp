@@ -127,8 +127,9 @@ TEST_CASE("path codec: a rebuilt record flattens to the same bytes") {
     CHECK(pathstrings(back.all_allzero_paths()) == pathstrings(rec.all_allzero_paths()));
     CHECK(diff_summary(summarize_record(back), summarize_record(rec)) == "");
 
-    // Every path, variants included, carries its root's totals again after
-    // prepare_variants pushes them down.
+    // Every path, variants included, carries its root's score totals and
+    // note count again after prepare_variants pushes them down. A variant's
+    // trailing bank is its own, stored with its tree entry.
     const std::vector<const Path*> want = rec.all_paths();
     const std::vector<const Path*> got = back.all_paths();
     for (size_t i = 0; i < want.size(); ++i) {
@@ -477,4 +478,27 @@ TEST_CASE("path codec: a root keeps trailing_bank_ticks") {
     const HydraRecord back = rebuild_record(flatten_record(rec));
     CHECK((back.paths.front().trailing_bank_ticks == std::vector<int64_t>{111, 222}));
     CHECK(back.paths.front().leftover_sp() == 2);
+}
+
+// A variant's bank can differ from its parent's (decision D3, finding 89), so
+// the structure stores its trailing list next to its var_point. It is a
+// path total, not an activation fact, so no node payload moves.
+TEST_CASE("path codec: each variant's own trailing bank rides in the structure") {
+    HydraRecord rec = fixture().record;
+    size_t root = 0;
+    while (root < rec.paths.size() && rec.paths[root].variants.empty()) ++root;
+    REQUIRE(root < rec.paths.size());
+    Path& v = rec.paths[root].variants.front();
+    v.trailing_bank_ticks = {111, 222, 333};
+
+    const FlatRecord before = flatten_record(fixture().record);
+    const FlatRecord after = flatten_record(rec);
+    REQUIRE(after.nodes.size() == before.nodes.size());
+    for (size_t i = 0; i < after.nodes.size(); ++i)
+        CHECK(after.nodes[i].hash == before.nodes[i].hash);
+
+    const HydraRecord back = rebuild_record(after);
+    CHECK(back.paths[root].variants.front().trailing_bank_ticks ==
+          std::vector<int64_t>{111, 222, 333});
+    CHECK(back.paths[root].trailing_bank_ticks == rec.paths[root].trailing_bank_ticks);
 }

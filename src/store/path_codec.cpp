@@ -198,8 +198,10 @@ Activation read_activation(BinaryReader& r) {
 }
 
 // A root path's own totals: the six score categories, the chart's note count
-// and the SP left at the end. A variant's copies are overwritten from its
-// parent by prepare_variants on every load, so only roots store them.
+// and the SP left at the end. A variant's score totals and note count are
+// overwritten from its parent by prepare_variants on every load, so only
+// roots store them here. A variant's SP left at the end is its own and rides
+// in its tree entry (write_tree_entry).
 void write_root_totals(BinaryWriter& w, const Path& p) {
     w.i64(p.score_base);
     w.i64(p.score_combo);
@@ -231,7 +233,8 @@ void read_root_totals(BinaryReader& r, Path& p) {
 // ---- structure blob -------------------------------------------------------
 
 // Emits one node's payload into `flat` (once per distinct hash) and writes its
-// tree entry: the raw hash, then each variant's var_point and entry in order.
+// tree entry: the raw hash, then for each variant in order its var_point, its
+// own trailing bank, and its entry.
 void write_tree_entry(BinaryWriter& w, const Path& path, FlatRecord& flat,
                       std::unordered_map<std::string, size_t>& seen) {
     std::vector<uint8_t> payload = encode_path_node(path);
@@ -247,6 +250,11 @@ void write_tree_entry(BinaryWriter& w, const Path& path, FlatRecord& flat,
     w.u32(static_cast<uint32_t>(path.variants.size()));
     for (const Path& v : path.variants) {
         w.opt_i32(v.var_point);
+        // The variant's own banked bars at the song's end. Its score totals
+        // and note count equal its parent's and prepare_variants copies them;
+        // this list can differ (D3, finding 89).
+        w.u32(static_cast<uint32_t>(v.trailing_bank_ticks.size()));
+        for (int64_t t : v.trailing_bank_ticks) w.i64(t);
         write_tree_entry(w, v, flat, seen);
     }
 }
@@ -264,8 +272,13 @@ Path read_tree_entry(BinaryReader& r, const PathNodeLookup& lookup) {
     path.variants.reserve(nvar);
     for (uint32_t i = 0; i < nvar; ++i) {
         std::optional<int> var_point = r.opt_i32();
+        const uint32_t ntrail = r.u32();
+        std::vector<int64_t> trailing;
+        trailing.reserve(ntrail);
+        for (uint32_t t = 0; t < ntrail; ++t) trailing.push_back(r.i64());
         Path variant = read_tree_entry(r, lookup);
         variant.var_point = var_point;
+        variant.trailing_bank_ticks = std::move(trailing);
         path.variants.push_back(std::move(variant));
     }
     return path;
@@ -395,8 +408,9 @@ HydraRecord rebuild_record(const std::vector<uint8_t>& structure,
     }
 
     // tied_count is a pure function of the variant tree, so it is recounted
-    // rather than stored. prepare_variants() then pushes each root's totals
-    // down to its variants and rebuilds variant_tail.
+    // rather than stored. prepare_variants() then pushes each root's score
+    // totals and note count down to its variants and rebuilds variant_tail.
+    // Each variant's trailing bank is its own, read with its tree entry.
     for (Path& p : record.paths) p.recount_tied_paths();
     for (Path& p : record.allzero_paths) p.recount_tied_paths();
     for (Path& p : record.paths) p.prepare_variants();

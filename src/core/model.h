@@ -475,7 +475,8 @@ struct Path {
     int notecount = 0;
     // Where each bar banked after the path's last window closed arrived, in
     // order, as Activation::bank_rise_ticks. leftover_sp() is its size. A
-    // variant copies its root's (prepare_variants).
+    // variant's is its own: the engine stores it and the record keeps it per
+    // variant (D3, finding 89), so prepare_variants leaves it alone.
     std::vector<int64_t> trailing_bank_ticks;
 
     // Bars left after the last window: one per stored arrival.
