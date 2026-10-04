@@ -235,19 +235,17 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                     break;
                 }
                 // A non-positive scale is caught by unknown_scale_reason, above.
-                // Each SqIn's stored scale is the j-th recomputed one.
-                size_t j = 0;
-                for (const SPSqueeze& sq : act.sqinouts) {
-                    if (sq.kind != SqueezeKind::SqIn) continue;
-                    if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {
-                        d = "a SqIn's stored scale diverges from recomputation";
-                        break;
-                    }
-                    ++j;
+                // Each SqIn's stored scale, in SqIn order as
+                // stored_transfer_scales pairs them, against the recomputed one.
+                const std::optional<ActTransferScales> stored = stored_transfer_scales(act);
+                if (!stored || !std::equal(stored->sqins.begin(), stored->sqins.end(),
+                                           scales->sqins.begin(), scales->sqins.end(),
+                                           [&](const TransferScale& a, const TransferScale& b) {
+                                               return !differs(a, b);
+                                           })) {
+                    d = "a SqIn's stored scale diverges from recomputation";
+                    break;
                 }
-                if (!d.empty()) break;
-                // No count check: the recomputation walks this same
-                // activation's SqIns, so both sides always have j of them.
 
                 // Copy-out stamps deact_tick on every activation it produces
                 // (blob v4), so a record fresh off the engine should never be
@@ -497,13 +495,8 @@ std::vector<Step> steps_of(const Activation& a) {
 
 // D3's promise for a tied variant (record_fixtures.h).
 using test::lone_pricing_mismatch;
-
-void collect_variants(const Path& p, std::vector<const Path*>& out) {
-    for (const Path& v : p.variants) {
-        out.push_back(&v);
-        collect_variants(v, out);
-    }
-}
+// A root's tied variants, depth-first (record_fixtures.h).
+using test::collect_tied;
 
 }  // namespace
 
@@ -1825,7 +1818,7 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
             }
         }
         std::vector<const Path*> vs;
-        for (const Path& root : rec.paths) collect_variants(root, vs);
+        for (const Path& root : rec.paths) collect_tied(root, vs);
         for (const Path* v : vs) {
             const std::string diff = lone_pricing_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);
@@ -1864,7 +1857,7 @@ TEST_CASE("tied variants: a Clamped step on the leader's SqIn phrase folds like 
         const SpEndStep want = clamped.at(name);
         bool found = false;
         std::vector<const Path*> vs;
-        for (const Path& root : rec.paths) collect_variants(root, vs);
+        for (const Path& root : rec.paths) collect_tied(root, vs);
         for (const Path* v : vs)
             for (const Activation& a : v->walk_activations())
                 for (const SpEndStep& s : a.sp_end_steps) found = found || s == want;

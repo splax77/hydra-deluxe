@@ -121,8 +121,8 @@ ActivationRating rate_activation(const Activation& act,
     // (Activation::set_sqout), and that row was rated above, at the end it
     // is measured from.
     out.note_effective_ms.reserve(act.sqinouts.size());
-    size_t j = 0;
-    for (const SPSqueeze& sq : act.sqinouts) {
+    for (auto it = act.sqinouts.begin(); it != act.sqinouts.end(); ++it) {
+        const SPSqueeze& sq = *it;
         if (sq.kind == SqueezeKind::SqOut) {
             out.note_effective_ms.push_back(std::nullopt);
             continue;
@@ -131,9 +131,11 @@ ActivationRating rate_activation(const Activation& act,
             out.note_effective_ms.push_back(std::nullopt);
             continue;
         }
-        // A free SqIn's note is inside SP (SPSqueeze::is_free, D13).
-        const NoteRating n =
-            rate_note(sq.offset_ms, sq.is_free(), out.scales->sqins[j++], hit_window_ms);
+        // A free SqIn's note is inside SP (SPSqueeze::is_free, D13). Its
+        // stored scale is the one at its SqIn rank.
+        const TransferScale& at_end =
+            out.scales->sqins[sqin_rank(act.sqinouts.begin(), it, is_sqin_squeeze)];
+        const NoteRating n = rate_note(sq.offset_ms, sq.is_free(), at_end, hit_window_ms);
         out.scale_governs |= n.effective_ms.has_value();
         out.note_effective_ms.push_back(n.effective_ms);
     }

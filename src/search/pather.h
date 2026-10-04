@@ -58,16 +58,30 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
 // `act_ticks` (node ticks of the activation fills, ascending) and at no other
 // fill. Every squeeze variant of that path comes back, best score first, with
 // deact_tick / sp_meter / skips / sqinouts stamped by the engine exactly as a
-// normal search would stamp them. A path that came back without one of the
-// named activations is dropped, and the others stay (decision D45). Empty
-// when no path realizes the set (an activation with under 2 bars, a fill it
-// cannot spawn in time, a tick that is not a fill node). The graph is built
-// at graph_build_cap, as the main search builds it. settings.depth_* and
-// ms_filter are
-// ignored: the search keeps everything and applies no timing filter, because
-// the caller asked for this path, not the best one.
+// normal search would stamp them. Every returned path, tied variants
+// included, has exactly the named activations; the rest are dropped
+// (keep_target_paths, decision D45 and its addendum). Empty when no path
+// realizes the set (an activation with under 2 bars, a fill it cannot spawn
+// in time, a tick that is not a fill node). The graph is built at
+// graph_build_cap, as the main search builds it. settings.depth_* and
+// ms_filter are ignored: the search keeps everything and applies no timing
+// filter, because the caller asked for this path, not the best one.
+// `promoted`, when given, is filled as keep_target_paths fills it.
 std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
-                                const std::vector<int64_t>& act_ticks);
+                                const std::vector<int64_t>& act_ticks,
+                                std::vector<bool>* promoted = nullptr);
+
+// search_target's filter over the engine's paths (D45 and its addendum):
+// keeps only the paths, tied variants included, whose activations are
+// exactly `ticks` (ascending, no repeats). A kept path's tied variant that
+// missed one is dropped; its own qualifying variants are rebuilt standalone
+// and stay tied under the kept path, sharing nothing with it. When a root is
+// dropped, its qualifying variants are rebuilt standalone: the first leads
+// and the rest are its tied variants, in the engine's order. `promoted`,
+// when given, gets one entry per returned path: true when that path is such
+// a rebuilt variant. The search folded it, so it is not an unfolded root.
+std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<int64_t>& ticks,
+                                    std::vector<bool>* promoted = nullptr);
 
 // Full analysis for one chart: one pass at settings.sp_cap bars (4 is Clone
 // Hero's rule; any other number is a what-if). Throws hydra::ChartFileError

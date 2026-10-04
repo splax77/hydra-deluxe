@@ -255,16 +255,11 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
                                                     << act.timecode.ticks() << ": " << why);
                     const std::optional<ActTransferScales> live =
                         frontend_transfer_scales(act, *lookup.timing);
-                    bool same = live && act.transfer_post == live->post;
-                    // Each SqIn's stored scale is the j-th live one.
-                    size_t j = 0;
-                    for (const SPSqueeze& sq : act.sqinouts) {
-                        if (!same) break;
-                        if (sq.kind != SqueezeKind::SqIn) continue;
-                        same = j < live->sqins.size() && sq.transfer == live->sqins[j];
-                        ++j;
-                    }
-                    same = same && j == live->sqins.size();
+                    // Each SqIn's stored scale, in SqIn order as
+                    // stored_transfer_scales pairs them, against the live one.
+                    const std::optional<ActTransferScales> stored = stored_transfer_scales(act);
+                    const bool same = live && stored && stored->post == live->post &&
+                                      stored->sqins == live->sqins;
                     if (!same && ++mismatches <= 8)
                         CHECK_MESSAGE(false, path << " [" << cfg.key << "] activation at tick "
                                                   << act.timecode.ticks());
