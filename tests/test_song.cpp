@@ -663,7 +663,7 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
     CHECK(checked > 4000);
 }
 
-TEST_CASE(".mid: disco and dynamics markers match the regexes they replaced") {
+TEST_CASE(".mid: disco markers match the regexes they replaced; dynamics marker is Clone Hero's two exact strings") {
     using namespace testmidi;
     int checked = 0;
     for (int byte = 0; byte < 256; ++byte) {
