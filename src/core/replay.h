@@ -177,7 +177,8 @@ struct ReplayOptions {
     // builds them. Every score field (points, cum, cum_onscreen_total,
     // multipliers, combo, in_sp) and ReplayResult::final are the same as a
     // full replay's. Only the Preview sets it: its score box reads ms,
-    // cum_onscreen_total, multiplier_shown and combo_after off each row, and
+    // cum_onscreen_total, multiplier_shown, multiplier_after and combo_after
+    // off each row, and
     // PathReplay::faithful() reads final (app/preview_view.cpp build_score).
     // Set it field by field (`ReplayOptions o; o.scores_only = true;`): the
     // project is C++17, which has no designated initializers.

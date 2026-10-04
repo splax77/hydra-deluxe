@@ -216,9 +216,9 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
 // when replay_stored_path says the replay stands for the path.
 //
 // Replayed scores-only: the rows' chord_code and notes stay empty. This reads
-// only ms, cum_onscreen_total, multiplier_shown and combo_after off each row,
-// plus result.final through faithful(); nothing else in this file reads a
-// replay row.
+// only ms, cum_onscreen_total, multiplier_shown, multiplier_after and
+// combo_after off each row, plus result.final through faithful(); nothing
+// else in this file reads a replay row.
 PreviewScore build_score(const Song& song, const Path* path, const core::Rules& rules) {
     PreviewScore score;
     if (path == nullptr) return score;  // None
@@ -230,13 +230,24 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
         if (!pr.faithful()) return score;
         score.steps.reserve(pr.result.chords.size());
         for (const ReplayChord& c : pr.result.chords)
-            score.steps.push_back({c.ms, c.cum_onscreen_total, c.multiplier_shown, c.combo_after});
+            score.steps.push_back({c.ms, c.cum_onscreen_total, c.multiplier_shown,
+                                   c.multiplier_after, c.combo_after});
     } catch (const std::exception&) {
         score.steps.clear();
         return score;  // Unavailable
     }
     score.state = PreviewScore::State::Ready;
     return score;
+}
+
+// The activation whose Star Power is running at `now`, or nullptr. Running
+// from the activation chord up to, not including, the SP end. The drain box
+// and the score box both ask this, so they cannot disagree. A record with no
+// deact node cannot say, so it never counts as running.
+const PreviewActivation* running_activation(const PreviewScene& scene, double now) {
+    for (const PreviewActivation& a : scene.activations)
+        if (a.has_sp_end && a.ms <= now && now < a.sp_end_ms) return &a;
+    return nullptr;
 }
 
 }  // namespace
@@ -567,9 +578,14 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms) {
     PreviewScoreStep at;
     if (it != steps.begin()) at = *(it - 1);
 
+    // The game's disc drops to the plain multiplier the moment SP ends, not
+    // at the next chord, so the doubled value shows only while SP runs.
+    const int shown =
+        running_activation(scene, now_ms) != nullptr ? at.multiplier : at.multiplier_plain;
+
     box.score = group_thousands(at.total);
     char buf[64];
-    std::snprintf(buf, sizeof buf, "x%d \xC2\xB7 combo %d", at.multiplier, at.combo);
+    std::snprintf(buf, sizeof buf, "x%d \xC2\xB7 combo %d", shown, at.combo);
     box.detail = buf;
     return box;
 }
@@ -592,14 +608,9 @@ PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms) {
     box.rate = buf;
 
     // SP is running when the playhead sits in an activation's stored window.
-    // A record with no deact node cannot say, so it reads idle.
-    const PreviewActivation* running = nullptr;
-    for (const PreviewActivation& a : scene.activations) {
-        if (a.has_sp_end && a.ms <= now && now < a.sp_end_ms) {
-            running = &a;
-            break;
-        }
-    }
+    // A record with no deact node cannot say, so it reads idle. The score box
+    // asks the same helper.
+    const PreviewActivation* running = running_activation(scene, now);
 
     if (running != nullptr) {
         box.active = true;
