@@ -250,7 +250,7 @@ What each line does:
 - **`fill_cooldown_measures`** (default `4`): for charts with no authored fills, how many measures must pass after an activation point before Hydra Deluxe places the next one.
 - **`fill_max_distance_beats`** (default `0.5`): for charts with no authored fills, how far from a measure line a note can sit and still get a fill.
 - **`fill_length_measures`** (default `0.5`): for charts with no authored fills, how long each fill Hydra Deluxe places is, in measures.
-- **`fill_land_slop_beats`** (default `0.03125`, a 32nd of a beat): how close a fill's end must be to a note for the fill to count. This one applies to authored fills too.
+- **`fill_land_slop_beats`** (default `0.03125`, a 32nd of a beat): how close after a fill's end a note must be for the fill to land on it. Hydra Deluxe adds one tick to this, as Clone Hero does, so even `0` lets a note one tick late take the fill. It applies only to fills written in the chart.
 
 Older files may still have `auto_cap_ladder` or `auto_budget_s` lines. Hydra Deluxe reads and ignores them, so those files keep working.
 

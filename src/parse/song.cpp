@@ -138,21 +138,6 @@ bool is_disco_off_marker(std::string_view s, char mix_digit) {
     return rest.empty() || rest == "dnoflip";
 }
 
-// Activation-fill placement heuristic, shared by both parsers: true when the
-// fill that ended at `fill_end_tick` lands on the chord being emitted at
-// `tick` (so its op must run after the chord emit), false when it belongs to
-// an earlier chord (run it before). "Lands on" means the next chord is within
-// a 1/32-of-a-beat slop of the fill end and no closer to the previous chord.
-bool fill_lands_on_chord(const Song& song, int64_t fill_end_tick, int64_t tick,
-                         double slop_beats) {
-    std::optional<int64_t> prevchord_dist;
-    if (!song.sequence.empty())
-        prevchord_dist = fill_end_tick - song.sequence.back().timecode.ticks();
-    int64_t nextchord_dist = tick - fill_end_tick;
-    return nextchord_dist <= static_cast<int64_t>(song.tick_resolution() * slop_beats) &&
-           (!prevchord_dist.has_value() || nextchord_dist <= *prevchord_dist);
-}
-
 // The parser handlers MIDI and .chart share. Each parser decides when to
 // call them (its own event phases); what they do to the Song lives here once.
 
@@ -173,13 +158,63 @@ void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
     song.timesig_changes[tick] = {numerator, denominator};
 }
 
-// A fill ending: the last chord becomes an activation chord whose fill began
-// at `starttick`.
-void apply_fill_end(Song& song, int64_t starttick) {
-    if (song.sequence.empty()) return;
-    SongTimestamp& last = song.sequence.back();
-    if (last.timecode.ticks() >= starttick)
-        last.activation_length = last.timecode.ticks() - starttick;
+// One authored activation fill, as the chart wrote it.
+struct AuthoredFill {
+    int64_t start = 0;
+    int64_t end = 0;
+};
+
+// A placed fill: the chord at `index` becomes an activation chord whose fill
+// began at `starttick`. A chord before the fill start takes nothing, so a
+// .chart fill with a negative length never gets a negative one.
+void apply_fill_end(Song& song, size_t index, int64_t starttick) {
+    SongTimestamp& ts = song.sequence[index];
+    if (ts.timecode.ticks() >= starttick)
+        ts.activation_length = ts.timecode.ticks() - starttick;
+}
+
+// The one owner of authored-fill placement, for both parsers, run once every
+// chord is read: each fill is placed on its own, as Clone Hero 1.1 does
+// (0x20CFF60 calling 0x5DE030; finding 315, D30). The candidates are the last
+// chord at or before the fill end, which must not be before the fill start,
+// and the first chord after the end, which must be inside the landing window.
+// When both qualify the closer wins, and a tie goes to the later chord. A fill
+// with neither is dropped, even when one side has no chord at all (Clone
+// Hero's 0x5DE030 takes that side unbounded; D30 does not copy it). A later
+// fill that picks the same chord replaces the earlier one's length.
+//
+// The window is Clone Hero 1.1's: the whole ticks of resolution x slop, plus
+// one tick (cvttsd2si truncates at 0x20D0088, then inc adds one at
+// 0x20D008D), and a chord exactly at its edge still lands (0x5DE17D; D22).
+// The +1 sits on top of the rules value, so a hydra_rules.ini slop of 0 still
+// lands a chord one tick late.
+void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
+                          double slop_beats) {
+    if (fills.empty() || song.sequence.empty()) return;
+    // The chord list in tick order (a .chart need not be sorted).
+    std::vector<std::pair<int64_t, size_t>> order;
+    order.reserve(song.sequence.size());
+    for (size_t i = 0; i < song.sequence.size(); ++i)
+        order.emplace_back(song.sequence[i].timecode.ticks(), i);
+    std::stable_sort(order.begin(), order.end(),
+                     [](const auto& a, const auto& b) { return a.first < b.first; });
+    const int64_t window_ticks =
+        static_cast<int64_t>(song.tick_resolution() * slop_beats) + 1;
+
+    for (const AuthoredFill& f : fills) {
+        const auto it = std::upper_bound(
+            order.begin(), order.end(), f.end,
+            [](int64_t t, const std::pair<int64_t, size_t>& c) { return t < c.first; });
+        const std::pair<int64_t, size_t>* after = it != order.end() ? &*it : nullptr;
+        const std::pair<int64_t, size_t>* before = it != order.begin() ? &*(it - 1) : nullptr;
+        if (before && before->first < f.start) before = nullptr;
+        if (after && after->first > f.end + window_ticks) after = nullptr;
+
+        const std::pair<int64_t, size_t>* pick = after ? after : before;
+        if (before && after)
+            pick = (after->first - f.end) <= (f.end - before->first) ? after : before;
+        if (pick) apply_fill_end(song, pick->second, f.start);
+    }
 }
 
 // The one owner of "which chord awards this SP phrase", for both formats. A
@@ -359,7 +394,7 @@ enum class MPhase { None, Time, Pre, PreDelayed, Notes, Post, PostDelayed,
 // classified and carried out later in its phase. A plain tagged struct, so a
 // tick's handlers cost no allocation (they used to be std::function closures).
 enum class MAct : uint8_t {
-    None, Note, FillStart, StoreFillEnd, ApplyFill, SpStart, SpEnd, Tom, Flam,
+    None, Note, FillStart, StoreFillEnd, SpStart, SpEnd, Tom, Flam,
     Solo, Dynamics, Disco, Tempo, TimeSig,
 };
 
@@ -370,8 +405,7 @@ struct MOp {
     NoteDynamicType dyn = NoteDynamicType::Normal;      // Note
     NoteCymbalType cymbal = NoteCymbalType::Normal;     // Tom
     bool flag = false;     // Note: is2x; Flam/Solo/Disco: on
-    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/SpEnd/Tempo/TimeSig;
-                           // ApplyFill: the fill's start tick
+    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/SpEnd/Tempo/TimeSig
     uint32_t tempo = 0;    // Tempo
     int num = 0, den = 0;  // TimeSig
 
@@ -482,12 +516,14 @@ private:
     void op_timesig(int64_t tick, int numerator, int denominator) {
         apply_timesig(*song_, tick, numerator, denominator);
     }
-    void op_fillstart(int64_t tick) {
-        fill_start_tick_ = tick;
-        fill_end_tick_.reset();
+    void op_fillstart(int64_t tick) { fill_start_tick_ = tick; }
+    // The fill marker's note-off: the fill is recorded whole and placed once
+    // every chord is read (place_authored_fills). A note-off with no fill
+    // open records nothing.
+    void op_store_fillend(int64_t tick) {
+        if (fill_start_tick_) fills_.push_back({*fill_start_tick_, tick});
+        fill_start_tick_.reset();
     }
-    void op_store_fillend(int64_t tick) { fill_end_tick_ = tick; }
-    void op_apply_fill(int64_t starttick) { apply_fill_end(*song_, starttick); }
     void op_sp_start(int64_t tick) { sp_start_tick_ = tick; }
     void op_sp_end(int64_t end_tick) {
         // A note-off with no phrase open (a stray 116 off) closes nothing.
@@ -528,7 +564,7 @@ private:
     bool flag_flam_ = false;
     bool flag_disco_ = false;
     std::optional<int64_t> fill_start_tick_;
-    std::optional<int64_t> fill_end_tick_;
+    std::vector<AuthoredFill> fills_;  // every authored fill, placed after pass 2
     bool dynamics_enabled_ = false;
     std::optional<int64_t> sp_start_tick_;
 };
@@ -638,7 +674,6 @@ void MidiParser::run(const MOp& op) {
         case MAct::Note: op_note(op.color, op.dyn, op.flag); break;
         case MAct::FillStart: op_fillstart(op.tick); break;
         case MAct::StoreFillEnd: op_store_fillend(op.tick); break;
-        case MAct::ApplyFill: op_apply_fill(op.tick); break;
         case MAct::SpStart: op_sp_start(op.tick); break;
         case MAct::SpEnd: op_sp_end(op.tick); break;
         case MAct::Tom: op_tom(op.color, op.cymbal); break;
@@ -686,20 +721,6 @@ void MidiParser::push_timestamp(int64_t tick) {
     run_ops(pre_);
     run_ops(pre_delayed_);
     run_ops(notes_);
-
-    // Activation fill placement.
-    if (chord_.count() && fill_end_tick_.has_value() &&
-        tick >= *fill_end_tick_) {
-        MOp fill_op = mop_tick(MPhase::None, MAct::ApplyFill, *fill_start_tick_);
-
-        if (fill_lands_on_chord(*song_, *fill_end_tick_, tick, rules_.fill_land_slop_beats))
-            post_.push_back(fill_op);
-        else
-            pre_timestamp_.push_back(fill_op);
-        fill_start_tick_.reset();
-        fill_end_tick_.reset();
-    }
-
     run_ops(pre_timestamp_);
 
     if (chord_.count())
@@ -746,6 +767,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         flag_cymbals_[static_cast<int>(NoteColor::Yellow) - 1] =
             NoteCymbalType::Cymbal;
         dynamics_enabled_ = false;
+        fill_start_tick_.reset();
+        fills_.clear();
         for (const Message& msg : track.messages) {
             if (msg.time != 0) {
                 push_timestamp(elapsed);
@@ -754,6 +777,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
             msg_buffer_.push_back(&msg);
         }
         push_timestamp(elapsed);
+        place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
         song.dynamics_enabled = dynamics_enabled_;
         break;
     }
@@ -925,7 +949,7 @@ enum class CPhase { None, Time, Notes, NoteMods, Pre, Post, PostDelayed };
 // its phase: a plain tagged struct, so a tick's handlers cost no allocation.
 enum class CAct : uint8_t {
     None, Disco, Tempo, TimeSig, Solo, Note, TwoX, Accent, Ghost, Cymbal,
-    SpStart, SpEnd, FillStart, FillEnd,
+    SpStart, SpEnd, FillStart,
 };
 
 struct COp {
@@ -933,7 +957,7 @@ struct COp {
     CAct act = CAct::None;
     NoteColor color = NoteColor::Kick;  // Note, Accent, Ghost, Cymbal
     bool flag = false;                  // Disco, Solo: on
-    int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart: tick; SpEnd/FillEnd: start
+    int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart: tick; SpEnd: start
     int64_t b = 0;   // SpStart/FillStart/SpEnd: end tick
     double bpm = 0;  // Tempo
     int num = 0, den = 0;  // TimeSig
@@ -986,11 +1010,9 @@ private:
     void op_timesig(int64_t tick, int numerator, int denominator) {
         apply_timesig(*song_, tick, numerator, denominator);
     }
-    void op_fillstart(int64_t start, int64_t end) {
-        fill_start_tick_ = start;
-        fill_end_tick_ = end;
-    }
-    void op_fillend(int64_t starttick) { apply_fill_end(*song_, starttick); }
+    // An S 64 line: the fill is recorded whole and placed once every chord
+    // is read (place_authored_fills).
+    void op_fillstart(int64_t start, int64_t end) { fills_.push_back({start, end}); }
     void op_sp_start(int64_t start, int64_t end) {
         sp_start_tick_ = start;
         sp_end_tick_ = end;
@@ -1018,8 +1040,7 @@ private:
     bool flag_disco_ = false;
     std::optional<int64_t> sp_start_tick_;
     std::optional<int64_t> sp_end_tick_;
-    std::optional<int64_t> fill_start_tick_;
-    std::optional<int64_t> fill_end_tick_;
+    std::vector<AuthoredFill> fills_;  // every authored fill, placed after the section
 };
 
 // The first match of the regex `\[.*\]` searched in `line`, as std::regex finds
@@ -1164,7 +1185,6 @@ void ChartParser::run(const COp& op) {
         case CAct::SpStart: op_sp_start(op.a, op.b); break;
         case CAct::SpEnd: op_sp_end(op.a, op.b); break;
         case CAct::FillStart: op_fillstart(op.a, op.b); break;
-        case CAct::FillEnd: op_fillend(op.a); break;
     }
 }
 
@@ -1196,17 +1216,6 @@ void ChartParser::push_timestamp(int64_t tick,
     if (sp_end_tick_.has_value() && tick >= *sp_end_tick_) {
         const int64_t start = sp_start_tick_.value_or(0);
         ops.insert(ops.begin(), cop_span(CPhase::Pre, CAct::SpEnd, start, *sp_end_tick_));
-    }
-
-    // Phrase end: activation fill.
-    if (chord_.count() && fill_end_tick_.has_value() &&
-        tick >= *fill_end_tick_) {
-        CPhase order = fill_lands_on_chord(*song_, *fill_end_tick_, tick, rules_.fill_land_slop_beats)
-                           ? CPhase::Post
-                           : CPhase::Pre;
-        ops.push_back(cop_span(order, CAct::FillEnd, *fill_start_tick_, 0));
-        fill_start_tick_.reset();
-        fill_end_tick_.reset();
     }
 
     run_phase(CPhase::Pre);
@@ -1283,6 +1292,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         // a .mid.
         if (sp_end_tick_.has_value())
             op_sp_end(sp_start_tick_.value_or(0), *sp_end_tick_);
+        place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
     }
 
     // Practice sections. tick_order follows the file, which is not required to
