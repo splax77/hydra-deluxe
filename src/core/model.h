@@ -319,7 +319,9 @@ public:
     int points() const;
     std::string notationstr() const;
     // "Hit X or Y last/first." guidance text, mirroring MultSqueeze.howto.
-    std::string howto() const;
+    // Each note is named by Chord::rowstr(pro), where `pro` is the Pro Drums
+    // setting the chart was read with: "[Red snare]" on, "[Red]" off.
+    std::string howto(bool pro = true) const;
 
     const Chord& chord() const { return chord_; }
     int combo() const { return combo_; }

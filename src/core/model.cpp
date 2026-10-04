@@ -381,7 +381,7 @@ std::string MultSqueeze::notationstr() const {
     return std::to_string(multiplier()) + "x";
 }
 
-std::string MultSqueeze::howto() const {
+std::string MultSqueeze::howto(bool pro) const {
     // Ports MultSqueeze.guide_chords + .howto: every "edge" note (the note(s)
     // tied for the highest/lowest basescore, per direction()) is a single-note
     // chord that alone accomplishes the squeeze when hit last/first.
@@ -407,7 +407,7 @@ std::string MultSqueeze::howto() const {
         Chord edge;
         edge.insert_note(note);
         if (!joined.empty()) joined += " or ";
-        joined += edge.rowstr();
+        joined += edge.rowstr(pro);
     }
     return "Hit " + joined + (high ? " last." : " first.");
 }

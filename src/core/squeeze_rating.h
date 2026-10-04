@@ -186,8 +186,10 @@ ActivationRating rate_activation(
 // The report's timing tiers: raw squeeze ms banded against the two-hit
 // budget (nominal_budget_ms), quarters of it after the kDifficultMs
 // "Normal" floor (at the historical W = 70 this is the 2/35/70/105/140
-// ladder). In payload order; `cutoff` is the band's exclusive upper edge, unset for the open
-// "Beyond" band and the "None" (no squeeze) entry.
+// ladder). In payload order. `cutoff` is the band's upper edge, and a timing
+// exactly on it belongs to this band, not the next (D48 Q3): 2.0 ms is Normal,
+// and a timing exactly on the two-hit budget is Insane+. It is unset for the
+// open "Beyond" band and the "None" (no squeeze) entry.
 struct TimingTier { const char* name; const char* tok; std::optional<double> cutoff; };
 std::vector<TimingTier> timing_tiers(double hit_window_ms = kDefaultHitWindowMs);
 
