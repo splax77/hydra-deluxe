@@ -11,7 +11,7 @@
 #include "app/user_messages.h"  // stale_text, kNoPathsFound
 #include "core/model.h"
 #include "imgui.h"
-#include "parse/song.h"  // display_title
+#include "parse/song.h"  // display_title, display_artist
 #include "ui/app_shell.h"  // library_hidden
 #include "ui/fonts.h"
 #include "ui/generation.h"
@@ -30,8 +30,8 @@ namespace {
 
 // Title, "artist · charted by charter", and hide library / previous / next /
 // close at the right. Clone Hero rich-text tags (<color=...>) are stripped for
-// display; the title is display_title's, so a title of only tags reads
-// "(unknown)".
+// display; the title is display_title's and the artist display_artist's, so a
+// title or artist of only tags reads "(unknown)".
 void render_panel_header(AppState& app) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float button = ImGui::GetFrameHeight();
@@ -70,7 +70,7 @@ void render_panel_header(AppState& app) {
     ImGui::PushFont(nullptr, 26.0f);
     text_ellipsized(display_title(song.title).c_str(), text_w);
     ImGui::PopFont();
-    std::string byline = app::strip_rich_tags(song.artist);
+    std::string byline = display_artist(song.artist);
     const std::string charter = app::strip_rich_tags(song.charter);
     if (!charter.empty()) byline += " \xC2\xB7 charted by " + charter;
     ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);

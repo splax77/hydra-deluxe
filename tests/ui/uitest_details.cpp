@@ -750,6 +750,13 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     std::string text = visible_text(h);
     IM_CHECK(text.find("Green Day \xC2\xB7 charted by Hoph2o") != std::string::npos);
     IM_CHECK(text.find("Not analyzed yet.") != std::string::npos);
+    // An artist made only of Clone Hero tags reads "(unknown)", as a title
+    // does (D50 item 5).
+    h.app->selected->artist = "<color=#FF8000></color><b></b>";
+    ctx->Yield(2);
+    IM_CHECK(visible_text(h).find("(unknown) \xC2\xB7 charted by Hoph2o") != std::string::npos);
+    h.app->selected->artist = "Green Day";
+    ctx->Yield(2);
     IM_CHECK(ctx->ItemExists("**/Analyze this song"));
 
     analyze_open_song(ctx);
