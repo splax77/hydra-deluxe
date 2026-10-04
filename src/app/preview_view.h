@@ -277,6 +277,12 @@ struct PreviewScoreBox {
 
 PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms);
 
+// Is a note at `note_ms` struck with the playhead at `now_ms`? Yes when it is
+// at or before the playhead, so a note exactly on the playhead counts as hit
+// and a jump to an activation lands on a struck chord (D48, Q27). The score
+// box and the highway's gem flash both ask this.
+inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }
+
 // The Star Power drain box the Preview draws beside the SP gauge, at `now_ms`.
 // `rate` is how long one bar of SP lasts at the playhead ("1 bar / 4.0 s"):
 // kMeasuresPerSpBar measures at the local measure length the song's timing

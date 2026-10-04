@@ -45,6 +45,24 @@ class PreviewSceneJob;
 class PreviewBaseJob;
 struct PreviewSceneBase;
 
+// What the Preview calls the same song: one chart (its md5) at one
+// difficulty, with Pro Drums and 2x Bass on or off. These are the inputs
+// Settings::to_analysis_settings reads to pick the notes, so another
+// difficulty, Pro Drums or 2x Bass is another song and reloads its notes
+// (D48, Q22).
+struct PreviewSongKey {
+    std::string md5;
+    Difficulty difficulty = Difficulty::Expert;
+    bool pro = false;
+    bool bass2x = false;
+
+    bool operator==(const PreviewSongKey& o) const {
+        return md5 == o.md5 && difficulty == o.difficulty && pro == o.pro &&
+               bass2x == o.bass2x;
+    }
+    bool operator!=(const PreviewSongKey& o) const { return !(*this == o); }
+};
+
 class PreviewController {
 public:
     PreviewController(ID3D11Device* device, ID3D11DeviceContext* context);

@@ -12,8 +12,8 @@
 // highway is widest, so its room is measured there; it wraps its lines to
 // that room (wrap_words) rather than shrink every box to fit its longest line.
 //
-// Also the "…" cut the Preview's path picker uses for a label too long for
-// its line (ellipsize), measured by the caller's font so it stays device-free.
+// Also the "…" cut for a label too long for its space (ellipsize), measured
+// by the caller's font so it stays device-free.
 
 #ifndef HYDRA_RENDER_OVERLAY_LAYOUT_H
 #define HYDRA_RENDER_OVERLAY_LAYOUT_H
@@ -93,10 +93,18 @@ float widest_word(const std::string& text,
 // short and ended in "…" so the result fits. The cut falls between UTF-8
 // characters, never inside one, and drops the spaces it would leave before the
 // "…". When not even one character fits, the result is "…" alone. `width_of`
-// measures a string in the font the box draws with. The Preview's path picker
-// shows a path too long for its line this way.
+// measures a string in the font the box draws with. This is the one rule for
+// cutting a label to fit (D48, Q18): the Preview's path picker, and every
+// ellipsized label in the UI through ui::text_ellipsized.
 std::string ellipsize(const std::string& text, float max_w,
                       const std::function<float(const std::string&)>& width_of);
+
+// The same cut, also setting `kept_w` to the width of the text shown before
+// the "…": the whole width when the text fits, 0 when "…" stands alone. The
+// library's title cell stops its search highlight there.
+std::string ellipsize(const std::string& text, float max_w,
+                      const std::function<float(const std::string&)>& width_of,
+                      float& kept_w);
 
 }  // namespace hydra::render
 

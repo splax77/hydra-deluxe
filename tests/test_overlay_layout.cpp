@@ -237,3 +237,17 @@ TEST_CASE("ellipsize: a 40-activation path fits its line, and a cut never splits
     CHECK(ellipsize(accented, 50.0f, ten_per_char) == "Caf\xC3\xA9\xE2\x80\xA6");
     CHECK(ellipsize(accented, 40.0f, ten_per_char) == "Caf\xE2\x80\xA6");
 }
+
+TEST_CASE("ellipsize: the kept width is the width of the text before the ellipsis") {
+    const std::string label = "3- 1 2  (optimal)";  // 17 characters, 170 px
+    float kept_w = -1.0f;
+    CHECK(ellipsize(label, 170.0f, ten_per_char, kept_w) == label);
+    CHECK(kept_w == 170.0f);  // it fits: the whole width
+    CHECK(ellipsize(label, 80.0f, ten_per_char, kept_w) == "3- 1 2\xE2\x80\xA6");
+    CHECK(kept_w == 60.0f);  // "3- 1 2", the dropped spaces not counted
+    CHECK(ellipsize(label, 15.0f, ten_per_char, kept_w) == "\xE2\x80\xA6");
+    CHECK(kept_w == 0.0f);  // only the ellipsis shows
+    const std::string accented = "Caf\xC3\xA9 \xC3\xA9t\xC3\xA9";  // "Café été"
+    CHECK(ellipsize(accented, 40.0f, ten_per_char, kept_w) == "Caf\xE2\x80\xA6");
+    CHECK(kept_w == 30.0f);
+}
