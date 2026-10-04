@@ -425,9 +425,26 @@ TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     CHECK(scene.tempos[0].bpm == doctest::Approx(120.0));
     REQUIRE(!scene.beats.empty());
     CHECK(scene.beats.front().tick == 0);
-    // Extends two measures past the last note (tick 720 -> through 4560; the
-    // last line at or before that is the beat at 4320).
+    // With no audio end given, the grid extends two measures past the last
+    // note (tick 720 -> through 4560; the last line at or before that is the
+    // beat at 4320). The case below passes the audio's end instead.
     CHECK(scene.beats.back().tick == 4320);
+}
+
+TEST_CASE("build_preview_scene: the beat lines run to the end of the audio") {
+    // The audio-tail chart: the last note is at tick 1920 (1000 ms) and the
+    // audio stops 5 s later, at 6000 ms, which is tick 11520 (six measures of
+    // 1920 ticks). The beat lines keep scrolling through that tail and stop at
+    // the barline on the audio's end (D48, Q25).
+    const test::AudioTailChart c = test::audio_tail_chart();
+    const PreviewScene scene =
+        build_preview_scene(c.song, nullptr, kCloneHeroSpCap, core::default_rules(), c.audio_end_ms);
+    REQUIRE(!scene.beats.empty());
+    CHECK(scene.beats.back().tick == 11520);
+    CHECK(scene.beats.back().kind == PreviewBeatKind::Bar);
+    CHECK(scene.beats.back().ms == doctest::Approx(6000.0));
+    // The base alone gives the same grid: the overlay never touches beats.
+    CHECK(build_preview_base(c.song, c.audio_end_ms).beats.back().tick == 11520);
 }
 
 TEST_CASE("build_time_box: timestamp, measure, tempo") {
@@ -450,6 +467,14 @@ TEST_CASE("build_time_box: timestamp, measure, tempo") {
 
     // The playhead is clamped to the length.
     CHECK(build_time_box(scene, 9999.0, 5000.0).timestamp == "0:05.000 / 0:05.000");
+}
+
+TEST_CASE("build_time_box: the timestamp rounds 59,999.6 ms to 1:00.000") {
+    // The clock rounds to the whole ms before it splits off the minutes, so
+    // it never reads 0:60.000 (D48, Q20).
+    Song song = make_hand_song();
+    PreviewScene scene = build_preview_scene(song, nullptr);
+    CHECK(build_time_box(scene, 59999.6, 64000.0).timestamp == "1:00.000 / 1:04.000");
 }
 
 TEST_CASE("build_time_box: the end measure runs past the last beat line") {
@@ -1443,6 +1468,21 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
     CHECK(build_score_box(scene, 7000.0).detail == "x2 " + kDot + " combo 15");
 }
 
+TEST_CASE("score box: a chord exactly on the playhead counts as hit") {
+    // The case above: "Act >" from the start lands on the activation chord at
+    // 2500 ms, and the box counts that chord as hit and paid (D48, Q27). The
+    // box already counted it before struck_at existed, so this case guards the
+    // shared rule rather than a fix: make struck_at exclusive and it reads
+    // "x1 · combo 5". The highway's case is the one the fix turned green.
+    Song song = make_sp_song({1920}, 9600);
+    Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.score.state == PreviewScore::State::Ready);
+    const std::optional<double> jump = activation_jump_ms(scene, 0.0, +1);
+    REQUIRE(jump.has_value());
+    CHECK(build_score_box(scene, *jump).detail == "x2 " + kDot + " combo 6");
+}
+
 // User decision D11 (docs/audit/2026-10-03-fix-decisions.md): a chord just past
 // the SP end that Hydra's leeway still pays doubled is paid doubled in the
 // score, but the box reads plain from the SP end on.
@@ -1777,8 +1817,8 @@ TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many cha
     // so 3332.7 ms is tick 2879.54 and shows Verse at m2.3.0, while 3332.6 ms
     // is tick 2879.47, still Intro at m2.2.479. Likewise 999.9 ms is tick
     // 959.9 (Intro) and 4666.0 ms tick 3839.5 (3/4). The tempo is looked up
-    // by ms, so a hair before 2000 ms the box reads tick 1920 (m2.1.0) at the
-    // old 120 BPM. In 3/4 a measure is 1440 ticks: measure 3 starts at 3840,
+    // by that same tick, so a hair before 2000 ms the box reads tick 1920
+    // (m2.1.0) at the new 90 BPM (D48, Q23). In 3/4 a measure is 1440 ticks: measure 3 starts at 3840,
     // 4 at 5280, so tick 5759 (6799 ms at 150 BPM) is m4.1.479. Past the
     // length the playhead is held at 12400 ms, tick 9600, m6.3.0.
     std::vector<std::string> got;
@@ -1793,18 +1833,18 @@ TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many cha
                  "0:00.000 / 0:12.400 | m1.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | ",
                  "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
                  "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
-                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
+                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
                  "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
                  "0:03.333 / 0:12.400 | m2.2.479 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
                  "0:03.333 / 0:12.400 | m2.3.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Verse",
                  "0:04.666 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
                  "0:04.667 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
-                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
+                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
                  "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
                  "0:06.799 / 0:12.400 | m4.1.479 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
                  "0:06.800 / 0:12.400 | m4.2.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Chorus",
                  "0:07.600 / 0:12.400 | m5.1.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
-                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
+                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Chorus",
                  "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Chorus",
                  "0:10.400 / 0:12.400 | m6.1.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro",
                  "0:12.400 / 0:12.400 | m6.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
@@ -1821,6 +1861,18 @@ TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many cha
 
     // Sections out of tick order never reach the time box: both parsers sort
     // them (sort_practice_sections, D27 R7.7), and the parser tests pin that.
+}
+
+TEST_CASE("build_time_box: inside the half tick before a tempo change every line shows the new values") {
+    // make_lookup_song's tempo goes 120 -> 90 BPM at tick 1920 (2000 ms). A
+    // hair before 2000 ms the playhead rounds to tick 1920, so the measure
+    // line already reads m2.1.0; the BPM line must read that tick's tempo
+    // too, not the old one (D48, Q23).
+    const Song song = make_lookup_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    const PreviewTimeBox box = build_time_box(scene, std::nextafter(2000.0, -1e300), 12400.0);
+    CHECK(box.position == "m2.1.0");
+    CHECK(box.tempo == "BPM 90.000 " + kDot + " 4/4");
 }
 
 TEST_CASE("build_preview_scene: passed-over fills on several activations, and a tick that is no fill") {

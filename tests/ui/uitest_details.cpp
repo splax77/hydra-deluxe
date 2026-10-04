@@ -90,6 +90,21 @@ void test_cap_switch(ImGuiTestContext* ctx) {
         const std::string& best = cap == 4 ? best4 : best6;
         IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(best) != std::string::npos; }, 5));
     }
+
+    // A cap with no result yet: the Preview's SP gauge pins at the Settings
+    // cap, the one the next analysis will run at, not at 4 (D48, Q24).
+    ctx->ItemInputValue("//Hydra/**/##spcap", 5);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == 5; }, 5));
+    IM_CHECK(!h.app->viewed.record.has_value());
+    set_panel_ref(ctx);
+    ctx->ItemClick("**/##DetailsTabs/Preview");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->preview && h.app->preview->active() && !h.app->preview->loading();
+    }, 120));
+    IM_CHECK(wait_until(ctx, [&] {
+        const std::string readout = h.app->preview->sp_meter_readout();
+        return readout.size() >= 2 && readout.substr(readout.size() - 2) == "/5";
+    }, 60));
 }
 
 // "1.0 fills" keys a result like the SP cap does: ticking it shows the song as

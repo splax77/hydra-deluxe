@@ -190,10 +190,11 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // this chart. This is where the async decode starts.
     pc->set_volume(app.settings.preview_volume);  // before the audio exists too
     // The meter's ceiling is the cap the viewed record was analyzed at; a
-    // chart with no record yet previews at the Clone Hero cap.
+    // chart with no record yet previews at the Settings cap, the one the next
+    // analysis will run at (D48, Q24).
     const int sp_cap = app.viewed.status == store::RecordStatus::Ready
                            ? app.viewed.record->sp_cap.value_or(kCloneHeroSpCap)
-                           : kCloneHeroSpCap;
+                           : app.settings.sp_cap;
     // The overlay key is the path's verbose string: rebuilt when the
     // selection or the record changes, not every frame.
     DetailsViewState& ui = app.details_ui;
@@ -487,7 +488,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         }
 
         // The next activation, bottom-left in the same panel style: its number
-        // in gold, then where it is and its chord. Hidden past the last one.
+        // in the best-path gold the scrubber's marks use, then where it is
+        // and its chord. Hidden past the last one.
         // A line too wide for the room beside the highway at the bottom
         // wraps at its spaces, so the box grows up rather than over the lane.
         if (next.shown) {
@@ -506,9 +508,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             dl->AddRectFilled(n_min, n_max, IM_COL32(0, 0, 0, 128), corner,
                               ImDrawFlags_RoundCornersTopRight);
             float y = n_min.y + pad;
+            const ImU32 head_color = ImGui::GetColorU32(kBestPathColor);
             for (const std::string& l : head) {
-                dl->AddText(font, size, ImVec2(origin.x + margin, y), IM_COL32(255, 204, 51, 255),
-                            l.c_str());
+                dl->AddText(font, size, ImVec2(origin.x + margin, y), head_color, l.c_str());
                 y += line_h;
             }
             for (const std::string& l : body) {
@@ -524,13 +526,14 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // render. The value is the view-model's curve read at the playhead, so
         // it is anchored to the same engine truth the path overlay is.
         if (has_gauge) {
-            // "SP" above the gauge in gold, the banked bars under it.
+            // "SP" above the gauge in the Star Power gold, the banked bars
+            // under it.
             const float label_size = px(14.0f);
             const float label_h = label_size * 1.25f;
             const float centre_x = gauge_left + bar_w * 0.5f;
             dl->AddText(font, label_size,
                         ImVec2(centre_x - text_width(label_size, "SP") * 0.5f, origin.y + v_margin),
-                        IM_COL32(255, 204, 51, 255), "SP");
+                        ImGui::GetColorU32(kStarPowerColor), "SP");
             const std::string readout = pc->sp_meter_readout();
             const float rw = text_width(label_size, readout.c_str());
             dl->AddText(font, label_size,
@@ -550,9 +553,12 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                 ImVec2 in_min(gauge_min.x + fill_pad, gauge_min.y + fill_pad);
                 ImVec2 in_max(gauge_max.x - fill_pad, gauge_max.y - fill_pad);
                 const float in_h = in_max.y - in_min.y;
+                // The Star Power gold, a touch see-through (alpha 230 of 255).
+                ImVec4 fill_color = kStarPowerColor;
+                fill_color.w = 230.0f / 255.0f;
                 if (in_h > 0.0f && fill > 0.0f)
                     dl->AddRectFilled(ImVec2(in_min.x, in_max.y - in_h * fill), in_max,
-                                      IM_COL32(255, 204, 51, 230));  // Star Power gold
+                                      ImGui::GetColorU32(fill_color));
                 // One line per whole-bar boundary, over the fill, so a glance
                 // reads how many bars are banked and not just how full it is.
                 for (int b = 1; b < cap; ++b) {
@@ -567,16 +573,20 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // The SP drain box, top-right just left of the gauge and level with
         // its top, where the highway is narrowest; right-aligned in the time
         // box's panel style. How long a bar of SP lasts at the playhead, then
-        // "empties in" (gold, SP running on the path) or "full meter" (grey,
-        // if activated here). Every number is build_drain_box's.
+        // "empties in" (teal, SP running on the path) or "full meter" (grey,
+        // if activated here). Every number is build_drain_box's. Teal means
+        // SP running everywhere (D48, Q26), so the text reads the floor's own
+        // teal from the preview config and the two can never differ.
         if (drain_drawn) {
             float d_w = 0.0f;
             for (const char* l : d_lines) d_w = std::max(d_w, text_width(size, l));
             ImVec2 d_min(gauge_left - d_gap - d_w - pad * 2.0f, origin.y + v_margin);
             ImVec2 d_max(gauge_left - d_gap, d_min.y + line_h * 3.0f + pad * 2.0f);
             dl->AddRectFilled(d_min, d_max, IM_COL32(0, 0, 0, 128), corner);
-            const ImU32 accent = drain.active ? IM_COL32(255, 204, 51, 255)  // SP gold
-                                              : IM_COL32(200, 200, 200, 255);
+            const render::Color& sp_teal = pcfg.hydra.sp_active_color;
+            const ImU32 accent =
+                drain.active ? ImGui::GetColorU32(ImVec4(sp_teal.r, sp_teal.g, sp_teal.b, sp_teal.a))
+                             : IM_COL32(200, 200, 200, 255);
             const ImU32 colors[3] = {accent, IM_COL32(255, 255, 255, 255), accent};
             for (int i = 0; i < 3; ++i) {
                 const float lw = text_width(size, d_lines[i]);
