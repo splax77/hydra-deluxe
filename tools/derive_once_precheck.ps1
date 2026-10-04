@@ -415,6 +415,33 @@ function Test-ElementAdded([object]$El) {
 # only for questions no row asks. The field order is OwnerRule's.
 $rows = [System.Collections.Generic.List[object]]::new()
 $rowWarnings = [System.Collections.Generic.List[string]]::new()
+# One field of a row as text, as a list of strings, and as a list of structs
+# (each struct its strings and its lines). Every list comes back as one
+# object behind a leading comma, and callers take it as it is or loop over it
+# with foreach. PowerShell unrolls an array a function or script block hands
+# back, and a one-item array unrolls to its item: a row with one exempt file
+# once read as the single characters of that file's name (M0 review 2,
+# finding 1). Wrapping a comma-returned list in @() nests it instead.
+function Get-RowText([object]$V, [object]$Fields, [int]$K) {
+    if ($Fields.Count -gt $K) { Get-FieldText $V $Fields[$K] } else { '' }
+}
+function Get-RowList([object]$V, [object]$Fields, [int]$K) {
+    if ($Fields.Count -le $K) { return ,[string[]]@() }
+    ,[string[]]@(foreach ($i in (Get-ListItems $V $Fields[$K])) { Get-FieldText $V $i })
+}
+function Get-RowStructs([object]$V, [object]$Fields, [int]$K) {
+    $out = [System.Collections.Generic.List[object]]::new()
+    if ($Fields.Count -gt $K) {
+        foreach ($i in (Get-ListItems $V $Fields[$K])) {
+            $out.Add([pscustomobject]@{
+                Strings = [string[]]@(foreach ($s in (Get-ListItems $V $i)) { Get-FieldText $V $s })
+                Line = ($V.CodeText.Substring(0, $i[0]) -split "`n").Count
+                LastLine = ($V.CodeText.Substring(0, $i[1]) -split "`n").Count
+            })
+        }
+    }
+    ,$out
+}
 function New-StdRegex([string]$Pattern) {
     # The scan uses std::regex's ECMAScript grammar; .NET's ECMAScript mode is
     # the nearest reading. A pattern it refuses is read with .NET's own rules,
@@ -427,20 +454,16 @@ if ($scanAt.Count) {
     foreach ($el in (Get-TableElements $sv 'rules')) {
         $f = $el.Fields
         if ($f.Count -lt 3) { continue }
-        $text = { param($k) if ($f.Count -gt $k) { Get-FieldText $sv $f[$k] } else { '' } }
-        $list = { param($k) if ($f.Count -gt $k) { @(foreach ($i in (Get-ListItems $sv $f[$k])) { Get-FieldText $sv $i }) } else { @() } }
-        $structs = { param($k) if ($f.Count -gt $k) { @(foreach ($i in (Get-ListItems $sv $f[$k])) { ,@(foreach ($s in (Get-ListItems $sv $i)) { Get-FieldText $sv $s }) }) } else { @() } }
         $row = [pscustomobject]@{
-            Question = (& $text 0); Owner = (& $text 1); Pattern = (& $text 2); CallsOwner = (& $text 3)
-            OwnerFiles = (& $list 4); Exempt = @((& $structs 5) | ForEach-Object { $_[0] })
-            MustMatch = (& $list 7); MustNotMatch = (& $list 8)
-            OwnerLines = @(if ($f.Count -gt 9) { foreach ($i in (Get-ListItems $sv $f[9])) {
-                $s = @(foreach ($x in (Get-ListItems $sv $i)) { Get-FieldText $sv $x })
-                if ($s.Count -lt 3) { continue }
-                $span = [pscustomobject]@{ Line = ($sv.CodeText.Substring(0, $i[0]) -split "`n").Count; LastLine = ($sv.CodeText.Substring(0, $i[1]) -split "`n").Count }
-                [pscustomobject]@{ File = $s[0]; Text = $s[1].Trim(); Why = $s[2]; Added = (Test-ElementAdded $span) }
-            } })
-            Scope = (& $list 10); FunctionFile = (& $text 11); Function = (& $text 12)
+            Question = (Get-RowText $sv $f 0); Owner = (Get-RowText $sv $f 1); Pattern = (Get-RowText $sv $f 2); CallsOwner = (Get-RowText $sv $f 3)
+            OwnerFiles = (Get-RowList $sv $f 4)
+            Exempt = [string[]]@(foreach ($e in (Get-RowStructs $sv $f 5)) { if ($e.Strings.Count) { $e.Strings[0] } })
+            MustMatch = (Get-RowList $sv $f 7); MustNotMatch = (Get-RowList $sv $f 8)
+            OwnerLines = [object[]]@(foreach ($o in (Get-RowStructs $sv $f 9)) {
+                if ($o.Strings.Count -lt 3) { continue }
+                [pscustomobject]@{ File = $o.Strings[0]; Text = $o.Strings[1].Trim(); Why = $o.Strings[2]; Added = (Test-ElementAdded $o) }
+            })
+            Scope = (Get-RowList $sv $f 10); FunctionFile = (Get-RowText $sv $f 11); Function = (Get-RowText $sv $f 12)
             ScanComments = ($f.Count -gt 13 -and $sv.CodeText.Substring($f[13][0], $f[13][1] - $f[13][0]).Trim() -eq 'true')
             Line = $el.Line; Added = (Test-ElementAdded $el); Rx = $null; CallsRx = $null
         }

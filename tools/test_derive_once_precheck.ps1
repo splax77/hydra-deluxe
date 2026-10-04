@@ -23,7 +23,11 @@ gate (c6debcd^2...c6debcd and 11b9d44^2...11b9d44) in this repository and
 checks it names the findings the reviewers wrote by hand. It reads the scan
 rows at this repository's HEAD (-RulesAt HEAD), because the rows that name
 those findings were added after those commits. It is skipped, with
-a note, when those commits are not in the repository.
+a note, when those commits are not in the repository. Then it runs the
+script on the whole tree at HEAD, where the scan passes, and fails on any
+row hit that is not a line the scan lists (an owner line or a known copy):
+that is the script reading a row differently from the scan. Every run fails
+on a "precheck:" warning line instead of dropping it.
 
 -DisableCheck N passes "-Disable N" to the script in every run. The test then
 fails, which is the manual proof that it notices a check being turned off.
@@ -42,13 +46,18 @@ $script:Passes = 0
 $precheck = Join-Path $PSScriptRoot 'derive_once_precheck.ps1'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
-function Invoke-Precheck([string]$Repo, [string]$Range, [int[]]$Disable, [string]$RulesAt = '') {
+function Invoke-Precheck([string]$Repo, [string]$Range, [int[]]$Disable, [string]$RulesAt = '', [switch]$WholeTree) {
     $args2 = @('-NoProfile', '-File', $precheck, '-Repo', $Repo, '-Range', $Range)
     if ($Disable.Count) { $args2 += @('-Disable', ($Disable -join ',')) }
     if ($RulesAt) { $args2 += @('-RulesAt', $RulesAt) }
-    $out = & pwsh @args2 2>&1
+    if ($WholeTree) { $args2 += '-WholeTree' }
+    $out = @(& pwsh @args2 2>&1 | ForEach-Object { "$_" })
     if ($LASTEXITCODE -ne 0) { throw "precheck failed on $Range ($LASTEXITCODE): $($out | Out-String)" }
-    @($out | ForEach-Object { "$_" } | Where-Object { $_ -match '^[A-E] ' })
+    # A "precheck:" line says the script read the scan rows differently from
+    # the scan, so it fails the test instead of being dropped (M0 review 2,
+    # finding 1).
+    foreach ($w in ($out | Where-Object { $_ -match '^precheck: ' })) { $script:Failures.Add("${Range}: the precheck warned: $w") }
+    @($out | Where-Object { $_ -match '^[A-E] ' })
 }
 
 # One expectation: a line starting with $Kind and $File whose text matches
@@ -226,6 +235,17 @@ if (-not $FixtureOnly) {
             @('E', 'tests/test_s2_stamps.cpp', 'stored_versions\.h')
         ) @()
     } else { Write-Host 'step 2 range skipped: 11b9d44 is not in this repository' }
+
+    # The whole tree at HEAD. The scan passes at every commit on main, so it
+    # is the truth here: every row hit the precheck prints must be a line the
+    # scan lists (an owner line or a known copy). A row hit with neither note
+    # is a line the scan passes and the precheck flags, which means the
+    # precheck read a row differently (M0 review 2, finding 1).
+    $wt = Invoke-Precheck $repoRoot 'HEAD' $DisableCheck -WholeTree
+    $bare = @($wt | Where-Object { $_ -match 'the scan row in tests/test_single_owner\.cpp gives this question to' -and
+                                   $_ -notmatch '\((known copy: |this range lists it as an owner line: )' })
+    if ($bare.Count) { foreach ($b in $bare) { $script:Failures.Add("whole tree at HEAD: the scan passes this line, the precheck flags it: $b") } }
+    else { $script:Passes++ }
 }
 
 if ($script:Failures.Count) {
