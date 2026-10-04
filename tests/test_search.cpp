@@ -738,10 +738,10 @@ TEST_CASE("tail rows: every corpus activation keeps exactly the rows the old dis
     CHECK(tails > 0);
 }
 
-// The graph claims, for every deactivation edge, exactly the chord
-// core::sqout_chord names. Run before the graph calls it, this proves the
-// function is the graph's old rule; after, it guards against drift.
-TEST_CASE("graph: every deactivation edge claims the chord sqout_chord names") {
+// The graph lists, for every deactivation edge, exactly the phrase chords
+// core::squeeze_window_phrases names, in chart order, so the engine can offer
+// the first one a window can still squeeze (D34). This guards against drift.
+TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrases names") {
     int edges = 0, claimed = 0, before = 0, after = 0;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
@@ -760,35 +760,35 @@ TEST_CASE("graph: every deactivation edge claims the chord sqout_chord names") {
             if (!e || !seen.insert(e).second) continue;
             ++edges;
             const Timecode& end = e->dest->timecode;
-            const SongTimestamp* c = core::sqout_chord(song, end);
-            CHECK(e->sqinout_time.has_value() == (c != nullptr));
+            const std::vector<const SongTimestamp*> window =
+                core::squeeze_window_phrases(song, end);
+            REQUIRE(e->squeeze_choices.size() == window.size());
 
-            // The edge's other three facts, worked out here from the chord and
-            // the song's own timing, not from the graph.
+            // The edge's other facts, worked out here from each chord and the
+            // song's own timing, not from the graph.
             REQUIRE(e->sqin_time.has_value());
-            REQUIRE(e->sqout_time.has_value());
-            if (!c) {
-                // No chord to squeeze: both branches end at the SP end.
+            if (window.empty()) {
+                // No chord to squeeze: the path just ends at the SP end.
                 CHECK(e->sqin_time->ticks() == end.ticks());
-                CHECK(e->sqout_time->ticks() == end.ticks());
-                CHECK(e->late_sqin_count == 0);
                 continue;
             }
-            if (!e->sqinout_time) continue;
             ++claimed;
-            CHECK(e->sqinout_time->ticks() == c->timecode.ticks());
-            CHECK(*e->sqinout_timing == c->timecode.ms() - end.ms());  // bit for bit
-
             // A chord moves the SqIn end one bar. A chord at or before the end
             // moves the SqOut end too; a chord after it is a late SqIn only.
             const int64_t one_bar =
                 song.timing().plusmeasure(end, sp_bars_to_measures(1)).ticks();
             CHECK(one_bar > end.ticks());
             CHECK(e->sqin_time->ticks() == one_bar);
-            const bool at_or_before = c->timecode.ticks() <= end.ticks();
-            CHECK(e->sqout_time->ticks() == (at_or_before ? one_bar : end.ticks()));
-            CHECK(e->late_sqin_count == (at_or_before ? 0 : 1));
-            (at_or_before ? before : after)++;
+            for (size_t k = 0; k < window.size(); ++k) {
+                const SongTimestamp* c = window[k];
+                const SqueezeChoice& got = e->squeeze_choices[k];
+                CHECK(got.chord.ticks() == c->timecode.ticks());
+                CHECK(got.timing == c->timecode.ms() - end.ms());  // bit for bit
+                const bool at_or_before = c->timecode.ticks() <= end.ticks();
+                CHECK(got.sqout_time.ticks() == (at_or_before ? one_bar : end.ticks()));
+                CHECK(got.late == !at_or_before);
+                (at_or_before ? before : after)++;
+            }
         }
     }
     CHECK(edges > 0);
@@ -1301,8 +1301,8 @@ TEST_CASE("search: no fresh record stores an unknown transfer scale (constructed
                        << " SqOuts, " << clamps << " clamps)");
 }
 
-// The search ranks a squeeze-out by its own offset (the deact edge's
-// sqinout_timing); the record stores the row's. rebuild throws if the two
+// The search ranks a squeeze-out by its own offset (its squeeze choice's
+// timing on the deact edge); the record stores the row's. rebuild throws if the two
 // differ, so run_search failing here is that check biting. The stored offset
 // is then measured again, independently, from the deactivation node D.
 TEST_CASE("squeeze-out: one SqOut, last, and its offset is the search's and D's, on every corpus path") {

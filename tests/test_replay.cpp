@@ -962,28 +962,49 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     CHECK(late[0].find("tick 3073") != std::string::npos);
 }
 
-// The one rule for which phrase chord an SP end can squeeze out.
-TEST_CASE("sqout_chord: the first phrase chord strictly inside the window, in chart order") {
+// The phrase chords strictly inside an SP end's squeeze window, in chart
+// order: the list the graph puts on each deactivation edge.
+TEST_CASE("squeeze_window_phrases: the phrase chords strictly inside the window, in chart order") {
+    auto ticks = [](const std::vector<const SongTimestamp*>& w) {
+        std::vector<int64_t> out;
+        for (const SongTimestamp* c : w) out.push_back(c->timecode.ticks());
+        return out;
+    };
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
                                 {3036, true}, {3072, false}});
-    const SongTimestamp* c = core::sqout_chord(two, two.timecode(3072));
-    REQUIRE(c != nullptr);
-    CHECK(c->timecode.ticks() == 2928);  // 375 ms before D comes before 93.75 ms
+    // 375 ms before D comes before 93.75 ms.
+    CHECK(ticks(core::squeeze_window_phrases(two, two.timecode(3072))) ==
+          std::vector<int64_t>{2928, 3036});
 
     // Exactly 500 ms before D is outside.
     const Song edge = song_with({{0, false}, {2880, true}, {3072, false}});
-    CHECK(core::sqout_chord(edge, edge.timecode(3072)) == nullptr);
+    CHECK(core::squeeze_window_phrases(edge, edge.timecode(3072)).empty());
 
     // Only a phrase chord after D: that one.
     const Song after = song_with({{0, false}, {3072, false}, {3073, true}});
-    REQUIRE(core::sqout_chord(after, after.timecode(3072)) != nullptr);
-    CHECK(core::sqout_chord(after, after.timecode(3072))->timecode.ticks() == 3073);
+    CHECK(ticks(core::squeeze_window_phrases(after, after.timecode(3072))) ==
+          std::vector<int64_t>{3073});
 
     // An SP end between two chords, and no phrase chord at all.
-    REQUIRE(core::sqout_chord(two, two.timecode(3000)) != nullptr);
-    CHECK(core::sqout_chord(two, two.timecode(3000))->timecode.ticks() == 2928);
+    CHECK(ticks(core::squeeze_window_phrases(two, two.timecode(3000))) ==
+          std::vector<int64_t>{2928, 3036});
     const Song bare = song_with({{0, false}, {3072, false}});
-    CHECK(core::sqout_chord(bare, bare.timecode(3072)) == nullptr);
+    CHECK(core::squeeze_window_phrases(bare, bare.timecode(3072)).empty());
+}
+
+// The one rule for which phrase an SP end offers a window (D34): the first
+// in its squeeze window that the window did not bank before its activation
+// and has not squeezed in already.
+TEST_CASE("sqout_chord: the first window phrase not banked and not squeezed in (D34)") {
+    const Song two = song_with({{0, false}, {768, false}, {2928, true},
+                                {3000, false}, {3036, true}, {3072, false}});
+    const Timecode d = two.timecode(3072);
+    auto tick_of = [](const SongTimestamp* c) { return c ? c->timecode.ticks() : -1; };
+    CHECK(tick_of(core::sqout_chord(two, d, 0)) == 2928);           // the first
+    CHECK(tick_of(core::sqout_chord(two, d, 3000)) == 3036);        // 2928 banked
+    CHECK(tick_of(core::sqout_chord(two, d, 0, {2928})) == 3036);   // 2928 squeezed in
+    CHECK(tick_of(core::sqout_chord(two, d, 0, {2928, 3036})) == -1);
+    CHECK(tick_of(core::sqout_chord(two, d, 3036)) == -1);          // both banked
 }
 
 TEST_CASE("category_scores reports the multiplier each note was paid at") {

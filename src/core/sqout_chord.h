@@ -1,8 +1,8 @@
-// Which phrase chord a Star Power end can squeeze out: one rule, asked by
-// the search graph (it claims this chord for its deactivation edge), by the
-// engine (it asks whether the running activation can squeeze that chord),
-// and by hydra_replay (it resolves a typed offset and words its warning
-// with it).
+// Which phrase chord a Star Power end can squeeze in or out: one rule, asked
+// by the search graph (it lists the window's phrase chords on each
+// deactivation edge), by the engine (it picks the one the running window is
+// offered) and by hydra_replay (it resolves a typed offset and words its
+// warning with it).
 
 #ifndef HYDRA_CORE_SQOUT_CHORD_H
 #define HYDRA_CORE_SQOUT_CHORD_H
@@ -17,12 +17,13 @@
 
 namespace hydra::core {
 
-// The first SP phrase chord, in chart order, strictly inside the squeeze
-// window around `sp_end`. nullptr when there is none. Chords are in tick
-// order and time rises with tick, so the window is one run of chords: find
-// the first chord at or after the end, step back to the run's start, then
-// take the run's first phrase chord.
-inline const SongTimestamp* sqout_chord(const Song& song, const Timecode& sp_end) {
+// Every SP phrase chord strictly inside the squeeze window around `sp_end`,
+// in chart order. Empty when there is none. Chords are in tick order and
+// time rises with tick, so the window is one run of chords: find the first
+// chord at or after the end, step back to the run's start, then keep the
+// run's phrase chords.
+inline std::vector<const SongTimestamp*> squeeze_window_phrases(const Song& song,
+                                                                const Timecode& sp_end) {
     const std::vector<SongTimestamp>& seq = song.sequence;
     auto inside = [&](const SongTimestamp& ts) {
         return within_squeeze_window(offset_from_sp_end(ts.timecode.ms(), sp_end.ms()));
@@ -32,9 +33,10 @@ inline const SongTimestamp* sqout_chord(const Song& song, const Timecode& sp_end
                                    return ts.timecode.ticks() < t;
                                });
     while (it != seq.begin() && inside(*std::prev(it))) --it;
+    std::vector<const SongTimestamp*> out;
     for (; it != seq.end() && inside(*it); ++it)
-        if (it->flag_sp) return &*it;
-    return nullptr;
+        if (it->flag_sp) out.push_back(&*it);
+    return out;
 }
 
 // Whether the activation on `act_tick` can squeeze the phrase chord on
@@ -45,6 +47,27 @@ inline const SongTimestamp* sqout_chord(const Song& song, const Timecode& sp_end
 // one SP bar at a fast tempo or a short measure).
 inline bool activation_can_squeeze(int64_t act_tick, int64_t chord_tick) {
     return chord_tick > act_tick;
+}
+
+// The phrase an SP end offers the running window to squeeze in or out (D34):
+// the first phrase chord in its squeeze window, in chart order, that the
+// window can still squeeze. A phrase banked before the activation is not the
+// window's to squeeze (activation_can_squeeze, D18). A phrase the window
+// already squeezed in is spent: a phrase can be squeezed in only once. Two
+// SP ends one tick apart move one bar on to the same tick, so without this
+// both would offer the same phrase to the same path.
+//
+// [first, last) is the window's phrase chords in chart order; `tick_of`
+// reads a chord's tick, `squeezed_in(tick)` says whether this window
+// already squeezed that chord in. Returns `last` when nothing is offered.
+// The search and the replay both pick through this one function.
+template <class It, class TickOf, class SqueezedIn>
+It offered_phrase(It first, It last, int64_t act_tick, TickOf tick_of, SqueezedIn squeezed_in) {
+    for (; first != last; ++first) {
+        const int64_t tick = tick_of(*first);
+        if (activation_can_squeeze(act_tick, tick) && !squeezed_in(tick)) return first;
+    }
+    return last;
 }
 
 // The last phrase chord the activation on `act_tick` cannot squeeze (the
@@ -76,14 +99,21 @@ inline const SongTimestamp* banked_phrase_in_reach(const Song& song, int64_t act
                : nullptr;
 }
 
-// The phrase chord the activation on `act_tick` can squeeze out at `sp_end`:
-// the window's chord above, or nullptr when there is none or the activation
-// cannot squeeze it. The graph names one chord per SP end, so when that one
-// was banked before the activation, nothing is squeezed there.
+// The phrase chord the activation on `act_tick` can squeeze out at `sp_end`
+// (offered_phrase over the window's chords), or nullptr. `squeezed_in` lists
+// the phrase chords this window already squeezed in, when the caller knows
+// them (a stored path's SqIn steps); none otherwise.
 inline const SongTimestamp* sqout_chord(const Song& song, const Timecode& sp_end,
-                                        int64_t act_tick) {
-    const SongTimestamp* c = sqout_chord(song, sp_end);
-    return c && activation_can_squeeze(act_tick, c->timecode.ticks()) ? c : nullptr;
+                                        int64_t act_tick,
+                                        const std::vector<int64_t>& squeezed_in = {}) {
+    const std::vector<const SongTimestamp*> window = squeeze_window_phrases(song, sp_end);
+    const auto it = offered_phrase(
+        window.begin(), window.end(), act_tick,
+        [](const SongTimestamp* c) { return c->timecode.ticks(); },
+        [&squeezed_in](int64_t tick) {
+            return std::find(squeezed_in.begin(), squeezed_in.end(), tick) != squeezed_in.end();
+        });
+    return it == window.end() ? nullptr : *it;
 }
 
 }  // namespace hydra::core

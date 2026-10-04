@@ -252,11 +252,13 @@ TEST_CASE("fast tempo: graph tracks run forward and every phrase sits on its own
 //                           had no node
 //   late_sqin_twice         the same throw: a late squeeze-in's phrase was
 //                           squeezed in a second time at the next SP end
-// early_sqin_twice is not here: it never threw. A path on it squeezes one
-// early phrase in at two SP ends, and a variant folded between the two
-// stores no SqIn step for its SqIn. That double squeeze also happens on two
-// library charts, so changing it is a user decision (open, reported with
-// D32's fixes); the chart stays for the graph test above.
+// early_sqin_twice is not here: it never threw. A path on it squeezed one
+// early phrase in at two SP ends; D34 ended that (a phrase is squeezed in
+// only once). A variant folded there can still differ from its lone pricing:
+// the search groups running paths without the phrases their window already
+// squeezed in, so a variant can take its leader's squeeze of the next phrase
+// where alone it would squeeze the first. Only at these tempos; open, like
+// the SP-ready gap below. The chart stays for the graph test above.
 TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
     const std::vector<std::pair<std::string, int>> charts = {
         {"node_before_phrase.chart", 3},     {"end_on_window_node.chart", 2},

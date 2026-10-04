@@ -54,10 +54,19 @@ struct EdgeView {
     int32_t notecount, basescore, comboscore, spscore, soloscore, accentscore,
         ghostscore;
     int32_t frontend_points;
-    int32_t late_sqin_count;
     int32_t banked_phrase_ordinal;
-    double activation_fill_deadline_ms, sqinout_timing;
-    int64_t sqinout_time, sqout_time, sqin_time;
+    double activation_fill_deadline_ms;
+    // A deactivation edge's squeeze choices: Enum::choices[choice_begin,
+    // choice_end), in chart order (ScoreGraphEdge::squeeze_choices).
+    int32_t choice_begin, choice_end;
+    int64_t sqin_time;
+};
+// One squeeze choice of a deactivation edge, in ticks.
+struct ChoiceView {
+    int64_t chord;
+    double timing;
+    int64_t sqout_time;
+    int32_t late;
 };
 
 struct Enum {
@@ -68,6 +77,8 @@ struct Enum {
     // through hash-map lookups on every read.
     std::vector<NodeView> node_views;
     std::vector<EdgeView> edge_views;
+    // Every deactivation edge's squeeze choices, back to back.
+    std::vector<ChoiceView> choices;
     int32_t start = -1;
 };
 
@@ -146,13 +157,14 @@ Enum enumerate(const ScoreGraph& graph) {
         v.accentscore = (int32_t)o->accentscore;
         v.ghostscore = (int32_t)o->ghostscore;
         v.frontend_points = o->frontend_points;
-        v.late_sqin_count = o->late_sqin_count;
         v.banked_phrase_ordinal = o->banked_phrase_ordinal;
         v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);
-        v.sqinout_timing = o->sqinout_timing.value_or(0.0);
-        v.sqinout_time = o->sqinout_time ? o->sqinout_time->ticks() : NO_TIME;
-        v.sqout_time = o->sqout_time ? o->sqout_time->ticks() : NO_TIME;
         v.sqin_time = o->sqin_time ? o->sqin_time->ticks() : NO_TIME;
+        v.choice_begin = (int32_t)en.choices.size();
+        for (const SqueezeChoice& c : o->squeeze_choices)
+            en.choices.push_back(ChoiceView{c.chord.ticks(), c.timing, c.sqout_time.ticks(),
+                                            c.late ? 1 : 0});
+        v.choice_end = (int32_t)en.choices.size();
         en.edge_views.push_back(v);
     }
     return en;
@@ -180,6 +192,9 @@ struct Act {
     // The fills passed over before this activation (an index into fills_),
     // or -1. Taken off the live path when the activation is made.
     int32_t skip_tail;
+    // The phrase chord its closing SqOut squeezed out, or NO_TIME. The deact
+    // edge lists several choices; this is the one the window was offered.
+    int64_t sqout_phrase;
 };
 struct SqNode {
     int32_t prev;
@@ -273,6 +288,8 @@ struct OutAct {
     int32_t bank_begin, bank_end;
     // The fills passed over before it: out_ticks_[skip_begin, skip_end).
     int32_t skip_begin, skip_end;
+    // The phrase chord its closing SqOut squeezed out (Act::sqout_phrase).
+    int64_t sqout_phrase;
 };
 struct OutSq {
     int32_t kind;
@@ -379,6 +396,7 @@ private:
         a.end_tail = -1;
         a.bank_tail = -1;
         a.skip_tail = -1;
+        a.sqout_phrase = NO_TIME;
         acts_.push_back(a);
         return (int32_t)acts_.size() - 1;
     }
@@ -402,14 +420,15 @@ private:
     // A squeeze-out gives its phrase back, and with it every step at or after
     // the squeezed-out chord. The one statement of that rule: trim_ends and
     // close_folded_act both ask it.
-    static bool given_back(int64_t step_tick, int64_t sqout_tick) {
-        return step_tick >= sqout_tick;
+    static bool given_back(int64_t step_tick, int64_t sqout_phrase) {
+        return step_tick >= sqout_phrase;
     }
     // An early SqIn's step is the step on the squeezed-in chord's tick: a
     // phrase the gauge received, so Collected, or Clamped when the cap pinned
-    // the end on that phrase. It is already SqIn when an earlier SP end
-    // squeezed the same chord in (500 ms can span more than one SP bar at a
-    // fast tempo); it stays SqIn. Never the Activation step, which stays
+    // the end on that phrase. Since D34 a lone path never meets an SqIn step
+    // here: a phrase it squeezed in is never offered again. A folded variant
+    // can, when its own window squeezed the phrase in before the fold
+    // (extreme tempos only); the step stays SqIn. Never the Activation step, which stays
     // first in the window's history. The one statement of that rule:
     // relabel_sqin and close_folded_act both ask it.
     static bool is_sqin_step(int64_t step_tick, SpEndKind step_kind, int64_t sqin_tick) {
@@ -444,6 +463,17 @@ private:
         tail = out;
         return true;
     }
+    // Whether the running window already squeezed the phrase on `tick` in:
+    // it holds an SqIn step there. Steps run in tick order, so the walk stops
+    // at the first one before `tick`.
+    bool squeezed_in(const Path& p, int64_t tick) const {
+        for (int32_t t = p.end_tail; t >= 0; t = ends_[(size_t)t].prev) {
+            const EndNode& s = ends_[(size_t)t];
+            if (s.tick < tick) return false;
+            if (s.tick == tick && s.kind == SpEndKind::SqIn) return true;
+        }
+        return false;
+    }
     int32_t act_count(const Path& p) const {
         return p.act_tail < 0 ? 0 : acts_[(size_t)p.act_tail].depth;
     }
@@ -456,8 +486,13 @@ private:
     void advance(Path& p);
     bool branch_activate(Path& p, Path* child);
     bool branch_deactivate(Path& p, Path* child, bool* has_child);
-    void create_deactivated_path(const Path& p, Path* child, bool is_sq_out);
-    int32_t deactivation_type(const EdgeView& e, const Path& p) const;
+    // `sq` is the squeeze choice a SqOut child squeezes out; nullptr for a
+    // plain end.
+    void create_deactivated_path(const Path& p, Path* child, const ChoiceView* sq);
+    // `*offered` is set to the choice the path is offered, when the answer
+    // is DEACT_SQINOUT.
+    int32_t deactivation_type(const EdgeView& e, const Path& p,
+                              const ChoiceView** offered) const;
 
     double act_difficulty(int32_t act) const;
     double search_difficulty(const Path& p) const;
@@ -743,23 +778,28 @@ bool Engine::branch_activate(Path& p, Path* child) {
     return true;
 }
 
-int32_t Engine::deactivation_type(const EdgeView& e, const Path& p) const {
-    // The edge's chord is a squeeze choice for a path whose end is the
-    // edge's sqout_time, and only when this activation can squeeze that
-    // chord (core/sqout_chord.h). A phrase it banked before SP started
-    // leaves this SP end a plain one. So does a late SqIn's phrase still
-    // ahead of the path (buffered): that SqIn spent it, and it is this
-    // edge's chord, as nothing lies between the SqIn's SP end and it. That
-    // last step relies on core::sqout_chord picking the window's first
-    // phrase (core/sqout_chord.h); if it ever picks another, this check
-    // would block a real squeeze. D32:
-    // only reachable when the SqIn's new end, one SP bar on, comes before
-    // its phrase (500 ms spanning an SP bar); the phrase was squeezed in a
-    // second time there and the search broke.
-    if (e.sqinout_time != NO_TIME && p.sp_end_time == e.sqout_time && p.buffered == 0 &&
-        core::activation_can_squeeze(node(acts_[(size_t)p.act_tail].act_node).tick,
-                                     e.sqinout_time))
-        return DEACT_SQINOUT;
+int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
+                                  const ChoiceView** offered) const {
+    // The edge lists the phrase chords in this SP end's window. The path is
+    // offered the first one its running window can still squeeze
+    // (core::offered_phrase, D34): not one it banked before SP started, not
+    // one it already squeezed in. A late SqIn's phrase still ahead of the
+    // path (buffered) holds its SqIn step already, so it is spent too (D32:
+    // when the SqIn's new end, one SP bar on, comes before its phrase, that
+    // phrase was once squeezed in a second time there and the search broke).
+    // The offer is a squeeze choice for a path whose end is its sqout_time.
+    if (e.choice_begin < e.choice_end) {
+        const ChoiceView* first = &en_.choices[(size_t)e.choice_begin];
+        const ChoiceView* last = first + (e.choice_end - e.choice_begin);
+        const ChoiceView* c = core::offered_phrase(
+            first, last, node(acts_[(size_t)p.act_tail].act_node).tick,
+            [](const ChoiceView& v) { return v.chord; },
+            [this, &p](int64_t tick) { return squeezed_in(p, tick); });
+        if (c != last && p.sp_end_time == c->sqout_time) {
+            *offered = c;
+            return DEACT_SQINOUT;
+        }
+    }
     // Otherwise SP ends here exactly when the path's end is this node. D32:
     // that includes a path whose end is this node while the window holds a
     // chord it could squeeze. At a normal tempo no such path exists: its end
@@ -770,30 +810,30 @@ int32_t Engine::deactivation_type(const EdgeView& e, const Path& p) const {
 }
 
 // --- create_deactivated_path ---------------------------------------------
-void Engine::create_deactivated_path(const Path& p, Path* child, bool is_sq_out) {
+void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceView* sq) {
     const int32_t deact_edge = node(p.node).branch_edge;
     const EdgeView e = edge(deact_edge);
     const ScoreGraphEdge* eo = eobj(deact_edge);
 
     Path c = p;
     c.node = e.dest;
-    c.sp = is_sq_out ? 1 : 0;
+    c.sp = sq ? 1 : 0;
     c.sp_end_time = NO_TIME;
     c.end_tail = -1;
     // A squeeze-out banks one bar when the player hits the phrase: just after
     // SP ends for an early phrase, on its own tick for a late one.
-    c.bank_tail = is_sq_out ? push_tick(banks_, -1, std::max(node(e.dest).tick, e.sqinout_time))
-                            : -1;
+    c.bank_tail = sq ? push_tick(banks_, -1, std::max(node(e.dest).tick, sq->chord)) : -1;
 
     c.act_tail = clone_tail(p.act_tail);
     if (c.act_tail >= 0) {
         Act& a = acts_[(size_t)c.act_tail];
         a.deact_edge = deact_edge;
-        // A squeeze-out gives back the phrase at sqinout_time and everything
-        // after it, so the activation keeps only the steps before it.
-        a.end_tail = is_sq_out ? trim_ends(p.end_tail, e.sqinout_time) : p.end_tail;
-        if (is_sq_out) {
-            a.sq_tail = push_sq(a.sq_tail, SQ_OUT, e.sqinout_timing);
+        // A squeeze-out gives back its phrase and everything after it, so
+        // the activation keeps only the steps before it.
+        a.end_tail = sq ? trim_ends(p.end_tail, sq->chord) : p.end_tail;
+        if (sq) {
+            a.sq_tail = push_sq(a.sq_tail, SQ_OUT, sq->timing);
+            a.sqout_phrase = sq->chord;
         }
     }
 
@@ -801,13 +841,13 @@ void Engine::create_deactivated_path(const Path& p, Path* child, bool is_sq_out)
     // already paid for it. The walk pays rows at or before the SP end in
     // full; core::backend_row_value is the one place that says what a row
     // is worth, shared with the replay and the details table.
-    const std::optional<int64_t> sqout_tick =
-        is_sq_out ? std::optional<int64_t>(e.sqinout_time) : std::nullopt;
+    const std::optional<int64_t> sqout_phrase =
+        sq ? std::optional<int64_t>(sq->chord) : std::nullopt;
     int32_t sp_delta = 0;
     for (const BackendSqueeze& beo : eo->backends) {
         const double be_offset = beo.offset_ms.value_or(0.0);
         const core::SqOutPosition pos =
-            core::sqout_position(beo.timecode.ticks(), sqout_tick);
+            core::sqout_position(beo.timecode.ticks(), sqout_phrase);
         const int32_t already_paid =
             core::paid_by_sp_walk(be_offset) ? beo.points : 0;
         sp_delta += core::backend_row_value(be_offset, beo.points,
@@ -832,23 +872,24 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     if (n.branch_edge < 0) return true;
 
     const EdgeView e = edge(n.branch_edge);
-    const int32_t deact_type = deactivation_type(e, p);
+    const ChoiceView* sq = nullptr;
+    const int32_t deact_type = deactivation_type(e, p, &sq);
 
     if (deact_type == DEACT_NONE) return true;
 
     if (deact_type == DEACT_NORMAL) {
-        create_deactivated_path(p, child, false);
+        create_deactivated_path(p, child, nullptr);
         *has_child = true;
         return false;
     }
 
-    create_deactivated_path(p, child, true);
+    create_deactivated_path(p, child, sq);
     *has_child = true;
 
     p.act_tail = clone_tail(p.act_tail);
     if (p.act_tail >= 0) {
         Act& a = acts_[(size_t)p.act_tail];
-        a.sq_tail = push_sq(a.sq_tail, SQ_IN, e.sqinout_timing);
+        a.sq_tail = push_sq(a.sq_tail, SQ_IN, sq->timing);
     }
 
     // The squeeze-in's step. A late one's phrase comes after this node and is
@@ -856,16 +897,19 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // An early one's phrase is already a Collected step (advance collected it
     // before this branch point, and the SqOut child above shares that step):
     // relabel it on this branch only.
-    if (e.late_sqin_count > 0)
-        p.end_tail = push_end(p.end_tail, e.sqinout_time, e.sqin_time, SpEndKind::SqIn);
-    else if (!relabel_sqin(p.end_tail, e.sqinout_time)) {
+    if (sq->late)
+        p.end_tail = push_end(p.end_tail, sq->chord, e.sqin_time, SpEndKind::SqIn);
+    else if (!relabel_sqin(p.end_tail, sq->chord)) {
         p.node = NODE_BROKEN;  // run() sees it and refuses the search
         return false;
     }
 
+    // A late phrase joins any still buffered: the path may already hold a
+    // late SqIn's phrase ahead of it, spent, when this one is offered after
+    // it (D34). Both branches skip every buffered phrase's bar.
     p.sp_end_time = e.sqin_time;
-    p.buffered = e.late_sqin_count;
-    child->buffered = e.late_sqin_count;
+    p.buffered += sq->late;
+    child->buffered = p.buffered;
     return true;
 }
 
@@ -1181,6 +1225,7 @@ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
         }
         oa.sq_end = (int32_t)out_sqs_.size();
         oa.final_sp_end = NO_TIME;
+        oa.sqout_phrase = a.sqout_phrase;
         emit_ends(a.end_tail, &oa.end_begin, &oa.end_end);
         emit_ticks(banks_, a.bank_tail, &oa.bank_begin, &oa.bank_end);
         emit_ticks(fills_, a.skip_tail, &oa.skip_begin, &oa.skip_end);
@@ -1215,6 +1260,7 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     OutAct own = out_acts_[(size_t)own_i];
 
     own.deact_edge = lead.deact_edge;
+    own.sqout_phrase = lead.sqout_phrase;
     // Set only when the leader's SP outlasted the chart: the end it tracked.
     own.final_sp_end = lead.final_sp_end;
 
@@ -1231,12 +1277,12 @@ void Engine::close_folded_act(int32_t own_i, int32_t lead_i, const Variant& var)
     own.sq_end = (int32_t)out_sqs_.size();
 
     // A closing SqOut gives back its phrase and the steps given_back names,
-    // the trim create_deactivated_path makes (trim_ends). The deact edge's
-    // sqinout_time is the squeezed-out chord.
+    // the trim create_deactivated_path makes (trim_ends). The leader's
+    // sqout_phrase is the squeezed-out chord.
     int64_t give_back = NO_TIME;
     for (int32_t k = own.sq_begin; k < own.sq_end; ++k)
         if (out_sqs_[(size_t)k].kind == SQ_OUT && own.deact_edge >= 0)
-            give_back = edge(own.deact_edge).sqinout_time;
+            give_back = own.sqout_phrase;
 
     // An early SqIn the leader took after the fold may sit on a phrase from
     // before the fold. branch_deactivate relabels that step SqIn on the
@@ -1570,7 +1616,7 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             // The SqIns go in here. A SqOut is always the last squeeze, and
             // set_sqout below builds its entry from its row, so its offset is
             // stored once. The search ranked the path by its own SqOut offset
-            // (the edge's sqinout_timing), so keep it to check against the row.
+            // (its squeeze choice's timing), so keep it to check against the row.
             bool took_sqout = false;
             double searched_sqout_ms = 0.0;
             for (int k = oa.sq_begin; k < oa.sq_end; ++k) {
@@ -1590,23 +1636,21 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             // that deactivates there, squeezing out or not, so the trim
             // belongs here, per activation (set_sqout does it). This mirrors
             // the is_after_sqout arm of create_deactivated_path, which
-            // already takes those notes back out of the score.
-            if (took_sqout && oa.deact_edge >= 0) {
-                const std::optional<Timecode>& sqout_at =
-                    en.edges[(size_t)oa.deact_edge]->sqinout_time;
-                if (sqout_at.has_value()) {
-                    act.set_sqout(sqout_at->ticks());
-                    // The record shows the row's offset; the search ranked by
-                    // its own. They must be the same number, or the record
-                    // would show a squeeze the search didn't rank.
-                    const double stored_ms = *act.sqout_row()->offset_ms;
-                    if (stored_ms != searched_sqout_ms)
-                        throw std::logic_error(
-                            "rebuild: the search's SqOut offset " +
-                            std::to_string(searched_sqout_ms) + " ms differs from its row's " +
-                            std::to_string(stored_ms) + " ms at tick " +
-                            std::to_string(sqout_at->ticks()));
-                }
+            // already takes those notes back out of the score. The chord is
+            // the one the window was offered (Act::sqout_phrase), not always
+            // the window's first.
+            if (took_sqout && oa.deact_edge >= 0 && oa.sqout_phrase != NO_TIME) {
+                act.set_sqout(oa.sqout_phrase);
+                // The record shows the row's offset; the search ranked by
+                // its own. They must be the same number, or the record
+                // would show a squeeze the search didn't rank.
+                const double stored_ms = *act.sqout_row()->offset_ms;
+                if (stored_ms != searched_sqout_ms)
+                    throw std::logic_error(
+                        "rebuild: the search's SqOut offset " +
+                        std::to_string(searched_sqout_ms) + " ms differs from its row's " +
+                        std::to_string(stored_ms) + " ms at tick " +
+                        std::to_string(oa.sqout_phrase));
             }
 
             // Every place this window's SP end moved, as the search did it.

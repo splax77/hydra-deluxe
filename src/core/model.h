@@ -341,7 +341,8 @@ struct Activation {
     // the activation. That note is a Clamped step (clamp_tick()).
 
     // The chart tick of the SP phrase chord this activation squeezed out:
-    // the deact edge's sqinout_time when the path took the SqOut branch.
+    // the phrase its deact edge offered it when the path took the SqOut
+    // branch (core::offered_phrase).
     // Stamped by the search at copy-out (since path format 4, ADR 0014).
     // Unset when the activation did not squeeze out, or on an older record.
     // Nothing re-derives it.

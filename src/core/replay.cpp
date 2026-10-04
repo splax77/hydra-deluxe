@@ -24,17 +24,13 @@ struct Window {
 };
 
 // Every phrase chord strictly within kSqueezeWindowMs of deactivation node D,
-// in chart order. The engine squeezes out only one of them, the one
-// core::sqout_chord names. This list exists only so a typed offset can be
-// matched to the chord nearest it, which is the replay's own question.
+// in chart order: the list the graph puts on D's edge
+// (core::squeeze_window_phrases). The engine squeezes out only one of them,
+// the one core::sqout_chord names. A typed offset is matched to the chord
+// nearest it, which is the replay's own question.
 std::vector<const SongTimestamp*> sqout_candidates(const Song& song,
                                                    int64_t deact_tick) {
-    const double d_ms = song.timing().timecode(deact_tick).ms();
-    std::vector<const SongTimestamp*> out;
-    for (const SongTimestamp& ts : song.sequence)
-        if (ts.flag_sp && within_squeeze_window(offset_from_sp_end(ts.timecode.ms(), d_ms)))
-            out.push_back(&ts);
-    return out;
+    return core::squeeze_window_phrases(song, song.timing().timecode(deact_tick));
 }
 
 }  // namespace
@@ -228,6 +224,9 @@ std::vector<ReplayWindow> windows_for_path(const Path& path) {
             w.sqout_tick = row->timecode.ticks();
             w.sqout_offset_ms = row->offset_ms;
         }
+        // The phrases it squeezed in: its SqIn steps.
+        for (const SpEndStep& s : act.sp_end_steps)
+            if (s.kind == SpEndKind::SqIn) w.sqin_ticks.push_back(s.tick);
         out.push_back(w);
     }
     return out;
@@ -274,9 +273,11 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
                           offset_from_sp_end(best->timecode.ms(), d_ms)};
 
     // The engine squeezes out only the chord core::sqout_chord names for this
-    // activation. Anything else is a squeeze-out the search can never
-    // produce: refuse, never price it.
+    // window. Anything else is a squeeze-out the search can never produce:
+    // refuse, never price it.
     const Timecode deact_tc = song.timing().timecode(w.deact_tick);
+    const bool typed_squeezed_in =
+        std::find(w.sqin_ticks.begin(), w.sqin_ticks.end(), typed.tick) != w.sqin_ticks.end();
     if (!core::activation_can_squeeze(w.act_tick, typed.tick)) {
         std::snprintf(buf, sizeof(buf),
                       "%s: the SqOut offset %.2f ms lands on the phrase chord at "
@@ -287,31 +288,37 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
                       (long long)w.act_tick);
         throw std::runtime_error(buf);
     }
-    const SongTimestamp* engine = core::sqout_chord(song, deact_tc, w.act_tick);
-    if (!engine) {
-        // best exists, so the window holds a phrase chord; the first one was
-        // banked before this activation, so the engine squeezes nothing here.
-        const SongTimestamp* first = core::sqout_chord(song, deact_tc);
+    if (typed_squeezed_in) {
+        // D34: a phrase is squeezed in only once, so never out after that.
         std::snprintf(buf, sizeof(buf),
                       "%s: the SqOut offset %.2f ms lands on the phrase chord at "
-                      "tick %lld, which the engine never squeezes out. The first "
-                      "phrase chord within %.0f ms of the SP end, at tick %lld, "
-                      "was banked before the activation, so this window "
-                      "squeezes nothing out. Not priced.",
-                      where.c_str(), *w.sqout_offset_ms, (long long)typed.tick,
-                      kSqueezeWindowMs, (long long)first->timecode.ticks());
+                      "tick %lld, which this window already squeezed in. A "
+                      "phrase is squeezed in only once. Not priced.",
+                      where.c_str(), *w.sqout_offset_ms, (long long)typed.tick);
         throw std::runtime_error(buf);
     }
+    const SongTimestamp* engine = core::sqout_chord(song, deact_tc, w.act_tick, w.sqin_ticks);
+    if (!engine) {
+        // best exists, so the window holds a phrase chord, and this window
+        // banked or already squeezed in every one before the typed one. The
+        // typed one is squeezable, so it would be offered: unreachable.
+        throw std::logic_error(where + ": no phrase chord to squeeze out, yet the typed one can be");
+    }
     if (best != engine) {
+        // The engine's chord comes before the typed one in the window. Say
+        // why the ones before it are passed over, when any are (D34).
+        const std::vector<const SongTimestamp*> window = sqout_candidates(song, w.deact_tick);
+        const bool first = !window.empty() && window.front() == engine;
         std::snprintf(
             buf, sizeof(buf),
             "%s: the SqOut offset %.2f ms lands on the phrase chord at tick "
             "%lld (%.2f ms from the SP end), which the engine never squeezes "
             "out. The only chord it can squeeze out here is the first phrase "
-            "chord within %.0f ms of the SP end, at tick %lld (%.2f ms). "
+            "chord within %.0f ms of the SP end%s, at tick %lld (%.2f ms). "
             "Not priced.",
             where.c_str(), *w.sqout_offset_ms, (long long)typed.tick,
             typed.offset_ms, kSqueezeWindowMs,
+            first ? "" : " that this window did not bank or squeeze in",
             (long long)engine->timecode.ticks(),
             offset_from_sp_end(engine->timecode.ms(), d_ms));
         throw std::runtime_error(buf);
@@ -330,9 +337,9 @@ std::vector<std::string> ambiguous_window_warnings(
         if (w.sqout_offset_ms || w.sqout_tick) continue;
 
         // The one chord the engine could squeeze out at this D, for this
-        // window's activation.
+        // window (its activation and the phrases it squeezed in).
         const SongTimestamp* engine =
-            core::sqout_chord(song, timing.timecode(w.deact_tick), w.act_tick);
+            core::sqout_chord(song, timing.timecode(w.deact_tick), w.act_tick, w.sqin_ticks);
         if (!engine) continue;
         const int64_t tick = engine->timecode.ticks();
 
