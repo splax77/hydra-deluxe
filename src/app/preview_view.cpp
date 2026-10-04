@@ -9,6 +9,7 @@
 #include <exception>
 #include <optional>
 
+#include "app/display_format.h"  // clock_str
 #include "core/squeeze_rating.h"
 #include "core/replay.h"
 
@@ -305,8 +306,9 @@ PreviewScene build_preview_base(const Song& song) {
     }
     for (const auto& [tick, sig] : song.timesig_changes)
         scene.time_sigs.push_back({tick, sig.first, sig.second});
-    // A section marker can sit past the last note, where the ms index does not
-    // reach; the timing's own timecode extrapolates instead.
+    // A section marker can sit past the last note. That is fine: the ms index
+    // covers every tick (MsIndex::at keeps the last tempo's slope), and
+    // timecode(t).ms() reads that same index.
     for (const SongSection& s : song.practice_sections)
         scene.sections.push_back({s.tick, song.timecode(s.tick).ms(), s.name});
     return scene;
@@ -438,23 +440,6 @@ std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t las
 
 namespace {
 
-std::string clock_str(double ms) {
-    double secs = ms / 1000.0;
-    int minutes = static_cast<int>(secs / 60.0);
-    double rem = secs - minutes * 60.0;
-    char buf[48];
-    std::snprintf(buf, sizeof buf, "%d:%06.3f", minutes, rem);
-    return buf;
-}
-
-// The tick at `ms`, from the song's own ms index. The last tempo section's
-// slope holds forever after it, so this keeps counting past the end of the
-// chart. Rounded to the nearest tick and never negative.
-int64_t tick_at(const SongTiming& timing, double ms) {
-    const int64_t tick = std::llround(timing.ms_index().tick_at_ms(ms));
-    return tick < 0 ? 0 : tick;
-}
-
 // The song length the time box shows: never negative.
 double shown_length(double length_ms) { return length_ms < 0.0 ? 0.0 : length_ms; }
 
@@ -479,22 +464,24 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
 
     // A default-built scene carries no song and so no timing: it reads as tick
     // 0 at measure 1, beat 1, exactly as it always has.
-    const int64_t now_tick = scene.timing ? tick_at(*scene.timing, now) : 0;
-    const int64_t end_tick = scene.timing ? tick_at(*scene.timing, len) : 0;
+    const int64_t now_tick = scene.timing ? scene.timing->display_tick_at_ms(now) : 0;
+    const int64_t end_tick = scene.timing ? scene.timing->display_tick_at_ms(len) : 0;
     box.position = scene.timing ? format_measure(*scene.timing, now_tick) : "m1.1.0";
     box.length = scene.timing ? format_measure(*scene.timing, end_tick) : "m1.1.0";
 
-    // Each lookup below wants the last entry at or before the playhead, which
-    // is the one just before the first entry past it. Tempos and time
-    // signatures come from the song's tick-keyed maps, so they are sorted by
-    // tick (and the tempos by ms too), and a binary search finds that entry.
+    // Each lookup below wants the last entry at or before the playhead's
+    // tick, which is the one just before the first entry past it. Every line
+    // asks the same rounded tick, so the tempo, meter, section and measure
+    // all switch together, even in the half tick before a change. Tempos and
+    // time signatures come from the song's tick-keyed maps, so they are
+    // sorted by tick, and a binary search finds that entry.
 
-    // The tempo in force: the last change at or before now (the opening tempo
-    // before any change).
+    // The tempo in force: the last change at or before the playhead's tick
+    // (the opening tempo before any change).
     double bpm = scene.tempos.empty() ? 0.0 : scene.tempos.front().bpm;
     const auto tempo_past = std::upper_bound(
-        scene.tempos.begin(), scene.tempos.end(), now,
-        [](double v, const PreviewTempo& t) { return v < t.ms; });
+        scene.tempos.begin(), scene.tempos.end(), now_tick,
+        [](int64_t v, const PreviewTempo& t) { return v < t.tick; });
     if (tempo_past != scene.tempos.begin()) bpm = (tempo_past - 1)->bpm;
     // The time signature in force at the playhead's tick, as the chart wrote
     // it. A scene from a song always has one at tick 0; a scene built from
@@ -530,11 +517,13 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms) {
     }
     box.available = true;
 
-    // The last chord at or before the playhead. Before the first chord
-    // nothing is hit yet: 0, x1, combo 0.
+    // The last chord struck at the playhead (struck_at, which the highway's
+    // flash asks too). Before the first chord nothing is hit yet: 0, x1,
+    // combo 0.
     const std::vector<PreviewScoreStep>& steps = scene.score.steps;
-    auto it = std::upper_bound(steps.begin(), steps.end(), now_ms,
-                               [](double v, const PreviewScoreStep& s) { return v < s.ms; });
+    auto it = std::partition_point(steps.begin(), steps.end(), [now_ms](const PreviewScoreStep& s) {
+        return struck_at(now_ms, s.ms);
+    });
     PreviewScoreStep at;
     if (it != steps.begin()) at = *(it - 1);
 
@@ -557,7 +546,7 @@ PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms) {
 
     const SongTiming& timing = *scene.timing;
     const double now = now_ms < 0.0 ? 0.0 : now_ms;
-    const int64_t now_tick = tick_at(timing, now);
+    const int64_t now_tick = timing.display_tick_at_ms(now);
 
     // The rule's own constant at the local measure length: on a tempo or
     // meter change the new section is read, as the time box's BPM line does.
@@ -591,7 +580,7 @@ PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms) {
 double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
                     int delta_ticks) {
     if (!scene.timing) return now_ms;
-    int64_t target = tick_at(*scene.timing, shown_ms(now_ms, length_ms)) + delta_ticks;
+    int64_t target = scene.timing->display_tick_at_ms(shown_ms(now_ms, length_ms)) + delta_ticks;
     if (target < 0) target = 0;
     return scene.timing->ms_index().at(target);
 }

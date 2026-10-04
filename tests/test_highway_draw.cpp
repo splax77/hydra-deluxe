@@ -235,14 +235,14 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
         }
     CHECK(targets == 4);
 
-    // Gems: the Red exactly at now is a normal gem at the strike line (not a
-    // flash — it is not past yet); the Yellow cymbal and the kick at 1.5 s
-    // are drawn farther up.
+    // Gems: the Red exactly at now is struck, so it flashes at the strike
+    // line (D48, Q27); the Yellow cymbal and the kick at 1.5 s are drawn
+    // farther up.
     std::vector<const DrawCommand*> toms = of_mesh(cmds, MeshId::Tom);
     std::vector<const DrawCommand*> cymbals = of_mesh(cmds, MeshId::Cymbal);
     std::vector<const DrawCommand*> kicks = of_mesh(cmds, MeshId::Kick);
     REQUIRE(toms.size() == 1);
-    CHECK(toms[0]->material.kind == MaterialKind::Texture);
+    CHECK(toms[0]->material.kind == MaterialKind::Color);
     CHECK((toms[0]->lo[2] + toms[0]->hi[2]) * 0.5f == doctest::Approx(0.0f));
     REQUIRE(cymbals.size() == 1);
     REQUIRE(kicks.size() == 1);
@@ -365,6 +365,32 @@ TEST_CASE("build_highway_draws: hit flash and target glow after a note passes") 
     // 200 ms after: no glow either.
     cmds = build_highway_draws(st, cfg, 1.2, 1.0);
     for (const DrawCommand& c : cmds) CHECK(c.material.texture != TextureId::TargetGreenLight);
+}
+
+TEST_CASE("build_highway_draws: a chord exactly on the playhead is lit") {
+    // The same chord as above, with the playhead exactly on it: a jump to an
+    // activation lands here. It counts as struck (struck_at), so the gem
+    // flashes at full strength and the Green target glows at full strength
+    // (D48, Q27).
+    PreviewConfig cfg;
+    PreviewScene scene;
+    scene.notes = {note(1000.0, PreviewLane::Green), note(1000.0, PreviewLane::Kick),
+                   note(5000.0, PreviewLane::Red)};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+
+    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+    std::vector<const DrawCommand*> toms = of_mesh(cmds, MeshId::Tom);
+    REQUIRE(toms.size() == 1);
+    CHECK(toms[0]->material.kind == MaterialKind::Color);
+    CHECK(toms[0]->material.color.r == doctest::Approx(1.0f));
+    CHECK(toms[0]->alpha == doctest::Approx(1.0f));
+    int glows = 0;
+    for (const DrawCommand& c : cmds)
+        if (c.material.texture == TextureId::TargetGreenLight) {
+            ++glows;
+            CHECK(c.alpha == doctest::Approx(1.0f));
+        }
+    CHECK(glows == 1);
 }
 
 TEST_CASE("build_highway_draws: energy gems inside an SP phrase, tinted floor in an active window") {
