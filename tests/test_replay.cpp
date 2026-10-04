@@ -204,21 +204,55 @@ std::string opt_text(const std::optional<int64_t>& t) {
     return t ? std::to_string(*t) : std::string("unset");
 }
 
+// Each activation's squeeze symbols, e.g. "{+, -, .}" ("." for none).
+std::string kinds_text(const std::vector<Activation>& acts) {
+    std::string s = "{";
+    for (size_t i = 0; i < acts.size(); ++i) {
+        s += i ? ", " : "";
+        if (acts[i].sqinouts.empty()) s += ".";
+        for (const SPSqueeze& q : acts[i].sqinouts) s += q.symbol();
+    }
+    return s + "}";
+}
+
+bool same_ticks(const std::vector<Activation>& a, const std::vector<Activation>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (a[i].timecode.ticks() != b[i].timecode.ticks()) return false;
+    return true;
+}
+
+bool same_kinds(const std::vector<Activation>& a, const std::vector<Activation>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].sqinouts.size() != b[i].sqinouts.size()) return false;
+        for (size_t k = 0; k < a[i].sqinouts.size(); ++k)
+            if (a[i].sqinouts[k].kind != b[i].sqinouts[k].kind) return false;
+    }
+    return true;
+}
+
 struct TiedVariantCount {
     int variants = 0;  // tied variants the analysis listed
-    int compared = 0;  // of those, the ones a lone search priced the same way
+    int compared = 0;  // of those, the ones a lone search could price
     int differing = 0; // of those, the ones whose stored facts differ
+    int skipped() const { return variants - compared; }
 };
 
 // Decision D3 for one set of analysis settings, over the whole corpus. Each
 // variant is priced alone with a targeted search, and its stored facts must
 // equal that search's. Only a root of the search is an oracle: a root was
 // never folded. Skips, the early-fill offset and the skipped fills are not
-// compared; they are finding 97.
+// compared; they are finding 97. All-zero variants are not visited.
+//
+// A variant with no oracle is skipped, and each skip is printed with its
+// reason. The caller pins how many there are, so a regression that turns a
+// compared variant into a skipped one fails instead of passing quietly.
 TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
     TiedVariantCount n;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song =
+            corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(path, cfg);
 
@@ -228,27 +262,59 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
             const std::vector<Activation> want = p->all_activations();
             std::vector<int64_t> ticks;
             for (const Activation& a : want) ticks.push_back(a.timecode.ticks());
+            const std::string where = path + " [" + p->pathstring() + "] ";
 
-            const std::vector<Path> alone = search_target(song, cfg, ticks);
+            HydraRecord alone;
+            alone.paths = search_target(song, cfg, ticks);
+            // The oracle: a root with the same score and squeeze kinds.
             const Path* match = nullptr;
-            for (const Path& q : alone) {
+            // A root with the same score and ticks but other squeeze kinds.
+            const Path* other_kinds = nullptr;
+            for (const Path& q : alone.paths) {
                 if (q.totalscore() != p->totalscore()) continue;
                 const std::vector<Activation> qa = q.all_activations();
-                bool same = qa.size() == want.size();
-                for (size_t i = 0; same && i < qa.size(); ++i) {
-                    same = qa[i].sqinouts.size() == want[i].sqinouts.size();
-                    for (size_t k = 0; same && k < qa[i].sqinouts.size(); ++k)
-                        same = qa[i].sqinouts[k].kind == want[i].sqinouts[k].kind;
-                }
-                if (same) { match = &q; break; }
+                if (same_kinds(qa, want)) { match = &q; break; }
+                if (!other_kinds && same_ticks(qa, want)) other_kinds = &q;
             }
-            if (!match) continue;
+
+            if (!match) {
+                // The lone search may itself have tied the variant's kinds
+                // under a root with other kinds. Then there is no oracle, and
+                // that is a skip. Otherwise the variant holds squeeze kinds a
+                // lone search never gives it, and that is a difference.
+                bool tied_alone = false;
+                for (const Path* q : alone.all_paths())
+                    if (q->totalscore() == p->totalscore() &&
+                        same_kinds(q->all_activations(), want))
+                        tied_alone = true;
+                if (other_kinds && !tied_alone) {
+                    ++n.compared;
+                    ++n.differing;
+                    const std::string d = where + "squeeze kinds: stored " + kinds_text(want) +
+                                          ", alone " +
+                                          kinds_text(other_kinds->all_activations());
+                    CHECK_MESSAGE(false, d);
+                    continue;
+                }
+                std::string why;
+                if (alone.paths.empty()) why = "the lone search found no path";
+                else if (tied_alone) why = "the lone search tied it under a root too";
+                else why = "no lone root has its score and squeeze kinds";
+                std::string roots;
+                for (const Path& q : alone.paths)
+                    roots += " [" + q.pathstring() + "] score " +
+                             std::to_string(q.totalscore()) + " kinds " +
+                             kinds_text(q.all_activations()) + ";";
+                MESSAGE("skipped " << where << "score " << p->totalscore() << " kinds "
+                                   << kinds_text(want) << ": " << why << ". Lone roots:"
+                                   << roots);
+                continue;
+            }
             ++n.compared;
 
             // Every difference, spelled out with both values, so a failure
             // names the chart, the path, the field and what each side holds.
             std::vector<std::string> diffs;
-            const std::string where = path + " [" + p->pathstring() + "] ";
             if (match->trailing_bank_ticks != p->trailing_bank_ticks)
                 diffs.push_back(where + "trailing_bank_ticks: stored " +
                                 ticks_text(p->trailing_bank_ticks) + ", alone " +
@@ -294,8 +360,11 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
 // hold hundreds of variants, and with either D3 fix taken out of the engine
 // dozens of them store their leader's facts instead of their own.
 TEST_CASE("every tied variant stores what a search pricing it alone stores") {
-    struct Setting { int cap; int depth; };
-    for (const Setting s : {Setting{4, 4}, Setting{4, 40}, Setting{2, 40}}) {
+    // `skipped` is pinned exactly: the variants with no lone root to compare
+    // against. Each is printed with its reason. If the count moves, read
+    // those lines before changing it.
+    struct Setting { int cap; int depth; int skipped; };
+    for (const Setting s : {Setting{4, 4, 0}, Setting{4, 40, 0}, Setting{2, 40, 4}}) {
         app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
         cfg.sp_cap = s.cap;
         cfg.depth_value = s.depth;
@@ -304,9 +373,10 @@ TEST_CASE("every tied variant stores what a search pricing it alone stores") {
         CHECK(n.variants > 0);
         CHECK(n.compared > 0);
         CHECK(n.differing == 0);
+        CHECK(n.skipped() == s.skipped);
         MESSAGE("cap " << s.cap << ", score range " << s.depth << ": compared " << n.compared
                        << " of " << n.variants << " variants against a lone search, "
-                       << n.differing << " differ");
+                       << n.differing << " differ, " << n.skipped() << " skipped");
     }
 }
 
