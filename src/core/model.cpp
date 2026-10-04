@@ -726,8 +726,6 @@ double Path::avg_mult() const {
 
 // ---- HydraRecord ---------------------------------------------------------
 
-namespace {
-
 // Depth-first walk over a root list and its nested variants, each path
 // before its variants. Shared by all_paths() and all_allzero_paths()
 // so both traversals stay identical.
@@ -746,8 +744,6 @@ std::vector<const Path*> flatten_paths(const std::vector<Path>& roots) {
     }
     return out;
 }
-
-}  // namespace
 
 std::vector<const Path*> HydraRecord::all_paths() const {
     return flatten_paths(paths);

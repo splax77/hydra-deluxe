@@ -119,15 +119,25 @@ void rescue_variants(Path& dropped, const Keep& keep, std::vector<Path>& out) {
     }
 }
 
+// Appends rescued (standalone) paths to `into`, the list that holds
+// `parent`'s tied variants, in order, each sharing nothing with `parent`: a
+// variant shares its parent's walk from var_point on, and pointing past
+// `parent`'s walk shares nothing, so each keeps its whole walk as its own.
+// The one place a rescued path is marked "shares nothing".
+void adopt_unshared(const Path& parent, std::vector<Path> rescued, std::vector<Path>& into) {
+    const int past_walk = static_cast<int>(parent.walk_activations().size());
+    for (Path& r : rescued) {
+        r.var_point = past_walk;
+        into.push_back(std::move(r));
+    }
+}
+
 // Under a kept path, only the tied variants that pass `keep` stay (D45
 // addendum). A kept variant stays as folded, its own variants kept by the
 // same rule. A dropped variant's passing variants are rescued and stay
-// under `p`, in the search's order, sharing nothing with it: a variant
-// shares its parent's walk from var_point on, and pointing past `p`'s walk
-// shares nothing, so each keeps its whole walk as its own.
+// under `p`, in the search's order, sharing nothing with it.
 template <class Keep>
 void keep_qualifying_variants(Path& p, const Keep& keep) {
-    const int past_walk = static_cast<int>(p.walk_activations().size());
     std::vector<Path> stay;
     for (Path& v : p.variants) {
         if (keep(v)) {
@@ -135,9 +145,9 @@ void keep_qualifying_variants(Path& p, const Keep& keep) {
             stay.push_back(std::move(v));
             continue;
         }
-        const size_t first = stay.size();
-        rescue_variants(v, keep, stay);
-        for (size_t i = first; i < stay.size(); ++i) stay[i].var_point = past_walk;
+        std::vector<Path> rescued;
+        rescue_variants(v, keep, rescued);
+        adopt_unshared(p, std::move(rescued), stay);
     }
     p.variants = std::move(stay);
 }
@@ -176,11 +186,8 @@ std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<i
         rescue_variants(p, took_all, rescued);
         if (rescued.empty()) continue;
         Path lead = std::move(rescued.front());
-        const int past_walk = static_cast<int>(lead.walk_activations().size());
-        for (size_t i = 1; i < rescued.size(); ++i) {
-            rescued[i].var_point = past_walk;
-            lead.variants.push_back(std::move(rescued[i]));
-        }
+        rescued.erase(rescued.begin());
+        adopt_unshared(lead, std::move(rescued), lead.variants);
         lead.recount_tied_paths();
         kept.push_back(std::move(lead));
         if (promoted) promoted->push_back(true);

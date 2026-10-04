@@ -1740,16 +1740,9 @@ std::string time_box_line(const PreviewScene& scene, double now, double length_m
            b.section_line;
 }
 
-// On a mismatch the lines actually built are printed as C++ literals, so a
-// deliberate change can be read, checked by hand and pasted.
-void check_lines(const std::vector<std::string>& got, const std::vector<std::string>& want,
-                 const std::string& what) {
-    std::string literals;
-    if (got != want)
-        for (const std::string& l : got) literals += "    \"" + l + "\",\n";
-    INFO(what << " built:\n" << literals);
-    CHECK(got == want);
-}
+// Built lines against pinned ones, printed as literals on a mismatch
+// (record_fixtures.h).
+using test::check_lines;
 
 }  // namespace
 

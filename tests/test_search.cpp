@@ -214,7 +214,7 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                 // Non-flat counts the SP end's scale and every SqIn's scale.
                 // unknown_scale_reason above proved each one known.
                 auto flat = [](const TransferScale& s) {
-                    return s.early == 1.0 && s.late == 1.0;
+                    return !is_scaled(s.early) && !is_scaled(s.late);
                 };
                 bool any_scaled = !flat(*act.transfer_post);
                 for (const SPSqueeze& sq : act.sqinouts)
@@ -465,20 +465,9 @@ std::vector<TailNote> midsp_notes(bool with_squeeze) {
     return n;
 }
 
-void collect_paths(const Path& p, std::vector<const Path*>& out) {
-    out.push_back(&p);
-    for (const Path& v : p.variants) collect_paths(v, out);
-}
-std::vector<const Path*> every_path(const std::vector<Path>& roots) {
-    std::vector<const Path*> out;
-    for (const Path& r : roots) collect_paths(r, out);
-    return out;
-}
-const Path* root_named(const std::vector<Path>& roots, const std::string& s) {
-    for (const Path& r : roots)
-        if (r.pathstring() == s) return &r;
-    return nullptr;
-}
+// Every path of a search's output, each before its variants, is
+// flatten_paths (model.h); the root named s is test::path_named
+// (record_fixtures.h).
 // The leader's variant whose own last activation is at `tick`.
 const Path* variant_at(const Path& leader, int64_t tick) {
     for (const Path& v : leader.variants)
@@ -790,8 +779,7 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
     EngineOptions pinned;
     pinned.depth_mode = DepthMode::Points;
     pinned.depth_value = kKeepEveryPathBand;
-    std::vector<int64_t> ticks;
-    for (const Activation& a : best.front().activations) ticks.push_back(a.timecode.ticks());
+    const std::vector<int64_t> ticks = test::act_ticks(best.front());
     pinned.target_act_ticks = ticks;
     const std::vector<Path> again = run_search(graph, pinned);
     REQUIRE_FALSE(again.empty());
@@ -1348,16 +1336,6 @@ TEST_CASE("SP end history: no activation squeezes a phrase it banked before it s
     CHECK(acts > 0);
 }
 
-namespace {
-// Every path and nested variant, each before its variants.
-void collect_paths(const std::vector<Path>& in, std::vector<const Path*>& out) {
-    for (const Path& p : in) {
-        out.push_back(&p);
-        collect_paths(p.variants, out);
-    }
-}
-}  // namespace
-
 // A path that banked the phrase may not be folded into one that collected it:
 // after the fold the variant would take the leader's squeeze-out, a choice it
 // never had, and store the leader's score under its own windows.
@@ -1366,8 +1344,7 @@ TEST_CASE("SP end history: a variant never takes a squeeze on a phrase it banked
     ScoreGraph graph(song, 4);
     std::vector<Path> paths;
     REQUIRE_NOTHROW(paths = run_search(graph, test::wide_search()));
-    std::vector<const Path*> all;
-    collect_paths(paths, all);
+    const std::vector<const Path*> all = flatten_paths(paths);
     // Same activations, same SP ends, same squeezes: same score.
     std::map<std::string, int64_t> by_windows;
     bool saw_late_variant = false;
@@ -1418,11 +1395,8 @@ TEST_CASE("search: a later-ready path never knocks out one an upcoming fill stil
     a_then_late.target_act_ticks = std::vector<int64_t>{2304, 7680};
     CHECK_THROWS(run_search(graph, a_then_late));
 
-    std::vector<int64_t> ticks;
-    for (const Activation& act : best.front().walk_activations())
-        ticks.push_back(act.timecode.ticks());
     CAPTURE(best.front().pathstring());
-    CHECK(ticks == std::vector<int64_t>{7680});
+    CHECK(test::act_ticks(best.front()) == std::vector<int64_t>{7680});
     CHECK(best.front().totalscore() == late.front().totalscore());
 }
 
@@ -1460,14 +1434,9 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                     CHECK(act.refill_tick(k) <= prev.end_tick);
                     CHECK(act.refill_tick(k) >= prev.tick);
                 }
-                // Appendix B's first guarantee: one SqIn step per SqIn, so
-                // a relabel that found nothing cannot pass silently.
-                size_t sqins = 0, sqin_steps = 0;
-                for (const SPSqueeze& s : act.sqinouts)
-                    if (s.kind == SqueezeKind::SqIn) ++sqins;
-                for (const SpEndStep& s : act.sp_end_steps)
-                    if (s.kind == SpEndKind::SqIn) ++sqin_steps;
-                CHECK(sqin_steps == sqins);
+                // Appendix B's first guarantee and D34: one SqIn step per
+                // SqIn, never repeated or squeezed out (tests/bank_check.h).
+                bank_check::check_one_step_per_sqin(act);
             }
         }
     }
@@ -1668,7 +1637,7 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's steps after
     ScoreGraph graph(song, 2);
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 6});
 
-    const Path* leader = root_named(roots, "1");
+    const Path* leader = test::path_named(roots, "1");
     REQUIRE(leader != nullptr);
     const Path* variant = variant_at(*leader, 11520);
     REQUIRE(variant != nullptr);
@@ -1692,7 +1661,7 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's steps after
     CHECK(mine.sqinouts.empty());
     CHECK(variant->pathstring() == "0 1");
 
-    for (const Path* p : every_path(roots))
+    for (const Path* p : flatten_paths(roots))
         CHECK_MESSAGE(replay_stored_path(song, *p).faithful(), p->pathstring());
 }
 
@@ -1701,8 +1670,8 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqI
     ScoreGraph graph(song, 2);
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 6});
 
-    const Path* in_lead = root_named(roots, "1+");
-    const Path* out_lead = root_named(roots, "1-");
+    const Path* in_lead = test::path_named(roots, "1+");
+    const Path* out_lead = test::path_named(roots, "1-");
     REQUIRE(in_lead != nullptr);
     REQUIRE(out_lead != nullptr);
     const Path* in_var = variant_at(*in_lead, 11520);
@@ -1737,7 +1706,7 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqI
     CHECK(b.backends == out_lead->activations.back().backends);
     CHECK(out_var->pathstring() == "0 1-");
 
-    for (const Path* p : every_path(roots))
+    for (const Path* p : flatten_paths(roots))
         CHECK_MESSAGE(replay_stored_path(song, *p).faithful(), p->pathstring());
 }
 
@@ -1759,15 +1728,11 @@ TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not fol
     const Song song = load_songpath(std::string(HYDRA_INPUT_DIR) +
                                         "/test_folded_sqin/folded_sqin.chart",
                                     true, true);
-    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    cfg.sp_cap = 4;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 40;
-    cfg.ms_filter = std::nullopt;
+    const app::AnalysisSettings cfg = test::scores_settings(4);
     HydraRecord rec;
     REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
 
-    const Path* in_lead = root_named(rec.paths, "1+");
+    const Path* in_lead = test::path_named(rec.paths, "1+");
     REQUIRE(in_lead != nullptr);
     // The leader's SqIn step sits on 12288, which it collected.
     CHECK(steps_of(in_lead->activations.back()) ==
@@ -1797,11 +1762,7 @@ TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not fol
 // (the "not a collected step" throw). Both hand-made charts must analyze, and
 // every variant on them must price as it does alone.
 TEST_CASE("tied variants: the banked-phrase charts analyze and every variant prices as alone") {
-    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    cfg.sp_cap = 4;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 40;
-    cfg.ms_filter = std::nullopt;
+    const app::AnalysisSettings cfg = test::scores_settings(4);
     for (const char* name : {"folded_sqin.chart", "relabel_case.chart"}) {
         CAPTURE(name);
         const Song song = load_songpath(
@@ -1836,11 +1797,7 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
 // already differ from it (the review's fuzz found such charts by the hundred),
 // for reasons apart from this fold.
 TEST_CASE("tied variants: a Clamped step on the leader's SqIn phrase folds like a lone search") {
-    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    cfg.sp_cap = 3;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 40;
-    cfg.ms_filter = std::nullopt;
+    const app::AnalysisSettings cfg = test::scores_settings(3);
     const std::map<std::string, SpEndStep> clamped = {
         {"clamped_sqin_a.chart", SpEndStep{16128, 20736, SpEndKind::SqIn}},
         {"clamped_sqin_b.chart", SpEndStep{15744, 20352, SpEndKind::SqIn}},
@@ -1907,38 +1864,18 @@ TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refu
 TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D34)") {
     const Song song = load_songpath(
         std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/twin_end_nodes.chart", true, true);
-    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    cfg.sp_cap = 2;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 40;
-    cfg.ms_filter = std::nullopt;
+    const app::AnalysisSettings cfg = test::scores_settings(2);
     HydraRecord rec;
     REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
-    for (const Path* p : rec.all_paths()) {
-        CAPTURE(p->pathstring());
-        for (const Activation& a : p->walk_activations()) {
-            std::vector<int64_t> sqin_steps;
-            for (const SpEndStep& s : a.sp_end_steps)
-                if (s.kind == SpEndKind::SqIn) sqin_steps.push_back(s.tick);
-            const size_t sqins = static_cast<size_t>(
-                std::count_if(a.sqinouts.begin(), a.sqinouts.end(),
-                              [](const SPSqueeze& q) { return q.kind == SqueezeKind::SqIn; }));
-            // One SqIn per phrase, and never out again once in.
-            CHECK(sqins == sqin_steps.size());
-            CHECK(std::set<int64_t>(sqin_steps.begin(), sqin_steps.end()).size() ==
-                  sqin_steps.size());
-            if (a.sqout_tick)
-                CHECK(std::find(sqin_steps.begin(), sqin_steps.end(), *a.sqout_tick) ==
-                      sqin_steps.end());
-        }
-    }
+    // One SqIn per phrase, and never out again once in (tests/bank_check.h).
+    for (const Path* p : rec.all_paths()) bank_check::check_one_step_per_sqin(*p);
     // The best path keeps its score: the second "+" never moved anything.
-    const Path* best = root_named(rec.paths, "0+");
+    const Path* best = test::path_named(rec.paths, "0+");
     REQUIRE(best != nullptr);
     CHECK(best->totalscore() == 2950);
     CHECK(rec.best_path().totalscore() == 2950);
-    CHECK(root_named(rec.paths, "0++") == nullptr);
-    CHECK(root_named(rec.paths, "0+-") == nullptr);
+    CHECK(test::path_named(rec.paths, "0++") == nullptr);
+    CHECK(test::path_named(rec.paths, "0+-") == nullptr);
 }
 
 // The corpus-wide lone-pricing check for tied variants (D3) lives in
@@ -1971,7 +1908,7 @@ TEST_CASE("tied variants: a variant that finished the song keeps its own bank") 
         }
         CHECK(tied == 2);
     };
-    const std::vector<const Path*> all = every_path(roots);
+    const std::vector<const Path*> all = flatten_paths(roots);
     int variants = 0;
     for (const Path* p : all) variants += p->var_point.has_value() ? 1 : 0;
     REQUIRE(variants == 1);  // the two ties are one root and its variant
@@ -2007,7 +1944,7 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
     const std::vector<int64_t> own_0{5760, 8448};
     const std::vector<int64_t> own_1{8448, 9216};
     int again = 0, never = 0, variants = 0;
-    for (const Path* p : every_path(roots)) {
+    for (const Path* p : flatten_paths(roots)) {
         const ActivationWalk acts = p->walk_activations();
         if (acts.empty()) continue;
         const int64_t first = acts[0].timecode.ticks();
@@ -2063,7 +2000,7 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own early f
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
     const double ready_1 = tick_ms(song, 9619);
     int seen = 0, variants = 0;
-    for (const Path* p : every_path(roots)) {
+    for (const Path* p : flatten_paths(roots)) {
         const ActivationWalk acts = p->walk_activations();
         if (acts.size() != 2 || acts[1].timecode.ticks() != 10752) continue;
         const int64_t first = acts[0].timecode.ticks();

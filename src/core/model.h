@@ -674,6 +674,10 @@ struct HydraRecord {
     std::vector<const Path*> all_allzero_paths() const;
 };
 
+// The traversal all_paths() uses, over any root list (a search's output, for
+// one): each path, then its nested variants. Pointers into `roots`.
+std::vector<const Path*> flatten_paths(const std::vector<Path>& roots);
+
 // Format an integer with thousands separators, matching Python's `{:,}`.
 std::string group_thousands(int64_t n);
 

@@ -242,7 +242,10 @@ const std::vector<OwnerRule>& rules() {
          {"if (s.kind != SpEndKind::SqIn) continue;", "if (is_sqin_kind(s.kind)) out.push_back(s.tick);"},
          {{"src/core/model.h",
            "inline bool is_sqin_kind(SpEndKind kind) { return kind == SpEndKind::SqIn; }",
-           "is_sqin_kind, the owner"}}},
+           "is_sqin_kind, the owner"}},
+         // Tests too (step-1 derive-once sweep after the review of cc2e1d9):
+         // a test asks is_sqin_kind, is_sqin_step_on or sqin_phrase_ticks.
+         {"src", "tools", "tests"}},
         {"Does an E0 need nothing passed over?",
          "is_e0 in src/core/model.h",
          R"(skips\s*==\s*0\b)",
@@ -537,6 +540,34 @@ const std::vector<OwnerRule>& rules() {
            "inline void collect_tied(const Path& p, std::vector<const Path*>& out) {",
            "collect_tied, the owner"}},
          {"tests"}},
+        // A test that gathers a window's SqIn steps to count or compare them
+        // restates D34's check. The check reads the window's SqIn step ticks
+        // from sqin_phrase_ticks (src/core/replay.cpp), as check_spent_phrases
+        // does, so no line in tests/ matches.
+        {"Does each SqIn have its own step, never repeated or squeezed out?",
+         "check_one_step_per_sqin in tests/bank_check.h (its ticks from sqin_phrase_ticks)",
+         R"(if \(s\.kind == (hydra::)?SpEndKind::SqIn\) (\+\+\w+|\w+\.push_back\(s\.tick\));)",
+         "",
+         {},
+         {},
+         "D34; step-1 derive-once review of cc2e1d9, finding 3 (2026-10-04)",
+         {"if (s.kind == SpEndKind::SqIn) ticks.push_back(s.tick);",
+          "if (s.kind == SpEndKind::SqIn) ++sqin_steps;"},
+         {"for (const int64_t t : hydra::sqin_phrase_ticks(act)) sqin_phrases.insert(t);"},
+         {},
+         {"tests"}},
+        {"Is this transfer scale x1.00?",
+         "is_scaled in src/core/squeeze_rating.h",
+         R"(\.(early|late)\s*[!=]=\s*1\.0\b)",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of cc2e1d9, finding 4 (2026-10-04)",
+         {"return s.early == 1.0 && s.late == 1.0;",
+          "if (act.transfer_pre.early != 1.0 || act.transfer_pre.late != 1.0)"},
+         {"CHECK(scales->sqins[0].late == doctest::Approx(1.0));"},
+         {},
+         {"src", "tools", "tests"}},
         // Was its own test in test_preview_view.cpp (findings 147 and 159):
         // the path gauge's body never touches the chart's phrases, the
         // collected list, the bank count, the cap rule or the squeeze-in rule
