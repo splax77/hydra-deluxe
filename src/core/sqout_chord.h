@@ -132,9 +132,9 @@ inline const SongTimestamp* banked_phrase_in_reach(const Song& song, int64_t act
 // A window known to have ended plainly at `sp_end` (a stored record without
 // a squeeze-out) had its end there, so only the late side applies. A window
 // typed by hand carries no history, so both sides are possible: its newest
-// step may be the last phrase at or before the end that it could collect
-// (after the activation, not squeezed in), moved from this end; or its end
-// may be this end.
+// step may be the last phrase after the activation at or before the end,
+// moved from this end, unless the window already squeezed that phrase in
+// (then nothing early is offered); or its end may be this end.
 inline std::vector<const SongTimestamp*> sqout_chords(const Song& song, const Timecode& sp_end,
                                                       int64_t act_tick,
                                                       const std::vector<int64_t>& squeezed_in,
