@@ -4,6 +4,7 @@
 #ifndef HYDRA_APP_DISPLAY_FORMAT_H
 #define HYDRA_APP_DISPLAY_FORMAT_H
 
+#include <cstdint>
 #include <string>
 
 namespace hydra::app {
@@ -23,6 +24,17 @@ std::string format_ms(double ms);
 // ("163.0 ms"). The new Paths and Preview text uses this; format_ms keeps the
 // older "163.0ms" form the report and the backend table print.
 std::string format_ms_spaced(double ms);
+
+// Part over total as a percentage with the sign, rounded to the nearest at
+// `decimals` places: 12 of 453 at 0 reads "3%", 198,010 of 198,020 at 2 reads
+// "99.99%". An exact half rounds away from zero. The total must be above 0;
+// a screen with nothing to count says so itself.
+std::string format_percent(int64_t part, int64_t total, int decimals);
+
+// A song time as the Preview's clock shows it, "m:ss.mmm" ("1:04.000"). The
+// time rounds to the nearest whole ms first (a half rounds away from zero),
+// then splits into minutes and seconds, so 59,999.6 ms reads "1:00.000".
+std::string clock_str(double ms);
 
 }  // namespace hydra::app
 
