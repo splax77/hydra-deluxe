@@ -480,13 +480,14 @@ MOp mop_tom(NoteColor color, NoteCymbalType cymbal) {
 // The one table of how each difficulty is spelled in a chart file, in
 // Difficulty enum order. All four difficulties share the one "PART DRUMS"
 // track; each owns a block of five pitches starting at its kick (kick, then
-// the four pads), and its 2x kick sits one below the kick.
+// the four pads). Its 2x kick sits one below the kick
+// (DifficultyChartCodes::kick2x_pitch).
 namespace {
 constexpr DifficultyChartCodes kDifficultyChartCodes[] = {
-    {96, 95, '3'},  // Expert
-    {84, 83, '2'},  // Hard
-    {72, 71, '1'},  // Medium
-    {60, 59, '0'},  // Easy
+    {96, '3'},  // Expert
+    {84, '2'},  // Hard
+    {72, '1'},  // Medium
+    {60, '0'},  // Easy
 };
 static_assert(std::size(kDifficultyChartCodes) == std::size(kAllDifficulties));
 }  // namespace
@@ -781,7 +782,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
     base_ = difficulty_base_pitch(difficulty);
-    kick2x_pitch_ = difficulty_chart_codes(difficulty).kick2x_pitch;
+    kick2x_pitch_ = difficulty_chart_codes(difficulty).kick2x_pitch();
     mix_digit_ = difficulty_chart_codes(difficulty).mix_digit;
 
     Song song(mid.ticks_per_beat);

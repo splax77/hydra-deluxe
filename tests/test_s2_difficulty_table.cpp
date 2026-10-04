@@ -34,10 +34,10 @@ TEST_CASE("difficulty table: kick, 2x kick and disco digit for every difficulty"
         CAPTURE(name);
         const DifficultyChartCodes& c = difficulty_chart_codes(w.d);
         CHECK(c.kick_pitch == w.kick);
-        CHECK(c.kick2x_pitch == w.kick2x);
         CHECK(c.mix_digit == w.mix);
-        // The 2x kick sits one pitch below the kick at every difficulty.
-        CHECK(c.kick2x_pitch == c.kick_pitch - 1);
+        // The 2x kick is not stored: it is worked out as kick - 1, and that
+        // must land on Clone Hero's own 2x pitch at every difficulty.
+        CHECK(c.kick2x_pitch() == w.kick2x);
     }
 }
 
