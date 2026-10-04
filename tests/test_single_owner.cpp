@@ -877,6 +877,65 @@ const std::vector<OwnerRule>& rules() {
           "(snap.finished || now - batch_refreshed_at_ >= 1.0)) {"},
          {"now - details_ui.file_checked_at >= kFileCheckSeconds) {",
           "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {"}},
+        // ---- phase 3 wave C owners (derive-once review of M_C) ----
+        // A status word typed in quotes. The library chips, the Best path
+        // cell and the uitest state dump all ask status_label.
+        {"Which word names a record's status?",
+         "status_label in src/ui/library_model.cpp",
+         R"re("(Not analyzed|Analyzed|Stale)")re",
+         "",
+         {},
+         {},
+         "audit finding 87; derive-once review of M_C (6d86f1c), finding 2 (2026-10-04)",
+         {"{StatusChip::Stale, \"Stale\", \"chipstale\"},",
+          "case store::RecordStatus::Ready: return \"Analyzed\";"},
+         {"return status_label(status);", "{StatusChip::All, \"chipall\"},"},
+         {{"src/ui/library_model.cpp", "case store::RecordStatus::Ready: return \"Analyzed\";",
+           "status_label, the owner"},
+          {"src/ui/library_model.cpp", "case store::RecordStatus::Stale: return \"Stale\";",
+           "status_label, the owner"},
+          {"src/ui/library_model.cpp", "return \"Not analyzed\";", "status_label, the owner"}}},
+        // Two paths compared by score and notation, or keyed by notation and
+        // score glued together, instead of by path_identity.
+        {"Is this the same path as that one?",
+         "path_identity in src/core/model.cpp",
+         R"re(totalscore\(\)\s*==[^;]*pathstring\(\)|pathstring_verbose\(\{\}\)\s*\+\s*"\|")re",
+         "",
+         {},
+         {},
+         "audit finding 249; derive-once review of M_C (6d86f1c), proposed scan row 2 "
+         "(2026-10-04)",
+         {"if (p->totalscore() == score && p->pathstring() == notation)",
+          "return path->pathstring_verbose({}) + \"|\" + std::to_string(path->totalscore());"},
+         {"if (path_identity(*p) == identity) return view;"}},
+        // A moment's ms over the song length, clamped to 0..1, worked out
+        // anywhere but song_fraction.
+        {"How far into the song is this moment, as a share?",
+         "song_fraction in src/app/preview_view.cpp",
+         R"re(std::clamp\([^;]*/\s*\*?\w*length\w*\s*,\s*0\.0\s*,\s*1\.0)re",
+         "",
+         {},
+         {},
+         "phase 3 task C4a; derive-once review of M_C (6d86f1c), finding 4 (2026-10-04)",
+         {"const double at = std::clamp(at / *song_length_ms, 0.0, 1.0);",
+          "marks.push_back(std::clamp(a.ms / length_ms, 0.0, 1.0));"},
+         {"marks.push_back(*song_fraction(a.ms, length_ms));"},
+         {{"src/app/preview_view.cpp", "return std::clamp(ms / length_ms, 0.0, 1.0);",
+           "song_fraction, the owner"}}},
+        // The two-hit budget written out as twice the window, or the backend
+        // rescale written out as 2 / (1 + r), instead of nominal_budget_ms and
+        // squeeze_budget_ms.
+        {"What is the two-hit budget at the identity scale?",
+         "nominal_budget_ms beside squeeze_budget_ms in src/core/squeeze_rating.cpp",
+         R"re(\b2(\.0)?\s*\*\s*w\b|\*\s*2\.0\s*/\s*\(1\.0\s*\+)re",
+         "",
+         {},
+         {},
+         "phase 3 task C4c; derive-once review of M_C (6d86f1c), finding 3 (2026-10-04)",
+         {"{\"Insane+\", \"t4\", 2 * w},",
+          "return std::abs(offset_ms) * 2.0 / (1.0 + transfer_r);"},
+         {"{\"Insane+\", \"t4\", squeeze_budget_ms(1.0, w)},",
+          "{\"Insane+\", \"t4\", nominal_budget_ms(w)},"}},
     };
     return r;
 }
