@@ -19,8 +19,8 @@ hydra_batch --db <path>        Target a specific database
 hydra_batch --rules <path>     Take the rule choices from this file, not hydra_rules.ini
 hydra_batch --legacy-fills     Score fills by Clone Hero 1.0's rule (needs its own --db)
 
-hydra_report                   Sortable HTML report of stored paths (top 5 per chart)
-hydra_report --paths 20        Top 20 per chart
+hydra_report                   Sortable HTML report of stored paths (top 5 per chart and mode)
+hydra_report --paths 20        Top 20 per chart and mode
 hydra_report --all-paths       Everything stored
 hydra_report --out report.html
 hydra_report --db <path>       Report on a specific database
@@ -34,9 +34,11 @@ hydra_fillcompare ... --rules <path>
 hydra_fillcompare ... --no-open
 ```
 
-All three read the app's settings file, so they analyze, report and compare
-at the same chart mode, SP cap, timing limit and score range the app is set to.
-The fill rule is the exception, below. All three read the scoring rules from
+All three read the app's settings file, so they work at the same SP cap,
+timing limit and score range the app is set to. `hydra_batch` and
+`hydra_fillcompare` also use the app's chart mode. `hydra_report` lists every
+chart mode stored at those settings, top N paths per chart and mode. The fill
+rule is the exception, below. All three read the scoring rules from
 `hydra_rules.ini` next to Hydra.exe, or from the file `--rules` names. If that
 file has an error, they print it and stop with exit code 2.
 

@@ -109,21 +109,21 @@ Each path shows its own hardest timing right after it, like `378,315 · 3- 1 2  
 
 The right side starts with a summary, like `Activations 3 · no SP left over`. Under it, a timeline runs from the first measure to the last, with a mark for each activation. For a result saved before version 1.9, the timeline appears a moment after you open the song: Hydra Deluxe reads the chart once for its length and remembers it. Nothing is re-analyzed.
 
-Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), how many bars of SP you spend, and a badge for a squeeze, like `squeeze out 163 ms`. Click a row to open it, or use `Expand all` and `Collapse all`.
+Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate, and a badge for a squeeze, like `squeeze out 163 ms`. Click a row to open it, or use `Expand all` and `Collapse all`.
 
 An open row shows:
 
 - **Chord**: the chord you activate on. On a multi-note chord, do a frontend squeeze: hit the activation note first, so the other notes score with the Star Power multiplier.
 - **`Show in Preview >`**: jumps the Preview tab to this activation.
-- The early fill timing, when the activation has one (the `E` notation). Usually this is `0ms`. The more negative the value, the earlier you have to hit to make the fill show up.
+- The early fill timing, when the activation has one (the `E` notation), like `Early fill: 0.0ms (required)`. A positive number means you must hit that many ms early to make the fill show up. A negative number is slack, so the fill shows up with room to spare.
 - A plain sentence for each squeeze: which note to hit early or late, by how much, and what it's worth.
 - **Backend timings**: the notes near the end of Star Power, with a short lead-in above the table.
 
-A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. The note at `0ms` is exactly where SP ends; the others are the notes just before and after it. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative. The rating beside each note is a rough guide to how hard it is to fit into Star Power. For double backend squeezes, look for notes in the `3ms` to `85ms` range (the upper edge follows the hit-window setting).
+A backend squeeze means hitting the note at the SP end early, so it lands inside Star Power. The note at `0ms` is exactly where SP ends; the others are the notes just before and after it. If the last activation's SP runs past the end of the chart, the table lists the notes before that end, so every timing is negative. The rating beside each note is a rough guide to how hard it is to fit into Star Power. For double backend squeezes, look for notes from the backend leeway up to the hit window. The leeway is 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`). The hit window is 85 ms by default (`hit_window_ms`, below).
 
 Star Power length is measured in measures, not milliseconds. If the SP end falls where measures last a different time than at the activation (a tempo or time signature change), frontend timing only partly carries to the SP end. Hitting the activation 50 ms late might move the SP end only 25 ms. Whenever the scale isn't x1.00, the opened row shows it, early first: `Frontend timing scales x0.99 (early) / x4.45 (late) at the SP end.` Late and early hits can scale differently when the activation or the SP end sits right on a change. A side that is x1.00 is left out. If a SqIn moved the SP end, that earlier end gets its own clause. The line is orange when the scale changes a squeeze or backend figure, and those backend rows show an effective timing (`eff.`). Otherwise it is gray.
 
-Sometimes a phrase collected during Star Power fills the meter up to the SP cap. Then the row shows an overfill warning. It means the note that filled the meter, not the activation, is now the one whose timing moves the SP end. The scale line and the eff. figures are measured from that note.
+Sometimes a phrase collected during Star Power would push the meter past the SP cap, so the cap cuts the SP end short. A phrase that only brings the meter exactly to the cap doesn't count. When the cap cuts the end short, the note that filled the meter, not the activation, is now the one whose timing moves the SP end. The scale line and the eff. figures are measured from that note. The row shows an overfill warning, like `SP overfilled at m40.1.0`, when that matters: when the row lists a squeeze, or a backend note the path squeezes out or doesn't count.
 
 Below the activations:
 
@@ -159,7 +159,7 @@ The boxes on the highway:
 - **Score box** (under it): the running score in large type, then the multiplier and combo, like `x4 · combo 212`. It appears once the song is analyzed. It reads `Score unavailable` when the path can't be replayed to its stored score.
 - **Next activation** (bottom left): the next activation's number, where it is, and its chord.
 - **SP meter** (right edge): a gauge of banked Star Power, one line per bar, with the bars shown under it. It rises one bar at each phrase you collect and drains through each activation, reaching empty exactly where the path's SP ends.
-- **Drain box** (top right, beside the meter): how long one bar of SP lasts here, like `1 bar / 2.5 s`. While SP is running on the path it reads `SP drain` and `empties in` the time left. Otherwise it reads `SP drain (if activated)` and how long a full meter would last from here.
+- **Drain box** (top right, beside the meter): how long one bar of SP lasts at the current tempo, like `1 bar / 2.5 s`. While SP is running on the path it reads `SP drain` and `empties in` the time left. Otherwise it reads `SP drain (if activated)` and `full meter`: how long a full meter would last at the current tempo.
 
 ## Dynamics tab
 
@@ -167,7 +167,7 @@ This tab counts the chart's ghost and accent notes. Ghosts and accents are the s
 
 The **Pads** table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. **Kicks** does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. When 2x Bass is off, the 2x kick row stays visible but greyed out, and both All kicks and the totals leave it out. **Totals** adds them up.
 
-The **Chart** box says whether the chart has dynamics turned on. A MIDI chart has to opt in. Without that flag Clone Hero ignores the velocity markings, so Hydra Deluxe shows the counts but notes that the game won't apply them.
+The **Chart** box says whether the chart has dynamics turned on. A MIDI chart has to opt in with a tag. Without that tag Clone Hero ignores the velocity markings and plays every note as a normal hit. Hydra Deluxe reads the chart the same way, so the tab shows no ghost or accent counts. It says `This chart has no ghost or accent notes.`, and the Chart box says `Dynamics enabled: no (markings ignored by Clone Hero)`. When the tag only comes partway through the chart, the markings before it are ignored too, and the Chart box says how many there were.
 
 Counts are worked out the first time you open the tab and saved, so it opens instantly after that. Analyzing a song with 2x Bass on also saves them.
 
@@ -200,7 +200,7 @@ When it finishes, the strip changes to a summary: how many songs were analyzed, 
 
 ### The path report
 
-A finished batch builds the **path report**, `hydra_paths.html`. It is a sortable, searchable web page of every analyzed song's paths, squeeze timings and scores. It follows the current analysis settings.
+A finished batch builds the **path report**, `hydra_paths.html`. It is a sortable, searchable web page of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums and 2x Bass) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
 
 Reports are saved in your **Documents\Hydra** folder. Hydra Deluxe makes the folder if it's missing. If Windows can't find your Documents folder, the report goes next to Hydra Deluxe's database instead. A report an older version saved next to `hydra.db` stays there; the next batch writes a new one in Documents\Hydra.
 
