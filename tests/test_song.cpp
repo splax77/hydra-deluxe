@@ -410,14 +410,32 @@ TEST_CASE(".mid: a timing line that can't measure time") {
     Song song = load_songbytes_mid(track({0x00, 0xFF, 0x58, 0x04, 0x00, 0x02, 0x18, 0x08}),
                                    true, true);
     CHECK(song.tpm_changes.at(0) == 480 * 4);
-    // A 0 us tempo would be an infinite BPM: refused.
+    // A 0 us tempo would be an infinite BPM: refused, and the message says so
+    // (D12) instead of calling it "not above 0 BPM".
     CHECK_THROWS_WITH_AS(load_songbytes_mid(track(testmidi::set_tempo(0)), true, true),
-                         "the tempo at tick 0 is not above 0 BPM", ChartFileError);
+                         "the tempo at tick 0 is infinite (0 microseconds per beat)",
+                         ChartFileError);
     // A denominator exponent of 40: refused, never shifted.
     CHECK_THROWS_WITH_AS(
         load_songbytes_mid(track({0x00, 0xFF, 0x58, 0x04, 0x04, 40, 0x18, 0x08}), true, true),
         "the time signature at tick 0 has a bottom number that is out of range",
         ChartFileError);
+}
+
+// A division of 0 ticks per beat and a negative .chart resolution cannot place
+// any note in time. Both were already refused (through check_timing_maps);
+// this pins it.
+TEST_CASE("a resolution that is 0 or negative is refused in both formats") {
+    std::vector<uint8_t> mid = testmidi::smf(testmidi::concat(
+        {testmidi::track_name("PART DRUMS"), testmidi::set_tempo(),
+         testmidi::note_on(96, 100), testmidi::end_of_track()}));
+    mid[12] = 0x00;  // division = 0
+    mid[13] = 0x00;
+    CHECK_THROWS_WITH_AS(load_songbytes_mid(mid, true, true),
+                         "the chart's resolution is 0, and it must be above 0", ChartFileError);
+    CHECK_THROWS_WITH_AS(
+        load_songbytes_chart(chart_with("-192", "  0 = TS 4\n  0 = B 120000\n"), true, true),
+        "the chart's resolution is -192, and it must be above 0", ChartFileError);
 }
 
 TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
