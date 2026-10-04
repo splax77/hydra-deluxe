@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <optional>
 #include <stdexcept>
@@ -1125,142 +1126,16 @@ TEST_CASE("replay score fields: one list in schema order") {
 }
 
 // ---------------------------------------------------------------------------
-// The open-window walk against the every-window walk it replaced.
+// The open-window walk.
 //
-// replay_path used to check every window for every chord. It now keeps a short
-// list of the windows that can still pay the current chord. The function
-// below is the old loop, copied verbatim from core/replay.cpp before the
-// change (only renamed), so the tests can prove the two give identical rows.
+// replay_path keeps a short list of the windows that can still pay the
+// current chord, rather than asking every window about every chord. The cases
+// below pin its rows on hand-built windows. On many windows they hold it to
+// two properties instead: the order the windows are listed in does not
+// matter, and each chord's SP points are the sum of what each window pays it
+// alone, since the SP rule prices one window at a time.
 
 namespace {
-
-struct RefWindow {
-    int64_t act_tick = 0;
-    int64_t deact_tick = 0;
-    double deact_ms = 0.0;
-    std::optional<int64_t> sqout_tick;
-};
-
-ReplayResult reference_replay_path(const Song& song,
-                                   const std::vector<ReplayWindow>& windows,
-                                   const core::Rules& rules,
-                                   bool d2_in_sp = true) {
-    const SongTiming& timing = song.timing();
-
-    std::vector<RefWindow> wins;
-    wins.reserve(windows.size());
-    for (const ReplayWindow& w : windows) {
-        RefWindow win;
-        win.act_tick = w.act_tick;
-        win.deact_tick = w.deact_tick;
-        win.deact_ms = timing.timecode(w.deact_tick).ms();
-        win.sqout_tick = w.sqout_tick;
-        wins.push_back(win);
-    }
-    std::sort(wins.begin(), wins.end(), [](const RefWindow& a, const RefWindow& b) {
-        return a.act_tick < b.act_tick;
-    });
-
-    ReplayResult out;
-    out.chords.reserve(song.sequence.size());
-
-    int combo = 0;
-    ReplayScore cum;
-    int64_t solo_pending = 0;
-
-    const size_t n = song.sequence.size();
-    std::vector<CategoryScores> per_note;
-
-    for (size_t i = 0; i < n; ++i) {
-        const SongTimestamp& ts = song.sequence[i];
-        const CategoryScores sg = category_scores(ts.chord, combo, &per_note, rules.sqout_rule);
-
-        ReplayChord row;
-        row.index = static_cast<int>(i);
-        row.tick = ts.timecode.ticks();
-        row.ms = ts.timecode.ms();
-        const int64_t* mbt = ts.timecode.measure_beats_ticks();
-        row.measure = mbt[0];
-        row.beat = mbt[1];
-        row.measure_tick = mbt[2];
-        row.measures_decimal = ts.timecode.measures_decimal();
-        row.chord_code = ts.chord.code();
-        row.is_fill = ts.has_activation();
-        row.is_solo = ts.flag_solo;
-        row.is_sp_phrase_end = ts.flag_sp;
-        row.combo_before = combo;
-        row.multiplier = sg.multiplier;
-        row.multiplier_after = sg.multiplier_after;
-
-        const std::vector<ChordNote> ordering = ts.chord.notes(true);
-        row.notes.reserve(ordering.size());
-        for (size_t k = 0; k < ordering.size(); ++k) {
-            ReplayNote note;
-            note.color = ordering[k].colortype;
-            note.cymbal = ordering[k].is_cymbal();
-            note.sp_points = k < per_note.size() ? per_note[k].sp : 0;
-            note.multiplier = k < per_note.size() ? per_note[k].multiplier : 1;
-            note.dynamics_bonus =
-                k < per_note.size() ? per_note[k].dynamics_bonus : 0;
-            note.dynamic = ordering[k].dynamictype;
-            row.notes.push_back(note);
-        }
-
-        // The old gate counts a window that reaches the chord (sp_claims);
-        // decision D2's rule counts one that actually pays it (sp_paid).
-        // d2_in_sp picks which one sets in_sp, so a test can show both.
-        int64_t sp_points = 0;
-        int sp_claims = 0;
-        int sp_paid = 0;
-        for (const RefWindow& w : wins) {
-            if (row.tick < w.act_tick) continue;
-            const double offset = row.tick <= w.deact_tick
-                                      ? std::min(row.ms - w.deact_ms, 0.0)
-                                      : row.ms - w.deact_ms;
-            const core::SqOutPosition pos =
-                core::sqout_position(row.tick, w.sqout_tick);
-            if (pos == core::SqOutPosition::After ||
-                !core::counted_without_squeeze(offset, rules.backend_leeway_ms))
-                continue;
-            ++sp_claims;
-            if (core::paid_by_sp(offset, sg.sp, sg.sqout_sp(), pos,
-                                 rules.backend_leeway_ms))
-                ++sp_paid;
-            sp_points += core::backend_row_value(
-                offset, sg.sp, sg.sqout_sp(), pos,
-                rules.backend_leeway_ms);
-        }
-        row.in_sp = d2_in_sp ? sp_paid > 0 : sp_claims > 0;
-        row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
-
-        row.points.base = sg.base;
-        row.points.combo = sg.combo;
-        row.points.sp = sp_points;
-        row.points.solo =
-            ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;
-        row.points.accent = sg.accent;
-        row.points.ghost = sg.ghost;
-
-        combo += ts.chord.count();
-        row.combo_after = combo;
-
-        cum.add(row.points);
-        row.cum = cum;
-
-        if (ts.flag_solo) {
-            solo_pending += row.points.solo;
-            const bool last_of_run =
-                i + 1 >= n || !song.sequence[i + 1].flag_solo;
-            if (last_of_run) solo_pending = 0;
-        }
-        row.cum_onscreen_total = cum.total() - solo_pending;
-
-        out.chords.push_back(std::move(row));
-    }
-
-    out.final = cum;
-    return out;
-}
 
 // The name of the first field where two rows differ, or "" when every field
 // of ReplayChord (and of each ReplayNote) is identical. With `scores_only`,
@@ -1369,77 +1244,63 @@ std::vector<core::Rules> leeway_variants() {
     return out;
 }
 
-}  // namespace
-
-TEST_CASE("replay: the open-window walk equals the every-window walk on every corpus path") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int charts = 0, runs = 0;
-    std::string first_diff;
-
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
-        if (song.is_empty()) continue;
-        ++charts;
-
-        // No Star Power at all, then every stored path's own windows.
-        std::vector<std::vector<ReplayWindow>> lists{{}};
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) lists.push_back(windows_for_path(*p));
-
-        for (const std::vector<ReplayWindow>& wl : lists) {
-            ++runs;
-            const std::string d = first_result_difference(
-                reference_replay_path(song, wl, cfg.rules), replay_path(song, wl, cfg.rules));
-            if (!d.empty() && first_diff.empty()) first_diff = path + ": " + d;
-        }
-    }
-
-    CHECK(charts > 0);
-    CHECK(runs > charts);
-    INFO("first difference: " << first_diff);
-    CHECK(first_diff.empty());
+std::string rules_label(const core::Rules& r) {
+    if (r.sqout_rule == core::SqOutRule::WholeChord) return "whole-chord squeeze-out";
+    return "leeway " + std::to_string(static_cast<int>(r.backend_leeway_ms)) + " ms";
 }
 
-// D2 moves only the yes/no on a squeezed-out chord SP paid nothing. Every
-// chord's points, and so every score, stays as it was.
-TEST_CASE("D2: only a squeezed-out chord SP pays nothing loses its doubled disc") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int changed = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
-        if (song.is_empty()) continue;
-        for (const Path* p : corpus::analyzed(path, cfg).all_paths()) {
-            const std::vector<ReplayWindow> wl = windows_for_path(*p);
-            const ReplayResult before = reference_replay_path(song, wl, cfg.rules, false);
-            const ReplayResult after = replay_path(song, wl, cfg.rules);
-            REQUIRE(before.chords.size() == after.chords.size());
-            CHECK(before.final == after.final);
-            for (size_t i = 0; i < after.chords.size(); ++i) {
-                const ReplayChord& b = before.chords[i];
-                const ReplayChord& a = after.chords[i];
-                CHECK(a.points == b.points);
-                if (a.in_sp == b.in_sp) continue;
-                ++changed;
-                CHECK(b.in_sp);
-                CHECK(a.points.sp == 0);
-                bool squeezed_out = false;
-                for (const ReplayWindow& w : wl)
-                    if (w.sqout_tick == a.tick) squeezed_out = true;
-                CHECK(squeezed_out);
-                CHECK(a.multiplier_shown == a.multiplier_after);
-            }
-        }
-    }
-    MESSAGE(changed << " corpus chords now show the plain multiplier");
-    // Pinned, so a change that made this 0 (the test proving nothing) or moved
-    // more chords fails loudly. If the corpus grows, update it on purpose.
-    CHECK(changed == 9);
+// One row as text, every field the windows can move plus where the chord
+// sits: index, tick, measure.beat.tick, combo before -> after, multiplier
+// before / after, base, combo and SP points, "SP" when Star Power paid the
+// chord, the disc's multiplier and the running total.
+std::string row_line(const ReplayChord& c) {
+    char buf[200];
+    std::snprintf(buf, sizeof buf,
+                  "%d t%lld m%lld.%lld.%lld c%d->%d x%d/%d base=%lld combo=%lld sp=%lld %s "
+                  "shown=x%d cum=%lld",
+                  c.index, static_cast<long long>(c.tick), static_cast<long long>(c.measure + 1),
+                  static_cast<long long>(c.beat + 1), static_cast<long long>(c.measure_tick),
+                  c.combo_before, c.combo_after, c.multiplier, c.multiplier_after,
+                  static_cast<long long>(c.points.base), static_cast<long long>(c.points.combo),
+                  static_cast<long long>(c.points.sp), c.in_sp ? "SP" : "--", c.multiplier_shown,
+                  static_cast<long long>(c.cum.total()));
+    return buf;
 }
 
-TEST_CASE("replay: the open-window walk equals the every-window walk on hand-built windows") {
-    // The squeeze-out chart from "a squeezed-out chord past the leeway earns
-    // nothing", under every leeway variant, with its window and with a
-    // squeeze-out that sits before D.
+std::vector<std::string> row_lines(const ReplayResult& r) {
+    std::vector<std::string> out;
+    for (const ReplayChord& c : r.chords) out.push_back(row_line(c));
+    return out;
+}
+
+// The rows in one line: each chord's SP points, which chords SP paid ("Y"),
+// and each chord's disc multiplier.
+std::string compact_line(const ReplayResult& r) {
+    std::string sp = "sp", paid = " paid ", shown = " shown";
+    for (const ReplayChord& c : r.chords) {
+        sp += " " + std::to_string(c.points.sp);
+        paid += c.in_sp ? "Y" : "-";
+        shown += " x" + std::to_string(c.multiplier_shown);
+    }
+    return sp + paid + shown;
+}
+
+// On a mismatch the lines actually built are printed as C++ literals, so a
+// deliberate change can be read, checked by hand and pasted.
+void check_lines(const std::vector<std::string>& got, const std::vector<std::string>& want,
+                 const std::string& what) {
+    std::string literals;
+    if (got != want)
+        for (const std::string& l : got) literals += "    \"" + l + "\",\n";
+    INFO(what << " built:\n" << literals);
+    CHECK(got == want);
+}
+
+// Six R+Y chords on the chart of "a squeezed-out chord past the leeway earns
+// nothing": 192 ticks a beat, 120 BPM, 768 ticks (2000 ms) a measure. Ticks
+// 0, 768, 1536, 2304, 3072 are 0, 2000, 4000, 6000, 8000 ms; the phrase chord
+// at 3256 is 8479.2 ms.
+Song squeeze_chart() {
     Song song(192);
     song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
@@ -1452,33 +1313,224 @@ TEST_CASE("replay: the open-window walk equals the every-window walk on hand-bui
         ts.flag_sp = tick == 3256;
         song.sequence.push_back(ts);
     }
-    ReplayWindow late;
-    late.act_tick = 0;
-    late.deact_tick = 3072;
-    late.sqout_tick = 3256;
-    ReplayWindow early;
-    early.act_tick = 768;
-    early.deact_tick = 3072;
-    early.sqout_tick = 2304;
-    ReplayWindow plain;
-    plain.act_tick = 1536;
-    plain.deact_tick = 3100;
-
-    const std::vector<std::vector<ReplayWindow>> lists = {
-        {late}, {early}, {plain}, {late, early, plain}, {plain, early, late}};
-    for (const core::Rules& rules : leeway_variants())
-        for (const std::vector<ReplayWindow>& wl : lists) {
-            const std::string d = first_result_difference(
-                reference_replay_path(song, wl, rules), replay_path(song, wl, rules));
-            INFO("leeway " << rules.backend_leeway_ms << ", " << wl.size() << " window(s)");
-            CHECK(d.empty());
-        }
+    return song;
 }
 
-TEST_CASE("replay: the open-window walk equals the every-window walk with 2,000 activations") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+ReplayWindow window(int64_t act, int64_t deact, std::optional<int64_t> sqout = std::nullopt) {
+    ReplayWindow w;
+    w.act_tick = act;
+    w.deact_tick = deact;
+    w.sqout_tick = sqout;
+    return w;
+}
 
-    // The longest corpus chart, by chord count.
+// Each row's SP points must be the sum of what each window pays it alone,
+// and SP pays the chord exactly when one of them does. Single-window replays
+// are scores-only to keep this quick; their score fields are a full replay's.
+void check_windows_add_up(const Song& song, const std::vector<ReplayWindow>& wl,
+                          const core::Rules& rules, const ReplayResult& all,
+                          const std::string& what) {
+    ReplayOptions scores;
+    scores.scores_only = true;
+    std::vector<int64_t> sum(all.chords.size(), 0);
+    std::vector<bool> paid(all.chords.size(), false);
+    for (const ReplayWindow& w : wl) {
+        const ReplayResult one = replay_path(song, {w}, rules, scores);
+        REQUIRE(one.chords.size() == all.chords.size());
+        for (size_t i = 0; i < one.chords.size(); ++i) {
+            sum[i] += one.chords[i].points.sp;
+            if (one.chords[i].in_sp) paid[i] = true;
+        }
+    }
+    size_t bad = 0, first = 0;
+    for (size_t i = 0; i < all.chords.size(); ++i)
+        if ((all.chords[i].points.sp != sum[i] || all.chords[i].in_sp != paid[i]) && bad++ == 0)
+            first = i;
+    INFO(what << ": first row that does not add up: " << first);
+    CHECK(bad == 0);
+}
+
+// What every row of any replay holds: SP paid the chord exactly when it paid
+// it points (D2), and the disc doubles exactly then.
+void check_disc_follows_payment(const ReplayResult& r, const std::string& what) {
+    size_t bad = 0, first = 0;
+    for (size_t i = 0; i < r.chords.size(); ++i) {
+        const ReplayChord& c = r.chords[i];
+        if ((c.in_sp != (c.points.sp > 0) ||
+             c.multiplier_shown != shown_multiplier(c.multiplier_after, c.in_sp)) &&
+            bad++ == 0)
+            first = i;
+    }
+    INFO(what << ": first row whose disc does not follow SP's payment: " << first);
+    CHECK(bad == 0);
+}
+
+}  // namespace
+
+// The open-window walk on five hand-built windows, alone and together, under
+// every leeway variant. "late" squeezes out the phrase chord 479 ms past its
+// SP end. "early" squeezes out the chord at 2304, before its SP end. "plain"
+// ends at tick 3100, 28 ticks (72.9 ms) after the chord at 3072. "near" ends
+// at tick 3000 (7812.5 ms), so the chord at 3072 is 187.5 ms past it. "tick"
+// ends one tick (2.6 ms) before the chord at 3072.
+TEST_CASE("replay: the open-window walk pins every row on hand-built windows") {
+    const Song song = squeeze_chart();
+    const ReplayWindow late = window(0, 3072, 3256);
+    const ReplayWindow early = window(768, 3072, 2304);
+    const ReplayWindow plain = window(1536, 3100);
+    const ReplayWindow near_w = window(0, 3000);
+    const ReplayWindow tick = window(1536, 3071);
+    const std::vector<ReplayWindow> all = {late, early, plain, near_w, tick};
+    const std::vector<ReplayWindow> reversed = {tick, near_w, plain, early, late};
+
+    // The default rules, every row in full. By hand: each chord is two notes
+    // at 50 points (base 100); the multiplier steps to x2 at the tenth note,
+    // the second note of chord 4 (combo 50). SP doubles what a chord scores,
+    // so a window pays chords 0-3 100 points and chord 4 150. A chord at or
+    // before D always counts; one after it counts only inside the 3 ms
+    // leeway. So the late window pays chords 0-4 and not the phrase chord
+    // 479 ms past D. The early window pays 1 and 2, on its squeezed-out
+    // chord 3 only the second note (50), and nothing after it. The plain
+    // window pays 2-4 and not chord 5, 406 ms past D. The near window pays
+    // 0-3: chord 4 is 187.5 ms past D. The tick window pays 2-4: chord 4 is
+    // 2.6 ms past D, inside the leeway.
+    const core::Rules& rules = core::default_rules();
+    check_lines(row_lines(replay_path(song, {late}, rules)),
+                {"0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=200",
+                 "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=400",
+                 "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=600",
+                 "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=800",
+                 "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=150 SP shown=x4 cum=1100",
+                 "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=1300"},
+                "late");
+    check_lines(row_lines(replay_path(song, {early}, rules)),
+                {"0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=0 -- shown=x1 cum=100",
+                 "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=300",
+                 "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=500",
+                 "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=50 SP shown=x2 cum=650",
+                 "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=0 -- shown=x2 cum=800",
+                 "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=1000"},
+                "early");
+    check_lines(row_lines(replay_path(song, {plain}, rules)),
+                {"0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=0 -- shown=x1 cum=100",
+                 "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=0 -- shown=x1 cum=200",
+                 "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=400",
+                 "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=600",
+                 "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=150 SP shown=x4 cum=900",
+                 "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=1100"},
+                "plain");
+    check_lines(row_lines(replay_path(song, {near_w}, rules)),
+                {"0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=200",
+                 "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=400",
+                 "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=600",
+                 "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=100 SP shown=x2 cum=800",
+                 "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=0 -- shown=x2 cum=950",
+                 "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=1150"},
+                "near");
+    // Together each chord's SP points are the five windows' sum: chord 2 is
+    // 100 from four windows, chord 4 150 from late, plain and tick.
+    const std::vector<std::string> all_rows = {
+        "0 t0 m1.1.0 c0->2 x1/1 base=100 combo=0 sp=200 SP shown=x2 cum=300",
+        "1 t768 m2.1.0 c2->4 x1/1 base=100 combo=0 sp=300 SP shown=x2 cum=700",
+        "2 t1536 m3.1.0 c4->6 x1/1 base=100 combo=0 sp=500 SP shown=x2 cum=1300",
+        "3 t2304 m4.1.0 c6->8 x1/1 base=100 combo=0 sp=450 SP shown=x2 cum=1850",
+        "4 t3072 m5.1.0 c8->10 x1/2 base=100 combo=50 sp=450 SP shown=x4 cum=2450",
+        "5 t3256 m5.1.184 c10->12 x2/2 base=100 combo=100 sp=0 -- shown=x2 cum=2650"};
+    check_lines(row_lines(replay_path(song, all, rules)), all_rows, "all five");
+    check_lines(row_lines(replay_path(song, reversed, rules)), all_rows,
+                "all five, listed in reverse");
+
+    // Every leeway variant, one line per window list: late, early, plain,
+    // near, tick, all five. With no leeway (0 or -5 ms) the tick window stops
+    // paying chord 4. With 250 ms the near window pays it too. Under the
+    // whole-chord rule the early window's squeezed-out chord earns nothing.
+    const std::vector<std::vector<std::string>> want = {
+        {"sp 100 100 100 100 150 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2",
+         "sp 0 100 100 50 0 0 paid -YYY-- shown x1 x2 x2 x2 x2 x2",
+         "sp 0 0 100 100 150 0 paid --YYY- shown x1 x1 x2 x2 x4 x2",
+         "sp 100 100 100 100 0 0 paid YYYY-- shown x2 x2 x2 x2 x2 x2",
+         "sp 0 0 100 100 150 0 paid --YYY- shown x1 x1 x2 x2 x4 x2",
+         "sp 200 300 500 450 450 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2"},
+        {"sp 100 100 100 100 150 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2",
+         "sp 0 100 100 50 0 0 paid -YYY-- shown x1 x2 x2 x2 x2 x2",
+         "sp 0 0 100 100 150 0 paid --YYY- shown x1 x1 x2 x2 x4 x2",
+         "sp 100 100 100 100 0 0 paid YYYY-- shown x2 x2 x2 x2 x2 x2",
+         "sp 0 0 100 100 0 0 paid --YY-- shown x1 x1 x2 x2 x2 x2",
+         "sp 200 300 500 450 300 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2"},
+        {"sp 100 100 100 100 150 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2",
+         "sp 0 100 100 50 0 0 paid -YYY-- shown x1 x2 x2 x2 x2 x2",
+         "sp 0 0 100 100 150 0 paid --YYY- shown x1 x1 x2 x2 x4 x2",
+         "sp 100 100 100 100 0 0 paid YYYY-- shown x2 x2 x2 x2 x2 x2",
+         "sp 0 0 100 100 0 0 paid --YY-- shown x1 x1 x2 x2 x2 x2",
+         "sp 200 300 500 450 300 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2"},
+        {"sp 100 100 100 100 150 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2",
+         "sp 0 100 100 50 0 0 paid -YYY-- shown x1 x2 x2 x2 x2 x2",
+         "sp 0 0 100 100 150 0 paid --YYY- shown x1 x1 x2 x2 x4 x2",
+         "sp 100 100 100 100 150 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2",
+         "sp 0 0 100 100 150 0 paid --YYY- shown x1 x1 x2 x2 x4 x2",
+         "sp 200 300 500 450 600 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2"},
+        {"sp 100 100 100 100 150 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2",
+         "sp 0 100 100 0 0 0 paid -YY--- shown x1 x2 x2 x1 x2 x2",
+         "sp 0 0 100 100 150 0 paid --YYY- shown x1 x1 x2 x2 x4 x2",
+         "sp 100 100 100 100 0 0 paid YYYY-- shown x2 x2 x2 x2 x2 x2",
+         "sp 0 0 100 100 150 0 paid --YYY- shown x1 x1 x2 x2 x4 x2",
+         "sp 200 300 500 400 450 0 paid YYYYY- shown x2 x2 x2 x2 x4 x2"}};
+    const std::vector<core::Rules> variants = leeway_variants();
+    REQUIRE(variants.size() == want.size());
+    for (size_t v = 0; v < variants.size(); ++v) {
+        const core::Rules& r = variants[v];
+        std::vector<std::string> got;
+        for (const std::vector<ReplayWindow>& wl : std::vector<std::vector<ReplayWindow>>{
+                 {late}, {early}, {plain}, {near_w}, {tick}, all})
+            got.push_back(compact_line(replay_path(song, wl, r)));
+        CHECK(compact_line(replay_path(song, reversed, r)) == got.back());
+        check_lines(got, want[v], rules_label(r));
+    }
+}
+
+// Two windows that never overlap, each ending on a one-note chord it squeezes
+// out on its deactivation node. SP pays that chord nothing, so under D2 its
+// disc stays plain, while the chords inside each window are paid. (The old
+// rule, which counted any window that reached the chord, doubled it.)
+TEST_CASE("replay: disjoint windows that squeeze out a one-note chord on D") {
+    Song song(192);
+    song.tpm_changes[0] = 768;
+    song.bpm_changes[0] = 120.0;
+    song.build_timing();
+    for (int64_t tick : {0, 768, 1536, 2304, 3072, 3840, 4608}) {
+        SongTimestamp ts;
+        ts.timecode = song.timecode(tick);
+        ts.chord.add_note(NoteColor::Red);
+        song.sequence.push_back(ts);
+    }
+    const std::vector<ReplayWindow> wl = {window(0, 1536, 1536), window(2304, 3840, 3840)};
+    std::vector<std::string> got;
+    for (const core::Rules& r : leeway_variants()) {
+        const ReplayResult res = replay_path(song, wl, r);
+        got.push_back(rules_label(r) + ": " + compact_line(res));
+        check_windows_add_up(song, wl, r, res, rules_label(r));
+    }
+    // By hand: one red note is 50 points, and SP doubles it. Chords 0 and 1
+    // are paid by the first window, 3 and 4 by the second. Chords 2 and 5 sit
+    // on their window's D (offset 0, so every leeway counts them) and are
+    // squeezed out: a one-note chord keeps nothing of its doubling under
+    // either rule, so SP pays 0 and the disc stays x1. Chord 6 is after both.
+    check_lines(got,
+                {"leeway 3 ms: sp 50 50 0 50 50 0 0 paid YY-YY-- shown x2 x2 x1 x2 x2 x1 x1",
+                 "leeway 0 ms: sp 50 50 0 50 50 0 0 paid YY-YY-- shown x2 x2 x1 x2 x2 x1 x1",
+                 "leeway -5 ms: sp 50 50 0 50 50 0 0 paid YY-YY-- shown x2 x2 x1 x2 x2 x1 x1",
+                 "leeway 250 ms: sp 50 50 0 50 50 0 0 paid YY-YY-- shown x2 x2 x1 x2 x2 x1 x1",
+                 "whole-chord squeeze-out: sp 50 50 0 50 50 0 0 paid YY-YY-- shown x2 x2 x1 x2 x2 "
+                 "x1 x1"},
+                "disjoint squeeze-outs");
+}
+
+// Many windows on the longest corpus chart: overlapping freely, deactivation
+// nodes a few ticks off a chord, squeeze-outs before and after D. Listing
+// them in another order gives the same rows, and each row's SP points are
+// what the windows pay it one at a time.
+TEST_CASE("replay: window order does not matter and SP points add up window by window") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const Song* longest = nullptr;
     std::string longest_path;
     for (const std::string& path : corpus::chart_paths()) {
@@ -1492,59 +1544,47 @@ TEST_CASE("replay: the open-window walk equals the every-window walk with 2,000 
     REQUIRE(longest->sequence.size() > 500);
     INFO("chart: " << longest_path << " (" << longest->sequence.size() << " chords)");
 
-    for (uint64_t seed : {1ULL, 2ULL, 3ULL}) {
-        const std::vector<ReplayWindow> wl = synthetic_windows(*longest, 2000, seed);
-        for (const core::Rules& rules : leeway_variants()) {
-            const ReplayResult want = reference_replay_path(*longest, wl, rules);
-            const std::string d = first_result_difference(want, replay_path(*longest, wl, rules));
-            INFO("seed " << seed << ", leeway " << rules.backend_leeway_ms);
-            CHECK(d.empty());
-            // The windows must actually pay something, or the test proves
-            // nothing about the exit rule.
-            CHECK(want.final.sp > 0);
-        }
+    const std::vector<ReplayWindow> wl = synthetic_windows(*longest, 2000, 1);
+    std::vector<ReplayWindow> reversed(wl.rbegin(), wl.rend());
+    // The first 120 windows for the window-by-window sum: 120 replays each.
+    const std::vector<ReplayWindow> few(wl.begin(), wl.begin() + 120);
+    for (const core::Rules& rules : leeway_variants()) {
+        const std::string what = rules_label(rules);
+        const ReplayResult r = replay_path(*longest, wl, rules);
+        INFO(what);
+        CHECK(first_result_difference(r, replay_path(*longest, reversed, rules)).empty());
+        // The windows must actually pay something, or this proves nothing.
+        CHECK(r.final.sp > 0);
+        check_disc_follows_payment(r, what);
+        check_windows_add_up(*longest, few, rules, replay_path(*longest, few, rules), what);
     }
 }
 
-// The random windows above overlap freely, so nearly every squeezed-out chord
-// is also paid by another window and its in_sp is the same under the old and
-// the new rule: that test cannot see decision D2. These windows never overlap,
-// and each ends on a one-note chord it squeezes out, which SP pays 0 for. The
-// open-window walk must match the paid-based reference walk, and the old
-// claim-based walk must differ from it somewhere, or this proves nothing.
-TEST_CASE("replay: disjoint squeezed-out windows are told apart from the old in_sp rule") {
+// Every stored path on the corpus: the disc follows what SP paid on every
+// row, and on each root path each row's SP points are the sum of what its
+// windows pay one at a time. (The totals themselves are held to the engine's
+// by "replay reproduces the engine's score for every corpus path".)
+TEST_CASE("replay: on every corpus path the disc follows SP's payment and windows add up") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const Song* longest = nullptr;
+    int charts = 0, runs = 0;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
-        if (!longest || song.sequence.size() > longest->sequence.size()) longest = &song;
+        if (song.is_empty()) continue;
+        ++charts;
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+        for (const Path* p : rec.all_paths()) {
+            ++runs;
+            const std::vector<ReplayWindow> wl = windows_for_path(*p);
+            const ReplayResult r = replay_path(song, wl, cfg.rules);
+            check_disc_follows_payment(r, path);
+        }
+        for (const Path& p : rec.paths) {
+            const std::vector<ReplayWindow> wl = windows_for_path(p);
+            check_windows_add_up(song, wl, cfg.rules, replay_path(song, wl, cfg.rules), path);
+        }
     }
-    REQUIRE(longest != nullptr);
-
-    std::vector<ReplayWindow> wl;
-    size_t free_from = 0;  // the first chord the next window may start on
-    for (size_t i = 0; i < longest->sequence.size(); ++i) {
-        if (i < free_from + 2 || longest->sequence[i].chord.count() != 1) continue;
-        ReplayWindow w;
-        w.act_tick = longest->sequence[free_from].timecode.ticks();
-        w.deact_tick = longest->sequence[i].timecode.ticks();
-        w.sqout_tick = w.deact_tick;
-        wl.push_back(w);
-        free_from = i + 1;
-    }
-    REQUIRE(wl.size() > 50);
-
-    size_t differing_chords = 0;
-    for (const core::Rules& rules : leeway_variants()) {
-        const ReplayResult paid = reference_replay_path(*longest, wl, rules, true);
-        const ReplayResult claimed = reference_replay_path(*longest, wl, rules, false);
-        INFO("leeway " << rules.backend_leeway_ms);
-        CHECK(first_result_difference(paid, replay_path(*longest, wl, rules)).empty());
-        REQUIRE(paid.chords.size() == claimed.chords.size());
-        for (size_t i = 0; i < paid.chords.size(); ++i)
-            if (paid.chords[i].in_sp != claimed.chords[i].in_sp) ++differing_chords;
-    }
-    CHECK(differing_chords > 0);
+    CHECK(charts > 0);
+    CHECK(runs > charts);
 }
 
 TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score the same") {
@@ -1608,15 +1648,12 @@ TEST_CASE("replay timing: 2,000 activations on the Discography chart" * doctest:
         }
         return best;
     };
-    ReplayResult a, b, c, z;
-    const double old_ms = best_ms([&] { a = reference_replay_path(song, wl, rules); });
+    ReplayResult b, c, z;
     const double new_ms = best_ms([&] { b = replay_path(song, wl, rules); });
     const double lean_ms = best_ms([&] { c = replay_path(song, wl, rules, scores); });
     const double none_ms = best_ms([&] { z = replay_path(song, {}, rules); });
-    CHECK(first_result_difference(a, b).empty());
-    CHECK(first_result_difference(a, c, true).empty());
+    CHECK(first_result_difference(b, c, true).empty());
     MESSAGE(song.sequence.size() << " chords, " << wl.size() << " windows, best of 3:"
-            << " every-window walk " << old_ms << " ms, open-window walk " << new_ms
-            << " ms, open-window scores-only " << lean_ms << " ms, no windows "
-            << none_ms << " ms");
+            << " open-window walk " << new_ms << " ms, scores-only " << lean_ms
+            << " ms, no windows " << none_ms << " ms");
 }

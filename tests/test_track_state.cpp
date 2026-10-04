@@ -4,7 +4,7 @@
 #include "doctest.h"
 
 #include <cstdint>
-#include <map>
+#include <cstdio>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -67,138 +67,112 @@ const TrackInstant* find(const std::vector<TrackInstant>& v, double t) {
     return nullptr;
 }
 
-// ---- The old builder, kept here as the reference ---------------------------
-// This is build_track_state as it was before the one-pass sweep: a std::map
-// of instants, and every span field of every instant computed by toggle_at
-// over all intervals. The real builder must match it exactly.
+// ---- Pinned timelines -------------------------------------------------------
+// Each hand-built case pins its whole timeline as text, printed once from
+// build_track_state and checked by hand in the case's comment. One line per
+// instant: the time in seconds, the gems ("R", "Yc" a yellow cymbal, "K" a
+// kick, "g" ghost, "a" accent, "-" none), the beat line, then the six span
+// states (od SP phrase, so solo, fi offered fill, ft taken fill, sp active SP,
+// ln lit lane) and the lit lane's pad. A span state is "." absent, "S" start,
+// "O" on, "R" restart, "E" end.
 
-std::optional<Pad> ref_pad_of(PreviewLane lane) {
-    switch (lane) {
-        case PreviewLane::Red:    return Pad::Red;
-        case PreviewLane::Yellow: return Pad::Yellow;
-        case PreviewLane::Blue:   return Pad::Blue;
-        case PreviewLane::Green:  return Pad::Green;
-        case PreviewLane::Kick:   break;
+const char* toggle_code(Toggle t) {
+    switch (t) {
+        case Toggle::Empty:   return ".";
+        case Toggle::Start:   return "S";
+        case Toggle::On:      return "O";
+        case Toggle::Restart: return "R";
+        case Toggle::End:     return "E";
     }
-    return std::nullopt;
+    return "?";
 }
 
-TrackGem ref_gem_of(const PreviewNote& n, bool pro) {
-    TrackGem g;
-    if (n.lane == PreviewLane::Kick) {
-        g.kick = true;
-    } else {
-        g.pad = *ref_pad_of(n.lane);
-        g.cymbal = pro && n.cymbal && n.lane != PreviewLane::Red;
+const char* pad_code(Pad p) {
+    switch (p) {
+        case Pad::Red:    return "R";
+        case Pad::Yellow: return "Y";
+        case Pad::Blue:   return "B";
+        case Pad::Green:  return "G";
     }
-    g.velocity = n.ghost ? Velocity::Ghost : n.accent ? Velocity::Accent : Velocity::Normal;
-    return g;
+    return "?";
 }
 
-struct RefSpans {
-    using Iv = std::pair<double, double>;
-    std::vector<Iv> overdrive, solo, fill, fill_taken, sp_active;
-    std::vector<std::pair<Iv, Pad>> fill_lane;
-
-    explicit RefSpans(const PreviewScene& scene) {
-        auto span_iv = [&scene](const PreviewSpan& s) {
-            const double end_ms = scene.timing->ms_index().ms_at_tick_f(
-                static_cast<double>(s.end_tick) + 0.5);
-            return Iv{s.start_ms / 1000.0, end_ms / 1000.0};
-        };
-        for (const PreviewSpan& s : scene.sp_phrases) overdrive.push_back(span_iv(s));
-        for (const PreviewSpan& s : scene.solos) solo.push_back(span_iv(s));
-        for (const PreviewFill& f : scene.fills) {
-            if (f.state == PreviewFillState::Offered)
-                fill.push_back(span_iv(f.span));
-            else if (f.state == PreviewFillState::Taken)
-                fill_taken.push_back(span_iv(f.span));
-        }
-        for (const PreviewActivation& a : scene.activations) {
-            if (a.has_sp_end && a.sp_end_ms > a.ms)
-                sp_active.push_back({a.ms / 1000.0, a.sp_end_ms / 1000.0});
-            if (a.has_lane) {
-                std::optional<Pad> pad = ref_pad_of(a.lane);
-                if (!pad) continue;
-                for (const PreviewFill& f : scene.fills) {
-                    if (f.state != PreviewFillState::Taken || f.span.end_tick != a.tick) continue;
-                    fill_lane.push_back({span_iv(f.span), *pad});
-                    break;
-                }
-            }
-        }
+std::string instant_line(const TrackInstant& i, bool show_cymbals = true) {
+    char t[32];
+    std::snprintf(t, sizeof t, "%.6f", i.t);
+    std::string s = t;
+    s += " ";
+    if (i.notes.empty()) s += "-";
+    for (size_t k = 0; k < i.notes.size(); ++k) {
+        const TrackGem& g = i.notes[k];
+        if (k > 0) s += ",";
+        s += g.kick ? "K" : pad_code(g.pad);
+        if (show_cymbals && g.cymbal) s += "c";
+        if (g.velocity == Velocity::Ghost) s += "g";
+        if (g.velocity == Velocity::Accent) s += "a";
     }
+    s += " ";
+    if (!i.beat) s += "-";
+    else if (*i.beat == PreviewBeatKind::Bar) s += "bar";
+    else if (*i.beat == PreviewBeatKind::Beat) s += "beat";
+    else s += "half";
+    s += std::string(" od=") + toggle_code(i.overdrive) + " so=" + toggle_code(i.solo) +
+         " fi=" + toggle_code(i.fill) + " ft=" + toggle_code(i.fill_taken) +
+         " sp=" + toggle_code(i.sp_active) + " ln=" + toggle_code(i.fill_lane) +
+         " pad=" + (i.fill_lane_pad ? pad_code(*i.fill_lane_pad) : "-");
+    return s;
+}
 
-    TrackInstant synthesize(double t) const {
-        TrackInstant inst;
-        inst.t = t;
-        inst.overdrive = toggle_at(overdrive, t);
-        inst.solo = toggle_at(solo, t);
-        inst.fill = toggle_at(fill, t);
-        inst.fill_taken = toggle_at(fill_taken, t);
-        inst.sp_active = toggle_at(sp_active, t);
-        std::vector<Iv> lane_ivs;
-        for (const auto& li : fill_lane) lane_ivs.push_back(li.first);
-        inst.fill_lane = toggle_at(lane_ivs, t);
-        if (inst.fill_lane != Toggle::Empty) {
-            for (const auto& li : fill_lane)
-                if (li.first.first == t || (li.first.first < t && t < li.first.second)) {
-                    inst.fill_lane_pad = li.second;
-                    break;
-                }
-            if (!inst.fill_lane_pad)
-                for (const auto& li : fill_lane)
-                    if (li.first.second == t) {
-                        inst.fill_lane_pad = li.second;
-                        break;
-                    }
-        }
-        return inst;
-    }
-};
+std::vector<std::string> instant_lines(const TrackState& st, bool show_cymbals = true) {
+    std::vector<std::string> out;
+    for (const TrackInstant& i : st.instants()) out.push_back(instant_line(i, show_cymbals));
+    return out;
+}
 
-std::vector<TrackInstant> reference_build(const PreviewScene& scene, bool pro) {
-    RefSpans spans(scene);
-    std::map<double, TrackInstant> by_time;
-    auto at = [&](double t) -> TrackInstant& {
-        TrackInstant& inst = by_time[t];
-        inst.t = t;
-        return inst;
-    };
-    for (const PreviewNote& n : scene.notes) at(n.ms / 1000.0).notes.push_back(ref_gem_of(n, pro));
-    for (const PreviewBeat& b : scene.beats) at(b.ms / 1000.0).beat = b.kind;
-    for (const auto* ivs : {&spans.overdrive, &spans.solo, &spans.fill, &spans.fill_taken,
-                            &spans.sp_active})
-        for (const auto& iv : *ivs) {
-            at(iv.first);
-            at(iv.second);
-        }
-    for (const auto& li : spans.fill_lane) {
-        at(li.first.first);
-        at(li.first.second);
-    }
-    std::vector<TrackInstant> out;
-    for (auto& kv : by_time) {
-        TrackInstant inst = std::move(kv.second);
-        TrackInstant filled = spans.synthesize(inst.t);
-        inst.overdrive = filled.overdrive;
-        inst.solo = filled.solo;
-        inst.fill = filled.fill;
-        inst.fill_taken = filled.fill_taken;
-        inst.sp_active = filled.sp_active;
-        inst.fill_lane = filled.fill_lane;
-        inst.fill_lane_pad = filled.fill_lane_pad;
-        out.push_back(std::move(inst));
+// The empty-window fallback between each pair of neighbouring instants: the
+// one instant window() synthesizes at their midpoint.
+std::vector<std::string> gap_lines(const TrackState& st) {
+    std::vector<std::string> out;
+    const std::vector<TrackInstant>& v = st.instants();
+    for (size_t i = 0; i + 1 < v.size(); ++i) {
+        TrackWindow w = st.window(v[i].t, v[i + 1].t);
+        REQUIRE(w.size() == 1);
+        out.push_back(instant_line(w[0]));
     }
     return out;
 }
 
+// On a mismatch the lines actually built are printed as C++ literals, so a
+// deliberate change can be read, checked by hand and pasted.
+void check_lines(const std::vector<std::string>& got, const std::vector<std::string>& want,
+                 const char* what) {
+    std::string literals;
+    if (got != want)
+        for (const std::string& l : got) literals += "    \"" + l + "\",\n";
+    INFO(what << " built:\n" << literals);
+    CHECK(got == want);
+}
+
+// The scene's pinned timeline and gaps with pro drums on. With pro drums off
+// the timeline is the same except that no gem is a cymbal.
+void check_pinned(const PreviewScene& scene, const std::vector<std::string>& want_instants,
+                  const std::vector<std::string>& want_gaps) {
+    TrackState st = build_track_state(scene, TrackStateOptions{true});
+    check_lines(instant_lines(st), want_instants, "instants");
+    check_lines(gap_lines(st), want_gaps, "gaps");
+
+    TrackState flat = build_track_state(scene, TrackStateOptions{false});
+    CHECK(instant_lines(flat, false) == instant_lines(st, false));
+    for (const TrackInstant& i : flat.instants())
+        for (const TrackGem& g : i.notes) CHECK_FALSE(g.cymbal);
+}
+
+// Every field of an instant: time, gems in order, beat, the seven span states.
 bool same_gem(const TrackGem& a, const TrackGem& b) {
     return a.kick == b.kick && (a.kick || a.pad == b.pad) && a.cymbal == b.cymbal &&
            a.velocity == b.velocity;
 }
 
-// Every field of an instant: time, gems in order, beat, the seven span states.
 bool same_instant(const TrackInstant& a, const TrackInstant& b) {
     if (a.t != b.t || a.notes.size() != b.notes.size() || a.beat != b.beat) return false;
     for (size_t i = 0; i < a.notes.size(); ++i)
@@ -206,37 +180,6 @@ bool same_instant(const TrackInstant& a, const TrackInstant& b) {
     return a.overdrive == b.overdrive && a.solo == b.solo && a.fill == b.fill &&
            a.fill_taken == b.fill_taken && a.sp_active == b.sp_active &&
            a.fill_lane == b.fill_lane && a.fill_lane_pad == b.fill_lane_pad;
-}
-
-// The real builder against the reference, with pro drums on and off. Also
-// checks the empty-window fallback between every pair of neighbouring
-// instants against the reference's synthesize.
-void check_same_as_reference(const PreviewScene& scene) {
-    for (bool pro : {true, false}) {
-        TrackState st = build_track_state(scene, TrackStateOptions{pro});
-        std::vector<TrackInstant> ref = reference_build(scene, pro);
-        REQUIRE(st.instants().size() == ref.size());
-        size_t mismatches = 0;
-        for (size_t i = 0; i < ref.size(); ++i)
-            if (!same_instant(st.instants()[i], ref[i])) {
-                if (mismatches++ < 5) {
-                    INFO("instant " << i << " at t=" << ref[i].t);
-                    CHECK(same_instant(st.instants()[i], ref[i]));
-                }
-            }
-        CHECK(mismatches == 0);
-
-        if (!pro) continue;
-        RefSpans spans(scene);
-        size_t synth_mismatches = 0;
-        for (size_t i = 0; i + 1 < ref.size(); ++i) {
-            const double near_s = ref[i].t, far_s = ref[i + 1].t;
-            TrackWindow w = st.window(near_s, far_s);
-            REQUIRE(w.size() == 1);
-            if (!same_instant(w[0], spans.synthesize((near_s + far_s) / 2.0))) ++synth_mismatches;
-        }
-        CHECK(synth_mismatches == 0);
-    }
 }
 
 }  // namespace
@@ -284,7 +227,16 @@ TEST_CASE("build_track_state: gems, pro-off, and the phrase end note reads insid
     TrackState flat = build_track_state(scene, TrackStateOptions{false});
     for (const TrackInstant& i : flat.instants())
         for (const TrackGem& g : i.notes) CHECK_FALSE(g.cymbal);
-    check_same_as_reference(scene);
+    // The whole timeline, and between instants the phrase reads on from its
+    // start until its end edge and absent elsewhere.
+    check_pinned(scene,
+                 {"0.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.500000 Ycg,K - od=S so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.000000 Gca - od=O so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.000500 - - od=E so=. fi=. ft=. sp=. ln=. pad=-"},
+                 {"0.250000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.750000 - - od=O so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.000250 - - od=O so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
 TEST_CASE("build_track_state: active SP window ends exactly at the deact node") {
@@ -309,7 +261,14 @@ TEST_CASE("build_track_state: active SP window ends exactly at the deact node") 
     CHECK(find(st.instants(), 4.0)->sp_active == Toggle::Empty);
     // No instant at 3.0005: the window is exact, not epsilon-extended.
     CHECK(find(st.instants(), 3.0005) == nullptr);
-    check_same_as_reference(scene);
+    check_pinned(scene,
+                 {"0.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.000000 - - od=. so=. fi=. ft=. sp=S ln=. pad=-",
+                  "3.000000 - - od=. so=. fi=. ft=. sp=E ln=. pad=-",
+                  "4.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
+                 {"0.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "2.000000 - - od=. so=. fi=. ft=. sp=O ln=. pad=-",
+                  "3.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
 TEST_CASE("build_track_state: taken, offered and hidden fills toggle different spans") {
@@ -360,7 +319,24 @@ TEST_CASE("build_track_state: taken, offered and hidden fills toggle different s
     CHECK(act->fill_taken == Toggle::On);
     CHECK(act->fill_lane == Toggle::On);
     CHECK(act->fill == Toggle::Empty);
-    check_same_as_reference(scene);
+    // Taken [1.0, 2.0005] lights Green; offered [4.0, 5.0005]; the hidden
+    // fill adds no instant at 7.0 or 8.0005.
+    check_pinned(scene,
+                 {"0.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.000000 - - od=. so=. fi=. ft=S sp=. ln=S pad=G",
+                  "2.000000 G - od=. so=. fi=. ft=O sp=. ln=O pad=G",
+                  "2.000500 - - od=. so=. fi=. ft=E sp=. ln=E pad=G",
+                  "4.000000 - - od=. so=. fi=S ft=. sp=. ln=. pad=-",
+                  "5.000000 G - od=. so=. fi=O ft=. sp=. ln=. pad=-",
+                  "5.000500 - - od=. so=. fi=E ft=. sp=. ln=. pad=-",
+                  "8.000000 G - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
+                 {"0.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.500000 - - od=. so=. fi=. ft=O sp=. ln=O pad=G",
+                  "2.000250 - - od=. so=. fi=. ft=O sp=. ln=O pad=G",
+                  "3.000250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "4.500000 - - od=. so=. fi=O ft=. sp=. ln=. pad=-",
+                  "5.000250 - - od=. so=. fi=O ft=. sp=. ln=. pad=-",
+                  "6.500250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
 TEST_CASE("build_track_state: beats land on instants; solo toggles") {
@@ -377,7 +353,14 @@ TEST_CASE("build_track_state: beats land on instants; solo toggles") {
     CHECK(find(st.instants(), 0.25)->notes.size() == 1);
     CHECK(find(st.instants(), 0.25)->solo == Toggle::Start);
     CHECK(find(st.instants(), 0.2505)->solo == Toggle::End);
-    check_same_as_reference(scene);
+    check_pinned(scene,
+                 {"0.000000 - bar od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.250000 R half od=. so=S fi=. ft=. sp=. ln=. pad=-",
+                  "0.250500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-",
+                  "0.500000 - beat od=. so=. fi=. ft=. sp=. ln=. pad=-"},
+                 {"0.125000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.250250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "0.375250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
 TEST_CASE("window: strict bounds, and a synthesized instant when empty") {
@@ -405,7 +388,16 @@ TEST_CASE("window: strict bounds, and a synthesized instant when empty") {
     TrackWindow before = st.window(0.1, 0.5);
     REQUIRE(before.size() == 1);
     CHECK(before[0].solo == Toggle::Empty);
-    check_same_as_reference(scene);
+    check_pinned(scene,
+                 {"0.900000 - - od=. so=S fi=. ft=. sp=. ln=. pad=-",
+                  "1.000000 R - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "2.000000 R - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "3.000000 R - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "3.100500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-"},
+                 {"0.950000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "1.500000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "2.500000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "3.050250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-"});
 }
 
 TEST_CASE("make_toggle_bounds: covers [near, far], merges equal neighbours") {
@@ -440,7 +432,20 @@ TEST_CASE("make_toggle_bounds: covers [near, far], merges equal neighbours") {
     CHECK(mid_spans[0].on);
     CHECK(mid_spans[0].t1 == doctest::Approx(1.5));
     CHECK(mid_spans[0].t2 == doctest::Approx(2.5));
-    check_same_as_reference(scene);
+    // [1.0, 2.0005] and [2.0, 3.0005]: each edge at 2.0 and 2.0005 falls
+    // inside the other solo, so both read On.
+    check_pinned(scene,
+                 {"0.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.000000 - - od=. so=S fi=. ft=. sp=. ln=. pad=-",
+                  "2.000000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "2.000500 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "3.000500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-",
+                  "10.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
+                 {"0.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.500000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "2.000250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "2.500500 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "6.500250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
 TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (480 res, 300 BPM)") {
@@ -472,7 +477,16 @@ TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (48
     REQUIRE(next);
     CHECK(last_in->overdrive == Toggle::On);
     CHECK(next->overdrive == Toggle::Empty);
-    check_same_as_reference(scene);
+    // At 300 BPM and 480 ticks a beat a tick is 1/2400 s: tick 480 is 0.2 s,
+    // the phrase's end edge (tick 480.5) 0.200208 s, tick 481 0.200417 s.
+    check_pinned(scene,
+                 {"0.000000 R - od=S so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.200000 Y - od=O so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.200208 - - od=E so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.200417 B - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
+                 {"0.100000 - - od=O so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.200104 - - od=O so=. fi=. ft=. sp=. ln=. pad=-",
+                  "0.200313 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
 TEST_CASE("build_track_state: spans need the song timing") {
@@ -485,7 +499,7 @@ TEST_CASE("build_track_state: spans need the song timing") {
     PreviewScene plain;
     plain.notes = {note(1000.0, PreviewLane::Red)};
     CHECK(build_track_state(plain, TrackStateOptions{}).instants().size() == 1);
-    check_same_as_reference(plain);
+    check_pinned(plain, {"1.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"}, {});
 }
 
 // The renderer asks for this window every frame. It used to be a vector of
@@ -506,125 +520,120 @@ TEST_CASE("window: a view into the state, not a copy") {
 
     // Walking it backwards reaches the same objects.
     CHECK(&*w.rbegin() == &w[w.size() - 1]);
-    check_same_as_reference(scene);
+    check_pinned(scene,
+                 {"1.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "2.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "3.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
+                 {"1.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "2.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
-// The one-pass builder against the old per-instant one on a messy scene: a
-// fixed seed, over 2,000 instants, and in every span field overlapping,
-// touching, zero-length, nested and malformed (end before start) intervals.
-// Notes arrive out of time order and share moments with beats and edges.
-TEST_CASE("build_track_state: one pass matches the per-instant reference on a random scene") {
-    std::mt19937 rng(20261003u);
-    auto pick = [&rng](uint32_t n) { return static_cast<uint32_t>(rng() % n); };
-
+// The one-pass builder on a messy scene, every awkward interval shape at
+// least once, pinned instant by instant. 1 tick = 1 ms, so a span's end edge
+// is its end tick plus 0.5 ms.
+TEST_CASE("build_track_state: the one-pass sweep on overlapping, touching, empty and backwards spans") {
     PreviewScene scene = timed_scene();
-    const auto& ms_index = scene.timing->ms_index();
-    constexpr uint32_t kSpanTicks = 4000;
-    // Where a span with this end tick draws its end edge, in ms.
-    auto edge_ms = [&](int64_t end_tick) {
-        return ms_index.ms_at_tick_f(static_cast<double>(end_tick) + 0.5);
-    };
-    std::vector<double> edges;  // every edge so far, for touching spans and notes on edges
-
-    auto make_span = [&](std::optional<PreviewSpan> prev) {
-        PreviewSpan s;
-        s.end_tick = pick(kSpanTicks);
-        const double end_ms = edge_ms(s.end_tick);
-        switch (pick(7)) {
-            case 0:  // zero-length: starts exactly at its own end edge
-                s.start_ms = end_ms;
-                break;
-            case 1:  // malformed: starts after its end edge
-                s.start_ms = end_ms + 0.5 * (1 + pick(100));
-                break;
-            case 2:  // touching: starts at an earlier edge
-                if (!edges.empty()) {
-                    s.start_ms = edges[pick(static_cast<uint32_t>(edges.size()))];
-                    if (s.start_ms > end_ms) s.end_tick = static_cast<int64_t>(s.start_ms) + 1;
-                    break;
-                }
-                [[fallthrough]];
-            case 3:  // nested inside the previous span of this field
-                if (prev && prev->end_tick > 4) {
-                    s.start_ms = prev->start_ms + 1.0;
-                    s.end_tick = prev->end_tick - 2;
-                    break;
-                }
-                [[fallthrough]];
-            default:  // ordinary, often overlapping its neighbours
-                s.start_ms = end_ms - 0.5 * (1 + pick(800));
-                break;
-        }
-        s.start_tick = static_cast<int64_t>(s.start_ms);
-        s.end_ms = edge_ms(s.end_tick);
-        edges.push_back(s.start_ms);
-        edges.push_back(edge_ms(s.end_tick));
-        return s;
-    };
-    auto make_spans = [&](size_t n) {
-        std::vector<PreviewSpan> v;
-        std::optional<PreviewSpan> prev;
-        for (size_t i = 0; i < n; ++i) {
-            PreviewSpan s = make_span(prev);
-            v.push_back(s);
-            prev = s;
-        }
-        return v;
-    };
-
-    scene.sp_phrases = make_spans(60);
-    scene.solos = make_spans(60);
-    std::vector<PreviewSpan> offered = make_spans(60);
-    std::vector<PreviewSpan> taken = make_spans(60);
-    std::vector<PreviewSpan> hidden = make_spans(20);
-    for (const PreviewSpan& s : offered) scene.fills.push_back(fill(s, PreviewFillState::Offered));
-    for (const PreviewSpan& s : taken) scene.fills.push_back(fill(s, PreviewFillState::Taken));
-    for (const PreviewSpan& s : hidden) scene.fills.push_back(fill(s, PreviewFillState::Hidden));
-
-    // Activations: SP windows (some touching, some empty or backwards, so
-    // dropped) and lit lanes on taken fills (some on a kick, so dropped; some
-    // on no fill at all; several on the same fill).
-    double prev_end = 0.0;
-    for (int i = 0; i < 80; ++i) {
+    // SP phrases that overlap: [1.0, 2.0005] and [1.5, 2.5005].
+    scene.sp_phrases = {span(1000.0, 2000.0), span(1500.0, 2500.0)};
+    // Solos: zero-length ([3.0005, 3.0005]: it starts on its own end edge),
+    // backwards ([3.2, 3.1005]), and one nested in another ([4.2, 4.8005]
+    // inside [4.0, 5.0005]).
+    PreviewSpan zero = span(3000.0, 3000.0);
+    zero.start_ms = 3000.5;
+    PreviewSpan backwards = span(3200.0, 3100.0);
+    scene.solos = {zero, backwards, span(4000.0, 5000.0), span(4200.0, 4800.0)};
+    // Fills: an offered one, two taken ones that touch (the second starts on
+    // the first's end edge, 7.5005), and a hidden one that draws nothing.
+    PreviewSpan touching = span(7500.0, 8000.0);
+    touching.start_ms = 7500.5;
+    scene.fills = {fill(span(6000.0, 6500.0), PreviewFillState::Offered),
+                   fill(span(7000.0, 7500.0), PreviewFillState::Taken),
+                   fill(touching, PreviewFillState::Taken),
+                   fill(span(8500.0, 8800.0), PreviewFillState::Hidden)};
+    // Activations. SP windows: an ordinary one [1.2, 3.0], one that starts
+    // where it ends (dropped), one that ends before it starts (dropped), one
+    // with no stored end (dropped). Lit lanes: Green then Yellow on the first
+    // taken fill (the first listed wins), Blue on the touching one, a kick on
+    // it too (no pad: dropped), and Red on a tick with no fill (dropped).
+    auto act = [](double ms, double end_ms, bool has_end) {
         PreviewActivation a;
-        a.ms = pick(3) == 0 ? prev_end : 0.5 * pick(2 * kSpanTicks);
-        a.tick = static_cast<int64_t>(a.ms);
-        a.has_sp_end = pick(5) != 0;
-        a.sp_end_ms = a.ms + 0.5 * (static_cast<double>(pick(1200)) - 100.0);
-        a.sp_end_tick = static_cast<int64_t>(a.sp_end_ms);
-        if (a.has_sp_end && a.sp_end_ms > a.ms) prev_end = a.sp_end_ms;
-        if (pick(2) == 0) {
-            a.has_lane = true;
-            a.lane = static_cast<PreviewLane>(pick(5));
-            a.tick = pick(4) == 0 ? static_cast<int64_t>(pick(kSpanTicks))
-                                  : taken[pick(static_cast<uint32_t>(taken.size()))].end_tick;
-        }
-        scene.activations.push_back(a);
-    }
+        a.ms = ms;
+        a.tick = static_cast<int64_t>(ms);
+        a.has_sp_end = has_end;
+        a.sp_end_ms = end_ms;
+        a.sp_end_tick = static_cast<int64_t>(end_ms);
+        return a;
+    };
+    auto lane = [&](int64_t tick, PreviewLane l) {
+        PreviewActivation a = act(static_cast<double>(tick), 0.0, false);
+        a.has_lane = true;
+        a.lane = l;
+        return a;
+    };
+    scene.activations = {act(1200.0, 3000.0, true), act(3500.0, 3500.0, true),
+                         act(3600.0, 3400.0, true), act(3700.0, 9000.0, false),
+                         lane(7500, PreviewLane::Green), lane(7500, PreviewLane::Yellow),
+                         lane(8000, PreviewLane::Blue), lane(8000, PreviewLane::Kick),
+                         lane(9500, PreviewLane::Red)};
+    // Notes out of time order; a red cymbal (never a cymbal on the highway),
+    // a ghost and an accent; one note on the SP phrase's end edge (2.0005).
+    scene.notes = {note(5000.0, PreviewLane::Green, false, false, true),
+                   note(1000.0, PreviewLane::Red, true),
+                   note(1000.0, PreviewLane::Kick),
+                   note(2000.5, PreviewLane::Blue, true, true),
+                   note(7500.0, PreviewLane::Yellow, true)};
+    // Two beats on one moment (the last one listed wins), and one on an edge.
+    scene.beats = {{0, 2000.5, PreviewBeatKind::Bar}, {0, 2000.5, PreviewBeatKind::Half},
+                   {0, 6000.0, PreviewBeatKind::Beat}};
 
-    // Notes: chords, some on span edges, shuffled out of time order.
-    for (int i = 0; i < 1900; ++i) {
-        const double ms = pick(6) == 0 ? edges[pick(static_cast<uint32_t>(edges.size()))]
-                                       : static_cast<double>(pick(kSpanTicks));
-        const int chord = 1 + static_cast<int>(pick(3));
-        for (int c = 0; c < chord; ++c)
-            scene.notes.push_back(note(ms, static_cast<PreviewLane>(pick(5)), pick(2) == 0,
-                                       pick(5) == 0, pick(5) == 0));
-    }
-    std::shuffle(scene.notes.begin(), scene.notes.end(), rng);
-
-    // Beats on a quarter-millisecond grid, some on edges, some twice on one moment.
-    for (int i = 0; i < 500; ++i) {
-        PreviewBeat b;
-        b.ms = pick(4) == 0 ? edges[pick(static_cast<uint32_t>(edges.size()))]
-                            : 0.25 * pick(4 * kSpanTicks);
-        b.kind = static_cast<PreviewBeatKind>(pick(3));
-        scene.beats.push_back(b);
-    }
-
-    TrackState st = build_track_state(scene, TrackStateOptions{});
-    CHECK(st.instants().size() >= 2000);
-    check_same_as_reference(scene);
+    // By hand: at 1.0 the red cymbal draws as a plain red. At 2.0005 the
+    // first phrase's end edge sits inside the second phrase, so od stays On.
+    // The zero-length solo restarts at 3.0005 and is absent either side. The
+    // backwards solo ends at 3.1005 and starts at 3.2 but covers nothing
+    // between them or after. The nested solo's edges (4.2, 4.8005) read On.
+    // At 7.5005 one taken fill ends as the next starts: Restart, and the
+    // starting fill's Blue wins. The three dropped SP windows, the kick lane,
+    // the red lane on no fill and the hidden fill add no instant.
+    check_pinned(scene,
+                 {"1.000000 R,K - od=S so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.200000 - - od=O so=. fi=. ft=. sp=S ln=. pad=-",
+                  "1.500000 - - od=O so=. fi=. ft=. sp=O ln=. pad=-",
+                  "2.000500 Bcg half od=O so=. fi=. ft=. sp=O ln=. pad=-",
+                  "2.500500 - - od=E so=. fi=. ft=. sp=O ln=. pad=-",
+                  "3.000000 - - od=. so=. fi=. ft=. sp=E ln=. pad=-",
+                  "3.000500 - - od=. so=R fi=. ft=. sp=. ln=. pad=-",
+                  "3.100500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-",
+                  "3.200000 - - od=. so=S fi=. ft=. sp=. ln=. pad=-",
+                  "4.000000 - - od=. so=S fi=. ft=. sp=. ln=. pad=-",
+                  "4.200000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "4.800500 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "5.000000 Ga - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "5.000500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-",
+                  "6.000000 - beat od=. so=. fi=S ft=. sp=. ln=. pad=-",
+                  "6.500500 - - od=. so=. fi=E ft=. sp=. ln=. pad=-",
+                  "7.000000 - - od=. so=. fi=. ft=S sp=. ln=S pad=G",
+                  "7.500000 Yc - od=. so=. fi=. ft=O sp=. ln=O pad=G",
+                  "7.500500 - - od=. so=. fi=. ft=R sp=. ln=R pad=B",
+                  "8.000500 - - od=. so=. fi=. ft=E sp=. ln=E pad=B"},
+                 {"1.100000 - - od=O so=. fi=. ft=. sp=. ln=. pad=-",
+                  "1.350000 - - od=O so=. fi=. ft=. sp=O ln=. pad=-",
+                  "1.750250 - - od=O so=. fi=. ft=. sp=O ln=. pad=-",
+                  "2.250500 - - od=O so=. fi=. ft=. sp=O ln=. pad=-",
+                  "2.750250 - - od=. so=. fi=. ft=. sp=O ln=. pad=-",
+                  "3.000250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "3.050500 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "3.150250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "3.600000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "4.100000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "4.500250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "4.900250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "5.000250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
+                  "5.500250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "6.250250 - - od=. so=. fi=O ft=. sp=. ln=. pad=-",
+                  "6.750250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
+                  "7.250000 - - od=. so=. fi=. ft=O sp=. ln=O pad=G",
+                  "7.500250 - - od=. so=. fi=. ft=O sp=. ln=O pad=G",
+                  "7.750500 - - od=. so=. fi=. ft=O sp=. ln=O pad=B"});
 }
 
 // ---- rebuild_overlay_fields -------------------------------------------------
