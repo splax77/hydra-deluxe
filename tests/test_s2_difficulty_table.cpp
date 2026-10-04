@@ -9,36 +9,30 @@
 #include <utility>
 #include <vector>
 
+#include "difficulty_literals.h"
 #include "midi_util.h"
 #include "parse/song.h"
 
 using namespace hydra;
 
-TEST_CASE("difficulty table: kick, 2x kick and disco digit for every difficulty") {
-    // Clone Hero 1.1: 0x210D9C0 maps pitches 58-66 / 70-78 / 82-90 / 94-102 to
-    // Easy / Medium / Hard / Expert; 0x21555CD flags 59, 71, 83 and 95 as
-    // DoubleKick; 0x210D990 maps a mix digit 0-3 to Easy..Expert.
-    struct Want {
-        Difficulty d;
-        int kick;
-        int kick2x;
-        char mix;
-    };
-    const Want want[] = {{Difficulty::Expert, 96, 95, '3'},
-                         {Difficulty::Hard, 84, 83, '2'},
-                         {Difficulty::Medium, 72, 71, '1'},
-                         {Difficulty::Easy, 60, 59, '0'}};
-    REQUIRE(std::size(want) == std::size(kAllDifficulties));
-    for (const Want& w : want) {
-        const std::string name = difficulty_name(w.d);
-        CAPTURE(name);
+TEST_CASE("difficulty table: name, section, kick, 2x kick and disco digit for every difficulty") {
+    // The literals are Clone Hero's (tests/difficulty_literals.h).
+    REQUIRE(std::size(testdiff::kLiterals) == std::size(kAllDifficulties));
+    for (const testdiff::Literals& w : testdiff::kLiterals) {
+        CAPTURE(w.name);
         const DifficultyChartCodes& c = difficulty_chart_codes(w.d);
+        CHECK(std::string(difficulty_name(w.d)) == w.name);
+        CHECK(c.chart_section() == w.section);
         CHECK(c.kick_pitch == w.kick);
         CHECK(c.mix_digit == w.mix);
         // The 2x kick is not stored: it is worked out as kick - 1, and that
         // must land on Clone Hero's own 2x pitch at every difficulty.
         CHECK(c.kick2x_pitch() == w.kick2x);
     }
+    // An out-of-range value reads as Expert, through the table's one fallback.
+    const auto bad = static_cast<Difficulty>(7);
+    CHECK(std::string(difficulty_name(bad)) == "Expert");
+    CHECK(difficulty_chart_codes(bad).kick_pitch == 96);
 }
 
 TEST_CASE("difficulty table: the .mid parser reads each difficulty's kick from it") {

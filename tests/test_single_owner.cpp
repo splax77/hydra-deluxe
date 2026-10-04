@@ -426,10 +426,7 @@ const std::vector<OwnerRule>& rules() {
          R"(\bHYDRA_SOURCE_DIR\b)",
          "",
          {},
-         {{"tests/test_s2_stamps.cpp",
-           "it reads one comment, the results stamp's bump rule in src/store/stored_versions.h "
-           "(decision D23). A comment does not compile, so including the header cannot check "
-           "it, and this scan skips comment lines"}},
+         {},
          "this file's own rule (one scan, new rules are rows); step-1 derive-once review of "
          "fb1189b, finding 5 (2026-10-04)",
          {"std::ifstream in(std::string(HYDRA_SOURCE_DIR) + \"/src/app/preview_view.cpp\");",
@@ -438,25 +435,76 @@ const std::vector<OwnerRule>& rules() {
           "true, true);"},
          {},
          {"tests"}},
-        // Was its own walker in test_s2_parser_owners.cpp (src and tests,
-        // not tools). A hand write into the meter map is `tpm_changes[...] =`
-        // followed by anything but a second `=`.
-        {"Who writes a meter into Song's tpm_changes?",
+        // A hand write into the meter or signature map is `tpm_changes[...] =`
+        // or `timesig_changes[...] =` followed by anything but a second `=`.
+        {"Who writes a meter or a signature into Song's maps?",
          "apply_timesig in src/parse/song.cpp",
-         R"(tpm_changes\[[^\]]*\]\s*=[^=])",
+         R"((tpm_changes|timesig_changes)\[[^\]]*\]\s*=[^=])",
          "",
          {},
          {},
          "decision D27 (audit findings 258 and 319: the meter is written once, through "
-         "apply_timesig)",
+         "apply_timesig); widened to signatures and tools by the step-2 derive-once review "
+         "of 11b9d44",
          {"song.tpm_changes[0] = 768;", "fixture.tpm_changes[2880] = 1440;",
-          "s.tpm_changes[t]=960;"},
+          "s.tpm_changes[t]=960;", "song.timesig_changes[0] = {4, 4};"},
          {"CHECK(song.tpm_changes[0] == 768);", "CHECK(fixture.tpm_changes.at(2880) == 1440);",
-          "apply_timesig(fixture, 2880, 3, 4);"},
+          "apply_timesig(fixture, 2880, 3, 4);",
+          "CHECK(song.timesig_changes.at(0) == std::make_pair(4, 4));"},
          {{"src/parse/song.cpp",
            "song.tpm_changes[tick] = song.tick_resolution() * static_cast<int64_t>(numerator) * 4 /",
+           "apply_timesig, the owner"},
+          {"src/parse/song.cpp", "song.timesig_changes[tick] = {numerator, denominator};",
            "apply_timesig, the owner"}},
-         {"src", "tests"}},
+         {"src", "tools", "tests"}},
+        // Step-2 derive-once review of 11b9d44, finding 3 (audit finding 286).
+        {"Which test helper writes MThd/MTrk chunks?",
+         "smf_tracks in tests/midi_util.h",
+         R"re('M', 'T', '(h', 'd|r', 'k)'|"MTrk")re",
+         "",
+         {"tests/midi_util.h"},
+         {},
+         "audit finding 286; step-2 derive-once review of 11b9d44, finding 3",
+         {"d.insert(d.end(), {'M', 'T', 'r', 'k'});", "const char* tag = \"MTrk\";"},
+         {"smf(concat({track_name(\"PART DRUMS\"), end_of_track()}))"},
+         {{"tests/test_midi.cpp",
+           "'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0xE8, 0x00,  // div < 0",
+           "a deliberately broken header (a negative division), which smf_tracks cannot "
+           "write"}},
+         {"tests"}},
+        // Step-2 derive-once review of 11b9d44, finding 4 (audit finding 117).
+        {"Which test helper deflates a container stream?",
+         "deflate_raw in tests/srb_util.h",
+         R"(tdefl_compress_mem_to_heap)",
+         "",
+         {"tests/srb_util.h"},
+         {},
+         "audit finding 117; step-2 derive-once review of 11b9d44, finding 4",
+         {"void* p = tdefl_compress_mem_to_heap(src.data(), src.size(), &out_len,",
+          "p = tdefl_compress_mem_to_heap(a, n, &len, 0);"},
+         {"deflate_raw(meta)"},
+         {},
+         {"tests"}},
+        // Step-2 derive-once review of 11b9d44, finding 6. The two test_song.cpp
+        // lines build deliberately malformed charts from raw pieces.
+        {"Which test helper writes a .chart [SyncTrack] header?",
+         "chart_text in tests/chart_text.h",
+         R"(\[SyncTrack\]\\n\{\\n  0 = TS)",
+         "",
+         {"tests/chart_text.h"},
+         {},
+         "step-2 derive-once review of 11b9d44, finding 6",
+         {R"("[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n")",
+          R"("[SyncTrack]\n{\n  0 = TS 3 3\n}\n")"},
+         {R"("[SyncTrack]\n{\n" + sync + "}\n")"},
+         {{"tests/test_song.cpp", R"("[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";)",
+           "\"section headers are found as the regex found them\" puts an arbitrary first "
+           "line in front of this header, which chart_text cannot write"},
+          {"tests/test_song.cpp",
+           R"(const std::string sync = "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";)",
+           "\"malformed lines keep their handling\" joins the sections with stray text between "
+           "them, which chart_text cannot write"}},
+         {"tests"}},
         // Was part of the same walker: the Preview's time box reads Song's
         // default meter and keeps no 4/4 of its own. Scoped to its two files.
         {"Does the Preview type its own 4/4 meter?",
@@ -628,6 +676,12 @@ const std::vector<KnownCopy>& known_copies() {
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
+        {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
+         "const char* tag = \"MTrk\";",
+         "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
+        {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
+         "put_bytes(file, {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 3, 0, 192});",
+         "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
     };
     return k;
 }
@@ -833,4 +887,26 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     for (const std::string& p : problems) report << p << "\n";
     INFO(report.str());
     CHECK(problems.empty());
+}
+
+// D23: a change under src/parse that alters what a chart reads as must bump
+// the results stamp. The rule is a comment, which does not compile and which
+// the row scan skips, so this case reads it: the block between the "Results"
+// banner and the kResultsStamp line in src/store/stored_versions.h must name
+// src/parse next to src/search and src/core. Moved here from
+// test_s2_stamps.cpp, so this file stays the one test that reads the tree.
+TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (D23)") {
+    std::ifstream in(fs::u8path(HYDRA_SOURCE_DIR) / "src" / "store" / "stored_versions.h");
+    REQUIRE(in.good());
+    std::stringstream ss;
+    ss << in.rdbuf();
+    const std::string text = ss.str();
+    const size_t stamp = text.find("kResultsStamp{");
+    REQUIRE(stamp != std::string::npos);
+    const size_t banner = text.rfind("// ---- Results", stamp);
+    REQUIRE(banner != std::string::npos);
+    const std::string rule = text.substr(banner, stamp - banner);
+    CHECK(rule.find("src/search") != std::string::npos);
+    CHECK(rule.find("src/core") != std::string::npos);
+    CHECK(rule.find("src/parse") != std::string::npos);
 }

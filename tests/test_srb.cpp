@@ -25,9 +25,9 @@
 #include "app/analysis.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
-#include "miniz.h"
 #include "parse/song.h"
 #include "parse/srb.h"
+#include "srb_util.h"
 
 using namespace hydra;
 
@@ -63,62 +63,8 @@ std::string fixture_dir() {
     return dir;
 }
 
-std::vector<uint8_t> deflate_raw(const std::vector<uint8_t>& src) {
-    size_t out_len = 0;
-    // Flags 0 = raw deflate, no zlib header — what .srb streams use.
-    void* p = tdefl_compress_mem_to_heap(src.data(), src.size(), &out_len,
-                                         TDEFL_DEFAULT_MAX_PROBES);
-    REQUIRE(p != nullptr);
-    std::vector<uint8_t> out(static_cast<uint8_t*>(p),
-                             static_cast<uint8_t*>(p) + out_len);
-    mz_free(p);
-    return out;
-}
-
-void push_str(std::vector<uint8_t>& out, const std::string& s) {
-    uint32_t n = static_cast<uint32_t>(s.size());
-    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));
-    out.insert(out.end(), s.begin(), s.end());
-}
-
-std::vector<uint8_t> make_metadata(const std::string& notes_filename,
-                                   const std::string& name,
-                                   const std::string& artist,
-                                   const std::string& charter) {
-    std::vector<uint8_t> meta = {'4', 'b', '4', 1};
-    push_str(meta, notes_filename);
-    push_str(meta, name);
-    push_str(meta, artist);
-    push_str(meta, "Test Album");
-    push_str(meta, "Test Genre");
-    push_str(meta, charter);
-    push_str(meta, "2026");
-    push_str(meta, "A synthetic bundle for the test suite.");
-    // Real files carry trailing binary fields (difficulties, sizes, ...);
-    // a few junk bytes stand in for them.
-    for (int i = 0; i < 24; ++i) meta.push_back(static_cast<uint8_t>(i * 7));
-    return meta;
-}
-
-std::vector<uint8_t> make_srb(const std::vector<uint8_t>& metadata,
-                              const std::vector<uint8_t>& notes,
-                              bool trailing_stream = true) {
-    std::vector<uint8_t> out;
-    // 12 arbitrary bytes + an arbitrary u32, like the real header.
-    for (int i = 0; i < 12; ++i) out.push_back(static_cast<uint8_t>(0xA0 + i));
-    for (int i = 0; i < 4; ++i) out.push_back(i == 0 ? 17 : 0);
-    std::vector<uint8_t> s1 = deflate_raw(metadata);
-    std::vector<uint8_t> s2 = deflate_raw(notes);
-    out.insert(out.end(), s1.begin(), s1.end());
-    out.insert(out.end(), s2.begin(), s2.end());
-    if (trailing_stream) {
-        // Real bundles continue with audio streams the reader must ignore.
-        std::vector<uint8_t> audio(4096, 0x55);
-        std::vector<uint8_t> s3 = deflate_raw(audio);
-        out.insert(out.end(), s3.begin(), s3.end());
-    }
-    return out;
-}
+using testsrb::make_metadata;
+using testsrb::make_srb;
 
 bool songs_equal(const Song& a, const Song& b) {
     if (a.tick_resolution() != b.tick_resolution()) return false;
@@ -195,7 +141,7 @@ TEST_CASE("srb: malformed containers throw instead of crashing") {
     // Metadata stream present but the notes stream is cut off mid-way.
     std::vector<uint8_t> notes = read_bytes(corpus_chart_path(".mid"));
     std::vector<uint8_t> whole =
-        make_srb(make_metadata("notes.mid", "N", "A", "C"), notes, false);
+        make_srb(make_metadata("notes.mid", "N", "A", "C"), notes, {});
     whole.resize(whole.size() / 2);
     std::string truncated = fixture_dir() + "\\truncated.srb";
     write_bytes(truncated, whole);

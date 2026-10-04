@@ -86,8 +86,10 @@ class WatchWindowTest(unittest.TestCase):
     def test_cap_verdict_passes_when_every_wide_run_reads_the_cap(self):
         notes = window_map_notes()
         samples = samples_following(
-            notes, lambda n: C.WINDOW_CAP_MS if (n["gap_after_ms"] or 0) >= C.CAP_FROM_GAP_MS
-            else (C.WINDOW_FLOOR_MS if (n["gap_after_ms"] or 999) <= C.FLOOR_UP_TO_GAP_MS
+            # The gap edges typed as literals (170 and 75 ms), not the script's
+            # own comparisons, so a wrong edge in watch_window fails here.
+            notes, lambda n: C.WINDOW_CAP_MS if (n["gap_after_ms"] or 0) >= 170
+            else (C.WINDOW_FLOOR_MS if (n["gap_after_ms"] or 999) <= 75
                   else 100.0))
         lines = WW.window_report(samples, notes)
         self.assertEqual(sum("matches the cap" in l for l in lines), 5)

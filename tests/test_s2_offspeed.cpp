@@ -11,51 +11,18 @@
 #include "app/dm_report.h"
 #include "core/model.h"
 #include "corpus_util.h"
+#include "dm_fixture.h"
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
 
 using namespace hydra;
 using app::dm_report::DmReportRow;
 
-namespace {
-
-constexpr const char* kMode = "Expert Pro Drums, 2x Bass";
-constexpr const char* kHash = "aa11bb22cc33dd44ee55ff6677889900";
-
-// One analyzed corpus chart stored under kHash at SP cap 4; returns its best
-// score. (The same fixture as test_dm_report.cpp's, without the what-if row.)
-int64_t fill_store(store::RecordStore& store) {
-    app::AnalysisSettings settings;
-    settings.depth_value = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        try {
-            app::AnalysisResult result = app::analyze_chart_file(path, settings);
-            if (result.song.is_empty() || result.record.paths.empty()) continue;
-            store.add_song(kHash, "Stored Title", "Stored Artist", "Stored Charter", result.song);
-            store.add_record(
-                store::RecordKey{kHash, kMode, store::CapQuery::at(kCloneHeroSpCap)},
-                result.record);
-            return result.record.best_path().totalscore();
-        } catch (const std::exception&) {
-            continue;
-        }
-    }
-    REQUIRE_MESSAGE(false, "no corpus chart analyzed");
-    return 0;
-}
-
-net::DmScore score_at(const std::string& identifier, int64_t score, int speed) {
-    net::DmScore s;
-    s.identifier = identifier;
-    s.song_name = "Board Title";
-    s.score = score;
-    s.percent = 100;
-    s.speed = speed;
-    s.posted = "2026-01-01T00:00:00Z";
-    return s;
-}
-
-}  // namespace
+// The store and score builders are the shared leaderboard fixture.
+using testdm::fill_store;
+using testdm::kHash;
+using testdm::kMode;
+const auto score_at = testdm::make_score;
 
 TEST_CASE("s2 offspeed: one base speed, read everywhere") {
     CHECK(net::kBaseSpeedPercent == 100);

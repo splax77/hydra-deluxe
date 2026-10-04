@@ -8,18 +8,10 @@
 #include "doctest.h"
 
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
-#include <sstream>
-#include <string>
 #include <vector>
 
 #include "app/dynamics_breakdown.h"
 #include "store/stored_versions.h"
-
-#ifndef HYDRA_SOURCE_DIR
-#error "HYDRA_SOURCE_DIR must be defined (see CMakeLists.txt)"
-#endif
 
 using namespace hydra;
 
@@ -37,28 +29,6 @@ TEST_CASE("step 2: a Dynamics blob in the old layout does not decode") {
     CHECK_FALSE(app::decode_dynamics(blob).has_value());
 }
 
-// D23: a change under src/parse that alters what a chart reads as must bump
-// the results stamp. The rule is a comment, so this reads the comment: the
-// block between the "Results" banner and the kResultsStamp line must name
-// src/parse, next to src/search and src/core. A comment does not compile, so
-// this one test reads the file; test_single_owner.cpp lists it as the named
-// exemption to "Which test reads the source tree?".
-TEST_CASE("step 2: the results stamp's bump rule names the chart readers") {
-    namespace fs = std::filesystem;
-    const fs::path file =
-        fs::u8path(HYDRA_SOURCE_DIR) / "src" / "store" / "stored_versions.h";
-    std::ifstream in(file);
-    REQUIRE(in.good());
-    std::stringstream ss;
-    ss << in.rdbuf();
-    const std::string text = ss.str();
-
-    const size_t stamp = text.find("kResultsStamp{");
-    REQUIRE(stamp != std::string::npos);
-    const size_t banner = text.rfind("// ---- Results", stamp);
-    REQUIRE(banner != std::string::npos);
-    const std::string rule = text.substr(banner, stamp - banner);
-    CHECK(rule.find("src/search") != std::string::npos);
-    CHECK(rule.find("src/core") != std::string::npos);
-    CHECK(rule.find("src/parse") != std::string::npos);
-}
+// D23 (the results stamp's bump rule names the chart readers) is a comment, so
+// it is checked by reading the source, in test_single_owner.cpp, the one test
+// that reads the tree.

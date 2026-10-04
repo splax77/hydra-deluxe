@@ -38,9 +38,10 @@ class MeasuredConstantsTest(unittest.TestCase):
         self.assertLess(abs(min(w) - C.WINDOW_FLOOR_MS), C.WINDOW_MATCH_TOLERANCE_MS)
 
     def test_derived_rules_come_from_the_per_side_constants(self):
-        self.assertEqual(C.ONE_SIDE_CAP_MS, C.WINDOW_CAP_MS / 2)
-        self.assertEqual(C.CAP_FROM_GAP_MS, 2 * C.EXPECT_NORMAL_BACK_MS)        # 170
-        self.assertEqual(C.FLOOR_UP_TO_GAP_MS, 2 * C.EXPECT_NORMAL_FRONT_S * 1000)  # 75
+        # Pinned values, not the formulas: half the cap, and the two gap edges.
+        self.assertAlmostEqual(C.ONE_SIDE_CAP_MS, 85.71565, places=9)
+        self.assertAlmostEqual(C.CAP_FROM_GAP_MS, 170.0, places=9)
+        self.assertAlmostEqual(C.FLOOR_UP_TO_GAP_MS, 75.0, places=9)
 
 
 class PassiveEdgesTest(unittest.TestCase):

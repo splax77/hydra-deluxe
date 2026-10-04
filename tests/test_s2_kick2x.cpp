@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "app/dynamics_breakdown.h"
+#include "chart_text.h"
 #include "core/model.h"
 #include "midi_util.h"
 #include "parse/song.h"
@@ -59,12 +60,9 @@ TEST_CASE(".mid: Expert's 2x kick never swallows a Hard kick on the same tick") 
 }
 
 TEST_CASE(".chart: N 32 is a 2x kick only in the section being read") {
-    const std::string text =
-        "[Song]\n{\n  Resolution = 192\n}\n"
-        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
-        "[ExpertDrums]\n{\n  0 = N 32 0\n}\n"
-        "[HardDrums]\n{\n  192 = N 1 0\n  384 = N 32 0\n}\n";
-    const std::vector<uint8_t> data(text.begin(), text.end());
+    const std::vector<uint8_t> data =
+        testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 32 0\n") +
+                               testchart::section("HardDrums", "  192 = N 1 0\n  384 = N 32 0\n"));
     const Song on = load_songbytes_chart(data, true, true, Difficulty::Hard);
     REQUIRE(on.sequence.size() == 2);  // Expert's tick-0 N 32 is not Hard's
     CHECK(on.sequence[1].timecode.ticks() == 384);
@@ -79,13 +77,11 @@ TEST_CASE("Dynamics: one kick total follows the 2x Bass setting") {
     bd.rows[static_cast<size_t>(app::DynamicsRow::Kick2x)] = {0, 0, 12};
     CHECK(bd.kicks_total(false).all() == 41);
     CHECK(bd.kicks_total(true).all() == 53);
-    for (bool bass2x : {false, true}) {
-        CAPTURE(bass2x);
-        CHECK(bd.played_total(bass2x).all() ==
-              bd.pads_total().all() + bd.kicks_total(bass2x).all());
-        CHECK(bd.played_total(bass2x).accent ==
-              bd.pads_total().accent + bd.kicks_total(bass2x).accent);
-    }
+    // Totals: the 6 red pads plus 41 or 53 kicks; accents 2 red plus 1 kick.
+    CHECK(bd.played_total(false).all() == 47);
+    CHECK(bd.played_total(true).all() == 59);
+    CHECK(bd.played_total(false).accent == 3);
+    CHECK(bd.played_total(true).accent == 3);
 }
 
 TEST_CASE("Dynamics: Car Bomb - The Sentinel at Hard counts Hard's own kicks") {

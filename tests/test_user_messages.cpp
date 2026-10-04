@@ -10,6 +10,7 @@
 
 #include "app/rules_file.h"
 #include "app/user_messages.h"
+#include "chart_text.h"
 #include "core/model.h"
 #include "parse/midi.h"
 #include "parse/song.h"
@@ -89,10 +90,8 @@ TEST_CASE("user_messages: refused chart timing names the tick") {
 // load, so rewording the throw in parse/song.cpp cannot quietly drop the user
 // back to the generic "couldn't read this chart file" text.
 TEST_CASE("user_messages: a real refused load shows the tick sentence") {
-    const std::string chart =
-        "[Song]\n{\n  Resolution = 192\n}\n"
-        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 0\n}\n"
-        "[ExpertDrums]\n{\n  0 = N 0 0\n}\n";
+    const std::string chart = testchart::chart_text(
+        testchart::section("ExpertDrums", "  0 = N 0 0\n"), 192, "", "  0 = TS 4\n  0 = B 0\n");
     try {
         hydra::load_songbytes_chart(std::vector<uint8_t>(chart.begin(), chart.end()), true, true);
         FAIL("a chart with B 0 loaded");

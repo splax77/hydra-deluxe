@@ -14,6 +14,7 @@
 
 #include "core/model.h"
 #include "core/strutil.h"
+#include "chart_text.h"
 #include "corpus_util.h"
 #include "midi_util.h"
 #include "multidiff_chart.h"
@@ -205,8 +206,7 @@ TEST_CASE(".chart: [Events] section markers become practice sections") {
 // is in the solo. The parser runs solo end after the notes at its tick.
 TEST_CASE(".chart: the note on the solo end tick is in the solo") {
     const std::string text =
-        "[Song]\n{\n  Resolution = 192\n}\n"
-        "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
+        testchart::chart_text("") +
         "[ExpertDrums]\n{\n"
         "  0 = E solo\n  0 = N 1 0\n"
         "  192 = N 2 0\n"
@@ -621,14 +621,6 @@ std::string latin1_to_utf8(const std::string& s) {
     return out;
 }
 
-// Replace an event's leading zero delta with one beat (480 ticks).
-std::vector<uint8_t> one_beat_later(std::vector<uint8_t> ev) {
-    ev.erase(ev.begin());
-    std::vector<uint8_t> out = {0x83, 0x60};
-    out.insert(out.end(), ev.begin(), ev.end());
-    return out;
-}
-
 }  // namespace
 
 TEST_CASE(".chart: disco markers match the regexes they replaced") {
@@ -640,9 +632,7 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
         for (const std::string& marker : disco_candidates(b)) {
             for (bool prior_on : {false, true}) {
                 const std::string text =
-                    "[Song]\n{\n  Resolution = 192\n}\n"
-                    "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n"
-                    "[ExpertDrums]\n{\n" +
+                    testchart::chart_text("") + "[ExpertDrums]\n{\n" +
                     std::string(prior_on ? "  0 = E mix_3_drums0d\n" : "") +
                     "  0 = N 0 0\n  192 = E " + marker + "\n  192 = N 1 0\n}\n";
                 const std::vector<uint8_t> data(text.begin(), text.end());
@@ -663,7 +653,7 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
     CHECK(checked > 4000);
 }
 
-TEST_CASE(".mid: disco markers match the regexes they replaced; dynamics marker is Clone Hero's two exact strings") {
+TEST_CASE(".mid: disco markers match the regexes they replaced") {
     using namespace testmidi;
     int checked = 0;
     for (int byte = 0; byte < 256; ++byte) {
@@ -676,7 +666,7 @@ TEST_CASE(".mid: disco markers match the regexes they replaced; dynamics marker 
                 std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo()};
                 if (prior_on) ev.push_back(text_event("mix_3_drums0d"));
                 ev.push_back(note_on(96, 100));                    // tick 0: kick
-                ev.push_back(one_beat_later(text_event(marker)));  // tick 480
+                ev.push_back(after(480, text_event(marker)));  // tick 480
                 ev.push_back(note_on(97, 100));                    // tick 480: red
                 ev.push_back(end_of_track());
                 const Song song = load_songbytes_mid(smf(concat(ev)), true, true);
@@ -687,27 +677,11 @@ TEST_CASE(".mid: disco markers match the regexes they replaced; dynamics marker 
                 ++checked;
             }
         }
-
-        const std::string c(1, b);
-        for (const std::string& marker : std::vector<std::string>{
-                 "[ENABLE_CHART_DYNAMICS]", "ENABLE_CHART_DYNAMICS", "[ENABLE_CHART_DYNAMICS",
-              "ENABLE_CHART_DYNAMICS]", "[[ENABLE_CHART_DYNAMICS]", "[ENABLE_CHART_DYNAMICS]]",
-              "", "[]", c + "ENABLE_CHART_DYNAMICS", "ENABLE_CHART_DYNAMICS" + c,
-              "ENABLE_CHART" + c + "DYNAMICS"}) {
-            // Clone Hero's two exact strings (finding 64, D24).
-            const std::string read = latin1_to_utf8(marker);
-            const bool want = read == "ENABLE_CHART_DYNAMICS" || read == "[ENABLE_CHART_DYNAMICS]";
-            const Song song = load_songbytes_mid(
-                smf(concat({track_name("PART DRUMS"), set_tempo(), text_event(marker),
-                            note_on(97, 127), end_of_track()})),
-                true, true);
-            REQUIRE(song.sequence.size() == 1);
-            const bool accent = song.sequence[0].chord.at(NoteColor::Red)->is_accent();
-            CHECK_MESSAGE(accent == want, "byte " << byte << ": dynamics marker");
-            ++checked;
-        }
     }
-    CHECK(checked > 6000);
+    // The dynamics marker's two exact spellings are pinned as literal lists in
+    // "dynamics tag: only Clone Hero's two exact spellings count"
+    // (test_s2_dynamics_tag.cpp).
+    CHECK(checked > 4000);
 }
 
 TEST_CASE(".chart: section headers are found as the regex found them") {
