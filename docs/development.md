@@ -51,11 +51,16 @@ the app's 1.0 fills setting and goes by the flag alone. It still refuses to
 write into the app's own `hydra.db`, so give it its own `--db`. Each database it
 fills is stamped with the rule, and hydra_batch refuses (exit code 2) a run
 whose rule disagrees with the stamp. `--reindex` never changes the stamp.
-`hydra_report` on a database stamped 1.0 reports its 1.0 results.
+`hydra_report` on a database stamped 1.0 reports its 1.0 results. When it
+finds nothing under the current settings but the database holds other
+results, it names the settings it looked under instead of saying the
+database is empty.
 
 To see what the rule change did, compare the two. `hydra_fillcompare` reads
-the 1.0 results from `--old` and the 1.1 results from `--new`. They can be two
-files, or the app's own database twice:
+the 1.0 results from `--old` and the 1.1 results from `--new`. Each chart's
+row is labelled by which database holds a record for it, even when that
+record has no paths. Narrow columns name the rules CH 1.0 and CH 1.1. The two
+databases can be two files, or the app's own database twice:
 
 ```
 hydra_batch --legacy-fills --db ch10.db
