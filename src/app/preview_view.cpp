@@ -497,34 +497,24 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
         [](double v, const PreviewTempo& t) { return v < t.ms; });
     if (tempo_past != scene.tempos.begin()) bpm = (tempo_past - 1)->bpm;
     // The time signature in force at the playhead's tick, as the chart wrote
-    // it; 4/4 before any, the chart default.
-    int ts_num = 4, ts_den = 4;
+    // it. A scene from a song always has one at tick 0; a scene built from
+    // nothing shows PreviewTimeSig's default, which is Song's.
+    PreviewTimeSig sig;
     const auto sig_past = std::upper_bound(
         scene.time_sigs.begin(), scene.time_sigs.end(), now_tick,
         [](int64_t v, const PreviewTimeSig& t) { return v < t.tick; });
-    if (sig_past != scene.time_sigs.begin()) {
-        ts_num = (sig_past - 1)->numerator;
-        ts_den = (sig_past - 1)->denominator;
-    }
+    if (sig_past != scene.time_sigs.begin()) sig = *(sig_past - 1);
     char buf[64];
-    std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, ts_num, ts_den);
+    std::snprintf(buf, sizeof buf, "BPM %.3f \xC2\xB7 %d/%d", bpm, sig.numerator,
+                  sig.denominator);
     box.tempo = buf;
 
-    // Sections are in tick order on every chart but one kind: a MIDI file
-    // with more than one EVENTS track lists each track's sections in turn.
-    // The answer has always been "the section before the first one past the
-    // playhead, front to back", so an out-of-order list keeps that scan and
-    // reads exactly as before; a sorted one gets the binary search.
+    // Both parsers hand sections over in tick order (sort_practice_sections),
+    // so a binary search finds the last one at or before the playhead.
     const std::vector<PreviewSection>& sections = scene.sections;
-    const auto by_tick = [](const PreviewSection& a, const PreviewSection& b) {
-        return a.tick < b.tick;
-    };
     const auto section_past =
-        std::is_sorted(sections.begin(), sections.end(), by_tick)
-            ? std::upper_bound(sections.begin(), sections.end(), now_tick,
-                               [](int64_t v, const PreviewSection& s) { return v < s.tick; })
-            : std::find_if(sections.begin(), sections.end(),
-                           [now_tick](const PreviewSection& s) { return s.tick > now_tick; });
+        std::upper_bound(sections.begin(), sections.end(), now_tick,
+                         [](int64_t v, const PreviewSection& s) { return v < s.tick; });
     if (section_past != sections.begin() && !(section_past - 1)->name.empty())
         box.section_line = "Section " + (section_past - 1)->name;
     return box;

@@ -310,7 +310,6 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
 TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
     // 4/4, 120 BPM, 192 ticks per beat: 768 ticks and 2000 ms per measure.
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (int64_t tick : {0, 768, 1536, 2304, 3072, 3256}) {
@@ -355,7 +354,6 @@ TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multipli
     // 120 BPM, 192 ticks per beat: 96 ticks are 250 ms.
     auto build = [](bool two_notes) {
         Song song(192);
-        song.tpm_changes[0] = 768;
         song.bpm_changes[0] = 120.0;
         song.build_timing();
         for (int64_t tick : {0, 768, 1536, 2304, 2976, 3072}) {
@@ -398,7 +396,6 @@ TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multipli
 // nothing for the warning to say. The old every-window gate flagged it.
 TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying window reached") {
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (int64_t tick : {0, 768, 864, 1536}) {
@@ -721,7 +718,6 @@ namespace {
 // 36 ticks are exactly 93.75 ms and 192 ticks exactly 500 ms.
 Song song_with(const std::vector<std::pair<int64_t, bool>>& chords) {
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (const auto& [tick, phrase] : chords) {
@@ -1282,7 +1278,6 @@ using test::check_lines;
 // at 3256 is 8479.2 ms.
 Song squeeze_chart() {
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (int64_t tick : {0, 768, 1536, 2304, 3072, 3256}) {
@@ -1474,7 +1469,6 @@ TEST_CASE("replay: the open-window walk pins every row on hand-built windows") {
 // rule, which counted any window that reached the chord, doubled it.)
 TEST_CASE("replay: disjoint windows that squeeze out a one-note chord on D") {
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (int64_t tick : {0, 768, 1536, 2304, 3072, 3840, 4608}) {

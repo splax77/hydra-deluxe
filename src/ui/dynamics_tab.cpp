@@ -5,6 +5,7 @@
 #include "imgui.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/fonts.h"
+#include "ui/library_parts.h"  // format_duration, count_label
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -69,6 +70,14 @@ void dynamics_table_row(const char* label, const app::DynamicsCounts& c,
 }  // namespace
 
 namespace detail {
+
+std::string dynamics_enabled_text(const app::DynamicsBreakdown& bd) {
+    if (!bd.dynamics_enabled) return "Dynamics enabled: no (markings ignored by Clone Hero)";
+    if (!bd.late_tag_ms) return "Dynamics enabled: yes";
+    return "Dynamics enabled: from " + format_duration(*bd.late_tag_ms / 1000.0) + " on (" +
+           count_label(bd.marks_before_tag, "earlier marking", "earlier markings") +
+           " ignored by Clone Hero)";
+}
 
 void render_dynamics_panel(AppState& app) {
     if (!app.selected) return;
@@ -148,8 +157,10 @@ void render_dynamics_panel(AppState& app) {
     ImGui::SeparatorText("Kicks");
 
     {
+        // How many of the chart's kick notes are 2x, counted or not: a fact
+        // about the chart, so it asks for every kick.
         const app::DynamicsCounts k2x = bd.row(app::DynamicsRow::Kick2x);
-        const app::DynamicsCounts ktot = bd.kicks_total();
+        const app::DynamicsCounts ktot = bd.kicks_total(/*bass2x=*/true);
         int pct = ktot.all() > 0
                       ? static_cast<int>(100.0 * k2x.all() / ktot.all())
                       : 0;
@@ -180,7 +191,8 @@ void render_dynamics_panel(AppState& app) {
             dynamics_table_row("2x kick", k2, disabled, &k2dot);
         }
         {
-            const app::DynamicsCounts ktot = bd.kicks_total();
+            // The same kicks Totals counts (finding 12).
+            const app::DynamicsCounts ktot = bd.kicks_total(bass2x);
             dynamics_table_row("All kicks", ktot, !ktot.has_dynamics());
         }
         ImGui::EndTable();
@@ -210,10 +222,7 @@ void render_dynamics_panel(AppState& app) {
 
     // Chart section.
     ImGui::SeparatorText("Chart");
-    if (bd.dynamics_enabled)
-        ImGui::TextWrapped("Dynamics enabled: yes");
-    else
-        ImGui::TextWrapped("Dynamics enabled: no (markings ignored by Clone Hero)");
+    ImGui::TextWrapped("%s", dynamics_enabled_text(bd).c_str());
 
     if (bass2x)
         ImGui::TextWrapped("2x kicks: counted (2x Bass on)");

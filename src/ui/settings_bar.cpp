@@ -55,21 +55,19 @@ void render_difficulty(AppState& app, bool locked) {
     if (ImGui::Checkbox("Pro Drums", &app.settings.view_prodrums)) app.commit_settings();
     end_disabled_checkbox(locked);
 
-    // A second kick pedal only exists in Expert charting, so off Expert the
-    // box reads unchecked and is disabled; the stored view_bass2x is left
-    // alone, so returning to Expert brings the user's own setting back.
+    // 2x Bass works at every difficulty, like Clone Hero's Double Kick (D20):
+    // each difficulty has its own 2x kicks.
     ImGui::SameLine();
-    const bool expert = app.settings.difficulty() == Difficulty::Expert;
     bool bass2x_shown = app.settings.effective_bass2x();
-    begin_disabled_checkbox(!expert || locked);
+    begin_disabled_checkbox(locked);
     if (ImGui::Checkbox("2x Bass", &bass2x_shown)) {
         app.settings.view_bass2x = bass2x_shown;
         app.commit_settings();
     }
-    end_disabled_checkbox(!expert || locked);
-    if (!expert && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
-                                        ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("2x Bass is an Expert-only charting concept.");
+    end_disabled_checkbox(locked);
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
+                             ImGuiHoveredFlags_AllowWhenDisabled))
+        ImGui::SetTooltip("Include the chart's 2x kicks, like Clone Hero's Double Kick.");
 }
 
 void render_sp_cap(AppState& app, bool locked) {

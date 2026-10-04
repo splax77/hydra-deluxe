@@ -38,13 +38,13 @@ def samples_following(notes: list[dict], window_for) -> list[WW.Sample]:
 class LiveSnapshotTest(unittest.TestCase):
     def test_decode_reads_each_field_at_its_offset(self):
         raw = bytearray(live.SNAPSHOT_SIZE)
-        struct.pack_into("<d", raw, C.OFF_TOTAL_WINDOW, 0.17143)
+        struct.pack_into("<d", raw, C.OFF_TOTAL_WINDOW, C.WINDOW_CAP_MS / 1000)
         struct.pack_into("<I", raw, C.OFF_SCORE, 1234)
         struct.pack_into("<d", raw, C.OFF_SONG_CLOCK, 12.5)
         struct.pack_into("<I", raw, C.OFF_FLAGS, 0x1000)
         struct.pack_into("<d", raw, C.OFF_HIT_TIME, 12.49)
         s = live.decode_snapshot(bytes(raw))
-        self.assertAlmostEqual(s.window_ms, 171.43)
+        self.assertAlmostEqual(s.window_ms, C.WINDOW_CAP_MS)
         self.assertEqual(s.score, 1234)
         self.assertEqual(s.clock_s, 12.5)
         self.assertEqual(s.hit_time_s, 12.49)
@@ -78,15 +78,19 @@ class WatchWindowTest(unittest.TestCase):
             notes, lambda n: float(n["gap_after_ms"] or 999))
         lines = WW.window_report(samples, notes)
         cap = [l for l in lines if l.strip().startswith("400 ms gap")]
-        self.assertEqual(cap, ["   400 ms gap: 400.00  DIFFERENT from 171.43"])
+        self.assertEqual(cap, [f"   400 ms gap: 400.00  DIFFERENT from {C.WINDOW_CAP_MS}"])
         floor = [l for l in lines if l.strip().startswith("30 ms gap")]
-        self.assertEqual(floor, ["    30 ms gap: 30.00"])
+        self.assertEqual(floor, [f"    30 ms gap: 30.00  DIFFERENT from {C.WINDOW_FLOOR_MS}"])
         self.assertIn("Marker notes (100 ms gaps): 100.00", lines)
 
     def test_cap_verdict_passes_when_every_wide_run_reads_the_cap(self):
         notes = window_map_notes()
         samples = samples_following(
-            notes, lambda n: 171.43 if (n["gap_after_ms"] or 0) >= 170 else 100.0)
+            # The gap edges typed as literals (170 and 75 ms), not the script's
+            # own comparisons, so a wrong edge in watch_window fails here.
+            notes, lambda n: C.WINDOW_CAP_MS if (n["gap_after_ms"] or 0) >= 170
+            else (C.WINDOW_FLOOR_MS if (n["gap_after_ms"] or 999) <= 75
+                  else 100.0))
         lines = WW.window_report(samples, notes)
         self.assertEqual(sum("matches the cap" in l for l in lines), 5)
         self.assertFalse(any("DIFFERENT" in l for l in lines))
@@ -98,9 +102,9 @@ class WatchWindowTest(unittest.TestCase):
 
     def test_hit_time_report_matches_changes_to_notes(self):
         notes = [{"index": i, "time_ms": 3000 + 1000 * i} for i in range(3)]
-        samples = [WW.Sample(2900.0, 171.43, 0, 0.0)]
+        samples = [WW.Sample(2900.0, C.WINDOW_CAP_MS, 0, 0.0)]
         for i, n in enumerate(notes):
-            samples.append(WW.Sample(n["time_ms"] + 8.0, 171.43, 100 * (i + 1),
+            samples.append(WW.Sample(n["time_ms"] + 8.0, C.WINDOW_CAP_MS, 100 * (i + 1),
                                      n["time_ms"] + 2.0))
         lines = WW.hit_time_report(samples, notes)
         self.assertIn("  +0x2e0 changed 3 times; the score rose 3 times.", lines)

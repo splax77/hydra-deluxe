@@ -148,8 +148,8 @@ struct PreviewMeter {
 // A time signature as the chart wrote it, for the time box's line.
 struct PreviewTimeSig {
     int64_t tick = 0;
-    int numerator = 4;
-    int denominator = 4;
+    int numerator = kDefaultTimeSigNumerator;  // Song's default (parse/song.h)
+    int denominator = kDefaultTimeSigDenominator;
 };
 
 // One straight stretch of the Star Power meter: the banked bars run linearly

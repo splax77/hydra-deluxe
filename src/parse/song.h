@@ -30,14 +30,42 @@ namespace hydra {
 // nothing reads exactly what Hydra always read.
 enum class Difficulty { Expert, Hard, Medium, Easy };
 
-// "Expert" / "Hard" / "Medium" / "Easy" — the name used in the .chart section
-// name, the chartmode key, and the user-facing error strings.
+// "Expert" / "Hard" / "Medium" / "Easy" — the name used in the chartmode key
+// and the user-facing error strings. It reads the difficulty's row in the one
+// table (difficulty_chart_codes), so it shares that table's fallback.
 const char* difficulty_name(Difficulty difficulty);
 
 // Every difficulty, in enum order. UI lists and name lookups walk this
 // instead of keeping their own copy of the four names.
 inline constexpr Difficulty kAllDifficulties[] = {Difficulty::Expert, Difficulty::Hard,
                                                   Difficulty::Medium, Difficulty::Easy};
+
+// How a chart file spells one difficulty's drums. One row per difficulty, held
+// in one table in song.cpp; every parser rule that depends on the difficulty
+// reads its row instead of keeping its own copy of Expert's values.
+struct DifficultyChartCodes {
+    // "Expert" / "Hard" / "Medium" / "Easy" (difficulty_name returns it).
+    const char* name;
+    // .mid: the kick's pitch. The four pads follow it (kick + 1 is red).
+    int kick_pitch;
+    // The N in a disco-flip marker `[mix N drums...]`. Clone Hero applies a
+    // marker only to the difficulty it names (0x215C750, digit mapped by
+    // 0x210D990).
+    char mix_digit;
+
+    // .mid: the 2x kick's pitch, always one below the kick. Clone Hero reads
+    // 59, 71, 83 and 95, each into its own difficulty (0x2155050 at
+    // 0x21555CD). Worked out here, the one place, instead of stored.
+    constexpr int kick2x_pitch() const { return kick_pitch - 1; }
+
+    // .chart: the difficulty's drum section, the name plus "Drums"
+    // ("ExpertDrums", "HardDrums", ...).
+    std::string chart_section() const { return std::string(name) + "Drums"; }
+};
+
+// The row for `difficulty`. An out-of-range value reads as Expert, as the
+// parsers' old switches did.
+const DifficultyChartCodes& difficulty_chart_codes(Difficulty difficulty);
 
 // The difficulty whose name matches `name` in any case ("hard", "HARD" and
 // "Hard" all give Hard). nullopt for anything else. The settings INI and
@@ -57,6 +85,17 @@ inline constexpr const char* kUnknownTitle = "(unknown)";
 // Library rows and songmeta rows from older scans still hold those, so every
 // place that shows a stored name reads it through this.
 std::string title_or_unknown(std::string title);
+
+// What a song with no usable artist or charter shows everywhere it is shown.
+inline constexpr const char* kUnknownArtist = "<unknown artist>";
+inline constexpr const char* kUnknownCharter = "<unknown charter>";
+
+// The one fallback for a song's artist and charter, beside title_or_unknown:
+// a blank value (an empty `artist =`, a missing key, an empty .sng or .srb
+// field) becomes the placeholder. discover_charts applies both once, after
+// the rescan cache, so cached rows from older scans are covered too.
+std::string artist_or_unknown(std::string artist);
+std::string charter_or_unknown(std::string charter);
 
 // A timecode paired with a chord and gameplay modifiers, mirroring
 // hysong.SongTimestamp.
@@ -104,15 +143,20 @@ void check_timing_maps(int64_t tick_resolution,
                        const std::map<int64_t, int64_t>& tpm_changes,
                        const std::map<int64_t, double>& bpm_changes);
 
+// The meter a chart has before its first time signature: 4/4. Song's
+// constructor writes it through apply_timesig, and the Preview's
+// PreviewTimeSig reads it for a scene with no song.
+inline constexpr int kDefaultTimeSigNumerator = 4;
+inline constexpr int kDefaultTimeSigDenominator = 4;
+
 // A parsed chart: the timestamp sequence plus the tempo/meter maps it was built
 // from. Timing is snapshotted once the maps are complete (build_timing), which
 // mirrors Python building timecodes only after the whole tempo track is read.
 class Song {
 public:
-    explicit Song(int64_t resolution) : tick_resolution_(resolution) {
-        tpm_changes[0] = resolution * 4;
-        timesig_changes[0] = {4, 4};
-    }
+    // Starts at the default meter (kDefaultTimeSig*), written by apply_timesig
+    // like every other meter.
+    explicit Song(int64_t resolution);
 
     int64_t tick_resolution() const { return tick_resolution_; }
 
@@ -129,6 +173,13 @@ public:
     std::vector<SongTimestamp> sequence;
     std::vector<std::string> features;
     bool dynamics_enabled = false;
+    // .mid only (finding 64, D24). When the drum track's dynamics tag came
+    // after at least one ghost- or accent-velocity note, the tag's tick and
+    // how many such notes came before it (Clone Hero prices them as plain).
+    // nullopt and 0 when the tag came before every marked note, or there is
+    // no tag (dynamics_enabled says which). count_dynamics stores them.
+    std::optional<int64_t> dynamics_late_tag_tick;
+    int dynamics_marks_before_tag = 0;
     // .chart [Song] Offset, in seconds, when the file sets one. Only the
     // Preview reads it (to line the audio up); scoring works in chart time.
     std::optional<double> chart_offset_s;
@@ -162,6 +213,12 @@ private:
     int64_t tick_resolution_;
     std::optional<SongTiming> timing_;
 };
+
+// A time signature at `tick`: ticks per measure = resolution * 4 * num / den,
+// and the signature itself for display, written together. The one owner of
+// the meter rule: both parsers, Song's default and test fixtures call it. A
+// numerator of 0 is ignored; a bottom number of 0 or less refuses the chart.
+void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
 
 Song load_songpath_mid(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty = Difficulty::Expert,

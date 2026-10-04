@@ -40,7 +40,6 @@ std::filesystem::path write_rules(const char* tag, const std::string& text) {
 // check_activations has to generate them.
 Song fill_song() {
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (int64_t m = 0; m < 16; ++m) {

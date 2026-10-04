@@ -30,15 +30,17 @@ struct DmReportRow {
     int64_t actual = 0;                 // score the player posted
     std::optional<int64_t> optimal;     // Hydra best-path score; unset with no current result
     std::optional<int64_t> delta;       // optimal - actual (points left); <0 == above optimal
-    std::optional<double> pct;          // actual/optimal*100, only when speed==100
+    std::optional<double> pct;          // actual/optimal*100, only at base speed
     bool is_fc = false;
     int percent = 0;
-    int speed = 100;
+    int speed = net::kBaseSpeedPercent;
     std::optional<int> rank;
     std::string posted;                 // ISO-8601 timestamp
     // "matched" | "above optimal" | "not analyzed" (the last scan found the
     // chart, but it has no current result at SP cap 4 for this mode) |
-    // "not in library" (the last scan never found it).
+    // "not in library" (the last scan never found it) |
+    // "other speed" (played at a speed other than net::kBaseSpeedPercent;
+    // shown, never compared).
     std::string status;
 };
 
@@ -66,8 +68,14 @@ struct DmReportStats {
     int above_optimal = 0;
     int not_analyzed = 0;    // in the library, no current result
     int not_in_library = 0;
+    int other_speed = 0;     // played off base speed: shown, not compared
 };
 DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows);
+
+// "1 matched, 1 above optimal, 0 not analyzed, 1 not in your library", plus
+// ", 2 at other speeds" when there are any. The page subtitle and the
+// finished window both read it, so the two can't drift.
+std::string counts_phrase(const DmReportStats& stats);
 
 struct GeneratedDmReport {
     std::string html;  // empty when the user had no scores to compare

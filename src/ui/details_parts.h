@@ -12,6 +12,9 @@
 #ifndef HYDRA_UI_DETAILS_PARTS_H
 #define HYDRA_UI_DETAILS_PARTS_H
 
+#include <string>
+
+#include "app/dynamics_breakdown.h"
 #include "ui/app_state.h"
 
 namespace hydra::ui::detail {
@@ -34,6 +37,9 @@ void render_preview_panel(AppState& app, const Path* selected_path);
 
 // dynamics_tab.cpp.
 void render_dynamics_panel(AppState& app);
+
+// The Chart section's "Dynamics enabled" line for a stored breakdown.
+std::string dynamics_enabled_text(const app::DynamicsBreakdown& bd);
 
 // stars_tab.cpp.
 void render_stars_panel(AppState& app);

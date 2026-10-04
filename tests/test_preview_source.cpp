@@ -25,9 +25,9 @@
 #include "app/preview_source.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
-#include "miniz.h"
 #include "multidiff_chart.h"
 #include "parse/song.h"
+#include "srb_util.h"
 
 using namespace hydra;
 using namespace hydra::app;
@@ -65,17 +65,6 @@ void push_u32(std::vector<uint8_t>& out, uint32_t n) {
 }
 void push_u64(std::vector<uint8_t>& out, uint64_t n) {
     for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));
-}
-
-std::vector<uint8_t> deflate_raw(const std::vector<uint8_t>& src) {
-    size_t out_len = 0;
-    void* p = tdefl_compress_mem_to_heap(src.data(), src.size(), &out_len,
-                                         TDEFL_DEFAULT_MAX_PROBES);
-    REQUIRE(p != nullptr);
-    std::vector<uint8_t> out(static_cast<uint8_t*>(p),
-                             static_cast<uint8_t*>(p) + out_len);
-    mz_free(p);
-    return out;
 }
 
 std::vector<uint8_t> bytes_of(const std::string& s) {
@@ -148,37 +137,12 @@ std::vector<uint8_t> make_sng(
 
 // ---- .srb fixture --------------------------------------------------------
 
-void push_str(std::vector<uint8_t>& out, const std::string& s) {
-    push_u32(out, static_cast<uint32_t>(s.size()));
-    out.insert(out.end(), s.begin(), s.end());
-}
-
-std::vector<uint8_t> make_metadata(const std::string& notes_filename) {
-    std::vector<uint8_t> meta = {'4', 'b', '4', 1};
-    push_str(meta, notes_filename);
-    for (const char* s : {"Name", "Artist", "Album", "Genre", "Charter", "2026",
-                          "desc"})
-        push_str(meta, s);
-    for (int i = 0; i < 16; ++i) meta.push_back(static_cast<uint8_t>(i));
-    return meta;
-}
-
-// 16-byte header + deflated metadata + deflated notes + one deflated stream per
-// `extra`, like a real bundle's trailing audio/art streams.
+// An .srb (tests/srb_util.h) whose notes entry is `notes_filename`, with one
+// trailing stream per `extra`, like a real bundle's audio and art streams.
 std::vector<uint8_t> make_srb(const std::vector<uint8_t>& notes,
                               const std::vector<std::vector<uint8_t>>& extra,
                               const std::string& notes_filename = "notes.mid") {
-    std::vector<uint8_t> out;
-    for (int i = 0; i < 16; ++i) out.push_back(static_cast<uint8_t>(0xA0 + i));
-    std::vector<uint8_t> s1 = deflate_raw(make_metadata(notes_filename));
-    std::vector<uint8_t> s2 = deflate_raw(notes);
-    out.insert(out.end(), s1.begin(), s1.end());
-    out.insert(out.end(), s2.begin(), s2.end());
-    for (const std::vector<uint8_t>& e : extra) {
-        std::vector<uint8_t> s = deflate_raw(e);
-        out.insert(out.end(), s.begin(), s.end());
-    }
-    return out;
+    return testsrb::make_srb(testsrb::make_metadata(notes_filename), notes, extra);
 }
 
 // multidiff's chart with an Offset line in its [Song] section.

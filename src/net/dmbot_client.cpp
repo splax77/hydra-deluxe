@@ -268,7 +268,7 @@ DmScore parse_score(const json& entry, bool known) {
     s.score = jint(entry, "score");
     s.is_fc = jint(entry, "is_fc") != 0;
     s.percent = (int)jint(entry, "percent");
-    s.speed = (int)jint(entry, "speed", 100);
+    s.speed = (int)jint(entry, "speed", kBaseSpeedPercent);
     s.rank = joptint(entry, "rank");
     s.posted = jstr(entry, "posted");
     s.known = known;

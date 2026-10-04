@@ -259,20 +259,22 @@ void Chord::add_2x() {
     at(NoteColor::Kick)->is2x = true;
 }
 
+// A cymbal, ghost or accent marker with no note of its colour under it is a
+// malformed line, like a duplicate note. It raises ChartFileError, which the
+// .chart parser's per-op catch drops, so the rest of the chart loads. Clone
+// Hero skips such a marker too (0x215DDB0).
 void Chord::apply_cymbal(NoteColor color) {
-    // Python asserts the note is present; a modifier without its base note is
-    // a malformed chart. Throw rather than deref an empty slot.
-    if (!at(color)) throw std::logic_error("apply_cymbal: note not present");
+    if (!at(color)) throw ChartFileError("cymbal marker with no note under it");
     at(color)->cymbaltype = NoteCymbalType::Cymbal;
 }
 
 void Chord::apply_ghost(NoteColor color) {
-    if (!at(color)) throw std::logic_error("apply_ghost: note not present");
+    if (!at(color)) throw ChartFileError("ghost marker with no note under it");
     at(color)->dynamictype = NoteDynamicType::Ghost;
 }
 
 void Chord::apply_accent(NoteColor color) {
-    if (!at(color)) throw std::logic_error("apply_accent: note not present");
+    if (!at(color)) throw ChartFileError("accent marker with no note under it");
     at(color)->dynamictype = NoteDynamicType::Accent;
 }
 

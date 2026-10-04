@@ -84,11 +84,11 @@ TEST_CASE("dynamics decode rejects bad blobs") {
     SUBCASE("empty blob") {
         CHECK_FALSE(decode_dynamics({}).has_value());
     }
-    SUBCASE("version 2 blob") {
-        // Build a valid-length blob but stamp it version 2.
+    SUBCASE("a blob from a newer layout") {
+        // A valid-length blob stamped with a layout this build doesn't know.
         const DynamicsBreakdown b = make_full_breakdown(true);
         std::vector<uint8_t> blob = encode_dynamics(b);
-        blob[0] = 2;
+        blob[0] = static_cast<uint8_t>(kDynamicsBlobStamp.written + 1);
         CHECK_FALSE(decode_dynamics(blob).has_value());
     }
     SUBCASE("truncated blob") {

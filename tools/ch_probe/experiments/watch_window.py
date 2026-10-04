@@ -42,11 +42,6 @@ from tools.ch_probe.experiments import live
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 
-# The capped total window the 2026-09-25 session measured. Step 1 checks that
-# every run at 170 ms and wider reads this.
-CAP_EXPECT_MS = 171.43
-CAP_CHECK_FROM_GAP_MS = 170
-
 STALL_S = 8.0          # clock frozen this long = song quit, paused or restarted
 TAIL_S = 2.0           # keep watching this long after the last note
 
@@ -143,6 +138,12 @@ def _note_label(n: Optional[dict]) -> str:
     return f"#{n['index']} ({_gap(n['gap_before_ms'])}|{_gap(n['gap_after_ms'])})"
 
 
+def _verdict(vals: list[float], expect_ms: float, name: str) -> str:
+    """'  matches the cap' when the run held one value at expect_ms."""
+    ok = len(vals) == 1 and abs(vals[0] - expect_ms) < C.WINDOW_MATCH_TOLERANCE_MS
+    return f"  matches the {name}" if ok else f"  DIFFERENT from {expect_ms}"
+
+
 def window_report(samples: list[Sample], notes: list[dict]) -> list[str]:
     chg = changes(samples, "window_ms")
     lines: list[str] = []
@@ -179,17 +180,19 @@ def window_report(samples: list[Sample], notes: list[dict]) -> list[str]:
         vals = steady_value(chg, notes, b, "run", slice(2, -2))
         text = ", ".join(f"{v:.2f}" for v in vals) or "no value"
         verdict = ""
-        if gap >= CAP_CHECK_FROM_GAP_MS:
-            ok = len(vals) == 1 and abs(vals[0] - CAP_EXPECT_MS) < 0.01
-            verdict = "  matches the cap" if ok else f"  DIFFERENT from {CAP_EXPECT_MS}"
+        if gap >= C.CAP_FROM_GAP_MS:
+            verdict = _verdict(vals, C.WINDOW_CAP_MS, "cap")
         lines.append(f"  {gap:4d} ms gap: {text}{verdict}")
 
     lines.append("")
-    lines.append("Step 2, the floor: a real floor shows the same value for every gap.")
+    lines.append(f"Step 2, the floor: every gap of {C.FLOOR_UP_TO_GAP_MS:.0f} ms or less "
+                 "should read the measured floor.")
     for b in [b for b in blocks if b.startswith("floor_")]:
         gap = int(b.split("_")[1])
         vals = steady_value(chg, notes, b, "run", slice(2, -2))
-        lines.append(f"  {gap:4d} ms gap: " + (", ".join(f"{v:.2f}" for v in vals) or "no value"))
+        text = ", ".join(f"{v:.2f}" for v in vals) or "no value"
+        verdict = _verdict(vals, C.WINDOW_FLOOR_MS, "floor") if gap <= C.FLOOR_UP_TO_GAP_MS else ""
+        lines.append(f"  {gap:4d} ms gap: {text}{verdict}")
 
     lines.append("")
     lines.append("Step 3, which gap: see the uneven_* blocks above. Compare the value")

@@ -119,16 +119,16 @@ Activation act_at(const Song& song, int64_t tick, std::vector<int64_t> skipped_f
 // measure is 1920 ticks = 2000 ms, so one SP bar (two measures) burns 4000 ms
 // at this tempo. `extra_bpm` adds tempo changes before the timing is built.
 // A phrase can only end on a note, so `step` is there for a fixture that needs
-// a phrase off the quarter-note grid. `extra_tpm` adds meter changes (ticks per
-// measure) the same way.
+// a phrase off the quarter-note grid. `extra_sigs` adds time signatures (tick ->
+// numerator, denominator) the same way.
 Song make_sp_song(const std::vector<int64_t>& phrase_ends, int64_t last_tick,
                   const std::map<int64_t, double>& extra_bpm = {},
                   int64_t step = 480,
-                  const std::map<int64_t, int64_t>& extra_tpm = {}) {
+                  const std::map<int64_t, std::pair<int, int>>& extra_sigs = {}) {
     Song song(480);
     song.bpm_changes[0] = 120.0;
     for (const auto& kv : extra_bpm) song.bpm_changes[kv.first] = kv.second;
-    for (const auto& kv : extra_tpm) song.tpm_changes[kv.first] = kv.second;
+    for (const auto& [tick, sig] : extra_sigs) apply_timesig(song, tick, sig.first, sig.second);
     song.build_timing();
 
     for (int64_t t = 0; t <= last_tick; t += step) {
@@ -186,7 +186,6 @@ Song make_overfill_song() {
                                   {5376, false, false}, {6000, false, false},
                                   {6768, false, false}, {7500, false, false}};
     Song song(192);
-    song.tpm_changes[0] = 768;
     song.bpm_changes[0] = 120.0;
     song.build_timing();
     for (const N& n : notes) {
@@ -495,7 +494,7 @@ TEST_CASE("build_time_box: a mid-measure meter change follows the engine") {
     // does rather than by a count of its own.
     Song song(480);
     song.bpm_changes[0] = 120.0;
-    song.tpm_changes[2880] = 1440;
+    apply_timesig(song, 2880, 3, 4);
     song.build_timing();
     {
         Chord c;
@@ -534,10 +533,8 @@ TEST_CASE("build_time_box: the time signature in force, as the chart wrote it") 
     // stored signature tells them apart.
     Song song(480);
     song.bpm_changes[0] = 120.0;
-    song.tpm_changes[1920] = 1440;
-    song.timesig_changes[1920] = {6, 8};
-    song.tpm_changes[3360] = 1440;
-    song.timesig_changes[3360] = {3, 4};
+    apply_timesig(song, 1920, 6, 8);
+    apply_timesig(song, 3360, 3, 4);
     song.build_timing();
     {
         Chord c;
@@ -1565,7 +1562,7 @@ TEST_CASE("drain box: the rate switches exactly at a tempo change") {
 TEST_CASE("drain box: a 7/8 section drains faster at the same BPM") {
     // 7/8 from tick 3840 (4000 ms, a barline): 1680 ticks = 1750 ms a
     // measure, so a bar lasts 3500 ms instead of 4000.
-    Song song = make_sp_song({960}, /*last_tick=*/13440, {}, 480, {{3840, 1680}});
+    Song song = make_sp_song({960}, /*last_tick=*/13440, {}, 480, {{3840, {7, 8}}});
     PreviewScene scene = build_preview_scene(song, nullptr);
 
     CHECK(build_drain_box(scene, 2000.0).rate == "1 bar / 4.0 s");
@@ -1721,10 +1718,8 @@ Song make_lookup_song() {
     song.bpm_changes[1920] = 90.0;
     song.bpm_changes[4800] = 150.0;
     song.bpm_changes[7680] = 60.0;
-    song.tpm_changes[3840] = 1440;
-    song.timesig_changes[3840] = {3, 4};
-    song.tpm_changes[6720] = 1920;
-    song.timesig_changes[6720] = {4, 4};
+    apply_timesig(song, 3840, 3, 4);
+    apply_timesig(song, 6720, 4, 4);
     song.practice_sections = {{960, "Intro"}, {2880, "Verse"}, {5760, "Chorus"},
                               {8640, "Outro"}};
     song.build_timing();
@@ -1807,19 +1802,8 @@ TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many cha
                  "0:15.000 / 0:16.400 | m7.1.288 | m7.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
                 "time box lengths");
 
-    // Sections out of tick order (a MIDI with two EVENTS tracks lists each
-    // track's in turn) keep the front-to-back answer: the one before the
-    // first section past the playhead. Listed Chorus, Outro, Intro, Verse,
-    // the first entry is already past the playhead until 6800 ms, so nothing
-    // shows; at 7000 ms Outro is the first past it, so Chorus; at 11000 ms
-    // none is past it and the last listed, Verse, shows.
-    PreviewScene shuffled = scene;
-    std::rotate(shuffled.sections.begin(), shuffled.sections.begin() + 2,
-                shuffled.sections.end());
-    check_lines({build_time_box(shuffled, 1500.0, len).section_line,
-                 build_time_box(shuffled, 7000.0, len).section_line,
-                 build_time_box(shuffled, 11000.0, len).section_line},
-                {"", "Section Chorus", "Section Verse"}, "shuffled sections");
+    // Sections out of tick order never reach the time box: both parsers sort
+    // them (sort_practice_sections, D27 R7.7), and the parser tests pin that.
 }
 
 TEST_CASE("build_preview_scene: passed-over fills on several activations, and a tick that is no fill") {
@@ -1843,7 +1827,7 @@ TEST_CASE("sp meter curve: a meter change inside the window changes the drain ra
     // measure. Two bars from tick 3840 (measure 2) are four measures: two of
     // 4/4 to tick 7680, then two of 3/4 to tick 10560 (11000 ms). One bar is
     // 4000 ms of 4/4 and 3000 ms of 3/4.
-    Song song = make_sp_song({960, 1920}, /*last_tick=*/13440, {}, 480, {{7680, 1440}});
+    Song song = make_sp_song({960, 1920}, /*last_tick=*/13440, {}, 480, {{7680, {3, 4}}});
     Path path;
     Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/10560);
     act.bank_rise_ticks = {960, 1920};
@@ -1878,7 +1862,7 @@ TEST_CASE("sp meter curve: a stored SP end that drops a fraction of a tick") {
     // 7680 + (2 + 2/1920) x 1440 = 10561.5. The engine stores 10561.
     Song song(480);
     song.bpm_changes[0] = 120.0;
-    song.tpm_changes[7680] = 1440;
+    apply_timesig(song, 7680, 3, 4);
     song.build_timing();
     for (int64_t t : {0, 960, 1920, 3842, 4800, 7680, 9000, 12000, 14000}) {
         SongTimestamp ts;

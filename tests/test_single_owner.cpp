@@ -58,7 +58,9 @@ struct OwnerRule {
     std::vector<std::string> must_match;   // lines the rule flags
     std::vector<std::string> must_not_match;
     std::vector<OwnerLine> owner_lines;    // the owner's own lines; each must still match
-    std::vector<std::string> scope;        // top folders scanned; empty means src and tools
+    // Top folders scanned, or single repo-relative files; empty means src and
+    // tools.
+    std::vector<std::string> scope;
     // When set, the rule checks only one function's body in one file: from
     // the line in function_file that contains unction to the next line
     // that is a lone "}". The scan fails if it never finds that line.
@@ -433,6 +435,127 @@ const std::vector<OwnerRule>& rules() {
           "true, true);"},
          {},
          {"tests"}},
+        // A hand write into the meter or signature map is `tpm_changes[...] =`
+        // or `timesig_changes[...] =` followed by anything but a second `=`.
+        {"Who writes a meter or a signature into Song's maps?",
+         "apply_timesig in src/parse/song.cpp",
+         R"((tpm_changes|timesig_changes)\[[^\]]*\]\s*=[^=])",
+         "",
+         {},
+         {},
+         "decision D27 (audit findings 258 and 319: the meter is written once, through "
+         "apply_timesig); widened to signatures and tools by the step-2 derive-once review "
+         "of 11b9d44",
+         {"song.tpm_changes[0] = 768;", "fixture.tpm_changes[2880] = 1440;",
+          "s.tpm_changes[t]=960;", "song.timesig_changes[0] = {4, 4};"},
+         {"CHECK(song.tpm_changes[0] == 768);", "CHECK(fixture.tpm_changes.at(2880) == 1440);",
+          "apply_timesig(fixture, 2880, 3, 4);",
+          "CHECK(song.timesig_changes.at(0) == std::make_pair(4, 4));"},
+         {{"src/parse/song.cpp",
+           "song.tpm_changes[tick] = song.tick_resolution() * static_cast<int64_t>(numerator) * 4 /",
+           "apply_timesig, the owner"},
+          {"src/parse/song.cpp", "song.timesig_changes[tick] = {numerator, denominator};",
+           "apply_timesig, the owner"}},
+         {"src", "tools", "tests"}},
+        // Step-2 derive-once review of 11b9d44, finding 3 (audit finding 286).
+        {"Which test helper writes MThd/MTrk chunks?",
+         "smf_tracks in tests/midi_util.h",
+         R"re('M', 'T', '(h', 'd|r', 'k)'|"MTrk")re",
+         "",
+         {"tests/midi_util.h"},
+         {},
+         "audit finding 286; step-2 derive-once review of 11b9d44, finding 3",
+         {"d.insert(d.end(), {'M', 'T', 'r', 'k'});", "const char* tag = \"MTrk\";"},
+         {"smf(concat({track_name(\"PART DRUMS\"), end_of_track()}))"},
+         {{"tests/test_midi.cpp",
+           "'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0xE8, 0x00,  // div < 0",
+           "a deliberately broken header (a negative division), which smf_tracks cannot "
+           "write"}},
+         {"tests"}},
+        // Step-2 derive-once review of 11b9d44, finding 4 (audit finding 117).
+        {"Which test helper deflates a container stream?",
+         "deflate_raw in tests/srb_util.h",
+         R"(tdefl_compress_mem_to_heap)",
+         "",
+         {"tests/srb_util.h"},
+         {},
+         "audit finding 117; step-2 derive-once review of 11b9d44, finding 4",
+         {"void* p = tdefl_compress_mem_to_heap(src.data(), src.size(), &out_len,",
+          "p = tdefl_compress_mem_to_heap(a, n, &len, 0);"},
+         {"deflate_raw(meta)"},
+         {},
+         {"tests"}},
+        // Step-2 derive-once review of 11b9d44, finding 6, widened by the review
+        // of dbeb3a3, finding 1: any string literal that opens a [Song] or
+        // [SyncTrack] section, so a header typed across several source lines,
+        // or one that takes its lines as a parameter, is caught on its first
+        // line. The test_song.cpp lines build deliberately malformed charts from
+        // raw pieces; the test_app_state.cpp lines write a placeholder file.
+        {"Which test helper writes a .chart [Song] or [SyncTrack] header?",
+         "chart_text in tests/chart_text.h",
+         R"("\[(Song|SyncTrack)\]\\n)",
+         "",
+         {"tests/chart_text.h"},
+         {},
+         "step-2 derive-once review of 11b9d44, finding 6; review of dbeb3a3, finding 1",
+         {R"("[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n")",
+          R"("[SyncTrack]\n{\n  0 = TS 3 3\n}\n")",
+          R"("[SyncTrack]\n{\n" + sync + "}\n")", R"("[SyncTrack]\n")", R"("[Song]\n")",
+          R"(std::string s = "[Song]\n{\n  Resolution = " + resolution + "\n}\n")"},
+         {R"(testchart::section("Song", "  Resolution = 192\n"))",
+          R"(testchart::section("SyncTrack", testchart::kSync44At120))",
+          R"(write_bytes(ini, bytes_of("[Song]\r\nDelay = -250\r\n"));)"},
+         {{"tests/test_song.cpp", R"("[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";)",
+           "\"section headers are found as the regex found them\" puts an arbitrary first "
+           "line in front of this header, which chart_text cannot write"},
+          {"tests/test_song.cpp",
+           R"(const std::string song = "[Song]\n{\n  Resolution = 192\n}\n";)",
+           "\"malformed lines keep their handling\" joins the sections with stray text between "
+           "them, which chart_text cannot write"},
+          {"tests/test_song.cpp",
+           R"(const std::string sync = "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";)",
+           "\"malformed lines keep their handling\" joins the sections with stray text between "
+           "them, which chart_text cannot write"},
+          {"tests/test_song.cpp",
+           R"(Song s = parse(song + "[Song]\n{\n  Resolution = 480\n}\n" + sync +)",
+           "\"malformed lines keep their handling\" repeats the [Song] section to pin that the "
+           "later one replaces it, which chart_text cannot write"},
+          {"tests/test_app_state.cpp", R"({ std::ofstream f(chart); f << "[Song]\n"; })",
+           "a placeholder .chart that only has to exist on disk; no case parses it"},
+          {"tests/test_app_state.cpp", R"({ std::ofstream f(chart); f << "[Song]\n"; })",
+           "a placeholder .chart that only has to exist on disk; no case parses it"}},
+         {"tests"}},
+        // Step-2 derive-once review of dbeb3a3, finding 2. A test's own
+        // per-difficulty table pairs a difficulty with a number; a plain list
+        // of difficulties to walk is not flagged. The owner's rows carry the
+        // hydra:: prefix, so they do not match. Loose by design: a table
+        // spelled another way needs a review reading.
+        {"Which test types a difficulty's kick pitch or other per-difficulty value?",
+         "kLiterals in tests/difficulty_literals.h",
+         R"(\{Difficulty::(Hard|Medium|Easy), \d)",
+         "",
+         {"tests/difficulty_literals.h"},
+         {},
+         "step-2 derive-once review of dbeb3a3, finding 2",
+         {"{Difficulty::Hard, 480},", "{Difficulty::Easy, 60, 59, '0'}"},
+         {R"({hydra::Difficulty::Hard, 84, 83, 85, '2', "Hard", "HardDrums"},)",
+          "for (Difficulty d : {Difficulty::Hard, Difficulty::Medium, Difficulty::Easy}) {"},
+         {},
+         {"tests"}},
+        // Was part of the same walker: the Preview's time box reads Song's
+        // default meter and keeps no 4/4 of its own. Scoped to its two files.
+        {"Does the Preview type its own 4/4 meter?",
+         "kDefaultTimeSigNumerator and kDefaultTimeSigDenominator in src/parse/song.h",
+         R"((numerator|denominator|ts_num|ts_den)\s*=\s*4\b)",
+         "",
+         {},
+         {},
+         "decision D27 (audit findings 258 and 319: one default meter)",
+         {"int numerator = 4;", "sig.denominator = 4;", "int ts_den = 4;"},
+         {"int numerator = kDefaultTimeSigNumerator;", "if (sig.denominator == 4) ok = true;",
+          "const int numerator = 48;"},
+         {},
+         {"src/app/preview_view.h", "src/app/preview_view.cpp"}},
         // A test that sets EngineOptions' target ticks runs the engine's
         // targeted search itself. The lines listed test the engine's target
         // mode on hand-built songs (each pins its own answer); a test that
@@ -590,6 +713,12 @@ const std::vector<KnownCopy>& known_copies() {
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
+        {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
+         "const char* tag = \"MTrk\";",
+         "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
+        {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
+         "put_bytes(file, {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 3, 0, 192});",
+         "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
     };
     return k;
 }
@@ -705,11 +834,11 @@ TEST_CASE("single-owner rules match their own examples") {
     }
 }
 
-// Does this rule scan files under the top folder `sub`?
-bool in_scope(const OwnerRule& r, const std::string& sub) {
+// Does this rule scan the file `rel`, which sits under the top folder `sub`?
+bool in_scope(const OwnerRule& r, const std::string& sub, const std::string& rel) {
     if (r.scope.empty()) return sub == "src" || sub == "tools";
     for (const std::string& s : r.scope)
-        if (s == sub) return true;
+        if (s == sub || s == rel) return true;
     return false;
 }
 
@@ -741,7 +870,7 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
                 for (size_t ci = 0; ci < compiled.size(); ++ci) {
                     const CompiledRule& c = compiled[ci];
                     const OwnerRule& rule = *c.rule;
-                    if (!in_scope(rule, sub)) continue;
+                    if (!in_scope(rule, sub, rel)) continue;
                     if (!rule.function.empty()) {
                         if (rel != rule.function_file) continue;
                         if (!in_function[ci] && line.find(rule.function) != std::string::npos) {
@@ -781,9 +910,40 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
         INFO(rule.question << ": \"" << rule.function << "\" in " << rule.function_file);
         CHECK(functions_found[ci] == 1);
     }
+    // A rule scoped to single files names files that exist; a renamed one
+    // would otherwise leave the rule checking nothing.
+    for (const CompiledRule& c : compiled) {
+        for (const std::string& s : c.rule->scope) {
+            if (s.find('/') == std::string::npos) continue;
+            INFO(c.rule->question << ": scoped to " << s);
+            CHECK(fs::is_regular_file(root / fs::u8path(s)));
+        }
+    }
     CHECK(files > 100);  // the scan found the sources
     std::ostringstream report;
     for (const std::string& p : problems) report << p << "\n";
     INFO(report.str());
     CHECK(problems.empty());
+}
+
+// D23: a change under src/parse that alters what a chart reads as must bump
+// the results stamp. The rule is a comment, which does not compile and which
+// the row scan skips, so this case reads it: the block between the "Results"
+// banner and the kResultsStamp line in src/store/stored_versions.h must name
+// src/parse next to src/search and src/core. Moved here from
+// test_s2_stamps.cpp, so this file stays the one test that reads the tree.
+TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (D23)") {
+    std::ifstream in(fs::u8path(HYDRA_SOURCE_DIR) / "src" / "store" / "stored_versions.h");
+    REQUIRE(in.good());
+    std::stringstream ss;
+    ss << in.rdbuf();
+    const std::string text = ss.str();
+    const size_t stamp = text.find("kResultsStamp{");
+    REQUIRE(stamp != std::string::npos);
+    const size_t banner = text.rfind("// ---- Results", stamp);
+    REQUIRE(banner != std::string::npos);
+    const std::string rule = text.substr(banner, stamp - banner);
+    CHECK(rule.find("src/search") != std::string::npos);
+    CHECK(rule.find("src/core") != std::string::npos);
+    CHECK(rule.find("src/parse") != std::string::npos);
 }

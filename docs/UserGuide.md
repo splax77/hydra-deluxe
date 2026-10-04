@@ -38,7 +38,7 @@ While a batch runs, the bar is locked and says `Stop the batch to change these.`
 
 **Pro Drums.** Analyze with cymbals and toms as separate notes, the way Clone Hero scores Pro Drums.
 
-**2x Bass.** Include the chart's 2x kicks. 2x Bass only exists on Expert, so it is greyed out on the other difficulties.
+**2x Bass.** Include the chart's 2x kicks, like Clone Hero's Double Kick modifier. It works at every difficulty. Each difficulty has its own 2x kicks, though few charts have any below Expert.
 
 For example, say you analyzed a song with 2x Bass on and want to see it with 1x bass. Untick 2x Bass and analyze again. Tick it again and the 2x result comes back.
 
@@ -165,7 +165,7 @@ The boxes on the highway:
 
 This tab counts the chart's ghost and accent notes. Ghosts and accents are the soft and hard hits that score double in Clone Hero.
 
-The **Pads** table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. **Kicks** does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. When 2x Bass is off, the 2x kick row stays visible but greyed out and is left out of the totals. **Totals** adds them up.
+The **Pads** table shows, for each pad (and each cymbal separately under Pro Drums), how many notes are ghosts, accents and normal hits. **Kicks** does the same for kicks, with 2x kicks on their own row and a line saying how many kick notes are 2x. When 2x Bass is off, the 2x kick row stays visible but greyed out, and both All kicks and the totals leave it out. **Totals** adds them up.
 
 The **Chart** box says whether the chart has dynamics turned on. A MIDI chart has to opt in. Without that flag Clone Hero ignores the velocity markings, so Hydra Deluxe shows the counts but notes that the game won't apply them.
 
@@ -217,7 +217,7 @@ The finished strip offers:
 
 `Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list; Hydra Deluxe remembers the last pick. Hydra Deluxe fetches their scores, matches them to your analyzed songs by chart hash, and saves a sortable page, `hydra_dmcompare.html`, in the same Documents\Hydra folder. The page lists each score, Hydra Deluxe's optimal, the points left, and a status per row.
 
-When it's done, the window counts the scores that matched, the ones above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library.
+When it's done, the window counts the scores that matched, the ones above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library. Scores played at a speed other than 100% get their own status, Other speed. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed, so those rows show Hydra's numbers but don't count as matched or above optimal.
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 
@@ -250,7 +250,7 @@ What each line does:
 - **`fill_cooldown_measures`** (default `4`): for charts with no authored fills, how many measures must pass after an activation point before Hydra Deluxe places the next one.
 - **`fill_max_distance_beats`** (default `0.5`): for charts with no authored fills, how far from a measure line a note can sit and still get a fill.
 - **`fill_length_measures`** (default `0.5`): for charts with no authored fills, how long each fill Hydra Deluxe places is, in measures.
-- **`fill_land_slop_beats`** (default `0.03125`, a 32nd of a beat): how close a fill's end must be to a note for the fill to count. This one applies to authored fills too.
+- **`fill_land_slop_beats`** (default `0.03125`, a 32nd of a beat): how close after a fill's end a note must be for the fill to land on it. Hydra Deluxe adds one tick to this, as Clone Hero does, so even `0` lets a note one tick late take the fill. It applies only to fills written in the chart.
 
 Older files may still have `auto_cap_ladder` or `auto_budget_s` lines. Hydra Deluxe reads and ignores them, so those files keep working.
 

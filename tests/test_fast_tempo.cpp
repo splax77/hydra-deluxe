@@ -21,6 +21,7 @@
 
 #include "app/config.h"
 #include "bank_check.h"
+#include "chart_text.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "parse/song.h"
@@ -123,11 +124,11 @@ FuzzChart fuzz_chart(uint64_t seed) {
         return z ^ (z >> 31);
     };
     auto U = [&next](int a, int b) { return a + (int)(next() % (uint64_t)(b - a + 1)); };
-    std::ostringstream c;
-    c << "[Song]\n{\n  Resolution = 192\n  Offset = 0\n}\n[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n";
     const int fast_at = 3072 + 96 * U(0, 60);
-    c << "  " << fast_at << " = B " << (U(0, 1) ? 4000000 : 2000000)
-      << "\n}\n[Events]\n{\n}\n[ExpertDrums]\n{\n";
+    const std::string sync =
+        testchart::kSync44At120 +
+        testchart::line(fast_at, "B " + std::to_string(U(0, 1) ? 4000000 : 2000000));
+    std::ostringstream c;  // the [ExpertDrums] lines
     std::vector<int> ticks;
     for (int t = 0; t < 3072; t += 96) ticks.push_back(t);
     const int n_rand = U(12, 30);
@@ -147,8 +148,10 @@ FuzzChart fuzz_chart(uint64_t seed) {
         if (phrase) c << "  " << t << " = S 2 10\n";
         c << "  " << t << " = N " << (fill ? 1 : U(0, 1) ? 1 : 2) << " 0\n";
     }
-    c << "}\n";
-    return {c.str(), U(2, 4)};
+    return {testchart::chart_text(
+                testchart::section("Events", "") + testchart::section("ExpertDrums", c.str()),
+                192, "  Offset = 0\n", sync),
+            U(2, 4)};
 }
 
 }  // namespace
@@ -391,6 +394,12 @@ std::string target_text(const std::vector<Path>& kept) {
 // take only 3168 (SP still runs at 12864's fill); search_target drops those.
 // Before D45 the one short path made it report the whole set unrealizable.
 // The kept paths are pinned as read from one run.
+// Step 1 read four kept paths here. Step 2 reads five: D21 (a phrase that
+// runs past the last note pays on that note) awards seed 5's last phrase, at
+// 22848. That brings back '0+- 0++', which takes 3168 and 12864 as a tied
+// variant of a root that took only 3168, so search_target promotes it to a
+// result of its own (the next test's case). Two other path strings gain a
+// sign for that phrase ('0++- E0+' reads '0++- E0++'); no total moves.
 TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept (D45)") {
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
@@ -400,11 +409,12 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
 
     std::vector<bool> promoted;
     const std::vector<Path> kept = search_target(song, cfg, want, &promoted);
-    CHECK(kept.size() == 4);
+    CHECK(kept.size() == 5);
     CHECK(target_text(kept) ==
-          "0++- E0+ 7350 | 0++- E0- 7150 [0+- 0+ 7150] | 0+- 0- 6950 | 0- 0 6750 | ");
-    // All four are the engine's own roots; none was promoted.
-    CHECK(promoted == std::vector<bool>{false, false, false, false});
+          "0+- 0++ 7550 | 0++- E0++ 7350 [0++- E0+- 7350] | 0++- E0- 7150 [0+- 0+- 7150] | "
+          "0+- 0- 6950 | 0- 0 6750 | ");
+    // '0+- 0++' is the promoted variant; the other four are the engine's roots.
+    CHECK(promoted == std::vector<bool>{true, false, false, false, false});
     for (const Path& p : kept) {
         CHECK(act_ticks(p) == want);
         std::vector<const Path*> tied;
@@ -423,6 +433,9 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
 // seed 5 with one more note after its last phrase, so that phrase is
 // awarded: root '0++++-' takes only 3168, and its tied variant '0+- 0++'
 // takes 3168 and 12864. Before the fix the variant went with the root.
+// Under step 2, D21 already awards that phrase on seed 5 alone (the test
+// above promotes '0+- 0++' too). The extra note stays: with it, every value
+// pinned below reads the same as under step 1.
 TEST_CASE("search_target: a variant that took every named activation outlives its dropped root") {
     FuzzChart fc = fuzz_chart(5);
     const std::string last_phrase = "  22848 = N 1 0\n";

@@ -1,10 +1,19 @@
 # Hit window testing: next round
 
-This plan picks up from the 2026-09-25 live session. The formula and its
-constants are settled. What's still open is the 170 ms cap, whether there is a
-floor, which gap sets a note's window, where the game stores hit timing, where
-real hits turn into misses, and what precision mode does. Until step 5 is done,
-Hydra keeps the fixed 85 ms.
+This plan picks up from the 2026-09-25 live session. **Status, 2026-10-03
+(decision D28):** steps 1-3 are answered from Clone Hero's code and the
+committed `poll_windows.csv`, with no live run. Steps 4-6 are shelved. Hydra
+keeps the fixed 85 ms per side.
+
+The answers. Step 1: the whole window caps at 171.43 ms. Step 2: the floor
+is real, but it reads 96.29 ms, not the 75 this plan expected, because the
+clamp sits on the formula's input, not its output. Step 3: the window uses
+both gaps; each is halved and held between 37.5 and 85 ms, and the two
+halves are summed. The evidence (addresses 0x20F7210 and 0x20DDDA0, the
+formula's constants, and the CSV rows) is in
+`docs/audit/ch-evidence.md`, section 77.
+The values live in `tools/ch_probe/constants.py` (WINDOW_CAP_MS,
+WINDOW_FLOOR_MS), which every probe script reads.
 
 ## The probe songs
 
@@ -40,6 +49,8 @@ land in the next note's window.
 
 ### 1–3. Play Window Map and log the window against the song clock
 
+*Answered 2026-10-03; see the status at the top. Kept for the record.*
+
 Here is how it works today. `experiments/poll_windows.py` logs the window
 field (+0x20) with wall-clock time only. That's enough to count distinct
 values. It can't tie a value to a note.
@@ -52,7 +63,7 @@ prints each block's window value in the order the values appeared.
 - Step 1 (cap): for 170, 180, 200, 250 and 400 ms, the window should read
   171.43 in every run. If any run shows a different value, the cap is wrong.
 - Step 2 (floor): compare the 30, 40, 50 and 60 ms runs against the values in
-  your notes. The floor is real if every value under 75 ms reads 75.
+  your notes. The floor is real if every value at 75 ms or under reads 96.29 (it does; see the top).
 - Step 3 (which gap): the order of values across each three-note group tells
   us whether the window follows the gap before, the gap after, or the smaller
   of the two. The mirrored groups check that answer.
@@ -64,6 +75,8 @@ so the answer is the same.
 
 ### 4. Read the game's own hit timing at +0x2e0
 
+*Shelved 2026-10-03 (D28). Run only if Hydra's fixed 85 ms per side is questioned again. Step 5 is the one that would test it: the measured cap says the per-side reach is about 85.72 ms.*
+
 The code reading says the game copies the song time into +0x2e0 on a hit. The
 live session tried +0x28 and never tried +0x2e0.
 
@@ -74,6 +87,8 @@ minus the note time. This comes before step 5, because step 5 is much stronger
 if it can use the game's own measurement.
 
 ### 5. Walk the edges on Edge Walk
+
+*Shelved 2026-10-03 (D28). Run only if Hydra's fixed 85 ms per side is questioned again. Step 5 is the one that would test it: the measured cap says the per-side reach is about 85.72 ms.*
 
 This needs a driver: a variant of `play_chart.py` that takes a planned offset
 for each note in place of "on time".
@@ -97,6 +112,8 @@ silence between pairs, and the walk would move away from the partner note. The
 note layout depends on the step 3 result, so it waits until then.
 
 ### 6. Precision mode
+
+*Shelved 2026-10-03 (D28). Run only if Hydra's fixed 85 ms per side is questioned again. Step 5 is the one that would test it: the measured cap says the per-side reach is about 85.72 ms.*
 
 Turn on precision mode in Clone Hero and repeat steps 1–3 on Window Map. This
 settles whether the odd precision constants are real.

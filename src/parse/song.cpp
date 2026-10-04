@@ -72,6 +72,15 @@ bool section_name_of(const std::string& body, std::string* name) {
     return false;
 }
 
+// Practice sections in tick order, the order Song promises. A .chart's
+// [Events] need not be sorted, and a .mid lists each EVENTS track's sections
+// in turn, so both parsers call this once at the end. The sort is stable, so
+// two sections on one tick keep the file's order.
+void sort_practice_sections(std::vector<SongSection>& sections) {
+    std::stable_sort(sections.begin(), sections.end(),
+                     [](const SongSection& a, const SongSection& b) { return a.tick < b.tick; });
+}
+
 bool try_parse_int(const std::string& s, int64_t& out) {
     if (s.empty()) return false;
     try {
@@ -86,10 +95,12 @@ bool try_parse_int(const std::string& s, int64_t& out) {
     return false;
 }
 
-// The three text markers both formats read, matched by hand. Each one is
-// exactly the whole-string regex it replaced (named beside it). The tests
-// "... markers match the regexes they replaced" in test_song.cpp check that
-// through both parsers, with every byte value in every position that matters.
+// The disco markers both formats read are matched by hand, each exactly the
+// whole-string regex it replaced (named beside it). The dynamics marker is not
+// a regex any more: it is Clone Hero's two exact strings (finding 64). The tests
+// "... disco markers match the regexes they replaced" in test_song.cpp check
+// the disco markers through both parsers, with every byte value in every
+// position that matters; test_s2_dynamics_tag.cpp pins the dynamics strings.
 //
 // What the regex pieces meant, as std::regex (ECMAScript, char) reads them:
 // `.` is any byte except '\n' and '\r'; `\d` is an ASCII digit; `\[?` and
@@ -104,52 +115,47 @@ std::string_view peel_brackets(std::string_view s) {
     return s;
 }
 
-// `mix.3.drums`: the 11-byte head both disco markers share.
-bool disco_head(std::string_view s) {
-    return s.size() >= 11 && s.substr(0, 3) == "mix" && regex_dot(s[3]) && s[4] == '3' &&
-           regex_dot(s[5]) && s.substr(6, 5) == "drums";
+// `mix.N.drums`: the 11-byte head both disco markers share, where N is the
+// parsed difficulty's digit (difficulty_chart_codes). A marker naming another
+// difficulty is not a marker here: Clone Hero applies each marker only to the
+// difficulty it names, in both formats (D19; 0x215C750, 0x213D076, 0x2155050).
+bool disco_head(std::string_view s, char mix_digit) {
+    return s.size() >= 11 && s.substr(0, 3) == "mix" && regex_dot(s[3]) &&
+           s[4] == mix_digit && regex_dot(s[5]) && s.substr(6, 5) == "drums";
 }
 
-// \[?ENABLE_CHART_DYNAMICS\]?
+// Clone Hero 1.1 turns dynamics on only when a PART DRUMS text event is
+// exactly one of these two strings (String.op_Equality at 0x21557A5 and
+// 0x21557BB, on the raw text with no trim). One bracket, extra brackets or
+// spaces do nothing (finding 64, D24).
 bool is_dynamics_marker(std::string_view s) {
-    return peel_brackets(s) == "ENABLE_CHART_DYNAMICS";
+    return s == "ENABLE_CHART_DYNAMICS" || s == "[ENABLE_CHART_DYNAMICS]";
 }
 
-// \[?mix.3.drums\d?d\]?
-bool is_disco_on_marker(std::string_view s) {
+// \[?mix.N.drums\d?d\]?, where N is `mix_digit`
+bool is_disco_on_marker(std::string_view s, char mix_digit) {
     s = peel_brackets(s);
-    if (!disco_head(s)) return false;
+    if (!disco_head(s, mix_digit)) return false;
     std::string_view rest = s.substr(11);
     if (!rest.empty() && regex_digit(rest.front())) rest.remove_prefix(1);
     return rest == "d";
 }
 
-// \[?mix.3.drums\d?(dnoflip)?\]?
-bool is_disco_off_marker(std::string_view s) {
+// \[?mix.N.drums\d?(dnoflip)?\]?, where N is `mix_digit`. "dnoflip" reads as
+// flip off. Clone Hero turns flip on for it (its classifier at 0x215CD50 looks
+// only at the 7th character); Hydra keeps it off on purpose (D19).
+bool is_disco_off_marker(std::string_view s, char mix_digit) {
     s = peel_brackets(s);
-    if (!disco_head(s)) return false;
+    if (!disco_head(s, mix_digit)) return false;
     std::string_view rest = s.substr(11);
     if (!rest.empty() && regex_digit(rest.front())) rest.remove_prefix(1);
     return rest.empty() || rest == "dnoflip";
 }
 
-// Activation-fill placement heuristic, shared by both parsers: true when the
-// fill that ended at `fill_end_tick` lands on the chord being emitted at
-// `tick` (so its op must run after the chord emit), false when it belongs to
-// an earlier chord (run it before). "Lands on" means the next chord is within
-// a 1/32-of-a-beat slop of the fill end and no closer to the previous chord.
-bool fill_lands_on_chord(const Song& song, int64_t fill_end_tick, int64_t tick,
-                         double slop_beats) {
-    std::optional<int64_t> prevchord_dist;
-    if (!song.sequence.empty())
-        prevchord_dist = fill_end_tick - song.sequence.back().timecode.ticks();
-    int64_t nextchord_dist = tick - fill_end_tick;
-    return nextchord_dist <= static_cast<int64_t>(song.tick_resolution() * slop_beats) &&
-           (!prevchord_dist.has_value() || nextchord_dist <= *prevchord_dist);
-}
-
 // The parser handlers MIDI and .chart share. Each parser decides when to
 // call them (its own event phases); what they do to the Song lives here once.
+
+}  // namespace
 
 // A time signature: ticks per measure = resolution * 4 * num / den. The
 // signature itself is kept too, for display. A numerator of 0 names no meter,
@@ -168,23 +174,83 @@ void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
     song.timesig_changes[tick] = {numerator, denominator};
 }
 
-// A fill ending: the last chord becomes an activation chord whose fill began
-// at `starttick`.
-void apply_fill_end(Song& song, int64_t starttick) {
-    if (song.sequence.empty()) return;
-    SongTimestamp& last = song.sequence.back();
-    if (last.timecode.ticks() >= starttick)
-        last.activation_length = last.timecode.ticks() - starttick;
+namespace {
+
+// One authored activation fill, as the chart wrote it.
+struct AuthoredFill {
+    int64_t start = 0;
+    int64_t end = 0;
+};
+
+// A placed fill: the chord at `index` becomes an activation chord whose fill
+// began at `starttick`. A chord before the fill start takes nothing, so a
+// .chart fill with a negative length never gets a negative one.
+void apply_fill_end(Song& song, size_t index, int64_t starttick) {
+    SongTimestamp& ts = song.sequence[index];
+    if (ts.timecode.ticks() >= starttick)
+        ts.activation_length = ts.timecode.ticks() - starttick;
 }
 
-// An SP phrase ending: the last chord closes the phrase that began at
-// `starttick`, if it lies inside it.
-void mark_sp_phrase_end(Song& song, int64_t starttick) {
+// The one owner of authored-fill placement, for both parsers, run once every
+// chord is read: each fill is placed on its own, as Clone Hero 1.1 does
+// (0x20CFF60 calling 0x5DE030; finding 315, D30). The candidates are the last
+// chord at or before the fill end, which must not be before the fill start,
+// and the first chord after the end, which must be inside the landing window.
+// When both qualify the closer wins, and a tie goes to the later chord. A fill
+// with neither is dropped, even when one side has no chord at all (Clone
+// Hero's 0x5DE030 takes that side unbounded; D30 does not copy it). A later
+// fill that picks the same chord replaces the earlier one's length.
+//
+// The window is Clone Hero 1.1's: the whole ticks of resolution x slop, plus
+// one tick (cvttsd2si truncates at 0x20D0088, then inc adds one at
+// 0x20D008D), and a chord exactly at its edge still lands (0x5DE17D; D22).
+// The +1 sits on top of the rules value, so a hydra_rules.ini slop of 0 still
+// lands a chord one tick late.
+void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
+                          double slop_beats) {
+    if (fills.empty() || song.sequence.empty()) return;
+    // The chord list with its ticks. Both parsers emit chords in tick order
+    // (.mid by its event times, .chart by D47's one sort in ChartParser), so
+    // no sort here.
+    std::vector<std::pair<int64_t, size_t>> order;
+    order.reserve(song.sequence.size());
+    for (size_t i = 0; i < song.sequence.size(); ++i)
+        order.emplace_back(song.sequence[i].timecode.ticks(), i);
+    const int64_t window_ticks =
+        static_cast<int64_t>(song.tick_resolution() * slop_beats) + 1;
+
+    for (const AuthoredFill& f : fills) {
+        const auto it = std::upper_bound(
+            order.begin(), order.end(), f.end,
+            [](int64_t t, const std::pair<int64_t, size_t>& c) { return t < c.first; });
+        const std::pair<int64_t, size_t>* after = it != order.end() ? &*it : nullptr;
+        const std::pair<int64_t, size_t>* before = it != order.begin() ? &*(it - 1) : nullptr;
+        if (before && before->first < f.start) before = nullptr;
+        if (after && after->first > f.end + window_ticks) after = nullptr;
+
+        const std::pair<int64_t, size_t>* pick = after ? after : before;
+        if (before && after)
+            pick = (after->first - f.end) <= (f.end - before->first) ? after : before;
+        if (pick) apply_fill_end(song, pick->second, f.start);
+    }
+}
+
+// The one owner of "which chord awards this SP phrase", for both formats. A
+// phrase covers the ticks start <= t < end, as Clone Hero 1.1 assigns notes
+// to phrases (0x20D2440), and the last chord inside it gets the phrase. So a
+// zero-length phrase, or one with no chord inside, awards nothing, and a
+// phrase running past the last note is awarded on that note (finding 21,
+// D21). Each parser calls this once no later chord can fall inside the
+// phrase, always before that tick's own chord is emitted: .mid at the 116
+// note-off; .chart at the first tick at or past the end, and once more after
+// the last tick for a phrase still open.
+void close_sp_phrase(Song& song, int64_t start_tick, int64_t end_tick) {
     if (song.sequence.empty()) return;
     SongTimestamp& last = song.sequence.back();
-    if (last.timecode.ticks() >= starttick) {
+    const int64_t t = last.timecode.ticks();
+    if (t >= start_tick && t < end_tick) {
         last.flag_sp = true;
-        last.sp_phrase_start = starttick;
+        last.sp_phrase_start = start_tick;
     }
 }
 
@@ -192,10 +258,13 @@ void mark_sp_phrase_end(Song& song, int64_t starttick) {
 // apply_flam is true only on the .mid path: MIDI charts carry a flam marker
 // that converts the chord, while the .chart format has no such marker, so
 // ChartParser always passes false (existing behavior, now explicit).
-void emit_chord_timestamp(Song& song, Chord& chord, int64_t tick,
-                          bool apply_flam, bool apply_disco, bool solo) {
+// A disco section swaps red and yellow only under Pro Drums. That rule lives
+// here, once, for both parsers (finding 250): `pro` is the Pro Drums setting
+// and `in_disco` says whether this difficulty's disco section is open.
+void emit_chord_timestamp(Song& song, Chord& chord, int64_t tick, bool apply_flam,
+                          bool pro, bool in_disco, bool solo) {
     if (apply_flam) chord.apply_flam_conversion();
-    if (apply_disco) chord.apply_disco_flip();
+    if (pro && in_disco) chord.apply_disco_flip();
     SongTimestamp ts;
     ts.chord = chord;
     ts.timecode = song.timecode(tick);
@@ -206,12 +275,7 @@ void emit_chord_timestamp(Song& song, Chord& chord, int64_t tick,
 }  // namespace
 
 const char* difficulty_name(Difficulty difficulty) {
-    switch (difficulty) {
-        case Difficulty::Hard: return "Hard";
-        case Difficulty::Medium: return "Medium";
-        case Difficulty::Easy: return "Easy";
-        default: return "Expert";
-    }
+    return difficulty_chart_codes(difficulty).name;
 }
 
 std::optional<Difficulty> difficulty_from_name(std::string_view name) {
@@ -237,6 +301,18 @@ std::string title_or_unknown(std::string title) {
     static constexpr const char* kOldPlaceholder = "<unknown title>";
     if (title.empty() || title == kOldPlaceholder) return kUnknownTitle;
     return title;
+}
+
+Song::Song(int64_t resolution) : tick_resolution_(resolution) {
+    apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);
+}
+
+std::string artist_or_unknown(std::string artist) {
+    return artist.empty() ? std::string(kUnknownArtist) : artist;
+}
+
+std::string charter_or_unknown(std::string charter) {
+    return charter.empty() ? std::string(kUnknownCharter) : charter;
 }
 
 // ---- Song::sp_phrase_count ----------------------------------------------
@@ -336,14 +412,13 @@ void Song::check_activations(const core::Rules& rules) {
 
 namespace {
 
-enum class MPhase { None, Time, Pre, PreDelayed, Notes, Post, PostDelayed,
-                    PreTimestamp };
+enum class MPhase { None, Time, Pre, PreDelayed, Notes, PostDelayed };
 
 // What a MIDI message does to the parser, decided once when the message is
 // classified and carried out later in its phase. A plain tagged struct, so a
 // tick's handlers cost no allocation (they used to be std::function closures).
 enum class MAct : uint8_t {
-    None, Note, FillStart, StoreFillEnd, ApplyFill, SpStart, SpEnd, Tom, Flam,
+    None, Note, FillStart, StoreFillEnd, SpStart, SpEnd, Tom, Flam,
     Solo, Dynamics, Disco, Tempo, TimeSig,
 };
 
@@ -354,8 +429,7 @@ struct MOp {
     NoteDynamicType dyn = NoteDynamicType::Normal;      // Note
     NoteCymbalType cymbal = NoteCymbalType::Normal;     // Tom
     bool flag = false;     // Note: is2x; Flam/Solo/Disco: on
-    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/Tempo/TimeSig;
-                           // ApplyFill: the fill's start tick
+    int64_t tick = 0;      // FillStart/StoreFillEnd/SpStart/SpEnd/Dynamics/Tempo/TimeSig
     uint32_t tempo = 0;    // Tempo
     int num = 0, den = 0;  // TimeSig
 
@@ -396,25 +470,45 @@ MOp mop_tom(NoteColor color, NoteCymbalType cymbal) {
     return op;
 }
 
-// All four difficulties share the one "PART DRUMS" track; each owns a block of
-// five pitches starting here (kick, then the four pads).
-int difficulty_base_pitch(Difficulty difficulty) {
-    switch (difficulty) {
-        case Difficulty::Hard: return 84;
-        case Difficulty::Medium: return 72;
-        case Difficulty::Easy: return 60;
-        default: return 96;
-    }
+}  // namespace
+
+// The one table of how each difficulty is spelled in a chart file, in
+// Difficulty enum order. All four difficulties share the one "PART DRUMS"
+// track; each owns a block of five pitches starting at its kick (kick, then
+// the four pads). Its 2x kick sits one below the kick
+// (DifficultyChartCodes::kick2x_pitch).
+namespace {
+constexpr DifficultyChartCodes kDifficultyChartCodes[] = {
+    {"Expert", 96, '3'},
+    {"Hard", 84, '2'},
+    {"Medium", 72, '1'},
+    {"Easy", 60, '0'},
+};
+static_assert(std::size(kDifficultyChartCodes) == std::size(kAllDifficulties));
+}  // namespace
+
+const DifficultyChartCodes& difficulty_chart_codes(Difficulty difficulty) {
+    const auto i = static_cast<size_t>(difficulty);
+    return kDifficultyChartCodes[i < std::size(kDifficultyChartCodes) ? i : 0];
 }
 
-// `base` is the difficulty's kick pitch. The five note pitches follow it; every
-// other pitch here is a marker shared by all four difficulties (95 is the 2x
-// kick, which only Expert charts carry). A pitch outside this set belongs to
-// another difficulty (or to another instrument) and is dropped.
-bool is_handled_note(int note, int base) {
+namespace {
+
+int difficulty_base_pitch(Difficulty difficulty) {
+    return difficulty_chart_codes(difficulty).kick_pitch;
+}
+
+// `base` is the difficulty's kick pitch and `kick2x` its 2x kick pitch, both
+// from difficulty_chart_codes. The five note pitches follow the kick, and the
+// 2x kick sits one below it. Every other pitch here is a marker shared by all
+// four difficulties. A pitch outside this set belongs to another difficulty
+// (or to another instrument) and is dropped, so Expert's 95 is never read
+// below Expert: Clone Hero reads each 2x kick only into its own difficulty
+// (D20; 0x2155050 at 0x21555CD).
+bool is_handled_note(int note, int base, int kick2x) {
     if (note >= base && note <= base + 4) return true;
+    if (note == kick2x) return true;
     switch (note) {
-        case 95:
         case 103:
         case 109: case 110: case 111: case 112:
         case 116:
@@ -439,7 +533,14 @@ private:
     void run_ops(const std::vector<MOp>& ops);
 
     // op_* handlers
-    void op_enable_dynamics() { dynamics_enabled_ = true; }
+    void op_enable_dynamics(int64_t tick) {
+        if (dynamics_enabled_) return;  // a second tag changes nothing
+        dynamics_enabled_ = true;
+        if (marks_before_tag_ > 0) {
+            song_->dynamics_late_tag_tick = tick;
+            song_->dynamics_marks_before_tag = marks_before_tag_;
+        }
+    }
     void op_disco(bool on) { flag_disco_ = on; }
     void op_tempo(int64_t tick, uint32_t miditempo) {
         song_->bpm_changes[tick] = 60000000.0 / static_cast<double>(miditempo);
@@ -447,16 +548,18 @@ private:
     void op_timesig(int64_t tick, int numerator, int denominator) {
         apply_timesig(*song_, tick, numerator, denominator);
     }
-    void op_fillstart(int64_t tick) {
-        fill_start_tick_ = tick;
-        fill_end_tick_.reset();
+    void op_fillstart(int64_t tick) { fill_start_tick_ = tick; }
+    // The fill marker's note-off: the fill is recorded whole and placed once
+    // every chord is read (place_authored_fills). A note-off with no fill
+    // open records nothing.
+    void op_store_fillend(int64_t tick) {
+        if (fill_start_tick_) fills_.push_back({*fill_start_tick_, tick});
+        fill_start_tick_.reset();
     }
-    void op_store_fillend(int64_t tick) { fill_end_tick_ = tick; }
-    void op_apply_fill(int64_t starttick) { apply_fill_end(*song_, starttick); }
     void op_sp_start(int64_t tick) { sp_start_tick_ = tick; }
-    void op_sp_end() {
+    void op_sp_end(int64_t end_tick) {
         // A note-off with no phrase open (a stray 116 off) closes nothing.
-        if (sp_start_tick_) mark_sp_phrase_end(*song_, *sp_start_tick_);
+        if (sp_start_tick_) close_sp_phrase(*song_, *sp_start_tick_, end_tick);
         sp_start_tick_.reset();
     }
     void op_tom(NoteColor color, NoteCymbalType cymbal) {
@@ -467,6 +570,9 @@ private:
     void op_note(NoteColor color, NoteDynamicType dyn, bool is2x) {
         ChordNote& note = chord_.add_note(color);  // may throw ChartFileError
         note.dynamictype = dynamics_enabled_ ? dyn : NoteDynamicType::Normal;
+        // A ghost or accent velocity before the tag: Clone Hero prices it as
+        // plain, and the Dynamics tab reports how many there were.
+        if (!dynamics_enabled_ && dyn != NoteDynamicType::Normal) ++marks_before_tag_;
         if (allows_cymbals(color) && mode_pro_)
             note.cymbaltype = flag_cymbals_[static_cast<int>(color) - 1];
         note.is2x = is2x;
@@ -475,21 +581,26 @@ private:
     Song* song_ = nullptr;
     bool mode_pro_ = false;
     bool mode_bass2x_ = false;
-    int base_ = 96;
+    int base_ = 0;          // set by parse() from difficulty_chart_codes
+    int kick2x_pitch_ = 0;  // set by parse() from difficulty_chart_codes
+    // The parsed difficulty's disco digit: only `[mix N drums...]` markers
+    // with this N open or close a disco section here. parse() sets it from
+    // difficulty_chart_codes.
+    char mix_digit_ = 0;
 
     Chord chord_;
     std::vector<const Message*> msg_buffer_;
     // One bucket per phase that push_timestamp runs, reused tick to tick so
     // their storage is allocated once per parse, not once per tick.
-    std::vector<MOp> pre_, pre_delayed_, notes_, pre_timestamp_, post_,
-        post_delayed_;
+    std::vector<MOp> pre_, pre_delayed_, notes_, post_delayed_;
     bool flag_solo_ = false;
     std::array<NoteCymbalType, 5> flag_cymbals_{};
     bool flag_flam_ = false;
     bool flag_disco_ = false;
     std::optional<int64_t> fill_start_tick_;
-    std::optional<int64_t> fill_end_tick_;
+    std::vector<AuthoredFill> fills_;  // every authored fill, placed after pass 2
     bool dynamics_enabled_ = false;
+    int marks_before_tag_ = 0;  // ghost/accent velocities read before the tag
     std::optional<int64_t> sp_start_tick_;
 };
 
@@ -499,7 +610,7 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
 
     if (is_channel) {
         int note = msg.note;
-        if (!is_handled_note(note, base_)) return {};
+        if (!is_handled_note(note, base_, kick2x_pitch_)) return {};
 
         int velocity = msg.velocity;
         bool is_noteon = (msg.type == MType::NoteOn && velocity > 0);
@@ -523,10 +634,12 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 NoteColor color = static_cast<NoteColor>(note - base_ + 1);
                 return mop_note(color, vel_dyn, false);
             }
+            // The difficulty's own 2x kick, read only with 2x Bass on.
+            if (note == kick2x_pitch_) {
+                if (mode_bass2x_) return mop_note(NoteColor::Kick, vel_dyn, true);
+                return {};
+            }
             switch (note) {
-                case 95:
-                    if (mode_bass2x_) return mop_note(NoteColor::Kick, vel_dyn, true);
-                    return {};
                 case 120:
                     return mop_tick(MPhase::PostDelayed, MAct::FillStart, tick);
                 case 116:
@@ -548,9 +661,9 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 case 120:
                     return mop_tick(MPhase::Pre, MAct::StoreFillEnd, tick);
                 case 116:
-                    return mop(sp_start_tick_.has_value() ? MPhase::Pre
-                                                          : MPhase::PreDelayed,
-                               MAct::SpEnd);
+                    return mop_tick(sp_start_tick_.has_value() ? MPhase::Pre
+                                                               : MPhase::PreDelayed,
+                                    MAct::SpEnd, tick);
                 case 112: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
                 case 111: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
                 case 110: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
@@ -572,9 +685,12 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
     // not match Python's `MetaMessage(text=...)` patterns.
     if (msg.str_attr == Message::StrAttr::Text) {
         const std::string& t = msg.str;
-        if (is_dynamics_marker(t)) return mop(MPhase::Pre, MAct::Dynamics);
-        if (is_disco_on_marker(t)) return mop_flag(MAct::Disco, true);
-        if (is_disco_off_marker(t)) return mop_flag(MAct::Disco, false);
+        // The tag runs with the notes, in file order, so a note written
+        // before it at the same tick stays plain, as in Clone Hero, which
+        // reads the flag at each note-on (0x21555F1).
+        if (is_dynamics_marker(t)) return mop_tick(MPhase::Notes, MAct::Dynamics, tick);
+        if (is_disco_on_marker(t, mix_digit_)) return mop_flag(MAct::Disco, true);
+        if (is_disco_off_marker(t, mix_digit_)) return mop_flag(MAct::Disco, false);
     }
     if (msg.type == MType::SetTempo) {
         MOp op = mop_tick(MPhase::Time, MAct::Tempo, tick);
@@ -596,13 +712,12 @@ void MidiParser::run(const MOp& op) {
         case MAct::Note: op_note(op.color, op.dyn, op.flag); break;
         case MAct::FillStart: op_fillstart(op.tick); break;
         case MAct::StoreFillEnd: op_store_fillend(op.tick); break;
-        case MAct::ApplyFill: op_apply_fill(op.tick); break;
         case MAct::SpStart: op_sp_start(op.tick); break;
-        case MAct::SpEnd: op_sp_end(); break;
+        case MAct::SpEnd: op_sp_end(op.tick); break;
         case MAct::Tom: op_tom(op.color, op.cymbal); break;
         case MAct::Flam: op_flam(op.flag); break;
         case MAct::Solo: op_solo(op.flag); break;
-        case MAct::Dynamics: op_enable_dynamics(); break;
+        case MAct::Dynamics: op_enable_dynamics(op.tick); break;
         case MAct::Disco: op_disco(op.flag); break;
         case MAct::Tempo: op_tempo(op.tick, op.tempo); break;
         case MAct::TimeSig: op_timesig(op.tick, op.num, op.den); break;
@@ -624,8 +739,6 @@ void MidiParser::push_timestamp(int64_t tick) {
     pre_.clear();
     pre_delayed_.clear();
     notes_.clear();
-    pre_timestamp_.clear();
-    post_.clear();
     post_delayed_.clear();
     for (const Message* msg : msg_buffer_) {
         MOp op = optype(*msg, tick);
@@ -634,9 +747,7 @@ void MidiParser::push_timestamp(int64_t tick) {
             case MPhase::Pre: pre_.push_back(op); break;
             case MPhase::PreDelayed: pre_delayed_.push_back(op); break;
             case MPhase::Notes: notes_.push_back(op); break;
-            case MPhase::Post: post_.push_back(op); break;
             case MPhase::PostDelayed: post_delayed_.push_back(op); break;
-            case MPhase::PreTimestamp: pre_timestamp_.push_back(op); break;
             default: break;  // Time / None: not run from push_timestamp.
         }
     }
@@ -645,26 +756,10 @@ void MidiParser::push_timestamp(int64_t tick) {
     run_ops(pre_delayed_);
     run_ops(notes_);
 
-    // Activation fill placement.
-    if (chord_.count() && fill_end_tick_.has_value() &&
-        tick >= *fill_end_tick_) {
-        MOp fill_op = mop_tick(MPhase::None, MAct::ApplyFill, *fill_start_tick_);
-
-        if (fill_lands_on_chord(*song_, *fill_end_tick_, tick, rules_.fill_land_slop_beats))
-            post_.push_back(fill_op);
-        else
-            pre_timestamp_.push_back(fill_op);
-        fill_start_tick_.reset();
-        fill_end_tick_.reset();
-    }
-
-    run_ops(pre_timestamp_);
-
     if (chord_.count())
-        emit_chord_timestamp(*song_, chord_, tick, flag_flam_,
-                             mode_pro_ && flag_disco_, flag_solo_);
+        emit_chord_timestamp(*song_, chord_, tick, flag_flam_, mode_pro_, flag_disco_,
+                             flag_solo_);
 
-    run_ops(post_);
     run_ops(post_delayed_);
 
     msg_buffer_.clear();
@@ -675,6 +770,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
     base_ = difficulty_base_pitch(difficulty);
+    kick2x_pitch_ = difficulty_chart_codes(difficulty).kick2x_pitch();
+    mix_digit_ = difficulty_chart_codes(difficulty).mix_digit;
 
     Song song(mid.ticks_per_beat);
     song_ = &song;
@@ -702,6 +799,9 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         flag_cymbals_[static_cast<int>(NoteColor::Yellow) - 1] =
             NoteCymbalType::Cymbal;
         dynamics_enabled_ = false;
+        fill_start_tick_.reset();
+        fills_.clear();
+        marks_before_tag_ = 0;
         for (const Message& msg : track.messages) {
             if (msg.time != 0) {
                 push_timestamp(elapsed);
@@ -710,12 +810,13 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
             msg_buffer_.push_back(&msg);
         }
         push_timestamp(elapsed);
+        place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
         song.dynamics_enabled = dynamics_enabled_;
         break;
     }
 
-    // Pass 3: practice sections, which live on their own track as bracketed
-    // text metas.
+    // Pass 3: practice sections, which live on their own track(s) as bracketed
+    // text metas, sorted once at the end.
     for (const MidiTrack& track : mid.tracks) {
         if (track.name != "EVENTS") continue;
         elapsed = 0;
@@ -729,6 +830,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
                 song.practice_sections.push_back({elapsed, name});
         }
     }
+    sort_practice_sections(song.practice_sections);
 
     song.check_activations(rules_);
     return song;
@@ -744,7 +846,8 @@ struct ChartDataEntry {
     std::optional<int64_t> key_tick;
     std::optional<std::string> key_name;
 
-    std::optional<int64_t> property_int;
+    // A named property's value: the raw (trimmed) text. Each reader applies
+    // its own one number rule (Resolution, Offset).
     std::optional<std::string> property_str;
 
     std::optional<int> ts_numerator;
@@ -765,8 +868,10 @@ struct ChartDataEntry {
     std::optional<int> phrasevalue;
     std::optional<int64_t> phraselength;
 
-    // Both sides arrive already trimmed.
-    ChartDataEntry(std::string_view keystr, std::string_view valuestr);
+    // Both sides arrive already trimmed. `mix_digit` is the parsed
+    // difficulty's disco digit: a disco marker naming another difficulty is
+    // read as a plain text event, which no drum section uses.
+    ChartDataEntry(std::string_view keystr, std::string_view valuestr, char mix_digit);
 
     bool is_tick_data() const { return key_tick.has_value(); }
 };
@@ -794,12 +899,21 @@ ChartWords split_ws_view(std::string_view s) {
     return out;
 }
 
+// A .chart `TS n` line with no second number: a missing exponent is 2 (a
+// quarter note), per the .chart format, so `TS 3` is 3/4. This is a rule about
+// how the file spells a written line, not Song's default meter
+// (kDefaultTimeSig*), which is the meter before any line is written. The two
+// are kept apart on purpose: if Song's default ever changed, `TS 3` in a file
+// would still mean 3/4. The exponent still goes through timesig_denominator.
+constexpr int kChartTsMissingExponent = 2;
+
 // std::stoi / std::stoll on one word, with their exact acceptance rules
 // (leading digits read, trailing junk ignored, throws on no digits).
 int word_stoi(std::string_view w) { return std::stoi(std::string(w)); }
 long long word_stoll(std::string_view w) { return std::stoll(std::string(w)); }
 
-ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuestr) {
+ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuestr,
+                               char mix_digit) {
     int64_t k;
     if (try_parse_int(std::string(keystr), k))
         key_tick = k;
@@ -807,12 +921,7 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
         key_name = std::string(keystr);
 
     if (!key_tick.has_value()) {
-        int64_t iv;
-        std::string value(valuestr);
-        if (try_parse_int(value, iv))
-            property_int = iv;
-        else
-            property_str = std::move(value);
+        property_str = std::string(valuestr);
         return;
     }
 
@@ -822,7 +931,7 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
 
     if (t0 == "TS" && t.count == 2) {
         ts_numerator = word_stoi(t.w[1]);
-        ts_denominator = 4;
+        ts_denominator = timesig_denominator(kChartTsMissingExponent);
     } else if (t0 == "TS" && t.count == 3) {
         ts_numerator = word_stoi(t.w[1]);
         ts_denominator = timesig_denominator(word_stoi(t.w[2]));
@@ -832,9 +941,9 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
         solo_start = true;
     } else if (t0 == "E" && t.count == 2 && t.w[1] == "soloend") {
         solo_end = true;
-    } else if (t0 == "E" && t.count == 2 && is_disco_off_marker(t.w[1])) {
+    } else if (t0 == "E" && t.count == 2 && is_disco_off_marker(t.w[1], mix_digit)) {
         discoflip_disable = true;
-    } else if (t0 == "E" && t.count == 2 && is_disco_on_marker(t.w[1])) {
+    } else if (t0 == "E" && t.count == 2 && is_disco_on_marker(t.w[1], mix_digit)) {
         discoflip_enable = true;
     } else if (t0 == "E") {
         // Generic text event: no gameplay effect, but [Events] carries the
@@ -878,7 +987,7 @@ enum class CPhase { None, Time, Notes, NoteMods, Pre, Post, PostDelayed };
 // its phase: a plain tagged struct, so a tick's handlers cost no allocation.
 enum class CAct : uint8_t {
     None, Disco, Tempo, TimeSig, Solo, Note, TwoX, Accent, Ghost, Cymbal,
-    SpStart, SpEnd, FillStart, FillEnd,
+    SpStart, SpEnd, FillStart,
 };
 
 struct COp {
@@ -886,8 +995,8 @@ struct COp {
     CAct act = CAct::None;
     NoteColor color = NoteColor::Kick;  // Note, Accent, Ghost, Cymbal
     bool flag = false;                  // Disco, Solo: on
-    int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart: tick; SpEnd/FillEnd: start
-    int64_t b = 0;   // SpStart/FillStart: end tick
+    int64_t a = 0;   // Tempo/TimeSig/SpStart/FillStart: tick; SpEnd: start
+    int64_t b = 0;   // SpStart/FillStart/SpEnd: end tick
     double bpm = 0;  // Tempo
     int num = 0, den = 0;  // TimeSig
 
@@ -929,7 +1038,7 @@ public:
 private:
     const core::Rules& rules_;
 
-    void load_sections(const std::vector<uint8_t>& data);
+    void load_sections(const std::vector<uint8_t>& data, char mix_digit);
     COp optype(const ChartDataEntry& e, int64_t tick);
     void run(const COp& op);
     void push_timestamp(int64_t tick, const std::vector<ChartDataEntry>& entries);
@@ -939,17 +1048,15 @@ private:
     void op_timesig(int64_t tick, int numerator, int denominator) {
         apply_timesig(*song_, tick, numerator, denominator);
     }
-    void op_fillstart(int64_t start, int64_t end) {
-        fill_start_tick_ = start;
-        fill_end_tick_ = end;
-    }
-    void op_fillend(int64_t starttick) { apply_fill_end(*song_, starttick); }
+    // An S 64 line: the fill is recorded whole and placed once every chord
+    // is read (place_authored_fills).
+    void op_fillstart(int64_t start, int64_t end) { fills_.push_back({start, end}); }
     void op_sp_start(int64_t start, int64_t end) {
         sp_start_tick_ = start;
         sp_end_tick_ = end;
     }
-    void op_sp_end(int64_t starttick) {
-        mark_sp_phrase_end(*song_, starttick);
+    void op_sp_end(int64_t start, int64_t end) {
+        close_sp_phrase(*song_, start, end);
         sp_end_tick_.reset();
     }
     void op_solo(bool on) { flag_solo_ = on; }
@@ -971,8 +1078,7 @@ private:
     bool flag_disco_ = false;
     std::optional<int64_t> sp_start_tick_;
     std::optional<int64_t> sp_end_tick_;
-    std::optional<int64_t> fill_start_tick_;
-    std::optional<int64_t> fill_end_tick_;
+    std::vector<AuthoredFill> fills_;  // every authored fill, placed after the section
 };
 
 // The first match of the regex `\[.*\]` searched in `line`, as std::regex finds
@@ -996,7 +1102,7 @@ bool find_section_header(std::string_view line, std::string_view* bracket) {
     return false;
 }
 
-void ChartParser::load_sections(const std::vector<uint8_t>& data) {
+void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit) {
     // Walk the file in place, one line per '\n' (a trailing '\r' is removed by
     // the trim). Every line ended by a '\n' counts, empty or not; the last
     // unterminated piece counts only when it is non-empty.
@@ -1027,7 +1133,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data) {
                                                   ? std::string_view::npos
                                                   : eq2 - eq - 1);
                 }
-                wip->add(ChartDataEntry(trim_view(lhs), trim_view(rhs)));
+                wip->add(ChartDataEntry(trim_view(lhs), trim_view(rhs), mix_digit));
             }
         } else {
             std::string_view bracket;
@@ -1115,9 +1221,8 @@ void ChartParser::run(const COp& op) {
         case CAct::Ghost: op_ghost(op.color); break;
         case CAct::Cymbal: op_cymbal(op.color); break;
         case CAct::SpStart: op_sp_start(op.a, op.b); break;
-        case CAct::SpEnd: op_sp_end(op.a); break;
+        case CAct::SpEnd: op_sp_end(op.a, op.b); break;
         case CAct::FillStart: op_fillstart(op.a, op.b); break;
-        case CAct::FillEnd: op_fillend(op.a); break;
     }
 }
 
@@ -1148,25 +1253,14 @@ void ChartParser::push_timestamp(int64_t tick,
     // Phrase end: SP.
     if (sp_end_tick_.has_value() && tick >= *sp_end_tick_) {
         const int64_t start = sp_start_tick_.value_or(0);
-        ops.insert(ops.begin(), cop_span(CPhase::Pre, CAct::SpEnd, start, 0));
-    }
-
-    // Phrase end: activation fill.
-    if (chord_.count() && fill_end_tick_.has_value() &&
-        tick >= *fill_end_tick_) {
-        CPhase order = fill_lands_on_chord(*song_, *fill_end_tick_, tick, rules_.fill_land_slop_beats)
-                           ? CPhase::Post
-                           : CPhase::Pre;
-        ops.push_back(cop_span(order, CAct::FillEnd, *fill_start_tick_, 0));
-        fill_start_tick_.reset();
-        fill_end_tick_.reset();
+        ops.insert(ops.begin(), cop_span(CPhase::Pre, CAct::SpEnd, start, *sp_end_tick_));
     }
 
     run_phase(CPhase::Pre);
 
     if (chord_.count())
-        emit_chord_timestamp(*song_, chord_, tick, /*apply_flam=*/false,
-                             mode_pro_ && flag_disco_, flag_solo_);
+        emit_chord_timestamp(*song_, chord_, tick, /*apply_flam=*/false, mode_pro_,
+                             flag_disco_, flag_solo_);
 
     run_phase(CPhase::Post);
     run_phase(CPhase::PostDelayed);
@@ -1174,35 +1268,28 @@ void ChartParser::push_timestamp(int64_t tick,
 
 Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
                         bool bass2x, Difficulty difficulty) {
-    load_sections(data);
+    // A disco marker counts only in the difficulty it names, so the reader
+    // needs this difficulty's digit before it classifies any line.
+    load_sections(data, difficulty_chart_codes(difficulty).mix_digit);
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
 
     const ChartSection& song_sec = sections_.at("Song");
     const ChartDataEntry& res_entry = song_sec.prop_data.at("Resolution").at(0);
-    int64_t tick_resolution;
-    if (res_entry.property_int.has_value())
-        tick_resolution = *res_entry.property_int;
-    else
-        tick_resolution = std::stoll(*res_entry.property_str);
+    // One number rule for Resolution: std::stoll on the raw text (leading
+    // digits read, trailing junk ignored, no digits refuses the chart).
+    const int64_t tick_resolution = std::stoll(*res_entry.property_str);
 
     Song song(tick_resolution);
     song_ = &song;
 
-    // Offset is a decimal number of seconds. ChartDataEntry keeps a
-    // non-integer value in property_str, so parse that.
+    // Offset is a decimal number of seconds, read from its raw text by the one
+    // chart-number rule (parse_finite_number), integer or not, so "500ms" or
+    // "nan" counts as absent, like Clone Hero's default 0.
     if (auto it = song_sec.prop_data.find("Offset");
         it != song_sec.prop_data.end() && !it->second.empty()) {
         const ChartDataEntry& e = it->second.at(0);
-        if (e.property_int) {
-            song.chart_offset_s = static_cast<double>(*e.property_int);
-        } else if (e.property_str) {
-            try {
-                song.chart_offset_s = std::stod(*e.property_str);
-            } catch (const std::exception&) {
-                // An unreadable Offset is treated as absent, like CH's default 0.
-            }
-        }
+        if (e.property_str) song.chart_offset_s = parse_finite_number(*e.property_str);
     }
 
     // Map tempo and time signatures from the sync track.
@@ -1224,15 +1311,29 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     // Each difficulty is its own section ("ExpertDrums", "HardDrums", ...);
     // everything inside one — notes, dynamics, cymbals, SP, fills, solos —
     // follows for free. A chart missing the section parses as an empty song.
-    auto ed_it = sections_.find(std::string(difficulty_name(difficulty)) + "Drums");
+    auto ed_it = sections_.find(difficulty_chart_codes(difficulty).chart_section());
     if (ed_it != sections_.end()) {
         const ChartSection& ed = ed_it->second;
-        for (int64_t tk : ed.tick_order)
+        // The one place chord order is settled for a .chart (D47): the drum
+        // section is read in tick order, whatever order the file wrote its
+        // ticks in, so the phrase rule (close_sp_phrase, D21) and the fill
+        // rule (place_authored_fills, D30) see the same chords in the same
+        // order. tick_order holds each tick once; the lines at one tick keep
+        // the file's order.
+        std::vector<int64_t> ticks = ed.tick_order;
+        std::sort(ticks.begin(), ticks.end());
+        for (int64_t tk : ticks)
             push_timestamp(tk, ed.tick_data.at(tk));
+        // A phrase still open after the last tick runs past the last note.
+        // Close it now, so that note awards it, as the 116 note-off does in
+        // a .mid.
+        if (sp_end_tick_.has_value())
+            op_sp_end(sp_start_tick_.value_or(0), *sp_end_tick_);
+        place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
     }
 
     // Practice sections. tick_order follows the file, which is not required to
-    // be sorted, so sort once at the end.
+    // be sorted; sort_practice_sections orders them.
     auto ev_it = sections_.find("Events");
     if (ev_it != sections_.end()) {
         const ChartSection& ev = ev_it->second;
@@ -1244,11 +1345,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
                     song.practice_sections.push_back({tk, name});
             }
         }
-        std::stable_sort(song.practice_sections.begin(),
-                         song.practice_sections.end(),
-                         [](const SongSection& a, const SongSection& b) {
-                             return a.tick < b.tick;
-                         });
+        sort_practice_sections(song.practice_sections);
     }
 
     // .chart ghosts and accents are explicit per-note flags (N 34-37 accent,
@@ -1330,7 +1427,11 @@ Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
     std::vector<uint8_t> notebytes = srb_inflate_stream(
         buf.data(), buf.size(), notes_offset, kSrbMaxStream, nullptr);
 
-    const ChartFormat named = chart_format_of(md.notes_filename);
+    // The notes stream's format comes from its name, by the exact-name rule a
+    // .sng entry and a loose folder use (notes_file_format). An .srb's notes
+    // are always stream 2, so a name outside that rule is not fatal: the
+    // stream's own bytes decide below.
+    const ChartFormat named = notes_file_format(md.notes_filename);
     bool is_mid;
     if (named == ChartFormat::Mid)
         is_mid = true;

@@ -1,5 +1,6 @@
 // The main window's pieces, shared between the files that draw it. Only the
 // library files include this; everything else uses library_view.h.
+// The Dynamics tab includes it too, for format_duration and count_label.
 //
 // library_view.cpp     render_main_window: lays the window out (the library
 //                      and the song panel side by side), reaps finished

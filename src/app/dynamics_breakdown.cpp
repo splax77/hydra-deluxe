@@ -16,36 +16,19 @@ const DynamicsCounts& DynamicsBreakdown::row(DynamicsRow r) const {
 
 DynamicsCounts DynamicsBreakdown::pads_total() const {
     DynamicsCounts t;
-    for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) {
-        t.ghost += rows[i].ghost;
-        t.accent += rows[i].accent;
-        t.normal += rows[i].normal;
-    }
+    for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) t += rows[i];
     return t;
 }
 
-DynamicsCounts DynamicsBreakdown::kicks_total() const {
-    DynamicsCounts t;
-    const auto& k = row(DynamicsRow::Kick);
-    const auto& k2 = row(DynamicsRow::Kick2x);
-    t.ghost = k.ghost + k2.ghost;
-    t.accent = k.accent + k2.accent;
-    t.normal = k.normal + k2.normal;
+DynamicsCounts DynamicsBreakdown::kicks_total(bool bass2x) const {
+    DynamicsCounts t = row(DynamicsRow::Kick);
+    if (bass2x) t += row(DynamicsRow::Kick2x);
     return t;
 }
 
 DynamicsCounts DynamicsBreakdown::played_total(bool bass2x) const {
     DynamicsCounts t = pads_total();
-    const auto& k = row(DynamicsRow::Kick);
-    t.ghost += k.ghost;
-    t.accent += k.accent;
-    t.normal += k.normal;
-    if (bass2x) {
-        const auto& k2 = row(DynamicsRow::Kick2x);
-        t.ghost += k2.ghost;
-        t.accent += k2.accent;
-        t.normal += k2.normal;
-    }
+    t += kicks_total(bass2x);
     return t;
 }
 
@@ -104,6 +87,9 @@ DynamicsRow row_for(const ChordNote& note) {
 DynamicsBreakdown count_dynamics(const Song& song) {
     DynamicsBreakdown bd;
     bd.dynamics_enabled = song.dynamics_enabled;
+    if (song.dynamics_late_tag_tick)
+        bd.late_tag_ms = static_cast<uint32_t>(song.timecode(*song.dynamics_late_tag_tick).ms());
+    bd.marks_before_tag = song.dynamics_marks_before_tag;
 
     for (const SongTimestamp& ts : song.sequence) {
         for (const ChordNote& note : ts.chord.notes()) {
@@ -123,8 +109,11 @@ DynamicsBreakdown count_dynamics(const Song& song) {
 namespace {
 
 constexpr size_t kRowCount = static_cast<size_t>(DynamicsRow::Count);  // 9
-// version(1) + dynamics_enabled(1) + 9 rows * 3 fields * 4 bytes = 110
-constexpr size_t kDynamicsBlobSize = 1 + 1 + kRowCount * 3 * 4;
+// version(1) + dynamics_enabled(1) + 9 rows * 3 fields * 4 bytes
+// + late tag ms(4) + marks before it(4) = 118. The old layout was 110 bytes;
+// decode reads it as missing, so the tab recounts.
+constexpr size_t kDynamicsBlobSize = 1 + 1 + kRowCount * 3 * 4 + 4 + 4;
+constexpr uint32_t kNoLateTag = 0xFFFFFFFF;
 
 void write_u32_le(std::vector<uint8_t>& out, uint32_t v) {
     out.push_back(static_cast<uint8_t>(v));
@@ -152,6 +141,8 @@ std::vector<uint8_t> encode_dynamics(const DynamicsBreakdown& b) {
         write_u32_le(out, static_cast<uint32_t>(b.rows[i].accent));
         write_u32_le(out, static_cast<uint32_t>(b.rows[i].normal));
     }
+    write_u32_le(out, b.late_tag_ms.value_or(kNoLateTag));
+    write_u32_le(out, static_cast<uint32_t>(b.marks_before_tag));
     return out;
 }
 
@@ -167,6 +158,9 @@ std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blo
         b.rows[i].accent = static_cast<int>(read_u32_le(p));      p += 4;
         b.rows[i].normal = static_cast<int>(read_u32_le(p));      p += 4;
     }
+    const uint32_t tag_ms = read_u32_le(p);                        p += 4;
+    if (tag_ms != kNoLateTag) b.late_tag_ms = tag_ms;
+    b.marks_before_tag = static_cast<int>(read_u32_le(p));
     return b;
 }
 

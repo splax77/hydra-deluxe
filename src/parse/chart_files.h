@@ -18,8 +18,9 @@ enum class ChartFormat { None, Mid, Chart, Sng, Srb };
 // ".sng", ".srb". Anything else is None.
 ChartFormat chart_format_of(std::string_view path);
 
-// A loose folder's notes file by its exact name, any case: "notes.mid" is
-// Mid, "notes.chart" is Chart, anything else is None.
+// A notes file by its exact name, any case, wherever it sits: loose in a song
+// folder, or as an entry inside a .sng or .srb. "notes.mid" is Mid,
+// "notes.chart" is Chart, anything else is None. The one name rule for both.
 ChartFormat notes_file_format(std::string_view filename);
 
 // "song.ini", any case.
