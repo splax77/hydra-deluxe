@@ -42,6 +42,7 @@ const char* const kBody = R"page(<div class="wrap dm">
       <option value="above optimal">Above optimal</option>
       <option value="not analyzed">Not analyzed (in your library)</option>
       <option value="not in library">Not in your library</option>
+      <option value="other speed">Other speed</option>
     </select>
     <span class="count" id="count"></span>
   </div>
@@ -63,7 +64,8 @@ const char* const kBody = R"page(<div class="wrap dm">
 )page";
 
 const char* const kPageJs = R"page(const STATUS_CLASS = {'matched':'s-matched', 'above optimal':'s-above',
-                      'not analyzed':'s-notanalyzed', 'not in library':'s-unmatched'};
+                      'not analyzed':'s-notanalyzed', 'not in library':'s-unmatched',
+                      'other speed':'s-otherspeed'};
 
 const PAGE = {
   rows: DATA,
@@ -77,13 +79,13 @@ const PAGE = {
     {k:'actual',  t:'Actual',    num:true,  d:'The score the player posted.'},
     {k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap 4, the Clone Hero rule.'},
     {k:'delta',   t:'Points left', num:true, d:'Hydra opt minus Actual. Marked over when the posted score is higher.'},
-    {k:'pct',     t:'% of opt',  num:true,  d:'Actual as a percent of Hydra opt. Only for scores played at 100% speed.'},
+    {k:'pct',     t:'% of opt',  num:true,  d:'Actual as a percent of Hydra opt. Only for scores played at __BASE_SPEED__% speed.'},
     {k:'fc',      t:'FC',        num:true,  d:'Full combo: every note hit.'},
     {k:'percent', t:'Percent',   num:true,  d:'The percent the leaderboard lists for this score.'},
-    {k:'speed',   t:'Speed',     num:true,  d:'The playback speed the score was set at. 100% is normal speed.'},
+    {k:'speed',   t:'Speed',     num:true,  d:'The playback speed the score was set at. __BASE_SPEED__% is normal speed.'},
     {k:'rank',    t:'Rank',      num:true,  d:'The score rank on this chart leaderboard.'},
     {k:'posted',  t:'Posted',    num:false, d:'The date the score was posted.'},
-    {k:'status',  t:'Status',    num:false, d:'Matched or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap 4. Not in your library: the last scan did not find it.'},
+    {k:'status',  t:'Status',    num:false, d:'Matched or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap 4. Not in your library: the last scan did not find it. Other speed: played at a speed other than __BASE_SPEED__%. Clone Hero keeps a separate leaderboard per speed, so it is shown but not compared.'},
   ],
   controls: [['q', 'input'], ['status', 'change']],
   filter(q) {
@@ -96,7 +98,7 @@ const PAGE = {
   },
   cells(r) {
     const noDelta = r.delta === null || r.delta === undefined;
-    const deltaCls = noDelta ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');
+    const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');
     const deltaTxt = noDelta ? DASH
                    : (r.delta < 0 ? '+' + (-r.delta).toLocaleString() + ' over' : fmt(r.delta));
     return [
@@ -115,11 +117,13 @@ const PAGE = {
       ['chip ' + (STATUS_CLASS[r.status] || 's-unmatched'), r.status, 'chip'],
     ];
   },
+  // Mirrors tally_dm_rows in dm_report.cpp; the test "s2 offspeed: the page counts the same statuses" checks the two agree.
   stats(rows) {
     const matched = rows.filter(r => r.status === 'matched');
     const above = rows.filter(r => r.status === 'above optimal');
     const notAnalyzed = rows.filter(r => r.status === 'not analyzed');
     const notInLibrary = rows.filter(r => r.status === 'not in library');
+    const otherSpeed = rows.filter(r => r.status === 'other speed');
     const withPct = rows.filter(r => r.pct !== null && r.pct !== undefined);
     const avgPct = withPct.length
       ? (withPct.reduce((a, r) => a + r.pct, 0) / withPct.length).toFixed(2) + '%' : DASH;
@@ -130,6 +134,7 @@ const PAGE = {
       ['Above optimal', above.length.toLocaleString()],
       ['Not analyzed', notAnalyzed.length.toLocaleString()],
       ['Not in library', notInLibrary.length.toLocaleString()],
+      ['Other speed', otherSpeed.length.toLocaleString()],
       ['Avg % of optimal', avgPct],
       ['Points left on table', left.toLocaleString()],
     ];
@@ -139,7 +144,11 @@ const PAGE = {
 
 // The page shell, built once on first use.
 const std::string& page_template() {
-    static const std::string page = html::page_template(kTitle, kBody, kPageJs);
+    // The help texts name the base speed through __BASE_SPEED__, so the page
+    // reads net::kBaseSpeedPercent instead of repeating 100.
+    static const std::string page =
+        html::replace_all(html::page_template(kTitle, kBody, kPageJs), "__BASE_SPEED__",
+                          std::to_string(net::kBaseSpeedPercent));
     return page;
 }
 
@@ -195,16 +204,21 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         }
         if (row.charter.empty() && rec) row.charter = report::plain(rec->ref_charter);
 
+        // Hydra's optimal is a base-speed answer, and Clone Hero keeps a
+        // leaderboard per speed. An off-speed score shows Hydra's numbers when
+        // it has them, but is never called matched or above optimal.
+        const bool base = net::is_base_speed(s.speed);
         if (rec && rec->summary.score) {
             int64_t opt = *rec->summary.score;
             row.optimal = opt;
             row.delta = opt - s.score;
-            if (s.speed == 100 && opt > 0)
+            if (base && opt > 0)
                 row.pct = static_cast<double>(s.score) / static_cast<double>(opt) * 100.0;
             row.status = s.score > opt ? "above optimal" : "matched";
         } else {
             row.status = in_library.count(s.identifier) ? "not analyzed" : "not in library";
         }
+        if (!base) row.status = "other speed";
         rows.push_back(std::move(row));
     }
     return rows;
@@ -258,9 +272,20 @@ DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows) {
         if (r.status == "matched") ++stats.matched;
         else if (r.status == "above optimal") ++stats.above_optimal;
         else if (r.status == "not analyzed") ++stats.not_analyzed;
+        else if (r.status == "other speed") ++stats.other_speed;
         else ++stats.not_in_library;
     }
     return stats;
+}
+
+std::string counts_phrase(const DmReportStats& stats) {
+    std::string out = group_thousands(stats.matched) + " matched, " +
+                      group_thousands(stats.above_optimal) + " above optimal, " +
+                      group_thousands(stats.not_analyzed) + " not analyzed, " +
+                      group_thousands(stats.not_in_library) + " not in your library";
+    if (stats.other_speed > 0)
+        out += ", " + report::counted(stats.other_speed, "at another speed", "at other speeds");
+    return out;
 }
 
 GeneratedDmReport generate_dm_report(store::RecordStore& store,
@@ -273,12 +298,9 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
     out.stats = tally_dm_rows(rows);
     if (rows.empty()) return out;
 
-    std::string subtitle =
-        username + " — " + report::counted(out.stats.total, "score", "scores") + ": " +
-        group_thousands(out.stats.matched) + " matched, " +
-        group_thousands(out.stats.above_optimal) + " above optimal, " +
-        group_thousands(out.stats.not_analyzed) + " not analyzed, " +
-        group_thousands(out.stats.not_in_library) + " not in your library";
+    std::string subtitle = username + " — " +
+                           report::counted(out.stats.total, "score", "scores") + ": " +
+                           counts_phrase(out.stats);
     std::string footer =
         "Actual scores from dmleaderboards.com against Hydra's optimal for " + chartmode +
         ". Above-optimal scores are expected — Hydra's optimal excludes several score "
