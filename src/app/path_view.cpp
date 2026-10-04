@@ -354,15 +354,15 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             if (br.squeezed_out) {
                 // "(-N)" and the warning colour only when the squeeze-out
                 // really costs points. A row the engine never counted costs
-                // nothing either way (user decisions 1 and 19).
+                // nothing either way (user decisions 1 and 19); its label
+                // already carries summarystr's "(uncounted)" tag (D48, Q6).
                 char extra[48];
                 if (counted) {
                     std::snprintf(extra, sizeof(extra),
                                   " <-- squeezed out (-%d)", bsq.points - value);
                     row.warn = true;
                 } else {
-                    std::snprintf(extra, sizeof(extra),
-                                  " <-- squeezed out (uncounted)");
+                    std::snprintf(extra, sizeof(extra), " <-- squeezed out");
                 }
                 row.rating += extra;
             }

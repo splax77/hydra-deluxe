@@ -17,7 +17,8 @@
 #include <string>
 
 #include "imgui.h"
-#include "imgui_internal.h"  // RenderTextEllipsis
+#include "imgui_internal.h"  // GetCurrentWindow, for the window's draw list
+#include "render/overlay_layout.h"  // ellipsize
 #include "ui/theme.h"
 
 namespace hydra::ui {
@@ -48,10 +49,17 @@ struct WarnColor {
     WarnColor& operator=(const WarnColor&) = delete;
 };
 
-// Full-width progress bar with a "done/total" overlay. total == 0 renders as
-// full rather than dividing by zero (an empty batch is finished, not stuck).
+// How full a progress bar is with `done` of `total` finished: held between 0
+// and 1, and empty at a total of 0, which means nothing has been reported yet
+// (D48, Q19). Every progress bar reads its fill from here.
+inline float progress_fraction(double done, double total) {
+    if (!(total > 0.0)) return 0.0f;
+    return static_cast<float>(std::clamp(done / total, 0.0, 1.0));
+}
+
+// Full-width progress bar with a "done/total" overlay.
 inline void progress_bar_counted(int done, int total) {
-    float frac = total > 0 ? (float)done / (float)total : 1.0f;
+    const float frac = progress_fraction(done, total);
     char overlay[32];
     std::snprintf(overlay, sizeof(overlay), "%d/%d", done, total);
     ImGui::ProgressBar(frac, ImVec2(-1, 0), overlay);
@@ -129,29 +137,29 @@ inline void overflow_tooltip(const char* text) {
 }
 
 // TextUnformatted that ellipsizes at the available width instead of clipping
-// mid-glyph, with the full text in a tooltip when it didn't fit. Uses the
-// current font and text color, so callers can Push either around it.
-// `max_width` caps the space the text may take, for text that shares its
-// line with right-aligned buttons (the song panel's title).
+// mid-glyph, with the full text in a tooltip when it didn't fit. The cut is
+// render::ellipsize's, measured in the current font, so every cut label in
+// the UI follows the one rule. Uses the current font and text color, so
+// callers can Push either around it. `max_width` caps the space the text may
+// take, for text that shares its line with right-aligned buttons (the song
+// panel's title).
 inline void text_ellipsized(const char* text, float max_width = FLT_MAX) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems) return;
 
-    float avail = std::min(ImGui::GetContentRegionAvail().x, max_width);
-    ImVec2 text_size = ImGui::CalcTextSize(text);
-
-    if (text_size.x <= avail) {
+    const float avail = std::min(ImGui::GetContentRegionAvail().x, max_width);
+    const std::string shown = render::ellipsize(
+        text, avail, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });
+    if (shown == text) {
         ImGui::TextUnformatted(text);
         return;
     }
 
-    ImVec2 pos = window->DC.CursorPos;
-    float max_x = pos.x + avail;
-    ImGui::RenderTextEllipsis(window->DrawList, pos, ImVec2(max_x, pos.y + text_size.y),
-                              max_x, text, nullptr, &text_size);
+    window->DrawList->AddText(window->DC.CursorPos, ImGui::GetColorU32(ImGuiCol_Text),
+                              shown.c_str());
     // An item exactly as wide as the space the text was given, so layout
     // advances normally and the tooltip has a hover rect.
-    ImGui::Dummy(ImVec2(avail, text_size.y));
+    ImGui::Dummy(ImVec2(avail, ImGui::CalcTextSize(text).y));
     overflow_tooltip(text);
 }
 

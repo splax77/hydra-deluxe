@@ -33,6 +33,9 @@ const std::string kSongFileMissing =
     "library to update the library.";
 const std::string kNetUnreachable =
     "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.";
+const std::string kAudioDecode =
+    "Hydra couldn't decode this song's audio files. They may be damaged; try downloading "
+    "the song again.";
 
 }  // namespace
 
@@ -57,6 +60,9 @@ TEST_CASE("user_messages: a missing or unreadable song file") {
     CHECK(plain_error(std::runtime_error("cannot open file: C:\\Songs\\x\\notes.chart")) ==
           kSongFileMissing);
     CHECK(plain_error(hydra::MidiError("cannot open MIDI file: C:\\Songs\\x\\notes.mid")) ==
+          kSongFileMissing);
+    // core/winstr.cpp: a song file whose size Windows can't read.
+    CHECK(plain_error(std::runtime_error("cannot read file size: C:\\Songs\\x\\song.opus")) ==
           kSongFileMissing);
     CHECK(plain_error(std::runtime_error("MD5 hashing failed")) ==
           "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
@@ -155,11 +161,38 @@ TEST_CASE("user_messages: report, rules, stored results, memory") {
           "A saved result couldn't be read. Re-analyze this song to replace it.");
     CHECK(plain_error(std::bad_alloc()) ==
           "Hydra ran out of memory on this chart. Close other programs and try again.");
-    CHECK(plain_error(std::runtime_error("decode_audio: opus_decode failed")) ==
-          "Hydra couldn't decode this song's audio files. They may be damaged; try "
-          "downloading the song again.");
+    CHECK(plain_error(std::runtime_error("decode_audio: opus_decode failed")) == kAudioDecode);
     CHECK(plain_error(std::runtime_error("PreviewRenderer: missing texture x.png")) ==
           "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+}
+
+TEST_CASE("user_messages: stale_text names the real cause") {
+    using hydra::app::stale_text;
+    CHECK(stale_text(/*build=*/true, /*rules=*/false) ==
+          "Out of date: this result came from another Hydra version. Re-analyze to refresh "
+          "it.");
+    CHECK(stale_text(/*build=*/false, /*rules=*/true) ==
+          "Out of date: this result came from different rules in hydra_rules.ini. Re-analyze "
+          "to refresh it.");
+    // Both causes: the sentence the details panel shows today, unchanged.
+    const std::string both =
+        "Out of date: this result came from another Hydra version or from different rules "
+        "in hydra_rules.ini. Re-analyze to refresh it.";
+    CHECK(stale_text(/*build=*/true, /*rules=*/true) == both);
+    // Neither (a caller asking for a row that is not stale): no cause to
+    // name, so today's sentence, never an empty line.
+    CHECK(stale_text(/*build=*/false, /*rules=*/false) == both);
+    CHECK(std::string(hydra::app::kNoPathsFound) == "No paths found.");
+}
+
+TEST_CASE("user_messages: a Preview mixer failure reads as an audio-decode problem") {
+    // audio/stream_mix.cpp, the mixer the Preview plays through.
+    CHECK(plain_error_text("StreamMix: invalid output format") == kAudioDecode);
+    CHECK(plain_error(std::runtime_error("StreamMix: data converter init failed")) ==
+          kAudioDecode);
+    // mix_stems is a test reference only; nothing the user runs throws its text.
+    CHECK(plain_error_text("mix_stems: data converter init failed") ==
+          hydra::app::kSomethingWentWrong);
 }
 
 TEST_CASE("user_messages: anything else falls back, and the detail keeps the raw text") {

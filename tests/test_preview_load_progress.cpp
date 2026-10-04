@@ -26,6 +26,7 @@
 #include "corpus_util.h"
 #include "store/record_store.h"
 #include "ui/preview_load_job.h"
+#include "ui/widgets.h"  // progress_fraction
 
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
@@ -221,6 +222,14 @@ TEST_CASE("Preview load progress: a zero total gives a finite fraction") {
     }
     // More done than the total (a file that grew after it was sized) is capped.
     CHECK(make(S::Opening, 200, 100).fraction() == make(S::Building, 1, 1).fraction());
+}
+
+TEST_CASE("progress_fraction: 0 of 0 is empty, and the fraction stays between 0 and 1") {
+    using hydra::ui::progress_fraction;
+    CHECK(progress_fraction(0, 0) == 0.0f);  // nothing reported yet
+    CHECK(progress_fraction(1, 2) == 0.5f);
+    // More done than the total, as in the zero-total case above: full, no further.
+    CHECK(progress_fraction(200, 100) == 1.0f);
 }
 
 TEST_CASE("Preview load progress: time left waits 3 s, then reads seconds or minutes") {

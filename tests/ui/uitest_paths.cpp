@@ -259,7 +259,7 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
         ctx->Yield(1);
     }
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "squeezed out (uncounted)"));
+    IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
     IM_CHECK(on_screen(h, "It costs no points, because Hydra's score never counted that "
                           "note under Star Power"));
 }

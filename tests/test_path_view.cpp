@@ -537,7 +537,7 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     CHECK(limited[1].timing == "60.0");
     // +60 ms is past the leeway: the engine never counted this chord, so the
     // row is tagged uncounted and not highlighted (user decision 19).
-    CHECK(limited[1].rating.find("squeezed out (uncounted)") != std::string::npos);
+    CHECK(limited[1].rating.find("(uncounted) <-- squeezed out") != std::string::npos);
     CHECK_FALSE(limited[1].warn);
 }
 
@@ -566,7 +566,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "0");
     CHECK(v.acts[0].backends[0].rating ==
-          "Free SqOut <-- squeezed out (uncounted)");
+          "Free SqOut (uncounted) <-- squeezed out");
     CHECK_FALSE(v.acts[0].backends[0].warn);
 
     // The same chord squeezed out 5 ms inside SP really costs 200, and
@@ -652,7 +652,7 @@ TEST_CASE("find a chart with an uncounted squeezed-out row" * doctest::skip()) {
                                               &r.song.timing(), 85.0);
         for (const ActivationRowView& av : v.acts)
             for (const BackendRowView& row : av.backends)
-                if (row.rating.find("squeezed out (uncounted)") !=
+                if (row.rating.find("(uncounted) <-- squeezed out") !=
                     std::string::npos) {
                     MESSAGE(path << " | activation " << av.number << " " << av.notation);
                     return;

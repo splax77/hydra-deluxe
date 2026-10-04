@@ -326,3 +326,26 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
     CHECK_FALSE(pc.has_error());
     CHECK(pc.overlay_path_key().rfind(best_key, 0) == 0);
 }
+
+TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song") {
+    using hydra::ui::PreviewSongKey;
+    const PreviewSongKey key{"prevctl", Difficulty::Expert, /*pro=*/true, /*bass2x=*/false};
+    const PreviewSongKey same{"prevctl", Difficulty::Expert, /*pro=*/true, /*bass2x=*/false};
+    CHECK(key == same);
+    CHECK_FALSE(key != same);
+
+    PreviewSongKey hard = key;
+    hard.difficulty = Difficulty::Hard;
+    CHECK(key != hard);
+    CHECK_FALSE(key == hard);
+
+    PreviewSongKey plain = key;
+    plain.pro = false;
+    CHECK(key != plain);
+    CHECK_FALSE(key == plain);
+
+    PreviewSongKey bass = key;
+    bass.bass2x = true;
+    CHECK(key != bass);
+    CHECK_FALSE(key == bass);
+}

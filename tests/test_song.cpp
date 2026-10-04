@@ -442,7 +442,7 @@ TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
         REQUIRE(kick2x.has_value());
         CHECK(kick2x->dynamictype == NoteDynamicType::Accent);
         CHECK(kick2x->is2x == true);
-        CHECK(kick2x->str() == "Kick (Accent, 2x)");
+        CHECK(kick2x->str() == "2x kick (Accent)");
 
         const auto& red = song.sequence[2].chord.at(NoteColor::Red);
         REQUIRE(red.has_value());

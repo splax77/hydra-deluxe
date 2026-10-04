@@ -1396,6 +1396,14 @@ TEST_CASE("score box: before the first note nothing is hit yet") {
     CHECK(box.detail == "x1 " + kDot + " combo 0");
 }
 
+TEST_CASE("struck_at: a chord exactly on the playhead counts as hit") {
+    // 2500 ms is the activation chord (tick 2400) of the make_sp_song({1920},
+    // 9600) score-box case below: a jump to that activation lands on it.
+    CHECK(struck_at(2500.0, 2500.0));
+    CHECK_FALSE(struck_at(2499.9, 2500.0));
+    CHECK(struck_at(2500.1, 2500.0));
+}
+
 TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Power pays") {
     // A Red note every 500 ms (tick 480 steps). One bar of SP activated at
     // tick 2400 (2500 ms) runs two measures, to tick 6240 (6500 ms).
@@ -1685,10 +1693,10 @@ TEST_CASE("next activation box: the activation at or after the playhead") {
     PreviewNextActBox box = build_next_act_box(t.scene, 0.0);
     CHECK(box.shown);
     CHECK(box.header == "Next: activation 1 of 2");
-    CHECK(box.detail == "at m2.1.0 " + kDot + " [Red]");
+    CHECK(box.detail == "at m2.1.0 " + kDot + " [Red snare]");
     CHECK(build_next_act_box(t.scene, 2000.0).header == "Next: activation 1 of 2");
     CHECK(build_next_act_box(t.scene, 2001.0).header == "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0).detail == "at m5.1.0 " + kDot + " [Red]");
+    CHECK(build_next_act_box(t.scene, 2001.0).detail == "at m5.1.0 " + kDot + " [Red snare]");
     CHECK_FALSE(build_next_act_box(t.scene, 9000.0).shown);
     CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0).shown);
 }
