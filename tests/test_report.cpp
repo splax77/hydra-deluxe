@@ -438,6 +438,22 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
     CHECK(plain_error(std::runtime_error(off.why_empty)) == sentence);
 }
 
+TEST_CASE("nothing_under_settings frames the cap, the middle words and the ending") {
+    // One frame for every empty page (finding 105, D50 item 3): the path
+    // report passes its fill rule, the fill comparison its chart mode and
+    // " in either database".
+    CHECK(report::nothing_under_settings(8, "Clone Hero 1.1 fills") ==
+          "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
+          "Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings(4, "Expert Pro Drums, 2x Bass",
+                                         " in either database") ==
+          "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, 2x Bass) "
+          "in either database. Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings(1200, "Clone Hero 1.0 fills") ==
+          "Nothing is analyzed under these settings (SP cap 1,200, Clone Hero 1.0 fills). "
+          "Analyze with these settings, or change them.");
+}
+
 TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
     // Closing Hydra while the report builds. The walk stops between records,
     // and no page is framed from the part of the library it managed to read.

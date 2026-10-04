@@ -362,6 +362,12 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
                              footer);
 }
 
+std::string nothing_under_settings(int cap, const std::string& middle,
+                                   const std::string& ending) {
+    return std::string(kNothingUnderSettings) + " (SP cap " + group_thousands(cap) + ", " +
+           middle + ")" + ending + ". Analyze with these settings, or change them.";
+}
+
 GeneratedReport generate_report(store::RecordStore& store,
                                 const ReportOptions& options) {
     GeneratedReport out;
@@ -386,10 +392,9 @@ GeneratedReport generate_report(store::RecordStore& store,
             out.empty_reason = EmptyReason::NothingStored;
         } else {
             out.empty_reason = EmptyReason::NothingUnderSettings;
-            out.why_empty = std::string(kNothingUnderSettings) + " (SP cap " +
-                            group_thousands(options.cap.exact) + ", " +
-                            fill_rule_name(rule, FillRuleNameStyle::Long) +
-                            " fills). Analyze with these settings, or change them.";
+            out.why_empty = nothing_under_settings(
+                options.cap.exact,
+                std::string(fill_rule_name(rule, FillRuleNameStyle::Long)) + " fills");
         }
         return out;
     }

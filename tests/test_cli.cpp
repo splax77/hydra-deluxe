@@ -381,7 +381,11 @@ TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
     INFO(swapped.output);
     CHECK(swapped.exit_code == 1);
     CHECK(contains(swapped.output, "is stamped engine_mode=" + kCh11 + ", not " + kCh10));
-    CHECK(contains(swapped.output, "No records to compare"));
+    CHECK(contains(swapped.output,
+                   "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, "
+                   "2x Bass) in either database. Analyze with these settings, or change "
+                   "them."));
+    CHECK(!contains(swapped.output, "No records to compare"));
 
     CHECK(run_exe(box.fillcompare, {"--old", ch10}).exit_code == 2);
 }

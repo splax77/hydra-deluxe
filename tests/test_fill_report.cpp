@@ -332,9 +332,21 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
     CHECK(none.stats.total == 0);
     CHECK(none.html.empty());
     // The empty page's reason comes from here, so hydra_fillcompare prints
-    // what the seam says instead of deciding it again.
-    CHECK(none.reason == "No records to compare. Run hydra_batch into both databases first.");
+    // what the seam says instead of deciding it again. Two truly empty
+    // databases get the settings sentence too (finding 105, D50 item 3).
+    CHECK(none.reason ==
+          "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, 2x Bass) "
+          "in either database. Analyze with these settings, or change them.");
     CHECK(result.reason.empty());
+
+    // Records stored at cap 4, asked at cap 8: the sentence names cap 8.
+    app::fill_report::GeneratedFillReport off =
+        app::fill_report::generate_fill_report(old_store, new_store, kMode,
+                                               store::CapQuery::at(8), store::Lens{});
+    CHECK(off.html.empty());
+    CHECK(off.reason ==
+          "Nothing is analyzed under these settings (SP cap 8, Expert Pro Drums, 2x Bass) "
+          "in either database. Analyze with these settings, or change them.");
 }
 
 TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {

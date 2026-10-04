@@ -299,7 +299,11 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
         collect_fill_rows(old_store, new_store, chartmode, cap, lens);
     out.stats = tally_fill_rows(rows);
     if (rows.empty()) {
-        out.reason = "No records to compare. Run hydra_batch into both databases first.";
+        // Same sentence whether the databases are empty or hold results under
+        // other settings (finding 105, D50 item 3); the mode is the chart mode
+        // both sides were looked up under.
+        out.reason =
+            report::nothing_under_settings(cap.exact, chartmode, " in either database");
         return out;
     }
 
