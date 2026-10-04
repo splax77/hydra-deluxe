@@ -162,29 +162,13 @@ TEST_CASE(".mid: each difficulty reads its own pitch base") {
 }
 
 TEST_CASE(".chart: [Events] section markers become practice sections") {
-    const std::string text =
-        "[Song]\n"
-        "{\n"
-        "  Resolution = 192\n"
-        "}\n"
-        "[SyncTrack]\n"
-        "{\n"
-        "  0 = TS 4\n"
-        "  0 = B 120000\n"
-        "}\n"
-        "[Events]\n"
-        "{\n"
-        "  1536 = E \"prc_chorus_1a\"\n"
-        "  0 = E \"section Intro\"\n"
-        "  768 = E \"section Verse 1\"\n"
-        "  1920 = E \"lighting (blackout)\"\n"
-        "}\n"
-        "[ExpertDrums]\n"
-        "{\n"
-        "  0 = N 0 0\n"
-        "  192 = N 1 0\n"
-        "}\n";
-    const std::vector<uint8_t> data(text.begin(), text.end());
+    const std::vector<uint8_t> data = testchart::chart_bytes(
+        testchart::section("Events",
+                           "  1536 = E \"prc_chorus_1a\"\n"
+                           "  0 = E \"section Intro\"\n"
+                           "  768 = E \"section Verse 1\"\n"
+                           "  1920 = E \"lighting (blackout)\"\n") +
+        testchart::section("ExpertDrums", "  0 = N 0 0\n  192 = N 1 0\n"));
     Song song = load_songbytes_chart(data, true, true);
 
     // Both spellings are read, non-section text events are not, and the file's
@@ -205,15 +189,12 @@ TEST_CASE(".chart: [Events] section markers become practice sections") {
 // In a .chart the `E soloend` event sits on the solo's last note, so that note
 // is in the solo. The parser runs solo end after the notes at its tick.
 TEST_CASE(".chart: the note on the solo end tick is in the solo") {
-    const std::string text =
-        testchart::chart_text("") +
-        "[ExpertDrums]\n{\n"
-        "  0 = E solo\n  0 = N 1 0\n"
-        "  192 = N 2 0\n"
-        "  384 = N 3 0\n  384 = E soloend\n"
-        "  576 = N 4 0\n"
-        "}\n";
-    const std::vector<uint8_t> data(text.begin(), text.end());
+    const std::vector<uint8_t> data = testchart::chart_bytes(
+        testchart::section("ExpertDrums",
+                           "  0 = E solo\n  0 = N 1 0\n"
+                           "  192 = N 2 0\n"
+                           "  384 = N 3 0\n  384 = E soloend\n"
+                           "  576 = N 4 0\n"));
     Song song = load_songbytes_chart(data, true, true);
     REQUIRE(song.sequence.size() == 4);
     CHECK(song.sequence[2].flag_solo);
@@ -223,15 +204,9 @@ TEST_CASE(".chart: the note on the solo end tick is in the solo") {
 // The parser keeps each time signature as the chart wrote it, beside the
 // measure length the engine reads. The length alone cannot tell 6/8 from 3/4.
 TEST_CASE(".chart: time signatures are kept as written") {
-    const std::string text =
-        "[Song]\n{\n  Resolution = 192\n}\n"
-        "[SyncTrack]\n{\n"
-        "  0 = TS 4\n  0 = B 120000\n"
-        "  768 = TS 6 3\n"
-        "  1344 = TS 3\n"
-        "}\n"
-        "[ExpertDrums]\n{\n  0 = N 0 0\n  1536 = N 1 0\n}\n";
-    const std::vector<uint8_t> data(text.begin(), text.end());
+    const std::vector<uint8_t> data = testchart::chart_bytes(
+        testchart::section("ExpertDrums", "  0 = N 0 0\n  1536 = N 1 0\n"), 192, "",
+        testchart::kSync44At120 + "  768 = TS 6 3\n  1344 = TS 3\n");
     Song song = load_songbytes_chart(data, true, true);
 
     // 6/8 and 3/4 are both 576 ticks at 192 per quarter note.
@@ -349,11 +324,9 @@ TEST_CASE(".mid: EVENTS text metas become practice sections") {
 }
 
 namespace {
-std::vector<uint8_t> chart_with(const std::string& resolution, const std::string& sync) {
-    std::string s = "[Song]\n{\n  Resolution = " + resolution + "\n}\n"
-                    "[SyncTrack]\n{\n" + sync + "}\n"
-                    "[ExpertDrums]\n{\n  0 = N 0 0\n  768 = N 1 0\n}\n";
-    return std::vector<uint8_t>(s.begin(), s.end());
+std::vector<uint8_t> chart_with(int64_t resolution, const std::string& sync) {
+    return testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 0 0\n  768 = N 1 0\n"),
+                                  resolution, "", sync);
 }
 }  // namespace
 
@@ -362,7 +335,7 @@ std::vector<uint8_t> chart_with(const std::string& resolution, const std::string
 // signature with a top number of 0 is the one line that is ignored instead.
 TEST_CASE(".chart: a timing line that can't measure time is refused") {
     const std::string ok = "  0 = TS 4\n  0 = B 120000\n";
-    CHECK_NOTHROW(load_songbytes_chart(chart_with("192", ok), true, true));
+    CHECK_NOTHROW(load_songbytes_chart(chart_with(192, ok), true, true));
     struct Bad {
         const char* sync;
         const char* error;
@@ -380,22 +353,22 @@ TEST_CASE(".chart: a timing line that can't measure time is refused") {
           Bad{"  0 = TS 4\n  0 = B 120000\n  384 = TS 4 -1\n",
               "the time signature at tick 384 has a bottom number that is out of range"}}) {
         CAPTURE(bad.sync);
-        CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with("192", bad.sync), true, true),
+        CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with(192, bad.sync), true, true),
                              bad.error, ChartFileError);
     }
-    CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with("0", ok), true, true),
+    CHECK_THROWS_WITH_AS(load_songbytes_chart(chart_with(0, ok), true, true),
                          "the chart's resolution is 0, and it must be above 0",
                          ChartFileError);
 }
 
 TEST_CASE(".chart: a TS 0 timing line is still ignored") {
     Song song = load_songbytes_chart(
-        chart_with("192", "  0 = TS 4\n  0 = B 120000\n  768 = TS 0\n"), true, true);
+        chart_with(192, "  0 = TS 4\n  0 = B 120000\n  768 = TS 0\n"), true, true);
     CHECK(song.tpm_changes.size() == 1);
     CHECK(song.tpm_changes.at(0) == 768);
     // Ignored whatever its bottom number says.
     Song odd = load_songbytes_chart(
-        chart_with("192", "  0 = TS 4\n  0 = B 120000\n  768 = TS 0 40\n"), true, true);
+        chart_with(192, "  0 = TS 4\n  0 = B 120000\n  768 = TS 0 40\n"), true, true);
     CHECK(odd.tpm_changes.size() == 1);
 }
 
@@ -434,7 +407,7 @@ TEST_CASE("a resolution that is 0 or negative is refused in both formats") {
     CHECK_THROWS_WITH_AS(load_songbytes_mid(mid, true, true),
                          "the chart's resolution is 0, and it must be above 0", ChartFileError);
     CHECK_THROWS_WITH_AS(
-        load_songbytes_chart(chart_with("-192", "  0 = TS 4\n  0 = B 120000\n"), true, true),
+        load_songbytes_chart(chart_with(-192, "  0 = TS 4\n  0 = B 120000\n"), true, true),
         "the chart's resolution is -192, and it must be above 0", ChartFileError);
 }
 
@@ -631,11 +604,9 @@ TEST_CASE(".chart: disco markers match the regexes they replaced") {
         if (std::isspace(static_cast<unsigned char>(b)) || b == '=') continue;
         for (const std::string& marker : disco_candidates(b)) {
             for (bool prior_on : {false, true}) {
-                const std::string text =
-                    testchart::chart_text("") + "[ExpertDrums]\n{\n" +
-                    std::string(prior_on ? "  0 = E mix_3_drums0d\n" : "") +
-                    "  0 = N 0 0\n  192 = E " + marker + "\n  192 = N 1 0\n}\n";
-                const std::vector<uint8_t> data(text.begin(), text.end());
+                const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
+                    "ExpertDrums", std::string(prior_on ? "  0 = E mix_3_drums0d\n" : "") +
+                                       "  0 = N 0 0\n  192 = E " + marker + "\n  192 = N 1 0\n"));
                 const Song song = load_songbytes_chart(data, true, true);
                 REQUIRE(song.sequence.size() == 2);
 

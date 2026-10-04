@@ -4,6 +4,7 @@
 #include "doctest.h"
 
 #include <cstdint>
+#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -11,6 +12,7 @@
 #include "app/dynamics_breakdown.h"
 #include "chart_text.h"
 #include "core/model.h"
+#include "difficulty_literals.h"
 #include "midi_util.h"
 #include "parse/song.h"
 
@@ -23,26 +25,27 @@ using namespace hydra;
 TEST_CASE(".mid: each difficulty reads its own 2x kick pitch, as Clone Hero does") {
     // Clone Hero (0x2155050 at 0x21555CD) flags 59, 71, 83 and 95 as
     // DoubleKick, each in its own difficulty: one below that difficulty's kick.
+    // One 2x kick per difficulty, 64 ticks apart, in kLiterals' order (tests/
+    // difficulty_literals.h): Expert's at tick 0, Hard's at 64, Medium's at
+    // 128, Easy's at 192.
     using namespace testmidi;
-    std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo(),
-                                            note_on(95, 100)};  // tick 0: Expert
-    ev.push_back({0x40, 0x90, 83, 100});                       // tick 64: Hard
-    ev.push_back({0x40, 0x90, 71, 100});                       // tick 128: Medium
-    ev.push_back({0x40, 0x90, 59, 100});                       // tick 192: Easy
+    constexpr uint32_t kStep = 64;
+    std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo()};
+    for (size_t i = 0; i < std::size(testdiff::kLiterals); ++i) {
+        const std::vector<uint8_t> kick =
+            note_on(static_cast<uint8_t>(testdiff::kLiterals[i].kick2x), 100);
+        ev.push_back(i == 0 ? kick : after(kStep, kick));
+    }
     ev.push_back(end_of_track());
     const std::vector<uint8_t> mid = smf(concat(ev));
-    const std::pair<Difficulty, int64_t> cases[] = {{Difficulty::Expert, 0},
-                                                    {Difficulty::Hard, 64},
-                                                    {Difficulty::Medium, 128},
-                                                    {Difficulty::Easy, 192}};
-    for (const auto& [d, tick] : cases) {
-        const std::string name = difficulty_name(d);
-        CAPTURE(name);
-        const Song on = load_songbytes_mid(mid, true, true, d);
+    for (size_t i = 0; i < std::size(testdiff::kLiterals); ++i) {
+        const testdiff::Literals& w = testdiff::kLiterals[i];
+        CAPTURE(w.name);
+        const Song on = load_songbytes_mid(mid, true, true, w.d);
         REQUIRE(on.sequence.size() == 1);
-        CHECK(on.sequence[0].timecode.ticks() == tick);
+        CHECK(on.sequence[0].timecode.ticks() == static_cast<int64_t>(i * kStep));
         CHECK(on.sequence[0].chord.at(NoteColor::Kick)->is2x);
-        CHECK(load_songbytes_mid(mid, true, false, d).sequence.empty());
+        CHECK(load_songbytes_mid(mid, true, false, w.d).sequence.empty());
     }
 }
 

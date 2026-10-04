@@ -36,28 +36,26 @@ TEST_CASE("difficulty table: name, section, kick, 2x kick and disco digit for ev
 }
 
 TEST_CASE("difficulty table: the .mid parser reads each difficulty's kick from it") {
-    // One kick per difficulty, a beat apart: Expert's 96 at tick 0, Hard's 84
-    // at 480, Medium's 72 at 960, Easy's 60 at 1440. A difficulty that read
-    // another's kick pitch would load the wrong tick.
+    // One kick per difficulty, a beat apart, in kLiterals' order: Expert's at
+    // tick 0, Hard's at 480, Medium's at 960, Easy's at 1440. A difficulty that
+    // read another's kick pitch would load the wrong tick.
     using namespace testmidi;
-    std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo(),
-                                            note_on(96, 100)};
-    // Each later kick: a delta of 480 ticks (0x83 0x60), then a note-on.
-    for (uint8_t pitch : {uint8_t{84}, uint8_t{72}, uint8_t{60}})
-        ev.push_back({0x83, 0x60, 0x90, pitch, 100});
+    constexpr uint32_t kBeat = 480;
+    std::vector<std::vector<uint8_t>> ev = {track_name("PART DRUMS"), set_tempo()};
+    for (size_t i = 0; i < std::size(testdiff::kLiterals); ++i) {
+        const std::vector<uint8_t> kick =
+            note_on(static_cast<uint8_t>(testdiff::kLiterals[i].kick), 100);
+        ev.push_back(i == 0 ? kick : after(kBeat, kick));
+    }
     ev.push_back(end_of_track());
     const std::vector<uint8_t> mid = smf(concat(ev));
 
-    const std::pair<Difficulty, int64_t> cases[] = {{Difficulty::Expert, 0},
-                                                    {Difficulty::Hard, 480},
-                                                    {Difficulty::Medium, 960},
-                                                    {Difficulty::Easy, 1440}};
-    for (const auto& [d, tick] : cases) {
-        const std::string name = difficulty_name(d);
-        CAPTURE(name);
-        const Song song = load_songbytes_mid(mid, true, true, d);
+    for (size_t i = 0; i < std::size(testdiff::kLiterals); ++i) {
+        const testdiff::Literals& w = testdiff::kLiterals[i];
+        CAPTURE(w.name);
+        const Song song = load_songbytes_mid(mid, true, true, w.d);
         REQUIRE(song.sequence.size() == 1);
-        CHECK(song.sequence[0].timecode.ticks() == tick);
+        CHECK(song.sequence[0].timecode.ticks() == static_cast<int64_t>(i * kBeat));
         CHECK(song.sequence[0].chord.at(NoteColor::Kick).has_value());
     }
 }

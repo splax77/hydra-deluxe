@@ -14,43 +14,28 @@
 #include <string>
 #include <vector>
 
+#include "chart_text.h"
+
 namespace multidiff {
 
-inline const char* chart_text() {
-    return
-        "[Song]\n"
-        "{\n"
-        "  Name = \"Difficulty Fixture\"\n"
-        "  Artist = \"Hydra Tests\"\n"
-        "  Resolution = 192\n"
-        "}\n"
-        "[SyncTrack]\n"
-        "{\n"
-        "  0 = TS 4\n"
-        "  0 = B 120000\n"
-        "}\n"
-        "[ExpertDrums]\n"
-        "{\n"
-        "  0 = N 0 0\n"
-        "  192 = N 1 0\n"
-        "  384 = N 2 0\n"
-        "  576 = N 3 0\n"
-        "  768 = N 4 0\n"
-        "}\n"
-        "[HardDrums]\n"
-        "{\n"
-        "  0 = S 2 192\n"
-        "  0 = N 1 0\n"
-        "  0 = N 40 0\n"
-        "  192 = N 2 0\n"
-        "  192 = N 66 0\n"
-        "  1536 = S 64 192\n"
-        "  1728 = N 0 0\n"
-        "}\n"
-        "[EasyDrums]\n"
-        "{\n"
-        "  0 = N 4 0\n"
-        "}\n";
+inline std::string chart_text() {
+    return testchart::chart_text(
+        testchart::section("ExpertDrums",
+                           "  0 = N 0 0\n"
+                           "  192 = N 1 0\n"
+                           "  384 = N 2 0\n"
+                           "  576 = N 3 0\n"
+                           "  768 = N 4 0\n") +
+            testchart::section("HardDrums",
+                               "  0 = S 2 192\n"
+                               "  0 = N 1 0\n"
+                               "  0 = N 40 0\n"
+                               "  192 = N 2 0\n"
+                               "  192 = N 66 0\n"
+                               "  1536 = S 64 192\n"
+                               "  1728 = N 0 0\n") +
+            testchart::section("EasyDrums", "  0 = N 4 0\n"),
+        192, "  Name = \"Difficulty Fixture\"\n  Artist = \"Hydra Tests\"\n");
 }
 
 // Chord counts the four difficulties must produce. Medium has no section.

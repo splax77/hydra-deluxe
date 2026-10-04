@@ -485,25 +485,62 @@ const std::vector<OwnerRule>& rules() {
          {"deflate_raw(meta)"},
          {},
          {"tests"}},
-        // Step-2 derive-once review of 11b9d44, finding 6. The two test_song.cpp
-        // lines build deliberately malformed charts from raw pieces.
-        {"Which test helper writes a .chart [SyncTrack] header?",
+        // Step-2 derive-once review of 11b9d44, finding 6, widened by the review
+        // of dbeb3a3, finding 1: any string literal that opens a [Song] or
+        // [SyncTrack] section, so a header typed across several source lines,
+        // or one that takes its lines as a parameter, is caught on its first
+        // line. The test_song.cpp lines build deliberately malformed charts from
+        // raw pieces; the test_app_state.cpp lines write a placeholder file.
+        {"Which test helper writes a .chart [Song] or [SyncTrack] header?",
          "chart_text in tests/chart_text.h",
-         R"(\[SyncTrack\]\\n\{\\n  0 = TS)",
+         R"("\[(Song|SyncTrack)\]\\n)",
          "",
          {"tests/chart_text.h"},
          {},
-         "step-2 derive-once review of 11b9d44, finding 6",
+         "step-2 derive-once review of 11b9d44, finding 6; review of dbeb3a3, finding 1",
          {R"("[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n")",
-          R"("[SyncTrack]\n{\n  0 = TS 3 3\n}\n")"},
-         {R"("[SyncTrack]\n{\n" + sync + "}\n")"},
+          R"("[SyncTrack]\n{\n  0 = TS 3 3\n}\n")",
+          R"("[SyncTrack]\n{\n" + sync + "}\n")", R"("[SyncTrack]\n")", R"("[Song]\n")",
+          R"(std::string s = "[Song]\n{\n  Resolution = " + resolution + "\n}\n")"},
+         {R"(testchart::section("Song", "  Resolution = 192\n"))",
+          R"(testchart::section("SyncTrack", testchart::kSync44At120))",
+          R"(write_bytes(ini, bytes_of("[Song]\r\nDelay = -250\r\n"));)"},
          {{"tests/test_song.cpp", R"("[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";)",
            "\"section headers are found as the regex found them\" puts an arbitrary first "
            "line in front of this header, which chart_text cannot write"},
           {"tests/test_song.cpp",
+           R"(const std::string song = "[Song]\n{\n  Resolution = 192\n}\n";)",
+           "\"malformed lines keep their handling\" joins the sections with stray text between "
+           "them, which chart_text cannot write"},
+          {"tests/test_song.cpp",
            R"(const std::string sync = "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";)",
            "\"malformed lines keep their handling\" joins the sections with stray text between "
-           "them, which chart_text cannot write"}},
+           "them, which chart_text cannot write"},
+          {"tests/test_song.cpp",
+           R"(Song s = parse(song + "[Song]\n{\n  Resolution = 480\n}\n" + sync +)",
+           "\"malformed lines keep their handling\" repeats the [Song] section to pin that the "
+           "later one replaces it, which chart_text cannot write"},
+          {"tests/test_app_state.cpp", R"({ std::ofstream f(chart); f << "[Song]\n"; })",
+           "a placeholder .chart that only has to exist on disk; no case parses it"},
+          {"tests/test_app_state.cpp", R"({ std::ofstream f(chart); f << "[Song]\n"; })",
+           "a placeholder .chart that only has to exist on disk; no case parses it"}},
+         {"tests"}},
+        // Step-2 derive-once review of dbeb3a3, finding 2. A test's own
+        // per-difficulty table pairs a difficulty with a number; a plain list
+        // of difficulties to walk is not flagged. The owner's rows carry the
+        // hydra:: prefix, so they do not match. Loose by design: a table
+        // spelled another way needs a review reading.
+        {"Which test types a difficulty's kick pitch or other per-difficulty value?",
+         "kLiterals in tests/difficulty_literals.h",
+         R"(\{Difficulty::(Hard|Medium|Easy), \d)",
+         "",
+         {"tests/difficulty_literals.h"},
+         {},
+         "step-2 derive-once review of dbeb3a3, finding 2",
+         {"{Difficulty::Hard, 480},", "{Difficulty::Easy, 60, 59, '0'}"},
+         {R"({hydra::Difficulty::Hard, 84, 83, 85, '2', "Hard", "HardDrums"},)",
+          "for (Difficulty d : {Difficulty::Hard, Difficulty::Medium, Difficulty::Easy}) {"},
+         {},
          {"tests"}},
         // Was part of the same walker: the Preview's time box reads Song's
         // default meter and keeps no 4/4 of its own. Scoped to its two files.
