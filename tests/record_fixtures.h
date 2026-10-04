@@ -192,6 +192,27 @@ inline Song banked_phrase_fold_song() {
                             {{0, 120.0}, {9600, 4000.0}});
 }
 
+// Two paths that meet with the same SP meter but not the same ready time.
+// 120 BPM; search it at an SP cap of 2. Phrases at 0 and 768 make SP ready at
+// 2000 ms. Path A activates at the fill at 2304 (few notes under it, SP ends
+// at 5376), then banks the phrases at 6144 and 6912: ready again at 18000 ms.
+// Path B passes that fill; the cap wastes those two phrases, so it stays
+// ready from 2000 ms. A fill's deadline is 6 beats before its end (fills are
+// 384 ticks), so the fills at 7296 (16000 ms) and 7680 (17000 ms) both
+// refuse A and spawn for B. At 7296 both hold 2 bars and A leads on score,
+// as B's twin that passed that fill. Sixteenth notes run from 7728 to 10752:
+// the last eight sit under an activation at 7680 (SP ends at 10752) but not
+// one at 7296 (SP ends at 10368), so B activating at 7680 is the best path.
+inline Song ready_time_fold_song() {
+    std::vector<TailNote> notes{{0, true},    {768, true},  {1536},       {2304, false, true},
+                                {3072},       {3840},       {4608},       {5376},
+                                {6144, true}, {6912, true}, {7296, false, true},
+                                {7680, false, true}};
+    for (int64_t t = 7728; t <= 10752; t += 48) notes.push_back({t});
+    notes.push_back({11520});
+    return build_tail_song(notes);
+}
+
 // Keep every path, not only the best score (EngineOptions' default depth is
 // 0), so a SqOut or SqIn branch the fixture creates is in the output even
 // when it is not optimal.
