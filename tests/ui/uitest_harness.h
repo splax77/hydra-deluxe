@@ -113,6 +113,27 @@ bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double
 // or the Preview's load is still running.
 bool jobs_busy(Harness& h);
 
+// Holds a batch's charts at a gate until the test lets them through. The test
+// library analyzes in a blink, so an ungated run can start and finish between
+// two frames, and a test that looks at the running batch races it. While a
+// gate lives, every batch the app starts runs on one worker. Each chart waits
+// at the gate, ticking progress so Stop still reaches it, until allow() has
+// let that many charts through. The "Now:" title is set before a chart
+// reaches the gate, so started() == n means chart n is on screen and held.
+// Make the gate before starting the batch. Its destructor opens the gate and
+// removes the seam, so a check that fails early leaves nothing stuck.
+class BatchGate {
+public:
+    BatchGate();
+    ~BatchGate();
+    BatchGate(const BatchGate&) = delete;
+    BatchGate& operator=(const BatchGate&) = delete;
+    // Let the first `charts` charts of the run through the gate.
+    void allow(int charts);
+    // Charts that have reached the gate so far (1 = the first is held there).
+    int started() const;
+};
+
 // All text ImGui drew last frame plus the status line, for substring checks.
 std::string visible_text(Harness& h);
 
