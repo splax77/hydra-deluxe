@@ -15,12 +15,15 @@
 #include <utility>
 #include <vector>
 
+#include "byte_source_util.h"
 #include "core/winstr.h"
 #include "midi_util.h"
 #include "parse/sng.h"
 #include "parse/song.h"
+#include "song_equal.h"
 
 using namespace hydra;
+using testsong::songs_equal;
 
 namespace {
 
@@ -139,11 +142,8 @@ TEST_CASE("sng: truncated input stops early instead of reading past the end") {
 TEST_CASE("sng: the note loader reads the chart through the shared reader") {
     const std::string path = sng_fixture_path("loader.sng");
     write_fixture(path, make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"NOTES.MID", tiny_mid()}}));
-    Song direct = load_songbytes_mid(tiny_mid(), true, true);
-    Song via_sng = load_songpath_sng(path, true, true);
-    REQUIRE(via_sng.sequence.size() == direct.sequence.size());
-    for (size_t i = 0; i < direct.sequence.size(); ++i)
-        CHECK(via_sng.sequence[i].timecode.ticks() == direct.sequence[i].timecode.ticks());
+    CHECK(songs_equal(load_songpath_sng(path, true, true),
+                      load_songbytes_mid(tiny_mid(), true, true)));
 
     // A file too short to hold a table throws a clear error.
     const std::string tiny = sng_fixture_path("tiny.sng");
@@ -188,24 +188,11 @@ TEST_CASE("sng: unmasking into the caller's buffer matches the byte formula") {
 
 namespace {
 
-void check_same_notes(const Song& got, const Song& want) {
-    REQUIRE(got.sequence.size() == want.sequence.size());
-    for (size_t i = 0; i < want.sequence.size(); ++i) {
-        CHECK(got.sequence[i].timecode.ticks() == want.sequence[i].timecode.ticks());
-        CHECK(got.sequence[i].chord == want.sequence[i].chord);
-    }
-}
-
-// load_songpath_reading with read_file_range underneath, counting the bytes.
+// load_songpath's own dispatch on the file, counting the bytes it reads.
 Song load_counting(const std::string& path, uint64_t& bytes_read) {
     bytes_read = 0;
-    return load_songpath_reading(
-        [&](uint64_t offset, size_t length) {
-            std::vector<uint8_t> b = read_file_range(path, offset, length);
-            bytes_read += b.size();
-            return b;
-        },
-        path, true, true);
+    return load_songpath_reading(testbytes::counting(file_byte_source(path), bytes_read), path,
+                                 true, true);
 }
 
 }  // namespace
@@ -222,7 +209,7 @@ TEST_CASE("sng: the note loader reads the header and the notes, not the audio") 
 
     uint64_t bytes_read = 0;
     const Song via_reads = load_counting(path, bytes_read);
-    check_same_notes(via_reads, load_songbytes_sng(buf, true, true));
+    CHECK(songs_equal(via_reads, load_songbytes_sng(buf, true, true)));
     CHECK(bytes_read < (1u << 20));
     CHECK(bytes_read > 0);
 }
@@ -237,7 +224,7 @@ TEST_CASE("sng: a header longer than the first read still loads") {
     write_fixture(path, buf);
 
     uint64_t bytes_read = 0;
-    check_same_notes(load_counting(path, bytes_read), load_songbytes_sng(buf, true, true));
+    CHECK(songs_equal(load_counting(path, bytes_read), load_songbytes_sng(buf, true, true)));
 }
 
 TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does") {
@@ -271,13 +258,8 @@ TEST_CASE("sng: a container parses the same from bytes as from its path") {
         make_sng({{"name", "Song"}}, {{"song.ogg", {1, 2}}, {"notes.mid", tiny_mid()}});
     const std::string path = sng_fixture_path("from_bytes.sng");
     write_fixture(path, buf);
-    const Song via_path = load_songpath(path, true, true);
-    const Song via_bytes = load_songpath_from_bytes(path, buf, true, true);
-    REQUIRE(via_bytes.sequence.size() == via_path.sequence.size());
-    for (size_t i = 0; i < via_path.sequence.size(); ++i) {
-        CHECK(via_bytes.sequence[i].timecode.ticks() == via_path.sequence[i].timecode.ticks());
-        CHECK(via_bytes.sequence[i].chord == via_path.sequence[i].chord);
-    }
+    CHECK(songs_equal(load_songpath_from_bytes(path, buf, true, true),
+                      load_songpath(path, true, true)));
     // The extension still decides the format; an unknown one throws.
     CHECK_THROWS_AS(load_songpath_from_bytes("x.txt", buf, true, true), std::runtime_error);
 }

@@ -21,7 +21,7 @@
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/timing.h"
-#include "core/winstr.h"  // ByteRangeReader
+#include "core/winstr.h"  // ByteSource
 
 namespace hydra {
 
@@ -265,11 +265,11 @@ Song load_songpath(const std::string& path, bool pro, bool bass2x,
                    Difficulty difficulty = Difficulty::Expert,
                    const core::Rules& rules = core::default_rules());
 
-// load_songpath with a .sng's or .srb's reads going through `read`, which
-// reads the file at `path` (load_songpath passes read_file_range). Tests pass
-// a counting wrapper to prove only the notes are read. Loose charts don't use
-// it.
-Song load_songpath_reading(const ByteRangeReader& read, const std::string& path, bool pro,
+// The one dispatch on the extension of `path`, its bytes read from `src`:
+// load_songpath passes the file (file_byte_source), load_songpath_from_bytes
+// the bytes in hand. A .mid or .chart is read whole; a .sng or .srb only in
+// the pieces its notes need. Tests pass a counting source to prove that.
+Song load_songpath_reading(const ByteSource& src, const std::string& path, bool pro,
                            bool bass2x, Difficulty difficulty = Difficulty::Expert,
                            const core::Rules& rules = core::default_rules());
 

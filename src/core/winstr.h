@@ -88,25 +88,38 @@ std::optional<uint64_t> open_file_size_bytes(std::FILE* f);
 // The same for a Win32 HANDLE (void* here so this header needs no windows.h).
 std::optional<uint64_t> open_handle_size_bytes(void* win32_handle);
 
-// The whole file's bytes, files over 2 GB included. Throws std::runtime_error
-// when the open fails or the file's size can't be read.
+// The whole file's bytes, files over 2 GB included, read through
+// file_byte_source. Throws std::runtime_error when the open fails or the
+// file's size can't be read.
 std::vector<uint8_t> read_file_bytes(const std::string& utf8_path);
 
-// Up to `length` bytes of the file starting at byte `offset`, at any offset
-// (past 4 GB included): fewer where the file ends, none at or past its end.
-// The buffer is never larger than what the file holds from `offset`. For
-// containers whose notes sit in a small part of a large file. Throws
-// std::runtime_error when the open or a read fails.
-std::vector<uint8_t> read_file_range(const std::string& utf8_path, uint64_t offset,
-                                     size_t length);
+// A file, or bytes in memory, read in pieces: how many bytes it holds, and up
+// to `length` of them from `offset` (fewer where it ends, none at or past its
+// end; the buffer is never larger than that). A container's notes sit in a
+// small part of a large file, so the note loader reads only that part.
+struct ByteSource {
+    uint64_t size = 0;
+    std::function<std::vector<uint8_t>(uint64_t offset, size_t length)> read;
+};
 
-// Reads up to `length` bytes of one file from `offset`, like read_file_range
-// with the path already chosen. Tests pass an in-memory or counting one.
-using ByteRangeReader = std::function<std::vector<uint8_t>(uint64_t offset, size_t length)>;
+// The file, opened once and held open while the source (or a copy of it)
+// lives, read at any offset (past 4 GB included). Shared for reading and
+// writing, as a C "rb" open is. Throws std::runtime_error when the open fails
+// or the size can't be read. A read the system refuses stops early and
+// returns what came before it, as fread does.
+ByteSource file_byte_source(const std::string& utf8_path);
 
-// A ByteRangeReader over bytes already in memory, answering as read_file_range
-// would for a file holding them. `bytes` must outlive the reader.
-ByteRangeReader range_reader_over(const std::vector<uint8_t>& bytes);
+// Bytes already in memory, read the same way. `bytes` must outlive the source.
+ByteSource memory_byte_source(const std::vector<uint8_t>& bytes);
+
+// How a container read in pieces sizes its reads: the first is 64 KB, which
+// holds any real .sng header or .srb metadata block and most notes streams,
+// and each read after one of `last` bytes asks twice as much, so a part of n
+// bytes takes a handful of reads and at most about 2n bytes come off disk.
+// The sizes change only how many bytes are read, never what a load returns.
+// The user's decision, ADR 0024.
+constexpr size_t kFirstPieceRead = 64 * 1024;
+size_t next_piece_read(size_t last);
 
 // The whole file as text, bytes as they are (no newline translation); throws
 // std::runtime_error when the open fails.

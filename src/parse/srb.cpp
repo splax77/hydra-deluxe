@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 
@@ -76,14 +77,8 @@ std::vector<uint8_t> inflate_raw(const NextInput& next_input, size_t max_out,
     return out;
 }
 
-// The largest piece handed to the inflater at once (avail_in is 32 bits).
-constexpr size_t kMaxPiece = size_t{1} << 30;
-
-// A file read for a stream starts at 64 KB, enough for a metadata block and
-// most notes streams, and doubles up to 4 MB, so a big stream takes few reads
-// and the overshoot past its end stays small.
-constexpr size_t kFirstRead = 64 * 1024;
-constexpr size_t kLargestRead = 4 * 1024 * 1024;
+// The most the inflater takes in one piece: all its input counter holds.
+constexpr size_t kMaxPiece = std::numeric_limits<decltype(mz_stream::avail_in)>::max();
 
 }  // namespace
 
@@ -103,15 +98,15 @@ std::vector<uint8_t> srb_inflate_stream(const uint8_t* data, size_t size,
     return out;
 }
 
-std::vector<uint8_t> srb_inflate_stream_reading(const ByteRangeReader& read, uint64_t offset,
+std::vector<uint8_t> srb_inflate_stream_reading(const ByteSource& src, uint64_t offset,
                                                 size_t max_out, uint64_t* end_offset) {
     std::vector<uint8_t> piece;
     uint64_t pos = offset;
-    size_t ask = kFirstRead;
+    size_t ask = kFirstPieceRead;
     const NextInput next = [&]() -> std::pair<const uint8_t*, size_t> {
-        piece = read(pos, ask);
+        piece = src.read(pos, std::min(ask, kMaxPiece));
         pos += piece.size();
-        ask = std::min(ask * 2, kLargestRead);
+        ask = next_piece_read(ask);
         return {piece.data(), piece.size()};
     };
     uint64_t consumed = 0;

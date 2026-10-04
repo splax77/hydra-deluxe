@@ -23,10 +23,12 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "byte_source_util.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "parse/srb.h"
+#include "song_equal.h"
 #include "srb_util.h"
 
 using namespace hydra;
@@ -65,23 +67,7 @@ std::string fixture_dir() {
 
 using testsrb::make_metadata;
 using testsrb::make_srb;
-
-bool songs_equal(const Song& a, const Song& b) {
-    if (a.tick_resolution() != b.tick_resolution()) return false;
-    if (a.tpm_changes != b.tpm_changes) return false;
-    if (a.bpm_changes != b.bpm_changes) return false;
-    if (a.features != b.features) return false;
-    if (a.sequence.size() != b.sequence.size()) return false;
-    for (size_t i = 0; i < a.sequence.size(); ++i) {
-        const SongTimestamp& x = a.sequence[i];
-        const SongTimestamp& y = b.sequence[i];
-        if (x.timecode.ticks() != y.timecode.ticks()) return false;
-        if (x.chord.code() != y.chord.code()) return false;
-        if (x.flag_solo != y.flag_solo || x.flag_sp != y.flag_sp) return false;
-        if (x.activation_length != y.activation_length) return false;
-    }
-    return true;
-}
+using testsong::songs_equal;
 
 // First corpus chart with the given extension.
 std::string corpus_chart_path(const std::string& ext) {
@@ -175,12 +161,7 @@ TEST_CASE("srb: the note loader reads the metadata and notes streams, not the re
 
     uint64_t bytes_read = 0;
     const Song via_reads = load_songpath_reading(
-        [&](uint64_t offset, size_t length) {
-            std::vector<uint8_t> b = read_file_range(path, offset, length);
-            bytes_read += b.size();
-            return b;
-        },
-        path, true, true);
+        testbytes::counting(file_byte_source(path), bytes_read), path, true, true);
     CHECK(songs_equal(via_reads, load_songbytes_srb(srb, true, true)));
     CHECK(bytes_read < (2u << 20));
 }
@@ -199,7 +180,7 @@ TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole b
         srb_inflate_stream(buf.data(), buf.size(), kSrbHeaderSize, kSrbMaxStream, &end_whole);
     uint64_t end_reads = 0;
     const std::vector<uint8_t> reads = srb_inflate_stream_reading(
-        range_reader_over(buf), kSrbHeaderSize, kSrbMaxStream, &end_reads);
+        memory_byte_source(buf), kSrbHeaderSize, kSrbMaxStream, &end_reads);
     CHECK(whole == payload);
     CHECK(reads == payload);
     CHECK(end_reads == end_whole);
@@ -207,18 +188,18 @@ TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole b
 
     // The same failures, by the same words.
     std::vector<uint8_t> cut(buf.begin(), buf.begin() + buf.size() / 2);
-    CHECK_THROWS_WITH(srb_inflate_stream_reading(range_reader_over(cut), kSrbHeaderSize,
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(cut), kSrbHeaderSize,
                                                  kSrbMaxStream, nullptr),
                       "SRB stream is truncated.");
-    CHECK_THROWS_WITH(srb_inflate_stream_reading(range_reader_over(buf), buf.size(),
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(buf), buf.size(),
                                                  kSrbMaxStream, nullptr),
                       "SRB stream starts past end of file.");
-    CHECK_THROWS_WITH(srb_inflate_stream_reading(range_reader_over(buf), kSrbHeaderSize,
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(buf), kSrbHeaderSize,
                                                  1 << 20, nullptr),
                       "SRB stream exceeds size limit.");
     std::vector<uint8_t> junk = buf;
     for (size_t i = kSrbHeaderSize; i < kSrbHeaderSize + 64; ++i) junk[i] = 0xFF;
-    CHECK_THROWS_WITH(srb_inflate_stream_reading(range_reader_over(junk), kSrbHeaderSize,
+    CHECK_THROWS_WITH(srb_inflate_stream_reading(memory_byte_source(junk), kSrbHeaderSize,
                                                  kSrbMaxStream, nullptr),
                       "SRB stream is corrupt.");
 }

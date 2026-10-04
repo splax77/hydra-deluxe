@@ -7,9 +7,13 @@ namespace hydra {
 
 namespace {
 
-// n bytes starting at pos lie inside buf (no overflow for any n).
+// n bytes starting at pos lie inside something of `size` bytes (no overflow
+// for any pos or n). The one bounds rule for the header walk and the entries.
+bool fits(uint64_t size, uint64_t pos, uint64_t n) {
+    return pos <= size && n <= size - pos;
+}
 bool fits(const std::vector<uint8_t>& buf, size_t pos, uint64_t n) {
-    return pos <= buf.size() && n <= buf.size() - pos;
+    return fits(buf.size(), pos, n);
 }
 
 uint64_t u64_at(const std::vector<uint8_t>& buf, size_t pos) {
@@ -77,10 +81,6 @@ void unmask(const uint8_t* mask, const uint8_t* src, size_t n, uint8_t* dst) {
     }
 }
 
-// The first read of a .sng's header: real metadata and file tables are a few
-// KB, so one read almost always holds both.
-constexpr size_t kSngFirstRead = 64 * 1024;
-
 }  // namespace
 
 std::vector<std::pair<std::string, std::string>> sng_read_metadata(const std::vector<uint8_t>& buf) {
@@ -116,7 +116,7 @@ std::vector<SngFileEntry> sng_read_file_table(const std::vector<uint8_t>& buf) {
 bool sng_decode_file_into(const std::vector<uint8_t>& buf, const SngFileEntry& entry,
                           std::vector<uint8_t>& out) {
     if (!fits(buf, kSngXorMaskOffset, kSngXorMaskSize)) return false;
-    if (entry.offset > buf.size() || entry.length > buf.size() - entry.offset) return false;
+    if (!fits(buf.size(), entry.offset, entry.length)) return false;
     const size_t n = static_cast<size_t>(entry.length);
     out.resize(n);
     unmask(buf.data() + kSngXorMaskOffset, buf.data() + static_cast<size_t>(entry.offset), n,
@@ -124,31 +124,28 @@ bool sng_decode_file_into(const std::vector<uint8_t>& buf, const SngFileEntry& e
     return true;
 }
 
-std::vector<uint8_t> sng_read_head(const ByteRangeReader& read) {
-    size_t asked = kSngFirstRead;
-    std::vector<uint8_t> head = read(0, asked);
+std::vector<uint8_t> sng_read_head(const ByteSource& src) {
+    size_t asked = kFirstPieceRead;
+    std::vector<uint8_t> head = src.read(0, asked);
     for (;;) {
         const uint64_t needed = walk_file_table(head, nullptr);
-        // The whole table is in hand, or the read stopped at the file's end
-        // (so head is the whole file and parses exactly as the file does).
-        if (needed <= head.size() || head.size() < asked) return head;
-        asked = static_cast<size_t>(std::min<uint64_t>(std::max<uint64_t>(needed, uint64_t{asked} * 2),
-                                                       SIZE_MAX));
-        head = read(0, asked);
+        // The whole table is in hand, or head is the whole file (so it parses
+        // exactly as the file does).
+        if (needed <= head.size() || head.size() == src.size) return head;
+        asked = static_cast<size_t>(std::min<uint64_t>(
+            std::max<uint64_t>(needed, next_piece_read(asked)), SIZE_MAX));
+        head = src.read(0, asked);
     }
 }
 
-std::optional<std::vector<uint8_t>> sng_read_file(const ByteRangeReader& read,
+std::optional<std::vector<uint8_t>> sng_read_file(const ByteSource& src,
                                                   const std::vector<uint8_t>& head,
                                                   const SngFileEntry& entry) {
     if (!fits(head, kSngXorMaskOffset, kSngXorMaskSize)) return std::nullopt;
-    if (entry.length > SIZE_MAX) return std::nullopt;
+    if (!fits(src.size, entry.offset, entry.length)) return std::nullopt;
     const size_t n = static_cast<size_t>(entry.length);
-    std::vector<uint8_t> bytes = read(entry.offset, n);
-    if (bytes.size() != n) return std::nullopt;  // runs past the end of the file
-    // An empty entry reads nothing, so ask whether its offset is inside the
-    // file at all, as a whole-file read would.
-    if (n == 0 && entry.offset > 0 && read(entry.offset - 1, 1).empty()) return std::nullopt;
+    std::vector<uint8_t> bytes = src.read(entry.offset, n);
+    if (bytes.size() != n) return std::nullopt;  // the file shrank since it was opened
     unmask(head.data() + kSngXorMaskOffset, bytes.data(), n, bytes.data());
     return bytes;
 }
