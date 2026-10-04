@@ -74,8 +74,18 @@ squeeze symbols (e.g. `E2+-`).
 **Skip**:
 A fill an activation deliberately passes over before activating.
 
+**Authored fill**:
+A fill written in the chart. Each one is placed on its own once every chord
+is read: on the last chord at or before its end but not before its start, or
+on the first chord after its end within the landing window
+(`fill_land_slop_beats`, plus one tick). The closer wins, a tie goes to the
+later chord, and a fill with neither is dropped (docs/adr/0023).
+
 **SP phrase**:
-A chart section that awards a bar of Star Power when hit fully.
+A chart section that awards a bar of Star Power when hit fully. It covers
+the chords with start <= tick < end, and pays on the last of them; a phrase
+of length zero pays nothing, and one that runs past the last note pays on
+that note (Clone Hero's rule, docs/adr/0023).
 _Avoid_: star power section
 
 **All-0 path**:
@@ -113,7 +123,9 @@ hitting early; its window is fixed, not the hit-window setting.
 
 **Fill spawn deadline (CH 1.1)**:
 The latest your SP meter can fill up and still have a fill appear. Clone Hero
-1.1 puts it a flat 4 beats before the fill starts. Hydra's default rule.
+1.1 puts it a flat 4 beats before the fill starts. Hydra's default rule. A
+beat here is a quarter note (the chart's resolution) in every meter, 6/8
+included; that is not verified against Clone Hero (docs/adr/0023).
 
 **Fill spawn deadline (CH 1.0)**:
 The older rule: roughly one fill-length of lead time before the fill, clamped
@@ -121,6 +133,14 @@ to 250..10000 ms. Short fills got stricter in 1.1 and long fills got looser.
 The "1.0 fills" analysis setting, or `hydra_batch --legacy-fills` into its own
 database. Part of a record's key, so 1.0 and 1.1 records sit side by side;
 `hydra_fillcompare` diffs the two. See docs/adr/0010.
+
+**Generated fill**:
+A fill Hydra places itself on a chart with no authored fills: on the chord
+nearest a downbeat, if one sits within half a beat of it, half a measure
+long, and at least 4 measures after the last one (hydra_rules.ini can change
+these). With two or more meter changes
+between two chords, its length reads the earlier meter; that is not
+verified against Clone Hero (docs/adr/0023).
 
 **Hit window**:
 The per-side ms window Clone Hero registers a hit in. A setting; feeds the
@@ -150,6 +170,13 @@ The displayed difficulty judgement of a squeeze: its rating label, its
 effective ms once the transfer scale is applied, and whether the scale is
 material enough to warn about.
 
+**Backend leeway**:
+How long after the SP end a note still scores under Star Power without a
+squeeze: less than `backend_leeway_ms` (3 ms by default). A note exactly
+3.0 ms after the SP end does not score under SP. Hydra's own rule: no such
+constant was found in the Clone Hero engine methods read; the 3 ms is
+Hydra's own setting.
+
 **Difficulty**:
 A path's or activation's hardest required squeeze, in raw gap ms — never
 scaled by the transfer scale.
@@ -172,12 +199,27 @@ One drawn note on the note highway. Its model shows the drum type (tom, cymbal,
 or kick), its texture shows the lane, the note's dynamics, and whether it sits
 in an SP phrase. Dynamics are a velocity rule that applies to every lane, kick
 included: velocity 1 is a ghost, velocity 127 an accent, and both score double
-(see docs/adr/0012).
+(see docs/adr/0012). A MIDI chart turns them on with the exact text
+`ENABLE_CHART_DYNAMICS` or `[ENABLE_CHART_DYNAMICS]` in its drum track, and
+only notes after the tag count; a `.chart` always has them on.
 _Avoid_: note (the chart datum), block
 
 **Lane**:
 One column of the note highway, in KRYBG order. The four playable lanes
 (Red..Green) spread across the highway; Kick is the full-width bar.
+
+**Disco flip**:
+A section where the chart swaps the red and yellow lanes, marked by text
+events such as `[mix N drums0d]` (on) and `[mix N drums0]` (off), where N names the
+difficulty: 0 Easy, 1 Medium, 2 Hard, 3 Expert. Each difficulty reads only
+its own markers, and the flip happens only with Pro Drums on.
+`drums0dnoflip` reads as off, unlike Clone Hero (docs/adr/0023).
+
+**2x kick**:
+A kick written for a double bass pedal: MIDI 59 Easy, 71 Medium, 83 Hard,
+95 Expert, or `N 32` in a `.chart` difficulty section. Each difficulty reads
+its own. The 2x Bass setting turns them on at every difficulty, like Clone
+Hero's Double Kick modifier.
 
 **Strike line**:
 The fixed line on the note highway where a note is due to be hit. Notes scroll

@@ -23,9 +23,9 @@ store's SQL version of the results check is built from the same lists.
 
 - `kResultsStamp`: the analysis version. It changes only when analysis
   output changes in a way the path format and the rules fingerprint don't
-  catch. When it changes it is set to the version of the release that ships
-  the change. It is "1.8.2", and "1.8.3" is also accepted, because 1.8.3
-  stamped its app version on results identical to 1.8.2's.
+  catch: the engine, the scoring, the chart readers, or what a record holds.
+  When it changes it is set to the version of the release that ships the
+  change, and changes that ship together share one bump.
 - `kPathFormatStamp`: one number for the structure blob and the nodes it
   points at. A node is only ever read through its structure, so one number
   covers both. Its value stays 6, so no stored byte changes.
@@ -45,9 +45,12 @@ A release that changes only the UI, the reports or the tools keeps every
 saved row. Users re-analyze only when the numbers could differ.
 
 The cost is a rule someone has to remember. A change to the engine, the
-scoring or what a record holds that leaves the path format and the rules
-alone must bump `kResultsStamp`, or old results keep reading Ready when they
-are wrong. The app version used to force that bump on every release. Check
-it at every release: if anything under `src/search`, the scoring in
-`src/core`, or the record contents changed since the last bump, bump it and
-shrink its `accepted` list to the new stamp alone.
+scoring, the chart readers or what a record holds that leaves the path
+format and the rules alone must bump `kResultsStamp`, or old results keep
+reading Ready when they are wrong. The chart readers were left off this list
+at first; a reader that now reads a chart differently changes the result
+just as surely as the engine does (audit finding 344, user decision D23,
+2026-10-03). Check it at every release: if anything under `src/search`, the
+scoring in `src/core`, the readers in `src/parse` or the record contents
+changed since the last bump, bump it and shrink its `accepted` list to the
+new stamp alone.
