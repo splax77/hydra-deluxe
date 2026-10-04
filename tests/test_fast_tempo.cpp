@@ -22,6 +22,7 @@
 #include "app/config.h"
 #include "bank_check.h"
 #include "core/model.h"
+#include "core/replay.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "search/engine.h"
@@ -32,27 +33,18 @@ using namespace hydra;
 
 namespace {
 
-app::AnalysisSettings fast_settings(int cap) {
-    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    cfg.sp_cap = cap;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 40;
-    cfg.ms_filter = std::nullopt;
-    return cfg;
-}
+// Default settings at a cap, top 40 scores, no ms limit (record_fixtures.h).
+using test::scores_settings;
 
 Song fixture(const std::string& name) {
     return load_songpath(std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/" + name, true, true);
 }
 
-// A root's tied variants, theirs, and so on (record_fixtures.h).
+// A root's tied variants, theirs, and so on, and every root's at once; a
+// path's activation ticks (record_fixtures.h).
+using test::all_tied;
 using test::collect_tied;
-
-std::vector<int64_t> act_ticks(const Path& p) {
-    std::vector<int64_t> at;
-    for (const Activation& a : p.walk_activations()) at.push_back(a.timecode.ticks());
-    return at;
-}
+using test::act_ticks;
 
 // D3's promise, checked without the corpus: the variant stores what the
 // search stores when it is told to activate exactly where the variant does
@@ -78,28 +70,9 @@ bool analyzes(const Song& song, const app::AnalysisSettings& cfg, HydraRecord& r
     }
 }
 
-// A late squeeze-in writes its own SqIn step on its phrase. The phrase is
-// spent then, so no window holds two SqIn steps on one phrase (a late SqIn's
-// phrase squeezed in again at the next SP end wrote a second one). D34: a
-// phrase is squeezed in once, so each SqIn has its own step, and the phrase
-// a window squeezes out is none it squeezed in.
-void check_one_step_per_sqin(const Path& p) {
-    for (const Activation& a : p.walk_activations()) {
-        std::vector<int64_t> ticks;
-        for (const SpEndStep& s : a.sp_end_steps)
-            if (s.kind == SpEndKind::SqIn) ticks.push_back(s.tick);
-        std::sort(ticks.begin(), ticks.end());
-        CHECK_MESSAGE(std::adjacent_find(ticks.begin(), ticks.end()) == ticks.end(),
-                      p.pathstring() << " at " << a.timecode.ticks());
-        const size_t sqins = static_cast<size_t>(
-            std::count_if(a.sqinouts.begin(), a.sqinouts.end(),
-                          [](const SPSqueeze& q) { return q.kind == SqueezeKind::SqIn; }));
-        CHECK_MESSAGE(sqins == ticks.size(), p.pathstring() << " at " << a.timecode.ticks());
-        if (a.sqout_tick)
-            CHECK_MESSAGE(!std::binary_search(ticks.begin(), ticks.end(), *a.sqout_tick),
-                          p.pathstring() << " at " << a.timecode.ticks());
-    }
-}
+// D34: each SqIn has its own step, never repeated or squeezed out
+// (tests/bank_check.h).
+using bank_check::check_one_step_per_sqin;
 
 // The corpus test's spent-phrase check (tests/bank_check.h) on every stored
 // path: no bank list holds a phrase a squeeze-in spent. The corpus never
@@ -129,9 +102,8 @@ const Activation* window_at(const Path& p, int64_t act_tick) {
 }
 
 bool has_sqin_step(const Activation& a, int64_t tick) {
-    for (const SpEndStep& s : a.sp_end_steps)
-        if (s.kind == SpEndKind::SqIn && s.tick == tick) return true;
-    return false;
+    const std::vector<int64_t> sqins = sqin_phrase_ticks(a);
+    return std::find(sqins.begin(), sqins.end(), tick) != sqins.end();
 }
 
 // The reviewer's fuzz chart shape (review-sqout fuzz.cpp), on a fixed
@@ -239,14 +211,13 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
     for (const auto& [name, cap] : charts) {
         CAPTURE(name);
         const Song song = fixture(name);
-        const app::AnalysisSettings cfg = fast_settings(cap);
+        const app::AnalysisSettings cfg = scores_settings(cap);
         HydraRecord rec;
         if (!analyzes(song, cfg, rec)) continue;
         REQUIRE_FALSE(rec.paths.empty());
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
         check_banks(rec);
-        std::vector<const Path*> all;
-        for (const Path& r : rec.paths) collect_tied(r, all);
+        const std::vector<const Path*> all = all_tied(rec.paths);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);
@@ -264,7 +235,7 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
 // tick there would light a bar the SqIn already used).
 TEST_CASE("fast tempo: a phrase a SqIn spent banks no bar when SP ends before it") {
     const Song song = fixture("sqin_end_before_phrase.chart");
-    const app::AnalysisSettings cfg = fast_settings(3);
+    const app::AnalysisSettings cfg = scores_settings(3);
     constexpr int64_t kAct = 5472, kPhrase = 13920, kEnd = 11616;
 
     const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
@@ -283,7 +254,7 @@ TEST_CASE("fast tempo: a phrase a SqIn spent banks no bar when SP ends before it
         bool ends_early = false;
         for (const Activation& a : p->walk_activations())
             for (const SpEndStep& s : a.sp_end_steps)
-                if (a.timecode.ticks() == kAct && s.kind == SpEndKind::SqIn && s.tick == kPhrase &&
+                if (a.timecode.ticks() == kAct && is_sqin_step_on(s.tick, s.kind, kPhrase) &&
                     s.end_tick == kEnd)
                     ends_early = true;
         if (!ends_early) continue;
@@ -324,7 +295,7 @@ TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent 
                           Want{"spent_then_next.chart", 17360, 18360}}) {
         CAPTURE(w.name);
         const Song song = fixture(w.name);
-        const app::AnalysisSettings cfg = fast_settings(2);
+        const app::AnalysisSettings cfg = scores_settings(2);
         HydraRecord rec;
         if (!analyzes(song, cfg, rec)) continue;
         bool next_in = false, next_out = false;
@@ -344,8 +315,7 @@ TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent 
         }
         CHECK(next_in);
         CHECK(next_out);
-        std::vector<const Path*> all;
-        for (const Path& r : rec.paths) collect_tied(r, all);
+        const std::vector<const Path*> all = all_tied(rec.paths);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);
@@ -374,7 +344,7 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
         const FuzzChart fc = fuzz_chart(seed);
         const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
         const Song song = load_songbytes_chart(bytes, true, true);
-        const app::AnalysisSettings cfg = fast_settings(fc.cap);
+        const app::AnalysisSettings cfg = scores_settings(fc.cap);
         HydraRecord rec;
         if (!analyzes(song, cfg, rec)) continue;
         ++analyzed;
@@ -383,8 +353,7 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
         const bool gap_seed = std::find(kSpReadyGapSeeds.begin(), kSpReadyGapSeeds.end(),
                                         seed) != kSpReadyGapSeeds.end();
         if (gap_seed) continue;
-        std::vector<const Path*> all;
-        for (const Path& r : rec.paths) collect_tied(r, all);
+        const std::vector<const Path*> all = all_tied(rec.paths);
         for (const Path* v : all) {
             ++variants;
             const std::string diff = lone_mismatch(song, cfg, *v);
@@ -426,7 +395,7 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
     const FuzzChart fc = fuzz_chart(5);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
     const Song song = load_songbytes_chart(bytes, true, true);
-    const app::AnalysisSettings cfg = fast_settings(fc.cap);
+    const app::AnalysisSettings cfg = scores_settings(fc.cap);
     const std::vector<int64_t> want = {3168, 12864};
 
     std::vector<bool> promoted;
@@ -462,7 +431,7 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
     fc.text.insert(at + last_phrase.size(), "  23040 = N 1 0\n");
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
     const Song song = load_songbytes_chart(bytes, true, true);
-    const app::AnalysisSettings cfg = fast_settings(fc.cap);
+    const app::AnalysisSettings cfg = scores_settings(fc.cap);
     const std::vector<int64_t> want = {3168, 12864};
 
     std::vector<bool> was_promoted;
@@ -472,9 +441,7 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
           "0+- 0- 7150 | 0- 0 6950 | ");
     // search_target says which result it promoted: only the first.
     CHECK(was_promoted == std::vector<bool>{true, false, false, false, false});
-    const Path* promoted = nullptr;
-    for (const Path& p : kept)
-        if (p.pathstring() == "0+- 0++") promoted = &p;
+    const Path* promoted = test::path_named(kept, "0+- 0++");
     REQUIRE(promoted != nullptr);
     CHECK(promoted->totalscore() == 7750);
     CHECK_FALSE(promoted->var_point.has_value());
@@ -491,9 +458,7 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
           "23040/200/0/195 | bank 9600 10080 11616 | e 127.5 | passed] trailing");
     HydraRecord rec;
     REQUIRE(analyzes(song, cfg, rec));
-    const Path* full = nullptr;
-    for (const Path* p : rec.all_paths())
-        if (p->pathstring() == "0+- 0++") full = p;
+    const Path* full = test::path_named(rec.all_paths(), "0+- 0++");
     REQUIRE(full != nullptr);
     CHECK(full->var_point.has_value());
     CHECK(full->totalscore() == 7750);
@@ -519,7 +484,7 @@ TEST_CASE("search_target: a kept root's tied variant that missed a named activat
     const FuzzChart fc = fuzz_chart(199);
     const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
     const Song song = load_songbytes_chart(bytes, true, true);
-    const app::AnalysisSettings cfg = fast_settings(fc.cap);
+    const app::AnalysisSettings cfg = scores_settings(fc.cap);
     const std::vector<int64_t> want = {4896, 12288, 21792};
 
     std::vector<bool> promoted;
@@ -528,13 +493,16 @@ TEST_CASE("search_target: a kept root's tied variant that missed a named activat
           "0++- E0++- 0 12350 | 0++- E0+- 0 11750 | 0++- E0- 0 11350 [0+- E0+- 0 11350] | "
           "0- 0+- 0 11150 | 0+- E0- 0 10750 | 0- 0- 0 10550 | ");
     CHECK(promoted.size() == kept.size());
+    std::vector<int> counts;
     for (const Path& p : kept) {
         CHECK(act_ticks(p) == want);
         std::vector<const Path*> tied;
         collect_tied(p, tied);
         for (const Path* v : tied) CHECK(act_ticks(*v) == want);
-        CHECK(p.tied_pathcount() == 1 + static_cast<int>(tied.size()));
+        counts.push_back(p.tied_pathcount());
     }
+    // Each root's stored tied-path count, pinned as read from one run.
+    CHECK(counts == std::vector<int>{1, 1, 2, 1, 1, 1});
 }
 
 // keep_target_paths on a hand-built list: it reads only each path's
@@ -617,7 +585,7 @@ TEST_CASE("fast tempo: two spent phrases ahead, with or without a banked one, pr
         const FuzzChart fc = fuzz_chart(c.seed);
         const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
         const Song song = load_songbytes_chart(bytes, true, true);
-        const app::AnalysisSettings cfg = fast_settings(c.cap);
+        const app::AnalysisSettings cfg = scores_settings(c.cap);
         HydraRecord rec;
         if (!analyzes(song, cfg, rec)) continue;
         check_banks(rec);
@@ -628,9 +596,9 @@ TEST_CASE("fast tempo: two spent phrases ahead, with or without a banked one, pr
                 const Activation& a = walk[i];
                 const std::optional<int64_t> d = a.deact_tick();
                 if (!d) continue;
-                int spent_ahead = 0;
-                for (const SpEndStep& s : a.sp_end_steps)
-                    if (s.kind == SpEndKind::SqIn && s.tick > *d) ++spent_ahead;
+                const std::vector<int64_t> sqins = sqin_phrase_ticks(a);
+                const auto spent_ahead = std::count_if(sqins.begin(), sqins.end(),
+                                                       [&d](int64_t t) { return t > *d; });
                 if (spent_ahead < 2) continue;
                 const bool banked_ahead = a.sqout_tick && *a.sqout_tick > *d;
                 if (banked_ahead != c.banked || (!c.banked && a.sqout_tick)) continue;
@@ -647,8 +615,7 @@ TEST_CASE("fast tempo: two spent phrases ahead, with or without a banked one, pr
             }
         }
         CHECK(shown > 0);
-        std::vector<const Path*> all;
-        for (const Path& r : rec.paths) collect_tied(r, all);
+        const std::vector<const Path*> all = all_tied(rec.paths);
         for (const Path* v : all) {
             const std::string diff = lone_mismatch(song, cfg, *v);
             CHECK_MESSAGE(diff.empty(), diff);

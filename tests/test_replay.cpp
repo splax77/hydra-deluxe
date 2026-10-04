@@ -131,20 +131,12 @@ TEST_CASE("targeted search reproduces every corpus path") {
             ++paths;
             const std::vector<Activation> want_acts = p->all_activations();
 
-            std::vector<int64_t> ticks;
-            bool have_ticks = true;
-            for (const Activation& act : want_acts) {
-                ticks.push_back(act.timecode.ticks());
-            }
-            REQUIRE(have_ticks);
-
-            const std::vector<Path> got = search_target(song, cfg, ticks);
+            const std::vector<Path> got = search_target(song, cfg, test::act_ticks(*p));
 
             // Somewhere in the returned variants must be this exact path.
             const Path* match = nullptr;
-            HydraRecord holder;
-            holder.paths = got;
-            for (const Path* q : holder.all_paths()) {
+            const std::vector<const Path*> targeted = flatten_paths(got);
+            for (const Path* q : targeted) {
                 if (q->totalscore() != p->totalscore()) continue;
                 const std::vector<Activation> qa = q->all_activations();
                 if (qa.size() != want_acts.size()) continue;
@@ -168,7 +160,7 @@ TEST_CASE("targeted search reproduces every corpus path") {
                 if (first_diff.empty())
                     first_diff = path + " [" + p->pathstring() + "] score " +
                                  std::to_string(p->totalscore()) + ": " +
-                                 std::to_string(holder.all_paths().size()) +
+                                 std::to_string(targeted.size()) +
                                  " targeted path(s), none matching";
                 continue;
             }
@@ -529,12 +521,7 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
 TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
     const Song song = load_songpath(
         std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/spent_then_next.chart", true, true);
-    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    cfg.sp_cap = 2;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 40;
-    cfg.ms_filter = std::nullopt;
-    const HydraRecord rec = analyze_chart(song, cfg);
+    const HydraRecord rec = analyze_chart(song, test::scores_settings(2));
     const std::vector<const Path*> all = rec.all_paths();
     const json dumped = paths_json(all, song.timing());
     REQUIRE(dumped.size() == all.size());
@@ -1285,16 +1272,9 @@ std::string compact_line(const ReplayResult& r) {
     return sp + paid + shown;
 }
 
-// On a mismatch the lines actually built are printed as C++ literals, so a
-// deliberate change can be read, checked by hand and pasted.
-void check_lines(const std::vector<std::string>& got, const std::vector<std::string>& want,
-                 const std::string& what) {
-    std::string literals;
-    if (got != want)
-        for (const std::string& l : got) literals += "    \"" + l + "\",\n";
-    INFO(what << " built:\n" << literals);
-    CHECK(got == want);
-}
+// Built lines against pinned ones, printed as literals on a mismatch
+// (record_fixtures.h).
+using test::check_lines;
 
 // Six R+Y chords on the chart of "a squeezed-out chord past the leeway earns
 // nothing": 192 ticks a beat, 120 BPM, 768 ticks (2000 ms) a measure. Ticks

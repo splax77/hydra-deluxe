@@ -6,17 +6,21 @@
 // hand-built Activation or Path, so when that fact changes shape only the
 // helper's body changes. The exception is a multi-step SP-end history: a test
 // that needs one assigns `sp_end_steps` directly, writing the steps as literal
-// ticks.
+// ticks. A few small test helpers several files share sit at the end.
 #ifndef HYDRA_TESTS_RECORD_FIXTURES_H
 #define HYDRA_TESTS_RECORD_FIXTURES_H
 
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
 
+#include "doctest.h"
+
+#include "app/config.h"
 #include "core/model.h"
 #include "parse/song.h"
 #include "search/engine.h"
@@ -276,10 +280,23 @@ inline void collect_tied(const Path& p, std::vector<const Path*>& out) {
     }
 }
 
+// Every root's tied variants, root by root.
+inline std::vector<const Path*> all_tied(const std::vector<Path>& roots) {
+    std::vector<const Path*> out;
+    for (const Path& r : roots) collect_tied(r, out);
+    return out;
+}
+
+// The ticks a path activates on, in order: what search_target is told.
+inline std::vector<int64_t> act_ticks(const Path& p) {
+    std::vector<int64_t> at;
+    for (const Activation& a : p.walk_activations()) at.push_back(a.timecode.ticks());
+    return at;
+}
+
 inline LonePricing lone_pricing(const Song& song, const SearchSettings& settings,
                                 const Path& variant) {
-    std::vector<int64_t> ticks;
-    for (const Activation& a : variant.walk_activations()) ticks.push_back(a.timecode.ticks());
+    const std::vector<int64_t> ticks = act_ticks(variant);
     const std::string mine = windows_text(variant);
     std::vector<bool> promoted;
     const std::vector<Path> lone = search_target(song, settings, ticks, &promoted);
@@ -388,15 +405,53 @@ inline void set_transfer(Activation& a, TransferScale squeeze, TransferScale pos
 // after the squeezes are pushed; `per_sqin` has one entry per SqIn.
 inline void set_sqin_transfers(Activation& a, const std::vector<TransferScale>& per_sqin,
                                TransferScale post) {
-    size_t j = 0;
-    for (SPSqueeze& sq : a.sqinouts)
-        if (sq.kind == SqueezeKind::SqIn) sq.transfer = per_sqin.at(j++);
+    for (auto it = a.sqinouts.begin(); it != a.sqinouts.end(); ++it)
+        if (is_sqin_squeeze(*it))
+            it->transfer = per_sqin.at(sqin_rank(a.sqinouts.begin(), it, is_sqin_squeeze));
     a.transfer_post = post;
 }
 
 // One stored scale for the SqIn lines and the backend rows alike.
 inline void set_transfer(Activation& a, TransferScale scale) {
     set_transfer(a, scale, scale);
+}
+
+// ---- shared test helpers ----------------------------------------------------
+
+// The app's default settings at SP cap `cap`, keeping the top 40 scores
+// (D43's test depth) with no ms limit: the settings the hand-made D-tests
+// analyze at.
+inline app::AnalysisSettings scores_settings(int cap) {
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = cap;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = std::nullopt;
+    return cfg;
+}
+
+// The path in `paths` whose path string is `s`, or nullptr.
+inline const Path* path_named(const std::vector<Path>& paths, const std::string& s) {
+    for (const Path& p : paths)
+        if (p.pathstring() == s) return &p;
+    return nullptr;
+}
+inline const Path* path_named(const std::vector<const Path*>& paths, const std::string& s) {
+    for (const Path* p : paths)
+        if (p->pathstring() == s) return p;
+    return nullptr;
+}
+
+// Built lines against pinned ones. On a mismatch the lines actually built are
+// printed as C++ literals, so a deliberate change can be read, checked by
+// hand and pasted.
+inline void check_lines(const std::vector<std::string>& got, const std::vector<std::string>& want,
+                        const std::string& what) {
+    std::string literals;
+    if (got != want)
+        for (const std::string& l : got) literals += "    \"" + l + "\",\n";
+    INFO(what << " built:\n" << literals);
+    CHECK(got == want);
 }
 
 }  // namespace hydra::test

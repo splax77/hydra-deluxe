@@ -6,11 +6,13 @@
 // SP-phrase-end note, or, for a squeezed-out bar, at the deact node; every
 // list is strictly ascending (a phrase banks once); nothing arrives before the
 // window that precedes it closed; and a phrase a squeeze-in spent never banks
-// a bar.
+// a bar. The D34 one-step-per-SqIn check lives here too, beside the
+// spent-phrase check.
 
 #ifndef HYDRA_TESTS_BANK_CHECK_H
 #define HYDRA_TESTS_BANK_CHECK_H
 
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -20,6 +22,7 @@
 #include "doctest.h"
 
 #include "core/model.h"
+#include "core/replay.h"  // sqin_phrase_ticks: a window's SqIn step ticks
 #include "parse/song.h"
 
 namespace bank_check {
@@ -60,8 +63,7 @@ inline void check_bank_list(const std::vector<int64_t>& ticks, const hydra::Acti
 inline void check_spent_phrases(const hydra::Path& p) {
     std::set<int64_t> sqin_phrases;
     for (const hydra::Activation& act : p.walk_activations())
-        for (const hydra::SpEndStep& s : act.sp_end_steps)
-            if (s.kind == hydra::SpEndKind::SqIn) sqin_phrases.insert(s.tick);
+        for (const int64_t t : hydra::sqin_phrase_ticks(act)) sqin_phrases.insert(t);
     auto check = [&sqin_phrases](const std::vector<int64_t>& ticks) {
         for (const int64_t t : ticks) {
             CAPTURE(t);
@@ -73,6 +75,29 @@ inline void check_spent_phrases(const hydra::Path& p) {
         check(act.bank_rise_ticks);
     }
     check(p.trailing_bank_ticks);
+}
+
+// A late squeeze-in writes its own SqIn step on its phrase. The phrase is
+// spent then, so no window holds two SqIn steps on one phrase (a late SqIn's
+// phrase squeezed in again at the next SP end wrote a second one). D34: a
+// phrase is squeezed in once, so each SqIn has its own step (Appendix B's
+// first guarantee: a relabel that found nothing cannot pass silently), and
+// the phrase a window squeezes out is none it squeezed in.
+inline void check_one_step_per_sqin(const hydra::Activation& a) {
+    CAPTURE(a.timecode.ticks());
+    std::vector<int64_t> ticks = hydra::sqin_phrase_ticks(a);
+    std::sort(ticks.begin(), ticks.end());
+    CHECK(std::adjacent_find(ticks.begin(), ticks.end()) == ticks.end());
+    const size_t sqins = static_cast<size_t>(
+        std::count_if(a.sqinouts.begin(), a.sqinouts.end(), hydra::is_sqin_squeeze));
+    CHECK(sqins == ticks.size());
+    if (a.sqout_tick) CHECK_FALSE(std::binary_search(ticks.begin(), ticks.end(), *a.sqout_tick));
+}
+
+// The same, on every window of one path.
+inline void check_one_step_per_sqin(const hydra::Path& p) {
+    CAPTURE(p.pathstring());
+    for (const hydra::Activation& a : p.walk_activations()) check_one_step_per_sqin(a);
 }
 
 // Every bank list of one path: each window's, then the bars still banked when

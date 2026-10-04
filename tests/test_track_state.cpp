@@ -15,6 +15,7 @@
 #include "app/config.h"  // Settings: the app's default analysis settings
 #include "app/preview_view.h"
 #include "corpus_util.h"
+#include "record_fixtures.h"
 #include "render/track_state.h"
 
 using namespace hydra;
@@ -142,16 +143,9 @@ std::vector<std::string> gap_lines(const TrackState& st) {
     return out;
 }
 
-// On a mismatch the lines actually built are printed as C++ literals, so a
-// deliberate change can be read, checked by hand and pasted.
-void check_lines(const std::vector<std::string>& got, const std::vector<std::string>& want,
-                 const char* what) {
-    std::string literals;
-    if (got != want)
-        for (const std::string& l : got) literals += "    \"" + l + "\",\n";
-    INFO(what << " built:\n" << literals);
-    CHECK(got == want);
-}
+// Built lines against pinned ones, printed as literals on a mismatch
+// (record_fixtures.h).
+using test::check_lines;
 
 // The scene's pinned timeline and gaps with pro drums on. With pro drums off
 // the timeline is the same except that no gem is a cymbal.
