@@ -50,6 +50,12 @@ enum class DynamicsRow {
 struct DynamicsBreakdown {
     std::array<DynamicsCounts, static_cast<size_t>(DynamicsRow::Count)> rows{};
     bool dynamics_enabled = false;
+    // A late .mid dynamics tag (finding 64): its time in chart ms, and how
+    // many marked notes came before it. nullopt and 0 when the tag came first
+    // or there is none. The time is stored because the Dynamics tab draws
+    // from the stored blob and has no tempo map to turn a tick into m:ss.
+    std::optional<uint32_t> late_tag_ms;
+    int marks_before_tag = 0;
 
     const DynamicsCounts& row(DynamicsRow r) const;
     DynamicsCounts pads_total() const;
@@ -66,8 +72,10 @@ const char* dynamics_row_label(DynamicsRow r, bool pro);
 DynamicsBreakdown count_dynamics(const Song& song);
 
 // Versioned binary encoding for storage in the dynamics table (record_store.h).
-// Version byte 1, then dynamics_enabled (1 byte), then the nine rows in
-// DynamicsRow order, each as ghost/accent/normal (little-endian uint32).
+// Version byte, then dynamics_enabled (1 byte), then the nine rows in
+// DynamicsRow order, each as ghost/accent/normal, then the late tag's ms
+// (0xFFFFFFFF when none) and the count of markings before it. Every number is
+// a little-endian uint32.
 std::vector<uint8_t> encode_dynamics(const DynamicsBreakdown& b);
 
 // Returns nullopt on an unknown version or data too short.

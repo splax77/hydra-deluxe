@@ -5,6 +5,7 @@
 #include "imgui.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/fonts.h"
+#include "ui/library_parts.h"  // format_duration, count_label
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -69,6 +70,14 @@ void dynamics_table_row(const char* label, const app::DynamicsCounts& c,
 }  // namespace
 
 namespace detail {
+
+std::string dynamics_enabled_text(const app::DynamicsBreakdown& bd) {
+    if (!bd.dynamics_enabled) return "Dynamics enabled: no (markings ignored by Clone Hero)";
+    if (!bd.late_tag_ms) return "Dynamics enabled: yes";
+    return "Dynamics enabled: from " + format_duration(*bd.late_tag_ms / 1000.0) + " on (" +
+           count_label(bd.marks_before_tag, "earlier marking", "earlier markings") +
+           " ignored by Clone Hero)";
+}
 
 void render_dynamics_panel(AppState& app) {
     if (!app.selected) return;
@@ -213,10 +222,7 @@ void render_dynamics_panel(AppState& app) {
 
     // Chart section.
     ImGui::SeparatorText("Chart");
-    if (bd.dynamics_enabled)
-        ImGui::TextWrapped("Dynamics enabled: yes");
-    else
-        ImGui::TextWrapped("Dynamics enabled: no (markings ignored by Clone Hero)");
+    ImGui::TextWrapped("%s", dynamics_enabled_text(bd).c_str());
 
     if (bass2x)
         ImGui::TextWrapped("2x kicks: counted (2x Bass on)");
