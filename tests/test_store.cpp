@@ -239,6 +239,10 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
             for (const Path* p : all) {
                 for (const Activation& act : p->walk_activations()) {
                     ++acts;
+                    // D4: read back from the store, nothing is unknown.
+                    const std::string why = corpus::unknown_scale_reason(act);
+                    CHECK_MESSAGE(why.empty(), path << " [" << cfg.key << "] activation at tick "
+                                                    << act.timecode.ticks() << ": " << why);
                     const std::optional<ActTransferScales> live =
                         frontend_transfer_scales(act, *lookup.timing);
                     bool same = live && act.transfer_post == live->post;

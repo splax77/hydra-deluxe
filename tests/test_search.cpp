@@ -200,8 +200,8 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
         for (const Path* p : record->all_paths()) {
             for (const Activation& act : p->all_activations()) {
                 ++acts;
-                if (!act.transfer_post) {
-                    d = "transfer_post unknown";
+                if (const std::string why = corpus::unknown_scale_reason(act); !why.empty()) {
+                    d = why;
                     break;
                 }
                 if (act.transfer_post->early != 1.0 || act.transfer_post->late != 1.0)
@@ -216,31 +216,17 @@ TEST_CASE("stored transfer scales match the display-layer recomputation") {
                     return std::abs(a.early - b.early) > 1e-9 ||
                            std::abs(a.late - b.late) > 1e-9;
                 };
-                auto non_positive = [](const TransferScale& s) {
-                    return s.early <= 0.0 || s.late <= 0.0;
-                };
                 if (differs(scales->post, *act.transfer_post)) {
                     d = "stored scales diverge from recomputation";
                     break;
                 }
-                if (non_positive(*act.transfer_post)) {
-                    d = "non-positive transfer scale";
-                    break;
-                }
+                // A non-positive scale is caught by unknown_scale_reason, above.
                 // Each SqIn's stored scale is the j-th recomputed one.
                 size_t j = 0;
                 for (const SPSqueeze& sq : act.sqinouts) {
                     if (sq.kind != SqueezeKind::SqIn) continue;
-                    if (!sq.transfer) {
-                        d = "SqIn transfer unknown";
-                        break;
-                    }
                     if (j >= scales->sqins.size() || differs(scales->sqins[j], *sq.transfer)) {
                         d = "a SqIn's stored scale diverges from recomputation";
-                        break;
-                    }
-                    if (non_positive(*sq.transfer)) {
-                        d = "non-positive SqIn transfer scale";
                         break;
                     }
                     ++j;
@@ -1135,6 +1121,54 @@ TEST_CASE("search: scales anchor on the collecting note and the SqIn's own end")
             CHECK_FALSE(s.transfer.has_value());
         }
     }
+}
+
+TEST_CASE("search: no fresh record stores an unknown transfer scale (constructed songs)") {
+    struct Case {
+        const char* name;
+        Song song;
+        int cap;
+    };
+    std::vector<Case> cases;
+    cases.push_back({"SP past the last note",
+                     test::build_tail_song({{0, true}, {768, true}, {1536}, {2304, false, true},
+                                            {3072}, {3840}, {4608}, {5136}, {5280}}),
+                     4});
+    cases.push_back({"mid-SP phrase, SP past the end",
+                     test::build_tail_song({{0, true}, {768, true}, {1536}, {2304, false, true},
+                                            {3072}, {3840, true}, {4608}, {5376}, {6144},
+                                            {6720}, {6816}}),
+                     4});
+    cases.push_back({"SqIn then a collection", test::sqin_then_collect_song(), 4});
+    cases.push_back({"cap clamp", test::clamp_song(), 2});
+    cases.push_back({"tempo change on the activation tick",
+                     test::build_tempo_song({{0, true}, {768, true}, {1536}, {2304, false, true},
+                                             {3072}, {3840}, {4608}, {5376}, {6144}},
+                                            {{0, 98.0}, {2304, 97.5}, {5376, 110.0}}),
+                     4});
+
+    int acts = 0, sqins = 0, sqouts = 0, clamps = 0;
+    for (const Case& c : cases) {
+        ScoreGraph graph(c.song, c.cap);
+        for (const Path& p : run_search(graph, test::wide_search())) {
+            for (const Activation& a : p.all_activations()) {
+                ++acts;
+                if (a.clamp_tick()) ++clamps;
+                for (const SPSqueeze& s : a.sqinouts)
+                    (s.kind == SqueezeKind::SqIn ? sqins : sqouts) += 1;
+                const std::string why = corpus::unknown_scale_reason(a);
+                CHECK_MESSAGE(why.empty(), c.name << ": activation at tick "
+                                                  << a.timecode.ticks() << ": " << why);
+            }
+        }
+    }
+    // The cases really cover the shapes they claim.
+    CHECK(acts > 0);
+    CHECK(sqins > 0);
+    CHECK(sqouts > 0);
+    CHECK(clamps > 0);
+    MESSAGE("checked " << acts << " activations (" << sqins << " SqIns, " << sqouts
+                       << " SqOuts, " << clamps << " clamps)");
 }
 
 TEST_CASE("SP end history: a squeezed-out phrase leaves no step") {
