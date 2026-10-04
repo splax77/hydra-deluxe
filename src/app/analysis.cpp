@@ -470,13 +470,10 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 AnalysisResult analyze_chart_file(const std::string& filepath,
                                   const AnalysisSettings& settings,
                                   const std::function<void(float)>& on_progress) {
-    Song song = load_songpath(filepath, settings.prodrums, settings.bass2x,
-                              settings.difficulty, settings.rules);
-    // Say which difficulty is missing. The search's own backstop can only say
-    // "no notes"; here we know what the user asked for, and a chart that
-    // simply has no Hard charting is the common case.
-    if (song.is_empty())
-        throw ChartFileError(no_notes_message(settings.difficulty, settings.prodrums));
+    // A chart with no charting at the asked difficulty (no Hard charting is
+    // the common case) throws NoNotesError, which names that difficulty.
+    Song song = load_songpath_with_notes(filepath, settings.prodrums, settings.bass2x,
+                                         settings.difficulty, settings.rules);
     HydraRecord record = analyze_chart(song, settings, on_progress);
     return AnalysisResult{std::move(record), std::move(song)};
 }

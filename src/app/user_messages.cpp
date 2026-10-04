@@ -71,8 +71,10 @@ bool starts_with_any(std::string_view s, std::initializer_list<std::string_view>
     return false;
 }
 
-// parse/song.cpp no_notes_message: "No <difficulty> [Pro ]Drums notes in this
-// chart." It is already written for the user.
+// The sentence of parse/song.h NoNotesError, built by no_notes_message: "No
+// <difficulty> [Pro ]Drums notes in this chart." It is already written for
+// the user. It is matched by its words, not by the error's type, because a
+// batch failure reaches plain_error_text as text only (ui/library_jobs.cpp).
 bool is_no_notes_message(std::string_view s) {
     return starts_with(s, "No ") && ends_with(s, " notes in this chart.");
 }
