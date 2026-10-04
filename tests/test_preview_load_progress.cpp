@@ -220,6 +220,10 @@ TEST_CASE("Preview load progress: a zero total gives a finite fraction") {
         CHECK(f >= 0.0f);
         CHECK(f <= 1.0f);
     }
+    // Opening with 0 of 0 bytes: the audio slice reads empty, "nothing
+    // reported yet" (D48, Q19), so the bar sits where 0 of any total puts it.
+    // The chart's read share before it stays filled.
+    CHECK(make(S::Opening, 0, 0).fraction() == make(S::Opening, 0, 625028440).fraction());
     // More done than the total (a file that grew after it was sized) is capped.
     CHECK(make(S::Opening, 200, 100).fraction() == make(S::Building, 1, 1).fraction());
 }
@@ -232,14 +236,16 @@ TEST_CASE("progress_fraction: 0 of 0 is empty, and the fraction stays between 0 
     CHECK(progress_fraction(200, 100) == 1.0f);
 }
 
-TEST_CASE("Preview load progress: time left waits 3 s, then reads seconds or minutes") {
+// The words are the batch strip's, "about m:ss left" (D48, Q20); the
+// Preview keeps only its own 3-second wait before it says anything.
+TEST_CASE("Preview load progress: time left waits 3 s, then reads m:ss") {
     CHECK(make(S::Opening, 10, 100, 2.9, 40.0).time_left_text() == "");
     CHECK(make(S::Opening, 10, 100, 3.0, -1.0).time_left_text() == "");  // rate unknown
-    CHECK(make(S::Opening, 10, 100, 3.0, 40.0).time_left_text() == "about 40 s left");
-    CHECK(make(S::Opening, 10, 100, 5.0, 0.2).time_left_text() == "about 1 s left");
-    CHECK(make(S::Opening, 10, 100, 5.0, 59.0).time_left_text() == "about 59 s left");
-    CHECK(make(S::Opening, 10, 100, 5.0, 61.0).time_left_text() == "about 1 min left");
-    CHECK(make(S::Opening, 10, 100, 5.0, 185.0).time_left_text() == "about 3 min left");
+    CHECK(make(S::Opening, 10, 100, 3.0, 40.0).time_left_text() == "about 0:40 left");
+    CHECK(make(S::Opening, 10, 100, 5.0, 0.2).time_left_text() == "about 0:00 left");
+    CHECK(make(S::Opening, 10, 100, 5.0, 59.0).time_left_text() == "about 0:59 left");
+    CHECK(make(S::Opening, 10, 100, 5.0, 61.0).time_left_text() == "about 1:01 left");
+    CHECK(make(S::Opening, 10, 100, 5.0, 185.0).time_left_text() == "about 3:05 left");
     // Only Opening audio has a byte rate to go on.
     CHECK(make(S::Building, 100, 100, 5.0, 10.0).time_left_text() == "");
 }

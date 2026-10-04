@@ -32,9 +32,12 @@ public:
     PreviewTransport& operator=(const PreviewTransport&) = delete;
 
     // Load a chart's audio (may be null/empty for a chart with no audio), the
-    // song length, and where chart time 0 sits in the audio (audio_ms =
-    // chart_ms + audio_offset_ms, never negative; see PreviewLoadJob). The
-    // length is the later of `last_note_ms` and the audio's end in chart time.
+    // chart's last note time, and where chart time 0 sits in the audio
+    // (audio_ms = chart_ms + audio_offset_ms, never negative; see
+    // PreviewLoadJob). length_ms() becomes the scrub range: the later of
+    // `last_note_ms` and the audio's end in chart time, so the audio's tail
+    // after the last note stays playable (D48, Q25). It is how far the
+    // scrubber reaches, not where the song's notes end.
     // Resets the playhead to the offset, paused.
     void load(std::unique_ptr<audio::Playhead> playhead, double last_note_ms,
               double audio_offset_ms = 0.0);
@@ -45,7 +48,7 @@ public:
     void toggle();
     void seek_ms(double ms);  // clamped to [0, length_ms()]
     bool playing() const;
-    double length_ms() const;
+    double length_ms() const;  // the scrub range (see load), not the last note
     bool has_audio() const;  // a loaded playhead with > 0 frames
 
     // The song time now. If playing and at/after the end, pauses and pins the

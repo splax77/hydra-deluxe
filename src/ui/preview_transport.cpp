@@ -13,6 +13,8 @@ void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead,
     std::lock_guard<std::mutex> lock(mu_);
     playhead_ = std::move(playhead);
     audio_offset_ms_ = audio_offset_ms;
+    // The scrub range, not the song's end: the audio may run on past the
+    // last note, and that tail stays playable (D48, Q25).
     double audio_end = playhead_ ? playhead_->length_ms() - audio_offset_ms_ : 0.0;
     length_ms_ = (std::max)(last_note_ms, audio_end);
     if (playhead_) {
