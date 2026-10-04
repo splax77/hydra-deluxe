@@ -29,10 +29,13 @@
 #include "env_util.h"
 #include "replay_json.h"
 #include "core/scoring.h"
+#include "core/sqout_chord.h"
 #include "core/timing.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_fixtures.h"
 #include "search/engine.h"
+#include "search/graph.h"
 #include "core/model.h"  // kSqueezeWindowMs, the horizon the warning uses
 #include "search/pather.h"
 
@@ -146,7 +149,7 @@ TEST_CASE("targeted search reproduces every corpus path") {
                 if (qa.size() != want_acts.size()) continue;
                 bool same = true;
                 for (size_t i = 0; i < qa.size() && same; ++i) {
-                    if (qa[i].deact_tick != want_acts[i].deact_tick) same = false;
+                    if (qa[i].deact_tick() != want_acts[i].deact_tick()) same = false;
                     if (qa[i].sqinouts.size() != want_acts[i].sqinouts.size())
                         same = false;
                     for (size_t k = 0; k < qa[i].sqinouts.size() && same; ++k) {
@@ -179,6 +182,219 @@ TEST_CASE("targeted search reproduces every corpus path") {
     REQUIRE(paths >= 300);
     INFO("first mismatch: " << first_diff);
     CHECK(mismatches == 0);
+}
+
+namespace {
+
+std::string ticks_text(const std::vector<int64_t>& ticks) {
+    std::string s = "{";
+    for (size_t i = 0; i < ticks.size(); ++i)
+        s += (i ? ", " : "") + std::to_string(ticks[i]);
+    return s + "}";
+}
+
+std::string steps_text(const std::vector<SpEndStep>& steps) {
+    std::string s = "{";
+    for (size_t i = 0; i < steps.size(); ++i)
+        s += (i ? ", " : "") + std::to_string(steps[i].tick) + "->" +
+             std::to_string(steps[i].end_tick) + " kind " +
+             std::to_string(static_cast<int>(steps[i].kind));
+    return s + "}";
+}
+
+std::string opt_text(const std::optional<int64_t>& t) {
+    return t ? std::to_string(*t) : std::string("unset");
+}
+
+// Each activation's squeeze symbols, e.g. "{+, -, .}" ("." for none).
+std::string kinds_text(const std::vector<Activation>& acts) {
+    std::string s = "{";
+    for (size_t i = 0; i < acts.size(); ++i) {
+        s += i ? ", " : "";
+        if (acts[i].sqinouts.empty()) s += ".";
+        for (const SPSqueeze& q : acts[i].sqinouts) s += q.symbol();
+    }
+    return s + "}";
+}
+
+bool same_ticks(const std::vector<Activation>& a, const std::vector<Activation>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (a[i].timecode.ticks() != b[i].timecode.ticks()) return false;
+    return true;
+}
+
+bool same_kinds(const std::vector<Activation>& a, const std::vector<Activation>& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].sqinouts.size() != b[i].sqinouts.size()) return false;
+        for (size_t k = 0; k < a[i].sqinouts.size(); ++k)
+            if (a[i].sqinouts[k].kind != b[i].sqinouts[k].kind) return false;
+    }
+    return true;
+}
+
+struct TiedVariantCount {
+    int variants = 0;  // tied variants the analysis listed
+    int compared = 0;  // of those, the ones a lone search could price
+    int differing = 0; // of those, the ones whose stored facts differ
+    int skipped() const { return variants - compared; }
+};
+
+// Decision D3 for one set of analysis settings, over the whole corpus. Each
+// variant is priced alone with a targeted search, and its stored facts must
+// equal that search's: score, squeeze kinds and offsets, SP end steps, bank
+// rise ticks, trailing bank, squeezed-out note and every backend row. Only a
+// root of the search is an oracle: a root was
+// never folded. Skips, the early-fill offset and the skipped fills are not
+// compared; they are finding 97. All-zero variants are not visited.
+//
+// A variant with no oracle is skipped, and each skip is printed with its
+// reason. The caller pins how many there are, so a regression that turns a
+// compared variant into a skipped one fails instead of passing quietly.
+TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
+    TiedVariantCount n;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song =
+            corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+
+        for (const Path* p : rec.all_paths()) {
+            if (!p->var_point) continue;
+            ++n.variants;
+            const std::vector<Activation> want = p->all_activations();
+            std::vector<int64_t> ticks;
+            for (const Activation& a : want) ticks.push_back(a.timecode.ticks());
+            const std::string where = path + " [" + p->pathstring() + "] ";
+
+            HydraRecord alone;
+            alone.paths = search_target(song, cfg, ticks);
+            // The oracle: a root with the same score and squeeze kinds.
+            const Path* match = nullptr;
+            // A root with the same score and ticks but other squeeze kinds.
+            const Path* other_kinds = nullptr;
+            for (const Path& q : alone.paths) {
+                if (q.totalscore() != p->totalscore()) continue;
+                const std::vector<Activation> qa = q.all_activations();
+                if (same_kinds(qa, want)) { match = &q; break; }
+                if (!other_kinds && same_ticks(qa, want)) other_kinds = &q;
+            }
+
+            if (!match) {
+                // The lone search may itself have tied the variant's kinds
+                // under a root with other kinds. Then there is no oracle, and
+                // that is a skip. Otherwise the variant holds squeeze kinds a
+                // lone search never gives it, and that is a difference.
+                bool tied_alone = false;
+                for (const Path* q : alone.all_paths())
+                    if (q->totalscore() == p->totalscore() &&
+                        same_kinds(q->all_activations(), want))
+                        tied_alone = true;
+                if (other_kinds && !tied_alone) {
+                    ++n.compared;
+                    ++n.differing;
+                    const std::string d = where + "squeeze kinds: stored " + kinds_text(want) +
+                                          ", alone " +
+                                          kinds_text(other_kinds->all_activations());
+                    CHECK_MESSAGE(false, d);
+                    continue;
+                }
+                std::string why;
+                if (alone.paths.empty()) why = "the lone search found no path";
+                else if (tied_alone) why = "the lone search tied it under a root too";
+                else why = "no lone root has its score and squeeze kinds";
+                std::string roots;
+                for (const Path& q : alone.paths)
+                    roots += " [" + q.pathstring() + "] score " +
+                             std::to_string(q.totalscore()) + " kinds " +
+                             kinds_text(q.all_activations()) + ";";
+                MESSAGE("skipped " << where << "score " << p->totalscore() << " kinds "
+                                   << kinds_text(want) << ": " << why << ". Lone roots:"
+                                   << roots);
+                continue;
+            }
+            ++n.compared;
+
+            // Every difference, spelled out with both values, so a failure
+            // names the chart, the path, the field and what each side holds.
+            std::vector<std::string> diffs;
+            if (match->trailing_bank_ticks != p->trailing_bank_ticks)
+                diffs.push_back(where + "trailing_bank_ticks: stored " +
+                                ticks_text(p->trailing_bank_ticks) + ", alone " +
+                                ticks_text(match->trailing_bank_ticks));
+            const std::vector<Activation> got = match->all_activations();
+            for (size_t i = 0; i < got.size(); ++i) {
+                const std::string act = where + "activation at " +
+                                        std::to_string(want[i].timecode.ticks()) + " ";
+                if (got[i].sp_end_steps != want[i].sp_end_steps)
+                    diffs.push_back(act + "sp_end_steps: stored " +
+                                    steps_text(want[i].sp_end_steps) + ", alone " +
+                                    steps_text(got[i].sp_end_steps));
+                if (got[i].bank_rise_ticks != want[i].bank_rise_ticks)
+                    diffs.push_back(act + "bank_rise_ticks: stored " +
+                                    ticks_text(want[i].bank_rise_ticks) + ", alone " +
+                                    ticks_text(got[i].bank_rise_ticks));
+                if (got[i].sqout_tick != want[i].sqout_tick)
+                    diffs.push_back(act + "sqout_tick: stored " + opt_text(want[i].sqout_tick) +
+                                    ", alone " + opt_text(got[i].sqout_tick));
+                // Every stored row, not only the shown ones: the shown rows
+                // follow from these and sqout_tick.
+                if (got[i].backends != want[i].backends)
+                    diffs.push_back(act + "backend rows: stored " +
+                                    std::to_string(want[i].backends.size()) + " rows, alone " +
+                                    std::to_string(got[i].backends.size()) + " rows, not equal");
+                // The kinds already match (same_kinds); the offsets must too.
+                for (size_t k = 0; k < got[i].sqinouts.size(); ++k)
+                    if (got[i].sqinouts[k].offset_ms != want[i].sqinouts[k].offset_ms)
+                        diffs.push_back(act + "squeeze " + std::to_string(k) +
+                                        " offset_ms: stored " +
+                                        std::to_string(want[i].sqinouts[k].offset_ms) +
+                                        ", alone " + std::to_string(got[i].sqinouts[k].offset_ms));
+            }
+            if (!diffs.empty()) ++n.differing;
+            for (const std::string& d : diffs) CHECK_MESSAGE(false, d);
+        }
+    }
+    return n;
+}
+
+}  // namespace
+
+// Decision D3: a tied variant is stored as a branch of its leader, but its
+// facts are its own. The fixtures in test_search.cpp prove the mechanism on
+// purpose-built charts; this guard catches any later case they do not shape.
+//
+// The app's defaults (cap 4, score range 4) hold few ties, and none of them
+// folded while SP ran or banked bars at different ticks from its leader. So
+// the guard also runs at score range 40, at cap 4 and at cap 2. Those two
+// hold hundreds of variants, and with either D3 fix taken out of the engine
+// dozens of them store their leader's facts instead of their own.
+TEST_CASE("every tied variant stores what a search pricing it alone stores") {
+    // `skipped` is pinned exactly: the variants with no lone root to compare
+    // against. Each is printed with its reason. If the count moves, read
+    // those lines before changing it.
+    //
+    // `min_variants` is a floor, not a pin: today the three settings list 12,
+    // 295 and 303 variants. A change that stopped listing most ties would
+    // still pass every other check here (fewer variants, none skipped, none
+    // differ), so the floor is what catches it.
+    struct Setting { int cap; int depth; int skipped; int min_variants; };
+    for (const Setting s : {Setting{4, 4, 0, 10}, Setting{4, 40, 0, 200},
+                            Setting{2, 40, 4, 200}}) {
+        app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+        cfg.sp_cap = s.cap;
+        cfg.depth_value = s.depth;
+        INFO("cap " << s.cap << ", score range " << s.depth);
+        const TiedVariantCount n = check_tied_variants(cfg);
+        CHECK(n.variants >= s.min_variants);
+        CHECK(n.compared > 0);
+        CHECK(n.differing == 0);
+        CHECK(n.skipped() == s.skipped);
+        MESSAGE("cap " << s.cap << ", score range " << s.depth << ": compared " << n.compared
+                       << " of " << n.variants << " variants against a lone search, "
+                       << n.differing << " differ, " << n.skipped() << " skipped");
+    }
 }
 
 // A tick that is not an activation fill cannot be honoured, and the engine says
@@ -259,6 +475,94 @@ TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
     // The disc follows the same decision: doubled on the paid chord only.
     CHECK(r.chords[4].multiplier_shown == r.chords[4].multiplier_after * kStarPowerMultiplier);
     CHECK(r.chords[5].multiplier_shown == r.chords[5].multiplier_after);
+}
+
+TEST_CASE("paid_by_sp: yes exactly when the row's SP value is above zero") {
+    using core::SqOutPosition;
+    CHECK(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::NoSqOut, 3.0));
+    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::Exact, 3.0));
+    CHECK(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::Exact, 3.0));
+    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::After, 3.0));
+    CHECK(core::paid_by_sp(2.0, 100, 50, SqOutPosition::NoSqOut, 3.0));        // in the leeway
+    CHECK_FALSE(core::paid_by_sp(4.0, 100, 50, SqOutPosition::NoSqOut, 3.0));  // past it
+}
+
+// D2: the disc doubles only when Star Power paid the chord something.
+TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multiplier") {
+    // 120 BPM, 192 ticks per beat: 96 ticks are 250 ms.
+    auto build = [](bool two_notes) {
+        Song song(192);
+        song.tpm_changes[0] = 768;
+        song.bpm_changes[0] = 120.0;
+        song.build_timing();
+        for (int64_t tick : {0, 768, 1536, 2304, 2976, 3072}) {
+            SongTimestamp ts;
+            ts.timecode = song.timecode(tick);
+            ts.chord.add_note(NoteColor::Red);
+            if (tick != 2976 || two_notes) ts.chord.add_note(NoteColor::Yellow);
+            ts.flag_sp = tick == 2976;
+            song.sequence.push_back(ts);
+        }
+        return song;
+    };
+    ReplayWindow w;
+    w.act_tick = 0;
+    w.deact_tick = 3072;
+    w.sqout_tick = 2976;  // a phrase chord 250 ms before the SP end
+
+    const Song one = build(false);
+    const ReplayResult r = replay_path(one, {w});
+    REQUIRE(r.chords.size() == 6);
+    CHECK(r.chords[3].in_sp);  // an ordinary chord inside the window: doubled
+    CHECK(r.chords[3].multiplier_shown == r.chords[3].multiplier_after * kStarPowerMultiplier);
+    CHECK(r.chords[4].points.sp == 0);  // first-note rule: one note loses all its doubling
+    CHECK_FALSE(r.chords[4].in_sp);
+    CHECK(r.chords[4].multiplier_shown == r.chords[4].multiplier_after);
+
+    // Two notes: only the first note's share is lost, so SP still paid it.
+    const Song two = build(true);
+    const ReplayResult r2 = replay_path(two, {w});
+    CHECK(r2.chords[4].points.sp > 0);
+    CHECK(r2.chords[4].in_sp);
+    CHECK(r2.chords[4].multiplier_shown == r2.chords[4].multiplier_after * kStarPowerMultiplier);
+}
+
+// ambiguous_window_warnings reads in_sp, so D2 changed it a little: a chord that
+// no window pays anything for is no longer "paid" just because a squeezed-out
+// window reached it. Here window A has no squeeze-out offset and ends on tick
+// 768; the phrase chord 250 ms later is one note, and only window B (which
+// squeezes it out, so it pays 0) reaches it. A pays nothing for it, so there is
+// nothing for the warning to say. The old every-window gate flagged it.
+TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying window reached") {
+    Song song(192);
+    song.tpm_changes[0] = 768;
+    song.bpm_changes[0] = 120.0;
+    song.build_timing();
+    for (int64_t tick : {0, 768, 864, 1536}) {
+        SongTimestamp ts;
+        ts.timecode = song.timecode(tick);
+        ts.chord.add_note(NoteColor::Red);  // one note: a squeeze-out loses all its doubling
+        ts.flag_sp = tick == 864;
+        song.sequence.push_back(ts);
+    }
+    ReplayWindow a;  // no squeeze-out offset: the warning looks at it
+    a.act_tick = 0;
+    a.deact_tick = 768;
+    ReplayWindow b;  // squeezes the chord at 864 out
+    b.act_tick = 864;
+    b.deact_tick = 1536;
+    b.sqout_tick = 864;
+
+    const ReplayResult r = replay_path(song, {a, b});
+    REQUIRE(r.chords.size() == 4);
+    CHECK(r.chords[2].points.sp == 0);
+    CHECK_FALSE(r.chords[2].in_sp);
+    CHECK(ambiguous_window_warnings(song, r, {a, b}).empty());
+
+    // With no squeezed-out window the chord still is not paid (250 ms is past
+    // the leeway), so the answer is the same.
+    const ReplayResult alone = replay_path(song, {a});
+    CHECK(ambiguous_window_warnings(song, alone, {a}).empty());
 }
 
 TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power") {
@@ -343,6 +647,54 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
     CHECK(checked > 0);
 }
 
+// D34: a window never squeezes out a phrase it already squeezed in, and the
+// replay's squeeze-out lookup and warnings skip those phrases
+// (ReplayWindow::sqin_ticks). `score --path <dump>` reads its windows from the
+// dump, so the dump has to carry each window's SqIn phrases. Without them the
+// replay fell back to "the window's first phrase": on spent_then_next.chart at
+// cap 2, path '0++' warned that 17360 might have been squeezed out, though it
+// was squeezed in. A dump written before the field reads as no SqIns, as
+// before.
+TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
+    const Song song = load_songpath(
+        std::string(HYDRA_INPUT_DIR) + "/test_fast_tempo/spent_then_next.chart", true, true);
+    app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    cfg.sp_cap = 2;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 40;
+    cfg.ms_filter = std::nullopt;
+    const HydraRecord rec = analyze_chart(song, cfg);
+    const std::vector<const Path*> all = rec.all_paths();
+    const json dumped = paths_json(all, song.timing());
+    REQUIRE(dumped.size() == all.size());
+    int with_sqins = 0;
+    bool saw_0pp = false;
+    for (size_t k = 0; k < all.size(); ++k) {
+        CAPTURE(all[k]->pathstring());
+        const std::vector<ReplayWindow> want = windows_for_path(*all[k]);
+        const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
+        REQUIRE(got.size() == want.size());
+        for (size_t i = 0; i < got.size(); ++i) {
+            CHECK(got[i].sqin_ticks == want[i].sqin_ticks);
+            with_sqins += want[i].sqin_ticks.empty() ? 0 : 1;
+        }
+        if (all[k]->pathstring() != "0++") continue;
+        saw_0pp = true;
+        // Its last window squeezed 17360 in, so no warning may name it.
+        for (const std::string& warn :
+             ambiguous_window_warnings(song, replay_path(song, got), got))
+            CHECK_MESSAGE(warn.find("17360") == std::string::npos, warn);
+    }
+    CHECK(with_sqins > 0);
+    CHECK(saw_0pp);
+
+    // An older dump, without the key, still reads: no SqIn phrases.
+    const std::vector<ReplayWindow> old = windows_from_json(json::parse(
+        R"({"activations": [{"act_tick": 480, "deact_tick": 3840, "sqinouts": []}]})"));
+    REQUIRE(old.size() == 1);
+    CHECK(old[0].sqin_ticks.empty());
+}
+
 // fcvideo and `hydra_replay score --path` read these fields out of a dump. A
 // dump-format change that drops one has to fail here, not in the video tools.
 TEST_CASE("paths_json writes every field the dump readers use") {
@@ -369,13 +721,42 @@ TEST_CASE("paths_json writes every field the dump readers use") {
         REQUIRE(!p0["activations"].empty());
         const json& a0 = p0["activations"][0];
         for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
-                              "sp_meter", "skips", "chord_code", "sqinouts"})
+                              "sp_meter", "skips", "skipped_fill_ticks", "chord_code", "sqinouts",
+                              "sqin_ticks"})
             CHECK_MESSAGE(a0.contains(k), k);
 
         checked = true;
         break;  // one chart's first path is the whole contract
     }
     CHECK(checked);
+}
+
+// dump prints each activation's passed-over fills as the record stores them.
+// On the 1.0-rule fill song the stored fill (19200) is not the one nearest
+// the activation (24960), so a dump that guessed would print the wrong tick.
+TEST_CASE("paths_json prints the stored passed-over fills, not a guess") {
+    const Song song = test::make_ch10_fill_song();
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
+    EngineOptions opts;
+    opts.target_act_ticks = std::vector<int64_t>{28800};
+    HydraRecord rec;
+    rec.paths = run_search(graph, opts);
+    REQUIRE(!rec.paths.empty());
+    const std::vector<const Path*> all = rec.all_paths();
+    const json dumped = paths_json(all, song.timing());
+    REQUIRE(dumped.size() == all.size());
+    for (size_t k = 0; k < all.size(); ++k) {
+        const ActivationWalk acts = all[k]->walk_activations();
+        REQUIRE(dumped[k]["activations"].size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) {
+            const json& a = dumped[k]["activations"][i];
+            CHECK(a["skipped_fill_ticks"].get<std::vector<int64_t>>() ==
+                  acts[i].skipped_fill_ticks);
+            CHECK(a["skips"].get<int>() == acts[i].skips());
+        }
+    }
+    CHECK((dumped[0]["activations"][0]["skipped_fill_ticks"].get<std::vector<int64_t>>() ==
+           std::vector<int64_t>{19200}));
 }
 
 // A window that ends on the note closing a Star Power phrase is exactly where
@@ -555,7 +936,7 @@ TEST_CASE("a typed squeeze-out offset resolves to the phrase chord") {
 // The engine only ever squeezes out the first phrase chord strictly within
 // 500 ms of the SP end. A typed offset that lands on a later one names a
 // squeeze-out the search can never produce, so it is refused and nothing is
-// priced (user decision 23).
+// priced (plan decision 20 of 2026-09-24).
 TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refused") {
     // Phrase chords 375 ms (tick 2928) and 93.75 ms (tick 3036) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
@@ -582,10 +963,69 @@ TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refus
     CHECK(n.offset_ms == doctest::Approx(-375.0));
 }
 
+// A phrase chord at or before the activation was banked before Star Power
+// started, so that window cannot squeeze it out, even when it sits inside the
+// 500 ms window around the SP end. The replay refuses the typed offset and
+// warns about no such chord, as the engine never offers it.
+TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refused") {
+    // Phrase chord at 2928, 375 ms before D = 3072; the window starts at 3000.
+    const Song song = song_with({{0, false}, {768, false}, {2928, true},
+                                 {3000, false}, {3072, false}});
+    ReplayWindow w;
+    w.act_tick = 3000;
+    w.deact_tick = 3072;
+    w.sqout_offset_ms = -375.0;
+    CHECK_THROWS_WITH_AS(
+        resolve_sqout_note(song, w),
+        "window 3000:3072: the SqOut offset -375.00 ms lands on the phrase "
+        "chord at tick 2928, at or before the activation at tick 3000. That "
+        "phrase was banked before Star Power started, so this window cannot "
+        "squeeze it out. Not priced.",
+        std::runtime_error);
+
+    // An earlier window paid the chord. The later window's SP end has it in
+    // range, but cannot squeeze it out, so only the earlier window is flagged.
+    ReplayWindow first;
+    first.act_tick = 0;
+    first.deact_tick = 2950;
+    ReplayWindow second;
+    second.act_tick = 3000;
+    second.deact_tick = 3072;
+    const ReplayResult r = replay_path(song, {first, second});
+    const std::vector<std::string> warned =
+        ambiguous_window_warnings(song, r, {first, second});
+    REQUIRE(warned.size() == 1);
+    CHECK(warned[0].rfind("window 0:2950 ", 0) == 0);
+}
+
+// D34: when the window's first phrase chord was banked before the
+// activation, the engine offers the next one instead. The replay accepts a
+// typed squeeze-out on it, and warns about it, as the engine would squeeze it.
+TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's (D34)") {
+    // Phrase chords at 2928 (banked: the activation is on 3000) and 3036,
+    // 375 ms and 93.75 ms before D = 3072.
+    const Song song = song_with({{0, false}, {768, false}, {2928, true},
+                                 {3000, false}, {3036, true}, {3072, false}});
+    ReplayWindow w;
+    w.act_tick = 3000;
+    w.deact_tick = 3072;
+    w.sqout_offset_ms = -93.73;
+    const SqOutNote n = resolve_sqout_note(song, w);
+    CHECK(n.tick == 3036);
+
+    ReplayWindow plain;
+    plain.act_tick = 3000;
+    plain.deact_tick = 3072;
+    const ReplayResult r = replay_path(song, {plain});
+    const std::vector<std::string> warned = ambiguous_window_warnings(song, r, {plain});
+    REQUIRE(warned.size() == 1);
+    CHECK(warned[0].find("tick 3036") != std::string::npos);
+}
+
 // The graph lets a deactivation squeeze out exactly one chord: the first
-// phrase chord strictly within 500 ms of the SP end (graph.cpp
-// add_deact_edge, then store_new_backend for chords after the end). The
-// warning names that chord, and only when the window actually paid it.
+// phrase chord strictly within 500 ms of the SP end (core::sqout_chord, which
+// graph.cpp add_deact_edge calls). The warning names that chord, and only
+// when the window actually paid it.
 TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     // Phrase chords 375 ms (tick 2928) and 125 ms (tick 3024) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
@@ -612,6 +1052,51 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     const std::vector<std::string> late = ambiguous_window_warnings(after, ra, {w});
     REQUIRE(late.size() == 1);
     CHECK(late[0].find("tick 3073") != std::string::npos);
+}
+
+// The phrase chords strictly inside an SP end's squeeze window, in chart
+// order: the list the graph puts on each deactivation edge.
+TEST_CASE("squeeze_window_phrases: the phrase chords strictly inside the window, in chart order") {
+    auto ticks = [](const std::vector<const SongTimestamp*>& w) {
+        std::vector<int64_t> out;
+        for (const SongTimestamp* c : w) out.push_back(c->timecode.ticks());
+        return out;
+    };
+    const Song two = song_with({{0, false}, {768, false}, {2928, true},
+                                {3036, true}, {3072, false}});
+    // 375 ms before D comes before 93.75 ms.
+    CHECK(ticks(core::squeeze_window_phrases(two, two.timecode(3072))) ==
+          std::vector<int64_t>{2928, 3036});
+
+    // Exactly 500 ms before D is outside.
+    const Song edge = song_with({{0, false}, {2880, true}, {3072, false}});
+    CHECK(core::squeeze_window_phrases(edge, edge.timecode(3072)).empty());
+
+    // Only a phrase chord after D: that one.
+    const Song after = song_with({{0, false}, {3072, false}, {3073, true}});
+    CHECK(ticks(core::squeeze_window_phrases(after, after.timecode(3072))) ==
+          std::vector<int64_t>{3073});
+
+    // An SP end between two chords, and no phrase chord at all.
+    CHECK(ticks(core::squeeze_window_phrases(two, two.timecode(3000))) ==
+          std::vector<int64_t>{2928, 3036});
+    const Song bare = song_with({{0, false}, {3072, false}});
+    CHECK(core::squeeze_window_phrases(bare, bare.timecode(3072)).empty());
+}
+
+// The one rule for which phrase an SP end offers a window (D34): the first
+// in its squeeze window that the window did not bank before its activation
+// and has not squeezed in already.
+TEST_CASE("sqout_chord: the first window phrase not banked and not squeezed in (D34)") {
+    const Song two = song_with({{0, false}, {768, false}, {2928, true},
+                                {3000, false}, {3036, true}, {3072, false}});
+    const Timecode d = two.timecode(3072);
+    auto tick_of = [](const SongTimestamp* c) { return c ? c->timecode.ticks() : -1; };
+    CHECK(tick_of(core::sqout_chord(two, d, 0)) == 2928);           // the first
+    CHECK(tick_of(core::sqout_chord(two, d, 3000)) == 3036);        // 2928 banked
+    CHECK(tick_of(core::sqout_chord(two, d, 0, {2928})) == 3036);   // 2928 squeezed in
+    CHECK(tick_of(core::sqout_chord(two, d, 0, {2928, 3036})) == -1);
+    CHECK(tick_of(core::sqout_chord(two, d, 3036)) == -1);          // both banked
 }
 
 TEST_CASE("category_scores reports the multiplier each note was paid at") {
@@ -787,7 +1272,8 @@ struct RefWindow {
 
 ReplayResult reference_replay_path(const Song& song,
                                    const std::vector<ReplayWindow>& windows,
-                                   const core::Rules& rules) {
+                                   const core::Rules& rules,
+                                   bool d2_in_sp = true) {
     const SongTiming& timing = song.timing();
 
     std::vector<RefWindow> wins;
@@ -849,8 +1335,12 @@ ReplayResult reference_replay_path(const Song& song,
             row.notes.push_back(note);
         }
 
+        // The old gate counts a window that reaches the chord (sp_claims);
+        // decision D2's rule counts one that actually pays it (sp_paid).
+        // d2_in_sp picks which one sets in_sp, so a test can show both.
         int64_t sp_points = 0;
         int sp_claims = 0;
+        int sp_paid = 0;
         for (const RefWindow& w : wins) {
             if (row.tick < w.act_tick) continue;
             const double offset = row.tick <= w.deact_tick
@@ -862,11 +1352,14 @@ ReplayResult reference_replay_path(const Song& song,
                 !core::counted_without_squeeze(offset, rules.backend_leeway_ms))
                 continue;
             ++sp_claims;
+            if (core::paid_by_sp(offset, sg.sp, sg.sqout_sp(), pos,
+                                 rules.backend_leeway_ms))
+                ++sp_paid;
             sp_points += core::backend_row_value(
                 offset, sg.sp, sg.sqout_sp(), pos,
                 rules.backend_leeway_ms);
         }
-        row.in_sp = sp_claims > 0;
+        row.in_sp = d2_in_sp ? sp_paid > 0 : sp_claims > 0;
         row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
 
         row.points.base = sg.base;
@@ -1036,6 +1529,42 @@ TEST_CASE("replay: the open-window walk equals the every-window walk on every co
     CHECK(first_diff.empty());
 }
 
+// D2 moves only the yes/no on a squeezed-out chord SP paid nothing. Every
+// chord's points, and so every score, stays as it was.
+TEST_CASE("D2: only a squeezed-out chord SP pays nothing loses its doubled disc") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int changed = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        for (const Path* p : corpus::analyzed(path, cfg).all_paths()) {
+            const std::vector<ReplayWindow> wl = windows_for_path(*p);
+            const ReplayResult before = reference_replay_path(song, wl, cfg.rules, false);
+            const ReplayResult after = replay_path(song, wl, cfg.rules);
+            REQUIRE(before.chords.size() == after.chords.size());
+            CHECK(before.final == after.final);
+            for (size_t i = 0; i < after.chords.size(); ++i) {
+                const ReplayChord& b = before.chords[i];
+                const ReplayChord& a = after.chords[i];
+                CHECK(a.points == b.points);
+                if (a.in_sp == b.in_sp) continue;
+                ++changed;
+                CHECK(b.in_sp);
+                CHECK(a.points.sp == 0);
+                bool squeezed_out = false;
+                for (const ReplayWindow& w : wl)
+                    if (w.sqout_tick == a.tick) squeezed_out = true;
+                CHECK(squeezed_out);
+                CHECK(a.multiplier_shown == a.multiplier_after);
+            }
+        }
+    }
+    MESSAGE(changed << " corpus chords now show the plain multiplier");
+    // Pinned, so a change that made this 0 (the test proving nothing) or moved
+    // more chords fails loudly. If the corpus grows, update it on purpose.
+    CHECK(changed == 9);
+}
+
 TEST_CASE("replay: the open-window walk equals the every-window walk on hand-built windows") {
     // The squeeze-out chart from "a squeezed-out chord past the leeway earns
     // nothing", under every leeway variant, with its window and with a
@@ -1103,6 +1632,47 @@ TEST_CASE("replay: the open-window walk equals the every-window walk with 2,000 
             CHECK(want.final.sp > 0);
         }
     }
+}
+
+// The random windows above overlap freely, so nearly every squeezed-out chord
+// is also paid by another window and its in_sp is the same under the old and
+// the new rule: that test cannot see decision D2. These windows never overlap,
+// and each ends on a one-note chord it squeezes out, which SP pays 0 for. The
+// open-window walk must match the paid-based reference walk, and the old
+// claim-based walk must differ from it somewhere, or this proves nothing.
+TEST_CASE("replay: disjoint squeezed-out windows are told apart from the old in_sp rule") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const Song* longest = nullptr;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (!longest || song.sequence.size() > longest->sequence.size()) longest = &song;
+    }
+    REQUIRE(longest != nullptr);
+
+    std::vector<ReplayWindow> wl;
+    size_t free_from = 0;  // the first chord the next window may start on
+    for (size_t i = 0; i < longest->sequence.size(); ++i) {
+        if (i < free_from + 2 || longest->sequence[i].chord.count() != 1) continue;
+        ReplayWindow w;
+        w.act_tick = longest->sequence[free_from].timecode.ticks();
+        w.deact_tick = longest->sequence[i].timecode.ticks();
+        w.sqout_tick = w.deact_tick;
+        wl.push_back(w);
+        free_from = i + 1;
+    }
+    REQUIRE(wl.size() > 50);
+
+    size_t differing_chords = 0;
+    for (const core::Rules& rules : leeway_variants()) {
+        const ReplayResult paid = reference_replay_path(*longest, wl, rules, true);
+        const ReplayResult claimed = reference_replay_path(*longest, wl, rules, false);
+        INFO("leeway " << rules.backend_leeway_ms);
+        CHECK(first_result_difference(paid, replay_path(*longest, wl, rules)).empty());
+        REQUIRE(paid.chords.size() == claimed.chords.size());
+        for (size_t i = 0; i < paid.chords.size(); ++i)
+            if (paid.chords[i].in_sp != claimed.chords[i].in_sp) ++differing_chords;
+    }
+    CHECK(differing_chords > 0);
 }
 
 TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score the same") {

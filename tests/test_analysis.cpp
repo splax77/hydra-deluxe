@@ -17,6 +17,7 @@
 #include <functional>
 #include <future>
 #include <map>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -187,9 +188,16 @@ TEST_CASE("run_work_pool: a cancel mid-run never strands the consumer") {
     // batch pool could leave its consumer waiting forever when every worker
     // saw the cancel between items, so a hang is the failure this guards. The
     // watchdog turns a hang into a failed check instead of a stuck suite.
+    //
+    // The watchdog judges progress, not total time. A hang stops the rounds
+    // for good; a busy machine only slows them (on a loaded CPU, 500 rounds
+    // of 8 fresh threads can take well over 30 s). So it fails only when no
+    // round has finished for 30 s. The counter is shared, because a failed
+    // check leaves the test while the detached thread may still run.
+    auto rounds_done = std::make_shared<std::atomic<int>>(0);
     std::promise<bool> finished;
     std::future<bool> outcome = finished.get_future();
-    std::thread([p = std::move(finished)]() mutable {
+    std::thread([p = std::move(finished), rounds_done]() mutable {
         bool every_item_consumed = true;
         for (int round = 0; round < 500; ++round) {
             std::atomic<bool> cancel{false};
@@ -205,12 +213,23 @@ TEST_CASE("run_work_pool: a cancel mid-run never strands the consumer") {
                 [&](int&&) { ++consumed; });
             // Every item a worker started reached the consumer.
             if (consumed != worked.load()) every_item_consumed = false;
+            ++*rounds_done;
         }
         p.set_value(every_item_consumed);
     }).detach();
 
-    REQUIRE_MESSAGE(outcome.wait_for(std::chrono::seconds(30)) == std::future_status::ready,
-                    "run_work_pool never returned: its consumer was left waiting");
+    const auto t0 = std::chrono::steady_clock::now();
+    int last = 0;
+    while (outcome.wait_for(std::chrono::seconds(30)) != std::future_status::ready) {
+        const int now = rounds_done->load();
+        REQUIRE_MESSAGE(now != last, "run_work_pool never returned: its consumer was left waiting"
+                                     " (no round finished in 30 s; stuck in round "
+                                         << now << ")");
+        last = now;
+    }
+    MESSAGE("500 rounds took "
+            << std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count()
+            << " s");
     CHECK(outcome.get());
 }
 

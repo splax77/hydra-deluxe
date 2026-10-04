@@ -60,7 +60,7 @@ struct PreviewSpan {
 };
 
 // What the game would have done with one candidate activation fill, read off
-// the path's own skip counts (see build_preview_scene):
+// the path's stored passed-over fills (see build_preview_scene):
 //   Hidden  — never shown: not enough SP banked, or SP was already running.
 //   Offered — shown and passed over: the path could have activated here.
 //   Taken   — the fill the path activates on.
@@ -76,8 +76,9 @@ struct PreviewFill {
 struct PreviewActivation {
     int64_t tick = 0;
     double ms = 0.0;
-    int sp_meter = 0;  // bars of SP spent, 0 when the record did not record it
-    int skips = 0;     // fills passed over before this activation, 0 if unknown
+    // The fills the path was shown and passed over before this activation,
+    // copied from the record (Activation::skipped_fill_ticks).
+    std::vector<int64_t> skipped_fill_ticks;
     // The deact node: where this activation's SP runs out, read off the
     // record (the search stamps it). The active SP window the highway tints
     // runs from `ms` to `sp_end_ms`. has_sp_end is false only for a record
@@ -85,12 +86,21 @@ struct PreviewActivation {
     bool has_sp_end = false;
     int64_t sp_end_tick = 0;
     double sp_end_ms = 0.0;
-    // The ticks of the SP phrase-end chords this activation collected while
-    // SP was running, in order, copied from the record (blob v6). Late-SqIn
-    // and cap-clamped phrases are included: they are what the gauge really
-    // received. The gauge refills at exactly these; a phrase in the window
-    // that is not listed was squeezed out and banks when SP ends.
-    std::vector<int64_t> collected_phrase_ticks;
+    // Where this window's SP end changed, read off the record: the tick the
+    // change takes effect (Activation::refill_tick) and the end after it. The
+    // first entry is the activation itself. The gauge draws the window from
+    // these alone; a squeezed-out phrase has no entry.
+    struct SpEndChange {
+        int64_t at_tick = 0;
+        int64_t end_tick = 0;
+        bool operator==(const SpEndChange& o) const {
+            return at_tick == o.at_tick && end_tick == o.end_tick;
+        }
+        bool operator!=(const SpEndChange& o) const { return !(*this == o); }
+    };
+    std::vector<SpEndChange> sp_end_changes;
+    // Where each bar this activation spends arrived (Activation::bank_rise_ticks).
+    std::vector<int64_t> bank_rise_ticks;
     // The activation note's lane (the chord's highest-priority note, Green
     // first): the lane the activated fill lights. Kick when the record has no
     // chord.
@@ -148,7 +158,7 @@ struct PreviewTimeSig {
 // SP drains at one bar per two measures — linear in MEASURES, not in ms. Inside
 // a single tempo section crossed with a single meter section, measures are
 // linear in ms, so cutting the curve at every tempo change, meter change,
-// phrase collection, activation and deact node makes it exactly piecewise
+// stored SP end step, activation and deact node makes it exactly piecewise
 // linear in ms. Nothing here is an approximation.
 struct SpMeterSegment {
     double start_ms = 0.0;
@@ -173,6 +183,7 @@ struct PreviewScoreStep {
     double ms = 0.0;      // the chord's onset
     int64_t total = 0;    // on-screen total: a solo's bonus lands on its last chord
     int multiplier = 1;   // the game's disc once the chord is hit (ReplayChord::multiplier_shown)
+    int multiplier_plain = 1;  // the combo multiplier alone, never doubled (ReplayChord::multiplier_after)
     int combo = 0;        // notes hit so far, this chord included
 };
 
@@ -197,18 +208,20 @@ struct PreviewScene {
     std::vector<PreviewSpan> solos;         // from per-note solo flags
     std::vector<PreviewFill> fills;         // candidate activation-fill windows
     std::vector<PreviewActivation> activations;  // overlay: the path's activations
+    // Overlay: where each bar banked after the path's last window arrived
+    // (Path::trailing_bank_ticks). Empty without a path.
+    std::vector<int64_t> trailing_bank_ticks;
     std::vector<PreviewBeat> beats;    // bar/beat/half-beat lines, tick order
     std::vector<PreviewTempo> tempos;  // tempo changes, tick order
     std::vector<PreviewSection> sections;  // practice sections, tick order
     std::vector<PreviewMeter> meters;      // meter sections, tick order
     std::vector<PreviewTimeSig> time_sigs; // the chart's own signatures, tick order
-    // Banked SP over time, for the meter gauge. Empty when the chart has
-    // neither SP phrases nor activations. Without a path there is nothing to
-    // drain it, so it fills and then pins at the cap — deliberate: that is the
-    // chart's own truth, and an unanalyzed chart has no activations to spend
-    // the bank on. Phrases collected mid-SP come from the record's own list
-    // (`collected_phrase_ticks`), so a squeezed-out phrase steps the gauge the
-    // moment SP ends, not during the drain.
+    // Banked SP over time, for the meter gauge. With a path every value is
+    // the record's: the bank steps at each stored bar arrival, and each
+    // window drains from the stored SP end changes to the deact node. Without
+    // a path there is no record, so it fills one bar per phrase and pins at
+    // the cap: that chart-only view has nothing to spend the bank. Empty when
+    // the chart has no SP phrase and the path stamps no bar.
     SpMeterCurve sp_meter;
     // The running score the score box reads. None when built without a path.
     PreviewScore score;
@@ -246,10 +259,12 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
 // The score box the Preview draws under the time box, at `now_ms`. `score`
 // is the total with thousands separators ("12,345"), and `detail` is
 // "x<multiplier> · combo <n>", both as the last chord hit left them. The
-// multiplier is the replay's: doubled on the chords the engine pays Star
-// Power on, not by where the playhead sits. Hidden (`shown` false) when the scene has no
-// path; "Score unavailable" with an empty `detail` when the replay could not
-// be trusted.
+// multiplier is the replay's. While Star Power runs at the playhead (the
+// same test the drain box uses) it is the disc as that chord left it:
+// doubled when SP paid the chord. Once SP has ended it is the plain combo
+// multiplier, as the game's disc drops at the SP end rather than at the next
+// chord. Hidden (`shown` false) when the scene has no path; "Score
+// unavailable" with an empty `detail` when the replay could not be trusted.
 struct PreviewScoreBox {
     bool shown = false;
     bool available = false;
@@ -333,7 +348,8 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // selected chart. When `path` is given, its activations (those carrying a
 // timecode) become the overlay, their ms resolved against the song's own
 // timing so they line up with the notes exactly, and each candidate fill is
-// classified Hidden / Offered / Taken from the activations' skip counts.
+// classified Hidden / Offered / Taken from the activations' stored
+// passed-over fills.
 //
 // `sp_cap` is the SP meter's ceiling in bars — the viewed record's own sp_cap,
 // which is 4 for any normal Clone Hero run and differs only on a what-if

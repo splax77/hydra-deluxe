@@ -270,15 +270,31 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
         REQUIRE_FALSE(job.finished());  // still opening the big stem
         const auto t0 = std::chrono::steady_clock::now();
         job.cancel();
+        // Read after the cancel, so every byte past this mark was opened
+        // while the job already knew it was cancelled.
+        const uint64_t at_cancel = job.progress().bytes_done;
         while (!job.finished() &&
                std::chrono::steady_clock::now() - t0 < std::chrono::seconds(10))
             Sleep(1);
         const double ms = std::chrono::duration<double, std::milli>(
                               std::chrono::steady_clock::now() - t0)
                               .count();
+        const uint64_t at_stop = job.progress().bytes_done;
         CAPTURE(ms);
+        CAPTURE(at_cancel);
+        CAPTURE(at_stop);
         CHECK(job.finished());
-        CHECK(ms <= 200.0);
+        // Prompt means the cancel was noticed at the next 4 MB report, not
+        // after the whole 300 MB file. Counted in bytes, not milliseconds: a
+        // busy machine slows the stop but never moves where it happens.
+        // Two steps of room, because a report lands on the first Ogg page
+        // past each 4 MB mark.
+        CHECK(at_stop - at_cancel <= 8ull << 20);
+        // The bytes say where the job noticed the cancel, not how long it then
+        // took to stop. A stall after that (a teardown waiting on a read) would
+        // freeze the UI thread, so a loose ceiling stays: ten times the old
+        // 200 ms limit, far above load noise.
+        CHECK(ms <= 2000.0);
         CHECK(job.error() == "cancelled");
     }
     remove_file(song);

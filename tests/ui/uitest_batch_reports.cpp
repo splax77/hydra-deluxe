@@ -61,38 +61,54 @@ void dismiss_done(ImGuiTestContext* ctx) {
 }
 
 // The running strip shows the chart being worked on and live counts. Its Stop
-// button and its width must not move as they change.
+// button and its width must not move as they change. The gate steps the run
+// one chart at a time, so the strip is provably on screen for every change.
 void test_batch_strip_drift(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
+    BatchGate gate;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");
     ctx->SetRef("//Analyze library");
     ctx->ItemClick("Start analyzing");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job && !h.app->batch_job->snapshot().preparing; }, 30));
+    IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
+    ctx->Yield(2);  // auto-sized children settle a frame after their content changes
     ImGuiWindow* strip = child_window(ctx, "//Hydra/##batchstrip");
+    IM_CHECK(strip != nullptr);
     ctx->SetRef(strip);
     const ImRect stop0 = ctx->ItemInfo("Stop").RectFull;
     const float width0 = strip->Size.x;
-    int seen_titles = 0;
-    std::string last_title;
-    while (!h.app->batch_job->snapshot().finished && seen_titles < 6) {
-        ctx->Yield();
-        std::string t = h.app->batch_job->snapshot().current_title;
-        if (!t.empty() && t != last_title) { last_title = t; ++seen_titles; }
-        strip = child_window(ctx, "//Hydra/##batchstrip");
-        if (!strip) break;  // the run finished between the two looks
-        ctx->SetRef(strip);
-        ImGuiTestItemInfo stop = ctx->ItemInfo("Stop", ImGuiTestOpFlags_NoError);
-        if (stop.ID == 0) break;
-        IM_CHECK_FLOAT_NEAR_EQ(stop.RectFull.Min.x, stop0.Min.x, 0.01f);
-        IM_CHECK_FLOAT_NEAR_EQ(stop.RectFull.Min.y, stop0.Min.y, 0.01f);
-        IM_CHECK_FLOAT_NEAR_EQ(strip->Size.x, width0, 0.01f);
+    int title_changes = 0;
+    std::string last_title = h.app->batch_job->snapshot().current_title;
+    for (int step = 1; step <= 6; ++step) {
+        // Chart `step` finishes and is counted; the next one starts and is
+        // held. Every frame until then (and two after, so the screen shows
+        // it), Stop and the strip stay put.
+        gate.allow(step);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        int frames_after = 2;
+        while (frames_after > 0) {
+            IM_CHECK(std::chrono::steady_clock::now() < deadline);
+            ctx->Yield();
+            if (gate.started() > step && h.app->batch_job->snapshot().completed >= step)
+                --frames_after;
+            else
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            strip = child_window(ctx, "//Hydra/##batchstrip");
+            IM_CHECK(strip != nullptr);  // the gate holds the run open
+            ctx->SetRef(strip);
+            const ImRect stop = ctx->ItemInfo("Stop").RectFull;
+            IM_CHECK_FLOAT_NEAR_EQ(stop.Min.x, stop0.Min.x, 0.01f);
+            IM_CHECK_FLOAT_NEAR_EQ(stop.Min.y, stop0.Min.y, 0.01f);
+            IM_CHECK_FLOAT_NEAR_EQ(strip->Size.x, width0, 0.01f);
+        }
+        const std::string t = h.app->batch_job->snapshot().current_title;
+        if (t != last_title) { last_title = t; ++title_changes; }
     }
-    IM_CHECK(seen_titles >= 2);  // the loop actually saw titles change
+    IM_CHECK(title_changes >= 2);  // the strip really showed different charts
     h.app->batch_job->stop();
     IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300));
     dismiss_done(ctx);
@@ -304,6 +320,7 @@ void test_batch_confirm(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->batch_confirm_pending);
     IM_CHECK(h.app->batch_job == nullptr);
 
+    BatchGate gate;  // hold the run open, or it can end before the strip draws
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");
     ctx->Yield(2);
@@ -323,30 +340,9 @@ void test_batch_pause_stop(ImGuiTestContext* ctx) {
     scan_library(ctx);
     if (ctx->IsError()) return;
     // The test library analyzes in a blink, so a real run can finish between
-    // two clicks. Hold the first chart open (ticking progress, so Stop still
-    // reaches it) until the test lets go; every click below then lands while
-    // the run is provably still going.
-    static std::atomic<bool> release{false};
-    static std::atomic<int> started{0};
-    release = false;
-    started = 0;
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
-           const std::function<void(float)>& on_progress) {
-            ++started;
-            while (!release.load()) {
-                on_progress(0.0f);  // throws once Stop is pressed
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-            return hydra::app::analyze_chart_file(path, settings, on_progress);
-        },
-        /*workers=*/1);
-    struct ClearSeam {
-        ~ClearSeam() {
-            release = true;
-            hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
-        }
-    } clear_seam;
+    // two clicks. Hold the first chart at the gate; every click below then
+    // lands while the run is provably still going.
+    BatchGate gate;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");
     ctx->SetRef("//Analyze library");
@@ -354,7 +350,7 @@ void test_batch_pause_stop(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job && !h.app->batch_job->snapshot().preparing;
     }, 30));
-    IM_CHECK(wait_until(ctx, [&] { return started.load() >= 1; }, 30));
+    IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
     ctx->SetRef(child_window(ctx, "//Hydra/##batchstrip"));
     ctx->ItemClick("Pause");
@@ -370,6 +366,86 @@ void test_batch_pause_stop(ImGuiTestContext* ctx) {
     IM_CHECK(visible_text(h).find("Stopped:") != std::string::npos);
     ctx->Yield(5);
     IM_CHECK(h.app->report_job == nullptr);  // a stopped run builds no report
+    dismiss_done(ctx);
+}
+
+// The strip with several workers at once, as the real app runs a batch. Three
+// workers each hold a chart at the gate, so three charts run together. The
+// strip counts each one as it finishes, Pause stops new charts while the
+// running ones finish, Resume refills every worker, and Stop drops the charts
+// still running without counting them.
+void test_batch_strip_workers(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    constexpr int kWorkers = 3;
+    BatchGate gate(kWorkers);
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Start analyzing");
+
+    // Frames run for a while with nothing let through. A fourth chart can
+    // never reach the gate: every worker is busy.
+    auto settle = [&] {
+        for (int i = 0; i < 10; ++i) {
+            ctx->Yield();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+    };
+    auto strip_text = [&] { return visible_text(h); };
+    auto has = [&](const std::string& s) { return strip_text().find(s) != std::string::npos; };
+
+    IM_CHECK(wait_until(ctx, [&] { return gate.started() == kWorkers; }, 30));
+    settle();
+    IM_CHECK_EQ(gate.started(), kWorkers);
+    IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
+    ctx->Yield(2);
+    IM_CHECK(has("Analyzing...  0 of 97"));
+    IM_CHECK(has("Now: "));
+    ImGuiWindow* strip = child_window(ctx, "//Hydra/##batchstrip");
+    IM_CHECK(strip != nullptr);
+    ctx->SetRef(strip);
+    const ImRect stop0 = ctx->ItemInfo("Stop").RectFull;
+
+    // Two charts finish. Their workers each take the next chart, so three
+    // are held again and two are counted.
+    gate.allow(2);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->batch_job->snapshot().completed == 2 && gate.started() == 2 + kWorkers;
+    }, 60));
+    IM_CHECK(has("Analyzing...  2 of 97"));
+    const ImRect stop1 = ctx->ItemInfo("Stop").RectFull;
+    IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.x, stop0.Min.x, 0.01f);
+    IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.y, stop0.Min.y, 0.01f);
+
+    // Pause with three charts running. They finish and are counted, but no
+    // worker starts another.
+    ctx->ItemClick("Pause");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().paused; }, 5));
+    gate.allow(2 + kWorkers);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().completed == 2 + kWorkers; }, 60));
+    settle();
+    IM_CHECK_EQ(gate.started(), 2 + kWorkers);
+    IM_CHECK(has("Paused  5 of 97"));
+    IM_CHECK(!has("Now: "));
+    IM_CHECK(ctx->ItemExists("Resume"));
+
+    // Resume fills every worker again.
+    ctx->ItemClick("Resume");
+    IM_CHECK(wait_until(ctx, [&] { return gate.started() == 2 + 2 * kWorkers; }, 30));
+    IM_CHECK(has("Analyzing...  5 of 97"));
+    IM_CHECK(has("Now: "));
+
+    // Stop: the three held charts are dropped, not counted and not failed.
+    ctx->ItemClick("Stop");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300));
+    const hydra::ui::BatchJob::Snapshot done = h.app->batch_job->snapshot();
+    IM_CHECK_EQ(done.completed, 2 + kWorkers);
+    IM_CHECK_EQ(done.failed, 0);
+    IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchdone") != nullptr; }, 5));
+    IM_CHECK(has("Stopped:"));
     dismiss_done(ctx);
 }
 
@@ -509,6 +585,7 @@ const std::vector<TestEntry>& batch_report_tests() {
         {"report-buttons", test_report_buttons},
         {"batch-confirm", test_batch_confirm},
         {"batch-pause-stop", test_batch_pause_stop},
+        {"batch-strip-workers", test_batch_strip_workers},
         {"batch-done-strip", test_batch_done_strip},
         {"batch-open-failure", test_batch_open_failure},
         {"status-line", test_status_line},

@@ -405,6 +405,7 @@ add_executable(hydra_tests
     tests/test_sng.cpp
     tests/test_srb.cpp
     tests/test_search.cpp
+    tests/test_fast_tempo.cpp
     tests/test_replay.cpp
     tests/test_store.cpp
     tests/test_path_codec.cpp
@@ -427,6 +428,7 @@ add_executable(hydra_tests
     tests/test_preview_load_progress.cpp
     tests/test_utf8_paths.cpp
     tests/test_long_paths.cpp
+    tests/test_single_owner.cpp
     tests/test_s2_difficulty_table.cpp
     tests/test_s2_disco.cpp
     tests/test_s2_kick2x.cpp
@@ -462,7 +464,7 @@ target_compile_definitions(hydra_tests PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
-    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_long_paths scans src/ and tools/
+    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_single_owner scans src/ and tools/
 )
 
 # ---- hydra_uitest: the headless GUI test runner ----------------------------

@@ -8,17 +8,22 @@
 #include "doctest.h"
 
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "app/analysis.h"
+#include "app/config.h"
 #include "core/model.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "search/pather.h"
 #include "record_bytes.h"
+#include "record_fixtures.h"
 #include "store/path_codec.h"
 #include "store/record_store.h"
 #include "store/serialize.h"
@@ -122,20 +127,21 @@ TEST_CASE("path codec: a rebuilt record flattens to the same bytes") {
     CHECK(pathstrings(back.all_allzero_paths()) == pathstrings(rec.all_allzero_paths()));
     CHECK(diff_summary(summarize_record(back), summarize_record(rec)) == "");
 
-    // Every path, variants included, carries its root's totals again after
-    // prepare_variants pushes them down.
+    // Every path, variants included, carries its root's score totals and
+    // note count again after prepare_variants pushes them down. A variant's
+    // trailing bank is its own, stored with its tree entry.
     const std::vector<const Path*> want = rec.all_paths();
     const std::vector<const Path*> got = back.all_paths();
     for (size_t i = 0; i < want.size(); ++i) {
         CHECK(got[i]->totalscore() == want[i]->totalscore());
         CHECK(got[i]->notecount == want[i]->notecount);
-        CHECK(got[i]->leftover_sp == want[i]->leftover_sp);
+        CHECK(got[i]->leftover_sp() == want[i]->leftover_sp());
         CHECK(got[i]->tied_pathcount() == want[i]->tied_pathcount());
     }
 
     const ActivationWalk acts = back.best_path().walk_activations();
     REQUIRE_FALSE(acts.empty());
-    CHECK(acts.front().deact_tick == rec.best_path().walk_activations().front().deact_tick);
+    CHECK(acts.front().deact_tick() == rec.best_path().walk_activations().front().deact_tick());
 
     // Raw ticks until restored; after the restore the strings still agree.
     restore_timecodes(back, fixture().song.timing());
@@ -151,11 +157,11 @@ TEST_CASE("path codec: a node carries activations only, never totals") {
     changed.score_base += 1;
     changed.score_sp += 7;
     changed.notecount += 1;
-    changed.leftover_sp += 1;
+    test::set_leftover(changed, changed.leftover_sp() + 1);
     CHECK(encode_path_node(changed) == encode_path_node(root));
 
     REQUIRE_FALSE(changed.activations.empty());
-    changed.activations.front().skips += 1;
+    test::set_skips(changed.activations.front(), changed.activations.front().skips() + 1);
     CHECK(encode_path_node(changed) != encode_path_node(root));
 }
 
@@ -164,7 +170,7 @@ TEST_CASE("path codec: root totals ride in the structure, once per root") {
     const FlatRecord before = flatten_record(rec);
     rec.paths.front().score_base += 1;
     rec.paths.front().notecount += 2;
-    rec.paths.front().leftover_sp += 3;
+    test::set_leftover(rec.paths.front(), rec.paths.front().leftover_sp() + 3);
     const FlatRecord after = flatten_record(rec);
 
     CHECK(after.structure != before.structure);
@@ -175,7 +181,7 @@ TEST_CASE("path codec: root totals ride in the structure, once per root") {
     const HydraRecord back = rebuild_record(after);
     CHECK(back.paths.front().score_base == rec.paths.front().score_base);
     CHECK(back.paths.front().notecount == rec.paths.front().notecount);
-    CHECK(back.paths.front().leftover_sp == rec.paths.front().leftover_sp);
+    CHECK(back.paths.front().leftover_sp() == rec.paths.front().leftover_sp());
 }
 
 TEST_CASE("path codec: the multiplier squeezes are stored once per record") {
@@ -235,8 +241,8 @@ TEST_CASE("path codec: node payloads are flat and content-addressed") {
     // plain encode_path_node/decode_path_node round trip must keep it, not
     // just the fields that existed before it.
     REQUIRE_FALSE(root.activations.empty());
-    REQUIRE(root.activations.front().deact_tick.has_value());
-    CHECK(node.activations.front().deact_tick == root.activations.front().deact_tick);
+    REQUIRE(root.activations.front().deact_tick().has_value());
+    CHECK(node.activations.front().deact_tick() == root.activations.front().deact_tick());
 
     // The hash is 32 lowercase hex characters, and it names the bytes: the
     // same payload always hashes the same, a different one does not.
@@ -336,10 +342,15 @@ TEST_CASE("path codec: a missing node or a bad structure blob throws") {
     past5.structure[0] = 5;
     CHECK_THROWS_AS(rebuild_record(past5), SerializeError);
 
-    // The current version is 6, and the unmodified flat record -- still at
+    // Version 6 is the 2.0.0 layout: no SP-end history, bank or fill lists.
+    FlatRecord past6 = flat;
+    past6.structure[0] = 6;
+    CHECK_THROWS_AS(rebuild_record(past6), SerializeError);
+
+    // The current version is 7, and the unmodified flat record -- still at
     // that version -- round-trips through rebuild_record without throwing,
     // rules fingerprint included.
-    CHECK(kPathFormatStamp.written == 6);
+    CHECK(kPathFormatStamp.written == 7);
     CHECK(flat.structure[0] == static_cast<uint8_t>(kPathFormatStamp.written));
     HydraRecord rebuilt = rebuild_record(flat);
     CHECK(rebuilt.rules_fingerprint == rec.rules_fingerprint);
@@ -349,4 +360,259 @@ TEST_CASE("path codec: a missing node or a bad structure blob throws") {
     FlatRecord cut = flat;
     cut.structure.resize(cut.structure.size() / 2);
     CHECK_THROWS_AS(rebuild_record(cut), SerializeError);
+}
+
+// Not an invariant. Prints every squeeze fact the step-1 plan promises not to
+// move, so a run before a change and a run after it can be compared line by
+// line. It is skipped in the normal run. Run it on its own with --no-skip and
+// send stdout to a file.
+TEST_CASE("print the corpus squeeze facts" * doctest::skip()) {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        // The chart's folder name, so the printout doesn't depend on where
+        // the checkout lives.
+        const size_t slash = chart.find_last_of("/\\");
+        const size_t before = slash == std::string::npos || slash == 0
+                                  ? std::string::npos
+                                  : chart.find_last_of("/\\", slash - 1);
+        const std::string name =
+            slash == std::string::npos
+                ? chart
+                : chart.substr(before == std::string::npos ? 0 : before + 1,
+                               slash - (before == std::string::npos ? 0 : before + 1));
+
+        HydraRecord rec;
+        try {
+            const Song& song =
+                corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
+            if (song.is_empty()) continue;
+            // Through the codec, so these are the facts a stored record holds.
+            rec = rebuild_record(flatten_record(corpus::analyzed(chart, cfg)));
+            restore_timecodes(rec, song.timing());
+        } catch (const ChartFileError& e) {
+            std::printf("%s|load error|%s\n", name.c_str(), e.what());
+            continue;
+        }
+
+        auto print_paths = [&](const char* list, const std::vector<const Path*>& paths) {
+            int index = 0;
+            for (const Path* p : paths) {
+                std::printf("%s|%s|%d|%s|%lld\n", name.c_str(), list, index++,
+                            p->pathstring().c_str(), (long long)p->totalscore());
+                for (const Activation& act : p->walk_activations()) {
+                    std::printf("  act %lld deact %lld sqout %lld\n",
+                                (long long)act.timecode.ticks(),
+                                (long long)act.deact_tick().value_or(-1),
+                                (long long)act.sqout_tick.value_or(-1));
+                    // %.17g so even a last-bit change in an offset shows.
+                    for (const SPSqueeze& sq : act.sqinouts)
+                        std::printf("    %s %.17g\n", sq.type_name(), sq.offset_ms);
+                    for (const BackendSqueeze& b : act.display_backends()) {
+                        // A missing offset prints as the word none, not 0, so
+                        // a later change that drops or adds one shows up.
+                        char offset[40] = "none";
+                        if (b.offset_ms) std::snprintf(offset, sizeof offset, "%.17g", *b.offset_ms);
+                        std::printf("    row %lld %s %d %d %s\n",
+                                    (long long)b.timecode.ticks(), b.chord.code().c_str(),
+                                    b.points, b.sqout_points, offset);
+                    }
+                }
+            }
+        };
+        print_paths("paths", rec.all_paths());
+        print_paths("allzero", rec.all_allzero_paths());
+    }
+}
+
+TEST_CASE("path codec: a node keeps the SP-end history") {
+    Activation act;
+    act.timecode = Timecode::raw(2304);
+    act.sp_end_steps = {{2304, 5376, SpEndKind::Activation},
+                        {3072, 6144, SpEndKind::Clamped},
+                        {5280, 6912, SpEndKind::SqIn},
+                        {6144, 8448, SpEndKind::Collected}};
+    Path path;
+    path.activations.push_back(act);
+    const Path back = store::decode_path_node(store::encode_path_node(path));
+    REQUIRE(back.activations.size() == 1);
+    CHECK(back.activations.front().sp_end_steps == act.sp_end_steps);
+    CHECK(back.activations.front().deact_tick() == std::optional<int64_t>(8448));
+    CHECK(back.activations.front().clamp_tick() == std::optional<int64_t>(3072));
+}
+
+TEST_CASE("path codec: an unknown SP-end step kind is refused") {
+    Activation act;
+    act.timecode = Timecode::raw(2304);
+    act.sp_end_steps = {{2304, 5376, SpEndKind::Activation}};
+    Path path;
+    path.activations.push_back(act);
+    std::vector<uint8_t> bytes = store::encode_path_node(path);
+    // The step is written as two 8-byte ticks and a kind byte. Find those
+    // bytes and turn the kind into one no build knows.
+    const std::vector<uint8_t> good = bytes;
+    bool found = false;
+    for (size_t i = 0; i + 17 <= bytes.size(); ++i) {
+        int64_t a = 0, b = 0;
+        std::memcpy(&a, &bytes[i], 8);
+        std::memcpy(&b, &bytes[i + 8], 8);
+        if (a == 2304 && b == 5376 && bytes[i + 16] == 0) {
+            bytes[i + 16] = 4;
+            found = true;
+            break;
+        }
+    }
+    REQUIRE(found);
+    CHECK_THROWS_AS(store::decode_path_node(bytes), SerializeError);
+    CHECK_NOTHROW(store::decode_path_node(good));
+}
+
+TEST_CASE("path codec: a node keeps bank_rise_ticks") {
+    Activation act;
+    act.timecode = Timecode::raw(17280);
+    act.bank_rise_ticks = {13440, 14400};
+    Path path;
+    path.activations.push_back(act);
+    const Path back = decode_path_node(encode_path_node(path));
+    REQUIRE(back.activations.size() == 1);
+    CHECK((back.activations.front().bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
+}
+
+TEST_CASE("path codec: a node keeps skipped_fill_ticks") {
+    Activation act;
+    act.timecode = Timecode::raw(28800);
+    act.skipped_fill_ticks = {19200, 24960};
+    Path path;
+    path.activations.push_back(act);
+    const Path back = decode_path_node(encode_path_node(path));
+    REQUIRE(back.activations.size() == 1);
+    CHECK((back.activations.front().skipped_fill_ticks == std::vector<int64_t>{19200, 24960}));
+}
+
+TEST_CASE("path codec: a root keeps trailing_bank_ticks") {
+    HydraRecord rec = fixture().record;
+    rec.paths.front().trailing_bank_ticks = {111, 222};
+    const HydraRecord back = rebuild_record(flatten_record(rec));
+    CHECK((back.paths.front().trailing_bank_ticks == std::vector<int64_t>{111, 222}));
+    CHECK(back.paths.front().leftover_sp() == 2);
+}
+
+TEST_CASE("path codec: an unknown transfer scale stays unknown") {
+    Path p;
+    Activation unknown;
+    Activation flat;
+    flat.transfer_post = TransferScale{1.0, 1.0};
+    SPSqueeze s{SqueezeKind::SqIn, 5.0};
+    s.transfer = TransferScale{1.0, 1.0};
+    flat.sqinouts.push_back(s);
+    p.activations = {unknown, flat};
+    Path back = store::decode_path_node(store::encode_path_node(p));
+    CHECK_FALSE(back.activations[0].transfer_post.has_value());
+    REQUIRE(back.activations[1].transfer_post.has_value());
+    CHECK(back.activations[1].transfer_post->late == 1.0);
+    REQUIRE(back.activations[1].sqinouts[0].transfer.has_value());
+}
+
+TEST_CASE("path codec: a squeeze-out is stored once, as its tick") {
+    Activation act;
+    act.timecode = Timecode::raw(0);
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(3036);
+    row.offset_ms = -93.75;
+    row.points = 460;
+    row.sqout_points = 260;
+    act.backends.push_back(row);
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.5});
+
+    Activation plain = act;  // the same activation, not squeezed out
+    act.set_sqout(3036);
+
+    Path with, without;
+    with.activations.push_back(act);
+    without.activations.push_back(plain);
+    const std::vector<uint8_t> a = encode_path_node(with);
+    const std::vector<uint8_t> b = encode_path_node(without);
+    CHECK(a.size() - b.size() == 8);  // the tick, and no second copy of the offset
+
+    const Path back = decode_path_node(a);
+    const Activation& got = back.activations.front();
+    CHECK(got.sqout_tick == std::optional<int64_t>(3036));
+    REQUIRE(got.sqinouts.size() == 2);
+    CHECK(got.sqinouts[0].kind == SqueezeKind::SqIn);
+    CHECK(got.sqinouts[0].offset_ms == 12.5);
+    CHECK(got.sqinouts[1].kind == SqueezeKind::SqOut);
+    CHECK(got.sqinouts[1].offset_ms == -93.75);
+
+    // The writer refuses a squeeze-out it cannot store as one fact.
+    Activation no_tick = act;
+    no_tick.sqout_tick.reset();
+    Path p1;
+    p1.activations.push_back(no_tick);
+    CHECK_THROWS_AS(encode_path_node(p1), std::logic_error);
+    Activation drift = act;
+    drift.sqinouts.back().offset_ms = -90.0;
+    Path p2;
+    p2.activations.push_back(drift);
+    CHECK_THROWS_AS(encode_path_node(p2), std::logic_error);
+}
+
+// The writer refuses every squeeze-out shape the reader would refuse or
+// change, so a record it writes always reads back as written.
+TEST_CASE("path codec: the writer refuses a squeeze-out the reader can't read back") {
+    Activation act;
+    act.timecode = Timecode::raw(0);
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(3036);
+    row.offset_ms = -93.75;
+    act.backends.push_back(row);
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.5});
+
+    // A tick with no row on it and no SqOut entry. The reader would throw
+    // on that tick, so the writer must not store it. (Set by hand here:
+    // only set_sqout writes sqout_tick in src/.)
+    Activation stray = act;
+    stray.sqout_tick = 4000;
+    Path p1;
+    p1.activations.push_back(stray);
+    CHECK_THROWS_AS(encode_path_node(p1), std::logic_error);
+
+    // A SqOut that isn't the last squeeze. The reader always puts it last,
+    // so it would quietly move.
+    Activation middle = act;
+    middle.set_sqout(3036);
+    std::swap(middle.sqinouts[0], middle.sqinouts[1]);
+    REQUIRE(middle.sqinouts[0].kind == SqueezeKind::SqOut);
+    Path p2;
+    p2.activations.push_back(middle);
+    CHECK_THROWS_AS(encode_path_node(p2), std::logic_error);
+
+    // The well-formed one still writes and reads back.
+    Activation good = act;
+    good.set_sqout(3036);
+    Path p3;
+    p3.activations.push_back(good);
+    const Path back = decode_path_node(encode_path_node(p3));
+    CHECK(back.activations.front().sqout_tick == std::optional<int64_t>(3036));
+}
+
+// A variant's bank can differ from its parent's (decision D3, finding 89), so
+// the structure stores its trailing list next to its var_point. It is a
+// path total, not an activation fact, so no node payload moves.
+TEST_CASE("path codec: each variant's own trailing bank rides in the structure") {
+    HydraRecord rec = fixture().record;
+    size_t root = 0;
+    while (root < rec.paths.size() && rec.paths[root].variants.empty()) ++root;
+    REQUIRE(root < rec.paths.size());
+    Path& v = rec.paths[root].variants.front();
+    v.trailing_bank_ticks = {111, 222, 333};
+
+    const FlatRecord before = flatten_record(fixture().record);
+    const FlatRecord after = flatten_record(rec);
+    REQUIRE(after.nodes.size() == before.nodes.size());
+    for (size_t i = 0; i < after.nodes.size(); ++i)
+        CHECK(after.nodes[i].hash == before.nodes[i].hash);
+
+    const HydraRecord back = rebuild_record(after);
+    CHECK(back.paths[root].variants.front().trailing_bank_ticks ==
+          std::vector<int64_t>{111, 222, 333});
+    CHECK(back.paths[root].trailing_bank_ticks == rec.paths[root].trailing_bank_ticks);
 }

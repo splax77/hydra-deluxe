@@ -53,4 +53,13 @@ just as surely as the engine does (audit finding 344, user decision D23,
 2026-10-03). Check it at every release: if anything under `src/search`, the
 scoring in `src/core`, the readers in `src/parse` or the record contents
 changed since the last bump, bump it and shrink its `accepted` list to the
-new stamp alone.
+new stamp alone. The app version used to force that bump on every release.
+
+## Amendment, 2026-10: the first bump
+
+The SP-end history (ADR 0021) changed both stored values and the layout.
+`kResultsStamp` is now "2.1.0" alone, the release that ships it. Every
+release from 1.8.4 to 2.0.0 stamped "1.8.2", so no saved result already
+carries "2.1.0". `kPathFormatStamp` is now 7. Every saved result reads Stale
+once. Step 2's chart-reader changes (D19 to D31) ship in the same release
+and share that bump (D33).

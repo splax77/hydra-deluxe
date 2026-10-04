@@ -97,15 +97,30 @@ void murmur3_x64_128(const uint8_t* data, size_t len, uint32_t seed,
     for (int i = 0; i < 8; ++i) out[8 + i] = static_cast<uint8_t>(h2 >> (8 * i));
 }
 
-// ---- node and structure pieces (record format v7, docs/adr/0017) ------------
+// ---- node and structure pieces (path format 7: docs/adr/0017, 0021) -------
 
-// One activation. The six fields the search always sets carry no presence
+// A transfer scale that may be unknown (D4): a presence byte, then the two
+// doubles only when present, the way opt_f64 writes one double.
+void write_opt_scale(BinaryWriter& w, const std::optional<TransferScale>& s) {
+    w.boolean(s.has_value());
+    if (!s) return;
+    w.f64(s->early);
+    w.f64(s->late);
+}
+
+std::optional<TransferScale> read_opt_scale(BinaryReader& r) {
+    if (!r.boolean()) return std::nullopt;
+    TransferScale s;
+    s.early = r.f64();
+    s.late = r.f64();
+    return s;
+}
+
+// One activation. The fields the search always sets carry no presence
 // byte; the three ticks that can be missing keep theirs.
 void write_activation(BinaryWriter& w, const Activation& act) {
-    w.i32(act.skips);
     w.i64(act.timecode.ticks());
     w.str(act.chord.code());
-    w.i32(act.sp_meter);
     w.i32(act.frontend_points);
 
     // Only the rows the details view shows (display_backends). Backends are
@@ -117,34 +132,64 @@ void write_activation(BinaryWriter& w, const Activation& act) {
         w.str(b.chord.code());
         w.i32(b.points);
         w.i32(b.sqout_points);
-        w.boolean(b.is_sp);
         w.opt_f64(b.offset_ms);
     }
 
-    w.u32(static_cast<uint32_t>(act.sqinouts.size()));
+    // The squeeze-out is stored once: sqout_tick below, with its offset in
+    // its row. Refuse anything the reader would refuse or change: a SqOut
+    // entry whose row is missing or disagrees, a tick with no SqOut entry
+    // (with or without a row on it), or a SqOut that isn't the last squeeze
+    // (the reader always puts it last). So nothing is lost by not writing
+    // the entry.
+    const BackendSqueeze* sqout = act.sqout_row();
+    size_t nsqout = 0, nsqin = 0;
+    for (size_t i = 0; i < act.sqinouts.size(); ++i) {
+        const SPSqueeze& sq = act.sqinouts[i];
+        if (sq.kind == SqueezeKind::SqIn) {
+            ++nsqin;
+            continue;
+        }
+        ++nsqout;
+        if (i + 1 != act.sqinouts.size())
+            throw std::logic_error("write_activation: a SqOut that isn't the last squeeze");
+        if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)
+            throw std::logic_error("write_activation: squeeze-out stored twice and disagreeing");
+    }
+    if (nsqout > 1 || act.sqout_tick.has_value() != (nsqout == 1))
+        throw std::logic_error("write_activation: squeeze-out stored twice and disagreeing");
+
+    // The SqIns only, each with its offset and its own transfer scale behind
+    // a presence byte (unset means unknown, D4).
+    w.u32(static_cast<uint32_t>(nsqin));
     for (const SPSqueeze& sq : act.sqinouts) {
-        w.u8(sq.kind == SqueezeKind::SqIn ? 0 : 1);
+        if (sq.kind != SqueezeKind::SqIn) continue;
         w.f64(sq.offset_ms);
+        write_opt_scale(w, sq.transfer);
     }
 
     w.f64(act.e_offset);
-    w.f64(act.transfer_pre.early);
-    w.f64(act.transfer_pre.late);
-    w.f64(act.transfer_post.early);
-    w.f64(act.transfer_post.late);
-    w.opt_i64(act.deact_tick);
-    w.opt_i64(act.clamp_tick);
+    write_opt_scale(w, act.transfer_post);
     w.opt_i64(act.sqout_tick);
-    w.u32(static_cast<uint32_t>(act.collected_phrase_ticks.size()));
-    for (int64_t t : act.collected_phrase_ticks) w.i64(t);
+    // The SP-end history holds the deact node, the clamp note and the
+    // collected phrases (Activation's accessors read them from it).
+    w.u32(static_cast<uint32_t>(act.sp_end_steps.size()));
+    for (const SpEndStep& s : act.sp_end_steps) {
+        w.i64(s.tick);
+        w.i64(s.end_tick);
+        w.u8(static_cast<uint8_t>(s.kind));
+    }
+    // Where each bar the activation spends arrived (sp_meter() is the count).
+    w.u32(static_cast<uint32_t>(act.bank_rise_ticks.size()));
+    for (int64_t t : act.bank_rise_ticks) w.i64(t);
+    // The fills passed over before the activation (skips() is the count).
+    w.u32(static_cast<uint32_t>(act.skipped_fill_ticks.size()));
+    for (int64_t t : act.skipped_fill_ticks) w.i64(t);
 }
 
 Activation read_activation(BinaryReader& r) {
     Activation act;
-    act.skips = r.i32();
     act.timecode = Timecode::raw(r.i64());
     act.chord = Chord::from_code(r.str());
-    act.sp_meter = r.i32();
     act.frontend_points = r.i32();
 
     const uint32_t nbackends = r.u32();
@@ -155,7 +200,6 @@ Activation read_activation(BinaryReader& r) {
         b.chord = Chord::from_code(r.str());
         b.points = r.i32();
         b.sqout_points = r.i32();
-        b.is_sp = r.boolean();
         b.offset_ms = r.opt_f64();
         act.backends.push_back(std::move(b));
     }
@@ -163,28 +207,51 @@ Activation read_activation(BinaryReader& r) {
     const uint32_t nsq = r.u32();
     act.sqinouts.reserve(nsq);
     for (uint32_t i = 0; i < nsq; ++i) {
-        const SqueezeKind kind = r.u8() == 0 ? SqueezeKind::SqIn : SqueezeKind::SqOut;
-        const double offset = r.f64();
-        act.sqinouts.push_back(SPSqueeze{kind, offset});
+        SPSqueeze sq{SqueezeKind::SqIn, r.f64()};
+        sq.transfer = read_opt_scale(r);
+        act.sqinouts.push_back(sq);
     }
 
     act.e_offset = r.f64();
-    act.transfer_pre.early = r.f64();
-    act.transfer_pre.late = r.f64();
-    act.transfer_post.early = r.f64();
-    act.transfer_post.late = r.f64();
-    act.deact_tick = r.opt_i64();
-    act.clamp_tick = r.opt_i64();
-    act.sqout_tick = r.opt_i64();
-    const uint32_t n = r.u32();
-    act.collected_phrase_ticks.reserve(n);
-    for (uint32_t i = 0; i < n; ++i) act.collected_phrase_ticks.push_back(r.i64());
+    act.transfer_post = read_opt_scale(r);
+    // The squeeze-out comes back through its one writer, which rebuilds the
+    // SqOut entry from its row. A tick with no row is a malformed node.
+    if (const std::optional<int64_t> sqout = r.opt_i64()) {
+        try {
+            act.set_sqout(*sqout);
+        } catch (const std::logic_error& e) {
+            throw SerializeError(e.what());
+        }
+    }
+    // The SP-end history (see write_activation).
+    const uint32_t nsteps = r.u32();
+    act.sp_end_steps.reserve(nsteps);
+    for (uint32_t i = 0; i < nsteps; ++i) {
+        SpEndStep s;
+        s.tick = r.i64();
+        s.end_tick = r.i64();
+        const uint8_t kind = r.u8();
+        if (kind > static_cast<uint8_t>(SpEndKind::SqIn))
+            throw SerializeError("unknown SP-end step kind");
+        s.kind = static_cast<SpEndKind>(kind);
+        act.sp_end_steps.push_back(s);
+    }
+    // The bank arrivals (see write_activation).
+    const uint32_t nbank = r.u32();
+    act.bank_rise_ticks.reserve(nbank);
+    for (uint32_t i = 0; i < nbank; ++i) act.bank_rise_ticks.push_back(r.i64());
+    // The passed-over fills (see write_activation).
+    const uint32_t nfills = r.u32();
+    act.skipped_fill_ticks.reserve(nfills);
+    for (uint32_t i = 0; i < nfills; ++i) act.skipped_fill_ticks.push_back(r.i64());
     return act;
 }
 
 // A root path's own totals: the six score categories, the chart's note count
-// and the SP left at the end. A variant's copies are overwritten from its
-// parent by prepare_variants on every load, so only roots store them.
+// and the SP left at the end. A variant's score totals and note count are
+// overwritten from its parent by prepare_variants on every load, so only
+// roots store them here. A variant's SP left at the end is its own and rides
+// in its tree entry (write_tree_entry).
 void write_root_totals(BinaryWriter& w, const Path& p) {
     w.i64(p.score_base);
     w.i64(p.score_combo);
@@ -193,7 +260,10 @@ void write_root_totals(BinaryWriter& w, const Path& p) {
     w.i64(p.score_accents);
     w.i64(p.score_ghosts);
     w.i32(p.notecount);
-    w.i32(p.leftover_sp);
+    // Where each bar left after the last window arrived (leftover_sp() is
+    // the count).
+    w.u32(static_cast<uint32_t>(p.trailing_bank_ticks.size()));
+    for (int64_t t : p.trailing_bank_ticks) w.i64(t);
 }
 
 void read_root_totals(BinaryReader& r, Path& p) {
@@ -204,13 +274,17 @@ void read_root_totals(BinaryReader& r, Path& p) {
     p.score_accents = r.i64();
     p.score_ghosts = r.i64();
     p.notecount = r.i32();
-    p.leftover_sp = r.i32();
+    const uint32_t ntrail = r.u32();
+    p.trailing_bank_ticks.clear();
+    p.trailing_bank_ticks.reserve(ntrail);
+    for (uint32_t i = 0; i < ntrail; ++i) p.trailing_bank_ticks.push_back(r.i64());
 }
 
 // ---- structure blob -------------------------------------------------------
 
 // Emits one node's payload into `flat` (once per distinct hash) and writes its
-// tree entry: the raw hash, then each variant's var_point and entry in order.
+// tree entry: the raw hash, then for each variant in order its var_point, its
+// own trailing bank, and its entry.
 void write_tree_entry(BinaryWriter& w, const Path& path, FlatRecord& flat,
                       std::unordered_map<std::string, size_t>& seen) {
     std::vector<uint8_t> payload = encode_path_node(path);
@@ -226,6 +300,11 @@ void write_tree_entry(BinaryWriter& w, const Path& path, FlatRecord& flat,
     w.u32(static_cast<uint32_t>(path.variants.size()));
     for (const Path& v : path.variants) {
         w.opt_i32(v.var_point);
+        // The variant's own banked bars at the song's end. Its score totals
+        // and note count equal its parent's and prepare_variants copies them;
+        // this list can differ (D3, finding 89).
+        w.u32(static_cast<uint32_t>(v.trailing_bank_ticks.size()));
+        for (int64_t t : v.trailing_bank_ticks) w.i64(t);
         write_tree_entry(w, v, flat, seen);
     }
 }
@@ -243,8 +322,13 @@ Path read_tree_entry(BinaryReader& r, const PathNodeLookup& lookup) {
     path.variants.reserve(nvar);
     for (uint32_t i = 0; i < nvar; ++i) {
         std::optional<int> var_point = r.opt_i32();
+        const uint32_t ntrail = r.u32();
+        std::vector<int64_t> trailing;
+        trailing.reserve(ntrail);
+        for (uint32_t t = 0; t < ntrail; ++t) trailing.push_back(r.i64());
         Path variant = read_tree_entry(r, lookup);
         variant.var_point = var_point;
+        variant.trailing_bank_ticks = std::move(trailing);
         path.variants.push_back(std::move(variant));
     }
     return path;
@@ -374,8 +458,9 @@ HydraRecord rebuild_record(const std::vector<uint8_t>& structure,
     }
 
     // tied_count is a pure function of the variant tree, so it is recounted
-    // rather than stored. prepare_variants() then pushes each root's totals
-    // down to its variants and rebuilds variant_tail.
+    // rather than stored. prepare_variants() then pushes each root's score
+    // totals and note count down to its variants and rebuilds variant_tail.
+    // Each variant's trailing bank is its own, read with its tree entry.
     for (Path& p : record.paths) p.recount_tied_paths();
     for (Path& p : record.allzero_paths) p.recount_tied_paths();
     for (Path& p : record.paths) p.prepare_variants();

@@ -52,6 +52,13 @@ struct ReplayWindow {
     // by hand in `--acts`. replay_path reads only the tick; a window with an
     // offset and no tick must go through resolve_sqout_note first.
     std::optional<double> sqout_offset_ms;
+
+    // The phrase chords this window squeezed in, when known: a stored path's
+    // SqIn steps (windows_for_path). A typed window carries none. A phrase
+    // is squeezed in only once (D34), so resolve_sqout_note and
+    // ambiguous_window_warnings skip these when they name the engine's chord.
+    // replay_path does not read it.
+    std::vector<int64_t> sqin_ticks;
 };
 
 // The phrase chord a typed SqOut offset means.
@@ -62,8 +69,10 @@ struct SqOutNote {
 
 // Resolve w.sqout_offset_ms to the phrase chord nearest D + offset, among
 // the phrase chords strictly within kSqueezeWindowMs of D on either side.
-// The engine only ever squeezes out the first of those, so when the nearest
-// one is any other chord this refuses (user decision 23). Throws
+// The engine only ever squeezes out one of those (core::sqout_chord): the
+// first that the window did not bank before its activation and did not
+// already squeeze in (w.sqin_ticks; D34). When the nearest one is any other
+// chord this refuses (plan decision 20 of 2026-09-24). Throws
 // std::runtime_error, with a message naming both chords, in that case; also
 // when there is no candidate, or when w has no offset.
 SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w);
@@ -149,10 +158,12 @@ struct ReplayChord {
     // What category_scores applied to the chord's last note: the multiplier
     // the game's disc shows once this chord is hit.
     int multiplier_after = 1;
-    // Star Power pays this chord (at least one window claims it).
+    // Star Power paid this chord something: at least one window's
+    // core::paid_by_sp is true for it (decision D2). A squeezed-out chord
+    // whose SP points are 0 reads false; a partly paid one reads true.
     bool in_sp = false;
     // What the game's disc shows once this chord is hit: multiplier_after,
-    // doubled when in_sp (shown_multiplier).
+    // doubled when in_sp (shown_multiplier), so only when SP paid something.
     int multiplier_shown = 1;
 
     ReplayScore points;
@@ -174,7 +185,8 @@ struct ReplayOptions {
     // builds them. Every score field (points, cum, cum_onscreen_total,
     // multipliers, combo, in_sp) and ReplayResult::final are the same as a
     // full replay's. Only the Preview sets it: its score box reads ms,
-    // cum_onscreen_total, multiplier_shown and combo_after off each row, and
+    // cum_onscreen_total, multiplier_shown, multiplier_after and combo_after
+    // off each row, and
     // PathReplay::faithful() reads final (app/preview_view.cpp build_score).
     // Set it field by field (`ReplayOptions o; o.scores_only = true;`): the
     // project is C++17, which has no designated initializers.
@@ -199,13 +211,18 @@ ReplayScore score_of(const Path& path);
 
 // The Star Power windows a stored path describes: one per activation, with
 // its deactivation node read straight off the record (Activation::deact_tick,
-// stamped by the search) and the SqOut tick and offset copied across when the
-// activation ends on one. An activation with no stored deact node — only a
-// record written before blob v4 — is skipped, and so is a squeeze-out with no
-// stored sqout_tick (a record from before v6), so a path that yields fewer
-// windows than it has activations cannot be replayed faithfully.
+// stamped by the search) and, when the activation squeezed out, the SqOut
+// tick and offset read from Activation::sqout_row (the squeeze-out's one
+// stored form). An activation with no SP-end steps, which only a hand-built
+// one can be, is skipped, so a path that yields fewer windows than it has
+// activations cannot be replayed faithfully.
 // replay_stored_path below checks that before a score is trusted.
 std::vector<ReplayWindow> windows_for_path(const Path& path);
+
+// The phrases a stored activation squeezed in: its SqIn steps. The one
+// statement of that rule; windows_for_path and hydra_replay's dump
+// (paths_json) both ask it, so a window read back from a dump knows them too.
+std::vector<int64_t> sqin_phrase_ticks(const Activation& act);
 
 // A stored path replayed, with the two checks that say whether the replay
 // stands for it. The one place those checks live: hydra_replay's selfcheck,
@@ -235,10 +252,12 @@ PathReplay replay_stored_path(const Song& song, const Path& path,
 //
 // A squeeze-out lives on the note that ends a Star Power phrase: the player
 // delays that note until after Star Power has run out, so it is not doubled.
-// The chord it can be about is the first phrase chord strictly within
-// kSqueezeWindowMs of the deactivation node, the one the graph would squeeze
-// out. A window with such a chord is ambiguous: the score is right if the
-// player did not squeeze, and high by that chord's first-hit share if they
+// The chord it can be about is the one the engine would squeeze out there
+// (core::sqout_chord): the first phrase chord strictly within
+// kSqueezeWindowMs of the deactivation node that the window did not bank or
+// already squeeze in. A window with such a chord is ambiguous: the score is
+// right if the player did not squeeze, and high by that chord's first-hit
+// share if they
 // did, and nothing in the window list says which. So this reports the doubt
 // and nothing else: it never changes a score and never invents an offset.
 //

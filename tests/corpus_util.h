@@ -11,6 +11,7 @@
 #define HYDRA_TESTS_CORPUS_UTIL_H
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 #include <fstream>
 #include <map>
@@ -162,6 +163,28 @@ inline const hydra::HydraRecord& analyzed(const std::string& path,
     hydra::app::AnalysisSettings a;
     static_cast<hydra::SearchSettings&>(a) = settings;
     return analyzed(path, a);
+}
+
+// Empty when the activation carries every stored fact its transfer scales
+// need; otherwise what is missing. D4: nothing here may be missing on a fresh
+// record.
+inline std::string unknown_scale_reason(const hydra::Activation& a) {
+    auto good = [](const hydra::TransferScale& s) {
+        return std::isfinite(s.early) && std::isfinite(s.late) && s.early > 0.0 &&
+               s.late > 0.0;
+    };
+    if (!a.deact_tick()) return "no SP-end steps";
+    if (!a.nominal_end()) return "no nominal end";
+    if (!a.transfer_post) return "transfer_post unknown";
+    if (!good(*a.transfer_post)) return "transfer_post not a positive finite number";
+    for (size_t k = 0; k < a.sqinouts.size(); ++k) {
+        if (a.sqinouts[k].kind != hydra::SqueezeKind::SqIn) continue;
+        if (!a.squeeze_end_tick(k) || !a.squeeze_anchor_tick(k))
+            return "SqIn without its SqIn step";
+        if (!a.sqinouts[k].transfer) return "SqIn transfer unknown";
+        if (!good(*a.sqinouts[k].transfer)) return "SqIn transfer not a positive finite number";
+    }
+    return {};
 }
 
 }  // namespace corpus

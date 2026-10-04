@@ -60,6 +60,22 @@ struct SpExtension {
     bool clamped = false;
 };
 
+// One phrase chord an SP end can squeeze in or out, as its deactivation edge
+// lists it (ScoreGraphEdge::squeeze_choices).
+struct SqueezeChoice {
+    Timecode chord;
+    // The chord's ms minus the SP end's ms: what the search ranks by and the
+    // record shows.
+    double timing = 0.0;
+    // The path end this chord is a choice for. A chord at or before the SP
+    // end was collected while SP ran, which moved the end one bar on, so it
+    // is a choice for a path whose end is one bar on. A chord after the end
+    // is a choice for a path whose end is the end itself, and only a late
+    // squeeze-in reaches it.
+    Timecode sqout_time;
+    bool late = false;
+};
+
 struct ScoreGraphNode {
     Timecode timecode;
     ScoreGraphEdge* adv_edge = nullptr;
@@ -92,11 +108,19 @@ struct ScoreGraphEdge {
     // Set only on activation edges; absent (nullopt / empty) otherwise.
     std::optional<double> activation_fill_deadline_ms;
     std::map<int, Timecode> activation_initial_end_times;  // SP meter -> Timecode
+    // Activation edges only: which banked phrase a later SP end of this
+    // activation could still have in its squeeze window
+    // (core::banked_phrase_in_reach), as its 1-based place among the chart's
+    // phrase chords; 0 when none. The engine groups running paths by it.
+    int banked_phrase_ordinal = 0;
 
-    std::optional<Timecode> sqinout_time;
-    std::optional<double> sqinout_timing;
-    int late_sqin_count = 0;
-    std::optional<Timecode> sqout_time;
+    // Deactivation edges only: every phrase chord in this SP end's squeeze
+    // window, in chart order (core::squeeze_window_phrases). The engine
+    // offers a path the first one its running window can still squeeze
+    // (core::offered_phrase); the rest wait behind it.
+    std::vector<SqueezeChoice> squeeze_choices;
+    // Where a squeeze-in moves this SP end: one SP bar on, the same for every
+    // choice. The end itself when the window holds no phrase chord.
     std::optional<Timecode> sqin_time;
 };
 
@@ -121,7 +145,10 @@ public:
     // The notes left in the squeeze window (kSqueezeWindowMs) before the song's
     // last timestamp, i.e. the trailing notes no deactivation edge ever got to
     // claim. offset_ms is unset on these: offsets are only stamped on the copies
-    // an edge keeps, measured against that edge's own destination.
+    // an edge keeps, measured against that edge's own destination. This list
+    // is wider than any one activation needs: the engine narrows it to the
+    // window around each activation's own SP end (within_squeeze_window)
+    // when it copies the rows in.
     const std::vector<BackendSqueeze>& tail_backends() const {
         return recent_backends_;
     }
@@ -153,9 +180,6 @@ private:
     std::vector<DeactExtension> extend_deacts(
         const std::vector<Timecode>& deact_tcs, const Timecode& sp_timecode);
 
-    double head_time_offset(const Timecode& tc) const {
-        return head_time_.ms() - tc.ms();
-    }
     bool is_recent_to_head(const Timecode& tc) const;
     void set_head_time(const Timecode& tc);
     void handle_deact(const Timecode& deact_tc,

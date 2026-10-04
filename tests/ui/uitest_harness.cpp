@@ -5,7 +5,10 @@
 #endif
 #include <windows.h>
 
+#include <atomic>
+#include <climits>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -16,11 +19,13 @@
 #include "imgui_internal.h"
 #include "imgui_te_internal.h"
 
+#include "app/analysis.h"
 #include "app/config.h"
 #include "app/report_files.h"
 #include "audio/device.h"
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
+#include "ui/library_jobs.h"
 #include "ui/preview_controller.h"
 
 namespace fs = std::filesystem;
@@ -264,6 +269,23 @@ void reset_app(Harness& h, const std::string& rules_text) {
 
     std::error_code ec;
     fs::remove(fs::u8path(h.db_path), ec);
+    // --db: start from a copy of the given database (and its WAL, if any),
+    // so the app never opens the original. main() already refused a missing
+    // database file. A copy that fails (a locked file, say) stops the run:
+    // the tests must not go on against an empty database.
+    if (!h.seed_db.empty()) {
+        for (const char* suffix : {"", "-wal", "-shm"}) {
+            fs::remove(fs::u8path(h.db_path + suffix), ec);
+            const fs::path from = fs::u8path(h.seed_db + suffix);
+            if (!fs::exists(from, ec)) continue;
+            if (!fs::copy_file(from, fs::u8path(h.db_path + suffix),
+                               fs::copy_options::overwrite_existing, ec)) {
+                std::fprintf(stderr, "hydra_uitest: could not copy --db file \"%s\": %s\n",
+                             (h.seed_db + suffix).c_str(), ec.message().c_str());
+                std::exit(1);
+            }
+        }
+    }
     fs::remove(fs::u8path(h.temp_dir + "\\hydra_paths.html"), ec);
     fs::remove(fs::u8path(h.temp_dir + "\\hydra_dmcompare.html"), ec);
     {
@@ -318,6 +340,39 @@ bool jobs_busy(Harness& h) {
     if (a.preview && a.preview->loading()) return true;
     return false;
 }
+
+namespace {
+// Statics, not gate members: a batch job keeps its copy of the analyzer and
+// can outlive the gate (until reset_app tears the app down), so the analyzer
+// must never point into a gate that is gone.
+std::atomic<int> g_gate_allowed{0};
+std::atomic<int> g_gate_started{0};
+}  // namespace
+
+BatchGate::BatchGate(int workers) {
+    g_gate_allowed = 0;
+    g_gate_started = 0;
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
+           const std::function<void(float)>& on_progress) {
+            const int n = ++g_gate_started;
+            while (n > g_gate_allowed.load()) {
+                on_progress(0.0f);  // throws once Stop is pressed
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return hydra::app::analyze_chart_file(path, settings, on_progress);
+        },
+        workers);
+}
+
+BatchGate::~BatchGate() {
+    g_gate_allowed = INT_MAX;
+    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+}
+
+void BatchGate::allow(int charts) { g_gate_allowed = charts; }
+
+int BatchGate::started() const { return g_gate_started.load(); }
 
 std::string visible_text(Harness& h) {
     std::string s = h.frame_text.text;

@@ -123,7 +123,7 @@ A backend squeeze means hitting the note at the SP end early, so it lands inside
 
 Star Power length is measured in measures, not milliseconds. If the SP end falls where measures last a different time than at the activation (a tempo or time signature change), frontend timing only partly carries to the SP end. Hitting the activation 50 ms late might move the SP end only 25 ms. Whenever the scale isn't x1.00, the opened row shows it, early first: `Frontend timing scales x0.99 (early) / x4.45 (late) at the SP end.` Late and early hits can scale differently when the activation or the SP end sits right on a change. A side that is x1.00 is left out. If a SqIn moved the SP end, that earlier end gets its own clause. The line is orange when the scale changes a squeeze or backend figure, and those backend rows show an effective timing (`eff.`). Otherwise it is gray.
 
-Sometimes a phrase collected during Star Power fills the meter up to the SP cap. Then the row shows an overfill warning. It means the note that filled the meter, not the activation, is now the one whose timing moves the SP end. The squeeze numbers are unaffected; only the note you would move has changed.
+Sometimes a phrase collected during Star Power fills the meter up to the SP cap. Then the row shows an overfill warning. It means the note that filled the meter, not the activation, is now the one whose timing moves the SP end. The scale line and the eff. figures are measured from that note.
 
 Below the activations:
 

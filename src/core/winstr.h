@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -71,10 +72,20 @@ std::vector<DirEntry> list_dir(const std::string& dir_utf8);
 // GetModuleFileNameW stops truncating).
 std::string exe_path_utf8();
 
-// The size of a file in bytes, read from the file system (no open, no read).
-// 64 bits, so sizes past 2 GB come out right. Throws std::runtime_error when
-// the file can't be found.
+// The size of a file in bytes, read from the file system (no read; the file is
+// opened for its metadata only, so a file someone else holds open exclusively
+// still answers). 64 bits, so sizes past 2 GB come out right. Throws
+// std::runtime_error when the file can't be found.
 uint64_t file_size_bytes(const std::string& utf8_path);
+
+// The size in bytes of a file the caller already holds open, asked of the open
+// file (the read position does not move). Same 64-bit answer as
+// file_size_bytes, which shares its code. For a stdio stream, bytes still
+// waiting in its write buffer count, as a seek to the end would count them.
+// Empty when the file isn't an open disk file or Windows can't say.
+std::optional<uint64_t> open_file_size_bytes(std::FILE* f);
+// The same for a Win32 HANDLE (void* here so this header needs no windows.h).
+std::optional<uint64_t> open_handle_size_bytes(void* win32_handle);
 
 // The whole file's bytes, files over 2 GB included. Throws std::runtime_error
 // when the open fails or the file's size can't be read.

@@ -67,3 +67,27 @@ library asks for re-analysis immediately. No version bump is involved.
 
 The store also grew nine bytes per activation — a presence flag and an
 eight-byte tick.
+
+## Amendment, 2026-10: D is read from the SP-end history
+
+`deact_tick` is no longer a stored field. The record stores each
+activation's SP-end history, and `Activation::deact_tick()` is the end its
+last step set (ADR 0021). The rule above is unchanged: the engine writes D,
+and nothing outside the search reconstructs it.
+
+No fallback still holds. An activation whose history is empty has no D, and
+a consumer says it cannot tell. Only a hand-built activation has an empty
+history. A record from before format 7 is never read: it reads Stale first.
+
+Every fresh activation now has a D. A squeeze-out used to be able to name a
+phrase the activation had banked before it started, at an extreme tempo. That
+trimmed the history away and left the activation with no SP end. An
+activation can now squeeze only a phrase collected after it starts (ADR 0014's
+2026-10 amendment).
+
+Correcting note (finding 48). "What went wrong" says a backend row exists only
+when a note lands within 500 ms after D. That was never true. The search
+stores rows on both sides of D: the notes in the 500 ms before it, a note
+exactly on it, and the notes up to 500 ms after it. The details view shows
+the rows within 500 ms either side. The search graph (`add_deact_edge`) owns
+that rule.
