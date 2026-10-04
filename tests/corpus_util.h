@@ -132,7 +132,9 @@ inline const hydra::Song& song(const std::string& path, bool pro, bool bass2x,
 
 // One corpus chart analyzed under `settings`, once per run: the record
 // analyze_chart_file would return (parsed with settings.prodrums, bass2x,
-// difficulty and rules, then analyze_chart). Throws what that would throw.
+// difficulty and rules, checked with require_notes, then analyze_chart).
+// Throws what analyze_chart_file throws: NoNotesError when the chart has no
+// notes at that difficulty, ChartFileError when the file cannot be read.
 inline const hydra::HydraRecord& analyzed(const std::string& path,
                                           const hydra::app::AnalysisSettings& settings) {
     static std::map<std::string, detail::Outcome<hydra::HydraRecord>> cache;
@@ -147,6 +149,7 @@ inline const hydra::HydraRecord& analyzed(const std::string& path,
         try {
             const hydra::Song& s = song(path, settings.prodrums, settings.bass2x,
                                         settings.difficulty, settings.rules);
+            hydra::require_notes(s, settings.difficulty, settings.prodrums);
             o.value.emplace(hydra::analyze_chart(s, settings));
         } catch (...) {
             o.error = std::current_exception();
