@@ -509,13 +509,13 @@ HydraRecord decode_record(const std::vector<uint8_t>& structure,
     return record;
 }
 
-// The bestpath column's text for a record: its best path's pathstring, or
-// empty when it has no paths. prepare_row writes it and reindex rewrites it.
-std::string bestpath_column(const HydraRecord& record) {
+}  // namespace
+
+// The bestpath column writes this text (prepare_row, and reindex when it
+// rewrites a row), and hydra_replay's result block shows it.
+std::string best_path_text(const HydraRecord& record) {
     return record.paths.empty() ? std::string() : record.best_path().pathstring();
 }
-
-}  // namespace
 
 // ---- summarize_path / summarize_record / prepare_row -----------------------
 
@@ -600,7 +600,7 @@ PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record) {
     row.hyversion = current_record_version();
     row.sp_cap = *record.sp_cap;
     row.lens = key.lens;
-    row.bestpath = bestpath_column(record);
+    row.bestpath = best_path_text(record);
     row.summary = summarize_record(record);
 
     FlatRecord flat = flatten_record(record);
@@ -1544,7 +1544,7 @@ int RecordStore::reindex() {
                 row.structure, load_nodes(nodes_stmt, row.result_id), row.legacy_fills);
             ResetOnExit reset{update};
             bind_summary(update, 1, summarize_record(record));
-            bind_text(update, 11, bestpath_column(record));
+            bind_text(update, 11, best_path_text(record));
             sqlite3_bind_int64(update, 12, row.result_id);
             if (sqlite3_step(update) != SQLITE_DONE)
                 throw std::runtime_error(std::string("reindex failed: ") + sqlite3_errmsg(db_));

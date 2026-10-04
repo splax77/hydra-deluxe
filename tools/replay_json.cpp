@@ -135,10 +135,10 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
 
 nlohmann::json result_json(const HydraRecord& rec) {
     // summarize_record owns "what is this record's best score", absent when
-    // the record holds no paths.
+    // the record holds no paths; best_path_text owns its text.
     const std::optional<int64_t> best = store::summarize_record(rec).score;
     return nlohmann::json{{"score", best ? nlohmann::json(*best) : nlohmann::json(nullptr)},
-                          {"bestpath", best ? rec.best_path().pathstring() : std::string()}};
+                          {"bestpath", store::best_path_text(rec)}};
 }
 
 }  // namespace hydra

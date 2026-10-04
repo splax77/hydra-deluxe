@@ -77,6 +77,9 @@ struct PathSummary {
 
 PathSummary summarize_path(const Path& path);
 PathSummary summarize_record(const HydraRecord& record);
+// A record's best path as text: its pathstring, or empty when it has no
+// paths. The bestpath column and hydra_replay's result block both show it.
+std::string best_path_text(const HydraRecord& record);
 
 // Which cap's record a lookup wants: at(N), the record analyzed at exactly N
 // bars. (Auto, which asked for "the newest row above 4 bars", was removed

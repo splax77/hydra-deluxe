@@ -1142,6 +1142,21 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/config.cpp",
            "return static_cast<float>(clamp(&Settings::preview_volume, percent)) / 100.0f;",
            "volume_gain, the owner"}}},
+        // The bestpath column and hydra_replay's result block both show this
+        // text, so they read it from one function.
+        {"What text is a record's best path?",
+         "best_path_text in src/store/record_store.cpp",
+         R"(best_path\(\)\.pathstring\(\))",
+         "",
+         {},
+         {},
+         "ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04)",
+         {"return record.paths.empty() ? std::string() : record.best_path().pathstring();",
+          "{\"bestpath\", best ? rec.best_path().pathstring() : std::string()}};"},
+         {"CHECK(p->pathstring() == \"0 E3+ E5 E1\");"},
+         {{"src/store/record_store.cpp",
+           "return record.paths.empty() ? std::string() : record.best_path().pathstring();",
+           "best_path_text, the owner"}}},
     };
     return r;
 }
@@ -1438,21 +1453,19 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
 }
 
 // ST1 (findings 116 and 132): in record_store.cpp a stored row becomes a
-// record only through decode_record, which sets the fill rule, and the
-// bestpath column's text is spelled only in bestpath_column, which
-// prepare_row and reindex share. Each is one code line in the file; comment
-// lines are skipped like the row scan does.
-TEST_CASE("single-owner: record_store.cpp decodes a row and spells bestpath once (ST1)") {
+// record only through decode_record, which sets the fill rule. It is one
+// code line in the file; comment lines are skipped like the row scan does.
+// The best path's text has its own row above ("What text is a record's best
+// path?").
+TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
     std::ifstream in(sourcetree::root() / "src" / "store" / "record_store.cpp");
     REQUIRE(in.good());
-    int decodes = 0, bestpaths = 0;
+    int decodes = 0;
     std::string line;
     while (std::getline(in, line)) {
         const std::string t = hydra::trim(line);
         if (t.compare(0, 2, "//") == 0) continue;
         if (t.find("rebuild_record(") != std::string::npos) ++decodes;
-        if (t.find("best_path().pathstring()") != std::string::npos) ++bestpaths;
     }
     CHECK(decodes == 1);
-    CHECK(bestpaths == 1);
 }
