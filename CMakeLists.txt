@@ -428,6 +428,7 @@ add_executable(hydra_tests
     tests/test_preview_load_progress.cpp
     tests/test_utf8_paths.cpp
     tests/test_long_paths.cpp
+    tests/test_single_owner.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.
@@ -454,7 +455,7 @@ target_compile_definitions(hydra_tests PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
-    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_long_paths scans src/ and tools/
+    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_single_owner scans src/ and tools/
 )
 
 # ---- hydra_uitest: the headless GUI test runner ----------------------------

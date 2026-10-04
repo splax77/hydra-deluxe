@@ -35,8 +35,8 @@ on machines that have opted in. Hydra's own calls don't depend on it.
 path even on an opted-in machine, so the long-path tests prove Hydra's handling
 and not the machine's setting.
 
-A test keeps the rule from drifting. "every file call in src/ and tools/ goes
-through win32_path" (tests/test_long_paths.cpp) reads every source file. It
+A test keeps the rule from drifting. "single-owner rules hold across src/ and
+tools/" (tests/test_single_owner.cpp) reads every source file. It
 fails on any raw Windows file call outside winstr.cpp whose line doesn't call
 `win32_path`. It also fails on any `std::filesystem` call or file stream whose
 line doesn't call `os_path`, and on `utf8_to_wide` used anywhere a path could

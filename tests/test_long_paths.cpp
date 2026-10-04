@@ -1,8 +1,9 @@
 // Paths past 260 characters. Windows refuses an ordinary path that long unless
 // the machine has opted in, and chart packs nest deep enough to hit it. Every
 // file call goes through core/winstr's win32_path, which adds the \\?\ prefix
-// that lifts the limit; these pin that the conversion is right, that each kind
-// of file Hydra touches opens at that depth, and that no code goes around it.
+// that lifts the limit; these pin that the conversion is right and that each
+// kind of file Hydra touches opens at that depth. That no code goes around it
+// is checked by the source scan in test_single_owner.cpp.
 
 #include "doctest.h"
 
@@ -14,9 +15,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
-#include <fstream>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -39,9 +38,6 @@
 #endif
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-#ifndef HYDRA_SOURCE_DIR
-#error "HYDRA_SOURCE_DIR must be defined (see CMakeLists.txt)"
 #endif
 
 namespace fs = std::filesystem;
@@ -264,81 +260,4 @@ TEST_CASE("a long report page is copied to a short temp path for the browser") {
     CHECK(hydra::read_file_text(hydra::wide_to_utf8(copy.wstring())) == "<html>newer</html>");
     std::error_code ec;
     fs::remove(copy, ec);
-}
-
-// The one-place rule, checked: no source file hands a path to the OS without
-// going through win32_path. A new direct call fails here with its file and
-// line, so the rule can't drift back to many hand-written conversions.
-TEST_CASE("every file call in src/ and tools/ goes through win32_path") {
-    const fs::path root = fs::u8path(HYDRA_SOURCE_DIR);
-    // Raw OS calls that take a path. Only winstr.cpp makes them freely; any
-    // other line naming one must convert the path on that same line.
-    const char* raw_calls[] = {"FindFirstFile", "CreateFileW", "CreateFileA", "fopen(",
-                               "_wfreopen", "_wopen", "_wstat", "GetFileAttributes",
-                               "DeleteFile", "MoveFile", "CopyFile", "CreateDirectory",
-                               "RemoveDirectory", "sqlite3_open"};
-    // std::filesystem calls and file streams: the path argument must be
-    // os_path(...) on the same line.
-    const char* fs_calls[] = {"create_directories(", "create_directory(", "is_directory(",
-                              "is_regular_file(", "exists(", "remove(", "remove_all(",
-                              "rename(", "copy(", "copy_file(", "file_size(",
-                              "last_write_time(", "weakly_canonical(", "canonical(",
-                              "directory_iterator("};
-
-    std::vector<std::string> problems;
-    int files = 0;
-    for (const char* sub : {"src", "tools"}) {
-        for (const fs::directory_entry& e : fs::recursive_directory_iterator(root / sub)) {
-            const fs::path ext = e.path().extension();
-            if (ext != ".cpp" && ext != ".h") continue;
-            ++files;
-            const std::string rel = fs::relative(e.path(), root).generic_u8string();
-            const bool in_winstr = rel == "src/core/winstr.cpp" || rel == "src/core/winstr.h";
-            std::ifstream in(e.path());
-            std::string line;
-            int lineno = 0;
-            while (std::getline(in, line)) {
-                ++lineno;
-                const size_t first = line.find_first_not_of(" \t");
-                if (first == std::string::npos || line.compare(first, 2, "//") == 0) continue;
-                const std::string where = rel + ":" + std::to_string(lineno) + ": ";
-
-                // utf8_to_wide is for text; paths take win32_path. The DMBot
-                // client converts a URL.
-                if (line.find("utf8_to_wide(") != std::string::npos && !in_winstr &&
-                    rel != "src/net/dmbot_client.cpp")
-                    problems.push_back(where + "utf8_to_wide outside winstr: " + line);
-
-                if (!in_winstr && line.find("win32_path(") == std::string::npos) {
-                    for (const char* call : raw_calls)
-                        if (line.find(call) != std::string::npos)
-                            problems.push_back(where + "raw file call without win32_path: " + line);
-                }
-
-                // The shell takes no long path, so its two callers swap one
-                // for shell_path's short form; nothing else launches it.
-                if ((line.find("ShellExecute") != std::string::npos ||
-                     line.find("CreateProcess") != std::string::npos) &&
-                    rel != "src/app/report_files.cpp" && rel != "src/ui/win32_dialogs.cpp")
-                    problems.push_back(where + "shell launch outside the two report buttons: " +
-                                       line);
-
-                const bool names_fs = line.find("filesystem::") != std::string::npos ||
-                                      line.find("fs::") != std::string::npos;
-                const bool opens_stream = line.find("fstream ") != std::string::npos &&
-                                          line.find("#include") == std::string::npos;
-                if ((names_fs || opens_stream) && line.find("os_path(") == std::string::npos) {
-                    bool hit = opens_stream;
-                    for (const char* call : fs_calls)
-                        if (line.find(std::string("::") + call) != std::string::npos) hit = true;
-                    if (hit) problems.push_back(where + "file call without os_path: " + line);
-                }
-            }
-        }
-    }
-    CHECK(files > 100);  // the scan found the sources
-    std::ostringstream report;
-    for (const std::string& p : problems) report << p << "\n";
-    INFO(report.str());
-    CHECK(problems.empty());
 }
