@@ -104,10 +104,13 @@ std::string_view peel_brackets(std::string_view s) {
     return s;
 }
 
-// `mix.3.drums`: the 11-byte head both disco markers share.
-bool disco_head(std::string_view s) {
-    return s.size() >= 11 && s.substr(0, 3) == "mix" && regex_dot(s[3]) && s[4] == '3' &&
-           regex_dot(s[5]) && s.substr(6, 5) == "drums";
+// `mix.N.drums`: the 11-byte head both disco markers share, where N is the
+// parsed difficulty's digit (difficulty_chart_codes). A marker naming another
+// difficulty is not a marker here: Clone Hero applies each marker only to the
+// difficulty it names, in both formats (D19; 0x215C750, 0x213D076, 0x2155050).
+bool disco_head(std::string_view s, char mix_digit) {
+    return s.size() >= 11 && s.substr(0, 3) == "mix" && regex_dot(s[3]) &&
+           s[4] == mix_digit && regex_dot(s[5]) && s.substr(6, 5) == "drums";
 }
 
 // \[?ENABLE_CHART_DYNAMICS\]?
@@ -115,19 +118,21 @@ bool is_dynamics_marker(std::string_view s) {
     return peel_brackets(s) == "ENABLE_CHART_DYNAMICS";
 }
 
-// \[?mix.3.drums\d?d\]?
-bool is_disco_on_marker(std::string_view s) {
+// \[?mix.N.drums\d?d\]?, where N is `mix_digit`
+bool is_disco_on_marker(std::string_view s, char mix_digit) {
     s = peel_brackets(s);
-    if (!disco_head(s)) return false;
+    if (!disco_head(s, mix_digit)) return false;
     std::string_view rest = s.substr(11);
     if (!rest.empty() && regex_digit(rest.front())) rest.remove_prefix(1);
     return rest == "d";
 }
 
-// \[?mix.3.drums\d?(dnoflip)?\]?
-bool is_disco_off_marker(std::string_view s) {
+// \[?mix.N.drums\d?(dnoflip)?\]?, where N is `mix_digit`. "dnoflip" reads as
+// flip off. Clone Hero turns flip on for it (its classifier at 0x215CD50 looks
+// only at the 7th character); Hydra keeps it off on purpose (D19).
+bool is_disco_off_marker(std::string_view s, char mix_digit) {
     s = peel_brackets(s);
-    if (!disco_head(s)) return false;
+    if (!disco_head(s, mix_digit)) return false;
     std::string_view rest = s.substr(11);
     if (!rest.empty() && regex_digit(rest.front())) rest.remove_prefix(1);
     return rest.empty() || rest == "dnoflip";
@@ -192,10 +197,13 @@ void mark_sp_phrase_end(Song& song, int64_t starttick) {
 // apply_flam is true only on the .mid path: MIDI charts carry a flam marker
 // that converts the chord, while the .chart format has no such marker, so
 // ChartParser always passes false (existing behavior, now explicit).
-void emit_chord_timestamp(Song& song, Chord& chord, int64_t tick,
-                          bool apply_flam, bool apply_disco, bool solo) {
+// A disco section swaps red and yellow only under Pro Drums. That rule lives
+// here, once, for both parsers (finding 250): `pro` is the Pro Drums setting
+// and `in_disco` says whether this difficulty's disco section is open.
+void emit_chord_timestamp(Song& song, Chord& chord, int64_t tick, bool apply_flam,
+                          bool pro, bool in_disco, bool solo) {
     if (apply_flam) chord.apply_flam_conversion();
-    if (apply_disco) chord.apply_disco_flip();
+    if (pro && in_disco) chord.apply_disco_flip();
     SongTimestamp ts;
     ts.chord = chord;
     ts.timecode = song.timecode(tick);
@@ -492,6 +500,10 @@ private:
     bool mode_pro_ = false;
     bool mode_bass2x_ = false;
     int base_ = 96;
+    // The parsed difficulty's disco digit: only `[mix N drums...]` markers
+    // with this N open or close a disco section here. parse() sets it from
+    // difficulty_chart_codes.
+    char mix_digit_ = 0;
 
     Chord chord_;
     std::vector<const Message*> msg_buffer_;
@@ -589,8 +601,8 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
     if (msg.str_attr == Message::StrAttr::Text) {
         const std::string& t = msg.str;
         if (is_dynamics_marker(t)) return mop(MPhase::Pre, MAct::Dynamics);
-        if (is_disco_on_marker(t)) return mop_flag(MAct::Disco, true);
-        if (is_disco_off_marker(t)) return mop_flag(MAct::Disco, false);
+        if (is_disco_on_marker(t, mix_digit_)) return mop_flag(MAct::Disco, true);
+        if (is_disco_off_marker(t, mix_digit_)) return mop_flag(MAct::Disco, false);
     }
     if (msg.type == MType::SetTempo) {
         MOp op = mop_tick(MPhase::Time, MAct::Tempo, tick);
@@ -677,8 +689,8 @@ void MidiParser::push_timestamp(int64_t tick) {
     run_ops(pre_timestamp_);
 
     if (chord_.count())
-        emit_chord_timestamp(*song_, chord_, tick, flag_flam_,
-                             mode_pro_ && flag_disco_, flag_solo_);
+        emit_chord_timestamp(*song_, chord_, tick, flag_flam_, mode_pro_, flag_disco_,
+                             flag_solo_);
 
     run_ops(post_);
     run_ops(post_delayed_);
@@ -691,6 +703,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
     base_ = difficulty_base_pitch(difficulty);
+    mix_digit_ = difficulty_chart_codes(difficulty).mix_digit;
 
     Song song(mid.ticks_per_beat);
     song_ = &song;
@@ -781,8 +794,10 @@ struct ChartDataEntry {
     std::optional<int> phrasevalue;
     std::optional<int64_t> phraselength;
 
-    // Both sides arrive already trimmed.
-    ChartDataEntry(std::string_view keystr, std::string_view valuestr);
+    // Both sides arrive already trimmed. `mix_digit` is the parsed
+    // difficulty's disco digit: a disco marker naming another difficulty is
+    // read as a plain text event, which no drum section uses.
+    ChartDataEntry(std::string_view keystr, std::string_view valuestr, char mix_digit);
 
     bool is_tick_data() const { return key_tick.has_value(); }
 };
@@ -815,7 +830,8 @@ ChartWords split_ws_view(std::string_view s) {
 int word_stoi(std::string_view w) { return std::stoi(std::string(w)); }
 long long word_stoll(std::string_view w) { return std::stoll(std::string(w)); }
 
-ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuestr) {
+ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuestr,
+                               char mix_digit) {
     int64_t k;
     if (try_parse_int(std::string(keystr), k))
         key_tick = k;
@@ -848,9 +864,9 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
         solo_start = true;
     } else if (t0 == "E" && t.count == 2 && t.w[1] == "soloend") {
         solo_end = true;
-    } else if (t0 == "E" && t.count == 2 && is_disco_off_marker(t.w[1])) {
+    } else if (t0 == "E" && t.count == 2 && is_disco_off_marker(t.w[1], mix_digit)) {
         discoflip_disable = true;
-    } else if (t0 == "E" && t.count == 2 && is_disco_on_marker(t.w[1])) {
+    } else if (t0 == "E" && t.count == 2 && is_disco_on_marker(t.w[1], mix_digit)) {
         discoflip_enable = true;
     } else if (t0 == "E") {
         // Generic text event: no gameplay effect, but [Events] carries the
@@ -945,7 +961,7 @@ public:
 private:
     const core::Rules& rules_;
 
-    void load_sections(const std::vector<uint8_t>& data);
+    void load_sections(const std::vector<uint8_t>& data, char mix_digit);
     COp optype(const ChartDataEntry& e, int64_t tick);
     void run(const COp& op);
     void push_timestamp(int64_t tick, const std::vector<ChartDataEntry>& entries);
@@ -1012,7 +1028,7 @@ bool find_section_header(std::string_view line, std::string_view* bracket) {
     return false;
 }
 
-void ChartParser::load_sections(const std::vector<uint8_t>& data) {
+void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit) {
     // Walk the file in place, one line per '\n' (a trailing '\r' is removed by
     // the trim). Every line ended by a '\n' counts, empty or not; the last
     // unterminated piece counts only when it is non-empty.
@@ -1043,7 +1059,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data) {
                                                   ? std::string_view::npos
                                                   : eq2 - eq - 1);
                 }
-                wip->add(ChartDataEntry(trim_view(lhs), trim_view(rhs)));
+                wip->add(ChartDataEntry(trim_view(lhs), trim_view(rhs), mix_digit));
             }
         } else {
             std::string_view bracket;
@@ -1181,8 +1197,8 @@ void ChartParser::push_timestamp(int64_t tick,
     run_phase(CPhase::Pre);
 
     if (chord_.count())
-        emit_chord_timestamp(*song_, chord_, tick, /*apply_flam=*/false,
-                             mode_pro_ && flag_disco_, flag_solo_);
+        emit_chord_timestamp(*song_, chord_, tick, /*apply_flam=*/false, mode_pro_,
+                             flag_disco_, flag_solo_);
 
     run_phase(CPhase::Post);
     run_phase(CPhase::PostDelayed);
@@ -1190,7 +1206,9 @@ void ChartParser::push_timestamp(int64_t tick,
 
 Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
                         bool bass2x, Difficulty difficulty) {
-    load_sections(data);
+    // A disco marker counts only in the difficulty it names, so the reader
+    // needs this difficulty's digit before it classifies any line.
+    load_sections(data, difficulty_chart_codes(difficulty).mix_digit);
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
 
