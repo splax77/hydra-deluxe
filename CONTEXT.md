@@ -242,9 +242,10 @@ material enough to warn about.
 How long after the SP end a note still scores under Star Power without a
 squeeze: less than `backend_leeway_ms`
 (3 ms<!-- default: Rules::backend_leeway_ms --> by default). A note exactly
-3.0 ms after the SP end does not score under SP. Hydra's own rule: no such
-constant was found in the Clone Hero engine methods read; the 3 ms is
-Hydra's own setting.
+3.0 ms<!-- default: Rules::backend_leeway_ms --> after the SP end does not
+score under SP. Hydra's own rule: no such constant was found in the Clone
+Hero engine methods read; the 3 ms<!-- default: Rules::backend_leeway_ms -->
+is Hydra's own setting.
 
 **Difficulty**:
 A path's or activation's hardest required squeeze, in raw gap ms — never
