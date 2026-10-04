@@ -62,8 +62,9 @@ struct SqOutNote {
 
 // Resolve w.sqout_offset_ms to the phrase chord nearest D + offset, among
 // the phrase chords strictly within kSqueezeWindowMs of D on either side.
-// The engine only ever squeezes out the first of those, so when the nearest
-// one is any other chord this refuses (user decision 23). Throws
+// The engine only ever squeezes out the first of those (core::sqout_chord),
+// so when the nearest one is any other chord this refuses (plan decision 20
+// of 2026-09-24). Throws
 // std::runtime_error, with a message naming both chords, in that case; also
 // when there is no candidate, or when w has no offset.
 SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w);
@@ -149,10 +150,12 @@ struct ReplayChord {
     // What category_scores applied to the chord's last note: the multiplier
     // the game's disc shows once this chord is hit.
     int multiplier_after = 1;
-    // Star Power pays this chord (at least one window claims it).
+    // Star Power paid this chord something: at least one window's
+    // core::paid_by_sp is true for it (decision D2). A squeezed-out chord
+    // whose SP points are 0 reads false; a partly paid one reads true.
     bool in_sp = false;
     // What the game's disc shows once this chord is hit: multiplier_after,
-    // doubled when in_sp (shown_multiplier).
+    // doubled when in_sp (shown_multiplier), so only when SP paid something.
     int multiplier_shown = 1;
 
     ReplayScore points;

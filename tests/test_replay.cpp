@@ -29,6 +29,7 @@
 #include "env_util.h"
 #include "replay_json.h"
 #include "core/scoring.h"
+#include "core/sqout_chord.h"
 #include "core/timing.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -260,6 +261,56 @@ TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
     // The disc follows the same decision: doubled on the paid chord only.
     CHECK(r.chords[4].multiplier_shown == r.chords[4].multiplier_after * kStarPowerMultiplier);
     CHECK(r.chords[5].multiplier_shown == r.chords[5].multiplier_after);
+}
+
+TEST_CASE("paid_by_sp: yes exactly when the row's SP value is above zero") {
+    using core::SqOutPosition;
+    CHECK(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::NoSqOut, 3.0));
+    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::Exact, 3.0));
+    CHECK(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::Exact, 3.0));
+    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::After, 3.0));
+    CHECK(core::paid_by_sp(2.0, 100, 50, SqOutPosition::NoSqOut, 3.0));        // in the leeway
+    CHECK_FALSE(core::paid_by_sp(4.0, 100, 50, SqOutPosition::NoSqOut, 3.0));  // past it
+}
+
+// D2: the disc doubles only when Star Power paid the chord something.
+TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multiplier") {
+    // 120 BPM, 192 ticks per beat: 96 ticks are 250 ms.
+    auto build = [](bool two_notes) {
+        Song song(192);
+        song.tpm_changes[0] = 768;
+        song.bpm_changes[0] = 120.0;
+        song.build_timing();
+        for (int64_t tick : {0, 768, 1536, 2304, 2976, 3072}) {
+            SongTimestamp ts;
+            ts.timecode = song.timecode(tick);
+            ts.chord.add_note(NoteColor::Red);
+            if (tick != 2976 || two_notes) ts.chord.add_note(NoteColor::Yellow);
+            ts.flag_sp = tick == 2976;
+            song.sequence.push_back(ts);
+        }
+        return song;
+    };
+    ReplayWindow w;
+    w.act_tick = 0;
+    w.deact_tick = 3072;
+    w.sqout_tick = 2976;  // a phrase chord 250 ms before the SP end
+
+    const Song one = build(false);
+    const ReplayResult r = replay_path(one, {w});
+    REQUIRE(r.chords.size() == 6);
+    CHECK(r.chords[3].in_sp);  // an ordinary chord inside the window: doubled
+    CHECK(r.chords[3].multiplier_shown == r.chords[3].multiplier_after * kStarPowerMultiplier);
+    CHECK(r.chords[4].points.sp == 0);  // first-note rule: one note loses all its doubling
+    CHECK_FALSE(r.chords[4].in_sp);
+    CHECK(r.chords[4].multiplier_shown == r.chords[4].multiplier_after);
+
+    // Two notes: only the first note's share is lost, so SP still paid it.
+    const Song two = build(true);
+    const ReplayResult r2 = replay_path(two, {w});
+    CHECK(r2.chords[4].points.sp > 0);
+    CHECK(r2.chords[4].in_sp);
+    CHECK(r2.chords[4].multiplier_shown == r2.chords[4].multiplier_after * kStarPowerMultiplier);
 }
 
 TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power") {
@@ -557,7 +608,7 @@ TEST_CASE("a typed squeeze-out offset resolves to the phrase chord") {
 // The engine only ever squeezes out the first phrase chord strictly within
 // 500 ms of the SP end. A typed offset that lands on a later one names a
 // squeeze-out the search can never produce, so it is refused and nothing is
-// priced (user decision 23).
+// priced (plan decision 20 of 2026-09-24).
 TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refused") {
     // Phrase chords 375 ms (tick 2928) and 93.75 ms (tick 3036) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
@@ -585,9 +636,9 @@ TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refus
 }
 
 // The graph lets a deactivation squeeze out exactly one chord: the first
-// phrase chord strictly within 500 ms of the SP end (graph.cpp
-// add_deact_edge, then store_new_backend for chords after the end). The
-// warning names that chord, and only when the window actually paid it.
+// phrase chord strictly within 500 ms of the SP end (core::sqout_chord, which
+// graph.cpp add_deact_edge calls). The warning names that chord, and only
+// when the window actually paid it.
 TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     // Phrase chords 375 ms (tick 2928) and 125 ms (tick 3024) before D.
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
@@ -614,6 +665,30 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
     const std::vector<std::string> late = ambiguous_window_warnings(after, ra, {w});
     REQUIRE(late.size() == 1);
     CHECK(late[0].find("tick 3073") != std::string::npos);
+}
+
+// The one rule for which phrase chord an SP end can squeeze out.
+TEST_CASE("sqout_chord: the first phrase chord strictly inside the window, in chart order") {
+    const Song two = song_with({{0, false}, {768, false}, {2928, true},
+                                {3036, true}, {3072, false}});
+    const SongTimestamp* c = core::sqout_chord(two, two.timecode(3072));
+    REQUIRE(c != nullptr);
+    CHECK(c->timecode.ticks() == 2928);  // 375 ms before D comes before 93.75 ms
+
+    // Exactly 500 ms before D is outside.
+    const Song edge = song_with({{0, false}, {2880, true}, {3072, false}});
+    CHECK(core::sqout_chord(edge, edge.timecode(3072)) == nullptr);
+
+    // Only a phrase chord after D: that one.
+    const Song after = song_with({{0, false}, {3072, false}, {3073, true}});
+    REQUIRE(core::sqout_chord(after, after.timecode(3072)) != nullptr);
+    CHECK(core::sqout_chord(after, after.timecode(3072))->timecode.ticks() == 3073);
+
+    // An SP end between two chords, and no phrase chord at all.
+    REQUIRE(core::sqout_chord(two, two.timecode(3000)) != nullptr);
+    CHECK(core::sqout_chord(two, two.timecode(3000))->timecode.ticks() == 2928);
+    const Song bare = song_with({{0, false}, {3072, false}});
+    CHECK(core::sqout_chord(bare, bare.timecode(3072)) == nullptr);
 }
 
 TEST_CASE("category_scores reports the multiplier each note was paid at") {
@@ -789,7 +864,8 @@ struct RefWindow {
 
 ReplayResult reference_replay_path(const Song& song,
                                    const std::vector<ReplayWindow>& windows,
-                                   const core::Rules& rules) {
+                                   const core::Rules& rules,
+                                   bool d2_in_sp = true) {
     const SongTiming& timing = song.timing();
 
     std::vector<RefWindow> wins;
@@ -851,8 +927,12 @@ ReplayResult reference_replay_path(const Song& song,
             row.notes.push_back(note);
         }
 
+        // The old gate counts a window that reaches the chord (sp_claims);
+        // decision D2's rule counts one that actually pays it (sp_paid).
+        // d2_in_sp picks which one sets in_sp, so a test can show both.
         int64_t sp_points = 0;
         int sp_claims = 0;
+        int sp_paid = 0;
         for (const RefWindow& w : wins) {
             if (row.tick < w.act_tick) continue;
             const double offset = row.tick <= w.deact_tick
@@ -864,11 +944,14 @@ ReplayResult reference_replay_path(const Song& song,
                 !core::counted_without_squeeze(offset, rules.backend_leeway_ms))
                 continue;
             ++sp_claims;
+            if (core::paid_by_sp(offset, sg.sp, sg.sqout_sp(), pos,
+                                 rules.backend_leeway_ms))
+                ++sp_paid;
             sp_points += core::backend_row_value(
                 offset, sg.sp, sg.sqout_sp(), pos,
                 rules.backend_leeway_ms);
         }
-        row.in_sp = sp_claims > 0;
+        row.in_sp = d2_in_sp ? sp_paid > 0 : sp_claims > 0;
         row.multiplier_shown = shown_multiplier(row.multiplier_after, row.in_sp);
 
         row.points.base = sg.base;
@@ -1036,6 +1119,39 @@ TEST_CASE("replay: the open-window walk equals the every-window walk on every co
     CHECK(runs > charts);
     INFO("first difference: " << first_diff);
     CHECK(first_diff.empty());
+}
+
+// D2 moves only the yes/no on a squeezed-out chord SP paid nothing. Every
+// chord's points, and so every score, stays as it was.
+TEST_CASE("D2: only a squeezed-out chord SP pays nothing loses its doubled disc") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int changed = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        for (const Path* p : corpus::analyzed(path, cfg).all_paths()) {
+            const std::vector<ReplayWindow> wl = windows_for_path(*p);
+            const ReplayResult before = reference_replay_path(song, wl, cfg.rules, false);
+            const ReplayResult after = replay_path(song, wl, cfg.rules);
+            REQUIRE(before.chords.size() == after.chords.size());
+            CHECK(before.final == after.final);
+            for (size_t i = 0; i < after.chords.size(); ++i) {
+                const ReplayChord& b = before.chords[i];
+                const ReplayChord& a = after.chords[i];
+                CHECK(a.points == b.points);
+                if (a.in_sp == b.in_sp) continue;
+                ++changed;
+                CHECK(b.in_sp);
+                CHECK(a.points.sp == 0);
+                bool squeezed_out = false;
+                for (const ReplayWindow& w : wl)
+                    if (w.sqout_tick == a.tick) squeezed_out = true;
+                CHECK(squeezed_out);
+                CHECK(a.multiplier_shown == a.multiplier_after);
+            }
+        }
+    }
+    MESSAGE(changed << " corpus chords now show the plain multiplier");
 }
 
 TEST_CASE("replay: the open-window walk equals the every-window walk on hand-built windows") {

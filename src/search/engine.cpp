@@ -1213,8 +1213,12 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                 // add_deact_edge uses, just against a node the graph never made.
                 const double end_ms = timing.ms_index().at(oa.final_sp_end);
                 for (const BackendSqueeze& b : tail_backends) {
+                    const double off = offset_from_sp_end(b.timecode.ms(), end_ms);
+                    // D5: the same window as every other row, from this
+                    // activation's own SP end, not from the song's last note.
+                    if (!within_squeeze_window(off)) continue;
                     BackendSqueeze copy = b;
-                    copy.offset_ms = b.timecode.ms() - end_ms;
+                    copy.offset_ms = off;
                     act.backends.push_back(copy);
                 }
             }

@@ -44,6 +44,15 @@ inline int backend_row_value(double offset_ms, int points, int sqout_points,
     return pos == SqOutPosition::Exact ? sqout_points : points;
 }
 
+// Did Star Power pay this row anything on this path? The one yes/no for
+// "inside SP", built from the price above. The replay's xN disc doubles
+// exactly when it is true (decision D2): a squeezed-out chord whose
+// sqout_points are 0 reads no, a partly paid one reads yes.
+inline bool paid_by_sp(double offset_ms, int points, int sqout_points,
+                       SqOutPosition pos, double leeway_ms) {
+    return backend_row_value(offset_ms, points, sqout_points, pos, leeway_ms) > 0;
+}
+
 }  // namespace hydra::core
 
 #endif  // HYDRA_CORE_BACKEND_VALUE_H

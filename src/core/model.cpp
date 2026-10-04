@@ -648,8 +648,7 @@ std::vector<BackendSqueeze> Activation::display_backends() const {
     std::vector<BackendSqueeze> out;
     for (const BackendSqueeze& bsq : backends) {
         if (is_beyond_sqout(bsq)) continue;
-        if (std::fabs(bsq.offset_ms.value_or(0.0)) < kSqueezeWindowMs ||
-            is_sqout_backend(bsq))
+        if (within_squeeze_window(bsq.offset_ms.value_or(0.0)) || is_sqout_backend(bsq))
             out.push_back(bsq);
     }
     return out;
