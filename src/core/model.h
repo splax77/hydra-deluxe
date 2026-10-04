@@ -149,6 +149,7 @@ public:
     ChordNote& add_note(NoteColor color);
     void insert_note(const ChordNote& note);
     void add_2x();
+    // Each raises ChartFileError when the colour has no note (a stray marker).
     void apply_cymbal(NoteColor color);
     void apply_ghost(NoteColor color);
     void apply_accent(NoteColor color);
