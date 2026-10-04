@@ -507,11 +507,10 @@ TEST_CASE("a batch result for an open Ready chart shows the new result") {
     REQUIRE(app->viewed.record->paths.empty());
 
     // The new result has two paths (the shared tied-variant record).
-    HydraRecord redone = hydra::test::tied_variant_record();
+    hydra::HydraRecord redone = hydra::test::tied_variant_record();
     redone.sp_cap = kSeededCap;
     redone.ms_limit = Settings{}.mslimit_value;
-    app->store->add_record(
-        RecordKey{open.md5, kChartMode, CapQuery::at(kSeededCap), Settings{}.lens()}, redone);
+    app->store->add_record(hydra::test::batch_result_key(open.md5, kSeededCap), redone);
     run_redo_batch_over(*app, open.md5);
 
     app->tick_library(0.0);  // the batch's last refresh
