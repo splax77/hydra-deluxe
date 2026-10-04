@@ -374,14 +374,20 @@ TEST_CASE("every tied variant stores what a search pricing it alone stores") {
     // `skipped` is pinned exactly: the variants with no lone root to compare
     // against. Each is printed with its reason. If the count moves, read
     // those lines before changing it.
-    struct Setting { int cap; int depth; int skipped; };
-    for (const Setting s : {Setting{4, 4, 0}, Setting{4, 40, 0}, Setting{2, 40, 4}}) {
+    //
+    // `min_variants` is a floor, not a pin: today the three settings list 12,
+    // 295 and 303 variants. A change that stopped listing most ties would
+    // still pass every other check here (fewer variants, none skipped, none
+    // differ), so the floor is what catches it.
+    struct Setting { int cap; int depth; int skipped; int min_variants; };
+    for (const Setting s : {Setting{4, 4, 0, 10}, Setting{4, 40, 0, 200},
+                            Setting{2, 40, 4, 200}}) {
         app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
         cfg.sp_cap = s.cap;
         cfg.depth_value = s.depth;
         INFO("cap " << s.cap << ", score range " << s.depth);
         const TiedVariantCount n = check_tied_variants(cfg);
-        CHECK(n.variants > 0);
+        CHECK(n.variants >= s.min_variants);
         CHECK(n.compared > 0);
         CHECK(n.differing == 0);
         CHECK(n.skipped() == s.skipped);
