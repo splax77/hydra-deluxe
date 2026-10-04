@@ -1095,6 +1095,53 @@ const std::vector<OwnerRule>& rules() {
          {{"src/core/timing.cpp", "if (combo < 10) return 1;", "to_multiplier, the owner"},
           {"src/core/timing.cpp", "if (combo < 20) return 2;", "to_multiplier, the owner"},
           {"src/core/timing.cpp", "if (combo < 30) return 3;", "to_multiplier, the owner"}}},
+        // Phase 7 task SE1: the Settings owner.
+        {"What text turns an INI setting on or off?",
+         "parse_bool in src/core/strutil.cpp",
+         R"re([!=]=\s*"(0|1|true|false|yes|no)")re",
+         "",
+         {},
+         {},
+         "audit finding 68 (code-only: on/off text is 0 or 1 only), phase 7 task SE1",
+         {"else if (key == \"is_rescan\") s.is_rescan = (value == \"1\");",
+          "bool flag_bool(const std::string& v) { return v == \"1\" || v == \"true\" || v == \"yes\"; }",
+          "if (v != \"0\") on = true;"},
+         {"if (a.ms == \"off\") s.mslimit_enabled = false;",
+          "if (const std::optional<bool> on = parse_bool(line.value)) s.**b = *on;"},
+         {{"src/core/strutil.cpp", "if (text == \"1\") return true;", "parse_bool, the owner"},
+          {"src/core/strutil.cpp", "if (text == \"0\") return false;", "parse_bool, the owner"}}},
+        // A setting's range, or the cap floor of 1 bar, worked out again
+        // outside the key table.
+        {"What range may a number setting hold?",
+         "Settings::clamp in src/app/config.cpp (the key table)",
+         R"(\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|hit_window_ms|volume_pct_)\s*=\s*(std::(clamp|max|min)\(|[^;]*>\s*100\s*\?)|\b(sp_)?cap\s*<\s*1\b|std::max\(\s*1\s*,[^;]*cap\b)",
+         R"(Settings::clamp\()",
+         {"src/app/config.cpp"},
+         {},
+         "D51 Q14 (nearest edge of the box's range, volume 0 to 100) and Q16 (a 1-bar cap stays "
+         "allowed); audit findings 138, 139, 322; phase 7 task SE1",
+         {"app.settings.sp_cap = std::max(1, cap);",
+          "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,",
+          "volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;",
+          "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "if (cap < 1)",
+          "const int cap = std::max(1, pc->sp_meter_cap());"},
+         {"app.settings.mslimit_value = Settings::clamp(&Settings::mslimit_value, v);",
+          "workers_ = std::max(1, workers);", "d.width = std::max(1, width);",
+          "const int window = static_cast<int>(kSqueezeWindowMs);"}},
+        {"What gain does a volume percent play at?",
+         "Settings::volume_gain in src/app/config.cpp",
+         R"((volume|percent|pct)\w*\)*\s*/\s*100\b)",
+         R"(volume_gain\()",
+         {},
+         {},
+         "audit finding 72, phase 7 task SE1",
+         {"transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
+          "const float gain = percent / 100.0f;"},
+         {"transport_.set_gain(Settings::volume_gain(volume_pct_));",
+          "const double bars = phrase_count / 4.0;"},
+         {{"src/app/config.cpp",
+           "return static_cast<float>(clamp(&Settings::preview_volume, percent)) / 100.0f;",
+           "volume_gain, the owner"}}},
     };
     return r;
 }
@@ -1138,6 +1185,29 @@ const std::vector<KnownCopy>& known_copies() {
          "src/ui/library_toolbar.cpp",
          "if (!app.status_is_problem && ImGui::GetTime() - shown_at > 6.0) return;",
          "finding 219, not yet scheduled"},
+        {"What range may a number setting hold?", "src/ui/settings_bar.cpp",
+         "app.settings.sp_cap = std::max(1, cap);", "task SE2 (the boxes call Settings::clamp)"},
+        {"What range may a number setting hold?", "src/ui/settings_bar.cpp",
+         "app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -window, window);",
+         "task SE2 (the boxes call Settings::clamp)"},
+        {"What range may a number setting hold?", "src/ui/paths_tab.cpp",
+         "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,",
+         "task SE2 (the boxes call Settings::clamp)"},
+        {"What range may a number setting hold?", "src/ui/preview_controller.cpp",
+         "volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;",
+         "task PV (the volume reads through Settings::clamp)"},
+        {"What range may a number setting hold?", "src/ui/preview_tab.cpp",
+         "const int cap = std::max(1, pc->sp_meter_cap());", "task PV (the Preview's cap floors)"},
+        {"What range may a number setting hold?", "src/app/preview_view.cpp",
+         "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "task PV (the Preview's cap floors)"},
+        {"What range may a number setting hold?", "src/app/preview_view.cpp",
+         "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "task PV (the Preview's cap floors)"},
+        {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
+         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
+         "task PV (the Preview calls Settings::volume_gain)"},
+        {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
+         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
+         "task PV (the Preview calls Settings::volume_gain)"},
     };
     return k;
 }
@@ -1365,131 +1435,6 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
     CHECK(rule.find("src/search") != std::string::npos);
     CHECK(rule.find("src/core") != std::string::npos);
     CHECK(rule.find("src/parse") != std::string::npos);
-}
-
-// ---- phase 7 task SE1's rows (the Settings owner) ---------------------------
-// Appended here so parallel tasks never edit the same lines. At M7-1 the main
-// session moves se1_rows() into rules() and se1_known_copies() into
-// known_copies(), then deletes this block and its test case: the scan and
-// "single-owner rules match their own examples" cover them from there.
-namespace {
-
-const std::vector<OwnerRule>& se1_rows() {
-    static const std::vector<OwnerRule> r = {
-        {"What text turns an INI setting on or off?",
-         "parse_bool in src/core/strutil.cpp",
-         R"re([!=]=\s*"(0|1|true|false|yes|no)")re",
-         "",
-         {},
-         {},
-         "audit finding 68 (code-only: on/off text is 0 or 1 only), phase 7 task SE1",
-         {"else if (key == \"is_rescan\") s.is_rescan = (value == \"1\");",
-          "bool flag_bool(const std::string& v) { return v == \"1\" || v == \"true\" || v == \"yes\"; }",
-          "if (v != \"0\") on = true;"},
-         {"if (a.ms == \"off\") s.mslimit_enabled = false;",
-          "if (const std::optional<bool> on = parse_bool(line.value)) s.**b = *on;"},
-         {{"src/core/strutil.cpp", "if (text == \"1\") return true;", "parse_bool, the owner"},
-          {"src/core/strutil.cpp", "if (text == \"0\") return false;", "parse_bool, the owner"}}},
-        // A setting's range, or the cap floor of 1 bar, worked out again
-        // outside the key table.
-        {"What range may a number setting hold?",
-         "Settings::clamp in src/app/config.cpp (the key table)",
-         R"(\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|hit_window_ms|volume_pct_)\s*=\s*(std::(clamp|max|min)\(|[^;]*>\s*100\s*\?)|\b(sp_)?cap\s*<\s*1\b|std::max\(\s*1\s*,[^;]*cap\b)",
-         R"(Settings::clamp\()",
-         {"src/app/config.cpp"},
-         {},
-         "D51 Q14 (nearest edge of the box's range, volume 0 to 100) and Q16 (a 1-bar cap stays "
-         "allowed); audit findings 138, 139, 322; phase 7 task SE1",
-         {"app.settings.sp_cap = std::max(1, cap);",
-          "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,",
-          "volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;",
-          "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "if (cap < 1)",
-          "const int cap = std::max(1, pc->sp_meter_cap());"},
-         {"app.settings.mslimit_value = Settings::clamp(&Settings::mslimit_value, v);",
-          "workers_ = std::max(1, workers);", "d.width = std::max(1, width);",
-          "const int window = static_cast<int>(kSqueezeWindowMs);"}},
-        {"What gain does a volume percent play at?",
-         "Settings::volume_gain in src/app/config.cpp",
-         R"((volume|percent|pct)\w*\)*\s*/\s*100\b)",
-         R"(volume_gain\()",
-         {},
-         {},
-         "audit finding 72, phase 7 task SE1",
-         {"transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
-          "const float gain = percent / 100.0f;"},
-         {"transport_.set_gain(Settings::volume_gain(volume_pct_));",
-          "const double bars = phrase_count / 4.0;"},
-         {{"src/app/config.cpp",
-           "return static_cast<float>(clamp(&Settings::preview_volume, percent)) / 100.0f;",
-           "volume_gain, the owner"}}},
-    };
-    return r;
-}
-
-const std::vector<KnownCopy>& se1_known_copies() {
-    static const std::vector<KnownCopy> k = {
-        {"What text turns an INI setting on or off?", "tools/replay.cpp",
-         "bool flag_bool(const std::string& v) { return v == \"1\" || v == \"true\" || v == \"yes\"; }",
-         "task T1 (hydra_replay's flags read through parse_bool)"},
-        {"What range may a number setting hold?", "tools/replay.cpp", "if (cap < 1)",
-         "task T1 (hydra_replay's cap reads through Settings::clamp)"},
-        {"What range may a number setting hold?", "src/ui/settings_bar.cpp",
-         "app.settings.sp_cap = std::max(1, cap);", "task SE2 (the boxes call Settings::clamp)"},
-        {"What range may a number setting hold?", "src/ui/settings_bar.cpp",
-         "app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -window, window);",
-         "task SE2 (the boxes call Settings::clamp)"},
-        {"What range may a number setting hold?", "src/ui/paths_tab.cpp",
-         "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,",
-         "task SE2 (the boxes call Settings::clamp)"},
-        {"What range may a number setting hold?", "src/ui/preview_controller.cpp",
-         "volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;",
-         "task PV (the volume reads through Settings::clamp)"},
-        {"What range may a number setting hold?", "src/ui/preview_tab.cpp",
-         "const int cap = std::max(1, pc->sp_meter_cap());", "task PV (the Preview's cap floors)"},
-        {"What range may a number setting hold?", "src/app/preview_view.cpp",
-         "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "task PV (the Preview's cap floors)"},
-        {"What range may a number setting hold?", "src/app/preview_view.cpp",
-         "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "task PV (the Preview's cap floors)"},
-        {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
-         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
-         "task PV (the Preview calls Settings::volume_gain)"},
-        {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
-         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
-         "task PV (the Preview calls Settings::volume_gain)"},
-    };
-    return k;
-}
-
-}  // namespace
-
-TEST_CASE("single-owner: SE1's rows match their own examples (until M7-1 joins them)") {
-    const auto flags = std::regex::ECMAScript | std::regex::optimize;
-    std::set<std::string> questions;
-    for (const OwnerRule& r : rules()) questions.insert(r.question);
-    for (const OwnerRule& r : se1_rows()) {
-        INFO("question listed twice: " << r.question);
-        CHECK(questions.insert(r.question).second);
-        const CompiledRule c{&r, std::regex(r.pattern, flags),
-                             std::regex(r.calls_owner.empty() ? "$^" : r.calls_owner, flags)};
-        for (const std::string& line : r.must_match) {
-            INFO(r.question << " should flag: " << line);
-            CHECK(flags_line(c, line));
-        }
-        for (const std::string& line : r.must_not_match) {
-            INFO(r.question << " should not flag: " << line);
-            CHECK_FALSE(flags_line(c, line));
-        }
-        for (const OwnerLine& o : r.owner_lines) {
-            INFO(r.question << " owner line the rule does not flag: " << o.line_text);
-            CHECK(flags_line(c, o.line_text));
-        }
-    }
-    for (const KnownCopy& k : se1_known_copies()) {
-        INFO("baseline entry names no SE1 row: " << k.question);
-        bool named = false;
-        for (const OwnerRule& r : se1_rows()) named = named || r.question == k.question;
-        CHECK(named);
-    }
 }
 
 // ST1 (findings 116 and 132): in record_store.cpp a stored row becomes a

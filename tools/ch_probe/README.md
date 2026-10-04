@@ -21,7 +21,8 @@ becomes a fact: "at a measured offset of X ms, this note was hit or missed."
 ## The route that works at the game today
 
 `experiments/play_chart.py` auto-plays a chart and hits the notes (proven on
-"Slipping", 2026-09-25). It needs no debugger. It:
+"Slipping", 2026-09-25). It needs no debugger. It reads the chart's notes from
+a `hydra_replay dump` JSON, so it plays exactly the notes Hydra analyzed. It:
 
 1. opens the game and checks the two window constants (`process.py`);
 2. finds the live engine object by memory scan (`engine_finder.py`): the
