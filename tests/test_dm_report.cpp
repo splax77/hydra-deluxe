@@ -28,6 +28,7 @@
 #include "core/model.h"
 #include "app/dm_report.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "dm_fixture.h"
 #include "net/dmbot_client.h"
 #include "parse/song.h"
@@ -212,6 +213,41 @@ TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
         store, {unknown_meta}, kMode, store::Lens{});
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == kUnknownTitle);
+
+    // A stored title made only of tags reads the same fallback.
+    store::RecordStore tags_only(":memory:");
+    fill_store(tags_only, test::kTagOnlyTitle);
+    rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].song == kUnknownTitle);
+
+    // A bold stored title reads without its tags.
+    store::RecordStore bold(":memory:");
+    fill_store(bold, "<b>Bold Title</b>");
+    rows = app::dm_report::collect_dm_rows(bold, {unknown_meta}, kMode, store::Lens{});
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].song == "Bold Title");
+}
+
+TEST_CASE("collect_dm_rows: a percent rounds once") {
+    // 198,010 of 198,020 is 99.99495%: rounded once it reads 99.99%, where
+    // rounding to four places first and then to two read 100.00%. The row is
+    // the one collect_dm_rows makes for that score at base speed.
+    DmReportRow row;
+    row.song = "Percent Song";
+    row.actual = 198010;
+    row.optimal = 198020;
+    row.delta = 10;
+    row.pct = 99.99495;
+    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
+
+    // The payload carries the percent's text, and the page shows that text
+    // instead of rounding the number itself.
+    CHECK(html.find("\"pct_txt\":\"99.99%\"") != std::string::npos);
+    CHECK(html.find("r.pct.toFixed(") == std::string::npos);
+    // Counts and the over-optimal delta go through the page's shared fmt.
+    CHECK(html.find(".toLocaleString()]") == std::string::npos);
+    CHECK(html.find("(-r.delta).toLocaleString()") == std::string::npos);
 }
 
 namespace {

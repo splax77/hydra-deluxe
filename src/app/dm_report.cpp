@@ -4,10 +4,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "app/display_format.h"  // format_percent
 #include "app/html_page.h"
-#include "app/report.h"  // report::plain — strips Clone Hero <color> markup
+#include "app/report.h"  // records_by_hash
+#include "core/model.h"  // counted
 #include "core/strutil.h"  // to_lower_ascii
-#include "parse/song.h"  // title_or_unknown
+#include "parse/song.h"  // display_title, strip_rich_tags
 
 namespace hydra::app::dm_report {
 
@@ -100,7 +102,7 @@ const PAGE = {
     const noDelta = r.delta === null || r.delta === undefined;
     const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');
     const deltaTxt = noDelta ? DASH
-                   : (r.delta < 0 ? '+' + (-r.delta).toLocaleString() + ' over' : fmt(r.delta));
+                   : (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));
     return [
       ['song trunc', r.song],
       ['dim trunc artist', r.artist],
@@ -108,7 +110,7 @@ const PAGE = {
       ['num', fmt(r.actual)],
       ['num', fmt(r.optimal)],
       [deltaCls, deltaTxt],
-      ['num', r.pct === null || r.pct === undefined ? DASH : r.pct.toFixed(2) + '%'],
+      ['num', r.pct_txt === null || r.pct_txt === undefined ? DASH : r.pct_txt],
       ['num', r.fc ? '\u2713' : DASH],
       ['num', r.percent + '%'],
       ['num', r.speed + '%'],
@@ -124,19 +126,21 @@ const PAGE = {
     const notAnalyzed = rows.filter(r => r.status === 'not analyzed');
     const notInLibrary = rows.filter(r => r.status === 'not in library');
     const otherSpeed = rows.filter(r => r.status === 'other speed');
+    // The one percent the page works out itself: the mean of the full
+    // percents of the rows the filter shows, rounded once here.
     const withPct = rows.filter(r => r.pct !== null && r.pct !== undefined);
     const avgPct = withPct.length
       ? (withPct.reduce((a, r) => a + r.pct, 0) / withPct.length).toFixed(2) + '%' : DASH;
     const left = matched.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);
     return [
-      ['Scores', rows.length.toLocaleString()],
-      ['Matched', matched.length.toLocaleString()],
-      ['Above optimal', above.length.toLocaleString()],
-      ['Not analyzed', notAnalyzed.length.toLocaleString()],
-      ['Not in library', notInLibrary.length.toLocaleString()],
-      ['Other speed', otherSpeed.length.toLocaleString()],
+      ['Scores', fmt(rows.length)],
+      ['Matched', fmt(matched.length)],
+      ['Above optimal', fmt(above.length)],
+      ['Not analyzed', fmt(notAnalyzed.length)],
+      ['Not in library', fmt(notInLibrary.length)],
+      ['Other speed', fmt(otherSpeed.length)],
       ['Avg % of optimal', avgPct],
-      ['Points left on table', left.toLocaleString()],
+      ['Points left on table', fmt(left)],
     ];
   },
 };
@@ -194,15 +198,15 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             row.artist = s.artist;
             row.charter = s.charter;
         } else if (rec) {
-            row.song = title_or_unknown(report::plain(rec->ref_name));
-            row.artist = report::plain(rec->ref_artist);
-            row.charter = report::plain(rec->ref_charter);
+            row.song = display_title(rec->ref_name);
+            row.artist = strip_rich_tags(rec->ref_artist);
+            row.charter = strip_rich_tags(rec->ref_charter);
         } else {
             row.song = s.song_name;
             row.artist = s.artist;
             row.charter = s.charter;
         }
-        if (row.charter.empty() && rec) row.charter = report::plain(rec->ref_charter);
+        if (row.charter.empty() && rec) row.charter = strip_rich_tags(rec->ref_charter);
 
         // Hydra's optimal is a base-speed answer, and Clone Hero keeps a
         // leaderboard per speed. An off-speed score shows Hydra's numbers when
@@ -244,11 +248,16 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
         data += ",\"actual\":" + std::to_string(r.actual);
         data += ",\"optimal\":" + (r.optimal ? std::to_string(*r.optimal) : std::string("null"));
         data += ",\"delta\":" + (r.delta ? std::to_string(*r.delta) : std::string("null"));
-        if (r.pct) {
-            std::snprintf(num, sizeof(num), "%.4f", *r.pct);
+        // `pct` is the full percent the column sorts on and the average tile
+        // reads; `pct_txt` is what the cell shows, rounded once by
+        // format_percent.
+        if (r.pct && r.optimal) {
+            std::snprintf(num, sizeof(num), "%.17g", *r.pct);
             data += ",\"pct\":" + std::string(num);
+            data += ",\"pct_txt\":";
+            json_escape_into(data, format_percent(r.actual, *r.optimal, 2));
         } else {
-            data += ",\"pct\":null";
+            data += ",\"pct\":null,\"pct_txt\":null";
         }
         data += ",\"fc\":" + std::string(r.is_fc ? "1" : "0");
         data += ",\"percent\":" + std::to_string(r.percent);
@@ -284,7 +293,7 @@ std::string counts_phrase(const DmReportStats& stats) {
                       group_thousands(stats.not_analyzed) + " not analyzed, " +
                       group_thousands(stats.not_in_library) + " not in your library";
     if (stats.other_speed > 0)
-        out += ", " + report::counted(stats.other_speed, "at another speed", "at other speeds");
+        out += ", " + hydra::counted(stats.other_speed, "at another speed", "at other speeds");
     return out;
 }
 
@@ -299,7 +308,7 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
     if (rows.empty()) return out;
 
     std::string subtitle = username + " — " +
-                           report::counted(out.stats.total, "score", "scores") + ": " +
+                           hydra::counted(out.stats.total, "score", "scores") + ": " +
                            counts_phrase(out.stats);
     std::string footer =
         "Actual scores from dmleaderboards.com against Hydra's optimal for " + chartmode +

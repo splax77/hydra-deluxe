@@ -18,7 +18,9 @@
 #include "app/fill_report.h"
 #include "core/model.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "parse/song.h"
+#include "search/graph.h"  // fill_rule_name
 #include "store/record_store.h"
 
 using namespace hydra;
@@ -186,6 +188,31 @@ TEST_CASE("collect_fill_rows: a chart in one database only still gets a row") {
     CHECK(only_new->old_path.empty());
 }
 
+TEST_CASE("collect_fill_rows: an old record with no score and no new record") {
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+
+    // The 1.0 database holds a Ready record with no paths, so its summary has
+    // no score, and the 1.1 database holds nothing for the chart. This is the
+    // empty record display_fixtures.h's store_batch_result writes, filed here
+    // under the 1.0 key: that fixture files under the default lens, which is
+    // the 1.1 rule, and the 1.0 side never reads a 1.1 result.
+    HydraRecord empty;
+    empty.sp_cap = kCloneHeroSpCap;
+    empty.ms_limit = app::Settings{}.mslimit_value;
+    empty.legacy_fills = true;
+    old_store.add_song(kOldOnly, "Song bb22", "Test Artist", "Test Charter",
+                       sample_chart().song);
+    old_store.add_record(key_for(kOldOnly, true), empty);
+
+    std::vector<FillCompareRow> rows = compare(old_store, new_store);
+    REQUIRE(rows.size() == 1);
+    CHECK_FALSE(rows[0].old_score.has_value());
+    CHECK_FALSE(rows[0].new_score.has_value());
+    // Labelled by the database that holds the record, not by the score.
+    CHECK(rows[0].status == "only 1.0");
+}
+
 TEST_CASE("collect_fill_rows: each side reads only its own rule, even from one store") {
     // One store holding both rules' results for a chart, as the app's own
     // database does once "1.0 fills" has been used.
@@ -209,17 +236,20 @@ TEST_CASE("collect_fill_rows: each side reads only its own rule, even from one s
 }
 
 TEST_CASE("tally_fill_rows counts every status") {
-    std::vector<FillCompareRow> rows(6);
+    std::vector<FillCompareRow> rows(7);
     rows[0].status = "same";
     rows[1].status = "1.0 higher";
     rows[2].status = "1.0 higher";
     rows[3].status = "1.1 higher";
     rows[4].status = "only 1.0";
     rows[5].status = "only 1.1";
+    // Every status is counted by its own name: a status the page does not
+    // know lands in no bucket, not in "only 1.1".
+    rows[6].status = "no such status";
 
     app::fill_report::FillCompareStats stats =
         app::fill_report::tally_fill_rows(rows);
-    CHECK(stats.total == 6);
+    CHECK(stats.total == 7);
     CHECK(stats.same == 1);
     CHECK(stats.ch10_higher == 2);
     CHECK(stats.ch11_higher == 1);
@@ -249,6 +279,24 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
     CHECK(html.find("old-path-C") != std::string::npos);
     CHECK(html.find("new-path-C") != std::string::npos);
     CHECK(html.find("sortKey: 'delta',") != std::string::npos);
+
+    // The title, heading and score and path columns name each rule by its
+    // short name.
+    const std::string old_rule = fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Short);
+    const std::string new_rule = fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Short);
+    CHECK(html.find("<title>Fill spawn comparison &mdash; " + old_rule + " vs " + new_rule +
+                    "</title>") != std::string::npos);
+    CHECK(html.find("<span class=\"accent\">" + old_rule + " vs " + new_rule + "</span>") !=
+          std::string::npos);
+    CHECK(html.find("{k:'s10',     t:'" + old_rule + "',") != std::string::npos);
+    CHECK(html.find("{k:'s11',     t:'" + new_rule + "',") != std::string::npos);
+    CHECK(html.find("{k:'p10',     t:'" + old_rule + " path',") != std::string::npos);
+    CHECK(html.find("{k:'p11',     t:'" + new_rule + " path',") != std::string::npos);
+    CHECK(html.find("__OLD_RULE__") == std::string::npos);
+    CHECK(html.find("__NEW_RULE__") == std::string::npos);
+    // Counts and deltas go through the page's shared fmt.
+    CHECK(html.find(".toLocaleString()]") == std::string::npos);
+    CHECK(html.find("'+' + r.delta.toLocaleString()") == std::string::npos);
 }
 
 TEST_CASE("generate_fill_report: tally and framing behind one seam") {
@@ -281,6 +329,10 @@ TEST_CASE("generate_fill_report: tally and framing behind one seam") {
                                                store::Lens{});
     CHECK(none.stats.total == 0);
     CHECK(none.html.empty());
+    // The empty page's reason comes from here, so hydra_fillcompare prints
+    // what the seam says instead of deciding it again.
+    CHECK(none.reason == "No records to compare. Run hydra_batch into both databases first.");
+    CHECK(result.reason.empty());
 }
 
 TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
@@ -297,4 +349,20 @@ TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
     std::vector<FillCompareRow> rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == kUnknownTitle);
+
+    // A title made only of tags reads the same fallback.
+    new_store.add_song(kBoth, test::kTagOnlyTitle, "Test Artist", "Test Charter",
+                       sample_chart().song);
+    rows = compare(old_store, new_store);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].song == kUnknownTitle);
+
+    // A bold title, artist and charter read without their tags.
+    new_store.add_song(kBoth, "<b>Bold Title</b>", "<i>Tagged Artist</i>",
+                       "<color=#FF8000>Tagged Charter</color>", sample_chart().song);
+    rows = compare(old_store, new_store);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].song == "Bold Title");
+    CHECK(rows[0].artist == "Tagged Artist");
+    CHECK(rows[0].charter == "Tagged Charter");
 }
