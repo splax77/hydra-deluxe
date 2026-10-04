@@ -1786,10 +1786,17 @@ TEST_CASE("tied variants: a path that banked its leader's SqIn phrase is not fol
     // The leader's SqIn step sits on 12288, which it collected.
     CHECK(steps_of(in_lead->activations.back()) ==
           std::vector<Step>{{10752, 15360, SpEndKind::Activation}, {12288, 16896, SpEndKind::SqIn}});
-    CHECK(variant_at(*in_lead, 13824) == nullptr);
+    // D32: '1+' ends its SP at 16896, where 12288 is still in the window.
+    // Before D32 that SP end was never taken (the window's chord made it
+    // look like a squeeze choice), so '1+' ran on in SP and scored 7350.
+    CHECK(in_lead->totalscore() == 6750);
 
-    const Path* banked = root_named(rec.paths, "0 E0");
+    // '0 E0' is never folded into '1+' while SP runs (the group key keeps
+    // them apart). Both SP ends fall on 16896 with the same score, so it
+    // folds there, after SP, as a plain tied path with its own window.
+    const Path* banked = variant_at(*in_lead, 13824);
     REQUIRE(banked != nullptr);
+    CHECK(banked->pathstring() == "0 E0");
     const Activation& a = banked->activations.back();
     CHECK(steps_of(a) == std::vector<Step>{{13824, 16896, SpEndKind::Activation}});
     CHECK(a.sqinouts.empty());

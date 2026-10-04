@@ -20,6 +20,17 @@ struct TickGreater {
         return a.ticks() > b.ticks();
     }
 };
+
+// D32: whether a squeeze-in's new SP end, one SP bar past an SP end, lands
+// at or before the phrase that squeezes in. The graph builds nodes in chart
+// order, so a node for such an end has to be added when the SP end it moves
+// is handled (add_deact_edge), not when the phrase comes up (build), which is
+// too late: the node would then sit behind the phrase on the track. Only
+// possible when 500 ms spans more than one SP bar; no library chart is that
+// fast. The one statement of the test: build and add_deact_edge both ask it.
+bool sqin_end_by_phrase(int64_t end_tick, int64_t phrase_tick) {
+    return end_tick <= phrase_tick;
+}
 }  // namespace
 
 ScoreGraphNode* ScoreGraph::new_node(const Timecode& tc, bool is_sp) {
@@ -151,6 +162,12 @@ void ScoreGraph::build() {
             std::map<int64_t, SpExtension> ext_map;
             std::unordered_map<int64_t, Timecode> new_pending;
             for (const DeactExtension& de : ext) {
+                // A pending end is never behind the head, so only a recently
+                // handled SP end (a squeeze-in's) can move to here or before.
+                // That end is no node to add now: add_deact_edge already added
+                // it when it is the end's own squeeze-in, and otherwise no
+                // path squeezes this phrase in there.
+                if (sqin_end_by_phrase(de.to.ticks(), timestamp.timecode.ticks())) continue;
                 ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped};
                 new_pending[de.to.ticks()] = de.to;
             }
@@ -375,10 +392,20 @@ void ScoreGraph::add_deact_edge() {
         deact_edge->sqinout_time = c->timecode;
         deact_edge->sqinout_timing = offset_from_sp_end(c->timecode.ms(), end.ms());
         deact_edge->sqin_time = plusmeasure(end, sp_bars_to_measures(1));
-        if (c->timecode.ticks() <= end.ticks())
+        if (c->timecode.ticks() <= end.ticks()) {
             deact_edge->sqout_time = plusmeasure(end, sp_bars_to_measures(1));
-        else
+        } else {
             deact_edge->late_sqin_count = 1;
+            // The late SqIn's end comes before its own phrase: add its node
+            // now, while it is still ahead (sqin_end_by_phrase).
+            const Timecode& sqin_end = *deact_edge->sqin_time;
+            if (sqin_end_by_phrase(sqin_end.ticks(), c->timecode.ticks()) &&
+                pending_deacts_.find(sqin_end.ticks()) == pending_deacts_.end()) {
+                pending_deacts_[sqin_end.ticks()] = sqin_end;
+                deact_heap_.push_back(sqin_end);
+                std::push_heap(deact_heap_.begin(), deact_heap_.end(), TickGreater{});
+            }
+        }
     }
 
     recent_deact_edges_.push_back(deact_edge);

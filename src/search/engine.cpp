@@ -732,14 +732,25 @@ bool Engine::branch_activate(Path& p, Path* child) {
 }
 
 int32_t Engine::deactivation_type(const EdgeView& e, const Path& p) const {
-    // The edge's chord counts only when this activation can squeeze it
-    // (core/sqout_chord.h). One it banked before SP started leaves the SP
-    // end a plain one.
-    if (e.sqinout_time != NO_TIME &&
+    // The edge's chord is a squeeze choice for a path whose end is the
+    // edge's sqout_time, and only when this activation can squeeze that
+    // chord (core/sqout_chord.h). A phrase it banked before SP started
+    // leaves this SP end a plain one. So does a late SqIn's phrase still
+    // ahead of the path (buffered): that SqIn spent it, and it is this
+    // edge's chord, as nothing lies between the SqIn's SP end and it. D32:
+    // only reachable when the SqIn's new end, one SP bar on, comes before
+    // its phrase (500 ms spanning an SP bar); the phrase was squeezed in a
+    // second time there and the search broke.
+    if (e.sqinout_time != NO_TIME && p.sp_end_time == e.sqout_time && p.buffered == 0 &&
         core::activation_can_squeeze(node(acts_[(size_t)p.act_tail].act_node).tick,
-                                     e.sqinout_time)) {
-        return p.sp_end_time == e.sqout_time ? DEACT_SQINOUT : DEACT_NONE;
-    }
+                                     e.sqinout_time))
+        return DEACT_SQINOUT;
+    // Otherwise SP ends here exactly when the path's end is this node. D32:
+    // that includes a path whose end is this node while the window holds a
+    // chord it could squeeze. At a normal tempo no such path exists: its end
+    // sits at least one SP bar past that chord, and one bar outlasts the
+    // squeeze window. When it does not, the path must still end here; before
+    // D32 it ran on past its own end and broke the search.
     return p.sp_end_time == node(e.dest).tick ? DEACT_NORMAL : DEACT_NONE;
 }
 
