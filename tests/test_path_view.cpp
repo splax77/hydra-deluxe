@@ -782,7 +782,7 @@ TEST_CASE("activation rows: Burnout's three activations") {
     CHECK(a1.bars == "3 bars");
     CHECK(a1.badge == "squeeze out 163 ms");
     CHECK(a1.difficult);
-    CHECK(a1.chord == "[Kick - GreenCym]");
+    CHECK(a1.chord == "[Kick - Green cymbal]");
     REQUIRE(a1.squeeze_sentences.size() == 1);
     CHECK(a1.squeeze_sentences[0].text ==
           "Hit the [  Y  ] note more than 163.0 ms late so it lands after Star Power "
@@ -1092,8 +1092,8 @@ TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
 TEST_CASE("multiplier squeeze: Burnout's one squeeze and the fold's summary") {
     std::vector<MultSqueezeView> v = build_multsqueezes(burnout().record);
     REQUIRE(v.size() == 1);
-    CHECK(v[0].label == "2x   (+15 pts):   [Red - YellowCym]");
-    CHECK(v[0].howto == "Hit [Red] first.");
+    CHECK(v[0].label == "2x   (+15 pts):   [Red snare - Yellow cymbal]");
+    CHECK(v[0].howto == "Hit [Red snare] first.");
     CHECK(v[0].points == 15);
     CHECK(multsqueeze_summary(v) == "+15");
     CHECK(multsqueeze_summary({}) == "none");

@@ -693,7 +693,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
 
     pc.seek_ms(0.0);
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
-    IM_CHECK_STR_EQ(pc.next_act_box().detail.c_str(), "at m32.1.0 \xC2\xB7 [Kick - GreenCym]");
+    IM_CHECK_STR_EQ(pc.next_act_box().detail.c_str(), "at m32.1.0 \xC2\xB7 [Kick - Green cymbal]");
 
     ctx->ItemClick("**/Act >##nextact");
     const double act1 = pc.position_ms();
