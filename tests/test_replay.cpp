@@ -182,6 +182,134 @@ TEST_CASE("targeted search reproduces every corpus path") {
     CHECK(mismatches == 0);
 }
 
+namespace {
+
+std::string ticks_text(const std::vector<int64_t>& ticks) {
+    std::string s = "{";
+    for (size_t i = 0; i < ticks.size(); ++i)
+        s += (i ? ", " : "") + std::to_string(ticks[i]);
+    return s + "}";
+}
+
+std::string steps_text(const std::vector<SpEndStep>& steps) {
+    std::string s = "{";
+    for (size_t i = 0; i < steps.size(); ++i)
+        s += (i ? ", " : "") + std::to_string(steps[i].tick) + "->" +
+             std::to_string(steps[i].end_tick) + " kind " +
+             std::to_string(static_cast<int>(steps[i].kind));
+    return s + "}";
+}
+
+std::string opt_text(const std::optional<int64_t>& t) {
+    return t ? std::to_string(*t) : std::string("unset");
+}
+
+struct TiedVariantCount {
+    int variants = 0;  // tied variants the analysis listed
+    int compared = 0;  // of those, the ones a lone search priced the same way
+    int differing = 0; // of those, the ones whose stored facts differ
+};
+
+// Decision D3 for one set of analysis settings, over the whole corpus. Each
+// variant is priced alone with a targeted search, and its stored facts must
+// equal that search's. Only a root of the search is an oracle: a root was
+// never folded. Skips, the early-fill offset and the skipped fills are not
+// compared; they are finding 97.
+TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
+    TiedVariantCount n;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(path, cfg);
+
+        for (const Path* p : rec.all_paths()) {
+            if (!p->var_point) continue;
+            ++n.variants;
+            const std::vector<Activation> want = p->all_activations();
+            std::vector<int64_t> ticks;
+            for (const Activation& a : want) ticks.push_back(a.timecode.ticks());
+
+            const std::vector<Path> alone = search_target(song, cfg, ticks);
+            const Path* match = nullptr;
+            for (const Path& q : alone) {
+                if (q.totalscore() != p->totalscore()) continue;
+                const std::vector<Activation> qa = q.all_activations();
+                bool same = qa.size() == want.size();
+                for (size_t i = 0; same && i < qa.size(); ++i) {
+                    same = qa[i].sqinouts.size() == want[i].sqinouts.size();
+                    for (size_t k = 0; same && k < qa[i].sqinouts.size(); ++k)
+                        same = qa[i].sqinouts[k].kind == want[i].sqinouts[k].kind;
+                }
+                if (same) { match = &q; break; }
+            }
+            if (!match) continue;
+            ++n.compared;
+
+            // Every difference, spelled out with both values, so a failure
+            // names the chart, the path, the field and what each side holds.
+            std::vector<std::string> diffs;
+            const std::string where = path + " [" + p->pathstring() + "] ";
+            if (match->trailing_bank_ticks != p->trailing_bank_ticks)
+                diffs.push_back(where + "trailing_bank_ticks: stored " +
+                                ticks_text(p->trailing_bank_ticks) + ", alone " +
+                                ticks_text(match->trailing_bank_ticks));
+            const std::vector<Activation> got = match->all_activations();
+            for (size_t i = 0; i < got.size(); ++i) {
+                const std::string act = where + "activation at " +
+                                        std::to_string(want[i].timecode.ticks()) + " ";
+                if (got[i].sp_end_steps != want[i].sp_end_steps)
+                    diffs.push_back(act + "sp_end_steps: stored " +
+                                    steps_text(want[i].sp_end_steps) + ", alone " +
+                                    steps_text(got[i].sp_end_steps));
+                if (got[i].bank_rise_ticks != want[i].bank_rise_ticks)
+                    diffs.push_back(act + "bank_rise_ticks: stored " +
+                                    ticks_text(want[i].bank_rise_ticks) + ", alone " +
+                                    ticks_text(got[i].bank_rise_ticks));
+                if (got[i].sqout_tick != want[i].sqout_tick)
+                    diffs.push_back(act + "sqout_tick: stored " + opt_text(want[i].sqout_tick) +
+                                    ", alone " + opt_text(got[i].sqout_tick));
+                if (got[i].display_backends() != want[i].display_backends())
+                    diffs.push_back(act + "backend rows: stored " +
+                                    std::to_string(want[i].display_backends().size()) +
+                                    " rows, alone " +
+                                    std::to_string(got[i].display_backends().size()) +
+                                    " rows, not equal");
+            }
+            if (!diffs.empty()) ++n.differing;
+            for (const std::string& d : diffs) CHECK_MESSAGE(false, d);
+        }
+    }
+    return n;
+}
+
+}  // namespace
+
+// Decision D3: a tied variant is stored as a branch of its leader, but its
+// facts are its own. The fixtures in test_search.cpp prove the mechanism on
+// purpose-built charts; this guard catches any later case they do not shape.
+//
+// The app's defaults (cap 4, score range 4) hold few ties, and none of them
+// folded while SP ran or banked bars at different ticks from its leader. So
+// the guard also runs at score range 40, at cap 4 and at cap 2. Those two
+// hold hundreds of variants, and with either D3 fix taken out of the engine
+// dozens of them store their leader's facts instead of their own.
+TEST_CASE("every tied variant stores what a search pricing it alone stores") {
+    struct Setting { int cap; int depth; };
+    for (const Setting s : {Setting{4, 4}, Setting{4, 40}, Setting{2, 40}}) {
+        app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+        cfg.sp_cap = s.cap;
+        cfg.depth_value = s.depth;
+        INFO("cap " << s.cap << ", score range " << s.depth);
+        const TiedVariantCount n = check_tied_variants(cfg);
+        CHECK(n.variants > 0);
+        CHECK(n.compared > 0);
+        CHECK(n.differing == 0);
+        MESSAGE("cap " << s.cap << ", score range " << s.depth << ": compared " << n.compared
+                       << " of " << n.variants << " variants against a lone search, "
+                       << n.differing << " differ");
+    }
+}
+
 // A tick that is not an activation fill cannot be honoured, and the engine says
 // so by giving back nothing rather than quietly pricing a different path.
 TEST_CASE("targeted search rejects a tick that is not a fill") {
