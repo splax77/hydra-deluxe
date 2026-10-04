@@ -454,7 +454,7 @@ target_compile_definitions(hydra_tests PRIVATE
     HYDRA_TESTDATA_DIR="${CMAKE_SOURCE_DIR}/testdata"
     HYDRA_INPUT_DIR="${CMAKE_SOURCE_DIR}/testdata/input"
     HYDRA_ASSET_DIR="${CMAKE_SOURCE_DIR}/assets/preview"
-    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_long_paths and test_single_owner scan src/ and tools/
+    HYDRA_SOURCE_DIR="${CMAKE_SOURCE_DIR}"  # test_single_owner scans src/ and tools/
 )
 
 # ---- hydra_uitest: the headless GUI test runner ----------------------------
