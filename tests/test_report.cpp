@@ -405,6 +405,21 @@ TEST_CASE("report payload carries the hit window and the tier table") {
     CHECK(occurrences(rows, "\"search\":\"" + search + "\"") == 2);
 }
 
+TEST_CASE("report payload: the average multiplier is C++ text from format_avg_mult") {
+    // The cell prints the payload's mult_text; the number beside it stays
+    // for sorting. The page never formats the multiplier itself.
+    report::ReportRow row;
+    row.song = "Song";
+    row.path = "1";
+    row.tier = "None";
+    row.tok = "tn";
+    row.mult = 2.5;
+    const std::string html = report::build_html({row}, "sub", "foot", 85.0);
+    CHECK(html.find("\"mult\":2.5,\"mult_text\":\"2.500\"") != std::string::npos);
+    CHECK(html.find("['num', r.mult_text],") != std::string::npos);
+    CHECK(html.find("r.mult.toFixed(") == std::string::npos);
+}
+
 TEST_CASE("report payload: the search field is folded and tag-free") {
     report::ReportRow row;
     row.song = "Halo";

@@ -140,7 +140,7 @@ const PAGE = {
     ['num', r.ms_text === null ? DASH : r.ms_text],
     ['chip ' + r.tok, tierLabel(r.tier), 'chip'],
     ['num', r.efill_text === null ? DASH : r.efill_text],
-    ['num', r.mult.toFixed(3)],
+    ['num', r.mult_text],
     ['num', r.sqin],
     ['num', r.sqout],
     ['num', fmt(r.notes)],
@@ -205,15 +205,14 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              const std::vector<TimingTier>& tiers) {
     // The two open bands are the table's last two entries: "Beyond", then
-    // the "None" (no squeeze) entry. The first entry is "Normal".
+    // the "None" (no squeeze) entry.
     const TimingTier& none = tiers.back();
     const TimingTier& beyond = tiers[tiers.size() - 2];
-    const TimingTier& normal = tiers.front();
     if (!ms) return {none.name, none.tok};
-    // A timing on the difficult floor is not past it, so it reads Normal
-    // (D48 Q3). Every other edge belongs to the band below it the same way:
-    // a timing exactly on the two-hit budget is Insane+, not Beyond.
-    if (!past_difficult_floor(*ms)) return {normal.name, normal.tok};
+    // Each edge belongs to the band below it (D48 Q3). The table's first row
+    // is Normal up to and including the difficult floor, so a timing on the
+    // floor reads Normal (past_difficult_floor's rule), and a timing exactly
+    // on the two-hit budget is Insane+, not Beyond.
     for (const TimingTier& t : tiers)
         if (t.cutoff && *ms <= *t.cutoff) return {t.name, t.tok};
     return {beyond.name, beyond.tok};
@@ -352,7 +351,10 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
         data += ",\"efill\":" + (r.efill ? py_repr(*r.efill) : std::string("null"));
         data += ",\"efill_text\":";
         ms_text_into(data, r.efill);
+        // `mult` sorts the column; `mult_text` is what the cell shows.
         data += ",\"mult\":" + py_repr(r.mult);
+        data += ",\"mult_text\":";
+        json_escape_into(data, format_avg_mult(r.mult));
         data += ",\"sqin\":" + std::to_string(r.sqin);
         data += ",\"sqout\":" + std::to_string(r.sqout);
         data += ",\"notes\":" + std::to_string(r.notes);
