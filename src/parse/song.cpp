@@ -1280,11 +1280,10 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
 
     const ChartSection& song_sec = sections_.at("Song");
     const ChartDataEntry& res_entry = song_sec.prop_data.at("Resolution").at(0);
-    int64_t tick_resolution;
-    if (res_entry.property_int.has_value())
-        tick_resolution = *res_entry.property_int;
-    else
-        tick_resolution = std::stoll(*res_entry.property_str);
+    // One number rule for Resolution: std::stoll on the raw text (leading
+    // digits read, trailing junk ignored, no digits refuses the chart).
+    // property_int would give the same value whenever it is set.
+    const int64_t tick_resolution = std::stoll(*res_entry.property_str);
 
     Song song(tick_resolution);
     song_ = &song;
