@@ -2273,7 +2273,7 @@ TEST_CASE("preview lookups: every corpus variant's gauge matches the old scan") 
     std::mt19937 rng(7);
     int variants = 0, differing = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
         if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         for (size_t pi = 0; pi < rec.paths.size(); ++pi) {
