@@ -200,9 +200,9 @@ def generate_probe_chart(
 
 # --- input_driver.py : the input driver -------------------------------------
 #
-# Wraps SendInput; schedules a keystroke against the song clock at a target
-# offset. Its timing only needs to land NEAR the edge -- the measured delta is
-# what gets recorded, not the intended one.
+# Wraps SendInput. The runners wait for the song clock themselves
+# (experiments/live.wait_until), then press. Its timing only needs to land NEAR
+# the edge -- the measured delta is what gets recorded, not the intended one.
 
 @runtime_checkable
 class InputDriver(Protocol):
@@ -211,13 +211,6 @@ class InputDriver(Protocol):
     def set_binding(self, lane: int, vk: int) -> None:
         """Map a drum lane to a virtual-key code (read the game's config; don't
         guess -- see the open question in the spec)."""
-        ...
-
-    def schedule_hit(
-        self, lane: int, at_song_time: float, clock: Callable[[], float]
-    ) -> None:
-        """Fire a keystroke for `lane` when `clock()` reaches `at_song_time`.
-        `clock` is the engine song clock (seconds)."""
         ...
 
     def tap(self, lane: int) -> None:

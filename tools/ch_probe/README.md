@@ -58,7 +58,11 @@ pieces.
   song folders.
 - `ocr.py`: parses "Accuracy: X ms" text (the screen capture was removed).
 - `experiments/`: the runners. `passive_probe.py` and `active_probe.py` use
-  the debugger; the others don't.
+  the debugger. `walk_edges.py`, `watch_window.py` and `play_chart.py` don't.
+  `live.py` holds what the runners share: the snapshot read, the wait for a
+  song time, the "has the song stopped" check, the start note and the hit
+  offset. `analysis.py` turns their rows into answers. `milestone1.py`,
+  `pad_flash_test.py` and `key_delivery_test.py` are small setup checks.
 
 ## What runs here, and what needs the game
 

@@ -47,7 +47,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import constants as C, engine_finder
 from tools.ch_probe.process import open_process
 from tools.ch_probe.input_driver import InputDriver, Lane
-from tools.ch_probe.experiments import live
+from tools.ch_probe.experiments import analysis, live
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 KICK_LANE = Lane.KICK
@@ -124,11 +124,16 @@ class Row:
     sent_raw_ms: float     # raw clock at the key-down, minus the note
     engine_ms: Optional[float]  # +0x2e0 minus the note, if +0x2e0 changed
     hit: bool
+    measured_ms: float     # live.hit_offset_ms: engine_ms if there is one, else sent_ms
 
-    @property
-    def measured_ms(self) -> float:
-        """The engine's own number when there is one, else the send time."""
-        return self.engine_ms if self.engine_ms is not None else self.sent_ms
+
+def row_for(index: int, note_ms: float, planned_ms: int, raw_ms: float, est_ms: float,
+            before: live.Snapshot, after: live.Snapshot) -> Row:
+    """One walked note's row, its offset from live.hit_offset_ms."""
+    measured, from_engine = live.hit_offset_ms(note_ms, est_ms, before.hit_time_s,
+                                               after.hit_time_s)
+    return Row(index, note_ms, planned_ms, est_ms - note_ms, raw_ms - note_ms,
+               measured if from_engine else None, after.score > before.score, measured)
 
 
 def summarize(rows: list[Row]) -> list[str]:
@@ -170,9 +175,9 @@ def summarize(rows: list[Row]) -> list[str]:
             if narrowest <= widest:
                 lines.append("  Hits and misses overlap: either timing jitter, or a note"
                              " past the edge counted again. Read the rows above.")
-            else:
-                lines.append(f"  The {name.lower()} edge is between {widest:.1f} and"
-                             f" {narrowest:.1f} ms.")
+            edge = analysis.find_window_edge([(r.measured_ms, r.hit) for r in side])
+            lines.append(f"  The {name.lower()} edge is {edge.edge_ms:.2f} ms; {edge.errors}"
+                         f" of {len(side)} notes fall on the wrong side of it.")
     return lines
 
 
@@ -212,35 +217,12 @@ def main() -> None:
 
     clock = SongClock(lambda: proc.read_double(engine + C.OFF_SONG_CLOCK))
     raw_s, _ = clock.read()
-    cursor = 0
-    while cursor < len(notes) and notes[cursor]["time_ms"] < raw_s * 1000 + 150:
-        cursor += 1
+    stopped = live.StoppedCheck(raw_s, time.perf_counter())
+    cursor = live.first_note_index([n["time_ms"] for n in notes], raw_s * 1000)
     print(f"  Starting at note {cursor + 1}/{len(notes)}.\n")
     print(f"  {'#':>4}  {'plan':>5}  {'sent':>7}  {'raw':>7}  {'engine':>7}  result")
 
     rows: list[Row] = []
-    last_raw, last_move = raw_s, time.perf_counter()
-
-    def wait_until(t_ms: float) -> tuple[float, float]:
-        """Poll the clock until the estimate reaches t_ms; return (raw, est) in ms."""
-        nonlocal last_raw, last_move
-        while True:
-            raw, est = clock.read()
-            now = time.perf_counter()
-            if raw < last_raw - 1.0:
-                raise RuntimeError(f"clock jumped back ({last_raw:.2f} -> {raw:.2f} s)")
-            if raw != last_raw:
-                last_raw, last_move = raw, now
-            elif now - last_move > 5.0:
-                raise RuntimeError(f"clock frozen at {raw:.2f} s (song quit or paused)")
-            ahead = t_ms / 1000 - est
-            if ahead <= 0:
-                return raw * 1000, est * 1000
-            if ahead > 0.04:
-                time.sleep(min(ahead - 0.03, 0.5))
-            # Inside the last 40 ms, spin: every read is a chance to catch a
-            # frame change promptly, which is what keeps the estimate fresh.
-
     try:
         for i in range(cursor, len(notes)):
             note_ms = float(notes[i]["time_ms"])
@@ -249,17 +231,15 @@ def main() -> None:
                 user32.SetForegroundWindow(hwnd)   # well before the press
             before = live.read_snapshot(proc, engine)
 
-            raw_ms, est_ms = wait_until(note_ms + planned)
+            raw_ms, est_ms = live.wait_until(clock, note_ms + planned, stopped=stopped)
             driver.press_chord([KICK_LANE])
 
-            wait_until(max(note_ms, note_ms + planned) + SETTLE_MS)
+            live.wait_until(clock, max(note_ms, note_ms + planned) + SETTLE_MS,
+                            stopped=stopped)
             after = live.read_snapshot(proc, engine)
-            engine_ms = None
-            if after.hit_time_s != before.hit_time_s:
-                engine_ms = after.hit_time_s * 1000 - note_ms
-            row = Row(i, note_ms, planned, est_ms - note_ms, raw_ms - note_ms,
-                      engine_ms, after.score > before.score)
+            row = row_for(i, note_ms, planned, raw_ms, est_ms, before, after)
             rows.append(row)
+            engine_ms = row.engine_ms
             eng = f"{engine_ms:+7.1f}" if engine_ms is not None else "      -"
             print(f"  {i + 1:4d}  {planned:+5d}  {row.sent_ms:+7.1f}  {row.sent_raw_ms:+7.1f}"
                   f"  {eng}  {'HIT' if row.hit else 'miss'}")
