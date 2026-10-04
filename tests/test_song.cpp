@@ -758,3 +758,21 @@ TEST_CASE(".chart: malformed lines keep their handling") {
         CHECK(s.practice_sections[2].name == "Verse");
     }
 }
+
+TEST_CASE("the no-notes error carries no_notes_message's sentence") {
+    const NoNotesError err(Difficulty::Hard, true);
+    CHECK(std::string(err.what()) == "No Hard Pro Drums notes in this chart.");
+    // Callers that catch any chart-file problem still catch this one.
+    CHECK_THROWS_AS(throw NoNotesError(Difficulty::Hard, true), ChartFileError);
+}
+
+TEST_CASE("load-and-check throws the no-notes error for a missing difficulty") {
+    const std::string no_hard = corpus::first_chart_without_notes(Difficulty::Hard);
+    const std::string has_hard = corpus::first_chart_with_notes(Difficulty::Hard);
+    CAPTURE(no_hard);
+    CAPTURE(has_hard);
+
+    CHECK_THROWS_WITH_AS(load_songpath_with_notes(no_hard, true, true, Difficulty::Hard),
+                         "No Hard Pro Drums notes in this chart.", NoNotesError);
+    CHECK_NOTHROW(load_songpath_with_notes(has_hard, true, true, Difficulty::Hard));
+}

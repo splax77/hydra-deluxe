@@ -1,5 +1,6 @@
 #include "app/path_view.h"
 #include "app/display_format.h"
+#include "app/preview_view.h"  // song_fraction, has_song_length
 
 #include <algorithm>
 #include <cmath>
@@ -219,10 +220,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.bars = bars_text(act.sp_meter());
         av.badge = activation_badge(act);
         av.chord = act.chord.rowstr();
-        if (timing && song_length_ms && *song_length_ms > 0.0) {
-            const double at = timing->timecode(act.timecode.ticks()).ms();
-            av.song_fraction = std::clamp(at / *song_length_ms, 0.0, 1.0);
-        }
+        if (timing && song_length_ms)
+            av.song_fraction =
+                song_fraction(timing->timecode(act.timecode.ticks()).ms(), *song_length_ms);
 
         if (act.is_e_critical()) {
             // Positive = hit early, the same sign as the report:
@@ -320,7 +320,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 char tip[256];
                 // The budget at identity scale (x1.00): what the combined
                 // budget would be with no frontend-timing scale.
-                const double normal_budget = squeeze_budget_ms(1.0, W);
+                const double normal_budget = nominal_budget_ms(W);
                 std::snprintf(tip, sizeof(tip),
                               "Effectively %.1fms on the normal %.0fms scale:\n"
                               "frontend timing scales %s here, so the combined\n"
@@ -382,7 +382,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                                      : bars_text(path.leftover_sp()) + " of SP left over";
         view.summary = std::to_string(view.acts.size()) + kDot + left;
     }
-    if (timing && song_length_ms && *song_length_ms > 0.0) {
+    if (timing && song_length_ms && has_song_length(*song_length_ms)) {
         const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));
         view.timeline_end =
             "m" + std::to_string((long long)timing->timecode(end_tick).measure_beats_ticks()[0] + 1);
@@ -429,18 +429,14 @@ PathListView build_path_list(const HydraRecord& record) {
     }
 
     // The all-0 section is only worth showing when the generated list does
-    // not already contain that path: same score and same notation is the same
-    // path. Score alone would hide a genuinely different all-0 path that ties
-    // some listed path, and notation alone would hide one that reads the same
-    // but banks differently.
+    // not already contain that path. "The same path" is path_identity, the
+    // one rule the Preview's overlay key reads too.
     view.allzero = record.all_allzero_paths();
     if (view.allzero.empty()) return view;
     for (const Path* z : view.allzero) {
-        const int64_t score = z->totalscore();
-        const std::string notation = z->pathstring();
+        const std::string identity = path_identity(*z);
         for (const Path* p : flat)
-            if (p->totalscore() == score && p->pathstring() == notation)
-                return view;
+            if (path_identity(*p) == identity) return view;
     }
     view.show_allzero = true;
 

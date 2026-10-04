@@ -296,6 +296,9 @@ std::string no_notes_message(Difficulty difficulty, bool prodrums) {
            (prodrums ? " Pro Drums" : " Drums") + " notes in this chart.";
 }
 
+NoNotesError::NoNotesError(Difficulty difficulty, bool prodrums)
+    : ChartFileError(no_notes_message(difficulty, prodrums)) {}
+
 std::string title_or_unknown(std::string title) {
     // The placeholder the metadata readers used before kUnknownTitle.
     static constexpr const char* kOldPlaceholder = "<unknown title>";
@@ -1496,6 +1499,17 @@ Song load_songpath_reading(const ByteSource& src, const std::string& path, bool 
 Song load_songpath(const std::string& path, bool pro, bool bass2x,
                    Difficulty difficulty, const core::Rules& rules) {
     return load_songpath_reading(file_byte_source(path), path, pro, bass2x, difficulty, rules);
+}
+
+void require_notes(const Song& song, Difficulty difficulty, bool prodrums) {
+    if (song.is_empty()) throw NoNotesError(difficulty, prodrums);
+}
+
+Song load_songpath_with_notes(const std::string& path, bool pro, bool bass2x,
+                              Difficulty difficulty, const core::Rules& rules) {
+    Song song = load_songpath(path, pro, bass2x, difficulty, rules);
+    require_notes(song, difficulty, pro);
+    return song;
 }
 
 }  // namespace hydra

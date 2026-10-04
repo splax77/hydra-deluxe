@@ -231,7 +231,10 @@ struct PreviewScene {
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
     int64_t tick_resolution = 0;       // ticks per quarter note
-    double song_length_ms = 0.0;  // last note onset; the scrubber's right edge
+    // The last note's onset: where the SP curve closes and the Preview's own
+    // song end. The scrubber's range is the transport's length instead
+    // (PreviewTransport::load takes the later of this and the audio's end).
+    double song_length_ms = 0.0;
     bool has_notes = false;
 };
 
@@ -310,6 +313,16 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
 // 0..1, in activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
 
+// Is `length_ms` a song length the timeline can use? Only a positive length
+// is. song_fraction and the Paths tab's end-measure label both ask it, so the
+// marks and the label appear and vanish together.
+bool has_song_length(double length_ms);
+
+// How far into the song `ms` is: its share of `length_ms`, clamped to 0..1.
+// No value when has_song_length says the length is unusable. The Paths tab's
+// activation timeline and the Preview's scrub marks both ask it.
+std::optional<double> song_fraction(double ms, double length_ms);
+
 // Where "< Act" (direction -1) or "Act >" (+1) moves the playhead from
 // `now_ms`: the onset of the nearest activation strictly before or after it.
 // Half a millisecond of slack each way, so a playhead parked on an activation
@@ -384,9 +397,9 @@ PreviewScene apply_preview_overlay(PreviewScene base, const Song& song, const Pa
                                    int sp_cap = kCloneHeroSpCap,
                                    const core::Rules& rules = core::default_rules());
 
-// Identity of the path an overlay was built from. Path has no operator==, so
-// callers that must notice a changed selection compare these keys instead. A
-// null path (no overlay) gives an empty key.
+// Identity of the path an overlay was built from: path_identity, the same
+// rule the Paths tab's all-0 dedupe reads. Callers that must notice a changed
+// selection compare these keys. A null path (no overlay) gives an empty key.
 std::string path_overlay_key(const Path* path);
 
 }  // namespace hydra::app

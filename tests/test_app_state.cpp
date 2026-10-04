@@ -23,13 +23,12 @@
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"
 #include "store/record_store.h"
 #include "ui/app_state.h"
 #include "ui/generation.h"
 
-using hydra::HydraRecord;
 using hydra::app::Settings;
-using hydra::store::CapQuery;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::RecordKey;
 using hydra::store::RecordStatus;
@@ -39,9 +38,9 @@ using hydra::ui::GenerationWatcher;
 
 namespace {
 
-// The chart mode and cap a default Settings asks for; the seeded record is
-// stored under exactly these, so a change to either makes it unfindable.
-const char kChartMode[] = "Expert Pro Drums, 2x Bass";
+// The cap the seeded record is stored at. It is filed under
+// hydra::test::batch_result_key (a default Settings at this cap), so a change
+// to the chart mode or the cap makes it unfindable.
 const int kSeededCap = 4;
 
 // A library big enough to scroll; entry 0 ("Song hash000") sorts first by
@@ -113,12 +112,7 @@ std::unique_ptr<RecordStore> seeded_store(const std::string& db) {
     for (int i = 0; i < kChartCount; ++i) charts.push_back(library_entry(i));
     store->rebuild_chart_library(charts);
 
-    HydraRecord record;
-    record.sp_cap = kSeededCap;
-    record.ms_limit = Settings{}.mslimit_value;
-    store->add_record(RecordKey{library_entry(0).md5, kChartMode, CapQuery::at(kSeededCap),
-                                Settings{}.lens()},
-                      record);
+    hydra::test::store_batch_result(*store, library_entry(0).md5, kSeededCap);
     return store;
 }
 
@@ -267,8 +261,7 @@ TEST_CASE("no hydra_rules.ini leaves analysis on") {
 TEST_CASE("under a bad hydra_rules.ini no stored record reads Ready") {
     ScratchPaths paths("appstate_badrules_stale");
     seeded_store(paths.db).reset();
-    const RecordKey seeded{library_entry(0).md5, kChartMode, CapQuery::at(kSeededCap),
-                           Settings{}.lens()};
+    const RecordKey seeded = hydra::test::batch_result_key(library_entry(0).md5, kSeededCap);
 
     // Good (absent) rules file: the seeded record, written under the
     // default rules, is Ready.
@@ -366,6 +359,16 @@ TEST_CASE("the chart-file check runs on open and then every two seconds") {
     std::remove(chart.c_str());
 }
 
+// The four short UI timings the user confirmed (D48, Q33): how long "Done!"
+// and "Copied!" stay, how often typing re-filters the library, and how often
+// a running batch refreshes its results.
+TEST_CASE("UI timings: Done!, Copied!, search re-filter and batch refresh keep their seconds") {
+    CHECK(AppState::kDoneFlashSeconds == 0.5);
+    CHECK(AppState::kCopiedSeconds == 2.0);
+    CHECK(AppState::kSearchThrottleSeconds == 0.15);
+    CHECK(AppState::kBatchRefreshSeconds == 1.0);
+}
+
 // The number boxes apply each step at once (the shown record follows live)
 // but leave the INI until the edit ends: holding +/- used to rewrite the
 // file every frame.
@@ -398,11 +401,7 @@ TEST_CASE("stepping a number box back reuses the lookup it already made") {
 
     // A cap-8 record appears behind the cache's back. Stepping to 8 shows the
     // parked "not analyzed" answer: proof the store was not asked again.
-    HydraRecord at8;
-    at8.sp_cap = 8;
-    at8.ms_limit = Settings{}.mslimit_value;
-    app->store->add_record(
-        RecordKey{library_entry(0).md5, kChartMode, CapQuery::at(8), Settings{}.lens()}, at8);
+    hydra::test::store_batch_result(*app->store, library_entry(0).md5, 8);
     app->settings.sp_cap = 8;
     app->edit_settings();
     CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
@@ -453,11 +452,7 @@ TEST_CASE("refresh_library_row picks up one chart's new result") {
     REQUIRE(at < app->library_shown_count());
     CHECK(app->library_row_at(at).status == RecordStatus::NotAnalyzed);
 
-    HydraRecord record;
-    record.sp_cap = kSeededCap;
-    record.ms_limit = Settings{}.mslimit_value;
-    app->store->add_record(
-        RecordKey{fifth.md5, kChartMode, CapQuery::at(kSeededCap), Settings{}.lens()}, record);
+    hydra::test::store_batch_result(*app->store, fifth.md5, kSeededCap);
     app->refresh_library_row(fifth.md5);
     CHECK(app->library_row_at(at).status == RecordStatus::Ready);
     CHECK(app->library.counts().analyzed == 2);

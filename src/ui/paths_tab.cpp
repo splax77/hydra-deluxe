@@ -468,7 +468,7 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     if (ImGui::Button("Copy path")) copy_selected_path(app);
     hint("Ctrl+C also copies the selected path");
     const double copied_at = app.details_ui.copied_at;
-    if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < 2.0) {
+    if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {
         flow_next(ImGui::CalcTextSize("Copied!").x, spacing);
         ImGui::TextDisabled("Copied!");
     }

@@ -84,8 +84,9 @@ std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<i
                                     std::vector<bool>* promoted = nullptr);
 
 // Full analysis for one chart: one pass at settings.sp_cap bars (4 is Clone
-// Hero's rule; any other number is a what-if). Throws hydra::ChartFileError
-// when the song has no notes.
+// Hero's rule; any other number is a what-if). Throws std::logic_error when
+// the song has no notes, because that is a caller bug: callers check first
+// with require_notes (song.h), which throws the sentence the user sees.
 HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
                           const std::function<void(float)>& on_progress = {});
 

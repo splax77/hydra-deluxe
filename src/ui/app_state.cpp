@@ -107,12 +107,13 @@ void AppState::tick_library(double now) {
         reload_library();
     }
     // A batch stores results on its own threads. Re-read the summaries at
-    // most once a second, only when it stored something since the last read,
+    // most once per kBatchRefreshSeconds, only when it stored something since
+    // the last read,
     // and once more when it ends so the last results show.
     if (batch_job) {
         const BatchJob::Snapshot snap = batch_job->snapshot();
         if (snap.completed != batch_seen_completed_ &&
-            (snap.finished || now - batch_refreshed_at_ >= 1.0)) {
+            (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds)) {
             batch_seen_completed_ = snap.completed;
             batch_refreshed_at_ = now;
             refresh_library_summaries();
@@ -343,8 +344,9 @@ void AppState::update_analyze_job(double now) {
         }
         return;
     }
-    // The panel flashes "Done!" for half a second; nobody sees it otherwise.
-    if (!shown || now - d.done_at > 0.5) analyze_job.reset();
+    // The panel flashes "Done!" for the named constant's time; nobody sees
+    // it otherwise.
+    if (!shown || now - d.done_at > kDoneFlashSeconds) analyze_job.reset();
 }
 
 bool AppState::report_file_shown(double now) {
