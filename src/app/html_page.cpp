@@ -328,10 +328,13 @@ const ROWS = PAGE.rows;
 const COLS = PAGE.cols;
 let sortKey = PAGE.sortKey, sortDir = PAGE.sortDir;
 
-// The search box works the way the Library's does (D48 Q31). The typed text
+// The search box matches words, and nothing more (D56 item 1). The typed text
 // is folded through FOLD, the table Hydra built from the Library's own fold,
-// then split into words. A row stays when every word, in any order, appears
-// somewhere in its search text, which Hydra folded the same way.
+// so accents fold as they do in the Library. It is then split into words. A
+// row stays when every word, in any order, appears somewhere in its search
+// text, which Hydra folded the same way. Quotes and the Library's field
+// prefixes (artist:, title:, charter:) are ordinary words here; only the
+// Library reads its full query language.
 function visible() {
   let folded = '';
   for (const ch of document.getElementById('q').value) folded += FOLD[ch] ?? ch;
