@@ -1439,6 +1439,37 @@ TEST_CASE("SP end history: a variant never takes a squeeze on a phrase it banked
     CHECK(saw_late_variant);
 }
 
+// Two paths with the same SP meter are not interchangeable when an upcoming
+// fill spawns for one and refuses the other (Clone Hero's early-fill rule:
+// SP must be ready by the fill's deadline). The later-ready path leads on
+// score here; it may not knock out the earlier-ready one, whose activation at
+// that fill is the best path.
+TEST_CASE("search: a later-ready path never knocks out one an upcoming fill still spawns for") {
+    Song song = test::ready_time_fold_song();
+    ScoreGraph graph(song, 2);
+    std::vector<Path> best;
+    REQUIRE_NOTHROW(best = run_search(graph, EngineOptions{}));
+    REQUIRE_FALSE(best.empty());
+
+    EngineOptions target;
+    target.target_act_ticks = std::vector<int64_t>{7680};
+    std::vector<Path> late;
+    REQUIRE_NOTHROW(late = run_search(graph, target));
+    REQUIRE_FALSE(late.empty());
+
+    // A, which activated at 2304, cannot spawn the fill at 7680.
+    EngineOptions a_then_late;
+    a_then_late.target_act_ticks = std::vector<int64_t>{2304, 7680};
+    CHECK_THROWS(run_search(graph, a_then_late));
+
+    std::vector<int64_t> ticks;
+    for (const Activation& act : best.front().walk_activations())
+        ticks.push_back(act.timecode.ticks());
+    CAPTURE(best.front().pathstring());
+    CHECK(ticks == std::vector<int64_t>{7680});
+    CHECK(best.front().totalscore() == late.front().totalscore());
+}
+
 // The lasting check on every corpus activation's history (R1, D4).
 TEST_CASE("SP end history: every corpus activation is consistent") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
