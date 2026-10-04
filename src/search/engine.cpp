@@ -1167,6 +1167,8 @@ void Engine::reduce_iteration_paths() {
         // became ready later must not knock out one an upcoming fill still
         // spawns for. The raw time in the key splits paths no fill tells
         // apart; over the library it grew the frontier 13-22x (2026-10).
+        // This key found the same best paths (7 higher at cap 2, none at
+        // cap 4) with the frontier 0.15% larger at cap 2 and unchanged at 4.
         // While SP runs, the activation's banked phrase in squeeze reach is
         // part of that future too: two activations that differ there can
         // face different squeeze choices at the same SP end
