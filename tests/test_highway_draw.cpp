@@ -474,8 +474,9 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
 // first activated on Green at its end tick 2000, the second on Yellow at 3000.
 // Hand check at now 2.0 s: the window runs from 1.775 s (z_past) to 3.35 s
 // (z_future), so the Green lane is lit from 1.775 s to 2.0005 s (the first
-// fill's end, half a tick past its last note) and the Yellow lane from 2.0005 s
-// to 3.0005 s. No note sits near the strike line, so no target glows and every
+// fill's end, kSpanEndTicks past its last note) and the Yellow lane from
+// 2.0005 s to 3.0005 s. No note sits near the strike line, so no target glows
+// and every
 // lit-target draw here is a lane strip.
 TEST_CASE("build_highway_draws: two touching taken fills light two lanes") {
     const PreviewConfig cfg = shipped_preview_config();
