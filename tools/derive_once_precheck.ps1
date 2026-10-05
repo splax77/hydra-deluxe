@@ -753,8 +753,10 @@ function Add-RowItems([string[]]$Kinds) {
 # inside an assertion, and check 3 takes a number on one as a pinned result.
 # Case counts, and the pattern says so itself ("(?-i:"), so every reader gets
 # the same answer whichever operator it uses: CHECK( is an assertion, a local
-# helper named check( is not.
-$doctestAsserts = 'CHECK|REQUIRE|CHECK_EQ|REQUIRE_EQ|CHECK_FALSE|CHECK_THROWS\w*|WARN'
+# helper named check( is not. The doctest macros are the whole assertion
+# family third_party/doctest/doctest.h defines: CHECK, REQUIRE or WARN, alone
+# or with one of its suffixes (_EQ, _FALSE, _MESSAGE, _NOTHROW, _THROWS_AS...).
+$doctestAsserts = '(?:CHECK|REQUIRE|WARN)(?:_(?:EQ|NE|GT|GE|LT|LE|UNARY(?:_FALSE)?|FALSE(?:_MESSAGE)?|MESSAGE|NOTHROW(?:_MESSAGE)?|THROWS\w*))?'
 $assertRx = "(?-i:\b($doctestAsserts|assert\w*|self\.assert\w*)\s*\()"
 
 # ------------------------------------------- check 1: helpers defined twice
