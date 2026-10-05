@@ -565,34 +565,44 @@ struct WorkResult {
 
 }  // namespace
 
+std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
+                                                   const BatchRun& run, bool redo) {
+    if (redo) return {};
+    // Under exactly this run's chart mode, cap and lens, so other settings'
+    // rows are re-run rather than skipped.
+    return store.analyzed_hashes(run.chartmode, run.cap_query(), run.lens);
+}
+
+BatchPlan plan_batch(const std::vector<ScanItem>& items,
+                     const std::unordered_set<std::string>& already) {
+    BatchPlan plan;
+    // Each md5 is looked at once: its first copy runs or is skipped, and any
+    // later copy is passed over. Whichever copy runs, the store names the
+    // chart from the copy the scan listed first (D63).
+    std::unordered_set<std::string> seen;
+    for (const ScanItem& item : items) {
+        if (!seen.insert(item.md5).second) continue;
+        if (already.count(item.md5))
+            ++plan.skipped;
+        else
+            plan.todo.push_back(item);
+    }
+    return plan;
+}
+
 void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                store::RecordStore& store, bool redo, int worker_count,
                const BatchCallbacks& callbacks) {
     const AnalysisSettings& settings = run.settings;
     const std::atomic<bool>* cancel = callbacks.cancel;
+    const store::CapQuery cap = run.cap_query();
 
-    // "Already has a result" means a current-version record at exactly this
-    // run's cap AND under this run's ms limit and score range, so stale rows,
-    // other caps' rows and other settings' rows are re-run rather than skipped.
-    const store::CapQuery cap = store::CapQuery::at(settings.sp_cap);
-    // One query for the whole library, not one per chart.
-    const std::unordered_set<std::string> analyzed =
-        redo ? std::unordered_set<std::string>{}
-             : store.analyzed_hashes(run.chartmode, cap, run.lens);
-    // A chart the scan found in two folders is one chart (D51 call 10): the
-    // first copy in `items` is analyzed, the others are skipped, and the
-    // count is of charts, not copies. Whichever copy runs, the store names
-    // the chart from the copy the scan listed first.
-    std::vector<const ScanItem*> todo;
-    std::unordered_set<std::string> queued;
-    for (const ScanItem& item : items) {
-        if (analyzed.count(item.md5)) continue;
-        if (!queued.insert(item.md5).second) continue;
-        todo.push_back(&item);
-    }
+    const BatchPlan plan = plan_batch(items, charts_with_result(store, run, redo));
+    const std::vector<ScanItem>& todo = plan.todo;
 
     BatchProgress progress;
     progress.total = static_cast<int>(todo.size());
+    progress.skipped = plan.skipped;
     if (callbacks.on_progress) callbacks.on_progress(progress);
     if (todo.empty()) return;
 
@@ -609,19 +619,18 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
     const ChartAnalyzer analyze =
         callbacks.analyze ? callbacks.analyze : ChartAnalyzer(analyze_chart_file);
 
-    int completed = 0;
     run_work_pool<WorkResult>(
         todo.size(), worker_count, cancel,
         [&](size_t i) {
-            const ScanItem* item = todo[i];
+            const ScanItem& item = todo[i];
             WorkResult wr;
-            wr.item = *item;
+            wr.item = item;
             try {
-                AnalysisResult ar = analyze(item->notespath, settings, check_cancel);
+                AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
                 wr.row = store::prepare_row(
-                    store::RecordKey{item->md5, run.chartmode, cap, run.lens}, ar.record);
+                    store::RecordKey{item.md5, run.chartmode, cap, run.lens}, ar.record);
                 wr.dynamics = dynamics_entry_from_analysis(
-                    item->md5, ar.song, settings.bass2x, settings.difficulty,
+                    item.md5, ar.song, settings.bass2x, settings.difficulty,
                     settings.prodrums);
                 wr.analysis = std::move(ar);
             } catch (const AnalysisCancelled&) {
@@ -637,16 +646,17 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
             // that finished alongside the cancel is dropped.
             if (wr.cancelled || (cancel && cancel->load())) return;
 
-            ++completed;
             if (!wr.error.empty()) {
+                ++progress.failed;
                 if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.error);
             } else {
                 store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
                                     wr.item.charter, wr.analysis->song, *wr.row, wr.dynamics);
+                ++progress.analyzed;
                 if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
             }
 
-            progress.completed = completed;
+            progress.completed = progress.analyzed + progress.failed;
             progress.current_title = wr.item.title;
             if (callbacks.on_progress) callbacks.on_progress(progress);
         });

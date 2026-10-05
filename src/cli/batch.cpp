@@ -151,19 +151,16 @@ int main() {
         return 0;
     }
 
-    // One database holds one fill rule (docs/adr/0010). A file with results
-    // but no stamp was written before hydra_batch stamped, by the normal rule;
-    // hydra_fillcompare reads it the same way. A file with neither is new.
+    // One database holds one fill rule (docs/adr/0010). Which rule a file
+    // holds is RecordStore::stamped_fill_rule's answer. The raw stamp is read
+    // as well, for the message and for a stamp no rule reads, which this run
+    // refuses rather than overwrites.
     const hydra::FillDeadlineRule run_rule = hydra::fill_rule_for(legacy_fills);
     const std::string run_mode = hydra::engine_mode_stamp(run_rule);
-    std::optional<std::string> file_mode = store.engine_mode();
-    if (!file_mode && store.counts().second > 0)
-        file_mode = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch11);
-    if (file_mode && *file_mode != run_mode) {
-        auto rule_name = [](const std::string& mode) -> const char* {
-            const std::optional<hydra::FillDeadlineRule> rule = hydra::fill_rule_from_stamp(mode);
-            return rule ? hydra::fill_rule_name(*rule, hydra::FillRuleNameStyle::Long) : "unknown";
-        };
+    const std::optional<std::string> stamp = store.engine_mode();
+    const std::optional<hydra::FillDeadlineRule> file_rule = store.stamped_fill_rule();
+    if (file_rule ? *file_rule != run_rule : stamp.has_value()) {
+        const std::string file_mode = stamp ? *stamp : hydra::engine_mode_stamp(*file_rule);
         std::fprintf(stderr,
                      "This database holds results scored by the %s fill rule "
                      "(engine_mode=%s):\n  %s\n"
@@ -171,8 +168,11 @@ int main() {
                      "other rule.\n"
                      "%s --legacy-fills to write into this database, or give this run "
                      "its own database with --db.\n",
-                     rule_name(*file_mode), file_mode->c_str(), db.c_str(),
-                     rule_name(run_mode), legacy_fills ? "Drop" : "Add");
+                     file_rule ? hydra::fill_rule_name(*file_rule, hydra::FillRuleNameStyle::Long)
+                               : "unknown",
+                     file_mode.c_str(), db.c_str(),
+                     hydra::fill_rule_name(run_rule, hydra::FillRuleNameStyle::Long),
+                     legacy_fills ? "Drop" : "Add");
         return 2;
     }
     // Stamp the file with the rule this run used, so hydra_fillcompare can tell
@@ -217,36 +217,31 @@ int main() {
 
     auto started = std::chrono::steady_clock::now();
 
-    int total = 0, skipped = 0, analyzed = 0, failed = 0, done = 0;
-    bool total_known = false;
+    // The closing line's counts are run_batch's (the last progress it sent).
+    // `done` only numbers the output lines: each line prints before the
+    // progress that counts its chart arrives.
+    hydra::app::BatchProgress last;
+    int done = 0;
     std::vector<std::string> failures;
 
     hydra::app::BatchCallbacks callbacks;
-    callbacks.on_progress = [&](const hydra::app::BatchProgress& p) {
-        if (!total_known) {
-            total = p.total;
-            skipped = static_cast<int>(scanitems.size()) - p.total;
-            total_known = true;
-        }
-    };
+    callbacks.on_progress = [&](const hydra::app::BatchProgress& p) { last = p; };
     callbacks.on_error = [&](const std::string& raw_title, const std::string& error) {
-        ++failed;
         ++done;
         const std::string title = hydra::display_title(raw_title);
         failures.push_back(title + ": " + error);
-        std::printf("[%d/%d] FAILED %s: %s\n", done, total, title.c_str(),
+        std::printf("[%d/%d] FAILED %s: %s\n", done, last.total, title.c_str(),
                     error.c_str());
     };
     callbacks.on_result = [&](const hydra::app::ScanItem& item,
                               const hydra::store::PreparedRow& row) {
-        ++analyzed;
         ++done;
         // The artist and the title read the one cleaned form every screen shows.
         std::string label =
             hydra::display_artist(item.artist) + " - " + hydra::display_title(item.title);
         std::string score =
             row.summary.score ? hydra::group_thousands(*row.summary.score) : "-";
-        std::printf("[%d/%d] %10s  %s %s\n", done, total, score.c_str(),
+        std::printf("[%d/%d] %10s  %s %s\n", done, last.total, score.c_str(),
                     clip_utf8(label, 52).c_str(), clip_utf8(row.bestpath, 36).c_str());
         std::fflush(stdout);
     };
@@ -257,8 +252,8 @@ int main() {
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
     auto [songs, records] = store.counts();
 
-    std::printf("\nAnalyzed %d, skipped %d already stored, %d failed in %.1fs.\n", analyzed,
-                skipped, failed, elapsed);
+    std::printf("\nAnalyzed %d, skipped %d already stored, %d failed in %.1fs.\n", last.analyzed,
+                last.skipped, last.failed, elapsed);
     // counts() is every row in the file at every setting, so the line names
     // that scope; the report counts only the current settings' rows.
     std::printf("Store now holds %s across %s, rows for every setting.\n",
