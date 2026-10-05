@@ -1993,13 +1993,16 @@ const std::vector<OwnerRule>& rules() {
            "stem_converter_config, the owner"}}},
         {"Which test helper reads an audio fixture?",
          "fixture_path and read_fixture in tests/audio_util.h",
-         R"(HYDRA_TESTDATA_DIR\) \+ "/audio/")",
+         // No closing quote after /audio/, so a build that names the file
+         // inside the literal is caught too (review of M6-J1c finding 1).
+         R"(HYDRA_TESTDATA_DIR\) \+ "/audio/)",
          "",
          {},
          {},
          "audit finding 277, folded under D53 (phase 6 task J1-4)",
-         {"return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name);"},
-         {"ogg.path = fixture_path(\"sine220.ogg\");"},
+         {"return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name);",
+          R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)"},
+         {"ogg.path = fixture_path(\"sine220.ogg\");", "#ifndef HYDRA_TESTDATA_DIR"},
          {{"tests/audio_util.h",
            "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
            "fixture_path, the owner (read_fixture reads through it)"}},
@@ -2017,6 +2020,23 @@ const std::vector<OwnerRule>& rules() {
          {{"tests/audio_util.h",
            "inline double estimate_freq_hz(const hydra::audio::DecodedAudio& a, int channel) {",
            "estimate_freq_hz, the owner"}},
+         {"tests"}},
+        // The byte-at-a-time shift loop is the form every copy used. A u16
+        // writer's lone `n >> 8` line is not caught (review of M6-J1c
+        // finding 3 leaves that shape to the owner).
+        {"Which test helper writes a little-endian number?",
+         "put_le in tests/bytes_util.h",
+         R"(static_cast<uint8_t>\(\w+ >> \(8 \* i\)\))",
+         "",
+         {},
+         {},
+         "review of M6-J1c finding 3, folded under D53 (phase 6 task J1-4)",
+         {"for (int i = 0; i < 4; ++i) o.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+          "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"},
+         {"o.push_back(static_cast<uint8_t>(n >> 8));"},
+         {{"tests/bytes_util.h",
+           "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
+           "put_le, the owner (put_u16, put_u32 and put_u64 write through it)"}},
          {"tests"}},
     };
     return r;
@@ -2143,6 +2163,32 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which test helper reads an audio fixture?", "tests/test_stem_reader.cpp",
          "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
          "task J2-6 (test_stem_reader.cpp's path builder calls fixture_path)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
+         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
+         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
+         R"(hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.opus");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
+         R"(write_file(song, hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg"));)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_golden.cpp",
+         "auto put32 = [&](int at, uint32_t v) { for (int i = 0; i < 4; ++i) hdr[at + i] = "
+         "static_cast<uint8_t>(v >> (8 * i)); };",
+         "M6-J2 sweep (test_preview_golden.cpp, J2-8's file this wave)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
+         "for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+         "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
+         "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+         "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
     };
     return k;
 }

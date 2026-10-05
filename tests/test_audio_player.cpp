@@ -85,7 +85,7 @@ TEST_CASE("read_frames while playing copies frames and advances the clock") {
     CHECK(t.position_frames() == 3);
     const float expect[] = {0, 0.5f, 1, 1.5f, 2, 2.5f};
     for (int i = 0; i < 6; ++i) CHECK(out[i] == doctest::Approx(expect[i]));
-    CHECK(t.position_ms() == doctest::Approx(3.0 * 1000.0 / 48000.0));
+    CHECK(t.position_ms() == doctest::Approx(0.0625));  // 3 frames at 48 kHz
 }
 
 TEST_CASE("read_frames past the end zero-fills, auto-pauses, clamps position") {
