@@ -32,7 +32,8 @@ try:
 except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
     import constants as C  # type: ignore[no-redef]
 
-# How long press_chord holds a chord's keys down (D54: recorded as it is).
+# How long press_chord holds a chord's keys down: the 3 ms hold play_chart
+# proved at the game, kept as it is (phase 6, task J3-8).
 KEY_HOLD_S = 0.003
 
 

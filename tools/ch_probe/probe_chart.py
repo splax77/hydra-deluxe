@@ -221,9 +221,16 @@ def generate_probe_chart(
 
 if __name__ == "__main__":
     # Default caller: write the spec's suggested spacings to a file next to this
-    # script so someone can eyeball the output.
+    # script so someone can eyeball the output, at the resolution and tempo
+    # the probe songs use.
     import os
 
+    try:
+        from . import probe_songs
+    except ImportError:
+        import probe_songs
+
     out = os.path.join(os.path.dirname(__file__), "probe.chart")
-    generate_probe_chart(DEFAULT_SPACINGS_MS, out, resolution=192, bpm=120.0)
+    generate_probe_chart(DEFAULT_SPACINGS_MS, out, resolution=probe_songs.RESOLUTION,
+                         bpm=probe_songs.BPM)
     print(f"wrote {out} with {len(DEFAULT_SPACINGS_MS)} note pairs")
