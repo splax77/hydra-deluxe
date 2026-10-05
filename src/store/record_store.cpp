@@ -193,7 +193,7 @@ bool sort_column_is_songmeta(SortColumn c) {
 
 // The results table's columns. result_id is the rowid alias: a bigger one
 // means "written later". rules_fp is the rules fingerprint the structure blob
-// carries (bytes 5 to 12, rules_fp_of), copied out so the UNIQUE key can hold
+// carries (rules_fp_of; path_codec.h has the layout), copied out so the UNIQUE key can hold
 // it: one row per chart, mode, cap, lens and rules, so a result made under
 // other rules sits beside this build's (schema 4, D51 call 8).
 constexpr const char* kResultsColumnDefs =
@@ -223,13 +223,31 @@ constexpr const char* kResultsColumnDefs =
     "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value,"
     "          legacy_fills, rules_fp)";
 
-// The columns a schema 2 results table shares with this build's, in table
-// order: what upgrade_results_key copies across. The rebuild fills the other
-// two, legacy_fills and rules_fp.
-constexpr const char* kSchema2ResultsColumns =
+}  // namespace
+
+// Schema 2's results table, declared in record_store.h. The column list is
+// what upgrade_results_key copies across; the rebuild fills the other two,
+// legacy_fills and rules_fp. The table text's only reader is the store test,
+// which builds a schema 2 file from it.
+const char* const kSchema2ResultsColumns =
     "result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled, ms_value, depth_mode,"
     " depth_value, bestpath, structure, score, actcount, maxskip, hardest_ms, avgmult,"
     " notecount, sqin_count, sqout_count, pathcount, stars";
+const char* const kSchema2ResultsTableSql =
+    "CREATE TABLE results ("
+    "  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
+    "  chartmode TEXT NOT NULL, hyversion TEXT NOT NULL,"
+    "  sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
+    "  ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
+    "  depth_value INTEGER NOT NULL, bestpath TEXT NOT NULL,"
+    "  structure BLOB NOT NULL, score INTEGER, actcount INTEGER,"
+    "  maxskip INTEGER, hardest_ms REAL, avgmult REAL, notecount INTEGER,"
+    "  sqin_count INTEGER, sqout_count INTEGER, pathcount INTEGER,"
+    "  stars INTEGER,"
+    "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
+    "          depth_value))";
+
+namespace {
 
 // The summary columns, in the order bind_summary/read_summary use.
 //
@@ -273,46 +291,33 @@ int bind_lens(sqlite3_stmt* s, int idx, const Lens& lens) {
     sqlite3_bind_int(s, idx + 4, lens.legacy_fills);
     return idx + 5;
 }
-
-// The first 12 bytes a structure blob starts with: the u32 path format, then
-// the u64 rules fingerprint (path_codec.cpp flatten_record), little-endian.
-constexpr int kStructureHeadBytes = 12;
-
-uint64_t read_le(const std::vector<uint8_t>& b, size_t at, int bytes) {
-    uint64_t v = 0;
-    for (int i = 0; i < bytes; ++i) v |= static_cast<uint64_t>(b[at + i]) << (8 * i);
-    return v;
-}
-std::vector<uint8_t> write_le(uint64_t v, int bytes) {
-    std::vector<uint8_t> b(static_cast<size_t>(bytes));
-    for (int i = 0; i < bytes; ++i) b[static_cast<size_t>(i)] = static_cast<uint8_t>(v >> (8 * i));
-    return b;
-}
-
-// Is this row's stored path tree in a path format this build reads?
-bool layout_is_current(const std::vector<uint8_t>& structure_head) {
-    return structure_head.size() >= 4 &&
-           kPathFormatStamp.is_current(static_cast<uint32_t>(read_le(structure_head, 0, 4)));
-}
-
-// Is this row's stored path tree in a path format this build reads, analyzed
-// under the rules this process runs? Takes the whole blob or just the
-// substr(structure,1,12) a query selected.
-bool structure_is_current(const std::vector<uint8_t>& structure_head,
-                          const core::RulesStamp& rules) {
-    if (structure_head.size() < kStructureHeadBytes) return false;
-    const uint64_t fingerprint = read_le(structure_head, 4, 8);
-    return layout_is_current(structure_head) && fingerprint == rules.fixed;
+// bind_lens's mirror: the five lens columns a query selected from `idx` on,
+// in Lens's field order.
+Lens read_lens(sqlite3_stmt* s, int idx) {
+    Lens lens;
+    lens.ms_enabled = sqlite3_column_int(s, idx);
+    lens.ms_value = sqlite3_column_int(s, idx + 1);
+    lens.depth_mode = sqlite3_column_int(s, idx + 2);
+    lens.depth_value = sqlite3_column_int(s, idx + 3);
+    lens.legacy_fills = sqlite3_column_int(s, idx + 4);
+    return lens;
 }
 
 // The facts that decide whether a row is readable and how it places among
-// the candidates for its chart and mode. rank_row is the only place C++ reads
-// them off a row; row_ready_sql below is the same rule for SQL.
+// the candidates for its chart and mode, and why a row that is not ready is
+// Stale. rank_row is the only place C++ reads them off a row; row_ready_sql
+// below is the same rule for SQL.
 struct Candidate {
     bool current = false;  // stamped with this build's results version
     bool format = false;   // this build's path-structure format, analyzed
                            // under the rules this process runs
     int64_t result_id = 0;
+    // Why a row that is not ready is Stale, for callers that explain it
+    // (hydra_replay dump, the song panel, the library row's tooltip). Both
+    // can be true; neither is on a ready row. An older layout has no
+    // fingerprint to compare, so it is only ever `stale_build`.
+    bool stale_build = false;  // another Hydra build or an older path layout
+    bool stale_rules = false;  // this layout, analyzed under other rules
     // Readable: stamped with this results version, in a layout this build
     // reads, under these rules. Anything else is Stale: another results
     // version's bytes, or a path tree whose activations this build would read
@@ -320,29 +325,20 @@ struct Candidate {
     bool ready() const { return current && format; }
 };
 
+// `structure_head` is the whole blob or just the head a query selected
+// (structure_head_of); path_codec.h read_structure_head reads it once.
 Candidate rank_row(const std::string& hyversion, const std::vector<uint8_t>& structure_head,
                    int64_t result_id, const core::RulesStamp& rules) {
-    return Candidate{kResultsStamp.is_current(hyversion),
-                     structure_is_current(structure_head, rules), result_id};
-}
-
-// Why a row that is not Ready is Stale, for callers that explain it
-// (hydra_replay dump, the song panel, the library row's tooltip). `build`: another Hydra build or an older path layout.
-// `rules`: this layout, analyzed under other rules. An older layout has no
-// fingerprint to compare, so it is only ever `build`.
-struct StaleReasons {
-    bool build = false;
-    bool rules = false;
-};
-
-StaleReasons stale_reasons(const std::string& hyversion,
-                           const std::vector<uint8_t>& structure_head,
-                           const core::RulesStamp& rules) {
-    const bool layout_current = layout_is_current(structure_head);
-    StaleReasons why;
-    why.build = !kResultsStamp.is_current(hyversion) || !layout_current;
-    why.rules = layout_current && !structure_is_current(structure_head, rules);
-    return why;
+    const std::optional<StructureHead> head = read_structure_head(structure_head);
+    const bool layout_current = head && kPathFormatStamp.is_current(head->path_format);
+    const bool same_rules = layout_current && head->rules_fingerprint == rules.fixed;
+    Candidate c;
+    c.current = kResultsStamp.is_current(hyversion);
+    c.format = same_rules;
+    c.result_id = result_id;
+    c.stale_build = !c.current || !layout_current;
+    c.stale_rules = layout_current && !same_rules;
+    return c;
 }
 
 // Candidate::ready() spelled in SQL, for the sites that must pick rows in the
@@ -357,24 +353,55 @@ StaleReasons stale_reasons(const std::string& hyversion,
 //
 // Built from the same StampRule lists is_current reads, so the two spellings
 // cannot drift: every accepted results version, every accepted path format
-// (the first four structure bytes), and the rules fingerprint (the next
-// eight). The bind_ functions bind them in that order and return the next
-// free index.
+// and the rules fingerprint, each structure field where path_codec.h's head
+// layout puts it. The bind_ functions bind them in that order and return the
+// next free index.
 std::string placeholders(size_t n) {
     std::string out;
     for (size_t i = 0; i < n; ++i) out += i ? ", ?" : "?";
     return out;
 }
 
-// The rules fingerprint inside a structure blob, spelled in SQL: bytes 5 to
-// 12 of `blob`, a column name or a bound parameter. The one SQL spelling of
-// "which rules was this row analyzed under".
-std::string rules_fp_of(const char* blob) { return std::string("substr(") + blob + ",5,8)"; }
+// One field of a structure blob's head spelled in SQL, from path_codec.h's
+// offsets and widths. `blob` is a column name or a bound parameter. SQLite's
+// substr counts bytes from 1, so it starts one past the 0-based offset.
+std::string head_field_sql(const char* blob, size_t offset, size_t width) {
+    return std::string("substr(") + blob + "," + std::to_string(offset + 1) + "," +
+           std::to_string(width) + ")";
+}
+
+// The rules fingerprint inside a structure blob, spelled in SQL. The one SQL
+// spelling of "which rules was this row analyzed under".
+std::string rules_fp_of(const char* blob) {
+    return head_field_sql(blob, kRulesFingerprintOffset, kRulesFingerprintBytes);
+}
+// The path format a structure blob is in, spelled in SQL.
+std::string path_format_of(const char* blob) {
+    return head_field_sql(blob, kPathFormatOffset, kPathFormatBytes);
+}
+// The whole head, the bytes rank_row reads, spelled in SQL. The head is the
+// blob's first bytes.
+std::string structure_head_of(const char* blob) {
+    return head_field_sql(blob, 0, kStructureHeadBytes);
+}
+
+// A path format or a rules fingerprint as the bytes a structure blob holds
+// it in, to bind against path_format_of or rules_fp_of.
+std::vector<uint8_t> path_format_bytes(uint32_t format) {
+    BinaryWriter w;
+    w.u32(format);
+    return w.bytes;
+}
+std::vector<uint8_t> rules_fp_bytes(uint64_t fingerprint) {
+    BinaryWriter w;
+    w.u64(fingerprint);
+    return w.bytes;
+}
 
 const std::string& row_readable_sql() {
     static const std::string sql =
-        "(hyversion IN (" + placeholders(kResultsStamp.accepted.size()) +
-        ") AND substr(structure,1,4) IN (" + placeholders(kPathFormatStamp.accepted.size()) +
+        "(hyversion IN (" + placeholders(kResultsStamp.accepted.size()) + ") AND " +
+        path_format_of("structure") + " IN (" + placeholders(kPathFormatStamp.accepted.size()) +
         "))";
     return sql;
 }
@@ -387,13 +414,13 @@ const std::string& row_ready_sql() {
 
 int bind_readable_params(sqlite3_stmt* s, int idx) {
     for (std::string_view v : kResultsStamp.accepted) bind_text(s, idx++, std::string(v));
-    for (uint32_t f : kPathFormatStamp.accepted) bind_blob(s, idx++, write_le(f, 4));
+    for (uint32_t f : kPathFormatStamp.accepted) bind_blob(s, idx++, path_format_bytes(f));
     return idx;
 }
 
 int bind_ready_params(sqlite3_stmt* s, int idx, const core::RulesStamp& rules) {
     idx = bind_readable_params(s, idx);
-    bind_blob(s, idx++, write_le(rules.fixed, 8));
+    bind_blob(s, idx++, rules_fp_bytes(rules.fixed));
     return idx;
 }
 
@@ -560,9 +587,8 @@ PathSummary summarize_record(const HydraRecord& record) {
     if (record.paths.empty()) return PathSummary{};
 
     PathSummary s = summarize_path(record.best_path());
-    int pathcount = 0;
-    for (const Path& p : record.paths) pathcount += p.tied_pathcount();
-    s.pathcount = pathcount;
+    // Every kept path, roots and variants: the count the Paths tab shows.
+    s.pathcount = static_cast<int>(record.all_paths().size());
     return s;
 }
 
@@ -590,7 +616,9 @@ PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record) {
         throw std::invalid_argument(
             "prepare_row: key asks for no ms limit but the record was analyzed at " +
             std::to_string(*record.ms_limit));
-    if (key.lens.legacy_fills != (record.legacy_fills ? 1 : 0))
+    // The record's own fill rule as a lens stores it (Lens::from).
+    const Lens record_fills = Lens::from(std::nullopt, 0, 0, record.legacy_fills);
+    if (key.lens.legacy_fills != record_fills.legacy_fills)
         throw std::invalid_argument(
             std::string("prepare_row: key asks for Clone Hero ") +
             (key.lens.legacy_fills ? "1.0" : "1.1") + " fills but the record was analyzed "
@@ -909,7 +937,8 @@ constexpr const char* kLoadNodesSql =
     "  ON p.hyhash = pr.hyhash AND p.chartmode = pr.chartmode AND p.phash = pr.phash"
     " WHERE pr.result_id = ?";
 constexpr const char* kReloadRowSql =
-    "SELECT hyhash, chartmode, hyversion, sp_cap, structure"
+    "SELECT hyhash, chartmode, hyversion, sp_cap, structure,"
+    " ms_enabled, ms_value, depth_mode, depth_value, legacy_fills"
     " FROM results WHERE result_id = ?";
 
 std::unordered_map<std::string, std::vector<uint8_t>> RecordStore::load_nodes(
@@ -930,21 +959,24 @@ std::unordered_map<std::string, std::vector<uint8_t>> RecordStore::load_nodes(
     return load_nodes(s, result_id);
 }
 
-bool RecordStore::reload_row(sqlite3_stmt* stmt, const BlobRow& meta, int64_t result_id,
-                             std::vector<uint8_t>& structure) {
+bool RecordStore::reload_row(sqlite3_stmt* stmt, const BlobRow& meta, const Lens& lens,
+                             int64_t result_id, std::vector<uint8_t>& structure) {
     // `stmt` is kReloadRowSql, compiled once by for_each_blob. Every path out
     // of here resets it first, including the skip paths below, so nothing is
     // left mid-step when the caller unlocks.
     ResetOnExit reset{stmt};
     sqlite3_bind_int64(stmt, 1, result_id);
     if (sqlite3_step(stmt) != SQLITE_ROW) return false;  // deleted since the walk listed it
-    // Every identity column, not just "a row is here". result_id is a plain
-    // INTEGER PRIMARY KEY, so sqlite hands the same id out again after a
-    // delete and a replacement row can occupy it.
-    if (column_text(stmt, 0) != meta.hyhash) return false;
-    if (column_text(stmt, 1) != meta.chartmode) return false;
+    // The row's whole identity (RecordKey), not just "a row is here".
+    // result_id is a plain INTEGER PRIMARY KEY, so sqlite hands the same id
+    // out again after a delete and a replacement row can occupy it.
+    const RecordKey found{column_text(stmt, 0), column_text(stmt, 1),
+                          CapQuery::at(sqlite3_column_int(stmt, 3)), read_lens(stmt, 5)};
+    if (found != RecordKey{meta.hyhash, meta.chartmode, CapQuery::at(meta.sp_cap), lens})
+        return false;
+    // The stamp is not identity, but a row another build rewrote is not the
+    // row the walk ranked either.
     if (column_text(stmt, 2) != meta.hyversion) return false;
-    if (sqlite3_column_int(stmt, 3) != meta.sp_cap) return false;
     structure = column_blob(stmt, 4);
     return true;
 }
@@ -1224,12 +1256,12 @@ void RecordStore::delete_auto_results() {
     if (rules_fingerprint_.retired_auto == core::kNoRulesFingerprint) return;
     if (meta_get(kAutoResultsDeletedKey)) return;
 
-    // An Auto row is known only by the rules fingerprint in bytes 5..12 of
-    // its structure blob (flatten_record writes it right after the format).
+    // An Auto row is known only by the rules fingerprint in its structure
+    // blob's head (rules_fp_of).
     // Auto rows made under other rules are already Stale, and stay so: no
     // rules' own fingerprint is ever an Auto one. A new result for the same
     // chart, cap and lens outranks such a row (WinnerPicker).
-    const std::vector<uint8_t> auto_fp = write_le(rules_fingerprint_.retired_auto, 8);
+    const std::vector<uint8_t> auto_fp = rules_fp_bytes(rules_fingerprint_.retired_auto);
     const std::string is_auto = rules_fp_of("structure") + " = ?";
     exec("BEGIN");
     try {
@@ -1284,8 +1316,6 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
         std::string hyhash;
         std::string bestpath;
         PathSummary summary;
-        std::string hyversion;                // kept to say why a Stale winner is Stale
-        std::vector<uint8_t> structure_head;  // (stale_reasons)
     };
     WinnerPicker picker;
     std::vector<Offered> offered;
@@ -1294,8 +1324,9 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
         for (size_t first = 0; first < distinct.size(); first += kHashesPerQuery) {
             const size_t n = std::min(kHashesPerQuery, distinct.size() - first);
             std::string sql =
-                std::string("SELECT hyhash, hyversion, bestpath, result_id, substr(structure,1,12), ") +
-                kSummaryColumnList + " FROM results WHERE chartmode=? AND hyhash IN (" +
+                "SELECT hyhash, hyversion, bestpath, result_id, " +
+                structure_head_of("structure") + ", " + kSummaryColumnList +
+                " FROM results WHERE chartmode=? AND hyhash IN (" +
                 placeholders(n) + ")";
             append_candidate_filter(sql, "", cap);
             Stmt s = prepare(db_, sql.c_str());
@@ -1305,13 +1336,10 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
             bind_candidate_filter(s, idx, cap, lens);
             while (sqlite3_step(s) == SQLITE_ROW) {
                 std::string hyhash = column_text(s, 0);
-                std::string hyversion = column_text(s, 1);
-                std::vector<uint8_t> structure_head = column_blob(s, 4);
                 picker.offer(hyhash, chartmode,
-                             rank_row(hyversion, structure_head, sqlite3_column_int64(s, 3),
-                                      rules_fingerprint_));
-                offered.push_back({std::move(hyhash), column_text(s, 2), read_summary(s, 5),
-                                   std::move(hyversion), std::move(structure_head)});
+                             rank_row(column_text(s, 1), column_blob(s, 4),
+                                      sqlite3_column_int64(s, 3), rules_fingerprint_));
+                offered.push_back({std::move(hyhash), column_text(s, 2), read_summary(s, 5)});
             }
         }
     }
@@ -1324,16 +1352,15 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
     for (size_t i = 0; i < offered.size(); ++i) {
         if (!won[i]) continue;
         SummaryLookup& answer = by_hash[offered[i].hyhash];
-        if (picker.rank(i).ready()) {
+        const Candidate& rank = picker.rank(i);
+        if (rank.ready()) {
             answer.status = RecordStatus::Ready;
             answer.bestpath = std::move(offered[i].bestpath);
             answer.summary = offered[i].summary;
         } else {
             answer.status = RecordStatus::Stale;
-            const StaleReasons why = stale_reasons(offered[i].hyversion, offered[i].structure_head,
-                                                   rules_fingerprint_);
-            answer.stale_build = why.build;
-            answer.stale_rules = why.rules;
+            answer.stale_build = rank.stale_build;
+            answer.stale_rules = rank.stale_rules;
         }
     }
     for (size_t i = 0; i < hyhashes.size(); ++i) {
@@ -1374,8 +1401,7 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
         WinnerPicker picker;
         while (sqlite3_step(s) == SQLITE_ROW) {
             Row row{sqlite3_column_int64(s, 0), column_text(s, 1), column_blob(s, 2)};
-            // The whole blob is here, so its leading twelve bytes are the
-            // structure head the format and rules check wants.
+            // The whole blob is here, and rank_row reads only its head.
             picker.offer(key.hyhash, key.chartmode,
                          rank_row(row.hyversion, row.structure, row.result_id,
                                   rules_fingerprint_));
@@ -1389,12 +1415,11 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
         // Stamped by a different version or holding a path tree in an older
         // layout or under other rules: nothing stored is decoded at all.
         // Callers see Stale and prompt a re-analyze.
-        if (!picker.rank(*won).ready()) {
+        const Candidate& rank = picker.rank(*won);
+        if (!rank.ready()) {
             out.status = RecordStatus::Stale;
-            const StaleReasons why =
-                stale_reasons(best.hyversion, best.structure, rules_fingerprint_);
-            out.stale_build = why.build;
-            out.stale_rules = why.rules;
+            out.stale_build = rank.stale_build;
+            out.stale_rules = rank.stale_rules;
             return out;
         }
         structure = std::move(best.structure);
@@ -1516,8 +1541,7 @@ void RecordStore::for_each_blob(
             row.meta.sp_cap = sqlite3_column_int(s, 6);
             row.result_id = sqlite3_column_int64(s, 7);
             row.structure = column_blob(s, 8);
-            // rank_row reads only the blob's leading twelve bytes, so the
-            // whole blob serves as its head.
+            // rank_row reads only the blob's head, so the whole blob serves.
             const Candidate rank = rank_row(row.meta.hyversion, row.structure,
                                             row.result_id, rules_fingerprint_);
             row.meta.status = rank.ready() ? RecordStatus::Ready : RecordStatus::Stale;
@@ -1600,7 +1624,7 @@ void RecordStore::for_each_blob(
             // included.
             if (sqlite3_total_changes64(db_) == snapshot_changes) {
                 structure = std::move(row.structure);  // rows is not walked again
-            } else if (!reload_row(*reload_stmt, row.meta, row.result_id, structure)) {
+            } else if (!reload_row(*reload_stmt, row.meta, lens, row.result_id, structure)) {
                 continue;
             }
             nodes = load_nodes(*nodes_stmt, row.result_id);
@@ -1678,8 +1702,10 @@ int RecordStore::fill_missing_stars() {
     // blanking them would wipe the whole library's scores on one bad start.
     std::vector<int64_t> ids;
     {
-        Stmt s = prepare(db_, "SELECT result_id, hyversion, substr(structure,1,12) FROM results"
-                              " WHERE stars IS NULL AND score IS NOT NULL ORDER BY result_id");
+        Stmt s = prepare(db_, ("SELECT result_id, hyversion, " + structure_head_of("structure") +
+                               " FROM results"
+                               " WHERE stars IS NULL AND score IS NOT NULL ORDER BY result_id")
+                                  .c_str());
         while (sqlite3_step(s) == SQLITE_ROW) {
             const int64_t id = sqlite3_column_int64(s, 0);
             if (rank_row(column_text(s, 1), column_blob(s, 2), id, rules_fingerprint_).ready())
@@ -1735,8 +1761,8 @@ std::vector<RecordListing> RecordStore::list_records(
         "SELECT s.hyhash, s.ref_name, s.ref_artist, s.ref_charter, r.chartmode, r.bestpath, "
         "r.score, r.actcount, r.maxskip, r.hardest_ms, r.avgmult, r.notecount, "
         "r.sqin_count, r.sqout_count, r.pathcount, r.stars, r.sp_cap, "
-        "r.hyversion, r.result_id, substr(r.structure,1,12) "
-        "FROM results r JOIN songmeta s ON s.hyhash = r.hyhash WHERE 1=1";
+        "r.hyversion, r.result_id, " + structure_head_of("r.structure") +
+        " FROM results r JOIN songmeta s ON s.hyhash = r.hyhash WHERE 1=1";
     if (chartmode) sql += " AND r.chartmode = ?";
     append_candidate_filter(sql, "r.", cap);
 
