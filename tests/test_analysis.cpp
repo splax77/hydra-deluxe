@@ -700,25 +700,20 @@ std::string scan_fixture_dir(const char* name) {
     return testtemp::temp_dir(std::string("scan_case_") + name);
 }
 
-void write_fixture(const std::string& path, const std::vector<uint8_t>& bytes) {
-    FILE* f = hydra::fopen_utf8(path, L"wb");
-    REQUIRE_MESSAGE(f != nullptr, "cannot write " << path);
-    if (!bytes.empty()) std::fwrite(bytes.data(), 1, bytes.size(), f);
-    std::fclose(f);
-}
+using testtemp::write_bytes;
 
 }  // namespace
 
 TEST_CASE("discover_charts finds a folder whose notes and ini names are capitalized") {
     const std::string dir = scan_fixture_dir("caps");
-    write_fixture(dir + "\\Notes.mid",
+    write_bytes(dir + "\\Notes.mid",
                   testmidi::smf(testmidi::concat({testmidi::track_name("PART DRUMS"),
                                                   testmidi::set_tempo(),
                                                   testmidi::note_on(96, 100),
                                                   testmidi::end_of_track()})));
     const std::string ini = "[song]\r\nname = Capital Case\r\nartist = Someone\r\n"
                             "charter = Someone Else\r\n";
-    write_fixture(dir + "\\Song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
+    write_bytes(dir + "\\Song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
 
     auto [items, errors] = discover_charts({dir});
     REQUIRE(errors.empty());
