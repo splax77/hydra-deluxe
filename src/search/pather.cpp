@@ -41,11 +41,13 @@ std::function<void(float)> scaled_progress(const std::function<void(float)>& cb,
 void attach_allzero(const ScoreGraph& graph, HydraRecord& record,
                     const std::function<void(float)>& on_progress) {
     // Nothing to add when the optimal path is itself an all-0 path that needs
-    // no squeeze timing: it already answers the question, and it is already at
-    // the top of the list.
+    // no timing: it already answers the question, and it is already at the
+    // top of the list. This is the same test search_allzero's paths pass
+    // (Path::is_allzero and Path::needs_timing), so this shortcut and the
+    // display's identity dedupe agree by construction.
     if (!record.paths.empty()) {
         const Path& best = record.best_path();
-        if (best.is_allzero() && best.difficulty().value_or(0.0) <= 0.0) return;
+        if (best.is_allzero() && !best.needs_timing()) return;
     }
     try {
         record.allzero_paths = search_allzero(graph, on_progress);
@@ -63,32 +65,33 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
                                  const std::function<void(float)>& on_progress) {
     // depth_value 0 keeps only the top score; its tied peers still merge into
     // variants (up to Rules::max_tied_paths), which is where the E / + / - variations
-    // of one all-0 path come from. The 0 ms limit keeps the path free of
-    // squeeze timing, so it is fixed here and ignores the user's "Path limit"
-    // setting --
-    // and it is applied hard. The default soft filter only prefers paths inside
-    // the limit and still reports an over-limit one while nothing outscores it,
-    // which in a no-skips search (a tiny candidate set, usually one path per
-    // group) meant the section routinely showed a path needing hundreds of ms.
+    // of one all-0 path come from. The path must need no timing at all
+    // (Path::needs_timing), so the run ignores the user's "Path limit"
+    // setting, and that is a requirement, not a preference. A soft filter
+    // only prefers paths inside the limit and still reports an over-limit one
+    // while nothing outscores it, which in a no-skips search (a tiny candidate
+    // set, usually one path per group) meant the section routinely showed a
+    // path needing hundreds of ms.
     std::vector<Path> paths;
     try {
         EngineOptions options;  // score depth 0: only the top score, plus its ties
-        options.ms_filter = 0.0;
         options.no_skips = true;
-        options.hard_ms_filter = true;
+        options.no_timing = true;
         paths = run_search(graph, options, on_progress);
     } catch (const std::runtime_error&) {
-        // The hard filter can empty the frontier: this chart offers no all-0
-        // path inside 0 ms. run() reports that the same way it reports a broken
-        // state, so both end here as "no all-0 path". Cancel unwinds through
-        // its own non-std::exception type and still propagates.
+        // The requirement can empty the frontier: this chart offers no all-0
+        // path that needs no timing. run() reports that the same way it
+        // reports a broken state, so both end here as "no all-0 path". Cancel
+        // unwinds through its own non-std::exception type and still propagates.
         return {};
     }
 
-    // A chart can also refuse every activation opportunity (the early
-    // fill can never be summoned in time). The search then returns a single
-    // path with no activations, whose pathstring is empty.
-    if (paths.size() == 1 && !paths[0].has_activations()) paths.clear();
+    // Only all-0 paths stay (Path::is_allzero). That also drops the single
+    // path with no activations the search returns when a chart refuses every
+    // activation opportunity (the early fill can never be summoned in time).
+    paths.erase(std::remove_if(paths.begin(), paths.end(),
+                               [](const Path& p) { return !p.is_allzero(); }),
+                paths.end());
     return paths;
 }
 

@@ -2435,3 +2435,35 @@ TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
     }
     CHECK(decodes == 1);
 }
+
+// E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is
+// Path::needs_timing's, so no code line under src/ or tools/ asks it with a
+// zero test of its own, such as the all-0 pass's old 0 ms limit. What the
+// Score range's INI int means is Settings::search_depth_mode's, the one line
+// in src/app/config.cpp that compares it, however the comparison is spelled.
+// Comment lines are skipped like the row scan does.
+TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one owner (E3)") {
+    const std::regex zero_limit(
+        R"(difficulty\(\)\.value_or\(0(\.0+)?\)\s*(<=|>|<|>=)\s*0(\.0+)?(?![\d.]))"
+        R"(|value_or\(0(\.0+)?\)\s*<=\s*0(\.0+)?(?![\d.]))"
+        R"(|ms_filter\s*=\s*(std::optional<double>\()?0(\.0+)?(?![\d.]))");
+    const std::regex depth_int(R"(\bdepth_mode\s*(==|!=|>=|<=|>|<)\s*[01]\b|case\s+1\s*:.*depth)");
+    std::vector<std::string> zero_hits, depth_hits;
+    sourcetree::for_each_source_file([&](const fs::path& file, const std::string& rel) {
+        if (rel.compare(0, 6, "tests/") == 0) return;
+        const std::string ext = file.extension().string();
+        if (ext != ".cpp" && ext != ".h") return;
+        std::ifstream in(file);
+        std::string line;
+        while (std::getline(in, line)) {
+            const std::string t = hydra::trim(line);
+            if (t.compare(0, 2, "//") == 0) continue;
+            if (std::regex_search(t, zero_limit)) zero_hits.push_back(rel + ": " + t);
+            if (std::regex_search(t, depth_int)) depth_hits.push_back(rel + ": " + t);
+        }
+    });
+    CHECK_MESSAGE(zero_hits.empty(), (zero_hits.empty() ? std::string() : zero_hits.front()));
+    REQUIRE(depth_hits.size() == 1);
+    CHECK(depth_hits.front() ==
+          "src/app/config.cpp: return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;");
+}

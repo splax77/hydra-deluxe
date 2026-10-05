@@ -442,22 +442,28 @@ std::optional<double> Activation::e_difficulty(bool verbose) const {
 }
 
 std::optional<HardestTiming> Activation::hardest() const {
+    // Only timings that need hitting take part (D51 call 4, D13): a free
+    // squeeze (SPSqueeze::is_free) and an early fill with time to spare
+    // (early_fill_needs_timing) never name the hardest part.
     std::optional<HardestTiming> best;
     // Squeezes first, in list order, and only a strictly larger value takes
     // over: so a tie keeps the first squeeze, and the fill below must beat
     // every squeeze to be named.
     for (const SPSqueeze& sq : sqinouts) {
+        if (sq.is_free()) continue;
         const double d = sq.difficulty();
         if (!best || d > best->ms)
             best = HardestTiming{sq.kind == SqueezeKind::SqIn ? TimingPart::SqueezeIn
                                                               : TimingPart::SqueezeOut,
                                  d};
     }
-    if (const std::optional<double> e = e_difficulty()) {
+    // Either early fill below counts only when it needs timing.
+    const bool fill_needs_timing = early_fill_needs_timing(e_offset);
+    if (const std::optional<double> e = e_difficulty(); e && fill_needs_timing) {
         if (!best || *e > best->ms) best = HardestTiming{TimingPart::EarlyFill, *e};
     }
     // The optional early fill of an E activation that skipped fills (D48 Q10).
-    if (!best && is_e_critical())
+    if (!best && fill_needs_timing && is_e_critical())
         best = HardestTiming{TimingPart::EarlyFill, *e_difficulty(/*verbose=*/true)};
     return best;
 }
@@ -469,6 +475,10 @@ std::optional<double> Activation::difficulty() const {
     if (h->part == TimingPart::EarlyFill && !is_E0()) return std::nullopt;
     return h->ms;
 }
+
+// D51 call 4 and D13: hardest() only names a timing that needs hitting, so
+// difficulty() is empty exactly when there is nothing to time.
+bool Activation::needs_timing() const { return difficulty().has_value(); }
 
 bool Activation::is_difficult() const {
     const std::optional<double> d = difficulty();
@@ -611,6 +621,13 @@ std::optional<double> Path::difficulty() const {
         }
     }
     return best;
+}
+
+// The same activations difficulty() walks (D51 call 4).
+bool Path::needs_timing() const {
+    for (const Activation& act : walk_activations())
+        if (act.needs_timing()) return true;
+    return false;
 }
 
 bool Path::is_difficult() const {

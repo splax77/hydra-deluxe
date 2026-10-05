@@ -174,15 +174,17 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     CHECK(av.badge == "early fill 12 ms");
     CHECK(av.early_fill == "Early fill: 12.3 ms (required)");
 
-    // E-critical but not E0: the badge and the details line use the same
-    // sign rule, so 20 ms late reads negative. Optional, so never warn-coloured.
+    // E-critical but not E0, with SP ready 20 ms before the deadline: the
+    // details line reads it negative. The fill spawns however the
+    // activation is hit, so there is nothing to time and no badge (D51 call 4).
+    // Optional, so never warn-coloured.
     Activation e1;
     test::set_skips(e1, 1);
     test::set_sp_meter(e1, 2);
     e1.e_offset = 20.0;
     av = view_of(e1);
     CHECK(av.notation == "E1");
-    CHECK(av.badge == "early fill -20 ms");
+    CHECK(av.badge.empty());
     CHECK_FALSE(av.difficult);
     CHECK(av.early_fill == "Early fill: -20.0 ms (optional)");
 }
@@ -215,6 +217,28 @@ TEST_CASE("path buttons: each path's own hardest timing, warn past the difficult
     b = button_of(easy);
     CHECK(b.timing == "1.5 ms");
     CHECK_FALSE(b.timing_warn);
+
+    // A path whose only squeeze is a free squeeze-in has nothing to time,
+    // so its button shows no figure (D51 call 4).
+    Path free_in = hard;
+    free_in.activations[0].sqinouts[0] = SPSqueeze{SqueezeKind::SqIn, -163.0};
+    b = button_of(free_in);
+    CHECK(b.timing.empty());
+    CHECK_FALSE(b.timing_warn);
+}
+
+TEST_CASE("build_path_buttons: a 1-bar cap says why there are no activations") {
+    HydraRecord rec;
+    rec.sp_cap = 1;
+    rec.paths.push_back(Path{});  // a 1-bar cap never activates
+    PathButtonsView v = build_path_buttons(rec, 0, 2);
+    REQUIRE(v.buttons.size() == 1);
+    CHECK(v.buttons[0].detail == "A 1-bar cap can never activate Star Power.");
+
+    rec.sp_cap = 4;
+    v = build_path_buttons(rec, 0, 2);
+    REQUIRE(v.buttons.size() == 1);
+    CHECK(v.buttons[0].detail.empty());
 }
 
 TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
@@ -238,14 +262,43 @@ TEST_CASE("build_path_list: score groups and the all-0 dedupe rule") {
     dup.allzero_paths.push_back(rec.paths.front());
     CHECK_FALSE(build_path_list(dup).show_allzero);
 
-    // A different score shows the section, with the delta in the label.
+    // A different score shows the section. Its label is the score alone; the
+    // button's detail line is the one place that says what it costs.
     HydraRecord worse = dup;
     worse.allzero_paths.front().score_base -= 100;
     PathListView wl = build_path_list(worse);
     CHECK(wl.show_allzero);
-    CHECK(wl.allzero_label ==
-          group_thousands(worse.allzero_paths.front().totalscore()) +
-              "   (-100)");
+    CHECK(wl.allzero_label == group_thousands(worse.allzero_paths.front().totalscore()));
+    const PathButtonsView wb = build_path_buttons(worse, 0, 2);
+    REQUIRE_FALSE(wb.buttons.empty());
+    CHECK(wb.buttons.back().group == PathButtonView::Group::AllZero);
+    CHECK(wb.buttons.back().detail == "100 below optimal");
+}
+
+TEST_CASE("build_path_list: one duplicate hides only itself (D51 Q4b)") {
+    const HydraRecord& rec = analyzed().record;
+    REQUIRE_FALSE(rec.paths.empty());
+    const Path& first = rec.paths.front();
+    REQUIRE_FALSE(first.activations.empty());
+    REQUIRE_FALSE(first.activations.back().sp_end_steps.empty());
+
+    // The all-0 list holds the first listed path, plus one variant of it
+    // whose last deact tick is one later: a path the list does not have.
+    HydraRecord one = rec;
+    one.allzero_paths.clear();
+    one.allzero_paths.push_back(first);
+    Path& dup = one.allzero_paths.front();
+    dup.variants.clear();
+    Path variant = first;
+    variant.variants.clear();
+    variant.activations.back().sp_end_steps.back().end_tick += 1;
+    dup.variants.push_back(variant);
+    dup.recount_tied_paths();
+
+    const PathListView list = build_path_list(one);
+    CHECK(list.show_allzero);
+    REQUIRE(list.allzero.size() == 1);
+    CHECK(path_identity(*list.allzero.front()) == path_identity(variant));
 }
 
 TEST_CASE("path_identity: same path, rescored path, trimmed path") {
@@ -854,6 +907,16 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -163.0});
     CHECK(activation_badge(sqout) == "squeeze out 163 ms");
 
+    // A free squeeze-in (already inside SP) has nothing to time: no badge.
+    Activation free_in = none;
+    free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -163.0});
+    CHECK(activation_badge(free_in).empty());
+    // Nor does a required fill with 10 ms to spare.
+    Activation slack = none;
+    slack.e_offset = 10.0;
+    REQUIRE(slack.is_E0());
+    CHECK(activation_badge(slack).empty());
+
     // A required (E0) early fill is a squeeze too; the hardest one names the badge.
     Activation e0 = none;
     e0.e_offset = -30.0;
@@ -1142,9 +1205,11 @@ TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
     CHECK(v.buttons[3].title == "375,955" + kDot + "0 0 0 0");
     CHECK(v.buttons[3].detail == "2,360 below optimal");
 
-    CHECK(within_label(0, 1) == "Within 1 score");
-    CHECK(within_label(1, 5000) == "Within 5,000 points");
-    CHECK(within_label(1, 1) == "Within 1 point");
+    // The INI's int reaches the heading through Settings::search_depth_mode.
+    CHECK(build_path_buttons(rec, /*depth_mode=*/0, 1).within_label == "Within 1 score");
+    CHECK(build_path_buttons(rec, /*depth_mode=*/1, 5000).within_label ==
+          "Within 5,000 points");
+    CHECK(build_path_buttons(rec, /*depth_mode=*/1, 1).within_label == "Within 1 point");
 
     // A top score tied between a root and its variant: both tied paths sit in
     // the Optimal group, and the lower root does not.
