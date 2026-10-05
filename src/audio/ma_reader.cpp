@@ -181,7 +181,15 @@ public:
         }
         ma_uint64 len = 0;
         if (ma_decoder_get_length_in_pcm_frames(&dec_, &len) != MA_SUCCESS) len = 0;
-        length_ = static_cast<int64_t>(len);
+        // A header length of 0 is counted (CountedLength). A WAV can't land
+        // there with audio in it, because dr_wav takes its length from the
+        // data chunk's size, so in practice it is a FLAC. dr_flac clamps every
+        // seek target to the header's total, so a counted stem's seeks would
+        // all land on frame 0; CountedLength seeks by decoding instead.
+        scratch_.resize(static_cast<std::size_t>(kSkipChunk) * static_cast<std::size_t>(channels_));
+        length_ = counted_.length(
+            static_cast<int64_t>(len), static_cast<int64_t>(kSkipChunk), at_end_,
+            [this] { return restart(); }, [this](int64_t n) { return skip(n); });
     }
 
     ~MaReader() override { ma_decoder_uninit(&dec_); }
@@ -206,6 +214,7 @@ public:
                 at_end_ = true;
             }
         }
+        pos_ += done;
         return done;
     }
 
@@ -213,17 +222,42 @@ public:
         frame = std::clamp<int64_t>(frame, 0, length_);
         if (frame >= length_) {
             at_end_ = true;
+            pos_ = length_;
+            return;
+        }
+        if (counted_.counted()) {
+            // As in read(): a decode error ends the stem, and failed() stays true.
+            if (counted_.seek(frame, static_cast<int64_t>(kSkipChunk), pos_, at_end_,
+                              [this] { return restart(); }, [this](int64_t n) { return skip(n); }))
+                failed_ = true;
             return;
         }
         at_end_ = ma_decoder_seek_to_pcm_frame(&dec_, static_cast<ma_uint64>(frame)) != MA_SUCCESS;
+        pos_ = frame;
     }
 
 private:
+    // CountedLength's two decoder calls.
+    bool restart() { return ma_decoder_seek_to_pcm_frame(&dec_, 0) == MA_SUCCESS; }
+    DecodeStep skip(int64_t frames) {
+        ma_uint64 got = 0;
+        const ma_result r = ma_decoder_read_pcm_frames(&dec_, scratch_.data(),
+                                                       static_cast<ma_uint64>(frames), &got);
+        DecodeStep step;
+        step.frames = static_cast<int64_t>(got);
+        step.more = r == MA_SUCCESS && got != 0;
+        step.error = r != MA_SUCCESS && r != MA_AT_END && got != 0;
+        return step;
+    }
+
     StemBytes bytes_;
     ma_decoder dec_{};
     int channels_ = 0;
     int rate_ = 0;
     int64_t length_ = 0;
+    int64_t pos_ = 0;         // the frame the next read returns
+    CountedLength counted_;   // the header said 0 frames, so length_ is a count
+    std::vector<float> scratch_;  // decode target for counted and skipped frames
     bool at_end_ = false;
     bool failed_ = false;
 };

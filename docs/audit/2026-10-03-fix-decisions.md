@@ -230,3 +230,8 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 1. Report-page search folds accents and matches every typed word, and nothing more. Quotes and the Library's field prefixes (artist:, title:, charter:) are ordinary words on a report page. The Library keeps the full query language, and the pages carry no second copy of its parser.
 2. A missing artist reads "(unknown)" everywhere, whether the field is empty, holds the scan's old "<unknown artist>" placeholder, or is only Clone Hero tags. Stored text is unchanged; only the shown text changes (extends D50 item 5).
 3. The Preview's clock keeps the full audio length as its total, because playback runs to the audio end. Only the scrubber ends at the last note (D50 item 4). The user guide's wording for the clock is corrected to match.
+
+**D57 (phase 3 M_D review round 2, display calls), 2026-10-04.** The user chose the recommended answer to three questions.
+1. Every one-decimal millisecond figure is written with a space ("163.5 ms"), matching whole numbers ("171 ms") and the report pages. One formatter answers it.
+2. The Paths tab backend tooltip names the normal budget at one decimal in both places ("on the normal 170.5 ms scale … not 170.5 ms").
+3. Report-page search looks at the text each page shows, so a tag-only title or artist searches as "(unknown)". The Library keeps searching the stored text.

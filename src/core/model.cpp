@@ -6,6 +6,7 @@
 #include <limits>
 
 #include "core/backend_value.h"
+#include "core/scoring.h"  // category_scores, multsqueeze_gain
 
 namespace hydra {
 
@@ -337,22 +338,11 @@ MultSqueeze::MultSqueeze(Chord chord, int combo)
     validate();
 }
 
-// A multiplier squeeze is a chord whose notes straddle a to_multiplier step
-// (combos 10, 20, 30): combo_ is the combo before the chord, and note i scores
-// at to_multiplier(combo_ + i). For 2- and 3-note chords, the combo set below
-// plus the mod-10 rule (the last note lands on the step or one past it)
-// accept exactly the straddling chords; the test "MultSqueeze accepts exactly
-// the 2- and 3-note chords that straddle a multiplier step" checks this
-// against to_multiplier. For 4-note chords only combos 7, 17 and 27 are
-// accepted, and 5-note chords never are, although both also straddle from
-// other combos. Why the set stops there is not recorded; it is kept fixed.
+// Every chord of any size whose notes straddle a to_multiplier step counts
+// (D51 call 3, with the user's note that 4- and 5-note chords are valid in
+// Clone Hero, so Hydra must get them right).
 bool MultSqueeze::applies(const Chord& chord, int combo) {
-    switch (combo) {
-        case 7: case 8: case 17: case 18: case 27: case 28: break;
-        default: return false;
-    }
-    const int mod = (chord.count() + combo) % 10;
-    if (mod != 0 && mod != 1) return false;
+    if (!(to_multiplier(combo + 1) < to_multiplier(combo + chord.count()))) return false;
 
     // A chord whose notes are all worth the same has nothing to squeeze.
     const std::vector<ChordNote> notes = chord.notes();
@@ -366,50 +356,90 @@ void MultSqueeze::validate() const {
         throw std::invalid_argument("not a multiplier squeeze at this combo");
 }
 
-int MultSqueeze::multiplier() const { return to_multiplier(combo_) + 1; }
+// The multiplier the last note is paid at when the chord is hit in the best
+// order, read from the payout.
+int MultSqueeze::multiplier() const { return category_scores(chord_, combo_).multiplier_after; }
 
+namespace {
+
+// The notes of a multiplier-squeeze chord the player has to place, read from
+// the payouts: `first` must be hit before the step, `last` past it.
+struct SqueezeAdvice {
+    std::vector<ChordNote> first;
+    std::vector<ChordNote> last;
+};
+
+SqueezeAdvice squeeze_advice(const Chord& chord, int combo) {
+    // In the best order (cheapest first) the notes past the step are the
+    // ones paid at a higher multiplier than the first note.
+    std::vector<CategoryScores> per_note;
+    category_scores(chord, combo, &per_note);
+    const std::vector<ChordNote> best = chord.notes(true);
+    size_t step = 1;
+    while (per_note[step].multiplier == per_note[0].multiplier) ++step;
+    const int dearest_before = best[step - 1].basescore();
+    const int cheapest_past = best[step].basescore();
+
+    // A note cheaper than every note past the step has to stay before it, and
+    // a note dearer than every note before the step has to cross it. A note
+    // worth the value the two sides share can go either way.
+    std::vector<ChordNote> must_stay, must_cross;
+    for (const ChordNote& note : best) {
+        if (note.basescore() < cheapest_past) must_stay.push_back(note);
+        if (note.basescore() > dearest_before) must_cross.push_back(note);
+    }
+    SqueezeAdvice advice;
+    if (must_cross.empty()) {
+        advice.first = must_stay;
+    } else if (must_stay.empty()) {
+        advice.last = must_cross;
+    } else if (dearest_before == cheapest_past) {
+        // Tied notes fill the middle, so both ends need naming.
+        advice.first = must_stay;
+        advice.last = must_cross;
+    } else if (must_stay.size() == 1) {
+        // One note alone before the step: placing it settles the order.
+        advice.first = must_stay;
+    } else {
+        // Otherwise name every note that crosses (D51 call 3).
+        advice.last = must_cross;
+    }
+    return advice;
+}
+
+// "[YellowCym] and [BlueCym]": each note as its own one-note chord, named in
+// the Pro Drums setting's words (Chord::rowstr).
+std::string joined_notes(const std::vector<ChordNote>& notes, bool pro) {
+    std::string joined;
+    for (const ChordNote& note : notes) {
+        Chord one;
+        one.insert_note(note);
+        if (!joined.empty()) joined += " and ";
+        joined += one.rowstr(pro);
+    }
+    return joined;
+}
+
+}  // namespace
+
+// "high" when the advice names notes to hit last, "low" when it names only
+// notes to hit first.
 std::string MultSqueeze::direction() const {
-    return (combo_ % 10 == 7) ? "high" : "low";
+    return squeeze_advice(chord_, combo_).last.empty() ? "low" : "high";
 }
 
-int MultSqueeze::points() const {
-    std::vector<ChordNote> order = chord_.notes(true);
-    return order.back().basescore() - order.front().basescore();
-}
+int MultSqueeze::points() const { return multsqueeze_gain(chord_, combo_); }
 
 std::string MultSqueeze::notationstr() const {
     return std::to_string(multiplier()) + "x";
 }
 
 std::string MultSqueeze::howto(bool pro) const {
-    // Ports MultSqueeze.guide_chords + .howto: every "edge" note (the note(s)
-    // tied for the highest/lowest basescore, per direction()) is a single-note
-    // chord that alone accomplishes the squeeze when hit last/first.
-    std::vector<ChordNote> ordered = chord_.notes(/*basesorted=*/true);
-    bool high = direction() == "high";
-    // A 3-note chord splits two and one across the step. When only one end
-    // holds a single note, placing that note settles the squeeze from either
-    // side of the step, so name it: Kick + two cymbals is "Hit [Kick] first."
-    // whether the kick is the one left behind or a cymbal is the one carried
-    // over. With three different values the direction decides, as above.
-    if (ordered.size() == 3) {
-        const int lo = ordered[0].basescore();
-        const int mid = ordered[1].basescore();
-        const int hi = ordered[2].basescore();
-        if (lo != mid && mid == hi) high = false;
-        if (lo == mid && mid != hi) high = true;
-    }
-    int edge_score = high ? ordered.back().basescore() : ordered.front().basescore();
-
-    std::string joined;
-    for (const ChordNote& note : ordered) {
-        if (note.basescore() != edge_score) continue;
-        Chord edge;
-        edge.insert_note(note);
-        if (!joined.empty()) joined += " or ";
-        joined += edge.rowstr(pro);
-    }
-    return "Hit " + joined + (high ? " last." : " first.");
+    const SqueezeAdvice advice = squeeze_advice(chord_, combo_);
+    if (advice.last.empty()) return "Hit " + joined_notes(advice.first, pro) + " first.";
+    if (advice.first.empty()) return "Hit " + joined_notes(advice.last, pro) + " last.";
+    return "Hit " + joined_notes(advice.first, pro) + " first and " + joined_notes(advice.last, pro) +
+           " last.";
 }
 
 // ---- Activation ---------------------------------------------------------

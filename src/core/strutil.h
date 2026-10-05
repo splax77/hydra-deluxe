@@ -36,6 +36,33 @@ bool ends_with_ci(std::string_view s, std::string_view suffix);
 // Locale-independent.
 std::optional<double> parse_finite_number(std::string_view text);
 
+// One line of an INI file (hydra_settings.ini, hydra_rules.ini), read one way
+// for both. Everything from a # on is a comment, whole-line or trailing.
+//
+// ini_line_text: the line with its comment cut off and spaces trimmed. Empty
+// for a blank or comment-only line. A view into `line`.
+std::string_view ini_line_text(std::string_view line);
+
+// A "key = value" line, split at its first =.
+struct IniPair {
+    std::string key;    // trimmed
+    std::string value;  // trimmed, comment cut off
+    // Everything after the first =, trimmed, with any # kept. For a key whose
+    // value is free text, such as a folder path, where # is part of a name.
+    std::string whole_value;
+};
+
+// The key and value of an INI line, or nothing for a blank line, a
+// comment-only line, or a line with no = before its comment. Each reader
+// decides what a line with no = means: hydra_settings.ini skips it,
+// hydra_rules.ini refuses it.
+std::optional<IniPair> split_ini_line(std::string_view line);
+
+// What text means on or off in an INI file: exactly "1" is on and exactly
+// "0" is off. Anything else ("true", "yes", "", " 1") is absent, and the
+// caller keeps what it had.
+std::optional<bool> parse_bool(std::string_view text);
+
 }  // namespace hydra
 
 #endif  // HYDRA_CORE_STRUTIL_H

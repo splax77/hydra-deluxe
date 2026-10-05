@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "app/config.h"
+#include "app/display_format.h"
 #include "app/rules_file.h"
 #include "core/model.h"
 #include "core/rules.h"
@@ -257,6 +258,122 @@ TEST_CASE("rules: max_tied_paths caps the tied paths the engine keeps") {
     CHECK(charts > 0);
 }
 
+// Finding 95, D51 call 1: the tie limit is one count per score, whichever
+// side of the Path limit a path falls on, and a path inside the limit leads.
+// On this chart two paths tie the top score under 1.0 fills; only the E0
+// path's early fill puts it over a 0 ms limit, so the inside one is kept.
+TEST_CASE("rules: max_tied_paths is one count per score, inside paths first") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("black midi - Sugar") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.legacy_fill_deadline = true;
+    settings.ms_filter = 0.0;
+    settings.rules.max_tied_paths = 1;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    const Path& best = record.best_path();
+    int at_top = 0;
+    std::string seen;
+    for (const Path* p : record.all_paths()) {
+        if (p->totalscore() != best.totalscore()) continue;
+        seen += "'" + p->pathstring() + "' ";
+    }
+    for (const Path& p : record.paths)
+        if (p.totalscore() == best.totalscore()) at_top += p.tied_pathcount();
+    INFO("paths at the top score: ", seen);
+    CHECK(at_top == 1);
+    CHECK(best.tied_pathcount() == 1);
+    CHECK(best.pathstring() == "0 E3+ E5 E1");
+}
+
+// Finding 330, D51 call 2: a path over the Path limit is still kept when it
+// ties the optimal score, and one over the limit below it is dropped.
+TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal score") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("HopH2O - I Am... All Of Me") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.ms_filter = 10.0;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    const int64_t top = record.best_path().totalscore();
+    CHECK(top == 694985);
+    bool kept = false;
+    bool below_kept = false;
+    std::string seen;
+    for (const Path* p : record.all_paths())
+        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) + "; ";
+    INFO("kept paths: ", seen);
+    for (const Path* p : record.all_paths()) {
+        if (p->pathstring() == "3 E0 1 0- 2 E0") below_kept = true;
+        if (p->totalscore() != top || p->pathstring() != "0+ 2 0 0- 2 E0") continue;
+        REQUIRE(p->difficulty().has_value());
+        CHECK(app::format_ms(*p->difficulty()) == "78.9ms");
+        kept = true;
+    }
+    CHECK(kept);
+    CHECK_FALSE(below_kept);
+}
+
+// D55 item 5: one count per score must not bring back over-limit paths below
+// the best score. On this chart '2 2+ 0- 3' needs a 428.6 ms squeeze and ties
+// the inside path '2 2+ 3 0+' below the top. It is dropped, not filed under
+// that path as a tie.
+TEST_CASE("rules: a path over the Path limit below the best score is dropped even as a tie") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("Unbound (The Wild Ride)") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.legacy_fill_deadline = false;
+    settings.ms_filter = 10.0;
+    settings.rules.max_tied_paths = 4;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    std::string seen;
+    for (const Path* p : record.all_paths())
+        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) + "; ";
+    INFO("kept paths: ", seen);
+    bool inside_kept = false;
+    bool over_kept = false;
+    for (const Path* p : record.all_paths()) {
+        if (p->pathstring() == "2 2+ 0- 3") over_kept = true;
+        if (p->pathstring() == "2 2+ 3 0+" && p->totalscore() == 859580) inside_kept = true;
+    }
+    CHECK(inside_kept);
+    CHECK_FALSE(over_kept);
+}
+
+// Finding 179: the engine's running tie count (bookkeeping for the limit)
+// must equal the recount of the finished tree, which is what is stored.
+// rebuild throws when they differ; this runs it over real charts.
+TEST_CASE("rules: the engine's tied count matches the recount") {
+    int charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, core::default_rules());
+        std::vector<Path> paths;
+        REQUIRE_NOTHROW(paths = run_search(graph, EngineOptions{}));
+        REQUIRE_FALSE(paths.empty());
+        for (const Path& p : paths) CHECK(p.tied_pathcount() >= 1);
+        if (++charts == 5) break;
+    }
+    CHECK(charts == 5);
+}
+
 TEST_CASE("rules: the generated-fill values come from the rules") {
     Song by_default = fill_song();
     by_default.check_activations();
@@ -303,6 +420,26 @@ TEST_CASE("rules: the retired Auto fingerprint is what Hydra 1.8.4 stamped") {
     ties.max_tied_paths = 2;
     CHECK(ties.retired_auto_fingerprint() != core::default_rules().retired_auto_fingerprint());
     CHECK(ties.retired_auto_fingerprint() != ties.fingerprint());
+}
+
+TEST_CASE("rules: the fingerprint text is byte for byte what 1.8.4 wrote") {
+    // Pinned from the build before the field table existed (6a1bb49). Every
+    // stored result carries one of these, so a change to the text's names,
+    // number form or line order would read every row Stale.
+    CHECK(core::default_rules().fingerprint() == 0x70d2e96669604cf2ull);
+    CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
+    // Every field moved off its default, so each line's name and number form
+    // (whole numbers, fractions, the whole_chord word) is in the hash.
+    core::Rules all;
+    all.backend_leeway_ms = 5.0;
+    all.sqout_rule = core::SqOutRule::WholeChord;
+    all.max_tied_paths = 2;
+    all.fill_cooldown_measures = 3;
+    all.fill_max_distance_beats = 0.25;
+    all.fill_length_measures = 0.75;
+    all.fill_land_slop_beats = 0.1;
+    CHECK(all.fingerprint() == 0x786ef3e8a2dbe1e4ull);
+    CHECK(all.retired_auto_fingerprint() == 0x229fa7e95ca76618ull);
 }
 
 TEST_CASE("rules: the default stamp is built once and matches a fresh record") {

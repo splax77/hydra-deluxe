@@ -161,6 +161,7 @@ add_library(hydra_core STATIC
     src/core/replay.cpp
     src/core/strutil.cpp
     src/core/winstr.cpp
+    src/core/audio_sniff.cpp
     src/parse/midi.cpp
     src/parse/song.cpp
     src/parse/srb.cpp

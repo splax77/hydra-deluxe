@@ -16,9 +16,13 @@ The workflow is wf_9effe137-183. Each task gets an Opus implementer, then a Sonn
 
 J1-2, J1-3, J1-5 and J1-6 merged to main as 7a4e59e. J1-1 and J1-4 wait, because they sit on phase 7's T1 and AU1 commits, which reach main with M7-1. The first derive-once review (key f937a5b) found four small things. There was a folder-and-name join written twice, so `join_folder` now lives in winstr. A known-copy row named no task. One test recomputed the .srb offset. ADR 0008 named `kSpanEndTicks`' old file. One sweep round of two Opus agents fixed all four, and round 2 (key 4b4fba0) came back CLEAN. The full suite passed 876 of 876 and the GUI suite 62 of 62. Corpus scores on all 97 charts were byte-identical to main at b555828.
 
-### Still to do in J1
+### M6-J1b merged (8fe0356): J1-1
 
-J1-1 is at 0370712 on `claude/p6-j1-1`. Its answer check found one stray tick, 1536, in its new fixtures case; move that chord to an allowed tick. Its scan rows sit in a temporary block that `rules()` does not read yet, so move them in at the join. J1-4 is at c87899b on `claude/p6-j1-4`, and its answer check was CLEAN. Both merge as M6-J1b after M7-1. The steps: merge main into a fresh `claude/p6-j1b`, merge both tasks, fix the J1-1 leftovers, run the precheck, get a review, run one sweep round, run the full suite once, compare the scores, then merge.
+M7-1 merged first, as 6c65208. J1-1 then merged alone as 8fe0356. At the join, its stray 1536 tick moved to 192, and its temporary scan-row block went into `rules()` and `known_copies()`. The precheck found 0 items, and the review came back CLEAN on the first round (key 9f8bbea). The full suite passed 904 of 904 and the GUI suite 62 of 62. Corpus scores matched main at 5a95e8f, which already includes M7-1's intended score changes, on all 97 charts. The replay self-check passed 382 of 382.
+
+### Still to do in J1: J1-4 (M6-J1c, after M_D)
+
+J1-4 is at c87899b on `claude/p6-j1-4`, and its answer check was CLEAN. Phase 3's FX-P (inside M_D) also adds `src/audio/frames.h` with `frames_of_ms` and `ms_of_frames`, and it also edits `player.cpp` and `test_audio_player.cpp`. Agreed with the phase 3 session: M_D goes first. Then J1-4 merges main in, takes phase 3's `frames.h` (with its rate guard) and its `player.cpp` changes as they are, and keeps only J1-4's other folds: `stem_converter_config`, `tests/audio_util.h` and the mixer oracle pin. After that come the precheck, a review, the full suite and the scores, then the merge as M6-J1c.
 
 ## Notes for later waves (from the J1 brief writers)
 

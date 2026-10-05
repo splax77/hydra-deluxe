@@ -1,11 +1,10 @@
 """Watch the hit window against the song clock, then map it to the notes.
 
-This is poll_windows.py plus the song clock. poll_windows logs the window
-field (+0x20) against wall-clock time, which counts distinct values but can't
-tie a value to a note. This script reads the song clock (+0x100) on every
-sample too. After the song ends it loads the song's manifest.json and prints
-each test block's window values in the order they appeared, next to the notes
-around them.
+It reads the window field (+0x20) and the song clock (+0x100) on every
+sample, so each window value can be tied to a note. (It replaced the old
+poll_windows.py, which logged the window against wall-clock time only.) After
+the song ends it loads the song's manifest.json and prints each test block's
+window values in the order they appeared, next to the notes around them.
 
 It also logs the score (+0x94) and the field at +0x2e0, which the code
 reading says holds the song time of the last hit. That makes the same script
@@ -17,7 +16,8 @@ Usage (start the song, then run; or run first and it waits for the song):
     python tools\\ch_probe\\experiments\\watch_window.py ["Window Map" | "Edge Walk" | folder]
 
 It stops by itself a couple of seconds after the last note, or when the clock
-stops moving (song quit or restarted). Ctrl+C stops early and still reports.
+stops moving or jumps back (live.StoppedCheck: song quit, paused or
+restarted). Ctrl+C stops early and still reports.
 """
 
 from __future__ import annotations
@@ -42,7 +42,6 @@ from tools.ch_probe.experiments import live
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 
-STALL_S = 8.0          # clock frozen this long = song quit, paused or restarted
 TAIL_S = 2.0           # keep watching this long after the last note
 
 
@@ -61,7 +60,7 @@ def changes(samples: list[Sample], field: str) -> list[tuple[float, float]]:
     out: list[tuple[float, float]] = []
     for s in samples:
         v = getattr(s, field)
-        if not out or abs(v - out[-1][1]) > 1e-6:
+        if not out or live.window_changed(v, out[-1][1]):
             out.append((s.clock_ms, v))
     return out
 
@@ -235,6 +234,36 @@ def clock_step_line(steps_ms: list[float]) -> str:
             f"(median of {len(steps_ms)}); readings are quantized to that.")
 
 
+def window_verdict(windows: list[float], back_ms: float) -> list[str]:
+    """Plain-English verdict lines for a run's stored windows, in ms.
+
+    Judged against the measured normal-mode cap and floor (constants.py).
+    `back_ms` is the engine's live back constant; when it is not the normal
+    85 ms the game is in precision mode, whose cap nobody has read.
+    (Moved here unchanged from the deleted poll_windows.py.)
+    """
+    tol = C.WINDOW_MATCH_TOLERANCE_MS
+    w_min, w_max = min(windows), max(windows)
+    if abs(back_ms - C.EXPECT_NORMAL_BACK_MS) > C.CONST_MATCH_TOLERANCE_MS:
+        return [f"  Back window is {back_ms:.1f} ms, not the normal "
+                f"{C.EXPECT_NORMAL_BACK_MS:.0f}: precision mode, "
+                "which has no measured cap yet."]
+    lines = [f"  Measured cap {C.WINDOW_CAP_MS} ms, floor {C.WINDOW_FLOOR_MS} ms."]
+    if w_max > C.WINDOW_CAP_MS + tol:
+        lines.append(f"  *** Window EXCEEDED the measured cap: max {w_max:.3f} ms. NO CLAMP. ***")
+    elif abs(w_max - C.WINDOW_CAP_MS) <= tol:
+        lines.append("  The window reached the measured cap and never passed it.")
+    elif len(set(round(w, 2) for w in windows)) == 1:
+        lines.append("  Window never changed: either notes were uniform or no notes hit.")
+    else:
+        lines.append("  The window stayed below the cap: the song may have had no gaps of "
+                     f"{C.CAP_FROM_GAP_MS:.0f} ms or more.")
+    if abs(w_min - C.WINDOW_FLOOR_MS) <= tol:
+        lines.append("  It also reached the measured floor (gaps of "
+                     f"{C.FLOOR_UP_TO_GAP_MS:.0f} ms or less).")
+    return lines
+
+
 # --- Live run ----------------------------------------------------------------
 
 def resolve_song_dir(arg: Optional[str]) -> str:
@@ -268,7 +297,7 @@ def main() -> None:
     steps: list[float] = []
     last = None
     last_clock = snap.clock_s
-    last_move = time.perf_counter()
+    stopped = live.StoppedCheck(snap.clock_s, time.perf_counter())
     try:
         while True:
             try:
@@ -276,25 +305,24 @@ def main() -> None:
             except OSError:
                 print("  Lost the engine (game closed?).")
                 break
-            now = time.perf_counter()
-            if s.clock_s < last_clock - 1.0:
-                print(f"  Clock jumped back ({last_clock:.2f} -> {s.clock_s:.2f} s). "
-                      "Stopping; rerun for a clean log.")
+            try:
+                moved = stopped.check(s.clock_s, time.perf_counter())
+            except live.ClockJumpedBack as e:
+                print(f"  {e}. Stopping; rerun for a clean log.")
                 break
-            if s.clock_s != last_clock:
+            except live.ClockFrozen as e:
+                print(f"  {e}. Stopping.")
+                break
+            if moved:
                 steps.append((s.clock_s - last_clock) * 1000)
                 last_clock = s.clock_s
-                last_move = now
-            elif now - last_move > STALL_S:
-                print(f"  Clock frozen for {STALL_S:.0f} s. Stopping.")
-                break
 
             cur = Sample(s.clock_s * 1000, s.window_ms, s.score, s.hit_time_s * 1000)
-            if (last is None or abs(cur.window_ms - last.window_ms) > 1e-6
+            if (last is None or live.window_changed(cur.window_ms, last.window_ms)
                     or cur.score != last.score
-                    or abs(cur.hit_time_ms - last.hit_time_ms) > 1e-6):
+                    or live.window_changed(cur.hit_time_ms, last.hit_time_ms)):
                 samples.append(cur)
-                if last is None or abs(cur.window_ms - last.window_ms) > 1e-6:
+                if last is None or live.window_changed(cur.window_ms, last.window_ms):
                     print(f"  {cur.clock_ms/1000:8.3f} s  window {cur.window_ms:7.2f} ms")
                 last = cur
 

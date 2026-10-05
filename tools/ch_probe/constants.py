@@ -183,6 +183,12 @@ FLOOR_UP_TO_GAP_MS = 2 * EXPECT_NORMAL_FRONT_S * 1000     # 75
 # measured values agree with these to 0.00001 ms.
 WINDOW_MATCH_TOLERANCE_MS = 0.01
 
+# How far a stored window (or hit time) must move between two reads to count
+# as a change rather than the same value read again. The game writes these
+# doubles whole, so anything above rounding noise is a real change.
+# experiments/live.window_changed is the one place that compares against it.
+WINDOW_CHANGE_TOLERANCE_MS = 1e-6
+
 # Name of the target module and process.
 MODULE_NAME = "GameAssembly.dll"
 PROCESS_NAME = "Clone Hero.exe"

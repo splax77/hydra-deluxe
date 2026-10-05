@@ -26,18 +26,22 @@ uint64_t fnv1a64(const std::string& s) {
 
 namespace {
 
-// Every field that can change a run's answer, one line each. The text is
-// frozen: changing it makes every stored result Stale (docs/adr/0014).
+// Every field that can change a run's answer, one line each, in
+// rules_fields() order. The text is frozen: changing it makes every stored
+// result Stale (docs/adr/0014). A whole number is written in the same %.17g
+// form as a fraction, as it always was.
 std::string fixed_cap_text(const Rules& r) {
     std::string text;
-    add_line(text, "backend_leeway_ms", r.backend_leeway_ms);
-    text += r.sqout_rule == SqOutRule::WholeChord ? "sqout_rule=whole_chord\n"
-                                                  : "sqout_rule=first_note\n";
-    add_line(text, "max_tied_paths", r.max_tied_paths);
-    add_line(text, "fill_cooldown_measures", r.fill_cooldown_measures);
-    add_line(text, "fill_max_distance_beats", r.fill_max_distance_beats);
-    add_line(text, "fill_length_measures", r.fill_length_measures);
-    add_line(text, "fill_land_slop_beats", r.fill_land_slop_beats);
+    for (const RulesField& f : rules_fields()) {
+        if (auto real = std::get_if<double Rules::*>(&f.member)) {
+            add_line(text, f.name, r.**real);
+        } else if (auto whole = std::get_if<int Rules::*>(&f.member)) {
+            add_line(text, f.name, static_cast<double>(r.**whole));
+        } else {
+            const auto sqout = std::get<SqOutRule Rules::*>(f.member);
+            text += std::string(f.name) + "=" + sqout_rule_name(r.*sqout) + "\n";
+        }
+    }
     return text;
 }
 
@@ -62,6 +66,31 @@ uint64_t Rules::retired_auto_fingerprint() const {
 const Rules& default_rules() {
     static const Rules rules;
     return rules;
+}
+
+const char* sqout_rule_name(SqOutRule rule) {
+    return rule == SqOutRule::WholeChord ? "whole_chord" : "first_note";
+}
+
+std::optional<SqOutRule> sqout_rule_from_name(std::string_view name) {
+    for (SqOutRule rule : {SqOutRule::FirstNote, SqOutRule::WholeChord})
+        if (name == sqout_rule_name(rule)) return rule;
+    return std::nullopt;
+}
+
+const std::vector<RulesField>& rules_fields() {
+    // The order is the fingerprint's line order, frozen with its text.
+    static const std::vector<RulesField> fields = {
+        {"backend_leeway_ms", &Rules::backend_leeway_ms, 0.0},
+        {"sqout_rule", &Rules::sqout_rule},
+        {"max_tied_paths", &Rules::max_tied_paths, 1.0},
+        {"fill_cooldown_measures", &Rules::fill_cooldown_measures, 1.0},
+        {"fill_max_distance_beats", &Rules::fill_max_distance_beats, 0.0},
+        // Must be above zero, as hydra_rules.ini always required.
+        {"fill_length_measures", &Rules::fill_length_measures, 0.0, false},
+        {"fill_land_slop_beats", &Rules::fill_land_slop_beats, 0.0},
+    };
+    return fields;
 }
 
 const RulesStamp& default_stamp() {

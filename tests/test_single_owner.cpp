@@ -1375,6 +1375,129 @@ const std::vector<OwnerRule>& rules() {
           "avgPct = Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%';"},
          {},
          {"src"}},
+        // Task E2: the multiplier steps live in to_multiplier only. A combo
+        // tested against 10, 20 or 30, or taken mod 10, is a second answer
+        // (MultSqueeze::applies held one before D51 call 3).
+        {"Where does the combo multiplier step up?",
+         "to_multiplier in src/core/timing.cpp",
+         R"(\bcombo\w*\)?\s*%\s*10\b|\bcombo\w*\s*[<>]=?\s*(10|20|30)\b|\b(10|20|30)\s*[<>]=?\s*combo)",
+         "",
+         {},
+         {},
+         "D51 calls 3 and 13 (audit findings 49 and 335), 2026-10-04",
+         {"const int mod = (chord.count() + combo) % 10;", "return (combo_ % 10 == 7) ? \"high\" : \"low\";",
+          "if (combo >= 20) return 3;", "if (30 <= combo_after) ok = true;"},
+         {"if (to_multiplier(combo + 1) < to_multiplier(combo + chord.count())) ok = true;",
+          "if (count % 10 == 0) return;", "if (combo > 100) return;"},
+         {{"src/core/timing.cpp", "if (combo < 10) return 1;", "to_multiplier, the owner"},
+          {"src/core/timing.cpp", "if (combo < 20) return 2;", "to_multiplier, the owner"},
+          {"src/core/timing.cpp", "if (combo < 30) return 3;", "to_multiplier, the owner"}}},
+        // Phase 7 task SE1: the Settings owner.
+        {"What text turns an INI setting on or off?",
+         "parse_bool in src/core/strutil.cpp",
+         R"re([!=]=\s*"(0|1|true|false|yes|no)")re",
+         "",
+         {},
+         {},
+         "audit finding 68 (code-only: on/off text is 0 or 1 only), phase 7 task SE1",
+         {"else if (key == \"is_rescan\") s.is_rescan = (value == \"1\");",
+          "bool flag_bool(const std::string& v) { return v == \"1\" || v == \"true\" || v == \"yes\"; }",
+          "if (v != \"0\") on = true;"},
+         {"if (a.ms == \"off\") s.mslimit_enabled = false;",
+          "if (const std::optional<bool> on = parse_bool(line.value)) s.**b = *on;"},
+         {{"src/core/strutil.cpp", "if (text == \"1\") return true;", "parse_bool, the owner"},
+          {"src/core/strutil.cpp", "if (text == \"0\") return false;", "parse_bool, the owner"}}},
+        // A setting's range, or the cap floor of 1 bar, worked out again
+        // outside the key table.
+        {"What range may a number setting hold?",
+         "Settings::clamp in src/app/config.cpp (the key table)",
+         R"(\b(mslimit_value|backendlimit_value|preview_volume|depth_value|depth_mode|sp_cap|hit_window_ms|volume_pct_)\s*=\s*(std::(clamp|max|min)\(|[^;]*>\s*100\s*\?)|\b(sp_)?cap\s*<\s*1\b|std::max\(\s*1\s*,[^;]*cap\b)",
+         R"(Settings::clamp\()",
+         {"src/app/config.cpp"},
+         {},
+         "D51 Q14 (nearest edge of the box's range, volume 0 to 100) and Q16 (a 1-bar cap stays "
+         "allowed); audit findings 138, 139, 322; phase 7 task SE1",
+         {"app.settings.sp_cap = std::max(1, cap);",
+          "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,",
+          "volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;",
+          "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "if (cap < 1)",
+          "const int cap = std::max(1, pc->sp_meter_cap());"},
+         {"app.settings.mslimit_value = Settings::clamp(&Settings::mslimit_value, v);",
+          "workers_ = std::max(1, workers);", "d.width = std::max(1, width);",
+          "const int window = static_cast<int>(kSqueezeWindowMs);"}},
+        {"What gain does a volume percent play at?",
+         "Settings::volume_gain in src/app/config.cpp",
+         R"((volume|percent|pct)\w*\)*\s*/\s*100\b)",
+         R"(volume_gain\()",
+         {},
+         {},
+         "audit finding 72, phase 7 task SE1",
+         {"transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
+          "const float gain = percent / 100.0f;"},
+         {"transport_.set_gain(Settings::volume_gain(volume_pct_));",
+          "const double bars = phrase_count / 4.0;"},
+         {{"src/app/config.cpp",
+           "return static_cast<float>(clamp(&Settings::preview_volume, percent)) / 100.0f;",
+           "volume_gain, the owner"}}},
+        // The bestpath column and hydra_replay's result block both show this
+        // text, so they read it from one function.
+        {"What text is a record's best path?",
+         "best_path_text in src/store/record_store.cpp",
+         R"(best_path\(\)\.pathstring\(\))",
+         "",
+         {},
+         {},
+         "ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 2 (2026-10-04)",
+         {"return record.paths.empty() ? std::string() : record.best_path().pathstring();",
+          "{\"bestpath\", best ? rec.best_path().pathstring() : std::string()}};"},
+         {"CHECK(p->pathstring() == \"0 E3+ E5 E1\");"},
+         {{"src/store/record_store.cpp",
+           "return record.paths.empty() ? std::string() : record.best_path().pathstring();",
+           "best_path_text, the owner"}}},
+        // rules_fp_of builds the SQL from the column or parameter it is
+        // given, so its own line never spells structure's bytes 5 to 12.
+        {"Which rules was a stored row made under (SQL)?",
+         "rules_fp_of in src/store/record_store.cpp",
+         R"(substr\(\s*structure\s*,\s*5\s*,\s*8\s*\))",
+         "",
+         {},
+         {},
+         "ST1 (audit findings 116 and 132); phase 7 M7-1 derive-once review finding 4 (2026-10-04)",
+         {"\" WHERE substr(structure,5,8) = ?\");",
+          "\"DELETE FROM results WHERE substr(structure,5,8) = ?\"}) {"},
+         {"\") AND substr(structure,1,4) IN (\" + placeholders(kPathFormatStamp.accepted.size()) +"},
+         {},
+         {"src"}},
+        // hydra_replay score writes each chord's gems once, from ReplayNote;
+        // play_chart reads them there.
+        {"Which pads (color, cymbal) does a replayed chord hit?",
+         "the \"notes\" list cmd_score writes in tools/replay.cpp, from ReplayNote",
+         R"(\{\s*"cymbal"\s*,)",
+         "",
+         {},
+         {},
+         "phase 7 M7-1 derive-once review round 2, finding 1 (2026-10-04)",
+         {"{\"cymbal\", n.cymbal},",
+          "lanes.push_back(nlohmann::json{{\"color\", color_str(n.colortype)}, {\"cymbal\", "
+          "n.is_cymbal()}});"},
+         {"{\"is_fill\", c.is_fill},", "{\"color\", color_str(n.color)},"},
+         {{"tools/replay.cpp", "{\"cymbal\", n.cymbal},", "the chord's \"notes\" list, the owner"}}},
+        // reduce_group reads this one answer both where a tied over-limit path
+        // is folded and where an over-limit leader is dropped.
+        {"What is the best score allowed to eliminate a path in its group?",
+         "Engine::best_eligible_score in src/search/engine.cpp",
+         R"(if \(!can_outscore\(|beating_\.back\(\))",
+         "",
+         {},
+         {},
+         "phase 7 M7-1 derive-once review round 2, finding 2 (2026-10-04)",
+         {"if (!can_outscore(idx)) continue;",
+          "const int64_t best = beating_.empty() ? 0 : beating_.back();"},
+         {"if (can_outscore(idx)) beating_.push_back(cur_[(size_t)idx].score);",
+          "return !filtered_[(size_t)idx] ||"},
+         {{"src/search/engine.cpp", "if (!can_outscore(idx)) continue;",
+           "best_eligible_score, the owner"}},
+         {"src/search/engine.cpp"}},
         // The CJK fallback is merged into the main font, and ImGui scales
         // merged glyphs by the ratio of the two sizes, so every load reads
         // the one size.
@@ -1690,6 +1813,44 @@ const std::vector<OwnerRule>& rules() {
            R"(return (last == '\\' || last == '/') ? folder + name : folder + "\\" + name;)",
            "join_folder, the owner"}},
          {"src"}},
+        // The same pattern as "Is a value inside the squeeze window?", over
+        // tests/. That row's scope stays src and tools; rows are append-only.
+        // Arithmetic and == on the constant (test_squeeze_rating.cpp) and
+        // storing it (test_docs_match_code.cpp) answer other questions.
+        {"Is a value inside the squeeze window? (tests)",
+         "within_squeeze_window in src/core/model.h",
+         R"([<>]=?\s*(\w+::)*kSqueezeWindowMs|(\w+::)*kSqueezeWindowMs\s*[<>])",
+         "",
+         {},
+         {},
+         "audit finding 283; phase 6 task J1-1 (D53, D54)",
+         {"c.ms - phrase_note->ms < kSqueezeWindowMs)",
+          "if (!long_after && c.ms - last_phrase->ms > kSqueezeWindowMs)",
+          "if (hydra::kSqueezeWindowMs > gap) continue;"},
+         {"CHECK(kSqueezeWindowMs == 500.0);",
+          "const double offsets[] = {0.0, 180.0, -300.0, kSqueezeWindowMs - 1.0,",
+          "out[\"kSqueezeWindowMs\"] = {false, hydra::kSqueezeWindowMs};",
+          "-static_cast<int>(hydra::kSqueezeWindowMs));",
+          "if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))"},
+         {},
+         {"tests"}},
+        // A hand-built phrase end sets the flag and the phrase start together,
+        // as the parser's close_sp_phrase does, through one fixture helper.
+        // Reads and comparisons of the flag are not assignments.
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "mark_phrase_end in tests/record_fixtures.h",
+         R"(\bflag_sp\s*=(?!=))",
+         "",
+         {},
+         {},
+         "audit finding 300; phase 6 task J1-1 (D53, D54)",
+         {"ts.flag_sp = tick == 3256;", "ts.flag_sp = phrase;", "ts.flag_sp = true;"},
+         {"if (!ts.flag_sp) continue;",
+          "if (x.flag_solo != y.flag_solo || x.flag_sp != y.flag_sp) return false;",
+          "CHECK(song.sequence[0].flag_sp == true);",
+          "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
+         {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
+         {"tests"}},
     };
     return r;
 }
@@ -1701,12 +1862,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"How is a count written next to its noun?", "tools/bench.cpp",
          "std::printf(\"  best score %lld | %d paths | sp_cap %d\\n\\n\", best,",
          "a follow-up task: tools/bench.cpp prints its path count through counted"},
-        {"Is this phrase chord after the SP end?", "src/core/replay.cpp",
-         "const bool past_deact = row.tick > w.deact_tick;",
-         "the replay's past_deact (audit findings 1 and 32, another step)"},
-        {"Is this phrase chord after the SP end?", "src/core/replay.cpp",
-         "} else if (tick > w.deact_tick) {",
-         "the replay's past_deact (audit findings 1 and 32, another step)"},
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
@@ -1720,6 +1875,29 @@ const std::vector<KnownCopy>& known_copies() {
          "src/ui/library_toolbar.cpp",
          "if (!app.status_is_problem && ImGui::GetTime() - shown_at > 6.0) return;",
          "finding 219, not yet scheduled"},
+        {"What range may a number setting hold?", "src/ui/settings_bar.cpp",
+         "app.settings.sp_cap = std::max(1, cap);", "task SE2 (the boxes call Settings::clamp)"},
+        {"What range may a number setting hold?", "src/ui/settings_bar.cpp",
+         "app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -window, window);",
+         "task SE2 (the boxes call Settings::clamp)"},
+        {"What range may a number setting hold?", "src/ui/paths_tab.cpp",
+         "app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,",
+         "task SE2 (the boxes call Settings::clamp)"},
+        {"What range may a number setting hold?", "src/ui/preview_controller.cpp",
+         "volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;",
+         "task PV (the volume reads through Settings::clamp)"},
+        {"What range may a number setting hold?", "src/ui/preview_tab.cpp",
+         "const int cap = std::max(1, pc->sp_meter_cap());", "task PV (the Preview's cap floors)"},
+        {"What range may a number setting hold?", "src/app/preview_view.cpp",
+         "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "task PV (the Preview's cap floors)"},
+        {"What range may a number setting hold?", "src/app/preview_view.cpp",
+         "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "task PV (the Preview's cap floors)"},
+        {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
+         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
+         "task PV (the Preview calls Settings::volume_gain)"},
+        {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
+         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
+         "task PV (the Preview calls Settings::volume_gain)"},
         {"Is a span on after this instant?", "src/render/highway_draw.cpp",
          "bool toggle_on(Toggle t) { return t != Toggle::Empty && t != Toggle::End; }",
          "J2-8 (the draw code calls toggle_on_after)"},
@@ -1775,6 +1953,18 @@ const std::vector<KnownCopy>& known_copies() {
         {"How are a folder and a file name joined?", "src/app/preview_source.cpp",
          R"(s.path = folder + "\\" + e.name;)",
          "task J2-5 (the Preview calls the join owner; review of M6-J1a finding 1)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = n.phrase;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
     };
     return k;
 }
@@ -2002,4 +2192,22 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
     CHECK(rule.find("src/search") != std::string::npos);
     CHECK(rule.find("src/core") != std::string::npos);
     CHECK(rule.find("src/parse") != std::string::npos);
+}
+
+// ST1 (findings 116 and 132): in record_store.cpp a stored row becomes a
+// record only through decode_record, which sets the fill rule. It is one
+// code line in the file; comment lines are skipped like the row scan does.
+// The best path's text has its own row above ("What text is a record's best
+// path?").
+TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
+    std::ifstream in(sourcetree::root() / "src" / "store" / "record_store.cpp");
+    REQUIRE(in.good());
+    int decodes = 0;
+    std::string line;
+    while (std::getline(in, line)) {
+        const std::string t = hydra::trim(line);
+        if (t.compare(0, 2, "//") == 0) continue;
+        if (t.find("rebuild_record(") != std::string::npos) ++decodes;
+    }
+    CHECK(decodes == 1);
 }

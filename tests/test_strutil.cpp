@@ -3,6 +3,7 @@
 
 #include "doctest.h"
 
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -49,4 +50,36 @@ TEST_CASE("strutil: ends_with is exact and ends_with_ci ignores ASCII case") {
     CHECK_FALSE(ends_with_ci("track.opus.bak", ".opus"));
     CHECK_FALSE(ends_with_ci("s", ".sng"));
     CHECK(ends_with_ci("x", ""));
+}
+
+TEST_CASE("strutil: the INI line splitter trims, cuts at #, splits at the first =") {
+    const std::optional<IniPair> abc = split_ini_line("  a = b = c # x ");
+    REQUIRE(abc.has_value());
+    CHECK(abc->key == "a");
+    CHECK(abc->value == "b = c");
+    // The text after the first =, with any # kept, for a key whose value is
+    // free text such as a folder path.
+    CHECK(abc->whole_value == "b = c # x");
+    CHECK_FALSE(split_ini_line("# only").has_value());
+    CHECK_FALSE(split_ini_line("no equals").has_value());
+    CHECK_FALSE(split_ini_line("   ").has_value());
+    // A # before the = makes the whole line a comment.
+    CHECK_FALSE(split_ini_line("#k=v").has_value());
+    const std::optional<IniPair> empty = split_ini_line("k=");
+    REQUIRE(empty.has_value());
+    CHECK(empty->key == "k");
+    CHECK(empty->value == "");
+    // What is left of a line once the comment is cut: a reader that refuses
+    // a "="-less line tells it from a blank or comment-only one by this.
+    CHECK(std::string(ini_line_text("  no equals # x")) == "no equals");
+    CHECK(std::string(ini_line_text("  # only")) == "");
+}
+
+TEST_CASE("strutil: parse_bool takes 0 and 1 only") {
+    CHECK(parse_bool("1") == std::optional<bool>(true));
+    CHECK(parse_bool("0") == std::optional<bool>(false));
+    for (const char* text : {"true", "yes", "", " 1"}) {
+        CAPTURE(text);
+        CHECK_FALSE(parse_bool(text).has_value());
+    }
 }

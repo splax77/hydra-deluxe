@@ -285,7 +285,9 @@ public:
         frame = std::clamp<int64_t>(frame, 0, length_);
         pcm_count_ = 0;
         pcm_pos_ = 0;
-        if (failed_) return;
+        // No early return on failed_: a seek to before the damage plays again
+        // from there (start_link resets the decoder and clears at_end_), while
+        // failed_ stays set so decode_audio still reports the damaged stream.
         if (frame == length_) {
             at_end_ = true;
             return;

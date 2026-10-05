@@ -16,8 +16,8 @@ How it runs:
    to the thread that attached.
 4. A second thread presses the keys: the first kick of each pair on time, the
    second at note + offset. Hit = the score rose (proven by play_chart.py).
-   Measured offset = the +0x2e0 hit time minus the note when that field
-   changed, else the estimated send time (walk_edges.py's rule).
+   Measured offset = live.hit_offset_ms: the +0x2e0 hit time minus the note
+   when that field changed, else the estimated send time.
 5. Detach (always, even on Ctrl+C), write the rows, and summarise per spacing.
 
 The hit-check breakpoint counts how often the game ran its hit check during
@@ -48,7 +48,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants, engine_finder, probe_chart, probe_songs  # noqa: E402
-from tools.ch_probe.experiments import analysis  # noqa: E402
+from tools.ch_probe.experiments import analysis, live  # noqa: E402
 from tools.ch_probe.experiments.walk_edges import SongClock  # noqa: E402
 from tools.ch_probe.process import open_process  # noqa: E402
 from tools.ch_probe.debugger import Debugger  # noqa: E402
@@ -136,47 +136,28 @@ def drive_inputs(engine: EngineModel, driver: InputDriver, collector: ActiveColl
     input thread while the main thread pumps debug events."""
     clock = SongClock(engine.song_clock)
     raw_s, _ = clock.read()
-    last_raw, last_move = raw_s, time.perf_counter()
+    stopped = live.StoppedCheck(raw_s, time.perf_counter())
 
-    def wait_until(t_ms: float) -> float:
-        """Poll until the clock estimate reaches t_ms; return it in ms."""
-        nonlocal last_raw, last_move
-        while True:
-            if stop.is_set():
-                raise RuntimeError("stopped")
-            raw, est = clock.read()
-            now = time.perf_counter()
-            if raw < last_raw - 1.0:
-                raise RuntimeError(f"clock jumped back ({last_raw:.2f} -> {raw:.2f} s)")
-            if raw != last_raw:
-                last_raw, last_move = raw, now
-            elif now - last_move > 5.0:
-                raise RuntimeError(f"clock frozen at {raw:.2f} s (song quit or paused)")
-            ahead = t_ms / 1000 - est
-            if ahead <= 0:
-                return est * 1000
-            if ahead > 0.04:
-                time.sleep(min(ahead - 0.03, 0.5))
+    def wait_for(t_ms: float) -> float:
+        """live.wait_until on this run's clock; the estimate in ms."""
+        return live.wait_until(clock, t_ms, stopped=stopped, should_stop=stop.is_set)[1]
 
-    todo = [p for p in plan if p.first_ms > raw_s * 1000 + 150]
+    todo = plan[live.first_note_index([p.first_ms for p in plan], raw_s * 1000):]
     print(f"  {len(todo)}/{len(plan)} pairs still ahead of the clock.")
     print(f"  {'#':>4}  {'spacing':>7}  {'plan':>5}  {'measured':>8}  result")
     for p in todo:
         focus()
-        wait_until(p.first_ms)
+        wait_for(p.first_ms)
         driver.press_chord([Lane.KICK])                  # first kick, on time
-        sent_ms = wait_until(p.second_ms + p.offset_ms)
+        sent_ms = wait_for(p.second_ms + p.offset_ms)
         before_score, before_hit = engine.score(), engine.hit_time()
         collector.current_index = p.index
         driver.press_chord([Lane.KICK])                  # second kick, late
-        wait_until(max(p.second_ms, p.second_ms + p.offset_ms) + SETTLE_MS)
+        wait_for(max(p.second_ms, p.second_ms + p.offset_ms) + SETTLE_MS)
         after_score, after_hit = engine.score(), engine.hit_time()
         collector.current_index = None
         hit = after_score > before_score
-        if after_hit != before_hit:
-            measured = after_hit * 1000 - p.second_ms
-        else:
-            measured = sent_ms - p.second_ms
+        measured, _ = live.hit_offset_ms(p.second_ms, sent_ms, before_hit, after_hit)
         collector.add_row((p.spacing_ms, measured, hit))
         print(f"  {p.index + 1:4d}  {p.spacing_ms:7.0f}  {p.offset_ms:+5.0f}  "
               f"{measured:+8.1f}  {'HIT' if hit else 'miss'}")

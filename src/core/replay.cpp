@@ -147,10 +147,12 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
             const Window& w = wins[open[k]];
             // The row's offset from the SP end, as the graph measures it. A
             // chord on or before the deactivation node is inside the window
-            // whatever its ms says.
-            const bool past_deact = row.tick > w.deact_tick;
-            const double offset = past_deact ? offset_from_sp_end(row.ms, w.deact_ms)
-                                             : std::min(offset_from_sp_end(row.ms, w.deact_ms), 0.0);
+            // whatever its ms says; time rises with tick (parse refuses
+            // timing that does not, D6), so its offset is never above 0.
+            // Whether the chord is after the SP end is asked of
+            // core::after_sp_end, the rule the graph uses.
+            const bool past_deact = core::after_sp_end(row.tick, w.deact_tick);
+            const double offset = offset_from_sp_end(row.ms, w.deact_ms);
             const core::SqOutPosition pos =
                 core::sqout_position(row.tick, w.sqout_tick);
             const bool paid = core::paid_by_sp(offset, sg.sp, sg.sqout_sp(), pos,
@@ -358,16 +360,16 @@ std::vector<std::string> ambiguous_window_warnings(
         std::string where = "on the Star Power phrase note at tick " +
                             std::to_string(tick);
         char gap[32];
-        if (tick < w.deact_tick) {
-            std::snprintf(gap, sizeof(gap), "%.2f",
-                          std::fabs(offset_from_sp_end(chord->ms, deact_ms)));
-            where = "just after the Star Power phrase note at tick " +
-                    std::to_string(tick) + " (" + gap + " ms earlier)";
-        } else if (tick > w.deact_tick) {
+        if (core::after_sp_end(tick, w.deact_tick)) {
             std::snprintf(gap, sizeof(gap), "%.2f",
                           std::fabs(offset_from_sp_end(chord->ms, deact_ms)));
             where = "just before the Star Power phrase note at tick " +
                     std::to_string(tick) + " (" + gap + " ms later)";
+        } else if (tick != w.deact_tick) {
+            std::snprintf(gap, sizeof(gap), "%.2f",
+                          std::fabs(offset_from_sp_end(chord->ms, deact_ms)));
+            where = "just after the Star Power phrase note at tick " +
+                    std::to_string(tick) + " (" + gap + " ms earlier)";
         }
 
         // What the squeeze-out would take off the total. It is more than the
