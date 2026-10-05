@@ -15,8 +15,10 @@ StarCutoffs star_cutoffs(const Path& path) {
     StarCutoffs out;
     out.base = path.chart_base_score();
     out.solo_bonus = path.score_solo;
-    for (int stars = 1; stars <= kMaxStars; ++stars)
+    for (int stars = 1; stars <= kMaxStars; ++stars) {
         out.cutoffs[stars - 1] = star_cutoff(out.base, stars);
+        out.with_solo[stars - 1] = out.cutoffs[stars - 1] + out.solo_bonus;
+    }
     return out;
 }
 
@@ -28,8 +30,10 @@ int stars_for_score(const StarCutoffs& cutoffs, int64_t score_without_solo) {
     return stars;
 }
 
+int64_t score_without_solo(const Path& path) { return path.totalscore() - path.score_solo; }
+
 int path_stars(const Path& path) {
-    return stars_for_score(star_cutoffs(path), path.totalscore() - path.score_solo);
+    return stars_for_score(star_cutoffs(path), score_without_solo(path));
 }
 
 }  // namespace hydra

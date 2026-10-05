@@ -347,10 +347,10 @@ void test_stars(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("Solo bonus: " + hydra::group_thousands(sc.solo_bonus) +
                        " (not counted toward stars)") != std::string::npos);
     IM_CHECK(text.find("With full solo bonus") != std::string::npos);
-    for (int64_t cutoff : sc.cutoffs) {
+    for (int64_t cutoff : sc.cutoffs)
         IM_CHECK(text.find(hydra::group_thousands(cutoff)) != std::string::npos);
-        IM_CHECK(text.find(hydra::group_thousands(cutoff + sc.solo_bonus)) != std::string::npos);
-    }
+    for (int64_t with_solo : sc.with_solo)
+        IM_CHECK(text.find(hydra::group_thousands(with_solo)) != std::string::npos);
     IM_CHECK(text.find("4.4") != std::string::npos);
 
     // ---- A song with no drum solo ----

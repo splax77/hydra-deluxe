@@ -5,11 +5,15 @@
 
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <string>
+#include <vector>
 
 #include "app/analysis.h"
 #include "core/model.h"
+#include "core/scoring.h"
 #include "core/stars.h"
+#include "core/timing.h"
 #include "corpus_util.h"
 
 using namespace hydra;
@@ -22,7 +26,135 @@ std::array<int64_t, kMaxStars> cutoffs_for(int64_t base) {
     return out;
 }
 
+// A chord holding these notes, each on its own pad.
+Chord chord_of(std::initializer_list<ChordNote> notes) {
+    Chord c;
+    for (const ChordNote& n : notes) c.at(n.colortype) = n;
+    return c;
+}
+
 }  // namespace
+
+TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
+    // Each note lands at combo 1, 10 and 30: multipliers 1, 2 and 4 (D51
+    // call 13). The values are the audit's table (finding 160): a tom is 50,
+    // a cymbal 65, a ghost tom 100 and an accent cymbal 130 at 1x.
+    struct Row {
+        const char* name;
+        ChordNote note;
+        int base, accent, ghost;
+        std::array<int, 3> combo, sp, dynamics_bonus;
+    };
+    const Row rows[] = {
+        {"tom", ChordNote{NoteColor::Red}, 50, 0, 0, {0, 50, 150}, {50, 100, 200}, {0, 0, 0}},
+        {"cymbal",
+         ChordNote{NoteColor::Yellow, NoteDynamicType::Normal, NoteCymbalType::Cymbal, false},
+         65, 0, 0, {0, 65, 195}, {65, 130, 260}, {0, 0, 0}},
+        {"ghost tom", ChordNote{NoteColor::Red, NoteDynamicType::Ghost}, 50, 0, 50,
+         {0, 100, 300}, {100, 200, 400}, {50, 100, 200}},
+        {"accent cymbal",
+         ChordNote{NoteColor::Yellow, NoteDynamicType::Accent, NoteCymbalType::Cymbal, false},
+         80, 50, 0, {0, 130, 390}, {130, 260, 520}, {65, 130, 260}},
+    };
+    const std::array<int, 3> combos{0, 9, 29};
+    const std::array<int, 3> multipliers{1, 2, 4};
+    for (const Row& row : rows) {
+        const Chord chord = chord_of({row.note});
+        for (size_t k = 0; k < combos.size(); ++k) {
+            CAPTURE(row.name);
+            CAPTURE(combos[k]);
+            std::vector<CategoryScores> per_note;
+            const CategoryScores total = category_scores(chord, combos[k], &per_note);
+            REQUIRE(per_note.size() == 1);
+            const CategoryScores& n = per_note[0];
+            CHECK(n.base == row.base);
+            CHECK(n.combo == row.combo[k]);
+            CHECK(n.sp == row.sp[k]);
+            CHECK(n.accent == row.accent);
+            CHECK(n.ghost == row.ghost);
+            CHECK(n.dynamics_bonus == row.dynamics_bonus[k]);
+            CHECK(n.multiplier == multipliers[k]);
+
+            // The chord total of a one-note chord is that note.
+            CHECK(total.base == n.base);
+            CHECK(total.combo == n.combo);
+            CHECK(total.sp == n.sp);
+            CHECK(total.accent == n.accent);
+            CHECK(total.ghost == n.ghost);
+            CHECK(total.sqout_reduction == n.sqout_reduction);
+
+            // The fold's three identities. 160: the 1x shares add up to the
+            // note's basescore. 161: Star Power's share is basescore at the
+            // multiplier. 162: Star Power pays kStarPowerMultiplier - 1 more
+            // copies of the note's whole value.
+            CHECK(n.base + n.accent + n.ghost == row.note.basescore());
+            CHECK(n.sp == row.note.basescore() * n.multiplier);
+            CHECK(n.sp == (kStarPowerMultiplier - 1) * (n.base + n.combo + n.accent + n.ghost));
+            // The squeeze-out cut is the note's value.
+            CHECK(n.sqout_reduction == n.sp);
+        }
+    }
+}
+
+TEST_CASE("scoring: combo_after is the combo plus the chord's notes") {
+    const Chord chord = chord_of(
+        {ChordNote{NoteColor::Red},
+         ChordNote{NoteColor::Yellow, NoteDynamicType::Normal, NoteCymbalType::Cymbal, false},
+         ChordNote{NoteColor::Kick}});
+    std::vector<CategoryScores> per_note;
+    const CategoryScores total = category_scores(chord, 7, &per_note);
+    CHECK(total.combo_after == 10);
+    CHECK(total.multiplier == 1);        // the first note lands at combo 8
+    CHECK(total.multiplier_after == 2);  // the third at combo 10
+    REQUIRE(per_note.size() == 3);
+    CHECK(per_note[0].combo_after == 8);
+    CHECK(per_note[1].combo_after == 9);
+    CHECK(per_note[2].combo_after == 10);
+}
+
+TEST_CASE("scoring: solo_bonus is 100 per note in a solo, else 0") {
+    const Chord three = chord_of(
+        {ChordNote{NoteColor::Red},
+         ChordNote{NoteColor::Yellow, NoteDynamicType::Normal, NoteCymbalType::Cymbal, false},
+         ChordNote{NoteColor::Kick}});
+    CHECK(solo_bonus(three, true) == 300);
+    CHECK(solo_bonus(three, false) == 0);
+    CHECK(solo_bonus(chord_of({ChordNote{NoteColor::Red}}), true) == 100);
+}
+
+TEST_CASE("stars: with_solo is each cutoff plus the solo bonus") {
+    // The path of "stars: star_cutoffs reads the path's base score and solo
+    // bonus": base 1300, solo 800, cutoffs 130, 650, 1300, 2600, 3640, 4680,
+    // 5720.
+    Path path;
+    path.score_base = 1000;
+    path.score_ghosts = 100;
+    path.score_accents = 200;
+    path.score_solo = 800;
+    path.score_combo = 5000;
+    path.score_sp = 3000;
+    const std::array<int64_t, 7> expected{930, 1450, 2100, 3400, 4440, 5480, 6520};
+    CHECK(star_cutoffs(path).with_solo == expected);
+
+    // No solo bonus: the two columns agree.
+    path.score_solo = 0;
+    const StarCutoffs no_solo = star_cutoffs(path);
+    CHECK(no_solo.with_solo == no_solo.cutoffs);
+}
+
+TEST_CASE("stars: score_without_solo is the total minus the solo bonus") {
+    // The path of "stars: path_stars counts cutoffs reached without the solo
+    // bonus", at its 6680 total with a 2000 solo bonus.
+    Path path;
+    path.score_base = 1000;
+    path.score_ghosts = 100;
+    path.score_accents = 200;
+    path.score_combo = 3380;
+    path.score_solo = 2000;
+    CHECK(path.totalscore() == 6680);
+    CHECK(score_without_solo(path) == 4680);
+    CHECK(path_stars(path) == 6);
+}
 
 TEST_CASE("stars: the table is the game's first seven multipliers") {
     CHECK(kMaxStars == 7);
@@ -118,6 +250,7 @@ TEST_CASE("stars: the base score is the sum of every note's basescore, on every 
     MESSAGE("87: base score " << best.chart_base_score() << ", note sum " << note_sum
                               << ", solo bonus " << best.score_solo);
     CHECK(best.chart_base_score() == note_sum);
+    CHECK(best.chart_base_score() == 137950);
     CHECK(best.score_solo > 0);
 
     int checked = 0;
