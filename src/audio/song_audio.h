@@ -1,7 +1,6 @@
 // A song's audio as one piece: its stems opened, mixed into the one stream the
 // Preview plays, and how long that stream runs in chart time. That last answer
-// is the song's length (D69): the Preview's scrubber, its gold marks and its
-// SP meter read it, and the stored length is saved from it.
+// is the song's length (D69). D69 names which readers use it.
 //
 // Nothing here decodes audio in the usual case. Opening a stem reads its
 // layout, not its sound (open_stem_reader), so the length costs what the
@@ -33,6 +32,10 @@ inline constexpr int kOutChannels = 2;
 // file that will not map is empty, and open_song_stems skips it, as it skips
 // a stem that will not open.
 std::vector<std::optional<StemBytes>> map_song_stems(std::vector<app::PreviewAudioStem> stems);
+
+// The total compressed bytes across all mapped stems: the denominator for the
+// loading bar's progress and for open_song_stems' progress callback.
+uint64_t stems_total_bytes(const std::vector<std::optional<StemBytes>>& stems);
 
 // Opens each stem's bytes with open_stem_reader, in order, and returns every
 // reader that opened. A stem that will not open is skipped, so one unreadable

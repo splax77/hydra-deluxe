@@ -92,10 +92,7 @@ std::vector<std::unique_ptr<audio::StemReader>> PreviewLoadJob::open_audio(
     // stem's size is its extracted bytes.
     std::vector<std::optional<audio::StemBytes>> stem_bytes =
         audio::map_song_stems(std::move(stems));
-    uint64_t total = 0;
-    for (const std::optional<audio::StemBytes>& bytes : stem_bytes)
-        if (bytes) total += bytes->size();
-    bytes_total_.store(total);
+    bytes_total_.store(audio::stems_total_bytes(stem_bytes));
 
     // The song's own opener, with the bar's byte counter as its progress.
     std::vector<std::unique_ptr<audio::StemReader>> readers;
