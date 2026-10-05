@@ -26,7 +26,10 @@ from __future__ import annotations
 import struct
 from typing import Callable, Optional
 
-from . import constants
+try:
+    from . import constants
+except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
+    import constants  # type: ignore[no-redef]
 
 
 # --- Pure helpers: decode raw bytes, decide pass/fail ------------------------
@@ -60,7 +63,7 @@ def decode_u64(raw: bytes) -> int:
 def check_normal_constants(
     back_s: float,
     front_s: float,
-    tolerance_s: float = constants.CONST_MATCH_TOLERANCE_MS / 1000.0,
+    tolerance_s: float = constants.ms_to_s(constants.CONST_MATCH_TOLERANCE_MS),
 ) -> None:
     """Decide whether the two normal-mode window constants we just read match
     what the game stores. Values are in SECONDS (the game's native unit).
@@ -187,13 +190,13 @@ class Process:
         """Read the two normal-mode window constants live and check them against
         the values Ghidra recorded. Raises BuildMismatchError on a mismatch.
 
-        This is milestone 1: if the back window reads 85.0 and the front reads
-        37.5, the address math is correct and everything downstream can be
-        trusted. If they are wrong, the addresses point at the wrong bytes
-        (almost always because Clone Hero updated) and we stop here."""
-        back_ms = self.read_const_double(constants.RVA_CONST_NORMAL_BACK)
-        front_ms = self.read_const_double(constants.RVA_CONST_NORMAL_FRONT)
-        check_normal_constants(back_ms, front_ms)
+        This is milestone 1: if the back window reads 0.085 s and the front
+        reads 0.0375 s, the address math is correct and everything downstream
+        can be trusted. If they are wrong, the addresses point at the wrong
+        bytes (almost always because Clone Hero updated) and we stop here."""
+        back_s = self.read_const_double(constants.RVA_CONST_NORMAL_BACK)
+        front_s = self.read_const_double(constants.RVA_CONST_NORMAL_FRONT)
+        check_normal_constants(back_s, front_s)
 
     # Cleanup ----------------------------------------------------------------
 
@@ -338,9 +341,10 @@ def _find_module_base(pid: int, module_name: str) -> int:
     )
 
 
-def _make_reader(handle: int) -> Reader:
+def make_reader(handle: int) -> Reader:
     """Build a reader callable backed by ReadProcessMemory. LIVE-ONLY: the
-    handle must refer to a real, open process."""
+    handle must refer to a real, open process. The one memory-read binding in
+    the probe; debugger.py builds its reads from it too."""
     import ctypes
 
     k32 = _kernel32()
@@ -365,8 +369,10 @@ def _make_reader(handle: int) -> Reader:
     return read
 
 
-def _make_writer(handle: int) -> Writer:
-    """Build a writer callable backed by WriteProcessMemory. LIVE-ONLY."""
+def make_writer(handle: int) -> Writer:
+    """Build a writer callable backed by WriteProcessMemory. LIVE-ONLY. The
+    one memory-write binding in the probe; debugger.py adds its
+    instruction-cache flush on top."""
     import ctypes
 
     k32 = _kernel32()
@@ -424,8 +430,8 @@ def open_process(process_name: str = constants.PROCESS_NAME) -> Process:
 
     return Process(
         module_base,
-        _make_reader(handle),
-        _make_writer(handle),
+        make_reader(handle),
+        make_writer(handle),
         pid=pid,
         handle=handle,
     )

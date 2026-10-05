@@ -26,6 +26,17 @@ Pattern = Tuple[bytes, bytes]   # (back-window bytes, front-window bytes)
 # copies of the constants, not engine objects.
 MODULE_SPAN = 0x4000000
 
+# How far the front window sits past the start of the back window in the
+# object. The scan matches one contiguous run, which needs this to equal the
+# back window's 8 bytes.
+FRONT_AFTER_BACK = C.OFF_FRONT_WINDOW - C.OFF_BACK_WINDOW
+
+# The pause between a candidate's two clock reads: long enough for a playing
+# song to move its clock.
+REREAD_GAP_S = 0.12
+# The pause before scanning again when no clock moved (no song playing yet).
+RETRY_PAUSE_S = 0.4
+
 
 # --- the memory scan ---------------------------------------------------------
 
@@ -57,8 +68,8 @@ def is_rw(protect: int) -> bool:
 
 def hits_in_region(base: int, data: bytes, pattern: bytes) -> List[int]:
     """Object addresses for every match of `pattern` in one region's bytes.
-    The pattern sits at +0x30 in the object, so each object starts 0x30
-    before its match."""
+    The pattern starts at the back window, so each object starts
+    C.OFF_BACK_WINDOW before its match."""
     hits: List[int] = []
     offset = 0
     while True:
@@ -69,6 +80,20 @@ def hits_in_region(base: int, data: bytes, pattern: bytes) -> List[int]:
         offset = pos + 1
 
 
+def scan_pattern(back_bytes: bytes, front_bytes: bytes) -> bytes:
+    """The bytes an engine object holds from its back window on: the back
+    bytes, then the front bytes FRONT_AFTER_BACK bytes after the back's start.
+    The scan matches one contiguous run, so a layout with a gap between the
+    two cannot be searched; that raises instead of scanning for the wrong
+    shape."""
+    if FRONT_AFTER_BACK != len(back_bytes):
+        raise ValueError(
+            f"the front window sits {FRONT_AFTER_BACK} bytes after the back "
+            f"window, not right after its {len(back_bytes)} bytes; the scan "
+            "matches one contiguous run and cannot search this layout")
+    return back_bytes + front_bytes
+
+
 def scan_for_engine(proc, back_bytes: bytes, front_bytes: bytes):
     """Scan committed RW memory for +0x30 = back, +0x38 = front. LIVE-ONLY.
     Returns (object addresses, regions scanned, bytes scanned)."""
@@ -76,7 +101,7 @@ def scan_for_engine(proc, back_bytes: bytes, front_bytes: bytes):
     handle = ctypes.c_void_p(proc.handle)
     mbi = MEMORY_BASIC_INFORMATION()
     mbi_size = ctypes.sizeof(mbi)
-    pattern = back_bytes + front_bytes  # 16 contiguous bytes
+    pattern = scan_pattern(back_bytes, front_bytes)
 
     addr = 0
     hits: List[int] = []
@@ -162,22 +187,22 @@ def find_live_engine(
         first = {}
         for e in candidates:
             try:
-                if proc.read_double(e + C.OFF_TOTAL_WINDOW) < 0.001:
+                if proc.read_double(e + C.OFF_TOTAL_WINDOW) < C.ENGINE_EMPTY_WINDOW_S:
                     continue
                 first[e] = proc.read_double(e + C.OFF_SONG_CLOCK)
             except OSError:
                 pass
 
-        sleep(0.12)
+        sleep(REREAD_GAP_S)
 
         for e, c0 in first.items():
             try:
                 c1 = proc.read_double(e + C.OFF_SONG_CLOCK)
             except OSError:
                 continue
-            if abs(c1 - c0) > 1e-6:   # clock moved -> this is the live song
+            if abs(c1 - c0) > C.ENGINE_CLOCK_MOVED_S:   # this is the live song
                 return e
 
         out.write(".")
         out.flush()
-        sleep(0.4)
+        sleep(RETRY_PAUSE_S)

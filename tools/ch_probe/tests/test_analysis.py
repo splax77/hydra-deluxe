@@ -228,6 +228,15 @@ class TestProbeSettingsHaveOneHome(unittest.TestCase):
         self.assertEqual(probe_chart.DRUM_NOTE_KICK, C.PROBE_CHART_NOTE_KICK)
         self.assertEqual(C.PROBE_CHART_NOTE_KICK, 0)   # a .chart note, not an input lane
 
+    def test_normal_back_ms_is_derived_from_the_seconds_value(self):
+        # The game stores seconds; the ms edges the clamp verdict uses come
+        # from them through constants.s_to_ms, so the two cannot disagree.
+        self.assertEqual(C.EXPECT_NORMAL_BACK_MS, 85.0)
+        self.assertEqual(C.EXPECT_NORMAL_BACK_MS, C.s_to_ms(C.EXPECT_NORMAL_BACK_S))
+        self.assertEqual(C.EXPECT_PRECISION_BACK_MS, 40.0)
+        self.assertEqual(C.EXPECT_PRECISION_BACK_MS,
+                         C.s_to_ms(C.EXPECT_PRECISION_BACK_S))
+
 
 if __name__ == "__main__":
     unittest.main()
