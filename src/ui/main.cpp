@@ -196,18 +196,23 @@ int main()
         wc.lpszClassName, hydra::kWindowTitleW, WS_OVERLAPPEDWINDOW, rect.left, rect.top,
         rect.width(), rect.height(), nullptr, nullptr, wc.hInstance, nullptr);
 
-    // A startup step that fails shows why, then undoes what startup has
-    // stood up so far, in the normal exit's order, and Hydra closes.
+    // Undoes what startup has stood up so far. The normal exit and a failed
+    // startup both end here, so the two can't drift apart.
     bool win32_backend_up = false, dx11_backend_up = false;
-    auto fail_startup = [&](const std::exception& e)
+    auto tear_down = [&]
     {
-        show_startup_error(hwnd, e);
         if (dx11_backend_up) ImGui_ImplDX11_Shutdown();
         if (win32_backend_up) ImGui_ImplWin32_Shutdown();
         hydra::ui::shutdown_imgui();
         CleanupDeviceD3D();
         if (hwnd) ::DestroyWindow(hwnd);
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+    };
+    // A startup step that fails shows why, tears down, and Hydra closes.
+    auto fail_startup = [&](const std::exception& e)
+    {
+        show_startup_error(hwnd, e);
+        tear_down();
         return 1;
     };
 
@@ -380,19 +385,15 @@ int main()
 #endif
     own_app.reset();
 
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    hydra::ui::shutdown_imgui();
+    tear_down();
 #ifdef HYDRA_UITEST_ATTACHED
+    // The engine outlives the ImGui context. Attached, its shutdown touches
+    // neither the device nor the window, so it can follow the teardown.
     if (uitest) {
         uitest->keep_temp = true;  // leave the scratch files for inspection
-        uitest->shutdown();        // the engine outlives the ImGui context
+        uitest->shutdown();
     }
 #endif
-
-    CleanupDeviceD3D();
-    ::DestroyWindow(hwnd);
-    ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
     return 0;
 }
 

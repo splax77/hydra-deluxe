@@ -22,8 +22,6 @@
 #include <thread>
 #include <vector>
 
-#include <sqlite3.h>
-
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/report_files.h"
@@ -33,6 +31,7 @@
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // exec_on_file, write_junk_db
 #include "display_fixtures.h"  // store_batch_result
 #include "parse/song.h"
 #include "store/record_store.h"
@@ -68,15 +67,6 @@ using testtemp::temp_path;
 const std::string kDatabaseReadSentence =
     "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
     "running, then try again.";
-
-// A second connection drops tables under an open app, so the app's next read
-// of them fails.
-void drop_tables(const std::string& db_path, const char* sql) {
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(db_path.c_str(), &db) == SQLITE_OK);
-    REQUIRE(sqlite3_exec(db, sql, nullptr, nullptr, nullptr) == SQLITE_OK);
-    sqlite3_close(db);
-}
 
 // Points app::ini_path()/db_path() at scratch files for one test, then puts
 // the process back the way it was. commit_settings writes the INI through
@@ -368,15 +358,10 @@ TEST_CASE("close_details keeps a Dynamics count that finished on another tab") {
 TEST_CASE("a Dynamics save failure reads the database sentence") {
     ScratchPaths paths("appstate_dyn_savefail");
     seeded_store(paths.db).reset();
-    {  // A trigger refuses every Dynamics row, so put_dynamics throws.
-        sqlite3* db = nullptr;
-        REQUIRE(sqlite3_open(paths.db.c_str(), &db) == SQLITE_OK);
-        REQUIRE(sqlite3_exec(db,
-                             "CREATE TRIGGER refuse_dynamics BEFORE INSERT ON dynamics"
-                             " BEGIN SELECT RAISE(ABORT, 'boom'); END;",
-                             nullptr, nullptr, nullptr) == SQLITE_OK);
-        sqlite3_close(db);
-    }
+    // A trigger refuses every Dynamics row, so put_dynamics throws.
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TRIGGER refuse_dynamics BEFORE INSERT ON dynamics"
+                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     std::unique_ptr<AppState> app = app_on(paths);
     app->selected->notespath = corpus::first_chart_with_suffix(".chart");
 
@@ -845,10 +830,7 @@ TEST_CASE("the confirm counts charts with a result from the store, once per char
 // it in a message box.
 TEST_CASE("an AppState whose database can't open throws DatabaseOpen") {
     ScratchPaths paths("appstate_junkdb");  // puts the overrides back when it ends
-    {
-        std::ofstream f(paths.db, std::ios::binary);
-        f << std::string(4096, 'x');
-    }
+    hydra::test::write_junk_db(paths.db);
     try {
         AppState app;
         FAIL("an AppState opened a file of junk bytes");
@@ -863,7 +845,7 @@ TEST_CASE("an AppState whose database can't open throws DatabaseOpen") {
 TEST_CASE("Analyze library on a database that fails shows the sentence and opens no confirm") {
     ScratchPaths paths("appstate_confirmfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    drop_tables(paths.db, "DROP TABLE results");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE results");
 
     app->open_batch_confirm();
     CHECK(app->status_message == kDatabaseReadSentence);
@@ -880,7 +862,7 @@ TEST_CASE("Analyze library on a database that fails shows the sentence and opens
 TEST_CASE("a library reload whose reads fail keeps the library and says so") {
     ScratchPaths paths("appstate_reloadfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    drop_tables(paths.db, "DROP TABLE charts; DROP TABLE results;");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE results;");
 
     app->reload_library();
 
@@ -893,7 +875,7 @@ TEST_CASE("a library reload whose reads fail keeps the library and says so") {
 TEST_CASE("a re-read of the open chart that fails keeps its record and says so") {
     ScratchPaths paths("appstate_rereadfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    drop_tables(paths.db, "DROP TABLE results;");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE results;");
 
     app->refresh_viewed_record();
 
@@ -904,7 +886,7 @@ TEST_CASE("a re-read of the open chart that fails keeps its record and says so")
 TEST_CASE("a settings change whose reads fail shows no other settings' record") {
     ScratchPaths paths("appstate_settingsfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    drop_tables(paths.db, "DROP TABLE results;");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE results;");
 
     app->settings.sp_cap = 8;
     app->commit_settings();
@@ -919,7 +901,7 @@ TEST_CASE("a settings change whose reads fail shows no other settings' record") 
 TEST_CASE("a Dynamics read that fails says so and counts the chart instead") {
     ScratchPaths paths("appstate_dynreadfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    drop_tables(paths.db, "DROP TABLE dynamics;");
+    hydra::test::exec_on_file(paths.db, "DROP TABLE dynamics;");
 
     app->update_dynamics();
 

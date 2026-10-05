@@ -35,6 +35,7 @@
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // exec_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
 #include "parse/song.h"
 #include "record_bytes.h"
@@ -273,10 +274,8 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
     MESSAGE("compared " << acts << " stored activations with a live recompute");
 }
 
-namespace {
-// Defined further down, beside the tests that brought it in.
-void exec_on_file(const std::string& path, const char* sql);
-}  // namespace
+using hydra::test::exec_on_file;
+using hydra::test::write_junk_db;
 
 TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
     std::optional<Song> song;
@@ -1208,19 +1207,6 @@ ChartLibraryEntry chart_entry(const char* md5, const char* title) {
                              std::string("sig-") + md5};
 }
 
-// Runs a batch of SQL straight on a database file no store has open.
-void exec_on_file(const std::string& path, const char* sql) {
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
-    char* err = nullptr;
-    const int rc = sqlite3_exec(db, sql, nullptr, nullptr, &err);
-    const std::string msg = err ? err : "";
-    sqlite3_free(err);
-    sqlite3_close(db);
-    INFO(msg);
-    REQUIRE(rc == SQLITE_OK);
-}
-
 }  // namespace
 
 TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
@@ -1757,10 +1743,7 @@ TEST_CASE("a database write the old matcher missed reads as a database error") {
 // statement, after sqlite3_open_v2 said yes. It still reads "couldn't open".
 TEST_CASE("a database file that isn't a database fails to open as DatabaseOpen") {
     const std::string path = testtemp::temp_path("junk_db", ".db");
-    {
-        std::ofstream f(path, std::ios::binary);
-        f << std::string(4096, 'x');
-    }
+    write_junk_db(path);
     try {
         RecordStore store(path);
         FAIL("a file of junk bytes opened as a database");
