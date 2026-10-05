@@ -95,6 +95,8 @@ None change, and the stamp stays "2.1.0". What a person can see change: the 'ms'
 
 ## Open questions (each with a recommended answer)
 
+**Decided (D62):** the user took the recommended answer to every question below. Treat each recommendation as the decision.
+
 1. **The "no paths" status's extra words (needs the user: display).** D51 call 11 gives only "no paths". Recommended: the dropdown option reads "No paths (analyzed, none kept)", the Status column help gains "No paths: analyzed, but the analysis kept no path.", the chip takes the not-analyzed colour, no new tile, and the counts clause appears only when the count is above 0. Nobody has seen a real analysis produce such a record.
 2. **The fill page's empty-side cell (needs the user: display).** D50 item 2 chose "no score"; D51 call 11, later, says the fill page says "no paths". Recommended: "no paths", since it names the cause; D52's "with a score on one side only" counting words stay.
 3. **The Expert rule inside `collect_dm_rows` (code-only).** It receives a chart-mode string, not a difficulty, and reading the difficulty back out of that string would copy `chartmode_key`'s format. Recommended: `collect_dm_rows` enforces the fills rule and the cap, the toolbar asks the same owner for all three, and the comment says so; passing the settings down to `generate_dm_report` would touch `dm_jobs.cpp` and `app_state.cpp`, which no wave 3 task owns, so the main session decides whether a later wave does that.

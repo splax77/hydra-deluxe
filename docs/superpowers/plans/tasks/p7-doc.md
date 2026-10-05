@@ -85,6 +85,8 @@ None. No code outside the test's one map changes.
 
 ## Open questions (each with a recommended answer)
 
+**Decided (D62):** the user took the recommended answer to every question below. Treat each recommendation as the decision.
+
 1. **The tooltip nobody owns (needs the user: a display text).** The Path limit help in `src/ui/settings_bar.cpp` still says "hardest squeeze"; D51 call 5 fixes the words, and no wave 3 task owns the file (phase 6's J4-3 takes it after M7-3). Recommended: the main session makes that one-line change at the M7-3 join, as M6-J4 does for CONTEXT.md, and LB fixes the `library_query` comments, which it owns.
 2. **A guide sentence for the Preview's new line (code-only, docs).** PV built D51 call 18's line. Recommended: one sentence in the guide's Preview section: if the chart file changed since it was analyzed, the Preview draws no path and shows "This chart changed since it was analyzed. Analyze it again to see its path."
 3. **A guide sentence for the 1-bar cap (code-only, docs).** Recommended: one sentence under SP cap (line 45): at 1 bar no path can activate Star Power, and the Paths tab says so (D51 call 16).

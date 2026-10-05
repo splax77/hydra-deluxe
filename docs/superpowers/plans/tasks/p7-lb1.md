@@ -95,6 +95,8 @@ None change. The INI file gains a decimal in `hit_window_ms` only when the user 
 
 ## Open questions (each with a recommended answer)
 
+**Decided (D62):** the user took the recommended answer to every question below. Treat each recommendation as the decision.
+
 1. **A second copy counts nowhere (needs the user: a displayed count).** After D51 call 10 a chart in two folders runs once. Its second copy is then neither "analyzed" nor "skipped (already had a result)" in the strip and in hydra_batch's closing line. Recommended: count it nowhere; one chart is one chart. The alternative, a new "copies" number, is new text no decision names.
 2. **Where the counts live (code-only).** Recommended: fields on `BatchProgress` set only by `run_batch`, copied by the job in its one `on_progress`. A `BatchJob` that recounts from its callbacks would be the copy finding 142 is about.
 3. **How a decimal hit window is written (code-only).** Recommended: the stream's default, so today's files stay byte-identical (85 writes "85") and 85.5 writes "85.5".

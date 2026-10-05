@@ -113,6 +113,8 @@ None change. The `songlength` row the backfill writes now carries the viewed dif
 
 ## Open questions (each with a recommended answer)
 
+**Decided (D62):** the user took the recommended answer to every question below. Treat each recommendation as the decision.
+
 1. **How "A batch is running." shows (needs the user: a display call).** D51 call 24 names the status line but not whether it fades. Recommended: `set_status` (news, fades after `kStatusFadeSeconds`), because the batch strip above it already shows the batch. The alternative, `set_problem`, would hold the line until something replaced it.
 2. **The confirm counts charts, not copies (needs the user: a displayed count).** "Analyze N charts that have no result yet?" and "re-analyzing N" count distinct charts; a second copy adds nothing. Recommended: yes, this is D51 call 10's "the confirm's count drops by the number of duplicates" made exact.
 3. **Who holds the Compare button's three sentences (code-only).** Recommended: whatever RP's gate returns decides; the words stay byte-identical either way, and the toolbar never tests a rule itself.
