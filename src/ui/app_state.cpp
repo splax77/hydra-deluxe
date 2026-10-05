@@ -67,10 +67,21 @@ PreviewController* AppState::preview_controller() {
     return preview.get();
 }
 
+bool AppState::read_store(const std::function<void()>& read) {
+    try {
+        read();
+        return true;
+    } catch (const std::exception& e) {
+        set_problem(app::plain_error(e));
+        return false;
+    }
+}
+
 void AppState::reload_library() {
     // The whole scan in one read. Every chart is needed anyway: the chips
     // count them and the search filters them in memory.
-    library.set_charts(store->list_chart_library(0, -1));  // -1 = no limit
+    if (!read_store([&] { library.set_charts(store->list_chart_library(0, -1)); }))  // -1 = no limit
+        return;
     library.set_query(search);
     refresh_library_summaries();
 }
@@ -79,12 +90,18 @@ void AppState::refresh_library_summaries() {
     // One store call for the whole library (T7 splits it into chunks), on
     // this thread, never per row per frame: the batch workers share the
     // store's lock.
-    library.set_summaries(store->get_summaries(library.hashes(), settings.chartmode_key(),
-                                               settings.cap_query(), settings.lens()));
+    read_store([&] {
+        library.set_summaries(store->get_summaries(library.hashes(), settings.chartmode_key(),
+                                                   settings.cap_query(), settings.lens()));
+    });
 }
 
 bool AppState::refresh_library_row(const std::string& md5) {
-    return library.set_summary_for(md5, store->get_summary(settings.record_key(md5))) > 0;
+    bool changed = false;
+    read_store([&] {
+        changed = library.set_summary_for(md5, store->get_summary(settings.record_key(md5))) > 0;
+    });
+    return changed;
 }
 
 void AppState::set_search(std::string text) {
@@ -200,15 +217,25 @@ bool AppState::selected_file_ok(double now) {
                              [this] { return file_exists_utf8(selected->notespath); });
 }
 
+void AppState::show_no_record() {
+    viewed_summary = store::PathSummary{};
+    viewed = store::RecordLookup{};
+    viewed_key_.reset();
+    record_generation.bump();
+}
+
 void AppState::refresh_viewed_record() {
     if (!selected) {
-        viewed_summary = store::PathSummary{};
-        viewed = store::RecordLookup{};
-        viewed_key_.reset();
+        show_no_record();
         return;
     }
     store::RecordKey key = settings.record_key(selected->md5);
-    viewed = store->get_record(key);
+    if (!read_store([&] { viewed = store->get_record(key); })) {
+        // The same chart under the same settings keeps what it showed. Any
+        // other shows nothing: the last lookup answered a different question.
+        if (!viewed_key_ || !(*viewed_key_ == key)) show_no_record();
+        return;
+    }
     viewed_key_ = std::move(key);
     record_generation.bump();
     refresh_viewed_summary();
@@ -256,9 +283,11 @@ void AppState::refresh_viewed_summary() {
     viewed_summary = store::PathSummary{};
     if (!selected || viewed.status != store::RecordStatus::Ready) return;
     // One chart, one query, only when the record changes -- never per frame.
-    std::vector<store::SummaryLookup> found = store->get_summaries(
-        {selected->md5}, settings.chartmode_key(), settings.cap_query(), settings.lens());
-    if (!found.empty()) viewed_summary = std::move(found.front().summary);
+    read_store([&] {
+        std::vector<store::SummaryLookup> found = store->get_summaries(
+            {selected->md5}, settings.chartmode_key(), settings.cap_query(), settings.lens());
+        if (!found.empty()) viewed_summary = std::move(found.front().summary);
+    });
 }
 
 bool AppState::analyze_running() const { return analyze_job && !analyze_job->finished(); }
@@ -414,14 +443,15 @@ void AppState::update_dynamics() {
 
     // Try the store before starting a background parse.
     if (!dynamics_job) {
-        auto stored = app::load_stored_dynamics(*store, want_key);
+        std::optional<app::DynamicsBreakdown> stored;
+        read_store([&] { stored = app::load_stored_dynamics(*store, want_key); });
         if (stored) {
             dynamics_result = std::move(*stored);
             dynamics_key = want_key;
             return;
         }
-        // Store miss, an older count stamp or a decode failure: start the
-        // background job.
+        // Store miss, an older count stamp, a decode failure or a failed
+        // read: start the background job.
         dynamics_job = std::make_unique<DynamicsLoadJob>(
             *selected, pro, diff);
         dynamics_job->start();
@@ -468,14 +498,10 @@ void AppState::open_batch_confirm() {
     items.reserve(batch_scope.size());
     for (const store::ChartLibraryEntry& e : batch_scope) items.push_back(scan_item_of(e));
     std::unordered_set<std::string> with_result;
-    try {
-        with_result = app::charts_with_result(*store, settings.batch_run(), false);
-    } catch (const std::exception& e) {
-        // The database failed: say so, and leave the confirm closed (D72
-        // item 4).
+    if (!read_store([&] { with_result = app::charts_with_result(*store, settings.batch_run(), false); })) {
+        // The database failed: the confirm stays closed (D72 item 4).
         batch_scope.clear();
         batch_confirm_pending = false;
-        set_problem(app::plain_error(e));
         return;
     }
     const app::BatchPlan plan = app::plan_batch(items, with_result);
@@ -582,11 +608,11 @@ void AppState::start_analyze() {
 
 std::string AppState::store_finished_analysis() {
     if (!analyze_job || !analyze_job->finished() || !analyze_job->ok()) return "";
+    // Store against the identity the job snapshotted at start -- NOT
+    // `selected`, which can point at a different song by now (close the
+    // modal mid-analysis, click another row).
+    const store::ChartLibraryEntry& song = analyze_job->song();
     try {
-        // Store against the identity the job snapshotted at start -- NOT
-        // `selected`, which can point at a different song by now (close the
-        // modal mid-analysis, click another row).
-        const store::ChartLibraryEntry& song = analyze_job->song();
         app::AnalysisResult result = analyze_job->take_result();
         // Key the dynamics by the settings the job snapshotted, not the
         // current ones: the user may have moved the difficulty box since it
@@ -598,12 +624,14 @@ std::string AppState::store_finished_analysis() {
                                                                as.bass2x, as.difficulty,
                                                                as.prodrums),
                              analyze_job->song_length());
-        reread_viewed_record();
-        refresh_library_row(song.md5);  // its row's Best path cell and chip
-        return "";
     } catch (const std::exception& e) {
         return "Analyzed, but saving failed. " + app::plain_error(e);
     }
+    // The save went in. A re-read that fails says so on its own, through
+    // read_store (D73 item 5).
+    reread_viewed_record();
+    refresh_library_row(song.md5);  // its row's Best path cell and chip
+    return "";
 }
 
 void AppState::start_dm_fetch() {

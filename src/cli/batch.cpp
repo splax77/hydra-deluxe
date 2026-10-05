@@ -83,9 +83,7 @@ bool same_file(const std::string& a, const std::string& b) {
     return normalize(a) == normalize(b);
 }
 
-}  // namespace
-
-int main() {
+int batch_main() {
     SetConsoleOutputCP(CP_UTF8);  // chart titles/artists are UTF-8
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
@@ -146,8 +144,7 @@ int main() {
     try {
         store_ptr = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
-        return 2;
+        return hydra::app::tool_error(e, 2);
     }
     hydra::store::RecordStore& store = *store_ptr;
 
@@ -258,14 +255,9 @@ int main() {
         std::fflush(stdout);
     };
     // A run that fails as a whole (the store read before the first chart)
-    // fails while running.
-    try {
-        hydra::app::run_batch(scanitems, run, store, redo, hydra::app::batch_worker_count(),
-                              callbacks);
-    } catch (const std::exception& e) {
-        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
-        return 1;
-    }
+    // ends through run_tool.
+    hydra::app::run_batch(scanitems, run, store, redo, hydra::app::batch_worker_count(),
+                          callbacks);
 
     double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
@@ -289,3 +281,7 @@ int main() {
 
     return 0;
 }
+
+}  // namespace
+
+int main() { return hydra::app::run_tool(batch_main); }

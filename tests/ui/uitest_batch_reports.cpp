@@ -543,8 +543,8 @@ void test_analyze_db_fails(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    // A copy of drop_results_under (tests/db_file_util.h): the GUI harness
-    // builds with only tests/ui on its include path.
+    // A copy of exec_on_file (tests/db_file_util.h): the GUI harness builds
+    // with only tests/ui on its include path.
     {  // A second connection drops the scratch library's results table.
         sqlite3* db = nullptr;
         IM_CHECK_NO_RET(sqlite3_open(h.db_path.c_str(), &db) == SQLITE_OK);
@@ -552,16 +552,13 @@ void test_analyze_db_fails(ImGuiTestContext* ctx) {
                         SQLITE_OK);
         sqlite3_close(db);
     }
-    // Any read on the app's own connection makes it reload the schema, as
-    // the app's next read would.
-    (void)h.app->store->engine_mode();
 
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");
     ctx->Yield(3);
     const std::string sentence =
-        "Hydra couldn't save to its database (hydra.db). Check that the disk isn't full and "
-        "that no other copy of Hydra is running, then try again.";
+        "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+        "running, then try again.";
     IM_CHECK(h.frame_text.text.find(sentence) != std::string::npos);
     IM_CHECK(h.app->status_is_problem);
     IM_CHECK(!h.app->batch_confirm_pending);

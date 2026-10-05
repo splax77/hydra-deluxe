@@ -13,7 +13,6 @@
 #include "doctest.h"
 
 #include "core/winstr.h"
-#include "store/record_store.h"
 
 namespace hydra::test {
 
@@ -29,16 +28,6 @@ inline void exec_on_file(const std::string& path, const char* sql) {
     sqlite3_close(db);
     INFO(msg);
     REQUIRE(rc == SQLITE_OK);
-}
-
-// Drops the results table under a store that has `path` open, so its next
-// read of results fails. The store's connection keeps the schema it last
-// read until it runs a statement, so this makes one read on it, as the
-// app's next read would; without it, a statement still compiles against the
-// old schema.
-inline void drop_results_under(store::RecordStore& store, const std::string& path) {
-    exec_on_file(path, "DROP TABLE results");
-    (void)store.engine_mode();
 }
 
 // Writes a file of junk bytes at `path`, where a database should be.

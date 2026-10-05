@@ -34,7 +34,9 @@
 #include "search/graph.h"
 #include "store/record_store.h"
 
-int main() {
+namespace {
+
+int fillcompare_main() {
     SetConsoleOutputCP(CP_UTF8);
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
@@ -83,8 +85,7 @@ int main() {
         old_store = hydra::app::open_store(*old_path, hydra::core::RulesStamp::of(settings.rules));
         new_store = hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
-        return 2;
+        return hydra::app::tool_error(e, 2);
     }
 
     // Engine-mode sanity check (D65, ADR 0010): warn only when the file's
@@ -142,3 +143,7 @@ int main() {
     }
     return 0;
 }
+
+}  // namespace
+
+int main() { return hydra::app::run_tool(fillcompare_main); }

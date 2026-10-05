@@ -131,6 +131,9 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
          "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
          "running and that the Hydra folder isn't read-only."},
         {ErrorKind::DatabaseWrite, kDatabaseWrite},
+        {ErrorKind::DatabaseRead,
+         "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+         "running, then try again."},
         {ErrorKind::SongFileMissing, kSongFileMissing},
         {ErrorKind::HashFailed,
          "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
@@ -174,6 +177,17 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
     CHECK(plain_error(hydra::MidiError("x")) == kChartUnreadable);
     CHECK(plain_error(hydra::store::SerializeError("x")) ==
           "A saved result couldn't be read. Re-analyze this song to replace it.");
+}
+
+// D73 item 4: a tool's body that throws ends with exit code 1 (and its
+// plain_error_block on stderr); one that returns keeps its own code.
+TEST_CASE("user_messages: run_tool turns an escaping error into exit code 1") {
+    using hydra::app::run_tool;
+    CHECK(run_tool([] { return 0; }) == 0);
+    CHECK(run_tool([] { return 2; }) == 2);
+    CHECK(run_tool([]() -> int {
+              throw hydra::KindedError(hydra::ErrorKind::DatabaseRead, "x");
+          }) == 1);
 }
 
 // Only the kind picks a sentence. An untyped error that happens to carry a

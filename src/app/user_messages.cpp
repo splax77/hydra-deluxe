@@ -1,5 +1,6 @@
 #include "app/user_messages.h"
 
+#include <cstdio>
 #include <new>
 #include <optional>
 
@@ -15,6 +16,9 @@ constexpr const char* kDatabaseWrite =
 constexpr const char* kDatabaseOpen =
     "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
     "running and that the Hydra folder isn't read-only.";
+constexpr const char* kDatabaseRead =
+    "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+    "running, then try again.";
 constexpr const char* kChartUnreadable =
     "Hydra couldn't read this chart file. It may be damaged or in a format Hydra doesn't "
     "support; try downloading the song again.";
@@ -73,6 +77,7 @@ std::optional<std::string> kind_sentence(const KindedError& e) {
         case ErrorKind::Cancelled: return kStopped;
         case ErrorKind::DatabaseOpen: return kDatabaseOpen;
         case ErrorKind::DatabaseWrite: return kDatabaseWrite;
+        case ErrorKind::DatabaseRead: return kDatabaseRead;
         case ErrorKind::SongFileMissing: return kSongFileMissing;
         case ErrorKind::HashFailed: return kHashFailed;
         case ErrorKind::ChartUnreadable: return kChartUnreadable;
@@ -111,6 +116,19 @@ std::string plain_error_detail(const std::exception& e) { return e.what(); }
 
 std::string plain_error_block(const std::exception& e) {
     return plain_error(e) + "\n\n" + plain_error_detail(e);
+}
+
+int tool_error(const std::exception& e, int exit_code) {
+    std::fprintf(stderr, "%s\n", plain_error_block(e).c_str());
+    return exit_code;
+}
+
+int run_tool(const std::function<int()>& body) {
+    try {
+        return body();
+    } catch (const std::exception& e) {
+        return tool_error(e, 1);
+    }
 }
 
 std::string stale_text(bool build, bool rules) {

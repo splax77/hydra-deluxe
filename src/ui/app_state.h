@@ -12,6 +12,7 @@
 #define HYDRA_UI_APP_STATE_H
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -468,6 +469,14 @@ private:
     std::optional<size_t> relative_row(int delta) const;
     // Re-reads viewed_summary for the open song under the current settings.
     void refresh_viewed_summary();
+    // The panel's empty state: no record, no summary, no key it answers.
+    void show_no_record();
+    // Runs one store read on the UI thread. A read that throws puts its
+    // sentence in the status line and returns false, and the caller keeps
+    // what it showed (D73 item 3). Every read whose answer a screen shows
+    // goes through it; update_song_length's best-effort fill keeps its own
+    // silent catch.
+    bool read_store(const std::function<void()>& read);
     bool batch_finish_seen_ = false;  // update_background_jobs saw this run end
     ID3D11Device* render_device_ = nullptr;
     ID3D11DeviceContext* render_context_ = nullptr;

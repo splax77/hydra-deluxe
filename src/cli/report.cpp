@@ -34,7 +34,9 @@
 #include "search/graph.h"
 #include "store/record_store.h"
 
-int main() {
+namespace {
+
+int report_main() {
     SetConsoleOutputCP(CP_UTF8);
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
@@ -83,8 +85,7 @@ int main() {
     try {
         store = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
-        return 2;
+        return hydra::app::tool_error(e, 2);
     }
     // A database hydra_batch --legacy-fills filled holds only 1.0 results, so
     // it reports under that rule whatever the app's "1.0 fills" setting says,
@@ -134,3 +135,7 @@ int main() {
     }
     return 0;
 }
+
+}  // namespace
+
+int main() { return hydra::app::run_tool(report_main); }
