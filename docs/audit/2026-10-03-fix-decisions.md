@@ -300,3 +300,10 @@ Timelines now include the song's outro, so a song with a long tail ends its last
 5. **The Dynamics tab** shows "Dynamics failed: <sentence>" with a details line, and "Counted, but saving failed. <sentence>".
 6. **A failed save during a batch** adds that chart to the "N charts failed" list with the database sentence, and the batch goes on. Today it closes Hydra.
 The text matcher is deleted: no third-party text reaches it without Hydra's own words around it. A database that cannot open at startup still closes Hydra with no message; fixing that needs a new startup message, so it waits for its own question.
+
+**D72 (a database that fails at startup or at a batch's start), 2026-10-05.** Today Hydra closes with no message when hydra.db can't be opened at startup or fails at the very start of an Analyze-library batch, and the command-line tools end with no message and no exit code (handoff `docs/handoffs/2026-10-05-database-failure-handoff.md`). The user took every recommended answer:
+1. **Startup shows a Windows message box.** It shows the plain sentence with the raw error underneath, then Hydra closes. The same box covers a startup failure of the graphics device, the window or the two ImGui backends, which today also close Hydra silently.
+2. **A startup failure reads "couldn't open".** Every throw from opening the store reads the DatabaseOpen sentence, including a locked or corrupt file that SQLite only notices at its first statement.
+3. **No busy timeout.** A database locked by another copy of Hydra fails at once, and the open sentence already says to close the other copy.
+4. **A batch that can't start fails, and Hydra keeps running.** The batch finishes as failed with the database sentence in the batch strip. A failure on the Analyze-library click shows the sentence in the status line.
+5. **The command-line tools print and exit non-zero.** hydra_batch, hydra_report and hydra_fillcompare print the plain sentence and the raw error to stderr, then exit with a failure code, the way hydra_batch already treats a bad rules file.
