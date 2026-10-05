@@ -228,7 +228,7 @@ static void dump_db(const std::string& dbpath, const std::string& outpath,
                     const std::string& dumprel) {
     store::RecordStore db(dbpath, core::RulesStamp::of(g_rules));
     std::vector<store::ChartLibraryEntry> rows =
-        db.list_chart_library(std::nullopt, 0, INT_MAX);
+        db.list_chart_library(0, INT_MAX);
     std::sort(rows.begin(), rows.end(),
               [](const store::ChartLibraryEntry& a, const store::ChartLibraryEntry& b) {
                   return a.notespath < b.notespath;

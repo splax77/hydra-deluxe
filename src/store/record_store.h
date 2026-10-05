@@ -2,7 +2,7 @@
 // store/serialize.h. Old
 // Python-era .db files are not read; a fresh scan populates a new one.
 //
-// Three tables carry an analysis (schema user_version 3):
+// Three tables carry an analysis:
 //
 //   * `results` — one row per run, keyed by the FULL settings it ran under:
 //     the chart, the chart mode, the SP cap, the Lens (ms limit, score
@@ -302,6 +302,10 @@ struct DynamicsKey {
     std::string md5;
     std::string difficulty;  // difficulty_name(), e.g. "Expert"
     bool pro = false;
+    bool operator==(const DynamicsKey& o) const {
+        return md5 == o.md5 && difficulty == o.difficulty && pro == o.pro;
+    }
+    bool operator!=(const DynamicsKey& o) const { return !(*this == o); }
 };
 
 // One dynamics count ready to store: its key, its encoded blob and its count
@@ -484,18 +488,16 @@ public:
     // kChartMetaStamp.
     void rebuild_chart_library(const std::vector<ChartLibraryEntry>& items);
 
-    // The previous scan's rows as a rescan cache (empty on a fresh db, a db
-    // from before the sig column existed, or one whose kChartMetaStamp is
-    // missing or not current). Read this BEFORE rebuild_chart_library
-    // replaces the table.
+    // The previous scan's rows as a rescan cache (empty on a fresh db, or one
+    // whose kChartMetaStamp is missing or not current). Read this BEFORE
+    // rebuild_chart_library replaces the table.
     ChartLibraryCache chart_library_cache();
 
-    // Case-insensitive substring match against title/artist/charter, or the
-    // whole library if search is unset. A negative limit means no limit
-    // (SQLite's LIMIT convention).
-    int64_t chart_library_count(const std::optional<std::string>& search = std::nullopt);
-    std::vector<ChartLibraryEntry> list_chart_library(
-        const std::optional<std::string>& search, int offset, int limit);
+    // The whole library, by name. A negative limit means no limit (SQLite's
+    // LIMIT convention). Searching is the library view's (query_matches in
+    // app/library_query.h), not SQL's.
+    int64_t chart_library_count();
+    std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit);
 
 private:
     sqlite3* db_ = nullptr;

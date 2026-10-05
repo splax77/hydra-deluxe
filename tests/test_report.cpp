@@ -41,6 +41,7 @@
 #include "record_fixtures.h"
 #include "search/graph.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 #include "wcag_util.h"
 
 using namespace hydra;
@@ -564,13 +565,7 @@ TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
 }
 
 TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
-    // Same temp-path recipe as tests/test_store.cpp's temp_db: the Windows
-    // temp directory, tagged and pid-suffixed so parallel test runs don't
-    // collide.
-    wchar_t tmp_dir[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp_dir);
-    const std::string path = hydra::wide_to_utf8(tmp_dir) + "hydra_test_report_file_" +
-                              std::to_string(GetCurrentProcessId()) + ".html";
+    const std::string path = testtemp::temp_path("report_file", ".html");
 
     hydra::app::write_report_file(path, "<html>old</html>");
     hydra::app::write_report_file(path, "<html>new</html>");
@@ -803,10 +798,7 @@ struct DocumentsSandbox {
         PathOverrides cleared = previous;
         cleared.db_path.clear();
         set_path_overrides(cleared);
-        wchar_t tmp[MAX_PATH];
-        GetTempPathW(MAX_PATH, tmp);
-        root = fs::path(tmp) / ("hydra_test_docs_" + std::to_string(GetCurrentProcessId())) /
-               fs::u8path(tag);
+        root = hydra::os_path(testtemp::temp_dir(std::string("docs_") + tag));
         std::error_code ec;
         fs::remove_all(root, ec);
         fs::create_directories(root);

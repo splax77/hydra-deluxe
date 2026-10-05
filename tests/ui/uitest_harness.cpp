@@ -20,6 +20,8 @@
 #include "imgui_internal.h"
 #include "imgui_te_internal.h"
 
+#include "../scratch_settings.h"
+#include "../temp_util.h"
 #include "../warp_util.h"  // tests/ is not on the runner's include path
 
 #include "app/analysis.h"
@@ -79,18 +81,9 @@ bool capture_pixels(ImGuiID /*viewport_id*/, int x, int y, int w, int h, unsigne
     return true;
 }
 
-std::string temp_root() {
-    wchar_t buf[MAX_PATH];
-    DWORD n = GetTempPathW(MAX_PATH, buf);
-    std::wstring w(buf, n);
-    fs::path p = fs::path(w) / L"hydra_uitest" / std::to_wstring(GetCurrentProcessId());
-    return p.u8string();
-}
-
 // Scratch folder + the app's path overrides (db, ini, preview assets).
 void init_scratch(Harness& h) {
-    h.temp_dir = temp_root();
-    fs::create_directories(fs::u8path(h.temp_dir));
+    h.temp_dir = testtemp::temp_dir("uitest");
     h.db_path = h.temp_dir + "\\hydra.db";
     h.ini_path = h.temp_dir + "\\hydra_settings.ini";
     h.rules_path = h.temp_dir + "\\hydra_rules.ini";
@@ -302,11 +295,11 @@ void reset_app(Harness& h, const std::string& rules_text) {
     }
     fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kPathReportFileName), ec);
     fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kDmReportFileName), ec);
-    {
-        std::ofstream f(fs::u8path(h.ini_path), std::ios::trunc);
-        f << "chartfolder=" << HYDRA_INPUT_DIR << "\n";
-        f << "auto_open_report=0\n";
-        f << "depth_value=2\n";  // keep analyses short
+    // The GUI tests' settings (tests/scratch_settings.h), written the way the
+    // app writes its own ini.
+    if (!scratch_settings().save_file(h.ini_path)) {
+        std::fprintf(stderr, "hydra_uitest: could not write \"%s\"\n", h.ini_path.c_str());
+        std::exit(1);
     }
     if (rules_text.empty()) {
         fs::remove(fs::u8path(h.rules_path), ec);
@@ -486,6 +479,13 @@ std::string escape_ref(const std::string& label) {
         out += c;
     }
     return out;
+}
+
+float text_width(const char* s, ImFont* font) {
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
+    if (!font) font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
+    return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x;
 }
 
 // Scan testdata/input through the UI and land on the populated library.

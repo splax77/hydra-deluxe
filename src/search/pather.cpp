@@ -1,6 +1,7 @@
 #include "search/pather.h"
 
 #include <algorithm>
+#include <sstream>
 #include <stdexcept>
 
 #include "search/engine.h"
@@ -61,6 +62,25 @@ void attach_allzero(const ScoreGraph& graph, HydraRecord& record,
 
 }  // namespace
 
+std::string settings_key(const SearchSettings& s) {
+    std::ostringstream k;
+    k.precision(17);
+    k << s.sp_cap << '|';
+    k << static_cast<int>(s.depth_mode) << '|' << s.depth_value << '|';
+    if (s.ms_filter) k << *s.ms_filter;
+    else k << "none";
+    k << '|';
+    k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';
+    return k.str();
+}
+
+EngineOptions allzero_options() {
+    EngineOptions options;  // score depth 0: only the top score, plus its ties
+    options.no_skips = true;
+    options.no_timing = true;
+    return options;
+}
+
 std::vector<Path> search_allzero(const ScoreGraph& graph,
                                  const std::function<void(float)>& on_progress) {
     // depth_value 0 keeps only the top score; its tied peers still merge into
@@ -74,10 +94,7 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
     // path needing hundreds of ms.
     std::vector<Path> paths;
     try {
-        EngineOptions options;  // score depth 0: only the top score, plus its ties
-        options.no_skips = true;
-        options.no_timing = true;
-        paths = run_search(graph, options, on_progress);
+        paths = run_search(graph, allzero_options(), on_progress);
     } catch (const std::runtime_error&) {
         // The requirement can empty the frontier: this chart offers no all-0
         // path that needs no timing. run() reports that the same way it

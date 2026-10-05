@@ -60,6 +60,9 @@ at 10 ms<!-- default: Settings::mslimit_value -->. The backend limit ("Hide
 backend rows beyond") starts off<!-- default: Settings::backendlimit_enabled -->
 with 50 ms<!-- default: Settings::backendlimit_value --> in the box. The user
 confirmed both defaults (D48, Q33); `Settings` in src/app/config.h owns them.
+The score range starts at 4<!-- default: kDefaultDepthValue --> scores below
+the best. `kDefaultDepthValue` in src/search/pather.h owns that number, and
+the search and `Settings` both start from it (D54).
 _Avoid_: view options
 
 **Library search**:
@@ -106,7 +109,9 @@ never hit this (D48, Q33).
 
 **Activation**:
 One use of banked Star Power, written in path notation with its skip count and
-squeeze symbols (e.g. `E2+-`).
+squeeze symbols (e.g. `E2+-`). An activation needs
+2<!-- default: kSpActivationBars --> banked bars of Star Power, a Clone Hero
+rule. `kSpActivationBars` in src/core/timing.h owns that number (D54).
 
 **Skip**:
 A fill an activation deliberately passes over before activating.

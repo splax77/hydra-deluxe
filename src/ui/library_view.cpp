@@ -41,7 +41,6 @@ void render_library_and_panel(AppState& app) {
     LibraryViewState& ui = app.library_ui;
     const bool panel = app.details_open();
     const float avail_w = ImGui::GetContentRegionAvail().x;
-    const float min_library = px(320.0f);
     // Read once: the panel's button can flip it later this frame.
     const bool library_shown = !(panel && library_hidden());
     if (!library_shown) {
@@ -49,9 +48,9 @@ void render_library_and_panel(AppState& app) {
         // the share when the library comes back.
         ui.panel_was_open = false;
     } else if (panel) {
-        const float max_library = std::max(min_library, avail_w - px(kMinSongPanelW));
-        ImGui::SetNextWindowSizeConstraints(ImVec2(min_library, 0.0f),
-                                            ImVec2(max_library, FLT_MAX));
+        const LibrarySplitBounds bounds = library_split_bounds(avail_w);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(bounds.min_w, 0.0f),
+                                            ImVec2(bounds.max_w, FLT_MAX));
         // Set the width from the share when the panel opens or the room
         // changes. Setting it turns the drag off for that one frame (ImGui
         // drops ResizeX under a SetNextWindowSize), so only then.
@@ -59,8 +58,8 @@ void render_library_and_panel(AppState& app) {
         const bool set_width = !ui.panel_was_open || ui.split_set_for_w != avail_w ||
                                ui.split_set_for_px != px(1.0f);
         if (set_width) {
-            const float want = std::clamp(library_share() * avail_w, min_library, max_library);
-            ImGui::SetNextWindowSize(ImVec2(want, 0.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(library_split_width(avail_w, library_share()), 0.0f),
+                                     ImGuiCond_Always);
             ui.split_set_for_w = avail_w;
             ui.split_set_for_px = px(1.0f);
         }
@@ -94,6 +93,16 @@ void render_library_and_panel(AppState& app) {
 }
 
 }  // namespace
+
+LibrarySplitBounds library_split_bounds(float room) {
+    const float min_w = px(kMinLibraryW);
+    return {min_w, std::max(min_w, room - px(kMinSongPanelW))};
+}
+
+float library_split_width(float room, float share) {
+    const LibrarySplitBounds b = library_split_bounds(room);
+    return std::clamp(share * room, b.min_w, b.max_w);
+}
 
 void render_main_window(AppState& app) {
     // The primary window: fixed to the full viewport, no title bar/resize/

@@ -14,6 +14,7 @@
 
 #include "imgui.h"
 
+#include "temp_util.h"
 #include "ui/app_shell.h"
 #include "ui/fonts.h"
 
@@ -100,9 +101,7 @@ TEST_CASE("app_shell: scaling always starts from the unscaled style") {
 }
 
 TEST_CASE("app_shell: hydra_ui.ini remembers the window placement") {
-    const std::filesystem::path dir =
-        std::filesystem::temp_directory_path() / "hydra_app_shell_test";
-    std::filesystem::create_directories(dir);
+    const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
     {
         std::ofstream f(ini);
@@ -160,9 +159,7 @@ TEST_CASE("app_shell: share_is_valid takes only the open interval") {
 }
 
 TEST_CASE("app_shell: hydra_ui.ini remembers the library split, not the child's own width") {
-    const std::filesystem::path dir =
-        std::filesystem::temp_directory_path() / "hydra_app_shell_split_test";
-    std::filesystem::create_directories(dir);
+    const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell_split"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
     {
         // What the bug left: the library child at the largest split, no share.

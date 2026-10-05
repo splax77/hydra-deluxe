@@ -29,6 +29,7 @@
 #include "parse/song.h"
 #include "search/graph.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 
 #if !defined(HYDRA_BATCH_EXE) || !defined(HYDRA_REPORT_EXE) || \
     !defined(HYDRA_FILLCOMPARE_EXE)
@@ -116,8 +117,7 @@ struct CliSandbox {
     fs::path songs;  // holds one chart folder, "fixture"
 
     explicit CliSandbox(const char* name) {
-        dir = fs::temp_directory_path() /
-              ("hydra_cli_" + std::to_string(GetCurrentProcessId()) + "_" + name);
+        dir = hydra::os_path(testtemp::temp_dir(std::string("cli_") + name));
         fs::remove_all(dir);
         fs::create_directories(dir);
         batch = copy_tool(HYDRA_BATCH_EXE);

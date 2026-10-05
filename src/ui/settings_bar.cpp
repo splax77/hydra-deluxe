@@ -115,7 +115,8 @@ void render_score_range(AppState& app, bool locked) {
     // Room for six digits beside the two step buttons (each a frame-height
     // square after an inner gap), never less than the old 90 px.
     const ImGuiStyle& style = ImGui::GetStyle();
-    const float six_digits = ImGui::CalcTextSize("000000").x + style.FramePadding.x * 2.0f +
+    const float six_digits = ImGui::CalcTextSize(widest_digits(6).c_str()).x +
+                             style.FramePadding.x * 2.0f +
                              (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x) * 2.0f;
     ImGui::SetNextItemWidth(std::max(px(90), six_digits));
     begin_disabled_input(locked);
@@ -206,7 +207,7 @@ void render_settings_bar(AppState& app) {
     const float separator_w = gap * 2.0f + kSeparatorW;
     float* block_w = app.library_ui.settings_block_w;
     for (size_t i = 0; i < std::size(kBlocks); ++i) {
-        if (line_end + separator_w + block_w[i] <= right_edge) {
+        if (fits_in_row(line_end + separator_w, block_w[i], right_edge)) {
             const float divider_x = line_end + gap;
             draw_divider(divider_x, line_top, line_bottom);
             const float x = divider_x + kSeparatorW + gap;
@@ -246,7 +247,7 @@ void render_settings_bar(AppState& app) {
                 : "Settings are locked while " + display_title(app.analyze_job->song().title) +
                       " analyzes.";
         const float w = ImGui::CalcTextSize(why.c_str()).x;
-        if (line_end + ImGui::GetStyle().ItemSpacing.x + w <= right_edge) ImGui::SameLine();
+        if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         const float right = ImGui::GetContentRegionMax().x - w;
         if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);

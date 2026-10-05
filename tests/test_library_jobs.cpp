@@ -22,6 +22,7 @@
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 #include "ui/dm_jobs.h"
 #include "ui/library_jobs.h"
 #include "ui/report_outcome.h"
@@ -256,9 +257,7 @@ TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
 }
 
 TEST_CASE("jobs: a report the browser refuses is saved, not failed") {
-    const std::filesystem::path dir =
-        std::filesystem::temp_directory_path() / "hydra_jobs_test_report";
-    std::filesystem::create_directories(dir);
+    const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("jobs_report"));
     const std::filesystem::path page = dir / "report.html";
 
     int opens = 0;

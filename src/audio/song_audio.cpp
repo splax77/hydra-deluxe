@@ -32,11 +32,16 @@ std::vector<std::optional<StemBytes>> map_song_stems(std::vector<app::PreviewAud
     return out;
 }
 
-std::vector<std::unique_ptr<StemReader>> open_song_stems(
-    std::vector<std::optional<StemBytes>> stems, const OpenProgress& progress) {
+uint64_t stems_total_bytes(const std::vector<std::optional<StemBytes>>& stems) {
     uint64_t total = 0;
     for (const std::optional<StemBytes>& bytes : stems)
         if (bytes) total += bytes->size();
+    return total;
+}
+
+std::vector<std::unique_ptr<StemReader>> open_song_stems(
+    std::vector<std::optional<StemBytes>> stems, const OpenProgress& progress) {
+    const uint64_t total = stems_total_bytes(stems);
 
     std::vector<std::unique_ptr<StemReader>> readers;
     uint64_t before = 0;  // bytes of the stems already opened

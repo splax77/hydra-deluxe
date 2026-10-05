@@ -64,7 +64,7 @@ struct Settings {
     bool view_prodrums = true;
     bool view_bass2x = true;
 
-    int depth_value = 4;
+    int depth_value = kDefaultDepthValue;
     // 0 = scores, 1 = points. Stays an int: it is what the INI stores and what
     // the details view's Combo binds to; search_depth_mode() maps it to
     // search/engine.h's DepthMode.

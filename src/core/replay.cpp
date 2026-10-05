@@ -217,6 +217,15 @@ ReplayScore score_of(const Path& path) {
     return s;
 }
 
+void assign_score(Path& path, const ReplayScore& s) {
+    path.score_base = s.base;
+    path.score_combo = s.combo;
+    path.score_sp = s.sp;
+    path.score_solo = s.solo;
+    path.score_accents = s.accent;
+    path.score_ghosts = s.ghost;
+}
+
 std::vector<int64_t> sqin_phrase_ticks(const Activation& act) {
     std::vector<int64_t> out;
     for (const SpEndStep& s : act.sp_end_steps)

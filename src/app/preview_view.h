@@ -250,7 +250,6 @@ struct PreviewScene {
     // tempo/meter lists above. Empty only on a default-built PreviewScene (no
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
-    int64_t tick_resolution = 0;       // ticks per quarter note
     // The song's length: its audio's end in chart time, as
     // audio::song_length_ms answers it (D69), handed to build_preview_base.
     // 0 when the song has no readable audio. The SP curve closes here. The
@@ -355,12 +354,10 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
 
 // The Preview scrubber's right edge. It is the song's length,
-// `song_length_ms`, when has_song_length says that length is usable: the
-// audio's end in chart time (audio::song_length_ms, D69), the length the
-// Paths timeline measures with too, so an activation sits at the same
-// fraction on both bars. A chart with no readable audio has no length; its
-// edge is `playback_length_ms`, the transport's length, which runs to the
-// last drawn note (D70 item 1).
+// `song_length_ms`, when has_song_length says that length is usable. D69
+// names which callers pass which length. A chart with no readable audio has
+// no length; its edge is `playback_length_ms`, the transport's length, which
+// runs to the last drawn note (D70 item 1).
 double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms);
 
 // Where the scrubber's thumb sits with the playhead at `now_ms`. It follows
@@ -368,15 +365,14 @@ double scrub_end_ms(std::optional<double> song_length_ms, double playback_length
 double scrub_thumb_ms(double now_ms, double scrub_end_ms);
 
 // Is `length_ms` a song length the timeline can use? Only a positive length
-// is. The length is the audio's end in chart time (audio::song_length_ms).
-// song_fraction and the Paths tab's end-measure label both ask it, so the
-// marks and the label appear and vanish together.
+// is. song_fraction and the Paths tab's end-measure label both ask it, so the
+// marks and the label appear and vanish together. D69 names which length each
+// caller passes.
 bool has_song_length(double length_ms);
 
-// How far into the song `ms` is: its share of `length_ms`, the song's length
-// (audio::song_length_ms), clamped to 0..1. No value when has_song_length
-// says the length is unusable. The Paths tab's activation timeline and the
-// Preview's scrub marks both ask it.
+// How far into the song `ms` is: its share of a song length, clamped to 0..1.
+// No value when has_song_length says the length is unusable. D69 names which
+// length each caller passes.
 std::optional<double> song_fraction(double ms, double length_ms);
 
 // Where "< Act" (direction -1) or "Act >" (+1) moves the playhead from
@@ -447,7 +443,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 //
 // The base reads the song alone. It owns these fields: notes, sp_phrases,
 // solos, the fill windows (each fills[i].span), beats, tempos, sections,
-// meters, time_sigs, timing, tick_resolution, song_length_ms and has_notes.
+// meters, time_sigs, timing, song_length_ms and has_notes.
 // Every fill in a base reads Hidden, the field's default.
 //
 // The overlay owns the rest: activations, every fill's state, score and

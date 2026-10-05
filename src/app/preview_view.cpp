@@ -303,7 +303,6 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
     // and beats.
     const SongTiming& timing = song.timing();
     scene.timing = timing;  // the time box names ticks with the engine's math
-    scene.tick_resolution = timing.tick_resolution();
     if (const PreviewNote* last = last_drawn_note(scene)) {
         const int64_t last_tick = last->tick;
         int64_t grid_end = last_tick;

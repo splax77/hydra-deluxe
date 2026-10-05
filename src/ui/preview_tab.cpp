@@ -85,7 +85,7 @@ float key_hints(float width, bool draw) {
         float group_w = ImGui::CalcTextSize(kh.action).x + action_gap;
         for (const char* key : kh.keys)
             if (key) group_w += cap_w(key) + (key == kh.keys[0] ? 0.0f : cap_gap);
-        if (x > 0.0f && x + group_w > width) {
+        if (x > 0.0f && !fits_in_row(x, group_w, width)) {
             x = 0.0f;
             y += row_h;
         }
@@ -159,8 +159,7 @@ void render_path_picker(AppState& app) {
     if (open) {
         for (size_t i = 0; i < list.buttons.size(); ++i) {
             const hydra::app::PathButtonView& b = list.buttons[i];
-            // "##<i>" keeps two paths with the same notation apart.
-            const std::string item = hydra::app::preview_path_label(b) + "##" + std::to_string(i);
+            const std::string item = hydra::app::path_item_id(hydra::app::preview_path_label(b), i);
             const bool is_selected = b.path == selected;
             if (ImGui::Selectable(item.c_str(), is_selected)) selected = b.path;
             if (is_selected) ImGui::SetItemDefaultFocus();

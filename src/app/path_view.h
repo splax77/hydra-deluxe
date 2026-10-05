@@ -233,6 +233,14 @@ struct PathButtonsView {
 // int is read through Settings::search_depth_mode.
 PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, int depth_value);
 
+// The ImGui id of one item in the Preview's path picker: its shown `label`,
+// then "##" and its place in build_path_buttons' list. The suffix keeps two
+// paths with the same notation apart. The Preview picker and its GUI test
+// both build ids here, so a test finds the item the tab drew.
+inline std::string path_item_id(const std::string& label, size_t index) {
+    return label + "##" + std::to_string(index);
+}
+
 // What the Paths tab has unfolded, and a pending "Show in Preview". Kept on
 // AppState through PathsTabCache::ui(), so it dies with the app state.
 struct PathsTabUi {
