@@ -584,7 +584,7 @@ void test_dialog_keys(ImGuiTestContext* ctx) {
     ctx->KeyPress(ImGuiKey_Enter);
     ctx->Yield(2);
     IM_CHECK(h.app->scan_job == nullptr);
-    IM_CHECK(h.app->library_total > 0);
+    IM_CHECK(!h.app->library.rows().empty());
 }
 
 }  // namespace

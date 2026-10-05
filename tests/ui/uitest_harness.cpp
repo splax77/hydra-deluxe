@@ -431,7 +431,7 @@ void dump_widgets(ImGuiTestContext* ctx, const std::string& window_name) {
 void dump_state(Harness& h) {
     auto& a = *h.app;
     std::printf("state:\n");
-    std::printf("  library_total=%lld shown=%zu search=\"%s\"\n", (long long)a.library_total,
+    std::printf("  charts=%zu shown=%zu search=\"%s\"\n", a.library.rows().size(),
                 a.library_shown_count(), a.search.c_str());
     for (size_t i = 0; i < a.library_shown_count() && i < 20; ++i) {
         const auto& r = a.library_row_at(i);
@@ -503,7 +503,7 @@ void scan_library(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     ctx->SetRef("//Hydra");
     IM_CHECK(h.app->scan_job == nullptr);
-    IM_CHECK(h.app->library_total > 0);
+    IM_CHECK(!h.app->library.rows().empty());
     IM_CHECK(h.app->library_shown_count() > 0);
 }
 

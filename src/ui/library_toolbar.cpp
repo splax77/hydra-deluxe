@@ -79,12 +79,13 @@ void render_actions_row(AppState& app) {
     // A search that narrows nothing (empty, or a filter that does not parse,
     // like "stars:9") leaves the button on the whole library (D48, Q15).
     const bool searching = app.library.searching();
-    const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : app.library_total;
+    const int64_t library_size = static_cast<int64_t>(app.library.rows().size());
+    const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : library_size;
     const std::string label =
         searching ? analyze_search_label(analyzable) : std::string("Analyze library...");
     // The slot fits the widest count this library can show, commas included:
     // the label's only digits are the count's.
-    std::string sample = analyze_search_label(app.library_total);
+    std::string sample = analyze_search_label(library_size);
     const char widest = widest_digits(1)[0];
     for (char& c : sample)
         if (c >= '0' && c <= '9') c = widest;

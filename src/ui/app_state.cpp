@@ -71,7 +71,6 @@ void AppState::reload_library() {
     // The whole scan in one read. Every chart is needed anyway: the chips
     // count them and the search filters them in memory.
     library.set_charts(store->list_chart_library(std::nullopt, 0, -1));  // -1 = no limit
-    library_total = static_cast<int64_t>(library.rows().size());
     library.set_query(search);
     refresh_library_summaries();
 }
@@ -521,7 +520,7 @@ void AppState::start_analyze() {
     if (analysis_blocked()) return;
     if (!selected) return;
     if (analyze_running()) return;
-    analyze_job =std::make_unique<AnalyzeJob>(*selected, settings.record_key(selected->md5),
+    analyze_job = std::make_unique<AnalyzeJob>(*selected, settings.record_key(selected->md5),
                                                settings.to_analysis_settings());
     analyze_generation.bump();
     analyze_job->start();

@@ -22,7 +22,7 @@ namespace {
 // or the empty-library message when nothing is scanned yet.
 void render_library_pane(AppState& app) {
     detail::render_library(app);
-    if (app.library_total == 0)
+    if (app.library.rows().empty())
         ImGui::TextUnformatted(detail::empty_library_message(app.settings));
 }
 

@@ -165,8 +165,9 @@ public:
     // summary, filtered by the search and the status chip and sorted by the
     // table (ui/library_model.h).
     LibraryModel library;
-    std::string search;          // the applied search text; empty = no filter
-    int64_t library_total = 0;   // every chart, for "5 of 97 charts"
+    // The applied search text; empty = no filter. How many charts the
+    // library holds is library.rows().size(), read where it is needed.
+    std::string search;
     // Applies a search at once (the box throttles its own calls).
     void set_search(std::string text);
     // Re-reads every chart and summary: at startup and after a scan.

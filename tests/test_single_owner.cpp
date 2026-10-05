@@ -1988,6 +1988,19 @@ const std::vector<OwnerRule>& rules() {
            "bool AppState::batch_running() const { return batch_job && !batch_job->snapshot().finished; }",
            "batch_running, the owner"}},
          {"src", "tests"}},
+        // A cached copy of the library's chart count. The model's own rows
+        // are the count; the cache is gone, so no line may name it.
+        {"How many charts does the library hold?",
+         "LibraryModel::rows() in src/ui/library_model.h",
+         R"(\blibrary_total\b)",
+         "",
+         {},
+         {},
+         "audit finding 131; phase 6 task J2-4 (D53)",
+         {"const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : app.library_total;"},
+         {"const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : library_size;"},
+         {},
+         {"src", "tests"}},
         // A "checked at" time tested against an interval, or the report
         // check's own interval, which D54 folded into kFileCheckSeconds.
         {"How long does the UI trust a cached file-exists answer?",
