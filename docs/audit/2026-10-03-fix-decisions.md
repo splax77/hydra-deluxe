@@ -307,3 +307,11 @@ The text matcher is deleted: no third-party text reaches it without Hydra's own 
 3. **No busy timeout.** A database locked by another copy of Hydra fails at once, and the open sentence already says to close the other copy.
 4. **A batch that can't start fails, and Hydra keeps running.** The batch finishes as failed with the database sentence in the batch strip. A failure on the Analyze-library click shows the sentence in the status line.
 5. **The command-line tools print and exit non-zero.** hydra_batch, hydra_report and hydra_fillcompare print the plain sentence and the raw error to stderr, then exit with a failure code, the way hydra_batch already treats a bad rules file.
+
+**D73 (a database read that fails), 2026-10-05.** DB1 found that a store read whose step fails ends quietly, so the caller gets an empty or "not found" answer: analyzed_hashes on a failing database answered "no charts", and a batch treated every chart as not analyzed. The user took every recommended answer:
+1. **A failed read has its own sentence.** A new kind, DatabaseRead, reads "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is running, then try again." A read that fails while compiling reads it too, not the save sentence.
+2. **Every read throws, not just the loops.** The single-row lookups that took a failed step for "no such row" throw as well. One helper steps every read and one steps every write; a scan test keeps any other step out.
+3. **In the app, the status line shows the sentence and Hydra keeps running.** The library and the details keep what they last read.
+4. **The command-line tools print and exit 1** when a read fails partway through: hydra_batch, hydra_report, hydra_fillcompare and hydra_bench.
+5. **A re-read that fails after a good save reads the read sentence,** not "Analyzed, but saving failed".
+6. **Built on DB1,** which already catches a failed read at a batch's start, and merged after it.

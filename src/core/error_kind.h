@@ -21,6 +21,7 @@ enum class ErrorKind {
     Cancelled,
     DatabaseOpen,
     DatabaseWrite,
+    DatabaseRead,
     SongFileMissing,
     HashFailed,
     ChartUnreadable,

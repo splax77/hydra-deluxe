@@ -131,6 +131,9 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
          "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
          "running and that the Hydra folder isn't read-only."},
         {ErrorKind::DatabaseWrite, kDatabaseWrite},
+        {ErrorKind::DatabaseRead,
+         "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+         "running, then try again."},
         {ErrorKind::SongFileMissing, kSongFileMissing},
         {ErrorKind::HashFailed,
          "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "

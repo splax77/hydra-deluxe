@@ -1800,6 +1800,93 @@ TEST_CASE("a database another connection has locked fails to open as DatabaseOpe
     CHECK(std::remove(path.c_str()) == 0);
 }
 
+namespace {
+
+// Every table the store makes, dropped by a second connection while a store
+// has the file open. The store's connection still holds the old schema, so
+// its next read compiles and then fails when it steps.
+constexpr const char* kDropEveryTable =
+    "DROP TABLE results; DROP TABLE paths; DROP TABLE path_refs; DROP TABLE songmeta;"
+    " DROP TABLE charts; DROP TABLE meta; DROP TABLE dynamics;";
+
+// The read must throw the database read error, never answer.
+void check_read_fails(const std::function<void()>& read) {
+    try {
+        read();
+        FAIL("a read on a failing database answered");
+    } catch (const hydra::KindedError& e) {
+        INFO(e.what());
+        CHECK(e.kind() == hydra::ErrorKind::DatabaseRead);
+        CHECK(hydra::app::plain_error(e) ==
+              "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra "
+              "is running, then try again.");
+    }
+}
+
+}  // namespace
+
+// D72's DB1 found this one: analyzed_hashes on a failing database answered
+// with no charts, so a batch treated every chart as not analyzed.
+TEST_CASE("a read on a failing database throws instead of answering empty") {
+    const std::string path = testtemp::temp_path("read_fail", ".db");
+    std::remove(path.c_str());
+    {
+        RecordStore store(path);
+        store.add_song("h", "h", "Artist", "Charter", fixture().song);
+        store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
+        REQUIRE(store.analyzed_hashes("mode", CapQuery::at(4), Lens{}).count("h") == 1);
+        exec_on_file(path, "DROP TABLE results;");
+        // The first read fails when it steps; by then the connection has
+        // reloaded the schema, so the second fails when it compiles.
+        for (const char* when : {"step", "compile"}) {
+            CAPTURE(when);
+            check_read_fails([&] { store.analyzed_hashes("mode", CapQuery::at(4), Lens{}); });
+        }
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("every store read throws a database read error when its step fails") {
+    const std::string path = testtemp::temp_path("every_read_fail", ".db");
+    std::remove(path.c_str());
+    const RecordKey key{"h", "mode", CapQuery::at(4)};
+    const CapQuery cap = CapQuery::at(4);
+    const std::pair<const char*, std::function<void(RecordStore&)>> reads[] = {
+        {"engine_mode", [](RecordStore& s) { s.engine_mode(); }},
+        {"stamped_fill_rule", [](RecordStore& s) { s.stamped_fill_rule(); }},
+        {"get_dynamics", [](RecordStore& s) { s.get_dynamics(DynamicsKey{"h", "Expert", true}); }},
+        {"get_summaries", [&](RecordStore& s) { s.get_summaries({"h"}, "mode", cap, Lens{}); }},
+        {"get_record", [&](RecordStore& s) { s.get_record(key); }},
+        {"get_timing", [](RecordStore& s) { s.get_timing("h"); }},
+        {"has_record", [&](RecordStore& s) { s.has_record(key); }},
+        {"analyzed_hashes", [&](RecordStore& s) { s.analyzed_hashes("mode", cap, Lens{}); }},
+        {"for_each_blob",
+         [&](RecordStore& s) {
+             s.for_each_blob(std::nullopt, cap, Lens{}, [](const BlobRow&, const HydraRecord*) {});
+         }},
+        {"list_records",
+         [&](RecordStore& s) {
+             s.list_records(std::nullopt, cap, Lens{}, SortColumn::Score, false, std::nullopt);
+         }},
+        {"counts", [](RecordStore& s) { s.counts(); }},
+        {"chart_library_cache", [](RecordStore& s) { s.chart_library_cache(); }},
+        {"chart_library_count", [](RecordStore& s) { s.chart_library_count(); }},
+        {"list_chart_library", [](RecordStore& s) { s.list_chart_library(0, 10); }},
+        {"fill_song_length", [](RecordStore& s) { s.fill_song_length("h", 1000.0); }},
+        {"reindex", [](RecordStore& s) { s.reindex(); }},
+        {"fill_missing_stars", [](RecordStore& s) { s.fill_missing_stars(); }},
+    };
+    for (const auto& [name, read] : reads) {
+        CAPTURE(name);
+        // A fresh open makes the tables again, so each read fails at its own
+        // first step.
+        RecordStore store(path);
+        exec_on_file(path, kDropEveryTable);
+        check_read_fails([&] { read(store); });
+    }
+    std::remove(path.c_str());
+}
+
 TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {
     RecordStore store(":memory:");
     const std::vector<const char*> charts = {"ready", "stale", "other_lens", "other_cap",
