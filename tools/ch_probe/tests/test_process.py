@@ -66,7 +66,7 @@ class DecodeHelpersTest(unittest.TestCase):
 
 
 class ResolveMathTest(unittest.TestCase):
-    """RVA -> live address is just module_base + rva."""
+    """Process.resolve turns an RVA into a live address; pinned by literals."""
 
     def test_resolve_adds_base(self):
         proc, _ = fake_process({}, module_base=0x140000000)
@@ -94,9 +94,8 @@ class TypedReadTest(unittest.TestCase):
 
     def test_read_const_double_resolves_then_reads(self):
         # read_const_double takes an RVA, resolves it, then reads the double.
-        base = 0x140000000
         rva = constants.RVA_CONST_NORMAL_BACK
-        proc, _ = fake_process({base + rva: struct.pack("<d", 85.0)}, base)
+        proc, _ = fake_process({}, 0x140000000, consts={rva: 85.0})
         self.assertEqual(proc.read_const_double(rva), 85.0)
 
     def test_read_rejects_short_read(self):
@@ -152,12 +151,10 @@ class VerifyTargetsTest(unittest.TestCase):
     """verify_targets reads the two constants live, then applies the check."""
 
     def _proc_with_constants(self, back: float, front: float):
-        base = 0x140000000
-        memory = {
-            base + constants.RVA_CONST_NORMAL_BACK: struct.pack("<d", back),
-            base + constants.RVA_CONST_NORMAL_FRONT: struct.pack("<d", front),
-        }
-        proc, _ = fake_process(memory, base)
+        proc, _ = fake_process({}, 0x140000000, consts={
+            constants.RVA_CONST_NORMAL_BACK: back,
+            constants.RVA_CONST_NORMAL_FRONT: front,
+        })
         return proc
 
     def test_good_build_passes(self):

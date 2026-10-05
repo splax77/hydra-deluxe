@@ -16,9 +16,8 @@ Two kinds of address appear in the dumps:
            RVA = VA - 0x180000000. We store the resolved RVAs below so callers
            never have to redo that subtraction.
 
-To turn any RVA into a live address at run time: live = module_base + rva,
-where module_base is where GameAssembly.dll actually loaded in the running
-process (found by the process/address layer).
+process.Process.resolve turns any RVA into a live address at run time, from
+where GameAssembly.dll actually loaded in the running process.
 
 Build these were captured from: Clone Hero v1.1.0.6142, Unity IL2CPP x64,
 engine "StrikeCore".
