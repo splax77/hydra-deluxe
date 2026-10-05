@@ -10,11 +10,12 @@ namespace hydra::audio {
 
 std::unique_ptr<StemReader> open_stem_reader(StemBytes bytes,
                                              const OpenProgress& progress) {
-    switch (sniff_format(bytes.data(), bytes.size())) {
+    const AudioFormat format = sniff_format(bytes.data(), bytes.size());
+    switch (format) {
         case AudioFormat::Wav:
         case AudioFormat::Mp3:
         case AudioFormat::Flac:
-            return detail::open_ma_reader(std::move(bytes));
+            return detail::open_ma_reader(std::move(bytes), format);
         case AudioFormat::OggVorbis:
             return detail::open_vorbis_reader(std::move(bytes));
         case AudioFormat::OggOpus:

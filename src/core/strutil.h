@@ -10,24 +10,53 @@
 
 namespace hydra {
 
+// One byte lowered the ASCII way: A-Z become a-z and every other byte comes
+// back as it was, so a UTF-8 lead or continuation byte is never touched. The
+// one case rule every comparison below, and to_lower_ascii, uses. It never
+// reads the C locale, so no locale setting can change it.
+char lower_ascii(char c);
+
 // ASCII-only lowercase: A-Z become a-z and every other byte is left alone, so
 // UTF-8 text passes through intact. Chart hashes, file names and ini keys all
 // go through here.
 std::string to_lower_ascii(std::string_view s);
 
-// Strips ASCII whitespace (space, tab, CR, LF, vertical tab, form feed) from
-// both ends. Inner whitespace is kept.
+// Whether a byte is ASCII whitespace: space, tab, CR, LF, vertical tab or form
+// feed. The set trim strips. A byte of 0x80 or above is never whitespace.
+bool is_ascii_space(char c);
+
+// Whether two texts are equal ignoring ASCII case ("Expert" equals "EXPERT").
+// Texts of different lengths are never equal.
+bool equals_ci(std::string_view a, std::string_view b);
+
+// Strips ASCII whitespace (is_ascii_space) from both ends. Inner whitespace is
+// kept.
 std::string trim(std::string_view s);
 
 // trim() without the copy: the same whitespace set, returned as a view into s
 // (empty when s is all whitespace). Valid only while s's storage lives.
 std::string_view trim_view(std::string_view s);
 
+// Whether s starts with prefix, byte for byte.
+bool starts_with(std::string_view s, std::string_view prefix);
+
+// Whether s starts with prefix, ignoring ASCII case ("ARTIST:x" starts with
+// "artist:").
+bool starts_with_ci(std::string_view s, std::string_view prefix);
+
 // Whether s ends with suffix, byte for byte.
 bool ends_with(std::string_view s, std::string_view suffix);
 
 // Whether s ends with suffix, ignoring ASCII case (".MID" matches ".mid").
 bool ends_with_ci(std::string_view s, std::string_view suffix);
+
+// A scanned path as scan_snapshot.json keys it: when path starts with root
+// and is longer, the root and the one byte after it are dropped, then every
+// backslash becomes a forward slash. "C:\in\a\notes.mid" under "C:\in" is
+// "a/notes.mid". The dropped byte is whatever follows the root, separator or
+// not ("C:/input/x" under "C:/in" is "ut/x", audit finding 274); the snapshot's
+// keys were written that way, so the rule stays. An empty root strips nothing.
+std::string relative_slash_path(std::string_view path, std::string_view root);
 
 // The number a chart file's text spells, read one way for every such number
 // (.chart Offset, song.ini and .sng delay): spaces at either end are allowed,

@@ -24,7 +24,7 @@ struct ImGuiSetupOptions {
     // Where ImGui persists table column widths. Empty = the exe-relative
     // default (hydra_ui.ini); "-" = don't persist at all (tests).
     std::string ini_file;
-    // Directory holding the fonts. Empty = exe_dir()\resource.
+    // Directory holding the fonts. Empty = app::resource_dir().
     std::string resource_dir;
 };
 

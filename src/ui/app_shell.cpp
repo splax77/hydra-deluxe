@@ -205,7 +205,7 @@ void setup_imgui(const ImGuiSetupOptions& options) {
         io.IniFilename = nullptr;
     } else {
         ini_file = options.ini_file.empty()
-                       ? app::exe_dir() + "\\hydra_ui.ini"
+                       ? join_folder(app::exe_dir(), "hydra_ui.ini")
                        : options.ini_file;
         io.IniFilename = ini_file.c_str();
     }
@@ -242,13 +242,12 @@ void setup_imgui(const ImGuiSetupOptions& options) {
     // launched with any working directory (e.g. a shortcut's Start-in).
     // Falls back to ImGui's built-in font if the files aren't found,
     // rather than asserting.
-    std::string resource_dir =
-        options.resource_dir.empty() ? app::exe_dir() + "\\resource" : options.resource_dir;
-    if (resource_dir.back() != '\\' && resource_dir.back() != '/') resource_dir += "\\";
+    const std::string fonts_dir =
+        options.resource_dir.empty() ? app::resource_dir() : options.resource_dir;
     ImFont* main_font = io.Fonts->AddFontFromFileTTF(
-        (resource_dir + "ShipporiAntiqueB1-Regular.ttf").c_str(), kFontSize);
+        join_folder(fonts_dir, "ShipporiAntiqueB1-Regular.ttf").c_str(), kFontSize);
     g_mono_font = io.Fonts->AddFontFromFileTTF(
-        (resource_dir + "CourierPrime-Regular.ttf").c_str(), kFontSize);
+        join_folder(fonts_dir, "CourierPrime-Regular.ttf").c_str(), kFontSize);
     if (main_font) io.FontDefault = main_font;
 
     // CJK fallback: Clone Hero libraries are full of Japanese (and other

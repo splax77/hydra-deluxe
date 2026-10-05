@@ -202,7 +202,7 @@ void render_dynamics_panel(AppState& app) {
     ImGui::TextWrapped("Ghosts: %s", group_thousands(played.ghost).c_str());
     ImGui::TextWrapped("Accents: %s", group_thousands(played.accent).c_str());
     {
-        int dyn = played.ghost + played.accent;
+        int dyn = played.dynamic();
         int total = played.all();
         ImGui::TextWrapped("Dynamic notes: %s of %s (%s)",
                            group_thousands(dyn).c_str(),

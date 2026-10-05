@@ -8,9 +8,11 @@
 #include <charconv>
 #include <cmath>
 #include <iterator>
+#include <string>
 #include <system_error>
 
 #include "core/stars.h"    // kMaxStars
+#include "core/strutil.h"  // lower_ascii, is_ascii_space, equals_ci, starts_with_ci
 #include "core/winstr.h"   // wide_to_utf8
 
 namespace hydra::app {
@@ -19,7 +21,11 @@ namespace {
 
 constexpr size_t npos = std::string_view::npos;
 
-constexpr const char* kStarsError = "stars: needs a number from 0 to 7";
+// The stars filter's out-of-range sentence, its top built from kMaxStars so
+// the message and the range check below read the same number.
+std::string stars_error() {
+    return "stars: needs a number from 0 to " + std::to_string(kMaxStars);
+}
 constexpr const char* kSqueezeError =
     "squeeze<= needs a number of milliseconds, like squeeze<=20";
 
@@ -31,11 +37,13 @@ struct FoldRun {
     constexpr bool holds(unsigned cp) const { return cp >= first && cp <= last; }
 };
 
-// The three runs of characters the fold changes one for one, named once here
-// for fold_into and search_fold_table both. The fold's only other change is
-// whitespace, which becomes one space; the report pages split a query on
-// whitespace instead of looking it up.
-constexpr FoldRun kAsciiUpper{'A', 'Z'};       // lower-cased
+// The three runs of characters the fold changes one for one. fold_into reads
+// kLatin and kFullWidth; ASCII letters it lowers with strutil's lower_ascii,
+// so kAsciiUpper is only the run search_fold_table tries, and the table keeps
+// a character only when fold_for_search really changes it. The fold's only
+// other change is whitespace, which becomes one space; the report pages split
+// a query on whitespace instead of looking it up.
+constexpr FoldRun kAsciiUpper{'A', 'Z'};       // lower-cased (lower_ascii)
 constexpr FoldRun kLatin{0x00C0, 0x017F};      // Latin-1 letters and Latin Extended-A, to ASCII
 constexpr FoldRun kFullWidth{0xFF01, 0xFF5E};  // full-width ASCII, to its ASCII twin, lower-cased
 constexpr FoldRun kFoldRuns[] = {kAsciiUpper, kLatin, kFullWidth};
@@ -56,10 +64,6 @@ unsigned char byte_at(std::string_view s, size_t i) {
     return i < s.size() ? static_cast<unsigned char>(s[i]) : 0;
 }
 
-bool is_ascii_space(unsigned char c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
-}
-
 bool is_continuation(unsigned char c) {
     return (c & 0xC0) == 0x80;
 }
@@ -72,23 +76,6 @@ size_t utf8_length(unsigned char lead) {
     if (lead >= 0xE0 && lead <= 0xEF) return 3;
     if (lead >= 0xF0 && lead <= 0xF4) return 4;
     return 0;
-}
-
-char ascii_lower(unsigned char c) {
-    return static_cast<char>(kAsciiUpper.holds(c) ? c + ('a' - 'A') : c);
-}
-
-bool iequals_ascii(std::string_view a, std::string_view b) {
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i)
-        if (ascii_lower(static_cast<unsigned char>(a[i])) !=
-            ascii_lower(static_cast<unsigned char>(b[i])))
-            return false;
-    return true;
-}
-
-bool starts_with_ci(std::string_view s, std::string_view prefix) {
-    return s.size() >= prefix.size() && iequals_ascii(s.substr(0, prefix.size()), prefix);
 }
 
 // ---- folding ---------------------------------------------------------------
@@ -157,7 +144,7 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
         // Whitespace: ASCII, the no-break space (C2 A0) and the ideographic
         // space (E3 80 80). A run of any mix becomes one space.
         size_t space_len = 0;
-        if (is_ascii_space(c0)) space_len = 1;
+        if (is_ascii_space(static_cast<char>(c0))) space_len = 1;
         else if (c0 == 0xC2 && c1 == 0xA0) space_len = 2;
         else if (c0 == 0xE3 && c1 == 0x80 && c2 == 0x80) space_len = 3;
         if (space_len > 0) {
@@ -170,7 +157,7 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
         in_space = false;
 
         if (c0 < 0x80) {
-            const char lower = ascii_lower(c0);
+            const char lower = lower_ascii(static_cast<char>(c0));
             emit(std::string_view(&lower, 1), i, i + 1);
             i += 1;
             continue;
@@ -196,7 +183,7 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
             const unsigned cp = ((c0 & 0x0Fu) << 12) | ((c1 & 0x3Fu) << 6) | (c2 & 0x3Fu);
             if (kFullWidth.holds(cp)) {
                 const char lower =
-                    ascii_lower(static_cast<unsigned char>(cp - (kFullWidth.first - '!')));
+                    lower_ascii(static_cast<char>(cp - (kFullWidth.first - '!')));
                 emit(std::string_view(&lower, 1), i, i + 3);
                 i += 3;
                 continue;
@@ -216,10 +203,10 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
 // ---- parsing ---------------------------------------------------------------
 
 std::optional<QueryField> field_named(std::string_view key) {
-    if (iequals_ascii(key, "title")) return QueryField::Title;
-    if (iequals_ascii(key, "artist")) return QueryField::Artist;
-    if (iequals_ascii(key, "charter")) return QueryField::Charter;
-    if (iequals_ascii(key, "folder")) return QueryField::Folder;
+    if (equals_ci(key, "title")) return QueryField::Title;
+    if (equals_ci(key, "artist")) return QueryField::Artist;
+    if (equals_ci(key, "charter")) return QueryField::Charter;
+    if (equals_ci(key, "folder")) return QueryField::Folder;
     return std::nullopt;
 }
 
@@ -252,7 +239,7 @@ void parse_stars(LibraryQuery& q, std::string_view value) {
     const char* last = value.data() + value.size();
     const auto [end, ec] = std::from_chars(first, last, n);
     if (value.empty() || ec != std::errc{} || end != last || n < 0 || n > kMaxStars) {
-        add_error(q, kStarsError);
+        add_error(q, stars_error());
         return;
     }
     q.stars = n;
@@ -276,20 +263,26 @@ bool contains(const std::string& haystack, const std::string& needle) {
     return haystack.find(needle) != std::string::npos;
 }
 
+// A term matches when any column it applies to holds its folded text.
 bool term_matches(const QueryTerm& term, const SearchableRow& row) {
-    switch (term.field) {
-        case QueryField::Title: return contains(row.title, term.folded);
-        case QueryField::Artist: return contains(row.artist, term.folded);
-        case QueryField::Charter: return contains(row.charter, term.folded);
-        case QueryField::Folder: return contains(row.folder, term.folded);
-        case QueryField::Any:
-            return contains(row.title, term.folded) || contains(row.artist, term.folded) ||
-                   contains(row.charter, term.folded) || contains(row.folder, term.folded);
-    }
+    const struct {
+        QueryField column;
+        const std::string& text;
+    } columns[] = {{QueryField::Title, row.title},
+                   {QueryField::Artist, row.artist},
+                   {QueryField::Charter, row.charter},
+                   {QueryField::Folder, row.folder}};
+    for (const auto& c : columns)
+        if (term_applies_to(term.field, c.column) && contains(c.text, term.folded))
+            return true;
     return false;
 }
 
 }  // namespace
+
+bool term_applies_to(QueryField term_field, QueryField column) {
+    return term_field == QueryField::Any || column == QueryField::Any || term_field == column;
+}
 
 std::string fold_for_search(std::string_view text) {
     std::string out;
@@ -319,7 +312,7 @@ LibraryQuery parse_library_query(std::string_view text) {
     LibraryQuery q;
     size_t i = 0;
     while (i < text.size()) {
-        if (is_ascii_space(static_cast<unsigned char>(text[i]))) {
+        if (is_ascii_space(text[i])) {
             ++i;
             continue;
         }
@@ -331,7 +324,7 @@ LibraryQuery parse_library_query(std::string_view text) {
         // A word runs to the next space or quote.
         size_t end = i;
         while (end < text.size() && text[end] != '"' &&
-               !is_ascii_space(static_cast<unsigned char>(text[end])))
+               !is_ascii_space(text[end]))
             ++end;
         const std::string_view word = text.substr(i, end - i);
         i = end;
@@ -351,7 +344,7 @@ LibraryQuery parse_library_query(std::string_view text) {
             const std::string_view value = word.substr(colon + 1);
             // field:"a phrase": the quote ended the word right after the colon.
             const bool quoted = value.empty() && i < text.size() && text[i] == '"';
-            if (iequals_ascii(key, "stars")) {
+            if (equals_ci(key, "stars")) {
                 parse_stars(q, quoted ? read_quoted(text, i) : value);
                 continue;
             }
@@ -398,8 +391,7 @@ std::vector<MatchSpan> match_spans(const LibraryQuery& q, QueryField field,
     fold_into(display_text, folded, &source);
     for (const QueryTerm& term : q.terms) {
         if (term.folded.empty()) continue;
-        if (field != QueryField::Any && term.field != QueryField::Any && term.field != field)
-            continue;
+        if (!term_applies_to(term.field, field)) continue;
         for (size_t at = folded.find(term.folded); at != std::string::npos;
              at = folded.find(term.folded, at + 1))
             spans.push_back(
