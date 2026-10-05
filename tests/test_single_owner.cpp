@@ -2495,8 +2495,8 @@ TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one ow
 // (it reads .cpp and .h only), so these rows get their own scan of every .py
 // file under tools/. A __pycache__ .pyc is never read: only .py files are.
 // Each row lists the owner's lines and, where J3-8 still has to repoint a
-// caller, the known copies by exact text; a listed line that no longer exists
-// fails as stale. Python comment lines are skipped.
+// caller, the known copies by exact text. Listed lines follow
+// take_listed_line, like the row scan's. Python comment lines are skipped.
 TEST_CASE("single-owner: the Clone Hero probe's engine and memory facts each have one owner (J3-7)") {
     struct ProbeRow {
         std::string question;
@@ -2540,6 +2540,7 @@ TEST_CASE("single-owner: the Clone Hero probe's engine and memory facts each hav
          {R"x(tools/ch_probe/probe_songs.py: "-i", "anullsrc=r=44100:cl=stereo", "-t", f"{length_ms / 1000:.3f}",)x",
           R"x(tools/ch_probe/probe_songs.py: f"{(t.notes[-1].time_ms + SILENCE_MS) / 1000:.1f} s"))x",
           R"x(tools/ch_probe/experiments/active_probe.py: todo = plan[live.first_note_index([p.first_ms for p in plan], raw_s * 1000):])x",
+          R"x(tools/ch_probe/experiments/play_chart.py: cursor = live.first_note_index(notes_ms, raw_s * 1000))x",
           R"x(tools/ch_probe/experiments/play_chart.py: cursor = live.first_note_index(notes_ms, raw_s * 1000))x",
           R"x(tools/ch_probe/experiments/play_chart.py: print(f"  {total_sent:4d}  {note_ms / 1000:7.2f}  {raw_ms / 1000:7.2f}  ")x",
           R"x(tools/ch_probe/experiments/walk_edges.py: cursor = live.first_note_index([n["time_ms"] for n in notes], raw_s * 1000))x",
@@ -2585,30 +2586,46 @@ TEST_CASE("single-owner: the Clone Hero probe's engine and memory facts each hav
         }
     }
 
-    std::vector<std::set<std::string>> seen(rows.size());
+    // The allowed lines count the way the row scan's do: through ListedLine and
+    // take_listed_line. A repo-relative path holds no ": ", so the first one
+    // splits an entry into its file and its text.
+    std::vector<ListedLine> listed;
+    for (const ProbeRow& r : rows)
+        for (const std::string& a : r.allowed) {
+            const size_t split = a.find(": ");
+            REQUIRE(split != std::string::npos);
+            listed.push_back({r.question, a.substr(0, split), a.substr(split + 2),
+                              "listed line is gone (stale)"});
+        }
+    std::vector<bool> used(listed.size(), false);
     std::vector<std::string> problems;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
         if (rel.compare(0, 6, "tools/") != 0 || path.extension() != ".py") return;
         std::ifstream in(path);
         std::string line;
+        int lineno = 0;
         while (std::getline(in, line)) {
+            ++lineno;
             const std::string t = hydra::trim(line);
             if (t.empty() || t[0] == '#') continue;
             for (size_t i = 0; i < rows.size(); ++i) {
                 if (!std::regex_search(t, compiled[i])) continue;
-                const std::string key = rel + ": " + t;
-                const std::set<std::string> allowed(rows[i].allowed.begin(),
-                                                    rows[i].allowed.end());
-                if (allowed.count(key))
-                    seen[i].insert(key);
+                const Take take = take_listed_line(listed, used, rows[i].question, rel, t);
+                if (take == Take::taken) continue;
+                const std::string where = rel + ":" + std::to_string(lineno);
+                if (take == Take::used_up)
+                    problems.push_back(where + ": a second copy of a listed line (each "
+                                       "entry covers one line) answers \"" +
+                                       rows[i].question + "\": " + t);
                 else
-                    problems.push_back("answers \"" + rows[i].question + "\": " + key);
+                    problems.push_back(where + ": answers \"" + rows[i].question + "\": " + t);
             }
         }
     });
-    for (size_t i = 0; i < rows.size(); ++i)
-        for (const std::string& a : rows[i].allowed)
-            if (!seen[i].count(a)) problems.push_back("listed line is gone (stale): " + a);
+    for (size_t i = 0; i < listed.size(); ++i) {
+        if (used[i]) continue;
+        problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
+    }
     std::ostringstream report;
     for (const std::string& p : problems) report << p << "\n";
     INFO(report.str());
