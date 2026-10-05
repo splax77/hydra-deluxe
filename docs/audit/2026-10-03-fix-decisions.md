@@ -291,3 +291,12 @@ Timelines now include the song's outro, so a song with a long tail ends its last
 3. **Old last-note lengths are dropped by a new stamp.** They read as not read, and opening the song reads its audio once (the ADR 0018 pattern).
 4. **A chart with no audio is read once.** The stamp records "read, none". A re-analysis reads again, so audio added later shows after the next analysis.
 5. **Every analysis rewrites the song's length.** Audio replaced after analysis keeps the old length until the next analysis.
+
+**D71 (ER1 and ER2 open questions), 2026-10-05.** The user said to start the remaining tasks as soon as their briefs were ready, so every open question in `p7-er1.md` and `p7-er2.md` takes its brief's recommendation. The ones that change what is shown:
+1. **Database writes the old matcher missed** (for example AL2's song-length write) read the database sentence, not "Something went wrong...".
+2. **Preview asset failures** (an undecodable texture, a shader that won't compile, a broken .obj) read the existing "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them." word for word, prefixed "Preview failed: " in the Preview (D51 call 25).
+3. **The Preview error gains a dimmed details line** with the raw text, as its fallback sentence already promises.
+4. **Graphics-card failures and Hydra's own Preview bugs** read the "Something went wrong" sentence instead of raw text.
+5. **The Dynamics tab** shows "Dynamics failed: <sentence>" with a details line, and "Counted, but saving failed. <sentence>".
+6. **A failed save during a batch** adds that chart to the "N charts failed" list with the database sentence, and the batch goes on. Today it closes Hydra.
+The text matcher is deleted: no third-party text reaches it without Hydra's own words around it. A database that cannot open at startup still closes Hydra with no message; fixing that needs a new startup message, so it waits for its own question.
