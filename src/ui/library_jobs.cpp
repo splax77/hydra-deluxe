@@ -74,9 +74,7 @@ void ScanJob::run() {
 
     std::vector<store::ChartLibraryEntry> entries;
     entries.reserve(items.size());
-    for (const app::ScanItem& item : items)
-        entries.push_back({item.md5, item.title, item.artist, item.charter, item.notespath,
-                           item.rootfolder, item.sig});
+    for (const app::ScanItem& item : items) entries.push_back(app::to_library_entry(item));
 
     try {
         store_.rebuild_chart_library(entries);
@@ -135,13 +133,16 @@ std::optional<double> batch_eta_s(double elapsed_s, int completed, int total) {
     return elapsed_s / completed * (total - completed);
 }
 
-BatchJob::BatchJob(std::optional<std::string> search, app::BatchRun run,
-                   store::RecordStore& store, bool redo)
-    : search_(std::move(search)),
-      run_(std::move(run)),
-      store_(store),
-      redo_(redo),
-      workers_(app::batch_worker_count()) {}
+app::ScanItem scan_item_of(const store::ChartLibraryEntry& e) {
+    app::ScanItem item;
+    item.md5 = e.md5;
+    item.title = e.title;
+    item.artist = e.artist;
+    item.charter = e.charter;
+    item.notespath = e.notespath;
+    item.rootfolder = e.rootfolder;
+    return item;
+}
 
 BatchJob::BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun run,
                    store::RecordStore& store, bool redo)
@@ -153,7 +154,7 @@ BatchJob::BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun r
 
 void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
     analyze_ = std::move(analyze);
-    workers_ = std::max(1, workers);
+    workers_ = workers;  // stored as given: run_work_pool checks it
 }
 
 namespace {
@@ -238,15 +239,12 @@ BatchJob::Snapshot BatchJob::snapshot() const {
 }
 
 void BatchJob::run() {
-    // Load the item list here rather than on the UI thread: an unbounded
-    // SELECT over a big library takes long enough to freeze a frame.
+    // Turn the given rows into scan rows here rather than on the UI thread:
+    // a big library takes long enough to freeze a frame.
     try {
-        std::vector<store::ChartLibraryEntry> entries =
-            given_ ? std::move(*given_)
-                   : store_.list_chart_library(search_, 0, -1);  // LIMIT -1 = no limit
+        const std::vector<store::ChartLibraryEntry> entries = std::move(given_);
         items_.reserve(entries.size());
-        for (const store::ChartLibraryEntry& e : entries)
-            items_.push_back({e.md5, e.title, e.artist, e.charter, e.notespath, e.rootfolder});
+        for (const store::ChartLibraryEntry& e : entries) items_.push_back(scan_item_of(e));
     } catch (const std::exception& e) {
         std::lock_guard<std::mutex> lock(mu_);
         snap_.preparing = false;
@@ -339,10 +337,7 @@ void AnalyzeJob::start() {
             });
         });
     } catch (const std::exception& e) {
-        error_ = e.what();
-        message_ = app::plain_error(e);
-        ok_ = false;
-        finished_.store(true);
+        fail(e);
     }
 }
 

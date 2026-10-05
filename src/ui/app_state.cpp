@@ -71,7 +71,6 @@ void AppState::reload_library() {
     // The whole scan in one read. Every chart is needed anyway: the chips
     // count them and the search filters them in memory.
     library.set_charts(store->list_chart_library(std::nullopt, 0, -1));  // -1 = no limit
-    library_total = static_cast<int64_t>(library.rows().size());
     library.set_query(search);
     refresh_library_summaries();
 }
@@ -198,12 +197,8 @@ void AppState::close_details() {
 
 bool AppState::selected_file_ok(double now) {
     if (!selected) return false;
-    if (details_ui.file_checked_at < 0.0 ||
-        now - details_ui.file_checked_at >= kFileCheckSeconds) {
-        details_ui.file_ok = file_exists_utf8(selected->notespath);
-        details_ui.file_checked_at = now;
-    }
-    return details_ui.file_ok;
+    return cached_file_check(details_ui.file_checked_at, details_ui.file_ok, now,
+                             [this] { return file_exists_utf8(selected->notespath); });
 }
 
 void AppState::refresh_viewed_record() {
@@ -363,12 +358,8 @@ void AppState::update_analyze_job(double now) {
 }
 
 bool AppState::report_file_shown(double now) {
-    if (library_ui.report_checked_at < 0.0 ||
-        now - library_ui.report_checked_at >= kReportCheckSeconds) {
-        library_ui.report_exists = app::report_file_exists();
-        library_ui.report_checked_at = now;
-    }
-    return library_ui.report_exists;
+    return cached_file_check(library_ui.report_checked_at, library_ui.report_exists, now,
+                             [] { return app::report_file_exists(); });
 }
 
 void AppState::update_dynamics() {
@@ -449,7 +440,7 @@ void AppState::open_batch_confirm() {
 
 void AppState::start_batch(bool redo) {
     if (analysis_blocked()) return;
-    if (batch_job && !batch_job->snapshot().finished) return;
+    if (batch_running()) return;
     // A direct call (a test) has no confirm open: load the list here.
     if (!batch_confirm_pending) open_batch_confirm();
     batch_confirm_pending = false;
@@ -528,7 +519,7 @@ void AppState::cancel_dm_report() {
 void AppState::start_analyze() {
     if (analysis_blocked()) return;
     if (!selected) return;
-    if (analyze_job && !analyze_job->finished()) return;
+    if (analyze_running()) return;
     analyze_job = std::make_unique<AnalyzeJob>(*selected, settings.record_key(selected->md5),
                                                settings.to_analysis_settings());
     analyze_generation.bump();

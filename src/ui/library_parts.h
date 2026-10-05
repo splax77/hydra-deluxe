@@ -25,6 +25,9 @@ namespace hydra::ui::detail {
 // library_toolbar.cpp
 void render_status_line(AppState& app);
 void render_actions_row(AppState& app);
+// The batch button's label while a search narrows the library, with the
+// count of matching charts: the button, its width sample and the GUI tests.
+std::string analyze_search_label(int64_t count);
 
 // settings_bar.cpp
 void render_settings_bar(AppState& app);

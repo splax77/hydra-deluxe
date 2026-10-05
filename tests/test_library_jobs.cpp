@@ -16,6 +16,7 @@
 
 #include "app/analysis.h"
 #include "app/report_files.h"
+#include "app/user_messages.h"  // plain_error
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
@@ -299,4 +300,49 @@ TEST_CASE("jobs: a failed leaderboard fetch says what to do") {
           "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.");
     CHECK(job.error() == "could not send the request (error 12029)");
     hydra::net::set_fetcher({});
+}
+
+// Finding 212: run_guarded and AnalyzeJob::start's thread-start catch record a
+// failure through one fail(). This job exposes it so the test can call it.
+TEST_CASE("jobs: a failed job records the raw text, the plain message, not ok and finished") {
+    struct FailingJob : hydra::ui::ResultJobBase {
+        using ResultJobBase::fail;
+    };
+    const std::runtime_error boom("boom");
+
+    FailingJob job;
+    job.fail(boom);
+    CHECK(job.error() == "boom");
+    CHECK(job.message() == hydra::app::plain_error(boom));
+    CHECK_FALSE(job.ok());
+    CHECK(job.finished());
+
+    // A cancel is the user's own click: the raw text stays, the message is empty.
+    FailingJob cancelled;
+    cancelled.cancel();
+    cancelled.fail(boom);
+    CHECK(cancelled.error() == "boom");
+    CHECK(cancelled.message().empty());
+    CHECK_FALSE(cancelled.ok());
+    CHECK(cancelled.finished());
+}
+
+// The batch turns each library entry into a scan row through scan_item_of.
+TEST_CASE("jobs: scan_item_of copies a library entry's fields by name") {
+    ChartLibraryEntry e;
+    e.md5 = "md5 a";
+    e.title = "title b";
+    e.artist = "artist c";
+    e.charter = "charter d";
+    e.notespath = "notes e.chart";
+    e.rootfolder = "root f";
+    e.sig = "sig g";
+    const hydra::app::ScanItem item = hydra::ui::scan_item_of(e);
+    CHECK(item.md5 == "md5 a");
+    CHECK(item.title == "title b");
+    CHECK(item.artist == "artist c");
+    CHECK(item.charter == "charter d");
+    CHECK(item.notespath == "notes e.chart");
+    CHECK(item.rootfolder == "root f");
+    CHECK(item.sig.empty());  // as the batch's rows have always had it
 }
