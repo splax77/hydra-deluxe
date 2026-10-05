@@ -140,8 +140,8 @@ void render_path_limit(AppState& app, bool locked) {
     if (ImGui::Checkbox("Path limit##mslimit", &app.settings.mslimit_enabled))
         app.commit_settings();
     end_disabled_checkbox(locked);
-    help_marker("Keep extra paths only when their hardest squeeze is within this many "
-                "ms. Lower or negative values demand more slack.");
+    help_marker("Keep extra paths only when their hardest squeeze or required early fill is "
+                "within this many ms. Lower or negative values demand more slack.");
     ImGui::SameLine();
     const bool off = locked || !app.settings.mslimit_enabled;
     begin_disabled_input(off);
