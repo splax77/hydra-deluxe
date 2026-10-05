@@ -30,26 +30,16 @@ using namespace hydra;
 
 namespace {
 
-// A scratch rules file that deletes itself when the expression that loads it
-// ends, so test runs leave no ini files behind (the same shape as
-// test_dynamics_store.cpp's TempFile).
-struct RulesFile {
-    std::filesystem::path path;
-    RulesFile(const char* tag, const std::string& text)
-        : path(hydra::os_path(testtemp::temp_path(std::string("rules_") + tag, ".ini"))) {
-        std::ofstream f(path, std::ios::trunc);
-        f << text;
-    }
-    ~RulesFile() {
-        std::error_code ec;
-        std::filesystem::remove(path, ec);
-    }
-    RulesFile(const RulesFile&) = delete;
-    RulesFile& operator=(const RulesFile&) = delete;
-    operator const std::filesystem::path&() const { return path; }
-};
-
-RulesFile write_rules(const char* tag, const std::string& text) { return RulesFile(tag, text); }
+// A scratch rules file: ScopedFile handles the cleanup, and write_rules
+// fills it with the given text. The returned ScopedFile stays alive until the
+// full expression ends, so load_rules_file(write_rules(...)) reads the file
+// before ScopedFile's destructor removes it.
+testtemp::ScopedFile write_rules(const char* tag, const std::string& text) {
+    testtemp::ScopedFile file(std::string("rules_") + tag, ".ini");
+    std::ofstream f(hydra::os_path(file.path), std::ios::trunc);
+    f << text;
+    return file;
+}
 
 // One measure per note on a 4/4 120 BPM song with no authored fills, so
 // check_activations has to generate them.

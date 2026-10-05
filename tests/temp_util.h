@@ -42,6 +42,28 @@ inline std::string temp_dir(const std::string& tag) {
     return dir;
 }
 
+// A scratch file (temp_path) that is deleted when it goes out of scope.
+// It removes the file on construction too, so a leftover from a crashed run
+// does not confuse the test. Callers that need the wide path for Win32
+// calls use hydra::win32_path on path.
+struct ScopedFile {
+    std::string path;
+    ScopedFile(const std::string& tag, const std::string& ext)
+        : path(temp_path(tag, ext)) { remove(); }
+    ~ScopedFile() { remove(); }
+    ScopedFile(ScopedFile&& o) noexcept : path(std::move(o.path)) { o.path.clear(); }
+    ScopedFile(const ScopedFile&) = delete;
+    ScopedFile& operator=(const ScopedFile&) = delete;
+    operator const std::string&() const { return path; }
+    operator std::filesystem::path() const { return hydra::os_path(path); }
+private:
+    void remove() {
+        if (path.empty()) return;
+        std::error_code ec;
+        std::filesystem::remove(hydra::os_path(path), ec);
+    }
+};
+
 }  // namespace testtemp
 
 #endif  // HYDRA_TESTS_TEMP_UTIL_H

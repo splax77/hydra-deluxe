@@ -41,17 +41,7 @@ DynamicsBreakdown make_full_breakdown(bool dynamics_enabled) {
     return b;
 }
 
-// A scratch database file (testtemp::temp_path), absent when the test starts
-// and deleted when it ends.
-struct TempFile {
-    std::string path = testtemp::temp_path("dynamics_store", ".db");
-    TempFile() { remove(); }
-    ~TempFile() { remove(); }
-    void remove() {
-        std::error_code ec;
-        std::filesystem::remove(hydra::os_path(path), ec);
-    }
-};
+using TempFile = testtemp::ScopedFile;
 
 }  // namespace
 
@@ -131,7 +121,7 @@ TEST_CASE("dynamics blob bytes are unchanged by the shared codec") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("RecordStore dynamics put/get") {
-    TempFile tmp;
+    TempFile tmp("dynamics_store", ".db");
     const DynamicsBreakdown bd = make_full_breakdown(true);
     const std::vector<uint8_t> blob = encode_dynamics(bd);
 
@@ -230,7 +220,7 @@ TEST_CASE("dynamics_entry_from_analysis counts only when the parse kept 2x kicks
 }
 
 TEST_CASE("RecordStore dynamics rows from before the stamp read as missing") {
-    TempFile tmp;
+    TempFile tmp("dynamics_store", ".db");
     {  // A file from before the stamp: the dynamics table has no count_version column.
         sqlite3* db = nullptr;
         REQUIRE(sqlite3_open(tmp.path.c_str(), &db) == SQLITE_OK);
@@ -255,7 +245,7 @@ TEST_CASE("RecordStore dynamics rows from before the stamp read as missing") {
 }
 
 TEST_CASE("RecordStore dynamics rows with another count stamp read as missing") {
-    TempFile tmp;
+    TempFile tmp("dynamics_store", ".db");
     RecordStore store(tmp.path);
     DynamicsKey key{"abc123", "Expert", false};
     const std::vector<uint8_t> blob = encode_dynamics(make_full_breakdown(true));
