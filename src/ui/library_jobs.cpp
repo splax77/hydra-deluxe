@@ -27,7 +27,7 @@ ScanProgress ScanJob::snapshot() const {
 
 void ScanJob::run() {
     // The previous scan's rows: any chart whose files are unchanged
-    // (size+mtime) reuses its md5/metadata without being read again.
+    // (sig_unchanged) reuses its md5/metadata without being read again.
     store::ChartLibraryCache cache;
     try {
         cache = store_.chart_library_cache();
