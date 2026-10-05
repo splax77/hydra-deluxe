@@ -27,12 +27,7 @@ using hydra::store::ChartTimingMeta;
 
 namespace {
 
-void write_bytes(const std::string& path, const std::vector<uint8_t>& data) {
-    std::FILE* f = hydra::fopen_utf8(path, L"wb");
-    REQUIRE(f != nullptr);
-    if (!data.empty()) std::fwrite(data.data(), 1, data.size(), f);
-    std::fclose(f);
-}
+using testtemp::write_bytes;
 
 // The one chart the scan finds under the folder of `notespath`.
 ScanItem scan_one(const std::string& notespath) {
