@@ -516,6 +516,10 @@ private:
     // statements across the walk instead of recompiling them per row.
     std::recursive_mutex mutex_;
 
+    // The constructor's work after the file opens: the journal mode, the
+    // tables, and every upgrade and backfill an older file needs. The
+    // constructor turns any throw from it into a failed open.
+    void set_up_schema();
     void exec(const char* sql);
     bool has_column(const char* table, const char* column);
     void create_result_tables();

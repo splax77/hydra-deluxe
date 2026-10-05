@@ -15,11 +15,14 @@
 #include <tchar.h>
 
 #include <cstdio>
+#include <exception>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "app/config.h"
+#include "app/user_messages.h"
 #include "core/version.h"
 #include "core/winstr.h"
 #include "ui/resource.h"
@@ -44,7 +47,7 @@ static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 // Set by WM_DPICHANGED, applied by the frame loop before the next frame.
 static float                    g_PendingUiScale = 0.0f;
 
-bool CreateDeviceD3D(HWND hWnd);
+HRESULT CreateDeviceD3D(HWND hWnd);
 void CleanupDeviceD3D();
 void CreateRenderTarget();
 void CleanupRenderTarget();
@@ -113,6 +116,25 @@ static void note_window_placement(HWND hWnd)
     hydra::ui::remember_window_placement(p);
 }
 
+// Why Hydra can't start, in a Windows message box over `owner` (null until
+// the window exists): the plain sentence with the raw text under it (D72
+// item 1).
+static void show_startup_error(HWND owner, const std::exception& e)
+{
+    const std::wstring text = hydra::utf8_to_wide(hydra::app::plain_error_block(e));
+    ::MessageBoxW(owner, text.c_str(), hydra::kWindowTitleW, MB_OK | MB_ICONERROR);
+}
+
+// The raw text for a Win32, Direct3D or ImGui backend call that failed at
+// startup. It carries no error kind, so the box reads the fallback sentence.
+static std::runtime_error startup_call_failed(const char* call, const char* code_name,
+                                              unsigned long code)
+{
+    char text[128];
+    std::snprintf(text, sizeof(text), "%s failed (%s 0x%08lX)", call, code_name, code);
+    return std::runtime_error(text);
+}
+
 int main()
 {
     // --uitest <what> [--uitest-log <file>]; everything else is ignored.
@@ -174,13 +196,31 @@ int main()
         wc.lpszClassName, hydra::kWindowTitleW, WS_OVERLAPPEDWINDOW, rect.left, rect.top,
         rect.width(), rect.height(), nullptr, nullptr, wc.hInstance, nullptr);
 
-    if (!CreateDeviceD3D(hwnd))
+    // Undoes what startup has stood up so far. The normal exit and a failed
+    // startup both end here, so the two can't drift apart.
+    bool win32_backend_up = false, dx11_backend_up = false;
+    auto tear_down = [&]
     {
-        CleanupDeviceD3D();
+        if (dx11_backend_up) ImGui_ImplDX11_Shutdown();
+        if (win32_backend_up) ImGui_ImplWin32_Shutdown();
         hydra::ui::shutdown_imgui();
+        CleanupDeviceD3D();
+        if (hwnd) ::DestroyWindow(hwnd);
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+    };
+    // A startup step that fails shows why, tears down, and Hydra closes.
+    auto fail_startup = [&](const std::exception& e)
+    {
+        show_startup_error(hwnd, e);
+        tear_down();
         return 1;
-    }
+    };
+
+    if (!hwnd)
+        return fail_startup(startup_call_failed("CreateWindowW", "error", ::GetLastError()));
+    if (const HRESULT hr = CreateDeviceD3D(hwnd); hr != S_OK)
+        return fail_startup(startup_call_failed("D3D11CreateDeviceAndSwapChain", "HRESULT",
+                                                static_cast<unsigned long>(hr)));
 
     // Song-info icons (record/star/pencil/hash), matching hydra_app.py's
     // dpg.add_static_texture loads. Best-effort: see icons.h.
@@ -201,8 +241,12 @@ int main()
     if (window_scale != main_scale)
         hydra::ui::set_ui_scale(window_scale);
 
-    ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+    win32_backend_up = ImGui_ImplWin32_Init(hwnd);
+    if (!win32_backend_up)
+        return fail_startup(startup_call_failed("ImGui_ImplWin32_Init", "error", ::GetLastError()));
+    dx11_backend_up = ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+    if (!dx11_backend_up)
+        return fail_startup(startup_call_failed("ImGui_ImplDX11_Init", "error", ::GetLastError()));
 
     const ImVec4 clear_color = ImVec4(hydra::ui::kClearColor[0], hydra::ui::kClearColor[1],
                                       hydra::ui::kClearColor[2], hydra::ui::kClearColor[3]);
@@ -239,7 +283,13 @@ int main()
     }
 #endif
     if (!frame_text) {
-        own_app = std::make_unique<hydra::ui::AppState>();
+        // Opens hydra.db; a database that won't open closes Hydra with a
+        // message box (D72 item 1).
+        try {
+            own_app = std::make_unique<hydra::ui::AppState>();
+        } catch (const std::exception& e) {
+            return fail_startup(e);
+        }
         // Hand the GUI's shared D3D11 device to AppState so the Preview tab
         // can build its renderer on it (same pattern as load_icons above).
         own_app->set_render_device(g_pd3dDevice, g_pd3dDeviceContext);
@@ -335,23 +385,20 @@ int main()
 #endif
     own_app.reset();
 
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    hydra::ui::shutdown_imgui();
+    tear_down();
 #ifdef HYDRA_UITEST_ATTACHED
+    // The engine outlives the ImGui context. Attached, its shutdown touches
+    // neither the device nor the window, so it can follow the teardown.
     if (uitest) {
         uitest->keep_temp = true;  // leave the scratch files for inspection
-        uitest->shutdown();        // the engine outlives the ImGui context
+        uitest->shutdown();
     }
 #endif
-
-    CleanupDeviceD3D();
-    ::DestroyWindow(hwnd);
-    ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
     return 0;
 }
 
-bool CreateDeviceD3D(HWND hWnd)
+// S_OK, or the HRESULT the device creation failed with, for the startup box.
+HRESULT CreateDeviceD3D(HWND hWnd)
 {
     DXGI_SWAP_CHAIN_DESC sd;
     ZeroMemory(&sd, sizeof(sd));
@@ -383,7 +430,7 @@ bool CreateDeviceD3D(HWND hWnd)
             featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_pSwapChain,
             &g_pd3dDevice, &featureLevel, &g_pd3dDeviceContext);
     if (res != S_OK)
-        return false;
+        return res;
 
     // Disable DXGI's Alt+Enter, which does not play well with viewports.
     IDXGIFactory* pSwapChainFactory = nullptr;
@@ -394,7 +441,7 @@ bool CreateDeviceD3D(HWND hWnd)
     }
 
     CreateRenderTarget();
-    return true;
+    return S_OK;
 }
 
 void CleanupDeviceD3D()

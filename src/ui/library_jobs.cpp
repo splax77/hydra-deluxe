@@ -232,6 +232,23 @@ void BatchJob::note_started(const std::string& notespath) {
     snap_.current_artist = display_artist(item.artist);
 }
 
+void BatchJob::finish_failed(const std::exception& e, std::string detail) {
+    std::lock_guard<std::mutex> lock(mu_);
+    snap_.failures.push_back(app::plain_error(e));
+    snap_.failure_details.push_back(std::move(detail));
+    ++snap_.failed;
+    finish_locked();
+}
+
+void BatchJob::finish_locked() {
+    snap_.preparing = false;
+    snap_.current_title.clear();
+    snap_.current_artist.clear();
+    snap_.paused = false;
+    clock_.finish(steady_seconds());
+    snap_.finished = true;
+}
+
 BatchJob::Snapshot BatchJob::snapshot() const {
     std::lock_guard<std::mutex> lock(mu_);
     Snapshot s = snap_;
@@ -248,13 +265,7 @@ void BatchJob::run() {
         items_.reserve(entries.size());
         for (const store::ChartLibraryEntry& e : entries) items_.push_back(scan_item_of(e));
     } catch (const std::exception& e) {
-        std::lock_guard<std::mutex> lock(mu_);
-        snap_.preparing = false;
-        snap_.failures.push_back(app::plain_error(e));
-        snap_.failure_details.push_back(std::string("Could not load the library: ") + e.what());
-        ++snap_.failed;
-        clock_.finish(steady_seconds());
-        snap_.finished = true;
+        finish_failed(e, std::string("Could not load the library: ") + e.what());
         return;
     }
     for (size_t i = 0; i < items_.size(); ++i) by_path_.emplace(items_[i].notespath, i);
@@ -265,8 +276,7 @@ void BatchJob::run() {
     }
     if (cancel_.load()) {
         std::lock_guard<std::mutex> lock(mu_);
-        clock_.finish(steady_seconds());
-        snap_.finished = true;
+        finish_locked();
         return;
     }
 
@@ -300,14 +310,16 @@ void BatchJob::run() {
         note_started(path);
         return inner(path, settings, on_progress);
     };
-    app::run_batch(items_, run_, store_, redo_, workers_, callbacks);
+    // run_batch reads the store before its first chart (D72 item 4).
+    try {
+        app::run_batch(items_, run_, store_, redo_, workers_, callbacks);
+    } catch (const std::exception& e) {
+        finish_failed(e, app::plain_error_detail(e));
+        return;
+    }
 
     std::lock_guard<std::mutex> lock(mu_);
-    snap_.current_title.clear();
-    snap_.current_artist.clear();
-    snap_.paused = false;
-    clock_.finish(steady_seconds());
-    snap_.finished = true;
+    finish_locked();
 }
 
 // ---- AnalyzeJob -------------------------------------------------------

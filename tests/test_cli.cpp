@@ -18,12 +18,14 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // write_junk_db
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "parse/chart_files.h"
 #include "parse/song.h"
@@ -173,6 +175,30 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     CHECK(!contains(r.output, "(legacy)"));
     hydra::store::RecordStore store(legacy);
     CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
+}
+
+// D72 item 5: a database that won't open is a run that can't start, so each
+// tool prints the sentence and SQLite's text and exits 2.
+TEST_CASE("hydra_batch, hydra_report and hydra_fillcompare say why a database won't open") {
+    CliSandbox box("junkdb");
+    const std::string junk = box.db("junk.db");
+    hydra::test::write_junk_db(junk);
+    const std::string page = (box.dir / "page.html").u8string();
+    const std::pair<fs::path, std::vector<std::string>> runs[] = {
+        {box.batch, {"--db", junk, box.folder()}},
+        {box.report, {"--db", junk, "--out", page, "--no-open"}},
+        {box.fillcompare, {"--old", junk, "--new", junk, "--out", page, "--no-open"}},
+    };
+    for (const auto& [exe, args] : runs) {
+        const RunResult r = run_exe(exe, args);
+        INFO(exe.filename().u8string() << " printed: " << r.output);
+        CHECK(r.exit_code == 2);
+        // Two checks, because the console's text mode turns each "\n" into "\r\n".
+        CHECK(contains(r.output,
+                       "Hydra couldn't open its database (hydra.db). Check that no other copy "
+                       "of Hydra is running and that the Hydra folder isn't read-only."));
+        CHECK(contains(r.output, "sqlite exec failed: file is not a database"));
+    }
 }
 
 TEST_CASE("hydra_batch --legacy-fills refuses the tool's own hydra.db") {

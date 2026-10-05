@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <mutex>
@@ -158,6 +159,13 @@ public:
 
 private:
     void run();
+    // Ends a run that failed as a whole, before or around its charts: the
+    // plain sentence for `e` with `detail` under it, one failure counted, the
+    // clock stopped.
+    void finish_failed(const std::exception& e, std::string detail);
+    // Marks the snapshot finished: every way run() ends goes through here.
+    // The caller holds mu_.
+    void finish_locked();
     // On a worker, before each chart: waits while paused. Throws
     // app::AnalysisCancelled once stopped, so the chart counts as stopped.
     void wait_while_paused();

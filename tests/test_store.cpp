@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <stdexcept>
 #include <system_error>
@@ -27,12 +28,14 @@
 #include <vector>
 
 #include "app/user_messages.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/squeeze_rating.h"
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // exec_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
 #include "parse/song.h"
 #include "record_bytes.h"
@@ -271,10 +274,8 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
     MESSAGE("compared " << acts << " stored activations with a live recompute");
 }
 
-namespace {
-// Defined further down, beside the tests that brought it in.
-void exec_on_file(const std::string& path, const char* sql);
-}  // namespace
+using hydra::test::exec_on_file;
+using hydra::test::write_junk_db;
 
 TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
     std::optional<Song> song;
@@ -1206,19 +1207,6 @@ ChartLibraryEntry chart_entry(const char* md5, const char* title) {
                              std::string("sig-") + md5};
 }
 
-// Runs a batch of SQL straight on a database file no store has open.
-void exec_on_file(const std::string& path, const char* sql) {
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
-    char* err = nullptr;
-    const int rc = sqlite3_exec(db, sql, nullptr, nullptr, &err);
-    const std::string msg = err ? err : "";
-    sqlite3_free(err);
-    sqlite3_close(db);
-    INFO(msg);
-    REQUIRE(rc == SQLITE_OK);
-}
-
 }  // namespace
 
 TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
@@ -1749,6 +1737,50 @@ TEST_CASE("a database write the old matcher missed reads as a database error") {
         }
     }
     std::remove(path.c_str());
+}
+
+// D72 item 2: SQLite notices a file that isn't a database only at its first
+// statement, after sqlite3_open_v2 said yes. It still reads "couldn't open".
+TEST_CASE("a database file that isn't a database fails to open as DatabaseOpen") {
+    const std::string path = testtemp::temp_path("junk_db", ".db");
+    write_junk_db(path);
+    try {
+        RecordStore store(path);
+        FAIL("a file of junk bytes opened as a database");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::DatabaseOpen);
+        CHECK(std::string(e.what()) == "sqlite exec failed: file is not a database");
+    }
+    CHECK(std::remove(path.c_str()) == 0);
+}
+
+// D72 items 2 and 3: a file another connection has locked fails at once, as
+// "couldn't open", and the failed open lets go of the file.
+TEST_CASE("a database another connection has locked fails to open as DatabaseOpen, and lets "
+          "go of the file") {
+    const std::string path = testtemp::temp_path("locked_db", ".db");
+    std::remove(path.c_str());
+    // A rollback-journal file (not WAL), so an exclusive lock keeps readers out.
+    sqlite3* holder = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &holder) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(holder, "CREATE TABLE t (x); BEGIN EXCLUSIVE; INSERT INTO t VALUES (1);",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    try {
+        RecordStore store(path);
+        FAIL("a locked file opened");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::DatabaseOpen);
+        CHECK(std::string(e.what()) == "sqlite exec failed: database is locked");
+    }
+    REQUIRE(sqlite3_exec(holder, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_close(holder);
+
+    { RecordStore store(path); }
+    // Nothing holds the file now: SQLite opens it without delete sharing, so a
+    // handle the failed open left behind would make this fail.
+    std::remove((path + "-wal").c_str());
+    std::remove((path + "-shm").c_str());
+    CHECK(std::remove(path.c_str()) == 0);
 }
 
 TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {

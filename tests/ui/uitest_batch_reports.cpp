@@ -8,6 +8,8 @@
 #include <thread>
 #include <vector>
 
+#include <sqlite3.h>
+
 #include "uitest_harness.h"
 
 #include "app/analysis.h"
@@ -533,6 +535,42 @@ void test_status_line(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->status_message.empty());
 }
 
+// D72 item 4: when the store can't say which charts already have a result,
+// the Analyze-library click shows the database sentence in the status line,
+// opens no confirm, and Hydra keeps running.
+void test_analyze_db_fails(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    // A copy of drop_results_under (tests/db_file_util.h): the GUI harness
+    // builds with only tests/ui on its include path.
+    {  // A second connection drops the scratch library's results table.
+        sqlite3* db = nullptr;
+        IM_CHECK_NO_RET(sqlite3_open(h.db_path.c_str(), &db) == SQLITE_OK);
+        IM_CHECK_NO_RET(sqlite3_exec(db, "DROP TABLE results", nullptr, nullptr, nullptr) ==
+                        SQLITE_OK);
+        sqlite3_close(db);
+    }
+    // Any read on the app's own connection makes it reload the schema, as
+    // the app's next read would.
+    (void)h.app->store->engine_mode();
+
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->Yield(3);
+    const std::string sentence =
+        "Hydra couldn't save to its database (hydra.db). Check that the disk isn't full and "
+        "that no other copy of Hydra is running, then try again.";
+    IM_CHECK(h.frame_text.text.find(sentence) != std::string::npos);
+    IM_CHECK(h.app->status_is_problem);
+    IM_CHECK(!h.app->batch_confirm_pending);
+    IM_CHECK(h.app->batch_job == nullptr);
+    // Still running: the next frames draw.
+    ctx->Yield(3);
+    IM_CHECK(h.frame_text.text.find(sentence) != std::string::npos);
+}
+
 // The comparison only means something at Clone Hero's cap and Expert; off
 // either, the button is disabled (with the reason on hover) instead of
 // posting a refusal after the click.
@@ -601,6 +639,7 @@ const std::vector<TestEntry>& batch_report_tests() {
         {"batch-done-strip", test_batch_done_strip},
         {"batch-open-failure", test_batch_open_failure},
         {"status-line", test_status_line},
+        {"analyze-db-fails", test_analyze_db_fails},
         {"compare-disabled", test_compare_disabled},
         {"dialog-keys", test_dialog_keys},
     };

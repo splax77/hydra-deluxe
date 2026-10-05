@@ -467,8 +467,18 @@ void AppState::open_batch_confirm() {
     std::vector<app::ScanItem> items;
     items.reserve(batch_scope.size());
     for (const store::ChartLibraryEntry& e : batch_scope) items.push_back(scan_item_of(e));
-    const app::BatchPlan plan =
-        app::plan_batch(items, app::charts_with_result(*store, settings.batch_run(), false));
+    std::unordered_set<std::string> with_result;
+    try {
+        with_result = app::charts_with_result(*store, settings.batch_run(), false);
+    } catch (const std::exception& e) {
+        // The database failed: say so, and leave the confirm closed (D72
+        // item 4).
+        batch_scope.clear();
+        batch_confirm_pending = false;
+        set_problem(app::plain_error(e));
+        return;
+    }
+    const app::BatchPlan plan = app::plan_batch(items, with_result);
     // plan_batch puts each chart once in todo or in skipped (BatchPlan).
     batch_scope_charts = static_cast<int64_t>(plan.todo.size()) + plan.skipped;
     batch_scope_with_result = plan.skipped;
@@ -478,8 +488,10 @@ void AppState::open_batch_confirm() {
 void AppState::start_batch(bool redo) {
     if (analysis_blocked()) return;
     if (batch_running()) return;
-    // A direct call (a test) has no confirm open: load the list here.
+    // A direct call (a test) has no confirm open: load the list here. When
+    // the store can't answer, the confirm stays closed and nothing starts.
     if (!batch_confirm_pending) open_batch_confirm();
+    if (!batch_confirm_pending) return;
     batch_confirm_pending = false;
     // Exactly the charts the confirm counted -- not a search string that SQL
     // would match differently from the library's own search.

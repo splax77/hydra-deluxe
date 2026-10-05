@@ -20,6 +20,7 @@
 #include "app/user_messages.h"  // plain_error
 #include "core/error_kind.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // drop_results_under
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
@@ -222,6 +223,37 @@ TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
           "fake 0: Hydra couldn't open the song file. It may have been moved or deleted; "
           "run Scan library to update the library.");
     CHECK(s.failure_details[0] == "fake 0: cannot open file: C:\\Songs\\x\\notes.chart");
+}
+
+// D72 item 4: run_batch asks the store which charts already have a result
+// before it starts. When that read fails, the batch finishes as failed and
+// Hydra keeps running.
+TEST_CASE("jobs: a batch whose database fails before it starts finishes as failed") {
+    const std::string path = testtemp::temp_path("jobs_batch_dbfail", ".db");
+    std::filesystem::remove(path);
+    {
+        RecordStore store(path);
+        hydra::test::drop_results_under(store, path);
+        std::atomic<int> started{0};
+        std::atomic<bool> release{true};
+        BatchJob job(fake_charts(2), test_run(), store, /*redo=*/false);
+        job.set_analyzer_for_test(gated_failure(started, release, "never analyzed"), 1);
+        job.start();
+        REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+
+        const BatchJob::Snapshot s = job.snapshot();
+        CHECK(s.finished);
+        CHECK(s.failed == 1);
+        CHECK(started.load() == 0);
+        REQUIRE(s.failures.size() == 1);
+        REQUIRE(s.failure_details.size() == 1);
+        CHECK(s.failures[0] ==
+              "Hydra couldn't save to its database (hydra.db). Check that the disk isn't full "
+              "and that no other copy of Hydra is running, then try again.");
+        CHECK(s.failure_details[0].rfind("prepare failed: no such table: results (", 0) == 0);
+    }
+    std::error_code ec;
+    for (const char* tail : {"", "-wal", "-shm"}) std::filesystem::remove(path + tail, ec);
 }
 
 TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {

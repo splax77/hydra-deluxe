@@ -28,6 +28,7 @@
 #include "app/rules_file.h"
 #include "app/fill_report.h"
 #include "app/report_files.h"
+#include "app/user_messages.h"
 #include "core/model.h"
 #include "core/winstr.h"
 #include "search/graph.h"
@@ -76,9 +77,15 @@ int main() {
     hydra::store::CapQuery cap = settings.cap_query();
     hydra::store::Lens lens = settings.lens();
 
-    std::unique_ptr<hydra::store::RecordStore> old_store = hydra::app::open_store(*old_path, hydra::core::RulesStamp::of(settings.rules));
-    std::unique_ptr<hydra::store::RecordStore> new_store =
-        hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
+    // A database that won't open is a run that can't start (D72 item 5).
+    std::unique_ptr<hydra::store::RecordStore> old_store, new_store;
+    try {
+        old_store = hydra::app::open_store(*old_path, hydra::core::RulesStamp::of(settings.rules));
+        new_store = hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
+        return 2;
+    }
 
     // Engine-mode sanity check (D65, ADR 0010): warn only when the file's
     // stamp names the other side's rule. An unstamped file never warns, so this

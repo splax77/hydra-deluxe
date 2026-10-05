@@ -42,6 +42,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/rules_file.h"
+#include "app/user_messages.h"
 #include "audio/song_audio.h"
 #include "core/model.h"
 #include "core/strutil.h"
@@ -140,7 +141,14 @@ int main() {
         return 2;
     }
 
-    std::unique_ptr<hydra::store::RecordStore> store_ptr = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
+    // A database that won't open is a run that can't start (D72 item 5).
+    std::unique_ptr<hydra::store::RecordStore> store_ptr;
+    try {
+        store_ptr = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
+        return 2;
+    }
     hydra::store::RecordStore& store = *store_ptr;
 
     // Reindexing only re-reads stored rows. It scores nothing, so it must not
@@ -249,8 +257,15 @@ int main() {
                     clip_utf8(label, 52).c_str(), clip_utf8(row.bestpath, 36).c_str());
         std::fflush(stdout);
     };
-    hydra::app::run_batch(scanitems, run, store, redo, hydra::app::batch_worker_count(),
-                          callbacks);
+    // A run that fails as a whole (the store read before the first chart)
+    // fails while running.
+    try {
+        hydra::app::run_batch(scanitems, run, store, redo, hydra::app::batch_worker_count(),
+                              callbacks);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
+        return 1;
+    }
 
     double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
