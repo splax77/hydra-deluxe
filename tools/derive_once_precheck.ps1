@@ -29,6 +29,17 @@ source scan outside the one scan file. A line ending "(known copy: ...)" is
 already in known_copies() of tests/test_single_owner.cpp with the fix that
 removes it.
 
+WHICH FILES
+
+The script reads the .cpp, .h and .py files under src/, tests/ and tools/.
+A test file is any file under tests/, and, under tools/, a file in a tests
+folder or a Python file named test_*.py; every other file is production
+code (Test-TestFile). Wherever a check below says "test file", it means
+this rule. No check reads the lines of tests/test_single_owner.cpp, whose
+literals are pattern examples, or of this script and its self-test, which
+read source text because they are the pre-review tool (Test-SkippedFile).
+Check 1 still compares the helpers the scan file defines with the others.
+
 THE SCAN ROWS
 
 tests/test_single_owner.cpp owns every "this is a copy" pattern it has a row
@@ -38,9 +49,10 @@ files, owner lines, scope, function limit, comment rule) and known_copies()
 from that file at the range's last commit, or at -RulesAt, and applies them
 to the added .cpp and .h lines the way the scan does. An owner line passes,
 unless this range wrote that owner line; then it is printed so the reviewer
-judges its reason. The kind comes from the row's owner: a line in src/ or
-tools/ is A; in tests/, a row owned by tests/source_tree.h is E, a row owned
-by another test header is C, and a row owned by production code is B. Checks
+judges its reason. The kind comes from the file and the row's owner: a line
+in production code is A; in a test file, a row owned by tests/source_tree.h
+is E, a row owned by another test header is C, and a row owned by
+production code is B. Checks
 1, 2 and 4 print the C, the B and A, and the E lines of this list. Each
 row's must-match and must-not-match examples are tried too; a line starting
 "precheck:" says a row could not be read as expected, either because .NET
@@ -54,8 +66,7 @@ last commit the scan already passes, so its rows mostly show known copies.
 THE FOUR CHECKS
 
 1. Helpers defined twice (kind C). Every function defined at namespace level
-   in a C++ test file (a .cpp or .h under tests/, or in a tests folder under
-   tools/), and every named lambda (auto f = [..](..) {), is matched against
+   in a C++ test file (see WHICH FILES), and every named lambda (auto f = [..](..) {), is matched against
    the other test files two ways: by name, and by body. For
    the body match, comments and the text inside string literals are dropped,
    namespace prefixes (std::, hydra::) are dropped, and every name that is not
@@ -73,13 +84,12 @@ THE FOUR CHECKS
    walks, the SqIn step check and the other fixtures a test header owns), and
    looks for one fixture spelling no row asks about: a MIDI variable-length
    delta encoded by hand outside tests/midi_util.h.
-   tests/test_single_owner.cpp is skipped: its strings are pattern examples.
 
 2. Recompute spellings in tests (kind B). The same check prints the scan
    rows' B lines (the SP-end offset, the typed 500 squeeze window, "== 1.0"
    on a transfer scale, the plain SP end rebuilt with plusmeasure, a test
-   setting target_act_ticks) and their A lines. Then added lines under tests/
-   (C++ and Python) and in Python test files under tools/ are matched against
+   setting target_act_ticks) and their A lines. Then the added lines of C++
+   and Python test files (see WHICH FILES) are matched against
    the kind-B spellings of merge-gate.md section 4 that no row matches: a
    typed 2.0 within two lines of a hit window (D49 records that two-line
    reach for the typed 500, now a row; the two-hit budget row catches only
@@ -89,13 +99,12 @@ THE FOUR CHECKS
    == x || ..."); and, in Python tests, a fixture that decides with the
    module's own constants or asserts one module constant equals a formula of
    others (the scan reads no Python). A C++ statement split over up to four
-   lines is read as one (D49). Skipped: comments, the text inside strings,
-   and tests/test_single_owner.cpp.
+   lines is read as one (D49). Skipped: comments and the text inside
+   strings.
 
 3. New numbers with no decision (kind D). Every numeric literal on an added
-   code line under src/, tools/ and tests/ (C++ and Python; not comments,
-   strings, #include, #pragma, #error or static_assert lines, and not
-   tests/test_single_owner.cpp, whose literals are pattern examples). The
+   code line of a file the script reads (see WHICH FILES; not comments,
+   strings, #include, #pragma, #error or static_assert lines). The
    decision text is read at both ends of the range, the branch's last commit
    and the left side (main, for main...HEAD), because decisions are often
    recorded on main while the branch is open: docs/adr/*.md, CONTEXT.md, the
@@ -117,17 +126,17 @@ THE FOUR CHECKS
      to an array size the file declares (key[256], std::array<T, 4>): a loop
      bound or limit that matches its container.
    - 1000, 1024 and 1000000 next to * or /: unit factors (ms to s, KiB; D49).
-   - In src/ and tools/, a number inside other arithmetic or passed to a
+   - In production code, a number inside other arithmetic or passed to a
      call: that computes a layout or a conversion (pos += 8, fits(buf, 16)).
      Production numbers are checked where a threshold, limit, tolerance,
      time or fallback shows up: a comparison (a shift amount counts when
      its line compares, as in "x >= (1 << 30)"), the right side of a plain
      "=", a returned value, a std::min/max/clamp bound, or a duration.
      Table rows in braces are data and are skipped.
-   - In tests, a number on a CHECK, REQUIRE or assert line that is not in a
+   - In test files, a number on a CHECK, REQUIRE or assert line that is not in a
      < > <= >= comparison: that is a pinned result from a run, which is what
      a test should hold, not a threshold.
-   - In tests, fixture data: tick lists, notes, offsets and other values set
+   - In test files, fixture data: tick lists, notes, offsets and other values set
      on a hand-built chart. Only these test numbers are checked: one in a
      comparison; a loop bound on a line about seeds, trials, repeats, samples,
      probes, frames or rounds (seeds 1-48 are a test limit), but not a loop
@@ -141,12 +150,10 @@ THE FOUR CHECKS
 
 4. Scans outside the scan file (kind E). The scan rows' E lines (a test
    using HYDRA_SOURCE_DIR or walking the source tree), then two spellings no
-   row asks about, in an added line of a C++ or Python file under tests/ or
-   tools/ other than tests/test_single_owner.cpp: an ifstream or open() of a
+   row asks about, in an added line of a C++ or Python file the script reads
+   under tests/ or tools/ (see WHICH FILES): an ifstream or open() of a
    .cpp or .h path or of a path under src/ (the row matches only
-   HYDRA_SOURCE_DIR), and os.walk/glob/rglob over src in Python. This script
-   and its self-test are skipped: they read source text because they are the
-   pre-review tool, not a test. Then every rule row the range adds to rules() in
+   HYDRA_SOURCE_DIR), and os.walk/glob/rglob over src in Python. Then every rule row the range adds to rules() in
    tests/test_single_owner.cpp is checked for an empty or missing must-match
    or must-not-match list, and for a negative lookahead that names variables
    inside its pattern (an exemption no owner line records, which applies in
