@@ -710,8 +710,11 @@ $selfFiles = @('tools/derive_once_precheck.ps1', 'tools/test_derive_once_prechec
 # assert*( or self.assert*( for C asserts and Python's unittest. Check 1
 # does not take a doctest macro for a helper, check 2 reads an expected value
 # inside an assertion, and check 3 takes a number on one as a pinned result.
+# Case counts, and the pattern says so itself ("(?-i:"), so every reader gets
+# the same answer whichever operator it uses: CHECK( is an assertion, a local
+# helper named check( is not.
 $doctestAsserts = 'CHECK|REQUIRE|CHECK_EQ|REQUIRE_EQ|CHECK_FALSE|CHECK_THROWS\w*|WARN'
-$assertRx = "\b($doctestAsserts|assert\w*|self\.assert\w*)\s*\("
+$assertRx = "(?-i:\b($doctestAsserts|assert\w*|self\.assert\w*)\s*\()"
 
 # ------------------------------------------- check 1: helpers defined twice
 
@@ -912,7 +915,7 @@ function Invoke-Check2 {
     $py = @(
         @{ Rx = '[<>]=?\s*[A-Za-z_]\w*\.[A-Z][A-Z0-9_]{2,}\b'
            What = 'a fixture decides with the module''s own constant'; Why = 'the fixture makes the comparison production makes; pin the inputs as literals' },
-        @{ Rx = 'assert\w*\(\s*[A-Za-z_]\w*\.[A-Z][A-Z0-9_]{2,}\s*,[^)]*[A-Za-z_]\w*\.[A-Z][A-Z0-9_]{2,}'
+        @{ Rx = $assertRx + '\s*[A-Za-z_]\w*\.[A-Z][A-Z0-9_]{2,}\s*,[^)]*[A-Za-z_]\w*\.[A-Z][A-Z0-9_]{2,}'
            What = 'a module constant checked against a formula of other constants'; Why = 'the test restates the module''s formula; pin the value' }
     )
     foreach ($f in $added.Keys) {
