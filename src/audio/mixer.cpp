@@ -20,11 +20,11 @@ StemConverter stem_converter_config(int in_rate, int in_channels, int out_rate,
 
 namespace {
 
-// Convert one decoded stem to `out_channels` at `out_rate` with miniaudio's
-// resampler and channel mapper, returning interleaved float. A stem already in
-// the output format passes through unchanged.
-// Takes the stem by value so a caller that owns it can move it in; a stem
-// already in the output format then hands over its samples without a copy.
+// Convert one decoded stem to `out_channels` at `out_rate`, returning
+// interleaved float. stem_converter_config decides the settings and whether
+// the stem passes through unchanged.
+// Takes the stem by value so a caller that owns it can move it in; a
+// passthrough stem then hands over its samples without a copy.
 std::vector<float> convert_stem(DecodedAudio s, int out_rate,
                                 int out_channels) {
     if (s.channels <= 0 || s.samples.empty()) return {};
