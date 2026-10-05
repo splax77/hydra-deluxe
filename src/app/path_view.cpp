@@ -9,7 +9,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <iterator>
 #include <optional>
+#include <stdexcept>
 
 #include "core/backend_value.h"
 #include "core/timing.h"  // kSpActivationBars
@@ -46,17 +49,51 @@ std::string eff_suffix(double effective_ms) {
 
 }  // namespace
 
+std::string measure_label(const Timecode& tc) {
+    return "m" + std::to_string((long long)tc.measure_beats_ticks()[0] + 1);
+}
+
 std::string format_measure(const Timecode& tc) {
     const int64_t* mbt = tc.measure_beats_ticks();
     char buf[48];
-    std::snprintf(buf, sizeof(buf), "m%lld.%lld.%lld", (long long)mbt[0] + 1,
-                  (long long)mbt[1] + 1, (long long)mbt[2]);
-    return buf;
+    std::snprintf(buf, sizeof(buf), ".%lld.%lld", (long long)mbt[1] + 1, (long long)mbt[2]);
+    return measure_label(tc) + buf;
 }
 
 std::string format_measure(const SongTiming& timing, int64_t tick) {
     return format_measure(timing.timecode(tick));
 }
+
+// A default Timecode is the chart's first tick (core/timing.h), so this
+// needs no timing.
+std::string first_measure_label() { return format_measure(Timecode{}); }
+
+std::string backend_table_id(int number, int w_timing, int w_chord, int w_points) {
+    char id[64];
+    std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", number, w_timing, w_chord, w_points);
+    return id;
+}
+
+namespace {
+
+// The badge's word for each part Activation::hardest() can name.
+struct BadgeWord {
+    TimingPart part;
+    const char* word;
+};
+constexpr BadgeWord kBadgeWords[] = {
+    {TimingPart::SqueezeIn, "squeeze in"},
+    {TimingPart::SqueezeOut, "squeeze out"},
+    {TimingPart::EarlyFill, "early fill"},
+};
+
+std::string badge_word(TimingPart part) {
+    for (const BadgeWord& w : kBadgeWords)
+        if (w.part == part) return w.word;
+    throw std::logic_error("activation_badge: no word for this TimingPart");
+}
+
+}  // namespace
 
 std::string activation_badge(const Activation& act) {
     // The activation says which part is hardest and how hard (a tie names the
@@ -64,10 +101,22 @@ std::string activation_badge(const Activation& act) {
     // else does); the badge only words it.
     const std::optional<HardestTiming> hardest = act.hardest();
     if (!hardest) return {};
-    const char* what = hardest->part == TimingPart::SqueezeIn    ? "squeeze in"
-                       : hardest->part == TimingPart::SqueezeOut ? "squeeze out"
-                                                                 : "early fill";
-    return std::string(what) + " " + format_ms_whole(hardest->ms);
+    return badge_word(hardest->part) + " " + format_ms_whole(hardest->ms);
+}
+
+std::string longest_activation_badge() {
+    // Why the squeeze window bounds every figure a badge shows: hardest()
+    // skips a free squeeze (SPSqueeze::is_free), so a squeeze it names has a
+    // difficulty of 0 or more, and its offset is one the engine kept inside
+    // within_squeeze_window. It names an early fill only when
+    // early_fill_needs_timing holds, and that figure is at most
+    // kEarlyFillWindowMs, inside the window too. None is negative, so no badge
+    // carries a minus sign.
+    size_t longest = 0;
+    for (size_t i = 1; i < std::size(kBadgeWords); ++i)
+        if (std::strlen(kBadgeWords[i].word) > std::strlen(kBadgeWords[longest].word))
+            longest = i;
+    return std::string(kBadgeWords[longest].word) + " " + format_ms_whole(kSqueezeWindowMs);
 }
 
 std::vector<TextLine> squeeze_sentences(const Activation& act,
@@ -91,14 +140,12 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                                                   : "more than " + edge + " late";
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
             if (squeezed_out) {
-                // What the squeeze-out costs, from the same function the
-                // search prices the row with (the table's "(-N)").
+                // What the squeeze-out costs: core::sqout_cost, which the
+                // table's "(-N)" reads too.
                 const BackendSqueeze& row = squeezed_out->row;
-                const double off = row.offset_ms.value_or(0.0);
+                const double off = row.offset();
                 if (core::counted_without_squeeze(off, leeway_ms)) {
-                    const int value = core::backend_row_value(
-                        off, row.points, row.sqout_points, core::SqOutPosition::Exact, leeway_ms);
-                    const int lost = row.points - value;
+                    const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);
                     text += lost > 0 ? " It scores " + std::to_string(lost) +
                                            " fewer points, and its SP phrase banks for later."
                                      : std::string(" It costs no points, and its SP phrase "
@@ -326,12 +373,12 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             // line) still read every stored row. A squeezed-out note is the
             // reason the row matters, so it always shows.
             if (backend_limit_ms && !br.squeezed_out &&
-                std::fabs(bsq.offset_ms.value_or(0.0)) > *backend_limit_ms)
+                std::fabs(bsq.offset()) > *backend_limit_ms)
                 continue;
 
             BackendRowView row;
             char tbuf[32];
-            std::snprintf(tbuf, sizeof(tbuf), "%.1f", bsq.offset_ms.value_or(0.0));
+            std::snprintf(tbuf, sizeof(tbuf), "%.1f", bsq.offset());
             row.timing = tbuf;
             if (br.note.effective_ms) {
                 // The budget at identity scale (x1.00): what the combined
@@ -350,14 +397,13 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             // What the engine actually paid for this row on this path, from
             // the same function the search calls. display_backends already
             // dropped every row past the squeezed-out chord, so a row here is
-            // either that chord or priced as if nothing was squeezed out.
-            const double off = bsq.offset_ms.value_or(0.0);
+            // either that chord or before it.
+            const double off = bsq.offset();
             const bool counted =
                 core::counted_without_squeeze(off, rules.backend_leeway_ms);
             const int value = core::backend_row_value(
                 off, bsq.points, bsq.sqout_points,
-                br.squeezed_out ? core::SqOutPosition::Exact
-                                : core::SqOutPosition::NoSqOut,
+                core::sqout_position(bsq.timecode.ticks(), act.sqout_tick),
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
             row.rating = bsq.summarystr(br.squeezed_out, W, rules.backend_leeway_ms);
@@ -371,7 +417,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 char extra[48];
                 if (counted) {
                     std::snprintf(extra, sizeof(extra),
-                                  " <-- squeezed out (-%d)", bsq.points - value);
+                                  " <-- squeezed out (-%d)",
+                                  core::sqout_cost(off, bsq.points, bsq.sqout_points,
+                                                   rules.backend_leeway_ms));
                     row.warn = true;
                 } else {
                     std::snprintf(extra, sizeof(extra), " <-- squeezed out");
@@ -396,8 +444,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
     }
     if (timing && song_length_ms && has_song_length(*song_length_ms)) {
         const int64_t end_tick = timing->display_tick_at_ms(*song_length_ms);
-        view.timeline_end =
-            "m" + std::to_string((long long)timing->timecode(end_tick).measure_beats_ticks()[0] + 1);
+        view.timeline_start = measure_label(timing->timecode(0));
+        view.timeline_end = measure_label(timing->timecode(end_tick));
     }
 
     return view;

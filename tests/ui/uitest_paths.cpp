@@ -450,24 +450,22 @@ bool narrowest_panel(ImGuiTestContext* ctx) {
     return true;
 }
 
-// The backend table drawn this frame for activation `number` (its id starts
-// "##backends<number>_"; the rest is its column widths).
+// The backend table drawn this frame for activation `number` (its id is
+// backend_table_id of the number and its column widths).
 ImGuiTable* backend_table(int number) {
     ImGuiContext& g = *ImGui::GetCurrentContext();
     ImGuiWindow* details = window_named("##pathdetails");
     if (!details) return nullptr;
-    const std::string prefix = "##backends" + std::to_string(number) + "_";
     for (int n = 0; n < g.Tables.GetMapSize(); ++n) {
         ImGuiTable* t = g.Tables.TryGetMapData(n);
         if (!t || t->ColumnsCount != 4 || t->LastFrameActive < g.FrameCount - 2) continue;
         if (t->OuterWindow != details) continue;
-        // Match by id, rebuilt from the widths the table was set up with.
-        char id[64];
-        std::snprintf(id, sizeof(id), "%s%d_%d_%d", prefix.c_str(),
-                      static_cast<int>(t->Columns[0].InitStretchWeightOrWidth),
-                      static_cast<int>(t->Columns[1].InitStretchWeightOrWidth),
-                      static_cast<int>(t->Columns[2].InitStretchWeightOrWidth));
-        if (t->ID == details->GetID(id)) return t;
+        // Match by id, built from the widths the table was set up with.
+        const std::string id = hydra::app::backend_table_id(
+            number, static_cast<int>(t->Columns[0].InitStretchWeightOrWidth),
+            static_cast<int>(t->Columns[1].InitStretchWeightOrWidth),
+            static_cast<int>(t->Columns[2].InitStretchWeightOrWidth));
+        if (t->ID == details->GetID(id.c_str())) return t;
     }
     return nullptr;
 }
@@ -511,8 +509,8 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
 
 // The activation rows at the narrowest panel: the measure, the bars and the
 // badge never overlap, on Burnout's own rows and on the longest pieces real
-// charts have (an 11-character measure, a two-digit bar count, the longest
-// badge wording with a 3-digit time).
+// charts have (an 11-character measure, a two-digit bar count) and the
+// longest badge a row can show (longest_activation_badge).
 void test_paths_row_layout(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
@@ -542,8 +540,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         if (text_w(a.measure.c_str(), mono) > text_w(widest.c_str(), mono)) widest = a.measure;
     IM_CHECK(!view.acts.empty());
     for (const hydra::app::ActivationRowView& a : view.acts) check(widest, a.measure, a.bars, a.badge);
-    check("m1024.1.120", "m1024.1.120", "12 bars", "early fill 999 ms");
-    check("m1024.1.120", "m1024.1.120", "12 bars", "squeeze out 999 ms");
+    check("m1024.1.120", "m1024.1.120", "12 bars", hydra::app::longest_activation_badge());
 }
 
 // A result saved before Hydra stored song lengths has none, so the timeline

@@ -37,6 +37,11 @@ struct TextLine {
 std::string format_measure(const SongTiming& timing, int64_t tick);
 // The same for a Timecode that is already resolved, such as an activation's.
 std::string format_measure(const Timecode& tc);
+// Just the measure, as the timeline's two ends print it: "m96".
+// format_measure builds on it.
+std::string measure_label(const Timecode& tc);
+// The first measure in format_measure's form, for a screen with no timing.
+std::string first_measure_label();
 
 // ---- stored-result panel --------------------------------------------------
 
@@ -103,10 +108,17 @@ struct ActivationsView {
     // Beside the "Activations" heading: "3 · no SP left over".
     // Empty when the path has no activations.
     std::string summary;
-    // The timeline's right-hand label, "m96": the measure the song's length
-    // falls in. Empty when there is no timeline (no timing or no length).
+    // The timeline's two labels, measure_label of the song's first tick and
+    // of the tick its length falls on ("m1" and "m96"). Both empty when there
+    // is no timeline (no timing or no length).
+    std::string timeline_start;
     std::string timeline_end;
 };
+
+// The ImGui id of activation `number`'s backend table, given its three fixed
+// column widths in whole pixels (render_backend_table in ui/paths_tab.cpp says
+// why the widths are in it). The GUI test finds the table by the same call.
+std::string backend_table_id(int number, int w_timing, int w_chord, int w_points);
 
 // `timing` may be null (no songmeta row): the stored transfer scales are used
 // (see rate_activation).
@@ -131,6 +143,10 @@ ActivationsView build_activations(const Path& path, const HydraRecord& record,
 // gets one too when nothing else does; is_difficult() ignores it, so it is
 // never warn-coloured. Empty when hardest() has nothing.
 std::string activation_badge(const Activation& act);
+
+// The longest text activation_badge can return, for laying out a row that
+// must fit any badge. path_view.cpp says why it is the longest.
+std::string longest_activation_badge();
 
 // One plain sentence per SqIn/SqOut of `act`, in its order, warn-coloured when
 // that squeeze is difficult. `squeezed_out` is the backend row the rating
