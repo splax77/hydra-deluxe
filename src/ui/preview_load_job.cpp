@@ -6,13 +6,12 @@
 
 #include "app/analysis.h"  // chart_files_unchanged, hash_chart_file
 #include "app/preview_source.h"
-#include "audio/frames.h"  // frames_of_ms
 #include "app/preview_view.h"
+#include "audio/song_audio.h"  // map_song_stems, open_song_stems, mix_song_stems
 #include "core/model.h"
 #include "core/winstr.h"
 #include "render/track_state.h"
 #include "ui/library_parts.h"  // time_left_text
-#include "ui/preview_transport.h"  // audio_end_chart_ms
 #include "ui/widgets.h"        // progress_fraction
 
 namespace hydra::ui {
@@ -90,50 +89,21 @@ std::vector<std::unique_ptr<audio::StemReader>> PreviewLoadJob::open_audio(
 
     // Map every loose stem first, so the bar's byte total is the size of the
     // bytes the readers will walk (MappedFile::size), read once; a container
-    // stem's size is its extracted bytes. A loose file that will not map is
-    // skipped with a size of 0, as one that will not open always was.
-    std::vector<std::optional<audio::StemBytes>> stem_bytes;
-    stem_bytes.reserve(stems.size());
-    uint64_t total = 0;
-    for (app::PreviewAudioStem& s : stems) {
-        std::optional<audio::StemBytes> bytes;
-        if (s.from_file()) {
-            try {
-                bytes.emplace();
-                bytes->mapped = audio::MappedFile::open(s.path);
-            } catch (const std::exception&) {
-                bytes.reset();
-            }
-        } else {
-            bytes.emplace();
-            bytes->owned = std::move(s.bytes);
-        }
-        if (bytes) total += bytes->size();
-        stem_bytes.push_back(std::move(bytes));
-    }
-    bytes_total_.store(total);
+    // stem's size is its extracted bytes.
+    std::vector<std::optional<audio::StemBytes>> stem_bytes =
+        audio::map_song_stems(std::move(stems));
+    bytes_total_.store(audio::stems_total_bytes(stem_bytes));
 
+    // The song's own opener, with the bar's byte counter as its progress.
     std::vector<std::unique_ptr<audio::StemReader>> readers;
-    uint64_t before = 0;  // bytes of the stems already opened
-    for (std::optional<audio::StemBytes>& bytes : stem_bytes) {
-        if (!bytes) continue;  // it would not map: no bytes, no reader
-        const uint64_t size = bytes->size();
-        try {
-            // The Opus index reports every 4 MB; returning false stops it there.
-            readers.push_back(audio::open_stem_reader(
-                std::move(*bytes), [this, &keep_going, before](uint64_t done, uint64_t) {
-                    bytes_done_.store(before + done);
-                    return keep_going();
-                }));
-        } catch (const audio::OpenCancelled&) {
-            throw JobCancelled{};
-        } catch (const std::exception&) {
-            // A stem that won't open is skipped, so one unreadable or corrupt
-            // stem never silences the rest of the chart.
-        }
-        before += size;
-        bytes_done_.store(before);
-        if (!keep_going()) throw JobCancelled{};
+    try {
+        readers = audio::open_song_stems(std::move(stem_bytes),
+                                         [this, &keep_going](uint64_t done, uint64_t) {
+                                             bytes_done_.store(done);
+                                             return keep_going();
+                                         });
+    } catch (const audio::OpenCancelled&) {
+        throw JobCancelled{};
     }
     audio_done_.store(true);
     return readers;
@@ -198,19 +168,10 @@ void PreviewLoadJob::run() {
         std::vector<std::unique_ptr<audio::StemReader>> readers = audio_branch.get();
         const bool chart_changed = changed_check.get();
         throw_if_cancelled();
-        // The chart sync rule is audio_ms_of_chart_ms. A
-        // negative offset means the chart starts before the audio and the
-        // playhead can't seek below 0, so it becomes silence in front of the
-        // stems (rounded to whole frames) and the offset becomes 0.
-        double offset_ms = ps.audio_offset_ms;
-        int64_t front_pad = 0;
-        if (offset_ms < 0.0) {
-            front_pad = audio::frames_of_ms(-offset_ms, kOutRate);
-            offset_ms = 0.0;
-        }
-        auto mix = std::make_unique<audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,
-                                                      front_pad);
-        const std::optional<double> audio_end_ms = audio_end_chart_ms(*mix, offset_ms);
+        // The song's own mix step, so what plays and the song's length
+        // (audio::song_length_ms) come from one rule.
+        audio::SongMix song_mix = audio::mix_song_stems(std::move(readers), ps.audio_offset_ms);
+        const std::optional<double> audio_end_ms = song_mix.end_chart_ms;
 
         // The scene and the highway wait for the audio, because the beat
         // lines run to its end (D48, Q25). A changed chart is drawn with no
@@ -226,8 +187,8 @@ void PreviewLoadJob::run() {
         render::TrackState track_state = render::build_track_state(scene, track_opts);
         highway_done_.store(true);
 
-        result_ = Result{std::move(scene),       std::move(mix),         offset_ms,
-                         audio_end_ms,           std::move(ps.song),     std::move(track_state),
+        result_ = Result{std::move(scene),       std::move(song_mix.mix), song_mix.audio_offset_ms,
+                         audio_end_ms,           std::move(ps.song),      std::move(track_state),
                          track_opts,             chart_changed};
         return true;
     });

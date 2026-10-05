@@ -264,7 +264,8 @@ TEST_CASE("build_preview_scene: notes carry lane and drum attributes") {
     CHECK(scene.notes[3].double_kick);
     CHECK(scene.notes[4].lane == PreviewLane::Green);
 
-    CHECK(scene.song_length_ms == doctest::Approx(750.0));
+    // The song's length is its audio's end (D69); none was given.
+    CHECK(scene.song_length_ms == 0.0);
 }
 
 // color_of reads lane_of backwards, so a drawn lane can ask the core's colour
@@ -275,21 +276,24 @@ TEST_CASE("color_of: each lane maps back to the colour it was drawn from") {
         CHECK(color_of(lane_of(c)) == c);
 }
 
-// The scene's song length is the store's (store::song_length_ms): the last
-// timestamp's onset. A last timestamp with no notes used to split them, the
-// scene stopping at the earlier note. The parsers never emit one today, so
-// this hand-built song is the one place the two could differ. The beat lines
-// still end two measures past the last drawn note, as before.
-TEST_CASE("build_preview_scene: the song length is the store's, even past the last drawn note") {
+// The scene's song length is the audio's end it is given (D69), never a
+// note's time: not the last drawn note, and not a later note-less timestamp.
+// Without an audio end there is no length. The beat lines without one still
+// end two measures past the last drawn note, as before.
+TEST_CASE("build_preview_scene: the song length is the audio's end") {
     Song song = make_hand_song();
     SongTimestamp empty;  // a timestamp with no notes, after the last chord
     empty.timecode = song.timecode(960);
     song.sequence.push_back(empty);
-    PreviewScene scene = build_preview_scene(song, nullptr);
 
+    const PreviewScene with_audio =
+        build_preview_scene(song, nullptr, kCloneHeroSpCap, core::default_rules(), 4321.0);
+    CHECK(with_audio.song_length_ms == 4321.0);
+
+    PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.has_notes);
-    CHECK(scene.notes.back().ms == doctest::Approx(750.0));
-    CHECK(scene.song_length_ms == doctest::Approx(1000.0));  // tick 960
+    CHECK(last_note_ms(scene) == doctest::Approx(750.0));
+    CHECK(scene.song_length_ms == 0.0);
     const PreviewScene before = build_preview_scene(make_hand_song(), nullptr);
     REQUIRE_FALSE(scene.beats.empty());
     REQUIRE_FALSE(before.beats.empty());
@@ -656,14 +660,12 @@ TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
 
     REQUIRE(scene.has_notes);
     REQUIRE_FALSE(scene.notes.empty());
-    CHECK(scene.song_length_ms > 0.0);
+    const double last_note = last_note_ms(scene);
+    CHECK(last_note > 0.0);
 
     // Notes are in non-decreasing tick order.
     for (size_t i = 1; i < scene.notes.size(); ++i)
         CHECK(scene.notes[i].tick >= scene.notes[i - 1].tick);
-
-    // The scrubber's right edge is the last note's onset.
-    CHECK(scene.song_length_ms == doctest::Approx(scene.notes.back().ms));
 
     // Every activation the path takes (those with a resolved timecode) appears
     // in the overlay, inside the song, in ms that share the notes' timing.
@@ -674,7 +676,7 @@ TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
         const PreviewActivation& pa = scene.activations[i++];
         CHECK(pa.tick >= 0);
         CHECK(pa.ms >= 0.0);
-        CHECK(pa.ms <= scene.song_length_ms + 1.0);
+        CHECK(pa.ms <= last_note + 1.0);
         // The active SP window ends exactly at the deact node the record
         // carries, in the song's own ms. The engine stamps that node on every
         // activation it produces, so it is always there on a fresh record.
@@ -1636,7 +1638,7 @@ TEST_CASE("score box: the analyzed chart ends on the path's total") {
         CHECK(scene.score.steps[i].ms >= scene.score.steps[i - 1].ms);
         CHECK(scene.score.steps[i].combo > scene.score.steps[i - 1].combo);
     }
-    PreviewScoreBox end = score_box_at(scene, scene.song_length_ms);
+    PreviewScoreBox end = score_box_at(scene, last_note_ms(scene));
     CHECK(end.score == group_thousands(best.totalscore()));
 }
 
@@ -1849,12 +1851,12 @@ TEST_CASE("song_fraction: has_song_length takes only a positive length") {
 }
 
 // The audio-tail chart: the last note is at 1000 ms and the audio stops 5 s
-// later, at 6000 ms. One activation on the note at tick 1440; one bar of SP
-// runs two measures, so its window ends at tick 5280. The scrubber is built
-// the way the Preview builds it (its right edge from scrub_end_ms over the
-// song's store::song_length_ms, the transport reaching the audio's end) and
-// the Paths timeline the way the Paths tab builds it (the stored last-note
-// length), and the two marks must be the same number.
+// later, at 6000 ms. One activation on the note at tick 1440 (750 ms); one
+// bar of SP runs two measures, so its window ends at tick 5280. The scrubber
+// is built the way the Preview builds it (its right edge from scrub_end_ms
+// over the audio's end, the transport reaching the same end) and the Paths
+// timeline over the same length, the song's audio length (D69), and the two
+// marks must be the same number.
 TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when the audio outlasts the notes") {
     const test::AudioTailChart c = test::audio_tail_chart();
     Path path;
@@ -1862,25 +1864,26 @@ TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when
     const PreviewScene scene = build_preview_scene(c.song, &path, kCloneHeroSpCap,
                                                    core::default_rules(), c.audio_end_ms);
     const std::vector<double> marks =
-        build_scrub_marks(scene, scrub_end_ms(store::song_length_ms(c.song), c.audio_end_ms));
+        build_scrub_marks(scene, scrub_end_ms(c.audio_end_ms, c.audio_end_ms));
     REQUIRE(marks.size() == 1);
-    CHECK(marks[0] == doctest::Approx(0.75));
+    CHECK(marks[0] == doctest::Approx(0.125));
 
     const ActivationsView view =
         build_activations(path, HydraRecord{}, &c.song.timing(), Settings{}.hit_window_ms,
-                          std::nullopt, core::default_rules(), c.last_note_ms);
+                          std::nullopt, core::default_rules(), c.audio_end_ms);
     REQUIRE(view.acts.size() == 1);
     REQUIRE(view.acts[0].song_fraction.has_value());
     CHECK(marks[0] == *view.acts[0].song_fraction);
 }
 
+// The scrubber's right end is the audio's end (D69), so past the last note
+// the thumb keeps following the playhead, all the way to that end.
 TEST_CASE("scrub marks: a playhead past the last note parks the thumb at the right end") {
     const test::AudioTailChart c = test::audio_tail_chart();
-    const double end = scrub_end_ms(c.last_note_ms, c.audio_end_ms);
-    CHECK(end == doctest::Approx(1000.0));
-    // Playback runs on to the audio's end; the thumb waits at the last note.
-    CHECK(scrub_thumb_ms(c.audio_end_ms, end) == doctest::Approx(1000.0));
-    // Before the last note the thumb follows the playhead.
+    const double end = scrub_end_ms(c.audio_end_ms, c.audio_end_ms);
+    CHECK(end == doctest::Approx(6000.0));
+    CHECK(scrub_thumb_ms(c.audio_end_ms, end) == doctest::Approx(6000.0));
+    CHECK(scrub_thumb_ms(3000.0, end) == doctest::Approx(3000.0));  // in the tail
     CHECK(scrub_thumb_ms(500.0, end) == doctest::Approx(500.0));
 }
 
