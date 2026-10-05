@@ -158,9 +158,10 @@ THE CHECKS
    under tests/ or tools/ (see WHICH FILES). In C++: an ifstream, fopen,
    _wfopen or open_file of a .cpp or .h path or of a path under src/ (the
    row matches only HYDRA_SOURCE_DIR). In Python: an open() of a .cpp or .h
-   path, or a call to os.walk, glob.glob, os.listdir or a .glob/.rglob
-   method whose own parentheses hold "src" (a bare glob() or a src path
-   on the receiver, as in Path("src").rglob(...), is not flagged).
+   path, or a call to os.walk, os.listdir or any .glob/.rglob (glob.glob
+   included) with "src" before the call's first closing parenthesis. A
+   one-line text match: a bare glob(), a src path on the receiver as in
+   Path("src").rglob(...), or src after a nested call's ")" is not flagged.
    Then every rule row the range adds to rules() in
    tests/test_single_owner.cpp is checked for an empty or missing must-match
    or must-not-match list, and for a negative lookahead that names variables
@@ -756,7 +757,7 @@ function Add-RowItems([string[]]$Kinds) {
 # assert*( or self.assert*( for C asserts and Python's unittest. Check 1
 # does not take a doctest macro for a helper, check 2 reads an expected value
 # inside an assertion, and check 3 takes a number on one as a pinned result.
-# Case counts, and the pattern says so itself ("(?-i:"), so every reader gets
+# Case matters, and the pattern itself says so ("(?-i:"), so every reader gets
 # the same answer whichever operator it uses: CHECK( is an assertion, a local
 # helper named check( is not. The doctest macros are the whole assertion
 # family third_party/doctest/doctest.h defines: CHECK, REQUIRE or WARN, with
@@ -1254,7 +1255,7 @@ function Invoke-Check4 {
             $what = $null
             if ($py) {
                 # No row can own this: the scan reads only .cpp and .h files.
-                if ($t -match '\b(os\.walk|glob\.glob|\.rglob|\.glob|os\.listdir)\s*\([^)]*src' -or
+                if ($t -match '(\bos\.walk|\bos\.listdir|\.r?glob)\s*\([^)]*src' -or
                     $t -match ('\bopen\s*\([^)]*' + $cppExt + '[''"]')) { $what = 'reads the source tree' }
             } else {
                 # No row: "Which test reads the source tree?" matches only
