@@ -32,6 +32,7 @@
 
 #include "audio/decode.h"
 #include "audio/frames.h"
+#include "core/little_endian.h"
 
 #include <algorithm>
 #include <array>
@@ -56,16 +57,6 @@ const int kMaxFrame = static_cast<int>(frames_of_ms(120.0, kRate));
 const int64_t kPreRoll = frames_of_ms(400.0, kRate);
 constexpr uint64_t kProgressStep = 4ull << 20;  // report at least every 4 MB
 constexpr std::size_t kMaxPageBytes = 27 + 255 + 255 * 255;
-
-uint32_t le32(const uint8_t* p) {
-    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
-int64_t le64(const uint8_t* p) {
-    uint64_t v = 0;
-    for (int i = 7; i >= 0; --i) v = (v << 8) | p[i];
-    return static_cast<int64_t>(v);
-}
 
 // The samples one packet decodes to, read from its leading bytes. A zero-byte
 // packet counts as a full 120 ms buffer because opus_decode_float conceals a
@@ -143,8 +134,8 @@ void build_index(const uint8_t* d, std::size_t size, const OpenProgress& progres
         const bool continued = (flags & 0x01) != 0;
         const bool bos = (flags & 0x02) != 0;
         const bool eos = (flags & 0x04) != 0;
-        const int64_t granule = le64(h + 6);
-        const uint32_t serial = le32(h + 14);
+        const int64_t granule = static_cast<int64_t>(core::read_le_u64(h + 6));
+        const uint32_t serial = core::read_le_u32(h + 14);
 
         if (bos && (link == nullptr || link_closed || link->audio_page != 0)) {
             // A new link starts here (the first, or the next in a chain). A BOS
@@ -190,8 +181,8 @@ void build_index(const uint8_t* d, std::size_t size, const OpenProgress& progres
                         link->channels = -1;  // unusable link: the chain ends before it
                     } else {
                         link->channels = pos[9];
-                        link->preskip = pos[10] | (pos[11] << 8);
-                        link->gain_q78 = static_cast<int16_t>(pos[16] | (pos[17] << 8));
+                        link->preskip = core::read_le_u16(pos + 10);
+                        link->gain_q78 = static_cast<int16_t>(core::read_le_u16(pos + 16));
                     }
                 } else if (packets_seen >= 2) {
                     const long first = seg[i] >= 2 ? 2 : seg[i];

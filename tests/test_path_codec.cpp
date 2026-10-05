@@ -18,6 +18,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "core/little_endian.h"
 #include "core/model.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -265,9 +266,7 @@ TEST_CASE("path codec: the structure head is the format, then the rules fingerpr
     CHECK(head->rules_fingerprint == rec.rules_fingerprint);
 
     // The first four bytes, little-endian, are format 7.
-    const uint32_t first_four = uint32_t(structure[0]) | uint32_t(structure[1]) << 8 |
-                                uint32_t(structure[2]) << 16 | uint32_t(structure[3]) << 24;
-    CHECK(first_four == 7);
+    CHECK(core::read_le_u32(structure.data()) == 7);
 
     CHECK_FALSE(read_structure_head({structure[0], structure[1], structure[2]}).has_value());
 }

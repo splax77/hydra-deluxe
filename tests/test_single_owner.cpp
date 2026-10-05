@@ -3164,11 +3164,14 @@ const std::vector<OwnerRule>& rules() {
         // J2-5 row's question is the same with the u32 helper names; the
         // suffix keeps the two rows' questions apart. Reading moved down to
         // core/ in task J3-9d, because parse/ cannot include store/; the
-        // pattern also catches a helper named for its width alone (le32).
+        // pattern also catches a helper named for its width alone (le32) and
+        // the second byte of an unrolled read OR-ed in shifted by 8. A
+        // big-endian read (MIDI) and the hash's XOR-ed tail bytes are other
+        // questions and are not flagged.
         {"How is a little-endian number written byte by byte? (any width or name)",
          "read_le in src/core/little_endian.h (reads; BinaryReader::u32/u64 call it) and "
          "BinaryWriter::u32/u64 in src/store/serialize.cpp (writes)",
-         R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*)",
+         R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*|\|\s*\(*\s*(static_cast<\w+>|u?int\d*_t)?\s*\(*\s*[\w.>-]+\[[^\]]*\]\s*\)*\s*<<\s*8\b)",
          "",
          {},
          {},
@@ -3180,12 +3183,22 @@ const std::vector<OwnerRule>& rules() {
           "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(buf[pos + i]) << (8 * i);",
           "len |= static_cast<uint32_t>(meta[pos + i]) << (8 * i);",
           "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(bytes_[pos_++]) << (8 * i);",
-          "uint32_t le32(const uint8_t* p) {", "int64_t le64(const uint8_t* p) {"},
+          "uint32_t le32(const uint8_t* p) {", "int64_t le64(const uint8_t* p) {",
+          "return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |",
+          "link->preskip = pos[10] | (pos[11] << 8);",
+          "link->gain_q78 = static_cast<int16_t>(pos[16] | (pos[17] << 8));",
+          "skip_remaining = op.packet[10] | (static_cast<int>(op.packet[11]) << 8);",
+          "const uint32_t first_four = uint32_t(structure[0]) | uint32_t(structure[1]) << 8 |"},
          {"void BinaryWriter::u32(uint32_t v) {", "uint32_t BinaryReader::u32() {",
           "out.push_back(static_cast<uint8_t>(v >> 8));",
           "const uint32_t len = core::read_le_u32(meta.data() + pos);",
           "uint64_t blob_size = core::read_le_u64(buf.data() + cursor + 16);",
-          "constexpr uint32_t read_le_u32(const uint8_t* p) { return read_le<uint32_t>(p); }"},
+          "constexpr uint32_t read_le_u32(const uint8_t* p) { return read_le<uint32_t>(p); }",
+          "link->gain_q78 = static_cast<int16_t>(core::read_le_u16(pos + 16));",
+          "(uint32_t(d[at + 2]) << 8) | uint32_t(d[at + 3]);",
+          "return int16_t((uint16_t(d[at]) << 8) | uint16_t(d[at + 1]));",
+          "case 10: k2 ^= static_cast<uint64_t>(tail[9]) << 8;    [[fallthrough]];",
+          "link->channels = pos[9];"},
          {{"src/core/little_endian.h",
            "for (std::size_t i = 0; i < sizeof(T); ++i) v = static_cast<T>(v | (static_cast<T>(p[i]) << (8 * i)));",
            "read_le, the owner of reading"},
@@ -3389,13 +3402,6 @@ const std::vector<KnownCopy>& known_copies() {
          "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
          "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
          "finding 190)"},
-        // Found by J3-9d's sweep; the brief did not own the Opus reader.
-        {"How is a little-endian number written byte by byte? (any width or name)", "src/audio/opus_reader.cpp",
-         "uint32_t le32(const uint8_t* p) {",
-         "no phase 6 task yet; the Opus page reader calls core/little_endian.h (J3-9d sweep)"},
-        {"How is a little-endian number written byte by byte? (any width or name)", "src/audio/opus_reader.cpp",
-         "int64_t le64(const uint8_t* p) {",
-         "no phase 6 task yet; the Opus page reader calls core/little_endian.h (J3-9d sweep)"},
     };
     return k;
 }
