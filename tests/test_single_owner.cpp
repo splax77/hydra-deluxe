@@ -4252,6 +4252,24 @@ const std::vector<OwnerRule>& rules() {
          {"error_ = e.what();", "if (job.error().empty()) return;", "std::string what = e.what();"},
          {},
          {"src"}},
+        // The startup message box and the command-line tools show an error's
+        // sentence and raw text together; gluing the two on one line anywhere
+        // else is a second layout of that block.
+        {"How do an error's sentence and its raw text read as one block?",
+         "plain_error_block in src/app/user_messages.cpp",
+         R"re(\bplain_error\(.*\+.*(\bplain_error_detail\(|\bwhat\(\))|(\bplain_error_detail\(|\bwhat\(\)).*\+.*\bplain_error\()re",
+         "",
+         {},
+         {},
+         "D72 items 1 and 5 (task DB1)",
+         {"std::string text = app::plain_error(e) + \"\\n\" + e.what();",
+          "msg = plain_error_detail(e) + \"\\n\\n\" + plain_error(e);"},
+         {"set_problem(app::plain_error(e));",
+          "std::fprintf(stderr, \"%s\\n\", hydra::app::plain_error_block(e).c_str());"},
+         {{"src/app/user_messages.cpp",
+           "return plain_error(e) + \"\\n\\n\" + plain_error_detail(e);",
+           "plain_error_block, the owner"}},
+         {"src"}},
     };
     return r;
 }

@@ -195,3 +195,20 @@ TEST_CASE("user_messages: anything else falls back, and the detail keeps the raw
           "details below.");
     CHECK(plain_error_detail(odd) == "prepare_row: key asks for sp_cap 5");
 }
+
+// The startup message box and the command-line tools show both at once
+// (D72 items 1 and 5).
+TEST_CASE("user_messages: plain_error_block puts the sentence above the raw text") {
+    using hydra::app::plain_error_block;
+    CHECK(plain_error_block(hydra::KindedError(hydra::ErrorKind::DatabaseOpen,
+                                               "sqlite exec failed: file is not a database")) ==
+          "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
+          "running and that the Hydra folder isn't read-only.\n"
+          "\n"
+          "sqlite exec failed: file is not a database");
+    CHECK(plain_error_block(std::runtime_error("CreateWindowW failed (GetLastError 0x00000578)")) ==
+          "Something went wrong. Try again, and if it keeps happening, report it with the "
+          "details below.\n"
+          "\n"
+          "CreateWindowW failed (GetLastError 0x00000578)");
+}

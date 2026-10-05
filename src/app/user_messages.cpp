@@ -109,6 +109,10 @@ std::string plain_error(const std::exception& e) {
 
 std::string plain_error_detail(const std::exception& e) { return e.what(); }
 
+std::string plain_error_block(const std::exception& e) {
+    return plain_error(e) + "\n\n" + plain_error_detail(e);
+}
+
 std::string stale_text(bool build, bool rules) {
     std::string cause;
     if (build == rules)  // both, or neither: name both

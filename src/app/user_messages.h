@@ -28,6 +28,11 @@ std::string plain_error(const std::exception& e);
 // The raw text, for a small details line under the plain message.
 std::string plain_error_detail(const std::exception& e);
 
+// plain_error, a blank line, then plain_error_detail: one block of text, for
+// a place with no separate details line (Hydra's startup message box and the
+// command-line tools' stderr, D72).
+std::string plain_error_block(const std::exception& e);
+
 // Why a stored result is out of date, naming the real cause the store found
 // (store::RecordLookup's stale_build and stale_rules): another Hydra version,
 // or different rules in hydra_rules.ini. When both are true, or neither (a
