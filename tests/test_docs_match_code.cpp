@@ -205,6 +205,7 @@ const std::map<std::string, KnownDefault>& known_defaults() {
         out["Rules::backend_leeway_ms"] = {false, r.backend_leeway_ms};
         out["kSqueezeWindowMs"] = {false, hydra::kSqueezeWindowMs};
         out["kEarlyFillWindowMs"] = {false, hydra::kEarlyFillWindowMs};
+        out["kDefaultDepthValue"] = {false, static_cast<double>(hydra::kDefaultDepthValue)};
         return out;
     }();
     return m;
