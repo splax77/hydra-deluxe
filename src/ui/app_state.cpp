@@ -70,7 +70,7 @@ PreviewController* AppState::preview_controller() {
 void AppState::reload_library() {
     // The whole scan in one read. Every chart is needed anyway: the chips
     // count them and the search filters them in memory.
-    library.set_charts(store->list_chart_library(std::nullopt, 0, -1));  // -1 = no limit
+    library.set_charts(store->list_chart_library(0, -1));  // -1 = no limit
     library.set_query(search);
     refresh_library_summaries();
 }
