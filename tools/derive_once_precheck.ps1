@@ -718,18 +718,27 @@ $assertRx = "(?-i:\b($doctestAsserts|assert\w*|self\.assert\w*)\s*\()"
 
 # ------------------------------------------- check 1: helpers defined twice
 
-$cppKeywords = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
-    'alignas', 'alignof', 'auto', 'bool', 'break', 'case', 'catch', 'char', 'class', 'const', 'constexpr',
-    'const_cast', 'continue', 'decltype', 'default', 'delete', 'do', 'double', 'dynamic_cast', 'else', 'enum',
-    'explicit', 'extern', 'false', 'float', 'for', 'friend', 'goto', 'if', 'inline', 'int', 'long', 'mutable',
-    'namespace', 'new', 'noexcept', 'nullptr', 'operator', 'private', 'protected', 'public', 'reinterpret_cast',
-    'return', 'short', 'signed', 'sizeof', 'static', 'static_assert', 'static_cast', 'struct', 'switch',
-    'template', 'this', 'throw', 'true', 'try', 'typedef', 'typename', 'union', 'unsigned', 'using', 'virtual',
+# Which words are C++ keywords? This one set answers it: the body match
+# keeps them as they are instead of renaming them, and a definition is never
+# named by one ("if (x) {" is not a function called if). The fixed-width
+# integer names are not keywords, but they read as types, so they stay too.
+# Part of the set is its own smaller question: the keywords that start a
+# statement or an expression and never a declaration. A definition's
+# return-type words hold none of them, so "return f(x) {" is not a
+# definition of f; "static int f(x) {" is, though static and int are keywords.
+$cppStatementKeywords = @('return', 'else', 'new', 'delete', 'throw', 'case', 'do', 'goto', 'co_return')
+$cppKeywords = [System.Collections.Generic.HashSet[string]]::new([string[]]@(@(
+    'alignas', 'alignof', 'auto', 'bool', 'break', 'catch', 'char', 'class', 'const', 'constexpr',
+    'const_cast', 'continue', 'decltype', 'default', 'double', 'dynamic_cast', 'enum',
+    'explicit', 'extern', 'false', 'float', 'for', 'friend', 'if', 'inline', 'int', 'long', 'mutable',
+    'namespace', 'noexcept', 'nullptr', 'operator', 'private', 'protected', 'public', 'reinterpret_cast',
+    'short', 'signed', 'sizeof', 'static', 'static_assert', 'static_cast', 'struct', 'switch',
+    'template', 'this', 'true', 'try', 'typedef', 'typename', 'union', 'unsigned', 'using', 'virtual',
     'void', 'volatile', 'while', 'size_t', 'int8_t', 'int16_t', 'int32_t', 'int64_t', 'uint8_t', 'uint16_t',
-    'uint32_t', 'uint64_t'))
-$notFunctionNames = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
-    'if', 'for', 'while', 'switch', 'catch', 'return', 'sizeof', 'decltype', 'alignof', 'static_assert',
-    'TEST_CASE', 'SUBCASE', 'TEST_SUITE', 'main'))  # and the doctest assertions ($doctestAsserts)
+    'uint32_t', 'uint64_t') + $cppStatementKeywords))
+# Names that are not keywords but are still not helpers: the doctest test
+# macros and main (and the doctest assertions, $doctestAsserts).
+$notFunctionNames = [System.Collections.Generic.HashSet[string]]::new([string[]]@('TEST_CASE', 'SUBCASE', 'TEST_SUITE', 'main'))
 $fnRx = [regex]::new('(?m)^[ \t]*(?:template\s*<[^;{}]*>\s*)?(?<pre>(?:[A-Za-z_][\w:]*(?:<[^;{}()]*>)?[\s\*&]+)+?)(?<name>[A-Za-z_]\w*)\s*\((?<params>[^;{}]*?)\)\s*(?:const\s*)?(?:noexcept\s*)?(?:->\s*[^;{}()]+?)?\{', 'Compiled')
 $lamRx = [regex]::new('(?:\bauto|\bconst\s+auto)\s*&?\s*(?<name>[A-Za-z_]\w*)\s*=\s*\[[^\]]*\]\s*(?:\((?<params>[^;{}]*?)\))?\s*(?:mutable\s*)?(?:->\s*[^;{}()]+?)?\{', 'Compiled')
 $tokRx = [regex]::new('[A-Za-z_]\w*|\d[\w.'']*|"\s*"|''\s*''|->|::|\S', 'Compiled')
@@ -790,8 +799,8 @@ function Get-Definitions([string]$Path) {
         if ($end -lt 0) { return }
         if (-not $isLambda -and -not (& $atTop $open)) { return }
         $name = $m.Groups['name'].Value
-        if ($notFunctionNames.Contains($name) -or $name -cmatch "^($doctestAsserts)$") { return }
-        if (-not $isLambda -and ($m.Groups['pre'].Value -match '\b(return|else|new|delete|throw|case|do|goto|co_return)\b')) { return }
+        if ($cppKeywords.Contains($name) -or $notFunctionNames.Contains($name) -or $name -cmatch "^($doctestAsserts)$") { return }
+        if (-not $isLambda -and ($m.Groups['pre'].Value -match "\b($($cppStatementKeywords -join '|'))\b")) { return }
         $norm = Get-Normalised ($m.Groups['params'].Value + ' ' + $code.Substring($open, $end - $open + 1))
         $first = Get-LineOf $v ($m.Index + ($m.Value.Length - $m.Value.TrimStart().Length))
         $last = Get-LineOf $v $end
