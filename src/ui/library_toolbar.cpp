@@ -16,8 +16,8 @@
 namespace hydra::ui::detail {
 
 // The status line, on its own wrapping line under the toolbar. News is
-// neutral and fades after a few seconds; a problem is orange and stays until
-// its X is clicked.
+// neutral and fades (AppState::kStatusFadeSeconds); a problem is orange and
+// stays until its X is clicked.
 void render_status_line(AppState& app) {
     // The watcher starts at "seen" for this app's counter, so startup does
     // not start a fade.
@@ -25,7 +25,7 @@ void render_status_line(AppState& app) {
     double& shown_at = app.library_ui.status_shown_at;
     if (generation.changed(app.status_generation)) shown_at = ImGui::GetTime();
     if (shown_at < 0.0 || app.status_message.empty()) return;
-    if (!app.status_is_problem && ImGui::GetTime() - shown_at > 6.0) return;
+    if (!app.status_is_problem && ImGui::GetTime() - shown_at > AppState::kStatusFadeSeconds) return;
     if (app.status_is_problem) {
         if (ImGui::SmallButton("X##dismissstatus")) {
             app.dismiss_status();
@@ -41,9 +41,13 @@ void render_status_line(AppState& app) {
     ImGui::PopStyleColor();
 }
 
+std::string analyze_search_label(int64_t count) {
+    return "Analyze search (" + group_thousands(count) + ")...";
+}
+
 // The toolbar: library-wide actions on the left, the last report on the right.
 void render_actions_row(AppState& app) {
-    const bool batch_busy = app.batch_job && !app.batch_job->snapshot().finished;
+    const bool batch_busy = app.batch_running();
     auto busy_tooltip = [&] {
         if (batch_busy && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal |
                                                ImGuiHoveredFlags_AllowWhenDisabled))
@@ -76,16 +80,16 @@ void render_actions_row(AppState& app) {
     // like "stars:9") leaves the button on the whole library (D48, Q15).
     const bool searching = app.library.searching();
     const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : app.library_total;
-    const std::string label = searching
-                                  ? "Analyze search (" + group_thousands(analyzable) + ")..."
-                                  : std::string("Analyze library...");
-    // The slot fits the widest count this library can show, commas included.
-    std::string sample = group_thousands(app.library_total);
+    const std::string label =
+        searching ? analyze_search_label(analyzable) : std::string("Analyze library...");
+    // The slot fits the widest count this library can show, commas included:
+    // the label's only digits are the count's.
+    std::string sample = analyze_search_label(app.library_total);
     const char widest = widest_digits(1)[0];
     for (char& c : sample)
         if (c >= '0' && c <= '9') c = widest;
-    const float analyze_w = std::max(button_slot_width("Analyze library..."),
-                                     button_slot_width(("Analyze search (" + sample + ")...").c_str()));
+    const float analyze_w =
+        std::max(button_slot_width("Analyze library..."), button_slot_width(sample.c_str()));
     // Off with nothing to analyze, under a bad hydra_rules.ini, or mid-batch.
     const bool analyze_off = analyzable == 0 || app.analysis_blocked() || batch_busy;
     begin_disabled_button(analyze_off);

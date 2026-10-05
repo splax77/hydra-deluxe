@@ -75,9 +75,8 @@ struct DetailsViewState {
     const Path* overlay_key_path = nullptr;
     int overlay_key_generation = -1;
     // The chart file's presence (the "Song file not found" line), as of the
-    // last look. Looked at when the window opens and then every
-    // AppState::kFileCheckSeconds, not every frame: on a sleeping or network
-    // drive one look can stall a frame. -1 = look now.
+    // last look (AppState::cached_file_check), not every frame: on a sleeping
+    // or network drive one look can stall a frame. -1 = look now.
     bool file_ok = true;
     double file_checked_at = -1.0;
 };
@@ -113,7 +112,8 @@ struct LibraryViewState {
     std::string scrolled_to;
     // The dmleaderboards picker's name filter.
     char dm_filter[128] = "";
-    // Whether the path report file exists, as of the last look.
+    // Whether the path report file exists, as of the last look
+    // (AppState::cached_file_check).
     bool report_exists = false;
     double report_checked_at = -1.0;  // -1 = look now
     // The split beside the song panel. The share itself lives in
@@ -228,10 +228,27 @@ public:
     // cancelled: it finishes and is stored (tick()). Safe to call when closed.
     void close_details();
 
-    // Whether the selected chart's file exists, as of the last look; looks
-    // again once `now` (seconds) is kFileCheckSeconds past it.
+    // Whether the selected chart's file exists, as of the last look
+    // (cached_file_check).
     bool selected_file_ok(double now);
+    // How long the UI trusts a cached "this file exists" answer, for the
+    // chart file and the path report alike (D54).
     static constexpr double kFileCheckSeconds = 2.0;
+    // The one cached file check: calls `look` and keeps its answer when
+    // `checked_at` is -1 ("look now") or kFileCheckSeconds old; otherwise
+    // returns the kept answer. `checked_at` and `answer` are the caller's
+    // pair (the song panel's chart file, the library's report file).
+    template <class Look>
+    static bool cached_file_check(double& checked_at, bool& answer, double now, Look look) {
+        if (checked_at < 0.0 || now - checked_at >= kFileCheckSeconds) {
+            answer = look();
+            checked_at = now;
+        }
+        return answer;
+    }
+    // How long a neutral status line stays (set_status); a problem never
+    // fades.
+    static constexpr double kStatusFadeSeconds = 6.0;
     // How long "Done!" stays after an analysis finishes.
     static constexpr double kDoneFlashSeconds = 0.5;
     // How long "Copied!" stays after the path is copied.
@@ -247,11 +264,9 @@ public:
     // The library view's own per-frame state (see LibraryViewState above).
     LibraryViewState library_ui;
 
-    // Whether the path report file exists, as of the last look; looks again
-    // once `now` (seconds) is kReportCheckSeconds past it, or at once after
-    // library_ui.report_checked_at is reset to -1.
+    // Whether the path report file exists, as of the last look
+    // (cached_file_check).
     bool report_file_shown(double now);
-    static constexpr double kReportCheckSeconds = 2.0;
 
     // The stored-record lookup for `selected` under the current chartmode,
     // reloaded on selection and after a fresh analysis. It carries the status
@@ -384,7 +399,7 @@ public:
     bool request_scan = false;
 
     // The status line under the toolbar. set_status is news ("Path report
-    // saved"): neutral text that fades after a few seconds. set_problem is
+    // saved"): neutral text that fades (kStatusFadeSeconds). set_problem is
     // something the user should act on: orange, and it stays until dismissed.
     // The view times the fade off status_generation changing.
     std::string status_message;

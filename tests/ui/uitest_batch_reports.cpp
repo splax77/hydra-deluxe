@@ -1,5 +1,6 @@
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <functional>
@@ -16,6 +17,7 @@
 #include "imgui_internal.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
+#include "ui/library_parts.h"  // analyze_search_label
 #include "ui/win32_dialogs.h"
 
 namespace fs = std::filesystem;
@@ -37,9 +39,8 @@ bool batch_search(ImGuiTestContext* ctx, const std::string& search) {
     ctx->SetRef("//Hydra");
     ctx->ItemInputValue("**/##search", search.c_str());
     if (!wait_until(ctx, [&] { return h.app->search == search; }, 5)) return false;
-    const std::string label =
-        "Analyze search (" +
-        hydra::group_thousands(static_cast<int64_t>(h.app->library_match_count())) + ")...";
+    const std::string label = hydra::ui::detail::analyze_search_label(
+        static_cast<int64_t>(h.app->library_match_count()));
     ctx->ItemClick(label.c_str());
     ctx->SetRef("//Analyze library");
     ctx->ItemClick("Start analyzing");
@@ -276,9 +277,8 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     IM_CHECK(h.opened_urls[0] == hydra::app::report_html_path());
 
     // "Also re-analyze" re-analyzes the stored chart, and the confirm says so.
-    const std::string label =
-        "Analyze search (" +
-        hydra::group_thousands(static_cast<int64_t>(h.app->library_match_count())) + ")...";
+    const std::string label = hydra::ui::detail::analyze_search_label(
+        static_cast<int64_t>(h.app->library_match_count()));
     ctx->ItemClick(label.c_str());
     ctx->Yield(2);
     ctx->SetRef("//Analyze library");
@@ -517,11 +517,16 @@ void test_status_line(ImGuiTestContext* ctx) {
     h.app->set_status("Saved the thing.");
     ctx->Yield(2);
     IM_CHECK(h.frame_text.text.find("Saved the thing.") != std::string::npos);
-    ctx->Yield(400);  // over 6 s of 1/60 s frames
+    // The fade in the harness's fixed frame time, plus the first frame past
+    // its edge.
+    const int fade_frames = static_cast<int>(std::ceil(
+                                hydra::ui::AppState::kStatusFadeSeconds / ImGui::GetIO().DeltaTime)) +
+                            1;
+    ctx->Yield(fade_frames);
     IM_CHECK(h.frame_text.text.find("Saved the thing.") == std::string::npos);
 
     h.app->set_problem("The thing broke.");
-    ctx->Yield(400);
+    ctx->Yield(fade_frames);
     IM_CHECK(h.frame_text.text.find("The thing broke.") != std::string::npos);
     ctx->ItemClick("**/X##dismissstatus");
     ctx->Yield(2);
