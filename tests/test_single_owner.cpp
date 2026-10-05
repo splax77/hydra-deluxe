@@ -1970,15 +1970,6 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        // A one-time schema 2 to 3 migration reads the stamp text old files
-        // already hold, so it keeps the literal "ch10" even if
-        // engine_mode_stamp were ever spelled differently, and src/store never
-        // includes src/search. test_store.cpp seeds the migration test's
-        // stamp with engine_mode_stamp, so a respelling turns that test red.
-        {"Which fill rule does a database's stamp name?", "src/store/record_store.cpp",
-         "legacy_fills = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
-         "never: a migration reads the historic stamp text, and store never includes search "
-         "(M_D review round 2)"},
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
