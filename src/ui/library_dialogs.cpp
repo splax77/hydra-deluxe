@@ -53,7 +53,7 @@ bool enter_pressed() {
 
 // "21 analyzed · 0 failed · 1 skipped (already had a result)".
 std::string batch_counts(const BatchJob::Snapshot& s) {
-    return counted(s.completed - s.failed, "analyzed", "analyzed") + " \xC2\xB7 " +
+    return counted(s.analyzed, "analyzed", "analyzed") + " \xC2\xB7 " +
            counted(s.failed, "failed", "failed") + " \xC2\xB7 " +
            counted(s.skipped, "skipped", "skipped") + " (already had a result)";
 }
@@ -277,7 +277,8 @@ void render_batch_confirm(AppState& app) {
         return;
     }
 
-    const int64_t total = static_cast<int64_t>(app.batch_scope.size());
+    // Charts, not rows: a chart in two folders is one chart (D62 item 3).
+    const int64_t total = app.batch_scope_charts;
     const int64_t with = app.batch_scope_with_result;
     const int64_t without = total - with;
     const int64_t to_run = app.batch_redo ? total : without;
@@ -418,9 +419,8 @@ void render_batch_strip(AppState& app) {
     if (button_in_slot("Stop", stop_w)) app.batch_job->stop();
     end_disabled_button(stopping);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
-        const int kept = s.completed - s.failed;
         ImGui::SetTooltip("Keeps the %s already finished",
-                          counted(kept, "result", "results").c_str());
+                          counted(s.analyzed, "result", "results").c_str());
     }
     ImGui::EndChild();
 }
@@ -504,7 +504,7 @@ void render_batch_done(AppState& app) {
     if (report_ok) {
         if (ImGui::Checkbox("Open automatically", &app.settings.auto_open_report))
             app.commit_settings();
-        hint("Open the report in the browser whenever a batch finishes");
+        hint("Open each report in your browser as soon as it's built.");
     }
     if (!s.failures.empty()) {
         const std::string head = counted((int64_t)s.failures.size(), "chart", "charts") +

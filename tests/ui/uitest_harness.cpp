@@ -291,8 +291,8 @@ void reset_app(Harness& h, const std::string& rules_text) {
             }
         }
     }
-    fs::remove(fs::u8path(h.temp_dir + "\\hydra_paths.html"), ec);
-    fs::remove(fs::u8path(h.temp_dir + "\\hydra_dmcompare.html"), ec);
+    fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kPathReportFileName), ec);
+    fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kDmReportFileName), ec);
     {
         std::ofstream f(fs::u8path(h.ini_path), std::ios::trunc);
         f << "chartfolder=" << HYDRA_INPUT_DIR << "\n";
@@ -334,17 +334,7 @@ bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double
     return true;
 }
 
-bool jobs_busy(Harness& h) {
-    auto& a = *h.app;
-    if (a.scan_job && !a.scan_job->snapshot().finished) return true;
-    if (a.batch_running()) return true;
-    if (a.analyze_running()) return true;
-    if (a.report_job && !a.report_job->finished()) return true;
-    if (a.dm_fetch_job && !a.dm_fetch_job->finished()) return true;
-    if (a.dm_report_job && !a.dm_report_job->finished()) return true;
-    if (a.preview && a.preview->loading()) return true;
-    return false;
-}
+bool jobs_busy(Harness& h) { return h.app->any_job_running(); }
 
 namespace {
 // Statics, not gate members: a batch job keeps its copy of the analyzer and

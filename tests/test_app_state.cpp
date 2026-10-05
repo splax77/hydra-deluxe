@@ -16,6 +16,7 @@
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -585,4 +586,175 @@ TEST_CASE("refresh_library_row picks up one chart's new result") {
     app->refresh_library_row(fifth.md5);
     CHECK(app->library_row_at(at).status == RecordStatus::Ready);
     CHECK(app->library.counts().analyzed == 2);
+}
+
+namespace {
+
+// Starts a Redo batch over the whole library that keeps running until the
+// test presses Stop: each chart's analysis waits on the batch's own cancel
+// check (its progress callback throws once Stop is pressed).
+void start_batch_until_stopped(AppState& app) {
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string&, const hydra::app::AnalysisSettings&,
+           const std::function<void(float)>& on_progress) -> hydra::app::AnalysisResult {
+            for (;;) {
+                on_progress(0.0f);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+        },
+        1);
+    app.start_batch(true);
+    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    REQUIRE(app.batch_running());
+}
+
+void stop_batch(AppState& app) {
+    app.batch_job->stop();
+    while (!app.batch_job->snapshot().finished)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+}
+
+// Opens library chart 0 on a real corpus chart, its Ready record's song
+// registered with a tempo map but no length, the way a result saved before
+// Hydra stored lengths reads. Returns the chart file's path.
+std::string open_chart_with_no_length(AppState& app) {
+    const hydra::app::AnalysisSettings as = app.settings.to_analysis_settings();
+    const std::string path = corpus::first_chart_with_notes(as.difficulty);
+    hydra::Song timing_only = corpus::song(path, as.prodrums, as.bass2x, as.difficulty, as.rules);
+    timing_only.sequence.clear();  // no notes, so add_song stores no length
+    ChartLibraryEntry entry = library_entry(0);
+    entry.notespath = path;
+    app.store->add_song(entry.md5, entry.title, entry.artist, entry.charter, timing_only);
+    app.select(entry);
+    REQUIRE(app.viewed.status == RecordStatus::Ready);
+    REQUIRE(app.viewed.timing.has_value());
+    REQUIRE_FALSE(app.viewed.song_length_ms.has_value());
+    return path;
+}
+
+}  // namespace
+
+// The backfill writes the length under the difficulty the panel shows, not
+// as the chart's one length: another difficulty keeps its own (D51 call 9).
+TEST_CASE("update_song_length stores the length under the viewed difficulty (D51 Q9)") {
+    ScratchPaths paths("appstate_length");
+    std::unique_ptr<AppState> app = app_on(paths);
+    // The same chart's Ready record under another chart mode.
+    Settings other = app->settings;
+    other.view_prodrums = !other.view_prodrums;
+    const RecordKey other_key = other.record_key(library_entry(0).md5);
+    hydra::test::store_batch_result(*app->store, other_key);
+    const std::string path = open_chart_with_no_length(*app);
+
+    app->tick(0.0);  // starts the backfill
+    REQUIRE(app->length_job != nullptr);
+    for (int i = 0; i < 1200 && !app->length_job->finished(); ++i) Sleep(50);
+    REQUIRE(app->length_job->finished());
+    app->tick(0.0);  // stores what it read
+    CHECK(app->length_job == nullptr);
+
+    const hydra::app::AnalysisSettings as = app->settings.to_analysis_settings();
+    const std::optional<double> length = hydra::store::song_length_ms(
+        corpus::song(path, as.prodrums, as.bass2x, as.difficulty, as.rules));
+    REQUIRE(length.has_value());
+    CHECK(app->viewed.song_length_ms == length);
+    CHECK(app->store->get_record(app->settings.record_key(library_entry(0).md5)).song_length_ms ==
+          length);
+    CHECK_FALSE(app->store->get_record(other_key).song_length_ms.has_value());
+}
+
+// The same chart can sit in two folders; only the copy that was clicked is
+// the selected row.
+TEST_CASE("is_selected_row: the selected row is the one with its notespath, not its md5") {
+    ScratchPaths paths("appstate_selrow");
+    std::unique_ptr<AppState> app = app_on(paths);  // library_entry(0) is selected
+    ChartLibraryEntry twin = library_entry(0);
+    twin.notespath = "C:\\other\\hash000\\notes.chart";
+    twin.rootfolder = "C:\\other";
+    CHECK(app->is_selected_row(library_entry(0)));
+    CHECK_FALSE(app->is_selected_row(twin));
+    app->selected.reset();
+    CHECK_FALSE(app->is_selected_row(library_entry(0)));
+}
+
+// Every way to start a scan is refused while a batch runs, and the status
+// line says why, as news that fades (D51 call 24, D62 item 4).
+TEST_CASE("a scan cannot start during a batch, and the status line says so (D51 Q24)") {
+    ScratchPaths paths("appstate_scanbatch");
+    std::unique_ptr<AppState> app = app_on(paths);
+    app->settings.chartfolders = {"C:\\charts"};
+    start_batch_until_stopped(*app);
+
+    CHECK_FALSE(app->can_scan());
+    app->start_scan();
+    CHECK(app->scan_job == nullptr);
+    CHECK(app->status_message == "A batch is running.");
+    CHECK_FALSE(app->status_is_problem);
+
+    stop_batch(*app);
+    CHECK(app->can_scan());
+}
+
+// wait-idle in the GUI tests waits on this one list (finding 109).
+TEST_CASE("any_job_running lists every background job") {
+    ScratchPaths paths("appstate_anyjob");
+    std::unique_ptr<AppState> app = app_on(paths);
+    CHECK_FALSE(app->any_job_running());
+
+    start_batch_until_stopped(*app);
+    CHECK(app->any_job_running());
+    stop_batch(*app);
+    CHECK_FALSE(app->any_job_running());  // a finished batch is not running
+
+    open_chart_with_no_length(*app);
+    app->tick(0.0);  // starts the length read
+    REQUIRE(app->length_job != nullptr);
+    CHECK(app->any_job_running());
+    for (int i = 0; i < 1200 && !app->length_job->finished(); ++i) Sleep(50);
+    REQUIRE(app->length_job->finished());
+    app->tick(0.0);
+    CHECK_FALSE(app->any_job_running());
+}
+
+// The report that follows a batch lists what the batch analyzed, even when
+// the settings bar moved on after it (D51 call 26).
+TEST_CASE("the post-batch report lists the batch's cap and lens, not the live settings") {
+    ScratchPaths paths("appstate_reportrun");
+    std::unique_ptr<AppState> app = app_on(paths);
+    REQUIRE(app->settings.sp_cap == 4);
+    run_redo_batch_over(*app, library_entry(5).md5);
+    const hydra::store::Lens batch_lens = app->batch_job->batch_run().lens;
+
+    app->settings.sp_cap = 5;  // edited, not committed
+    app->settings.mslimit_enabled = !app->settings.mslimit_enabled;
+    app->update_background_jobs();
+
+    REQUIRE(app->report_job != nullptr);
+    CHECK(app->report_job->cap() == hydra::store::CapQuery::at(4));
+    CHECK(app->report_job->lens() == batch_lens);
+    CHECK_FALSE(app->report_job->lens() == app->settings.lens());
+    while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::error_code ec;
+    std::filesystem::remove(std::filesystem::path(hydra::app::report_html_path()), ec);
+}
+
+// The confirm counts charts, not copies, and reads which have a result from
+// the store, not from the library's cached rows (D51 call 10, D62 item 3).
+TEST_CASE("the confirm counts charts with a result from the store, once per chart (D51 Q10)") {
+    ScratchPaths paths("appstate_confirm");
+    auto store = std::make_unique<RecordStore>(paths.db);
+    const ChartLibraryEntry first = library_entry(1);
+    ChartLibraryEntry copy = library_entry(1);
+    copy.notespath = "C:\\other\\hash001\\notes.chart";
+    copy.rootfolder = "C:\\other";
+    store->rebuild_chart_library({first, copy, library_entry(2)});
+    AppState app(Settings{}, std::move(store));
+    REQUIRE(app.library_shown_count() == 3);
+
+    // Stored behind the library's back: no reload.
+    hydra::test::store_batch_result(*app.store, first.md5, Settings{}.sp_cap);
+    app.open_batch_confirm();
+
+    CHECK(app.batch_scope_charts == 2);
+    CHECK(app.batch_scope_with_result == 1);
 }

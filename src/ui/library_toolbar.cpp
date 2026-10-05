@@ -1,9 +1,9 @@
 #include "ui/library_parts.h"
 
+#include "app/dm_report.h"  // why_not_comparable
 #include "app/report_files.h"
 #include "core/model.h"
 #include "imgui.h"
-#include "search/graph.h"  // fill_rule_name
 #include "ui/fonts.h"
 #include "ui/generation.h"
 #include "ui/theme.h"
@@ -66,13 +66,13 @@ void render_actions_row(AppState& app) {
     hint("Add or remove the folders Hydra scans for charts");
     ImGui::SameLine();
 
-    const bool can_scan = !app.settings.chartfolders.empty() && !batch_busy && !app.scan_job;
-    begin_disabled_button(!can_scan);
+    const bool scan_off = !app.can_scan();
+    begin_disabled_button(scan_off);
     if (ImGui::Button("Scan library")) {
         app.start_scan();
         ImGui::OpenPopup("Scanning charts");
     }
-    end_disabled_button(!can_scan);
+    end_disabled_button(scan_off);
     busy_tooltip();
     ImGui::SameLine();
 
@@ -99,12 +99,12 @@ void render_actions_row(AppState& app) {
     busy_tooltip();
     ImGui::SameLine();
 
-    // The leaderboard plays by Clone Hero's rules at Expert, so the comparison
-    // only means anything there. Disabled elsewhere, with the reason on hover.
-    const bool expert = app.settings.difficulty() == Difficulty::Expert;
-    const bool ch_cap = app.settings.sp_cap == kCloneHeroSpCap;
-    const bool ch11_fills = !app.settings.legacy_fills;
-    const bool compare_off = !expert || !ch_cap || !ch11_fills;
+    // app::dm_report::why_not_comparable says whether these settings can be
+    // compared with the leaderboard. When they can't, the button is off and
+    // its tooltip is the gate's sentence.
+    const std::string refused = app::dm_report::why_not_comparable(
+        app.settings.difficulty(), app.settings.sp_cap, app.settings.legacy_fills);
+    const bool compare_off = !refused.empty();
     begin_disabled_button(compare_off);
     if (ImGui::Button("Compare with dmleaderboards...")) {
         // Fresh picker: drop a finished report (a running one is parked, not
@@ -116,16 +116,8 @@ void render_actions_row(AppState& app) {
     }
     end_disabled_button(compare_off);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
-        if (!expert)
-            ImGui::SetTooltip("Needs Expert: the leaderboard only has Expert scores.");
-        else if (!ch_cap)
-            ImGui::SetTooltip("Needs SP cap %d, Clone Hero's rule: the leaderboard's scores "
-                              "were played under it.",
-                              kCloneHeroSpCap);
-        else if (!ch11_fills)
-            ImGui::SetTooltip("Needs %s fills: untick \"1.0 fills\". The leaderboard is "
-                              "played on current Clone Hero.",
-                              fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long));
+        if (compare_off)
+            ImGui::SetTooltip("%s", refused.c_str());
         else
             ImGui::SetTooltip("Compare a dmleaderboards.com player's scores against your library");
     }

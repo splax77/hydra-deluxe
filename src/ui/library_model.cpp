@@ -31,10 +31,13 @@ int unscored_rank(store::RecordStatus status) {
     return 2;
 }
 
-// What a stars: or squeeze filter may test. Only a Ready result's numbers
-// count; anything else has no facts, so those filters never match it.
+// The one place that says when a row has facts a stars: or squeeze filter may
+// test: a Ready result with a scored best path
+// (PathSummary::has_scored_best_path). A result that kept no path is Analyzed
+// but has none, like any other row (D51 call 11).
 app::RowFacts facts_of(const LibraryRow& row) {
-    if (row.status != store::RecordStatus::Ready) return app::RowFacts{};
+    if (row.status != store::RecordStatus::Ready || !row.summary.has_scored_best_path())
+        return app::RowFacts{};
     return app::RowFacts{row.summary.stars, row.summary.hardest_ms};
 }
 
@@ -86,7 +89,7 @@ std::string best_path_label(store::RecordStatus status, const std::string& bestp
     if (status != store::RecordStatus::Ready) return status_label(status);
     // A Ready result with no paths has no score; its cell shows its path
     // string (empty), as the table always has.
-    if (!summary.score) return bestpath;
+    if (!summary.has_scored_best_path()) return bestpath;
     return group_thousands(*summary.score) + "  " + bestpath;
 }
 
@@ -197,8 +200,8 @@ void LibraryModel::resort() {
         std::sort(sorted_.begin(), sorted_.end(), [&](size_t a, size_t b) {
             const LibraryRow& x = rows_[a];
             const LibraryRow& y = rows_[b];
-            const bool xs = x.summary.score.has_value();
-            const bool ys = y.summary.score.has_value();
+            const bool xs = x.summary.has_scored_best_path();
+            const bool ys = y.summary.has_scored_best_path();
             // Scored rows first in both directions: "not analyzed" is not a
             // low score.
             if (xs != ys) return xs;
