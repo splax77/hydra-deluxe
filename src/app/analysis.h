@@ -181,7 +181,8 @@ struct BatchCallbacks {
 // Runs the analysis + store::prepare_row for every item on a
 // batch_worker_count()-sized pool (app/work_pool.h), writing results into
 // `store` from the calling thread only. Skips a chart that already has a
-// record under `run` unless `redo`.
+// record under `run` unless `redo`, and runs a chart found in several folders
+// (one md5) once, so the progress total counts charts, not copies.
 void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                store::RecordStore& store, bool redo, int worker_count,
                const BatchCallbacks& callbacks = {});

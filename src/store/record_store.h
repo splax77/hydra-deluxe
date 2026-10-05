@@ -18,6 +18,8 @@
 //     collect a node the moment nothing points at it.
 //
 // `songmeta` (one row per chart file, keyed by content hash) is unchanged.
+// `songlength` holds each difficulty's own length (one row per chart and
+// chart mode); RecordLookup::song_length_ms says how the two are read.
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -43,6 +45,7 @@
 #include "core/rules.h"
 #include "core/timing.h"
 #include "parse/song.h"
+#include "search/graph.h"
 #include "store/path_codec.h"
 
 struct sqlite3;
@@ -57,8 +60,8 @@ namespace hydra::store {
 int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags);
 
 // The summary columns computed from a record's best path. All fields are
-// unset when the
-// record has no paths (an empty/incompatible result).
+// unset when the record has no paths (an empty/incompatible result);
+// has_scored_best_path says which case a summary is.
 struct PathSummary {
     std::optional<int64_t> score;
     std::optional<int> actcount;
@@ -73,6 +76,12 @@ struct PathSummary {
     // out, as Clone Hero counts it). Unset on a row written before the column
     // existed until the store fills it (fill_missing_stars).
     std::optional<int> stars;
+
+    // Does this record have a scored best path? The one answer (D51 call 11):
+    // a record with no paths has no score and so no facts. Read off `score`,
+    // so a summary read back from the stored columns answers the same as one
+    // summarize_record just made.
+    bool has_scored_best_path() const { return score.has_value(); }
 };
 
 PathSummary summarize_path(const Path& path);
@@ -192,9 +201,13 @@ struct RecordLookup {
     bool stale_rules = false;  // this path layout, analyzed under other rules
     std::optional<HydraRecord> record;  // set only when Ready
     std::optional<SongTiming> timing;   // set when Ready and the song is registered
-    // The last note's onset, in ms (song_length_ms(const Song&)). Empty when
-    // the song was saved before Hydra stored lengths; opening the song fills
-    // it from the chart (set_song_length), and so does its next analysis.
+    // This difficulty's last note's onset, in ms (song_length_ms(const
+    // Song&)), stored by its analysis in the songlength table (D51 call 9).
+    // A difficulty with no row of its own, as in every file from before that
+    // table, reads the chart's one per-chart length instead (songmeta), which
+    // is what it showed before. Empty when neither is stored; opening the
+    // song fills it from the chart (set_song_length), and so does its next
+    // analysis.
     std::optional<double> song_length_ms;
 };
 
@@ -236,8 +249,9 @@ enum class SortColumn {
 // One scanned chart file, as browsed in the library table. It lives in the
 // same db file as the records.
 // `sig` is the chart's fingerprint (app::chart_files_unchanged says what it
-// covers) that powers the rescan cache (see chart_library_cache). The Preview's changed-chart check reads
-// it too, through app::chart_files_unchanged, to skip re-hashing the file.
+// covers) that powers the rescan cache (see chart_library_cache). The
+// Preview's changed-chart check reads it too, through
+// app::chart_files_unchanged, to skip re-hashing the file.
 struct ChartLibraryEntry {
     std::string md5;
     std::string title;
@@ -305,6 +319,11 @@ public:
     // written before lengths were stored). A length already there is kept,
     // and an unregistered song is left alone. Touches no result.
     void set_song_length(const std::string& hyhash, double length_ms);
+    // The same for one difficulty's own length (D51 call 9): filled only when
+    // that difficulty has none, so the length its analysis stored is kept.
+    // An unregistered song is left alone. Touches no result.
+    void set_song_length(const std::string& hyhash, const std::string& chartmode,
+                         double length_ms);
 
     void add_record(const RecordKey& key, const HydraRecord& record);
     void add_row(const PreparedRow& row);
@@ -417,27 +436,34 @@ public:
     // {songs, results} row counts.
     std::pair<int64_t, int64_t> counts();
 
-    // Which fill-spawn rule hydra_batch last wrote this file with: "ch11"
-    // (Clone Hero 1.1, the normal one) or "ch10" (--legacy-fills, search/graph.h
-    // FillDeadlineRule). Unset on a db nothing has stamped yet, which reads as
-    // "assume the normal rule". Only a label on the file: each result carries
-    // its own rule in its Lens. The one decision it still feeds is the schema
-    // 3 migration, which files a ch10-stamped database's older rows under the
-    // 1.0 rule (docs/adr/0010).
+    // The fill-spawn stamp hydra_batch last wrote this file with, as stored
+    // (search/graph.h engine_mode_stamp writes it). Unset on a db nothing has
+    // stamped yet. Only a label on the file: each result carries its own rule
+    // in its Lens (docs/adr/0010). Read by stamped_fill_rule, and directly by
+    // cli/batch.cpp, cli/report.cpp and cli/fillcompare.cpp.
     std::optional<std::string> engine_mode();
     void set_engine_mode(const std::string& mode);
+    // Which fill rule this file holds: its engine_mode stamp read back through
+    // search/graph.h fill_rule_from_stamp. A file with results and no stamp
+    // holds the 1.1 rule, the one everything but --legacy-fills runs. An
+    // unstamped file with no results, or a stamp fill_rule_from_stamp does not
+    // know, holds none. upgrade_results_key reads it for a schema 2 file.
+    std::optional<FillDeadlineRule> stamped_fill_rule();
 
     // ---- chart library (scan results) ----------------------------------
 
     // Replaces the whole library with `items`: a scan always fully
     // supersedes the previous one. All or nothing: a failure keeps the
     // previous scan's rows. Songs that already have a row take the names
-    // this scan read (the first copy wins when a chart appears twice).
+    // this scan read (the first copy wins when a chart appears twice, and
+    // keeps winning when another copy is analyzed). Stamps the table with
+    // kChartMetaStamp.
     void rebuild_chart_library(const std::vector<ChartLibraryEntry>& items);
 
-    // The previous scan's rows as a rescan cache (empty on a fresh db, or a
-    // db from before the sig column existed). Read this BEFORE
-    // rebuild_chart_library replaces the table.
+    // The previous scan's rows as a rescan cache (empty on a fresh db, a db
+    // from before the sig column existed, or one whose kChartMetaStamp is
+    // missing or not current). Read this BEFORE rebuild_chart_library
+    // replaces the table.
     ChartLibraryCache chart_library_cache();
 
     // Case-insensitive substring match against title/artist/charter, or the
@@ -473,7 +499,7 @@ private:
     // sit in the UNIQUE constraint, which SQLite cannot alter, so the table
     // is rebuilt once with every row, result_id and blob kept (path_refs
     // point at the ids); nothing is analyzed again. A schema 2 file's rows go
-    // under the 1.0 rule when hydra_batch stamped the file ch10, else 1.1.
+    // under the fill rule stamped_fill_rule names, or 1.1 when it names none.
     void upgrade_results_key();
     // Fills the stars column of every Ready row that lacks it (rows written
     // before the column existed). Runs on every open; with nothing to fill
@@ -487,6 +513,15 @@ private:
         std::optional<double> length_ms;
     };
     std::optional<SongMetaRead> read_tempomap(const std::string& hyhash);
+    // One difficulty's own stored length (the songlength table), or nullopt
+    // when it has no row. The caller holds the lock.
+    std::optional<double> read_song_length(const std::string& hyhash,
+                                           const std::string& chartmode);
+    // Writes one difficulty's length: `replace` overwrites the row (an
+    // analysis), otherwise only a missing row is filled. No length removes
+    // the row. Only a registered song gets one. The caller holds the lock.
+    void write_song_length(const std::string& hyhash, const std::string& chartmode,
+                           std::optional<double> length_ms, bool replace);
     // The bodies of add_song, add_row and put_dynamics. The caller holds the
     // lock; write_row also needs an open transaction.
     void upsert_song(const std::string& hyhash, const std::string& ref_name,

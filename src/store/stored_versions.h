@@ -93,11 +93,25 @@ inline constexpr StampRule<int, 1> kDynamicsCountStamp{2, {2}};
 // line (D24).
 inline constexpr StampRule<uint8_t, 1> kDynamicsBlobStamp{2, {2}};
 
+// ---- Scanned chart facts (the charts table) --------------------------------
+
+// How a scan reads a chart's identity and names. BUMP IT (add 1) whenever any
+// of these changes what an unchanged file reads as: hash_chart_file and its
+// 1 MB .sng head rule (D51 call 13), sig_of (the size and mtime fingerprint
+// the rescan cache is keyed on), and the song.ini, .sng and .srb name
+// readers. The sig only says a file is unchanged; this stamp says the rows
+// read from it still hold what this build would read. Stored once per file,
+// as the meta row chart_meta_version. A stale or missing stamp drops the
+// whole rescan cache, so the next scan reads every chart once (D51 call 12).
+// 1 = the first stamp.
+inline constexpr StampRule<int, 1> kChartMetaStamp{1, {1}};
+
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));
 static_assert(kPathFormatStamp.is_current(kPathFormatStamp.written));
 static_assert(kDynamicsCountStamp.is_current(kDynamicsCountStamp.written));
 static_assert(kDynamicsBlobStamp.is_current(kDynamicsBlobStamp.written));
+static_assert(kChartMetaStamp.is_current(kChartMetaStamp.written));
 
 }  // namespace hydra::store
 

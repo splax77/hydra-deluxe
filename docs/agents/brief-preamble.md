@@ -1,6 +1,6 @@
 # Brief preamble (every agent reads this first)
 
-These rules apply to every agent: implementers, reviewers, fix rounds, integrators and read-only scouts. Your task brief (the file that sent you here) adds the rest. It names your task id, the session id, your owned files, your worktree or checkout, your scratch folder and the tests you may run. Where the brief and this page disagree, stop and report it; do not pick one.
+These rules apply to every agent: implementers, reviewers, integrators and read-only scouts. Your task brief (the file that sent you here) adds the rest. It names your task id, the session id, your owned files, your worktree or checkout, your scratch folder and the tests you may run. Where the brief and this page disagree, stop and report it; do not pick one.
 
 Each rule below exists because a hook refused it, or an agent lost time to it, in an earlier round. Following them up front costs nothing. Learning them from a denial costs a call and often a minute.
 
@@ -53,6 +53,12 @@ Commit before your 110th tool call, and after each finished step. An agent that 
 ## Helpers and waiting
 
 Run every helper and long command in the foreground. Never use `run_in_background`, and never end your turn waiting for a job. You have no helper agents; do the work yourself.
+
+The one exception is the review exchange. A reviewer that sends findings to the author ends its turn and is resumed by the author's reply. That is a message between two agents, not a job.
+
+## If a reviewer messages you
+
+If you wrote code, the derive-once reviewer may resume you later with a message listing findings in your change. Fix them by `docs/agents/fix-round.md`, reply to the reviewer once, and end your turn. You get one chance; the reviewer fixes whatever you leave.
 
 ## When blocked
 

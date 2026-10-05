@@ -225,6 +225,10 @@ struct PendingChart {
     std::string sig;
 };
 
+// The rescan cache's key: sizes and mtimes, so an unchanged file is not read
+// again. It only says the file is unchanged. Whether the rows read from it
+// still hold what this build's hash and name readers would read is the
+// stored kChartMetaStamp's answer (store/stored_versions.h), not this one's.
 std::string sig_of(const DirEntry& notes, const DirEntry* ini) {
     std::string sig = std::to_string(notes.size) + ":" + std::to_string(notes.mtime);
     if (ini) sig += ":" + std::to_string(ini->size) + ":" + std::to_string(ini->mtime);
@@ -575,9 +579,15 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
     const std::unordered_set<std::string> analyzed =
         redo ? std::unordered_set<std::string>{}
              : store.analyzed_hashes(run.chartmode, cap, run.lens);
+    // A chart the scan found in two folders is one chart (D51 call 10): the
+    // first copy in `items` is analyzed, the others are skipped, and the
+    // count is of charts, not copies. Whichever copy runs, the store names
+    // the chart from the copy the scan listed first.
     std::vector<const ScanItem*> todo;
+    std::unordered_set<std::string> queued;
     for (const ScanItem& item : items) {
         if (analyzed.count(item.md5)) continue;
+        if (!queued.insert(item.md5).second) continue;
         todo.push_back(&item);
     }
 
