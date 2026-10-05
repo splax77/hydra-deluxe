@@ -125,8 +125,8 @@ foreach ($struct in $structFields.Keys) {
     })
     $inPrecheck = @($structFields[$struct])
     if (($inStruct -join ',') -ne ($inPrecheck -join ',')) {
-        $script:Failures.Add("${struct}'s fields changed; update the column positions in derive_once_precheck.ps1 " +
-            "(tests/test_single_owner.cpp has: $(if ($inStruct.Count) { $inStruct -join ', ' } else { 'no such struct' }); " +
+        $script:Failures.Add("${struct}'s fields changed; update the column positions in $precheck " +
+            "($scanFile has: $(if ($inStruct.Count) { $inStruct -join ', ' } else { 'no such struct' }); " +
             "`$ScanStructFields has: $($inPrecheck -join ', '))")
     } else { $script:Passes++ }
 }
@@ -235,7 +235,7 @@ TEST_CASE("model.h mentions the window") {
         @('B', 'tests/test_offsets.cpp', 'How far is a note from an SP end.*end\.ms\(\)'),
         @('D', 'tests/test_offsets.cpp', '\b37 in:'),
         @('E', 'tests/test_stray_scan.cpp', 'HYDRA_SOURCE_DIR'),
-        @('E', 'tests/test_single_owner.cpp', 'planted row has no examples.*no must-match examples')
+        @('E', $scanFile, 'planted row has no examples.*no must-match examples')
     )
     $absent = @('\b45 in:', '^[A-E] tests/helpers_a\.cpp:', '^[A-E] tests/test_offsets\.cpp:\d+  .*timecode\(69120\)',
                 '^[A-E] tests/test_offsets\.cpp:\d+  .*SpEndKind::SqIn')
