@@ -13,7 +13,7 @@ hits the notes, and the report checks whether +0x2e0 changes once per hit and
 sits next to the note time.
 
 Usage (start the song, then run; or run first and it waits for the song):
-    python tools\\ch_probe\\experiments\\watch_window.py ["Window Map" | "Edge Walk" | folder]
+    python tools\\ch_probe\\experiments\\watch_window.py [<probe song name> | folder]
 
 It stops by itself a couple of seconds after the last note, or when the clock
 stops moving or jumps back (live.StoppedCheck: song quit, paused or
@@ -36,7 +36,8 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe import constants as C, engine_finder
+from tools.ch_probe import constants as C, engine_finder, probe_songs
+from tools.ch_probe.engine import EngineModel, pressed_input_hit
 from tools.ch_probe.process import open_process
 from tools.ch_probe.experiments import live
 
@@ -162,7 +163,7 @@ def window_report(samples: list[Sample], notes: list[dict]) -> list[str]:
             continue
         for c, v in rows:
             prev, nxt = note_around(notes, c)
-            lines.append(f"  {c/1000:8.3f} s  {v:7.2f}  after {_note_label(prev)}, "
+            lines.append(f"  {C.ms_to_s(c):8.3f} s  {v:7.2f}  after {_note_label(prev)}, "
                          f"next {_note_label(nxt)}")
         lines.append("  values in order: " + ", ".join(f"{v:.2f}" for _, v in rows))
 
@@ -202,7 +203,8 @@ def window_report(samples: list[Sample], notes: list[dict]) -> list[str]:
 def hit_time_report(samples: list[Sample], notes: list[dict]) -> list[str]:
     """Check whether +0x2e0 behaves like the hit time (step 4)."""
     hits = changes(samples, "hit_time_ms")[1:]   # [0] is the starting value
-    score_rises = sum(1 for a, b in zip(samples, samples[1:]) if b.score > a.score)
+    score_rises = sum(1 for a, b in zip(samples, samples[1:])
+                      if pressed_input_hit(a.score, b.score))
     lines = ["+0x2e0 (hit time) against the note times:"]
     if not hits:
         lines.append("  +0x2e0 never changed.")
@@ -214,14 +216,16 @@ def hit_time_report(samples: list[Sample], notes: list[dict]) -> list[str]:
         n = min(notes, key=lambda n: abs(n["time_ms"] - v))
         d = v - n["time_ms"]
         diffs.append(d)
-        lines.append(f"  clock {c/1000:8.3f} s  +0x2e0 {v/1000:8.3f} s  "
-                     f"note #{n['index']} at {n['time_ms']/1000:8.3f} s  diff {d:+6.1f} ms")
+        lines.append(f"  clock {C.ms_to_s(c):8.3f} s  +0x2e0 {C.ms_to_s(v):8.3f} s  "
+                     f"note #{n['index']} at {C.ms_to_s(n['time_ms']):8.3f} s  "
+                     f"diff {d:+6.1f} ms")
     lines.append("")
     lines.append(f"  +0x2e0 changed {len(hits)} times; the score rose {score_rises} times.")
     lines.append(f"  |diff|: median {statistics.median(abs(d) for d in diffs):.1f} ms, "
                  f"max {max(abs(d) for d in diffs):.1f} ms")
-    if len(hits) == score_rises and max(abs(d) for d in diffs) <= 10.0:
-        lines.append("  Looks like the hit time: once per hit, within 10 ms of the note.")
+    if len(hits) == score_rises and max(abs(d) for d in diffs) <= C.HIT_TIME_MAX_GAP_MS:
+        lines.append("  Looks like the hit time: once per hit, within "
+                     f"{C.HIT_TIME_MAX_GAP_MS:g} ms of the note.")
     else:
         lines.append("  Does NOT look like a clean hit time yet; read the rows above.")
     return lines
@@ -267,31 +271,39 @@ def window_verdict(windows: list[float], back_ms: float) -> list[str]:
 # --- Live run ----------------------------------------------------------------
 
 def resolve_song_dir(arg: Optional[str]) -> str:
+    """A folder as given, else a probe song name under probe_songs.DEFAULT_OUT
+    (probe_songs.WINDOW_MAP when none is given)."""
     if not arg:
-        return os.path.join(live.PROBE_ROOT, "Window Map")
+        return os.path.join(probe_songs.DEFAULT_OUT, probe_songs.WINDOW_MAP)
     if os.path.isdir(arg):
         return arg
-    return os.path.join(live.PROBE_ROOT, arg)
+    return os.path.join(probe_songs.DEFAULT_OUT, arg)
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print(f"Usage: watch_window.py [{probe_songs.WINDOW_MAP} | "
+              f"{probe_songs.EDGE_WALK} | folder]")
+        return
     song_dir = resolve_song_dir(sys.argv[1] if len(sys.argv) > 1 else None)
     manifest = live.load_manifest(song_dir)
     notes = manifest["notes"]
-    end_ms = notes[-1]["time_ms"] + TAIL_S * 1000
+    end_ms = notes[-1]["time_ms"] + C.s_to_ms(TAIL_S)
     print(f"Song: {manifest['song']} ({len(notes)} notes)")
 
     print("Connecting to Clone Hero...")
     proc = open_process()
     proc.verify_targets()
     print("  Waiting for the song to play (start or unpause it)...")
-    engine = engine_finder.find_live_engine(proc, engine_finder.all_patterns(proc))
-    snap = live.read_snapshot(proc, engine)
-    back = proc.read_double(engine + C.OFF_BACK_WINDOW) * 1000
-    front = proc.read_double(engine + C.OFF_FRONT_WINDOW) * 1000
+    model = EngineModel(proc)
+    engine = model.use_object(
+        engine_finder.find_live_engine(proc, engine_finder.all_patterns(proc)))
+    snap = model.snapshot()
+    back = C.s_to_ms(model.back_window())
+    front = C.s_to_ms(model.front_window())
     mode = "PRECISION" if snap.precision else "normal"
     print(f"  Engine at {engine:#x}, {mode} mode, back {back:.2f} ms, front {front:.2f} ms")
-    print(f"  Clock {snap.clock_s:.2f} s. Watching until {end_ms/1000:.1f} s.\n")
+    print(f"  Clock {snap.clock_s:.2f} s. Watching until {C.ms_to_s(end_ms):.1f} s.\n")
 
     samples: list[Sample] = []
     steps: list[float] = []
@@ -301,7 +313,7 @@ def main() -> None:
     try:
         while True:
             try:
-                s = live.read_snapshot(proc, engine)
+                s = model.snapshot()
             except OSError:
                 print("  Lost the engine (game closed?).")
                 break
@@ -314,16 +326,16 @@ def main() -> None:
                 print(f"  {e}. Stopping.")
                 break
             if moved:
-                steps.append((s.clock_s - last_clock) * 1000)
+                steps.append(C.s_to_ms(s.clock_s - last_clock))
                 last_clock = s.clock_s
 
-            cur = Sample(s.clock_s * 1000, s.window_ms, s.score, s.hit_time_s * 1000)
+            cur = Sample(C.s_to_ms(s.clock_s), s.window_ms, s.score, C.s_to_ms(s.hit_time_s))
             if (last is None or live.window_changed(cur.window_ms, last.window_ms)
                     or cur.score != last.score
                     or live.window_changed(cur.hit_time_ms, last.hit_time_ms)):
                 samples.append(cur)
                 if last is None or live.window_changed(cur.window_ms, last.window_ms):
-                    print(f"  {cur.clock_ms/1000:8.3f} s  window {cur.window_ms:7.2f} ms")
+                    print(f"  {C.ms_to_s(cur.clock_ms):8.3f} s  window {cur.window_ms:7.2f} ms")
                 last = cur
 
             if cur.clock_ms > end_ms:

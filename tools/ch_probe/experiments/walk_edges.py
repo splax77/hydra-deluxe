@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import ctypes
 import os
 import sys
 import time
@@ -44,15 +43,19 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe import constants as C, engine_finder
+from tools.ch_probe import constants as C, engine_finder, probe_songs
+from tools.ch_probe.engine import EngineModel, pressed_input_hit
 from tools.ch_probe.process import open_process
-from tools.ch_probe.input_driver import InputDriver, Lane
+from tools.ch_probe.input_driver import InputDriver, Lane, find_game_window, focus_window
 from tools.ch_probe.experiments import analysis, live
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 KICK_LANE = Lane.KICK
 CONTROL_NOTES = 3
-SETTLE_MS = 250        # wait this long past the note before reading the result
+# The default walk (D54: recorded as it is): each side from 80 to 92 ms past
+# the note, DEFAULT_REPS notes per 1 ms step.
+DEFAULT_WALK = "80:92"
+DEFAULT_REPS = 3
 
 
 # --- Pure logic (unit-tested) -------------------------------------------------
@@ -92,7 +95,8 @@ class SongClock:
 
     def __init__(self, read_raw: Callable[[], float],
                  now: Callable[[], float] = time.perf_counter,
-                 fresh_s: float = 0.002, max_fill_s: float = 0.05) -> None:
+                 fresh_s: float = C.CLOCK_FRESH_S,
+                 max_fill_s: float = C.CLOCK_MAX_FILL_S) -> None:
         self._read_raw = read_raw
         self._now = now
         self._fresh_s = fresh_s
@@ -133,7 +137,8 @@ def row_for(index: int, note_ms: float, planned_ms: int, raw_ms: float, est_ms: 
     measured, from_engine = live.hit_offset_ms(note_ms, est_ms, before.hit_time_s,
                                                after.hit_time_s)
     return Row(index, note_ms, planned_ms, est_ms - note_ms, raw_ms - note_ms,
-               measured if from_engine else None, after.score > before.score, measured)
+               measured if from_engine else None,
+               pressed_input_hit(before.score, after.score), measured)
 
 
 def summarize(rows: list[Row]) -> list[str]:
@@ -186,10 +191,10 @@ def summarize(rows: list[Row]) -> list[str]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("song_dir", nargs="?",
-                    default=os.path.join(live.PROBE_ROOT, "Edge Walk"))
-    ap.add_argument("--late", default="80:92", help="LO:HI ms, or 'none'")
-    ap.add_argument("--early", default="80:92", help="LO:HI ms, or 'none'")
-    ap.add_argument("--reps", type=int, default=3, help="notes per 1 ms step")
+                    default=os.path.join(probe_songs.DEFAULT_OUT, probe_songs.EDGE_WALK))
+    ap.add_argument("--late", default=DEFAULT_WALK, help="LO:HI ms, or 'none'")
+    ap.add_argument("--early", default=DEFAULT_WALK, help="LO:HI ms, or 'none'")
+    ap.add_argument("--reps", type=int, default=DEFAULT_REPS, help="notes per 1 ms step")
     args = ap.parse_args()
 
     manifest = live.load_manifest(args.song_dir)
@@ -204,21 +209,22 @@ def main() -> None:
     proc = open_process()
     proc.verify_targets()
     print("  Waiting for the song to play (start or unpause it)...")
-    engine = engine_finder.find_live_engine(proc, engine_finder.all_patterns(proc))
-    snap = live.read_snapshot(proc, engine)
+    model = EngineModel(proc)
+    engine = model.use_object(
+        engine_finder.find_live_engine(proc, engine_finder.all_patterns(proc)))
+    snap = model.snapshot()
     print(f"  Engine at {engine:#x}, {'PRECISION' if snap.precision else 'normal'} mode,"
           f" clock {snap.clock_s:.2f} s")
 
     driver = InputDriver()
-    user32 = ctypes.windll.user32
-    hwnd = user32.FindWindowW(None, "Clone Hero")
+    hwnd = find_game_window()
     if not hwnd:
         print("  WARNING: could not find the Clone Hero window")
 
-    clock = SongClock(lambda: proc.read_double(engine + C.OFF_SONG_CLOCK))
+    clock = SongClock(model.song_clock)
     raw_s, _ = clock.read()
     stopped = live.StoppedCheck(raw_s, time.perf_counter())
-    cursor = live.first_note_index([n["time_ms"] for n in notes], raw_s * 1000)
+    cursor = live.first_note_index([n["time_ms"] for n in notes], C.s_to_ms(raw_s))
     print(f"  Starting at note {cursor + 1}/{len(notes)}.\n")
     print(f"  {'#':>4}  {'plan':>5}  {'sent':>7}  {'raw':>7}  {'engine':>7}  result")
 
@@ -227,16 +233,15 @@ def main() -> None:
         for i in range(cursor, len(notes)):
             note_ms = float(notes[i]["time_ms"])
             planned = plan[i]
-            if hwnd:
-                user32.SetForegroundWindow(hwnd)   # well before the press
-            before = live.read_snapshot(proc, engine)
+            focus_window(hwnd)   # well before the press
+            before = model.snapshot()
 
             raw_ms, est_ms = live.wait_until(clock, note_ms + planned, stopped=stopped)
             driver.press_chord([KICK_LANE])
 
-            live.wait_until(clock, max(note_ms, note_ms + planned) + SETTLE_MS,
+            live.wait_until(clock, max(note_ms, note_ms + planned) + C.INPUT_SETTLE_MS,
                             stopped=stopped)
-            after = live.read_snapshot(proc, engine)
+            after = model.snapshot()
             row = row_for(i, note_ms, planned, raw_ms, est_ms, before, after)
             rows.append(row)
             engine_ms = row.engine_ms

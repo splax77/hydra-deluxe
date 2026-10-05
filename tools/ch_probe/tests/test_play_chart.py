@@ -85,6 +85,10 @@ class SharedPiecesTest(unittest.TestCase):
         from tools.ch_probe import input_driver
         self.assertIs(play_chart.LANE_NAMES, input_driver.LANE_NAMES)
 
+    def test_window_helper_comes_from_input_driver(self):
+        from tools.ch_probe import input_driver
+        self.assertIs(play_chart.find_game_window, input_driver.find_game_window)
+
     def test_press_lead_is_two_ms(self):
         self.assertEqual(play_chart.PRESS_LEAD_MS, 2.0)
 

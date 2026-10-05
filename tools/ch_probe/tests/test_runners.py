@@ -23,33 +23,47 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.debugger import ThreadContext  # noqa: E402
+from tools.ch_probe.engine import EngineModel  # noqa: E402
 from tools.ch_probe.experiments import active_probe, passive_probe  # noqa: E402
+from tools.ch_probe.tests import fakes  # noqa: E402
 
 BASE = 0x180000000
 OBJ = 0x1234000
 
 
-class FakeProcess:
-    pid = 4242
-    module_base = BASE
+class _ConstRvas:
+    """Records which .rdata RVAs EngineModel.constants() reads, so the fake
+    game maps exactly those."""
 
-    def __init__(self, log):
-        self.log = log
-
-    def verify_targets(self):
-        self.log.append("verify")
-
-    def resolve(self, rva):
-        return BASE + rva
-
-    def read_double(self, addr):
-        return 0.0
-
-    def read_u32(self, addr):
-        return 0
+    def __init__(self):
+        self.rvas = []
 
     def read_const_double(self, rva):
+        self.rvas.append(rva)
         return 0.0
+
+
+def FakeProcess(log):
+    """A real Process (tests/fakes.py) over a game whose normal window
+    constants pass verify_targets and whose other constants read 0, with the
+    engine at OBJ in normal mode (its flags dword clear). The verify_targets
+    call is logged, so the runner tests can check its order."""
+    recorder = _ConstRvas()
+    EngineModel(recorder).constants()
+    consts = {rva: 0.0 for rva in recorder.rvas}
+    consts[C.RVA_CONST_NORMAL_BACK] = C.EXPECT_NORMAL_BACK_S
+    consts[C.RVA_CONST_NORMAL_FRONT] = C.EXPECT_NORMAL_FRONT_S
+    proc, _ = fakes.fake_process(None, BASE, consts=consts,
+                                 dwords={OBJ + C.OFF_FLAGS: 0})
+    proc.pid = 4242
+    verify = proc.verify_targets
+
+    def logged_verify():
+        log.append("verify")
+        verify()
+
+    proc.verify_targets = logged_verify
+    return proc
 
 
 class FakeDebugger:

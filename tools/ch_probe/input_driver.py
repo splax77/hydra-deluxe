@@ -27,6 +27,14 @@ from ctypes import wintypes
 from enum import IntEnum
 from typing import Callable, Dict, Iterable, List, Optional
 
+try:
+    from . import constants as C
+except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
+    import constants as C  # type: ignore[no-redef]
+
+# How long press_chord holds a chord's keys down (D54: recorded as it is).
+KEY_HOLD_S = 0.003
+
 
 # --- The one key table ---------------------------------------------------------
 
@@ -143,7 +151,7 @@ class InputDriver:
         self.send_key(vk, key_up=False)
         self.send_key(vk, key_up=True)
 
-    def press_chord(self, lanes: Iterable[int], *, hold_s: float = 0.003,
+    def press_chord(self, lanes: Iterable[int], *, hold_s: float = KEY_HOLD_S,
                     sleep: Callable[[float], None] = time.sleep) -> List[int]:
         """Press every lane's key down, hold `hold_s`, then release them all.
 
@@ -187,3 +195,30 @@ class InputDriver:
         if sent != 1:
             err = ctypes.get_last_error()
             raise OSError(f"SendInput failed (returned {sent}, GetLastError={err})")
+
+
+# --- The game window ------------------------------------------------------------
+#
+# A key only reaches the game while its window has focus. Every runner finds
+# the window and focuses it through these two; what a runner does when there
+# is no window (warn and go on, or stop) stays its own choice.
+
+
+def find_game_window(find: Optional[Callable[[Optional[str], str], Optional[int]]] = None) -> int:
+    """The game window's handle, or 0 when no window has the game's title.
+    `find` takes (class, title) and stands in for user32's window lookup in
+    tests.
+    LIVE-ONLY by default: it asks the real desktop."""
+    if find is None:
+        find = ctypes.windll.user32.FindWindowW
+    return find(None, C.WINDOW_TITLE) or 0
+
+
+def focus_window(hwnd: int, focus: Optional[Callable[[int], object]] = None) -> None:
+    """Bring the window `hwnd` to the front; a 0 handle (no window) does
+    nothing. `focus` stands in for user32.SetForegroundWindow in tests."""
+    if not hwnd:
+        return
+    if focus is None:
+        focus = ctypes.windll.user32.SetForegroundWindow
+    focus(hwnd)

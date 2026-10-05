@@ -35,8 +35,6 @@ from tools.ch_probe import engine as _engine
 # call engine.py directly.
 from tools.ch_probe.engine import SNAPSHOT_SIZE, Snapshot  # noqa: F401
 
-PROBE_ROOT = r"C:\Clone Hero\songs\Hydra Probe"
-
 
 def decode_snapshot(raw: bytes) -> Snapshot:
     """engine.decode_snapshot, under the name the runners use."""

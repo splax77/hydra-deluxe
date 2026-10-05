@@ -238,5 +238,16 @@ class TestProbeSettingsHaveOneHome(unittest.TestCase):
                          C.s_to_ms(C.EXPECT_PRECISION_BACK_S))
 
 
+class TestPredictorsShareTheScaledTerm(unittest.TestCase):
+    def test_both_predictors_share_the_scaled_term(self):
+        # The audit's spot check: at spacing 10, (20 - 1) * 10 = 190.
+        shape = dict(c1=2.0, c2=0.01, c3=10.0, divisor=1.0, exponent=2.0)
+        self.assertAlmostEqual(analysis._scaled_term(10.0, **shape), 190.0, places=9)
+        self.assertAlmostEqual(analysis.predicted_window_normal(10.0, c4=5.0, **shape),
+                               185.0, places=9)
+        self.assertAlmostEqual(analysis.predicted_window_precision(10.0, c0=100.0, **shape),
+                               -90.0, places=9)
+
+
 if __name__ == "__main__":
     unittest.main()

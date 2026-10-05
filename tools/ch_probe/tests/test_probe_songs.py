@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
-import re
 import sys
+import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -12,23 +12,53 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import probe_songs as P  # noqa: E402
-
-
-def chart_ticks(text: str) -> list[int]:
-    return [int(m) for m in re.findall(r"^\s*(\d+) = N 0 0$", text, re.M)]
+from tools.ch_probe.probe_chart import ms_to_ticks, ticks_to_ms  # noqa: E402
+from tools.ch_probe.tests.chart_reader import drum_notes  # noqa: E402
 
 
 class ProbeSongsTest(unittest.TestCase):
     def test_one_tick_is_one_ms(self):
-        self.assertEqual(P.RESOLUTION * P.BPM / 60000.0, 1.0)
+        self.assertEqual(ms_to_ticks(1, P.RESOLUTION, P.BPM), 1)
+        self.assertEqual(ticks_to_ms(1, P.RESOLUTION, P.BPM), 1.0)
 
     def test_chart_ticks_match_manifest_times(self):
         for build in (P.window_map, P.edge_walk):
             notes = build().notes
-            ticks = chart_ticks(P.chart_text("x", notes))
+            text = P.chart_text("x", notes)
+            read = drum_notes(text)
+            ticks = [tick for tick, _note, _sustain in read]
             self.assertEqual(ticks, [n.time_ms for n in notes])
             self.assertEqual(ticks, sorted(set(ticks)))
+            # Every note is the kick, with no sustain.
+            self.assertEqual({(note, sustain) for _tick, note, sustain in read},
+                             {(C.PROBE_CHART_NOTE_KICK, 0)})
+            # Bytes from the base's own writer, before the fold to probe_chart.
+            self.assertIn("  Resolution = 480\n", text)
+            self.assertIn("  0 = B 125000\n", text)
+            self.assertIn('  MusicStream = "song.ogg"\n', text)
+        edge = P.chart_text("x", P.edge_walk().notes)
+        self.assertIn("[ExpertDrums]\n{\n  3000 = N 0 0\n", edge)
+
+    def test_song_folder_writer_writes_the_three_files(self):
+        calls = []
+        with tempfile.TemporaryDirectory() as root:
+            folder = P.write_song_folder(
+                root, "x", "chart text", 4000,
+                write_ogg=lambda path, length_ms: calls.append((path, length_ms)))
+            self.assertEqual(folder, os.path.join(root, "x"))
+            with open(os.path.join(folder, "notes.chart"), encoding="utf-8") as f:
+                self.assertEqual(f.read(), "chart text")
+            with open(os.path.join(folder, "song.ini"), encoding="utf-8") as f:
+                self.assertIn("song_length = 4000\n", f.read())
+        self.assertEqual(calls, [(os.path.join(root, "x", "song.ogg"), 4000)])
+        self.assertEqual(P.song_length_ms(1000), 1000 + P.SILENCE_MS)
+
+    def test_song_names_are_spelled_once(self):
+        self.assertEqual(P.WINDOW_MAP, "Window Map")
+        self.assertEqual(P.EDGE_WALK, "Edge Walk")
+        self.assertEqual(P.NAME_PREFIX, "Hydra Probe - ")
 
     def test_run_notes_have_the_same_gap_both_sides(self):
         rows = P.manifest("x", P.window_map().notes)["notes"]
