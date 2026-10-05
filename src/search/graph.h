@@ -87,6 +87,11 @@ double activation_fill_deadline_ms(const SongTiming& timing,
                                    int64_t fill_length_ticks,
                                    FillDeadlineRule rule);
 
+// How many SP bars the meter can hold on a song: its phrase count, held under
+// the SP meter cap when there is one (unset: uncapped). ScoreGraph's own
+// meter and the pather's graph_build_cap both read it (audit finding 260).
+int max_sp_bars(std::optional<int> sp_meter_cap, int sp_phrase_count);
+
 struct ScoreGraphEdge;
 
 // Where one pending SP end moves when a phrase is collected: +2 measures,

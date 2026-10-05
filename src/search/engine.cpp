@@ -169,7 +169,11 @@ Enum enumerate(const ScoreGraph& graph) {
         v.ghostscore = (int32_t)o->ghostscore;
         v.frontend_points = o->frontend_points;
         v.banked_phrase_ordinal = o->banked_phrase_ordinal;
-        v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);
+        // Unset on advance and deactivation edges. An activation edge without
+        // one is refused in index_fills (audit R7.35).
+        v.activation_fill_deadline_ms = o->activation_fill_deadline_ms
+                                            ? *o->activation_fill_deadline_ms
+                                            : NO_DOUBLE;
         v.choice_begin = (int32_t)en.choices.size();
         for (const SqueezeChoice& c : o->squeeze_choices)
             en.choices.push_back(ChoiceView{c.chord.ticks(), c.timing,
@@ -726,9 +730,16 @@ private:
 // --- index_fills ---------------------------------------------------------
 void Engine::index_fills() {
     std::vector<std::pair<int64_t, double>> fills;  // tick, deadline
-    for (const NodeView& n : en_.node_views)
-        if (!n.is_sp && n.branch_edge >= 0)
-            fills.emplace_back(n.tick, edge(n.branch_edge).activation_fill_deadline_ms);
+    for (const NodeView& n : en_.node_views) {
+        if (n.is_sp || n.branch_edge < 0) continue;
+        const double deadline = edge(n.branch_edge).activation_fill_deadline_ms;
+        // A NaN deadline would read as "no fill to time" at every check
+        // downstream, so a fill with no deadline refuses the graph here.
+        if (!has_value(deadline))
+            throw std::logic_error("the activation edge at tick " + std::to_string(n.tick) +
+                                   " has no fill deadline");
+        fills.emplace_back(n.tick, deadline);
+    }
     std::sort(fills.begin(), fills.end());
     std::vector<int64_t>& ticks = fill_tick_;
     ticks.reserve(fills.size());
@@ -758,9 +769,9 @@ void Engine::index_fills() {
 // two paths with equal counts are interchangeable. Low 16 bits: fills whose
 // early fill would be over the limit (only while nothing was passed over, so
 // the next activation can be an E0). High 16: fills that refuse it. 0 for a
-// path under 2 bars: its ready time is not set yet.
+// path under kSpActivationBars: its ready time is not set yet.
 uint64_t Engine::ready_class(const Path& p) const {
-    if (p.sp < 2 || !has_value(p.sp_ready_ms)) return 0;
+    if (p.sp < kSpActivationBars || !has_value(p.sp_ready_ms)) return 0;
     uint64_t refused = 0, over = 0;
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
         // Every deadline from here on is at least this one. When even this
@@ -873,8 +884,8 @@ void Engine::advance(Path& p) {
                 banks_, p.bank_tail,
                 eo->sp_times[(size_t)(spent_here + banked_here + k)].first.ticks());
 
-        if (kept < 2 && sp >= 2) {
-            const int32_t k = spent_here + banked_here + 1 - kept;
+        if (kept < kSpActivationBars && sp >= kSpActivationBars) {
+            const int32_t k = spent_here + banked_here + (kSpActivationBars - 1) - kept;
             if (k < 0 || k >= sp_n) {
                 p.node = NODE_BROKEN;
                 return;
@@ -892,7 +903,7 @@ void Engine::advance(Path& p) {
 bool Engine::branch_activate(Path& p, Path* child) {
     const NodeView n = node(p.node);
     if (n.branch_edge < 0) return false;
-    if (p.sp < 2) return false;
+    if (p.sp < kSpActivationBars) return false;
 
     const EdgeView e = edge(n.branch_edge);
     const ScoreGraphEdge* eo = eobj(n.branch_edge);
@@ -901,7 +912,8 @@ bool Engine::branch_activate(Path& p, Path* child) {
     if (fill_refuses(e_offset)) return false;
 
     // activation_initial_end_times, keyed by SP meter. The flat form was a list
-    // with NO_TIME gaps in range [0, top]; here the map has meters 2..max.
+    // with NO_TIME gaps in range [0, top]; here the map has meters
+    // kSpActivationBars..max.
     int64_t aiet_val = NO_TIME;
     bool in_range = false;
     if (!eo->activation_initial_end_times.empty()) {
@@ -1030,7 +1042,7 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
         sq ? std::optional<int64_t>(sq->chord) : std::nullopt;
     int32_t sp_delta = 0;
     for (const BackendSqueeze& beo : eo->backends) {
-        const double be_offset = beo.offset_ms.value_or(0.0);
+        const double be_offset = beo.offset();
         const core::SqOutPosition pos =
             core::sqout_position(beo.timecode.ticks(), sqout_phrase);
         const int32_t already_paid =
@@ -1592,7 +1604,7 @@ void Engine::own_early_fill(const Variant& var, OutAct* next) {
     if (has_value(first_passed) || has_value(own)) {
         next->e_offset = recorded_e_offset(first_passed, own);
     } else if (var.skip_tail >= 0 || (int32_t)shared.size() != next->skip_end - next->skip_begin) {
-        // Under 2 bars at the fold, as its leader was (same meter): neither
+        // Under kSpActivationBars at the fold, as its leader was (same meter): neither
         // could have passed a fill yet, and both became ready later, at the
         // same phrase. The leader's offset is the variant's.
         throw std::logic_error("a variant under 2 bars at its fold passed a fill");
@@ -1677,6 +1689,15 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
 }
 
 void Engine::emit_path(const Path& p) {
+    // The search ranks by its running p.score; the record stores the six
+    // categories. Every stored total passes through here (a variant copies its
+    // leader's, ADR 0017), so this is where the two must agree (audit 165).
+    const int64_t six = score_total(p.sc[0], p.sc[1], p.sc[2], p.sc[3], p.sc[4], p.sc[5]);
+    if (p.score != six)
+        throw std::logic_error("copy-out: the search's running score " +
+                               std::to_string(p.score) +
+                               " differs from its six categories' total " +
+                               std::to_string(six));
     OutPath op;
     op.score_base = p.sc[0];
     op.score_combo = p.sc[1];
@@ -1788,7 +1809,7 @@ bool Engine::run() {
                     // that parent can no longer reach an all-0 path, so drop it and
                     // keep only the activating child. branch_activate charges the
                     // skip solely on the branch that produced a child -- a refused
-                    // opportunity (no branch edge, SP under 2 bars, blown fill
+                    // opportunity (no branch edge, SP under kSpActivationBars, blown fill
                     // deadline) leaves currentskips alone, so the surviving path is
                     // still free to activate later and still read as 0 skips.
                     next_.push_back(p);
@@ -1915,7 +1936,7 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                 // The record shows the row's offset; the search ranked by
                 // its own. They must be the same number, or the record
                 // would show a squeeze the search didn't rank.
-                const double stored_ms = *act.sqout_row()->offset_ms;
+                const double stored_ms = act.sqout_row()->offset();
                 if (stored_ms != searched_sqout_ms)
                     throw std::logic_error(
                         "rebuild: the search's SqOut offset " +

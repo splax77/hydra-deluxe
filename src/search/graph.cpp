@@ -122,8 +122,7 @@ void ScoreGraph::build() {
         set_head_time(timestamp.timecode);
 
         store_notecount(timestamp.chord.count());
-        if (timestamp.flag_solo)
-            store_soloscore(kSoloBonusPerNote * timestamp.chord.count());
+        store_soloscore(solo_bonus(timestamp.chord, timestamp.flag_solo));
 
         CategoryScores sg = category_scores(timestamp.chord, combo_, nullptr, rules_.sqout_rule);
 
@@ -136,7 +135,7 @@ void ScoreGraph::build() {
         store_accentscore(sg.accent);
         store_ghostscore(sg.ghost);
 
-        combo_ += timestamp.chord.count();
+        combo_ = sg.combo_after;
 
         store_new_backend(timestamp, sg.sp, sg.sqout_sp());
 
@@ -273,9 +272,13 @@ void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
     }
 }
 
+int max_sp_bars(std::optional<int> sp_meter_cap, int sp_phrase_count) {
+    if (!sp_meter_cap.has_value()) return sp_phrase_count;
+    return std::min(*sp_meter_cap, sp_phrase_count);
+}
+
 int ScoreGraph::max_sp_bars() const {
-    if (!sp_meter_cap_.has_value()) return sp_phrase_count_;
-    return std::min(*sp_meter_cap_, sp_phrase_count_);
+    return hydra::max_sp_bars(sp_meter_cap_, sp_phrase_count_);
 }
 
 std::vector<ScoreGraph::DeactExtension> ScoreGraph::extend_deacts(
@@ -362,7 +365,7 @@ ScoreGraphEdge* ScoreGraph::add_act_edge(int frontend_points, int64_t fill_lengt
         song_.timing(), act_edge->dest->timecode.ticks(), fill_length_ticks,
         rule_);
 
-    for (int sp = 2; sp <= max_sp_bars(); ++sp) {
+    for (int sp = kSpActivationBars; sp <= max_sp_bars(); ++sp) {
         act_edge->activation_initial_end_times[sp] =
             plusmeasure(act_edge->dest->timecode, sp_bars_to_measures(sp));
     }
