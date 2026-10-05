@@ -19,7 +19,7 @@ namespace {
 void test_scan(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
-    IM_CHECK_EQ(h.app->library_total, 0);
+    IM_CHECK(h.app->library.rows().empty());
     scan_library(ctx);
     if (ctx->IsError()) return;
     // The first row's title is drawn in the table.

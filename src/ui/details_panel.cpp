@@ -25,6 +25,10 @@
 
 namespace hydra::ui {
 
+const char* analyze_button_label(store::RecordStatus status) {
+    return status == store::RecordStatus::NotAnalyzed ? "Analyze this song" : "Re-analyze";
+}
+
 namespace {
 
 // Title, "artist · charted by charter", and hide library / previous / next /
@@ -109,9 +113,9 @@ bool render_state_line(AppState& app, const char* not_analyzed_text, bool dim, f
 // out again here.
 void render_headline(AppState& app) {
     const store::RecordStatus status = app.viewed.status;
-    const char* label = status == store::RecordStatus::NotAnalyzed ? "Analyze this song"
-                                                                   : "Re-analyze";
-    const float button_w = button_slot_width("Analyze this song");  // the wider label
+    const char* label = analyze_button_label(status);
+    const float button_w =  // the not-analyzed label, the wider one
+        button_slot_width(analyze_button_label(store::RecordStatus::NotAnalyzed));
     const float left_x = ImGui::GetCursorPosX();
     const float top_y = ImGui::GetCursorPosY();
     const float text_w =
