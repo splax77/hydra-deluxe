@@ -14,6 +14,7 @@
 #include "app/preview_source.h"
 #include "audio/decode.h"
 #include "audio_util.h"
+#include "midi_util.h"  // testmidi::concat
 
 using namespace hydra;
 using namespace hydra::audio;
@@ -59,6 +60,45 @@ TEST_CASE("sniff_format classifies audio containers by their magic bytes") {
     // Too short or unrecognized -> Unknown, never a wrong guess.
     CHECK(sniff_format(std::vector<uint8_t>{}) == AudioFormat::Unknown);
     CHECK(sniff_format(bytes({0x89, 'P', 'N', 'G'})) == AudioFormat::Unknown);
+}
+
+namespace {
+
+// A hand-built ID3v2.3 tag: "ID3", version 3, revision 0, `flags`, a syncsafe
+// size of 20, then 20 zero bytes, plus 10 more when the footer flag (0x10) is
+// set. The bytes after the header are padding; nothing reads them.
+std::vector<uint8_t> id3_tag(int flags) {
+    std::vector<uint8_t> t = bytes({'I', 'D', '3', 3, 0, flags, 0, 0, 0, 20});
+    t.resize(t.size() + 20 + ((flags & 0x10) ? 10 : 0), 0);
+    return t;
+}
+
+}  // namespace
+
+TEST_CASE("sniff_format: a FLAC behind an ID3 tag is Flac, a tagged MP3 stays Mp3") {
+    using testmidi::concat;
+    const std::vector<uint8_t> flac = read_fixture("sine220.flac");
+    const std::vector<uint8_t> mp3 = read_fixture("sine220.mp3");
+    const std::vector<uint8_t> tag = id3_tag(0);
+    const std::vector<uint8_t> tag_footer = id3_tag(0x10);
+
+    CHECK(sniff_format(concat({tag, flac})) == AudioFormat::Flac);
+    CHECK(sniff_format(concat({tag_footer, flac})) == AudioFormat::Flac);
+    CHECK(sniff_format(concat({tag, tag, flac})) == AudioFormat::Flac);
+    CHECK(sniff_format(concat({tag, mp3})) == AudioFormat::Mp3);
+    CHECK(sniff_format(tag) == AudioFormat::Mp3);
+    CHECK(sniff_format(bytes({'I', 'D', '3', 3, 0, 0})) == AudioFormat::Mp3);
+}
+
+TEST_CASE("audio_sniff: the ID3v2 tag length counts the header, the size and the footer") {
+    const std::vector<uint8_t> tag = id3_tag(0);
+    const std::vector<uint8_t> tag_footer = id3_tag(0x10);
+    CHECK(id3v2_tag_length(tag.data(), tag.size()) == 30);
+    CHECK(id3v2_tag_length(tag_footer.data(), tag_footer.size()) == 40);
+
+    const std::vector<uint8_t> flac = read_fixture("sine220.flac");
+    CHECK(id3v2_tag_length(flac.data(), flac.size()) == 0);
+    CHECK(id3v2_tag_length(tag.data(), 9) == 0);
 }
 
 TEST_CASE("decode_audio: PCM16 WAV decodes to matching float samples") {
