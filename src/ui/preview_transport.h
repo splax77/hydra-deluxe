@@ -48,7 +48,7 @@ public:
     // later of `last_note_ms` and the audio's end in chart time, so the audio
     // plays out and a chart with no audio still plays to its last note (D48,
     // Q25). It is where playback stops, not a song length: the scrubber ends
-    // at the song's length, the audio's end (audio::song_length_ms), through
+    // at the song's length (app::song_length_ms, D75), through
     // app::scrub_end_ms. Resets the playhead to the offset, paused.
     void load(std::unique_ptr<audio::Playhead> playhead, double last_note_ms,
               double audio_offset_ms = 0.0);

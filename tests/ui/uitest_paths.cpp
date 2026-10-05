@@ -222,9 +222,8 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, "SqOut: Note timing"));
     IM_CHECK(!on_screen(h, "Frontend:"));
     // The timeline outlines: row 1's 163 ms squeeze is orange, rows 2 and 3
-    // have no badge and no outline. The GUI test library has no audio, so the
-    // open record gets a length as an input: ten minutes, past either chart's
-    // last activation (D70, open question 4).
+    // have no badge and no outline. The open record gets a length as an input:
+    // ten minutes, past either chart's last activation (D75).
     h.app->viewed.song_length_ms = kMarksSongLengthMs;
     ctx->Yield(2);
     check_marks(ctx, *h.app, {Outline::Orange, Outline::None, Outline::None});

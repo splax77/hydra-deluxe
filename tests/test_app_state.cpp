@@ -683,7 +683,7 @@ void run_length_backfill(AppState& app) {
 }  // namespace
 
 // The length belongs to the song, so one read gives every difficulty its
-// length (D69 item 2). It comes from song.ini, not the audio (D75): junk
+// length. It comes from song.ini, not the audio (D75): junk
 // bytes under the audio's name change nothing. The library row is one an
 // older scan wrote, with no stated length kept, so the backfill reads
 // song.ini itself (SL1 open question 3).
@@ -711,7 +711,7 @@ TEST_CASE("the backfill reads a chart's stated length once, and every difficulty
 
 // A chart that states no length reads its last Expert drum note (100 ms
 // here), with no audio file at all (D75 items 2 and 5). The answer is stored,
-// so it is not read again (D70).
+// so it is not read again.
 TEST_CASE("a chart with no stated length and no audio reads its last note, once") {
     ScratchPaths paths("appstate_noaudio");
     std::unique_ptr<AppState> app = app_on(paths);

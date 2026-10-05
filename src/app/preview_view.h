@@ -364,13 +364,13 @@ double scrub_thumb_ms(double now_ms, double scrub_end_ms);
 
 // Is `length_ms` a song length the timeline can use? Only a positive length
 // is. song_fraction and the Paths tab's end-measure label both ask it, so the
-// marks and the label appear and vanish together. D69 names which length each
-// caller passes.
+// marks and the label appear and vanish together. The length each caller
+// passes is app::song_length_ms's answer (D75).
 bool has_song_length(double length_ms);
 
 // How far into the song `ms` is: its share of a song length, clamped to 0..1.
-// No value when has_song_length says the length is unusable. D69 names which
-// length each caller passes.
+// No value when has_song_length says the length is unusable. The length each
+// caller passes is app::song_length_ms's answer (D75).
 std::optional<double> song_fraction(double ms, double length_ms);
 
 // Where "< Act" (direction -1) or "Act >" (+1) moves the playhead from

@@ -18,8 +18,11 @@ std::optional<double> stated_length_ms_of_text(std::string_view text) {
 }
 
 std::optional<double> last_note_start_ms(const Song& song) {
-    if (song.is_empty()) return std::nullopt;
-    return song.sequence.back().timecode.ms();
+    // Only a timestamp that holds a note counts, as in the Preview's scene
+    // (last_drawn_note), which draws no note-less timestamp.
+    for (auto it = song.sequence.rbegin(); it != song.sequence.rend(); ++it)
+        if (it->chord.count() > 0) return it->timecode.ms();
+    return std::nullopt;
 }
 
 std::optional<double> song_length_ms(const store::ChartTimingMeta& meta,

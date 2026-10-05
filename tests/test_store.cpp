@@ -2196,7 +2196,7 @@ TEST_CASE("an analysis saves the song's length, and an unstamped length reads as
         CHECK_FALSE(got.song_length_read);
         CHECK_FALSE(got.song_length_ms.has_value());
 
-        // Opening the song reads its audio once; the result is untouched.
+        // Opening the song works its length out once; the result is untouched.
         store.fill_song_length("h", 5000.0);
         const RecordLookup filled = store.get_record(key);
         REQUIRE(filled.status == RecordStatus::Ready);
@@ -2213,8 +2213,9 @@ TEST_CASE("an analysis saves the song's length, and an unstamped length reads as
     std::remove(path.c_str());
 }
 
-TEST_CASE("an analysis with no audio reader leaves the song's length alone") {
-    // hydra_bench and the tests analyze with no audio reader (D69 item 2).
+TEST_CASE("an analysis that could not work out the length leaves the song's length alone") {
+    // SongLength{} is "not read": hydra_bench and the tests save it when they
+    // work no length out.
     RecordStore store(":memory:");
     const RecordKey key{"h", "mode", CapQuery::at(4)};
     store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
@@ -2226,9 +2227,9 @@ TEST_CASE("an analysis with no audio reader leaves the song's length alone") {
     CHECK(got.song_length_ms == 4321.0);
 }
 
-TEST_CASE("a song with no readable audio reads as read, with no length") {
-    // A read that found no audio is an answer: the backfill does not try it
-    // again (D70, open question 3), and the timeline places no marks.
+TEST_CASE("a song the owner gives no length for reads as read, with no length") {
+    // No length is an answer (app::song_length_ms, D75): the backfill does not
+    // try it again, and the timeline places no marks.
     RecordStore store(":memory:");
     const RecordKey key{"h", "mode", CapQuery::at(4)};
     store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
@@ -2266,8 +2267,8 @@ TEST_CASE("a saved song's tempo map follows the latest analysis") {
 }
 
 TEST_CASE("one length per song: every difficulty reads the latest analysis") {
-    // D69 item 2: the audio belongs to the song, so each analysis of any
-    // difficulty saves the one length (D70, open question 5).
+    // The length belongs to the song, so each analysis of any difficulty saves
+    // the one length (D75).
     RecordStore store(":memory:");
     const RecordKey a{"h", "a", CapQuery::at(4)};
     const RecordKey b{"h", "b", CapQuery::at(4)};
@@ -2280,8 +2281,8 @@ TEST_CASE("one length per song: every difficulty reads the latest analysis") {
 }
 
 TEST_CASE("a file from before AL loses its songlength table and its last-note lengths") {
-    // D69 replaces D58 item 5: the per-difficulty table goes, and a length
-    // saved from notes reads as not read until the song's audio is read.
+    // D69 replaced D58 item 5: the per-difficulty table goes, and a length
+    // saved from notes reads as not read until it is worked out again.
     const std::string path = testtemp::temp_path("song_length_old", ".db");
     std::remove(path.c_str());
     const RecordKey key{"h", "mode", CapQuery::at(4)};

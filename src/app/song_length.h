@@ -24,18 +24,19 @@
 
 namespace hydra::app {
 
-// A length the metadata states (D75 item 1): `raw_ms` when it counts, else
-// none. Missing, zero, negative and non-finite values do not count. Every
-// format's number comes through here: a .srb's field as it is, song.ini's and
-// a .sng's text through stated_length_ms_of_text.
+// A length the metadata states (D75 item 1): `raw_ms` when has_song_length
+// (app/preview_view.h) accepts it, else none. Every format's number comes
+// through here: a .srb's field as it is, song.ini's and a .sng's text through
+// stated_length_ms_of_text.
 std::optional<double> stated_length_ms(std::optional<double> raw_ms);
 
-// stated_length_ms of a metadata value written as text: empty or not a number
-// (core/strutil.h parse_finite_number) counts as not stated.
+// stated_length_ms of a metadata value written as text, read by
+// core/strutil.h parse_finite_number.
 std::optional<double> stated_length_ms_of_text(std::string_view text);
 
 // When the last note of `song` starts, in chart time; empty when it has no
-// notes. For the backup length (D75 item 2) `song` is the Expert drums chart
+// notes. It agrees with last_note_ms of the Preview's scene
+// (app/preview_view.h), which is built from a Song. For the backup length (D75 item 2) `song` is the Expert drums chart
 // parsed with 2x kick; chart_song_length_ms says how a caller gets one.
 std::optional<double> last_note_start_ms(const Song& song);
 

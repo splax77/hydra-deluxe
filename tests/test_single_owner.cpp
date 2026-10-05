@@ -1418,10 +1418,7 @@ const std::vector<OwnerRule>& rules() {
           "const int64_t last_tick = scene.notes.back().tick;"},
          {"scene.song_length_ms = song_length_ms.value_or(0.0);", "const int64_t last_tick = last->tick;"},
          {{"src/app/preview_view.cpp", "return scene.notes.empty() ? nullptr : &scene.notes.back();",
-           "last_drawn_note, the owner"},
-          {"src/app/song_length.cpp", "return song.sequence.back().timecode.ms();",
-           "last_note_start_ms: a parsed chart's last note, the backup song length (D75 item 2), "
-           "for analysis, which builds no Preview scene"}}},
+           "last_drawn_note, the owner"}}},
         // Frames times 1000 over a sample rate, or ms times a rate over 1000,
         // written out instead of calling the frames helpers.
         {"How many ms do audio frames last, and how many frames do ms hold?",
@@ -3766,7 +3763,7 @@ const std::vector<OwnerRule>& rules() {
            "playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;",
            "PreviewTransport::load's playback range (D48), not a song length"}},
          {"src"}},
-        // ---- the stored length is the audio's, one per song (D69, task AL2) ----
+        // ---- the stored length is the song's one length (D69, task AL2; D75) ----
         // A songmeta length written anywhere but the one write an analysis and
         // the open-song backfill share, so no length skips its stamp.
         {"How long is this song? (the stored length)",
@@ -3776,7 +3773,7 @@ const std::vector<OwnerRule>& rules() {
          "",
          {},
          {},
-         "D69 item 2 (one audio length per song, saved with its stamp); phase 7 task AL2",
+         "D69 item 2 (one length per song, saved with its stamp); phase 7 task AL2",
          {"\"UPDATE songmeta SET length_ms = ? WHERE hyhash = ? AND length_ms IS NULL\");",
           "\"length_ms = COALESCE(excluded.length_ms, songmeta.length_ms)\");",
           "\"INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap, length_ms) \""},
