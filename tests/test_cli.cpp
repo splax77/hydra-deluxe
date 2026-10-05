@@ -428,11 +428,8 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
         store.add_song(one_sided, "One Sided", "Tester", "Nobody", ar.song);
         store.add_row(hydra::store::prepare_row(settings.record_key(one_sided), ar.record));
         settings.legacy_fills = true;
-        hydra::HydraRecord empty;  // a Ready record: no paths, so no score
-        empty.sp_cap = settings.sp_cap;
-        empty.ms_limit = settings.mslimit_value;
-        empty.legacy_fills = true;
-        store.add_record(settings.record_key(one_sided), empty);
+        // A Ready record under 1.0: no paths, so no score.
+        hydra::test::store_batch_result(store, settings.record_key(one_sided));
     }
     RunResult two = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
                                               (box.dir / "two.html").u8string(), "--no-open"});

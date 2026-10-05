@@ -53,17 +53,26 @@ inline store::RecordKey batch_result_key(const std::string& md5, int cap) {
     return settings.record_key(md5);
 }
 
-// Stores a finished result for chart `md5` the way a batch does, behind the
-// app's back: an empty current-version record at SP cap `cap`, under
-// batch_result_key. An empty current-version record reads back Ready.
-// Returns the key it stored under.
+// Stores a finished result the way a batch does, behind the app's back: an
+// empty current-version record under `key`. An empty current-version record
+// reads back Ready, with no paths and so no score. The record's SP cap and
+// fill rule are read from the key, so the two never disagree; this form is for
+// a test that files under its own chartmode or fill rule.
+inline void store_batch_result(store::RecordStore& store, const store::RecordKey& key) {
+    HydraRecord record;
+    record.sp_cap = key.cap.exact;
+    record.ms_limit = app::Settings{}.mslimit_value;
+    record.legacy_fills = key.lens.legacy_fills != 0;
+    store.add_record(key, record);
+}
+
+// The same empty record for chart `md5` at SP cap `cap`, under
+// batch_result_key (every other setting at its default). Returns the key it
+// stored under.
 inline store::RecordKey store_batch_result(store::RecordStore& store, const std::string& md5,
                                            int cap) {
-    HydraRecord record;
-    record.sp_cap = cap;
-    record.ms_limit = app::Settings{}.mslimit_value;
     const store::RecordKey key = batch_result_key(md5, cap);
-    store.add_record(key, record);
+    store_batch_result(store, key);
     return key;
 }
 
