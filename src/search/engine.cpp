@@ -1604,7 +1604,7 @@ void Engine::own_early_fill(const Variant& var, OutAct* next) {
     if (has_value(first_passed) || has_value(own)) {
         next->e_offset = recorded_e_offset(first_passed, own);
     } else if (var.skip_tail >= 0 || (int32_t)shared.size() != next->skip_end - next->skip_begin) {
-        // Under 2 bars at the fold, as its leader was (same meter): neither
+        // Under kSpActivationBars at the fold, as its leader was (same meter): neither
         // could have passed a fill yet, and both became ready later, at the
         // same phrase. The leader's offset is the variant's.
         throw std::logic_error("a variant under 2 bars at its fold passed a fill");
