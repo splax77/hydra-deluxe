@@ -9,6 +9,7 @@
 #include <exception>
 #include <optional>
 
+#include "app/config.h"          // Settings: the sp_cap setting's floor
 #include "app/display_format.h"  // clock_str
 #include "core/squeeze_rating.h"
 #include "core/replay.h"
@@ -72,12 +73,17 @@ void close_curve(SpMeterCurve& curve, double cursor_ms, double song_length_ms, d
     curve.segments.push_back({cursor_ms, std::max(cursor_ms, song_length_ms), bank, bank});
 }
 
+// The meter's ceiling for a cap: the cap, raised to the smallest the sp_cap
+// setting allows. That minimum is typed once, in the settings key table
+// (finding 139); both meters below ask here.
+int sp_meter_cap_of(int sp_cap) { return Settings::clamp(&Settings::sp_cap, sp_cap); }
+
 // The SP meter for a chart with no path: no record, so nothing spends the
 // bank. It fills one bar at each phrase's last note and pins at the cap
 // (CONTEXT.md, "SP meter gauge").
 SpMeterCurve build_unanalyzed_sp_meter_curve(const PreviewScene& scene, int sp_cap) {
     SpMeterCurve curve;
-    curve.cap = sp_cap < 1 ? 1 : sp_cap;
+    curve.cap = sp_meter_cap_of(sp_cap);
     if (scene.sp_phrases.empty()) return curve;
     const double cap = static_cast<double>(curve.cap);
     double bank = 0.0;
@@ -99,7 +105,7 @@ SpMeterCurve build_unanalyzed_sp_meter_curve(const PreviewScene& scene, int sp_c
 SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& timing,
                                   int sp_cap) {
     SpMeterCurve curve;
-    curve.cap = sp_cap < 1 ? 1 : sp_cap;
+    curve.cap = sp_meter_cap_of(sp_cap);
     if (scene.activations.empty() && scene.trailing_bank_ticks.empty()) return curve;
 
     double bank = 0.0;

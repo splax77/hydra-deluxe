@@ -55,9 +55,9 @@ struct QueryTerm {
 
 struct LibraryQuery {
     std::vector<QueryTerm> terms;         // every term must match
-    std::optional<int> stars;             // stars:N, N in 0..7
+    std::optional<int> stars;             // stars:N, N in 0..kMaxStars
     std::optional<double> squeeze_max_ms; // squeeze<=N (also squeeze<N treated as <=)
-    std::vector<std::string> errors;      // e.g. "stars: needs a number from 0 to 7"
+    std::vector<std::string> errors;      // one plain sentence per bad filter value
     bool empty() const;                   // no terms and no filters
 };
 
@@ -78,6 +78,11 @@ struct SearchableRow {
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
                               std::string_view charter, std::string_view folder);
 
+// Whether a term limited to `term_field` counts in `column`: true when either
+// is Any or the two are the same field. The one rule for both matching
+// (query_matches) and highlighting (match_spans).
+bool term_applies_to(QueryField term_field, QueryField column);
+
 // The best path's stored facts a filter can test; nullopt when not analyzed.
 // A row counts as analyzed when `stars` holds a value.
 struct RowFacts {
@@ -85,15 +90,15 @@ struct RowFacts {
     std::optional<double> hardest_ms;  // nullopt = no squeeze on the path
 };
 
-// True when every term matches its field (or any field) and every filter holds.
+// True when every term counts (see term_applies_to) and every filter holds.
 // A stars: or squeeze filter never matches a row with no facts.
 // A path with no squeeze passes any squeeze limit. Allocates nothing.
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts);
 
 // Where the query's terms appear in one displayed (unfolded, tag-stripped)
 // string, as byte ranges, for highlighting. Ranges are sorted and don't overlap.
-// Only terms for `field` or for any field count; QueryField::Any counts every
-// term. A match covers every byte of each character it touches, so "beyonce"
+// Only terms that term_applies_to says count for `field`. A match covers every
+// byte of each character it touches, so "beyonce"
 // in "Beyoncé" covers both bytes of "é". Touching ranges merge.
 struct MatchSpan { size_t begin = 0, end = 0; };
 std::vector<MatchSpan> match_spans(const LibraryQuery& q, QueryField field,

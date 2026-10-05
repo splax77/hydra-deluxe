@@ -30,9 +30,15 @@ using namespace hydra;
 
 namespace {
 
+// Whether check_invariants checks that every activation fill is positive. A
+// chart with a fill starting on its own last note has a 0-length activation,
+// so its case skips that one check.
+enum class FillCheck { Check, Skip };
+
 // The structural invariants the search depends on, checked on one parsed song.
-// Returns false (with a message naming `what`) on the first violation.
-void check_invariants(const Song& song, const std::string& what) {
+// Each failed invariant is one failed CHECK naming `what`.
+void check_invariants(const Song& song, const std::string& what,
+                      FillCheck fill_check = FillCheck::Check) {
     bool ticks_ok = true, codes_ok = true, fills_ok = true;
     int64_t prev = -1;
     for (const SongTimestamp& ts : song.sequence) {
@@ -50,7 +56,8 @@ void check_invariants(const Song& song, const std::string& what) {
     }
     CHECK_MESSAGE(ticks_ok, what << ": ticks not strictly increasing");
     CHECK_MESSAGE(codes_ok, what << ": chord code round-trip");
-    CHECK_MESSAGE(fills_ok, what << ": non-positive activation fill");
+    if (fill_check == FillCheck::Check)
+        CHECK_MESSAGE(fills_ok, what << ": non-positive activation fill");
 }
 
 }  // namespace
@@ -77,7 +84,7 @@ TEST_CASE("song parse holds its invariants at Hard too") {
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true, Difficulty::Hard);
         ++charts;
-        const bool is_mid = ends_with(path, ".mid");
+        const bool is_mid = chart_format_of(path) == ChartFormat::Mid;
         if (is_mid) ++mids;
         if (song.is_empty()) continue;
         ++nonempty;
@@ -141,7 +148,7 @@ TEST_CASE(".mid: each difficulty reads its own pitch base") {
     // than their Expert one — the pitch base is what selects the difficulty.
     int compared = 0, differed = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        if (!ends_with(path, ".mid")) continue;
+        if (chart_format_of(path) != ChartFormat::Mid) continue;
         Song expert = load_songpath_mid(path, true, true);
         Song hard = load_songpath_mid(path, true, true, Difficulty::Hard);
         if (hard.is_empty()) continue;
@@ -187,16 +194,39 @@ TEST_CASE(".chart: [Events] section markers become practice sections") {
     CHECK(plain.practice_sections.empty());
 }
 
-// In a .chart the `E soloend` event sits on the solo's last note, so that note
-// is in the solo. The parser runs solo end after the notes at its tick.
-TEST_CASE(".chart: the note on the solo end tick is in the solo") {
-    const std::vector<uint8_t> data = testchart::chart_bytes(
+namespace {
+
+// The .chart fixture with one solo whose `E soloend` sits on its third note.
+std::vector<uint8_t> solo_end_chart() {
+    return testchart::chart_bytes(
         testchart::section("ExpertDrums",
                            "  0 = E solo\n  0 = N 1 0\n"
                            "  192 = N 2 0\n"
                            "  384 = N 3 0\n  384 = E soloend\n"
                            "  576 = N 4 0\n"));
-    Song song = load_songbytes_chart(data, true, true);
+}
+
+// A .mid with one solo marker held from tick 0 to tick 960 (480 ticks a beat,
+// midi_util's division) over three notes: Red at 0, Yellow at 480 and Blue on
+// the marker's note-off tick.
+std::vector<uint8_t> solo_marker_mid() {
+    using namespace testmidi;
+    return smf(concat({
+        track_name("PART DRUMS"), set_tempo(),
+        note_on(103, 100), note_on(97, 100),   // tick 0: solo on, Red
+        after(480, note_on(98, 100)),          // tick 480: Yellow
+        after(480, note_on(103, 0)),           // tick 960: solo marker off
+        note_on(99, 100),                      // tick 960: Blue
+        end_of_track(),
+    }));
+}
+
+}  // namespace
+
+// In a .chart the `E soloend` event sits on the solo's last note, so that note
+// is in the solo. The parser runs solo end after the notes at its tick.
+TEST_CASE(".chart: the note on the solo end tick is in the solo") {
+    Song song = load_songbytes_chart(solo_end_chart(), true, true);
     REQUIRE(song.sequence.size() == 4);
     CHECK(song.sequence[2].flag_solo);
     CHECK_FALSE(song.sequence[3].flag_solo);
@@ -226,96 +256,70 @@ TEST_CASE(".chart: time signatures are kept as written") {
 // In a .mid the solo is a held marker note (103); its note-off tick is where
 // the marker stops covering, so a note on that tick is outside the solo.
 TEST_CASE(".mid: the note on the solo marker's note-off tick is outside the solo") {
-    using namespace testmidi;
-    // Delta 480 (one beat at 480 tpqn) as a two-byte variable-length number.
-    const std::vector<uint8_t> beat = {0x83, 0x60};
-    auto at_beat = [&](std::vector<uint8_t> ev) {  // replace the leading 0 delta
-        ev.erase(ev.begin());
-        std::vector<uint8_t> out = beat;
-        out.insert(out.end(), ev.begin(), ev.end());
-        return out;
-    };
-    const std::vector<uint8_t> track = concat({
-        track_name("PART DRUMS"), set_tempo(),
-        note_on(103, 100), note_on(97, 100),   // tick 0: solo on, Red
-        at_beat(note_on(98, 100)),             // tick 480: Yellow
-        at_beat(note_on(103, 0)),              // tick 960: solo marker off
-        note_on(99, 100),                      // tick 960: Blue
-        end_of_track(),
-    });
-    Song song = load_songbytes_mid(smf(track), true, true);
+    const Song song = load_songbytes_mid(solo_marker_mid(), true, true);
     REQUIRE(song.sequence.size() == 3);
     CHECK(song.sequence[0].flag_solo);
     CHECK(song.sequence[1].flag_solo);
     CHECK_FALSE(song.sequence[2].flag_solo);
 }
 
-namespace {
+TEST_CASE("song: solo_sections lists each run of solo chords once") {
+    // The two fixtures above: .chart chords 0 to 2 are in the solo, .mid
+    // chords 0 and 1.
+    const Song chart = load_songbytes_chart(solo_end_chart(), true, true);
+    REQUIRE(chart.solo_sections.size() == 1);
+    CHECK(chart.solo_sections[0].first == 0);
+    CHECK(chart.solo_sections[0].last == 2);
 
-void put_varlen(std::vector<uint8_t>& out, uint32_t v) {
-    uint8_t stack[5];
-    int n = 0;
-    do {
-        stack[n++] = static_cast<uint8_t>(v & 0x7F);
-        v >>= 7;
-    } while (v != 0);
-    while (n > 0) {
-        --n;
-        out.push_back(static_cast<uint8_t>(stack[n] | (n > 0 ? 0x80 : 0x00)));
-    }
+    const Song mid = load_songbytes_mid(solo_marker_mid(), true, true);
+    REQUIRE(mid.solo_sections.size() == 1);
+    CHECK(mid.solo_sections[0].first == 0);
+    CHECK(mid.solo_sections[0].last == 1);
+
+    // Two solos split by one plain chord: chords 0 and 1, then chord 3.
+    const Song two = load_songbytes_chart(
+        testchart::chart_bytes(testchart::section("ExpertDrums",
+                                                  "  0 = E solo\n  0 = N 1 0\n"
+                                                  "  192 = N 2 0\n  192 = E soloend\n"
+                                                  "  384 = N 3 0\n"
+                                                  "  576 = E solo\n  576 = N 4 0\n"
+                                                  "  576 = E soloend\n")),
+        true, true);
+    REQUIRE(two.sequence.size() == 4);
+    REQUIRE(two.solo_sections.size() == 2);
+    CHECK(two.solo_sections[0].first == 0);
+    CHECK(two.solo_sections[0].last == 1);
+    CHECK(two.solo_sections[1].first == 3);
+    CHECK(two.solo_sections[1].last == 3);
+
+    // No solo at all: no sections.
+    const Song plain = load_songbytes_chart(
+        testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 1 0\n  192 = N 2 0\n")),
+        true, true);
+    REQUIRE(plain.sequence.size() == 2);
+    CHECK(plain.solo_sections.empty());
 }
-
-void put_meta(std::vector<uint8_t>& out, uint32_t delta, uint8_t type,
-              const std::string& payload) {
-    put_varlen(out, delta);
-    out.push_back(0xFF);
-    out.push_back(type);
-    put_varlen(out, static_cast<uint32_t>(payload.size()));
-    out.insert(out.end(), payload.begin(), payload.end());
-}
-
-void put_bytes(std::vector<uint8_t>& out, std::initializer_list<int> bytes) {
-    for (int b : bytes) out.push_back(static_cast<uint8_t>(b));
-}
-
-void put_track(std::vector<uint8_t>& file, const std::vector<uint8_t>& events) {
-    const char* tag = "MTrk";
-    file.insert(file.end(), tag, tag + 4);
-    uint32_t len = static_cast<uint32_t>(events.size());
-    for (int shift = 24; shift >= 0; shift -= 8)
-        file.push_back(static_cast<uint8_t>((len >> shift) & 0xFF));
-    file.insert(file.end(), events.begin(), events.end());
-}
-
-}  // namespace
 
 TEST_CASE(".mid: EVENTS text metas become practice sections") {
-    std::vector<uint8_t> tempo_track;
-    put_meta(tempo_track, 0, 0x03, "tempo");
-    put_varlen(tempo_track, 0);  // set_tempo 500000 us/qn = 120 BPM
-    put_bytes(tempo_track, {0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20});
-    put_meta(tempo_track, 0, 0x2F, "");
+    using namespace testmidi;
+    const std::vector<uint8_t> tempo_track =
+        concat({track_name("tempo"), set_tempo(), end_of_track()});
+    const std::vector<uint8_t> events_track = concat({
+        track_name("EVENTS"),
+        text_event("[section Intro]"),
+        after(384, text_event("[prc_verse_1]")),
+        after(384, text_event("[crowd_realtime]")),
+        end_of_track(),
+    });
+    const std::vector<uint8_t> drums_track = concat({
+        track_name("PART DRUMS"),
+        note_on(96, 100),  // Expert kick
+        note_off(96),
+        end_of_track(),
+    });
 
-    std::vector<uint8_t> events_track;
-    put_meta(events_track, 0, 0x03, "EVENTS");
-    put_meta(events_track, 0, 0x01, "[section Intro]");
-    put_meta(events_track, 384, 0x01, "[prc_verse_1]");
-    put_meta(events_track, 384, 0x01, "[crowd_realtime]");
-    put_meta(events_track, 0, 0x2F, "");
-
-    std::vector<uint8_t> drums_track;
-    put_meta(drums_track, 0, 0x03, "PART DRUMS");
-    put_bytes(drums_track, {0x00, 0x90, 0x60, 0x64});  // note_on 96, Expert kick
-    put_bytes(drums_track, {0x00, 0x80, 0x60, 0x00});
-    put_meta(drums_track, 0, 0x2F, "");
-
-    std::vector<uint8_t> file;
-    put_bytes(file, {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 3, 0, 192});
-    put_track(file, tempo_track);
-    put_track(file, events_track);
-    put_track(file, drums_track);
-
-    Song song = load_songbytes_mid(file, true, true);
+    Song song = load_songbytes_mid(smf_tracks({tempo_track, events_track, drums_track}), true,
+                                   true);
     REQUIRE(song.sequence.size() == 1);
     REQUIRE(song.practice_sections.size() == 2);
     CHECK(song.practice_sections[0].tick == 0);
@@ -486,19 +490,20 @@ TEST_CASE("mid: Won't Get Fooled Again (O) has 36 ghost kicks") {
     CHECK(accent == 0);
 
     // Every chord code still round-trips, which is what the new ghost-kick
-    // codes have to prove. (The full check_invariants sweep is not used here:
-    // this chart has a fill that starts on its own last note, so its
-    // activation length is 0 — true before this change and unrelated to it.)
-    bool codes_ok = true, ticks_ok = true;
-    int64_t prev = -1;
-    for (const SongTimestamp& ts : song.sequence) {
-        if (ts.timecode.ticks() <= prev) ticks_ok = false;
-        prev = ts.timecode.ticks();
-        const std::string code = ts.chord.code();
-        if (code.empty() || Chord::from_code(code).code() != code) codes_ok = false;
-    }
-    CHECK(codes_ok);
-    CHECK(ticks_ok);
+    // codes have to prove. The fill check is skipped: this chart has a fill
+    // that starts on its own last note, so its activation length is 0 (true
+    // before the ghost-kick change and unrelated to it).
+    check_invariants(song, path, FillCheck::Skip);
+}
+
+TEST_CASE("mid: the marker pitch table is the one list the parser reads") {
+    // The marker pitches typed in the parser's switches before the table.
+    for (int pitch : {103, 109, 110, 111, 112, 116, 120})
+        CHECK_MESSAGE(is_midi_marker_pitch(pitch), pitch);
+    // Expert's 2x kick (95), kick (96) and Green (100), and the pitches on
+    // either side of the solo and fill markers.
+    for (int pitch : {95, 96, 100, 102, 104, 121})
+        CHECK_MESSAGE(!is_midi_marker_pitch(pitch), pitch);
 }
 
 TEST_CASE("chart_files: loose-folder notes names match in any case") {

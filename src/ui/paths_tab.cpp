@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "app/config.h"  // Settings::clamp, the Backend limit's range
 #include "app/path_view.h"
 #include "core/model.h"
 #include "imgui.h"
@@ -506,8 +507,8 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     begin_disabled_input(limit_off);
     ImGui::SetNextItemWidth(px(100.0f));
     if (ImGui::InputInt("##backendlimitvalue", &app.settings.backendlimit_value)) {
-        app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,
-                                                       static_cast<int>(kSqueezeWindowMs));
+        app.settings.backendlimit_value = app::Settings::clamp(&app::Settings::backendlimit_value,
+                                                               app.settings.backendlimit_value);
         app.commit_settings();
     }
     ImGui::SameLine();

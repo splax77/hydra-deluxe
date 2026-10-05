@@ -3,6 +3,7 @@
 // is filed under the settings it ran with -- changing SP cap mid-run used to
 // hide the result it had just made.
 
+#include "app/config.h"  // Settings::clamp, the one range each box asks
 #include "core/model.h"
 #include "imgui.h"
 #include "parse/song.h"    // display_title
@@ -84,7 +85,7 @@ void render_sp_cap(AppState& app, bool locked) {
     // (AppState::edit_settings, flushed by run_frame).
     int cap = app.settings.sp_cap;
     if (ImGui::InputInt("##spcap", &cap)) {
-        app.settings.sp_cap = std::max(1, cap);
+        app.settings.sp_cap = app::Settings::clamp(&app::Settings::sp_cap, cap);
         app.edit_settings();
     }
     ImGui::SameLine();
@@ -119,7 +120,8 @@ void render_score_range(AppState& app, bool locked) {
     ImGui::SetNextItemWidth(std::max(px(90), six_digits));
     begin_disabled_input(locked);
     if (ImGui::InputInt("##depthvalue", &app.settings.depth_value)) {
-        if (app.settings.depth_value < 0) app.settings.depth_value = 0;
+        app.settings.depth_value =
+            app::Settings::clamp(&app::Settings::depth_value, app.settings.depth_value);
         app.edit_settings();
     }
     ImGui::SameLine();
@@ -145,9 +147,8 @@ void render_path_limit(AppState& app, bool locked) {
     begin_disabled_input(off);
     ImGui::SetNextItemWidth(px(100));
     if (ImGui::InputInt("##mslimitvalue", &app.settings.mslimit_value)) {
-        // The ceiling is the engine's squeeze window either way (decision D41).
-        const int window = static_cast<int>(kSqueezeWindowMs);
-        app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -window, window);
+        app.settings.mslimit_value =
+            app::Settings::clamp(&app::Settings::mslimit_value, app.settings.mslimit_value);
         app.edit_settings();
     }
     ImGui::SameLine();

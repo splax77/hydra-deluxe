@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core/strutil.h"
+#include "parse/chart_files.h"
 #include "parse/midi.h"
 #include "corpus_util.h"
 #include "midi_util.h"
@@ -57,7 +58,7 @@ using testmidi::smf;
 TEST_CASE("midi: every corpus .mid reads with a sane structure") {
     size_t mids = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        if (!hydra::ends_with(path, ".mid")) continue;
+        if (hydra::chart_format_of(path) != hydra::ChartFormat::Mid) continue;
 
         hydra::MidiFile mid = hydra::MidiFile::from_file(path);
         ++mids;

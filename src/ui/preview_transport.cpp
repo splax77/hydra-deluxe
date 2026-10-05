@@ -20,7 +20,7 @@ void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead,
     length_ms_ = (std::max)(last_note_ms, audio_end.value_or(0.0));
     if (playhead_) {
         playhead_->pause();
-        playhead_->seek_ms(audio_offset_ms_);
+        playhead_->seek_ms(audio_ms_of_chart_ms(0.0, audio_offset_ms_));
         playhead_->set_gain(gain_);
     }
     clock_.pause();
@@ -40,7 +40,7 @@ void PreviewTransport::play() {
     {
         std::lock_guard<std::mutex> lock(mu_);
         if (playhead_) {
-            playhead_->seek_ms(clock_.now_ms() + audio_offset_ms_);
+            playhead_->seek_ms(audio_ms_of_chart_ms(clock_.now_ms(), audio_offset_ms_));
             playhead_->play();
         }
     }
@@ -65,7 +65,12 @@ void PreviewTransport::seek_ms(double ms) {
     if (length_ms_ > 0.0 && ms > length_ms_) ms = length_ms_;
     clock_.seek_ms(ms);
     std::lock_guard<std::mutex> lock(mu_);
-    if (playhead_) playhead_->seek_ms(ms + audio_offset_ms_);
+    if (!playhead_) return;
+    playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_));
+    // The clock is the master: while it plays, the audio plays too. The
+    // playhead pauses itself when its audio runs out, so a jump back from
+    // past that end would otherwise stay silent (finding 73).
+    if (clock_.playing()) playhead_->play();
 }
 
 bool PreviewTransport::playing() const { return clock_.playing(); }
@@ -89,8 +94,9 @@ double PreviewTransport::tick() {
 
 double PreviewTransport::now_ms() const { return clock_.now_ms(); }
 
+// Remembered as given; audio::Playhead::set_gain owns the floor at 0.
 void PreviewTransport::set_gain(float gain) {
-    gain_ = gain < 0.0f ? 0.0f : gain;
+    gain_ = gain;
     std::lock_guard<std::mutex> lock(mu_);
     if (playhead_) playhead_->set_gain(gain_);
 }

@@ -26,7 +26,25 @@ bool contains_tag(const uint8_t* data, std::size_t size, std::size_t limit,
     return false;
 }
 
+// ID3v2's fixed sizes (the ID3v2.4 structure document, section 3): the
+// header and the optional footer are 10 bytes each; header byte 5 holds the
+// flags, and flag 0x10 says a footer follows the tag.
+constexpr std::size_t kId3HeaderBytes = 10;
+constexpr std::size_t kId3FooterBytes = 10;
+constexpr uint8_t kId3FooterFlag = 0x10;
+
 }  // namespace
+
+std::size_t id3v2_tag_length(const uint8_t* data, std::size_t size) {
+    if (data == nullptr || size < kId3HeaderBytes || !has_tag(data, size, 0, "ID3")) return 0;
+    // The size is syncsafe: four bytes of seven bits each, high byte first.
+    const std::size_t body = (static_cast<std::size_t>(data[6] & 0x7F) << 21) |
+                             (static_cast<std::size_t>(data[7] & 0x7F) << 14) |
+                             (static_cast<std::size_t>(data[8] & 0x7F) << 7) |
+                             static_cast<std::size_t>(data[9] & 0x7F);
+    const std::size_t footer = (data[5] & kId3FooterFlag) ? kId3FooterBytes : 0;
+    return kId3HeaderBytes + body + footer;
+}
 
 AudioFormat sniff_format(const uint8_t* data, std::size_t size) {
     if (data == nullptr || size < 2) return AudioFormat::Unknown;
@@ -42,8 +60,19 @@ AudioFormat sniff_format(const uint8_t* data, std::size_t size) {
         return AudioFormat::Unknown;
     }
 
-    // MP3: an ID3v2 tag, or a raw frame sync (11 set bits: FF Ex/Fx).
-    if (has_tag(data, size, 0, "ID3")) return AudioFormat::Mp3;
+    // An ID3v2 tag: skip it, and any tag stacked after it, as dr_flac does,
+    // then classify what follows. "fLaC" is a FLAC stream someone tagged;
+    // anything else, a tag that runs past the bytes given included, is MP3.
+    if (has_tag(data, size, 0, "ID3")) {
+        std::size_t off = 0;
+        while (off < size) {
+            const std::size_t tag = id3v2_tag_length(data + off, size - off);
+            if (tag == 0) break;
+            off += tag;
+        }
+        return has_tag(data, size, off, "fLaC") ? AudioFormat::Flac : AudioFormat::Mp3;
+    }
+    // MP3: a raw frame sync (11 set bits: FF Ex/Fx).
     if (data[0] == 0xFF && (data[1] & 0xE0) == 0xE0) return AudioFormat::Mp3;
 
     return AudioFormat::Unknown;

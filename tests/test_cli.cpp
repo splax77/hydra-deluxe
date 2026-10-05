@@ -25,6 +25,7 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
+#include "parse/chart_files.h"
 #include "parse/song.h"
 #include "search/graph.h"
 #include "store/record_store.h"
@@ -94,7 +95,7 @@ std::string small_chart() {
         std::string best;
         uintmax_t best_size = UINTMAX_MAX;
         for (const std::string& p : corpus::chart_paths()) {
-            if (p.size() < 6 || p.compare(p.size() - 6, 6, ".chart") != 0) continue;
+            if (hydra::chart_format_of(p) != hydra::ChartFormat::Chart) continue;
             const uintmax_t size = fs::file_size(fs::u8path(p));
             if (size >= best_size) continue;
             const hydra::Song song = hydra::load_songpath(p, true, true);
