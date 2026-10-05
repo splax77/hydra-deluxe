@@ -12,6 +12,7 @@
 #include <optional>
 
 #include "core/backend_value.h"
+#include "core/timing.h"  // kSpActivationBars
 
 namespace hydra::app {
 
@@ -478,8 +479,8 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
     view.within_label = within_label(settings.search_depth_mode(), depth_value);
     const PathListView list = build_path_list(record);
     const int64_t best = record.paths.empty() ? 0 : record.best_path().totalscore();
-    // A 1-bar cap never fills the 2 bars an activation needs (D51 call 16).
-    const bool one_bar_cap = record.sp_cap && *record.sp_cap == 1;
+    // A cap below kSpActivationBars can never activate (D51 call 16).
+    const bool cap_never_activates = record.sp_cap && *record.sp_cap < kSpActivationBars;
 
     auto add = [&](const Path* p, PathButtonView::Group group) {
         PathButtonView b;
@@ -497,7 +498,7 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
             if (delta < 0) b.detail = group_thousands(-delta) + " below optimal";
             if (delta > 0) b.detail = group_thousands(delta) + " above optimal";
         }
-        if (one_bar_cap) b.detail = "A 1-bar cap can never activate Star Power.";
+        if (cap_never_activates) b.detail = "A 1-bar cap can never activate Star Power.";
         view.buttons.push_back(std::move(b));
     };
     for (const PathGroupView& g : list.groups)
