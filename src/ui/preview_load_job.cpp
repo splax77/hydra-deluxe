@@ -199,7 +199,7 @@ void PreviewLoadJob::run() {
         std::vector<std::unique_ptr<audio::StemReader>> readers = audio_branch.get();
         const bool chart_changed = changed_check.get();
         throw_if_cancelled();
-        // The chart sync rule: audio_ms = chart_ms + audio_offset_ms. A
+        // The chart sync rule is audio_ms_of_chart_ms. A
         // negative offset means the chart starts before the audio and the
         // playhead can't seek below 0, so it becomes silence in front of the
         // stems (rounded to whole frames) and the offset becomes 0.

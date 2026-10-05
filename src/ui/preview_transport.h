@@ -61,8 +61,8 @@ public:
 
     // Load a chart's audio (may be null/empty for a chart with no audio), the
     // chart's last note time, and where chart time 0 sits in the audio
-    // (audio_ms = chart_ms + audio_offset_ms, never negative; see
-    // PreviewLoadJob). length_ms() becomes the playback range: the later of
+    // (audio_ms_of_chart_ms; never negative, see PreviewLoadJob).
+    // length_ms() becomes the playback range: the later of
     // `last_note_ms` and the audio's end in chart time, so the audio's tail
     // after the last note stays playable (D48, Q25). It is where playback
     // stops, not where the scrubber ends (that is the last note, D50 item 4).
@@ -101,7 +101,7 @@ public:
 private:
     app::PreviewClock clock_;  // GUI thread only
     double length_ms_ = 0.0;
-    double audio_offset_ms_ = 0.0;  // audio_ms = chart_ms + this
+    double audio_offset_ms_ = 0.0;  // as audio_ms_of_chart_ms takes it
     float gain_ = 1.0f;
     mutable std::mutex mu_;  // guards playhead_ (device thread pulls, GUI controls)
     std::unique_ptr<audio::Playhead> playhead_;
