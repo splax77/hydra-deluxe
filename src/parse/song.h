@@ -68,6 +68,11 @@ struct DifficultyChartCodes {
 // parsers' old switches did.
 const DifficultyChartCodes& difficulty_chart_codes(Difficulty difficulty);
 
+// True for a .mid drum-track pitch the parser reads as a marker shared by
+// every difficulty rather than as a note. The one list is the marker table in
+// song.cpp (kMarkerPitches); the parser reads it, and this exports it.
+bool is_midi_marker_pitch(int pitch);
+
 // The difficulty whose name matches `name` in any case ("hard", "HARD" and
 // "Hard" all give Hard). nullopt for anything else. The settings INI and
 // hydra_replay's --difficulty both read names through this.
@@ -157,6 +162,13 @@ struct SongSection {
     std::string name;
 };
 
+// One solo section: first and last positions (both inclusive) into
+// Song::sequence. What makes a section: find_solo_sections in song.cpp.
+struct SoloSection {
+    size_t first = 0;
+    size_t last = 0;
+};
+
 // How a refused-timing message starts. check_timing_maps and apply_timesig
 // build their messages from these, and app/user_messages reads them through
 // is_timing_refusal, so the wording has one owner.
@@ -222,6 +234,11 @@ public:
     // Practice sections in tick order. A section marker can sit past the last
     // note, so these ticks are not bounded by the sequence.
     std::vector<SongSection> practice_sections;
+
+    // Solo sections in song order. Both parsers fill it once the sequence is
+    // finished; see find_solo_sections in song.cpp. Display and replay only;
+    // nothing stores it.
+    std::vector<SoloSection> solo_sections;
 
     // Snapshot the timing indexes from the current maps. Called once the tempo
     // track has been fully mapped and before any timecode is made. Timing

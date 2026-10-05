@@ -83,6 +83,12 @@ inline std::vector<uint8_t> note_on(uint8_t note, uint8_t velocity) {
     return {0x00, 0x90, note, velocity};
 }
 
+// A delta-0 note_off with an explicit status byte on channel 0: a real
+// note-off, not a zero-velocity note_on.
+inline std::vector<uint8_t> note_off(uint8_t note) {
+    return {0x00, 0x80, note, 0x00};
+}
+
 // End of track, delta 0.
 inline std::vector<uint8_t> end_of_track() {
     return {0x00, 0xFF, 0x2F, 0x00};

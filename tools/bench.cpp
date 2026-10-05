@@ -28,6 +28,7 @@
 #include "app/config.h"
 #include "app/rules_file.h"
 #include "core/model.h"
+#include "core/strutil.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -53,8 +54,9 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
     app::Settings gui;  // struct defaults are the GUI defaults
     gui.rules = rules;
     const app::AnalysisSettings settings = gui.to_analysis_settings();
-    std::printf("Settings: the GUI default (SP cap %d, score range %d, %dms limit).\n\n",
-                gui.sp_cap, gui.depth_value, gui.mslimit_value);
+    const app::SettingsText words = app::describe_settings(settings);
+    std::printf("Settings: the GUI default (SP cap %s, depth %s, timing cap %s).\n\n",
+                words.cap.c_str(), words.depth.c_str(), words.timing.c_str());
 
     store::RecordStore store(":memory:", core::RulesStamp::of(rules));
 
@@ -96,22 +98,15 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
 }
 
 // One library row as the JSON both --dump and --dump-db write, so a scan's dump
-// and a database's dump diff clean. A path under `rel` (when given) is written
-// relative to it, and every path is written with forward slashes, so dumps
+// and a database's dump diff clean. Paths are written as the scan snapshot
+// keys them (relative_slash_path under `rel`, which may be empty), so dumps
 // also compare across machines.
 static nlohmann::json row_json(const std::string& notespath, const std::string& rootfolder,
                                const std::string& md5, const std::string& title,
                                const std::string& artist, const std::string& charter,
                                const std::string& rel) {
-    auto relify = [&](std::string p) {
-        if (!rel.empty() && p.size() > rel.size() && p.compare(0, rel.size(), rel) == 0)
-            p = p.substr(rel.size() + 1);
-        for (char& c : p)
-            if (c == '\\') c = '/';
-        return p;
-    };
-    return {{"path", relify(notespath)},
-            {"folder", relify(rootfolder)},
+    return {{"path", relative_slash_path(notespath, rel)},
+            {"folder", relative_slash_path(rootfolder, rel)},
             {"md5", md5},
             {"title", title},
             {"artist", artist},
@@ -162,9 +157,7 @@ static void scan_mode(const std::string& folder, const std::string& dbpath,
     if (store) {
         std::vector<store::ChartLibraryEntry> entries;
         entries.reserve(items.size());
-        for (const app::ScanItem& it : items)
-            entries.push_back({it.md5, it.title, it.artist, it.charter, it.notespath,
-                               it.rootfolder, it.sig});
+        for (const app::ScanItem& it : items) entries.push_back(app::to_library_entry(it));
         t0 = clk::now();
         store->rebuild_chart_library(entries);
         std::printf("  library write : %7.2fs (%lld rows)\n", secs_since(t0),

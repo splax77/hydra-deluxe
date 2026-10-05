@@ -438,31 +438,40 @@ TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power")
 // "act:deact,..." string is that the file carries the squeeze-out offset and
 // a retyped string usually drops it -- and without the offset the squeezed
 // note is doubled as if Star Power were still running, so the score comes out
-// high. So what has to be pinned is that the offset survives the trip.
-TEST_CASE("a path JSON becomes windows with the squeeze-out offset intact") {
+// high. So what has to be pinned is that the squeezed-out chord survives the
+// trip. The stamped tick names that chord; the SqOut offset is read only for a
+// dump from before the tick existed (read_sqout in tools/replay_json.cpp).
+TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only for older dumps") {
     const json path = json::parse(R"({
       "index": 0,
       "activations": [
         {"act_tick": 480, "deact_tick": 3840, "sqinouts": []},
         {"act_tick": 7680, "deact_tick": 11520, "sqout_tick": 11532,
          "sqinouts": [{"kind": "SqIn",  "offset_ms": 12.5},
+                      {"kind": "SqOut", "offset_ms": 31.25}]},
+        {"act_tick": 7680, "deact_tick": 11520,
+         "sqinouts": [{"kind": "SqIn",  "offset_ms": 12.5},
                       {"kind": "SqOut", "offset_ms": 31.25}]}
       ]})");
 
     const std::vector<ReplayWindow> w = windows_from_json(path);
-    REQUIRE(w.size() == 2);
+    REQUIRE(w.size() == 3);
     CHECK(w[0].act_tick == 480);
     CHECK(w[0].deact_tick == 3840);
     CHECK_FALSE(w[0].sqout_offset_ms.has_value());
+    CHECK_FALSE(w[0].sqout_tick.has_value());
 
     CHECK(w[1].act_tick == 7680);
     CHECK(w[1].deact_tick == 11520);
-    REQUIRE(w[1].sqout_offset_ms.has_value());
-    // The SqIn sits in the same list and must not be mistaken for the SqOut.
-    CHECK(*w[1].sqout_offset_ms == doctest::Approx(31.25));
-    CHECK_FALSE(w[0].sqout_tick.has_value());
     REQUIRE(w[1].sqout_tick.has_value());
     CHECK(*w[1].sqout_tick == 11532);
+    CHECK_FALSE(w[1].sqout_offset_ms.has_value());
+
+    // An older dump with no tick: the offset is what names the chord. The
+    // SqIn sits in the same list and must not be mistaken for the SqOut.
+    CHECK_FALSE(w[2].sqout_tick.has_value());
+    REQUIRE(w[2].sqout_offset_ms.has_value());
+    CHECK(*w[2].sqout_offset_ms == doctest::Approx(31.25));
 
     // JSON that is not a path at all says so rather than scoring something.
     CHECK_THROWS(windows_from_json(json::object()));
@@ -498,8 +507,11 @@ TEST_CASE("windows read from a path JSON match the ones read from the record") {
             for (size_t i = 0; i < got.size(); ++i) {
                 CHECK(got[i].act_tick == want[i].act_tick);
                 CHECK(got[i].deact_tick == want[i].deact_tick);
-                CHECK(got[i].sqout_offset_ms == want[i].sqout_offset_ms);
                 CHECK(got[i].sqout_tick == want[i].sqout_tick);
+                // read_sqout (tools/replay_json.cpp) decides when the offset
+                // is read; today's records always stamp a tick.
+                if (!want[i].sqout_tick)
+                    CHECK(got[i].sqout_offset_ms == want[i].sqout_offset_ms);
             }
             ++checked;
         }

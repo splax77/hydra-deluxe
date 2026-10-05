@@ -62,23 +62,36 @@ HighwayCamera make_camera(const PreviewConfig& cfg, float aspect) {
     return cam;
 }
 
+TrackRect track_rect(const PreviewConfig& cfg, int width, int height) {
+    TrackRect r;
+    r.width = std::max(1, width);
+    r.height = std::max(1, height);
+    const int t =
+        std::min(r.height, static_cast<int>(std::lround(r.width * cfg.view.height_width_ratio)));
+    r.track_height = std::max(1, t);
+    r.top = r.height - r.track_height;
+    r.aspect = static_cast<float>(r.width) / static_cast<float>(r.track_height);
+    return r;
+}
+
 int track_height(const PreviewConfig& cfg, int width, int height) {
-    const int w = std::max(1, width);
-    const int h = std::max(1, height);
-    const int t = std::min(h, static_cast<int>(std::lround(w * cfg.view.height_width_ratio)));
-    return std::max(1, t);
+    return track_rect(cfg, width, height).track_height;
+}
+
+double far_time(const PreviewConfig& cfg, double now_s, double speed) {
+    return now_s + speed * cfg.track.secs_future;
 }
 
 double time_to_z(const PreviewConfig& cfg, double now_s, double t_s, double speed) {
-    const double far_time = now_s + speed * cfg.track.secs_future;
+    const double far_t = far_time(cfg, now_s, speed);
     return cfg.track.z_now +
-           (cfg.track.z_future - cfg.track.z_now) * ((t_s - now_s) / (far_time - now_s));
+           (cfg.track.z_future - cfg.track.z_now) * ((t_s - now_s) / (far_t - now_s));
 }
 
 double z_to_time(const PreviewConfig& cfg, double now_s, double z, double speed) {
-    const double far_time = now_s + speed * cfg.track.secs_future;
-    return now_s + (far_time - now_s) * ((z - cfg.track.z_now) /
-                                         (cfg.track.z_future - cfg.track.z_now));
+    const double far_t = far_time(cfg, now_s, speed);
+    return now_s + (far_t - now_s) * ((z - cfg.track.z_now) /
+                                      (cfg.track.z_future - cfg.track.z_now));
 }
 
 void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2) {
@@ -145,8 +158,6 @@ Material overlay_mat(TextureId base, TextureId overlay) {
     return m;
 }
 
-bool toggle_on(Toggle t) { return t != Toggle::Empty && t != Toggle::End; }
-
 // Gem sizes from Onyx's drawDrumPlay / drawGem (mtolly/onyx,
 // haskell/packages/onyx-lib-game/src/Onyx/Game/Graphics.hs, lines 660-668 at
 // commit 84d5e51). They are literals in Onyx's code, not keys in its
@@ -206,7 +217,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
                                              double now_s, double speed) {
     std::vector<DrawCommand> out;
     const PreviewConfig::Track& T = cfg.track;
-    const double far_t = now_s + speed * T.secs_future;
+    const double far_t = far_time(cfg, now_s, speed);
     const double near_t = z_to_time(cfg, now_s, T.z_past, speed);
     auto z_of = [&](double t) { return static_cast<float>(time_to_z(cfg, now_s, t, speed)); };
 
@@ -296,16 +307,10 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
             if (!s.on) continue;
             for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green}) strip(p, s.t1, s.t2, 1.0f);
         }
-        for (const ToggleSpan& s : state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::fill_lane)) {
-            if (!s.on) continue;
-            std::optional<Pad> pad;
-            for (const TrackInstant& inst : win)
-                if (inst.t >= s.t1 && inst.t <= s.t2 && inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }
-            if (!pad)
-                for (const TrackInstant& inst : win)
-                    if (inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }
-            if (pad) strip_tex(*pad, s.t1, s.t2, target_tex(*pad, true), 1.0f);
-        }
+        // Each lit stretch carries its own pad, so two taken fills that touch
+        // each light their own lane (D53 item 3).
+        for (const LaneSpan& s : state.make_lane_bounds(win, near_t, far_t))
+            strip_tex(s.pad, s.t1, s.t2, target_tex(s.pad, true), 1.0f);
     }
 
     // 5. Strike line (Onyx targets) and the glow after a hit, depth off.
@@ -337,7 +342,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     // 6. Gems, latest (farthest) first. A struck note (on or past the strike
     //    line) flashes white there and fades over secs_fade.
     for (auto it = win.rbegin(); it != win.rend(); ++it) {
-        const bool od = toggle_on(it->overdrive);
+        const bool od = toggle_on_after(it->overdrive);
         std::optional<float> fade;
         if (struck(it->t)) {
             const double age = now_s - it->t;

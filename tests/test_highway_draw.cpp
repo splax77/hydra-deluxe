@@ -9,6 +9,7 @@
 #include "app/preview_view.h"
 #include "render/highway_draw.h"
 #include "render/track_state.h"
+#include "preview_config_util.h"
 
 using namespace DirectX;
 using namespace hydra;
@@ -72,7 +73,7 @@ std::vector<const DrawCommand*> of_mesh(const std::vector<DrawCommand>& cmds, Me
 }  // namespace
 
 TEST_CASE("time_to_z: Onyx's linear time->depth map") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     CHECK(time_to_z(cfg, 10.0, 10.0, 1.0) == doctest::Approx(0.0));
     CHECK(time_to_z(cfg, 10.0, 11.35, 1.0) == doctest::Approx(-12.0));
     CHECK(time_to_z(cfg, 10.0, 10.0 - 0.225, 1.0) == doctest::Approx(2.0));
@@ -82,8 +83,15 @@ TEST_CASE("time_to_z: Onyx's linear time->depth map") {
     CHECK(time_to_z(cfg, 10.0, 12.7, 2.0) == doctest::Approx(-12.0));
 }
 
+TEST_CASE("far_time: now plus speed times secs_future") {
+    const PreviewConfig cfg = shipped_preview_config();  // secs_future 1.35
+    CHECK(far_time(cfg, 2.0, 1.0) == doctest::Approx(3.35));
+    CHECK(far_time(cfg, 2.0, 2.0) == doctest::Approx(4.7));
+    CHECK(z_to_time(cfg, 2.0, cfg.track.z_future, 1.0) == doctest::Approx(far_time(cfg, 2.0, 1.0)));
+}
+
 TEST_CASE("pad_x: the note area split into four lanes, left to right") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     float x1, x2;
     pad_x(cfg, Pad::Red, x1, x2);
     CHECK(x1 == doctest::Approx(-1.0f));
@@ -100,7 +108,7 @@ TEST_CASE("pad_x: the note area split into four lanes, left to right") {
 }
 
 TEST_CASE("make_camera: Onyx's tilted view and right-handed projection") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     HighwayCamera cam = make_camera(cfg, 1.0f);
     CHECK(cam.view_pos.y == doctest::Approx(1.4f));
     // World (0,-1,0) -> view (0, -0.907, -3.733): below centre, in front.
@@ -133,7 +141,7 @@ TEST_CASE("stretch_matrix and light_for") {
     CHECK(XMVectorGetY(v) == doctest::Approx(-0.75f));
     CHECK(XMVectorGetZ(v) == doctest::Approx(0.25f));
 
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     c.light = LightKind::GemOffset;
     LightConfig l = light_for(cfg, c);
     CHECK(l.position.x == doctest::Approx(-0.75f));
@@ -151,7 +159,7 @@ TEST_CASE("stretch_matrix and light_for") {
 }
 
 TEST_CASE("build_highway_draws: order and geometry for a frame") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene = timed_scene();
     scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Yellow, true),
                    note(1500.0, PreviewLane::Kick)};
@@ -264,7 +272,7 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
 }
 
 TEST_CASE("build_highway_draws: a Red gem just ahead fills Onyx's box") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(1001.0, PreviewLane::Red)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
@@ -283,7 +291,7 @@ TEST_CASE("build_highway_draws: a Red gem just ahead fills Onyx's box") {
 }
 
 TEST_CASE("build_highway_draws: ghost shrinks 70% and overlays; accent overlays") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(1100.0, PreviewLane::Blue, false, true),
                    note(1200.0, PreviewLane::Green, true, false, true)};
@@ -307,7 +315,7 @@ TEST_CASE("build_highway_draws: ghost shrinks 70% and overlays; accent overlays"
 TEST_CASE("build_highway_draws: a ghost kick keeps full width and overlays") {
     // Hydra departs from Onyx here: Onyx shrinks every ghost to 70%, but a
     // shrunken kick reads as a bar that stops short of the highway edge.
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(1100.0, PreviewLane::Kick, false, true)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
@@ -324,7 +332,7 @@ TEST_CASE("build_highway_draws: a ghost kick keeps full width and overlays") {
 }
 
 TEST_CASE("build_highway_draws: hit flash and target glow after a note passes") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(1000.0, PreviewLane::Green), note(1000.0, PreviewLane::Kick),
                    note(5000.0, PreviewLane::Red)};
@@ -372,7 +380,7 @@ TEST_CASE("build_highway_draws: a chord exactly on the playhead is lit") {
     // activation lands here. It counts as struck (struck_at), so the gem
     // flashes at full strength and the Green target glows at full strength
     // (D48, Q27).
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(1000.0, PreviewLane::Green), note(1000.0, PreviewLane::Kick),
                    note(5000.0, PreviewLane::Red)};
@@ -394,7 +402,7 @@ TEST_CASE("build_highway_draws: a chord exactly on the playhead is lit") {
 }
 
 TEST_CASE("build_highway_draws: energy gems inside an SP phrase, tinted floor in an active window") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene = timed_scene();
     scene.notes = {note(1100.0, PreviewLane::Red), note(1200.0, PreviewLane::Yellow, true),
                    note(1200.0, PreviewLane::Kick), note(1300.0, PreviewLane::Blue)};
@@ -429,7 +437,7 @@ TEST_CASE("build_highway_draws: energy gems inside an SP phrase, tinted floor in
 }
 
 TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit target") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene = timed_scene();
     scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Green)};
     scene.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Taken)};
@@ -460,8 +468,59 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
     CHECK(lit_green == 1);  // the activation lane, drawn once more on top
 }
 
+// D53 item 3: when two taken fills touch, each lights its own lane colour. The
+// scene is test_track_state.cpp's "make_lane_bounds: two touching taken fills
+// each light their own lane": fills on ticks 1000-2000 and 2000-3000, the
+// first activated on Green at its end tick 2000, the second on Yellow at 3000.
+// Hand check at now 2.0 s: the window runs from 1.775 s (z_past) to 3.35 s
+// (z_future), so the Green lane is lit from 1.775 s to 2.0005 s (the first
+// fill's end, kSpanEndTicks past its last note) and the Yellow lane from
+// 2.0005 s to 3.0005 s. No note sits near the strike line, so no target glows
+// and every
+// lit-target draw here is a lane strip.
+TEST_CASE("build_highway_draws: two touching taken fills light two lanes") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(0.0, PreviewLane::Red), note(4000.0, PreviewLane::Red)};
+    scene.fills = {fill(span(1000.0, 2000.0), PreviewFillState::Taken),
+                   fill(span(2000.0, 3000.0), PreviewFillState::Taken)};
+    PreviewActivation green;
+    green.tick = 2000;
+    green.ms = 2000.0;
+    green.has_lane = true;
+    green.lane = PreviewLane::Green;
+    PreviewActivation yellow = green;
+    yellow.tick = 3000;
+    yellow.ms = 3000.0;
+    yellow.lane = PreviewLane::Yellow;
+    scene.activations = {green, yellow};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+
+    const double now = 2.0;
+    const double near_t = z_to_time(cfg, now, cfg.track.z_past, 1.0);
+    const double far_t = z_to_time(cfg, now, cfg.track.z_future, 1.0);
+    std::vector<LaneSpan> stretches = st.make_lane_bounds(st.window(near_t, far_t), near_t, far_t);
+    REQUIRE(stretches.size() == 2);
+    CHECK(stretches[0].pad == Pad::Green);
+    CHECK(stretches[1].pad == Pad::Yellow);
+
+    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
+    std::vector<const DrawCommand*> lit;
+    for (const DrawCommand& c : cmds)
+        if (c.material.texture >= TextureId::TargetRedLight &&
+            c.material.texture <= TextureId::TargetGreenLight)
+            lit.push_back(&c);
+    REQUIRE(lit.size() == 2);
+    CHECK(lit[0]->material.texture == TextureId::TargetGreenLight);
+    CHECK(lit[1]->material.texture == TextureId::TargetYellowLight);
+    for (size_t i = 0; i < 2; ++i) {
+        CHECK(lit[i]->lo[2] == doctest::Approx(time_to_z(cfg, now, stretches[i].t1, 1.0)));
+        CHECK(lit[i]->hi[2] == doctest::Approx(time_to_z(cfg, now, stretches[i].t2, 1.0)));
+    }
+}
+
 TEST_CASE("build_highway_draws: an offered fill's strips are dimmed") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene = timed_scene();
     scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Green)};
     scene.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Offered)};
@@ -480,7 +539,7 @@ TEST_CASE("build_highway_draws: an offered fill's strips are dimmed") {
 }
 
 TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Green)};
     scene.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Hidden)};
@@ -494,7 +553,7 @@ TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
 }
 
 TEST_CASE("build_highway_draws: an empty window still draws floor, railings and targets") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(10000.0, PreviewLane::Red)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
@@ -512,7 +571,7 @@ TEST_CASE("texture_file names every texture") {
 }
 
 TEST_CASE("build_highway_draws: a chord one tick after a phrase ends draws plain") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});
     auto at_tick = [&](int64_t tick, PreviewLane lane) {
         PreviewNote n;
