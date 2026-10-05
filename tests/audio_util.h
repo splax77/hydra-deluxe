@@ -1,7 +1,7 @@
 // The audio test helpers the audio tests share: where a fixture under
-// testdata/audio lives, its bytes, a PCM16 WAV writer, a block reader and a
-// sample-difference measure for a MixSource, and a rough frequency check for
-// the 220 Hz sine fixtures. Audit finding 277: test_audio_decode.cpp,
+// testdata/audio lives, its bytes, a small ID3 tag, a PCM16 WAV writer, a block
+// reader and a sample-difference measure for a MixSource, and a rough frequency
+// check for the 220 Hz sine fixtures. Audit finding 277: test_audio_decode.cpp,
 // test_audio_mixer.cpp and test_stream_mix.cpp each kept their own copies
 // before.
 
@@ -35,6 +35,16 @@ inline std::string fixture_path(const std::string& name) {
 // The bytes of testdata/audio/<name>, for a stem held in memory.
 inline std::vector<uint8_t> read_fixture(const std::string& name) {
     return hydra::read_file_bytes(fixture_path(name));
+}
+
+// A small hand-built ID3v2.3 tag for the sniff and stem-reader tests: the
+// header with `flags` and a syncsafe size of 20, 20 bytes of padding, and a
+// footer when `flags` asks for one. Nothing reads the padding.
+inline std::vector<uint8_t> id3_tag(int flags) {
+    std::vector<uint8_t> t = {'I', 'D', '3', 3, 0, static_cast<uint8_t>(flags),
+                              0,   0,   0,   20};
+    t.resize(t.size() + 20 + ((flags & 0x10) ? 10 : 0), 0);
+    return t;
 }
 
 // A canonical 44-byte-header PCM16 WAV around `samples`, interleaved

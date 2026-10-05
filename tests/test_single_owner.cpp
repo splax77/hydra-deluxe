@@ -2240,6 +2240,21 @@ const std::vector<OwnerRule>& rules() {
           {"src/audio/ma_reader.cpp", "ma_uint8 header[4], reserv_buf[511];",
            "dr_mp3's own struct field, in the verbatim copy (kept byte for byte)"}},
          {"src/audio/ma_reader.cpp"}},
+        {"Which test helper builds a small ID3v2 tag?",
+         "id3_tag in tests/audio_util.h",
+         R"(\{\s*'I',\s*'D',\s*'3')",
+         "",
+         {},
+         {},
+         "phase 6 task J2-6 derive-once review, finding 1",
+         {"std::vector<uint8_t> t = bytes({'I', 'D', '3', 3, 0, flags, 0, 0, 0, 20});",
+          "std::vector<uint8_t> tagged = {'I', 'D', '3', 3, 0, 0, 0, 0, 0, 20};",
+          "CHECK(sniff_format(bytes({'I', 'D', '3', 3, 0, 0})) == AudioFormat::Mp3);"},
+         {"std::vector<uint8_t> tagged = id3_tag(0);"},
+         {{"tests/audio_util.h",
+           "std::vector<uint8_t> t = {'I', 'D', '3', 3, 0, static_cast<uint8_t>(flags),",
+           "id3_tag, the owner"}},
+         {"tests"}},
     };
     return r;
 }

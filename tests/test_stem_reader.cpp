@@ -34,6 +34,7 @@ using namespace hydra;
 using namespace hydra::audio;
 
 using testaudio::fixture_path;
+using testaudio::id3_tag;
 using testaudio::max_diff;
 using testaudio::read_fixture;
 
@@ -559,10 +560,7 @@ TEST_CASE("StemReader: a FLAC whose header says 0 frames is counted on open") {
 
 TEST_CASE("StemReader: a FLAC behind an ID3 tag decodes the same as the plain file") {
     const std::vector<uint8_t> plain = read_fixture("sine220.flac");
-    // An ID3v2.3 tag: "ID3", version 3, revision 0, no flags, a syncsafe size
-    // of 20, then 20 bytes of padding.
-    std::vector<uint8_t> tagged = {'I', 'D', '3', 3, 0, 0, 0, 0, 0, 20};
-    tagged.resize(tagged.size() + 20, 0);
+    std::vector<uint8_t> tagged = id3_tag(0);
     tagged.insert(tagged.end(), plain.begin(), plain.end());
 
     auto p = open_stem_reader(StemBytes{plain, nullptr});

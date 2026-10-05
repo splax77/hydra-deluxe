@@ -20,6 +20,7 @@ using namespace hydra;
 using namespace hydra::audio;
 using testaudio::estimate_freq_hz;
 using testaudio::fixture_path;
+using testaudio::id3_tag;
 using testaudio::read_fixture;
 
 namespace {
@@ -47,7 +48,9 @@ TEST_CASE("sniff_format classifies audio containers by their magic bytes") {
     CHECK(sniff_format(bytes({'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V',
                               'E'})) == AudioFormat::Wav);
     CHECK(sniff_format(bytes({'f', 'L', 'a', 'C'})) == AudioFormat::Flac);
-    CHECK(sniff_format(bytes({'I', 'D', '3', 3, 0, 0})) == AudioFormat::Mp3);
+    std::vector<uint8_t> cut_tag = id3_tag(0);
+    cut_tag.resize(6);  // an ID3 header cut short
+    CHECK(sniff_format(cut_tag) == AudioFormat::Mp3);
     CHECK(sniff_format(bytes({0xFF, 0xFB, 0x90, 0x00})) ==
           AudioFormat::Mp3);  // raw MP3 frame sync
 
@@ -62,19 +65,6 @@ TEST_CASE("sniff_format classifies audio containers by their magic bytes") {
     CHECK(sniff_format(bytes({0x89, 'P', 'N', 'G'})) == AudioFormat::Unknown);
 }
 
-namespace {
-
-// A hand-built ID3v2.3 tag: "ID3", version 3, revision 0, `flags`, a syncsafe
-// size of 20, then 20 zero bytes, plus 10 more when the footer flag (0x10) is
-// set. The bytes after the header are padding; nothing reads them.
-std::vector<uint8_t> id3_tag(int flags) {
-    std::vector<uint8_t> t = bytes({'I', 'D', '3', 3, 0, flags, 0, 0, 0, 20});
-    t.resize(t.size() + 20 + ((flags & 0x10) ? 10 : 0), 0);
-    return t;
-}
-
-}  // namespace
-
 TEST_CASE("sniff_format: a FLAC behind an ID3 tag is Flac, a tagged MP3 stays Mp3") {
     using testmidi::concat;
     const std::vector<uint8_t> flac = read_fixture("sine220.flac");
@@ -87,7 +77,6 @@ TEST_CASE("sniff_format: a FLAC behind an ID3 tag is Flac, a tagged MP3 stays Mp
     CHECK(sniff_format(concat({tag, tag, flac})) == AudioFormat::Flac);
     CHECK(sniff_format(concat({tag, mp3})) == AudioFormat::Mp3);
     CHECK(sniff_format(tag) == AudioFormat::Mp3);
-    CHECK(sniff_format(bytes({'I', 'D', '3', 3, 0, 0})) == AudioFormat::Mp3);
 }
 
 TEST_CASE("audio_sniff: the ID3v2 tag length counts the header, the size and the footer") {
