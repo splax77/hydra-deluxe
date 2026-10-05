@@ -430,6 +430,14 @@ int Song::sp_phrase_count() const {
     return n;
 }
 
+// ---- Song::note_count -----------------------------------------------------
+
+int Song::note_count() const {
+    int n = 0;
+    for (const SongTimestamp& ts : sequence) n += ts.chord.count();
+    return n;
+}
+
 // ---- Song::check_activations -------------------------------------------
 
 void Song::check_activations(const core::Rules& rules) {
