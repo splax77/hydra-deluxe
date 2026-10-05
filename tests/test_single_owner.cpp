@@ -1011,13 +1011,15 @@ const std::vector<OwnerRule>& rules() {
          R"(\bfill_rule_for\()",
          {},
          {},
-         "M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R)",
+         "M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R); "
+         "widened to tests by audit finding 177 / phase 6 task J4-1 (D53, D54)",
          {"options.lens.legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
           "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;"},
          {"fill_rule_for(settings.legacy_fill_deadline), settings.rules);"},
          {{"src/search/graph.h",
            "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
-           "fill_rule_for, the owner"}}},
+           "fill_rule_for, the owner"}},
+         {"src", "tools", "tests"}},
         // A database's engine_mode stamp compared by hand: through the
         // store's accessor, or any line spelling a rule's stamp text, which
         // only engine_mode_stamp in search/graph.h may write.
@@ -3936,26 +3938,71 @@ const std::vector<OwnerRule>& rules() {
          {"key_(app::dynamics_store_key(entry_.md5, difficulty_, pro_)) {}"},
          {},
          {"src", "tools", "tests"}},
+        // A struct default, not a test input: the leading int keeps lines that
+        // set a depth on a built options struct out.
+        {"What is the default search depth?",
+         "kDefaultDepthValue in src/search/pather.h",
+         R"(\bint\s+(depth_value|kDefaultDepthValue)\s*=\s*4\s*;)",
+         "",
+         {},
+         {},
+         "audit finding 181; phase 6 task J4-1 (D53, D54)",
+         {"int depth_value = 4;"},
+         {"int depth_value = kDefaultDepthValue;", "cfg.depth_value = 4;"},
+         {{"src/search/pather.h", "constexpr int kDefaultDepthValue = 4;",
+           "kDefaultDepthValue, the owner"}}},
+        {"Which options make the all-0 search?",
+         "allzero_options in src/search/pather.cpp",
+         R"(\bno_timing\s*=\s*true)",
+         "",
+         {},
+         {},
+         "audit finding 284; phase 6 task J4-1 (D53, D54)",
+         {"options.no_timing = true;", "allzero.no_timing = true;"},
+         {"const std::vector<Path> z = run_search(graph, allzero_options());",
+          "no_timing_(options.no_timing),"},
+         {{"src/search/pather.cpp", "options.no_timing = true;", "allzero_options, the owner"}},
+         {"src", "tools", "tests"}},
+        // A key streamed field by field. The owner is in src, so no line in
+        // scope is an owner line.
+        {"Which settings change a stored analysis?",
+         "settings_key in src/search/pather.cpp",
+         R"(\bs\.legacy_fill_deadline\s*<<|\brules\.fingerprint\(\)\s*<<)",
+         "",
+         {},
+         {},
+         "audit finding 275; phase 6 task J4-1 (D53, D54)",
+         {"k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';"},
+         {"<< static_cast<int>(settings.difficulty) << '|' << hydra::settings_key(settings);",
+          "<< rules.fingerprint();"},
+         {},
+         {"tests", "tools"}},
+        // The owner appends payloads; it never compares one, so it lists no
+        // owner line.
+        {"Do two records store the same bytes? (tests)",
+         "record_bytes in tests/record_bytes.h",
+         R"(\bnodes\[\w+\]\.payload\s*==)",
+         "",
+         {},
+         {{"tests/test_path_codec.cpp",
+           "the multiplier-squeeze case checks the node payloads stay equal while the "
+           "structure grows, which one byte run cannot say"}},
+         "audit finding 301; phase 6 task J4-1 (D53, D54)",
+         {"same = a.nodes[i].payload == b.nodes[i].payload;"},
+         {"out.insert(out.end(), n.payload.begin(), n.payload.end());",
+          "CHECK_MESSAGE(record_bytes(tall) == record_bytes(built), \"a song with \""},
+         {},
+         {"tests"}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        // hydra_replay's NotAnalyzed line picks the depth word from DepthMode
-        // itself, the rule describe_settings owns. No phase 6 task owns
-        // tools/replay.cpp yet, so the main session names the fold.
-        {"How do the analysis settings read as text?", "tools/replay.cpp",
-         R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
-         "unassigned: the main session names the fold (the NotAnalyzed line takes "
-         "its depth word from describe_settings; audit finding 206, D54)"},
         {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
          "if (r.record.paths.empty()) continue;",
          "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
-        // The three test files J4-6 left for the tasks that fork from it.
-        {"How does a test build a per-process scratch path?", "tests/test_config.cpp",
-         "GetTempPathW(MAX_PATH, tmp);",
-         "task J4-1 (the config tests call testtemp::temp_path; audit finding 287)"},
+        // The test files J4-6 left for the tasks that fork from it.
         {"How does a test build a per-process scratch path?", "tests/test_store.cpp",
          "GetTempPathW(MAX_PATH, tmp);",
          "task J4-2 (the store tests call testtemp::temp_path; audit finding 287)"},
