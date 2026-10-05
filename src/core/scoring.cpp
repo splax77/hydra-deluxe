@@ -115,4 +115,20 @@ CategoryScores category_scores(const Chord& chord, int combo,
     return out;
 }
 
+int multsqueeze_gain(const Chord& chord, int combo) {
+    // The multiplier each position is paid at, from the payout itself.
+    std::vector<CategoryScores> per_note;
+    category_scores(chord, combo, &per_note);
+    const std::vector<ChordNote> best = chord.notes(true);
+    const size_t n = best.size();
+    int best_total = 0, worst_total = 0;
+    for (size_t i = 0; i < n; ++i) {
+        // basescore() is a note's full value at 1x, as the SqOut line above
+        // also reads it.
+        best_total += best[i].basescore() * per_note[i].multiplier;
+        worst_total += best[n - 1 - i].basescore() * per_note[i].multiplier;
+    }
+    return best_total - worst_total;
+}
+
 }  // namespace hydra

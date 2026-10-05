@@ -69,25 +69,25 @@ struct Args {
     std::string chart;
     std::string db;
     std::string out;
-    std::string cap = "4";
-    std::string ms = "10";
-    std::string depth_mode = "scores";
-    int depth = 4;
+    // The setting flags. Each is absent until typed: settings_from starts
+    // from app::Settings, the app's own defaults, and changes only these.
+    std::optional<std::string> cap;
+    std::optional<std::string> ms;
+    std::optional<std::string> depth_mode;
+    std::optional<int> depth;
+    std::optional<bool> prodrums;
+    std::optional<bool> bass2x;
+    std::optional<std::string> difficulty;
     std::string acts;
     std::string path;   // a dump/target JSON file to read a path out of
     int index = 0;      // which entry of that file's "paths" array
     std::string ticks;
-    bool prodrums = true;
-    bool bass2x = true;
-    std::string difficulty = "expert";
     bool pretty = false;
     bool no_analyze = false;
     bool legacy_fills = false;
     std::string rules_path;  // --rules; empty = hydra_rules.ini next to the exe
     core::Rules rules;       // loaded once in main, before any command runs
 };
-
-bool flag_bool(const std::string& v) { return v == "1" || v == "true" || v == "yes"; }
 
 void usage() {
     std::printf(
@@ -127,10 +127,9 @@ void usage() {
         "activation the engine could not make and \"realized_prefix\" how many of\n"
         "the leading ticks it did manage.\n"
         "--legacy-fills prices the chart under Clone Hero 1.0's fill deadline,\n"
-        "which is what a 1.0 run was played under. With it, dump never reads\n"
-        "the database and always analyzes fresh: this path predates stored 1.0\n"
-        "results (the app's \"1.0 fills\" setting) and was kept as it was. Its\n"
-        "\"source\" then reads \"analyzed-ch10\".\n"
+        "which is what a 1.0 run was played under, the same as the app's\n"
+        "\"1.0 fills\" setting. dump then reads the stored 1.0 row when the\n"
+        "database has one, and analyzes fresh when it does not, like any dump.\n"
         "Every command takes --rules <file>: the rule choices to price under\n"
         "(default: hydra_rules.ini next to the exe). A bad file exits with 2.\n"
         "JSON is printed compact by default; --pretty indents it.\n",
@@ -139,25 +138,48 @@ void usage() {
 
 // ---- shared settings -----------------------------------------------------
 
+// The app's settings with the typed flags applied. A flag not given keeps the
+// app's default, so this tool keys and prices a run exactly as the app does.
 app::Settings settings_from(const Args& a) {
-    app::Settings s;  // struct defaults are the GUI defaults
-    s.view_prodrums = a.prodrums;
-    s.view_bass2x = a.bass2x;
-    s.view_difficulty =
-        difficulty_name(difficulty_from_name(a.difficulty).value_or(Difficulty::Expert));
-
-    const int cap = std::atoi(a.cap.c_str());
-    if (cap < 1)
-        throw std::runtime_error("--cap takes a whole number of bars, 1 or more (4 is "
-                                 "Clone Hero's rule), not \"" + a.cap + "\"");
-    s.sp_cap = cap;
-
-    if (a.ms == "off") s.mslimit_enabled = false;
-    else { s.mslimit_enabled = true; s.mslimit_value = std::atoi(a.ms.c_str()); }
-
-    s.depth_mode = a.depth_mode == "points" ? 1 : 0;
-    s.depth_value = a.depth;
+    using app::Settings;
+    Settings s;  // the app's defaults
     s.rules = a.rules;
+    if (a.prodrums) s.view_prodrums = *a.prodrums;
+    if (a.bass2x) s.view_bass2x = *a.bass2x;
+    // Settings::difficulty() reads the word, an unknown one as Expert.
+    if (a.difficulty) s.view_difficulty = *a.difficulty;
+
+    if (a.cap) {
+        const int cap = std::atoi(a.cap->c_str());
+        // The INI reads a cap below the floor as Clone Hero's cap; a cap typed
+        // on the command line below it is a mistake, so it is refused. A cap
+        // below the floor clamps to the floor, which the message names.
+        const int in_range = Settings::clamp(&Settings::sp_cap, cap);
+        if (in_range != cap)
+            throw std::runtime_error("--cap takes a whole number of bars, " +
+                                     std::to_string(in_range) + " or more (" +
+                                     std::to_string(kCloneHeroSpCap) +
+                                     " is Clone Hero's rule), not \"" + *a.cap + "\"");
+        s.sp_cap = cap;
+    }
+
+    if (a.ms) {
+        if (*a.ms == "off") s.mslimit_enabled = false;
+        else { s.mslimit_enabled = true; s.mslimit_value = std::atoi(a.ms->c_str()); }
+    }
+
+    if (a.depth_mode) s.depth_mode = *a.depth_mode == "points" ? 1 : 0;
+    if (a.depth) s.depth_value = *a.depth;
+
+    // The 1.0 fill rule goes through Settings, so the search and the record
+    // key carry it together, as the app's "1.0 fills" setting does.
+    s.legacy_fills = a.legacy_fills;
+
+    // Every number lands in its range the way the app's own settings do
+    // (--depth -1 reads as 0, --ms 900 as 500). Settings::clamp owns the ranges.
+    for (int Settings::* field : {&Settings::sp_cap, &Settings::mslimit_value,
+                                  &Settings::depth_mode, &Settings::depth_value})
+        s.*field = Settings::clamp(field, s.*field);
     return s;
 }
 
@@ -306,13 +328,13 @@ std::vector<ReplayWindow> windows_from_file(const std::string& file, int index) 
     }
 }
 
-int cmd_score(const Args& a) {
+// `s` is settings_from(a), built once in main.
+int cmd_score(const Args& a, const app::Settings& s) {
     if (a.chart.empty()) { usage(); return 2; }
     if (!a.path.empty() && !a.acts.empty())
         throw std::runtime_error(
             "--path and --acts each name a path to score; give one or the "
             "other, not both");
-    const app::Settings s = settings_from(a);
 
     Song song = load_songpath(a.chart, s.view_prodrums, s.effective_bass2x(),
                               s.difficulty(), s.rules);
@@ -475,51 +497,27 @@ int emit_dump(const Args& a, const app::Settings& s, const std::string& hyhash,
               const std::string& source, const HydraRecord& rec,
               const SongTiming& timing) {
     const json paths = paths_json(rec.all_paths(), timing);
-    const std::string bestpath = rec.paths.empty() ? "" : rec.best_path().pathstring();
-    const int64_t best = rec.paths.empty() ? 0 : rec.best_path().totalscore();
 
     emit(json{{"hyhash", hyhash},
               {"chartmode", s.chartmode_key()},
               {"source", source},
               {"sp_cap", rec.sp_cap ? *rec.sp_cap : -1},
-              {"result", json{{"score", best}, {"bestpath", bestpath}}},
+              {"result", result_json(rec)},
               {"paths", paths}},
          a.out, a.pretty);
     return 0;
 }
 
-int cmd_dump(const Args& a) {
-    // --legacy-fills never reads the database, so it does not need one.
-    if (a.chart.empty() || (a.db.empty() && !a.legacy_fills)) { usage(); return 2; }
-    const app::Settings s = settings_from(a);
+// `s` is settings_from(a). With --legacy-fills it keys and analyzes under Clone
+// Hero 1.0's fill deadline (docs/adr/0010), so a stored 1.0 row is read like
+// any other. Nothing is written back: dump and target never change a database.
+int cmd_dump(const Args& a, const app::Settings& s) {
+    if (a.chart.empty() || a.db.empty()) { usage(); return 2; }
 
     const std::string hyhash = app::hash_chart_file(a.chart);
     if (hyhash.empty()) {
         std::fprintf(stderr, "cannot hash chart: %s\n", a.chart.c_str());
         return 1;
-    }
-
-    // Clone Hero 1.0 spawned fills 1.1 rejects, so a 1.0 run has to be priced
-    // under 1.0's fill deadline. The chart is always analyzed fresh here, and
-    // --no-analyze has nothing to switch off: this path predates stored 1.0
-    // results (the app's "1.0 fills" setting, docs/adr/0010) and was kept as
-    // it was. Nothing is written back — dump and target never touch a
-    // database.
-    if (a.legacy_fills) {
-        const Song song = load_songpath(a.chart, s.view_prodrums,
-                                        s.effective_bass2x(), s.difficulty(), s.rules);
-        if (song.is_empty()) {
-            std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
-            return 1;
-        }
-        std::fprintf(stderr,
-                     "--legacy-fills: analyzing under the Clone Hero 1.0 fill "
-                     "rule; stored rows are not read.\n");
-        SearchSettings cfg = s.to_analysis_settings();
-        cfg.legacy_fill_deadline = true;
-        const HydraRecord rec = analyze_chart(song, cfg);
-        const SongTiming& timing = song.timing();
-        return emit_dump(a, s, hyhash, "analyzed-ch10", rec, timing);
     }
 
     const std::string snapshot_path = snapshot_db(a.db);
@@ -549,11 +547,16 @@ int cmd_dump(const Args& a) {
     if (lookup.status == store::RecordStatus::NotAnalyzed ||
         lookup.status == store::RecordStatus::Stale) {
         if (lookup.status == store::RecordStatus::NotAnalyzed) {
+            // The settings the lookup was keyed by, read back from s.
+            const std::string ms =
+                s.mslimit_enabled ? std::to_string(s.mslimit_value) : std::string("off");
+            const char* depth_mode =
+                s.search_depth_mode() == DepthMode::Points ? "points" : "scores";
             std::fprintf(stderr,
-                         "NotAnalyzed: no record for %s under '%s', cap %s, "
+                         "NotAnalyzed: no record for %s under '%s', cap %d, "
                          "ms %s, depth %s/%d.%s\n",
-                         hyhash.c_str(), s.chartmode_key().c_str(), a.cap.c_str(),
-                         a.ms.c_str(), a.depth_mode.c_str(), a.depth,
+                         hyhash.c_str(), s.chartmode_key().c_str(), s.sp_cap,
+                         ms.c_str(), depth_mode, s.depth_value,
                          a.no_analyze ? "" : " Analyzing the chart fresh instead.");
         } else {
             // One line per reason. The follow-up ("Re-analyze" or "Analyzing
@@ -622,9 +625,9 @@ std::vector<int64_t> parse_ticks(const std::string& spec) {
     return out;
 }
 
-int cmd_target(const Args& a) {
+// `s` is settings_from(a), built once in main.
+int cmd_target(const Args& a, const app::Settings& s) {
     if (a.chart.empty()) { usage(); return 2; }
-    const app::Settings s = settings_from(a);
 
     const std::string hyhash = app::hash_chart_file(a.chart);
     const std::vector<int64_t> ticks = parse_ticks(a.ticks);
@@ -636,10 +639,9 @@ int cmd_target(const Args& a) {
         return 1;
     }
 
-    SearchSettings cfg = s.to_analysis_settings();
-    // Price the named path under Clone Hero 1.0's fill deadline when asked.
+    // With --legacy-fills, s prices under Clone Hero 1.0's fill deadline.
     // target only ever prints; nothing is stored.
-    cfg.legacy_fill_deadline = a.legacy_fills;
+    const SearchSettings cfg = s.to_analysis_settings();
     HydraRecord rec;
     rec.paths = search_target(song, cfg, ticks);
 
@@ -662,16 +664,12 @@ int cmd_target(const Args& a) {
         failed_tick = realized_prefix < ticks.size() ? ticks[realized_prefix] : -1;
     }
 
-    const std::string bestpath =
-        rec.paths.empty() ? "" : rec.best_path().pathstring();
-    const int64_t best = rec.paths.empty() ? 0 : rec.best_path().totalscore();
-
     emit(json{{"hyhash", hyhash},
               {"chartmode", s.chartmode_key()},
               {"source", "target"},
               {"sp_cap", cfg.sp_cap},
               {"ticks", ticks},
-              {"result", json{{"score", best}, {"bestpath", bestpath}}},
+              {"result", result_json(rec)},
               {"paths", paths_json(rec.all_paths(), song.timing())},
               {"realized", realized},
               {"failed_tick", failed_tick},
@@ -817,6 +815,13 @@ int main() {
             if (i + 1 >= argc) throw std::runtime_error("missing value for " + k);
             return args[++i];
         };
+        // An on/off flag reads its value the way the app's settings file does.
+        auto next_on_off = [&]() -> bool {
+            const std::string v = next();
+            const std::optional<bool> on = parse_bool(v);
+            if (!on) throw std::runtime_error(k + " takes 0 or 1, not \"" + v + "\"");
+            return *on;
+        };
         try {
             if (k == "--chart") a.chart = next();
             else if (k == "--db") a.db = next();
@@ -833,8 +838,8 @@ int main() {
             else if (k == "--index") a.index = parse_index(next());
             else if (k == "--ticks") a.ticks = next();
             else if (k == "--verbose") g_verbose = true;
-            else if (k == "--prodrums") a.prodrums = flag_bool(next());
-            else if (k == "--bass2x") a.bass2x = flag_bool(next());
+            else if (k == "--prodrums") a.prodrums = next_on_off();
+            else if (k == "--bass2x") a.bass2x = next_on_off();
             else if (k == "--difficulty") a.difficulty = next();
             else if (k == "--pretty") a.pretty = true;
             else if (k == "--no-analyze") a.no_analyze = true;
@@ -855,10 +860,20 @@ int main() {
         return 2;
     }
 
+    // A bad setting flag (a cap below the floor) is a bad argument: exit 2,
+    // like the others, before any command runs.
+    app::Settings s;
     try {
-        if (a.command == "score") return cmd_score(a);
-        if (a.command == "dump") return cmd_dump(a);
-        if (a.command == "target") return cmd_target(a);
+        s = settings_from(a);
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "%s\n", e.what());
+        return 2;
+    }
+
+    try {
+        if (a.command == "score") return cmd_score(a, s);
+        if (a.command == "dump") return cmd_dump(a, s);
+        if (a.command == "target") return cmd_target(a, s);
         if (a.command == "selfcheck") return cmd_selfcheck(a);
     } catch (const std::exception& e) {
         std::fprintf(stderr, "error: %s\n", e.what());

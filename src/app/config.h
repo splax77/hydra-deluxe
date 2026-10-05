@@ -61,7 +61,7 @@ struct Settings {
 
     int depth_value = 4;
     // 0 = scores, 1 = points. Stays an int: it is what the INI stores and what
-    // the details view's Combo binds to; to_analysis_settings maps it to
+    // the details view's Combo binds to; search_depth_mode() maps it to
     // search/engine.h's DepthMode.
     int depth_mode = 0;
 
@@ -119,10 +119,29 @@ struct Settings {
     static Settings load_file(const std::string& path);
     bool save_file(const std::string& path) const;
 
+    // A number setting pulled into its allowed range: the one its box
+    // enforces, kept in the key table in config.cpp. A value outside the range
+    // lands on the nearest edge (D51 Q14). Name the setting by its field:
+    // clamp(&Settings::mslimit_value, 900) is 500. Two keys land on their
+    // default instead, because they have no edge to land on: hit_window_ms at
+    // 0 or below (its range is "above 0"), and depth_mode at anything but 0
+    // or 1 (a switch, where anything but 1 means scores). load_file runs every
+    // number through here, with one more rule for sp_cap: in the file, 0 and
+    // junk (and 1.8.4's "auto") read as the default 4, not as the floor 1.
+    static int clamp(int Settings::* field, int value);
+
+    // depth_mode as the search's enum: 1 is points, anything else scores.
+    // Every reader of the mode as a search setting asks here.
+    DepthMode search_depth_mode() const;
+
+    // A Preview volume percent as a playback gain: the percent, clamped like
+    // preview_volume to 0..100, becomes 0.0..1.0.
+    static float volume_gain(int percent);
+
     // view_difficulty as the parsers' enum. The name matches in any case
     // ("hard" reads as Hard). An unrecognized string reads as
-    // Expert; load_file normalizes the stored string too, so a hand-edited INI
-    // can never put a junk word into chartmode_key().
+    // Expert. load_file normalizes the stored string too, and chartmode_key()
+    // names the difficulty through here, so a junk word never reaches a key.
     Difficulty difficulty() const;
 
     // Whether an analysis, the Preview and a record's key read 2x kicks: the

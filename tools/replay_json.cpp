@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/timing.h"  // SongTiming
+#include "store/record_store.h"  // summarize_record
 
 namespace hydra {
 
@@ -42,7 +43,12 @@ std::vector<ReplayWindow> windows_from_json(const nlohmann::json& path) {
                                      " deactivates before it activates");
 
         // -1 (or no key, from a dump written before v6) means "not stamped".
-        // The caller resolves a bare offset with resolve_sqout_note.
+        // A bare offset is kept here on purpose, and `score` in
+        // tools/replay.cpp resolves it with resolve_sqout_note. That is the
+        // one deliberate exception to the record reader's rule
+        // (windows_for_path drops a window it cannot name a squeeze-out chord
+        // for). Only an old or hand-edited JSON carries a bare offset, and the
+        // CLI prints which chord it picked, so the user sees the guess.
         if (act.contains("sqout_tick") && act["sqout_tick"].is_number() &&
             act["sqout_tick"].get<int64_t>() >= 0)
             w.sqout_tick = act["sqout_tick"].get<int64_t>();
@@ -125,6 +131,14 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
         });
     }
     return paths;
+}
+
+nlohmann::json result_json(const HydraRecord& rec) {
+    // summarize_record owns "what is this record's best score", absent when
+    // the record holds no paths; best_path_text owns its text.
+    const std::optional<int64_t> best = store::summarize_record(rec).score;
+    return nlohmann::json{{"score", best ? nlohmann::json(*best) : nlohmann::json(nullptr)},
+                          {"bestpath", store::best_path_text(rec)}};
 }
 
 }  // namespace hydra

@@ -55,7 +55,8 @@ class HitsInRegionTest(unittest.TestCase):
         pattern = b"B" * 8 + b"F" * 8
         data = b"\0" * 0x40 + pattern + b"\0" * 0x20 + pattern
         self.assertEqual(F.hits_in_region(0x5000, data, pattern),
-                         [0x5000 + 0x40 - 0x30, 0x5000 + 0x70 - 0x30])
+                         [0x5000 + 0x40 - C.OFF_BACK_WINDOW,
+                          0x5000 + 0x70 - C.OFF_BACK_WINDOW])
 
 
 class FindLiveEngineTest(unittest.TestCase):

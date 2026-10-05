@@ -5,8 +5,10 @@
 // Three tables carry an analysis (schema user_version 3):
 //
 //   * `results` — one row per run, keyed by the FULL settings it ran under:
-//     the chart, the chart mode, the SP cap, and the Lens (ms limit, score
-//     range and fill rule). Summary columns are denormalized onto it so a sortable library
+//     the chart, the chart mode, the SP cap, the Lens (ms limit, score
+//     range and fill rule) and the hydra_rules.ini fingerprint (schema 4), so
+//     a result made under other rules is kept beside this build's. Summary
+//     columns are denormalized onto it so a sortable library
 //     listing never has to inflate anything. The row holds a *structure* blob
 //     (the path tree's shape) rather than the paths themselves.
 //   * `paths` — every distinct path node, content-addressed by its hash and
@@ -75,6 +77,9 @@ struct PathSummary {
 
 PathSummary summarize_path(const Path& path);
 PathSummary summarize_record(const HydraRecord& record);
+// A record's best path as text: its pathstring, or empty when it has no
+// paths. The bestpath column and hydra_replay's result block both show it.
+std::string best_path_text(const HydraRecord& record);
 
 // Which cap's record a lookup wants: at(N), the record analyzed at exactly N
 // bars. (Auto, which asked for "the newest row above 4 bars", was removed
@@ -286,7 +291,7 @@ public:
     // ---- writing ----------------------------------------------------------
 
     // Registers a song so records can be stored against it. Registering it
-    // again updates its names and keeps its tempo map.
+    // again updates its names and rewrites its tempo map.
     void add_song(const std::string& hyhash, const std::string& ref_name,
                  const std::string& ref_artist, const std::string& ref_charter,
                  const Song& song);
@@ -391,7 +396,8 @@ public:
 
     // ---- maintenance --------------------------------------------------
 
-    // Recomputes the summary columns from stored paths. Returns rows touched.
+    // Recomputes the summary columns and bestpath from stored paths. Returns
+    // rows touched.
     int reindex();
 
     // The library listing: one row per chart and mode -- the same row a lookup
@@ -456,12 +462,14 @@ private:
     void exec(const char* sql);
     bool has_column(const char* table, const char* column);
     void create_result_tables();
-    // Schema 2 -> 3: a results table from before the fill rule was part of
-    // the key gets its legacy_fills column. The column joins the UNIQUE
-    // constraint, which SQLite cannot alter, so the table is rebuilt with
-    // every row and its result_id kept (path_refs point at them). Rows go
+    // Brings an older results table's key up to schema 4. Schema 3 added
+    // the fill rule (legacy_fills) to the key, and schema 4 the rules
+    // fingerprint (rules_fp, read out of each row's structure blob). Both
+    // sit in the UNIQUE constraint, which SQLite cannot alter, so the table
+    // is rebuilt once with every row, result_id and blob kept (path_refs
+    // point at the ids); nothing is analyzed again. A schema 2 file's rows go
     // under the 1.0 rule when hydra_batch stamped the file ch10, else 1.1.
-    void add_fill_rule_column();
+    void upgrade_results_key();
     // Fills the stars column of every Ready row that lacks it (rows written
     // before the column existed). Runs on every open; with nothing to fill
     // it reads only small columns. Returns rows filled.

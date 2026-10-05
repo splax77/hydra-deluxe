@@ -53,6 +53,13 @@ CategoryScores category_scores(const Chord& chord, int combo,
                                 std::vector<CategoryScores>* per_note = nullptr,
                                 core::SqOutRule sqout_rule = core::SqOutRule::FirstNote);
 
+// What hitting a chord in the right order gains over the wrong order, in
+// points, when the chord straddles a multiplier step (a multiplier squeeze).
+// Each note is paid at the multiplier category_scores pays its position. The
+// best order is Chord::notes(true), cheapest first, so the dearest notes land
+// past the step; the worst order is the reverse. MultSqueeze::points calls it.
+int multsqueeze_gain(const Chord& chord, int combo);
+
 }  // namespace hydra
 
 #endif  // HYDRA_CORE_SCORING_H

@@ -58,4 +58,24 @@ std::optional<double> parse_finite_number(std::string_view text) {
     return value;
 }
 
+std::string_view ini_line_text(std::string_view line) {
+    return trim_view(line.substr(0, line.find('#')));
+}
+
+std::optional<IniPair> split_ini_line(std::string_view line) {
+    const std::string_view text = ini_line_text(line);
+    const size_t eq = text.find('=');
+    if (eq == std::string_view::npos) return std::nullopt;
+    // `text` lies inside `line`, so the = sits at the same place in both.
+    const size_t eq_in_line = static_cast<size_t>(text.data() - line.data()) + eq;
+    return IniPair{trim(text.substr(0, eq)), trim(text.substr(eq + 1)),
+                   trim(line.substr(eq_in_line + 1))};
+}
+
+std::optional<bool> parse_bool(std::string_view text) {
+    if (text == "1") return true;
+    if (text == "0") return false;
+    return std::nullopt;
+}
+
 }  // namespace hydra
