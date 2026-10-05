@@ -463,7 +463,7 @@ std::optional<HardestTiming> Activation::hardest() const {
         if (!best || *e > best->ms) best = HardestTiming{TimingPart::EarlyFill, *e};
     }
     // The optional early fill of an E activation that skipped fills (D48 Q10).
-    if (!best && fill_needs_timing && is_e_critical() && !is_E0())
+    if (!best && fill_needs_timing && is_e_critical())
         best = HardestTiming{TimingPart::EarlyFill, *e_difficulty(/*verbose=*/true)};
     return best;
 }
