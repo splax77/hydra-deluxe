@@ -76,9 +76,6 @@ struct KnownCopy {
     std::string removed_by; // the fix that deletes it
 };
 
-// The plain-sentence row's question.
-constexpr const char* kWhichSentence = "Which plain sentence does this failure show?";
-
 const std::vector<OwnerRule>& rules() {
     static const std::vector<OwnerRule> r = {
         // Only length comparisons count. Sizing a buffer against MAX_PATH
@@ -4240,9 +4237,9 @@ const std::vector<OwnerRule>& rules() {
          {}},
         // The thrower names the kind; reading the exception's words back is a
         // second answer, anywhere in src, user_messages.cpp included.
-        {kWhichSentence,
+        {"Which plain sentence does this failure show?",
          "plain_error's switch on ErrorKind in src/app/user_messages.cpp",
-         R"re(\b(what|error)(\(\))?\s*[!=]=\s*"|\b(starts_with|ends_with|starts_with_any)\(\s*(\w+\.)?(what|error)(\(\))?\s*,|\b(what|error)(\(\))?\.(find|compare)\(|\b(what|error)(\(\))?\.substr\(.*\)\s*[!=]=)re",
+         R"re(\b(what|error)(\(\))?\)?\s*[!=]=\s*"|\b(starts_with|ends_with|starts_with_any)\(\s*(\w+\.)?(what|error)(\(\))?\s*,|\b(what|error)(\(\))?\)?\.(find|rfind|compare)\(|\b(what|error)(\(\))?\)?\.substr\(.*\)\s*[!=]=)re",
          "",
          {},
          {},
@@ -4250,8 +4247,9 @@ const std::vector<OwnerRule>& rules() {
          {"if (what == \"cancelled\") return kStopped;",
           "if (starts_with(what, \"cannot write \")) return kReportWrite;",
           "if (what.find(\"(error 12002)\") != std::string_view::npos) return kNetTimeout;",
-          "if (what.substr(0, prefix.size()) == prefix) return true;"},
-         {"error_ = e.what();", "if (job.error().empty()) return;"},
+          "if (what.substr(0, prefix.size()) == prefix) return true;",
+          "if (std::string(e.what()).rfind(\"x\", 0) == 0) return true;"},
+         {"error_ = e.what();", "if (job.error().empty()) return;", "std::string what = e.what();"},
          {},
          {"src"}},
     };
