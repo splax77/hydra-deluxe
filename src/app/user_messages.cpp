@@ -131,8 +131,10 @@ std::string plain_error_text(std::string_view what) {
                                "could not send the request", "no response from the leaderboard",
                                "could not read the response"}))
         return kNetUnreachable;
-    if (starts_with(what, "leaderboard returned HTTP "))
-        return http_status_sentence(what.substr(std::string_view("leaderboard returned HTTP ").size()));
+    if (starts_with(what, "leaderboard returned HTTP ")) {
+        std::string_view code = what.substr(std::string_view("leaderboard returned HTTP ").size());
+        return http_status_sentence(code);
+    }
     if (what == "the leaderboard sent a response Hydra couldn't read" ||
         what == "unexpected user-list format")
         return kNetBadReply;
