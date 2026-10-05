@@ -350,7 +350,7 @@ Path decode_path_node(const std::vector<uint8_t>& payload) {
     BinaryReader r(payload);
     // Only a current path format is readable. An older node is reachable
     // only through an older structure, and the store never decodes one of
-    // those (structure_is_current in record_store.cpp).
+    // those (rank_row in record_store.cpp).
     if (!kPathFormatStamp.is_current(r.u32()))
         throw SerializeError("unsupported path node format version");
 
