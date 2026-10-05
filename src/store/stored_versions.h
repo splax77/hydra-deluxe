@@ -106,12 +106,26 @@ inline constexpr StampRule<uint8_t, 1> kDynamicsBlobStamp{2, {2}};
 // 1 = the first stamp.
 inline constexpr StampRule<int, 1> kChartMetaStamp{1, {1}};
 
+// ---- A song's length (songmeta.length_ms) ----------------------------------
+
+// How a song's length is read from its audio (D69). BUMP IT (add 1) whenever
+// the length an unchanged song reads as changes: audio::song_length_ms and
+// the mix step it shares with the Preview (src/audio/song_audio.cpp), the
+// lengths open_stem_reader reports for each stem, and the chart's audio
+// offset (app::preview_audio_offset_ms and what feeds it). A length whose
+// stamp is not current reads as not read, and opening the song reads its
+// audio again. Stored per song, in songmeta.length_version.
+// 0 = lengths saved before the stamp existed, all worked out from the last
+// note. 1 = the first stamp: the audio's end in chart time.
+inline constexpr StampRule<int, 1> kSongLengthStamp{1, {1}};
+
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));
 static_assert(kPathFormatStamp.is_current(kPathFormatStamp.written));
 static_assert(kDynamicsCountStamp.is_current(kDynamicsCountStamp.written));
 static_assert(kDynamicsBlobStamp.is_current(kDynamicsBlobStamp.written));
 static_assert(kChartMetaStamp.is_current(kChartMetaStamp.written));
+static_assert(kSongLengthStamp.is_current(kSongLengthStamp.written));
 
 }  // namespace hydra::store
 

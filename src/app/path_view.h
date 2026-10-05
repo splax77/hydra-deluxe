@@ -124,8 +124,9 @@ std::string backend_table_id(int number, int w_timing, int w_chord, int w_points
 // (see rate_activation).
 // `backend_limit_ms` hides backend rows beyond +/- that many ms, squeezed-out
 // rows excepted; nullopt (the default) shows every stored row.
-// `song_length_ms` is the chart's length for the timeline; with it and a
-// `timing`, every row gets its song_fraction and the view its timeline_end.
+// `song_length_ms` is the song's audio length (RecordLookup::song_length_ms);
+// with it and a `timing`, every row gets its song_fraction and the view its
+// timeline_end. With none there is no timeline.
 // `pro_drums` is the Pro Drums setting the record was analyzed with; the
 // chord rows name their notes in its words (note_label).
 ActivationsView build_activations(const Path& path, const HydraRecord& record,

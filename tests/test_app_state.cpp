@@ -25,10 +25,13 @@
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/report_files.h"
+#include "audio/song_audio.h"
+#include "audio_chart_fixtures.h"
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "display_fixtures.h"  // store_batch_result
+#include "parse/song.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/app_state.h"
@@ -615,29 +618,42 @@ void stop_batch(AppState& app) {
     wait_batch_finished(app);
 }
 
-// Opens library chart 0 on a real corpus chart, its Ready record's song
-// registered with a tempo map but no length, the way a result saved before
-// Hydra stored lengths reads. Returns the chart file's path.
-std::string open_chart_with_no_length(AppState& app) {
+// Opens library chart 0 on the chart file at `path` (a real corpus chart, no
+// audio, when empty), its Ready record's song registered with a tempo map and
+// no length read, the way a result saved before Hydra read audio lengths
+// reads. Returns the chart file's path.
+std::string open_chart_with_no_length(AppState& app, std::string path = {}) {
     const hydra::app::AnalysisSettings as = app.settings.to_analysis_settings();
-    const std::string path = corpus::first_chart_with_notes(as.difficulty);
-    hydra::Song timing_only = corpus::song(path, as.prodrums, as.bass2x, as.difficulty, as.rules);
-    timing_only.sequence.clear();  // no notes, so add_song stores no length
+    if (path.empty()) path = corpus::first_chart_with_notes(as.difficulty);
+    const hydra::Song song =
+        hydra::load_songpath(path, as.prodrums, as.bass2x, as.difficulty, as.rules);
     ChartLibraryEntry entry = library_entry(0);
     entry.notespath = path;
-    app.store->add_song(entry.md5, entry.title, entry.artist, entry.charter, timing_only);
+    app.store->add_song(entry.md5, entry.title, entry.artist, entry.charter, song);
     app.select(entry);
     REQUIRE(app.viewed.status == RecordStatus::Ready);
     REQUIRE(app.viewed.timing.has_value());
+    REQUIRE_FALSE(app.viewed.song_length_read);
     REQUIRE_FALSE(app.viewed.song_length_ms.has_value());
     return path;
 }
 
+// Runs the open chart's length backfill to its end: starts it, waits for it
+// and lets tick() store what it read.
+void run_length_backfill(AppState& app) {
+    app.tick(0.0);  // starts the backfill
+    REQUIRE(app.length_job != nullptr);
+    for (int i = 0; i < 1200 && !app.length_job->finished(); ++i) Sleep(50);
+    REQUIRE(app.length_job->finished());
+    app.tick(0.0);  // stores what it read
+    CHECK(app.length_job == nullptr);
+}
+
 }  // namespace
 
-// The backfill writes the length under the difficulty the panel shows, not
-// as the chart's one length: another difficulty keeps its own (D51 call 9).
-TEST_CASE("update_song_length stores the length under the viewed difficulty (D51 Q9)") {
+// The audio belongs to the song, so one read gives every difficulty its
+// length (D69 item 2).
+TEST_CASE("the backfill reads a chart's audio once, and every difficulty shows it") {
     ScratchPaths paths("appstate_length");
     std::unique_ptr<AppState> app = app_on(paths);
     // The same chart's Ready record under another chart mode.
@@ -645,23 +661,40 @@ TEST_CASE("update_song_length stores the length under the viewed difficulty (D51
     other.view_prodrums = !other.view_prodrums;
     const RecordKey other_key = other.record_key(library_entry(0).md5);
     hydra::test::store_batch_result(*app->store, other_key);
-    const std::string path = open_chart_with_no_length(*app);
+    const std::string path =
+        open_chart_with_no_length(*app, audiochart::short_chart_with_long_audio("backfill"));
 
-    app->tick(0.0);  // starts the backfill
-    REQUIRE(app->length_job != nullptr);
-    for (int i = 0; i < 1200 && !app->length_job->finished(); ++i) Sleep(50);
-    REQUIRE(app->length_job->finished());
-    app->tick(0.0);  // stores what it read
-    CHECK(app->length_job == nullptr);
+    run_length_backfill(*app);
 
     const hydra::app::AnalysisSettings as = app->settings.to_analysis_settings();
-    const std::optional<double> length = hydra::store::song_length_ms(
-        corpus::song(path, as.prodrums, as.bass2x, as.difficulty, as.rules));
+    const std::optional<double> length = hydra::audio::song_length_ms(
+        path, hydra::load_songpath(path, as.prodrums, as.bass2x, as.difficulty, as.rules));
     REQUIRE(length.has_value());
     CHECK(app->viewed.song_length_ms == length);
     CHECK(app->store->get_record(app->settings.record_key(library_entry(0).md5)).song_length_ms ==
           length);
-    CHECK_FALSE(app->store->get_record(other_key).song_length_ms.has_value());
+    CHECK(app->store->get_record(other_key).song_length_ms == length);
+}
+
+// A chart with no audio has no length, and nothing falls back to its last
+// note (D69 item 3). The answer is stored, so it is not read again (D70).
+TEST_CASE("a chart with no audio is read once and shows no length") {
+    ScratchPaths paths("appstate_noaudio");
+    std::unique_ptr<AppState> app = app_on(paths);
+    open_chart_with_no_length(*app);
+
+    run_length_backfill(*app);
+    CHECK_FALSE(app->viewed.song_length_ms.has_value());
+    const hydra::store::RecordLookup stored =
+        app->store->get_record(app->settings.record_key(library_entry(0).md5));
+    CHECK(stored.song_length_read);
+    CHECK_FALSE(stored.song_length_ms.has_value());
+
+    // Selecting it again starts no job.
+    const ChartLibraryEntry open = *app->selected;
+    app->select(open);
+    app->tick(0.0);
+    CHECK(app->length_job == nullptr);
 }
 
 // The same chart can sit in two folders; only the copy that was clicked is

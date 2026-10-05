@@ -42,6 +42,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/rules_file.h"
+#include "audio/song_audio.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
@@ -225,6 +226,7 @@ int main() {
     std::vector<std::string> failures;
 
     hydra::app::BatchCallbacks callbacks;
+    callbacks.read_song_length = hydra::audio::song_length_ms;  // each song's length (D69)
     callbacks.on_progress = [&](const hydra::app::BatchProgress& p) { last = p; };
     callbacks.on_error = [&](const std::string& raw_title, const std::string& error) {
         ++done;

@@ -303,39 +303,38 @@ void AppState::tick(double now) {
 void AppState::update_song_length() {
     if (length_job && length_job->finished()) {
         const store::ChartLibraryEntry& chart = length_job->entry();
-        const std::optional<double> length = length_job->ok() ? length_job->length_ms()
-                                                               : std::nullopt;
-        if (length) {
-            // The difficulty the job read: its own songlength row (D51 call
-            // 9). Best effort: a failed write only means the chart is read
-            // again on its next open.
+        // A job that failed is no answer: nothing is written, and the chart
+        // is not tried again this session. One that found no audio is: the
+        // song is read, with no length.
+        if (length_job->ok()) {
+            const store::SongLength length = length_job->song_length();
+            // Best effort: a failed write only means the song is read again
+            // on its next open.
             try {
-                store->set_song_length(chart.md5, length_job_chartmode_, *length);
+                store->fill_song_length(chart.md5, length.ms);
             } catch (const std::exception&) {
             }
-            // Every lookup held for this song and difficulty shows it now:
-            // the viewed one and the ones parked under other settings.
+            // The audio belongs to the song, so every lookup held for it
+            // shows the answer: the viewed one and the ones parked under
+            // other settings. A lookup an analysis read since keeps its own.
             if (selected && selected->md5 == chart.md5) {
-                if (committed_chartmode_ == length_job_chartmode_ &&
-                    viewed.status == store::RecordStatus::Ready && !viewed.song_length_ms)
-                    viewed.song_length_ms = length;
-                for (auto& parked : parked_lookups_)
-                    if (parked.first.chartmode == length_job_chartmode_ &&
-                        !parked.second.song_length_ms)
-                        parked.second.song_length_ms = length;
+                auto show = [&length](store::RecordLookup& lookup) {
+                    if (lookup.status != store::RecordStatus::Ready || lookup.song_length_read)
+                        return;
+                    lookup.song_length_ms = length.ms;
+                    lookup.song_length_read = true;
+                };
+                show(viewed);
+                for (auto& parked : parked_lookups_) show(parked.second);
             }
         }
         length_job.reset();
     }
     if (length_job || !show_details || !selected) return;
-    if (viewed.status != store::RecordStatus::Ready || !viewed.timing || viewed.song_length_ms)
+    if (viewed.status != store::RecordStatus::Ready || !viewed.timing || viewed.song_length_read)
         return;
-    // The chart is read under these settings, and its length is filed under
-    // their chart mode.
-    std::pair<std::string, std::string> want{selected->md5, settings.chartmode_key()};
-    if (length_tried_ == want) return;
-    length_tried_ = want;
-    length_job_chartmode_ = std::move(want.second);
+    if (length_tried_ == selected->md5) return;
+    length_tried_ = selected->md5;
     length_job = std::make_unique<SongLengthJob>(*selected, settings.to_analysis_settings());
     length_job->start();
 }
@@ -585,7 +584,8 @@ std::string AppState::store_finished_analysis() {
                              store::prepare_row(analyze_job->key(), result.record),
                              app::dynamics_entry_from_analysis(song.md5, result.song,
                                                                as.bass2x, as.difficulty,
-                                                               as.prodrums));
+                                                               as.prodrums),
+                             analyze_job->song_length());
         reread_viewed_record();
         refresh_library_row(song.md5);  // its row's Best path cell and chip
         return "";

@@ -3418,14 +3418,16 @@ const std::vector<OwnerRule>& rules() {
          {},
          {}},
         {"When is the song's last note? (tests)",
-         "store::song_length_ms in src/store/record_store.cpp",
+         "last_drawn_note in src/app/preview_view.cpp, and last_note_ms for its onset",
          R"(sequence\.back\(\)\.timecode\.ms\(\))",
          "",
          {},
          {},
-         "audit finding 191, the store test's compare (phase 6 task J3-6)",
+         "audit finding 191, the store test's compare (phase 6 task J3-6); re-pointed by D69 "
+         "(phase 7 task AL2)",
          {"const double expected = song.sequence.back().timecode.ms();"},
-         {"const double expected = *song_length_ms(song);"},
+         {"const double expected = hydra::app::last_note_ms(scene);",
+          "scene.song_length_ms = audio_end_ms.value_or(0.0);"},
          {},
          {"tests"}},
         // ---- the J3 join's leftovers (task J3-9) ----
@@ -3735,6 +3737,53 @@ const std::vector<OwnerRule>& rules() {
            "playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;",
            "PreviewTransport::load's playback range (D48), not a song length"}},
          {"src"}},
+        // ---- the stored length is the audio's, one per song (D69, task AL2) ----
+        // A songmeta length written anywhere but the one write an analysis and
+        // the open-song backfill share, so no length skips its stamp.
+        {"How long is this song? (the stored length)",
+         "RecordStore::write_song_length in src/store/record_store.cpp, called by save_analysis "
+         "and fill_song_length",
+         R"(\bSET\s+length_ms\b|\blength_ms\s*=\s*(\?|excluded\b|COALESCE)|INTO\s+songmeta\s*\([^)]*\blength_ms\b)",
+         "",
+         {},
+         {},
+         "D69 item 2 (one audio length per song, saved with its stamp); phase 7 task AL2",
+         {"\"UPDATE songmeta SET length_ms = ? WHERE hyhash = ? AND length_ms IS NULL\");",
+          "\"length_ms = COALESCE(excluded.length_ms, songmeta.length_ms)\");",
+          "\"INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap, length_ms) \""},
+         {"\"SELECT tempomap, length_ms, length_version FROM songmeta WHERE hyhash=?\");",
+          "out.song_length_ms = songmeta->length_ms;"},
+         {{"src/store/record_store.cpp",
+           "? \"UPDATE songmeta SET length_ms = ?1, length_version = ?2\"",
+           "write_song_length, the owner"},
+          {"src/store/record_store.cpp",
+           ": \"UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3\");",
+           "write_song_length, the owner"}}},
+        // An audio length read, or its answer turned into a stored length,
+        // anywhere but the one helper an analysis reads through, so no third
+        // try/catch decides what a failed read leaves. The call must follow
+        // an opening, an operator, `return` or the line's start, so the
+        // definition and declaration of song_length_found are not flagged.
+        {"What does a failed audio length read leave in the store?",
+         "read_song_length_or_keep in src/app/analysis.cpp",
+         R"((^|[^\w\s]|\breturn)\s*song_length_found\s*\(|\baudio::song_length_ms\s*\()",
+         "",
+         {},
+         {},
+         "derive-once review of AL2, finding 1 (D69); phase 7 task AL2",
+         {"length_ = app::song_length_found(",
+          "song_length_found(callbacks.read_song_length(item.notespath, ar.song));",
+          "audio::song_length_ms(song_.notespath, result_->song));"},
+         {"store::SongLength song_length_found(std::optional<double> audio_length_ms) {",
+          "store::SongLength song_length_found(std::optional<double> audio_length_ms);",
+          "callbacks.read_song_length = audio::song_length_ms;  // each song's length (D69)",
+          "length_ = app::read_song_length_or_keep(audio::song_length_ms,"},
+         {{"src/app/analysis.cpp", "return song_length_found(reader(notespath, song));",
+           "read_song_length_or_keep, the owner"},
+          {"src/ui/song_length_job.cpp",
+           "length_ = app::song_length_found(audio::song_length_ms(entry_.notespath, song));",
+           "SongLengthJob::run: its read is the whole job; AppState::update_song_length "
+           "decides what a failed job leaves"}}},
         // Production's own temp folder for the shell (copy_to_short_temp in
         // src/app/report_files.cpp) answers a different question (audit
         // R7.12), so only tests/ is scanned. The temp_util case in
@@ -4192,11 +4241,6 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        // The record's length from notes, which D69 replaces with the audio's
-        // end. Nothing in the Preview calls it any more.
-        {"When is the song's last note?", "src/store/record_store.cpp",
-         "return song.sequence.back().timecode.ms();",
-         "task AL2 (store::song_length_ms is deleted; the stored length is the audio's, D69)"},
     };
     return k;
 }

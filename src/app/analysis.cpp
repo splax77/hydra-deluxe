@@ -18,6 +18,7 @@
 #include <unordered_set>
 
 #include "app/dynamics_breakdown.h"
+#include "app/preview_view.h"  // has_song_length
 #include "app/work_pool.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
@@ -558,6 +559,8 @@ struct WorkResult {
     std::optional<AnalysisResult> analysis;
     // Counted on the worker, so the consumer only writes.
     std::optional<store::DynamicsEntry> dynamics;
+    // The song's audio length, read on the worker; not read without a reader.
+    store::SongLength length;
     std::string error;
     // The search stopped at a cancel: neither a result nor a failure.
     bool cancelled = false;
@@ -587,6 +590,21 @@ BatchPlan plan_batch(const std::vector<ScanItem>& items,
             plan.todo.push_back(item);
     }
     return plan;
+}
+
+store::SongLength song_length_found(std::optional<double> audio_length_ms) {
+    if (audio_length_ms && !has_song_length(*audio_length_ms)) audio_length_ms.reset();
+    return store::SongLength::found(audio_length_ms);
+}
+
+store::SongLength read_song_length_or_keep(const SongLengthReader& reader,
+                                           const std::string& notespath, const Song& song) {
+    if (!reader) return {};
+    try {
+        return song_length_found(reader(notespath, song));
+    } catch (const std::exception&) {
+        return {};
+    }
 }
 
 void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
@@ -631,6 +649,8 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                 wr.dynamics = dynamics_entry_from_analysis(
                     item.md5, ar.song, settings.bass2x, settings.difficulty,
                     settings.prodrums);
+                wr.length =
+                    read_song_length_or_keep(callbacks.read_song_length, item.notespath, ar.song);
                 wr.analysis = std::move(ar);
             } catch (const AnalysisCancelled&) {
                 wr.cancelled = true;
@@ -650,7 +670,8 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                 if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.error);
             } else {
                 store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
-                                    wr.item.charter, wr.analysis->song, *wr.row, wr.dynamics);
+                                    wr.item.charter, wr.analysis->song, *wr.row, wr.dynamics,
+                                    wr.length);
                 ++progress.analyzed;
                 if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
             }
