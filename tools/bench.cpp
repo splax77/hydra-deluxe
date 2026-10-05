@@ -27,6 +27,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/rules_file.h"
+#include "app/user_messages.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
@@ -242,7 +243,7 @@ static void dump_db(const std::string& dbpath, const std::string& outpath,
     std::printf("dumped %zu rows from %s\n", rows.size(), dbpath.c_str());
 }
 
-int main() {
+static int bench_main() {
     // --rules <path> may sit anywhere; take it out so the positional mode
     // checks below see the same argv they always did.
     const std::vector<std::string> all = utf8_argv();
@@ -288,3 +289,5 @@ int main() {
     }
     return 0;
 }
+
+int main() { return app::run_tool(bench_main); }

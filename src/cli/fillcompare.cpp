@@ -34,7 +34,9 @@
 #include "search/graph.h"
 #include "store/record_store.h"
 
-int main() {
+namespace {
+
+int fillcompare_main() {
     SetConsoleOutputCP(CP_UTF8);
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
@@ -142,3 +144,7 @@ int main() {
     }
     return 0;
 }
+
+}  // namespace
+
+int main() { return hydra::app::run_tool(fillcompare_main); }

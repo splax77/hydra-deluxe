@@ -1,5 +1,6 @@
 #include "app/user_messages.h"
 
+#include <cstdio>
 #include <new>
 #include <optional>
 
@@ -115,6 +116,15 @@ std::string plain_error_detail(const std::exception& e) { return e.what(); }
 
 std::string plain_error_block(const std::exception& e) {
     return plain_error(e) + "\n\n" + plain_error_detail(e);
+}
+
+int run_tool(const std::function<int()>& body) {
+    try {
+        return body();
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "%s\n", plain_error_block(e).c_str());
+        return 1;
+    }
 }
 
 std::string stale_text(bool build, bool rules) {

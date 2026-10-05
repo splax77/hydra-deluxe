@@ -64,6 +64,20 @@ const int kChartCount = 60;
 
 using testtemp::temp_path;
 
+// What a failed database read shows (D73 item 1).
+const std::string kDatabaseReadSentence =
+    "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+    "running, then try again.";
+
+// A second connection drops tables under an open app, so the app's next read
+// of them fails.
+void drop_tables(const std::string& db_path, const char* sql) {
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(db_path.c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(db, sql, nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_close(db);
+}
+
 // Points app::ini_path()/db_path() at scratch files for one test, then puts
 // the process back the way it was. commit_settings writes the INI through
 // Settings::save(), so without this a test would overwrite the developer's
@@ -849,23 +863,67 @@ TEST_CASE("an AppState whose database can't open throws DatabaseOpen") {
 TEST_CASE("Analyze library on a database that fails shows the sentence and opens no confirm") {
     ScratchPaths paths("appstate_confirmfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    {  // A second connection drops the results table under the app.
-        sqlite3* db = nullptr;
-        REQUIRE(sqlite3_open(paths.db.c_str(), &db) == SQLITE_OK);
-        REQUIRE(sqlite3_exec(db, "DROP TABLE results", nullptr, nullptr, nullptr) == SQLITE_OK);
-        sqlite3_close(db);
-    }
-    // Any read on the app's own connection makes it reload the schema, as
-    // the app's next read would (see the batch case in test_library_jobs).
-    (void)app->store->engine_mode();
+    drop_tables(paths.db, "DROP TABLE results");
 
     app->open_batch_confirm();
-    CHECK(app->status_message ==
-          "Hydra couldn't save to its database (hydra.db). Check that the disk isn't full and "
-          "that no other copy of Hydra is running, then try again.");
+    CHECK(app->status_message == kDatabaseReadSentence);
     CHECK(app->status_is_problem);
     CHECK_FALSE(app->batch_confirm_pending);
 
     app->start_batch(false);
     CHECK(app->batch_job == nullptr);
+}
+
+// D73 item 3: a read that fails while Hydra runs shows the read sentence in
+// the status line, and the screens keep what they showed. Before, the throw
+// left the frame and Hydra closed with no message.
+TEST_CASE("a library reload whose reads fail keeps the library and says so") {
+    ScratchPaths paths("appstate_reloadfail");
+    std::unique_ptr<AppState> app = app_on(paths);
+    drop_tables(paths.db, "DROP TABLE charts; DROP TABLE results;");
+
+    app->reload_library();
+
+    CHECK(app->status_is_problem);
+    CHECK(app->status_message == kDatabaseReadSentence);
+    CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app->library_row_at(0).status == RecordStatus::Ready);
+}
+
+TEST_CASE("a re-read of the open chart that fails keeps its record and says so") {
+    ScratchPaths paths("appstate_rereadfail");
+    std::unique_ptr<AppState> app = app_on(paths);
+    drop_tables(paths.db, "DROP TABLE results;");
+
+    app->refresh_viewed_record();
+
+    CHECK(app->status_message == kDatabaseReadSentence);
+    CHECK(app->viewed.status == RecordStatus::Ready);
+}
+
+TEST_CASE("a settings change whose reads fail shows no other settings' record") {
+    ScratchPaths paths("appstate_settingsfail");
+    std::unique_ptr<AppState> app = app_on(paths);
+    drop_tables(paths.db, "DROP TABLE results;");
+
+    app->settings.sp_cap = 8;
+    app->commit_settings();
+
+    CHECK(app->status_message == kDatabaseReadSentence);
+    // The library keeps the rows it showed; the panel shows nothing, since
+    // its last answer was for the old cap.
+    CHECK(app->library_row_at(0).status == RecordStatus::Ready);
+    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
+}
+
+TEST_CASE("a Dynamics read that fails says so and counts the chart instead") {
+    ScratchPaths paths("appstate_dynreadfail");
+    std::unique_ptr<AppState> app = app_on(paths);
+    drop_tables(paths.db, "DROP TABLE dynamics;");
+
+    app->update_dynamics();
+
+    CHECK(app->status_message == kDatabaseReadSentence);
+    CHECK_FALSE(app->dynamics_result.has_value());
+    CHECK(app->dynamics_job != nullptr);  // the count starts, as on a store miss
 }

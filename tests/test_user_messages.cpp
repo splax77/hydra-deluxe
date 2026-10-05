@@ -179,6 +179,17 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
           "A saved result couldn't be read. Re-analyze this song to replace it.");
 }
 
+// D73 item 4: a tool's body that throws ends with exit code 1 (and its
+// plain_error_block on stderr); one that returns keeps its own code.
+TEST_CASE("user_messages: run_tool turns an escaping error into exit code 1") {
+    using hydra::app::run_tool;
+    CHECK(run_tool([] { return 0; }) == 0);
+    CHECK(run_tool([] { return 2; }) == 2);
+    CHECK(run_tool([]() -> int {
+              throw hydra::KindedError(hydra::ErrorKind::DatabaseRead, "x");
+          }) == 1);
+}
+
 // Only the kind picks a sentence. An untyped error that happens to carry a
 // thrower's words reads the fallback like any other.
 TEST_CASE("user_messages: an untyped error reads the fallback, whatever its words") {

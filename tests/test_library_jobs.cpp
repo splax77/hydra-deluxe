@@ -241,10 +241,6 @@ TEST_CASE("jobs: a batch whose database fails before it starts finishes as faile
                     SQLITE_OK);
             sqlite3_close(db);
         }
-        // Any read on the store's own connection makes it reload the schema,
-        // as the app's next read would. Without one it still holds the old
-        // schema, and analyzed_hashes' statement compiles against that.
-        (void)store.engine_mode();
         std::atomic<int> started{0};
         std::atomic<bool> release{true};
         BatchJob job(fake_charts(2), test_run(), store, /*redo=*/false);
@@ -259,9 +255,9 @@ TEST_CASE("jobs: a batch whose database fails before it starts finishes as faile
         REQUIRE(s.failures.size() == 1);
         REQUIRE(s.failure_details.size() == 1);
         CHECK(s.failures[0] ==
-              "Hydra couldn't save to its database (hydra.db). Check that the disk isn't full "
-              "and that no other copy of Hydra is running, then try again.");
-        CHECK(s.failure_details[0].rfind("prepare failed: no such table: results (", 0) == 0);
+              "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra "
+              "is running, then try again.");
+        CHECK(s.failure_details[0] == "reading the database failed: no such table: results");
     }
     std::error_code ec;
     for (const char* tail : {"", "-wal", "-shm"}) std::filesystem::remove(path + tail, ec);
