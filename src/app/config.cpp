@@ -18,10 +18,13 @@
 namespace hydra::app {
 
 std::string exe_dir() {
-    const std::string path = exe_path_utf8();
-    const size_t pos = path.find_last_of("\\/");
-    return pos == std::string::npos ? std::string(".") : path.substr(0, pos);
+    const std::string dir = parent_folder(exe_path_utf8());
+    // A module path with no folder (Windows never hands one over) keeps the
+    // files beside the exe relative to the working folder, as they always were.
+    return dir.empty() ? std::string(".") : dir;
 }
+
+std::string resource_dir() { return join_folder(exe_dir(), "resource"); }
 
 namespace {
 PathOverrides g_overrides;
@@ -32,12 +35,12 @@ const PathOverrides& path_overrides() { return g_overrides; }
 
 std::string db_path() {
     if (!g_overrides.db_path.empty()) return g_overrides.db_path;
-    return exe_dir() + "\\hydra.db";
+    return join_folder(exe_dir(), "hydra.db");
 }
 
 std::string ini_path() {
     if (!g_overrides.ini_path.empty()) return g_overrides.ini_path;
-    return exe_dir() + "\\hydra_settings.ini";
+    return join_folder(exe_dir(), "hydra_settings.ini");
 }
 
 std::unique_ptr<store::RecordStore> open_store(const std::string& db,
@@ -47,7 +50,7 @@ std::unique_ptr<store::RecordStore> open_store(const std::string& db,
 
 std::string asset_dir() {
     if (!g_overrides.asset_dir.empty()) return g_overrides.asset_dir;
-    return exe_dir() + "\\assets\\preview";
+    return join_folder(join_folder(exe_dir(), "assets"), "preview");
 }
 
 Settings Settings::load() { return load_file(ini_path()); }
@@ -283,6 +286,15 @@ store::RecordKey Settings::record_key(const std::string& hyhash) const {
 
 BatchRun Settings::batch_run() const {
     return BatchRun{chartmode_key(), lens(), to_analysis_settings()};
+}
+
+SettingsText describe_settings(const AnalysisSettings& settings) {
+    SettingsText text;
+    const char* unit = settings.depth_mode == DepthMode::Points ? "points" : "scores";
+    text.depth = std::string(unit) + " " + std::to_string(settings.depth_value);
+    text.cap = counted(settings.sp_cap, "bar", "bars");
+    text.timing = settings.ms_filter ? format_ms_whole(*settings.ms_filter) : std::string("none");
+    return text;
 }
 
 }  // namespace hydra::app

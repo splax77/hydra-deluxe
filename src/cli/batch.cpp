@@ -188,17 +188,10 @@ int main() {
 
     std::printf("Database   : %s\n", db.c_str());
     std::printf("Chart mode : %s\n", chartmode.c_str());
-    const char* depth_name = "scores";
-    switch (analysis.depth_mode) {
-        case hydra::DepthMode::Scores: depth_name = "scores"; break;
-        case hydra::DepthMode::Points: depth_name = "points"; break;
-    }
-    std::printf("Depth      : %s %d\n", depth_name, settings.depth_value);
-    std::printf("SP cap     : %s\n", hydra::counted(settings.sp_cap, "bar", "bars").c_str());
-    if (settings.mslimit_enabled)
-        std::printf("Timing cap : %d ms\n", settings.mslimit_value);
-    else
-        std::printf("Timing cap : none\n");
+    const hydra::app::SettingsText described = hydra::app::describe_settings(analysis);
+    std::printf("Depth      : %s\n", described.depth.c_str());
+    std::printf("SP cap     : %s\n", described.cap.c_str());
+    std::printf("Timing cap : %s\n", described.timing.c_str());
     std::printf("Squeeze win: %d ms\n", static_cast<int>(hydra::kSqueezeWindowMs));
     std::printf("Fill rule  : %s\n",
                 hydra::fill_rule_name(run_rule, hydra::FillRuleNameStyle::Long));

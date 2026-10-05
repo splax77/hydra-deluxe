@@ -16,6 +16,7 @@
 
 #include "app/config.h"
 #include "core/model.h"
+#include "core/version.h"
 #include "core/winstr.h"
 
 using hydra::app::AnalysisSettings;
@@ -484,4 +485,37 @@ TEST_CASE("to_analysis_settings maps depth_mode onto the search's enum") {
 
     s.depth_mode = 7;  // out of range: falls back to scores, never a bad enum
     CHECK(s.to_analysis_settings().depth_mode == hydra::DepthMode::Scores);
+}
+
+TEST_CASE("config: resource_dir is the resource folder beside the exe") {
+    const std::string dir = hydra::app::resource_dir();
+    CHECK(hydra::parent_folder(dir) == hydra::app::exe_dir());
+    const std::string tail = "resource";
+    REQUIRE(dir.size() > tail.size());
+    CHECK(dir.substr(dir.size() - tail.size()) == tail);
+}
+
+// The pieces are hydra_batch's header words; the expected text is the header
+// as it printed before describe_settings existed.
+TEST_CASE("config: describe_settings uses hydra_batch's header words") {
+    Settings s;
+    hydra::app::SettingsText text = hydra::app::describe_settings(s.to_analysis_settings());
+    CHECK(text.depth == "scores 4");
+    CHECK(text.cap == "4 bars");
+    CHECK(text.timing == "10 ms");
+
+    s.mslimit_enabled = false;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).timing == "none");
+
+    s.depth_mode = 1;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).depth == "points 4");
+
+    s.sp_cap = 1;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).cap == "1 bar");
+}
+
+// The one guard that CMakeLists.txt's two strings reach the exe unchanged.
+TEST_CASE("version: the window title and taskbar id are the build's") {
+    CHECK(std::wstring(hydra::kWindowTitleW) == L"Hydra Deluxe");
+    CHECK(std::wstring(hydra::kAppUserModelIDW) == L"Hydra.Hydra");
 }

@@ -47,7 +47,7 @@ void render_stars_panel(AppState& app) {
             ImGui::TextUnformatted(group_thousands(cutoff).c_str());
             if (has_solo) {
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted(group_thousands(cutoff + sc.solo_bonus).c_str());
+                ImGui::TextUnformatted(group_thousands(sc.with_solo[stars - 1]).c_str());
             }
         }
         ImGui::EndTable();

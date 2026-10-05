@@ -9,16 +9,27 @@ namespace {
 
 constexpr std::string_view kSpace = " \t\r\n\v\f";
 
+}  // namespace
+
 char lower_ascii(char c) {
     return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
 }
-
-}  // namespace
 
 std::string to_lower_ascii(std::string_view s) {
     std::string out(s);
     for (char& c : out) c = lower_ascii(c);
     return out;
+}
+
+bool is_ascii_space(char c) {
+    return kSpace.find(c) != std::string_view::npos;
+}
+
+bool equals_ci(std::string_view a, std::string_view b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i)
+        if (lower_ascii(a[i]) != lower_ascii(b[i])) return false;
+    return true;
 }
 
 std::string_view trim_view(std::string_view s) {
@@ -32,16 +43,29 @@ std::string trim(std::string_view s) {
     return std::string(trim_view(s));
 }
 
+bool starts_with(std::string_view s, std::string_view prefix) {
+    return s.size() >= prefix.size() && s.substr(0, prefix.size()) == prefix;
+}
+
+bool starts_with_ci(std::string_view s, std::string_view prefix) {
+    return s.size() >= prefix.size() && equals_ci(s.substr(0, prefix.size()), prefix);
+}
+
 bool ends_with(std::string_view s, std::string_view suffix) {
     return s.size() >= suffix.size() && s.substr(s.size() - suffix.size()) == suffix;
 }
 
 bool ends_with_ci(std::string_view s, std::string_view suffix) {
-    if (s.size() < suffix.size()) return false;
-    const std::string_view tail = s.substr(s.size() - suffix.size());
-    for (size_t i = 0; i < suffix.size(); ++i)
-        if (lower_ascii(tail[i]) != lower_ascii(suffix[i])) return false;
-    return true;
+    return s.size() >= suffix.size() && equals_ci(s.substr(s.size() - suffix.size()), suffix);
+}
+
+std::string relative_slash_path(std::string_view path, std::string_view root) {
+    if (!root.empty() && path.size() > root.size() && starts_with(path, root))
+        path = path.substr(root.size() + 1);
+    std::string out(path);
+    for (char& c : out)
+        if (c == '\\') c = '/';
+    return out;
 }
 
 std::optional<double> parse_finite_number(std::string_view text) {

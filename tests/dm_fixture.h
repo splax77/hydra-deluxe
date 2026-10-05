@@ -27,26 +27,16 @@ inline int64_t fill_store(hydra::store::RecordStore& store,
     using namespace hydra;
     app::AnalysisSettings settings;
     settings.depth_value = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        try {
-            app::AnalysisResult result = app::analyze_chart_file(path, settings);
-            if (result.song.is_empty() || result.record.paths.empty()) continue;
-            store.add_song(kHash, name, "Stored Artist", "Stored Charter", result.song);
-            store.add_record(
-                store::RecordKey{kHash, kMode, store::CapQuery::at(kCloneHeroSpCap)},
-                result.record);
-            // A what-if record at 8 bars for the same chart: the comparison
-            // must never pick it up (the leaderboard plays at 4 bars).
-            HydraRecord whatif = result.record;
-            whatif.sp_cap = 8;
-            store.add_record(store::RecordKey{kHash, kMode, store::CapQuery::at(8)}, whatif);
-            return result.record.best_path().totalscore();
-        } catch (const std::exception&) {
-            continue;
-        }
-    }
-    REQUIRE_MESSAGE(false, "no corpus chart analyzed");
-    return 0;
+    const app::AnalysisResult result = corpus::first_analyzed_with_paths(settings);
+    store.add_song(kHash, name, "Stored Artist", "Stored Charter", result.song);
+    store.add_record(store::RecordKey{kHash, kMode, store::CapQuery::at(kCloneHeroSpCap)},
+                     result.record);
+    // A what-if record at 8 bars for the same chart: the comparison must never
+    // pick it up (the leaderboard plays at 4 bars).
+    HydraRecord whatif = result.record;
+    whatif.sp_cap = 8;
+    store.add_record(store::RecordKey{kHash, kMode, store::CapQuery::at(8)}, whatif);
+    return result.record.best_path().totalscore();
 }
 
 // One leaderboard score, posted at `speed` percent (base speed by default).

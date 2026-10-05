@@ -106,10 +106,10 @@ const PAGE = {
   },
   cells(r) {
     const hasDelta = r.delta !== null && r.delta !== undefined;
-    const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'
-                   : (r.delta < 0 ? 'num neg' : 'num dim'));
+    const deltaCls = !hasDelta ? 'num dim' : (r.status === '1.1 higher' ? 'num pos'
+                   : (r.status === '1.0 higher' ? 'num neg' : 'num dim'));
     const deltaTxt = !hasDelta ? DASH
-                   : (r.delta > 0 ? '+' : '') + fmt(r.delta);
+                   : (r.status === '1.1 higher' ? '+' : '') + fmt(r.delta);
     return [
       ['song trunc', r.song],
       ['dim trunc artist', r.artist],
@@ -126,8 +126,8 @@ const PAGE = {
   },
   stats(rows) {
     const n = s => rows.filter(r => r.status === s).length;
-    const gains = rows.filter(r => r.delta > 0).reduce((a, r) => a + r.delta, 0);
-    const losses = rows.filter(r => r.delta < 0).reduce((a, r) => a - r.delta, 0);
+    const gains = rows.filter(r => r.status === '1.1 higher').reduce((a, r) => a + r.delta, 0);
+    const losses = rows.filter(r => r.status === '1.0 higher').reduce((a, r) => a - r.delta, 0);
     return [
       ['Charts', fmt(rows.length)],
       ['1.1 higher', fmt(n('1.1 higher'))],

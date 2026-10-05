@@ -67,11 +67,11 @@ ImTextureID load_png_texture(ID3D11Device* device, const std::string& path) {
 void load_icons(ID3D11Device* device) {
     // exe-relative, not cwd-relative: the app may be launched with any
     // working directory (e.g. a shortcut's Start-in), like db_path/ini_path.
-    const std::string dir = hydra::app::exe_dir() + "\\resource\\";
-    g_icon_record = load_png_texture(device, dir + "icon_record_32.png");
-    g_icon_star = load_png_texture(device, dir + "icon_star_32.png");
-    g_icon_pencil = load_png_texture(device, dir + "icon_pencil_32.png");
-    g_icon_hash = load_png_texture(device, dir + "icon_hash_32.png");
+    const std::string dir = hydra::app::resource_dir();
+    g_icon_record = load_png_texture(device, hydra::join_folder(dir, "icon_record_32.png"));
+    g_icon_star = load_png_texture(device, hydra::join_folder(dir, "icon_star_32.png"));
+    g_icon_pencil = load_png_texture(device, hydra::join_folder(dir, "icon_pencil_32.png"));
+    g_icon_hash = load_png_texture(device, hydra::join_folder(dir, "icon_hash_32.png"));
 }
 
 }  // namespace hydra::ui
