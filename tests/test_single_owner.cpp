@@ -2330,12 +2330,16 @@ TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
 }
 
 // E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is
-// Path::needs_timing's, so no code line under src/ or tools/ spells the
-// all-0 pass's old 0 ms limit. What the Score range's INI int means is
+// Path::needs_timing's, so no code line under src/ or tools/ asks it with a
+// zero test of its own, such as the all-0 pass's old 0 ms limit. What the
+// Score range's INI int means is
 // Settings::search_depth_mode's, the one line in src/app/config.cpp that
 // compares it. Comment lines are skipped like the row scan does.
 TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one owner (E3)") {
-    const std::regex zero_limit(R"(value_or\(0\.0\)\s*<=\s*0\.0|ms_filter\s*=\s*0\.0\b)");
+    const std::regex zero_limit(
+        R"(difficulty\(\)\.value_or\(0(\.0+)?\)\s*(<=|>|<|>=)\s*0(\.0+)?(?![\d.]))"
+        R"(|value_or\(0(\.0+)?\)\s*<=\s*0(\.0+)?(?![\d.]))"
+        R"(|ms_filter\s*=\s*(std::optional<double>\()?0(\.0+)?(?![\d.]))");
     const std::regex depth_int(R"(\bdepth_mode\s*==\s*1\b)");
     std::vector<std::string> zero_hits, depth_hits;
     sourcetree::for_each_source_file([&](const fs::path& file, const std::string& rel) {
