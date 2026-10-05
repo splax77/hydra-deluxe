@@ -703,17 +703,14 @@ TEST_CASE("a row analyzed under other rules reads Stale until the rules match ag
 TEST_CASE("a write under rules A keeps the rules-B row") {
     // D51 call 8 (finding 65): a result made under other rules is kept, and
     // reads Ready again once the store runs those rules.
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
+    const core::Rules other = test::other_rules();
     const RecordKey key{"h", "mode", CapQuery::at(8)};
     const std::string db = temp_db("keep_rules_b");
     std::remove(db.c_str());
     {
         RecordStore store(db);
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        HydraRecord foreign = at_cap(8);
-        foreign.rules_fingerprint = other.fingerprint();
-        store.add_row(prepare_row(key, foreign));
+        store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
     }
     const int64_t one_row_refs = scalar(db, "SELECT COUNT(*) FROM path_refs");
     REQUIRE(one_row_refs > 0);
@@ -740,17 +737,14 @@ TEST_CASE("a write under rules A keeps the rules-B row") {
 TEST_CASE("reindex leaves a row made under other rules untouched") {
     // D55 item 3: a result kept under other rules (D51 call 8) keeps its
     // cached score after a reindex under the default rules.
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
+    const core::Rules other = test::other_rules();
     const RecordKey key{"h", "mode", CapQuery::at(8)};
     const std::string db = temp_db("reindex_rules_b");
     std::remove(db.c_str());
     {
         RecordStore store(db);
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        HydraRecord foreign = at_cap(8);
-        foreign.rules_fingerprint = other.fingerprint();
-        store.add_row(prepare_row(key, foreign));
+        store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
     }
     const int64_t score = fixture().record.best_path().totalscore();
     REQUIRE(scalar(db, "SELECT score FROM results") == score);
@@ -1450,8 +1444,7 @@ TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
     // D51 addendum (ST1): schema 4 puts the rules fingerprint in the results
     // key. The table is rebuilt with every row, result_id and blob kept, so
     // nothing is analyzed again.
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
+    const core::Rules other = test::other_rules();
     const RecordKey at4{"h", "mode", CapQuery::at(4)};
     const RecordKey at8{"h", "mode", CapQuery::at(8)};
     const std::string path = temp_db("schema3");
@@ -1460,9 +1453,7 @@ TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
         RecordStore seed(path);
         seed.add_song("h", "Song", "Artist", "Charter", fixture().song);
         seed.add_record(at4, at_cap(4));
-        HydraRecord foreign = at_cap(8);
-        foreign.rules_fingerprint = other.fingerprint();
-        seed.add_row(prepare_row(at8, foreign));
+        seed.add_row(prepare_row(at8, test::other_rules_record(at_cap(8))));
     }
     // Back to the schema 3 table (no rules_fp, a key without it), with a copy
     // of each row's id and blob to compare against afterwards.
