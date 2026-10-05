@@ -146,7 +146,7 @@ TEST_CASE("song panel: nothing is locked while idle") {
 // that one answer. It used to ask batch_running() a second time; a batch that
 // ended on its worker in between sent it to the one-song message, which read
 // the analyze job's song through a null analyze_job (an access violation in
-// hydra_uitest's batch-strip-workers, about one run in forty under load).
+// hydra_uitest's batch-strip-workers under load).
 TEST_CASE("song panel: a running batch locks the settings as a batch, then unlocks") {
     ScratchPaths paths("panel_batchlock");
     auto app = app_with_library(paths, 5);
