@@ -1015,18 +1015,67 @@ const std::vector<OwnerRule>& rules() {
          {{"src/search/graph.h",
            "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
            "fill_rule_for, the owner"}}},
-        // A database's engine_mode stamp compared to a rule's spelling by
-        // hand, through the store's accessor or a stamp held in `mode`.
+        // A database's engine_mode stamp compared by hand: through the
+        // store's accessor, or any line spelling a rule's stamp text, which
+        // only engine_mode_stamp in search/graph.h may write.
         {"Which fill rule does a database's stamp name?",
          "fill_rule_from_stamp in src/search/graph.h",
-         R"(engine_mode\(\)\s*==|\*?\bmode\s*==\s*"ch1[01]")",
+         R"(engine_mode\(\)\s*==|"ch1[01]")",
          R"(\bfill_rule_from_stamp\()",
+         {"src/search/graph.h"},
          {},
-         {},
-         "M_D review round 2 findings 2 and 5 (phase 3 task FX2-R)",
+         "M_D review round 2 findings 2 and 5 (phase 3 task FX2-R); widened by the M7-2b "
+         "review, finding 4",
          {"if (store->engine_mode() == std::string(",
-          "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";"},
-         {"if (mode && hydra::fill_rule_from_stamp(*mode) != expected)"}},
+          "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
+          "legacy_fills = stamp == \"ch10\" ? \"1\" : \"0\";",
+          "if (m == \"ch11\") return;"},
+         {"if (mode && hydra::fill_rule_from_stamp(*mode) != expected)",
+          "legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? \"1\" : \"0\";"}},
+        // The meta key the stamp is stored under, typed outside the store's
+        // getter and setter.
+        {"Which meta key holds the fill-rule stamp?",
+         "RecordStore::engine_mode and set_engine_mode in src/store/record_store.cpp",
+         R"("engine_mode")",
+         "",
+         {},
+         {},
+         "audit R7.26 (M7-2b review, finding 1)",
+         {"if (const std::optional<std::string> mode = meta_get(\"engine_mode\"))"},
+         {"if (const std::optional<std::string> mode = engine_mode())"},
+         {{"src/store/record_store.cpp", "return meta_get(\"engine_mode\");",
+           "engine_mode, the owner"},
+          {"src/store/record_store.cpp", "meta_set(\"engine_mode\", mode);",
+           "set_engine_mode, the owner"}}},
+        // The charts table grouped by md5 to pick a copy, outside the one
+        // query that does it.
+        {"Which copy names a chart the scan found twice?",
+         "kNamingCopiesSql in src/store/record_store.cpp",
+         R"(MIN\(rowid\)|GROUP BY md5)",
+         "",
+         {},
+         {},
+         "D51 call 10 and D63 (task ST2)",
+         {"\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""},
+         {"kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"},
+         {{"src/store/record_store.cpp",
+           "\"(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts\"",
+           "kNamingCopiesSql, the owner"},
+          {"src/store/record_store.cpp", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
+        // A stored row turned into a record outside decode_record, which
+        // also sets the record's fill rule.
+        {"Where does record_store.cpp turn a stored row into a record?",
+         "decode_record in src/store/record_store.cpp",
+         R"(\brebuild_record\()",
+         "",
+         {},
+         {},
+         "ST1 (audit findings 116 and 132); a row since the M7-2b review, finding 4",
+         {"HydraRecord r = rebuild_record(flat);"},
+         {"HydraRecord record = decode_record(structure, nodes, key.lens.legacy_fills == 1);"},
+         {{"src/store/record_store.cpp", "HydraRecord record = rebuild_record(",
+           "decode_record, the owner"}},
+         {"src/store/record_store.cpp"}},
         // ---- one cleaned song title (phase 3 task O3a) ----
         // Clone Hero's rich-text tags spelled as text: a tag in angle
         // brackets at the start of a string, a tag name kept in a named
@@ -2300,43 +2349,4 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
     CHECK(rule.find("src/search") != std::string::npos);
     CHECK(rule.find("src/core") != std::string::npos);
     CHECK(rule.find("src/parse") != std::string::npos);
-}
-
-// ST1 (findings 116 and 132): in record_store.cpp a stored row becomes a
-// record only through decode_record, which sets the fill rule. It is one
-// code line in the file; comment lines are skipped like the row scan does.
-// The best path's text has its own row above ("What text is a record's best
-// path?").
-TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
-    std::ifstream in(sourcetree::root() / "src" / "store" / "record_store.cpp");
-    REQUIRE(in.good());
-    int decodes = 0;
-    std::string line;
-    while (std::getline(in, line)) {
-        const std::string t = hydra::trim(line);
-        if (t.compare(0, 2, "//") == 0) continue;
-        if (t.find("rebuild_record(") != std::string::npos) ++decodes;
-    }
-    CHECK(decodes == 1);
-}
-
-// ST2 (finding 54 and D51 call 10): in record_store.cpp the fill rule's stamp
-// text comes only from search/graph.h engine_mode_stamp, so no code line
-// spells "ch10" or "ch11"; and "which copy names an md5" is written once, so
-// MIN(rowid) appears on one code line. Comment lines are skipped.
-TEST_CASE("single-owner: record_store.cpp reads stamps and names copies once (ST2)") {
-    std::ifstream in(sourcetree::root() / "src" / "store" / "record_store.cpp");
-    REQUIRE(in.good());
-    int stamp_literals = 0;
-    int naming_rules = 0;
-    std::string line;
-    while (std::getline(in, line)) {
-        const std::string t = hydra::trim(line);
-        if (t.compare(0, 2, "//") == 0) continue;
-        if (t.find("\"ch10\"") != std::string::npos || t.find("\"ch11\"") != std::string::npos)
-            ++stamp_literals;
-        if (t.find("MIN(rowid)") != std::string::npos) ++naming_rules;
-    }
-    CHECK(stamp_literals == 0);
-    CHECK(naming_rules == 1);
 }
