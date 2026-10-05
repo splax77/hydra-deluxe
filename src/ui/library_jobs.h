@@ -129,7 +129,7 @@ public:
     void cancel() { stop(); }
 
     struct Snapshot {
-        bool preparing = true;  // still loading the item list from the store
+        bool preparing = true;  // still building the scan list (BatchJob::run)
         int total = 0;      // items actually dispatched (excludes pre-skipped)
         int completed = 0;  // finished charts, stored or failed
         int skipped = 0;    // already stored, known up front (not part of total)
