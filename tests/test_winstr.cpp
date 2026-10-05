@@ -156,6 +156,16 @@ TEST_CASE("parent_folder: the audit's four rows") {
     CHECK(hydra::parent_folder("").empty());
 }
 
+// How a folder and a name join (review of M6-J1a, finding 1): one backslash
+// between them, none added when the folder already ends in either slash, and
+// an empty folder gives the name alone, as the scan's join has always done.
+TEST_CASE("join_folder: no trailing separator, a trailing backslash or slash, an empty folder") {
+    CHECK(hydra::join_folder("C:\\a", "song.ini") == "C:\\a\\song.ini");
+    CHECK(hydra::join_folder("C:\\a\\", "song.ini") == "C:\\a\\song.ini");
+    CHECK(hydra::join_folder("C:\\a/", "song.ini") == "C:\\a/song.ini");
+    CHECK(hydra::join_folder("", "song.ini") == "song.ini");
+}
+
 // Finding 217: 32 and below means failure, 33 and above means success.
 TEST_CASE("shell_execute_ok: 32 and below fail, 33 and above succeed") {
     // ShellExecute hands the code back as an HINSTANCE.

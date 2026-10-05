@@ -63,6 +63,13 @@ bool shell_execute_ok(void* shell_execute_result);
 // always worked out a song folder's root (audit finding 251).
 std::string parent_folder(const std::string& path);
 
+// A folder and a name inside it joined into one path: a backslash between
+// them, none added when the folder already ends in a backslash or slash, and
+// the name alone when the folder is empty. The one place a folder and a file
+// name are joined (review of M6-J1a, finding 1); the library scan has always
+// joined this way.
+std::string join_folder(const std::string& folder, const std::string& name);
+
 // win32_path as a std::filesystem::path, for std::filesystem calls and
 // fstreams, which take a path object.
 std::filesystem::path os_path(const std::filesystem::path& p);

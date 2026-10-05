@@ -42,7 +42,7 @@ const DirEntry* find_song_ini(const std::vector<DirEntry>& listing) {
 std::string find_song_ini(const std::string& folder) {
     const std::vector<DirEntry> listing = list_dir(folder);
     const DirEntry* ini = find_song_ini(listing);
-    return ini ? folder + "\\" + ini->name : std::string();
+    return ini ? join_folder(folder, ini->name) : std::string();
 }
 
 }  // namespace hydra

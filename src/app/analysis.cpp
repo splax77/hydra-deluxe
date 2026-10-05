@@ -30,14 +30,9 @@ namespace hydra::app {
 
 namespace {
 
-// Folder listings and directory checks come from core/winstr (list_dir,
-// is_directory_utf8), which handle paths of any length.
-
-std::string join_path(const std::string& a, const std::string& b) {
-    if (a.empty()) return b;
-    char last = a.back();
-    return (last == '\\' || last == '/') ? a + b : a + "\\" + b;
-}
+// Folder listings, directory checks and folder-and-name joins come from
+// core/winstr (list_dir, is_directory_utf8, join_folder), which handle paths
+// of any length.
 
 // os.path.relpath(target, base), for the folders this walk already knows are
 // nested under `base` (or equal to it). Falls back to the raw target for any
@@ -359,8 +354,8 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
             const DirEntry* found_ini = find_song_ini(entries);
             if (notes && found_ini) {
                 PendingChart pc;
-                pc.notes_path = join_path(dir, notes->name);
-                pc.ini_path = join_path(dir, found_ini->name);
+                pc.notes_path = join_folder(dir, notes->name);
+                pc.ini_path = join_folder(dir, found_ini->name);
                 pc.rootfolder = rootfolder;
                 pc.sig = sig_of(*notes, found_ini);
                 pending.push_back(std::move(pc));
@@ -368,14 +363,14 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
             for (auto [archive, kind] : found_archives) {
                 PendingChart pc;
                 pc.kind = kind;
-                pc.notes_path = join_path(dir, archive->name);
+                pc.notes_path = join_folder(dir, archive->name);
                 pc.rootfolder = rootfolder;
                 pc.sig = sig_of(*archive, nullptr);
                 pending.push_back(std::move(pc));
             }
 
             for (const DirEntry* sub : subdirs) {
-                std::string subpath = join_path(dir, sub->name);
+                std::string subpath = join_folder(dir, sub->name);
                 if (visited.insert(subpath).second) {
                     if (callbacks.on_folders)
                         callbacks.on_folders(static_cast<int>(visited.size()));
