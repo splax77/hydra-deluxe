@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include "bytes_util.h"
+
 #include "audio/decode.h"
 #include "audio/stream_mix.h"
 #include "core/winstr.h"
@@ -35,19 +37,12 @@ inline std::vector<uint8_t> read_fixture(const std::string& name) {
     return hydra::read_file_bytes(fixture_path(name));
 }
 
-// Little-endian writers for the WAV header below.
-inline void put_u16(std::vector<uint8_t>& o, uint16_t n) {
-    o.push_back(static_cast<uint8_t>(n));
-    o.push_back(static_cast<uint8_t>(n >> 8));
-}
-inline void put_u32(std::vector<uint8_t>& o, uint32_t n) {
-    for (int i = 0; i < 4; ++i) o.push_back(static_cast<uint8_t>(n >> (8 * i)));
-}
-
 // A canonical 44-byte-header PCM16 WAV around `samples`, interleaved
-// `channels` to a frame, at `rate` Hz.
+// `channels` to a frame, at `rate` Hz. The numbers go through bytes_util.h.
 inline std::vector<uint8_t> pcm16_wav(int channels, uint32_t rate,
                                       const std::vector<int16_t>& samples) {
+    using testbytes::put_u16;
+    using testbytes::put_u32;
     const uint32_t data_len = static_cast<uint32_t>(samples.size()) * 2;
     std::vector<uint8_t> o;
     o.insert(o.end(), {'R', 'I', 'F', 'F'});
