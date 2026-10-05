@@ -562,8 +562,8 @@ private:
     bool act_within_limit(int32_t act) const;
     bool passes_ms_filter(const Path& p) const;
     // Is one timing inside this run's limit? The one place that says so. It
-    // takes the timing's ms and whether it needs hitting at all (a free
-    // squeeze, or an early fill with time to spare, does not). Under the
+    // takes the timing's ms and whether it needs hitting at all
+    // (SPSqueeze::is_free, early_fill_needs_timing). Under the
     // all-0 switch a timing is inside only when it needs no hitting
     // (Path::needs_timing's rule). Under the user's Path limit it is inside at
     // or below the limit, free ones included, so a negative limit demands
@@ -1101,8 +1101,8 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
 }
 
 // --- difficulty ----------------------------------------------------------
-// The timings an activation's difficulty is made of: each squeeze and a
-// required (E0) early fill, as Activation::difficulty counts them. Every one
+// The timings an activation's difficulty is made of, as Activation::difficulty
+// counts them (the engine's own walk of them is audit finding 152). Every one
 // must be inside the limit; under the Path limit that is the same as the
 // hardest one being inside it.
 bool Engine::act_within_limit(int32_t act) const {
