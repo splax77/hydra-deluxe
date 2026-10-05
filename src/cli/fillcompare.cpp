@@ -80,24 +80,17 @@ int main() {
     std::unique_ptr<hydra::store::RecordStore> new_store =
         hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
 
-    // Fill-rule sanity check: a file that holds another rule than the side it
-    // was passed as is a warning, not a fatal error. Which rule a file holds
-    // is RecordStore::stamped_fill_rule's answer; an empty file holds none and
-    // never warns. The stamp's own text is read only to word the warning.
+    // Engine-mode sanity check (D65, ADR 0010): warn only when the file's
+    // stamp names the other side's rule. An unstamped file never warns —
+    // engine_mode() is nullopt, and fill_rule_from_stamp reads the stamp, not
+    // the "unstamped = 1.1" default stamped_fill_rule adds.
     auto warn_if_not = [](const std::string& path, hydra::store::RecordStore& store,
                           hydra::FillDeadlineRule expected) {
-        const std::optional<hydra::FillDeadlineRule> held = store.stamped_fill_rule();
-        if (held == expected) return;
-        if (const std::optional<std::string> stamp = store.engine_mode())
-            std::fprintf(stderr, "Warning: %s is stamped engine_mode=%s, not %s\n",
-                         path.c_str(), stamp->c_str(), hydra::engine_mode_stamp(expected));
-        else if (held)
-            std::fprintf(stderr,
-                         "Warning: %s has no engine_mode stamp, so it counts as a %s "
-                         "database, not %s\n",
-                         path.c_str(),
-                         hydra::fill_rule_name(*held, hydra::FillRuleNameStyle::Long),
-                         hydra::fill_rule_name(expected, hydra::FillRuleNameStyle::Long));
+        const std::optional<std::string> stamp = store.engine_mode();
+        if (!stamp) return;  // no stamp: nothing to disagree (D65)
+        if (hydra::fill_rule_from_stamp(*stamp) == expected) return;
+        std::fprintf(stderr, "Warning: %s is stamped engine_mode=%s, not %s\n",
+                     path.c_str(), stamp->c_str(), hydra::engine_mode_stamp(expected));
     };
     warn_if_not(*old_path, *old_store, hydra::FillDeadlineRule::Ch10);
     warn_if_not(*new_path, *new_store, hydra::FillDeadlineRule::Ch11);
