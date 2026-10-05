@@ -331,13 +331,9 @@ void AnalyzeJob::start() {
                             progress_.store(f, std::memory_order_relaxed);
                         });
                     // The song's audio length, read here so the save stays
-                    // quick. A failed read costs only the length: it stays
-                    // as it was, and opening the song reads it later.
-                    try {
-                        length_ = app::song_length_found(
-                            audio::song_length_ms(song_.notespath, result_->song));
-                    } catch (const std::exception&) {
-                    }
+                    // quick.
+                    length_ = app::read_song_length_or_keep(audio::song_length_ms,
+                                                            song_.notespath, result_->song);
                     return true;
                 } catch (const app::AnalysisCancelled&) {
                     return false;  // no error text: the UI discards a cancelled job

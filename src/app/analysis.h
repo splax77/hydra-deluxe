@@ -152,6 +152,15 @@ using SongLengthReader =
 // always counts as read, so a song with no usable audio is not read again.
 store::SongLength song_length_found(std::optional<double> audio_length_ms);
 
+// The audio read an analysis makes on the side, as the store saves it:
+// song_length_found's answer when `reader` gives one, or not read when there
+// is no reader or it throws. A failed read costs only the length: it stays as
+// it was, and opening the song reads it later. run_batch and the single-chart
+// Analyze job both read through here; SongLengthJob does not, because its own
+// failure is the answer (the job fails and writes nothing).
+store::SongLength read_song_length_or_keep(const SongLengthReader& reader,
+                                           const std::string& notespath, const Song& song);
+
 // How far a batch run has got. run_batch is the only writer of every count
 // here; a reader copies them rather than counting its own callbacks.
 struct BatchProgress {
@@ -218,8 +227,8 @@ struct BatchCallbacks {
     // What analyzes one chart. Empty means analyze_chart_file.
     ChartAnalyzer analyze;
     // What reads the song's audio length after its analysis, on the pool's
-    // thread: audio::song_length_ms fits as is (D69). Empty means the audio
-    // is not read, and the stored length is left as it was.
+    // thread: audio::song_length_ms fits as is (D69). Empty reads nothing;
+    // read_song_length_or_keep says what the store keeps then.
     SongLengthReader read_song_length;
 };
 

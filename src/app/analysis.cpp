@@ -597,6 +597,16 @@ store::SongLength song_length_found(std::optional<double> audio_length_ms) {
     return store::SongLength::found(audio_length_ms);
 }
 
+store::SongLength read_song_length_or_keep(const SongLengthReader& reader,
+                                           const std::string& notespath, const Song& song) {
+    if (!reader) return {};
+    try {
+        return song_length_found(reader(notespath, song));
+    } catch (const std::exception&) {
+        return {};
+    }
+}
+
 void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                store::RecordStore& store, bool redo, int worker_count,
                const BatchCallbacks& callbacks) {
@@ -639,15 +649,8 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                 wr.dynamics = dynamics_entry_from_analysis(
                     item.md5, ar.song, settings.bass2x, settings.difficulty,
                     settings.prodrums);
-                if (callbacks.read_song_length) {
-                    // A failed read costs only the length: it stays as it
-                    // was, and opening the song reads it later.
-                    try {
-                        wr.length =
-                            song_length_found(callbacks.read_song_length(item.notespath, ar.song));
-                    } catch (const std::exception&) {
-                    }
-                }
+                wr.length =
+                    read_song_length_or_keep(callbacks.read_song_length, item.notespath, ar.song);
                 wr.analysis = std::move(ar);
             } catch (const AnalysisCancelled&) {
                 wr.cancelled = true;

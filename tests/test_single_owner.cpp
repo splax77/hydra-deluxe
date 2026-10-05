@@ -3749,6 +3749,30 @@ const std::vector<OwnerRule>& rules() {
           {"src/store/record_store.cpp",
            ": \"UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3\");",
            "write_song_length, the owner"}}},
+        // An audio length read, or its answer turned into a stored length,
+        // anywhere but the one helper an analysis reads through, so no third
+        // try/catch decides what a failed read leaves. The call must follow
+        // an opening, an operator, `return` or the line's start, so the
+        // definition and declaration of song_length_found are not flagged.
+        {"What does a failed audio length read leave in the store?",
+         "read_song_length_or_keep in src/app/analysis.cpp",
+         R"((^|[^\w\s]|\breturn)\s*song_length_found\s*\(|\baudio::song_length_ms\s*\()",
+         "",
+         {},
+         {},
+         "derive-once review of AL2, finding 1 (D69); phase 7 task AL2",
+         {"length_ = app::song_length_found(",
+          "song_length_found(callbacks.read_song_length(item.notespath, ar.song));",
+          "audio::song_length_ms(song_.notespath, result_->song));"},
+         {"store::SongLength song_length_found(std::optional<double> audio_length_ms) {",
+          "store::SongLength song_length_found(std::optional<double> audio_length_ms);",
+          "callbacks.read_song_length = audio::song_length_ms;  // each song's length (D69)",
+          "length_ = app::read_song_length_or_keep(audio::song_length_ms,"},
+         {{"src/app/analysis.cpp", "return song_length_found(reader(notespath, song));",
+           "read_song_length_or_keep, the owner"},
+          {"src/ui/song_length_job.cpp",
+           "length_ = app::song_length_found(audio::song_length_ms(entry_.notespath, song));",
+           "SongLengthJob::run: its failed read fails the job, which writes nothing"}}},
     };
     return r;
 }

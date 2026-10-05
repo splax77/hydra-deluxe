@@ -221,8 +221,7 @@ public:
     // Valid once finished() && ok(); moves the result out (call once).
     app::AnalysisResult take_result();
     // The song's audio length, read on the job's thread after the analysis
-    // (app::song_length_found); not read when that read failed. Valid once
-    // finished() && ok().
+    // (app::read_song_length_or_keep). Valid once finished() && ok().
     const store::SongLength& song_length() const { return length_; }
 
 private:
