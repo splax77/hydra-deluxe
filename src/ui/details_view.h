@@ -22,6 +22,10 @@ inline constexpr float kMinSongPanelW = 820.0f;
 
 void render_song_panel(AppState& app);
 
+// The song panel's Analyze button label for a record in this state: the
+// headline, its width sample and the GUI tests.
+const char* analyze_button_label(store::RecordStatus status);
+
 }  // namespace hydra::ui
 
 #endif  // HYDRA_UI_DETAILS_VIEW_H

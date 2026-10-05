@@ -85,7 +85,7 @@ struct Settings {
     // reaches the search, so changing it never invalidates stored records.
     int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);
 
-    // Preview playback volume, 0..100 %. A summed multi-stem mix at 100 % is
+    // Preview playback volume in percent. A summed multi-stem mix at 100 % is
     // loud and clips, so the default sits well below it.
     int preview_volume = 40;
 
@@ -124,8 +124,8 @@ struct Settings {
     static Settings load_file(const std::string& path);
     bool save_file(const std::string& path) const;
 
-    // A number setting pulled into its allowed range: the one its box
-    // enforces, kept in the key table in config.cpp. A value outside the range
+    // A number setting pulled into its allowed range: the one the key table
+    // in config.cpp keeps, which its box reads too. A value outside the range
     // lands on the nearest edge (D51 Q14). Name the setting by its field:
     // clamp(&Settings::mslimit_value, 900) is 500. Two keys land on their
     // default instead, because they have no edge to land on: hit_window_ms at
@@ -139,8 +139,8 @@ struct Settings {
     // Every reader of the mode as a search setting asks here.
     DepthMode search_depth_mode() const;
 
-    // A Preview volume percent as a playback gain: the percent, clamped like
-    // preview_volume to 0..100, becomes 0.0..1.0.
+    // A Preview volume percent as a playback gain, clamped first like the
+    // preview_volume key in config.cpp. The one percent-to-gain rule.
     static float volume_gain(int percent);
 
     // view_difficulty as the parsers' enum. The name matches in any case

@@ -80,10 +80,19 @@ protected:
         try {
             ok_ = f();
         } catch (const std::exception& e) {
-            error_ = e.what();
-            if (!is_cancelled()) message_ = app::plain_error(e);
-            ok_ = false;
+            fail(e);
+            return;
         }
+        finished_.store(true);
+    }
+
+    // Records a failed run: the raw text, the plain message unless the job
+    // was cancelled, not ok, and then publishes finished. run_guarded's catch
+    // and a job whose thread cannot start both end here.
+    void fail(const std::exception& e) {
+        error_ = e.what();
+        if (!is_cancelled()) message_ = app::plain_error(e);
+        ok_ = false;
         finished_.store(true);
     }
 

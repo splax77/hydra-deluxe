@@ -156,6 +156,31 @@ TEST_CASE("tick pauses at the end and pins the time") {
     CHECK(transport.tick() == doctest::Approx(1000.0));
 }
 
+// On a chart whose notes outlast its audio, the playhead pauses itself when
+// the audio runs out while the clock plays on. A jump back used to move the
+// playhead without restarting it: the highway scrolled in silence with the
+// play button lit (finding 73). The clock is the master, so a seek while it
+// plays sets the playhead playing again.
+TEST_CASE("a seek while playing brings the audio back after it ran out") {
+    double t = 0.0;
+    PreviewTransport transport([&] { return t; });
+    auto* playhead = new Playhead(make_ramp(48000));  // 1000 ms
+    transport.load(std::unique_ptr<Playhead>(playhead), 2000.0);
+    transport.play();
+
+    std::vector<float> out(48004 * 2, -1.0f);
+    CHECK(transport.read_frames(out.data(), 48004) == 48000);  // the audio runs out
+    REQUIRE_FALSE(playhead->playing());
+    REQUIRE(transport.playing());  // the notes go on
+
+    transport.seek_ms(500.0);
+    CHECK(playhead->playing());
+    CHECK(playhead->position_ms() == doctest::Approx(500.0));
+    CHECK(transport.read_frames(out.data(), 4) == 4);
+    CHECK(out[0] == doctest::Approx(24000.0f));  // frame 24000, L
+    CHECK(out[1] == doctest::Approx(24000.5f));  // frame 24000, R
+}
+
 TEST_CASE("seek clamps to [0, length]") {
     PreviewTransport transport([] { return 0.0; });
     transport.load(make_playhead(1000.0), 0.0);

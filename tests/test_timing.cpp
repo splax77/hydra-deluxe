@@ -170,6 +170,31 @@ TEST_CASE("timing: continuous helpers are exact, inverse, and monotone") {
           doctest::Approx(flat.plusmeasure(tc, 4).ms()).epsilon(1e-12));
 }
 
+TEST_CASE("timing: a tick on a mid-measure meter change reads the engine's side (D51 Q22)") {
+    // 4/4 (1920 ticks/measure) until tick 2400, 1.25 measures in, then 1440
+    // ticks/measure. The engine measures a tick sitting on the change in the
+    // section before it (section_at), so tick 2400 is 1.25 measures, the same
+    // number a Timecode gives; the ticks either side keep their values.
+    std::map<int64_t, int64_t> tpm{{0, 1920}, {2400, 1440}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    hydra::SongTiming st(480, tpm, bpm);
+
+    CHECK(st.measures_at_tick_f(2400.0) == 1.25);
+    CHECK(st.measures_at_tick_f(2400.0) == st.timecode(2400).measures_decimal());
+    CHECK(st.measures_at_tick_f(2399.0) == 1.2494791666666667);
+    CHECK(st.measures_at_tick_f(2401.0) == 1.3340277777777778);
+}
+
+TEST_CASE("timing: tick_at_measures_f stays the inverse across a mid-measure change") {
+    std::map<int64_t, int64_t> tpm{{0, 1920}, {2400, 1440}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    hydra::SongTiming st(480, tpm, bpm);
+
+    for (double t : {2399.0, 2400.0, 2401.0})
+        CHECK(st.tick_at_measures_f(st.measures_at_tick_f(t)) ==
+              doctest::Approx(t).epsilon(1e-9));
+}
+
 TEST_CASE("timing: display_tick_at_ms rounds to the nearest tick and never goes below 0") {
     // Flat 120 BPM at resolution 480: one beat (480 ticks) is 500 ms, so
     // 1000 ms is tick 960.

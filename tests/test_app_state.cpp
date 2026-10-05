@@ -30,7 +30,9 @@
 #include "display_fixtures.h"  // store_batch_result
 #include "store/record_store.h"
 #include "ui/app_state.h"
+#include "ui/details_view.h"  // analyze_button_label
 #include "ui/generation.h"
+#include "ui/library_parts.h"  // analyze_search_label
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
 
 using hydra::app::Settings;
@@ -372,6 +374,20 @@ TEST_CASE("UI timings: Done!, Copied!, search re-filter and batch refresh keep t
     CHECK(AppState::kCopiedSeconds == 2.0);
     CHECK(AppState::kSearchThrottleSeconds == 0.15);
     CHECK(AppState::kBatchRefreshSeconds == 1.0);
+    CHECK(AppState::kFileCheckSeconds == 2.0);    // D48 Q33, the one file-check interval
+    CHECK(AppState::kStatusFadeSeconds == 6.0);   // the toolbar's since 2026-08-18
+}
+
+// Findings 290 and 289: the batch button's search label and the song panel's
+// Analyze label are each built once; the button, its width sample and the
+// GUI tests call these.
+TEST_CASE("the toolbar and song panel labels come from one function each") {
+    CHECK(hydra::ui::detail::analyze_search_label(1) == "Analyze search (1)...");
+    CHECK(hydra::ui::detail::analyze_search_label(1234) == "Analyze search (1,234)...");
+    using hydra::ui::analyze_button_label;
+    CHECK(analyze_button_label(RecordStatus::NotAnalyzed) == std::string("Analyze this song"));
+    CHECK(analyze_button_label(RecordStatus::Stale) == std::string("Re-analyze"));
+    CHECK(analyze_button_label(RecordStatus::Ready) == std::string("Re-analyze"));
 }
 
 // The number boxes apply each step at once (the shown record follows live)
@@ -389,6 +405,38 @@ TEST_CASE("number boxes apply at once but write the INI only on flush") {
 
     app->flush_settings();  // the edit ended
     CHECK(Settings::load_file(paths.ini).depth_value == seeded_depth + 3);
+}
+
+// A number typed outside its range takes the path the settings boxes take
+// (Settings::clamp, then edit_settings and the flush) and must land where a
+// hand-edited INI line with the same number lands (D51 call 14).
+TEST_CASE("a number setting edited outside its range lands on the edge the file loader uses") {
+    ScratchPaths paths("appstate_range");
+    std::unique_ptr<AppState> app = app_on(paths);
+
+    app->settings.mslimit_value = Settings::clamp(&Settings::mslimit_value, 900);
+    app->settings.depth_value = Settings::clamp(&Settings::depth_value, -1);
+    app->settings.sp_cap = Settings::clamp(&Settings::sp_cap, 0);
+    app->edit_settings();
+    app->flush_settings();
+    const Settings saved = Settings::load_file(paths.ini);
+
+    // The same numbers written straight into an INI by hand.
+    const std::string hand_ini = temp_path("appstate_range_hand", ".ini");
+    {
+        std::ofstream f(hand_ini, std::ios::trunc);
+        f << "mslimit_value=900\ndepth_value=-1\n";
+    }
+    const Settings hand = Settings::load_file(hand_ini);
+    std::remove(hand_ini.c_str());
+
+    CHECK(saved.mslimit_value == static_cast<int>(hydra::kSqueezeWindowMs));
+    CHECK(saved.mslimit_value == hand.mslimit_value);
+    CHECK(saved.depth_value == 0);
+    CHECK(saved.depth_value == hand.depth_value);
+    // The cap floors at 1 bar (D51 call 16). A hand-written sp_cap=0 is the
+    // one place the two differ on purpose: the file reads 0 as Clone Hero's 4.
+    CHECK(saved.sp_cap == 1);
 }
 
 // Stepping away and back re-shows a lookup already made, without asking the
