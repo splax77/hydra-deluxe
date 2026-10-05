@@ -995,6 +995,33 @@ const std::vector<OwnerRule>& rules() {
            "fill_rule_name, the owner: Clone Hero 1.0's two names"},
           {"src/search/graph.h", "return is_short ? \"CH 1.1\" : \"Clone Hero 1.1\";",
            "fill_rule_name, the owner: Clone Hero 1.1's two names"}}},
+        // A legacy_fills flag (a setting, a Lens or a switch) turned into a
+        // rule by a ternary of its own.
+        {"Which fill rule does a legacy_fills flag mean?",
+         "fill_rule_for in src/search/graph.h",
+         R"(legacy\w*\s*\?\s*(hydra::)?FillDeadlineRule::Ch1[01])",
+         R"(\bfill_rule_for\()",
+         {},
+         {},
+         "M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R)",
+         {"options.lens.legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
+          "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;"},
+         {"fill_rule_for(settings.legacy_fill_deadline), settings.rules);"},
+         {{"src/search/graph.h",
+           "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
+           "fill_rule_for, the owner"}}},
+        // A database's engine_mode stamp compared to a rule's spelling by
+        // hand, through the store's accessor or a stamp held in `mode`.
+        {"Which fill rule does a database's stamp name?",
+         "fill_rule_from_stamp in src/search/graph.h",
+         R"(engine_mode\(\)\s*==|\*?\bmode\s*==\s*"ch1[01]")",
+         R"(\bfill_rule_from_stamp\()",
+         {},
+         {},
+         "M_D review round 2 findings 2 and 5 (phase 3 task FX2-R)",
+         {"if (store->engine_mode() == std::string(",
+          "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";"},
+         {"if (mode && hydra::fill_rule_from_stamp(*mode) != expected)"}},
         // ---- one cleaned song title (phase 3 task O3a) ----
         // Clone Hero's rich-text tags spelled as text: a tag in angle
         // brackets at the start of a string, a tag name kept in a named
@@ -1021,6 +1048,20 @@ const std::vector<OwnerRule>& rules() {
           {"src/parse/song.cpp",
            "{\"u\", false},    {\"s\", false},   {\"sub\", false}, {\"sup\", false},",
            "strip_rich_tags' tag table, the owner"}}},
+        // A charter cleaned for showing by hand: the tags stripped (and maybe
+        // trimmed) straight into a charter. The Library's search text keeps
+        // the stored charter by decision, so folding it is not flagged.
+        {"Which charter text does a screen show?",
+         "display_charter in src/parse/song.cpp",
+         R"(charter\s*=\s*(trim\()?(app::)?strip_rich_tags\()",
+         R"(\bdisplay_charter\()",
+         {},
+         {},
+         "M_D review finding 1 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R)",
+         {"row.charter = trim(strip_rich_tags(meta.ref_charter));",
+          "const std::string charter = app::strip_rich_tags(song.charter);"},
+         {"row.charter = display_charter(rec->ref_charter);",
+          "row.charter = fold_for_search(strip_rich_tags(charter));"}},
         // ---- app and UI helper owners (phase 3 task O3b) ----
         // The out-of-date sentence, by any of its pieces: the cause it names
         // or the "Re-analyze to refresh" it ends on. stale_text names the
@@ -1696,11 +1737,15 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        // The widened count row (M_D review finding 4) also finds the bench
-        // tool's "%d paths"; bench.cpp is outside task FX-R's files.
-        {"How is a count written next to its noun?", "tools/bench.cpp",
-         "std::printf(\"  best score %lld | %d paths | sp_cap %d\\n\\n\", best,",
-         "a follow-up task: tools/bench.cpp prints its path count through counted"},
+        // A one-time schema 2 to 3 migration reads the stamp text old files
+        // already hold, so it keeps the literal "ch10" even if
+        // engine_mode_stamp were ever spelled differently, and src/store never
+        // includes src/search. test_store.cpp seeds the migration test's
+        // stamp with engine_mode_stamp, so a respelling turns that test red.
+        {"Which fill rule does a database's stamp name?", "src/store/record_store.cpp",
+         "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
+         "never: a migration reads the historic stamp text, and store never includes search "
+         "(M_D review round 2)"},
         {"Is this phrase chord after the SP end?", "src/core/replay.cpp",
          "const bool past_deact = row.tick > w.deact_tick;",
          "the replay's past_deact (audit findings 1 and 32, another step)"},

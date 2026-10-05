@@ -64,6 +64,16 @@ bool is_continuation(unsigned char c) {
     return (c & 0xC0) == 0x80;
 }
 
+// How many bytes the UTF-8 character that starts with `lead` holds: 2, 3 or
+// 4, or 0 when `lead` cannot start a character of two or more bytes (ASCII,
+// a continuation byte, or a byte UTF-8 never uses as a lead).
+size_t utf8_length(unsigned char lead) {
+    if (lead >= 0xC2 && lead <= 0xDF) return 2;
+    if (lead >= 0xE0 && lead <= 0xEF) return 3;
+    if (lead >= 0xF0 && lead <= 0xF4) return 4;
+    return 0;
+}
+
 char ascii_lower(unsigned char c) {
     return static_cast<char>(kAsciiUpper.holds(c) ? c + ('a' - 'A') : c);
 }
@@ -166,8 +176,10 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
             continue;
         }
 
+        const size_t lead_len = utf8_length(c0);
+
         // A two-byte character in kLatin becomes its ASCII letters.
-        if (c0 >= 0xC2 && c0 <= 0xDF && is_continuation(c1)) {
+        if (lead_len == 2 && is_continuation(c1)) {
             const unsigned cp = ((c0 & 0x1Fu) << 6) | (c1 & 0x3Fu);
             if (kLatin.holds(cp)) {
                 const char* ascii = kLatinAscii[cp - kLatin.first];
@@ -180,7 +192,7 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
 
         // A three-byte character in kFullWidth becomes its ASCII twin, which
         // sits as far below '!' as the run's first character does.
-        if (c0 >= 0xE0 && c0 <= 0xEF && is_continuation(c1) && is_continuation(c2)) {
+        if (lead_len == 3 && is_continuation(c1) && is_continuation(c2)) {
             const unsigned cp = ((c0 & 0x0Fu) << 12) | ((c1 & 0x3Fu) << 6) | (c2 & 0x3Fu);
             if (kFullWidth.holds(cp)) {
                 const char lower =
@@ -193,10 +205,7 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
 
         // Anything else is kept: the whole character when the bytes form a
         // well-shaped UTF-8 sequence, otherwise this one byte as it is.
-        size_t len = 1;
-        if (c0 >= 0xC2 && c0 <= 0xDF) len = 2;
-        else if (c0 >= 0xE0 && c0 <= 0xEF) len = 3;
-        else if (c0 >= 0xF0 && c0 <= 0xF4) len = 4;
+        size_t len = lead_len > 0 ? lead_len : 1;
         for (size_t k = 1; k < len; ++k)
             if (!is_continuation(byte_at(text, i + k))) len = 1;
         emit(text.substr(i, len), i, i + len);
