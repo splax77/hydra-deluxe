@@ -381,6 +381,14 @@ function Add-Item([string]$Kind, [string]$File, [int]$Line, [string]$What, [stri
 # known_copies() of tests/test_single_owner.cpp: file -> list of (line text, fix)
 $known = @{}
 $scanFile = 'tests/test_single_owner.cpp'
+$selfFiles = @('tools/derive_once_precheck.ps1', 'tools/test_derive_once_precheck.ps1')
+# Which files does the precheck not read line by line? The scan file, whose
+# strings and literals are pattern examples, and this script and its
+# self-test, which read source text because they are the pre-review tool,
+# not a test. Every check that reads added lines asks here. (Check 1's
+# helper list still reads the scan file's helpers, so a helper copied out of
+# it is found.)
+function Test-SkippedFile([string]$File) { $File -eq $scanFile -or $selfFiles -contains $File }
 
 # Splits a braced initializer list into its top-level elements, each as
 # (start offset, end offset) in the text, using the string-blanked view so
@@ -656,7 +664,7 @@ function Get-RowHits {
     if ($null -ne $script:RowHits) { return $script:RowHits }
     $hits = [System.Collections.Generic.List[object]]::new()
     foreach ($f in $added.Keys) {
-        if (-not (Test-CppPath $f) -or $f -eq $scanFile) { continue }
+        if (-not (Test-CppPath $f) -or (Test-SkippedFile $f)) { continue }
         $covering = @($rows | Where-Object { Test-RowCovers $_ $f })
         if (-not $covering.Count) { continue }
         $v = Get-Views $f
@@ -712,8 +720,6 @@ function Add-RowItems([string[]]$Kinds) {
         Add-Item $h.Kind $h.File $h.Line "answers ""$($h.Row.Question)"": $($h.Text)" $why
     }
 }
-
-$selfFiles = @('tools/derive_once_precheck.ps1', 'tools/test_derive_once_precheck.ps1')
 
 # Which calls are test assertions? The doctest assertion macros, and any
 # assert*( or self.assert*( for C asserts and Python's unittest. Check 1
@@ -879,7 +885,7 @@ function Invoke-Check1 {
            What = 'a MIDI variable-length delta encoded by hand'; Why = 'the varlen writer belongs in tests/midi_util.h' }
     )
     foreach ($f in $added.Keys) {
-        if (-not (Test-TestFile $f) -or -not (Test-CppPath $f) -or $f -eq $scanFile) { continue }
+        if (-not (Test-TestFile $f) -or -not (Test-CppPath $f) -or (Test-SkippedFile $f)) { continue }
         $v = Get-Views $f
         foreach ($ln in (Get-AddedLines $f $v.NoComments.Count)) {
             $text = $v.NoComments[$ln - 1]
@@ -937,7 +943,8 @@ function Invoke-Check2 {
            What = 'a module constant checked against a formula of other constants'; Why = 'the test restates the module''s formula; pin the value' }
     )
     foreach ($f in $added.Keys) {
-        $isCppTest = (Test-TestFile $f) -and (Test-CppPath $f) -and $f -ne $scanFile
+        if (Test-SkippedFile $f) { continue }
+        $isCppTest = (Test-TestFile $f) -and (Test-CppPath $f)
         $isPyTest = (Test-TestFile $f) -and (Test-PyPath $f)
         if (-not ($isCppTest -or $isPyTest)) { continue }
         $v = Get-Views $f
@@ -1095,7 +1102,7 @@ function Invoke-Check3 {
     $durationBeforeRx = '\b(seconds|milliseconds|minutes|microseconds|sleep_for|timeout|deadline)\w*\s*\(\s*$'
     foreach ($f in $added.Keys) {
         if (-not ((Test-CppPath $f) -or (Test-PyPath $f))) { continue }
-        if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
+        if (Test-SkippedFile $f) { continue }
         $isTest = Test-TestFile $f
         $v = Get-Views $f
         # Sizes of arrays this file declares: a loop or a bound that matches one is the container's size.
@@ -1203,7 +1210,7 @@ function Invoke-Check4 {
     foreach ($f in $added.Keys) {
         # Every code folder but src: a scan is a test's or a tool's to make.
         if ((Get-TopFolder $f) -eq 'src') { continue }
-        if ($f -eq $scanFile -or $selfFiles -contains $f) { continue }
+        if (Test-SkippedFile $f) { continue }
         $py = Test-PyPath $f
         if (-not ((Test-CppPath $f) -or $py)) { continue }
         $v = Get-Views $f
