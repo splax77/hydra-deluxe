@@ -153,7 +153,7 @@ The transport buttons are `-5s`, `< 5 Ticks`, `Play`/`Pause`, `5 Ticks >` and `+
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.
 
-The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the end of the song's audio, like the Paths timeline, so an activation sits at the same spot on both. The beat lines run on to the end of the audio.
+The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. For a song with audio, the scrubber measures position against the end of the audio, like the Paths timeline, so an activation sits at the same spot on both. A chart with no readable audio still scrubs, up to its last note, but the Paths timeline shows no marks for it, so there is nothing to line up.<!-- owners: scrub_end_ms (the scrubber's end), audio::song_length_ms (the song's length) --> The beat lines run on to the end of the audio.
 
 The boxes on the highway:
 
