@@ -28,6 +28,7 @@
 
 #include "app/analysis.h"
 #include "app/preview_view.h"
+#include "bytes_util.h"
 #include "image/decode.h"
 #include "json.hpp"
 #include "parse/song.h"
@@ -59,11 +60,19 @@ void write_bmp(const std::string& path, const std::vector<uint8_t>& rgba, int w,
     const int row = (w * 3 + 3) & ~3;
     const uint32_t data = static_cast<uint32_t>(row) * h;
     const uint32_t size = 54 + data;
-    uint8_t hdr[54] = {'B', 'M'};
-    auto put32 = [&](int at, uint32_t v) { for (int i = 0; i < 4; ++i) hdr[at + i] = static_cast<uint8_t>(v >> (8 * i)); };
-    put32(2, size); put32(10, 54); put32(14, 40); put32(18, static_cast<uint32_t>(w));
-    put32(22, static_cast<uint32_t>(h)); hdr[26] = 1; hdr[28] = 24; put32(34, data);
-    f.write(reinterpret_cast<const char*>(hdr), 54);
+    std::vector<uint8_t> hdr = {'B', 'M'};
+    testbytes::put_u32(hdr, size);
+    testbytes::put_u32(hdr, 0);  // reserved
+    testbytes::put_u32(hdr, 54);
+    testbytes::put_u32(hdr, 40);
+    testbytes::put_u32(hdr, static_cast<uint32_t>(w));
+    testbytes::put_u32(hdr, static_cast<uint32_t>(h));
+    testbytes::put_u16(hdr, 1);
+    testbytes::put_u16(hdr, 24);
+    testbytes::put_u32(hdr, 0);  // no compression
+    testbytes::put_u32(hdr, data);
+    hdr.resize(54, 0);  // the resolution and palette fields stay zero
+    f.write(reinterpret_cast<const char*>(hdr.data()), static_cast<std::streamsize>(hdr.size()));
     std::vector<uint8_t> line(static_cast<size_t>(row), 0);
     for (int y = h - 1; y >= 0; --y) {
         for (int x = 0; x < w; ++x) {
