@@ -20,6 +20,7 @@
 #include "midi_util.h"
 #include "parse/song.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 
 using namespace hydra::app;
 using namespace hydra::store;
@@ -40,17 +41,16 @@ DynamicsBreakdown make_full_breakdown(bool dynamics_enabled) {
     return b;
 }
 
-// A temporary file path that is deleted on destruction.
+// A scratch database file (testtemp::temp_path), absent when the test starts
+// and deleted when it ends.
 struct TempFile {
-    std::string path;
-    TempFile() {
-        char buf[MAX_PATH + 1];
-        char dir[MAX_PATH + 1];
-        GetTempPathA(MAX_PATH, dir);
-        GetTempFileNameA(dir, "hyd", 0, buf);
-        path = buf;
+    std::string path = testtemp::temp_path("dynamics_store", ".db");
+    TempFile() { remove(); }
+    ~TempFile() { remove(); }
+    void remove() {
+        std::error_code ec;
+        std::filesystem::remove(hydra::os_path(path), ec);
     }
-    ~TempFile() { std::remove(path.c_str()); }
 };
 
 }  // namespace

@@ -1,7 +1,7 @@
 // The one place a test builds a per-process scratch path (audit finding 287).
 // Every name lives in the Windows temp folder and carries a tag and this
 // process's id, so two test processes running at once never share a file.
-// The GetTempPathW call here is the only one under tests/ (the scan in
+// The temp-folder lookup here is the only one under tests/ (the scan in
 // test_single_owner.cpp checks it).
 //
 // Both functions hand back UTF-8, the form every path helper in core/winstr
