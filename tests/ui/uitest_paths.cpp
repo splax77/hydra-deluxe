@@ -545,30 +545,29 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     check("m1024.1.120", "m1024.1.120", "12 bars", hydra::app::longest_activation_badge());
 }
 
-// The GUI test library has no audio, so Burnout has no length: the timeline
-// has no end label and no marks, and nothing falls back to its last note (D69
-// item 3). A result saved before Hydra read audio lengths reads its audio
-// once on open, with no re-analysis, and a song with no audio is not read
-// again.
+// The GUI test library has no audio, but Burnout's song.ini states its
+// length, 130,303 ms, so the timeline places its activation dots (D75). A
+// result saved before the current length rule reads its length once on open,
+// from the metadata, with no re-analysis, and is not read again.
 void test_paths_length_backfill(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     hydra::ui::AppState& app = *h.app;
-    IM_CHECK(app.viewed.song_length_read);  // its analysis read the audio
-    IM_CHECK(!app.viewed.song_length_ms.has_value());
-    IM_CHECK(!on_screen(h, "m96"));  // the timeline's end label
-    IM_CHECK(drawn_marks(ctx).empty());
+    IM_CHECK(app.viewed.song_length_read);  // its analysis worked it out
+    IM_CHECK(app.viewed.song_length_ms == 130303.0);
+    ctx->Yield(2);
+    IM_CHECK(!drawn_marks(ctx).empty());
     const hydra::HydraRecord* record = &*app.viewed.record;
 
     // As an old result reads: not read.
     app.viewed.song_length_read = false;
+    app.viewed.song_length_ms.reset();
     IM_CHECK(wait_until(ctx, [&] { return app.viewed.song_length_read; }, 10));
-    IM_CHECK(!app.viewed.song_length_ms.has_value());
+    IM_CHECK(app.viewed.song_length_ms == 130303.0);
     IM_CHECK(&*app.viewed.record == record);  // not re-read, not re-analyzed
     IM_CHECK(!app.analyze_job);
     ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "m96"));
-    IM_CHECK(drawn_marks(ctx).empty());
+    IM_CHECK(!drawn_marks(ctx).empty());
 
     // Read once: the chart is not read again this session.
     app.viewed.song_length_read = false;

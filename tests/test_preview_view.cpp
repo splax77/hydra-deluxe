@@ -274,15 +274,17 @@ TEST_CASE("color_of: each lane maps back to the colour it was drawn from") {
 // note's time: not the last drawn note, and not a later note-less timestamp.
 // Without an audio end there is no length. The beat lines without one still
 // end two measures past the last drawn note, as before.
-TEST_CASE("build_preview_scene: the song length is the audio's end") {
+TEST_CASE("build_preview_scene: the song length is the one handed in, never the audio's end") {
     Song song = make_hand_song();
     SongTimestamp empty;  // a timestamp with no notes, after the last chord
     empty.timecode = song.timecode(960);
     song.sequence.push_back(empty);
 
+    // An audio end alone is not a length (D75): the song's length is handed
+    // in on its own.
     const PreviewScene with_audio =
         build_preview_scene(song, nullptr, kCloneHeroSpCap, core::default_rules(), 4321.0);
-    CHECK(with_audio.song_length_ms == 4321.0);
+    CHECK(with_audio.song_length_ms == 0.0);
 
     PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.has_notes);

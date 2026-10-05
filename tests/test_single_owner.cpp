@@ -1416,7 +1416,7 @@ const std::vector<OwnerRule>& rules() {
          {"if (scene.has_notes) scene.song_length_ms = scene.notes.back().ms;",
           "return song.sequence.back().timecode.ms();",
           "const int64_t last_tick = scene.notes.back().tick;"},
-         {"scene.song_length_ms = audio_end_ms.value_or(0.0);", "const int64_t last_tick = last->tick;"},
+         {"scene.song_length_ms = song_length_ms.value_or(0.0);", "const int64_t last_tick = last->tick;"},
          {{"src/app/preview_view.cpp", "return scene.notes.empty() ? nullptr : &scene.notes.back();",
            "last_drawn_note, the owner"},
           {"src/app/song_length.cpp", "return song.sequence.back().timecode.ms();",
@@ -3454,7 +3454,7 @@ const std::vector<OwnerRule>& rules() {
          "(phase 7 task AL2)",
          {"const double expected = song.sequence.back().timecode.ms();"},
          {"const double expected = hydra::app::last_note_ms(scene);",
-          "scene.song_length_ms = audio_end_ms.value_or(0.0);"},
+          "scene.song_length_ms = song_length_ms.value_or(0.0);"},
          {},
          {"tests"}},
         // ---- the J3 join's leftovers (task J3-9) ----

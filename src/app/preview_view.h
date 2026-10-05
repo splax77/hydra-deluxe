@@ -250,10 +250,9 @@ struct PreviewScene {
     // tempo/meter lists above. Empty only on a default-built PreviewScene (no
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
-    // The song's length: its audio's end in chart time, as
-    // audio::song_length_ms answers it (D69), handed to build_preview_base.
-    // 0 when the song has no readable audio. The SP curve closes here. The
-    // scrubber's right edge reads the same audio end (scrub_end_ms).
+    // The song's length, as app::song_length_ms answers it (D75), handed to
+    // build_preview_base. 0 when the song has none. The SP curve closes here.
+    // The scrubber's right edge reads the same length (scrub_end_ms).
     double song_length_ms = 0.0;
     bool has_notes = false;
 
@@ -265,7 +264,7 @@ struct PreviewScene {
 // The last note the highway draws, or null when the scene has none. The one
 // answer to "when is the song's last note": the beat grid ends past it, and
 // the Preview transport plays to at least it (PreviewTransport::load). It is
-// not the song's length, which is the audio's end (PreviewScene::song_length_ms).
+// not the song's length (PreviewScene::song_length_ms, app::song_length_ms).
 const PreviewNote* last_drawn_note(const PreviewScene& scene);
 
 // last_drawn_note's onset in ms, or 0 when the scene has no notes.
@@ -354,10 +353,9 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
 
 // The Preview scrubber's right edge. It is the song's length,
-// `song_length_ms`, when has_song_length says that length is usable. D69
-// names which callers pass which length. A chart with no readable audio has
-// no length; its edge is `playback_length_ms`, the transport's length, which
-// runs to the last drawn note (D70 item 1).
+// `song_length_ms` (app::song_length_ms, D75), when has_song_length says that
+// length is usable. A chart with no length has its edge at
+// `playback_length_ms`, the transport's length (D70 item 1).
 double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms);
 
 // Where the scrubber's thumb sits with the playhead at `now_ms`. It follows
@@ -428,14 +426,16 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // `rules` prices the running score (the replay reads the backend leeway and
 // the squeeze-out rule from it); nothing else in the scene depends on it.
 //
-// `audio_end_ms` is where the song's audio stops in chart time, the song's
-// length (audio::song_length_ms): it becomes song_length_ms, and the beat
+// `audio_end_ms` is where the song's audio stops in chart time: the beat
 // lines run to it, so they keep scrolling through music that outlasts the
 // notes (D48, Q25). See build_preview_base for what happens without it.
+// `song_length_ms` is the song's length (app::song_length_ms, D75): it
+// becomes song_length_ms, where the SP meter curve closes.
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
                                  const core::Rules& rules = core::default_rules(),
-                                 std::optional<double> audio_end_ms = std::nullopt);
+                                 std::optional<double> audio_end_ms = std::nullopt,
+                                 std::optional<double> song_length_ms = std::nullopt);
 
 // The same scene in two halves, so a path change rebuilds only what the path
 // changes. build_preview_scene(song, path, cap, rules) is exactly
@@ -460,7 +460,8 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // if the audio stops sooner. With no audio end given, they run two measures
 // past the last note, as before the audio length was passed in.
 PreviewScene build_preview_base(const Song& song,
-                                std::optional<double> audio_end_ms = std::nullopt);
+                                std::optional<double> audio_end_ms = std::nullopt,
+                                std::optional<double> song_length_ms = std::nullopt);
 PreviewScene apply_preview_overlay(PreviewScene base, const Song& song, const Path* path,
                                    int sp_cap = kCloneHeroSpCap,
                                    const core::Rules& rules = core::default_rules());
