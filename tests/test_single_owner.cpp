@@ -1975,7 +1975,7 @@ const std::vector<KnownCopy>& known_copies() {
         // includes src/search. test_store.cpp seeds the migration test's
         // stamp with engine_mode_stamp, so a respelling turns that test red.
         {"Which fill rule does a database's stamp name?", "src/store/record_store.cpp",
-         "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
+         "legacy_fills = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
          "never: a migration reads the historic stamp text, and store never includes search "
          "(M_D review round 2)"},
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
