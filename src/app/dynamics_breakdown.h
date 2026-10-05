@@ -24,7 +24,10 @@ namespace app {
 struct DynamicsCounts {
     int ghost = 0, accent = 0, normal = 0;
     int all() const { return ghost + accent + normal; }
-    bool has_dynamics() const { return ghost + accent > 0; }
+    // The dynamic notes: ghosts and accents, never normals. The one place
+    // they are added; the Dynamics tab's "Dynamic notes" line reads it.
+    int dynamic() const { return ghost + accent; }
+    bool has_dynamics() const { return dynamic() > 0; }
     // Field-by-field addition: the one sum every total below is built from.
     DynamicsCounts& operator+=(const DynamicsCounts& o) {
         ghost += o.ghost;

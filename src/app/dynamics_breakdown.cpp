@@ -5,6 +5,7 @@
 #include "app/display_format.h"
 #include "core/model.h"
 #include "parse/song.h"
+#include "store/serialize.h"  // BinaryWriter, BinaryReader
 
 namespace hydra {
 namespace app {
@@ -132,52 +133,42 @@ constexpr size_t kRowCount = static_cast<size_t>(DynamicsRow::Count);  // 9
 constexpr size_t kDynamicsBlobSize = 1 + 1 + kRowCount * 3 * 4 + 4 + 4;
 constexpr uint32_t kNoLateTag = 0xFFFFFFFF;
 
-void write_u32_le(std::vector<uint8_t>& out, uint32_t v) {
-    out.push_back(static_cast<uint8_t>(v));
-    out.push_back(static_cast<uint8_t>(v >> 8));
-    out.push_back(static_cast<uint8_t>(v >> 16));
-    out.push_back(static_cast<uint8_t>(v >> 24));
-}
-
-uint32_t read_u32_le(const uint8_t* p) {
-    return static_cast<uint32_t>(p[0]) |
-           (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) |
-           (static_cast<uint32_t>(p[3]) << 24);
-}
-
 }  // namespace
 
+// The numbers go through the store's own codec (store/serialize.h), so the
+// byte order of a stored number is written in one place.
 std::vector<uint8_t> encode_dynamics(const DynamicsBreakdown& b) {
-    std::vector<uint8_t> out;
-    out.reserve(kDynamicsBlobSize);
-    out.push_back(store::kDynamicsBlobStamp.written);
-    out.push_back(b.dynamics_enabled ? 1 : 0);
+    store::BinaryWriter w;
+    w.bytes.reserve(kDynamicsBlobSize);
+    w.u8(store::kDynamicsBlobStamp.written);
+    w.boolean(b.dynamics_enabled);
     for (size_t i = 0; i < kRowCount; ++i) {
-        write_u32_le(out, static_cast<uint32_t>(b.rows[i].ghost));
-        write_u32_le(out, static_cast<uint32_t>(b.rows[i].accent));
-        write_u32_le(out, static_cast<uint32_t>(b.rows[i].normal));
+        w.u32(static_cast<uint32_t>(b.rows[i].ghost));
+        w.u32(static_cast<uint32_t>(b.rows[i].accent));
+        w.u32(static_cast<uint32_t>(b.rows[i].normal));
     }
-    write_u32_le(out, b.late_tag_ms.value_or(kNoLateTag));
-    write_u32_le(out, static_cast<uint32_t>(b.marks_before_tag));
-    return out;
+    w.u32(b.late_tag_ms.value_or(kNoLateTag));
+    w.u32(static_cast<uint32_t>(b.marks_before_tag));
+    return std::move(w.bytes);
 }
 
 std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blob) {
     if (blob.size() < kDynamicsBlobSize) return std::nullopt;
     if (!store::kDynamicsBlobStamp.is_current(blob[0])) return std::nullopt;
 
+    // The size check above means every read below is in range.
+    store::BinaryReader r(blob);
+    r.u8();  // the stamp, checked above
     DynamicsBreakdown b;
-    b.dynamics_enabled = blob[1] != 0;
-    const uint8_t* p = blob.data() + 2;
+    b.dynamics_enabled = r.boolean();
     for (size_t i = 0; i < kRowCount; ++i) {
-        b.rows[i].ghost  = static_cast<int>(read_u32_le(p));      p += 4;
-        b.rows[i].accent = static_cast<int>(read_u32_le(p));      p += 4;
-        b.rows[i].normal = static_cast<int>(read_u32_le(p));      p += 4;
+        b.rows[i].ghost = static_cast<int>(r.u32());
+        b.rows[i].accent = static_cast<int>(r.u32());
+        b.rows[i].normal = static_cast<int>(r.u32());
     }
-    const uint32_t tag_ms = read_u32_le(p);                        p += 4;
+    const uint32_t tag_ms = r.u32();
     if (tag_ms != kNoLateTag) b.late_tag_ms = tag_ms;
-    b.marks_before_tag = static_cast<int>(read_u32_le(p));
+    b.marks_before_tag = static_cast<int>(r.u32());
     return b;
 }
 

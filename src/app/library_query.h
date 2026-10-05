@@ -55,9 +55,9 @@ struct QueryTerm {
 
 struct LibraryQuery {
     std::vector<QueryTerm> terms;         // every term must match
-    std::optional<int> stars;             // stars:N, N in 0..7
+    std::optional<int> stars;             // stars:N, N in 0..kMaxStars
     std::optional<double> squeeze_max_ms; // squeeze<=N (also squeeze<N treated as <=)
-    std::vector<std::string> errors;      // e.g. "stars: needs a number from 0 to 7"
+    std::vector<std::string> errors;      // one plain sentence per bad filter value
     bool empty() const;                   // no terms and no filters
 };
 
@@ -77,6 +77,11 @@ struct SearchableRow {
 };
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
                               std::string_view charter, std::string_view folder);
+
+// Whether a term limited to `term_field` counts in `column`: true when either
+// is Any or the two are the same field. The one rule for both matching
+// (query_matches) and highlighting (match_spans).
+bool term_applies_to(QueryField term_field, QueryField column);
 
 // The best path's stored facts a filter can test; nullopt when not analyzed.
 // A row counts as analyzed when `stars` holds a value.
