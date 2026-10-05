@@ -198,6 +198,11 @@ long, and at least 4 measures after the last one (hydra_rules.ini can change
 these). With two or more meter changes
 between two chords, its length reads the earlier meter; that is not
 verified against Clone Hero (docs/adr/0023).
+When two chords sit equally near the downbeat, the later one gets the fill.
+How far from the downbeat that chord may sit, and the fill's length, are cut
+down to whole ticks.
+Neither rule is verified against Clone Hero either; both live in
+`Song::check_activations` (docs/adr/0023, D74).
 
 **Hit window**:
 The per-side ms window Clone Hero registers a hit in. A setting; feeds the

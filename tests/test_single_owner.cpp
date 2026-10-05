@@ -2599,6 +2599,24 @@ const std::vector<OwnerRule>& rules() {
          {"combo += 1;", "note_scores.combo_after = combo;", "combo_ = scores.combo_after;"},
          {},
          {"src", "tools", "tests"}},
+        // The chart's note total: chord note counts added up, or a note total
+        // added to as a running sum. A running combo is the row above's
+        // question, so it is left out here. Tests stay out of scope: they
+        // build records by changing a stored notecount on purpose.
+        {"How many notes does the chart have?",
+         "Song::note_count in src/parse/song.cpp",
+         R"(\b(?!combo)\w+\s*\+=\s*\w+(\.|->)chord\.count\(\)|\bnotecount\s*\+=)",
+         R"(\bnote_count\(\))",
+         {},
+         {},
+         "audit finding 255 (D74)",
+         {"p.notecount += e.notecount;", "proto_base_edge_->notecount += count;",
+          "total += ts.chord.count();"},
+         {"combo += ts.chord.count();", "combo_ += timestamp.chord.count();",
+          "path.notecount = note_count;"},
+         {{"src/parse/song.cpp",
+           "for (const SongTimestamp& ts : sequence) n += ts.chord.count();",
+           "Song::note_count"}}},
         // ---- phase 6 task J2-8: render callers and the Onyx numbers ----
         // The highway's far end is now plus speed times secs_future; time_to_z,
         // z_to_time and the draw list's window all ask far_time.

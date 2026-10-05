@@ -254,6 +254,12 @@ public:
     // building.
     int sp_phrase_count() const;
 
+    // How many notes the chart has, at the difficulty and drum options it was
+    // loaded with: every chord's Chord::count(), added up. The one answer to
+    // the chart's note total. The engine stores it on every path (the Notes
+    // column), and the Dynamics tab's Totals are pinned against it by test.
+    int note_count() const;
+
     // If the chart has no drum fills, synthesize them like Clone Hero would.
     void check_activations(const core::Rules& rules = core::default_rules());
 

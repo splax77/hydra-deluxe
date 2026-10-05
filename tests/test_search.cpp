@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <map>
 #include <optional>
@@ -20,6 +21,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dynamics_breakdown.h"
 #include "bank_check.h"
 #include "core/model.h"
 #include "core/replay.h"
@@ -105,6 +107,81 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
     CHECK(mismatches == 0);
     REQUIRE(charts > 0);
     MESSAGE("checked " << charts << " charts");
+}
+
+namespace {
+
+// The invariants case's deep settings above (depth 200, cap 4), so the
+// 2x Bass on runs below reuse its cached records, and a chart has many paths.
+SearchSettings note_total_settings() {
+    SearchSettings cfg;
+    cfg.sp_cap = 4;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 200;
+    cfg.ms_filter = std::nullopt;
+    return cfg;
+}
+
+// Every stored path of `rec`, variants included, in walk order.
+void each_stored_path(const std::vector<Path>& paths, const std::function<void(const Path&)>& f) {
+    for (const Path& p : paths) {
+        f(p);
+        each_stored_path(p.variants, f);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("note total: every path of How You Remind Me stores the Song's note count") {
+    // Finding 255: the Notes column is the chart's note total, one fact about
+    // the chart, so every path and variant stores the same number.
+    const std::string chart = corpus::root() +
+                              "/common/Summer Blast _25 Setlist/Tier 1/Nickelback - How You Remind Me/"
+                              "notes.chart";
+    const Song& song = corpus::song(chart, true, true);
+    CHECK(song.note_count() == 905);
+    const HydraRecord& rec = corpus::analyzed(chart, note_total_settings());
+    int paths = 0;
+    each_stored_path(rec.paths, [&](const Path& p) {
+        ++paths;
+        CHECK(p.notecount == 905);
+    });
+    CHECK(paths > 1);
+}
+
+TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every corpus chart") {
+    // Finding 255. Under each 2x Bass setting: the Song's note count, every
+    // stored path's notecount, and the Dynamics tab's Totals (counted from its
+    // own 2x-kept parse, then played_total for the setting) are one number.
+    int checked = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        for (const bool bass2x : {false, true}) {
+            CAPTURE(path);
+            CAPTURE(bass2x);
+            const Song& song = corpus::song(path, true, bass2x);
+            if (song.is_empty()) continue;
+            const int total = song.note_count();
+
+            const app::DynamicsBreakdown bd =
+                app::count_dynamics(corpus::song(path, true, app::kDynamicsParseBass2x));
+            CHECK(bd.played_total(bass2x).all() == total);
+
+            app::AnalysisSettings a;
+            static_cast<SearchSettings&>(a) = note_total_settings();
+            a.bass2x = bass2x;
+            const HydraRecord* rec = nullptr;
+            try {
+                rec = &corpus::analyzed(path, a);
+            } catch (const ChartFileError&) {
+                continue;  // charts the engine rejects are covered elsewhere
+            }
+            each_stored_path(rec->paths,
+                             [&](const Path& p) { CHECK(p.notecount == total); });
+            ++checked;
+        }
+    }
+    REQUIRE(checked > 0);
+    MESSAGE("checked " << checked << " chart and 2x Bass pairs");
 }
 
 // The legacy Clone Hero 1.0 fill rule is a whole different spawn deadline, so

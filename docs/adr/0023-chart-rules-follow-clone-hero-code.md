@@ -82,6 +82,11 @@ D26). A live Clone Hero session could settle them.
 - Whether one authored fill turns off generated fills for the whole chart.
 - Whether Clone Hero carries its search position from one fill to the
   next (its fill search takes a start index).
+- When two chords sit equally near a downbeat, a generated fill goes on the
+  later one (`Song::check_activations`, decision D74).
+- How far from its downbeat a generated fill's chord may sit, and the fill's
+  length, are cut down to whole ticks (`Song::check_activations`, decision
+  D74).
 
 ## Consequences
 

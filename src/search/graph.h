@@ -141,7 +141,6 @@ struct ScoreGraphNode {
 struct ScoreGraphEdge {
     ScoreGraphNode* dest = nullptr;
 
-    int64_t notecount = 0;
     int64_t basescore = 0;
     int64_t comboscore = 0;
     int64_t spscore = 0;
@@ -190,6 +189,9 @@ public:
     std::optional<int> sp_meter_cap() const { return sp_meter_cap_; }
     const core::Rules& rules() const { return rules_; }
     const SongTiming& timing() const { return song_.timing(); }
+    // The chart's note total, Song::note_count. Every path covers the whole
+    // chart, so the engine stores this one number on each.
+    int note_count() const { return song_.note_count(); }
     // The chart's multiplier squeezes, in chart order. One list: the combo
     // that decides them never depends on the path.
     const std::vector<MultSqueeze>& multsqueezes() const { return multsqueezes_; }
@@ -209,7 +211,6 @@ private:
     // Graph construction.
     void build();
 
-    void store_notecount(int64_t count);
     void store_soloscore(int64_t points);
     void store_basescore(int64_t points);
     void store_comboscore(int64_t points);

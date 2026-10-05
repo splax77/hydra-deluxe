@@ -121,7 +121,6 @@ void ScoreGraph::build() {
 
         set_head_time(timestamp.timecode);
 
-        store_notecount(timestamp.chord.count());
         store_soloscore(solo_bonus(timestamp.chord, timestamp.flag_solo));
 
         CategoryScores sg = category_scores(timestamp.chord, combo_, nullptr, rules_.sqout_rule);
@@ -220,10 +219,6 @@ void ScoreGraph::build() {
     advance_tracks(last.timecode, last.chord);
 }
 
-void ScoreGraph::store_notecount(int64_t count) {
-    proto_base_edge_->notecount += count;
-    proto_sp_edge_->notecount += count;
-}
 void ScoreGraph::store_soloscore(int64_t points) {
     proto_base_edge_->soloscore += points;
     proto_sp_edge_->soloscore += points;
