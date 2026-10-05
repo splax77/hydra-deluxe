@@ -391,6 +391,38 @@ TEST_CASE("number boxes apply at once but write the INI only on flush") {
     CHECK(Settings::load_file(paths.ini).depth_value == seeded_depth + 3);
 }
 
+// A number typed outside its range takes the path the settings boxes take
+// (Settings::clamp, then edit_settings and the flush) and must land where a
+// hand-edited INI line with the same number lands (D51 call 14).
+TEST_CASE("a number setting edited outside its range lands on the edge the file loader uses") {
+    ScratchPaths paths("appstate_range");
+    std::unique_ptr<AppState> app = app_on(paths);
+
+    app->settings.mslimit_value = Settings::clamp(&Settings::mslimit_value, 900);
+    app->settings.depth_value = Settings::clamp(&Settings::depth_value, -1);
+    app->settings.sp_cap = Settings::clamp(&Settings::sp_cap, 0);
+    app->edit_settings();
+    app->flush_settings();
+    const Settings saved = Settings::load_file(paths.ini);
+
+    // The same numbers written straight into an INI by hand.
+    const std::string hand_ini = temp_path("appstate_range_hand", ".ini");
+    {
+        std::ofstream f(hand_ini, std::ios::trunc);
+        f << "mslimit_value=900\ndepth_value=-1\n";
+    }
+    const Settings hand = Settings::load_file(hand_ini);
+    std::remove(hand_ini.c_str());
+
+    CHECK(saved.mslimit_value == static_cast<int>(hydra::kSqueezeWindowMs));
+    CHECK(saved.mslimit_value == hand.mslimit_value);
+    CHECK(saved.depth_value == 0);
+    CHECK(saved.depth_value == hand.depth_value);
+    // The cap floors at 1 bar (D51 call 16). A hand-written sp_cap=0 is the
+    // one place the two differ on purpose: the file reads 0 as Clone Hero's 4.
+    CHECK(saved.sp_cap == 1);
+}
+
 // Stepping away and back re-shows a lookup already made, without asking the
 // store again (a big record's decode is the expensive part).
 TEST_CASE("stepping a number box back reuses the lookup it already made") {
