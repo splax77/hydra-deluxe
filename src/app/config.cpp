@@ -73,13 +73,13 @@ enum class Outside {
 
 struct Key {
     const char* name;
-    std::variant<bool Settings::*, int Settings::*, std::string Settings::*,
+    std::variant<bool Settings::*, int Settings::*, double Settings::*, std::string Settings::*,
                  std::vector<std::string> Settings::*>
         member;
     // Number keys: the allowed range, both edges allowed, and where a value
-    // outside it lands.
-    int lo = 0;
-    int hi = 0;
+    // outside it lands. A double holds every int edge exactly.
+    double lo = 0;
+    double hi = 0;
     Outside outside = Outside::NearestEdge;
     // Text keys: whether a # is part of the value (a folder path, a user id)
     // rather than the start of a comment (D51 Q15).
@@ -92,6 +92,10 @@ constexpr int kWindowMs = static_cast<int>(kSqueezeWindowMs);
 
 Key on_off(const char* name, bool Settings::* m) { return Key{name, m}; }
 Key number(const char* name, int Settings::* m, int lo, int hi,
+           Outside outside = Outside::NearestEdge) {
+    return Key{name, m, static_cast<double>(lo), static_cast<double>(hi), outside};
+}
+Key number(const char* name, double Settings::* m, double lo, double hi,
            Outside outside = Outside::NearestEdge) {
     return Key{name, m, lo, hi, outside};
 }
@@ -124,8 +128,9 @@ const std::vector<Key>& keys() {
         number("mslimit_value", &Settings::mslimit_value, -kWindowMs, kWindowMs),
         on_off("backendlimit_enabled", &Settings::backendlimit_enabled),
         number("backendlimit_value", &Settings::backendlimit_value, 0, kWindowMs),
-        // "Above 0": 0 and below have no edge to land on.
-        number("hit_window_ms", &Settings::hit_window_ms, 1, kNoCeiling, Outside::Default),
+        // "Above 0": 0 and below have no edge to land on. The floor is the
+        // 1 ms it was while the setting was a whole number.
+        number("hit_window_ms", &Settings::hit_window_ms, 1.0, kNoCeiling, Outside::Default),
         number("preview_volume", &Settings::preview_volume, 0, 100),
         // The smallest cap is 1 bar: it can never activate SP, but it stays
         // allowed as a what-if (D51 Q16).
@@ -143,14 +148,18 @@ const Settings& defaults() {
     return d;
 }
 
-// `value` pulled into k's range. `from_file` is load_file's call.
-int pull_into_range(const Key& k, int value, bool from_file) {
-    if (value >= k.lo && value <= k.hi) return value;
+// `value` pulled into k's range; T is the key's number type (int or double).
+// `from_file` is load_file's call.
+template <typename T>
+T pull_into_range(const Key& k, T value, bool from_file) {
+    const T lo = static_cast<T>(k.lo);
+    const T hi = static_cast<T>(k.hi);
+    if (value >= lo && value <= hi) return value;
     const bool to_default =
         k.outside == Outside::Default ||
-        (k.outside == Outside::DefaultFromFile && from_file && value < k.lo);
-    if (to_default) return defaults().*std::get<int Settings::*>(k.member);
-    return std::clamp(value, k.lo, k.hi);
+        (k.outside == Outside::DefaultFromFile && from_file && value < lo);
+    if (to_default) return defaults().*std::get<T Settings::*>(k.member);
+    return std::clamp(value, lo, hi);
 }
 
 // Sets k's field of `s` from one line of the file.
@@ -161,6 +170,10 @@ void read_value(const Key& k, const IniPair& line, Settings& s) {
     } else if (auto n = std::get_if<int Settings::*>(&k.member)) {
         // Junk reads as 0, as atoi always made it, then takes the range.
         s.**n = pull_into_range(k, std::atoi(line.value.c_str()), true);
+    } else if (auto d = std::get_if<double Settings::*>(&k.member)) {
+        // A decimal reads through parse_finite_number. Junk reads as 0, as
+        // for a whole number, then takes the range.
+        s.**d = pull_into_range(k, parse_finite_number(line.value).value_or(0.0), true);
     } else if (auto t = std::get_if<std::string Settings::*>(&k.member)) {
         s.**t = k.free_text ? line.whole_value : line.value;
     } else {
@@ -203,6 +216,10 @@ bool Settings::save_file(const std::string& path) const {
             f << k.name << "=" << (this->**b ? 1 : 0) << "\n";
         } else if (auto n = std::get_if<int Settings::*>(&k.member)) {
             f << k.name << "=" << this->**n << "\n";
+        } else if (auto d = std::get_if<double Settings::*>(&k.member)) {
+            // The stream's own form: a whole number writes as one (85), so a
+            // file written before the decimal keeps its bytes.
+            f << k.name << "=" << this->**d << "\n";
         } else if (auto t = std::get_if<std::string Settings::*>(&k.member)) {
             // An empty text is left out, so it loads as its default.
             if (!(this->**t).empty()) f << k.name << "=" << this->**t << "\n";

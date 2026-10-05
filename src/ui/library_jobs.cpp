@@ -268,21 +268,19 @@ void BatchJob::run() {
         return;
     }
 
-    bool total_known = false;
-
     app::BatchCallbacks callbacks;
-    callbacks.on_progress = [this, &total_known](const app::BatchProgress& p) {
+    // run_batch counts; the snapshot copies all five numbers in one step, so
+    // a frame never reads a failure before the chart it belongs to.
+    callbacks.on_progress = [this](const app::BatchProgress& p) {
         std::lock_guard<std::mutex> lock(mu_);
         snap_.total = p.total;
         snap_.completed = p.completed;
-        if (!total_known) {
-            snap_.skipped = static_cast<int>(items_.size()) - p.total;
-            total_known = true;
-        }
+        snap_.analyzed = p.analyzed;
+        snap_.skipped = p.skipped;
+        snap_.failed = p.failed;
     };
     callbacks.on_error = [this](const std::string& title, const std::string& error) {
         std::lock_guard<std::mutex> lock(mu_);
-        ++snap_.failed;
         snap_.failures.push_back(title + ": " + app::plain_error_text(error));
         snap_.failure_details.push_back(title + ": " + error);
     };
@@ -346,7 +344,7 @@ app::AnalysisResult AnalyzeJob::take_result() { return std::move(*result_); }
 // ---- ReportJob --------------------------------------------------------
 
 ReportJob::ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-                     bool open_when_done, int hit_window_ms)
+                     bool open_when_done, double hit_window_ms)
     : store_(store),
       cap_(cap),
       lens_(lens),

@@ -2539,6 +2539,41 @@ const std::vector<OwnerRule>& rules() {
           "BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun run,"},
          {},
          {"src", "tests"}},
+        // A batch count worked out again from other counts: "skipped" as the
+        // scan list less the total, or "analyzed" as finished less failed.
+        // BatchProgress carries every count, filled by run_batch.
+        {"How many charts did a batch analyze, skip and fail?",
+         "run_batch in src/app/analysis.cpp (BatchProgress's counts)",
+         R"(size\(\)\)\s*-\s*p\.total\b|\bcompleted\s*-\s*(\w+(\.|->))?failed\b)",
+         "",
+         {},
+         {},
+         "audit finding 142; D51 call 26 and D62 item 3 (phase 7 task LB1)",
+         {"snap_.skipped = static_cast<int>(items_.size()) - p.total;",
+          "skipped = static_cast<int>(scanitems.size()) - p.total;",
+          R"(return counted(s.completed - s.failed, "analyzed", "analyzed") + " \xC2\xB7 " +)",
+          "const int kept = s.completed - s.failed;"},
+         {"progress.completed = progress.analyzed + progress.failed;",
+          "snap_.completed = p.completed;",
+          "for (int i = static_cast<int>(digits.size()) - 1; i >= 0; --i) {"},
+         {},
+         {"src"}},
+        // The hit window's default cut to a whole number. The setting, the
+        // report job and the report keep its decimal (D51 call 15).
+        {"What is the hit window's default?",
+         "kDefaultHitWindowMs in src/core/model.h",
+         R"(static_cast<int>\(\s*(hydra::)?kDefaultHitWindowMs\s*\))",
+         "",
+         {},
+         {},
+         "audit finding 140; D51 call 15 (phase 7 task LB1)",
+         {"int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);",
+          "int hit_window_ms = static_cast<int>(kDefaultHitWindowMs));",
+          "CHECK(s.hit_window_ms == static_cast<int>(hydra::kDefaultHitWindowMs));"},
+         {"double hit_window_ms = kDefaultHitWindowMs;",
+          "bool open_when_done, double hit_window_ms = kDefaultHitWindowMs);"},
+         {},
+         {"src", "tests"}},
     };
     return r;
 }
@@ -2714,6 +2749,12 @@ const std::vector<KnownCopy>& known_copies() {
         {"What does the song panel's Analyze button say?", "tests/ui/uitest_details.cpp",
          R"(ctx->ItemClick("**/Analyze this song");)",
          "task J4-3 (uitest_details calls analyze_button_label; audit finding 289)"},
+        {"How many charts did a batch analyze, skip and fail?", "src/ui/library_dialogs.cpp",
+         R"(return counted(s.completed - s.failed, "analyzed", "analyzed") + " \xC2\xB7 " +)",
+         "phase 7 task LB2 (batch_counts reads Snapshot::analyzed; audit finding 142)"},
+        {"How many charts did a batch analyze, skip and fail?", "src/ui/library_dialogs.cpp",
+         "const int kept = s.completed - s.failed;",
+         "phase 7 task LB2 (the Stop tooltip reads Snapshot::analyzed; audit finding 142)"},
     };
     return k;
 }
