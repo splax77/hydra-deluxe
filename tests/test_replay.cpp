@@ -791,14 +791,14 @@ void add_dynamic_cymbal(Chord& chord, NoteDynamicType dyn) {
 // and where the phrase starts (test::mark_phrase_end, one resolution back,
 // clamped at 0).
 TEST_CASE("fixtures: mark_phrase_end sets the flag and the phrase start together") {
-    const Song song = song_with({{0, true}, {768, true}, {1536, false}});
+    const Song song = song_with({{0, true}, {192, false}, {768, true}});
     REQUIRE(song.sequence.size() == 3);
     CHECK(song.sequence[0].flag_sp);
     CHECK(song.sequence[0].sp_phrase_start == 0);
-    CHECK(song.sequence[1].flag_sp);
-    CHECK(song.sequence[1].sp_phrase_start == 576);
-    CHECK_FALSE(song.sequence[2].flag_sp);
-    CHECK_FALSE(song.sequence[2].sp_phrase_start.has_value());
+    CHECK_FALSE(song.sequence[1].flag_sp);
+    CHECK_FALSE(song.sequence[1].sp_phrase_start.has_value());
+    CHECK(song.sequence[2].flag_sp);
+    CHECK(song.sequence[2].sp_phrase_start == 576);
 }
 
 // A typed offset is only ever an approximation of a chord that sits on a
