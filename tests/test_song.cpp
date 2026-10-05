@@ -16,6 +16,7 @@
 #include "core/strutil.h"
 #include "chart_text.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "midi_util.h"
 #include "multidiff_chart.h"
 #include "parse/chart_files.h"
@@ -441,7 +442,7 @@ TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
         REQUIRE(kick2x.has_value());
         CHECK(kick2x->dynamictype == NoteDynamicType::Accent);
         CHECK(kick2x->is2x == true);
-        CHECK(kick2x->str() == "Kick (Accent, 2x)");
+        CHECK(kick2x->str() == "2x kick (Accent)");
 
         const auto& red = song.sequence[2].chord.at(NoteColor::Red);
         REQUIRE(red.has_value());
@@ -775,4 +776,46 @@ TEST_CASE("load-and-check throws the no-notes error for a missing difficulty") {
     CHECK_THROWS_WITH_AS(load_songpath_with_notes(no_hard, true, true, Difficulty::Hard),
                          "No Hard Pro Drums notes in this chart.", NoNotesError);
     CHECK_NOTHROW(load_songpath_with_notes(has_hard, true, true, Difficulty::Hard));
+}
+
+// ---- display_title: the one cleaned song title (findings 8 and 111) ----------
+
+TEST_CASE("display_title: a title made only of Clone Hero tags reads (unknown)") {
+    CHECK(display_title(test::kTagOnlyTitle) == "(unknown)");
+    CHECK(display_title("   ") == "(unknown)");
+}
+
+TEST_CASE("display_title: tags go, words stay, spaces are trimmed") {
+    CHECK(display_title("<b>Bold</b>") == "Bold");
+    CHECK(display_title("<color=#e02222>Blood</color>line") == "Bloodline");
+    CHECK(display_title(" Some Song ") == "Some Song");
+}
+
+TEST_CASE("display_title: a clean name and the old placeholder behave like title_or_unknown") {
+    CHECK(display_title("Some Song") == "Some Song");
+    CHECK(display_title("<unknown title>") == "(unknown)");
+}
+
+TEST_CASE("display_title: an artist reads by the same rule (D50 item 5)") {
+    // An artist made only of tags reads "(unknown)", like a title.
+    CHECK(display_artist(test::kTagOnlyTitle) == "(unknown)");
+    CHECK(display_artist(" <i>Tagged</i> Artist ") == "Tagged Artist");
+}
+
+TEST_CASE("display_artist: a missing artist reads (unknown) however it is stored (D56 item 2)") {
+    // Empty, the scan's placeholder, or only tags: all three read "(unknown)".
+    CHECK(display_artist("") == "(unknown)");
+    CHECK(display_artist("<unknown artist>") == "(unknown)");
+    CHECK(display_artist(" <b></b> ") == "(unknown)");
+    // The stored text is not touched: the scan still writes its placeholder.
+    CHECK(artist_or_unknown("") == "<unknown artist>");
+}
+
+TEST_CASE("display_charter: tags go and the ends are trimmed, with no fallback") {
+    CHECK(display_charter(" <b>Bob</b> ") == "Bob");
+    CHECK(display_charter("<color=red> Hoph2o </color>") == "Hoph2o");
+    CHECK(display_charter(test::kTagOnlyTitle) == "");
+    CHECK(display_charter("") == "");
+    // The scan's charter placeholder keeps today's text.
+    CHECK(display_charter("<unknown charter>") == "<unknown charter>");
 }

@@ -4,6 +4,7 @@
 #include "core/model.h"
 #include "core/strutil.h"
 #include "imgui.h"
+#include "search/graph.h"  // fill_rule_name
 #include "store/record_store.h"
 #include "ui/fonts.h"
 #include "ui/theme.h"
@@ -52,16 +53,15 @@ bool enter_pressed() {
 
 // "21 analyzed · 0 failed · 1 skipped (already had a result)".
 std::string batch_counts(const BatchJob::Snapshot& s) {
-    return count_label(s.completed - s.failed, "analyzed", "analyzed") + " \xC2\xB7 " +
-           count_label(s.failed, "failed", "failed") + " \xC2\xB7 " +
-           count_label(s.skipped, "skipped", "skipped") + " (already had a result)";
+    return counted(s.completed - s.failed, "analyzed", "analyzed") + " \xC2\xB7 " +
+           counted(s.failed, "failed", "failed") + " \xC2\xB7 " +
+           counted(s.skipped, "skipped", "skipped") + " (already had a result)";
 }
 
 }  // namespace
 
-std::string count_label(int64_t n, const char* one, const char* many) {
-    return group_thousands(n) + " " + (n == 1 ? one : many);
-}
+// Kept for the Dynamics tab, which still calls it by this name.
+std::string count_label(int64_t n, const char* one, const char* many) { return counted(n, one, many); }
 
 std::string format_duration(double seconds) {
     const long long total = seconds <= 0.0 ? 0 : static_cast<long long>(seconds + 0.5);
@@ -79,11 +79,11 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     out.difficulty = difficulty_name(s.difficulty());
     if (s.view_prodrums) out.difficulty += " \xC2\xB7 Pro Drums";
     if (s.effective_bass2x()) out.difficulty += " \xC2\xB7 2x Bass";
-    out.sp_cap = count_label(s.sp_cap, "bar", "bars") +
+    out.sp_cap = counted(s.sp_cap, "bar", "bars") +
                  (s.sp_cap == kCloneHeroSpCap ? " (Clone Hero's rule)" : " (a what-if)");
-    out.fills = s.legacy_fills ? "Clone Hero 1.0" : "Clone Hero 1.1";
-    out.score_range = s.depth_mode == 0 ? count_label(s.depth_value, "score", "scores")
-                                        : count_label(s.depth_value, "point", "points");
+    out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);
+    out.score_range = s.depth_mode == 0 ? counted(s.depth_value, "score", "scores")
+                                        : counted(s.depth_value, "point", "points");
     out.path_limit = s.mslimit_enabled ? std::to_string(s.mslimit_value) + " ms" : "off";
     return out;
 }
@@ -235,12 +235,12 @@ void render_scan_modal(AppState& app) {
                 ImGui::CloseCurrentPopup();
             }
         } else {
-            ImGui::Text("Done: %s found.", count_label(p.charts_found, "chart", "charts").c_str());
+            ImGui::Text("Done: %s found.", counted(p.charts_found, "chart", "charts").c_str());
             if (!p.errors.empty()) {
                 // "problems", not "skipped items": the list can also carry
                 // a failed library write, which is not a skipped chart.
                 ImGui::TextColored(kWarningColor, "%s during the scan:",
-                                   count_label((int64_t)p.errors.size(), "problem", "problems")
+                                   counted((int64_t)p.errors.size(), "problem", "problems")
                                        .c_str());
                 ImGui::BeginChild("scanerrors", ImVec2(-1, px(100)), ImGuiChildFlags_Borders);
                 for (const std::string& e : p.errors) ImGui::TextUnformatted(e.c_str());
@@ -284,12 +284,11 @@ void render_batch_confirm(AppState& app) {
     if (to_run == 0)
         question = "Every chart here already has a result.";
     else if (app.batch_redo && with > 0)
-        question = "Analyze " + count_label(total, "chart", "charts") + ", re-analyzing " +
-                   group_thousands(with) + (with == 1 ? " that already has" : " that already have") +
-                   " a result?";
+        question = "Analyze " + counted(total, "chart", "charts") + ", re-analyzing " +
+                   group_thousands(with) + " that already " + has_have(with) + " a result?";
     else
-        question = "Analyze " + count_label(without, "chart", "charts") +
-                   (without == 1 ? " that has" : " that have") + " no result yet?";
+        question = "Analyze " + counted(without, "chart", "charts") + " that " +
+                   has_have(without) + " no result yet?";
     ImGui::PushFont(nullptr, 20.0f);
     ImGui::TextWrapped("%s", question.c_str());
     ImGui::PopFont();
@@ -317,7 +316,7 @@ void render_batch_confirm(AppState& app) {
     ImGui::Checkbox("Also re-analyze charts that already have a result##redo", &app.batch_redo);
     end_disabled_checkbox(with == 0);
     ImGui::SameLine();
-    ImGui::TextDisabled("(%s)", count_label(with, "chart", "charts").c_str());
+    ImGui::TextDisabled("(%s)", counted(with, "chart", "charts").c_str());
 
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted("It runs in the background, so you can keep browsing. Analysis "
@@ -386,14 +385,13 @@ void render_batch_strip(AppState& app) {
         }
         text_ellipsized(line.c_str());
 
-        const float frac = s.total > 0 ? (float)s.completed / (float)s.total : 0.0f;
         ImGui::PushStyleColor(ImGuiCol_FrameBg, kStripTrack);
         ImGui::PushStyleColor(ImGuiCol_PlotHistogram, kAccentColor);
-        ImGui::ProgressBar(frac, ImVec2(-1.0f, px(6.0f)), "");
+        ImGui::ProgressBar(progress_fraction(s.completed, s.total), ImVec2(-1.0f, px(6.0f)), "");
         ImGui::PopStyleColor(2);
 
         std::string time = format_duration(s.elapsed_s) + " elapsed";
-        if (s.eta_s) time += " \xC2\xB7 about " + format_duration(*s.eta_s) + " left";
+        if (s.eta_s) time += " \xC2\xB7 " + time_left_text(*s.eta_s);
         ImGui::PushStyleColor(ImGuiCol_Text, kStripText2);
         ImGui::TextUnformatted(batch_counts(s).c_str());
         const float time_w = ImGui::CalcTextSize(time.c_str()).x;
@@ -421,7 +419,7 @@ void render_batch_strip(AppState& app) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         const int kept = s.completed - s.failed;
         ImGui::SetTooltip("Keeps the %s already finished",
-                          count_label(kept, "result", "results").c_str());
+                          counted(kept, "result", "results").c_str());
     }
     ImGui::EndChild();
 }
@@ -508,7 +506,7 @@ void render_batch_done(AppState& app) {
         hint("Open the report in the browser whenever a batch finishes");
     }
     if (!s.failures.empty()) {
-        const std::string head = count_label((int64_t)s.failures.size(), "chart", "charts") +
+        const std::string head = counted((int64_t)s.failures.size(), "chart", "charts") +
                                  " failed##batchfailures";
         if (ImGui::TreeNode(head.c_str())) {
             // Wrapped: a chart's name and its error can both run long.
@@ -639,12 +637,13 @@ void render_dm_picker_modal(AppState& app) {
                 to_lower_ascii(u.username).find(needle) == std::string::npos)
                 continue;
             char label[256];
+            const std::string scores = counted(u.total_scores, "score", "scores");
             if (u.elo)
-                std::snprintf(label, sizeof(label), "%s  (%d scores, elo %d)###%s",
-                              u.username.c_str(), u.total_scores, *u.elo, u.id.c_str());
+                std::snprintf(label, sizeof(label), "%s  (%s, elo %d)###%s", u.username.c_str(),
+                              scores.c_str(), *u.elo, u.id.c_str());
             else
-                std::snprintf(label, sizeof(label), "%s  (%d scores)###%s", u.username.c_str(),
-                              u.total_scores, u.id.c_str());
+                std::snprintf(label, sizeof(label), "%s  (%s)###%s", u.username.c_str(),
+                              scores.c_str(), u.id.c_str());
             bool is_last = u.id == app.settings.dm_last_user;
             if (ImGui::Selectable(label, is_last)) app.start_dm_report(u.id, u.username);
         }

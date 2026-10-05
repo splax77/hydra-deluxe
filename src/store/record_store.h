@@ -205,6 +205,10 @@ std::optional<double> song_length_ms(const Song& song);
 // The answer to get_summary: the same status, without touching the blob.
 struct SummaryLookup {
     RecordStatus status = RecordStatus::NotAnalyzed;
+    // Why a Stale row is Stale, as RecordLookup says it: both can be true,
+    // neither is when not Stale. The library's row tooltip names the cause.
+    bool stale_build = false;
+    bool stale_rules = false;
     std::string bestpath;  // meaningful only when status == Ready
     // The row's summary columns; filled only when status == Ready. A Stale
     // row's numbers came from bytes this build doesn't trust, so they're not

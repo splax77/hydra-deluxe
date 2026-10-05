@@ -31,6 +31,7 @@
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
 #include "parse/song.h"
 #include "record_bytes.h"
 #include "record_fixtures.h"
@@ -339,10 +340,7 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
 
     // A row stamped with a different version is stale for this store: it
     // doesn't count as "already analyzed".
-    PreparedRow stale =
-        prepare_row(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}, *record);
-    stale.hyversion = "0.0.0";
-    store.add_row(stale);
+    store.add_row(test::old_build_row(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}, *record));
     CHECK(store.counts().second == 2);
     CHECK_FALSE(store.has_record(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}));
 
@@ -508,9 +506,7 @@ TEST_CASE("records at different caps coexist; each lookup sees only its own cap"
 
     // A stale 64-bar row leaves the 32-bar answer alone -- for single
     // lookups and for the set queries alike.
-    PreparedRow stale = prepare_row(RecordKey{"h", "mode", CapQuery::at(64)}, at_cap(64));
-    stale.hyversion = "0.0.0";
-    store.add_row(stale);
+    store.add_row(test::old_build_row(RecordKey{"h", "mode", CapQuery::at(64)}, at_cap(64)));
     CHECK(store.get_record(RecordKey{"h", "mode", CapQuery::at(32)}).record->sp_cap == 32);
     std::vector<RecordListing> listed =
         store.list_records(std::nullopt, CapQuery::at(32), Lens{}, SortColumn::Score, true);
@@ -661,8 +657,7 @@ TEST_CASE("a row in the 1.8.1 path layout (structure format 5) reads Stale") {
 }
 
 TEST_CASE("a row analyzed under other rules reads Stale until the rules match again") {
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
+    const core::Rules other = test::other_rules();
     const RecordKey key{"h", "mode", CapQuery::at(8)};
 
     // A store running the default rules sees a row stamped with other rules
@@ -670,9 +665,7 @@ TEST_CASE("a row analyzed under other rules reads Stale until the rules match ag
     {
         RecordStore store(":memory:");
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        HydraRecord foreign = at_cap(8);
-        foreign.rules_fingerprint = other.fingerprint();
-        store.add_row(prepare_row(key, foreign));
+        store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
         CHECK_FALSE(store.has_record(key));
         CHECK(store.get_record(key).status == RecordStatus::Stale);
         CHECK(store.get_summary(key).status == RecordStatus::Stale);
@@ -710,17 +703,14 @@ TEST_CASE("a row analyzed under other rules reads Stale until the rules match ag
 TEST_CASE("a write under rules A keeps the rules-B row") {
     // D51 call 8 (finding 65): a result made under other rules is kept, and
     // reads Ready again once the store runs those rules.
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
+    const core::Rules other = test::other_rules();
     const RecordKey key{"h", "mode", CapQuery::at(8)};
     const std::string db = temp_db("keep_rules_b");
     std::remove(db.c_str());
     {
         RecordStore store(db);
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        HydraRecord foreign = at_cap(8);
-        foreign.rules_fingerprint = other.fingerprint();
-        store.add_row(prepare_row(key, foreign));
+        store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
     }
     const int64_t one_row_refs = scalar(db, "SELECT COUNT(*) FROM path_refs");
     REQUIRE(one_row_refs > 0);
@@ -747,17 +737,14 @@ TEST_CASE("a write under rules A keeps the rules-B row") {
 TEST_CASE("reindex leaves a row made under other rules untouched") {
     // D55 item 3: a result kept under other rules (D51 call 8) keeps its
     // cached score after a reindex under the default rules.
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
+    const core::Rules other = test::other_rules();
     const RecordKey key{"h", "mode", CapQuery::at(8)};
     const std::string db = temp_db("reindex_rules_b");
     std::remove(db.c_str());
     {
         RecordStore store(db);
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        HydraRecord foreign = at_cap(8);
-        foreign.rules_fingerprint = other.fingerprint();
-        store.add_row(prepare_row(key, foreign));
+        store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
     }
     const int64_t score = fixture().record.best_path().totalscore();
     REQUIRE(scalar(db, "SELECT score FROM results") == score);
@@ -771,36 +758,26 @@ TEST_CASE("reindex leaves a row made under other rules untouched") {
 }
 
 TEST_CASE("a Stale lookup says why: another build, other rules, or both") {
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
     RecordStore store(":memory:");
     store.add_song("h", "Song", "Artist", "Charter", fixture().song);
+    const RecordKey build_key{"h", "build", CapQuery::at(8)};
+    const RecordKey rules_key{"h", "rules", CapQuery::at(8)};
+    const RecordKey both_key{"h", "both", CapQuery::at(8)};
+    test::add_stale_rows(store, at_cap(8), build_key, rules_key, both_key);
 
     // This build, other rules.
-    const RecordKey rules_key{"h", "rules", CapQuery::at(8)};
-    HydraRecord foreign = at_cap(8);
-    foreign.rules_fingerprint = other.fingerprint();
-    store.add_row(prepare_row(rules_key, foreign));
     RecordLookup by_rules = store.get_record(rules_key);
     CHECK(by_rules.status == RecordStatus::Stale);
     CHECK(by_rules.stale_rules);
     CHECK_FALSE(by_rules.stale_build);
 
     // Another build, these rules.
-    const RecordKey build_key{"h", "build", CapQuery::at(8)};
-    PreparedRow old_build = prepare_row(build_key, at_cap(8));
-    old_build.hyversion = "0.0.0";
-    store.add_row(old_build);
     RecordLookup by_build = store.get_record(build_key);
     CHECK(by_build.status == RecordStatus::Stale);
     CHECK(by_build.stale_build);
     CHECK_FALSE(by_build.stale_rules);
 
     // Another build and other rules: both reasons.
-    const RecordKey both_key{"h", "both", CapQuery::at(8)};
-    PreparedRow both = prepare_row(both_key, foreign);
-    both.hyversion = "0.0.0";
-    store.add_row(both);
     RecordLookup by_both = store.get_record(both_key);
     CHECK(by_both.status == RecordStatus::Stale);
     CHECK(by_both.stale_build);
@@ -950,10 +927,7 @@ TEST_CASE("the listing and a lookup agree on which row is a chart's answer") {
     // A current row and a taller stale one. The stale row goes in second
     // because a current-version write purges the chart's other-version rows.
     store.add_record(RecordKey{"over_stale", "mode", CapQuery::at(8)}, at_cap(8));
-    PreparedRow stale =
-        prepare_row(RecordKey{"over_stale", "mode", CapQuery::at(64)}, at_cap(64));
-    stale.hyversion = "0.0.0";
-    store.add_row(stale);
+    store.add_row(test::old_build_row(RecordKey{"over_stale", "mode", CapQuery::at(64)}, at_cap(64)));
 
     // A current row and a taller row an old migration left: the migrated row
     // is no candidate at all.
@@ -964,10 +938,7 @@ TEST_CASE("the listing and a lookup agree on which row is a chart's answer") {
     store.add_record(RecordKey{"over_sentinel", "mode", CapQuery::at(8)}, at_cap(8));
 
     // Nothing readable at all.
-    PreparedRow only_stale =
-        prepare_row(RecordKey{"all_stale", "mode", CapQuery::at(16)}, at_cap(16));
-    only_stale.hyversion = "0.0.0";
-    store.add_row(only_stale);
+    store.add_row(test::old_build_row(RecordKey{"all_stale", "mode", CapQuery::at(16)}, at_cap(16)));
 
     auto listed_at = [&](int cap) {
         std::unordered_map<std::string, int> listed;
@@ -1200,10 +1171,8 @@ TEST_CASE("a current-version write purges the chart's old-version rows and their
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
         store.add_song("other", "Other", "Artist", "Charter", fixture().song);
         for (const char* hash : {"h", "other"}) {
-            PreparedRow old_row =
-                prepare_row(RecordKey{hash, "mode", CapQuery::at(4), kLensB}, at_cap(4));
-            old_row.hyversion = "0.0.0";
-            store.add_row(old_row);
+            store.add_row(
+                test::old_build_row(RecordKey{hash, "mode", CapQuery::at(4), kLensB}, at_cap(4)));
         }
         CHECK(store.counts().second == 2);
     }
@@ -1475,8 +1444,7 @@ TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
     // D51 addendum (ST1): schema 4 puts the rules fingerprint in the results
     // key. The table is rebuilt with every row, result_id and blob kept, so
     // nothing is analyzed again.
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
+    const core::Rules other = test::other_rules();
     const RecordKey at4{"h", "mode", CapQuery::at(4)};
     const RecordKey at8{"h", "mode", CapQuery::at(8)};
     const std::string path = temp_db("schema3");
@@ -1485,9 +1453,7 @@ TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
         RecordStore seed(path);
         seed.add_song("h", "Song", "Artist", "Charter", fixture().song);
         seed.add_record(at4, at_cap(4));
-        HydraRecord foreign = at_cap(8);
-        foreign.rules_fingerprint = other.fingerprint();
-        seed.add_row(prepare_row(at8, foreign));
+        seed.add_row(prepare_row(at8, test::other_rules_record(at_cap(8))));
     }
     // Back to the schema 3 table (no rules_fp, a key without it), with a copy
     // of each row's id and blob to compare against afterwards.
@@ -1644,8 +1610,6 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
     // The Ready rule is spelled once in C++ (rank_row) and once in SQL
     // (kRowReadySql, which has_record and add_row's purge use). This pins the
     // two spellings together across every kind of row.
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
     RecordStore store(":memory:");
     store.add_song("h", "Song", "Artist", "Charter", fixture().song);
 
@@ -1653,9 +1617,9 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
     store.add_record(ready, at_cap(8));
 
     const RecordKey old_build{"h", "build", CapQuery::at(8)};
-    PreparedRow build_row = prepare_row(old_build, at_cap(8));
-    build_row.hyversion = "0.0.0";
-    store.add_row(build_row);
+    const RecordKey other_rules{"h", "rules", CapQuery::at(8)};
+    const RecordKey both{"h", "both", CapQuery::at(8)};
+    test::add_stale_rows(store, at_cap(8), old_build, other_rules, both);
 
     const RecordKey old_format{"h", "format", CapQuery::at(8)};
     PreparedRow format_row = prepare_row(old_format, at_cap(8));
@@ -1665,12 +1629,7 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
     format_row.structure[3] = 0;
     store.add_row(format_row);
 
-    const RecordKey other_rules{"h", "rules", CapQuery::at(8)};
-    HydraRecord foreign = at_cap(8);
-    foreign.rules_fingerprint = other.fingerprint();
-    store.add_row(prepare_row(other_rules, foreign));
-
-    for (const RecordKey& key : {ready, old_build, old_format, other_rules}) {
+    for (const RecordKey& key : {ready, old_build, old_format, other_rules, both}) {
         INFO(key.chartmode);
         CHECK(store.has_record(key) ==
               (store.get_summary(key).status == RecordStatus::Ready));
@@ -1757,9 +1716,7 @@ TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {
                                              "other_mode"};
     for (const char* h : charts) store.add_song(h, h, "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
-    PreparedRow stale = prepare_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4));
-    stale.hyversion = "0.0.0";
-    store.add_row(stale);
+    store.add_row(test::old_build_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4)));
     store.add_record(RecordKey{"other_lens", "mode", CapQuery::at(4), kLensB}, at_cap(4));
     store.add_record(RecordKey{"other_cap", "mode", CapQuery::at(8)}, at_cap(8));
     store.add_record(RecordKey{"other_mode", "other", CapQuery::at(4)}, at_cap(4));
@@ -1780,9 +1737,7 @@ TEST_CASE("get_summaries answers a page the same as get_summary row by row") {
     for (const char* h : {"ready", "stale", "none", "two_caps"})
         store.add_song(h, h, "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
-    PreparedRow stale = prepare_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4));
-    stale.hyversion = "0.0.0";
-    store.add_row(stale);
+    store.add_row(test::old_build_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4)));
     store.add_record(RecordKey{"two_caps", "mode", CapQuery::at(32)}, at_cap(32));
     store.add_record(RecordKey{"two_caps", "mode", CapQuery::at(16)}, at_cap(16));
 
@@ -1911,9 +1866,7 @@ TEST_CASE("a saved result stores its best path's star count") {
     for (const char* h : {"ready", "stale"})
         store.add_song(h, h, "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
-    PreparedRow stale = prepare_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4));
-    stale.hyversion = "0.0.0";
-    store.add_row(stale);
+    store.add_row(test::old_build_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4)));
 
     const Path& best = fixture().record.best_path();
     const PathSummary expected = summarize_record(fixture().record);
@@ -1993,9 +1946,7 @@ TEST_CASE("a database from before the stars column gets its stars filled on open
         for (const char* h : {"ready", "stale"})
             seed.add_song(h, h, "Artist", "Charter", fixture().song);
         seed.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
-        PreparedRow old = prepare_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4));
-        old.hyversion = "0.0.0";
-        seed.add_row(old);
+        seed.add_row(test::old_build_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4)));
     }
     // What the previous Hydra wrote: the same table with no stars column.
     exec_on_file(path, "ALTER TABLE results DROP COLUMN stars");

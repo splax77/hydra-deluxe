@@ -2,8 +2,8 @@
 //
 // The note/chord/path/record types the parser fills and the search produces.
 // The *string* forms here (Path::pathstring/pathstring_verbose,
-// Activation::notationstr) are user-visible and pinned by the tests, so they must
-// match Python byte-for-byte: comma-grouped scores, int() truncation on ms, the
+// Activation::notationstr) are user-visible and pinned by the tests:
+// comma-grouped scores, whole ms rounded to nearest (format_ms_whole), the
 // exact +/- squeeze symbols and [KRYBG] slot layout.
 //
 // Records are stored in the binary format of store/serialize.h. Stored paths
@@ -52,6 +52,13 @@ std::string color_str(NoteColor c);         // "Kick"/"Red"/...
 std::string dynamic_str(NoteDynamicType t); // "none"/"ghost"/"accent"
 std::string color_notationstr(NoteColor c); // "K"/"R"/"Y"/"B"/"G"
 
+struct ChordNote;
+// What a drum note is called on screen, in the Dynamics tab's words: "Kick",
+// "2x kick", "Red snare", "Yellow tom", "Yellow cymbal". With Pro Drums off
+// a pad has no tom or snare, so the type word goes ("Red", "Yellow"); a
+// cymbal still says "cymbal". Ghost and accent are not part of the name.
+std::string note_label(const ChordNote& note, bool pro);
+
 // ---- squeeze thresholds -------------------------------------------------
 // One home for the ms thresholds that define squeeze semantics. Each used to
 // be a repeated literal; the value is the interface, so a change here is a
@@ -61,6 +68,16 @@ std::string color_notationstr(NoteColor c); // "K"/"R"/"Y"/"B"/"G"
 // difficult: it turns on warning colors, and it is the "Normal" floor of the
 // report's timing tiers.
 constexpr double kDifficultMs = 2.0;
+
+// Is a timing past the difficult floor? A timing exactly on the floor is
+// inside it, so 2.0 ms is not difficult and reads Normal (D48 Q3). Every
+// is_difficult asks this.
+inline bool past_difficult_floor(double ms) { return ms > kDifficultMs; }
+
+// The inner edges of the backend rating ladder: a row within this many ms of
+// the SP end, either side, sits in the middle rungs (BackendSqueeze::
+// summarystr). A fixed rule of its own, not the backend leeway (D48 Q4).
+constexpr double kBackendInnerBandMs = 10.0;
 
 // The backend leeway edge is a user rule now: core::Rules::backend_leeway_ms
 // (hydra_rules.ini), read by the engine and BackendSqueeze::summarystr.
@@ -120,7 +137,9 @@ struct ChordNote {
 
     bool operator==(const ChordNote& o) const;
     bool operator!=(const ChordNote& o) const { return !(*this == o); }
-    std::string str() const;
+    // The note's name (note_label, in the words of the Pro Drums setting
+    // `pro`), then a ghost or accent in parentheses.
+    std::string str(bool pro = true) const;
     int basescore() const;
     bool is_dynamic() const { return dynamictype != NoteDynamicType::Normal; }
     bool is_accent() const { return dynamictype == NoteDynamicType::Accent; }
@@ -156,7 +175,9 @@ public:
     int count() const;
     int hands_count() const;
 
-    std::string rowstr() const;
+    // "[Kick - Red snare - Green cymbal]": each note's str(pro), where `pro`
+    // is the Pro Drums setting the chart was read with.
+    std::string rowstr(bool pro = true) const;
     std::string notationstr() const;
 
     void apply_disco_flip();
@@ -240,7 +261,7 @@ struct SPSqueeze {
     const char* symbol() const {
         return kind == SqueezeKind::SqIn ? "+" : "-";
     }
-    bool is_difficult() const { return difficulty() > kDifficultMs; }
+    bool is_difficult() const { return past_difficult_floor(difficulty()); }
     // Whether the squeeze is already done with no frontend timing: the one
     // answer the rating and the sentence both read. The SP walk pays a note
     // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in
@@ -252,7 +273,6 @@ struct SPSqueeze {
     const char* type_name() const {
         return kind == SqueezeKind::SqIn ? "SqIn" : "SqOut";
     }
-    std::string description() const;
 
     // A SqIn's frontend transfer scale: at squeeze_end_tick, measured from
     // squeeze_anchor_tick. Stamped by the search at copy-out through
@@ -273,8 +293,8 @@ struct BackendSqueeze {
 
     bool operator==(const BackendSqueeze& o) const;
     // Rating label. The outer +/-W edges come from the hit window; the inner
-    // -10/3/10 edges are absolute (they encode leeway/near-deact semantics,
-    // not the window).
+    // edges are kBackendInnerBandMs either side of the SP end, and the plain
+    // ladder's Standard edge is the leeway (none of them is the window).
     // squeezed_out: this row is the activation's squeezed-out chord
     // (Activation::is_sqout_backend). Only that row reads the SqOut ladder;
     // every other row, phrase chord or not, reads the plain one.
@@ -301,7 +321,9 @@ public:
     int points() const;
     std::string notationstr() const;
     // "Hit X and Y last/first." guidance text: the notes that must be placed.
-    std::string howto() const;
+    // Each note is named by Chord::rowstr(pro), where `pro` is the Pro Drums
+    // setting the chart was read with: "[Red snare]" on, "[Red]" off.
+    std::string howto(bool pro = true) const;
 
     const Chord& chord() const { return chord_; }
     int combo() const { return combo_; }
@@ -382,6 +404,18 @@ size_t sqin_rank(It first, It at, IsSqIn is_sqin) {
 
 // Is this squeeze a squeeze-in? For sqin_rank over an activation's sqinouts.
 inline bool is_sqin_squeeze(const SPSqueeze& q) { return q.kind == SqueezeKind::SqIn; }
+
+// Which part of an activation is its hardest timing (Activation::hardest).
+enum class TimingPart { SqueezeIn, SqueezeOut, EarlyFill };
+
+// An activation's hardest part and how hard it is, in raw ms (no transfer
+// scale, no rounding).
+struct HardestTiming {
+    TimingPart part = TimingPart::EarlyFill;
+    double ms = 0.0;
+    bool operator==(const HardestTiming& o) const { return part == o.part && ms == o.ms; }
+    bool operator!=(const HardestTiming& o) const { return !(*this == o); }
+};
 
 struct Activation {
     // The search sets these on every activation it makes, so they are
@@ -477,6 +511,19 @@ struct Activation {
     bool is_e_critical() const;  // inside the early-fill window: is_e0(e_offset, 0)
     bool is_E0() const;
     std::optional<double> e_difficulty(bool verbose = false) const;
+
+    // The hardest part of this activation and its raw ms: the largest of
+    // its squeeze-in and squeeze-out difficulties and its required (E0)
+    // early fill. A squeeze and an early fill that tie exactly name the
+    // squeeze (D48 Q2); two squeezes that tie name the first in list order.
+    // With none of those, an E-critical activation that skipped fills still
+    // answers with its optional early fill (D48 Q10): that fill's timing
+    // decides whether the first fill shows up at all, which is what the skip
+    // count counts. Empty means nothing to time, so no badge.
+    std::optional<HardestTiming> hardest() const;
+    // hardest()'s ms when it is a squeeze or a required fill; empty for an
+    // optional early fill, so the search, filter and warning colors never
+    // count one.
     std::optional<double> difficulty() const;
     bool is_difficult() const;
 
@@ -624,8 +671,9 @@ struct Path {
     // Every path hits every note, so it is the same on every path.
     int64_t chart_base_score() const;
 
-    // Points per scored note, on average. 0.0 for a path with no scoring
-    // notes, instead of dividing by zero.
+    // Average multiplier: the score without solo bonuses divided by the base
+    // score (every note at 1x). 0.0 for a path with no base score, instead
+    // of dividing by zero.
     double avg_mult() const;
 };
 
@@ -652,8 +700,9 @@ struct HydraRecord {
     // opens (RecordStore::delete_auto_results). A record built in memory
     // starts with the default rules' fixed-cap fingerprint, computed once
     // (core::default_stamp), not once per record decoded; analyze_chart
-    // stamps the real one. An older blob reads back core::kNoRulesFingerprint,
-    // which matches no rules, so it can never pass as current.
+    // stamps the real one. A row stored in an older structure format is never
+    // decoded: structure_is_current (store/record_store.cpp) reads it Stale
+    // first, and the codec refuses such a structure if asked.
     uint64_t rules_fingerprint = core::default_stamp().fixed;
     // True when fills spawned by Clone Hero 1.0's deadline, not 1.1's.
     // analyze_chart sets it. It is not in the stored bytes: the result's row
@@ -680,6 +729,11 @@ struct HydraRecord {
     const Path& best_path() const { return paths.at(0); }
     Path& best_path() { return paths.at(0); }
 
+    // Is this path optimal? True for every path whose total score equals the
+    // best path's, so a tied variant is optimal too (D48 Q1). False when the
+    // record has no paths.
+    bool is_optimal(const Path& path) const;
+
     // Depth-first traversal of the path tree (root paths + their nested
     // variants), each path before its variants. Pointers into
     // `paths`; valid until the record is modified or moved.
@@ -695,6 +749,18 @@ std::vector<const Path*> flatten_paths(const std::vector<Path>& roots);
 
 // Format an integer with thousands separators, matching Python's `{:,}`.
 std::string group_thousands(int64_t n);
+
+// A count next to its noun: "1 bar", "2 bars", "1,000 bars". Singular at
+// exactly 1, commas from 1,000 (D48 Q12). Every screen writes counts here.
+std::string counted(int64_t n, const std::string& one, const std::string& many);
+
+// The verb a sentence puts after such a count: "has" at exactly 1, else "have".
+const char* has_have(int64_t n);
+
+// A timing in whole ms with its unit: 12.4 reads "12 ms", 12.6 reads
+// "13 ms". Rounds to nearest; an exact half rounds away from zero
+// (std::lround), D48 Q2.
+std::string format_ms_whole(double ms);
 
 }  // namespace hydra
 

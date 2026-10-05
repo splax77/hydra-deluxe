@@ -27,6 +27,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/rules_file.h"
+#include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -87,8 +88,9 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
         const std::string best_text = best ? std::to_string(*best) : "-";
         std::printf("  parse %.2fs | search %.2fs | store %.2fs  => TOTAL %.2fs\n",
                     parse_s, search_s, store_s, parse_s + search_s + store_s);
-        std::printf("  best score %s | %d paths | sp_cap %d\n\n", best_text.c_str(),
-                    static_cast<int>(rec.all_paths().size()), rec.sp_cap.value_or(-1));
+        std::printf("  best score %s | %s | sp_cap %d\n\n", best_text.c_str(),
+                    counted(static_cast<int64_t>(rec.all_paths().size()), "path", "paths").c_str(),
+                    rec.sp_cap.value_or(-1));
         std::fflush(stdout);
     }
 }

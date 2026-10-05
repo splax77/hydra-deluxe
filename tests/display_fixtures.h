@@ -13,6 +13,7 @@
 #include "app/config.h"
 #include "app/library_query.h"
 #include "core/model.h"
+#include "core/rules.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "store/record_store.h"
@@ -53,18 +54,66 @@ inline store::RecordKey batch_result_key(const std::string& md5, int cap) {
     return settings.record_key(md5);
 }
 
-// Stores a finished result for chart `md5` the way a batch does, behind the
-// app's back: an empty current-version record at SP cap `cap`, under
-// batch_result_key. An empty current-version record reads back Ready.
-// Returns the key it stored under.
+// Stores a finished result the way a batch does, behind the app's back: an
+// empty current-version record under `key`. An empty current-version record
+// reads back Ready, with no paths and so no score. The record's SP cap, ms
+// limit and fill rule are read from the key, so the two never disagree
+// (prepare_row refuses a mismatch); this form is for a test that files under
+// its own chartmode, lens or fill rule.
+inline void store_batch_result(store::RecordStore& store, const store::RecordKey& key) {
+    HydraRecord record;
+    record.sp_cap = key.cap.exact;
+    if (key.lens.ms_enabled) record.ms_limit = key.lens.ms_value;
+    record.legacy_fills = key.lens.legacy_fills != 0;
+    store.add_record(key, record);
+}
+
+// The same empty record for chart `md5` at SP cap `cap`, under
+// batch_result_key (every other setting at its default). Returns the key it
+// stored under.
 inline store::RecordKey store_batch_result(store::RecordStore& store, const std::string& md5,
                                            int cap) {
-    HydraRecord record;
-    record.sp_cap = cap;
-    record.ms_limit = app::Settings{}.mslimit_value;
     const store::RecordKey key = batch_result_key(md5, cap);
-    store.add_record(key, record);
+    store_batch_result(store, key);
     return key;
+}
+
+// ---- a Stale result for each cause ----------------------------------------------
+
+// The row `record` makes under `key`, as if another Hydra version wrote it
+// (hyversion "0.0.0"). Stored, it reads Stale for "another build".
+inline store::PreparedRow old_build_row(const store::RecordKey& key, const HydraRecord& record) {
+    store::PreparedRow row = store::prepare_row(key, record);
+    row.hyversion = "0.0.0";
+    return row;
+}
+
+// Rules other than the defaults, as a user's hydra_rules.ini might set them:
+// max_tied_paths 2 instead of the default.
+inline core::Rules other_rules() {
+    core::Rules other = core::default_rules();
+    other.max_tied_paths = 2;
+    return other;
+}
+
+// `record` stamped as analyzed under other_rules(). Stored, it reads Stale for
+// "other rules" in a store running the defaults.
+inline HydraRecord other_rules_record(const HydraRecord& record) {
+    HydraRecord foreign = record;
+    foreign.rules_fingerprint = other_rules().fingerprint();
+    return foreign;
+}
+
+// Stores `record` three times, once for each reason a saved result reads
+// Stale: under `build` as an old_build_row, under `rules` as an
+// other_rules_record, and under `both` with both.
+inline void add_stale_rows(store::RecordStore& store, const HydraRecord& record,
+                           const store::RecordKey& build, const store::RecordKey& rules,
+                           const store::RecordKey& both) {
+    const HydraRecord foreign = other_rules_record(record);
+    store.add_row(old_build_row(build, record));
+    store.add_row(store::prepare_row(rules, foreign));
+    store.add_row(old_build_row(both, foreign));
 }
 
 // ---- a title made only of tags ------------------------------------------------

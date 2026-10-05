@@ -90,6 +90,21 @@ void test_cap_switch(ImGuiTestContext* ctx) {
         const std::string& best = cap == 4 ? best4 : best6;
         IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(best) != std::string::npos; }, 5));
     }
+
+    // A cap with no result yet: the Preview's SP gauge pins at the Settings
+    // cap, the one the next analysis will run at, not at 4 (D48, Q24).
+    ctx->ItemInputValue("//Hydra/**/##spcap", 5);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == 5; }, 5));
+    IM_CHECK(!h.app->viewed.record.has_value());
+    set_panel_ref(ctx);
+    ctx->ItemClick("**/##DetailsTabs/Preview");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->preview && h.app->preview->active() && !h.app->preview->loading();
+    }, 120));
+    IM_CHECK(wait_until(ctx, [&] {
+        const std::string readout = h.app->preview->sp_meter_readout();
+        return readout.size() >= 2 && readout.substr(readout.size() - 2) == "/5";
+    }, 60));
 }
 
 // "1.0 fills" keys a result like the SP cap does: ticking it shows the song as
@@ -735,6 +750,13 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     std::string text = visible_text(h);
     IM_CHECK(text.find("Green Day \xC2\xB7 charted by Hoph2o") != std::string::npos);
     IM_CHECK(text.find("Not analyzed yet.") != std::string::npos);
+    // An artist made only of Clone Hero tags reads "(unknown)", as a title
+    // does (D50 item 5).
+    h.app->selected->artist = "<color=#FF8000></color><b></b>";
+    ctx->Yield(2);
+    IM_CHECK(visible_text(h).find("(unknown) \xC2\xB7 charted by Hoph2o") != std::string::npos);
+    h.app->selected->artist = "Green Day";
+    ctx->Yield(2);
     IM_CHECK(ctx->ItemExists("**/Analyze this song"));
 
     analyze_open_song(ctx);
@@ -748,6 +770,18 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     // The hardest timing sits beside each path in the list, not in the headline.
     IM_CHECK(text.find("hardest squeeze") == std::string::npos);
     IM_CHECK(text.find("163.0 ms") != std::string::npos);
+    IM_CHECK(ctx->ItemExists("**/Re-analyze"));
+
+    // A result from another Hydra build, under these rules: the headline and
+    // the Paths tab name only that cause, and the button stays Re-analyze.
+    h.app->viewed.status = hydra::store::RecordStatus::Stale;
+    h.app->viewed.stale_build = true;
+    h.app->viewed.stale_rules = false;
+    ctx->Yield(2);
+    text = visible_text(h);
+    IM_CHECK(text.find("Out of date: this result came from another Hydra version. Re-analyze "
+                       "to refresh it.") != std::string::npos);
+    IM_CHECK(text.find("hydra_rules.ini") == std::string::npos);
     IM_CHECK(ctx->ItemExists("**/Re-analyze"));
 }
 

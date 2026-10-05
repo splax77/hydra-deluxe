@@ -8,11 +8,13 @@
 #include <algorithm>
 #include <chrono>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "app/library_query.h"
+#include "core/winstr.h"  // wide_to_utf8
 
 using namespace hydra::app;
 
@@ -82,6 +84,24 @@ TEST_CASE("library query: invalid UTF-8 passes through byte for byte") {
     CHECK(fold_for_search("\xEF\xBC") == "\xEF\xBC");  // half a full-width letter
 }
 
+TEST_CASE("library query: only a real lead byte starts a kept character") {
+    // A kept character maps back to all of its bytes, so a match that starts
+    // on its last byte lights up the whole character. "©" (C2 A9), "€"
+    // (E2 82 AC) and the guitar (F0 9F 8E B8) are two, three and four bytes.
+    CHECK(spans_equal(match_spans(parse_library_query("\xA9" "y"), QueryField::Title, "\xC2\xA9" "y"),
+                      std::vector<MatchSpan>{MatchSpan{0, 3}}));
+    CHECK(spans_equal(match_spans(parse_library_query("\xAC" "y"), QueryField::Title, "\xE2\x82\xAC" "y"),
+                      std::vector<MatchSpan>{MatchSpan{0, 4}}));
+    CHECK(spans_equal(match_spans(parse_library_query("\xB8" "y"), QueryField::Title, "\xF0\x9F\x8E\xB8" "y"),
+                      std::vector<MatchSpan>{MatchSpan{0, 5}}));
+    // C1 and F5 never start a character, so the byte after them is its own
+    // and the span starts there.
+    CHECK(spans_equal(match_spans(parse_library_query("\xBF" "ab"), QueryField::Title, "\xC1\xBF" "ab"),
+                      std::vector<MatchSpan>{MatchSpan{1, 4}}));
+    CHECK(spans_equal(match_spans(parse_library_query("\x80" "a"), QueryField::Title, "\xF5\x80\x80\x80" "a"),
+                      std::vector<MatchSpan>{MatchSpan{3, 5}}));
+}
+
 TEST_CASE("library query: rich-text tags are stripped and other angle brackets kept") {
     CHECK(strip_rich_tags("<color=#e02222>Blood</color>line") == "Bloodline");
     CHECK(strip_rich_tags("<COLOR=red>Loud</Color>") == "Loud");
@@ -107,6 +127,48 @@ TEST_CASE("library query: an accented name is found without its accents") {
     CHECK(matches("beyonce", row));
     CHECK(matches("BEYONCE", row));
     CHECK(matches("beyoncé", row));
+}
+
+TEST_CASE("library query: the report pages' fold table is the fold, one character at a time") {
+    // The report pages fold a typed query with this table, so every entry has
+    // to be exactly what the library's own fold does to that character.
+    const std::vector<FoldEntry> table = search_fold_table();
+    REQUIRE_FALSE(table.empty());
+    for (const FoldEntry& e : table) {
+        CHECK(e.to == fold_for_search(e.from));
+        CHECK(e.to != e.from);  // a character the fold keeps is left out
+    }
+    auto folded = [&](std::string_view from) -> std::optional<std::string> {
+        for (const FoldEntry& e : table)
+            if (e.from == from) return e.to;
+        return std::nullopt;
+    };
+    CHECK(folded("\xc3\x89") == std::optional<std::string>("e"));  // É
+    CHECK(folded("\xc3\x84").has_value());                         // Ä
+    CHECK(folded("B") == std::optional<std::string>("b"));
+    CHECK(folded("\xef\xbc\xa1") == std::optional<std::string>("a"));  // full-width A
+    CHECK_FALSE(folded("\xc3\x97").has_value());  // × is kept, so it is not listed
+    CHECK_FALSE(folded("b").has_value());
+}
+
+TEST_CASE("library query: the report pages' fold table holds every character the fold changes") {
+    // Walk every character below U+10000 (the surrogate halves are not
+    // characters on their own). Each one the library's fold changes has to be
+    // in the table, or a report page would stop folding it. The one exception
+    // is whitespace: the fold turns it into a space, and the page splits the
+    // query on whitespace instead of looking it up.
+    std::set<std::string> listed;
+    for (const FoldEntry& e : search_fold_table()) listed.insert(e.from);
+    std::vector<unsigned> missing;
+    for (unsigned cp = 0; cp <= 0xFFFF; ++cp) {
+        if (cp >= 0xD800 && cp <= 0xDFFF) continue;
+        const std::string from = hydra::wide_to_utf8(std::wstring(1, static_cast<wchar_t>(cp)));
+        const std::string to = fold_for_search(from);
+        if (to == from || to == " ") continue;
+        if (!listed.count(from)) missing.push_back(cp);
+    }
+    INFO("first missing code point: " << (missing.empty() ? 0u : missing.front()));
+    CHECK(missing.size() == 0);
 }
 
 TEST_CASE("library query: words match in any order and across fields") {

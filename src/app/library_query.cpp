@@ -1,14 +1,17 @@
-// Library search: folding, rich-tag stripping, the query language, the
-// matcher and the highlight spans. library_query.h describes the rules.
+// Library search: folding, the query language, the matcher and the highlight
+// spans. library_query.h describes the rules. Rich-text tags are stripped by
+// strip_rich_tags in parse/song.cpp.
 
 #include "app/library_query.h"
 
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <iterator>
 #include <system_error>
 
-#include "core/stars.h"  // kMaxStars
+#include "core/stars.h"    // kMaxStars
+#include "core/winstr.h"   // wide_to_utf8
 
 namespace hydra::app {
 
@@ -19,6 +22,31 @@ constexpr size_t npos = std::string_view::npos;
 constexpr const char* kStarsError = "stars: needs a number from 0 to 7";
 constexpr const char* kSqueezeError =
     "squeeze<= needs a number of milliseconds, like squeeze<=20";
+
+// ---- the characters the fold changes ------------------------------------------
+
+// A run of code points, first to last, both included.
+struct FoldRun {
+    unsigned first, last;
+    constexpr bool holds(unsigned cp) const { return cp >= first && cp <= last; }
+};
+
+// The three runs of characters the fold changes one for one, named once here
+// for fold_into and search_fold_table both. The fold's only other change is
+// whitespace, which becomes one space; the report pages split a query on
+// whitespace instead of looking it up.
+constexpr FoldRun kAsciiUpper{'A', 'Z'};       // lower-cased
+constexpr FoldRun kLatin{0x00C0, 0x017F};      // Latin-1 letters and Latin Extended-A, to ASCII
+constexpr FoldRun kFullWidth{0xFF01, 0xFF5E};  // full-width ASCII, to its ASCII twin, lower-cased
+constexpr FoldRun kFoldRuns[] = {kAsciiUpper, kLatin, kFullWidth};
+
+// search_fold_table writes each character from one UTF-16 unit, so every run
+// sits below U+10000 and clear of the surrogate halves.
+constexpr bool one_utf16_unit(FoldRun run) {
+    return run.last <= 0xFFFF && (run.last < 0xD800 || run.first > 0xDFFF);
+}
+static_assert(one_utf16_unit(kAsciiUpper) && one_utf16_unit(kLatin) &&
+              one_utf16_unit(kFullWidth));
 
 // ---- bytes -----------------------------------------------------------------
 
@@ -32,16 +60,22 @@ bool is_ascii_space(unsigned char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
 }
 
-bool is_ascii_alpha(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
 bool is_continuation(unsigned char c) {
     return (c & 0xC0) == 0x80;
 }
 
+// How many bytes the UTF-8 character that starts with `lead` holds: 2, 3 or
+// 4, or 0 when `lead` cannot start a character of two or more bytes (ASCII,
+// a continuation byte, or a byte UTF-8 never uses as a lead).
+size_t utf8_length(unsigned char lead) {
+    if (lead >= 0xC2 && lead <= 0xDF) return 2;
+    if (lead >= 0xE0 && lead <= 0xEF) return 3;
+    if (lead >= 0xF0 && lead <= 0xF4) return 4;
+    return 0;
+}
+
 char ascii_lower(unsigned char c) {
-    return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
+    return static_cast<char>(kAsciiUpper.holds(c) ? c + ('a' - 'A') : c);
 }
 
 bool iequals_ascii(std::string_view a, std::string_view b) {
@@ -59,8 +93,9 @@ bool starts_with_ci(std::string_view s, std::string_view prefix) {
 
 // ---- folding ---------------------------------------------------------------
 
-// ASCII for U+00C0..U+00FF. nullptr keeps the character (the two signs).
-constexpr const char* kLatin1[64] = {
+// ASCII for each character of kLatin, U+00C0..U+017F, in order. nullptr keeps
+// the character (the two signs × and ÷).
+constexpr const char* kLatinAscii[] = {
     "a", "a", "a", "a", "a", "a", "ae", "c",     // C0  À Á Â Ã Ä Å Æ Ç
     "e", "e", "e", "e", "i", "i", "i",  "i",     // C8  È É Ê Ë Ì Í Î Ï
     "d", "n", "o", "o", "o", "o", "o",  nullptr, // D0  Ð Ñ Ò Ó Ô Õ Ö ×
@@ -69,10 +104,7 @@ constexpr const char* kLatin1[64] = {
     "e", "e", "e", "e", "i", "i", "i",  "i",     // E8  è é ê ë ì í î ï
     "d", "n", "o", "o", "o", "o", "o",  nullptr, // F0  ð ñ ò ó ô õ ö ÷
     "o", "u", "u", "u", "u", "y", "th", "y",     // F8  ø ù ú û ü ý þ ÿ
-};
-
-// ASCII for U+0100..U+017F, Latin Extended-A. Every entry is a letter.
-constexpr const char* kLatinExtA[128] = {
+    // Latin Extended-A. Every entry from here on is a letter.
     "a", "a", "a",  "a",  "a", "a", "c", "c",  // 0100  Ā ā Ă ă Ą ą Ć ć
     "c", "c", "c",  "c",  "c", "c", "d", "d",  // 0108  Ĉ ĉ Ċ ċ Č č Ď ď
     "d", "d", "e",  "e",  "e", "e", "e", "e",  // 0110  Đ đ Ē ē Ĕ ĕ Ė ė
@@ -90,6 +122,8 @@ constexpr const char* kLatinExtA[128] = {
     "u", "u", "u",  "u",  "w", "w", "y", "y",  // 0170  Ű ű Ų ų Ŵ ŵ Ŷ ŷ
     "y", "z", "z",  "z",  "z", "z", "z", "s",  // 0178  Ÿ Ź ź Ż ż Ž ž ſ
 };
+static_assert(std::size(kLatinAscii) == kLatin.last - kLatin.first + 1,
+              "one entry per character of kLatin");
 
 // The shown-text bytes one folded byte came from: the whole character, or the
 // whole whitespace run, that produced it.
@@ -142,22 +176,27 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
             continue;
         }
 
-        // U+00C0..U+017F are the two-byte sequences C3 80 to C5 BF.
-        if (c0 >= 0xC3 && c0 <= 0xC5 && is_continuation(c1)) {
+        const size_t lead_len = utf8_length(c0);
+
+        // A two-byte character in kLatin becomes its ASCII letters.
+        if (lead_len == 2 && is_continuation(c1)) {
             const unsigned cp = ((c0 & 0x1Fu) << 6) | (c1 & 0x3Fu);
-            const char* ascii = cp <= 0xFF ? kLatin1[cp - 0xC0] : kLatinExtA[cp - 0x100];
-            if (ascii) emit(ascii, i, i + 2);
-            else emit(text.substr(i, 2), i, i + 2);
-            i += 2;
-            continue;
+            if (kLatin.holds(cp)) {
+                const char* ascii = kLatinAscii[cp - kLatin.first];
+                if (ascii) emit(ascii, i, i + 2);
+                else emit(text.substr(i, 2), i, i + 2);
+                i += 2;
+                continue;
+            }
         }
 
-        // Full-width ASCII, U+FF01..U+FF5E, is EF BC 81 to EF BD 9E. Its ASCII
-        // twin is 0xFEE0 lower.
-        if (c0 == 0xEF && (c1 == 0xBC || c1 == 0xBD) && is_continuation(c2)) {
-            const unsigned cp = 0xF000u | ((c1 & 0x3Fu) << 6) | (c2 & 0x3Fu);
-            if (cp >= 0xFF01 && cp <= 0xFF5E) {
-                const char lower = ascii_lower(static_cast<unsigned char>(cp - 0xFEE0));
+        // A three-byte character in kFullWidth becomes its ASCII twin, which
+        // sits as far below '!' as the run's first character does.
+        if (lead_len == 3 && is_continuation(c1) && is_continuation(c2)) {
+            const unsigned cp = ((c0 & 0x0Fu) << 12) | ((c1 & 0x3Fu) << 6) | (c2 & 0x3Fu);
+            if (kFullWidth.holds(cp)) {
+                const char lower =
+                    ascii_lower(static_cast<unsigned char>(cp - (kFullWidth.first - '!')));
                 emit(std::string_view(&lower, 1), i, i + 3);
                 i += 3;
                 continue;
@@ -166,53 +205,12 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
 
         // Anything else is kept: the whole character when the bytes form a
         // well-shaped UTF-8 sequence, otherwise this one byte as it is.
-        size_t len = 1;
-        if (c0 >= 0xC2 && c0 <= 0xDF) len = 2;
-        else if (c0 >= 0xE0 && c0 <= 0xEF) len = 3;
-        else if (c0 >= 0xF0 && c0 <= 0xF4) len = 4;
+        size_t len = lead_len > 0 ? lead_len : 1;
         for (size_t k = 1; k < len; ++k)
             if (!is_continuation(byte_at(text, i + k))) len = 1;
         emit(text.substr(i, len), i, i + len);
         i += len;
     }
-}
-
-// ---- rich-text tags --------------------------------------------------------
-
-struct RichTag {
-    std::string_view name;
-    bool takes_value;  // the opening tag is <name=value>
-};
-
-constexpr RichTag kRichTags[] = {
-    {"color", true}, {"size", true}, {"b", false},   {"i", false},
-    {"u", false},    {"s", false},   {"sub", false}, {"sup", false},
-};
-
-// The byte length of the rich-text tag that starts at text[at] (a '<'), or 0
-// when the text there is not one strip_rich_tags removes.
-size_t rich_tag_length(std::string_view text, size_t at) {
-    size_t i = at + 1;
-    const bool closing = i < text.size() && text[i] == '/';
-    if (closing) ++i;
-    size_t name_end = i;
-    while (name_end < text.size() && is_ascii_alpha(text[name_end])) ++name_end;
-    if (name_end == i || name_end >= text.size()) return 0;
-
-    const std::string_view name = text.substr(i, name_end - i);
-    for (const RichTag& tag : kRichTags) {
-        if (!iequals_ascii(name, tag.name)) continue;
-        if (text[name_end] == '>')
-            return (closing || !tag.takes_value) ? name_end + 1 - at : 0;
-        if (!closing && tag.takes_value && text[name_end] == '=') {
-            const size_t close = text.find('>', name_end);
-            const size_t reopen = text.find('<', name_end);
-            if (close == npos || reopen < close) return 0;
-            return close + 1 - at;
-        }
-        return 0;
-    }
-    return 0;
 }
 
 // ---- parsing ---------------------------------------------------------------
@@ -299,21 +297,18 @@ std::string fold_for_search(std::string_view text) {
     return out;
 }
 
-std::string strip_rich_tags(std::string_view text) {
-    std::string out;
-    out.reserve(text.size());
-    size_t i = 0;
-    while (i < text.size()) {
-        if (text[i] == '<') {
-            if (const size_t len = rich_tag_length(text, i)) {
-                i += len;
-                continue;
-            }
+std::vector<FoldEntry> search_fold_table() {
+    // Every character of the fold's three runs, kept when the fold changes
+    // it. Whitespace is left to the page, which splits the query on it.
+    std::vector<FoldEntry> table;
+    for (const FoldRun& run : kFoldRuns) {
+        for (unsigned cp = run.first; cp <= run.last; ++cp) {
+            std::string from = wide_to_utf8(std::wstring(1, static_cast<wchar_t>(cp)));
+            std::string to = fold_for_search(from);
+            if (to != from) table.push_back(FoldEntry{std::move(from), std::move(to)});
         }
-        out.push_back(text[i]);
-        ++i;
     }
-    return out;
+    return table;
 }
 
 bool LibraryQuery::empty() const {

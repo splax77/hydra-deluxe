@@ -8,13 +8,16 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "app/preview_view.h"  // scrub_end_ms
 #include "audio/decode.h"
 #include "audio/player.h"
 #include "audio/stem_reader.h"
 #include "audio/stream_mix.h"
+#include "display_fixtures.h"  // audio_tail_chart
 #include "ui/preview_transport.h"
 
 using hydra::audio::DecodedAudio;
@@ -225,6 +228,39 @@ TEST_CASE("an audio offset seeks the playhead ahead of the clock") {
 
     transport.play();
     CHECK(playhead->position_ms() == doctest::Approx(750.0));
+}
+
+// The scrubber's right edge is the last note (D50 item 4). On the audio-tail
+// chart a drag to that edge seeks to the last note at 1000 ms, not to the
+// audio's end at 6000 ms, while playback can still run on to 6000 ms.
+TEST_CASE("scrubber: a drag to the right end seeks to the last note, not the audio end") {
+    const hydra::test::AudioTailChart c = hydra::test::audio_tail_chart();
+    PreviewTransport transport([] { return 0.0; });
+    transport.load(make_playhead(c.audio_end_ms), c.last_note_ms);
+    CHECK(transport.length_ms() == doctest::Approx(6000.0));  // the tail still plays
+
+    const double right_end = hydra::app::scrub_end_ms(c.last_note_ms, transport.length_ms());
+    transport.seek_ms(right_end);
+    CHECK(transport.now_ms() == doctest::Approx(1000.0));
+
+    // With no usable song length the edge stays the transport's length.
+    CHECK(hydra::app::scrub_end_ms(0.0, transport.length_ms()) == doctest::Approx(6000.0));
+}
+
+// The transport's audio end comes from audio_end_chart_ms, the owner the load
+// job uses, not from a second copy. The owner is asked about the very kind of
+// audio the transport holds, a Playhead: 2000 ms of audio with chart time 0 at
+// 500 ms ends at 1500 ms both ways.
+TEST_CASE("single-owner: the transport's audio end is audio_end_chart_ms") {
+    const double offset_ms = 500.0;
+    const Playhead same_audio(make_ramp(96000));  // 2000 ms
+    const std::optional<double> owner = hydra::ui::audio_end_chart_ms(same_audio, offset_ms);
+    REQUIRE(owner.has_value());
+    CHECK(*owner == doctest::Approx(1500.0));
+
+    PreviewTransport transport([] { return 0.0; });
+    transport.load(std::make_unique<Playhead>(make_ramp(96000)), 0.0, offset_ms);
+    CHECK(transport.length_ms() == *owner);
 }
 
 TEST_CASE("load with no audio offset behaves exactly as before") {

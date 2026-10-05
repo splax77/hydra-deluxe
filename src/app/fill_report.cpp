@@ -5,9 +5,10 @@
 #include <utility>
 
 #include "app/html_page.h"
-#include "app/report.h"  // report::plain -- strips Clone Hero <color> markup
-#include "core/model.h"  // group_thousands
-#include "parse/song.h"  // title_or_unknown
+#include "app/report.h"  // records_by_hash
+#include "core/model.h"  // group_thousands, counted
+#include "parse/song.h"  // display_title, display_artist, display_charter
+#include "search/graph.h"  // fill_rule_name, fill_rule_description
 
 namespace hydra::app::fill_report {
 
@@ -23,11 +24,14 @@ namespace {
 // Every literal here is ASCII: this file compiles into hydra_core, which is
 // not built with /utf-8. Glyphs the page needs go in as HTML entities (markup)
 // or \uXXXX escapes (JavaScript).
-const char* const kTitle = "Fill spawn comparison &mdash; CH 1.0 vs CH 1.1";
+//
+// __OLD_RULE__ and __NEW_RULE__ are the two fill rules' short names, filled
+// from fill_rule_name when the page shell is built.
+const char* const kTitle = "Fill spawn comparison &mdash; __OLD_RULE__ vs __NEW_RULE__";
 
 const char* const kBody = R"page(<div class="wrap fill">
   <header>
-    <h1>Fill spawn <span class="accent">CH 1.0 vs CH 1.1</span></h1>
+    <h1>Fill spawn <span class="accent">__OLD_RULE__ vs __NEW_RULE__</span></h1>
     <div class="sub">__SUBTITLE__</div>
   </header>
 
@@ -47,6 +51,7 @@ const char* const kBody = R"page(<div class="wrap fill">
       <option value="same">Same score</option>
       <option value="only 1.0">Only in 1.0 db</option>
       <option value="only 1.1">Only in 1.1 db</option>
+      <option value="in both">In both</option>
     </select>
     <span class="count" id="count"></span>
   </div>
@@ -65,7 +70,14 @@ const char* const kBody = R"page(<div class="wrap fill">
 )page";
 
 const char* const kPageJs = R"page(const STATUS_CLASS = {'1.1 higher':'s-newhigh', '1.0 higher':'s-oldhigh',
-                      'same':'s-same', 'only 1.0':'s-only', 'only 1.1':'s-only'};
+                      'same':'s-same', 'only 1.0':'s-only', 'only 1.1':'s-only',
+                      'in both':'s-only'};
+
+// A chart in both databases with a score on one side reads "no score" on the
+// other; any other missing score reads as a dash.
+function scoreText(r, s) {
+  return s === null && r.status === 'in both' ? 'no score' : fmt(s);
+}
 
 const PAGE = {
   rows: DATA,
@@ -76,36 +88,34 @@ const PAGE = {
     {k:'song',    t:'Song',        num:false},
     {k:'artist',  t:'Artist',      num:false},
     {k:'charter', t:'Charter',     num:false},
-    {k:'s10',     t:'CH 1.0',      num:true},
-    {k:'s11',     t:'CH 1.1',      num:true},
+    {k:'s10',     t:'__OLD_RULE__',      num:true},
+    {k:'s11',     t:'__NEW_RULE__',      num:true},
     {k:'delta',   t:'Delta',       num:true},
-    {k:'p10',     t:'CH 1.0 path', num:false},
-    {k:'p11',     t:'CH 1.1 path', num:false},
+    {k:'p10',     t:'__OLD_RULE__ path', num:false},
+    {k:'p11',     t:'__NEW_RULE__ path', num:false},
     {k:'acts',    t:'Acts',        num:true},
     {k:'notes',   t:'Notes',       num:true},
     {k:'status',  t:'Status',      num:false},
   ],
   controls: [['q', 'input'], ['status', 'change']],
-  filter(q) {
+  // The search box is matched against each row's search text in the shared
+  // script; this keeps rows by the status control.
+  filter() {
     const status = document.getElementById('status').value;
-    return r => {
-      if (status && r.status !== status) return false;
-      if (!q) return true;
-      return (r.song + ' ' + r.artist + ' ' + r.charter).toLowerCase().includes(q);
-    };
+    return r => !status || r.status === status;
   },
   cells(r) {
     const hasDelta = r.delta !== null && r.delta !== undefined;
     const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'
                    : (r.delta < 0 ? 'num neg' : 'num dim'));
     const deltaTxt = !hasDelta ? DASH
-                   : (r.delta > 0 ? '+' + r.delta.toLocaleString() : fmt(r.delta));
+                   : (r.delta > 0 ? '+' : '') + fmt(r.delta);
     return [
       ['song trunc', r.song],
       ['dim trunc artist', r.artist],
       ['dim trunc charter', r.charter],
-      ['num', fmt(r.s10)],
-      ['num', fmt(r.s11)],
+      ['num', scoreText(r, r.s10)],
+      ['num', scoreText(r, r.s11)],
       [deltaCls, deltaTxt],
       ['path trunc', r.p10 || DASH],
       ['path trunc', r.p11 || DASH],
@@ -119,21 +129,26 @@ const PAGE = {
     const gains = rows.filter(r => r.delta > 0).reduce((a, r) => a + r.delta, 0);
     const losses = rows.filter(r => r.delta < 0).reduce((a, r) => a - r.delta, 0);
     return [
-      ['Charts', rows.length.toLocaleString()],
-      ['1.1 higher', n('1.1 higher').toLocaleString()],
-      ['1.0 higher', n('1.0 higher').toLocaleString()],
-      ['Same', n('same').toLocaleString()],
-      ['Only one side', (n('only 1.0') + n('only 1.1')).toLocaleString()],
-      ['Points gained in 1.1', gains.toLocaleString()],
-      ['Points lost in 1.1', losses.toLocaleString()],
+      ['Charts', fmt(rows.length)],
+      ['1.1 higher', fmt(n('1.1 higher'))],
+      ['1.0 higher', fmt(n('1.0 higher'))],
+      ['Same', fmt(n('same'))],
+      ['Only one side', fmt(n('only 1.0') + n('only 1.1'))],
+      ['Score on one side only', fmt(n('in both'))],
+      ['Points gained in 1.1', fmt(gains)],
+      ['Points lost in 1.1', fmt(losses)],
     ];
   },
 };
 )page";
 
-// The page shell, built once on first use.
+// The page shell, built once on first use. The title, heading and column
+// names read each rule's short name from fill_rule_name.
 const std::string& page_template() {
-    static const std::string page = html::page_template(kTitle, kBody, kPageJs);
+    static const std::string page = html::replace_all(
+        html::replace_all(html::page_template(kTitle, kBody, kPageJs), "__OLD_RULE__",
+                          fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Short)),
+        "__NEW_RULE__", fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Short));
     return page;
 }
 
@@ -174,9 +189,9 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 
         // Identity prefers the 1.1 side; either side names the same chart.
         const store::RecordListing* id = new_rec ? new_rec : old_rec;
-        row.song = title_or_unknown(report::plain(id->ref_name));
-        row.artist = report::plain(id->ref_artist);
-        row.charter = report::plain(id->ref_charter);
+        row.song = display_title(id->ref_name);
+        row.artist = display_artist(id->ref_artist);
+        row.charter = display_charter(id->ref_charter);
 
         if (old_rec) {
             row.old_score = old_rec->summary.score;
@@ -190,16 +205,21 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         }
         row.notes = new_rec ? new_rec->summary.notecount : old_rec->summary.notecount;
 
-        // A row counts as one-sided when the other database has no record for
-        // the chart, or has one that produced no score at all.
+        // A chart with a score on both sides compares them. A chart only one
+        // database holds a record for is labelled by that database, score or
+        // not. When both hold a record but only one has a score, the chart
+        // is in both, and the page writes "no score" on the empty side
+        // (D50 item 2).
         if (row.old_score && row.new_score) {
             int64_t delta = *row.new_score - *row.old_score;
             row.delta = delta;
             row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");
-        } else if (row.old_score) {
+        } else if (!new_rec) {
             row.status = "only 1.0";
-        } else {
+        } else if (!old_rec) {
             row.status = "only 1.1";
+        } else {
+            row.status = "in both";
         }
         rows.push_back(std::move(row));
     }
@@ -214,7 +234,8 @@ FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows) {
         else if (r.status == "1.0 higher") ++stats.ch10_higher;
         else if (r.status == "1.1 higher") ++stats.ch11_higher;
         else if (r.status == "only 1.0") ++stats.only_old;
-        else ++stats.only_new;
+        else if (r.status == "only 1.1") ++stats.only_new;
+        else if (r.status == "in both") ++stats.in_both;
     }
     return stats;
 }
@@ -240,6 +261,8 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
         json_escape_into(data, r.artist);
         data += ",\"charter\":";
         json_escape_into(data, r.charter);
+        data += ",\"search\":";
+        json_escape_into(data, html::search_field(r.song, r.artist, r.charter));
         data += ",\"s10\":" + opt_num(r.old_score);
         data += ",\"s11\":" + opt_num(r.new_score);
         data += ",\"delta\":" + opt_num(r.delta);
@@ -276,20 +299,32 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
     std::vector<FillCompareRow> rows =
         collect_fill_rows(old_store, new_store, chartmode, cap, lens);
     out.stats = tally_fill_rows(rows);
-    if (rows.empty()) return out;
+    if (rows.empty()) {
+        // Same sentence whether the databases are empty or hold results under
+        // other settings (finding 105, D50 item 3); the mode is the chart mode
+        // both sides were looked up under.
+        out.reason =
+            report::nothing_under_settings(cap.exact, chartmode, " in either database");
+        return out;
+    }
 
     std::string subtitle =
-        group_thousands(out.stats.total) + " charts in " + chartmode + ": " +
+        counted(out.stats.total, "chart", "charts") + " in " + chartmode + ": " +
         group_thousands(out.stats.ch11_higher) + " score higher under 1.1, " +
         group_thousands(out.stats.ch10_higher) + " higher under 1.0, " +
         group_thousands(out.stats.same) + " unchanged, " +
         group_thousands(out.stats.only_old + out.stats.only_new) +
-        " in one database only";
+        " in one database only, " + group_thousands(out.stats.in_both) +
+        " with a score on one side only";
     std::string footer =
-        "A drum fill only appears if your Star Power meter filled up in time. "
-        "Clone Hero 1.0 gave you until about one fill-length before the fill. "
-        "Clone Hero 1.1 made it a flat 4 beats. Four beats is usually the "
-        "longer wait, so short fills got stricter and most charts tie or drop. "
+        "A drum fill only appears if your Star Power meter filled up in time. " +
+        fill_rule_description(FillDeadlineRule::Ch10) + " " +
+        fill_rule_description(FillDeadlineRule::Ch11) + " " +
+        // The rule's length is fill_rule_description's to say; this sentence
+        // only names the rule.
+        fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long) +
+        "'s wait is usually the longer one, so short fills got stricter and most "
+        "charts tie or drop. "
         "Long fills got looser, which is where the rare gains come from. "
         "Delta is the 1.1 score minus the 1.0 score.";
     out.html = build_fill_html(rows, subtitle, footer);

@@ -45,6 +45,24 @@ class PreviewSceneJob;
 class PreviewBaseJob;
 struct PreviewSceneBase;
 
+// What the Preview calls the same song: one chart (its md5) at one
+// difficulty, with Pro Drums and 2x Bass on or off. These are the inputs
+// Settings::to_analysis_settings reads to pick the notes, so another
+// difficulty, Pro Drums or 2x Bass is another song and reloads its notes
+// (D48, Q22).
+struct PreviewSongKey {
+    std::string md5;
+    Difficulty difficulty = Difficulty::Expert;
+    bool pro = false;
+    bool bass2x = false;
+
+    bool operator==(const PreviewSongKey& o) const {
+        return md5 == o.md5 && difficulty == o.difficulty && pro == o.pro &&
+               bass2x == o.bass2x;
+    }
+    bool operator!=(const PreviewSongKey& o) const { return !(*this == o); }
+};
+
 class PreviewController {
 public:
     PreviewController(ID3D11Device* device, ID3D11DeviceContext* context);
@@ -57,8 +75,10 @@ public:
     // shown. `path` (may be null) supplies the path overlay; it is copied, so
     // the caller's Path need not outlive the call. `path_key` is
     // app::path_overlay_key(path), which the caller builds once per selection
-    // (it is too heavy to build per frame). Already open for the same chart,
-    // path key and SP cap: a no-op. Same chart, different path or cap: the new
+    // (it is too heavy to build per frame). Already open for the same song
+    // (PreviewSongKey: chart, difficulty, Pro Drums and 2x Bass), path key and
+    // SP cap: a no-op. Another song is a fresh load. Same song, different
+    // path or cap: the new
     // overlay is built on a background job off the retained song and swapped
     // in by a later poll() — no re-parse, no audio re-decode, playback
     // position untouched; the old overlay stays up until then.
@@ -92,7 +112,7 @@ public:
     struct LoadProgress {
         float fraction = 0.0f;  // 0..1 estimate
         std::string label;      // "Opening audio: 312 of 625 MB"
-        std::string detail;     // time left ("about 40 s left"), or ""
+        std::string detail;     // time left ("about 0:40 left"), or ""
     };
     LoadProgress load_progress() const;
     bool has_error() const { return !error_.empty(); }
@@ -126,10 +146,17 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
-    double length_ms() const;
+    // Where the scrubber ends: the last note (app::scrub_end_ms, D50 item 4),
+    // or playback_end_ms() for a chart with no notes. Not where playback
+    // stops.
+    double scrub_end_ms() const;
+    // Where playback stops: the later of the last note and the audio's end
+    // (PreviewTransport::length_ms). Play, the clock and jumps run to here.
+    double playback_end_ms() const;
     void seek_ms(double ms);
     // Move the playhead by `delta_ms` (the -5s/+5s buttons, Left/Right).
-    // Playing stays playing; the transport stops it at the song's ends.
+    // Playing stays playing; the transport stops it at 0 and at
+    // playback_end_ms().
     void jump_ms(double delta_ms);
     // Pause, then move the playhead `delta_ticks` chart ticks from the tick
     // the time box shows (the < 5 Ticks / 5 Ticks > buttons, comma and period).
@@ -159,7 +186,7 @@ public:
     hydra::app::PreviewDrainBox drain_box() const;
 
     // The drawn path's activations on the scrubber, as fractions of
-    // length_ms() (app::build_scrub_marks). Empty until a path's scene is in.
+    // scrub_end_ms() (app::build_scrub_marks). Empty until a path's scene is in.
     // Built once per scene and length, then cached (see SceneCache below);
     // the reference holds until the next call.
     const std::vector<double>& scrub_marks() const;
@@ -257,6 +284,10 @@ private:
     // load is in flight and the Paths tab (or the cap) changed the selection
     // under it; poll() closes the gap.
     std::shared_ptr<const Song> song_;  // shared read-only with scene jobs
+    // Where the song's audio stops in chart time (the load's
+    // Result::audio_end_ms), kept with the song so every base built for it
+    // runs the beat lines to the same end. Empty without audio.
+    std::optional<double> audio_end_ms_;
     // The song's path-free scene and timeline, shared read-only with scene
     // jobs so a path change builds only the overlay. poll() starts base_job_
     // to build it once the load has landed (a scene job that runs first
@@ -287,7 +318,7 @@ private:
     std::unique_ptr<hydra::audio::PreviewAudioDevice> audio_device_;
 
     bool active_ = false;
-    std::string open_key_;
+    PreviewSongKey open_key_;  // the song open() last loaded
     std::string error_;
     std::string audio_warning_;
     AudioDeviceFactory device_factory_;

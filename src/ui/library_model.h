@@ -34,6 +34,8 @@ struct LibraryRow {
     std::string title, artist, charter;   // colour tags removed: what the table draws
     app::SearchableRow searchable;        // folded copies, for matching and sorting
     store::RecordStatus status = store::RecordStatus::NotAnalyzed;
+    bool stale_build = false;             // why a Stale row is Stale (the store's
+    bool stale_rules = false;             // SummaryLookup); the tooltip names it
     std::string bestpath;                 // set when Ready
     store::PathSummary summary;           // set when Ready (T7)
     std::string best_label;               // the Best path cell (best_path_label)
@@ -88,6 +90,10 @@ public:
     // "Analyze search (N)..." analyzes.
     std::vector<size_t> matches() const;
     const app::LibraryQuery& query() const { return query_; }
+    // Is the typed search narrowing the library? False for an empty box and
+    // for a filter that does not parse (both leave the query empty). The
+    // toolbar's Analyze button and the table's footer both ask this.
+    bool searching() const { return !query_.empty(); }
     const ChipCounts& counts() const { return counts_; }
     StatusChip chip() const { return chip_; }
     LibrarySort sort_column() const { return sort_column_; }

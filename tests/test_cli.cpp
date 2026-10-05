@@ -24,6 +24,7 @@
 #include "app/config.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "parse/song.h"
 #include "search/graph.h"
 #include "store/record_store.h"
@@ -153,6 +154,10 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
     CHECK(contains(r.output, "Tester - CLI Fixture"));
+    CHECK(contains(r.output, "Fill rule  : Clone Hero 1.1"));
+    CHECK(contains(r.output, "Found 1 chart."));
+    // The closing count is every row in the file, at every setting.
+    CHECK(contains(r.output, "Store now holds 1 record across 1 song, rows for every setting."));
     {
         hydra::store::RecordStore store(normal);
         CHECK(store.engine_mode() == std::optional<std::string>(kCh11));
@@ -163,6 +168,8 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     r = run_exe(box.batch, {"--legacy-fills", "--db", legacy, box.folder()});
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
+    CHECK(contains(r.output, "Fill rule  : Clone Hero 1.0"));
+    CHECK(!contains(r.output, "(legacy)"));
     hydra::store::RecordStore store(legacy);
     CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
 }
@@ -175,6 +182,9 @@ TEST_CASE("hydra_batch --legacy-fills refuses the tool's own hydra.db") {
     INFO(r.output);
     CHECK(r.exit_code == 2);
     CHECK(contains(r.output, "--db legacy.db"));
+    CHECK(contains(r.output, "hydra_batch keeps 1.0 results out of hydra.db by design; use "
+                             "the app's 1.0 fills setting for that"));
+    CHECK(!contains(r.output, "not tagged as legacy"));
 }
 
 TEST_CASE("hydra_batch --reindex keeps a legacy database's stamp") {
@@ -186,7 +196,7 @@ TEST_CASE("hydra_batch --reindex keeps a legacy database's stamp") {
     RunResult r = run_exe(box.batch, {"--reindex", "--db", legacy});
     INFO(r.output);
     CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Reindexed 1 records."));
+    CHECK(contains(r.output, "Reindexed 1 record."));
     hydra::store::RecordStore store(legacy);
     CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
 }
@@ -202,6 +212,8 @@ TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database
     INFO(r.output);
     CHECK(r.exit_code == 2);
     CHECK(contains(r.output, "Add --legacy-fills"));
+    CHECK(contains(r.output, "This file is stamped with the other rule"));
+    CHECK(!contains(r.output, "not stored on each result"));
     {
         hydra::store::RecordStore store(legacy);
         CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
@@ -215,6 +227,8 @@ TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database
     INFO(r.output);
     CHECK(r.exit_code == 2);
     CHECK(contains(r.output, "Drop --legacy-fills"));
+    CHECK(contains(r.output, "This file is stamped with the other rule"));
+    CHECK(!contains(r.output, "not stored on each result"));
     hydra::store::RecordStore store(normal);
     CHECK(store.engine_mode() == std::optional<std::string>(kCh11));
 }
@@ -264,6 +278,45 @@ TEST_CASE("hydra_batch reuses the GUI's scan cache") {
     CHECK(!contains(r.output, "CLI Fixture"));
 }
 
+TEST_CASE("hydra_batch prints an artist made only of tags as (unknown)") {
+    // D50 item 5: the progress line cleans the artist by the title's rule.
+    // The cached scan row carries the artist, as in the scan-cache case.
+    CliSandbox box("tagartist");
+    const std::string db = box.db("tags.db");
+    {
+        auto [items, errors] = hydra::app::discover_charts({box.folder()});
+        REQUIRE(items.size() == 1);
+        hydra::store::RecordStore store(db);
+        store.rebuild_chart_library({{items[0].md5, items[0].title, hydra::test::kTagOnlyTitle,
+                                      items[0].charter, items[0].notespath,
+                                      items[0].rootfolder, items[0].sig}});
+    }
+
+    RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
+    INFO(r.output);
+    REQUIRE(r.exit_code == 0);
+    CHECK(contains(r.output, "(unknown) - CLI Fixture"));
+    CHECK(!contains(r.output, "<b>"));
+}
+
+TEST_CASE("hydra_batch names the cap with the one count rule") {
+    // The sandboxed exe reads its SP cap from hydra_settings.ini beside it.
+    CliSandbox box("cap");
+    auto header_at_cap = [&](int cap, const char* db_name) {
+        hydra::app::Settings settings{};
+        settings.sp_cap = cap;
+        REQUIRE(settings.save_file((box.dir / "hydra_settings.ini").u8string()));
+        RunResult r = run_exe(box.batch, {"--db", box.db(db_name), box.folder()});
+        INFO(r.output);
+        REQUIRE(r.exit_code == 0);
+        return r.output;
+    };
+    const std::string at_one = header_at_cap(1, "cap1.db");
+    CHECK(contains(at_one, "SP cap     : 1 bar"));
+    CHECK(!contains(at_one, "SP cap     : 1 bars"));
+    CHECK(contains(header_at_cap(1000, "cap1000.db"), "SP cap     : 1,000 bars"));
+}
+
 TEST_CASE("hydra_report writes a page for a filled database and says so for an empty one") {
     CliSandbox box("report");
     const std::string db = box.db("report.db");
@@ -289,6 +342,18 @@ TEST_CASE("hydra_report writes a page for a filled database and says so for an e
     CHECK(contains(empty.output, "No records stored yet"));
 
     CHECK(run_exe(box.report, {"--bogus"}).exit_code == 2);
+
+    // The batch stored its record at the default cap 4. Asked at cap 8, the
+    // database is not empty, so the reason names the settings instead.
+    { std::ofstream(box.dir / "hydra_settings.ini", std::ios::binary) << "sp_cap=8\n"; }
+    RunResult off = run_exe(box.report, {"--db", db, "--out",
+                                         (box.dir / "off.html").u8string(), "--no-open"});
+    INFO(off.output);
+    CHECK(off.exit_code == 1);
+    CHECK(contains(off.output,
+                   "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
+                   "Analyze with these settings, or change them."));
+    CHECK(!contains(off.output, "No records stored yet"));
 }
 
 TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
@@ -303,7 +368,7 @@ TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
                                             page.u8string(), "--no-open"});
     INFO(r.output);
     CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Compared 1 charts"));
+    CHECK(contains(r.output, "Compared 1 chart:"));
     CHECK(!contains(r.output, "Warning"));
     CHECK(fs::exists(page));
 
@@ -316,7 +381,11 @@ TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
     INFO(swapped.output);
     CHECK(swapped.exit_code == 1);
     CHECK(contains(swapped.output, "is stamped engine_mode=" + kCh11 + ", not " + kCh10));
-    CHECK(contains(swapped.output, "No records to compare"));
+    CHECK(contains(swapped.output,
+                   "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, "
+                   "2x Bass) in either database. Analyze with these settings, or change "
+                   "them."));
+    CHECK(!contains(swapped.output, "No records to compare"));
 
     CHECK(run_exe(box.fillcompare, {"--old", ch10}).exit_code == 2);
 }
@@ -344,8 +413,31 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
                                             (box.dir / "one.html").u8string(), "--no-open"});
     INFO(r.output);
     CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Compared 1 charts"));
-    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1"));
+    CHECK(contains(r.output, "Compared 1 chart:"));
+    CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 with a score on one side only"));
+
+    // D52: a second chart with a record under both rules but a score under
+    // 1.1 only is counted as "with a score on one side only".
+    {
+        const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
+        const std::string one_sided = "dd44ee55ff6677889900aa11bb22cc33";
+        hydra::store::RecordStore store(db);
+        hydra::app::Settings settings{};
+        hydra::app::AnalysisResult ar =
+            hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
+        store.add_song(one_sided, "One Sided", "Tester", "Nobody", ar.song);
+        store.add_row(hydra::store::prepare_row(settings.record_key(one_sided), ar.record));
+        settings.legacy_fills = true;
+        // A Ready record under 1.0: no paths, so no score.
+        hydra::test::store_batch_result(store, settings.record_key(one_sided));
+    }
+    RunResult two = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
+                                              (box.dir / "two.html").u8string(), "--no-open"});
+    INFO(two.output);
+    CHECK(two.exit_code == 0);
+    // The parts add up to the total: 1 same + 1 with a score on one side.
+    CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
+                               "0 only in 1.0, 0 only in 1.1, 1 with a score on one side only"));
 }
 
 TEST_CASE("hydra_report reports a --legacy-fills database under the 1.0 rule") {

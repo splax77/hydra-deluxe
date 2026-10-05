@@ -3,6 +3,7 @@
 #include <initializer_list>
 #include <new>
 
+#include "app/report.h"  // kNothingUnderSettings
 #include "app/rules_file.h"
 #include "core/model.h"
 #include "parse/midi.h"
@@ -103,11 +104,16 @@ std::string plain_error_text(std::string_view what) {
     // ui/dm_jobs.cpp and ui/library_jobs.cpp.
     if (what == "this user has no scores to compare") return kNoScores;
     if (what == "no records stored yet") return kNoRecords;
+    // app/report.cpp generate_report: results exist, but none under the
+    // report's cap and fill rule. The sentence names them and is already
+    // written for the user.
+    if (starts_with(what, report::kNothingUnderSettings)) return std::string(what);
     // app/report_files.cpp write_report_file.
     if (starts_with(what, "cannot write ")) return kReportWrite;
 
     // app/analysis.cpp stream_md5, core/winstr.cpp, parse/midi.cpp.
-    if (starts_with_any(what, {"cannot open file: ", "cannot open MIDI file: "}))
+    if (starts_with_any(what,
+                        {"cannot open file: ", "cannot open MIDI file: ", "cannot read file size: "}))
         return kSongFileMissing;
     if (what == "MD5 hashing failed" || starts_with(what, "BCryptOpenAlgorithmProvider(MD5)"))
         return kHashFailed;
@@ -144,9 +150,10 @@ std::string plain_error_text(std::string_view what) {
                                "unsupported path structure format"}))
         return kStoredResult;
 
-    // audio/decode.cpp, audio/mixer.cpp, render/preview_renderer.cpp,
-    // render/preview_config.cpp.
-    if (starts_with_any(what, {"decode_audio:", "mix_stems:"})) return kAudioDecode;
+    // audio/decode.cpp, audio/stream_mix.cpp, render/preview_renderer.cpp,
+    // render/preview_config.cpp. audio/mixer.cpp's mix_stems is a test
+    // reference only, so its text has no entry.
+    if (starts_with_any(what, {"decode_audio:", "StreamMix: "})) return kAudioDecode;
     if (starts_with_any(what, {"PreviewRenderer: missing", "3d-config.json:"}))
         return kPreviewAssets;
 
@@ -166,5 +173,16 @@ std::string plain_error(const std::exception& e) {
 }
 
 std::string plain_error_detail(const std::exception& e) { return e.what(); }
+
+std::string stale_text(bool build, bool rules) {
+    std::string cause;
+    if (build == rules)  // both, or neither: name both
+        cause = "another Hydra version or from different rules in hydra_rules.ini";
+    else if (build)
+        cause = "another Hydra version";
+    else
+        cause = "different rules in hydra_rules.ini";
+    return "Out of date: this result came from " + cause + ". Re-analyze to refresh it.";
+}
 
 }  // namespace hydra::app

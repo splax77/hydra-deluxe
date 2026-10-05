@@ -13,8 +13,11 @@ void PreviewTransport::load(std::unique_ptr<audio::Playhead> playhead,
     std::lock_guard<std::mutex> lock(mu_);
     playhead_ = std::move(playhead);
     audio_offset_ms_ = audio_offset_ms;
-    double audio_end = playhead_ ? playhead_->length_ms() - audio_offset_ms_ : 0.0;
-    length_ms_ = (std::max)(last_note_ms, audio_end);
+    // How far playback runs, not the song's end: the audio may run on past
+    // the last note, and that tail stays playable (D48, Q25).
+    const std::optional<double> audio_end =
+        playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;
+    length_ms_ = (std::max)(last_note_ms, audio_end.value_or(0.0));
     if (playhead_) {
         playhead_->pause();
         playhead_->seek_ms(audio_offset_ms_);
@@ -75,7 +78,8 @@ bool PreviewTransport::has_audio() const {
 }
 
 double PreviewTransport::tick() {
-    // Stop at the end of the song rather than scrolling into the void.
+    // Stop where playback ends (length_ms_, the later of the audio end and
+    // the last note) rather than scrolling into the void.
     if (clock_.playing() && length_ms_ > 0.0 && clock_.now_ms() >= length_ms_) {
         pause();
         seek_ms(length_ms_);

@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "core/model.h"  // group_thousands
+#include "parse/song.h"  // display_title, display_artist, display_charter
 
 namespace hydra::ui {
 
@@ -45,11 +46,14 @@ bool matches_query(const app::LibraryQuery& q, const LibraryRow& row) {
 // filters on changed, so a refresh that finds the same answers costs no
 // re-sort.
 bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
-    if (row.status == lookup.status && row.bestpath == lookup.bestpath &&
+    if (row.status == lookup.status && row.stale_build == lookup.stale_build &&
+        row.stale_rules == lookup.stale_rules && row.bestpath == lookup.bestpath &&
         row.summary.score == lookup.summary.score && row.summary.stars == lookup.summary.stars &&
         row.summary.hardest_ms == lookup.summary.hardest_ms)
         return false;
     row.status = lookup.status;
+    row.stale_build = lookup.stale_build;
+    row.stale_rules = lookup.stale_rules;
     row.bestpath = lookup.bestpath;
     row.summary = lookup.summary;
     row.best_label = best_path_label(row.status, row.bestpath, row.summary);
@@ -101,9 +105,9 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
     rows_.reserve(charts.size());
     for (store::ChartLibraryEntry& entry : charts) {
         LibraryRow row;
-        row.title = app::strip_rich_tags(entry.title);
-        row.artist = app::strip_rich_tags(entry.artist);
-        row.charter = app::strip_rich_tags(entry.charter);
+        row.title = display_title(entry.title);  // "(unknown)" when only tags
+        row.artist = display_artist(entry.artist);  // the same rule as the title
+        row.charter = display_charter(entry.charter);
         row.searchable =
             app::make_searchable(entry.title, entry.artist, entry.charter, entry.rootfolder);
         row.entry = std::move(entry);
@@ -167,7 +171,7 @@ void LibraryModel::set_sort(LibrarySort column, bool ascending) {
 }
 
 std::vector<size_t> LibraryModel::matches() const {
-    if (query_.empty()) return sorted_;
+    if (!searching()) return sorted_;
     std::vector<size_t> out;
     for (size_t i : sorted_)
         if (matches_query(query_, rows_[i])) out.push_back(i);

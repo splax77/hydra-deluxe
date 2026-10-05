@@ -80,23 +80,18 @@ int main() {
     std::unique_ptr<hydra::store::RecordStore> new_store =
         hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
 
-    // Engine-mode sanity check: a stamp that disagrees with the flag it was
-    // passed under is a warning, not a fatal error — an unstamped (nullopt)
-    // db just means "assume the normal rule" and never warns.
-    const char* ch10_stamp = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch10);
-    const char* ch11_stamp = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch11);
-    std::optional<std::string> old_mode = old_store->engine_mode();
-    if (old_mode && *old_mode != ch10_stamp) {
-        std::fprintf(stderr,
-            "Warning: %s is stamped engine_mode=%s, not %s\n",
-            old_path->c_str(), old_mode->c_str(), ch10_stamp);
-    }
-    std::optional<std::string> new_mode = new_store->engine_mode();
-    if (new_mode && *new_mode != ch11_stamp) {
-        std::fprintf(stderr,
-            "Warning: %s is stamped engine_mode=%s, not %s\n",
-            new_path->c_str(), new_mode->c_str(), ch11_stamp);
-    }
+    // Engine-mode sanity check: a stamp that names another rule than the side
+    // it was passed as (or no rule at all) is a warning, not a fatal error —
+    // an unstamped (nullopt) db just means "assume the normal rule" and never
+    // warns.
+    auto warn_if_not = [](const std::string& path, const std::optional<std::string>& mode,
+                          hydra::FillDeadlineRule expected) {
+        if (mode && hydra::fill_rule_from_stamp(*mode) != expected)
+            std::fprintf(stderr, "Warning: %s is stamped engine_mode=%s, not %s\n",
+                         path.c_str(), mode->c_str(), hydra::engine_mode_stamp(expected));
+    };
+    warn_if_not(*old_path, old_store->engine_mode(), hydra::FillDeadlineRule::Ch10);
+    warn_if_not(*new_path, new_store->engine_mode(), hydra::FillDeadlineRule::Ch11);
 
     hydra::app::fill_report::GeneratedFillReport report =
         hydra::app::fill_report::generate_fill_report(*old_store, *new_store, chartmode, cap, lens);
@@ -104,8 +99,8 @@ int main() {
     old_store->close();
     new_store->close();
 
-    if (report.stats.total == 0) {
-        std::printf("No records to compare. Run hydra_batch into both databases first.\n");
+    if (report.html.empty()) {
+        std::printf("%s\n", report.reason.c_str());
         return 1;
     }
 
@@ -122,14 +117,15 @@ int main() {
 
     const hydra::app::fill_report::FillCompareStats& stats = report.stats;
     std::printf(
-        "Compared %s charts: %s same, %s 1.0 higher, %s 1.1 higher, "
-        "%s only in 1.0, %s only in 1.1\n",
-        hydra::group_thousands(stats.total).c_str(),
+        "Compared %s: %s same, %s 1.0 higher, %s 1.1 higher, "
+        "%s only in 1.0, %s only in 1.1, %s with a score on one side only\n",
+        hydra::counted(stats.total, "chart", "charts").c_str(),
         hydra::group_thousands(stats.same).c_str(),
         hydra::group_thousands(stats.ch10_higher).c_str(),
         hydra::group_thousands(stats.ch11_higher).c_str(),
         hydra::group_thousands(stats.only_old).c_str(),
-        hydra::group_thousands(stats.only_new).c_str());
+        hydra::group_thousands(stats.only_new).c_str(),
+        hydra::group_thousands(stats.in_both).c_str());
     std::printf("Wrote %s\n", out.c_str());
 
     if (open_when_done) {

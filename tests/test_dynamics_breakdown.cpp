@@ -221,6 +221,97 @@ TEST_CASE("dynamics_breakdown: no ENABLE_CHART_DYNAMICS tag") {
 }
 
 // ---------------------------------------------------------------------------
+// The row table.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("dynamics_breakdown: the row table, row by row") {
+    struct Expect {
+        DynamicsRow row;
+        NoteColor color;
+        bool cymbal, is2x;
+    };
+    const Expect expect[] = {
+        {DynamicsRow::RedSnare,     NoteColor::Red,    false, false},
+        {DynamicsRow::YellowCymbal, NoteColor::Yellow, true,  false},
+        {DynamicsRow::YellowTom,    NoteColor::Yellow, false, false},
+        {DynamicsRow::BlueCymbal,   NoteColor::Blue,   true,  false},
+        {DynamicsRow::BlueTom,      NoteColor::Blue,   false, false},
+        {DynamicsRow::GreenCymbal,  NoteColor::Green,  true,  false},
+        {DynamicsRow::GreenTom,     NoteColor::Green,  false, false},
+        {DynamicsRow::Kick,         NoteColor::Kick,   false, false},
+        {DynamicsRow::Kick2x,       NoteColor::Kick,   false, true},
+    };
+    for (const Expect& e : expect) {
+        INFO("row " << static_cast<int>(e.row));
+        const DynamicsRowInfo& info = dynamics_row_info(e.row);
+        CHECK(info.row == e.row);
+        CHECK(info.color == e.color);
+        CHECK(info.cymbal == e.cymbal);
+        CHECK(info.is2x == e.is2x);
+    }
+}
+
+TEST_CASE("dynamics_breakdown: every row's own note counts in that row") {
+    for (int i = 0; i < static_cast<int>(DynamicsRow::Count); ++i) {
+        const DynamicsRow r = static_cast<DynamicsRow>(i);
+        INFO("row " << i);
+        CHECK(dynamics_row_for(dynamics_row_note(r)) == r);
+    }
+}
+
+TEST_CASE("dynamics_breakdown: a row's note is the note the table names") {
+    const ChordNote yc = dynamics_row_note(DynamicsRow::YellowCymbal);
+    CHECK(yc.colortype == NoteColor::Yellow);
+    CHECK(yc.is_cymbal());
+    CHECK_FALSE(yc.is2x);
+    const ChordNote k2 = dynamics_row_note(DynamicsRow::Kick2x);
+    CHECK(k2.colortype == NoteColor::Kick);
+    CHECK_FALSE(k2.is_cymbal());
+    CHECK(k2.is2x);
+    const ChordNote gt = dynamics_row_note(DynamicsRow::GreenTom);
+    CHECK(gt.colortype == NoteColor::Green);
+    CHECK_FALSE(gt.is_cymbal());
+}
+
+TEST_CASE("dynamics_breakdown: the 2x kick line counts its noun from the total") {
+    // Reports finding 5: "1 of 1 kick notes" read wrong; counted names the
+    // noun from the total, as the Library's "N of M charts" does.
+    DynamicsBreakdown one;
+    one.rows[static_cast<size_t>(DynamicsRow::Kick2x)].normal = 1;
+    CHECK(dynamics_kick2x_line(one) == "2x kicks: 1 of 1 kick note (100%)");
+
+    DynamicsBreakdown many;
+    many.rows[static_cast<size_t>(DynamicsRow::Kick)].normal = 1700;
+    many.rows[static_cast<size_t>(DynamicsRow::Kick2x)].accent = 300;
+    CHECK(dynamics_kick2x_line(many) == "2x kicks: 300 of 2,000 kick notes (15%)");
+
+    // No kicks at all: nothing to divide by, so the percent reads 0%.
+    CHECK(dynamics_kick2x_line(DynamicsBreakdown{}) == "2x kicks: 0 of 0 kick notes (0%)");
+}
+
+TEST_CASE("dynamics_breakdown: one share rule for every Dynamics percent") {
+    // M_D review round 3: the 2x kick line and the tab's "Dynamic notes" line
+    // both read their percent here, so an empty total reads 0% in both.
+    CHECK(dynamics_share(300, 2000) == "15%");
+    CHECK(dynamics_share(1, 3) == "33%");
+    CHECK(dynamics_share(0, 0) == "0%");
+}
+
+TEST_CASE("dynamics_breakdown: flags a row does not have are ignored") {
+    // A red note counts as the snare even with a cymbal flag, a kick ignores
+    // a cymbal flag, and only a kick can be 2x.
+    ChordNote red_cymbal{NoteColor::Red};
+    red_cymbal.cymbaltype = NoteCymbalType::Cymbal;
+    CHECK(dynamics_row_for(red_cymbal) == DynamicsRow::RedSnare);
+    ChordNote kick_cymbal{NoteColor::Kick};
+    kick_cymbal.cymbaltype = NoteCymbalType::Cymbal;
+    CHECK(dynamics_row_for(kick_cymbal) == DynamicsRow::Kick);
+    ChordNote blue_2x{NoteColor::Blue};
+    blue_2x.is2x = true;
+    CHECK(dynamics_row_for(blue_2x) == DynamicsRow::BlueTom);
+}
+
+// ---------------------------------------------------------------------------
 // Labels.
 // ---------------------------------------------------------------------------
 
@@ -236,4 +327,11 @@ TEST_CASE("dynamics_breakdown: row labels pro vs non-pro") {
     CHECK(std::string(dynamics_row_label(DynamicsRow::YellowTom, false)) == "Yellow");
     CHECK(std::string(dynamics_row_label(DynamicsRow::BlueTom, false)) == "Blue");
     CHECK(std::string(dynamics_row_label(DynamicsRow::GreenTom, false)) == "Green");
+    CHECK(std::string(dynamics_row_label(DynamicsRow::GreenTom, true)) == "Green tom");
+
+    // The words come from note_label, the one name of a drum note, so a
+    // change there moves the Dynamics tab with it.
+    const ChordNote green_tom{NoteColor::Green};
+    CHECK(std::string(dynamics_row_label(DynamicsRow::GreenTom, true)) ==
+          note_label(green_tom, true));
 }

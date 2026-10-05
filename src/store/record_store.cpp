@@ -326,7 +326,7 @@ Candidate rank_row(const std::string& hyversion, const std::vector<uint8_t>& str
 }
 
 // Why a row that is not Ready is Stale, for callers that explain it
-// (hydra_replay dump). `build`: another Hydra build or an older path layout.
+// (hydra_replay dump, the song panel, the library row's tooltip). `build`: another Hydra build or an older path layout.
 // `rules`: this layout, analyzed under other rules. An older layout has no
 // fingerprint to compare, so it is only ever `build`.
 struct StaleReasons {
@@ -532,20 +532,16 @@ PathSummary summarize_path(const Path& path) {
     s.actcount = static_cast<int>(acts.size());
 
     int maxskip = 0;
-    std::optional<double> hardest;
     int sqin = 0, sqout = 0;
     for (const Activation& a : acts) {
         if (a.skips() > maxskip) maxskip = a.skips();
-        if (auto d = a.difficulty()) {
-            if (!hardest || *d > *hardest) hardest = d;
-        }
         for (const SPSqueeze& sq : a.sqinouts) {
             if (sq.kind == SqueezeKind::SqIn) ++sqin;
             else ++sqout;
         }
     }
     s.maxskip = maxskip;
-    s.hardest_ms = hardest;
+    s.hardest_ms = path.difficulty();  // the path's own hardest squeeze or required fill
     s.avgmult = path.avg_mult();
     s.notecount = path.notecount;
     s.sqin_count = sqin;
@@ -1187,6 +1183,8 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
         std::string hyhash;
         std::string bestpath;
         PathSummary summary;
+        std::string hyversion;                // kept to say why a Stale winner is Stale
+        std::vector<uint8_t> structure_head;  // (stale_reasons)
     };
     WinnerPicker picker;
     std::vector<Offered> offered;
@@ -1206,10 +1204,13 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
             bind_candidate_filter(s, idx, cap, lens);
             while (sqlite3_step(s) == SQLITE_ROW) {
                 std::string hyhash = column_text(s, 0);
+                std::string hyversion = column_text(s, 1);
+                std::vector<uint8_t> structure_head = column_blob(s, 4);
                 picker.offer(hyhash, chartmode,
-                             rank_row(column_text(s, 1), column_blob(s, 4),
-                                      sqlite3_column_int64(s, 3), rules_fingerprint_));
-                offered.push_back({std::move(hyhash), column_text(s, 2), read_summary(s, 5)});
+                             rank_row(hyversion, structure_head, sqlite3_column_int64(s, 3),
+                                      rules_fingerprint_));
+                offered.push_back({std::move(hyhash), column_text(s, 2), read_summary(s, 5),
+                                   std::move(hyversion), std::move(structure_head)});
             }
         }
     }
@@ -1228,6 +1229,10 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
             answer.summary = offered[i].summary;
         } else {
             answer.status = RecordStatus::Stale;
+            const StaleReasons why = stale_reasons(offered[i].hyversion, offered[i].structure_head,
+                                                   rules_fingerprint_);
+            answer.stale_build = why.build;
+            answer.stale_rules = why.rules;
         }
     }
     for (size_t i = 0; i < hyhashes.size(); ++i) {

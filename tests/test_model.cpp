@@ -90,6 +90,33 @@ TEST_CASE("group_thousands matches Python {:,}") {
     CHECK(group_thousands(-1234567) == "-1,234,567");
 }
 
+// D48 Q12: one rule everywhere. Caps 1 and 1000 are the plan's examples.
+TEST_CASE("counted: singular at 1, commas from 1,000") {
+    CHECK(counted(1, "bar", "bars") == "1 bar");
+    CHECK(counted(2, "bar", "bars") == "2 bars");
+    CHECK(counted(1000, "bar", "bars") == "1,000 bars");
+    CHECK(std::string(has_have(1)) == "has");
+    CHECK(std::string(has_have(2)) == "have");
+}
+
+// D48 Q2: whole-ms text rounds to nearest. No exact half is pinned.
+TEST_CASE("format_ms_whole: nearest whole millisecond with the unit") {
+    CHECK(format_ms_whole(12.4) == "12 ms");
+    CHECK(format_ms_whole(12.6) == "13 ms");
+    CHECK(format_ms_whole(12.25) == "12 ms");
+    CHECK(format_ms_whole(163.0) == "163 ms");
+}
+
+// Finding 4: the copied path's timing used to cut 12.6 ms down to "12 ms",
+// while the badge said 13.
+TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 13 ms") {
+    Activation a;
+    test::set_skips(a, 0);
+    a.e_offset = 300.0;  // not e-critical
+    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
+    CHECK(a.notationstr_verbose() == "0+ (13 ms)");
+}
+
 TEST_CASE("squeeze symbols, timing, difficulty") {
     SPSqueeze sqin{SqueezeKind::SqIn, -5.0};
     SPSqueeze sqout{SqueezeKind::SqOut, 3.0};
@@ -154,6 +181,66 @@ TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
     Path edge = hard;
     edge.activations[0].sqinouts[0].offset_ms = -kDifficultMs;
     CHECK_FALSE(edge.is_difficult());  // exactly at the floor is not past it
+
+    SUBCASE("past_difficult_floor: 2.0 ms is not past it") {
+        // D48 Q3: a timing exactly on an edge is inside it.
+        CHECK_FALSE(past_difficult_floor(2.0));
+        CHECK(past_difficult_floor(2.1));
+        CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 2.0}.is_difficult());
+        CHECK(SPSqueeze{SqueezeKind::SqIn, 2.1}.is_difficult());
+        CHECK_FALSE(edge.activations[0].is_difficult());
+        CHECK(hard.activations[0].is_difficult());
+    }
+}
+
+TEST_CASE("HydraRecord::is_optimal: every path tied at the top score") {
+    const HydraRecord rec = test::tied_variant_record();
+    const Path& root = rec.paths.at(0);
+    CHECK(rec.is_optimal(root));
+    CHECK(rec.is_optimal(root.variants.at(0)));  // the tied variant
+    CHECK_FALSE(rec.is_optimal(rec.paths.at(1)));
+}
+
+TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") {
+    using P = TimingPart;
+    auto plain = [] {
+        Activation a;
+        test::set_skips(a, 0);
+        a.e_offset = 300.0;  // not e-critical
+        return a;
+    };
+
+    // The larger of two SqIns, with its raw value.
+    Activation two = plain();
+    two.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 12.4}, SPSqueeze{SqueezeKind::SqIn, 12.6}};
+    CHECK(two.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeIn, 12.6}));
+    two.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 12.4}};
+    CHECK(two.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeIn, 12.4}));
+
+    // A required (E0) fill and a SqOut at the same ms: the squeeze.
+    Activation tie = plain();
+    tie.e_offset = -12.6;  // early fill 12.6 ms
+    tie.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.6}};
+    REQUIRE(tie.is_E0());
+    CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeOut, 12.6}));
+
+    // The fill alone, when it is harder.
+    tie.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.4}};
+    CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::EarlyFill, 12.6}));
+
+    // An E activation that skips one fill, with no squeeze: its optional
+    // early fill (D48 Q10).
+    Activation skip = plain();
+    test::set_skips(skip, 1);
+    skip.e_offset = -12.6;
+    REQUIRE(skip.is_e_critical());
+    REQUIRE_FALSE(skip.is_E0());
+    CHECK(skip.hardest() == std::optional<HardestTiming>(HardestTiming{P::EarlyFill, 12.6}));
+    // ...which difficulty() still leaves out.
+    CHECK_FALSE(skip.difficulty().has_value());
+
+    // Nothing to time: no badge.
+    CHECK_FALSE(plain().hardest().has_value());
 }
 
 TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps") {
@@ -333,9 +420,9 @@ TEST_CASE("Chord rowstr / notationstr / disco flip") {
     c.add_note(NoteColor::Red);
     c.add_note(NoteColor::Green);
     CHECK(c.notationstr() == "[ R  G]");
-    // Green is cymbal-capable, so a normal green renders as "GreenTom"; red is
-    // not, so it is just "Red".
-    CHECK(c.rowstr() == "[Red - GreenTom]");
+    // The Dynamics tab's words, with Pro Drums on (D48 Q11): a normal green
+    // is a tom and red is the snare.
+    CHECK(c.rowstr() == "[Red snare - Green tom]");
 
     // Disco flip swaps red<->yellow (red becomes a yellow cymbal).
     Chord d;
@@ -363,17 +450,43 @@ TEST_CASE("ChordNote::str shows the kick's dynamic and its 2x flag") {
     CHECK(kick(NoteDynamicType::Normal, false) == "Kick");
     CHECK(kick(NoteDynamicType::Ghost, false) == "Kick (Ghost)");
     CHECK(kick(NoteDynamicType::Accent, false) == "Kick (Accent)");
-    CHECK(kick(NoteDynamicType::Normal, true) == "Kick (2x)");
-    CHECK(kick(NoteDynamicType::Ghost, true) == "Kick (Ghost, 2x)");
-    CHECK(kick(NoteDynamicType::Accent, true) == "Kick (Accent, 2x)");
+    CHECK(kick(NoteDynamicType::Normal, true) == "2x kick");
+    CHECK(kick(NoteDynamicType::Ghost, true) == "2x kick (Ghost)");
+    CHECK(kick(NoteDynamicType::Accent, true) == "2x kick (Accent)");
 
-    // Pads read exactly as they always did.
-    CHECK(ChordNote{NoteColor::Red}.str() == "Red");
+    // Pads take the Dynamics words too; a ghost or accent keeps its
+    // parenthesis.
+    CHECK(ChordNote{NoteColor::Red}.str() == "Red snare");
     CHECK(ChordNote{NoteColor::Red, NoteDynamicType::Ghost}.str() ==
-          "Red (Ghost)");
+          "Red snare (Ghost)");
     CHECK(ChordNote{NoteColor::Yellow, NoteDynamicType::Accent,
                     NoteCymbalType::Cymbal, false}
-              .str() == "YellowCym (Accent)");
+              .str() == "Yellow cymbal (Accent)");
+}
+
+// D48 Q11: a note is called what the Dynamics tab calls it. With Pro Drums
+// off a pad has no tom or snare, so the type word goes.
+TEST_CASE("note_label: the Dynamics words, plain colours with Pro Drums off") {
+    const ChordNote green_tom{NoteColor::Green};
+    const ChordNote yellow_cym{NoteColor::Yellow, NoteDynamicType::Normal,
+                               NoteCymbalType::Cymbal, false};
+    const ChordNote kick2x{NoteColor::Kick, NoteDynamicType::Normal, NoteCymbalType::Normal,
+                           true};
+    const ChordNote yellow_tom{NoteColor::Yellow};
+    const ChordNote red{NoteColor::Red};
+
+    CHECK(note_label(green_tom, true) == "Green tom");
+    CHECK(note_label(yellow_cym, true) == "Yellow cymbal");
+    CHECK(note_label(kick2x, true) == "2x kick");
+    CHECK(note_label(ChordNote{NoteColor::Kick}, true) == "Kick");
+    CHECK(note_label(red, true) == "Red snare");
+
+    CHECK(note_label(yellow_tom, false) == "Yellow");
+    CHECK(note_label(red, false) == "Red");
+    CHECK(note_label(kick2x, false) == "2x kick");
+
+    // A ghost or accent is not part of the name.
+    CHECK(note_label(ChordNote{NoteColor::Green, NoteDynamicType::Ghost}, true) == "Green tom");
 }
 
 TEST_CASE("Chord::code spells a ghost/accent kick in the kick lane") {
@@ -394,7 +507,7 @@ TEST_CASE("Chord::code spells a ghost/accent kick in the kick lane") {
     CHECK(accent.code() == "an...");
     CHECK(Chord::from_code("an...") == accent);
 
-    CHECK(ghost.rowstr() == "[Kick (Ghost) - Red]");
+    CHECK(ghost.rowstr() == "[Kick (Ghost) - Red snare]");
 }
 
 // The engine's three cases, as values. The deactivation edge in
@@ -581,14 +694,14 @@ TEST_CASE("MultSqueeze::howto names every note that crosses the step") {
     kryb.apply_cymbal(NoteColor::Yellow);
     kryb.apply_cymbal(NoteColor::Blue);
     const MultSqueeze ms(kryb, 7);
-    CHECK(ms.howto() == "Hit [YellowCym] and [BlueCym] last.");
+    CHECK(ms.howto() == "Hit [Yellow cymbal] and [Blue cymbal] last.");
     CHECK(ms.multiplier() == 2);
 
     // Accent the Red (100): now the two cymbals tie across the step, so
     // either may cross. The kick must stay before the step and the accented
     // Red must cross it.
     kryb.apply_accent(NoteColor::Red);
-    CHECK(MultSqueeze(kryb, 7).howto() == "Hit [Kick] first and [Red (Accent)] last.");
+    CHECK(MultSqueeze(kryb, 7).howto() == "Hit [Kick] first and [Red snare (Accent)] last.");
 }
 
 // A 3-note chord splits two and one across the step. When one end holds a
@@ -613,7 +726,7 @@ TEST_CASE("MultSqueeze::howto names the lone note of a 3-note chord") {
     kry.add_note(NoteColor::Yellow);
     kry.apply_cymbal(NoteColor::Yellow);
     for (int combo : {17, 18, 27, 28})
-        CHECK_MESSAGE(MultSqueeze(kry, combo).howto() == "Hit [YellowCym] last.",
+        CHECK_MESSAGE(MultSqueeze(kry, combo).howto() == "Hit [Yellow cymbal] last.",
                       "combo=" << combo);
 
     // Kick (50) + cymbal (65) + accented Red (100): three values, so the
@@ -624,8 +737,39 @@ TEST_CASE("MultSqueeze::howto names the lone note of a 3-note chord") {
     kya.add_note(NoteColor::Yellow);
     kya.apply_cymbal(NoteColor::Yellow);
     kya.apply_accent(NoteColor::Red);
-    CHECK(MultSqueeze(kya, 17).howto() == "Hit [Red (Accent)] last.");
+    CHECK(MultSqueeze(kya, 17).howto() == "Hit [Red snare (Accent)] last.");
     CHECK(MultSqueeze(kya, 18).howto() == "Hit [Kick] first.");
+}
+
+// The advice names its note in the Pro Drums setting's words, as the chord
+// rows do (D48 Q11, finding 17): with Pro Drums off a pad has no tom or snare.
+TEST_CASE("MultSqueeze::howto names the note in the Pro Drums setting's words") {
+    // Kick (50) + accented yellow tom (100) + blue cymbal (65): combo 17
+    // carries the dear yellow over.
+    Chord kyb;
+    kyb.add_note(NoteColor::Kick);
+    kyb.add_note(NoteColor::Yellow);
+    kyb.add_note(NoteColor::Blue);
+    kyb.apply_cymbal(NoteColor::Blue);
+    kyb.apply_accent(NoteColor::Yellow);
+    CHECK(MultSqueeze(kyb, 17).howto(true) == "Hit [Yellow tom (Accent)] last.");
+    CHECK(MultSqueeze(kyb, 17).howto(false) == "Hit [Yellow (Accent)] last.");
+
+    // Kick (50) + accented red (100) + yellow cymbal (65).
+    Chord kya;
+    kya.add_note(NoteColor::Kick);
+    kya.add_note(NoteColor::Red);
+    kya.add_note(NoteColor::Yellow);
+    kya.apply_cymbal(NoteColor::Yellow);
+    kya.apply_accent(NoteColor::Red);
+    CHECK(MultSqueeze(kya, 17).howto(false) == "Hit [Red (Accent)] last.");
+    // A cymbal says cymbal either way.
+    Chord kry;
+    kry.add_note(NoteColor::Kick);
+    kry.add_note(NoteColor::Red);
+    kry.add_note(NoteColor::Yellow);
+    kry.apply_cymbal(NoteColor::Yellow);
+    CHECK(MultSqueeze(kry, 17).howto(false) == "Hit [Yellow cymbal] last.");
 }
 
 // The graph asks applies() of every chord instead of catching a throw.

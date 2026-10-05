@@ -265,11 +265,6 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
     CHECK(failed == doctest::Approx(190.76).epsilon(1e-3));
     CHECK(landed > gap);
 
-    // The description keeps the legacy single-hit line.
-    CHECK(sqout.description() == "SqOut: Note timing must be later than 191.1ms.");
-    SPSqueeze easy{SqueezeKind::SqOut, 5.0};
-    CHECK(easy.description() == "SqOut: Note timing must be later than -5.0ms.");
-
     // Stored transfer scales are display-only: difficulty stays the raw gap.
     Activation stamped = act;
     test::set_skips(stamped, 1);

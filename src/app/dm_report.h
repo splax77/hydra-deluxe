@@ -21,7 +21,7 @@
 
 namespace hydra::app::dm_report {
 
-// One table row: a single leaderboard score plus the Hydra record it matched.
+// One table row: a single leaderboard score plus the Hydra record it joins to.
 struct DmReportRow {
     std::string song;
     std::string artist;
@@ -30,13 +30,18 @@ struct DmReportRow {
     int64_t actual = 0;                 // score the player posted
     std::optional<int64_t> optimal;     // Hydra best-path score; unset with no current result
     std::optional<int64_t> delta;       // optimal - actual (points left); <0 == above optimal
-    std::optional<double> pct;          // actual/optimal*100, only at base speed
+    // Actual as a percent of optimal, in whole hundredths of a percent
+    // (percent_steps, the number the cell's text is written from: 9901 reads
+    // 99.01%). Set only at base speed with an optimal score above zero.
+    std::optional<int64_t> pct_h;
     bool is_fc = false;
     int percent = 0;
     int speed = net::kBaseSpeedPercent;
     std::optional<int> rank;
     std::string posted;                 // ISO-8601 timestamp
-    // "matched" | "above optimal" | "not analyzed" (the last scan found the
+    // "under optimal" | "at optimal" | "above optimal" (Hydra has a result:
+    // the score is below, equal to or over its optimal) |
+    // "not analyzed" (the last scan found the
     // chart, but it has no current result at SP cap 4 for this mode) |
     // "not in library" (the last scan never found it) |
     // "other speed" (played at a speed other than net::kBaseSpeedPercent;
@@ -46,7 +51,7 @@ struct DmReportRow {
 
 // Joins every fetched score against the store's records for `chartmode`,
 // preferring the leaderboard's own song/artist metadata and falling back to the
-// matched Hydra record's when the leaderboard entry is an "unknown" one.
+// joined Hydra record's when the leaderboard entry is an "unknown" one.
 std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::vector<net::DmScore>& scores,
                                          const std::string& chartmode,
@@ -64,7 +69,8 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
 
 struct DmReportStats {
     int total = 0;
-    int matched = 0;
+    int under_optimal = 0;
+    int at_optimal = 0;
     int above_optimal = 0;
     int not_analyzed = 0;    // in the library, no current result
     int not_in_library = 0;
@@ -72,7 +78,8 @@ struct DmReportStats {
 };
 DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows);
 
-// "1 matched, 1 above optimal, 0 not analyzed, 1 not in your library", plus
+// "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, 1 not in
+// your library", plus
 // ", 2 at other speeds" when there are any. The page subtitle and the
 // finished window both read it, so the two can't drift.
 std::string counts_phrase(const DmReportStats& stats);

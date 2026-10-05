@@ -274,6 +274,35 @@ TEST_CASE("build_preview_scene: notes carry lane and drum attributes") {
     CHECK(scene.song_length_ms == doctest::Approx(750.0));
 }
 
+// color_of reads lane_of backwards, so a drawn lane can ask the core's colour
+// rules (allows_cymbals) without a second lane table.
+TEST_CASE("color_of: each lane maps back to the colour it was drawn from") {
+    for (NoteColor c : {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow, NoteColor::Blue,
+                        NoteColor::Green})
+        CHECK(color_of(lane_of(c)) == c);
+}
+
+// The scene's song length is the store's (store::song_length_ms): the last
+// timestamp's onset. A last timestamp with no notes used to split them, the
+// scene stopping at the earlier note. The parsers never emit one today, so
+// this hand-built song is the one place the two could differ. The beat lines
+// still end two measures past the last drawn note, as before.
+TEST_CASE("build_preview_scene: the song length is the store's, even past the last drawn note") {
+    Song song = make_hand_song();
+    SongTimestamp empty;  // a timestamp with no notes, after the last chord
+    empty.timecode = song.timecode(960);
+    song.sequence.push_back(empty);
+    PreviewScene scene = build_preview_scene(song, nullptr);
+
+    REQUIRE(scene.has_notes);
+    CHECK(scene.notes.back().ms == doctest::Approx(750.0));
+    CHECK(scene.song_length_ms == doctest::Approx(1000.0));  // tick 960
+    const PreviewScene before = build_preview_scene(make_hand_song(), nullptr);
+    REQUIRE_FALSE(scene.beats.empty());
+    REQUIRE_FALSE(before.beats.empty());
+    CHECK(scene.beats.back().tick == before.beats.back().tick);
+}
+
 TEST_CASE("build_preview_scene: SP phrase, solo, and fill spans") {
     Song song = make_hand_song();
     PreviewScene scene = build_preview_scene(song, nullptr);
@@ -419,15 +448,35 @@ TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
 
 TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
+    // The Preview passes the audio's end, as the load does: here the audio
+    // runs the plan's 5 s past the last note (tick 720, 750 ms), to 5750 ms.
+    PreviewScene scene = build_preview_scene(song, nullptr, kCloneHeroSpCap,
+                                             core::default_rules(), 5750.0);
     CHECK(scene.tick_resolution == 480);
     REQUIRE(scene.tempos.size() == 1);
     CHECK(scene.tempos[0].bpm == doctest::Approx(120.0));
     REQUIRE(!scene.beats.empty());
     CHECK(scene.beats.front().tick == 0);
-    // Extends two measures past the last note (tick 720 -> through 4560; the
-    // last line at or before that is the beat at 4320).
-    CHECK(scene.beats.back().tick == 4320);
+    // 5750 ms is tick 5520; the last line at or before it is the beat at
+    // 5280 (no half-beat line is drawn before a beat the grid does not reach).
+    CHECK(scene.beats.back().tick == 5280);
+    CHECK(scene.beats.back().kind == PreviewBeatKind::Beat);
+}
+
+TEST_CASE("build_preview_scene: the beat lines run to the end of the audio") {
+    // The audio-tail chart: the last note is at tick 1920 (1000 ms) and the
+    // audio stops 5 s later, at 6000 ms, which is tick 11520 (six measures of
+    // 1920 ticks). The beat lines keep scrolling through that tail and stop at
+    // the barline on the audio's end (D48, Q25).
+    const test::AudioTailChart c = test::audio_tail_chart();
+    const PreviewScene scene =
+        build_preview_scene(c.song, nullptr, kCloneHeroSpCap, core::default_rules(), c.audio_end_ms);
+    REQUIRE(!scene.beats.empty());
+    CHECK(scene.beats.back().tick == 11520);
+    CHECK(scene.beats.back().kind == PreviewBeatKind::Bar);
+    CHECK(scene.beats.back().ms == doctest::Approx(6000.0));
+    // The base alone gives the same grid: the overlay never touches beats.
+    CHECK(build_preview_base(c.song, c.audio_end_ms).beats.back().tick == 11520);
 }
 
 TEST_CASE("build_time_box: timestamp, measure, tempo") {
@@ -450,6 +499,14 @@ TEST_CASE("build_time_box: timestamp, measure, tempo") {
 
     // The playhead is clamped to the length.
     CHECK(build_time_box(scene, 9999.0, 5000.0).timestamp == "0:05.000 / 0:05.000");
+}
+
+TEST_CASE("build_time_box: the timestamp rounds 59,999.6 ms to 1:00.000") {
+    // The clock rounds to the whole ms before it splits off the minutes, so
+    // it never reads 0:60.000 (D48, Q20).
+    Song song = make_hand_song();
+    PreviewScene scene = build_preview_scene(song, nullptr);
+    CHECK(build_time_box(scene, 59999.6, 64000.0).timestamp == "1:00.000 / 1:04.000");
 }
 
 TEST_CASE("build_time_box: the end measure runs past the last beat line") {
@@ -625,7 +682,7 @@ TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
             CHECK(pa.lane == lane_of(a.chord.activation_note().colortype));
         }
         CHECK(pa.measure == format_measure(r.song.timing(), pa.tick));
-        CHECK(pa.chord == (a.chord.count() > 0 ? a.chord.rowstr() : std::string()));
+        CHECK(pa.chord == a.chord);  // named by the box, in the Pro Drums setting's words
     }
 
     // Same song, no path: identical notes, empty overlay.
@@ -1396,6 +1453,14 @@ TEST_CASE("score box: before the first note nothing is hit yet") {
     CHECK(box.detail == "x1 " + kDot + " combo 0");
 }
 
+TEST_CASE("struck_at: a chord exactly on the playhead counts as hit") {
+    // 2500 ms is the activation chord (tick 2400) of the make_sp_song({1920},
+    // 9600) score-box case below: a jump to that activation lands on it.
+    CHECK(struck_at(2500.0, 2500.0));
+    CHECK_FALSE(struck_at(2499.9, 2500.0));
+    CHECK(struck_at(2500.1, 2500.0));
+}
+
 TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Power pays") {
     // A Red note every 500 ms (tick 480 steps). One bar of SP activated at
     // tick 2400 (2500 ms) runs two measures, to tick 6240 (6500 ms).
@@ -1433,6 +1498,21 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
     CHECK(build_score_box(scene, 6600.0).detail == "x2 " + kDot + " combo 14");
     // 7000 ms: the first chord Star Power doesn't pay: the plain x2 of combo 15.
     CHECK(build_score_box(scene, 7000.0).detail == "x2 " + kDot + " combo 15");
+}
+
+TEST_CASE("score box: a chord exactly on the playhead counts as hit") {
+    // The case above: "Act >" from the start lands on the activation chord at
+    // 2500 ms, and the box counts that chord as hit and paid (D48, Q27). The
+    // box already counted it before struck_at existed, so this case guards the
+    // shared rule rather than a fix: make struck_at exclusive and it reads
+    // "x1 · combo 5". The highway's case is the one the fix turned green.
+    Song song = make_sp_song({1920}, 9600);
+    Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.score.state == PreviewScore::State::Ready);
+    const std::optional<double> jump = activation_jump_ms(scene, 0.0, +1);
+    REQUIRE(jump.has_value());
+    CHECK(build_score_box(scene, *jump).detail == "x2 " + kDot + " combo 6");
 }
 
 // User decision D11 (docs/audit/2026-10-03-fix-decisions.md): a chord just past
@@ -1673,6 +1753,42 @@ TEST_CASE("song_fraction: has_song_length takes only a positive length") {
     CHECK_FALSE(has_song_length(-1.0));
 }
 
+// The audio-tail chart: the last note is at 1000 ms and the audio stops 5 s
+// later, at 6000 ms. One activation on the note at tick 1440; one bar of SP
+// runs two measures, so its window ends at tick 5280. The scrubber is built
+// the way the Preview builds it (its right edge from scrub_end_ms over the
+// song's store::song_length_ms, the transport reaching the audio's end) and
+// the Paths timeline the way the Paths tab builds it (the stored last-note
+// length), and the two marks must be the same number.
+TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when the audio outlasts the notes") {
+    const test::AudioTailChart c = test::audio_tail_chart();
+    Path path;
+    path.activations = {sp_act_at(c.song, 1440, /*sp_meter=*/1, /*end_tick=*/5280)};
+    const PreviewScene scene = build_preview_scene(c.song, &path, kCloneHeroSpCap,
+                                                   core::default_rules(), c.audio_end_ms);
+    const std::vector<double> marks =
+        build_scrub_marks(scene, scrub_end_ms(store::song_length_ms(c.song), c.audio_end_ms));
+    REQUIRE(marks.size() == 1);
+    CHECK(marks[0] == doctest::Approx(0.75));
+
+    const ActivationsView view =
+        build_activations(path, HydraRecord{}, &c.song.timing(), Settings{}.hit_window_ms,
+                          std::nullopt, core::default_rules(), c.last_note_ms);
+    REQUIRE(view.acts.size() == 1);
+    REQUIRE(view.acts[0].song_fraction.has_value());
+    CHECK(marks[0] == *view.acts[0].song_fraction);
+}
+
+TEST_CASE("scrub marks: a playhead past the last note parks the thumb at the right end") {
+    const test::AudioTailChart c = test::audio_tail_chart();
+    const double end = scrub_end_ms(c.last_note_ms, c.audio_end_ms);
+    CHECK(end == doctest::Approx(1000.0));
+    // Playback runs on to the audio's end; the thumb waits at the last note.
+    CHECK(scrub_thumb_ms(c.audio_end_ms, end) == doctest::Approx(1000.0));
+    // Before the last note the thumb follows the playhead.
+    CHECK(scrub_thumb_ms(500.0, end) == doctest::Approx(500.0));
+}
+
 TEST_CASE("activation jumps: nearest activation before or after the playhead") {
     TwoActs t;
     CHECK(activation_jump_ms(t.scene, 0.0, +1) == doctest::Approx(2000.0));
@@ -1688,33 +1804,43 @@ TEST_CASE("activation jumps: nearest activation before or after the playhead") {
 
 TEST_CASE("next activation box: the activation at or after the playhead") {
     TwoActs t;
-    PreviewNextActBox box = build_next_act_box(t.scene, 0.0);
+    PreviewNextActBox box = build_next_act_box(t.scene, 0.0, /*pro_drums=*/true);
     CHECK(box.shown);
     CHECK(box.header == "Next: activation 1 of 2");
-    CHECK(box.detail == "at m2.1.0 " + kDot + " [Red]");
-    CHECK(build_next_act_box(t.scene, 2000.0).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0).header == "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0).detail == "at m5.1.0 " + kDot + " [Red]");
-    CHECK_FALSE(build_next_act_box(t.scene, 9000.0).shown);
-    CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0).shown);
+    CHECK(box.detail == "at m2.1.0 " + kDot + " [Red snare]");
+    CHECK(build_next_act_box(t.scene, 2000.0, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, 2001.0, true).header == "Next: activation 2 of 2");
+    CHECK(build_next_act_box(t.scene, 2001.0, true).detail == "at m5.1.0 " + kDot + " [Red snare]");
+    CHECK_FALSE(build_next_act_box(t.scene, 9000.0, true).shown);
+    CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0, true).shown);
+}
+
+TEST_CASE("next activation box: the note names follow the Pro Drums setting") {
+    // The Dynamics wording (note_label): with Pro Drums off the red pad is
+    // plain "Red", with it on "Red snare" (D48, Q11).
+    TwoActs t;
+    CHECK(build_next_act_box(t.scene, 0.0, /*pro_drums=*/false).detail ==
+          "at m2.1.0 " + kDot + " [Red]");
+    CHECK(build_next_act_box(t.scene, 0.0, /*pro_drums=*/true).detail ==
+          "at m2.1.0 " + kDot + " [Red snare]");
 }
 
 TEST_CASE("next activation box: on an activation within half a millisecond, and no chord") {
     TwoActs t;
     // The playhead counts as on an activation up to half a millisecond past
     // it: at 2000.5 ms the box still names activation 1, a hair later 2.
-    CHECK(build_next_act_box(t.scene, -100.0).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, 2000.5).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300)).header ==
+    CHECK(build_next_act_box(t.scene, -100.0, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, 2000.5, true).header == "Next: activation 1 of 2");
+    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300), true).header ==
           "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 8000.5).header == "Next: activation 2 of 2");
-    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300)).shown);
+    CHECK(build_next_act_box(t.scene, 8000.5, true).header == "Next: activation 2 of 2");
+    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300), true).shown);
 
     // An activation with no chord names only its measure.
     Song song = make_sp_song({960}, /*last_tick=*/13440);
     Path path;
     path.activations = {sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760)};
-    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0);
+    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0, true);
     CHECK(box.header == "Next: activation 1 of 1");
     CHECK(box.detail == "at m2.1.0");
 }
@@ -1775,8 +1901,8 @@ TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many cha
     // so 3332.7 ms is tick 2879.54 and shows Verse at m2.3.0, while 3332.6 ms
     // is tick 2879.47, still Intro at m2.2.479. Likewise 999.9 ms is tick
     // 959.9 (Intro) and 4666.0 ms tick 3839.5 (3/4). The tempo is looked up
-    // by ms, so a hair before 2000 ms the box reads tick 1920 (m2.1.0) at the
-    // old 120 BPM. In 3/4 a measure is 1440 ticks: measure 3 starts at 3840,
+    // by that same tick, so a hair before 2000 ms the box reads tick 1920
+    // (m2.1.0) at the new 90 BPM (D48, Q23). In 3/4 a measure is 1440 ticks: measure 3 starts at 3840,
     // 4 at 5280, so tick 5759 (6799 ms at 150 BPM) is m4.1.479. Past the
     // length the playhead is held at 12400 ms, tick 9600, m6.3.0.
     std::vector<std::string> got;
@@ -1791,18 +1917,18 @@ TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many cha
                  "0:00.000 / 0:12.400 | m1.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | ",
                  "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
                  "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
-                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
+                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
                  "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
                  "0:03.333 / 0:12.400 | m2.2.479 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
                  "0:03.333 / 0:12.400 | m2.3.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Verse",
                  "0:04.666 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
                  "0:04.667 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
-                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
+                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
                  "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
                  "0:06.799 / 0:12.400 | m4.1.479 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
                  "0:06.800 / 0:12.400 | m4.2.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Chorus",
                  "0:07.600 / 0:12.400 | m5.1.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
-                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
+                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Chorus",
                  "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Chorus",
                  "0:10.400 / 0:12.400 | m6.1.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro",
                  "0:12.400 / 0:12.400 | m6.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
@@ -1819,6 +1945,18 @@ TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many cha
 
     // Sections out of tick order never reach the time box: both parsers sort
     // them (sort_practice_sections, D27 R7.7), and the parser tests pin that.
+}
+
+TEST_CASE("build_time_box: inside the half tick before a tempo change every line shows the new values") {
+    // make_lookup_song's tempo goes 120 -> 90 BPM at tick 1920 (2000 ms). A
+    // hair before 2000 ms the playhead rounds to tick 1920, so the measure
+    // line already reads m2.1.0; the BPM line must read that tick's tempo
+    // too, not the old one (D48, Q23).
+    const Song song = make_lookup_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    const PreviewTimeBox box = build_time_box(scene, std::nextafter(2000.0, -1e300), 12400.0);
+    CHECK(box.position == "m2.1.0");
+    CHECK(box.tempo == "BPM 90.000 " + kDot + " 4/4");
 }
 
 TEST_CASE("build_preview_scene: passed-over fills on several activations, and a tick that is no fill") {

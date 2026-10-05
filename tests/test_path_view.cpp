@@ -14,6 +14,7 @@
 #include "app/display_format.h"
 #include "app/path_view.h"
 #include "app/preview_view.h"  // path_overlay_key
+#include "app/user_messages.h"  // kNoPathsFound
 #include "corpus_util.h"
 #include "record_fixtures.h"
 
@@ -103,6 +104,11 @@ TEST_CASE("build_record_status: the three states and their lines") {
     HydraRecord whatif = rec;
     whatif.sp_cap = 32;
     CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  32 bars");
+    // The count and its noun agree (D48 Q12), and a big cap is comma-grouped.
+    whatif.sp_cap = 1;
+    CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  1 bar");
+    whatif.sp_cap = 1000;
+    CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  1,000 bars");
 
     // A Ready record that found nothing stays Ready and says so in one line.
     HydraRecord nothing = rec;
@@ -111,6 +117,7 @@ TEST_CASE("build_record_status: the three states and their lines") {
     CHECK(none.state == store::RecordStatus::Ready);
     REQUIRE(none.lines.size() == 1);
     CHECK(none.lines[0] == "No paths found.");
+    CHECK(none.lines[0] == kNoPathsFound);
 }
 
 TEST_CASE("build_score_breakdown: exact lines, rounded like the report") {
@@ -135,10 +142,12 @@ TEST_CASE("display format: the average multiplier rounds the exact double") {
     CHECK(py_round3(2.3456) == 2.346);
 }
 
-TEST_CASE("display format: ms text is one decimal and a unit") {
-    CHECK(format_ms(12.3) == "12.3ms");
-    CHECK(format_ms(-20.0) == "-20.0ms");
-    CHECK(format_ms(0.0) == "0.0ms");
+TEST_CASE("display format: ms text is one decimal, a space and the unit") {
+    // D57 item 1: every one-decimal ms figure reads "163.5 ms".
+    CHECK(format_ms(12.3) == "12.3 ms");
+    CHECK(format_ms(-20.0) == "-20.0 ms");
+    CHECK(format_ms(0.0) == "0.0 ms");
+    CHECK(format_ms(163.5) == "163.5 ms");
 }
 
 TEST_CASE("build_activations: the early fill reads positive = early on both lines") {
@@ -163,7 +172,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     CHECK(av.notation == "E0");
     CHECK(av.measure == "m1.1.0");
     CHECK(av.badge == "early fill 12 ms");
-    CHECK(av.early_fill == "Early fill: 12.3ms (required)");
+    CHECK(av.early_fill == "Early fill: 12.3 ms (required)");
 
     // E-critical but not E0: the badge and the details line use the same
     // sign rule, so 20 ms late reads negative. Optional, so never warn-coloured.
@@ -175,7 +184,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     CHECK(av.notation == "E1");
     CHECK(av.badge == "early fill -20 ms");
     CHECK_FALSE(av.difficult);
-    CHECK(av.early_fill == "Early fill: -20.0ms (optional)");
+    CHECK(av.early_fill == "Early fill: -20.0 ms (optional)");
 }
 
 TEST_CASE("path buttons: each path's own hardest timing, warn past the difficult floor") {
@@ -349,7 +358,7 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
           "Frontend timing scales x8.59 (early) / x8.76 (late) at the SP end.");
     CHECK(av.scale_warn);
     REQUIRE(av.backends.size() == 1);
-    CHECK(av.backends[0].rating.find(" (eff. 0.0ms)") != std::string::npos);
+    CHECK(av.backends[0].rating.find(" (eff. 0.0 ms)") != std::string::npos);
 
     // A side at exactly x1.00 is left out.
     Activation late_only = base;
@@ -525,7 +534,7 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     CHECK(limited[1].timing == "60.0");
     // +60 ms is past the leeway: the engine never counted this chord, so the
     // row is tagged uncounted and not highlighted (user decision 19).
-    CHECK(limited[1].rating.find("squeezed out (uncounted)") != std::string::npos);
+    CHECK(limited[1].rating.find("(uncounted) <-- squeezed out") != std::string::npos);
     CHECK_FALSE(limited[1].warn);
 }
 
@@ -554,7 +563,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "0");
     CHECK(v.acts[0].backends[0].rating ==
-          "Free SqOut <-- squeezed out (uncounted)");
+          "Free SqOut (uncounted) <-- squeezed out");
     CHECK_FALSE(v.acts[0].backends[0].warn);
 
     // The same chord squeezed out 5 ms inside SP really costs 200, and
@@ -640,7 +649,7 @@ TEST_CASE("find a chart with an uncounted squeezed-out row" * doctest::skip()) {
                                               &r.song.timing(), 85.0);
         for (const ActivationRowView& av : v.acts)
             for (const BackendRowView& row : av.backends)
-                if (row.rating.find("squeezed out (uncounted)") !=
+                if (row.rating.find("(uncounted) <-- squeezed out") !=
                     std::string::npos) {
                     MESSAGE(path << " | activation " << av.number << " " << av.notation);
                     return;
@@ -747,7 +756,7 @@ TEST_CASE("format_measure: one form for both tabs") {
     CHECK(format_measure(timing, 960) == "m2.2.0");
     CHECK(format_measure(timing, 1000) == "m2.2.40");
     CHECK(format_measure(timing.timecode(960)) == "m2.2.0");
-    CHECK(format_ms_spaced(163.0) == "163.0 ms");
+    CHECK(format_ms(163.0) == "163.0 ms");
 }
 
 TEST_CASE("activation rows: Burnout's three activations") {
@@ -770,7 +779,7 @@ TEST_CASE("activation rows: Burnout's three activations") {
     CHECK(a1.bars == "3 bars");
     CHECK(a1.badge == "squeeze out 163 ms");
     CHECK(a1.difficult);
-    CHECK(a1.chord == "[Kick - GreenCym]");
+    CHECK(a1.chord == "[Kick - Green cymbal]");
     REQUIRE(a1.squeeze_sentences.size() == 1);
     CHECK(a1.squeeze_sentences[0].text ==
           "Hit the [  Y  ] note more than 163.0 ms late so it lands after Star Power "
@@ -834,6 +843,12 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     Activation sqin = none;
     sqin.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.4});
     CHECK(activation_badge(sqin) == "squeeze in 12 ms");
+    // Whole ms round to nearest (D48 Q2): 12.6 reads 13, and an exact half
+    // rounds up too, the same as the copied path.
+    sqin.sqinouts[0].offset_ms = 12.6;
+    CHECK(activation_badge(sqin) == "squeeze in 13 ms");
+    sqin.sqinouts[0].offset_ms = 12.5;
+    CHECK(activation_badge(sqin) == "squeeze in 13 ms");
 
     Activation sqout = none;
     sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -163.0});
@@ -845,6 +860,9 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     CHECK(activation_badge(e0) == "early fill 30 ms");
     e0.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
     CHECK(activation_badge(e0) == "early fill 30 ms");
+    // A squeeze and a required fill tied exactly: the badge names the squeeze.
+    e0.sqinouts[0].offset_ms = -30.0;
+    CHECK(activation_badge(e0) == "squeeze out 30 ms");
 
     // An optional (E1) fill still gets a badge: its timing decides whether the
     // first fill shows up, which is how the skips are counted.
@@ -855,6 +873,31 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     // A squeeze the activation needs outranks an optional fill.
     e1.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
     CHECK(activation_badge(e1) == "squeeze out 5 ms");
+}
+
+TEST_CASE("activation badge and copied path agree") {
+    // A 12.6 ms squeeze-in: the badge and the copied path both say 13 ms, and
+    // the path button keeps its one decimal.
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
+    Path p;
+    p.activations.push_back(act);
+
+    const std::string badge = activation_badge(act);
+    CHECK(badge == "squeeze in 13 ms");
+    const std::string verbose = act.notationstr_verbose();
+    CHECK(verbose == "0+ (13 ms)");
+    // The badge's number is the copied path's number.
+    const std::string number = badge.substr(std::string("squeeze in ").size());
+    CHECK(verbose.find("(" + number + ")") != std::string::npos);
+
+    HydraRecord rec;
+    rec.paths.push_back(p);
+    PathButtonsView v = build_path_buttons(rec, 0, 2);
+    REQUIRE(v.buttons.size() == 1);
+    CHECK(v.buttons[0].timing == "12.6 ms");
 }
 
 TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
@@ -984,7 +1027,7 @@ TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. fig
     REQUIRE(v.acts[0].backends.size() == 1);
     const BackendRowView& r = v.acts[0].backends[0];
     CHECK(r.timing == "-400.0");
-    CHECK(r.rating.find(" (eff. 307.7ms)") != std::string::npos);
+    CHECK(r.rating.find(" (eff. 307.7 ms)") != std::string::npos);
     CHECK_FALSE(r.tooltip.empty());
     CHECK(v.acts[0].scale_warning.find("x1.60") != std::string::npos);
 }
@@ -1010,10 +1053,11 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     CHECK(v.acts[0].scale_warn);
     REQUIRE(v.acts[0].backends.size() == 1);
     // 187.5 ms at x0.9973 is worth 187.753... ms.
-    CHECK(v.acts[0].backends[0].rating.find(" (eff. 187.8ms)") != std::string::npos);
+    CHECK(v.acts[0].backends[0].rating.find(" (eff. 187.8 ms)") != std::string::npos);
     const std::string& tip = v.acts[0].backends[0].tooltip;
+    CHECK(tip.find("on the normal 170.0 ms scale") != std::string::npos);
     CHECK(tip.find("scales x0.997 here") != std::string::npos);
-    CHECK(tip.find("budget is 169.8ms, not 170.0ms") != std::string::npos);
+    CHECK(tip.find("budget is 169.8 ms, not 170.0 ms") != std::string::npos);
     // The squeeze-out's figure lives on its row only (decision 2).
     REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
     CHECK(v.acts[0].squeeze_sentences[0].text.find("eff.") == std::string::npos);
@@ -1026,6 +1070,32 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning ==
           "Frontend timing scales x0.999999998 (early) at the SP end.");
+}
+
+TEST_CASE("backend table: the tooltip names the normal budget at one decimal in both places") {
+    // A hit window of 85.25 ms makes the normal budget 170.5 ms. D57 item 2:
+    // the tooltip writes it once, at one decimal, and says it twice, so it
+    // never reads "171 ms" beside "170.5 ms".
+    HydraRecord rec;
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    test::set_transfer(act, TransferScale{1.6, 1.0});
+    BackendSqueeze row;
+    row.chord.add_note(NoteColor::Green);
+    row.points = 260;
+    row.offset_ms = -400.0;
+    act.backends.push_back(row);
+    Path p;
+    p.activations.push_back(act);
+
+    ActivationsView v = build_activations(p, rec, nullptr, 85.25);
+    REQUIRE(v.acts.size() == 1);
+    REQUIRE(v.acts[0].backends.size() == 1);
+    const BackendRowView& r = v.acts[0].backends[0];
+    CHECK(r.rating.find(" (eff. 307.7 ms)") != std::string::npos);
+    CHECK(r.tooltip.find("Effectively 307.7 ms on the normal 170.5 ms scale:") == 0);
+    CHECK(r.tooltip.find(", not 170.5 ms.") != std::string::npos);
 }
 
 TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
@@ -1075,18 +1145,53 @@ TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
     CHECK(within_label(0, 1) == "Within 1 score");
     CHECK(within_label(1, 5000) == "Within 5,000 points");
     CHECK(within_label(1, 1) == "Within 1 point");
+
+    // A top score tied between a root and its variant: both tied paths sit in
+    // the Optimal group, and the lower root does not.
+    const HydraRecord tied = test::tied_variant_record();
+    PathButtonsView tv = build_path_buttons(tied, /*depth_mode=*/0, /*depth_value=*/2);
+    REQUIRE(tv.buttons.size() == 3);
+    CHECK(tv.buttons[0].path == &tied.paths.at(0));
+    CHECK(tv.buttons[0].group == PathButtonView::Group::Optimal);
+    CHECK(tv.buttons[1].path == &tied.paths.at(0).variants.at(0));
+    CHECK(tv.buttons[1].group == PathButtonView::Group::Optimal);
+    CHECK(tv.buttons[2].path == &tied.paths.at(1));
+    CHECK(tv.buttons[2].group == PathButtonView::Group::Within);
 }
 
 TEST_CASE("multiplier squeeze: Burnout's one squeeze and the fold's summary") {
     std::vector<MultSqueezeView> v = build_multsqueezes(burnout().record);
     REQUIRE(v.size() == 1);
-    CHECK(v[0].label == "2x   (+15 pts):   [Red - YellowCym]");
-    CHECK(v[0].howto == "Hit [Red] first.");
+    CHECK(v[0].label == "2x   (+15 pts):   [Red snare - Yellow cymbal]");
+    CHECK(v[0].howto == "Hit [Red snare] first.");
     CHECK(v[0].points == 15);
     CHECK(multsqueeze_summary(v) == "+15");
     CHECK(multsqueeze_summary({}) == "none");
     std::vector<MultSqueezeView> three(3, v[0]);
     CHECK(multsqueeze_summary(three) == "3" + kDot + "+45");
+}
+
+TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
+    // The Paths tab builds its squeeze rows through the cache, which passes
+    // the Pro Drums setting the record was analyzed with (D48 Q11, finding 17).
+    const AnalysisResult& ar = burnout();
+    const HydraRecord& rec = ar.record;
+    const SongTiming& timing = ar.song.timing();
+    auto squeezes_of = [&](bool pro_drums) {
+        PathsTabCache cache;
+        return cache.details(rec.best_path(), rec, 1, &timing, 70.0, std::nullopt,
+                             core::default_rules(), std::nullopt, pro_drums).squeezes;
+    };
+    const std::vector<MultSqueezeView> on = squeezes_of(true);
+    REQUIRE(on.size() == 1);
+    CHECK(on[0].label == "2x   (+15 pts):   [Red snare - Yellow cymbal]");
+    CHECK(on[0].howto == "Hit [Red snare] first.");
+    // With Pro Drums off the red pad has no snare; the cymbal still says cymbal.
+    const std::vector<MultSqueezeView> off = squeezes_of(false);
+    REQUIRE(off.size() == 1);
+    CHECK(off[0].label == "2x   (+15 pts):   [Red - Yellow cymbal]");
+    CHECK(off[0].howto == "Hit [Red] first.");
+    CHECK(off[0].points == 15);
 }
 
 TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all") {
@@ -1148,4 +1253,30 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
     CHECK(cache.buttons_builds() == 2);
     cache.buttons(rec, 2, 0, 3);
     CHECK(cache.buttons_builds() == 3);
+}
+
+TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's words") {
+    // Kick, a ghost red, a yellow tom and a green cymbal (D48 Q11, finding 17).
+    Activation act;
+    test::set_skips(act, 0);
+    act.e_offset = 300.0;  // not e-critical
+    act.chord.add_note(NoteColor::Kick);
+    act.chord.add_note(NoteColor::Red).dynamictype = NoteDynamicType::Ghost;
+    act.chord.add_note(NoteColor::Yellow);
+    act.chord.add_note(NoteColor::Green).cymbaltype = NoteCymbalType::Cymbal;
+    Path p;
+    p.activations.push_back(act);
+    HydraRecord rec;
+
+    auto chord_of = [&](bool pro_drums) {
+        ActivationsView v = build_activations(p, rec, nullptr, 85.0, std::nullopt,
+                                              core::default_rules(), std::nullopt, pro_drums);
+        REQUIRE(v.acts.size() == 1);
+        return v.acts[0].chord;
+    };
+    // With Pro Drums on, a pad is a snare or a tom.
+    CHECK(chord_of(true) == "[Kick - Red snare (Ghost) - Yellow tom - Green cymbal]");
+    // With it off the chart has no tom or snare, so the pads are plain colours;
+    // a cymbal still says cymbal.
+    CHECK(chord_of(false) == "[Kick - Red (Ghost) - Yellow - Green cymbal]");
 }

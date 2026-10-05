@@ -925,6 +925,268 @@ const std::vector<OwnerRule>& rules() {
           "(snap.finished || now - batch_refreshed_at_ >= 1.0)) {"},
          {"now - details_ui.file_checked_at >= kFileCheckSeconds) {",
           "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {"}},
+        // ---- counts and whole-ms timings (phase 3 task O1) ----
+        // A test on exactly 1 that picks a word, or a number with " bar" or
+        // " bars" typed after it. counted owns the rule and has_have the verb
+        // a sentence puts after such a count.
+        {"How is a count written next to its noun?",
+         "counted (and has_have, for the verb after it) in src/core/model.cpp",
+         R"(==\s*1\s*\?\s*("|one\b)|%\w+ bars?\b|" bars?"|group_thousands\([^;]*\)\s*\+\s*" (charts?|records?|songs?|paths?|scores?(?! higher)|rows?|notes?)\b|%[sd] (charts|records|songs|paths|scores|rows|notes)\b)",
+         R"(\b(counted|has_have)\()",
+         {},
+         {},
+         "D48, Q12 (audit finding 14; phase 3 task O1; M_D review finding 4)",
+         {"return group_thousands(n) + \" \" + (n == 1 ? one : many);",
+          "view.lines.push_back(\"SP cap:  \" + std::to_string(*record.sp_cap) + \" bars\");",
+          "std::printf(\"SP cap     : %d bars\\n\", settings.sp_cap);",
+          "group_thousands(out.stats.total) + \" charts in \" + chartmode + \": \" +",
+          "\"Compared %s charts: %s same, %s 1.0 higher, %s 1.1 higher, \""},
+         {"view.lines.push_back(\"Path limit:  off\");",
+          "s.depth_mode = depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;",
+          "ImGui::TextUnformatted(\"bars\");",
+          "hydra::counted(report.rows, \"path row\", \"path rows\").c_str());",
+          // "score higher" is the verb after a count of charts, not a noun.
+          "group_thousands(out.stats.ch11_higher) + \" score higher under 1.1, \" +"},
+         {{"src/core/model.cpp", "return group_thousands(n) + \" \" + (n == 1 ? one : many);",
+           "counted, the owner"},
+          {"src/core/model.cpp", "return n == 1 ? \"has\" : \"have\";", "has_have, the owner"}}},
+        // A timing printed as a whole number of ms: printf's %.0f with or
+        // without a space before "ms", or a cast, round, lround or llround
+        // with " ms" after it.
+        {"How is a timing written in whole ms?",
+         "format_ms_whole in src/core/model.cpp",
+         R"(%\.0f ?ms|static_cast<(long long|long|int|int64_t)>\([^;]*\)\)\s*\+\s*" ms"|\bl{0,2}round\([^;]*\+\s*" ms")",
+         R"(\bformat_ms_whole\()",
+         {},
+         {{"src/core/replay.cpp", "it prints the fixed 500 ms squeeze window, not a timing"},
+          {"tools/replay.cpp", "it prints the fixed 500 ms squeeze window, not a timing"}},
+         "D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library "
+         "finding 6)",
+         {"std::snprintf(buf, sizeof(buf), \"%s %.0f ms\", what, *hardest);",
+          "std::to_string(static_cast<long long>(sq.difficulty())) + \" ms\");",
+          "\"Effectively %.1fms on the normal %.0fms scale:\\n\"",
+          "std::to_string(std::llround(ms)) + \" ms\";",
+          "std::to_string(std::lround(ms)) + \" ms\";"},
+         {"std::snprintf(buf, sizeof(buf), \"%.1f ms\", ms);",
+          "std::snprintf(buf, sizeof(buf), \"%.1f\", ms);",
+          "const long long total = std::llround(ms);"},
+         {{"src/core/model.cpp", "return std::to_string(std::lround(ms)) + \" ms\";",
+           "format_ms_whole, the owner"}}},
+        // ---- one name per fill rule (phase 3 task O3a) ----
+        // A quoted string (C++ or the reports' JavaScript and HTML) whose
+        // first word is a game version's name is a label for a fill rule. A
+        // sentence that only mentions the version later on is prose, and a
+        // trailing // comment is not a label, so neither is flagged. The
+        // "1.0 fills" checkbox keeps its own words (docs/adr/0010).
+        {"Which rule names a fill deadline?",
+         "fill_rule_name in src/search/graph.h",
+         R"(^(?:(?!//).)*["'][^"'\w]*(Clone Hero|CH) 1\.[01]\b)",
+         R"(\bfill_rule_(name|description)\()",
+         {},
+         {},
+         "audit finding 55; D48, Q13 (phase 3 task O3a)",
+         {"out.fills = s.legacy_fills ? \"Clone Hero 1.0\" : \"Clone Hero 1.1\";",
+          "{k:'s10',     t:'CH 1.0',      num:true},",
+          "<h1>Fill spawn <span class=\"accent\">CH 1.0 vs CH 1.1</span></h1>",
+          "if (options.lens.legacy_fills) cap_label += \" — Clone Hero 1.0 fills\";"},
+         {"const char* ch10 = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch10);",
+          "help_marker(\"Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only \"",
+          "\"--legacy-fills would write Clone Hero 1.0 results into the \"",
+          "std::string fills;        // \"Clone Hero 1.1\" or \"Clone Hero 1.0\"",
+          "ImGui::Checkbox(\"1.0 fills\", &s.legacy_fills);",
+          "out.fills = hydra::fill_rule_name(rule, hydra::FillRuleNameStyle::Long);"},
+         {{"src/search/graph.h",
+           "if (rule == FillDeadlineRule::Ch10) return is_short ? \"CH 1.0\" : \"Clone Hero 1.0\";",
+           "fill_rule_name, the owner: Clone Hero 1.0's two names"},
+          {"src/search/graph.h", "return is_short ? \"CH 1.1\" : \"Clone Hero 1.1\";",
+           "fill_rule_name, the owner: Clone Hero 1.1's two names"}}},
+        // A legacy_fills flag (a setting, a Lens or a switch) turned into a
+        // rule by a ternary of its own.
+        {"Which fill rule does a legacy_fills flag mean?",
+         "fill_rule_for in src/search/graph.h",
+         R"(legacy\w*\s*\?\s*(hydra::)?FillDeadlineRule::Ch1[01])",
+         R"(\bfill_rule_for\()",
+         {},
+         {},
+         "M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R)",
+         {"options.lens.legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
+          "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;"},
+         {"fill_rule_for(settings.legacy_fill_deadline), settings.rules);"},
+         {{"src/search/graph.h",
+           "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
+           "fill_rule_for, the owner"}}},
+        // A database's engine_mode stamp compared to a rule's spelling by
+        // hand, through the store's accessor or a stamp held in `mode`.
+        {"Which fill rule does a database's stamp name?",
+         "fill_rule_from_stamp in src/search/graph.h",
+         R"(engine_mode\(\)\s*==|\*?\bmode\s*==\s*"ch1[01]")",
+         R"(\bfill_rule_from_stamp\()",
+         {},
+         {},
+         "M_D review round 2 findings 2 and 5 (phase 3 task FX2-R)",
+         {"if (store->engine_mode() == std::string(",
+          "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";"},
+         {"if (mode && hydra::fill_rule_from_stamp(*mode) != expected)"}},
+        // ---- one cleaned song title (phase 3 task O3a) ----
+        // Clone Hero's rich-text tags spelled as text: a tag in angle
+        // brackets at the start of a string, a tag name kept in a named
+        // constant, or a row of a tag table. Config keys that happen to be
+        // called "color" or "size" are not flagged.
+        {"Which tags does Hydra strip from a song name?",
+         "strip_rich_tags in src/parse/song.cpp, read through display_title "
+         "(and display_artist, which applies display_title then the artist placeholder, D50 "
+         "item 5 and D56 item 2)",
+         R"re("</?(color|size|b|i|u|s|sub|sup)\b|=\s*"(color|size|sub|sup)"\s*;|\{\s*"(color|size|b|i|u|s|sub|sup)"\s*,\s*(true|false)\s*\})re",
+         R"(\b(strip_rich_tags|display_title|display_artist)\()",
+         {},
+         {},
+         "audit findings 8 and 111; D48, Q14 (phase 3 task O3a)",
+         {"static const char* kWord = \"color\";",
+          "{\"color\", true}, {\"size\", true}, {\"b\", false},   {\"i\", false},",
+          "out = replace_all(out, \"</b>\", \"\");"},
+         {"row.title = app::strip_rich_tags(entry.title);",
+          "get_color(sub(track, \"color\"), \"normal\", c.track.color_normal);",
+          "get_f(time_box, \"size\", c.text.time_box_size);",
+          "<div class=\"sub\">__SUBTITLE__</div>"},
+         {{"src/parse/song.cpp",
+           "{\"color\", true}, {\"size\", true}, {\"b\", false},   {\"i\", false},",
+           "strip_rich_tags' tag table, the owner"},
+          {"src/parse/song.cpp",
+           "{\"u\", false},    {\"s\", false},   {\"sub\", false}, {\"sup\", false},",
+           "strip_rich_tags' tag table, the owner"}}},
+        // A charter cleaned for showing by hand: the tags stripped (and maybe
+        // trimmed) straight into a charter. The Library's search text keeps
+        // the stored charter by decision, so folding it is not flagged.
+        {"Which charter text does a screen show?",
+         "display_charter in src/parse/song.cpp",
+         R"(charter\s*=\s*(trim\()?(app::)?strip_rich_tags\()",
+         R"(\bdisplay_charter\()",
+         {},
+         {},
+         "M_D review finding 1 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R)",
+         {"row.charter = trim(strip_rich_tags(meta.ref_charter));",
+          "const std::string charter = app::strip_rich_tags(song.charter);"},
+         {"row.charter = display_charter(rec->ref_charter);",
+          "row.charter = fold_for_search(strip_rich_tags(charter));"}},
+        // ---- app and UI helper owners (phase 3 task O3b) ----
+        // The out-of-date sentence, by any of its pieces: the cause it names
+        // or the "Re-analyze to refresh" it ends on. stale_text names the
+        // store's real cause; every screen shows its sentence.
+        {"Why is a stored result out of date?",
+         "stale_text in src/app/user_messages.cpp",
+         R"(another Hydra version|different rules in hydra_rules|Re-analyze to refresh)",
+         "",
+         {},
+         {},
+         "audit finding 13; D48, Q17 (phase 3 task O3b)",
+         {"hint(\"Analyzed by another Hydra version, or under different rules in \"",
+          "\"from different rules in hydra_rules.ini. Re-analyze to refresh it.\");",
+          "\"hydra_rules.ini. Re-analyze to refresh.\");"},
+         {"} else if (status == store::RecordStatus::Stale) {",
+          "\"A saved result couldn't be read. Re-analyze this song to replace it.\";",
+          "\"hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then restart \""},
+         {{"src/app/user_messages.cpp",
+           "cause = \"another Hydra version or from different rules in hydra_rules.ini\";",
+           "stale_text, the owner: both causes (today's sentence)"},
+          {"src/app/user_messages.cpp", "cause = \"another Hydra version\";",
+           "stale_text, the owner: another Hydra version"},
+          {"src/app/user_messages.cpp", "cause = \"different rules in hydra_rules.ini\";",
+           "stale_text, the owner: different rules"},
+          {"src/app/user_messages.cpp",
+           "return \"Out of date: this result came from \" + cause + \". Re-analyze to refresh it.\";",
+           "stale_text, the owner: the sentence's frame"}}},
+        // Cutting a label to end in "…": ImGui's own ellipsis renderer, its
+        // ellipsis glyph, the "…" bytes typed out as escapes, or a "…" typed
+        // straight into a string before any // comment. ellipsize is the one
+        // rule (no trailing space, an exact fit allowed); text_ellipsized
+        // cuts through it. The last alternative is built from the three
+        // UTF-8 bytes of "…", so this file holds no raw one in a pattern.
+        {"How is a long label cut to fit its space?",
+         "ellipsize in src/render/overlay_layout.cpp",
+         R"(RenderTextEllipsis|EllipsisChar|\\xE2\\x80\\xA6|^(?:(?!//).)*"(?:(?!//)[^"])*)"
+         "\xE2\x80\xA6",
+         "",
+         {},
+         {},
+         "audit finding 70; D48, Q18 (phase 3 task O3b)",
+         {"font->RenderChar(draw, size, ImVec2(IM_TRUNC(pos.x + kept_w), pos.y), col, font->EllipsisChar);",
+          "ImGui::RenderTextEllipsis(window->DrawList, pos, ImVec2(max_x, pos.y + text_size.y),",
+          R"(return text.substr(0, end) + "\xE2\x80\xA6";)",
+          "return text.substr(0, end) + \"\xE2\x80\xA6\";",
+          "const char* tail = \"\xE2\x80\xA6\";"},
+         {"text_ellipsized(text.c_str());",
+          "const std::string shown = ellipsize(label, w, ten_per_char);",
+          "// ends in \"\xE2\x80\xA6\" rather than vanish",
+          "label = \"a\";  // ends in \xE2\x80\xA6 when cut"},
+         {{"src/render/overlay_layout.cpp",
+           R"(static const std::string kEllipsis = "\xE2\x80\xA6";)",
+           "ellipsize, the owner: the one ellipsis a cut ends in"}}},
+        // ---- M_D review follow-ups (phase 3 task FX-L) ----
+        // A switch over the Dynamics rows, the 2x test that picks a kick
+        // row, or a test of a row against a named row (the old cymbal-row
+        // hide was "r == app::DynamicsRow::YellowCymbal || ..."): a second
+        // table of which note each row holds. The one table is
+        // kDynamicsRows in dynamics_breakdown.cpp, read through
+        // dynamics_row_info and dynamics_row_for.
+        {"Which table says what a Dynamics row holds?",
+         "kDynamicsRows in src/app/dynamics_breakdown.cpp",
+         R"(case (app::)?DynamicsRow::\w+:|return note\.is2x \? DynamicsRow::|==\s*(app::)?DynamicsRow::\w+)",
+         "",
+         {},
+         {},
+         "M_D review, library finding 1, round 2 library finding 6 (phase 3 tasks FX-L, FX2-L)",
+         {"case app::DynamicsRow::GreenTom:     return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);",
+          "case DynamicsRow::GreenCymbal:  return pad(NoteColor::Green, NoteCymbalType::Cymbal);",
+          "return note.is2x ? DynamicsRow::Kick2x : DynamicsRow::Kick;",
+          "if (!pro && (r == app::DynamicsRow::YellowCymbal ||"},
+         {"ImVec4 dot = pad_color(r);",
+          "const DynamicsRowInfo& info = dynamics_row_info(r);"},
+         {{"src/app/dynamics_breakdown.cpp", "if (r == DynamicsRow::Count) return std::string();",
+           "dynamics_row_label's guard: Count marks the end of the rows and names no row"}}},
+        // "Is the typed search narrowing the library?" asked of the query,
+        // from outside the model or inside it. LibraryModel::searching
+        // answers it, from the model's own query_.
+        {"Is the typed search narrowing the library?",
+         "LibraryModel::searching in src/ui/library_model.h",
+         R"(\bquery(\(\)|_)\.empty\(\))",
+         "",
+         {},
+         {},
+         "M_D review, library finding 5, round 2 library finding 5 (phase 3 tasks FX-L, FX2-L)",
+         {"const bool searching = !app.library.query().empty();",
+          "if (app.library.query().empty()) return;",
+          "if (query_.empty()) return sorted_;"},
+         {"app.library.set_query(search);",
+          "const bool searching = app.library.searching();",
+          "if (!searching()) return sorted_;"},
+         {{"src/ui/library_model.h", "bool searching() const { return !query_.empty(); }",
+           "searching, the owner"}}},
+        // A time turned into a tick outside the timing code. display_tick_at_ms
+        // is the one rule for which tick a screen shows at a time (D48, Q23).
+        // The row flags every raw tick_at_ms call, so a rounding of any kind
+        // (llround, round, floor, a cast) is caught, and so is one split over
+        // two lines, whose second line still holds the call.
+        {"Which tick does a screen show at a time?",
+         "SongTiming::display_tick_at_ms in src/core/timing.cpp",
+         R"(\btick_at_ms\()",
+         "",
+         {},
+         {},
+         "D48, Q23 (audit finding 183; M_D review, reports finding 7, round 2 library finding 6)",
+         {"const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));",
+          "const int64_t t = std::round(timing->ms_index().tick_at_ms(ms));",
+          "const int64_t t = static_cast<int64_t>(ms_.tick_at_ms(ms));",
+          // The second line of "std::llround(\n timing->ms_index().tick_at_ms(ms));".
+          "timing->ms_index().tick_at_ms(ms));"},
+         {"const int64_t end_tick = timing->display_tick_at_ms(*song_length_ms);"},
+         {{"src/core/timing.cpp", "const int64_t tick = std::llround(ms_.tick_at_ms(ms));",
+           "display_tick_at_ms, the owner"},
+          {"src/core/timing.cpp", "double MsIndex::tick_at_ms(double ms) const {",
+           "the ms-to-tick map itself"},
+          {"src/core/timing.h", "double tick_at_ms(double ms) const;",
+           "the ms-to-tick map's declaration"},
+          {"src/core/timing.cpp", "double t = ms_.tick_at_ms(act_hit_ms);",
+           "sp_end_ms keeps the fractional tick for its continuous map; no screen shows it"}}},
         // ---- phase 3 wave C owners (derive-once review of M_C) ----
         // A status word typed in quotes. The library chips, the Best path
         // cell and the uitest state dump all ask status_label.
@@ -1076,6 +1338,154 @@ const std::vector<OwnerRule>& rules() {
          {"if (pos >= size) return {nullptr, 0};",
           "const size_t n = std::min(size - pos, kMaxPiece);"},
          {"return static_cast<size_t>(std::min<uint64_t>(length, available));"},
+         {},
+         {"src"}},
+        // ---- the Preview (derive-once review of M_D, phase 3 task FX-P) ----
+        // The last timestamp's onset, or the last drawn note's, read as the
+        // song's length anywhere but store::song_length_ms.
+        {"When is the song's last note?",
+         "store::song_length_ms in src/store/record_store.cpp",
+         R"(notes\.back\(\)\.ms\b|sequence\.back\(\)\.timecode\.ms\(\))",
+         "",
+         {},
+         {},
+         "audit finding 9; derive-once review of M_D, preview finding 1 (phase 3 task FX-P)",
+         {"if (scene.has_notes) scene.song_length_ms = scene.notes.back().ms;",
+          "return song.sequence.back().timecode.ms();"},
+         {"scene.song_length_ms = store::song_length_ms(song).value_or(0.0);",
+          "const int64_t last_tick = scene.notes.back().tick;"},
+         {{"src/store/record_store.cpp", "return song.sequence.back().timecode.ms();",
+           "store::song_length_ms, the owner"}}},
+        // Frames times 1000 over a sample rate, or ms times a rate over 1000,
+        // written out instead of calling the frames helpers.
+        {"How many ms do audio frames last, and how many frames do ms hold?",
+         "ms_of_frames and frames_of_ms in src/audio/frames.h",
+         R"(\*\s*1000(\.0)?\s*/\s*[\w.>()-]*([sS]ample_?[rR]ate|[rR]ate)|\*\s*[\w.>-]*([sS]ample_?[rR]ate|[rR]ate)\w*(\(\))?\s*/\s*1000(\.0)?\b)",
+         "",
+         {},
+         {},
+         "audit findings 182 and R7.21; derive-once review of M_D, preview finding 2 (phase 3 "
+         "task FX-P)",
+         {"seek_frames(static_cast<int64_t>(std::llround(ms * sample_rate_ / 1000.0)));",
+          "return sample_rate_ > 0 ? length_ * 1000.0 / sample_rate_ : 0.0;",
+          "return static_cast<double>(audio.length_frames()) * 1000.0 / audio.sample_rate() -",
+          "front_pad = static_cast<int64_t>(std::llround(-offset_ms * kOutRate / 1000.0));"},
+         {"return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;",
+          "front_pad = audio::frames_of_ms(-offset_ms, kOutRate);",
+          "const double seconds = ms / 1000.0;"},
+         {{"src/audio/frames.h",
+           "return sample_rate > 0 ? static_cast<double>(frames) * 1000.0 / sample_rate : 0.0;",
+           "ms_of_frames, the owner"},
+          {"src/audio/frames.h",
+           "return static_cast<int64_t>(std::llround(ms * sample_rate / 1000.0));",
+           "frames_of_ms, the owner"}}},
+        // A note's ms compared with the playhead by hand instead of through
+        // struck_at.
+        {"Is a note struck with the playhead at now?",
+         "struck_at in src/app/preview_view.h",
+         R"(\b\w+\.ms\s*<=\s*now\w*\b|now\w*\s*>=\s*\w+\.ms\b|\bnote_ms\s*<=\s*now_ms\b)",
+         "",
+         {},
+         {},
+         "D48, Q27; derive-once review of M_D, preview finding 4 (phase 3 task FX-P)",
+         {"if (a.has_sp_end && a.ms <= now && now < a.sp_end_ms) return &a;",
+          "if (now_ms >= s.ms) last = &s;", "return note_ms <= now_ms;"},
+         {"if (a.has_sp_end && struck_at(now, a.ms) && now < a.sp_end_ms) return &a;",
+          "return struck_at(now_ms, s.ms);", "if (now < a.sp_end_ms) return &a;"},
+         {{"src/app/preview_view.h",
+           "inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }",
+           "struck_at, the owner"}}},
+        // A measuring lambda handed to ellipsize with text_width's own body.
+        {"How wide does a string draw in the current font?",
+         "text_width in src/ui/widgets.h",
+         R"(\[[^\]]*\]\s*\(const std::string&\s*\w+\)\s*\{\s*return ImGui::CalcTextSize\(\w+\.c_str\(\)\)\.x;)",
+         "",
+         {},
+         {},
+         "derive-once review of M_D, library finding 4 (phase 3 task FX-P)",
+         {"current, box_w - chrome, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });"},
+         {"const std::string shown = render::ellipsize(current, box_w - chrome, text_width);",
+          "auto text_width = [font](float sz, const char* s) {"}},
+        // ---- the Preview, round 2 (derive-once review of M_D, phase 3 task FX2-P) ----
+        // The transport's length read straight off it, beside the accessor
+        // that names it as where playback stops.
+        {"Where does the Preview's playback stop?",
+         "PreviewController::playback_end_ms in src/ui/preview_controller.cpp",
+         R"(\btransport_?\.length_ms\(\))",
+         "",
+         {},
+         {},
+         "D50 item 4 and D56 item 3; derive-once review of M_D round 2, preview finding C (phase 3 "
+         "task FX2-P)",
+         {"transport_.length_ms());",
+          "return hydra::app::build_time_box(scene_, transport_.now_ms(), transport_.length_ms());"},
+         {"return hydra::app::build_time_box(scene_, transport_.now_ms(), playback_end_ms());",
+          "scrub_marks_cache_.length_ms = length;"},
+         {{"src/ui/preview_controller.cpp",
+           "double PreviewController::playback_end_ms() const { return transport_.length_ms(); }",
+           "PreviewController::playback_end_ms, the owner"}}},
+        // A progress bar's "42%" overlay typed beside the widget that draws it.
+        {"How is a progress bar's percent written?",
+         "progress_bar_percent in src/ui/widgets.h",
+         R"("%\.0f%%")",
+         "",
+         {},
+         {},
+         "derive-once review of M_D round 2, library finding 3 (phase 3 task FX2-P)",
+         {R"(std::snprintf(overlay, sizeof(overlay), "%.0f%%", f * 100.0f);)",
+          R"(std::snprintf(overlay, sizeof(overlay), "%.0f%%", lp.fraction * 100.0f);)"},
+         {R"(ImGui::SliderInt("##volume", &volume, 0, 100, "%d%%"))",
+          "progress_bar_percent(lp.fraction);"},
+         {{"src/ui/widgets.h",
+           R"(std::snprintf(overlay, sizeof(overlay), "%.0f%%", fraction * 100.0f);)",
+           "progress_bar_percent, the owner"}}},
+        // "Not the red lane" written as the cymbal rule instead of asking
+        // allows_cymbals, which names the three lanes that carry one.
+        {"Which drum lanes can carry a cymbal?",
+         "allows_cymbals in src/core/model.cpp",
+         R"([!=]=\s*(app::)?(PreviewLane|NoteColor)::Red\b|\b(PreviewLane|NoteColor)::Red\s*[!=]=)",
+         "",
+         {},
+         {},
+         "derive-once review of M_D round 2, library finding 8 (phase 3 task FX2-P)",
+         {"g.cymbal = pro && n.cymbal && n.lane != PreviewLane::Red;",
+          "if (c == NoteColor::Red) return false;"},
+         {"g.cymbal = pro && n.cymbal && allows_cymbals(app::color_of(n.lane));",
+          "case PreviewLane::Red:    return Pad::Red;"}},
+        // ---- the report pages (phase 3 task K1a) ----
+        // A bare toLocaleString() groups by the browser's own language, so a
+        // German browser prints 1.234 under a subtitle that says 1,234. The
+        // pages' shared fmt groups with one fixed rule.
+        {"Which locale groups thousands on a report page?",
+         "fmt in src/app/html_page.cpp",
+         R"(\.toLocaleString\(\))",
+         "",
+         {},
+         {},
+         "audit findings 14 and 99; D48, Q12 (phase 3 task K1a)",
+         {"idx.textContent = (++n).toLocaleString();",
+          "['Paths shown', rows.length.toLocaleString()],"},
+         {"const fmt = n => n === null || n === undefined ? DASH : n.toLocaleString('en-US');",
+          "['Paths shown', fmt(rows.length)],"},
+         {},
+         // The pages live in src/app; a scope entry with a slash names one
+         // file, so the row scans all of src, where nothing else has one.
+         {"src"}},
+        // toFixed rounds the float a page holds, which can tip an exact half
+        // the wrong way (99.005% read 99.00%). The pages show numbers the C++
+        // wrote as text, or work in whole numbers the C++ sent.
+        {"How is a number rounded on a report page?",
+         "the C++ text the payload carries: format_percent and percent_steps, "
+         "format_avg_mult and format_ms in src/app/display_format.cpp",
+         R"(\.toFixed\()",
+         "",
+         {},
+         {},
+         "audit finding 51; M_D review findings 2 and 8 (phase 3 task FX-R)",
+         {"['num', r.mult.toFixed(3)],",
+          "? (withPct.reduce((a, r) => a + r.pct, 0) / withPct.length).toFixed(2) + '%' : DASH;"},
+         {"['num', r.mult_text],",
+          "avgPct = Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%';"},
          {},
          {"src"}},
         // Task E2: the multiplier steps live in to_multiplier only. A combo
@@ -1560,6 +1970,15 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
+        // A one-time schema 2 to 3 migration reads the stamp text old files
+        // already hold, so it keeps the literal "ch10" even if
+        // engine_mode_stamp were ever spelled differently, and src/store never
+        // includes src/search. test_store.cpp seeds the migration test's
+        // stamp with engine_mode_stamp, so a respelling turns that test red.
+        {"Which fill rule does a database's stamp name?", "src/store/record_store.cpp",
+         "legacy_fills = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
+         "never: a migration reads the historic stamp text, and store never includes search "
+         "(M_D review round 2)"},
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
@@ -1569,18 +1988,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
          "put_bytes(file, {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 3, 0, 192});",
          "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
-        {"Which gold is Star Power?", "src/ui/preview_tab.cpp",
-         "dl->AddText(font, size, ImVec2(origin.x + margin, y), IM_COL32(255, 204, 51, 255),",
-         "task K4a (D48, Q26: the next-activation header takes the best-path gold)"},
-        {"Which gold is Star Power?", "src/ui/preview_tab.cpp",
-         "IM_COL32(255, 204, 51, 255), \"SP\");",
-         "task K4a (D48, Q26: the \"SP\" label reads the named gold)"},
-        {"Which gold is Star Power?", "src/ui/preview_tab.cpp",
-         "IM_COL32(255, 204, 51, 230));  // Star Power gold",
-         "task K4a (D48, Q26: the gauge fill reads the named gold)"},
-        {"Which gold is Star Power?", "src/ui/preview_tab.cpp",
-         "const ImU32 accent = drain.active ? IM_COL32(255, 204, 51, 255)  // SP gold",
-         "task K4a (D48, Q26: the drain box turns teal)"},
         {"How long does a UI confirmation stay, and how often does the UI re-check?",
          "src/ui/library_toolbar.cpp",
          "if (!app.status_is_problem && ImGui::GetTime() - shown_at > 6.0) return;",

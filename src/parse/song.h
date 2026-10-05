@@ -95,14 +95,40 @@ inline constexpr const char* kUnknownTitle = "(unknown)";
 // place that shows a stored name reads it through this.
 std::string title_or_unknown(std::string title);
 
-// What a song with no usable artist or charter shows everywhere it is shown.
+// Removes Clone Hero rich-text tags: <color=...>, </color>, <b>, </b>, <i>,
+// </i>, <size=...>, </size>, <u>, </u>, <s>, </s>, <sub>, </sub>, <sup>,
+// </sup>, case-insensitive. Anything else in angle brackets is kept, including
+// <color> with no value, a tag that never closes, and "<unknown artist>".
+// The library search reads it as app::strip_rich_tags (app/library_query.h).
+std::string strip_rich_tags(std::string_view text);
+
+// The one cleaned song title every screen shows (D48, Q14): the rich-text
+// tags stripped, spaces at either end trimmed, then title_or_unknown's
+// fallback, so a title made only of tags or spaces reads kUnknownTitle.
+std::string display_title(std::string_view title);
+
+// The one cleaned artist every screen shows (D50 item 5, D56 item 2): tags
+// stripped and the ends trimmed, as for a title. A missing artist reads
+// kUnknownTitle, whether it is empty, only tags or spaces, or the scan's
+// kUnknownArtist placeholder. Stored text is unchanged.
+std::string display_artist(std::string_view artist);
+
+// The one cleaned charter every screen shows: tags stripped and the ends
+// trimmed. It has no fallback, so a charter made only of tags reads empty
+// and the scan's kUnknownCharter placeholder shows as it is.
+std::string display_charter(std::string_view charter);
+
+// The placeholders the scan stores for a blank artist or charter. The stored
+// artist placeholder never reaches the screen: display_artist shows
+// kUnknownTitle for it. The charter placeholder shows as it is.
 inline constexpr const char* kUnknownArtist = "<unknown artist>";
 inline constexpr const char* kUnknownCharter = "<unknown charter>";
 
-// The one fallback for a song's artist and charter, beside title_or_unknown:
-// a blank value (an empty `artist =`, a missing key, an empty .sng or .srb
-// field) becomes the placeholder. discover_charts applies both once, after
-// the rescan cache, so cached rows from older scans are covered too.
+// What the scan stores for a blank artist or charter (an empty `artist =`, a
+// missing key, an empty .sng or .srb field): the placeholder above.
+// discover_charts applies both once, after the rescan cache, so cached rows
+// from older scans are covered too. What a screen shows is display_artist's
+// and display_charter's question, not this one.
 std::string artist_or_unknown(std::string artist);
 std::string charter_or_unknown(std::string charter);
 

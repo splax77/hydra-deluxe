@@ -9,8 +9,10 @@
 #include <exception>
 #include <optional>
 
+#include "app/display_format.h"  // clock_str
 #include "core/squeeze_rating.h"
 #include "core/replay.h"
+#include "store/record_store.h"  // song_length_ms
 
 namespace hydra::app {
 
@@ -23,6 +25,14 @@ PreviewLane lane_of(NoteColor color) {
         case NoteColor::Green:  return PreviewLane::Green;
     }
     return PreviewLane::Kick;  // unreachable; NoteColor is a closed set
+}
+
+// Searches lane_of rather than keeping a second table that could drift.
+NoteColor color_of(PreviewLane lane) {
+    for (NoteColor c : {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow, NoteColor::Blue,
+                        NoteColor::Green})
+        if (lane_of(c) == lane) return c;
+    return NoteColor::Kick;  // unreachable; every lane comes from a colour
 }
 
 namespace {
@@ -218,23 +228,25 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
 }
 
 // The activation whose Star Power is running at `now`, or nullptr. Running
-// from the activation chord up to, not including, the SP end. The drain box
-// and the score box both ask this, so they cannot disagree. A record with no
-// deact node cannot say, so it never counts as running.
+// from the moment the activation chord is struck (struck_at) up to, not
+// including, the SP end. The drain box and the score box both ask this, so
+// they cannot disagree. A record with no deact node cannot say, so it never
+// counts as running.
 const PreviewActivation* running_activation(const PreviewScene& scene, double now) {
     for (const PreviewActivation& a : scene.activations)
-        if (a.has_sp_end && a.ms <= now && now < a.sp_end_ms) return &a;
+        if (a.has_sp_end && struck_at(now, a.ms) && now < a.sp_end_ms) return &a;
     return nullptr;
 }
 
 }  // namespace
 
 PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
-                                 const core::Rules& rules) {
-    return apply_preview_overlay(build_preview_base(song), song, path, sp_cap, rules);
+                                 const core::Rules& rules, std::optional<double> audio_end_ms) {
+    return apply_preview_overlay(build_preview_base(song, audio_end_ms), song, path, sp_cap,
+                                 rules);
 }
 
-PreviewScene build_preview_base(const Song& song) {
+PreviewScene build_preview_base(const Song& song, std::optional<double> audio_end_ms) {
     PreviewScene scene;
     if (song.is_empty()) return scene;
 
@@ -276,18 +288,35 @@ PreviewScene build_preview_base(const Song& song) {
         scene.solos.push_back(span_from_ticks(song, solo_start, solo_last));
 
     scene.has_notes = !scene.notes.empty();
-    if (scene.has_notes) scene.song_length_ms = scene.notes.back().ms;
+    // The store's song length, the one the scrubber and the Paths timeline
+    // read: the last timestamp's onset.
+    scene.song_length_ms = store::song_length_ms(song).value_or(0.0);
 
-    // The beat grid runs two measures past the last note so lines keep
-    // scrolling through the look-ahead after the chart ends.
+    // The beat grid runs to the end of the audio, so lines keep scrolling
+    // while music plays past the last note (D48, Q25). The end is the tick a
+    // playhead there shows, the same rule the time box uses. Without the
+    // audio's end it runs two measures past the last note.
+    //
+    // The grid reads the last drawn note's tick, not song_length_ms above.
+    // It needs a tick because beat lines sit on measures and beats, and
+    // "two measures past" is counted in ticks. The two ends agree on every
+    // parsed song: the parsers only write a timestamp that holds notes, so
+    // the last timestamp is the last drawn chord. Only a hand-built song with
+    // a note-less last timestamp splits them; test_preview_view.cpp pins that
+    // case ("the song length is the store's, even past the last drawn note").
     const SongTiming& timing = song.timing();
     scene.timing = timing;  // the time box names ticks with the engine's math
     scene.tick_resolution = timing.tick_resolution();
     if (scene.has_notes) {
-        int64_t last_tick = scene.notes.back().tick;
-        const MeasureIndex& mi = timing.measure_index();
-        int64_t tpm = mi.tpm_at(mi.section_at(last_tick));
-        scene.beats = build_beat_events(timing, last_tick + 2 * tpm);
+        const int64_t last_tick = scene.notes.back().tick;
+        int64_t grid_end = last_tick;
+        if (audio_end_ms.has_value()) {
+            grid_end = std::max(last_tick, timing.display_tick_at_ms(*audio_end_ms));
+        } else {
+            const MeasureIndex& mi = timing.measure_index();
+            grid_end = last_tick + 2 * mi.tpm_at(mi.section_at(last_tick));
+        }
+        scene.beats = build_beat_events(timing, grid_end);
     }
     for (const auto& kv : song.bpm_changes) {
         PreviewTempo t;
@@ -305,8 +334,9 @@ PreviewScene build_preview_base(const Song& song) {
     }
     for (const auto& [tick, sig] : song.timesig_changes)
         scene.time_sigs.push_back({tick, sig.first, sig.second});
-    // A section marker can sit past the last note, where the ms index does not
-    // reach; the timing's own timecode extrapolates instead.
+    // A section marker can sit past the last note. That is fine: the ms index
+    // covers every tick (MsIndex::at keeps the last tempo's slope), and
+    // timecode(t).ms() reads that same index.
     for (const SongSection& s : song.practice_sections)
         scene.sections.push_back({s.tick, song.timecode(s.tick).ms(), s.name});
     return scene;
@@ -342,7 +372,7 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
             if (a.chord.count() > 0) {
                 pa.has_lane = true;
                 pa.lane = lane_of(a.chord.activation_note().colortype);
-                pa.chord = a.chord.rowstr();
+                pa.chord = a.chord;
             }
             pa.measure = format_measure(timing, pa.tick);
             scene.activations.push_back(pa);
@@ -438,24 +468,7 @@ std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t las
 
 namespace {
 
-std::string clock_str(double ms) {
-    double secs = ms / 1000.0;
-    int minutes = static_cast<int>(secs / 60.0);
-    double rem = secs - minutes * 60.0;
-    char buf[48];
-    std::snprintf(buf, sizeof buf, "%d:%06.3f", minutes, rem);
-    return buf;
-}
-
-// The tick at `ms`, from the song's own ms index. The last tempo section's
-// slope holds forever after it, so this keeps counting past the end of the
-// chart. Rounded to the nearest tick and never negative.
-int64_t tick_at(const SongTiming& timing, double ms) {
-    const int64_t tick = std::llround(timing.ms_index().tick_at_ms(ms));
-    return tick < 0 ? 0 : tick;
-}
-
-// The song length the time box shows: never negative.
+// Where playback ends, as the time box shows it: never negative.
 double shown_length(double length_ms) { return length_ms < 0.0 ? 0.0 : length_ms; }
 
 // The moment the time box shows: the playhead held inside [0, length].
@@ -479,22 +492,24 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
 
     // A default-built scene carries no song and so no timing: it reads as tick
     // 0 at measure 1, beat 1, exactly as it always has.
-    const int64_t now_tick = scene.timing ? tick_at(*scene.timing, now) : 0;
-    const int64_t end_tick = scene.timing ? tick_at(*scene.timing, len) : 0;
+    const int64_t now_tick = scene.timing ? scene.timing->display_tick_at_ms(now) : 0;
+    const int64_t end_tick = scene.timing ? scene.timing->display_tick_at_ms(len) : 0;
     box.position = scene.timing ? format_measure(*scene.timing, now_tick) : "m1.1.0";
     box.length = scene.timing ? format_measure(*scene.timing, end_tick) : "m1.1.0";
 
-    // Each lookup below wants the last entry at or before the playhead, which
-    // is the one just before the first entry past it. Tempos and time
-    // signatures come from the song's tick-keyed maps, so they are sorted by
-    // tick (and the tempos by ms too), and a binary search finds that entry.
+    // Each lookup below wants the last entry at or before the playhead's
+    // tick, which is the one just before the first entry past it. Every line
+    // asks the same rounded tick, so the tempo, meter, section and measure
+    // all switch together, even in the half tick before a change. Tempos and
+    // time signatures come from the song's tick-keyed maps, so they are
+    // sorted by tick, and a binary search finds that entry.
 
-    // The tempo in force: the last change at or before now (the opening tempo
-    // before any change).
+    // The tempo in force: the last change at or before the playhead's tick
+    // (the opening tempo before any change).
     double bpm = scene.tempos.empty() ? 0.0 : scene.tempos.front().bpm;
     const auto tempo_past = std::upper_bound(
-        scene.tempos.begin(), scene.tempos.end(), now,
-        [](double v, const PreviewTempo& t) { return v < t.ms; });
+        scene.tempos.begin(), scene.tempos.end(), now_tick,
+        [](int64_t v, const PreviewTempo& t) { return v < t.tick; });
     if (tempo_past != scene.tempos.begin()) bpm = (tempo_past - 1)->bpm;
     // The time signature in force at the playhead's tick, as the chart wrote
     // it. A scene from a song always has one at tick 0; a scene built from
@@ -530,11 +545,13 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms) {
     }
     box.available = true;
 
-    // The last chord at or before the playhead. Before the first chord
-    // nothing is hit yet: 0, x1, combo 0.
+    // The last chord struck at the playhead (struck_at, which the highway's
+    // flash asks too). Before the first chord nothing is hit yet: 0, x1,
+    // combo 0.
     const std::vector<PreviewScoreStep>& steps = scene.score.steps;
-    auto it = std::upper_bound(steps.begin(), steps.end(), now_ms,
-                               [](double v, const PreviewScoreStep& s) { return v < s.ms; });
+    auto it = std::partition_point(steps.begin(), steps.end(), [now_ms](const PreviewScoreStep& s) {
+        return struck_at(now_ms, s.ms);
+    });
     PreviewScoreStep at;
     if (it != steps.begin()) at = *(it - 1);
 
@@ -557,7 +574,7 @@ PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms) {
 
     const SongTiming& timing = *scene.timing;
     const double now = now_ms < 0.0 ? 0.0 : now_ms;
-    const int64_t now_tick = tick_at(timing, now);
+    const int64_t now_tick = timing.display_tick_at_ms(now);
 
     // The rule's own constant at the local measure length: on a tempo or
     // meter change the new section is read, as the time box's BPM line does.
@@ -591,7 +608,7 @@ PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms) {
 double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
                     int delta_ticks) {
     if (!scene.timing) return now_ms;
-    int64_t target = tick_at(*scene.timing, shown_ms(now_ms, length_ms)) + delta_ticks;
+    int64_t target = scene.timing->display_tick_at_ms(shown_ms(now_ms, length_ms)) + delta_ticks;
     if (target < 0) target = 0;
     return scene.timing->ms_index().at(target);
 }
@@ -613,6 +630,17 @@ std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_m
     return marks;
 }
 
+double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms) {
+    return song_length_ms && has_song_length(*song_length_ms) ? *song_length_ms
+                                                               : playback_length_ms;
+}
+
+double scrub_thumb_ms(double now_ms, double scrub_end_ms) {
+    // With no usable edge there is nothing to park at: the thumb follows the
+    // playhead, as it always did.
+    return has_song_length(scrub_end_ms) ? std::min(now_ms, scrub_end_ms) : now_ms;
+}
+
 namespace {
 // How far from an activation the playhead may sit and still count as on it.
 constexpr double kOnActivationMs = 0.5;
@@ -630,7 +658,7 @@ std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_m
     return std::nullopt;
 }
 
-PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms) {
+PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, bool pro_drums) {
     PreviewNextActBox box;
     // The first activation not yet behind the playhead. The activations are
     // in time order, so a binary search finds it.
@@ -643,7 +671,7 @@ PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms) {
     box.shown = true;
     box.header = "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(acts.size());
     box.detail = "at " + next->measure;
-    if (!next->chord.empty()) box.detail += " \xC2\xB7 " + next->chord;
+    if (next->chord.count() > 0) box.detail += " \xC2\xB7 " + next->chord.rowstr(pro_drums);
     return box;
 }
 

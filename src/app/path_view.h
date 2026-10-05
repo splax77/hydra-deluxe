@@ -79,7 +79,7 @@ struct ActivationRowView {
     int number = 0;              // 1-based; the row's ##act<number> id
     std::string notation;        // Activation::notationstr(), e.g. "3-"
     std::string measure;         // format_measure of the activation, e.g. "m32.1.0"
-    int sp_bars = 0;             // bars of SP the activation spends
+    int sp_bars = 0;             // bars banked when you activate
     std::string bars;            // "3 bars" / "1 bar"
     std::string badge;           // activation_badge(); empty = no badge
     bool difficult = false;      // Activation::is_difficult(): badge and sentences warn-coloured
@@ -88,7 +88,7 @@ struct ActivationRowView {
     std::optional<double> song_fraction;
 
     // The opened row.
-    std::string chord;           // Chord::rowstr(), e.g. "[Kick - GreenCym]"
+    std::string chord;           // Chord::rowstr(pro_drums), e.g. "[Kick - Green cymbal]"
     std::string early_fill;      // "Early fill: " + format_ms(positive = early); empty when not E-critical
     std::vector<TextLine> squeeze_sentences;  // one per SqIn/SqOut, see squeeze_sentences()
     std::string scale_warning;  // the transfer-scale line; empty when every scale prints x1.00
@@ -114,21 +114,22 @@ struct ActivationsView {
 // rows excepted; nullopt (the default) shows every stored row.
 // `song_length_ms` is the chart's length for the timeline; with it and a
 // `timing`, every row gets its song_fraction and the view its timeline_end.
+// `pro_drums` is the Pro Drums setting the record was analyzed with; the
+// chord rows name their notes in its words (note_label).
 ActivationsView build_activations(const Path& path, const HydraRecord& record,
                                   const SongTiming* timing,
                                   double hit_window_ms,
                                   std::optional<double> backend_limit_ms = std::nullopt,
                                   const core::Rules& rules = core::default_rules(),
-                                  std::optional<double> song_length_ms = std::nullopt);
+                                  std::optional<double> song_length_ms = std::nullopt,
+                                  bool pro_drums = true);
 
-// The badge on an activation row. It shows when the activation needs a
-// squeeze, which is when Activation::difficulty() has a value: a SqIn, a
-// SqOut, or a required (E0) early fill. It names the hardest of them,
-// the one difficulty() reports, in whole ms: "squeeze out 163 ms",
-// "squeeze in 12 ms", "early fill 30 ms". With none of those, an optional
-// early fill (an E activation that skips fills) still gets one, same
-// wording; is_difficult() ignores it, so it is never warn-coloured. Empty
-// otherwise.
+// The badge on an activation row: Activation::hardest() worded, with its ms
+// whole and rounded to nearest (format_ms_whole): "squeeze out 163 ms",
+// "squeeze in 13 ms" for 12.6, "early fill 30 ms". A squeeze tied with a
+// fill is named. An optional early fill (an E activation that skips fills)
+// gets one too when nothing else does; is_difficult() ignores it, so it is
+// never warn-coloured. Empty when hardest() has nothing.
 std::string activation_badge(const Activation& act);
 
 // One plain sentence per SqIn/SqOut of `act`, in its order, warn-coloured when
@@ -259,7 +260,8 @@ public:
     const Details& details(const Path& path, const HydraRecord& record, int record_generation,
                            const SongTiming* timing, double hit_window_ms,
                            std::optional<double> backend_limit_ms, const core::Rules& rules,
-                           std::optional<double> song_length_ms = std::nullopt);
+                           std::optional<double> song_length_ms = std::nullopt,
+                           bool pro_drums = true);
     // The path list as buttons, rebuilt when the record or the score range moves.
     const PathButtonsView& buttons(const HydraRecord& record, int record_generation,
                                    int depth_mode, int depth_value);
@@ -282,6 +284,7 @@ private:
     double details_hit_window_ms_ = 0.0;
     std::optional<double> details_backend_limit_ms_;
     std::optional<double> details_song_length_ms_;
+    bool details_pro_drums_ = true;
     Details details_;
     int details_builds_ = 0;
 

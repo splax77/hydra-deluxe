@@ -75,7 +75,8 @@ double activation_fill_deadline_ms(const SongTiming& timing,
     //
     // This uses ms_at_tick_f, which core/timing.h marks as outside the
     // bit-for-bit scoring surface; the legacy mode is deliberately off that
-    // surface, and never writes the database the GUI reads (docs/adr/0010).
+    // surface. A 1.0 result is stored under its own key, beside the 1.1
+    // results (store::Lens::legacy_fills, docs/adr/0010).
     // The res/16 pad matches Python Hydra 1.2 output; kept fixed (see ADR 0010).
     const double res = static_cast<double>(timing.tick_resolution());
     const double fend = timing.ms_index().at(fill_end_tick);

@@ -4,6 +4,8 @@
 #include <cmath>
 #include <optional>
 
+#include "app/preview_view.h"  // struck_at
+
 using namespace DirectX;
 
 namespace hydra::render {
@@ -209,6 +211,10 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     auto z_of = [&](double t) { return static_cast<float>(time_to_z(cfg, now_s, t, speed)); };
 
     const TrackWindow win = state.window(near_t, far_t);
+    // Is the note at `t_s` struck at the playhead? The score box asks the
+    // same predicate in ms, so a chord on the playhead is lit here and counted
+    // there (D48, Q27). The highway works in seconds; convert at the call.
+    auto struck = [now_s](double t_s) { return app::struck_at(now_s * 1000.0, t_s * 1000.0); };
 
     // 1. Floor: one flat per stretch of (solo, active SP) state. Onyx tints
     //    the floor for solos only; the active SP window is Hydra's addition,
@@ -313,7 +319,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         // Each lane glows from its most recent hit only; a kick lights nothing.
         bool lit[4] = {false, false, false, false};
         for (auto it = win.rbegin(); it != win.rend(); ++it) {
-            if (it->t >= now_s || it->t <= near_t) continue;
+            if (!struck(it->t) || it->t <= near_t) continue;
             const float alpha = static_cast<float>(1.0 - (now_s - it->t) / T.targets_secs_light);
             if (alpha <= 0.0f) continue;
             for (const TrackGem& g : it->notes) {
@@ -328,12 +334,12 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         }
     }
 
-    // 6. Gems, latest (farthest) first. A note already past the strike line
-    //    flashes white there and fades over secs_fade.
+    // 6. Gems, latest (farthest) first. A struck note (on or past the strike
+    //    line) flashes white there and fades over secs_fade.
     for (auto it = win.rbegin(); it != win.rend(); ++it) {
         const bool od = toggle_on(it->overdrive);
         std::optional<float> fade;
-        if (it->t < now_s) {
+        if (struck(it->t)) {
             const double age = now_s - it->t;
             if (age >= cfg.gems.secs_fade) continue;
             fade = static_cast<float>(1.0 - age / cfg.gems.secs_fade);

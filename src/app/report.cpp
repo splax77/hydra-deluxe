@@ -11,9 +11,11 @@
 
 #include "app/display_format.h"
 #include "app/html_page.h"
+#include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
 #include "parse/song.h"
+#include "search/graph.h"
 
 namespace hydra::app::report {
 
@@ -103,25 +105,29 @@ const PAGE = {
     {k:'acts',    t:'Acts',     num:true,  d:'Activations: how many times the path uses Star Power.'},
     {k:'skip',    t:'Max skip', num:true,  d:'The most fills any one activation passes over before activating.'},
     {k:'ms',      t:'Hardest ms', num:true, d:'The hardest squeeze or early fill the path needs, in raw ms. A dash means it needs none.'},
-    {k:'tier',    t:'Timing',   num:false, d:'How hard Hardest ms is, in bands of your hit window. Beyond means at least twice the hit window.'},
+    {k:'tier',    t:'Timing',   num:false, d:'How hard Hardest ms is, in bands of your hit window. Beyond means more than twice the hit window.'},
     {k:'efill',   t:'Early fill (ms)', num:true, d:'The hardest early fill (E0) on the path: how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none.'},
-    {k:'mult',    t:'Avg multiplier', num:true, d:'Points per note on average: the score without solo bonuses divided by the base score (every note at 1x).'},
+    {k:'mult',    t:'Avg multiplier', num:true, d:'Average multiplier: the score without solo bonuses divided by the base score (every note at 1x).'},
     {k:'sqin',    t:'SqIn',     num:true,  d:'SP phrase notes squeezed into an active Star Power window (+ in the path).'},
     {k:'sqout',   t:'SqOut',    num:true,  d:'SP phrase notes squeezed out of an active Star Power window (- in the path).'},
     {k:'notes',   t:'Notes',    num:true,  d:'Notes in the chart.'},
   ],
   controls: [['q', 'input'], ['tier', 'change'], ['bestonly', 'change']],
-  filter(q) {
+  // The search box is matched against each row's search text in the shared
+  // script; this keeps rows by the tier and best-path controls.
+  filter() {
     const tier = document.getElementById('tier').value;
     const bestOnly = document.getElementById('bestonly').checked;
     return r => {
-      if (bestOnly && r.rank !== 1) return false;
+      if (bestOnly && !r.opt) return false;
       if (tier && r.tier !== tier) return false;
-      if (!q) return true;
-      return (r.song + ' ' + r.artist + ' ' + r.charter + ' ' + r.path).toLowerCase().includes(q);
+      return true;
     };
   },
-  rowClass: r => r.rank === 1 ? 'best' : '',
+  // Every path tied at the top score is optimal, as on the Paths tab.
+  rowClass: r => r.opt ? 'best' : '',
+  // The two timing columns print the app's own text; the numbers beside it
+  // sort the column and feed the tiles.
   cells: r => [
     ['song trunc', r.song],
     ['dim trunc artist', r.artist],
@@ -131,24 +137,26 @@ const PAGE = {
     ['num', fmt(r.score)],
     ['num', r.acts],
     ['num', r.skip],
-    ['num', fmtMs(r.ms)],
+    ['num', r.ms_text === null ? DASH : r.ms_text],
     ['chip ' + r.tok, tierLabel(r.tier), 'chip'],
-    ['num', fmtMs(r.efill)],
-    ['num', r.mult.toFixed(3)],
+    ['num', r.efill_text === null ? DASH : r.efill_text],
+    ['num', r.mult_text],
     ['num', r.sqin],
     ['num', r.sqout],
     ['num', fmt(r.notes)],
   ],
   stats(rows) {
+    // The row with the largest Hardest ms; the tile shows that row's text.
     const withMs = rows.filter(r => r.ms !== null && r.ms !== undefined);
-    const tightest = withMs.length ? Math.max(...withMs.map(r => r.ms)) : null;
+    const hardest = withMs.length ? withMs.reduce((a, b) => b.ms > a.ms ? b : a) : null;
     const maxSkip = rows.length ? Math.max(...rows.map(r => r.skip)) : 0;
-    const beyond = rows.filter(r => r.ms !== null && r.ms >= BEYOND).length;
+    // The Beyond rows: a timing on the edge itself is still Insane+.
+    const beyond = rows.filter(r => r.ms !== null && r.ms > BEYOND).length;
     return [
-      ['Charts', new Set(rows.map(r => r.c)).size.toLocaleString()],
-      ['Paths shown', rows.length.toLocaleString()],
-      ['Tightest squeeze', tightest === null ? DASH : tightest.toFixed(1) + ' ms'],
-      ['Past ' + BEYOND + ' ms', beyond.toLocaleString()],
+      ['Charts', fmt(new Set(rows.map(r => r.c)).size)],
+      ['Paths shown', fmt(rows.length)],
+      ['Hardest ms', hardest === null ? DASH : hardest.ms_text],
+      ['Past ' + BEYOND + ' ms', fmt(beyond)],
       ['Highest skip', maxSkip],
     ];
   },
@@ -176,46 +184,16 @@ std::string py_repr(double v) {
     return s;
 }
 
+// A timing as the app prints it ("12.3 ms", format_ms), as a JSON
+// string, or null when there is none. The page prints this text as it is.
+void ms_text_into(std::string& data, const std::optional<double>& ms) {
+    if (ms)
+        json_escape_into(data, format_ms(*ms));
+    else
+        data += "null";
+}
+
 }  // namespace
-
-std::string plain(const std::string& text) {
-    if (text.empty()) return text;
-
-    // re.sub(r'</?color[^>]*>', '', text, flags=IGNORECASE)
-    std::string out;
-    out.reserve(text.size());
-    size_t i = 0;
-    while (i < text.size()) {
-        if (text[i] == '<') {
-            size_t j = i + 1;
-            if (j < text.size() && text[j] == '/') ++j;
-            static const char* kWord = "color";
-            bool word = true;
-            for (int k = 0; k < 5; ++k) {
-                if (j + k >= text.size() ||
-                    std::tolower(static_cast<unsigned char>(text[j + k])) != kWord[k]) {
-                    word = false;
-                    break;
-                }
-            }
-            if (word) {
-                size_t close = text.find('>', j + 5);
-                if (close != std::string::npos) {
-                    i = close + 1;  // drop the whole tag
-                    continue;
-                }
-            }
-        }
-        out.push_back(text[i]);
-        ++i;
-    }
-
-    return trim(out);
-}
-
-std::string counted(int64_t n, const char* one, const char* many) {
-    return group_thousands(n) + " " + (n == 1 ? one : many);
-}
 
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              double hit_window_ms) {
@@ -231,8 +209,12 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
     const TimingTier& none = tiers.back();
     const TimingTier& beyond = tiers[tiers.size() - 2];
     if (!ms) return {none.name, none.tok};
+    // Each edge belongs to the band below it (D48 Q3). The table's first row
+    // is Normal up to and including the difficult floor, so a timing on the
+    // floor reads Normal (past_difficult_floor's rule), and a timing exactly
+    // on the two-hit budget is Insane+, not Beyond.
     for (const TimingTier& t : tiers)
-        if (t.cutoff && *ms < *t.cutoff) return {t.name, t.tok};
+        if (t.cutoff && *ms <= *t.cutoff) return {t.name, t.tok};
     return {beyond.name, beyond.tok};
 }
 
@@ -275,11 +257,13 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
             auto [label, token] = tier_for(s.hardest_ms, tiers);
 
             ReportRow row;
-            row.song = title_or_unknown(plain(meta.ref_name));
-            row.artist = plain(meta.ref_artist);
-            row.charter = plain(meta.ref_charter);
+            // The one cleaned title, artist and charter every screen shows.
+            row.song = display_title(meta.ref_name);
+            row.artist = display_artist(meta.ref_artist);
+            row.charter = display_charter(meta.ref_charter);
             row.mode = meta.chartmode;
             row.rank = static_cast<int>(idx + 1);
+            row.optimal = record->is_optimal(*path);
             row.path = path->pathstring();
             row.score = *s.score;
             row.acts = *s.actcount;
@@ -348,18 +332,29 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
         data += ",\"mode\":";
         json_escape_into(data, r.mode);
         data += ",\"rank\":" + std::to_string(r.rank);
+        data += ",\"opt\":";
+        data += r.optimal ? "true" : "false";
         data += ",\"path\":";
         json_escape_into(data, r.path);
+        data += ",\"search\":";
+        json_escape_into(data, html::search_field(r.song, r.artist, r.charter, r.path));
         data += ",\"score\":" + std::to_string(r.score);
         data += ",\"acts\":" + std::to_string(r.acts);
         data += ",\"skip\":" + std::to_string(r.skip);
         data += ",\"ms\":" + (r.ms ? py_repr(*r.ms) : std::string("null"));
+        data += ",\"ms_text\":";
+        ms_text_into(data, r.ms);
         data += ",\"tier\":";
         json_escape_into(data, r.tier);
         data += ",\"tok\":";
         json_escape_into(data, r.tok);
         data += ",\"efill\":" + (r.efill ? py_repr(*r.efill) : std::string("null"));
+        data += ",\"efill_text\":";
+        ms_text_into(data, r.efill);
+        // `mult` sorts the column; `mult_text` is what the cell shows.
         data += ",\"mult\":" + py_repr(r.mult);
+        data += ",\"mult_text\":";
+        json_escape_into(data, format_avg_mult(r.mult));
         data += ",\"sqin\":" + std::to_string(r.sqin);
         data += ",\"sqout\":" + std::to_string(r.sqout);
         data += ",\"notes\":" + std::to_string(r.notes);
@@ -368,6 +363,12 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
     data += "]}";
     return html::render_page(page_template().c_str(), std::move(data), subtitle,
                              footer);
+}
+
+std::string nothing_under_settings(int cap, const std::string& middle,
+                                   const std::string& ending) {
+    return std::string(kNothingUnderSettings) + " (SP cap " + group_thousands(cap) + ", " +
+           middle + ")" + ending + ". Analyze with these settings, or change them.";
 }
 
 GeneratedReport generate_report(store::RecordStore& store,
@@ -379,9 +380,26 @@ GeneratedReport generate_report(store::RecordStore& store,
     // Cancelled part-way through: whatever the walk collected is a partial
     // library, so nothing is built from it. An empty result says "no report",
     // and the caller that set the flag already knows why.
-    if (options.cancel && options.cancel->load()) return GeneratedReport{};
+    if (options.cancel && options.cancel->load()) {
+        out.empty_reason = EmptyReason::Cancelled;
+        return out;
+    }
+    const FillDeadlineRule rule = fill_rule_for(options.lens.legacy_fills);
     out.rows = static_cast<int64_t>(rows.size());
-    if (rows.empty()) return out;
+    if (rows.empty()) {
+        // Nothing listed. Either the database is empty, or it holds results
+        // under another cap or fill rule (or only stale ones), and the user
+        // needs to hear which (finding 105).
+        if (store.counts().second == 0) {
+            out.empty_reason = EmptyReason::NothingStored;
+        } else {
+            out.empty_reason = EmptyReason::NothingUnderSettings;
+            out.why_empty = nothing_under_settings(
+                options.cap.exact,
+                std::string(fill_rule_name(rule, FillRuleNameStyle::Long)) + " fills");
+        }
+        return out;
+    }
     // The subtitle counts what the page lists: every record on it has exactly
     // one rank-1 row, and its songs are the distinct charts among the rows.
     std::unordered_set<std::string> songs;
@@ -391,21 +409,29 @@ GeneratedReport generate_report(store::RecordStore& store,
     }
     out.songs = static_cast<int64_t>(songs.size());
 
+    // Counts read the house rule (hydra::counted, D48 Q12). The cut is per
+    // chart and mode, and the page lists every mode at the current cap.
     std::string shown = options.max_paths > kEveryPathLabelThreshold
                             ? "every path"
-                            : "top " + std::to_string(options.max_paths) +
-                                  " paths per chart";
-    std::string cap_label = "SP cap " + std::to_string(options.cap.exact) + " bars";
+                            : "every mode at the current cap, top " +
+                                  hydra::counted(options.max_paths, "path", "paths") +
+                                  " per chart and mode";
+    std::string cap_label = "SP cap " + hydra::counted(options.cap.exact, "bar", "bars");
     // The normal rule goes unsaid, so a 1.1 page reads as it always has.
-    if (options.lens.legacy_fills) cap_label += " — Clone Hero 1.0 fills";
-    std::string subtitle = counted(out.records, "record", "records") + " across " +
-                           counted(out.songs, "chart", "charts") + " — " + shown + " — " +
-                           cap_label;
+    if (options.lens.legacy_fills)
+        cap_label += std::string(" — ") + fill_rule_name(rule, FillRuleNameStyle::Long) + " fills";
+    std::string subtitle = hydra::counted(out.records, "record", "records") + " across " +
+                           hydra::counted(out.songs, "chart", "charts") + " — " + shown +
+                           " — " + cap_label;
     std::string dbname =
         std::filesystem::u8path(options.db_path).filename().u8string();
+    // D50 item 1. The window named is the Beyond edge, printed whole the way
+    // the page's Beyond chip and "Past N ms" tile print it.
     std::string footer = "Generated from " + dbname +
-                         ". Timing tiers match Hydra's squeeze ratings; "
-                         "'Beyond' is past the " +
+                         ". Timing tiers measure how big each squeeze is, in steps "
+                         "of your hit window. The Paths tab's row labels measure how "
+                         "far a hit lands from the Star Power end, so the two can "
+                         "differ. 'Beyond' means past the " +
                          std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) +
                          " ms window.";
     out.html = build_html(rows, subtitle, footer, w);

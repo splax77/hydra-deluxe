@@ -167,8 +167,50 @@ TEST_CASE("BackendSqueeze::summarystr: the SqOut ladder is for the squeezed-out 
     CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
     CHECK(b.summarystr(false, 85.0) == "Easy");
     b.offset_ms = 150.0;
-    CHECK(b.summarystr(true, 85.0) == "Free SqOut");
+    CHECK(b.summarystr(true, 85.0) == "Free SqOut (uncounted)");
     CHECK(b.summarystr(false, 85.0) == "Insane (uncounted)");
+}
+
+// Finding 33, D48 Q6: a squeezed-out row the engine does not count says so,
+// as the plain rows do, under the same test (counted_without_squeeze).
+TEST_CASE("BackendSqueeze::summarystr: an uncounted squeezed-out row carries the tag") {
+    BackendSqueeze b;
+    b.offset_ms = 150.0;
+    CHECK(b.summarystr(true, 85.0) == "Free SqOut (uncounted)");
+    b.offset_ms = 50.0;
+    CHECK(b.summarystr(true, 85.0) == "Easy SqOut (uncounted)");
+    b.offset_ms = 4.0;
+    CHECK(b.summarystr(true, 85.0) == "Standard SqOut (uncounted)");
+    CHECK(b.summarystr(true, 85.0, 5.0) == "Standard SqOut");
+    b.offset_ms = -50.0;
+    CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
+    // The plain rows read as before.
+    b.offset_ms = 150.0;
+    CHECK(b.summarystr(false, 85.0) == "Insane (uncounted)");
+    b.offset_ms = 50.0;
+    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
+    b.offset_ms = -50.0;
+    CHECK(b.summarystr(false, 85.0) == "Easy");
+}
+
+// Finding 306, D48 Q4: the ladder's inner edges are their own named 10 ms.
+// The labels either side of each edge read as before; past the leeway a
+// squeezed-out row also carries finding 33's "(uncounted)".
+TEST_CASE("kBackendInnerBandMs: the backend ladder's inner edges sit at 10 ms") {
+    CHECK(kBackendInnerBandMs == 10.0);
+    BackendSqueeze b;
+    b.offset_ms = -10.1;
+    CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
+    CHECK(b.summarystr(false, 85.0) == "Easy");
+    b.offset_ms = -10.0;
+    CHECK(b.summarystr(true, 85.0) == "Standard SqOut");
+    CHECK(b.summarystr(false, 85.0) == "Standard");
+    b.offset_ms = 9.9;
+    CHECK(b.summarystr(true, 85.0) == "Standard SqOut (uncounted)");
+    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
+    b.offset_ms = 10.0;
+    CHECK(b.summarystr(true, 85.0) == "Easy SqOut (uncounted)");
+    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
 }
 
 TEST_CASE("rules: the leeway changes what the engine counts") {
@@ -275,7 +317,7 @@ TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal
         if (p->pathstring() == "3 E0 1 0- 2 E0") below_kept = true;
         if (p->totalscore() != top || p->pathstring() != "0+ 2 0 0- 2 E0") continue;
         REQUIRE(p->difficulty().has_value());
-        CHECK(app::format_ms(*p->difficulty()) == "78.9ms");
+        CHECK(app::format_ms(*p->difficulty()) == "78.9 ms");
         kept = true;
     }
     CHECK(kept);

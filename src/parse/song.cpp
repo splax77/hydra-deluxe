@@ -299,12 +299,104 @@ std::string no_notes_message(Difficulty difficulty, bool prodrums) {
 NoNotesError::NoNotesError(Difficulty difficulty, bool prodrums)
     : ChartFileError(no_notes_message(difficulty, prodrums)) {}
 
+namespace {
+
+// The one test for "this name is missing": it is empty or holds the
+// placeholder the scan stored for a missing one. Either way it reads
+// kUnknownTitle.
+std::string name_or_unknown(std::string name, std::string_view placeholder) {
+    if (name.empty() || name == placeholder) return kUnknownTitle;
+    return name;
+}
+
+}  // namespace
+
 std::string title_or_unknown(std::string title) {
     // The placeholder the metadata readers used before kUnknownTitle.
     static constexpr const char* kOldPlaceholder = "<unknown title>";
-    if (title.empty() || title == kOldPlaceholder) return kUnknownTitle;
-    return title;
+    return name_or_unknown(std::move(title), kOldPlaceholder);
 }
+
+// ---- rich-text tags ---------------------------------------------------------
+
+namespace {
+
+struct RichTag {
+    std::string_view name;
+    bool takes_value;  // the opening tag is <name=value>
+};
+
+constexpr RichTag kRichTags[] = {
+    {"color", true}, {"size", true}, {"b", false},   {"i", false},
+    {"u", false},    {"s", false},   {"sub", false}, {"sup", false},
+};
+
+bool is_ascii_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+// The byte length of the rich-text tag that starts at text[at] (a '<'), or 0
+// when the text there is not one strip_rich_tags removes.
+size_t rich_tag_length(std::string_view text, size_t at) {
+    size_t i = at + 1;
+    const bool closing = i < text.size() && text[i] == '/';
+    if (closing) ++i;
+    size_t name_end = i;
+    while (name_end < text.size() && is_ascii_alpha(text[name_end])) ++name_end;
+    if (name_end == i || name_end >= text.size()) return 0;
+
+    const std::string name = to_lower_ascii(text.substr(i, name_end - i));
+    for (const RichTag& tag : kRichTags) {
+        if (name != tag.name) continue;
+        if (text[name_end] == '>')
+            return (closing || !tag.takes_value) ? name_end + 1 - at : 0;
+        if (!closing && tag.takes_value && text[name_end] == '=') {
+            const size_t close = text.find('>', name_end);
+            const size_t reopen = text.find('<', name_end);
+            if (close == std::string_view::npos || reopen < close) return 0;
+            return close + 1 - at;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+}  // namespace
+
+std::string strip_rich_tags(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    size_t i = 0;
+    while (i < text.size()) {
+        if (text[i] == '<') {
+            if (const size_t len = rich_tag_length(text, i)) {
+                i += len;
+                continue;
+            }
+        }
+        out.push_back(text[i]);
+        ++i;
+    }
+    return out;
+}
+
+namespace {
+
+// How every shown name is cleaned: the tags go and the ends are trimmed.
+std::string clean_name(std::string_view text) { return trim(strip_rich_tags(text)); }
+
+}  // namespace
+
+std::string display_title(std::string_view title) {
+    return title_or_unknown(clean_name(title));
+}
+
+std::string display_artist(std::string_view artist) {
+    // display_title's rule, plus the artist placeholder the scan stores.
+    return name_or_unknown(display_title(artist), kUnknownArtist);
+}
+
+std::string display_charter(std::string_view charter) { return clean_name(charter); }
 
 Song::Song(int64_t resolution) : tick_resolution_(resolution) {
     apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);
