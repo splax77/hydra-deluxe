@@ -209,7 +209,7 @@ std::tuple<std::string, std::string, std::string> parse_srb_metadata(
 // per folder, no file contents touched) collecting every chart-bearing
 // folder's pending work. Read: a batch_worker_count() thread pool hashes the
 // chart files and reads their metadata, short-circuiting through the rescan
-// cache when a file's size+mtime fingerprint is unchanged. Results keep the
+// cache when a chart's fingerprint is unchanged (sig_unchanged). Results keep the
 // walk's order, so output ordering matches the old serial scanner.
 
 // One chart the walk found, before any of its bytes have been read. Folder
@@ -236,6 +236,36 @@ std::string sig_of(const DirEntry& notes, const DirEntry* ini) {
 // chart_files_unchanged both ask it.
 bool sig_unchanged(const std::string& stored, const std::string& now) {
     return !stored.empty() && stored == now;
+}
+
+// The kind of chart a file is, by its name. Anything that is not an archive
+// can only be a folder chart's notes file.
+ChartKind chart_kind_of(const std::string& name) {
+    switch (chart_format_of(name)) {
+        case ChartFormat::Sng: return ChartKind::Sng;
+        case ChartFormat::Srb: return ChartKind::Srb;
+        default: return ChartKind::Folder;
+    }
+}
+
+// One chart file in its folder's listing, as the scan records it: its kind,
+// its path, the song.ini that goes with a folder chart, and the fingerprint
+// of the files that make it up. Nothing when a folder chart has no song.ini.
+// The walk and chart_files_unchanged both ask this, so which files go into a
+// fingerprint is decided here once. The rootfolder is the caller's to fill.
+std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEntry& chart,
+                                             const std::vector<DirEntry>& listing) {
+    PendingChart pc;
+    pc.kind = chart_kind_of(chart.name);
+    pc.notes_path = join_folder(dir, chart.name);
+    const DirEntry* ini = nullptr;
+    if (pc.kind == ChartKind::Folder) {
+        ini = find_song_ini(listing);
+        if (!ini) return std::nullopt;
+        pc.ini_path = join_folder(dir, ini->name);
+    }
+    pc.sig = sig_of(chart, ini);
+    return pc;
 }
 
 }  // namespace
@@ -299,24 +329,16 @@ std::string hash_chart_file(const std::string& path) {
 }
 
 bool chart_files_unchanged(const std::string& notespath, const std::string& sig) {
-    if (sig.empty()) return false;
-    // The same listing the scan's walk reads, so the size and modified time
-    // come from the same find data the stored fingerprint was made from.
+    // The same listing the scan's walk reads, so the fingerprint comes from
+    // the same find data the stored one was made from.
     const std::string dir = parent_folder(notespath);
     const std::vector<DirEntry> entries = list_dir(dir);
-    const DirEntry* notes = nullptr;
     for (const DirEntry& e : entries)
         if (!e.is_dir && join_folder(dir, e.name) == notespath) {
-            notes = &e;
-            break;
+            const std::optional<PendingChart> now = pending_chart_of(dir, e, entries);
+            return now && sig_unchanged(sig, now->sig);
         }
-    if (!notes) return false;
-    // A .sng or .srb is fingerprinted alone; a folder chart with its song.ini.
-    const ChartFormat format = chart_format_of(notespath);
-    const bool archive = format == ChartFormat::Sng || format == ChartFormat::Srb;
-    const DirEntry* ini = archive ? nullptr : find_song_ini(entries);
-    if (!archive && !ini) return false;
-    return sig_unchanged(sig, sig_of(*notes, ini));
+    return false;
 }
 
 std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }
@@ -357,11 +379,11 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
             std::vector<DirEntry> entries = list_dir(dir);
 
             // The folder's files, by name and entry in the same order, so the
-            // notes-file pick's index leads back to the entry (its size and
-            // mtime go into the signature).
+            // notes-file pick's index leads back to the entry (pending_chart_of
+            // fingerprints it).
             std::vector<std::string> file_names;
             std::vector<const DirEntry*> files;
-            std::vector<std::pair<const DirEntry*, ChartKind>> found_archives;
+            std::vector<const DirEntry*> found_archives;
             std::vector<const DirEntry*> subdirs;
             for (const DirEntry& e : entries) {
                 if (e.is_dir) {
@@ -370,32 +392,19 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                 }
                 file_names.push_back(e.name);
                 files.push_back(&e);
-                if (chart_format_of(e.name) == ChartFormat::Sng)
-                    found_archives.push_back({&e, ChartKind::Sng});
-                else if (chart_format_of(e.name) == ChartFormat::Srb)
-                    found_archives.push_back({&e, ChartKind::Srb});
+                if (chart_kind_of(e.name) != ChartKind::Folder) found_archives.push_back(&e);
             }
 
             std::string rootfolder = relpath(parent_folder(dir), origin);
+            const auto add_chart = [&](const DirEntry& chart) {
+                std::optional<PendingChart> pc = pending_chart_of(dir, chart, entries);
+                if (!pc) return;
+                pc->rootfolder = rootfolder;
+                pending.push_back(std::move(*pc));
+            };
             const std::optional<NotesFilePick> pick = pick_notes_file(file_names);
-            const DirEntry* notes = pick ? files[pick->index] : nullptr;
-            const DirEntry* found_ini = find_song_ini(entries);
-            if (notes && found_ini) {
-                PendingChart pc;
-                pc.notes_path = join_folder(dir, notes->name);
-                pc.ini_path = join_folder(dir, found_ini->name);
-                pc.rootfolder = rootfolder;
-                pc.sig = sig_of(*notes, found_ini);
-                pending.push_back(std::move(pc));
-            }
-            for (auto [archive, kind] : found_archives) {
-                PendingChart pc;
-                pc.kind = kind;
-                pc.notes_path = join_folder(dir, archive->name);
-                pc.rootfolder = rootfolder;
-                pc.sig = sig_of(*archive, nullptr);
-                pending.push_back(std::move(pc));
-            }
+            if (pick) add_chart(*files[pick->index]);
+            for (const DirEntry* archive : found_archives) add_chart(*archive);
 
             for (const DirEntry* sub : subdirs) {
                 std::string subpath = join_folder(dir, sub->name);

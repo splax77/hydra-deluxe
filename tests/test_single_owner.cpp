@@ -1985,6 +1985,23 @@ const std::vector<OwnerRule>& rules() {
           "static_cast<double>(idx.keys_at(s) - idx.starts_at(s)) /",
           "const int64_t first = mi->keys_at(i);",
           "const int i = idx.section_at(static_cast<int64_t>(std::ceil(ticks)));"}},
+        // Fingerprinting a chart's files by hand: anything that calls sig_of
+        // has chosen which files go in. Only pending_chart_of chooses, and
+        // the scan walk and chart_files_unchanged both ask it.
+        {"Which files make up a chart's fingerprint?",
+         "pending_chart_of in src/app/analysis.cpp",
+         R"(\bsig_of\()",
+         "",
+         {},
+         {},
+         "derive-once review of M7-2c, finding 1 (phase 7 task PV join)",
+         {"pc.sig = sig_of(*notes, found_ini);",
+          "return sig_unchanged(sig, sig_of(*notes, ini));"},
+         {"return sig_of_chart(entries, notes);",
+          "const std::optional<PendingChart> now = pending_chart_of(dir, e, entries);"},
+         {{"src/app/analysis.cpp", "std::string sig_of(const DirEntry& notes, const DirEntry* ini) {",
+           "sig_of, the string format pending_chart_of uses"},
+          {"src/app/analysis.cpp", "pc.sig = sig_of(chart, ini);", "pending_chart_of, the owner"}}},
     };
     return r;
 }
