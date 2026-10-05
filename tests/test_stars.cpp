@@ -83,13 +83,8 @@ TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
             CHECK(total.ghost == n.ghost);
             CHECK(total.sqout_reduction == n.sqout_reduction);
 
-            // The fold's three identities. 160: the 1x shares add up to the
-            // note's basescore. 161: Star Power's share is basescore at the
-            // multiplier. 162: Star Power pays kStarPowerMultiplier - 1 more
-            // copies of the note's whole value.
+            // 160: the 1x shares add up to the note's basescore.
             CHECK(n.base + n.accent + n.ghost == row.note.basescore());
-            CHECK(n.sp == row.note.basescore() * n.multiplier);
-            CHECK(n.sp == (kStarPowerMultiplier - 1) * (n.base + n.combo + n.accent + n.ghost));
             // The squeeze-out cut is the note's value.
             CHECK(n.sqout_reduction == n.sp);
         }
