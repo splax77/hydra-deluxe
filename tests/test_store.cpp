@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <map>
 #include <stdexcept>
 #include <system_error>
 #include <optional>
@@ -2129,19 +2130,25 @@ TEST_CASE("an old database's one length shows until that difficulty is analyzed 
 TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
     // D51 call 10 (finding 63): one rule names a chart the scan found twice,
     // the first copy it listed. Analyzing the second copy used to rename it.
+    // D63: only a chart with more than one copy takes the library's names; a
+    // single copy keeps its newest analysis's names.
     RecordStore store(":memory:");
     const ChartLibraryEntry first = chart_entry("h", "Scanned Title");
     ChartLibraryEntry second = chart_entry("h", "Second Copy");
     second.notespath = "C:\\charts\\copy\\notes.chart";
-    store.rebuild_chart_library({first, second});
+    store.rebuild_chart_library({first, second, chart_entry("s", "Old Title")});
 
     // Analyzing copy B saves the names its own song.ini gave.
     store.add_song("h", "Second Copy", "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-    const std::vector<RecordListing> rows =
-        store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true);
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].ref_name == "Scanned Title");
+    // The single copy's song.ini was fixed after the scan, then analyzed.
+    store.add_song("s", "New Title", "Artist", "Charter", fixture().song);
+    store.add_record(RecordKey{"s", "mode", CapQuery::at(4)}, at_cap(4));
+    std::map<std::string, std::string> names;
+    for (const RecordListing& row :
+         store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true))
+        names[row.hyhash] = row.ref_name;
+    CHECK(names == std::map<std::string, std::string>{{"h", "Scanned Title"}, {"s", "New Title"}});
 }
 
 TEST_CASE("the scan cache is dropped when its reader stamp is not current") {

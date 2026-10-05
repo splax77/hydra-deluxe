@@ -1015,9 +1015,11 @@ std::optional<double> RecordStore::read_song_length(const std::string& hyhash,
 // Which copy names an md5 (D51 call 10): the first copy the scan listed, the
 // charts row with the smallest rowid for that md5. One row per md5, with its
 // name, artist and charter (SQLite takes a bare column from the MIN(rowid)
-// row). The rebuild's rename and upsert_song both read names through it.
+// row), plus `copies`, how many rows the scan listed for it. The rebuild's
+// rename and upsert_song both read names through it.
 constexpr const char* kNamingCopiesSql =
-    "(SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)";
+    "(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts"
+    " GROUP BY md5)";
 
 // The meta row that holds the charts table's kChartMetaStamp, written once
 // per file by rebuild_chart_library and checked by chart_library_cache.
@@ -1027,13 +1029,11 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
                               const std::string& ref_artist, const std::string& ref_charter,
                               const std::vector<uint8_t>& tempomap,
                               std::optional<double> length_ms) {
-    // A chart already registered takes the names this call carries, unless
-    // the scan listed it: then the copy the scan listed first names it
-    // (D51 call 10, kNamingCopiesSql), whichever copy was analyzed. A fixed
-    // song.ini still reaches the reports on the next analysis or scan (user
-    // decision 2026-09-26). A chart the scan never listed (the tests,
-    // hydra_bench, a chart analyzed before any scan) takes the call's names.
-    // Each analysis rewrites the tempo map too (D51 call 12): the map is
+    // A chart already registered takes the names this call carries, so a
+    // fixed song.ini reaches the reports on the next analysis (user decision
+    // 2026-09-26). The one exception is a chart with duplicate copies in the
+    // library: the copy kNamingCopiesSql picks names it, whichever copy was
+    // analyzed (D63, D51 call 10). Each analysis rewrites the tempo map too (D51 call 12): the map is
     // whatever the chart reader made of the file this time, so a reader fix
     // reaches the stored map on the next analysis instead of never. The
     // per-chart length is written on update when the call carries one
@@ -1041,7 +1041,8 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
     std::string name = ref_name, artist = ref_artist, charter = ref_charter;
     {
         const std::string sql =
-            std::string("SELECT name, artist, charter FROM ") + kNamingCopiesSql + " WHERE md5 = ?";
+            std::string("SELECT name, artist, charter FROM ") + kNamingCopiesSql +
+            " WHERE md5 = ? AND copies > 1";
         Stmt copy = prepare(db_, sql.c_str());
         bind_text(copy, 1, hyhash);
         if (sqlite3_step(copy) == SQLITE_ROW) {
