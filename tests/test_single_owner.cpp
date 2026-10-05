@@ -2057,9 +2057,7 @@ const std::vector<OwnerRule>& rules() {
          R"re(DepthMode::\w+.*"(scores|points)"|score range %d|%dms limit)re",
          "",
          {},
-         {{"tools/replay.cpp",
-           "hydra_replay's NotAnalyzed line echoes its own --depth-mode words (\"depth "
-           "points/4\", \"ms off\"), its command line's spelling, not a run header"}},
+         {},
          "audit finding 206; phase 6 task J2-1 (D53, D54)",
          {R"(case hydra::DepthMode::Scores: depth_name = "scores"; break;)",
           R"(case hydra::DepthMode::Points: depth_name = "points"; break;)",
@@ -2254,6 +2252,13 @@ const std::vector<KnownCopy>& known_copies() {
         {"How do the analysis settings read as text?", "tools/bench.cpp",
          R"(std::printf("Settings: the GUI default (SP cap %d, score range %d, %dms limit).\n\n",)",
          "task J2-6 (bench's header uses describe_settings; audit finding 206, D54)"},
+        // hydra_replay's NotAnalyzed line picks the depth word from DepthMode
+        // itself, the rule describe_settings owns. No phase 6 task owns
+        // tools/replay.cpp yet, so the main session names the fold.
+        {"How do the analysis settings read as text?", "tools/replay.cpp",
+         R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
+         "unassigned: the main session names the fold (the NotAnalyzed line takes "
+         "its depth word from describe_settings; audit finding 206, D54)"},
     };
     return k;
 }
