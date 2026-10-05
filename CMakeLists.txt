@@ -191,6 +191,7 @@ add_library(hydra_core STATIC
     src/app/path_view.cpp
     src/app/preview_view.cpp
     src/app/preview_source.cpp
+    src/app/song_length.cpp
     src/app/fill_report.cpp
     src/app/report.cpp
     src/app/report_files.cpp
@@ -445,6 +446,7 @@ add_executable(hydra_tests
     tests/test_preview_controller.cpp
     tests/test_preview_load_progress.cpp
     tests/test_song_audio.cpp
+    tests/test_song_length.cpp
     tests/test_utf8_paths.cpp
     tests/test_long_paths.cpp
     tests/test_single_owner.cpp

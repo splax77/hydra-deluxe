@@ -143,6 +143,7 @@ app::ScanItem scan_item_of(const store::ChartLibraryEntry& e) {
     item.charter = e.charter;
     item.notespath = e.notespath;
     item.rootfolder = e.rootfolder;
+    item.timing = e.timing;
     return item;
 }
 

@@ -37,7 +37,23 @@ struct ScanItem {
     std::string notespath;
     std::string rootfolder;
     std::string sig;
+    // The chart's stated length and delay (D75). A scan always sets it; it is
+    // empty only on an item made from a library row an older scan wrote
+    // (ChartLibraryEntry::timing), and chart_timing_meta fills that in.
+    std::optional<store::ChartTimingMeta> timing;
 };
+
+// The chart's stated length and delay, read from its files through the same
+// three readers the scan uses: song.ini beside a folder chart (none when
+// there is no song.ini), a .sng's metadata, a .srb's metadata block. Only the
+// metadata is read, never the audio. Throws when a file cannot be read.
+store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath);
+
+// What the scan read for the chart at `notespath`, or, for a library row an
+// older scan wrote (`scanned` empty), read_chart_timing_meta's answer. The
+// open-song backfill and an analysis both ask here (SL1 open question 3).
+store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingMeta>& scanned,
+                                         const std::string& notespath);
 
 // Progress/cancel hooks for the extended scan. Callbacks fire on the calling
 // thread only (never a worker), like run_batch's.

@@ -119,6 +119,11 @@ std::optional<double> column_opt_f64(sqlite3_stmt* s, int i) {
     if (sqlite3_column_type(s, i) == SQLITE_NULL) return std::nullopt;
     return sqlite3_column_double(s, i);
 }
+// An optional number as SQL: NULL when empty, so column_opt_f64 reads it back.
+void bind_opt_f64(sqlite3_stmt* s, int i, std::optional<double> v) {
+    if (v) sqlite3_bind_double(s, i, *v);
+    else sqlite3_bind_null(s, i);
+}
 
 // ---- tempomap blob (songmeta.tempomap) ------------------------------------
 
@@ -769,7 +774,9 @@ void RecordStore::set_up_schema() {
         "  charter TEXT,"
         "  path   TEXT,"
         "  folder TEXT,"
-        "  sig    TEXT"
+        "  sig    TEXT,"
+        "  stated_length_ms REAL,"
+        "  delay_ms REAL"
         ");"
         "CREATE TABLE IF NOT EXISTS meta ("
         "  key   TEXT PRIMARY KEY,"
@@ -791,6 +798,13 @@ void RecordStore::set_up_schema() {
     // rebuild_chart_library empties the table rather than recreating it, so
     // the column is added here, once.
     if (!has_column("charts", "sig")) exec("ALTER TABLE charts ADD COLUMN sig TEXT");
+    // A charts table from before the scan read each chart's stated length and
+    // delay (D75). Old rows read NULL, and list_chart_library hands them out
+    // with no timing until a scan under the current kChartMetaStamp rewrites
+    // them.
+    if (!has_column("charts", "stated_length_ms"))
+        exec("ALTER TABLE charts ADD COLUMN stated_length_ms REAL");
+    if (!has_column("charts", "delay_ms")) exec("ALTER TABLE charts ADD COLUMN delay_ms REAL");
     // A songmeta table from before stored lengths. Old rows read NULL.
     if (!has_column("songmeta", "length_ms")) exec("ALTER TABLE songmeta ADD COLUMN length_ms REAL");
     // A songmeta table from before the length stamp (kSongLengthStamp). Its
@@ -1092,8 +1106,7 @@ void RecordStore::write_song_length(const std::string& hyhash, std::optional<dou
         ? "UPDATE songmeta SET length_ms = ?1, length_version = ?2"
           " WHERE hyhash = ?3 AND length_version = ?4"
         : "UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3");
-    if (length_ms) sqlite3_bind_double(s, 1, *length_ms);
-    else sqlite3_bind_null(s, 1);
+    bind_opt_f64(s, 1, length_ms);
     sqlite3_bind_int(s, 2, kSongLengthStamp.written);
     bind_text(s, 3, hyhash);
     if (only_from_stamp) sqlite3_bind_int(s, 4, *only_from_stamp);
@@ -1886,8 +1899,8 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
     try {
         exec("DELETE FROM charts");
         Stmt s = prepare_write(db_,
-            "INSERT INTO charts (md5, name, artist, charter, path, folder, sig)"
-            " VALUES (?,?,?,?,?,?,?)");
+            "INSERT INTO charts (md5, name, artist, charter, path, folder, sig,"
+            " stated_length_ms, delay_ms) VALUES (?,?,?,?,?,?,?,?,?)");
         for (const ChartLibraryEntry& item : items) {
             sqlite3_reset(s);
             bind_text(s, 1, item.md5);
@@ -1897,6 +1910,9 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
             bind_text(s, 5, item.notespath);
             bind_text(s, 6, item.rootfolder);
             bind_text(s, 7, item.sig);
+            const ChartTimingMeta timing = item.timing.value_or(ChartTimingMeta{});
+            bind_opt_f64(s, 8, timing.length_ms);
+            bind_opt_f64(s, 9, timing.delay_ms);
             step_done(s, "rebuild_chart_library");
         }
         // Song names follow song.ini (user decision 2026-09-26): a chart that
@@ -1923,17 +1939,24 @@ ChartLibraryCache RecordStore::chart_library_cache() {
     // Rows the current readers didn't vouch for are no cache at all: a file
     // from before the stamp, or one an older reader filled (D51 call 12).
     // The next scan reads every chart once and stamps what it writes.
-    const std::optional<std::string> stamp = meta_get(kChartMetaKey);
-    if (!stamp || !kChartMetaStamp.is_current(std::atoi(stamp->c_str()))) return cache;
+    if (!chart_meta_current()) return cache;
 
-    Stmt s = prepare_read(db_, "SELECT path, sig, md5, name, artist, charter FROM charts");
+    Stmt s = prepare_read(db_,
+                          "SELECT path, sig, md5, name, artist, charter, stated_length_ms, delay_ms"
+                          " FROM charts");
     while (step_row(s)) {
         std::string sig = column_text(s, 1);
         if (sig.empty()) continue;
-        cache[column_text(s, 0)] = {std::move(sig), column_text(s, 2), column_text(s, 3),
-                                    column_text(s, 4), column_text(s, 5)};
+        cache[column_text(s, 0)] = {std::move(sig),      column_text(s, 2), column_text(s, 3),
+                                    column_text(s, 4),   column_text(s, 5),
+                                    {column_opt_f64(s, 6), column_opt_f64(s, 7)}};
     }
     return cache;
+}
+
+bool RecordStore::chart_meta_current() {
+    const std::optional<std::string> stamp = meta_get(kChartMetaKey);
+    return stamp && kChartMetaStamp.is_current(std::atoi(stamp->c_str()));
 }
 
 int64_t RecordStore::chart_library_count() {
@@ -1947,9 +1970,12 @@ int64_t RecordStore::chart_library_count() {
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
+    // Rows an older scan wrote never read their timing: none, not "none
+    // stated".
+    const bool timing_read = chart_meta_current();
     Stmt s = prepare_read(db_,
-                          "SELECT md5, name, artist, charter, path, folder, sig FROM charts"
-                          " ORDER BY name LIMIT ? OFFSET ?");
+                          "SELECT md5, name, artist, charter, path, folder, sig, stated_length_ms,"
+                          " delay_ms FROM charts ORDER BY name LIMIT ? OFFSET ?");
     sqlite3_bind_int(s, 1, limit);
     sqlite3_bind_int(s, 2, offset);
 
@@ -1963,6 +1989,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int l
         e.notespath = column_text(s, 4);
         e.rootfolder = column_text(s, 5);
         e.sig = column_text(s, 6);
+        if (timing_read) e.timing = ChartTimingMeta{column_opt_f64(s, 7), column_opt_f64(s, 8)};
         out.push_back(std::move(e));
     }
     return out;

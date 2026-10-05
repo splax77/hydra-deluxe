@@ -270,6 +270,22 @@ enum class SortColumn {
     SqInCount, SqOutCount, PathCount, RefName, RefArtist, RefCharter,
 };
 
+// What a chart's own metadata states about its timing, read by the scan with
+// its names (app::discover_charts, app::read_chart_timing_meta): the song's
+// length, which app::song_length_ms turns into the song's one length (D75),
+// and the delay that moves it into chart time. Both in ms, both empty when
+// the metadata states none (app::stated_length_ms says which lengths count).
+struct ChartTimingMeta {
+    std::optional<double> length_ms;
+    std::optional<double> delay_ms;
+
+    // Spelled out rather than defaulted: this project builds as C++17.
+    bool operator==(const ChartTimingMeta& other) const {
+        return length_ms == other.length_ms && delay_ms == other.delay_ms;
+    }
+    bool operator!=(const ChartTimingMeta& other) const { return !(*this == other); }
+};
+
 // One scanned chart file, as browsed in the library table. It lives in the
 // same db file as the records.
 // `sig` is the chart's fingerprint (app::chart_files_unchanged says what it
@@ -284,6 +300,10 @@ struct ChartLibraryEntry {
     std::string notespath;
     std::string rootfolder;
     std::string sig;
+    // Empty for a row an older scan wrote, before the scan read timing
+    // (list_chart_library says which rows those are). Whoever needs it then
+    // reads it from the chart's files (app::chart_timing_meta).
+    std::optional<ChartTimingMeta> timing;
 };
 
 // What a rescan can reuse for a chart whose files are unchanged: keyed by
@@ -294,6 +314,7 @@ struct ChartCacheEntry {
     std::string title;
     std::string artist;
     std::string charter;
+    ChartTimingMeta timing;
 };
 using ChartLibraryCache = std::unordered_map<std::string, ChartCacheEntry>;
 
@@ -495,7 +516,9 @@ public:
 
     // The whole library, by name. A negative limit means no limit (SQLite's
     // LIMIT convention). Searching is the library view's (query_matches in
-    // app/library_query.h), not SQL's.
+    // app/library_query.h), not SQL's. Each entry's timing is set only when
+    // the table's kChartMetaStamp is current, the stamp the scan that read it
+    // wrote; rows an older scan wrote carry none.
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit);
 
@@ -596,6 +619,10 @@ private:
                     int64_t result_id, std::vector<uint8_t>& structure);
     std::optional<std::string> meta_get(const std::string& key);
     void meta_set(const std::string& key, const std::string& value);
+    // Whether the charts table's rows were read by this build's readers: its
+    // stored kChartMetaStamp is current. The rescan cache and the library
+    // listing's timing both ask it. Call under the lock.
+    bool chart_meta_current();
 };
 
 }  // namespace hydra::store

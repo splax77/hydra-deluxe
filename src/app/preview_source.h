@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -124,6 +125,15 @@ std::vector<PreviewAudioStem> resolve_preview_stems(const std::string& notespath
 // song.ini's `delay` in milliseconds, or nullopt when the file or key is
 // missing or the value is not a number.
 std::optional<double> read_ini_delay_ms(const std::string& ini_path);
+
+// The same from a song.ini already read (app::read_song_ini_keys): the
+// library scan reads the file once for its names, length and delay.
+std::optional<double> ini_delay_ms(const std::map<std::string, std::string>& ini);
+
+// A .sng's `delay` from its metadata pairs already read (sng_read_metadata),
+// by sng_delay_ms's rule. The library scan reads it beside the names.
+std::optional<double> sng_metadata_delay_ms(
+    const std::vector<std::pair<std::string, std::string>>& pairs);
 
 // A .sng container's `delay` metadata in milliseconds, the key matched in any
 // case (the last one wins, like the library scan's metadata read), or nullopt

@@ -98,13 +98,14 @@ inline constexpr StampRule<uint8_t, 1> kDynamicsBlobStamp{2, {2}};
 // How a scan reads a chart's identity and names. BUMP IT (add 1) whenever any
 // of these changes what an unchanged file reads as: hash_chart_file and its
 // 1 MB .sng head rule (D51 call 13), sig_of (the size and mtime fingerprint
-// the rescan cache is keyed on), and the song.ini, .sng and .srb name
-// readers. The sig only says a file is unchanged; this stamp says the rows
+// the rescan cache is keyed on), and the song.ini, .sng and .srb metadata
+// readers (names, stated length and delay). The sig only says a file is unchanged; this stamp says the rows
 // read from it still hold what this build would read. Stored once per file,
 // as the meta row chart_meta_version. A stale or missing stamp drops the
 // whole rescan cache, so the next scan reads every chart once (D51 call 12).
-// 1 = the first stamp.
-inline constexpr StampRule<int, 1> kChartMetaStamp{1, {1}};
+// 1 = the first stamp. 2 = the scan also reads each chart's stated length
+// and delay (store::ChartTimingMeta, D75).
+inline constexpr StampRule<int, 1> kChartMetaStamp{2, {2}};
 
 // ---- A song's length (songmeta.length_ms) ----------------------------------
 
