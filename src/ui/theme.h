@@ -19,6 +19,9 @@ namespace hydra::ui {
 inline const ImVec4 kBestPathColor{250 / 255.0f, 210 / 255.0f, 0 / 255.0f, 1.0f};
 // The Star Power gold. A different gold from kBestPathColor.
 inline const ImVec4 kStarPowerColor{255 / 255.0f, 204 / 255.0f, 51 / 255.0f, 1.0f};
+// The Preview's SP gauge fills with that gold a touch see-through: alpha 230
+// of 255, the look as shipped.
+inline constexpr float kStarPowerFillAlpha = 230.0f / 255.0f;
 inline const ImVec4 kWarningColor{255 / 255.0f, 127 / 255.0f, 0 / 255.0f, 1.0f};
 // Deliberately lighter than the Python app's (100,100,100): that gray sat at
 // ~2.9:1 against the window background, under the 4.5:1 WCAG AA minimum for

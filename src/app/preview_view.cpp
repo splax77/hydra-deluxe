@@ -27,6 +27,14 @@ PreviewLane lane_of(NoteColor color) {
     return PreviewLane::Kick;  // unreachable; NoteColor is a closed set
 }
 
+// Searches lane_of rather than keeping a second table that could drift.
+NoteColor color_of(PreviewLane lane) {
+    for (NoteColor c : {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow, NoteColor::Blue,
+                        NoteColor::Green})
+        if (lane_of(c) == lane) return c;
+    return NoteColor::Kick;  // unreachable; every lane comes from a colour
+}
+
 namespace {
 
 PreviewNote note_from(const SongTimestamp& ts, const ChordNote& n) {
@@ -288,6 +296,14 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
     // while music plays past the last note (D48, Q25). The end is the tick a
     // playhead there shows, the same rule the time box uses. Without the
     // audio's end it runs two measures past the last note.
+    //
+    // The grid reads the last drawn note's tick, not song_length_ms above.
+    // It needs a tick because beat lines sit on measures and beats, and
+    // "two measures past" is counted in ticks. The two ends agree on every
+    // parsed song: the parsers only write a timestamp that holds notes, so
+    // the last timestamp is the last drawn chord. Only a hand-built song with
+    // a note-less last timestamp splits them; test_preview_view.cpp pins that
+    // case ("the song length is the store's, even past the last drawn note").
     const SongTiming& timing = song.timing();
     scene.timing = timing;  // the time box names ticks with the engine's math
     scene.tick_resolution = timing.tick_resolution();
@@ -452,7 +468,7 @@ std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t las
 
 namespace {
 
-// The song length the time box shows: never negative.
+// Where playback ends, as the time box shows it: never negative.
 double shown_length(double length_ms) { return length_ms < 0.0 ? 0.0 : length_ms; }
 
 // The moment the time box shows: the playhead held inside [0, length].

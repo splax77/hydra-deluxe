@@ -65,6 +65,14 @@ inline void progress_bar_counted(int done, int total) {
     ImGui::ProgressBar(frac, ImVec2(-1, 0), overlay);
 }
 
+// Full-width progress bar filled to `fraction` (0 to 1), with a whole-percent
+// overlay such as "42%". The analyze bar and the Preview loader both draw it.
+inline void progress_bar_percent(float fraction) {
+    char overlay[16];
+    std::snprintf(overlay, sizeof(overlay), "%.0f%%", fraction * 100.0f);
+    ImGui::ProgressBar(fraction, ImVec2(-1.0f, 0.0f), overlay);
+}
+
 // ---- Fixed slots: stop live numbers from moving their neighbours ----------
 //
 // The UI font is proportional, so "67.6 s" and "71.1 s" are not the same
