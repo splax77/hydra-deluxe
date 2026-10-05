@@ -80,18 +80,19 @@ int main() {
     std::unique_ptr<hydra::store::RecordStore> new_store =
         hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
 
-    // Engine-mode sanity check: a stamp that names another rule than the side
-    // it was passed as (or no rule at all) is a warning, not a fatal error —
-    // an unstamped (nullopt) db just means "assume the normal rule" and never
-    // warns.
-    auto warn_if_not = [](const std::string& path, const std::optional<std::string>& mode,
+    // Engine-mode sanity check (D65, ADR 0010): warn only when the file's
+    // stamp names the other side's rule. An unstamped file never warns, so this
+    // reads the stamp itself rather than asking stamped_fill_rule.
+    auto warn_if_not = [](const std::string& path, hydra::store::RecordStore& store,
                           hydra::FillDeadlineRule expected) {
-        if (mode && hydra::fill_rule_from_stamp(*mode) != expected)
-            std::fprintf(stderr, "Warning: %s is stamped engine_mode=%s, not %s\n",
-                         path.c_str(), mode->c_str(), hydra::engine_mode_stamp(expected));
+        const std::optional<std::string> stamp = store.engine_mode();
+        if (!stamp) return;  // no stamp: nothing to disagree (D65)
+        if (hydra::fill_rule_from_stamp(*stamp) == expected) return;
+        std::fprintf(stderr, "Warning: %s is stamped engine_mode=%s, not %s\n",
+                     path.c_str(), stamp->c_str(), hydra::engine_mode_stamp(expected));
     };
-    warn_if_not(*old_path, old_store->engine_mode(), hydra::FillDeadlineRule::Ch10);
-    warn_if_not(*new_path, new_store->engine_mode(), hydra::FillDeadlineRule::Ch11);
+    warn_if_not(*old_path, *old_store, hydra::FillDeadlineRule::Ch10);
+    warn_if_not(*new_path, *new_store, hydra::FillDeadlineRule::Ch11);
 
     hydra::app::fill_report::GeneratedFillReport report =
         hydra::app::fill_report::generate_fill_report(*old_store, *new_store, chartmode, cap, lens);

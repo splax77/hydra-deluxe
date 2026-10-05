@@ -29,6 +29,12 @@ std::filesystem::path reports_dir();
 using DocumentsDirFn = std::function<std::optional<std::filesystem::path>()>;
 void set_documents_dir_lookup(DocumentsDirFn fn);
 
+// Each report page's file name, typed once (finding 202). UTF-8, so the CLI's
+// std::string --out default reads them as they are; report_html_path and
+// dm_report_html_path build their paths from them.
+inline constexpr const char* kPathReportFileName = "hydra_paths.html";
+inline constexpr const char* kDmReportFileName = "hydra_dmcompare.html";
+
 // Where the batch path report lives on disk (in reports_dir()).
 std::wstring report_html_path();
 

@@ -19,6 +19,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -507,6 +508,27 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
     CHECK(plain_error(std::runtime_error(off.why_empty)) == sentence);
 }
 
+TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths stays a count (86)") {
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store, 4, 1) > 0);
+
+    // --all-paths asks for the sentinel, and only that reads "every path".
+    report::ReportOptions options;
+    options.max_paths = report::kEveryPathSentinel;
+    CHECK(report::generate_report(store, options).html.find(" — every path — ") !=
+          std::string::npos);
+
+    // A large --paths below it lists at most that many, so it says so.
+    options.max_paths = 200000000;
+    const std::string html = report::generate_report(store, options).html;
+    CHECK(html.find("top 200,000,000 paths per chart and mode") != std::string::npos);
+    CHECK(html.find(" — every path") == std::string::npos);
+
+    // 140: the hit window keeps a decimal, starting from the default.
+    CHECK(std::is_same<decltype(report::ReportOptions{}.hit_window_ms), double>::value);
+    CHECK(report::ReportOptions{}.hit_window_ms == kDefaultHitWindowMs);
+}
+
 TEST_CASE("nothing_under_settings frames the cap, the middle words and the ending") {
     // One frame for every empty page (finding 105, D50 item 3): the path
     // report passes its fill rule, the fill comparison its chart mode and
@@ -807,7 +829,8 @@ TEST_CASE("reports_dir is Documents\\Hydra, made on first use") {
     const fs::path dir = reports_dir();
     CHECK(dir == box.root / "Hydra");
     CHECK(fs::is_directory(dir));
-    // Every report path helper lives in it.
+    // Every report path helper lives in it. The names are what a person finds
+    // on disk, so the test pins them as text.
     CHECK(fs::path(report_html_path()) == dir / "hydra_paths.html");
     CHECK(fs::path(dm_report_html_path()) == dir / "hydra_dmcompare.html");
 }
@@ -972,6 +995,11 @@ TEST_CASE("path report explains and renames its columns") {
           std::string::npos);
     CHECK(col_line(html, "tier").find("Beyond means more than twice the hit window.") !=
           std::string::npos);
+    // D51 call 5: a required early fill counts like a squeeze, and the words
+    // say so.
+    CHECK(col_line(html, "ms").find(
+              "d:'The hardest squeeze or required early fill the path needs, in raw ms. "
+              "A dash means it needs none.'") != std::string::npos);
     // The average multiplier's definition opens with its own name.
     CHECK(col_line(html, "mult").find(
               "d:'Average multiplier: the score without solo bonuses divided by the base score "

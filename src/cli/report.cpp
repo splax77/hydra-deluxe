@@ -39,7 +39,7 @@ int main() {
     const int argc = static_cast<int>(args.size());
 
     int64_t max_paths = hydra::app::report::kDefaultReportPaths;
-    std::string out = "hydra_paths.html";
+    std::string out = hydra::app::kPathReportFileName;  // in the current folder
     std::optional<std::string> dbpath;
     std::optional<std::string> rulespath;
     bool open_when_done = true;
@@ -81,9 +81,9 @@ int main() {
     // A database hydra_batch --legacy-fills filled holds only 1.0 results, so
     // it reports under that rule whatever the app's "1.0 fills" setting says,
     // as it did before results carried their rule. Any other file follows the
-    // app's setting.
-    const std::optional<std::string> mode = store->engine_mode();
-    if (mode && hydra::fill_rule_from_stamp(*mode) == hydra::FillDeadlineRule::Ch10)
+    // app's setting. Which rule a file holds is RecordStore::stamped_fill_rule's
+    // answer.
+    if (store->stamped_fill_rule() == hydra::FillDeadlineRule::Ch10)
         settings.legacy_fills = true;
     options.lens = settings.lens();
     hydra::app::report::GeneratedReport report =

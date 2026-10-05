@@ -103,7 +103,7 @@ const PAGE = {
     {k:'score',   t:'Score',    num:true,  d:'The total score the path reaches.'},
     {k:'acts',    t:'Acts',     num:true,  d:'Activations: how many times the path uses Star Power.'},
     {k:'skip',    t:'Max skip', num:true,  d:'The most fills any one activation passes over before activating.'},
-    {k:'ms',      t:'Hardest ms', num:true, d:'The hardest squeeze or early fill the path needs, in raw ms. A dash means it needs none.'},
+    {k:'ms',      t:'Hardest ms', num:true, d:'The hardest squeeze or required early fill the path needs, in raw ms. A dash means it needs none.'},
     {k:'tier',    t:'Timing',   num:false, d:'How hard Hardest ms is, in bands of your hit window. Beyond means more than twice the hit window.'},
     {k:'efill',   t:'Early fill (ms)', num:true, d:'The hardest early fill (E0) on the path: how many ms early you must hit to summon the fill. Negative means slack. A dash means the path has none.'},
     {k:'mult',    t:'Avg multiplier', num:true, d:'Average multiplier: the score without solo bonuses divided by the base score (every note at 1x).'},
@@ -383,7 +383,7 @@ std::string nothing_under_settings(int cap, const std::string& middle,
 GeneratedReport generate_report(store::RecordStore& store,
                                 const ReportOptions& options) {
     GeneratedReport out;
-    const double w = static_cast<double>(options.hit_window_ms);
+    const double w = options.hit_window_ms;
     std::vector<ReportRow> rows =
         collect_rows(store, options.max_paths, options.cap, options.lens, w, options.cancel);
     // Cancelled part-way through: whatever the walk collected is a partial
@@ -417,7 +417,7 @@ GeneratedReport generate_report(store::RecordStore& store,
 
     // Counts read the house rule (hydra::counted, D48 Q12). The cut is per
     // chart and mode, and the page lists every mode at the current cap.
-    std::string shown = options.max_paths > kEveryPathLabelThreshold
+    std::string shown = options.max_paths >= kEveryPathSentinel
                             ? "every path"
                             : "every mode at the current cap, top " +
                                   hydra::counted(options.max_paths, "path", "paths") +
