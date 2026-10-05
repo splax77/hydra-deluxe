@@ -1607,7 +1607,7 @@ void Engine::own_early_fill(const Variant& var, OutAct* next) {
         // Under kSpActivationBars at the fold, as its leader was (same meter): neither
         // could have passed a fill yet, and both became ready later, at the
         // same phrase. The leader's offset is the variant's.
-        throw std::logic_error("a variant under 2 bars at its fold passed a fill");
+        throw std::logic_error("a variant under kSpActivationBars at its fold passed a fill");
     }
 
     emit_ticks(fills_, var.skip_tail, &next->skip_begin, &next->skip_end);

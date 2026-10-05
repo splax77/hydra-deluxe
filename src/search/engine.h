@@ -42,9 +42,9 @@ struct EngineOptions {
     // nowhere else. It replaces no_skips's rule for the same branch point, so
     // the search returns exactly one path (the caller's) with all its squeeze
     // variants, priced the engine's own way. An unrealizable set (an
-    // activation with SP under 2 bars, a fill the engine cannot spawn in time,
-    // a tick that is not a fill node) empties the frontier, which surfaces as
-    // the usual std::runtime_error.
+    // activation with SP under kSpActivationBars, a fill the engine cannot
+    // spawn in time, a tick that is not a fill node) empties the frontier,
+    // which surfaces as the usual std::runtime_error.
     std::optional<std::vector<int64_t>> target_act_ticks;
 };
 
