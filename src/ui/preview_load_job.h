@@ -67,11 +67,12 @@ private:
 // AnalyzeJob. Two branches run at once:
 //   (a) parse the chart, build the PreviewScene, and build the highway
 //       timeline (render::TrackState) from it;
-//   (b) find every audio stem and open it with audio::open_stem_reader. An
+//   (b) find every audio stem and open it (audio::open_song_stems). An
 //       open reads the compressed file's layout, not its audio, so even an
 //       8-hour stem opens in well under a second.
-// Once both are done the readers go into one audio::StreamMix, which plays
-// them straight from the compressed bytes. The controller pulls the finished
+// Once both are done the readers are mixed by audio::mix_song_stems, the step
+// the song's length uses too, into a stream that plays them straight from
+// the compressed bytes. The controller pulls the finished
 // scene, timeline and mix, hands the timeline to the renderer and the mix to
 // an audio::Playhead. None of this runs on-frame.
 class PreviewLoadJob : public ResultJobBase {
@@ -83,21 +84,17 @@ public:
 
     void start();
 
-    // The output format of the mix: what the audio device plays.
-    static constexpr int kOutRate = 48000;
-    static constexpr int kOutChannels = 2;
-
     struct Result {
         app::PreviewScene scene;
-        // Every stem that opened, mixed while it plays. A negative chart
-        // offset is silence in front of the stems (StreamMix's front pad).
+        // Every stem that opened, mixed while it plays (audio::SongMix::mix).
         std::unique_ptr<audio::MixSource> audio;
-        // Where chart time 0 sits in `audio` (never negative: a negative
-        // chart offset is padded into the front of `audio` instead).
+        // Where chart time 0 sits in `audio` (audio::SongMix::audio_offset_ms).
         double audio_offset_ms = 0.0;
-        // Where the audio stops in chart time (audio_end_chart_ms), empty when
-        // no stem has any audio. The scene's beat lines run to it, and the
-        // controller hands it to every later base build so they do too.
+        // Where the audio stops in chart time, the song's length
+        // (audio::SongMix::end_chart_ms, the answer audio::song_length_ms
+        // gives). The scene's song length and beat lines read it, the
+        // scrubber ends at it, and the controller hands it to every later
+        // base build.
         std::optional<double> audio_end_ms;
         // The parsed song the scene was built from. The controller keeps it so
         // a later path selection can rebuild the overlay without re-parsing.

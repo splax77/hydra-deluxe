@@ -166,9 +166,9 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
-    // Where the scrubber ends: the last note (app::scrub_end_ms, D50 item 4),
-    // or playback_end_ms() for a chart with no notes. Not where playback
-    // stops.
+    // Where the scrubber ends: the song's length, the audio's end in chart
+    // time (audio::song_length_ms, D69), or playback_end_ms() for a chart
+    // with no readable audio (app::scrub_end_ms).
     double scrub_end_ms() const;
     // Where playback stops: the later of the last note and the audio's end
     // (PreviewTransport::length_ms). Play, the clock and jumps run to here.

@@ -1393,21 +1393,23 @@ const std::vector<OwnerRule>& rules() {
          {},
          {"src"}},
         // ---- the Preview (derive-once review of M_D, phase 3 task FX-P) ----
-        // The last timestamp's onset, or the last drawn note's, read as the
-        // song's length anywhere but store::song_length_ms.
+        // The last drawn note, or the last timestamp's onset, read anywhere
+        // but last_drawn_note. It is never the song's length, which is the
+        // audio's end (audio::song_length_ms, D69).
         {"When is the song's last note?",
-         "store::song_length_ms in src/store/record_store.cpp",
-         R"(notes\.back\(\)\.ms\b|sequence\.back\(\)\.timecode\.ms\(\))",
+         "last_drawn_note in src/app/preview_view.cpp",
+         R"(notes\.back\(\)|sequence\.back\(\)\.timecode\.ms\(\))",
          "",
          {},
          {},
-         "audit finding 9; derive-once review of M_D, preview finding 1 (phase 3 task FX-P)",
+         "audit finding 9; derive-once review of M_D, preview finding 1 (phase 3 task FX-P); "
+         "re-pointed by D69 (phase 7 task AL1)",
          {"if (scene.has_notes) scene.song_length_ms = scene.notes.back().ms;",
-          "return song.sequence.back().timecode.ms();"},
-         {"scene.song_length_ms = store::song_length_ms(song).value_or(0.0);",
+          "return song.sequence.back().timecode.ms();",
           "const int64_t last_tick = scene.notes.back().tick;"},
-         {{"src/store/record_store.cpp", "return song.sequence.back().timecode.ms();",
-           "store::song_length_ms, the owner"}}},
+         {"scene.song_length_ms = audio_end_ms.value_or(0.0);", "const int64_t last_tick = last->tick;"},
+         {{"src/app/preview_view.cpp", "return scene.notes.empty() ? nullptr : &scene.notes.back();",
+           "last_drawn_note, the owner"}}},
         // Frames times 1000 over a sample rate, or ms times a rate over 1000,
         // written out instead of calling the frames helpers.
         {"How many ms do audio frames last, and how many frames do ms hold?",
@@ -2057,19 +2059,20 @@ const std::vector<OwnerRule>& rules() {
         // Moving between chart time and audio time with the offset written
         // out, either way, instead of calling the sync rule's two owners.
         {"How does chart time become audio time, and back?",
-         "audio_ms_of_chart_ms and chart_ms_of_audio_ms in src/ui/preview_transport.h",
+         "audio_ms_of_chart_ms and chart_ms_of_audio_ms in src/audio/frames.h",
          R"(\w*chart_ms\s*[+-]\s*audio_offset_ms|\bms\s*[+-]\s*audio_offset_ms_|-\s*audio_offset_ms\b)",
          "",
          {},
          {},
-         "derive-once review of M7-2c, finding 2 (phase 7 task PV join)",
+         "derive-once review of M7-2c, finding 2 (phase 7 task PV join); moved into hydra_audio "
+         "by D69 (phase 7 task AL1)",
          {"playhead_->seek_ms(ms + audio_offset_ms_);", "return chart_ms + audio_offset_ms;",
           "return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;"},
          {"playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_));",
-          "front_pad = audio::frames_of_ms(-offset_ms, kOutRate);"},
-         {{"src/ui/preview_transport.h", "return chart_ms + audio_offset_ms;",
+          "front_pad = frames_of_ms(-offset_ms, kOutRate);"},
+         {{"src/audio/frames.h", "return chart_ms + audio_offset_ms;",
            "audio_ms_of_chart_ms, the owner"},
-          {"src/ui/preview_transport.h", "return audio_ms - audio_offset_ms;",
+          {"src/audio/frames.h", "return audio_ms - audio_offset_ms;",
            "chart_ms_of_audio_ms, the owner"}}},
         // ---- audio owners (phase 6 task J1-4) ----
         // The frame pair's row is phase 3's ("How many ms do audio frames
@@ -3719,6 +3722,27 @@ const std::vector<OwnerRule>& rules() {
          {"REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);"},
          {},
          {"src"}},
+        // ---- a song's length is its audio length (D69, phase 7 task AL1) ----
+        // A song's stems mixed, or the audio's end asked of a mix, anywhere
+        // but the song's own mix step. The transport asks the audio's end of
+        // its playhead for the playback range (D48), which is not a song
+        // length; that line is allowed.
+        {"How long is this song?",
+         "song_length_ms in src/audio/song_audio.cpp",
+         R"(make_(unique|shared)<\s*(audio::)?StreamMix\s*>|\b(audio::)?StreamMix\s+\w+\s*[({]|\baudio_end_chart_ms\s*\((?!\s*const\b))",
+         "",
+         {"src/audio/song_audio.cpp"},
+         {},
+         "D69 (a song's length is its audio length); phase 7 task AL1",
+         {"auto mix = std::make_unique<audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,",
+          "const std::optional<double> audio_end_ms = audio_end_chart_ms(*mix, offset_ms);",
+          "audio::StreamMix mix(std::move(readers), 48000, 2, 0);"},
+         {"audio::SongMix song_mix = audio::mix_song_stems(std::move(readers), ps.audio_offset_ms);",
+          "std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {"},
+         {{"src/ui/preview_transport.cpp",
+           "playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;",
+           "PreviewTransport::load's playback range (D48), not a song length"}},
+         {"src"}},
     };
     return r;
 }
@@ -3764,6 +3788,11 @@ const std::vector<KnownCopy>& known_copies() {
          "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
          "unassigned: the main session names the fold (put_le writes through BinaryWriter once it "
          "has a 16-bit method; audit finding 195)"},
+        // The record's length from notes, which D69 replaces with the audio's
+        // end. Nothing in the Preview calls it any more.
+        {"When is the song's last note?", "src/store/record_store.cpp",
+         "return song.sequence.back().timecode.ms();",
+         "task AL2 (store::song_length_ms is deleted; the stored length is the audio's, D69)"},
     };
     return k;
 }

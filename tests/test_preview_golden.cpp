@@ -229,7 +229,7 @@ TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
     MESSAGE("wrote " << out);
     // Where Hydra thinks that time is, for lining up with Onyx's time box.
     app::PreviewScene scene = app::build_preview_scene(load_songpath(chart, true, bass2x), nullptr);
-    app::PreviewTimeBox box = app::build_time_box(scene, time_ms, scene.song_length_ms);
+    app::PreviewTimeBox box = app::build_time_box(scene, time_ms, app::last_note_ms(scene));
     MESSAGE("time box: " << box.timestamp << " | " << box.position << " of " << box.length
                          << " | " << box.tempo << " | " << box.section_line);
     for (size_t i = 0; i < scene.tempos.size() && i < 6; ++i)

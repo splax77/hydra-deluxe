@@ -51,10 +51,7 @@ struct PreviewSource {
     Song song;
     std::vector<PreviewAudioStem> stems;
     // Where chart time 0 sits in the audio (audio_ms_of_chart_ms in
-    // ui/preview_transport.h turns it into a position). From the delay (ms)
-    // and the .chart Offset (s), as Clone Hero applies them. A folder
-    // chart's delay comes from its song.ini and a .sng's from its metadata
-    // block. A .srb has no delay field, so only its chart's Offset counts.
+    // audio/frames.h turns it into a position), from chart_audio_offset_ms.
     double audio_offset_ms = 0.0;
 };
 
@@ -103,6 +100,15 @@ PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes
                                  bool pro, bool bass2x,
                                  Difficulty difficulty = Difficulty::Expert,
                                  const core::Rules& rules = core::default_rules());
+
+// Where chart time 0 sits in the audio of a chart already parsed
+// (PreviewSource::audio_offset_ms): the chart's own delay, from its song.ini
+// or .sng metadata, against `chart_offset_s` (the parsed Song's
+// chart_offset_s), through preview_audio_offset_ms. `container` is
+// read_preview_container's result for the same notespath. resolve_preview_song
+// and the song's length (audio::song_length_ms) both ask here.
+double chart_audio_offset_ms(const std::string& notespath, const SharedBytes& container,
+                             std::optional<double> chart_offset_s);
 
 // Asked between a container's audio entries; return false to stop early.
 using KeepGoing = std::function<bool()>;

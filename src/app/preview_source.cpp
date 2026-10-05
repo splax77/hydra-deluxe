@@ -341,25 +341,25 @@ SharedBytes read_preview_container(const FileBytesReader& read_bytes,
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
                                  bool pro, bool bass2x, Difficulty difficulty,
                                  const core::Rules& rules) {
-    if (!container) {
-        PreviewSong out{load_songpath(notespath, pro, bass2x, difficulty, rules)};
-        const std::string ini = hydra::find_song_ini(parent_folder(notespath));
-        const std::optional<double> delay =
-            ini.empty() ? std::nullopt : read_ini_delay_ms(ini);
-        out.audio_offset_ms = preview_audio_offset_ms(delay, out.song.chart_offset_s);
-        return out;
-    }
-    PreviewSong out{
-        load_songpath_from_bytes(notespath, *container, pro, bass2x, difficulty, rules)};
-    if (chart_format_of(notespath) == ChartFormat::Sng) {
-        out.audio_offset_ms =
-            preview_audio_offset_ms(sng_delay_ms(*container), out.song.chart_offset_s);
-    } else {
-        // A .srb's metadata has no delay field (parse/srb.h), so only the
-        // chart's Offset counts.
-        out.audio_offset_ms = preview_audio_offset_ms(std::nullopt, out.song.chart_offset_s);
-    }
+    PreviewSong out{container ? load_songpath_from_bytes(notespath, *container, pro, bass2x,
+                                                         difficulty, rules)
+                              : load_songpath(notespath, pro, bass2x, difficulty, rules)};
+    out.audio_offset_ms = chart_audio_offset_ms(notespath, container, out.song.chart_offset_s);
     return out;
+}
+
+double chart_audio_offset_ms(const std::string& notespath, const SharedBytes& container,
+                             std::optional<double> chart_offset_s) {
+    std::optional<double> delay;
+    if (!container) {
+        const std::string ini = hydra::find_song_ini(parent_folder(notespath));
+        if (!ini.empty()) delay = read_ini_delay_ms(ini);
+    } else if (chart_format_of(notespath) == ChartFormat::Sng) {
+        delay = sng_delay_ms(*container);
+    }
+    // A .srb's metadata has no delay field (parse/srb.h), so only the chart's
+    // Offset counts.
+    return preview_audio_offset_ms(delay, chart_offset_s);
 }
 
 std::vector<PreviewAudioStem> resolve_preview_stems(const std::string& notespath,

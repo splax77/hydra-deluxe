@@ -251,11 +251,10 @@ struct PreviewScene {
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
     int64_t tick_resolution = 0;       // ticks per quarter note
-    // The song's length, store::song_length_ms of the song (0 with no
-    // notes): the same number the scrubber's right edge (scrub_end_ms) and
-    // the Paths timeline read. The SP curve closes here, and the transport
-    // takes it as the last note time (PreviewTransport::load plays to the
-    // later of this and the audio's end).
+    // The song's length: its audio's end in chart time, as
+    // audio::song_length_ms answers it (D69), handed to build_preview_base.
+    // 0 when the song has no readable audio. The SP curve closes here. The
+    // scrubber's right edge reads the same audio end (scrub_end_ms).
     double song_length_ms = 0.0;
     bool has_notes = false;
 
@@ -263,6 +262,15 @@ struct PreviewScene {
     // curve to draw. The gauge and the drain box both ask this.
     bool has_sp_gauge() const { return timing.has_value() && !sp_meter.segments.empty(); }
 };
+
+// The last note the highway draws, or null when the scene has none. The one
+// answer to "when is the song's last note": the beat grid ends past it, and
+// the Preview transport plays to at least it (PreviewTransport::load). It is
+// not the song's length, which is the audio's end (PreviewScene::song_length_ms).
+const PreviewNote* last_drawn_note(const PreviewScene& scene);
+
+// last_drawn_note's onset in ms, or 0 when the scene has no notes.
+double last_note_ms(const PreviewScene& scene);
 
 // The beat grid from the song's timing alone (no parser change): a Bar at
 // every measure start, a Beat every quarter note inside the measure, and a
@@ -346,28 +354,29 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
 // activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
 
-// The Preview scrubber's right edge (D50 item 4). It is the song's length,
-// `song_length_ms`, when has_song_length says that length is usable. Pass the
-// value store::song_length_ms gives for the chart: the same length the Paths
-// tab hands build_activations for song_fraction, so an activation sits at the
-// same fraction on both bars. Otherwise the edge is `playback_length_ms`, the
-// transport's length, as before. Playback still runs on into any audio past
-// the last note; the thumb just cannot be dragged there.
+// The Preview scrubber's right edge. It is the song's length,
+// `song_length_ms`, when has_song_length says that length is usable: the
+// audio's end in chart time (audio::song_length_ms, D69), the length the
+// Paths timeline measures with too, so an activation sits at the same
+// fraction on both bars. A chart with no readable audio has no length; its
+// edge is `playback_length_ms`, the transport's length, which runs to the
+// last drawn note (D70 item 1).
 double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms);
 
 // Where the scrubber's thumb sits with the playhead at `now_ms`. It follows
-// the playhead and stays parked at `scrub_end_ms` while playback runs past it
-// into the audio tail.
+// the playhead and stays parked at `scrub_end_ms` should playback run past it.
 double scrub_thumb_ms(double now_ms, double scrub_end_ms);
 
 // Is `length_ms` a song length the timeline can use? Only a positive length
-// is. song_fraction and the Paths tab's end-measure label both ask it, so the
+// is. The length is the audio's end in chart time (audio::song_length_ms).
+// song_fraction and the Paths tab's end-measure label both ask it, so the
 // marks and the label appear and vanish together.
 bool has_song_length(double length_ms);
 
-// How far into the song `ms` is: its share of `length_ms`, clamped to 0..1.
-// No value when has_song_length says the length is unusable. The Paths tab's
-// activation timeline and the Preview's scrub marks both ask it.
+// How far into the song `ms` is: its share of `length_ms`, the song's length
+// (audio::song_length_ms), clamped to 0..1. No value when has_song_length
+// says the length is unusable. The Paths tab's activation timeline and the
+// Preview's scrub marks both ask it.
 std::optional<double> song_fraction(double ms, double length_ms);
 
 // Where "< Act" (direction -1) or "Act >" (+1) moves the playhead from
@@ -423,9 +432,10 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 // `rules` prices the running score (the replay reads the backend leeway and
 // the squeeze-out rule from it); nothing else in the scene depends on it.
 //
-// `audio_end_ms` is where the song's audio stops. The beat lines run to it, so
-// they keep scrolling through music that outlasts the notes (D48, Q25). See
-// build_preview_base for what happens without it.
+// `audio_end_ms` is where the song's audio stops in chart time, the song's
+// length (audio::song_length_ms): it becomes song_length_ms, and the beat
+// lines run to it, so they keep scrolling through music that outlasts the
+// notes (D48, Q25). See build_preview_base for what happens without it.
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
                                  const core::Rules& rules = core::default_rules(),
