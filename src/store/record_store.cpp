@@ -1366,17 +1366,21 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
         std::string bestpath;
         PathSummary summary;
     };
+    // The lookup's own columns, read below at 0 onwards; the summary columns
+    // follow, then the structure head the ranking reads.
+    static constexpr const char* kLeadColumns = "hyhash, hyversion, bestpath, result_id";
+    static constexpr int kFirstSummary = count_list_names(kLeadColumns);
+    static constexpr int kAfterSummary = kFirstSummary + kSummaryColumnCount;
     WinnerPicker picker;
     std::vector<Offered> offered;
     {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
         for (size_t first = 0; first < distinct.size(); first += kHashesPerQuery) {
             const size_t n = std::min(kHashesPerQuery, distinct.size() - first);
-            std::string sql =
-                "SELECT hyhash, hyversion, bestpath, result_id, " +
-                structure_head_of("structure") + ", " + kSummaryColumnList +
-                " FROM results WHERE chartmode=? AND hyhash IN (" +
-                placeholders(n) + ")";
+            std::string sql = std::string("SELECT ") + kLeadColumns + ", " + kSummaryColumnList +
+                              ", " + structure_head_of("structure") +
+                              " FROM results WHERE chartmode=? AND hyhash IN (" +
+                              placeholders(n) + ")";
             append_candidate_filter(sql, "");
             Stmt s = prepare(db_, sql.c_str());
             int idx = 1;
@@ -1386,9 +1390,10 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
             while (sqlite3_step(s) == SQLITE_ROW) {
                 std::string hyhash = column_text(s, 0);
                 picker.offer(hyhash, chartmode,
-                             rank_row(column_text(s, 1), column_blob(s, 4),
+                             rank_row(column_text(s, 1), column_blob(s, kAfterSummary),
                                       sqlite3_column_int64(s, 3), rules_fingerprint_));
-                offered.push_back({std::move(hyhash), column_text(s, 2), read_summary(s, 5)});
+                offered.push_back(
+                    {std::move(hyhash), column_text(s, 2), read_summary(s, kFirstSummary)});
             }
         }
     }

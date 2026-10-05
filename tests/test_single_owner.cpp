@@ -4099,18 +4099,21 @@ const std::vector<OwnerRule>& rules() {
          {"placeholders(kSummaryColumnCount) + \", \" + rules_fp_of(structure_param.c_str()) +"},
          {},
          {"src"}},
-        // list_records' slots after the summary are counted from the list.
+        // list_records' slots after the summary, and where each SELECT's
+        // summary starts, are counted from the column lists.
         {"Which columns hold a path summary, and how many? (slots)",
          "kSummaryColumnList and kSummaryColumnCount in src/store/record_store.cpp",
-         R"(column_(text|blob|int|int64|opt_i64|opt_f64)\(s,\s*1[6-9]\)|sqlite3_column_\w+\(s,\s*1[6-9]\))",
+         R"(column_(text|blob|int|int64|opt_i64|opt_f64)\(s,\s*1[6-9]\)|sqlite3_column_\w+\(s,\s*1[6-9]\)|read_summary\(s,\s*\d)",
          "",
          {},
          {},
-         "audit finding 253; phase 6 task J4-2 (D53, D54)",
+         "audit finding 253; phase 6 task J4-2 (D53, D54); get_summaries' start slot, J4 join",
          {"listing.sp_cap = sqlite3_column_int(s, 16);",
-          "rank_row(column_text(s, 17), column_blob(s, 19),"},
+          "rank_row(column_text(s, 17), column_blob(s, 19),",
+          "offered.push_back({std::move(hyhash), column_text(s, 2), read_summary(s, 5)});"},
          {"listing.sp_cap = sqlite3_column_int(s, kAfterSummary);",
-          "rank_row(column_text(s, kAfterSummary + 1), column_blob(s, kAfterSummary + 3),"},
+          "rank_row(column_text(s, kAfterSummary + 1), column_blob(s, kAfterSummary + 3),",
+          "{std::move(hyhash), column_text(s, 2), read_summary(s, kFirstSummary)});"},
          {},
          {"src/store/record_store.cpp"}},
         // The constructor adds the sig column on every open, so nothing asks
