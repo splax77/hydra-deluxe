@@ -63,8 +63,7 @@ struct NodeView {
 };
 struct EdgeView {
     int32_t dest;
-    int32_t notecount, basescore, comboscore, spscore, soloscore, accentscore,
-        ghostscore;
+    int32_t basescore, comboscore, spscore, soloscore, accentscore, ghostscore;
     int32_t frontend_points;
     int32_t banked_phrase_ordinal;
     double activation_fill_deadline_ms;
@@ -160,7 +159,6 @@ Enum enumerate(const ScoreGraph& graph) {
     for (const ScoreGraphEdge* o : en.edges) {
         EdgeView v;
         v.dest = node_of(o->dest);
-        v.notecount = (int32_t)o->notecount;
         v.basescore = (int32_t)o->basescore;
         v.comboscore = (int32_t)o->comboscore;
         v.spscore = (int32_t)o->spscore;
@@ -284,7 +282,6 @@ struct Path {
     int32_t act_tail;
     int32_t var_head;
     int32_t tied_count;
-    int32_t notecount;
     int32_t sc[6];
     int64_t score;
     int64_t sp_end_time;
@@ -313,7 +310,6 @@ struct Path {
 struct OutPath {
     int32_t score_base, score_combo, score_sp, score_solo, score_accents,
         score_ghosts;
-    int32_t notecount;
     int32_t var_point, depth, act_begin, act_end;
     // The bars banked after the last window: out_ticks_[bank_begin, bank_end).
     int32_t bank_begin, bank_end;
@@ -809,7 +805,6 @@ void Engine::advance(Path& p) {
     p.sc[5] += e.ghostscore;
     p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +
                e.accentscore + e.ghostscore;
-    p.notecount += e.notecount;
 
     const int32_t sp_n = (int32_t)eo->sp_times.size();
 
@@ -1705,7 +1700,6 @@ void Engine::emit_path(const Path& p) {
     op.score_solo = p.sc[3];
     op.score_accents = p.sc[4];
     op.score_ghosts = p.sc[5];
-    op.notecount = p.notecount;
     op.var_point = -1;
     op.depth = 0;
     op.tied_count = p.tied_count;
@@ -1852,7 +1846,7 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                            const std::vector<SpEndStep>& out_ends,
                            const std::vector<int64_t>& out_ticks,
                            const std::vector<BackendSqueeze>& tail_backends,
-                           const SongTiming& timing) {
+                           const SongTiming& timing, int note_count) {
     std::vector<BuildNode> pool;
     pool.reserve(out_paths.size());
     std::vector<int> top_level;
@@ -1868,7 +1862,9 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
         path.score_solo = op.score_solo;
         path.score_accents = op.score_accents;
         path.score_ghosts = op.score_ghosts;
-        path.notecount = op.notecount;
+        // Every path covers the whole chart, so its note total is the
+        // chart's (ScoreGraph::note_count).
+        path.notecount = note_count;
         path.trailing_bank_ticks.assign(out_ticks.begin() + op.bank_begin,
                                         out_ticks.begin() + op.bank_end);
 
@@ -2039,7 +2035,7 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
 
     return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
                    engine.out_ends(), engine.out_ticks(), graph.tail_backends(),
-                   graph.timing());
+                   graph.timing(), graph.note_count());
 }
 
 }  // namespace hydra
