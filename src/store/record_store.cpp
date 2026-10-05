@@ -797,7 +797,7 @@ void RecordStore::set_engine_mode(const std::string& mode) {
 
 std::optional<FillDeadlineRule> RecordStore::stamped_fill_rule() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    if (const std::optional<std::string> mode = meta_get("engine_mode"))
+    if (const std::optional<std::string> mode = engine_mode())
         return fill_rule_from_stamp(*mode);
     // No stamp. Results written without one ran under the normal rule.
     Stmt any = prepare(db_, "SELECT 1 FROM results LIMIT 1");
