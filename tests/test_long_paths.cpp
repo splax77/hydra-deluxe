@@ -24,6 +24,8 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // ImFileOpen, ImFileLoadToMemory
 
+#include "audio_util.h"
+
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/preview_source.h"
@@ -35,9 +37,6 @@
 
 #ifndef HYDRA_INPUT_DIR
 #error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
-#endif
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
 #endif
 
 namespace fs = std::filesystem;
@@ -92,7 +91,7 @@ void copy_file_to(const std::string& from_utf8, const std::string& to_utf8) {
 }
 
 const std::string kChartDir = std::string(HYDRA_INPUT_DIR) + "/common/IB24/T1/Allister - Overrated";
-const std::string kOpus = std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.opus";
+const std::string kOpus = testaudio::fixture_path("sine220.opus");
 
 }  // namespace
 
