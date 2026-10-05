@@ -129,14 +129,17 @@ TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's l
 
     const ReplayResult r = replay_path(song, {});
     REQUIRE(r.chords.size() == 4);
-    REQUIRE(r.chords[0].points.solo > 0);
-    // Inside the first section: its own bonus is held back.
-    CHECK(r.chords[0].cum_onscreen_total == r.chords[0].cum.total() - r.chords[0].points.solo);
-    // Each section's last chord, and the plain chord between them, show it all.
-    CHECK(r.chords[1].cum_onscreen_total == r.chords[1].cum.total());
-    CHECK(r.chords[2].points.solo == 0);
-    CHECK(r.chords[2].cum_onscreen_total == r.chords[2].cum.total());
-    CHECK(r.chords[3].cum_onscreen_total == r.chords[3].cum.total());
+    // Pinned from one run. Inside the first section its own bonus is held
+    // back; each section's last chord, and the plain chord between them,
+    // show the whole total.
+    CHECK(r.chords[0].cum.total() == 150);
+    CHECK(r.chords[0].cum_onscreen_total == 50);
+    CHECK(r.chords[1].cum.total() == 300);
+    CHECK(r.chords[1].cum_onscreen_total == 300);
+    CHECK(r.chords[2].cum.total() == 350);
+    CHECK(r.chords[2].cum_onscreen_total == 350);
+    CHECK(r.chords[3].cum.total() == 500);
+    CHECK(r.chords[3].cum_onscreen_total == 500);
 }
 
 // A targeted search is only useful if it gives back the same path the ordinary
