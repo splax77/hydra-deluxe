@@ -22,6 +22,7 @@
 #include "chart_text.h"
 #include "app/preview_view.h"
 #include "audio/device.h"
+#include "audio_util.h"  // fixture_path
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -86,7 +87,7 @@ std::string temp_chart_dir(const wchar_t* tag) {
 std::string chart_with_audio() {
     const std::string d = temp_chart_dir(L"");
     copy_file_utf8(corpus::first_chart_with_suffix(".chart"), d + "\\notes.chart");
-    copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");
+    copy_file_utf8(testaudio::fixture_path("sine220.ogg"), d + "\\song.ogg");
     return d + "\\notes.chart";
 }
 
@@ -105,7 +106,7 @@ std::string short_chart_with_long_audio() {
     REQUIRE(f != nullptr);
     std::fputs(text.c_str(), f);
     std::fclose(f);
-    copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");
+    copy_file_utf8(testaudio::fixture_path("sine220.ogg"), d + "\\song.ogg");
     return d + "\\notes.chart";
 }
 
@@ -174,10 +175,9 @@ TEST_CASE("the Preview load builds the highway timeline on its worker") {
         wait_finished(job);
         REQUIRE(job.ok());
         PreviewLoadJob::Result r = job.take_result();
-        CHECK(r.track_opts.pro == pro);
+        const hydra::render::TrackStateOptions opts = hydra::ui::track_options(pro);
+        CHECK(r.track_opts == opts);
         CHECK_FALSE(r.track_state.instants().empty());
-        hydra::render::TrackStateOptions opts;
-        opts.pro = pro;
         check_same_track(r.track_state, hydra::render::build_track_state(r.scene, opts));
     }
 }
@@ -218,8 +218,7 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
     std::shared_ptr<const hydra::ui::PreviewSceneBase> pro_base;
     for (bool pro : {true, false}) {
         CAPTURE(pro);
-        hydra::render::TrackStateOptions opts;
-        opts.pro = pro;
+        const hydra::render::TrackStateOptions opts = hydra::ui::track_options(pro);
         // A base built for the other pro setting is not reused. This chart
         // has no audio, so there is no audio end.
         hydra::ui::PreviewSceneJob job(song, pro ? nullptr : pro_base, a.best, 4,
@@ -228,12 +227,12 @@ TEST_CASE("the Preview overlay job builds the highway timeline on its worker") {
         wait_finished(job);
         REQUIRE(job.ok());
         hydra::ui::PreviewSceneJob::Output out = job.take_output();
-        CHECK(out.track_opts.pro == pro);
+        CHECK(out.track_opts == opts);
         CHECK_FALSE(out.scene.activations.empty());  // the path's overlay is in
         check_same_track(out.track_state, hydra::render::build_track_state(out.scene, opts));
         REQUIRE(out.base != nullptr);
         CHECK(out.base != pro_base);
-        CHECK(out.base->track_opts.pro == pro);
+        CHECK(out.base->track_opts == opts);
         CHECK(out.base->scene.activations.empty());
         if (pro) pro_base = out.base;
 
@@ -265,15 +264,14 @@ TEST_CASE("the Preview base job builds the path-free scene and timeline") {
     auto song = std::make_shared<const hydra::Song>(std::move(r.song));
     for (bool pro : {true, false}) {
         CAPTURE(pro);
-        hydra::render::TrackStateOptions opts;
-        opts.pro = pro;
+        const hydra::render::TrackStateOptions opts = hydra::ui::track_options(pro);
         hydra::ui::PreviewBaseJob job(song, opts, r.audio_end_ms);
         job.start();
         wait_finished(job);
         REQUIRE(job.ok());
         std::shared_ptr<const hydra::ui::PreviewSceneBase> base = job.take_base();
         REQUIRE(base != nullptr);
-        CHECK(base->track_opts.pro == pro);
+        CHECK(base->track_opts == opts);
         const hydra::app::PreviewScene want = hydra::app::build_preview_base(*song, r.audio_end_ms);
         CHECK(base->scene.notes.size() == want.notes.size());
         CHECK(base->scene.fills.size() == want.fills.size());
@@ -296,6 +294,16 @@ TEST_CASE("the Preview base job builds the path-free scene and timeline") {
         REQUIRE_FALSE(out.scene.beats.empty());
         CHECK(out.scene.beats.back().tick == 9600);
     }
+}
+
+// The Preview's view settings become highway options in one place
+// (finding R7.16), and the jobs compare the options whole.
+TEST_CASE("track_options: one builder, compared whole") {
+    using hydra::ui::track_options;
+    CHECK(track_options(true) == track_options(true));
+    CHECK(track_options(true) != track_options(false));
+    CHECK(track_options(true).pro);
+    CHECK_FALSE(track_options(false).pro);
 }
 
 // Closing the details window joins the load's thread on the UI thread. A
@@ -346,6 +354,14 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
 
     pc.close();
     CHECK(pc.audio_warning().empty());
+}
+
+// The Preview's look is the renderer's 3d-config.json and nothing else
+// (finding 220): there is no default-built struct behind it. Only the first
+// render builds the renderer, so asking before then fails loudly.
+TEST_CASE("preview_config: asked before the first render it fails loudly") {
+    PreviewController pc(nullptr, nullptr);
+    CHECK_THROWS_AS(pc.preview_config(), std::logic_error);
 }
 
 // The scrubber ends at the last note while the music plays on (D50 item 4).
@@ -445,13 +461,65 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
 
     // The new overlay lands on a later poll. A failed build sets the error,
     // and then nothing more will land, so stop waiting.
-    for (int i = 0; i < 1200 && pc.overlay_path_key().rfind(best_key, 0) != 0 && !pc.has_error();
-         ++i) {
+    for (int i = 0; i < 1200 && !pc.shows_path(best_key) && !pc.has_error(); ++i) {
         pc.poll();
         Sleep(10);
     }
     CHECK_FALSE(pc.has_error());
-    CHECK(pc.overlay_path_key().rfind(best_key, 0) == 0);
+    CHECK(pc.shows_path(best_key));
+}
+
+// "Is the drawn overlay the selected path's?" is the controller's to answer
+// (finding 340): the same path at another SP cap still is, before and after
+// the rebuild for the new cap lands; another path is not.
+TEST_CASE("shows_path: the same path at another cap, and a different path") {
+    using namespace hydra;
+    using namespace hydra::app;
+    const std::string chart = chart_with_audio();
+    AnalysisSettings settings;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 2;
+    settings.ms_filter = 10.0;
+    const AnalysisResult analyzed = analyze_chart_file(chart, settings);
+    REQUIRE_FALSE(analyzed.record.paths.empty());
+    const Path& best = analyzed.record.best_path();
+    const std::string best_key = path_overlay_key(&best);
+    // Another path's key: the best one's with its last character changed.
+    std::string other_key = best_key;
+    REQUIRE_FALSE(other_key.empty());
+    other_key.back() = other_key.back() == 'x' ? 'y' : 'x';
+
+    PreviewController pc(nullptr, nullptr);
+    pc.set_audio_device_factory(
+        [](int, int, PreviewController::AudioSource)
+            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+            throw std::runtime_error("no device in tests");
+        });
+    const ChartLibraryEntry entry = entry_for(chart);
+    pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 4);
+    for (int i = 0; i < 1200 && !pc.shows_path(best_key) && !pc.has_error(); ++i) {
+        pc.poll();
+        Sleep(10);
+    }
+    REQUIRE_FALSE(pc.has_error());
+    CHECK(pc.shows_path(best_key));
+    CHECK_FALSE(pc.shows_path(other_key));
+    CHECK_FALSE(pc.shows_path(""));
+    const std::string at_cap4 = pc.overlay_path_key();
+
+    // The same path at cap 1: the cap-4 overlay stays up until the rebuild
+    // lands, and both are this path's.
+    pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 1);
+    CHECK(pc.overlay_path_key() == at_cap4);
+    CHECK(pc.shows_path(best_key));
+    for (int i = 0; i < 1200 && pc.busy(); ++i) {
+        pc.poll();
+        Sleep(10);
+    }
+    REQUIRE_FALSE(pc.has_error());
+    CHECK(pc.overlay_path_key() != at_cap4);  // the cap-1 overlay is in
+    CHECK(pc.shows_path(best_key));
+    CHECK_FALSE(pc.shows_path(other_key));
 }
 
 // With a chart open on the Preview tab, a mode change used to keep the old
@@ -602,7 +670,7 @@ TEST_CASE("busy covers the overlay and base jobs, not only the first load") {
     }
     CHECK_FALSE(pc.busy());
     CHECK_FALSE(pc.has_error());
-    CHECK(pc.overlay_path_key().rfind(best_key, 0) == 0);
+    CHECK(pc.shows_path(best_key));
 }
 
 // The Preview's volume is the setting's: its default and its range

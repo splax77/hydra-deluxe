@@ -8,9 +8,10 @@ no Clone Hero, no debugger, and no Windows API are involved.
 What is deliberately NOT tested here (the live-only seams, see process.py):
   - open_process(), _find_pid_by_name(), _find_module_base(): these read the
     real OS process and module tables, so they only run against a live game.
-  - _make_reader()/_make_writer(): they wrap ReadProcessMemory/
+  - make_reader()/make_writer(): they wrap ReadProcessMemory/
     WriteProcessMemory and need a real open process handle.
 Those are exercised by hand against a running Clone Hero, not in this file.
+The fake memory comes from the shared builder in fakes.py.
 
 Run from the repo root with:
     python -m pytest tools/ch_probe/tests/test_process.py -q
@@ -24,25 +25,7 @@ import struct
 import unittest
 
 from .. import constants, process
-
-
-def _make_fake_process(memory: dict[int, bytes], module_base: int = 0x140000000):
-    """Build a Process whose reads come from a plain dict, keyed by live
-    address. The dict stands in for the game's memory. Writes are captured into
-    a separate dict so a test can inspect them."""
-    writes: dict[int, bytes] = {}
-
-    def reader(addr: int, size: int) -> bytes:
-        raw = memory.get(addr)
-        if raw is None:
-            raise KeyError(f"nothing mapped at {addr:#x} in the fake memory")
-        return raw[:size]
-
-    def writer(addr: int, data: bytes) -> None:
-        writes[addr] = data
-
-    proc = process.Process(module_base, reader, writer)
-    return proc, writes
+from .fakes import fake_process
 
 
 class DecodeHelpersTest(unittest.TestCase):
@@ -83,14 +66,14 @@ class DecodeHelpersTest(unittest.TestCase):
 
 
 class ResolveMathTest(unittest.TestCase):
-    """RVA -> live address is just module_base + rva."""
+    """Process.resolve turns an RVA into a live address; pinned by literals."""
 
     def test_resolve_adds_base(self):
-        proc, _ = _make_fake_process({}, module_base=0x140000000)
+        proc, _ = fake_process({}, module_base=0x140000000)
         self.assertEqual(proc.resolve(0x20DDDA0), 0x140000000 + 0x20DDDA0)
 
     def test_resolve_zero_rva(self):
-        proc, _ = _make_fake_process({}, module_base=0x7FF000000000)
+        proc, _ = fake_process({}, module_base=0x7FF000000000)
         self.assertEqual(proc.resolve(0), 0x7FF000000000)
 
 
@@ -100,20 +83,19 @@ class TypedReadTest(unittest.TestCase):
     def test_read_double_through_fake_memory(self):
         base = 0x140000000
         addr = base + 0x30
-        proc, _ = _make_fake_process({addr: struct.pack("<d", 85.0)}, base)
+        proc, _ = fake_process({addr: struct.pack("<d", 85.0)}, base)
         self.assertEqual(proc.read_double(addr), 85.0)
 
     def test_read_u32_through_fake_memory(self):
         base = 0x140000000
         addr = base + 0x8C
-        proc, _ = _make_fake_process({addr: struct.pack("<I", 512)}, base)
+        proc, _ = fake_process({addr: struct.pack("<I", 512)}, base)
         self.assertEqual(proc.read_u32(addr), 512)
 
     def test_read_const_double_resolves_then_reads(self):
         # read_const_double takes an RVA, resolves it, then reads the double.
-        base = 0x140000000
         rva = constants.RVA_CONST_NORMAL_BACK
-        proc, _ = _make_fake_process({base + rva: struct.pack("<d", 85.0)}, base)
+        proc, _ = fake_process({}, 0x140000000, consts={rva: 85.0})
         self.assertEqual(proc.read_const_double(rva), 85.0)
 
     def test_read_rejects_short_read(self):
@@ -121,14 +103,14 @@ class TypedReadTest(unittest.TestCase):
         # than hand back a truncated buffer.
         base = 0x140000000
         addr = base + 0x100
-        proc, _ = _make_fake_process({addr: b"\x01\x02\x03"}, base)
+        proc, _ = fake_process({addr: b"\x01\x02\x03"}, base)
         with self.assertRaises(OSError):
             proc.read(addr, 8)
 
     def test_write_goes_through_writer(self):
-        proc, writes = _make_fake_process({}, 0x140000000)
+        proc, mem = fake_process({}, 0x140000000)
         proc.write(0x140001000, b"\xde\xad")
-        self.assertEqual(writes[0x140001000], b"\xde\xad")
+        self.assertEqual(mem.writes[0x140001000], b"\xde\xad")
 
 
 class CheckNormalConstantsTest(unittest.TestCase):
@@ -142,7 +124,7 @@ class CheckNormalConstantsTest(unittest.TestCase):
 
     def test_within_tolerance_passes(self):
         # A read a hair under the tolerance is still accepted.
-        tol = constants.CONST_MATCH_TOLERANCE_MS / 1000.0
+        tol = constants.ms_to_s(constants.CONST_MATCH_TOLERANCE_MS)
         process.check_normal_constants(0.085 + tol * 0.9, 0.0375 - tol * 0.9)
 
     def test_back_off_by_one_fails(self):
@@ -155,7 +137,7 @@ class CheckNormalConstantsTest(unittest.TestCase):
             process.check_normal_constants(0.085, 0.040)
 
     def test_just_past_tolerance_fails(self):
-        tol = constants.CONST_MATCH_TOLERANCE_MS / 1000.0
+        tol = constants.ms_to_s(constants.CONST_MATCH_TOLERANCE_MS)
         with self.assertRaises(process.BuildMismatchError):
             process.check_normal_constants(0.085 + tol * 2, 0.0375)
 
@@ -169,12 +151,10 @@ class VerifyTargetsTest(unittest.TestCase):
     """verify_targets reads the two constants live, then applies the check."""
 
     def _proc_with_constants(self, back: float, front: float):
-        base = 0x140000000
-        memory = {
-            base + constants.RVA_CONST_NORMAL_BACK: struct.pack("<d", back),
-            base + constants.RVA_CONST_NORMAL_FRONT: struct.pack("<d", front),
-        }
-        proc, _ = _make_fake_process(memory, base)
+        proc, _ = fake_process({}, 0x140000000, consts={
+            constants.RVA_CONST_NORMAL_BACK: back,
+            constants.RVA_CONST_NORMAL_FRONT: front,
+        })
         return proc
 
     def test_good_build_passes(self):
@@ -197,7 +177,7 @@ class ProtocolShapeTest(unittest.TestCase):
     def test_process_is_a_process_handle(self):
         from .. import interfaces
 
-        proc, _ = _make_fake_process({}, 0x140000000)
+        proc, _ = fake_process({}, 0x140000000)
         self.assertIsInstance(proc, interfaces.ProcessHandle)
 
 

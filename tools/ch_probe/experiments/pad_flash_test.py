@@ -25,7 +25,6 @@ timing/targeting in play_chart, not reception.
 
 from __future__ import annotations
 
-import ctypes
 import os
 import sys
 import time
@@ -36,7 +35,8 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane
+from tools.ch_probe.input_driver import (
+    DEFAULT_BINDINGS, InputDriver, Lane, find_game_window, focus_window)
 
 # Drum keys in lane order: (label, virtual-key code, which pad to watch), from
 # the one key table in input_driver.py.
@@ -50,8 +50,7 @@ GAP_S = 1.2       # clear gap between keys
 def main() -> None:
     driver = InputDriver()
 
-    user32 = ctypes.windll.user32
-    ch_hwnd = user32.FindWindowW(None, "Clone Hero")
+    ch_hwnd = find_game_window()
     if not ch_hwnd:
         print("Could not find the Clone Hero window. Start the game first.")
         return
@@ -62,7 +61,7 @@ def main() -> None:
         time.sleep(1.0)
 
     for label, vk, watch in KEYS:
-        user32.SetForegroundWindow(ch_hwnd)
+        focus_window(ch_hwnd)
         time.sleep(0.05)
         print(f"\n>>> Firing {label}  -> watch: {watch}")
         driver.send_key(vk, key_up=False)

@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "core/little_endian.h"
 #include "miniz.h"
 
 namespace hydra {
@@ -128,9 +129,7 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
                              &out.year,           &out.description};
     for (std::string* field : fields) {
         if (pos + 4 > meta.size()) break;
-        uint32_t len = 0;
-        for (int i = 0; i < 4; ++i)
-            len |= static_cast<uint32_t>(meta[pos + i]) << (8 * i);
+        const uint32_t len = core::read_le_u32(meta.data() + pos);
         pos += 4;
         if (len > meta.size() - pos) break;
         field->assign(reinterpret_cast<const char*>(meta.data() + pos), len);

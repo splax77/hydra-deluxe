@@ -94,7 +94,7 @@ struct ReplayScore {
     int64_t accent = 0;
     int64_t ghost = 0;
 
-    int64_t total() const { return base + combo + sp + solo + accent + ghost; }
+    int64_t total() const { return score_total(base, combo, sp, solo, accent, ghost); }
     void add(const ReplayScore& o) {
         base += o.base;
         combo += o.combo;
@@ -285,7 +285,8 @@ std::vector<std::string> ambiguous_window_warnings(
 
 // Not offered: a simulated SP meter and skip count. A straightforward
 // simulation (one bar per phrase completed outside Star Power, capped at 4,
-// two bars to activate, a passed fill with two bars banked is a skip) was
+// kSpActivationBars to activate, a passed fill with that many banked is a
+// skip) was
 // measured against every corpus path and does not reproduce the engine: 37
 // of 1486 activations came out with too few bars, and 224 with the wrong
 // skip count, 201 of them too many. The meter misses bars a squeeze-out

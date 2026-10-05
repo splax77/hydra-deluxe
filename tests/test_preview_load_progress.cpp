@@ -21,6 +21,7 @@
 
 #include "app/preview_source.h"
 #include "audio/stem_reader.h"
+#include "audio_util.h"  // read_fixture
 #include "audio/stream_mix.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
@@ -128,8 +129,7 @@ std::vector<OggPage> split_pages(const std::vector<uint8_t>& b) {
 // one valid stream (sequence numbers, granule positions, checksums, EOS only
 // on the last page).
 void write_big_opus(const std::string& path, uint64_t min_bytes) {
-    const std::vector<uint8_t> src =
-        hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.opus");
+    const std::vector<uint8_t> src = testaudio::read_fixture("sine220.opus");
     const std::vector<OggPage> pages = split_pages(src);
     // Header pages (OpusHead, OpusTags) carry granule 0; audio pages don't.
     std::size_t first_audio = 0;
@@ -325,7 +325,7 @@ TEST_CASE("a Preview load turns a negative chart offset into front silence") {
     const std::string song = dir + "\\song.ogg";
     const std::string ini = dir + "\\song.ini";
     write_file(notes, hydra::read_file_bytes(corpus::first_chart_with_suffix(".chart")));
-    write_file(song, hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg"));
+    write_file(song, testaudio::read_fixture("sine220.ogg"));
     const std::string ini_text = "[song]\ndelay = -250\n";
     write_file(ini, std::vector<uint8_t>(ini_text.begin(), ini_text.end()));
 

@@ -3,13 +3,26 @@
 
 #include "doctest.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 
+#include "core/little_endian.h"
 #include "core/strutil.h"
 
 using namespace hydra;
+
+// core/little_endian.h is the one reader of a little-endian number from bytes.
+TEST_CASE("little_endian: reads 16, 32 and 64 bits, low byte first, top bit set") {
+    // Each read starts one byte in, past a 0xAA the reader must not touch.
+    const uint8_t b16[] = {0xAA, 0x34, 0x92};
+    const uint8_t b32[] = {0xAA, 0x78, 0x56, 0x34, 0x92};
+    const uint8_t b64[] = {0xAA, 0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0xF1};
+    CHECK(core::read_le_u16(b16 + 1) == 0x9234u);
+    CHECK(core::read_le_u32(b32 + 1) == 0x92345678u);
+    CHECK(core::read_le_u64(b64 + 1) == 0xF123456789ABCDEFull);
+}
 
 TEST_CASE("strutil: to_lower_ascii lowers A-Z and leaves every other byte") {
     CHECK(to_lower_ascii("Notes.MID") == "notes.mid");

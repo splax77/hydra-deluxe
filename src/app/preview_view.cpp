@@ -233,14 +233,15 @@ PreviewScore build_score(const Song& song, const Path* path, const core::Rules& 
     return score;
 }
 
-// The activation whose Star Power is running at `now`, or nullptr. Running
-// from the moment the activation chord is struck (struck_at) up to, not
-// including, the SP end. The drain box and the score box both ask this, so
-// they cannot disagree. A record with no deact node cannot say, so it never
-// counts as running.
+// The activation whose Star Power is running at `now`, or nullptr: `now`
+// inside the activation's sp_window, from the moment its chord is struck
+// (struck_at) up to, not including, the window's end. The drain box and the
+// score box both ask this, so they cannot disagree.
 const PreviewActivation* running_activation(const PreviewScene& scene, double now) {
-    for (const PreviewActivation& a : scene.activations)
-        if (a.has_sp_end && struck_at(now, a.ms) && now < a.sp_end_ms) return &a;
+    for (const PreviewActivation& a : scene.activations) {
+        const std::optional<std::pair<double, double>> w = a.sp_window();
+        if (w && struck_at(now, w->first) && now < w->second) return &a;
+    }
     return nullptr;
 }
 
@@ -256,25 +257,9 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
     PreviewScene scene;
     if (song.is_empty()) return scene;
 
-    bool in_solo = false;
-    int64_t solo_start = 0;
-    int64_t solo_last = 0;
-
     for (const SongTimestamp& ts : song.sequence) {
         for (const ChordNote& n : ts.chord.notes())
             scene.notes.push_back(note_from(ts, n));
-
-        // Solo: coalesce a run of flagged timestamps into one span.
-        if (ts.flag_solo) {
-            if (!in_solo) {
-                in_solo = true;
-                solo_start = ts.timecode.ticks();
-            }
-            solo_last = ts.timecode.ticks();
-        } else if (in_solo) {
-            scene.solos.push_back(span_from_ticks(song, solo_start, solo_last));
-            in_solo = false;
-        }
 
         // SP phrase: the end note carries the start tick the parser kept.
         if (ts.flag_sp && ts.sp_phrase_start.has_value())
@@ -290,8 +275,11 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
             scene.fills.push_back(f);  // state is filled in from the path below
         }
     }
-    if (in_solo)
-        scene.solos.push_back(span_from_ticks(song, solo_start, solo_last));
+    // Solo spans: one per section the song names (Song::solo_sections), from
+    // its first chord to its last.
+    for (const SoloSection& s : song.solo_sections)
+        scene.solos.push_back(span_from_ticks(song, song.sequence[s.first].timecode.ticks(),
+                                              song.sequence[s.last].timecode.ticks()));
 
     scene.has_notes = !scene.notes.empty();
     // The store's song length, the one the scrubber and the Paths timeline
@@ -398,18 +386,23 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
         // stored ticks are both in chart order, so one index walks them.
         // A taken fill stays taken: a tied variant's later activation can list
         // a fill the variant activated on, because after the fold it carries
-        // its leader's passed-over fills (finding 97).
+        // its leader's passed-over fills (finding 97). Each activation keeps
+        // the index of the fill it stands on (taken_fill), whether it marked
+        // that fill or an earlier activation did; the highway reads it.
         std::vector<PreviewFill>& fills = scene.fills;
         size_t next_fill = 0;
-        auto mark = [&](int64_t tick, PreviewFillState state) {
+        // Marks the fill ending on `tick` and returns its index, or nothing
+        // when no fill ends there.
+        auto mark = [&](int64_t tick, PreviewFillState state) -> std::optional<size_t> {
             while (next_fill < fills.size() && fills[next_fill].span.end_tick < tick) ++next_fill;
-            if (next_fill < fills.size() && fills[next_fill].span.end_tick == tick &&
-                fills[next_fill].state != PreviewFillState::Taken)
-                fills[next_fill].state = state;
+            if (next_fill >= fills.size() || fills[next_fill].span.end_tick != tick)
+                return std::nullopt;
+            if (fills[next_fill].state != PreviewFillState::Taken) fills[next_fill].state = state;
+            return next_fill;
         };
-        for (const PreviewActivation& a : scene.activations) {
+        for (PreviewActivation& a : scene.activations) {
             for (int64_t t : a.skipped_fill_ticks) mark(t, PreviewFillState::Offered);
-            mark(a.tick, PreviewFillState::Taken);
+            a.taken_fill = mark(a.tick, PreviewFillState::Taken);
         }
     }
 
@@ -479,7 +472,8 @@ double shown_length(double length_ms) { return length_ms < 0.0 ? 0.0 : length_ms
 
 // The moment the time box shows: the playhead held inside [0, length].
 // step_tick_ms starts from the same moment, so a step moves the displayed
-// tick by exactly its size.
+// tick by exactly its size, and the score, drain and next-activation boxes
+// read it too, so every overlay box describes the same moment.
 double shown_ms(double now_ms, double length_ms) {
     const double len = shown_length(length_ms);
     return now_ms < 0.0 ? 0.0 : (now_ms > len ? len : now_ms);
@@ -500,8 +494,8 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
     // 0 at measure 1, beat 1, exactly as it always has.
     const int64_t now_tick = scene.timing ? scene.timing->display_tick_at_ms(now) : 0;
     const int64_t end_tick = scene.timing ? scene.timing->display_tick_at_ms(len) : 0;
-    box.position = scene.timing ? format_measure(*scene.timing, now_tick) : "m1.1.0";
-    box.length = scene.timing ? format_measure(*scene.timing, end_tick) : "m1.1.0";
+    box.position = scene.timing ? format_measure(*scene.timing, now_tick) : first_measure_label();
+    box.length = scene.timing ? format_measure(*scene.timing, end_tick) : first_measure_label();
 
     // Each lookup below wants the last entry at or before the playhead's
     // tick, which is the one just before the first entry past it. Every line
@@ -541,8 +535,9 @@ PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
     return box;
 }
 
-PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms) {
+PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms, double length_ms) {
     PreviewScoreBox box;
+    const double now = shown_ms(now_ms, length_ms);
     if (scene.score.state == PreviewScore::State::None) return box;
     box.shown = true;
     if (scene.score.state == PreviewScore::State::Unavailable) {
@@ -555,8 +550,8 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms) {
     // flash asks too). Before the first chord nothing is hit yet: 0, x1,
     // combo 0.
     const std::vector<PreviewScoreStep>& steps = scene.score.steps;
-    auto it = std::partition_point(steps.begin(), steps.end(), [now_ms](const PreviewScoreStep& s) {
-        return struck_at(now_ms, s.ms);
+    auto it = std::partition_point(steps.begin(), steps.end(), [now](const PreviewScoreStep& s) {
+        return struck_at(now, s.ms);
     });
     PreviewScoreStep at;
     if (it != steps.begin()) at = *(it - 1);
@@ -564,7 +559,7 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms) {
     // The game's disc drops to the plain multiplier the moment SP ends, not
     // at the next chord, so the doubled value shows only while SP runs.
     const int shown =
-        running_activation(scene, now_ms) != nullptr ? at.multiplier : at.multiplier_plain;
+        running_activation(scene, now) != nullptr ? at.multiplier : at.multiplier_plain;
 
     box.score = group_thousands(at.total);
     char buf[64];
@@ -573,13 +568,13 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms) {
     return box;
 }
 
-PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms) {
+PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms, double length_ms) {
     PreviewDrainBox box;
-    if (!scene.timing || scene.sp_meter.segments.empty()) return box;
+    if (!scene.has_sp_gauge()) return box;
     box.shown = true;
 
     const SongTiming& timing = *scene.timing;
-    const double now = now_ms < 0.0 ? 0.0 : now_ms;
+    const double now = shown_ms(now_ms, length_ms);
     const int64_t now_tick = timing.display_tick_at_ms(now);
 
     // The rule's own constant at the local measure length: on a tempo or
@@ -664,13 +659,15 @@ std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_m
     return std::nullopt;
 }
 
-PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, bool pro_drums) {
+PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, double length_ms,
+                                     bool pro_drums) {
     PreviewNextActBox box;
     // The first activation not yet behind the playhead. The activations are
     // in time order, so a binary search finds it.
+    const double now = shown_ms(now_ms, length_ms);
     const std::vector<PreviewActivation>& acts = scene.activations;
     const auto next = std::lower_bound(
-        acts.begin(), acts.end(), now_ms - kOnActivationMs,
+        acts.begin(), acts.end(), now - kOnActivationMs,
         [](const PreviewActivation& a, double v) { return a.ms < v; });
     if (next == acts.end()) return box;
     const size_t i = static_cast<size_t>(next - acts.begin());

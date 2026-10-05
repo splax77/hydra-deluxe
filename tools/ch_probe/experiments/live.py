@@ -19,10 +19,8 @@ from __future__ import annotations
 
 import json
 import os
-import struct
 import sys
 import time
-from dataclasses import dataclass
 from typing import Callable, Optional, Protocol, Sequence
 
 _REPO_ROOT = os.path.abspath(
@@ -32,46 +30,23 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants as C
-
-# One read covers every watched field, so a sample is a consistent snapshot.
-# The hit-time candidate at +0x2e0 is the furthest field out.
-SNAPSHOT_SIZE = C.OFF_HIT_TIME + 8
-
-PROBE_ROOT = r"C:\Clone Hero\songs\Hydra Probe"
-
-
-@dataclass(frozen=True)
-class Snapshot:
-    window_ms: float
-    clock_s: float
-    score: int
-    hit_time_s: float
-    flags: int
-
-    @property
-    def precision(self) -> bool:
-        return bool(self.flags & C.PRECISION_MODE_BIT)
+from tools.ch_probe import engine as _engine
+# The snapshot lives in engine.py; these names stay here until the runners
+# call engine.py directly.
+from tools.ch_probe.engine import SNAPSHOT_SIZE, Snapshot  # noqa: F401
 
 
 def decode_snapshot(raw: bytes) -> Snapshot:
-    """Turn SNAPSHOT_SIZE bytes read from the engine base into a Snapshot."""
-    def dbl(off: int) -> float:
-        return struct.unpack_from("<d", raw, off)[0]
-
-    def u32(off: int) -> int:
-        return struct.unpack_from("<I", raw, off)[0]
-
-    return Snapshot(
-        window_ms=dbl(C.OFF_TOTAL_WINDOW) * 1000.0,
-        clock_s=dbl(C.OFF_SONG_CLOCK),
-        score=u32(C.OFF_SCORE),
-        hit_time_s=dbl(C.OFF_HIT_TIME),
-        flags=u32(C.OFF_FLAGS),
-    )
+    """engine.decode_snapshot, under the name the runners use."""
+    return _engine.decode_snapshot(raw)
 
 
 def read_snapshot(proc, engine: int) -> Snapshot:
-    return decode_snapshot(proc.read(engine, SNAPSHOT_SIZE))
+    """One snapshot of the engine object at `engine`, through
+    EngineModel.snapshot."""
+    model = _engine.EngineModel(proc)
+    model.use_object(engine)
+    return model.snapshot()
 
 
 def load_manifest(song_dir: str) -> dict:
@@ -152,7 +127,7 @@ def wait_until(clock: ReadsSongClock, target_ms: float, *, lead_ms: float = 0.0,
     or ClockJumpedBack when the song stops, and RuntimeError("stopped") when
     `should_stop` says so.
     """
-    fire_s = (target_ms - lead_ms) / 1000
+    fire_s = C.ms_to_s(target_ms - lead_ms)
     while True:
         if should_stop is not None and should_stop():
             raise RuntimeError("stopped")
@@ -164,7 +139,7 @@ def wait_until(clock: ReadsSongClock, target_ms: float, *, lead_ms: float = 0.0,
             stopped.check(raw, t)
         ahead = fire_s - est
         if ahead <= 0:
-            return raw * 1000, est * 1000
+            return C.s_to_ms(raw), C.s_to_ms(est)
         if ahead > _SPIN_WITHIN_S:
             sleep(min(ahead - _WAKE_BEFORE_S, _MAX_SLEEP_S))
 
@@ -196,7 +171,7 @@ def hit_offset_ms(note_ms: float, sent_ms: float, hit_time_before_s: float,
     Returns (offset_ms, True when the engine's hit time gave it).
     """
     if hit_time_after_s != hit_time_before_s:
-        return hit_time_after_s * 1000 - note_ms, True
+        return C.s_to_ms(hit_time_after_s) - note_ms, True
     return sent_ms - note_ms, False
 
 

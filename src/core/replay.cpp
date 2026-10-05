@@ -65,6 +65,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     int combo = 0;
     ReplayScore cum;
     int64_t solo_pending = 0;
+    size_t next_solo = 0;  // the first solo section not yet passed
 
     const size_t n = song.sequence.size();
     std::vector<CategoryScores> per_note;
@@ -173,22 +174,27 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.points.base = sg.base;
         row.points.combo = sg.combo;
         row.points.sp = sp_points;
-        row.points.solo =
-            ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;
+        row.points.solo = solo_bonus(ts.chord, ts.flag_solo);
         row.points.accent = sg.accent;
         row.points.ghost = sg.ghost;
 
-        combo += ts.chord.count();
+        combo = sg.combo_after;
         row.combo_after = combo;
 
         cum.add(row.points);
         row.cum = cum;
 
+        // The game pays a solo's bonus on the section's last chord
+        // (Song::solo_sections says where each one ends).
+        while (next_solo < song.solo_sections.size() && song.solo_sections[next_solo].last < i)
+            ++next_solo;
         if (ts.flag_solo) {
+            if (next_solo >= song.solo_sections.size() || song.solo_sections[next_solo].first > i)
+                throw std::logic_error("replay: the solo chord at tick " +
+                                       std::to_string(row.tick) +
+                                       " is in no solo section");
             solo_pending += row.points.solo;
-            const bool last_of_run =
-                i + 1 >= n || !song.sequence[i + 1].flag_solo;
-            if (last_of_run) solo_pending = 0;
+            if (song.solo_sections[next_solo].last == i) solo_pending = 0;
         }
         row.cum_onscreen_total = cum.total() - solo_pending;
 

@@ -62,8 +62,8 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
 // normal search would stamp them. Every returned path, tied variants
 // included, has exactly the named activations; the rest are dropped
 // (keep_target_paths, decision D45 and its addendum). Empty when no path
-// realizes the set (an activation with under 2 bars, a fill it cannot spawn
-// in time, a tick that is not a fill node). The graph is built at
+// realizes the set (an activation under kSpActivationBars, a fill it cannot
+// spawn in time, a tick that is not a fill node). The graph is built at
 // graph_build_cap, as the main search builds it. settings.depth_* and
 // ms_filter are ignored: the search keeps everything and applies no timing
 // filter, because the caller asked for this path, not the best one.

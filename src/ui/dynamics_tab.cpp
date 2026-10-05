@@ -130,8 +130,8 @@ void render_dynamics_panel(AppState& app) {
     const int table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;
     if (ImGui::BeginTable("##padtable", 5, table_flags)) {
         ImGui::TableSetupColumn("Pad");
-        ImGui::TableSetupColumn("Ghost");
-        ImGui::TableSetupColumn("Accent");
+        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());
+        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Accent).c_str());
         ImGui::TableSetupColumn("Normal");
         ImGui::TableSetupColumn("All");
         ImGui::TableHeadersRow();
@@ -159,8 +159,8 @@ void render_dynamics_panel(AppState& app) {
 
     if (ImGui::BeginTable("##kicktable", 5, table_flags)) {
         ImGui::TableSetupColumn("Pad");
-        ImGui::TableSetupColumn("Ghost");
-        ImGui::TableSetupColumn("Accent");
+        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());
+        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Accent).c_str());
         ImGui::TableSetupColumn("Normal");
         ImGui::TableSetupColumn("All");
         ImGui::TableHeadersRow();

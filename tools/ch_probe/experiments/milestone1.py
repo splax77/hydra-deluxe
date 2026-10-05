@@ -23,6 +23,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants
+from tools.ch_probe.engine import EngineModel
 from tools.ch_probe.process import open_process
 
 
@@ -33,8 +34,8 @@ def main() -> None:
 
     back = proc.read_const_double(constants.RVA_CONST_NORMAL_BACK)
     front = proc.read_const_double(constants.RVA_CONST_NORMAL_FRONT)
-    print(f"  Normal back  = {back:.6f} s  ({back*1000:.1f} ms, expect {constants.EXPECT_NORMAL_BACK_S} s)")
-    print(f"  Normal front = {front:.6f} s  ({front*1000:.1f} ms, expect {constants.EXPECT_NORMAL_FRONT_S} s)")
+    print(f"  Normal back  = {back:.6f} s  ({constants.s_to_ms(back):.1f} ms, expect {constants.EXPECT_NORMAL_BACK_S} s)")
+    print(f"  Normal front = {front:.6f} s  ({constants.s_to_ms(front):.1f} ms, expect {constants.EXPECT_NORMAL_FRONT_S} s)")
 
     try:
         proc.verify_targets()
@@ -44,28 +45,10 @@ def main() -> None:
         proc.close()
         return
 
-    # Bonus: read every formula constant so we can see the real numbers.
-    div = proc.read_const_double(constants.RVA_FORMULA_DIVISOR)
-    exp = proc.read_const_double(constants.RVA_FORMULA_EXPONENT)
-    prec_back = proc.read_const_double(constants.RVA_CONST_PRECISION_BACK)
-    prec_front = proc.read_const_double(constants.RVA_CONST_PRECISION_FRONT)
-    threshold = proc.read_const_double(constants.RVA_HITCHECK_THRESHOLD)
-
-    print(f"\n  Precision back  = {prec_back:.6f} s  ({prec_back*1000:.1f} ms)")
-    print(f"  Precision front = {prec_front:.6f} s  ({prec_front*1000:.1f} ms)")
-    print(f"  Divisor         = {div:.4f}")
-    print(f"  Exponent        = {exp:.6f}")
-    print(f"  Hit threshold   = {threshold:.6f}")
-
-    print("\n  Normal formula constants:")
-    for name, rva in sorted(constants.RVA_FORMULA_NORMAL.items()):
-        val = proc.read_const_double(rva)
-        print(f"    {name} = {val:.10f}")
-
-    print("\n  Precision formula constants:")
-    for name, rva in sorted(constants.RVA_FORMULA_PRECISION.items()):
-        val = proc.read_const_double(rva)
-        print(f"    {name} = {val:.10f}")
+    # Bonus: every constant EngineModel reads, so we can see the real numbers.
+    print("\n  Every .rdata constant (EngineModel.constants):")
+    for key, val in sorted(EngineModel(proc).constants().items()):
+        print(f"    {key} = {val:.10f}")
 
     proc.close()
     print("\nDone. All constants above are live-read from the running game.")

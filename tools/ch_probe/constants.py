@@ -16,9 +16,8 @@ Two kinds of address appear in the dumps:
            RVA = VA - 0x180000000. We store the resolved RVAs below so callers
            never have to redo that subtraction.
 
-To turn any RVA into a live address at run time: live = module_base + rva,
-where module_base is where GameAssembly.dll actually loaded in the running
-process (found by the process/address layer).
+process.Process.resolve turns any RVA into a live address at run time, from
+where GameAssembly.dll actually loaded in the running process.
 
 Build these were captured from: Clone Hero v1.1.0.6142, Unity IL2CPP x64,
 engine "StrikeCore".
@@ -142,13 +141,31 @@ RVA_HITCHECK_THRESHOLD = 0x31406E8     # DAT_1831406e8
 # they come out at these values (within tolerance), the whole address pipeline
 # is correct and everything downstream can be trusted.
 
+# --- Units ---------------------------------------------------------------------
+#
+# The game stores times in seconds; the probe reports ms. Every conversion
+# between the two goes through these helpers.
+MS_PER_S = 1000.0
+
+
+def s_to_ms(s: float) -> float:
+    """Seconds (the game's unit) to ms (the probe's)."""
+    return s * MS_PER_S
+
+
+def ms_to_s(ms: float) -> float:
+    """Ms (the probe's unit) to seconds (the game's)."""
+    return ms / MS_PER_S
+
+
 # Expected values in SECONDS (the game's native unit for these constants).
 EXPECT_NORMAL_BACK_S = 0.085
 EXPECT_NORMAL_FRONT_S = 0.0375
+EXPECT_PRECISION_BACK_S = 0.040
 
 # The back-window edges in ms, which the passive probe's clamp verdict uses.
-EXPECT_NORMAL_BACK_MS = 85.0
-EXPECT_PRECISION_BACK_MS = 40.0
+EXPECT_NORMAL_BACK_MS = s_to_ms(EXPECT_NORMAL_BACK_S)
+EXPECT_PRECISION_BACK_MS = s_to_ms(EXPECT_PRECISION_BACK_S)
 
 # Tolerance (ms) for calling a live-read constant "the value we expected".
 CONST_MATCH_TOLERANCE_MS = 0.5
@@ -177,7 +194,7 @@ ONE_SIDE_CAP_MS = WINDOW_CAP_MS / 2
 # (each half-gap at the back constant), and the floor when both are at most
 # this narrow (each half-gap at the front constant).
 CAP_FROM_GAP_MS = 2 * EXPECT_NORMAL_BACK_MS               # 170
-FLOOR_UP_TO_GAP_MS = 2 * EXPECT_NORMAL_FRONT_S * 1000     # 75
+FLOOR_UP_TO_GAP_MS = 2 * s_to_ms(EXPECT_NORMAL_FRONT_S)   # 75
 
 # How close a stored reading must be to count as the cap or the floor. The
 # measured values agree with these to 0.00001 ms.
@@ -192,14 +209,51 @@ WINDOW_CHANGE_TOLERANCE_MS = 1e-6
 # Name of the target module and process.
 MODULE_NAME = "GameAssembly.dll"
 PROCESS_NAME = "Clone Hero.exe"
+# The game's window title, for the runners that find its window to send keys.
+WINDOW_TITLE = "Clone Hero"
 
 # ---- keys of EngineModel.constants() ------------------------------------
 # engine.py writes these and experiments/analysis.py reads them, so both
-# sides spell each key from here.
+# sides spell each key from here. The four window keys are built from their
+# mode prefix, so renaming a prefix carries to them.
 CONST_KEY_DIVISOR = "divisor"
 CONST_KEY_EXPONENT = "exponent"
 CONST_KEY_PREFIX_NORMAL = "normal_"
 CONST_KEY_PREFIX_PRECISION = "precision_"
+CONST_KEY_NORMAL_BACK = CONST_KEY_PREFIX_NORMAL + "back"
+CONST_KEY_NORMAL_FRONT = CONST_KEY_PREFIX_NORMAL + "front"
+CONST_KEY_PRECISION_BACK = CONST_KEY_PREFIX_PRECISION + "back"
+CONST_KEY_PRECISION_FRONT = CONST_KEY_PREFIX_PRECISION + "front"
+CONST_KEY_HITCHECK_THRESHOLD = "hitcheck_threshold"
+
+# ---- probe cut-offs (D54: recorded as they are) ---------------------------
+# Each value is the one the probe has always used; D54 records them without
+# a new measurement. The comment names the verdict and the file that reads it.
+
+# engine_finder.find_live_engine: a candidate whose total window is below
+# this is not a live engine (an empty or freed object).
+ENGINE_EMPTY_WINDOW_S = 0.001
+# engine_finder.find_live_engine: a clock that moved more than this between
+# its two reads belongs to the song that is playing.
+ENGINE_CLOCK_MOVED_S = 1e-6
+# experiments/watch_window.hit_time_report: the furthest a stored hit time may
+# sit from its nearest note for +0x2e0 to look like the hit time.
+HIT_TIME_MAX_GAP_MS = 10.0
+# experiments/walk_edges.SongClock: a clock change seen within this of the
+# previous read is fresh, so the time since it can be filled in.
+CLOCK_FRESH_S = 0.002
+# experiments/walk_edges.SongClock: the most time it fills in past a fresh
+# change, so a pause cannot run the estimate away.
+CLOCK_MAX_FILL_S = 0.05
+# experiments/analysis.clamp_verdict: how close two window values must be to
+# count as equal.
+CLAMP_TOLERANCE_MS = 1.0
+# experiments/analysis.clamp_verdict: the share of above-cap notes that must
+# agree before the verdict is called.
+CLAMP_DECISIVE_FRACTION = 0.8
+
+# The runners read a press's result this long after its note (D54).
+INPUT_SETTLE_MS = 250
 
 # ---- probe chart layout -------------------------------------------------
 # Note-pair spacings the probe chart lays out, and the .chart NOTE number it

@@ -25,6 +25,8 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_probe import constants as C
+from tools.ch_probe import input_driver
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, LANE_NAMES, InputDriver, Lane
 
 
@@ -106,9 +108,14 @@ class TestPressChord(unittest.TestCase):
         sent = driver.press_chord([Lane.RED, Lane.KICK],
                                   sleep=lambda s: presses.append(("sleep", s)))
         red, kick = DEFAULT_BINDINGS[Lane.RED], DEFAULT_BINDINGS[Lane.KICK]
-        self.assertEqual(presses, [(red, False), (kick, False), ("sleep", 0.003),
+        self.assertEqual(presses, [(red, False), (kick, False),
+                                   ("sleep", input_driver.KEY_HOLD_S),
                                    (red, True), (kick, True)])
         self.assertEqual(sent, [red, kick])
+
+    def test_key_hold_is_the_recorded_value(self):
+        # D54 records the 3 ms hold as it is.
+        self.assertEqual(input_driver.KEY_HOLD_S, 0.003)
 
     def test_unbound_lane_is_skipped(self):
         driver = InputDriver(bindings={Lane.KICK: 0x4C})
@@ -116,6 +123,28 @@ class TestPressChord(unittest.TestCase):
         driver.send_key = lambda vk, key_up: presses.append((vk, key_up))
         driver.press_chord([Lane.GREEN, Lane.KICK], sleep=lambda s: None)
         self.assertEqual(presses, [(0x4C, False), (0x4C, True)])
+
+
+class TestGameWindow(unittest.TestCase):
+    """The one way a runner finds and focuses the game window."""
+
+    def test_find_game_window_asks_for_the_one_title(self):
+        asked = []
+
+        def finder(cls, title):
+            asked.append((cls, title))
+            return 0x1234
+
+        self.assertEqual(input_driver.find_game_window(find=finder), 0x1234)
+        self.assertEqual(asked, [(None, C.WINDOW_TITLE)])
+        self.assertEqual(input_driver.find_game_window(find=lambda cls, title: None), 0)
+
+    def test_focus_window_skips_a_missing_window(self):
+        focused = []
+        input_driver.focus_window(0, focus=focused.append)
+        self.assertEqual(focused, [])
+        input_driver.focus_window(0x1234, focus=focused.append)
+        self.assertEqual(focused, [0x1234])
 
 
 if __name__ == "__main__":

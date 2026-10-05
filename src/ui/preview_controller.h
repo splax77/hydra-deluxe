@@ -93,8 +93,13 @@ public:
     // The drawn overlay's identity: the path it was built from
     // (app::path_overlay_key) plus the SP cap its meter was scaled to, in the
     // one string open() compares. Empty until something has loaded. Treat the
-    // exact spelling as opaque — compare two of these, don't parse one.
+    // exact spelling as opaque: a test may compare two of these whole, but
+    // "is this my path" is shows_path's to answer.
     const std::string& overlay_path_key() const { return scene_path_key_; }
+    // The drawn overlay was built from `path_key` (app::path_overlay_key),
+    // whatever SP cap its meter was scaled to. False until something has
+    // loaded.
+    bool shows_path(const std::string& path_key) const;
 
     // Advance the async load; once finished, build the transport + audio device.
     // Call once per frame while the Preview tab is shown.
@@ -104,7 +109,9 @@ public:
     // ceiling — what the panel's gauge draws.
     double sp_meter_bars() const;
     int sp_meter_cap() const;
-    bool sp_meter_has_curve() const;
+    // The scene has a gauge to draw (app::PreviewScene::has_sp_gauge, which
+    // the drain box asks too).
+    bool has_sp_gauge() const;
 
     // The first load is still running: what the panel's progress bar means.
     bool loading() const { return job_ != nullptr; }
@@ -167,12 +174,12 @@ public:
     // (PreviewTransport::length_ms). Play, the clock and jumps run to here.
     double playback_end_ms() const;
     void seek_ms(double ms);
-    // Move the playhead by `delta_ms` (the -5s/+5s buttons, Left/Right).
+    // Move the playhead by `delta_ms` (the kJumpSeconds buttons, Left/Right).
     // Playing stays playing; the transport stops it at 0 and at
     // playback_end_ms().
     void jump_ms(double delta_ms);
     // Pause, then move the playhead `delta_ticks` chart ticks from the tick
-    // the time box shows (the < 5 Ticks / 5 Ticks > buttons, comma and period).
+    // the time box shows (the kTickStep buttons, comma and period).
     // A step of 0 snaps onto the displayed tick.
     void step_ticks(int delta_ticks);
     bool has_audio() const;
@@ -233,9 +240,9 @@ public:
     void set_overlay_scale(float scale) { overlay_scale_ = scale; }
     float overlay_scale() const { return overlay_scale_; }
 
-    // The Preview's look, as read from 3d-config.json by the renderer. Before
-    // the first render (no renderer yet) this is the struct's defaults, which
-    // are Onyx's values.
+    // The Preview's look, as read from 3d-config.json by the renderer. There
+    // is no second source: only the first render() builds the renderer, and
+    // asking before that throws std::logic_error.
     const render::PreviewConfig& preview_config() const;
 
 private:
@@ -279,6 +286,8 @@ private:
     hydra::app::PreviewScene scene_;
     bool scene_dirty_ = true;  // scene_ changed since the renderer last saw it
     bool pro_ = true;          // the pro-drums view setting the chart was opened with
+    // The highway options drawn with: track_options(pro_).
+    render::TrackStateOptions track_opts() const;
     // The highway timeline a job built from scene_ on its worker, waiting for
     // render() to move it into the renderer, plus the options it was built
     // with. Set together with scene_ whenever a job's scene lands; empty

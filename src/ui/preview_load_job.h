@@ -35,6 +35,16 @@ inline const Path* drawn_path(const std::optional<Path>& path, bool chart_change
     return path && !chart_changed ? &*path : nullptr;
 }
 
+// The one place the Preview's view settings become highway options: the
+// pro-drums setting that picked the drum track also picks how the pads draw
+// (cymbals, or all toms). The load job, the controller and the tests build
+// their options here and compare them whole (finding R7.16).
+inline render::TrackStateOptions track_options(bool pro) {
+    render::TrackStateOptions opts;
+    opts.pro = pro;
+    return opts;
+}
+
 // Turns "bytes done so far" readings into a time-left estimate for the
 // loading bar. The rate is measured over at least one second of the load's
 // own progress, and the answer changes at most once a second, so the text

@@ -20,6 +20,11 @@ from __future__ import annotations
 
 from typing import Callable, Optional, Protocol, Sequence, runtime_checkable
 
+try:
+    from . import constants as C
+except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
+    import constants as C  # type: ignore[no-redef]
+
 
 # --- process.py : the process/address layer ---------------------------------
 #
@@ -187,13 +192,14 @@ def generate_probe_chart(
     spacings_ms: Sequence[float],
     path: str,
     *,
-    resolution: int = 192,
-    bpm: float = 120.0,
-    note: int = 0,
+    resolution: int,
+    bpm: float,
+    note: int = C.PROBE_CHART_NOTE_KICK,
 ) -> None:
     """Function in probe_chart.py. Emit a valid Expert-drums .chart at `path`
     with one isolated note pair per spacing in `spacings_ms`: two notes that
     many ticks apart, with wide silence around each pair so nothing overlaps.
+    The caller names the resolution and tempo it writes with.
     Must round-trip through the game's chart loader."""
     ...
 
@@ -221,8 +227,9 @@ class InputDriver(Protocol):
         """One key event through SendInput (the only OS call)."""
         ...
 
-    def press_chord(self, lanes: Sequence[int], *, hold_s: float = 0.003) -> list:
-        """All lanes' keys down, hold, all up."""
+    def press_chord(self, lanes: Sequence[int], *, hold_s: float = ...) -> list:
+        """All lanes' keys down, hold `hold_s` (default input_driver.KEY_HOLD_S),
+        all up."""
         ...
 
 

@@ -232,7 +232,7 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
 }
 
 int graph_build_cap(int sp_cap, int sp_phrase_count) {
-    return std::min(sp_cap, std::max(sp_phrase_count, 1));
+    return std::max(max_sp_bars(sp_cap, sp_phrase_count), 1);
 }
 
 namespace {

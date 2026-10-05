@@ -233,7 +233,7 @@ void render_timeline(const app::ActivationsView& view) {
         if (!tip.empty()) ImGui::SetTooltip("%s", tip.c_str());
     }
     ImGui::PushFont(g_mono_font, 0.0f);
-    ImGui::TextDisabled("m1");
+    ImGui::TextDisabled("%s", view.timeline_start.c_str());
     align_right(ImGui::CalcTextSize(view.timeline_end.c_str()).x);
     ImGui::TextDisabled("%s", view.timeline_end.c_str());
     ImGui::PopFont();
@@ -329,10 +329,10 @@ void render_backend_table(const app::ActivationRowView& a) {
     w_timing = std::ceil(w_timing);
     w_chord = std::ceil(w_chord);
     w_points = std::ceil(w_points);
-    char id[64];
-    std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", a.number, static_cast<int>(w_timing),
-                  static_cast<int>(w_chord), static_cast<int>(w_points));
-    if (ImGui::BeginTable(id, 4,
+    const std::string id =
+        app::backend_table_id(a.number, static_cast<int>(w_timing), static_cast<int>(w_chord),
+                              static_cast<int>(w_points));
+    if (ImGui::BeginTable(id.c_str(), 4,
                           ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
                               ImGuiTableFlags_SizingFixedFit)) {
         ImGui::TableSetupColumn("Timing", ImGuiTableColumnFlags_WidthFixed, w_timing);

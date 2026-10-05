@@ -70,21 +70,6 @@ const std::vector<Config> kMatrix = {
     {"cap8.scores.200", 8, DepthMode::Scores, 200, std::nullopt},
 };
 
-// First field where two summaries differ, empty when equal.
-std::string diff_summary(const PathSummary& a, const PathSummary& b) {
-    if (a.score != b.score) return "score";
-    if (a.actcount != b.actcount) return "actcount";
-    if (a.maxskip != b.maxskip) return "maxskip";
-    if (a.hardest_ms != b.hardest_ms) return "hardest_ms";
-    if (a.avgmult != b.avgmult) return "avgmult";
-    if (a.notecount != b.notecount) return "notecount";
-    if (a.sqin_count != b.sqin_count) return "sqin_count";
-    if (a.sqout_count != b.sqout_count) return "sqout_count";
-    if (a.pathcount != b.pathcount) return "pathcount";
-    if (a.stars != b.stars) return "stars";
-    return "";
-}
-
 }  // namespace
 
 TEST_CASE("records round-trip through RecordStore across the corpus and config matrix") {
@@ -137,10 +122,8 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
             std::string d;
             if (re_bestpath != bestpath) {
                 d = "reloaded bestpath";
-            } else {
-                d = diff_summary(summarize_record(*reloaded),
-                                 summarize_record(*record));
-                if (!d.empty()) d = "reloaded " + d;
+            } else if (summarize_record(*reloaded) != summarize_record(*record)) {
+                d = "reloaded summary";
             }
 
             // Timecodes are dropped to raw ticks by the blob and rebuilt by
@@ -592,7 +575,7 @@ TEST_CASE("a row in an older path format is Stale even when this build stamped i
     store.add_song("old", "Song", "Artist", "Charter", fixture().song);
     PreparedRow old_format = prepare_row(RecordKey{"old", "mode", CapQuery::at(8)}, at_cap(8));
     REQUIRE(old_format.structure.size() >= 4);
-    old_format.structure[0] = 1;
+    old_format.structure[kPathFormatOffset] = 1;
     old_format.structure[1] = 0;
     old_format.structure[2] = 0;
     old_format.structure[3] = 0;
@@ -633,7 +616,7 @@ TEST_CASE("a row in an older path format is Stale even when this build stamped i
     purge.add_song("purge", "Song", "Artist", "Charter", fixture().song);
     PreparedRow old_format2 =
         prepare_row(RecordKey{"purge", "mode", CapQuery::at(8)}, at_cap(8));
-    old_format2.structure[0] = 1;
+    old_format2.structure[kPathFormatOffset] = 1;
     old_format2.structure[1] = 0;
     old_format2.structure[2] = 0;
     old_format2.structure[3] = 0;
@@ -648,7 +631,7 @@ TEST_CASE("a row in the 1.8.1 path layout (structure format 5) reads Stale") {
     store.add_song("old", "Song", "Artist", "Charter", fixture().song);
     PreparedRow row = prepare_row(RecordKey{"old", "mode", CapQuery::at(4)}, at_cap(4));
     REQUIRE(row.structure.size() >= 4);
-    row.structure[0] = 5;
+    row.structure[kPathFormatOffset] = 5;
     store.add_row(row);
 
     const RecordLookup lookup = store.get_record(RecordKey{"old", "mode", CapQuery::at(4)});
@@ -1307,7 +1290,7 @@ HydraRecord legacy_at_cap(int cap) {
 // and blob kept.
 void downgrade_to_schema3(const std::string& path) {
     exec_on_file(path,
-                 "ALTER TABLE results RENAME TO r4;"
+                 ("ALTER TABLE results RENAME TO r4;"
                  "CREATE TABLE results ("
                  "  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
                  "  chartmode TEXT NOT NULL, hyversion TEXT NOT NULL,"
@@ -1319,38 +1302,25 @@ void downgrade_to_schema3(const std::string& path) {
                  "  notecount INTEGER, sqin_count INTEGER, sqout_count INTEGER,"
                  "  pathcount INTEGER, stars INTEGER,"
                  "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
-                 "          depth_value, legacy_fills));"
-                 "INSERT INTO results SELECT result_id, hyhash, chartmode, hyversion,"
-                 " sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,"
-                 " bestpath, structure, score, actcount, maxskip, hardest_ms, avgmult,"
-                 " notecount, sqin_count, sqout_count, pathcount, stars FROM r4;"
-                 "DROP TABLE r4;");
+                 "          depth_value, legacy_fills));" +
+                     std::string("INSERT INTO results (") + kSchema2ResultsColumns +
+                     ", legacy_fills) SELECT " + kSchema2ResultsColumns +
+                     ", legacy_fills FROM r4;"
+                     "DROP TABLE r4;")
+                     .c_str());
 }
 
 // Turns a file this build wrote back into schema 2: schema 3 (above) without
 // its legacy_fills column, every row and result_id kept, user_version 2.
 void downgrade_to_schema2(const std::string& path) {
     downgrade_to_schema3(path);
-    exec_on_file(path,
-                 "ALTER TABLE results RENAME TO r3;"
-                 "CREATE TABLE results ("
-                 "  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
-                 "  chartmode TEXT NOT NULL, hyversion TEXT NOT NULL,"
-                 "  sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
-                 "  ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
-                 "  depth_value INTEGER NOT NULL, bestpath TEXT NOT NULL,"
-                 "  structure BLOB NOT NULL, score INTEGER, actcount INTEGER,"
-                 "  maxskip INTEGER, hardest_ms REAL, avgmult REAL, notecount INTEGER,"
-                 "  sqin_count INTEGER, sqout_count INTEGER, pathcount INTEGER,"
-                 "  stars INTEGER,"
-                 "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
-                 "          depth_value));"
-                 "INSERT INTO results SELECT result_id, hyhash, chartmode, hyversion,"
-                 " sp_cap, ms_enabled, ms_value, depth_mode, depth_value, bestpath,"
-                 " structure, score, actcount, maxskip, hardest_ms, avgmult, notecount,"
-                 " sqin_count, sqout_count, pathcount, stars FROM r3;"
-                 "DROP TABLE r3;"
-                 "PRAGMA user_version = 2;");
+    exec_on_file(path, (std::string("ALTER TABLE results RENAME TO r3;") +
+                        kSchema2ResultsTableSql + ";INSERT INTO results (" +
+                        kSchema2ResultsColumns + ") SELECT " + kSchema2ResultsColumns +
+                        " FROM r3;"
+                        "DROP TABLE r3;"
+                 "PRAGMA user_version = 2;")
+                           .c_str());
 }
 
 }  // namespace
@@ -1637,7 +1607,7 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
 
     const RecordKey old_format{"h", "format", CapQuery::at(8)};
     PreparedRow format_row = prepare_row(old_format, at_cap(8));
-    format_row.structure[0] = 1;
+    format_row.structure[kPathFormatOffset] = 1;
     format_row.structure[1] = 0;
     format_row.structure[2] = 0;
     format_row.structure[3] = 0;
@@ -1895,7 +1865,7 @@ TEST_CASE("a saved result stores its best path's star count") {
         CHECK(got[0].summary.score == best.totalscore());
         CHECK(got[0].summary.hardest_ms == expected.hardest_ms);
         CHECK(got[0].summary.stars == expected.stars);
-        CHECK(diff_summary(got[0].summary, expected) == "");
+        CHECK(got[0].summary == expected);
         // Only a Ready answer carries a summary.
         CHECK(got[1].status == RecordStatus::Stale);
         CHECK_FALSE(got[1].summary.score.has_value());
@@ -2014,7 +1984,7 @@ TEST_CASE("a stored song keeps its length, and an old songmeta row reads none") 
     // nulls the column on a second connection, as the stars-fill case does.
     const Song& song = fixture().song;
     REQUIRE_FALSE(song.sequence.empty());
-    const double expected = song.sequence.back().timecode.ms();
+    const double expected = *song_length_ms(song);
 
     const std::string path = temp_db("song_length");
     std::remove(path.c_str());
@@ -2050,7 +2020,6 @@ TEST_CASE("a stored song keeps its length, and an old songmeta row reads none") 
         CHECK(*store.get_record(key).song_length_ms == doctest::Approx(expected));
         store.set_song_length("unknown", 5.0);
     }
-    CHECK(song_length_ms(song) == doctest::Approx(expected));
     std::remove(path.c_str());
 }
 
@@ -2193,4 +2162,53 @@ TEST_CASE("the store names the fill rule a file holds") {
     CHECK(ch11.stamped_fill_rule() == FillDeadlineRule::Ch11);
     CHECK(unstamped.stamped_fill_rule() == FillDeadlineRule::Ch11);
     CHECK_FALSE(empty.stamped_fill_rule().has_value());
+}
+
+TEST_CASE("PathSummary equality covers every field, stars included") {
+    // Finding 121: one compare for every field, unset against set counting
+    // as a change.
+    PathSummary filled;
+    filled.score = 1000;
+    filled.actcount = 2;
+    filled.maxskip = 1;
+    filled.hardest_ms = 12.5;
+    filled.avgmult = 3.25;
+    filled.notecount = 40;
+    filled.sqin_count = 1;
+    filled.sqout_count = 2;
+    filled.pathcount = 3;
+    filled.stars = 5;
+
+    const PathSummary copy = filled;
+    CHECK(copy == filled);
+    CHECK_FALSE(copy != filled);
+
+    auto differs = [&filled](void (*change)(PathSummary&)) {
+        PathSummary other = filled;
+        change(other);
+        return other != filled && !(other == filled);
+    };
+    CHECK(differs([](PathSummary& s) { s.score = 1001; }));
+    CHECK(differs([](PathSummary& s) { s.actcount = 3; }));
+    CHECK(differs([](PathSummary& s) { s.maxskip = 2; }));
+    CHECK(differs([](PathSummary& s) { s.hardest_ms = 13.0; }));
+    CHECK(differs([](PathSummary& s) { s.avgmult = 3.5; }));
+    CHECK(differs([](PathSummary& s) { s.notecount = 41; }));
+    CHECK(differs([](PathSummary& s) { s.sqin_count = 2; }));
+    CHECK(differs([](PathSummary& s) { s.sqout_count = 3; }));
+    CHECK(differs([](PathSummary& s) { s.pathcount = 4; }));
+    CHECK(differs([](PathSummary& s) { s.stars = 4; }));
+    CHECK(differs([](PathSummary& s) { s.stars.reset(); }));
+    CHECK(differs([](PathSummary& s) { s.score.reset(); }));
+    CHECK(PathSummary{} == PathSummary{});
+}
+
+TEST_CASE("summarize_record counts every kept path once") {
+    // Finding 172: the pathcount column is the count the Paths tab shows
+    // ("Paths kept:", HydraRecord::all_paths). The fixture's count is a
+    // literal from one run on the base before the fold, so the two counts are
+    // proven equal on a real record.
+    CHECK(summarize_record(fixture().record).pathcount.value() == 1);
+    // One root with a tied variant, plus a second root: three paths.
+    CHECK(summarize_record(test::tied_variant_record()).pathcount == 3);
 }

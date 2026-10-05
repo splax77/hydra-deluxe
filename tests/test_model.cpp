@@ -427,12 +427,15 @@ TEST_CASE("Path::walk_activations: own activations then the variant tail, in pla
     const std::vector<Activation> copied = p.all_activations();
     REQUIRE(copied.size() == walk.size());
     for (size_t i = 0; i < copied.size(); ++i) CHECK(copied[i].skips() == walk[i].skips());
+    CHECK(p.has_activations());
 
     // Nothing on either side.
     Path none;
     const ActivationWalk nothing = none.walk_activations();
     CHECK(nothing.empty());
     CHECK(nothing.begin() == nothing.end());
+    CHECK_FALSE(none.has_activations());
+    CHECK(none.all_activations().empty());
 }
 
 // Backend rows past a squeezed-out note are impossible in game: the sqout note
@@ -882,4 +885,93 @@ TEST_CASE("refill_tick: a late squeeze-in's bar arrives at the old end") {
     CHECK(a.refill_tick(0) == 5760);
     CHECK(a.refill_tick(1) == 12000);
     CHECK(a.refill_tick(2) == 15360);  // past the end in force: the old end
+}
+
+// The rows of "backend_row_value: every engine case": what the squeezed-out
+// chord gives up against its full value.
+TEST_CASE("backend_value: sqout_cost is what the squeezed-out chord loses") {
+    const double lw = core::default_rules().backend_leeway_ms;  // 3 ms
+    CHECK(core::sqout_cost(-5.0, 460, 260, lw) == 200);
+    CHECK(core::sqout_cost(1.5, 460, 260, lw) == 200);
+    // Round and Round (Ratt): the row the engine counts as 0 loses all of it.
+    CHECK(core::sqout_cost(479.999, 460, 260, lw) == 460);
+    CHECK(core::sqout_cost(5.0, 460, 260, 10.0) == 200);
+}
+
+TEST_CASE("BackendSqueeze::offset: the stored offset, or a loud failure") {
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(300);
+    row.offset_ms = 12.5;
+    CHECK(row.offset() == 12.5);
+
+    row.offset_ms.reset();
+    bool threw = false;
+    try {
+        (void)row.offset();
+    } catch (const std::logic_error& e) {
+        threw = true;
+        CHECK(std::string(e.what()).find("300") != std::string::npos);
+    }
+    CHECK(threw);
+}
+
+// Finding 190's table: the kick's flag is 2x, a cymbal pad's is a cymbal,
+// red has none.
+TEST_CASE("lane flags: the kick carries 2x, the cymbal pads carry a cymbal, red carries nothing") {
+    CHECK(lane_allows_flag(NoteColor::Kick));
+    CHECK(lane_allows_flag(NoteColor::Yellow));
+    CHECK(lane_allows_flag(NoteColor::Blue));
+    CHECK(lane_allows_flag(NoteColor::Green));
+    CHECK_FALSE(lane_allows_flag(NoteColor::Red));
+
+    ChordNote kick{NoteColor::Kick};
+    CHECK_FALSE(lane_flag(kick));
+    set_lane_flag(kick);
+    CHECK(kick.is2x);
+    CHECK(kick.cymbaltype == NoteCymbalType::Normal);
+    CHECK(lane_flag(kick));
+
+    ChordNote yellow{NoteColor::Yellow};
+    CHECK_FALSE(lane_flag(yellow));
+    set_lane_flag(yellow);
+    CHECK(yellow.cymbaltype == NoteCymbalType::Cymbal);
+    CHECK_FALSE(yellow.is2x);
+    CHECK(lane_flag(yellow));
+
+    ChordNote red{NoteColor::Red};
+    CHECK_THROWS_AS(set_lane_flag(red), std::logic_error);
+}
+
+TEST_CASE("dynamic_label: the display word for each dynamic") {
+    CHECK(dynamic_label(NoteDynamicType::Ghost) == "Ghost");
+    CHECK(dynamic_label(NoteDynamicType::Accent) == "Accent");
+    CHECK(dynamic_label(NoteDynamicType::Normal) == "");
+    CHECK(dynamic_str(NoteDynamicType::Ghost) == "ghost");
+    CHECK(dynamic_str(NoteDynamicType::Accent) == "accent");
+    CHECK(dynamic_str(NoteDynamicType::Normal) == "none");
+}
+
+TEST_CASE("squeeze_kind_from_name: type_name's two words and nothing else") {
+    CHECK(squeeze_kind_from_name("SqIn") == std::optional<SqueezeKind>(SqueezeKind::SqIn));
+    CHECK(squeeze_kind_from_name("SqOut") == std::optional<SqueezeKind>(SqueezeKind::SqOut));
+    CHECK_FALSE(squeeze_kind_from_name("sqout").has_value());
+    CHECK_FALSE(squeeze_kind_from_name("").has_value());
+    for (SqueezeKind kind : {SqueezeKind::SqIn, SqueezeKind::SqOut})
+        CHECK(squeeze_kind_from_name(SPSqueeze{kind, 0.0}.type_name()) ==
+              std::optional<SqueezeKind>(kind));
+}
+
+// The same six values "replay score fields: one list in schema order"
+// (tests/test_replay.cpp) assigns.
+TEST_CASE("score_total: the six categories in the stored order") {
+    CHECK(score_total(1, 2, 3, 4, 5, 6) == 21);
+
+    Path p;
+    p.score_base = 100;
+    p.score_combo = 200;
+    p.score_sp = 300;
+    p.score_solo = 400;
+    p.score_accents = 50;
+    p.score_ghosts = 60;
+    CHECK(p.totalscore() == 1110);
 }

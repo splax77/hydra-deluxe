@@ -38,7 +38,7 @@ def samples_following(notes: list[dict], window_for) -> list[WW.Sample]:
 class LiveSnapshotTest(unittest.TestCase):
     def test_decode_reads_each_field_at_its_offset(self):
         raw = bytearray(live.SNAPSHOT_SIZE)
-        struct.pack_into("<d", raw, C.OFF_TOTAL_WINDOW, C.WINDOW_CAP_MS / 1000)
+        struct.pack_into("<d", raw, C.OFF_TOTAL_WINDOW, C.ms_to_s(C.WINDOW_CAP_MS))
         struct.pack_into("<I", raw, C.OFF_SCORE, 1234)
         struct.pack_into("<d", raw, C.OFF_SONG_CLOCK, 12.5)
         struct.pack_into("<I", raw, C.OFF_FLAGS, C.PRECISION_MODE_BIT)
@@ -69,10 +69,10 @@ class LiveHelpersTest(unittest.TestCase):
             def read_raw():
                 ms[0] += 1
                 t[0] += 0.001
-                return ms[0] / 1000
+                return C.ms_to_s(ms[0])
 
             def sleep(s):
-                ms[0] += round(s * 1000)
+                ms[0] += round(C.s_to_ms(s))
                 t[0] += s
 
             clock = W.SongClock(read_raw, now=lambda: t[0])
@@ -223,7 +223,7 @@ class WalkEdgesTest(unittest.TestCase):
         r, est = clock.read()
         self.assertAlmostEqual(est, 1.021)
         t[0] = 1.0                                        # capped fill-in
-        self.assertAlmostEqual(clock.read()[1], 1.016 + 0.05)
+        self.assertAlmostEqual(clock.read()[1], 1.016 + C.CLOCK_MAX_FILL_S)
 
     def test_song_clock_ignores_a_change_seen_late(self):
         t = [0.0]

@@ -277,7 +277,10 @@ const std::vector<OwnerRule>& rules() {
          {"return sqout_tick.has_value() && bsq.timecode.ticks() == *sqout_tick;",
           "if (b.timecode.ticks() == *sqout_tick) return &b;"},
          {"if (row_tick < *sqout_tick) return SqOutPosition::Before;",
-          "return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;"}},
+          "return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;"},
+         {},
+         // Tests too (J3-2): a test asks sqout_position.
+         {"src", "tools", "tests"}},
         {"Is this SP-end step a squeeze-in?",
          "is_sqin_kind in src/core/model.h",
          R"(\bkind\s*==\s*SpEndKind::SqIn\b)",
@@ -1439,8 +1442,8 @@ const std::vector<OwnerRule>& rules() {
          "D48, Q27; derive-once review of M_D, preview finding 4 (phase 3 task FX-P)",
          {"if (a.has_sp_end && a.ms <= now && now < a.sp_end_ms) return &a;",
           "if (now_ms >= s.ms) last = &s;", "return note_ms <= now_ms;"},
-         {"if (a.has_sp_end && struck_at(now, a.ms) && now < a.sp_end_ms) return &a;",
-          "return struck_at(now_ms, s.ms);", "if (now < a.sp_end_ms) return &a;"},
+         {"if (w && struck_at(now, w->first) && now < w->second) return &a;",
+          "return struck_at(now, s.ms);", "if (now < a.sp_end_ms) return &a;"},
          {{"src/app/preview_view.h",
            "inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }",
            "struck_at, the owner"}}},
@@ -2124,23 +2127,6 @@ const std::vector<OwnerRule>& rules() {
          {{"tests/audio_util.h",
            "inline double estimate_freq_hz(const hydra::audio::DecodedAudio& a, int channel) {",
            "estimate_freq_hz, the owner"}},
-         {"tests"}},
-        // The byte-at-a-time shift loop is the form every copy used. A u16
-        // writer's lone `n >> 8` line is not caught (review of M6-J1c
-        // finding 3 leaves that shape to the owner).
-        {"Which test helper writes a little-endian number?",
-         "put_le in tests/bytes_util.h",
-         R"(static_cast<uint8_t>\(\w+ >> \(8 \* i\)\))",
-         "",
-         {},
-         {},
-         "review of M6-J1c finding 3, folded under D53 (phase 6 task J1-4)",
-         {"for (int i = 0; i < 4; ++i) o.push_back(static_cast<uint8_t>(n >> (8 * i)));",
-          "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"},
-         {"o.push_back(static_cast<uint8_t>(n >> 8));"},
-         {{"tests/bytes_util.h",
-           "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
-           "put_le, the owner (put_u16, put_u32 and put_u64 write through it)"}},
          {"tests"}},
         // The join row above, for any name: a string literal that starts with
         // a backslash and a name, glued on with +, or a bare backslash added
@@ -3111,43 +3097,618 @@ const std::vector<OwnerRule>& rules() {
          {R"(ImGui::SetTooltip("%s", refused.c_str());)",
           R"(ImGui::SetTooltip("Compare a dmleaderboards.com player's scores against your library");)"},
          {}},
+        // The row's full SP value less what backend_row_value pays it as the
+        // squeezed-out chord.
+        {"What does squeezing out a row cost?",
+         "core::sqout_cost in src/core/backend_value.h",
+         R"((\.|->)points\s*-\s*value\b)",
+         "",
+         {"src/core/backend_value.h"},
+         {},
+         "audit finding 150; phase 6 task J3-1 (D53, D54)",
+         {"const int lost = row.points - value;",
+          "\" <-- squeezed out (-%d)\", bsq.points - value);"},
+         {"return points - backend_row_value(offset_ms, points, sqout_points, SqOutPosition::Exact,",
+          "const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);"},
+         {},
+         {"src"}},
+        // The value_or fallback. A bare dereference of the optional reads the
+        // same fact; the J3-9 row at the end of rules() scans for those.
+        {"What is a backend row's offset?",
+         "BackendSqueeze::offset in src/core/model.cpp",
+         R"(offset_ms\.value_or\()",
+         "",
+         {},
+         {},
+         "audit finding 346; phase 6 task J3-1 (D53, D54)",
+         {"double off = offset_ms.value_or(0.0);",
+          "if (within_squeeze_window(bsq.offset_ms.value_or(0.0)) || is_sqout_backend(bsq))"},
+         {"if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)",
+          "const double off = offset();"},
+         {},
+         {}},
+        // A comparison with the kick lane beside a flag field, or opening a
+        // branch, decides the flag split itself.
+        {"Which lanes may carry a flag, and what does the flag mean?",
+         "lane_allows_flag, set_lane_flag and lane_flag in src/core/model.cpp",
+         R"([!=]=\s*NoteColor::Kick\b.*(is2x|cymbal|\)\s*\{\s*$))",
+         "",
+         {},
+         {},
+         "audit finding 190; phase 6 task J3-1 (D53, D54)",
+         {"if (color == NoteColor::Kick) {", "return c == NoteColor::Kick || allows_cymbals(c);",
+          "if (note.colortype == NoteColor::Kick) return note.is2x ? \"2x kick\" : \"Kick\";"},
+         {"set_lane_flag(add_note(NoteColor::Kick));",
+          "if (note.colortype == NoteColor::Kick) return lane_flag(note) ? \"2x kick\" : \"Kick\";",
+          "CHECK(k2.colortype == NoteColor::Kick);"},
+         {{"src/core/model.cpp", "return c == NoteColor::Kick || allows_cymbals(c);",
+           "lane_allows_flag, the owner"},
+          {"src/core/model.cpp", "if (note.colortype == NoteColor::Kick) note.is2x = true;",
+           "set_lane_flag, the owner"},
+          {"src/core/model.cpp",
+           "return note.colortype == NoteColor::Kick ? note.is2x : note.is_cymbal();",
+           "lane_flag, the owner"}},
+         {"src", "tests"}},
+        // Tests pin the shown text and may type it. "Ghost Notes:" is a score
+        // category's name, a different question.
+        {"What is a note's dynamic called in text?",
+         "dynamic_str and dynamic_label in src/core/model.cpp",
+         R"("[ (]*(Ghost|Accent)\)?")",
+         "",
+         {},
+         {},
+         "audit finding 241; phase 6 task J3-1 (D53, D54)",
+         {"ImGui::TableSetupColumn(\"Ghost\");",
+          "case NoteDynamicType::Ghost: mod = \" (Ghost)\"; break;"},
+         {"ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());",
+          "lines.push_back(\"Ghost Notes:      \" + right10(path.score_ghosts));"},
+         {},
+         {"src"}},
+        // Test JSON fixtures pin the wire format and stay out of scope.
+        {"How is a squeeze kind spelled?",
+         "SPSqueeze::type_name in src/core/model.h, read back by squeeze_kind_from_name",
+         R"re("(SqIn|SqOut)")re",
+         "",
+         {},
+         {},
+         "audit finding 203; phase 6 task J3-1 (D53, D54)",
+         {"if (sq.value(\"kind\", std::string()) != \"SqOut\") continue;"},
+         {"if (squeeze_kind_from_name(sq.value(\"kind\", std::string())) != SqueezeKind::SqOut)"},
+         {{"src/core/model.h", "return kind == SqueezeKind::SqIn ? \"SqIn\" : \"SqOut\";",
+           "type_name, the owner"}},
+         {}},
+        {"How is a multiplier squeeze written as text?",
+         "MultSqueeze::notationstr in src/core/model.cpp",
+         R"(multiplier\(\)\)\s*\+\s*"x")",
+         "",
+         {},
+         {},
+         "audit finding 248; phase 6 task J3-1 (D53, D54)",
+         {"s += std::to_string(multsqueezes[i].multiplier()) + \"x\";"},
+         {"s += multsqueezes[i].notationstr();"},
+         {{"src/core/model.cpp", "return std::to_string(multiplier()) + \"x\";",
+           "MultSqueeze::notationstr, the owner"}},
+         {"src"}},
+        // prepare_variants writes the tail; only reading it is the question.
+        {"Which activations does a path have, and in what order?",
+         "ActivationWalk (Path::walk_activations) in src/core/model.h",
+         R"(variant_tail\.(begin|end|empty)\(\))",
+         "",
+         {},
+         {},
+         "audit finding 268; phase 6 task J3-1 (D53, D54)",
+         {"out.insert(out.end(), variant_tail.begin(), variant_tail.end());",
+          "return !activations.empty() || !variant_tail.empty();"},
+         {"v.variant_tail.clear();",
+          "for (size_t i = vp; i < mine.size(); ++i) v.variant_tail.push_back(mine[i]);"},
+         {},
+         {"src"}},
+        // The engine's running p.score is a different sum, per edge; task
+        // J3-2 checks it against score_total at copy-out.
+        {"What is a path's total score?",
+         "score_total in src/core/model.h",
+         R"(score_base\s*\+\s*score_combo\s*\+\s*score_sp|\bbase\s*\+\s*combo\s*\+\s*sp\s*\+\s*solo\b)",
+         "",
+         {},
+         {},
+         "audit finding 165; phase 6 task J3-1 (D53, D54)",
+         {"return score_base + score_combo + score_sp + score_solo + score_accents +",
+          "int64_t total() const { return base + combo + sp + solo + accent + ghost; }"},
+         {"return score_base + score_ghosts + score_accents;",
+          "p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +"},
+         {{"src/core/model.h", "return base + combo + sp + solo + accents + ghosts;",
+           "score_total, the owner"}},
+         {"src"}},
+        // ---- phase 6 task J3-2: the graph, the engine and the replay ----
+        // The engine's message "a variant under 2 bars at its fold passed a
+        // fill" names the number in words and is not a comparison.
+        {"How many SP bars does an activation need?",
+         "kSpActivationBars in src/core/timing.h",
+         R"(\bsp\s*(<|>=)\s*2\b|\bkept\s*<\s*2\b|for \(int sp = 2\b|sp_cap\s*==\s*1\b)",
+         "",
+         {},
+         {},
+         "audit finding 334; D54 (kSpActivationBars, a code-only call); M7-2a review row 3; "
+         "phase 6 task J3-2",
+         {"if (p.sp < 2 || !has_value(p.sp_ready_ms)) return 0;", "if (kept < 2 && sp >= 2) {",
+          "for (int sp = 2; sp <= max_sp_bars(); ++sp) {",
+          "const bool one_bar_cap = record.sp_cap && *record.sp_cap == 1;"},
+         {"if (p.sp < kSpActivationBars) return false;", "inline constexpr int kSpActivationBars = 2;"},
+         {},
+         {"src"}},
+        // graph_build_cap's floor of one is the pather's own and stays there.
+        {"How tall can the SP meter get?",
+         "max_sp_bars in src/search/graph.cpp",
+         R"(std::min\([^;]*(cap[^;]*phrase|phrase[^;]*cap))",
+         "",
+         {},
+         {},
+         "audit finding 260; phase 6 task J3-2 (D53, D54)",
+         {"return std::min(*sp_meter_cap_, sp_phrase_count_);",
+          "return std::min(sp_cap, std::max(sp_phrase_count, 1));"},
+         {"bank = std::min(bank + 1.0, cap);",
+          "return std::max(max_sp_bars(sp_cap, sp_phrase_count), 1);"},
+         {{"src/search/graph.cpp", "return std::min(*sp_meter_cap, sp_phrase_count);",
+           "max_sp_bars, the owner"}},
+         {"src"}},
+        // Only activation edges carry a deadline; the engine refuses one
+        // without it instead of filling in a number.
+        {"What does the engine read when an activation edge has no fill deadline?",
+         "enumerate and index_fills in src/search/engine.cpp",
+         R"(activation_fill_deadline_ms\.value_or\()",
+         "",
+         {},
+         {},
+         "audit R7.35; phase 6 task J3-2 (D53, D54)",
+         {"v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);"},
+         {"v.activation_fill_deadline_ms = o->activation_fill_deadline_ms",
+          "fills.emplace_back(n.tick, deadline);"},
+         {},
+         {"src"}},
+        // ---- phase 6 task J3-6: store rows and bytes ----
+        // A structure blob's head offset typed as a digit in SQL, or read by
+        // hand in C++. The store spells both from path_codec.h's names.
+        {"Where do the format and fingerprint sit in a structure blob?",
+         "kPathFormatOffset, kRulesFingerprintOffset, kStructureHeadBytes and "
+         "read_structure_head in src/store/path_codec.h",
+         R"(substr\(\s*(\w+\.)?structure\s*,\s*\d|read_le\(structure_head)",
+         "",
+         {},
+         {},
+         "audit finding 194, folded under D53 (phase 6 task J3-6)",
+         {"\") AND substr(structure,1,4) IN (\" + placeholders(kPathFormatStamp.accepted.size()) +",
+          "std::string(\"SELECT hyhash, hyversion, bestpath, result_id, substr(structure,1,12), \") +",
+          "\"r.hyversion, r.result_id, substr(r.structure,1,12) \"",
+          "kPathFormatStamp.is_current(static_cast<uint32_t>(read_le(structure_head, 0, 4)));"},
+         {"return head_field_sql(blob, kRulesFingerprintOffset, kRulesFingerprintBytes);"},
+         {},
+         {}},
+        // A hand-written little-endian helper beside the shared codec. The
+        // byte-at-a-time shift loop is the form most copies use, whatever the
+        // helper is called. A fully unrolled helper with no telling name is
+        // not caught. The hash's byte loops store no number, so they are
+        // listed as owner lines, not copies (review of J3-6 finding 1). The
+        // J2-5 row's question is the same with the u32 helper names; the
+        // suffix keeps the two rows' questions apart. Reading moved down to
+        // core/ in task J3-9d, because parse/ cannot include store/; the
+        // pattern also catches a helper named for its width alone (le32) and
+        // the second byte of an unrolled read OR-ed in shifted by 8. A
+        // big-endian read (MIDI) and the hash's XOR-ed tail bytes are other
+        // questions and are not flagged.
+        {"How is a little-endian number written byte by byte? (any width or name)",
+         "read_le and append_le in src/core/little_endian.h (BinaryReader/Writer call the "
+         "readers; BinaryWriter and testbytes::put_le call the writer)",
+         R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*|\|\s*\(*\s*(static_cast<\w+>|u?int\d*_t)?\s*\(*\s*[\w.>-]+\[[^\]]*\]\s*\)*\s*<<\s*8\b)",
+         "",
+         {},
+         {},
+         "audit finding 195, folded under D53 (phase 6 tasks J3-6 and J3-9d); widened by review of J3-6 "
+         "finding 1 and by J3-9d; tests scanned since the J3 join; writing folded in the J3 review fix",
+         {"uint64_t read_le(const std::vector<uint8_t>& b, size_t at, int bytes) {",
+          "std::vector<uint8_t> write_le(uint64_t v, int bytes) {",
+          "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
+          "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(buf[pos + i]) << (8 * i);",
+          "len |= static_cast<uint32_t>(meta[pos + i]) << (8 * i);",
+          "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(bytes_[pos_++]) << (8 * i);",
+          "uint32_t le32(const uint8_t* p) {", "int64_t le64(const uint8_t* p) {",
+          "return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |",
+          "link->preskip = pos[10] | (pos[11] << 8);",
+          "link->gain_q78 = static_cast<int16_t>(pos[16] | (pos[17] << 8));",
+          "skip_remaining = op.packet[10] | (static_cast<int>(op.packet[11]) << 8);",
+          "const uint32_t first_four = uint32_t(structure[0]) | uint32_t(structure[1]) << 8 |",
+          "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"},
+         {"void BinaryWriter::u32(uint32_t v) {", "uint32_t BinaryReader::u32() {",
+          "out.push_back(static_cast<uint8_t>(v >> 8));",
+          "const uint32_t len = core::read_le_u32(meta.data() + pos);",
+          "uint64_t blob_size = core::read_le_u64(buf.data() + cursor + 16);",
+          "constexpr uint32_t read_le_u32(const uint8_t* p) { return read_le<uint32_t>(p); }",
+          "link->gain_q78 = static_cast<int16_t>(core::read_le_u16(pos + 16));",
+          "(uint32_t(d[at + 2]) << 8) | uint32_t(d[at + 3]);",
+          "return int16_t((uint16_t(d[at]) << 8) | uint16_t(d[at + 1]));",
+          "case 10: k2 ^= static_cast<uint64_t>(tail[9]) << 8;    [[fallthrough]];",
+          "link->channels = pos[9];",
+          "void BinaryWriter::u32(uint32_t v) { core::append_le_u32(bytes, v); }",
+          "void BinaryWriter::u64(uint64_t v) { core::append_le_u64(bytes, v); }",
+          "hydra::core::append_le(out, v, bytes);"},
+         {{"src/core/little_endian.h",
+           "for (std::size_t i = 0; i < sizeof(T); ++i) v = static_cast<T>(v | (static_cast<T>(p[i]) << (8 * i)));",
+           "read_le, the owner of reading"},
+          {"src/core/little_endian.h",
+           "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
+           "append_le, the owner of writing"},
+          {"src/store/path_codec.cpp",
+           "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(p[i]) << (8 * i);",
+           "getblock64, the hash's block read; it reads hash input, not a stored number"},
+          {"src/store/path_codec.cpp",
+           "for (int i = 0; i < 8; ++i) out[i] = static_cast<uint8_t>(h1 >> (8 * i));",
+           "murmur3_x64_128's output; it writes a hash, not a stored number"},
+          {"src/store/path_codec.cpp",
+           "for (int i = 0; i < 8; ++i) out[8 + i] = static_cast<uint8_t>(h2 >> (8 * i));",
+           "murmur3_x64_128's output; it writes a hash, not a stored number"}},
+         {"src", "tests"}},
+        // A second read of a row's head to say why it is Stale.
+        {"Why is a stored row Stale?",
+         "rank_row in src/store/record_store.cpp",
+         R"(stale_reasons\(|layout_is_current\()",
+         "",
+         {},
+         {},
+         "audit finding 196, folded under D53 (phase 6 task J3-6)",
+         {"stale_reasons(best.hyversion, best.structure, rules_fingerprint_);"},
+         {"const Candidate& rank = picker.rank(*won);"},
+         {},
+         {"src"}},
+        // One identity column compared at a time instead of a RecordKey.
+        {"Is this still the row the report walk listed?",
+         "RecordKey::operator== in src/store/record_store.h",
+         R"(!=\s*meta\.(hyhash|chartmode|sp_cap)\b)",
+         "",
+         {},
+         {},
+         "audit finding 197, folded under D53 (phase 6 task J3-6)",
+         {"if (column_text(stmt, 0) != meta.hyhash) return false;"},
+         {"if (column_text(stmt, 2) != meta.hyversion) return false;"},
+         {},
+         {"src"}},
+        {"Which PathSummary fields must match? (tests)",
+         "PathSummary::operator== in src/store/record_store.h",
+         R"(\bdiff_summary\s*\()",
+         "",
+         {},
+         {},
+         "audit finding 121, folded under D53 (phase 6 task J3-6)",
+         {"std::string diff_summary(const PathSummary& a, const PathSummary& b) {"},
+         {"CHECK(summarize_record(back) == summarize_record(rec));"},
+         {},
+         {"tests"}},
+        // Schema 2's column list typed out again.
+        {"Which columns did schema 2 have? (tests)",
+         "kSchema2ResultsColumns in src/store/record_store.cpp",
+         R"(result_id, hyhash, chartmode, hyversion,)",
+         "",
+         {},
+         {},
+         "audit finding 267, folded under D53 (phase 6 task J3-6)",
+         {"\"INSERT INTO results SELECT result_id, hyhash, chartmode, hyversion,\""},
+         {"std::string(\"INSERT INTO results (\") + kSchema2ResultsColumns +"},
+         {{"src/store/record_store.cpp",
+           "\"result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled, ms_value, depth_mode,\"",
+           "kSchema2ResultsColumns, the owner"}},
+         {"src", "tests"}},
+        // Summing each root's tied count instead of counting all_paths().
+        {"How many paths did a record keep?",
+         "HydraRecord::all_paths in src/core/model.h",
+         R"(\+=\s*\w+\.tied_pathcount\(\))",
+         "",
+         {},
+         {},
+         "audit finding 172, folded under D53 (phase 6 task J3-6)",
+         {"for (const Path& p : record.paths) pathcount += p.tied_pathcount();"},
+         {"tied_count += v.tied_count;"},
+         {},
+         {}},
+        {"When is the song's last note? (tests)",
+         "store::song_length_ms in src/store/record_store.cpp",
+         R"(sequence\.back\(\)\.timecode\.ms\(\))",
+         "",
+         {},
+         {},
+         "audit finding 191, the store test's compare (phase 6 task J3-6)",
+         {"const double expected = song.sequence.back().timecode.ms();"},
+         {"const double expected = *song_length_ms(song);"},
+         {},
+         {"tests"}},
+        // ---- the J3 join's leftovers (task J3-9) ----
+        // The J3-1 offset row above catches the value_or fallback; this one
+        // catches a bare dereference of the same optional. The star must
+        // follow an opening, an operator or return, so a product with a local
+        // named offset_ms is not flagged. Tests pin stored offsets and stay
+        // out of scope.
+        {"What is a backend row's offset? (a bare dereference)",
+         "BackendSqueeze::offset in src/core/model.cpp",
+         R"((^|[(,=!&|?:{]|\breturn)\s*\*\s*(\w+(\.|->)|\w+\(\)(\.|->))*offset_ms\b)",
+         "",
+         {},
+         {},
+         "audit finding 346; the J3 join (task J3-9)",
+         {"!core::counted_without_squeeze(*row.row.offset_ms, backend_leeway_ms));",
+          "const double o = *bsq.offset_ms;",
+          "const double stored_ms = *act.sqout_row()->offset_ms;"},
+         {"const double o = bsq.offset();", "*w.sqout_offset_ms);",
+          "const double t = scale * offset_ms;"},
+         {{"src/core/model.cpp", "return *offset_ms;", "BackendSqueeze::offset, the owner"},
+          {"src/store/path_codec.cpp",
+           "if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)",
+           "the codec's round-trip compare, which asks whether the offset is set first"}},
+         {}},
+        // ---- phase 6 tasks J3-3, J3-4 and J3-5 ----
+        // A line that asks sqout_position for the position, as
+        // Activation::is_sqout_backend does, passes.
+        {"Which position does a backend row take when the Paths tab prices it?",
+         "core::sqout_position in src/core/backend_value.h",
+         R"(SqOutPosition::(Exact|NoSqOut)\b)",
+         R"(\bsqout_position\()",
+         {"src/core/backend_value.h"},
+         {},
+         "audit findings 150 and 346; phase 6 task J3-3 (D53, D54)",
+         {"br.squeezed_out ? core::SqOutPosition::Exact",
+          "off, row.points, row.sqout_points, core::SqOutPosition::Exact, leeway_ms);"},
+         {"core::sqout_position(bsq.timecode.ticks(), act.sqout_tick),",
+          "return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;"},
+         {},
+         {"src"}},
+        {"How is a measure number written as a label?",
+         "measure_label in src/app/path_view.cpp",
+         R"("m" \+ std::to_string|TextDisabled\("m1"\)|measure_beats_ticks\(\)\[0\] \+ 1)",
+         "",
+         {},
+         {{"src/parse/song.cpp",
+           "the parser steps its measure map by measure numbers there; it writes no label"}},
+         "audit findings 183 and 184; phase 6 task J3-3 (D53, D54)",
+         {R"x("m" + std::to_string((long long)timing->timecode(end_tick).measure_beats_ticks()[0] + 1);)x",
+          R"x(ImGui::TextDisabled("m1");)x"},
+         {"view.timeline_end = measure_label(timing->timecode(end_tick));",
+          R"x(ImGui::TextDisabled("%s", view.timeline_start.c_str());)x"},
+         {{"src/app/path_view.cpp",
+           R"x(return "m" + std::to_string((long long)tc.measure_beats_ticks()[0] + 1);)x",
+           "measure_label, the owner"}},
+         {"src"}},
+        // Tests pin the shown text and may type it.
+        {"How is the first measure spelled?",
+         "first_measure_label in src/app/path_view.cpp",
+         R"("m1\.1\.0")",
+         "",
+         {},
+         {},
+         "audit R7.27; phase 6 task J3-3 (D53, D54)",
+         {R"x(box.position = scene.timing ? format_measure(*scene.timing, now_tick) : "m1.1.0";)x"},
+         {"std::string first_measure_label() { return format_measure(Timecode{}); }"},
+         {},
+         {"src"}},
+        {"What id does an activation's backend table get?",
+         "backend_table_id in src/app/path_view.cpp",
+         R"(##backends)",
+         "",
+         {},
+         {},
+         "audit finding 291; phase 6 task J3-3 (D53, D54)",
+         {R"x(std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", a.number, static_cast<int>(w_timing),)x",
+          R"x(const std::string prefix = "##backends" + std::to_string(number) + "_";)x"},
+         {"app::backend_table_id(a.number, static_cast<int>(w_timing), static_cast<int>(w_chord),"},
+         {{"src/app/path_view.cpp",
+           R"x(std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", number, w_timing, w_chord, w_points);)x",
+           "backend_table_id, the owner"},
+          {"tests/test_path_view.cpp",
+           R"x(CHECK(backend_table_id(1, 48, 40, 56) == "##backends1_48_40_56");)x",
+           "the owner's pinned case: finding 291's own example as a literal (D42)"}},
+         {"src", "tests"}},
+        // A letter before the figure: a badge's wording, not a decimal such
+        // as "2.999 ms" in a leeway case.
+        {"What is the longest badge an activation row can show?",
+         "longest_activation_badge in src/app/path_view.cpp",
+         R"([a-z] 999 ms|text\(18\))",
+         "",
+         {},
+         {},
+         "audit finding 292; phase 6 task J3-3 (D53, D54)",
+         {R"x(check("m1024.1.120", "m1024.1.120", "12 bars", "early fill 999 ms");)x",
+          R"x(check("m1024.1.120", "m1024.1.120", "12 bars", "squeeze out 999 ms");)x",
+          R"x(const float badge_w = text(18);  // "squeeze out 999 ms", the longest wording)x"},
+         {R"x(TEST_CASE("backend leeway: +2.999 ms is counted, exactly +3.0 ms is not (D29)") {)x",
+          "const float badge_w = text(static_cast<int>(hydra::app::longest_activation_badge().size()));"},
+         {},
+         {"tests"}},
+        {"Where do the measure and the bars start on an activation row?",
+         "kRowMeasureX and kRowMinBarsX in src/ui/activation_row_layout.h",
+         R"(\b(104|200)\.0f\b)",
+         "",
+         {},
+         {{"tests/test_overlay_layout.cpp",
+           "the Preview overlay's own test widths, not an activation row"}},
+         "audit finding 276; phase 6 task J3-3 (D53, D54)",
+         {"CHECK(l.measure_x == doctest::Approx(104.0f));"},
+         {"CHECK(l.measure_x == doctest::Approx(kRowMeasureX));"},
+         {{"src/ui/activation_row_layout.h",
+           "inline constexpr float kRowMeasureX = 104.0f;   // where the measure starts",
+           "kRowMeasureX, the owner"},
+          {"src/ui/activation_row_layout.h",
+           "inline constexpr float kRowMinBarsX = 200.0f;   // the bars never start before this",
+           "kRowMinBarsX, the owner"}},
+         {"src", "tests"}},
+        {"Which moment do the Preview's overlay boxes read?",
+         "shown_ms in src/app/preview_view.cpp",
+         R"(now_ms < 0\.0 \? 0\.0 : now_ms|now_ms > len \? len)",
+         "",
+         {},
+         {},
+         "audit finding 185; phase 6 task J3-4 (D53, D54)",
+         {"const double now = now_ms < 0.0 ? 0.0 : now_ms;"},
+         {"const double now = shown_ms(now_ms, length_ms);"},
+         {{"src/app/preview_view.cpp",
+           "return now_ms < 0.0 ? 0.0 : (now_ms > len ? len : now_ms);", "shown_ms, the owner"}},
+         {"src"}},
+        // Tests pin the fact that a scene has no curve; those are assertions,
+        // not a predicate.
+        {"Does the Preview scene have an SP gauge?",
+         "PreviewScene::has_sp_gauge in src/app/preview_view.h",
+         R"(sp_meter\.segments\.empty\(\))",
+         "",
+         {},
+         {},
+         "audit finding 216; phase 6 task J3-4 (D53, D54)",
+         {"if (!scene.timing || scene.sp_meter.segments.empty()) return box;",
+          "return !scene_.sp_meter.segments.empty();"},
+         {"if (!scene.has_sp_gauge()) return box;"},
+         {{"src/app/preview_view.h",
+           "bool has_sp_gauge() const { return timing.has_value() && !sp_meter.segments.empty(); }",
+           "has_sp_gauge, the owner"}},
+         {"src"}},
+        {"Over which stretch is an activation's Star Power running?",
+         "PreviewActivation::sp_window in src/app/preview_view.h",
+         R"(has_sp_end && (struck_at\(now, a\.ms\)|a\.sp_end_ms > a\.ms))",
+         "",
+         {},
+         {},
+         "audit finding 157; phase 6 task J3-4 (D53, D54)",
+         {"if (a.has_sp_end && struck_at(now, a.ms) && now < a.sp_end_ms) return &a;",
+          "if (a.has_sp_end && a.sp_end_ms > a.ms)"},
+         {"if (w && struck_at(now, w->first) && now < w->second) return &a;",
+          "if (const std::optional<std::pair<double, double>> w = a.sp_window())"},
+         {},
+         {"src"}},
+        // The owner is apply_preview_overlay's mark, which stores the fill on
+        // the activation (PreviewActivation::taken_fill); readers take it from
+        // there instead of searching the fills again.
+        {"Which fill did an activation take?",
+         "apply_preview_overlay's mark in src/app/preview_view.cpp, stored as "
+         "PreviewActivation::taken_fill",
+         R"(span\.end_tick\s*[!=]=\s*a\.tick)",
+         "",
+         {},
+         {},
+         "audit finding 175; phase 6 task J3-4 (D53, D54)",
+         {"if (f.state != app::PreviewFillState::Taken || f.span.end_tick != a.tick) continue;"},
+         {"if (next_fill >= fills.size() || fills[next_fill].span.end_tick != tick)"},
+         {},
+         {"src"}},
+        // J2-3's row covers the replay's read; this one covers the Preview
+        // scene's own join of flagged chords.
+        {"Where does a solo section start and end? (the scene's join)",
+         "Song::solo_sections in src/parse/song.h",
+         R"(\b(in_solo|solo_start|solo_last)\b)",
+         "",
+         // The parsers read solo markers and build the sections there.
+         {"src/parse/song.cpp"},
+         {},
+         "audit finding 167; phase 6 task J3-4 (D53, D54)",
+         {"solo_start = ts.timecode.ticks();",
+          "scene.solos.push_back(span_from_ticks(song, solo_start, solo_last));"},
+         {"scene.solos.push_back(span_from_ticks(song, song.sequence[s.first].timecode.ticks(),"},
+         {},
+         {"src"}},
+        {"Which gem does a Preview note draw as?",
+         "pad_of in src/render/track_state.cpp",
+         R"(n\.lane == PreviewLane::Kick)",
+         "",
+         {},
+         {},
+         "audit finding 190; phase 6 task J3-4 (D53, D54)",
+         {"if (n.lane == PreviewLane::Kick) {"},
+         {"case PreviewLane::Kick:   break;",
+          "CHECK(scene.notes[3].lane == PreviewLane::Kick);"},
+         {},
+         {"src"}},
+        // A jump through the controller pointer with a number typed in, a
+        // quoted control word naming the step, or a second definition of
+        // either constant. The tests drive the controller with typed
+        // distances (pc.jump_ms(5000.0)) and pin the shown text, so src only.
+        {"How far does a Preview jump move, and what do its controls call it?",
+         "kJumpSeconds and kTickStep in src/ui/preview_tab.cpp",
+         R"(->jump_ms\(\s*-?\d|"[^"]*\b(5 seconds|5 ticks|5 Ticks)\b[^"]*"|"[-+]5s"|\b(kJumpSeconds|kTickStep)\s*=\s*\d)",
+         "",
+         {},
+         {},
+         "audit finding 215; phase 6 task J3-5 (D53, D54)",
+         {R"(if (ImGui::Button("-5s")) pc->jump_ms(-5000.0);)", R"({{",", "."}, "5 ticks"},)"},
+         {"pc.jump_ms(5000.0);", "inline constexpr double kAudioTailMs = 5000.0;"},
+         {{"src/ui/preview_tab.cpp", "constexpr int kJumpSeconds = 5;", "kJumpSeconds, the owner"},
+          {"src/ui/preview_tab.cpp", "constexpr int kTickStep = 5;", "kTickStep, the owner"}},
+         {"src"}},
+        // highway_draw.cpp and overlay_layout.cpp have their own factors
+        // under J2-8's rows, so only the tab is scanned.
+        {"How big is each Preview overlay box at a scale?",
+         "overlay_box_sizes and line_height in src/ui/preview_tab.cpp",
+         R"(\* 1\.25f|\* 1\.8f|\* 1\.2f)",
+         "",
+         {},
+         {},
+         "audit finding R7.18; phase 6 task J3-5 (D53, D54)",
+         {"const float line_h = size * 1.25f;",
+          "const float score_size = score.available ? size * 1.8f : size;"},
+         {"const float line_h = line_height(size);", "s.pad = px(8.0f) * scale;"},
+         {{"src/ui/preview_tab.cpp", "float line_height(float size) { return size * 1.25f; }",
+           "line_height, the owner"},
+          {"src/ui/preview_tab.cpp", "s.score_size = score.available ? s.size * 1.8f : s.size;",
+           "overlay_box_sizes, the owner"},
+          {"src/ui/preview_tab.cpp", "s.score_line_h = s.score_size * 1.2f;",
+           "overlay_box_sizes, the owner"}},
+         {"src/ui/preview_tab.cpp"}},
+        // A prefix test on a drawn overlay key, or a read of the key's path
+        // part (overlay_key_path_part) anywhere but shows_path. Tests may
+        // still compare two keys whole.
+        {"Is the drawn overlay the selected path's?",
+         "PreviewController::shows_path in src/ui/preview_controller.cpp",
+         R"(overlay_path_key\(\)\.rfind\(|rfind\(\w*overlay_key\w*, 0\)|\boverlay_key_path_part\()",
+         "",
+         {},
+         {},
+         "audit finding 340; phase 6 task J3-5 (D53, D54)",
+         {"if (jump && pc->overlay_path_key().rfind(ui.overlay_key, 0) == 0) {",
+          "return h.app->preview->overlay_path_key().rfind(first_key, 0) == 0;"},
+         {"if (jump && pc->shows_path(ui.overlay_key)) {",
+          "IM_CHECK(h.app->preview->overlay_path_key() != first_overlay);"},
+         {{"src/ui/preview_controller.cpp",
+           "std::string overlay_key_path_part(const std::string& key) {",
+           "the one reader of an overlay key's path part, beside overlay_key"},
+          {"src/ui/preview_controller.cpp",
+           "return !scene_path_key_.empty() && overlay_key_path_part(scene_path_key_) == path_key;",
+           "shows_path, the owner"}},
+         {"src", "tests"}},
+        // Every test builds its options through track_options too (the J3
+        // join folded the golden and renderer tests), so all of tests is
+        // scanned.
+        {"Which highway options does the Preview draw with?",
+         "track_options in src/ui/preview_load_job.h",
+         R"(\.pro\s*=\s*pro_?\b|\.pro\s*[!=]=\s*\w+\.pro\b)",
+         "",
+         {},
+         {},
+         "audit finding R7.16; phase 6 task J3-5 (D53, D54); widened to all tests by the J3 join",
+         {"track_opts.pro = pro_;", "if (pending_track_ && pending_track_opts_.pro == opts.pro)"},
+         {"plain.pro = false;", "if (pending_track_ && pending_track_opts_ == opts)"},
+         {{"src/ui/preview_load_job.h", "opts.pro = pro;", "track_options, the owner"},
+          {"src/render/track_state.h", "return a.pro == b.pro;",
+           "TrackStateOptions::operator==, the struct's own compare"}},
+         {"src", "tests"}},
+        // A stem's size read from its path on disk: the load maps every loose
+        // stem first and takes the mapped size.
+        {"How big is a Preview stem?",
+         "MappedFile::size in src/audio/mapped_file.h",
+         R"(\bfile_size_bytes\(\s*\w+(\.|->)path\b)",
+         "",
+         {},
+         {},
+         "audit finding R7.25; phase 6 task J3-5 (D53, D54)",
+         {"n = file_size_bytes(s.path);"},
+         {"REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);"},
+         {},
+         {"src"}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
-         "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
-         "display_backends' trim (audit finding 146, another step)"},
-        {"What fields does a phrase-end note carry in a hand-built Song?",
-         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
-         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
-        {"What fields does a phrase-end note carry in a hand-built Song?",
-         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
-         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
-        {"What fields does a phrase-end note carry in a hand-built Song?",
-         "tests/test_preview_view.cpp", "ts.flag_sp = n.phrase;",
-         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
-        {"What fields does a phrase-end note carry in a hand-built Song?",
-         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
-         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
-        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
-         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
-         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
-         "finding 1)"},
-        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
-         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
-         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
-         "finding 1)"},
-        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
-         R"(hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.opus");)",
-         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
-         "finding 1)"},
-        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
-         R"(write_file(song, hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg"));)",
-         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
-         "finding 1)"},
         {"How is a scanned path keyed in the scan snapshot?", "tests/test_analysis.cpp",
          "rel = rel.substr(root.size() + 1);",
          "task J4-6 (rel_of calls relative_slash_path; audit finding 274)"},
@@ -3158,31 +3719,9 @@ const std::vector<KnownCopy>& known_copies() {
          R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
          "unassigned: the main session names the fold (the NotAnalyzed line takes "
          "its depth word from describe_settings; audit finding 206, D54)"},
-        {"Where does a solo section start and end?", "src/core/replay.cpp",
-         "i + 1 >= n || !song.sequence[i + 1].flag_solo;",
-         "task J3-2 (replay_path reads Song::solo_sections; audit finding 167)"},
-        {"Which fill rule does a record key name?", "src/store/record_store.cpp",
-         "if (key.lens.legacy_fills != (record.legacy_fills ? 1 : 0))",
-         "task J3-6 (prepare_row reads the record's fill flag through Lens::from)"},
         {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
          "if (r.record.paths.empty()) continue;",
          "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
-        {"What is a path's score without the solo bonus?", "src/core/model.cpp",
-         "int64_t multscore = totalscore() - score_solo;",
-         "task J3-1 (Path::avg_mult calls score_without_solo; audit finding 166)"},
-        {"How many solo-bonus points does a chord earn?", "src/search/graph.cpp",
-         "store_soloscore(kSoloBonusPerNote * timestamp.chord.count());",
-         "task J3-2 (the graph calls solo_bonus; audit finding 163)"},
-        {"How many solo-bonus points does a chord earn?", "src/core/replay.cpp",
-         "ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;",
-         "task J3-2 (the replay calls solo_bonus; audit finding 163)"},
-        {"What is the combo after a chord?", "src/search/graph.cpp",
-         "combo_ += timestamp.chord.count();",
-         "task J3-2 (the graph reads CategoryScores::combo_after; audit finding 164)"},
-        {"What is the combo after a chord?", "src/core/replay.cpp", "combo += ts.chord.count();",
-         "task J3-2 (the replay reads CategoryScores::combo_after; audit finding 164)"},
-        {"What is the combo after a chord?", "tests/test_search.cpp", "combo += ts.chord.count();",
-         "task J3-2 (the test's hand walk reads combo_after; audit finding 164)"},
         {"What does the song panel's Analyze button say?", "tests/ui/uitest_details.cpp",
          R"(IM_CHECK(ctx->ItemExists("**/Analyze this song"));)",
          "task J4-3 (uitest_details calls analyze_button_label; audit finding 289)"},
@@ -3195,6 +3734,12 @@ const std::vector<KnownCopy>& known_copies() {
         {"What does the song panel's Analyze button say?", "tests/ui/uitest_details.cpp",
          R"(ctx->ItemClick("**/Analyze this song");)",
          "task J4-3 (uitest_details calls analyze_button_label; audit finding 289)"},
+        // No J3 task owns src/app/dynamics_breakdown.cpp.
+        {"Which lanes may carry a flag, and what does the flag mean?",
+         "src/app/dynamics_breakdown.cpp",
+         "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
+         "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
+         "finding 190)"},
     };
     return k;
 }
@@ -3479,4 +4024,218 @@ TEST_CASE("single-owner rules hold in the single files outside the walk") {
             }
         }
     }
+}
+
+// J3-7 (findings 229, 230, 231, 271, 272 and the probe's unit factor) and
+// J3-8 (findings 232 to 236, 238, 239, 273, 328): the Clone Hero probe under
+// tools/ is Python, which the row scan above skips (it reads .cpp and .h
+// only), so these rows get their own scan of every .py file under tools/. A
+// __pycache__ .pyc is never read: only .py files are. Each row lists, by
+// exact text, the lines allowed to answer its question. Listed lines follow
+// take_listed_line, like the row scan's. Python comment lines are skipped.
+TEST_CASE("single-owner: the Clone Hero probe's facts each have one owner (J3-7, J3-8)") {
+    struct ProbeRow {
+        std::string question;
+        std::string pattern;
+        std::vector<std::string> allowed;  // "rel: trimmed line": the lines allowed to answer it
+        std::vector<std::string> must_match;
+        std::vector<std::string> must_not_match;
+    };
+    const std::vector<ProbeRow> rows = {
+        {"Where does the probe skip GameAssembly's own copies of the window constants?",
+         R"x(\b0x4000000\b)x",
+         {"tools/ch_probe/engine_finder.py: MODULE_SPAN = 0x4000000"},
+         {"module_end = proc.module_base + 0x4000000"},
+         {"MODULE_SPAN = 0x40000000"}},
+        {"How do raw engine bytes become numbers?",
+         R"x(struct\.unpack(_from)?\()x",
+         {R"x(tools/ch_probe/process.py: return struct.unpack("<d", raw)[0])x",
+          R"x(tools/ch_probe/process.py: return struct.unpack("<I", raw)[0])x",
+          R"x(tools/ch_probe/process.py: return struct.unpack("<Q", raw)[0])x"},
+         {R"x(return struct.unpack_from("<d", raw, off)[0])x",
+          R"x(return struct.unpack("<d", bytes(xmm0_bytes[:8]))[0])x"},
+         {R"x(struct.pack_into("<d", block, C.OFF_SONG_CLOCK, 12.5))x"}},
+        {"Is the engine in precision mode?",
+         R"x(&\s*C\.PRECISION_MODE_BIT\)|flags\s*&\s*C\.PRECISION_MODE_BIT)x",
+         {"tools/ch_probe/engine.py: return (flags & C.PRECISION_MODE_BIT) != 0"},
+         {"return (flags & C.PRECISION_MODE_BIT) != 0",
+          "return bool(self.flags & C.PRECISION_MODE_BIT)"},
+         {"other_bits = 0xFFFFFFFF & ~C.PRECISION_MODE_BIT"}},
+        {"How does the probe read and write game memory?",
+         R"x(k32\.(Read|Write)ProcessMemory\()x",
+         {"tools/ch_probe/process.py: ok = k32.ReadProcessMemory(",
+          "tools/ch_probe/process.py: ok = k32.WriteProcessMemory("},
+         {"ok = self._win32.k32.ReadProcessMemory(",
+          "ok = self._win32.k32.WriteProcessMemory("},
+         {"k32.FlushInstructionCache.restype = wintypes.BOOL"}},
+        // The owner is constants.s_to_ms/ms_to_s, which multiply by MS_PER_S
+        // and so match nothing here. The bare-name alternative catches a
+        // variable called just ms or s with an optional subscript.
+        {"How many milliseconds is a second (probe)?",
+         R"x(\b\w*(_s|_S|raw|est|clock|back|front)\s*\*\s*1000(\.0)?(?![\d.]))x"
+         R"x(|\b\w*(_ms|_MS)\s*/\s*1000(\.0)?(?![\d.])|\)\s*[*/]\s*1000(\.0)?(?![\d.]))x"
+         R"x(|\b(ms\[\d+\]|s(\[\d+\])?)\s*[*/]\s*1000(\.0)?(?![\d.]))x",
+         {},
+         {"window_ms=dbl(C.OFF_TOTAL_WINDOW) * 1000.0,",
+          "self._pending = (self._spacing_ms, thread_context.xmm0_double() * 1000.0)",
+          "return ms[0] / 1000",
+          "ms[0] += round(s * 1000)"},
+         {"bpm_microbeats = int(round(bpm * 1000))",
+          R"x(f"  0 = B {int(BPM * 1000)}",)x",
+          R"x("-i", "anullsrc=r=44100:cl=stereo",)x"}},
+        {"Which keys does EngineModel.constants() use?",
+         R"x("(normal|precision)_(back|front)"|"hitcheck_threshold"|"(normal|precision)_")x",
+         {R"x(tools/ch_probe/constants.py: CONST_KEY_PREFIX_NORMAL = "normal_")x",
+          R"x(tools/ch_probe/constants.py: CONST_KEY_PREFIX_PRECISION = "precision_")x",
+          R"x(tools/ch_probe/constants.py: CONST_KEY_HITCHECK_THRESHOLD = "hitcheck_threshold")x"},
+         {R"x("normal_back": read(C.RVA_CONST_NORMAL_BACK),)x"},
+         {"C.CONST_KEY_NORMAL_BACK: read(C.RVA_CONST_NORMAL_BACK),"}},
+        // The owner is Process.resolve; the test fakes call it (tests/fakes.py).
+        {"How does a test fake turn an RVA into an address?",
+         R"x(return\s+(self\.)?(module_base|BASE)\s*\+\s*rva)x",
+         {"tools/ch_probe/process.py: return self.module_base + rva"},
+         {"return BASE + rva"},
+         {"expected_addr = proc.resolve(C.RVA_DRUMS_ENGINE_CTOR)"}},
+        {"How long does a runner wait before reading a press's result?",
+         R"x(\b\w*SETTLE_MS\s*=(?!=))x",
+         {"tools/ch_probe/constants.py: INPUT_SETTLE_MS = 250"},
+         {"SETTLE_MS = 250        # wait this long past the note before reading the result",
+          "SETTLE_MS = 250   # read the result this long after the note (as walk_edges.py)"},
+         {"wait_for(max(p.second_ms, p.second_ms + p.offset_ms) + constants.INPUT_SETTLE_MS)"}},
+        {"Did a press register as a hit?",
+         R"x(\b(after|score_after)\s*>\s*(before|score_before)\b|\bafter_score\s*>\s*before_score\b)x"
+         R"x(|\.score\s*>\s*\w+\.score\b)x",
+         {"tools/ch_probe/engine.py: return score_after > score_before"},
+         {"hit = after_score > before_score", "hit = score_after > score_before",
+          "measured if from_engine else None, after.score > before.score, measured)",
+          "score_rises = sum(1 for a, b in zip(samples, samples[1:]) if b.score > a.score)"},
+         {"hit = pressed_input_hit(score_before, score_after)"}},
+        {"How does a runner find the game window?",
+         R"x(\bFindWindowW\b)x",
+         {"tools/ch_probe/input_driver.py: find = ctypes.windll.user32.FindWindowW"},
+         {R"x(ch_hwnd = user32.FindWindowW(None, "Clone Hero"))x",
+          R"x(return ctypes.windll.user32.FindWindowW(None, "Clone Hero") or 0)x"},
+         {"ch_hwnd = find_game_window()"}},
+        {"Which .chart note is the probe's kick?",
+         R"x(\b\w*KICK\s*=\s*0\b)x",
+         {"tools/ch_probe/constants.py: PROBE_CHART_NOTE_KICK = 0"},
+         {"KICK = 0  # .chart drum lane 0; play_chart.py maps it to the kick key"},
+         {"KICK = 4", "DRUM_NOTE_KICK = C.PROBE_CHART_NOTE_KICK"}},
+        // The test pins are today's text, pinned once (test_song_names_are_spelled_once).
+        {"Where are the probe songs installed, and what are they called?",
+         R"x(Clone Hero\\songs\\Hydra Probe|"Window Map"|"Edge Walk"|"Hydra Probe - ")x",
+         {R"x(tools/ch_probe/probe_songs.py: DEFAULT_OUT = r"C:\Clone Hero\songs\Hydra Probe")x",
+          R"x(tools/ch_probe/probe_songs.py: WINDOW_MAP = "Window Map")x",
+          R"x(tools/ch_probe/probe_songs.py: EDGE_WALK = "Edge Walk")x",
+          R"x(tools/ch_probe/probe_songs.py: NAME_PREFIX = "Hydra Probe - ")x",
+          R"x(tools/ch_probe/tests/test_probe_songs.py: self.assertEqual(P.WINDOW_MAP, "Window Map"))x",
+          R"x(tools/ch_probe/tests/test_probe_songs.py: self.assertEqual(P.EDGE_WALK, "Edge Walk"))x",
+          R"x(tools/ch_probe/tests/test_probe_songs.py: self.assertEqual(P.NAME_PREFIX, "Hydra Probe - "))x"},
+         {R"x(PROBE_ROOT = r"C:\Clone Hero\songs\Hydra Probe")x",
+          R"x(return os.path.join(live.PROBE_ROOT, "Window Map"))x"},
+         {R"x(python tools\\ch_probe\\experiments\\watch_window.py [<probe song name> | folder])x"}},
+        {"What is the probe's audio file called?",
+         R"x("song\.ogg")x",
+         {R"x(tools/ch_probe/probe_songs.py: SONG_OGG = "song.ogg")x",
+          R"x(tools/ch_probe/tests/test_probe_songs.py: self.assertIn('  MusicStream = "song.ogg"\n', text))x",
+          R"x(tools/ch_probe/tests/test_probe_songs.py: self.assertEqual(calls, [(os.path.join(root, "x", "song.ogg"), 4000)]))x",
+          R"x(tools/ch_probe/tests/test_probe_chart.py: music_stream="song.ogg"))x",
+          R"x(tools/ch_probe/tests/test_probe_chart.py: self.assertIn('  MusicStream = "song.ogg"\n', with_stream))x"},
+         {R"x(music_stream="song.ogg")x"},
+         {R"x(music_stream=SONG_OGG)x"}},
+        {"How many ticks is a millisecond (probe)?",
+         R"x(/\s*60000(\.0)?\b|\*\s*\w+\s*/\s*60000)x",
+         {"tools/ch_probe/probe_chart.py: return resolution * bpm / 60000.0"},
+         {"self.assertEqual(P.RESOLUTION * P.BPM / 60000.0, 1.0)"},
+         {"return int(round(ms * _ticks_per_ms(resolution, bpm)))"}},
+        {"What window does the formula predict?",
+         R"x(\*\*\s*exponent\b)x",
+         {"tools/ch_probe/experiments/analysis.py: return (t * c1 - (t ** exponent) * c2) * c3"},
+         {"return ((t * c1 - (t ** exponent) * c2) * c3 - c4) / divisor",
+          "return (c0 - (t * c1 - (t ** exponent) * c2) * c3) / divisor"},
+         {"exponent=exponent) - c4) / divisor"}},
+        {"Which lines of a probe .chart are drum notes? (probe tests)",
+         R"x(N\\s\+\(\\d\+\)\\s\+\(\\d\+\)|= N 0 0\$)x",
+         {R"x(tools/ch_probe/tests/chart_reader.py: _NOTE_LINE = re.compile(r"^(\d+)\s*=\s*N\s+(\d+)\s+(\d+)$"))x"},
+         {R"x(match = re.match(r"^(\d+)\s*=\s*N\s+(\d+)\s+(\d+)$", stripped))x",
+          R"x(return [int(m) for m in re.findall(r"^\s*(\d+) = N 0 0$", text, re.M)])x"},
+         {R"x(i_drums = text.find("[ExpertDrums]"))x"}},
+        // The test line pins D54's recorded value.
+        {"How long is a key held?",
+         R"x(\b0\.003\b)x",
+         {"tools/ch_probe/input_driver.py: KEY_HOLD_S = 0.003",
+          "tools/ch_probe/tests/test_input_driver.py: self.assertEqual(input_driver.KEY_HOLD_S, 0.003)"},
+         {"def press_chord(self, lanes: Iterable[int], *, hold_s: float = 0.003,",
+          "def press_chord(self, lanes: Sequence[int], *, hold_s: float = 0.003) -> list:"},
+         {"def press_chord(self, lanes: Iterable[int], *, hold_s: float = KEY_HOLD_S,"}},
+        // The owner is the named constants in constants.py, which the pattern
+        // (the old inline cut-offs) does not match.
+        {"Which cut-offs judge the probe's verdicts?",
+         R"x(<=\s*10\.0\b|fresh_s:\s*float\s*=\s*0\.002|max_fill_s:\s*float\s*=\s*0\.05)x"
+         R"x(|tolerance_ms:\s*float\s*=\s*1\.0|decisive_fraction:\s*float\s*=\s*0\.8)x",
+         {},
+         {"if len(hits) == score_rises and max(abs(d) for d in diffs) <= 10.0:",
+          "fresh_s: float = 0.002, max_fill_s: float = 0.05) -> None:",
+          "tolerance_ms: float = 1.0,", "decisive_fraction: float = 0.8,"},
+         {"clock = SongClock(engine.song_clock, max_fill_s=0.0)",
+          "fresh_s: float = C.CLOCK_FRESH_S,"}},
+    };
+
+    std::vector<std::regex> compiled;
+    for (const ProbeRow& r : rows) {
+        compiled.emplace_back(r.pattern);
+        for (const std::string& line : r.must_match) {
+            INFO(r.question << " should flag: " << line);
+            CHECK(std::regex_search(line, compiled.back()));
+        }
+        for (const std::string& line : r.must_not_match) {
+            INFO(r.question << " should not flag: " << line);
+            CHECK_FALSE(std::regex_search(line, compiled.back()));
+        }
+    }
+
+    // The allowed lines count the way the row scan's do: through ListedLine and
+    // take_listed_line. A repo-relative path holds no ": ", so the first one
+    // splits an entry into its file and its text.
+    std::vector<ListedLine> listed;
+    for (const ProbeRow& r : rows)
+        for (const std::string& a : r.allowed) {
+            const size_t split = a.find(": ");
+            REQUIRE(split != std::string::npos);
+            listed.push_back({r.question, a.substr(0, split), a.substr(split + 2),
+                              "listed line is gone (stale)"});
+        }
+    std::vector<bool> used(listed.size(), false);
+    std::vector<std::string> problems;
+    sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+        if (rel.compare(0, 6, "tools/") != 0 || path.extension() != ".py") return;
+        std::ifstream in(path);
+        std::string line;
+        int lineno = 0;
+        while (std::getline(in, line)) {
+            ++lineno;
+            const std::string t = hydra::trim(line);
+            if (t.empty() || t[0] == '#') continue;
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (!std::regex_search(t, compiled[i])) continue;
+                const Take take = take_listed_line(listed, used, rows[i].question, rel, t);
+                if (take == Take::taken) continue;
+                const std::string where = rel + ":" + std::to_string(lineno);
+                if (take == Take::used_up)
+                    problems.push_back(where + ": a second copy of a listed line (each "
+                                       "entry covers one line) answers \"" +
+                                       rows[i].question + "\": " + t);
+                else
+                    problems.push_back(where + ": answers \"" + rows[i].question + "\": " + t);
+            }
+        }
+    });
+    for (size_t i = 0; i < listed.size(); ++i) {
+        if (used[i]) continue;
+        problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
+    }
+    std::ostringstream report;
+    for (const std::string& p : problems) report << p << "\n";
+    INFO(report.str());
+    CHECK(problems.empty());
 }

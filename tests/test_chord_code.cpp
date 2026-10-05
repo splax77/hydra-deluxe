@@ -20,19 +20,19 @@ using hydra::NoteDynamicType;
 
 namespace {
 
-// Every shape one lane can take, empty included: every dynamic, plus a
-// cymbal on yellow/blue/green and a 2x on the kick.
+// Every shape one lane can take, empty included: every dynamic, plus the
+// lane's flag where it has one (hydra::lane_allows_flag, set by
+// hydra::set_lane_flag).
 std::vector<std::optional<ChordNote>> lane_shapes(NoteColor color) {
     std::vector<std::optional<ChordNote>> out{std::nullopt};
     for (NoteDynamicType dyn :
          {NoteDynamicType::Normal, NoteDynamicType::Ghost, NoteDynamicType::Accent}) {
-        out.push_back(ChordNote{color, dyn});
-        if (color == NoteColor::Kick) {
-            ChordNote twox{color, dyn};
-            twox.is2x = true;
-            out.push_back(twox);
-        } else if (hydra::allows_cymbals(color)) {
-            out.push_back(ChordNote{color, dyn, NoteCymbalType::Cymbal});
+        const ChordNote plain{color, dyn};
+        out.push_back(plain);
+        if (hydra::lane_allows_flag(color)) {
+            ChordNote flagged = plain;
+            hydra::set_lane_flag(flagged);
+            out.push_back(flagged);
         }
     }
     return out;

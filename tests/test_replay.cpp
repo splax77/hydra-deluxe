@@ -24,6 +24,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "chart_text.h"
 #include "core/backend_value.h"
 #include "core/model.h"
 #include "core/replay.h"
@@ -107,6 +108,32 @@ TEST_CASE("replay: combo_after is the combo once the chord is hit") {
     CHECK(r.chords[1].combo_after == 3);
     CHECK(r.chords[2].combo_before == 3);
     CHECK(r.chords[2].combo_after == 6);
+}
+
+// The on-screen total holds a solo's bonus back until the section's last
+// chord. The chart is kTwoSolosDrums (tests/chart_text.h).
+TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's last chord") {
+    const Song song =
+        load_songbytes_chart(testchart::chart_bytes(testchart::kTwoSolosDrums), true, true);
+    REQUIRE(song.solo_sections.size() == 2);
+    REQUIRE(song.solo_sections[0].first == 0);
+    REQUIRE(song.solo_sections[0].last == 1);
+    REQUIRE(song.solo_sections[1].first == 3);
+    REQUIRE(song.solo_sections[1].last == 3);
+
+    const ReplayResult r = replay_path(song, {});
+    REQUIRE(r.chords.size() == 4);
+    // Pinned from one run. Inside the first section its own bonus is held
+    // back; each section's last chord, and the plain chord between them,
+    // show the whole total.
+    CHECK(r.chords[0].cum.total() == 150);
+    CHECK(r.chords[0].cum_onscreen_total == 50);
+    CHECK(r.chords[1].cum.total() == 300);
+    CHECK(r.chords[1].cum_onscreen_total == 300);
+    CHECK(r.chords[2].cum.total() == 350);
+    CHECK(r.chords[2].cum_onscreen_total == 350);
+    CHECK(r.chords[3].cum.total() == 500);
+    CHECK(r.chords[3].cum_onscreen_total == 500);
 }
 
 // A targeted search is only useful if it gives back the same path the ordinary

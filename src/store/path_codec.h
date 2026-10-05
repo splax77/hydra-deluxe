@@ -35,8 +35,10 @@
 #define HYDRA_STORE_PATH_CODEC_H
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,6 +51,27 @@ namespace hydra::store {
 // The structure blob and every node payload start with one u32: the path
 // format, kPathFormatStamp in store/stored_versions.h. Both layouts share
 // that one number, so a change to either bumps it once.
+//
+// A structure blob's head: the path format, then the u64 rules fingerprint,
+// little-endian (serialize.h's BinaryWriter). flatten_record writes them in
+// that order, read_structure_head reads them, and the store spells its SQL
+// substr text and its bound bytes from these offsets and widths.
+constexpr size_t kPathFormatOffset = 0;  // a node payload's format sits here too
+constexpr size_t kPathFormatBytes = sizeof(uint32_t);
+constexpr size_t kRulesFingerprintOffset = kPathFormatOffset + kPathFormatBytes;
+constexpr size_t kRulesFingerprintBytes = sizeof(uint64_t);
+constexpr size_t kStructureHeadBytes = kRulesFingerprintOffset + kRulesFingerprintBytes;
+
+// The two numbers a structure head holds.
+struct StructureHead {
+    uint32_t path_format = 0;
+    uint64_t rules_fingerprint = 0;
+};
+
+// Reads the head off `bytes`: a whole structure blob, or just the first
+// kStructureHeadBytes a query selected. Empty when `bytes` is shorter than
+// the head.
+std::optional<StructureHead> read_structure_head(const std::vector<uint8_t>& bytes);
 
 // The 128-bit content hash of a node payload, raw. The structure blob stores
 // these 16 bytes; path_hash() renders the same value as lowercase hex.

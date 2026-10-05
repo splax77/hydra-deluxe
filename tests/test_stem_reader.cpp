@@ -26,6 +26,7 @@
 #include "app/preview_source.h"
 #include "audio/decode.h"
 #include "audio/stem_reader.h"
+#include "core/little_endian.h"
 #include "core/winstr.h"
 
 #include "audio_util.h"
@@ -113,7 +114,7 @@ DecodedAudio old_decode_ogg_opus(const uint8_t* data, std::size_t size) {
         while (ogg_stream_packetout(&os, &op) == 1) {
             if (packet_index == 0) {
                 channels = op.packet[9];
-                skip_remaining = op.packet[10] | (static_cast<int>(op.packet[11]) << 8);
+                skip_remaining = core::read_le_u16(op.packet + 10);
                 int err = 0;
                 dec = opus_decoder_create(48000, channels, &err);
                 out.channels = channels;

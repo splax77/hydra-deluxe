@@ -30,7 +30,8 @@ void read_sqout(const nlohmann::json& act, const std::string& where, ReplayWindo
     if (!act.contains("sqinouts") || !act["sqinouts"].is_array()) return;
     for (const nlohmann::json& sq : act["sqinouts"]) {
         if (!sq.is_object()) continue;
-        if (sq.value("kind", std::string()) != "SqOut") continue;
+        if (squeeze_kind_from_name(sq.value("kind", std::string())) != SqueezeKind::SqOut)
+            continue;
         if (!sq.contains("offset_ms") || !sq["offset_ms"].is_number())
             throw std::runtime_error(where + " has a SqOut with no offset_ms");
         w.sqout_offset_ms = sq["offset_ms"].get<double>();
