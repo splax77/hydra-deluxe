@@ -314,7 +314,14 @@ public:
     // it ran with, so changing them mid-run used to hide the result it made.
     bool analyze_running() const;
     bool batch_running() const;
-    bool settings_locked() const { return analyze_running() || batch_running(); }
+    // Why the settings are locked: a batch (it wins when both run), one song's
+    // analysis, or nothing. A job finishes on its own thread, so two reads of
+    // batch_running() in one frame can disagree; a caller that needs both
+    // "locked?" and "by what?" reads this once. Under Analysis, analyze_job is
+    // set for the rest of the frame (only the UI thread drops it).
+    enum class SettingsLock { None, Batch, Analysis };
+    SettingsLock settings_lock() const;
+    bool settings_locked() const { return settings_lock() != SettingsLock::None; }
     // True when the analyze job belongs to the song the open panel shows, so
     // the panel is where its progress and errors appear.
     bool analyze_job_shown() const;

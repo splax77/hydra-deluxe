@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <climits>
 #include <cstdio>
@@ -162,18 +163,26 @@ bool Harness::queue(const std::string& what) {
 int Harness::print_results(FILE* out) {
     ImVector<ImGuiTest*> tests;
     ImGuiTestEngine_GetTestList(engine, &tests);
-    int failed = 0;
     for (ImGuiTest* t : tests) {
-        if (t->Output.Status == ImGuiTestStatus_Unknown) continue;  // not run
-        bool ok = t->Output.Status == ImGuiTestStatus_Success;
+        // Not run, still waiting, or still running: nothing to print yet.
+        const ImGuiTestStatus status = t->Output.Status;
+        if (status != ImGuiTestStatus_Success && status != ImGuiTestStatus_Error) continue;
+        if (std::find(printed.begin(), printed.end(), t) != printed.end()) continue;
+        printed.push_back(t);
+        const bool ok = status == ImGuiTestStatus_Success;
         std::fprintf(out, "[%s] %s/%s\n", ok ? "PASS" : "FAIL", t->Category, t->Name);
         if (!ok) {
-            ++failed;
+            ++printed_failures;
             std::fprintf(out, "---- log ----\n%s---- end ----\n", t->Output.Log.Buffer.c_str());
         }
     }
     std::fflush(out);
-    return failed;
+    return printed_failures;
+}
+
+const ImGuiTest* Harness::running_test() const {
+    if (!engine || !engine->TestContext) return nullptr;
+    return engine->TestContext->Test;
 }
 
 bool Harness::init() {

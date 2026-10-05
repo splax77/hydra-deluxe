@@ -271,6 +271,12 @@ bool AppState::analyze_running() const { return analyze_job && !analyze_job->fin
 
 bool AppState::batch_running() const { return batch_job && !batch_job->snapshot().finished; }
 
+AppState::SettingsLock AppState::settings_lock() const {
+    if (batch_running()) return SettingsLock::Batch;
+    if (analyze_running()) return SettingsLock::Analysis;
+    return SettingsLock::None;
+}
+
 bool AppState::analyze_job_shown() const {
     return analyze_job && show_details && selected &&
            analyze_job->song().notespath == selected->notespath;
