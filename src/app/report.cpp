@@ -184,11 +184,11 @@ std::string py_repr(double v) {
     return s;
 }
 
-// A timing as the app prints it ("12.3 ms", format_ms_spaced), as a JSON
+// A timing as the app prints it ("12.3 ms", format_ms), as a JSON
 // string, or null when there is none. The page prints this text as it is.
 void ms_text_into(std::string& data, const std::optional<double>& ms) {
     if (ms)
-        json_escape_into(data, format_ms_spaced(*ms));
+        json_escape_into(data, format_ms(*ms));
     else
         data += "null";
 }

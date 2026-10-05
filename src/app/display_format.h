@@ -15,16 +15,14 @@ double py_round3(double v);
 // The average multiplier as every screen shows it: py_round3, three places.
 std::string format_avg_mult(double v);
 
-// A timing in ms, one decimal, with the unit: "12.3ms". The caller decides
-// the sign; the early fill passes Activation::e_difficulty(true), which
-// is positive when the fill is hit early.
+// Every one-decimal timing a screen shows: one decimal, a space, the unit
+// ("163.5 ms", D57 item 1). The Paths tab reads it for the squeeze sentences,
+// the "(eff. ...)" figures, the backend tooltip, the early-fill line and the
+// path buttons; the path report reads it for its Hardest and Early fill
+// columns. The caller decides the sign; the early fill passes
+// Activation::e_difficulty(true), which is positive when the fill is hit
+// early. A whole-ms timing ("163 ms") is format_ms_whole in core/model.h.
 std::string format_ms(double ms);
-
-// A timing in ms for a sentence or a label: one decimal, a space, the unit
-// ("163.0 ms"). The Paths and Preview text and the path report's timing
-// columns use this; format_ms keeps the older "163.0ms" form of the Paths
-// panel's early-fill line.
-std::string format_ms_spaced(double ms);
 
 // Part over total as a percentage with the sign, rounded to the nearest at
 // `decimals` places: 12 of 453 at 0 reads "3%", 198,010 of 198,020 at 2 reads

@@ -385,9 +385,9 @@ TEST_CASE("report payload carries the hit window and the tier table") {
     untimed.ms.reset();
     untimed.efill.reset();
     const std::string rows = report::build_html({timed, untimed}, "sub", "foot", 85.0);
-    CHECK(rows.find("\"ms\":12.25,\"ms_text\":\"" + format_ms_spaced(12.25) + "\"") !=
+    CHECK(rows.find("\"ms\":12.25,\"ms_text\":\"" + format_ms(12.25) + "\"") !=
           std::string::npos);
-    CHECK(rows.find("\"efill\":-3.25,\"efill_text\":\"" + format_ms_spaced(-3.25) + "\"") !=
+    CHECK(rows.find("\"efill\":-3.25,\"efill_text\":\"" + format_ms(-3.25) + "\"") !=
           std::string::npos);
     CHECK(rows.find("\"ms\":null,\"ms_text\":null") != std::string::npos);
     CHECK(rows.find("\"efill\":null,\"efill_text\":null") != std::string::npos);

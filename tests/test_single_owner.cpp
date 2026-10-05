@@ -1363,7 +1363,7 @@ const std::vector<OwnerRule>& rules() {
         // wrote as text, or work in whole numbers the C++ sent.
         {"How is a number rounded on a report page?",
          "the C++ text the payload carries: format_percent and percent_steps, "
-         "format_avg_mult and format_ms_spaced in src/app/display_format.cpp",
+         "format_avg_mult and format_ms in src/app/display_format.cpp",
          R"(\.toFixed\()",
          "",
          {},
