@@ -265,3 +265,5 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 3. **LB1 and LB2, duplicate copies.** A chart listed twice counts once everywhere: the batch confirm's "Analyze N charts", the progress strip and hydra_batch's closing line (D51 call 10).
 4. **LB2, "A batch is running."** It shows through the normal status line and fades like any other status.
 The Path limit tooltip's words follow D51 call 5 ("hardest squeeze or required early fill"). The main session changes that one line at the M7-3 join, because no wave 3 task owns `settings_bar.cpp`.
+
+**D63 (ST2, a saved chart's names), 2026-10-05.** The M7-2b review found that `upsert_song` took every listed chart's names from the library table, so a song.ini fixed after the last GUI scan kept its old names when `hydra_batch` ran alone. The user took the recommended answer: only a chart with more than one copy in the library takes its names from the library table (the first copy names it, D51 call 10). Every other chart keeps the names from its newest analysis, so a fixed song.ini reaches the reports on the next analysis, as decided on 2026-09-26.
