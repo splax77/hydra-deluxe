@@ -1,13 +1,14 @@
 """Play the chords Hydra analyzed by reading the song clock and sending inputs.
 
-The notes come from a `hydra_replay dump` JSON, so the auto-player presses
-exactly the chords, lanes and times Hydra scored. Make one with
-    hydra_replay dump --chart <notes.chart or notes.mid> --db <hydra.db> --out <dump.json>
-Each entry of the dump's "chords" list gives the chord's time in the chart
-(`ms`, with no Offset or song.ini delay, which is the song clock the game
-shows) and the pads it hits (`lanes`, each note's color and whether it is a
-cymbal, written by hydra_replay from the C++ chord). Whether the 2x kick
-notes are in it follows the dump's own settings.
+The notes come from a `hydra_replay score` JSON, so the auto-player presses
+exactly the chords, pads and times Hydra scored. Make one with
+    hydra_replay score --chart <notes.chart or notes.mid> --acts "" --out <dump.json>
+(or --path <a dump's JSON> to walk one of its paths; the chords are the same).
+Each entry of its "chords" list gives the chord's time in the chart (`ms`,
+with no Offset or song.ini delay, which is the song clock the game shows) and
+its "notes", one per gem, each with the gem's color and whether it is a
+cymbal. Whether the 2x kick notes are in it follows the run's own settings
+(--bass2x).
 
 While the song plays, live.wait_until polls the game's song clock and fires
 each chord PRESS_LEAD_MS early; it also notices the song stopping (clock frozen
@@ -43,9 +44,10 @@ from tools.ch_probe.experiments.walk_edges import SongClock
 # play_chart presses each chord this many ms before its time (D51: unchanged).
 PRESS_LEAD_MS = 2.0
 
-# The key for each pad a dump chord names in its "lanes" list: hydra_replay
-# writes each note's color (Kick, Red, Yellow, Blue, Green) and whether it is
-# a cymbal, from the C++ chord. A 2x kick is the kick pad.
+# The key for each gem in a chord's "notes" list, by the gem's color (Kick,
+# Red, Yellow, Blue, Green) and whether it is a cymbal, as hydra_replay writes
+# them. A 2x kick is the kick pad, and a ghost or accent hits the same pad as
+# a plain gem.
 _KEY_FOR_PAD = {
     ("Kick", False): Lane.KICK,
     ("Red", False): Lane.RED,
@@ -59,20 +61,17 @@ _KEY_FOR_PAD = {
 
 
 def load_dump_notes(path: str) -> list:
-    """The dump's chords in order, as (ms, lanes); chords with no keys are left out."""
+    """The file's chords in order, as (ms, the keys its gems press)."""
     with open(path, encoding="utf-8") as f:
         dump = json.load(f)
-    notes = []
-    for chord in dump["chords"]:
-        lanes = [_KEY_FOR_PAD[(pad["color"], pad["cymbal"])] for pad in chord["lanes"]]
-        if lanes:
-            notes.append((chord["ms"], lanes))
-    return notes
+    return [(chord["ms"],
+             [_KEY_FOR_PAD[(gem["color"], gem["cymbal"])] for gem in chord["notes"]])
+            for chord in dump["chords"]]
 
 
 def main() -> None:
     if len(sys.argv) != 2:
-        print("Usage: play_chart.py <hydra_replay dump JSON>")
+        print("Usage: play_chart.py <hydra_replay score JSON>")
         return
     dump_path = sys.argv[1]
     notes = load_dump_notes(dump_path)

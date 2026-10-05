@@ -399,7 +399,6 @@ int cmd_score(const Args& a, const app::Settings& s) {
                              {"tick", c.measure_tick},
                              {"decimal", c.measures_decimal}}},
             {"chord_code", c.chord_code},
-            {"lanes", lanes_json(Chord::from_code(c.chord_code))},
             {"notes", notes},
             {"is_fill", c.is_fill},
             {"is_solo", c.is_solo},

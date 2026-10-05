@@ -141,11 +141,4 @@ nlohmann::json result_json(const HydraRecord& rec) {
                           {"bestpath", store::best_path_text(rec)}};
 }
 
-nlohmann::json lanes_json(const Chord& chord) {
-    nlohmann::json lanes = nlohmann::json::array();
-    for (const ChordNote& n : chord.notes())
-        lanes.push_back(nlohmann::json{{"color", color_str(n.colortype)}, {"cymbal", n.is_cymbal()}});
-    return lanes;
-}
-
 }  // namespace hydra
