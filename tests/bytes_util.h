@@ -1,10 +1,7 @@
-// The one little-endian number writer the test fixture builders share. The
-// WAV writer (audio_util.h), the .sng writer (sng_util.h) and the .srb writer
-// (srb_util.h) all append their numbers through here. Review of M6-J1c
-// finding 3: each kept its own copy of the same loop before.
-//
-// Each writer appends the low bytes of `v`, least significant first, and
-// drops the rest, so a caller may pass a wider value (a size_t length, say).
+// The test fixture builders' little-endian writer, forwarding to the one
+// writer in core/little_endian.h. The WAV writer (audio_util.h), the .sng
+// writer (sng_util.h) and the .srb writer (srb_util.h) all append their
+// numbers through here.
 
 #ifndef HYDRA_TESTS_BYTES_UTIL_H
 #define HYDRA_TESTS_BYTES_UTIL_H
@@ -12,11 +9,12 @@
 #include <cstdint>
 #include <vector>
 
+#include "core/little_endian.h"
+
 namespace testbytes {
 
-// Appends the low `bytes` bytes of `v` to `out`, least significant first.
 inline void put_le(std::vector<uint8_t>& out, uint64_t v, int bytes) {
-    for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
+    hydra::core::append_le(out, v, bytes);
 }
 
 inline void put_u16(std::vector<uint8_t>& out, uint64_t v) { put_le(out, v, 2); }

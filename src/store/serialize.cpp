@@ -8,12 +8,8 @@ namespace hydra::store {
 
 // ---- BinaryWriter / BinaryReader ------------------------------------------
 
-void BinaryWriter::u32(uint32_t v) {
-    for (int i = 0; i < 4; ++i) bytes.push_back(static_cast<uint8_t>(v >> (8 * i)));
-}
-void BinaryWriter::u64(uint64_t v) {
-    for (int i = 0; i < 8; ++i) bytes.push_back(static_cast<uint8_t>(v >> (8 * i)));
-}
+void BinaryWriter::u32(uint32_t v) { core::append_le_u32(bytes, v); }
+void BinaryWriter::u64(uint64_t v) { core::append_le_u64(bytes, v); }
 void BinaryWriter::f64(double v) {
     uint64_t bits;
     std::memcpy(&bits, &v, sizeof(bits));
