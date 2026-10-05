@@ -90,15 +90,15 @@ struct RowFacts {
     std::optional<double> hardest_ms;  // nullopt = no squeeze on the path
 };
 
-// True when every term matches its field (or any field) and every filter holds.
+// True when every term counts (see term_applies_to) and every filter holds.
 // A stars: or squeeze filter never matches a row with no facts.
 // A path with no squeeze passes any squeeze limit. Allocates nothing.
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts);
 
 // Where the query's terms appear in one displayed (unfolded, tag-stripped)
 // string, as byte ranges, for highlighting. Ranges are sorted and don't overlap.
-// Only terms for `field` or for any field count; QueryField::Any counts every
-// term. A match covers every byte of each character it touches, so "beyonce"
+// Only terms that term_applies_to says count for `field`. A match covers every
+// byte of each character it touches, so "beyonce"
 // in "Beyoncé" covers both bytes of "é". Touching ranges merge.
 struct MatchSpan { size_t begin = 0, end = 0; };
 std::vector<MatchSpan> match_spans(const LibraryQuery& q, QueryField field,
