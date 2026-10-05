@@ -14,11 +14,12 @@
 //                  an encrypted section (see extract_srb_audio in
 //                  app/preview_source.cpp).
 //
-// Decompressed, stream 1 is a 4-byte prefix ("4b4\x01" in every known file)
-// followed by eight length-prefixed strings (u32 LE length + UTF-8 bytes) in
-// a fixed order: notes filename, name, artist, album, genre, charter, year,
-// description. Trailing binary fields (difficulties, preview time, contained
-// file sizes) follow and are not read here.
+// Decompressed, stream 1 is a 4-byte prefix ("4b4\x01" in every known file,
+// the format version 20210228 as a u32) followed by eight length-prefixed
+// strings (u32 LE length + UTF-8 bytes) in a fixed order: notes filename,
+// name, artist, album, genre, charter, year, description. Binary fields
+// follow; srb_parse_metadata reads them as far as the song's stated length
+// (D75) and says which ones it walks past.
 //
 // DEFLATE streams do not encode their own compressed length, so finding
 // stream 2 requires inflating stream 1 while tracking consumed input — which
@@ -29,6 +30,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -63,7 +65,7 @@ std::vector<uint8_t> srb_inflate_stream(const uint8_t* data, size_t size,
 std::vector<uint8_t> srb_inflate_stream_reading(const ByteSource& src, uint64_t offset,
                                                 size_t max_out, uint64_t* end_offset);
 
-// The string fields of a metadata block, in file order.
+// The fields of a metadata block Hydra reads, in file order.
 struct SrbMetadata {
     std::string notes_filename;
     std::string name;
@@ -73,11 +75,16 @@ struct SrbMetadata {
     std::string charter;
     std::string year;
     std::string description;
+    // The song's length in ms as the file states it, raw: 0 in two of the 30
+    // shipped files. app::stated_length_ms decides which values count (D75).
+    // Empty when the block ends before the field.
+    std::optional<int32_t> song_length_ms;
 };
 
-// Parse the string table of a decompressed metadata block. Returns false if
-// the block is too short to even hold the prefix; a block that truncates
-// mid-table keeps the fields read so far and leaves the rest empty.
+// Parse a decompressed metadata block: its string table, then the binary
+// fields after it as far as song_length_ms. Returns false if the block is too
+// short to even hold the prefix; a block that truncates part way keeps the
+// fields read so far and leaves the rest empty.
 bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out);
 
 // What the metadata stream holds, and where the stream after it starts.

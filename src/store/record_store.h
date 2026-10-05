@@ -18,9 +18,8 @@
 //     collect a node the moment nothing points at it.
 //
 // `songmeta` holds one row per chart file, keyed by content hash: its names,
-// its tempo map, and the song's one length (its audio's end in chart time)
-// with that length's stamp. RecordLookup::song_length_ms says where the
-// length comes from.
+// its tempo map, and the song's one length with that length's stamp.
+// RecordLookup::song_length_ms says where the length comes from.
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -219,21 +218,20 @@ struct RecordLookup {
     bool stale_rules = false;  // this path layout, analyzed under other rules
     std::optional<HydraRecord> record;  // set only when Ready
     std::optional<SongTiming> timing;   // set when Ready and the song is registered
-    // The song's audio length in chart time (audio::song_length_ms, D69), one
-    // per song, saved by an analysis or the open-song backfill
-    // (save_analysis, fill_song_length) under kSongLengthStamp. Empty when
-    // the song's audio was not read under the current stamp, or was read and
-    // has no usable length. Nothing falls back to the notes.
+    // The song's length in chart time (app::song_length_ms, D75), one per
+    // song, saved by an analysis or the open-song backfill (save_analysis,
+    // fill_song_length) under kSongLengthStamp. Empty when the length was not
+    // worked out under the current stamp, or was and the owner gave none.
     std::optional<double> song_length_ms;
-    // Whether the song's audio was read under the current stamp, so the
-    // backfill knows whether to read it. False for an unregistered song.
+    // Whether the length was worked out under the current stamp, so the
+    // backfill knows whether to work it out. False for an unregistered song.
     bool song_length_read = false;
 };
 
-// A song's length as one audio read found it, handed to save_analysis. `read`
-// says whether anything read the audio; an analysis with no audio reader
-// leaves it false and the stored length alone. A read that found no usable
-// length has `read` set and no `ms`.
+// A song's length as app::song_length_ms found it, handed to save_analysis.
+// `read` says whether the length was worked out; an analysis that could not
+// work it out leaves it false and the stored length alone. A length the owner
+// gave none for has `read` set and no `ms`.
 struct SongLength {
     bool read = false;
     std::optional<double> ms;
@@ -270,6 +268,22 @@ enum class SortColumn {
     SqInCount, SqOutCount, PathCount, RefName, RefArtist, RefCharter,
 };
 
+// What a chart's own metadata states about its timing, read by the scan with
+// its names (app::discover_charts, app::read_chart_timing_meta): the song's
+// length, which app::song_length_ms turns into the song's one length (D75),
+// and the delay that moves it into chart time. Both in ms, both empty when
+// the metadata states none (app::stated_length_ms says which lengths count).
+struct ChartTimingMeta {
+    std::optional<double> length_ms;
+    std::optional<double> delay_ms;
+
+    // Spelled out rather than defaulted: this project builds as C++17.
+    bool operator==(const ChartTimingMeta& other) const {
+        return length_ms == other.length_ms && delay_ms == other.delay_ms;
+    }
+    bool operator!=(const ChartTimingMeta& other) const { return !(*this == other); }
+};
+
 // One scanned chart file, as browsed in the library table. It lives in the
 // same db file as the records.
 // `sig` is the chart's fingerprint (app::chart_files_unchanged says what it
@@ -284,6 +298,10 @@ struct ChartLibraryEntry {
     std::string notespath;
     std::string rootfolder;
     std::string sig;
+    // Empty for a row an older scan wrote, before the scan read timing
+    // (list_chart_library says which rows those are). Whoever needs it then
+    // reads it from the chart's files (app::chart_timing_meta).
+    std::optional<ChartTimingMeta> timing;
 };
 
 // What a rescan can reuse for a chart whose files are unchanged: keyed by
@@ -294,6 +312,7 @@ struct ChartCacheEntry {
     std::string title;
     std::string artist;
     std::string charter;
+    ChartTimingMeta timing;
 };
 using ChartLibraryCache = std::unordered_map<std::string, ChartCacheEntry>;
 
@@ -343,8 +362,8 @@ public:
                  const std::string& ref_artist, const std::string& ref_charter,
                  const Song& song);
 
-    // The open-song backfill's writer: saves the song's audio length (or
-    // none, for a song with no usable audio) with kSongLengthStamp, but only
+    // The open-song backfill's writer: saves the song's length (or none,
+    // when the owner gave none) with kSongLengthStamp, but only
     // while the stored length is not current, so a slower backfill never
     // overwrites an analysis. An unregistered song is left alone. Touches no
     // result.
@@ -495,7 +514,9 @@ public:
 
     // The whole library, by name. A negative limit means no limit (SQLite's
     // LIMIT convention). Searching is the library view's (query_matches in
-    // app/library_query.h), not SQL's.
+    // app/library_query.h), not SQL's. Each entry's timing is set only when
+    // the table's kChartMetaStamp is current, the stamp the scan that read it
+    // wrote; rows an older scan wrote carry none.
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit);
 
@@ -596,6 +617,10 @@ private:
                     int64_t result_id, std::vector<uint8_t>& structure);
     std::optional<std::string> meta_get(const std::string& key);
     void meta_set(const std::string& key, const std::string& value);
+    // Whether the charts table's rows were read by this build's readers: its
+    // stored kChartMetaStamp is current. The rescan cache and the library
+    // listing's timing both ask it. Call under the lock.
+    bool chart_meta_current();
 };
 
 }  // namespace hydra::store

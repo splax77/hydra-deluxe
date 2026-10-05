@@ -333,8 +333,8 @@ void AppState::update_song_length() {
     if (length_job && length_job->finished()) {
         const store::ChartLibraryEntry& chart = length_job->entry();
         // A job that failed is no answer: nothing is written, and the chart
-        // is not tried again this session. One that found no audio is: the
-        // song is read, with no length.
+        // is not tried again this session. One the owner gave no length for
+        // is: the song is read, with no length.
         if (length_job->ok()) {
             const store::SongLength length = length_job->song_length();
             // Best effort: a failed write only means the song is read again
@@ -343,7 +343,7 @@ void AppState::update_song_length() {
                 store->fill_song_length(chart.md5, length.ms);
             } catch (const std::exception&) {
             }
-            // The audio belongs to the song, so every lookup held for it
+            // The length belongs to the song, so every lookup held for it
             // shows the answer: the viewed one and the ones parked under
             // other settings. A lookup an analysis read since keeps its own.
             if (selected && selected->md5 == chart.md5) {

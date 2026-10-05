@@ -175,8 +175,13 @@ std::vector<PreviewAudioStem> extract_sng_audio(const std::string& path) {
 }
 
 std::optional<double> sng_delay_ms(const std::vector<uint8_t>& sng_bytes) {
+    return sng_metadata_delay_ms(sng_read_metadata(sng_bytes));
+}
+
+std::optional<double> sng_metadata_delay_ms(
+    const std::vector<std::pair<std::string, std::string>>& pairs) {
     std::optional<double> delay;
-    for (const auto& [key, value] : sng_read_metadata(sng_bytes))
+    for (const auto& [key, value] : pairs)
         if (to_lower_ascii(key) == "delay") delay = parse_delay_ms(value);
     return delay;
 }
@@ -289,6 +294,10 @@ std::optional<double> read_ini_delay_ms(const std::string& ini_path) {
     } catch (const std::exception&) {
         return std::nullopt;  // no song.ini, or unreadable: no delay
     }
+    return ini_delay_ms(ini);
+}
+
+std::optional<double> ini_delay_ms(const std::map<std::string, std::string>& ini) {
     const auto it = ini.find("delay");
     if (it == ini.end()) return std::nullopt;
     return parse_delay_ms(it->second);

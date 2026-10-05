@@ -90,12 +90,15 @@ public:
         std::unique_ptr<audio::MixSource> audio;
         // Where chart time 0 sits in `audio` (audio::SongMix::audio_offset_ms).
         double audio_offset_ms = 0.0;
-        // Where the audio stops in chart time, the song's length
-        // (audio::SongMix::end_chart_ms, the answer audio::song_length_ms
-        // gives). The scene's song length and beat lines read it, the
-        // scrubber ends at it, and the controller hands it to every later
-        // base build.
+        // Where the audio stops in chart time (audio::SongMix::end_chart_ms).
+        // The beat lines run to it, and the controller hands it to every
+        // later base build. It is not the song's length.
         std::optional<double> audio_end_ms;
+        // The song's length (app::chart_song_length_ms, D75), worked out from
+        // the chart's metadata with no audio read. The scene's SP meter
+        // closes at it, the scrubber ends at it, and the controller hands it
+        // to every later base build. Empty when the owner gives none.
+        std::optional<double> song_length_ms;
         // The parsed song the scene was built from. The controller keeps it so
         // a later path selection can rebuild the overlay without re-parsing.
         Song song;
@@ -184,19 +187,21 @@ struct PreviewSceneBase {
     render::TrackStateOptions track_opts;
 };
 
-// Builds a song's PreviewSceneBase. `audio_end_ms` is the load's
-// Result::audio_end_ms, where the beat lines end (app::build_preview_base).
-// `check_cancel` runs between the steps and may throw to stop the build.
+// Builds a song's PreviewSceneBase. `audio_end_ms` and `song_length_ms` are
+// the load's Result fields of those names (app::build_preview_base reads
+// both). `check_cancel` runs between the steps and may throw to stop the
+// build.
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
     const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
-    const std::function<void()>& check_cancel);
+    std::optional<double> song_length_ms, const std::function<void()>& check_cancel);
 
 // Builds the PreviewSceneBase off the UI thread once a chart has loaded, so
 // that even the first path change only lays an overlay over it.
 class PreviewBaseJob : public ResultJobBase {
 public:
     PreviewBaseJob(std::shared_ptr<const Song> song, render::TrackStateOptions track_opts,
-                   std::optional<double> audio_end_ms);
+                   std::optional<double> audio_end_ms,
+                   std::optional<double> song_length_ms = std::nullopt);
     ~PreviewBaseJob() { shutdown(); }
 
     void start();
@@ -209,6 +214,7 @@ private:
     std::shared_ptr<const Song> song_;
     render::TrackStateOptions track_opts_;
     std::optional<double> audio_end_ms_;
+    std::optional<double> song_length_ms_;
     std::shared_ptr<const PreviewSceneBase> base_;
 };
 
@@ -221,13 +227,15 @@ private:
 // builds it first and hands it back in Output::base for the next job. `key`
 // is the overlay key the scene is built for; `track_opts` are the timeline
 // options the controller draws with (its pro-drums setting); `audio_end_ms`
-// is the load's Result::audio_end_ms, for a base the job has to build.
+// and `song_length_ms` are the load's Result fields, for a base the job has
+// to build.
 class PreviewSceneJob : public ResultJobBase {
 public:
     PreviewSceneJob(std::shared_ptr<const Song> song,
                     std::shared_ptr<const PreviewSceneBase> base, std::optional<Path> path,
                     int sp_cap, core::Rules rules, std::string key,
-                    render::TrackStateOptions track_opts, std::optional<double> audio_end_ms);
+                    render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
+                    std::optional<double> song_length_ms = std::nullopt);
     ~PreviewSceneJob() { shutdown(); }
 
     void start();
@@ -256,6 +264,7 @@ private:
     std::string key_;
     render::TrackStateOptions track_opts_;
     std::optional<double> audio_end_ms_;
+    std::optional<double> song_length_ms_;
     std::optional<Output> output_;
 };
 

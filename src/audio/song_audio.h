@@ -1,10 +1,11 @@
 // A song's audio as one piece: its stems opened, mixed into the one stream the
 // Preview plays, and how long that stream runs in chart time. That last answer
-// is the song's length (D69). D69 names which readers use it.
+// is where the audio ends, which bounds the Preview's playback (D48). It is
+// not the song's length: app::song_length_ms answers that from the chart's
+// metadata, with no audio opened (D75).
 //
 // Nothing here decodes audio in the usual case. Opening a stem reads its
-// layout, not its sound (open_stem_reader), so the length costs what the
-// Preview's own open costs.
+// layout, not its sound (open_stem_reader).
 
 #ifndef HYDRA_AUDIO_SONG_AUDIO_H
 #define HYDRA_AUDIO_SONG_AUDIO_H
@@ -64,18 +65,9 @@ struct SongMix {
 };
 
 // Mixes `readers` for a chart whose time 0 sits `offset_ms` into the audio
-// (app::chart_audio_offset_ms). The Preview's load and song_length_ms both mix
-// here, so what plays and how long the song is cannot disagree. Throws
+// (app::chart_audio_offset_ms). The Preview's load mixes here. Throws
 // std::runtime_error when the mix cannot be set up (StreamMix).
 SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double offset_ms);
-
-// How long the song at `notespath` is: the end of its mixed audio in chart
-// time, the longest of its stems once the chart's offset is applied. This is
-// the one answer to "how long is this song" (D69); nothing works a length out
-// from notes. `song` is the chart already parsed from `notespath`, read only
-// for its Offset. A .sng or .srb is read from disk once. Empty when no stem
-// opens: such a song has no length.
-std::optional<double> song_length_ms(const std::string& notespath, const Song& song);
 
 }  // namespace hydra::audio
 

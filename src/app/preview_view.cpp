@@ -256,12 +256,14 @@ double last_note_ms(const PreviewScene& scene) {
 }
 
 PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
-                                 const core::Rules& rules, std::optional<double> audio_end_ms) {
-    return apply_preview_overlay(build_preview_base(song, audio_end_ms), song, path, sp_cap,
-                                 rules);
+                                 const core::Rules& rules, std::optional<double> audio_end_ms,
+                                 std::optional<double> song_length_ms) {
+    return apply_preview_overlay(build_preview_base(song, audio_end_ms, song_length_ms), song,
+                                 path, sp_cap, rules);
 }
 
-PreviewScene build_preview_base(const Song& song, std::optional<double> audio_end_ms) {
+PreviewScene build_preview_base(const Song& song, std::optional<double> audio_end_ms,
+                                std::optional<double> song_length_ms) {
     PreviewScene scene;
     if (song.is_empty()) return scene;
 
@@ -290,10 +292,9 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
                                               song.sequence[s.last].timecode.ticks()));
 
     scene.has_notes = !scene.notes.empty();
-    // The song's length is its audio's end in chart time, the answer
-    // audio::song_length_ms gives (D69); the load hands it in. No audio, no
-    // length.
-    scene.song_length_ms = audio_end_ms.value_or(0.0);
+    // The song's length is app::song_length_ms's answer (D75); the load hands
+    // it in. None given, no length.
+    scene.song_length_ms = song_length_ms.value_or(0.0);
 
     // The beat grid runs to the end of the audio, so lines keep scrolling
     // while music plays past the last note (D48, Q25). The end is the tick a

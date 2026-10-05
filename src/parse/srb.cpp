@@ -128,14 +128,42 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
     std::string* fields[] = {&out.notes_filename, &out.name,    &out.artist,
                              &out.album,          &out.genre,   &out.charter,
                              &out.year,           &out.description};
-    for (std::string* field : fields) {
-        if (pos + 4 > meta.size()) break;
-        const uint32_t len = core::read_le_u32(meta.data() + pos);
-        pos += 4;
-        if (len > meta.size() - pos) break;
-        field->assign(reinterpret_cast<const char*>(meta.data() + pos), len);
+    // A little-endian u32 at `pos`, moving past it; false when it does not fit.
+    const auto read_u32 = [&](uint32_t* into) {
+        if (sizeof(uint32_t) > meta.size() - pos) return false;
+        *into = core::read_le_u32(meta.data() + pos);
+        pos += sizeof(uint32_t);
+        return true;
+    };
+    // A length-prefixed string at `pos`, moving past it; false when it does
+    // not fit.
+    const auto read_string = [&](std::string* into) {
+        uint32_t len = 0;
+        if (!read_u32(&len) || len > meta.size() - pos) return false;
+        if (into) into->assign(reinterpret_cast<const char*>(meta.data() + pos), len);
         pos += len;
-    }
+        return true;
+    };
+    // `n` bytes skipped at `pos`; false when they do not fit.
+    const auto skip = [&](size_t n) {
+        if (n > meta.size() - pos) return false;
+        pos += n;
+        return true;
+    };
+    for (std::string* field : fields)
+        if (!read_string(field)) return true;
+
+    // The binary fields after the strings, in order (the user's .srb format
+    // reference): twelve difficulty bytes, the preview start (i32), the icon
+    // name (a string), the playlist and album track numbers (i32 each), then
+    // song_length_ms (i32). The checksum and table of contents that follow are
+    // not read.
+    uint32_t scratch = 0;
+    if (!skip(12) || !read_u32(&scratch) || !read_string(nullptr) || !read_u32(&scratch) ||
+        !read_u32(&scratch))
+        return true;
+    uint32_t song_length = 0;
+    if (read_u32(&song_length)) out.song_length_ms = static_cast<int32_t>(song_length);
     return true;
 }
 

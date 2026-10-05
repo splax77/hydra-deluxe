@@ -255,10 +255,10 @@ TEST_CASE("an audio offset seeks the playhead ahead of the clock") {
     CHECK(playhead->position_ms() == doctest::Approx(750.0));
 }
 
-// The scrubber's right edge is the song's length, its audio's end (D69). On
-// the audio-tail chart a drag to that edge seeks to the audio's end at
-// 6000 ms, past the last note at 1000 ms.
-TEST_CASE("scrubber: a drag to the right end seeks to the audio's end") {
+// The scrubber's right edge is the song's length (D75). On the audio-tail
+// chart, which states 6000 ms, a drag to that edge seeks to 6000 ms, past the
+// last note at 1000 ms.
+TEST_CASE("scrubber: a drag to the right end seeks to the song's length") {
     const hydra::test::AudioTailChart c = hydra::test::audio_tail_chart();
     PreviewTransport transport([] { return 0.0; });
     transport.load(make_playhead(c.audio_end_ms), c.last_note_ms);

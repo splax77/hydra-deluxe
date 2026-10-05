@@ -98,26 +98,30 @@ inline constexpr StampRule<uint8_t, 1> kDynamicsBlobStamp{2, {2}};
 // How a scan reads a chart's identity and names. BUMP IT (add 1) whenever any
 // of these changes what an unchanged file reads as: hash_chart_file and its
 // 1 MB .sng head rule (D51 call 13), sig_of (the size and mtime fingerprint
-// the rescan cache is keyed on), and the song.ini, .sng and .srb name
-// readers. The sig only says a file is unchanged; this stamp says the rows
+// the rescan cache is keyed on), and the song.ini, .sng and .srb metadata
+// readers (names, stated length and delay). The sig only says a file is
+// unchanged; this stamp says the rows
 // read from it still hold what this build would read. Stored once per file,
 // as the meta row chart_meta_version. A stale or missing stamp drops the
 // whole rescan cache, so the next scan reads every chart once (D51 call 12).
-// 1 = the first stamp.
-inline constexpr StampRule<int, 1> kChartMetaStamp{1, {1}};
+// 1 = the first stamp. 2 = the scan also reads each chart's stated length
+// and delay (store::ChartTimingMeta, D75).
+inline constexpr StampRule<int, 1> kChartMetaStamp{2, {2}};
 
 // ---- A song's length (songmeta.length_ms) ----------------------------------
 
-// How a song's length is read from its audio (D69). BUMP IT (add 1) whenever
-// the length an unchanged song reads as changes: audio::song_length_ms and
-// the mix step it shares with the Preview (src/audio/song_audio.cpp), the
-// lengths open_stem_reader reports for each stem, and the chart's audio
-// offset (app::preview_audio_offset_ms and what feeds it). A length whose
-// stamp is not current reads as not read, and opening the song reads its
-// audio again. Stored per song, in songmeta.length_version.
+// How a song's length is worked out (app::song_length_ms, D75). BUMP IT (add
+// 1) whenever the length an unchanged song reads as changes: the owner in
+// src/app/song_length.cpp, the metadata readers that feed it
+// (store::ChartTimingMeta), and the chart's audio offset
+// (app::preview_audio_offset_ms and what feeds it). A length whose stamp is
+// not current reads as not read, and opening the song works it out again.
+// Stored per song, in songmeta.length_version.
 // 0 = lengths saved before the stamp existed, all worked out from the last
-// note. 1 = the first stamp: the audio's end in chart time.
-inline constexpr StampRule<int, 1> kSongLengthStamp{1, {1}};
+// note. 1 = the audio's end in chart time (D69). 2 = the chart's stated
+// length in chart time, or its last Expert drum note when it states none
+// (D75).
+inline constexpr StampRule<int, 1> kSongLengthStamp{2, {2}};
 
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));

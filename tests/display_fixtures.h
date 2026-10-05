@@ -28,7 +28,8 @@ inline constexpr double kAudioTailMs = 5000.0;
 
 // A chart whose audio keeps playing after its last note. `last_note_ms` is
 // the last note's onset; `audio_end_ms` is where the audio stops, kAudioTailMs
-// later, which is the song's length (D69). Numbers only, no playhead.
+// later. Tests that need a song's length take that number as the length the
+// chart states (D75). Numbers only, no playhead.
 struct AudioTailChart {
     Song song;
     double last_note_ms = 0.0;

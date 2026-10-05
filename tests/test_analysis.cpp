@@ -30,7 +30,6 @@
 
 #include "app/analysis.h"
 #include "app/work_pool.h"
-#include "audio/song_audio.h"
 #include "core/error_kind.h"
 #include "audio_chart_fixtures.h"
 #include "core/strutil.h"
@@ -292,6 +291,7 @@ std::vector<ScanItem> fake_items(int n) {
         item.md5 = "fake" + std::to_string(i);
         item.title = "fake " + std::to_string(i);
         item.notespath = "fake_" + std::to_string(i) + ".chart";
+        item.timing = hydra::store::ChartTimingMeta{};  // states nothing, so no file is read
         items.push_back(item);
     }
     return items;
@@ -544,66 +544,87 @@ TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
     CHECK(sentences[0] == "A saved result couldn't be read. Re-analyze this song to replace it.");
 }
 
-TEST_CASE("run_batch saves the length its reader gives") {
-    // D69 item 2: an analysis saves the song's audio length. The reader's
-    // 4321 is an input; the real reader is audio::song_length_ms.
-    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
-    std::atomic<int> runs{0};
-    BatchCallbacks callbacks;
-    callbacks.analyze = [&runs, &real](const std::string&, const AnalysisSettings&,
-                                       const std::function<void(float)>&) -> AnalysisResult {
-        ++runs;
-        return real;
-    };
-    callbacks.read_song_length = [](const std::string&, const hydra::Song&) {
-        return std::optional<double>(4321.0);
-    };
+namespace {
 
+// short_chart_with_long_audio's chart (last note at 100 ms, a 5 s song.ogg)
+// with `ini` as its song.ini, as the library scan lists it.
+ScanItem scanned_short_chart(const std::string& tag, const std::string& ini) {
+    const std::string notes = audiochart::short_chart_with_long_audio(tag);
+    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini", ini);
+    auto [items, errors] = discover_charts({hydra::parent_folder(notes)});
+    REQUIRE(errors.empty());
+    REQUIRE(items.size() == 1);
+    return items[0];
+}
+
+// What run_batch saved for `item` under `run`.
+hydra::store::RecordLookup batch_saved(const ScanItem& item, const BatchRun& run) {
+    hydra::store::RecordStore store(":memory:");
+    run_batch({item}, run, store, /*redo=*/false, 1, {});
+    hydra::store::RecordLookup got =
+        store.get_record({item.md5, run.chartmode, run.cap_query(), run.lens});
+    REQUIRE(got.status == hydra::store::RecordStatus::Ready);
+    return got;
+}
+
+}  // namespace
+
+TEST_CASE("run_batch saves the song's length from its metadata (D75)") {
     BatchRun run;
     run.chartmode = "length-test";
-    hydra::store::RecordStore store(":memory:");
-    const std::vector<ScanItem> items = fake_items(2);
-    run_batch({items[0]}, run, store, /*redo=*/false, 1, callbacks);
     const hydra::store::RecordLookup read =
-        store.get_record({items[0].md5, run.chartmode, run.cap_query(), run.lens});
-    REQUIRE(read.status == hydra::store::RecordStatus::Ready);
+        batch_saved(scanned_short_chart("batch_len", "[song]\nsong_length = 4321\n"), run);
     CHECK(read.song_length_read);
     CHECK(read.song_length_ms == 4321.0);
 
-    // With no reader the audio was not read.
-    callbacks.read_song_length = nullptr;
-    run_batch({items[1]}, run, store, /*redo=*/false, 1, callbacks);
+    // A chart whose metadata cannot be read keeps its length unread: here a
+    // .sng that is gone, on a row an older scan wrote.
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) { return real; };
+    ScanItem gone;
+    gone.md5 = "gone";
+    gone.title = "gone";
+    gone.notespath = testtemp::temp_dir("batch_len_gone") + "\\gone.sng";
+    hydra::store::RecordStore store(":memory:");
+    run_batch({gone}, run, store, /*redo=*/false, 1, callbacks);
     const hydra::store::RecordLookup unread =
-        store.get_record({items[1].md5, run.chartmode, run.cap_query(), run.lens});
+        store.get_record({gone.md5, run.chartmode, run.cap_query(), run.lens});
     REQUIRE(unread.status == hydra::store::RecordStatus::Ready);
     CHECK_FALSE(unread.song_length_read);
     CHECK_FALSE(unread.song_length_ms.has_value());
-    CHECK(runs.load() == 2);
 }
 
-TEST_CASE("a song.ini delay longer than the audio saves no length") {
-    // The audio's end lands before chart time 0, so audio::song_length_ms
-    // gives a length has_song_length refuses: the song is read, with no
-    // length, like a chart with no audio.
-    const std::string notes = audiochart::short_chart_with_long_audio("long_delay");
-    audiochart::write_text_file(notes.substr(0, notes.rfind('\\')) + "\\song.ini",
-                                "[song]\ndelay = 60000\n");
-    REQUIRE(hydra::audio::song_length_ms(notes, hydra::load_songpath(notes, true, true))
-                .has_value());
+TEST_CASE("run_batch's length opens no audio: no audio file, or junk audio, still has one") {
+    // D75 item 5. The stated length needs no audio at all.
+    BatchRun run;
+    run.chartmode = "length-noaudio";
+    ScanItem no_audio = scanned_short_chart("batch_len_noaudio", "[song]\nsong_length = 4321\n");
+    REQUIRE(DeleteFileW(
+        hydra::utf8_to_wide(hydra::parent_folder(no_audio.notespath) + "\\song.ogg").c_str()));
+    hydra::store::RecordLookup got = batch_saved(no_audio, run);
+    CHECK(got.song_length_read);
+    CHECK(got.song_length_ms == 4321.0);
 
-    ScanItem item;
-    item.md5 = "delayed";
-    item.title = "delayed";
-    item.notespath = notes;
-    BatchCallbacks callbacks;
-    callbacks.read_song_length = hydra::audio::song_length_ms;
+    // No stated length and junk bytes under the audio's name: the last Expert
+    // note (100 ms) is the length.
+    const ScanItem junk = scanned_short_chart("batch_len_junk", "[song]\nname = Junk\n");
+    audiochart::write_text_file(hydra::parent_folder(junk.notespath) + "\\song.ogg",
+                                "not audio at all");
+    got = batch_saved(junk, run);
+    CHECK(got.song_length_read);
+    CHECK(got.song_length_ms == 100.0);
+}
+
+TEST_CASE("a song.ini delay longer than the stated length saves no length") {
+    // The stated length ends before chart time 0, so the owner
+    // (app::chart_song_length_ms) gives no length: the song is read, with
+    // none.
     BatchRun run;
     run.chartmode = "delay-test";
-    hydra::store::RecordStore store(":memory:");
-    run_batch({item}, run, store, /*redo=*/false, 1, callbacks);
-    const hydra::store::RecordLookup got =
-        store.get_record({item.md5, run.chartmode, run.cap_query(), run.lens});
-    REQUIRE(got.status == hydra::store::RecordStatus::Ready);
+    const hydra::store::RecordLookup got = batch_saved(
+        scanned_short_chart("long_delay", "[song]\nsong_length = 1000\ndelay = 60000\n"), run);
     CHECK(got.song_length_read);
     CHECK_FALSE(got.song_length_ms.has_value());
 }
@@ -679,25 +700,20 @@ std::string scan_fixture_dir(const char* name) {
     return testtemp::temp_dir(std::string("scan_case_") + name);
 }
 
-void write_fixture(const std::string& path, const std::vector<uint8_t>& bytes) {
-    FILE* f = hydra::fopen_utf8(path, L"wb");
-    REQUIRE_MESSAGE(f != nullptr, "cannot write " << path);
-    if (!bytes.empty()) std::fwrite(bytes.data(), 1, bytes.size(), f);
-    std::fclose(f);
-}
+using testtemp::write_bytes;
 
 }  // namespace
 
 TEST_CASE("discover_charts finds a folder whose notes and ini names are capitalized") {
     const std::string dir = scan_fixture_dir("caps");
-    write_fixture(dir + "\\Notes.mid",
+    write_bytes(dir + "\\Notes.mid",
                   testmidi::smf(testmidi::concat({testmidi::track_name("PART DRUMS"),
                                                   testmidi::set_tempo(),
                                                   testmidi::note_on(96, 100),
                                                   testmidi::end_of_track()})));
     const std::string ini = "[song]\r\nname = Capital Case\r\nartist = Someone\r\n"
                             "charter = Someone Else\r\n";
-    write_fixture(dir + "\\Song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
+    write_bytes(dir + "\\Song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
 
     auto [items, errors] = discover_charts({dir});
     REQUIRE(errors.empty());

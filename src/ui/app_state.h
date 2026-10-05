@@ -310,12 +310,12 @@ public:
     // another tab was up used to be thrown away at close.
     void reap_dynamics();
 
-    // Reads the open song's audio length when its result was saved before
-    // Hydra read audio lengths, so the Paths tab's timeline shows without a
-    // re-analysis: SongLengthJob reads the audio, then the length (or none)
-    // is saved for the song (RecordStore::fill_song_length) and put on every
-    // lookup of it. tick() runs it; a chart whose read fails is not retried
-    // this session.
+    // Works out the open song's length when its result was saved under an
+    // older length rule (kSongLengthStamp), so the Paths tab's timeline shows
+    // without a re-analysis: SongLengthJob asks the owner, then the length (or
+    // none) is saved for the song (RecordStore::fill_song_length) and put on
+    // every lookup of it. tick() runs it; a chart whose job fails is not
+    // retried this session.
     std::unique_ptr<SongLengthJob> length_job;
     void update_song_length();
 

@@ -18,7 +18,8 @@
 #include <unordered_set>
 
 #include "app/dynamics_breakdown.h"
-#include "app/preview_view.h"  // has_song_length
+#include "app/preview_source.h"  // ini_delay_ms, sng_metadata_delay_ms
+#include "app/song_length.h"   // stated_length_ms, chart_song_length_ms
 #include "app/user_messages.h"  // plain_error
 #include "app/work_pool.h"
 #include "core/error_kind.h"
@@ -120,27 +121,35 @@ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
     return out;
 }
 
-// ---- song.ini metadata, mirroring ScanItem.get_metadata_ini --------------
-//
-// The name, artist and charter keys, read through read_song_ini_keys (the
-// one song.ini reader, shared with the Preview's delay). Its declaration in
-// analysis.h says which lines count.
-
-std::tuple<std::string, std::string, std::string> read_metadata_ini(const std::string& path) {
-    const std::map<std::string, std::string> ini = read_song_ini_keys(path);
-
-    // Empty = missing or blank; discover_charts applies the one fallback for
-    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
+// What the scan reads from one chart's metadata. The names are empty when
+// missing or blank; discover_charts applies the one fallback for each
+// (title_or_unknown, artist_or_unknown, charter_or_unknown).
+struct ChartMeta {
     std::string title;
     std::string artist;
     std::string charter;
+    store::ChartTimingMeta timing;
+};
 
-    if (auto it = ini.find("name"); it != ini.end()) title = it->second;
-    if (auto it = ini.find("artist"); it != ini.end()) artist = it->second;
+// ---- song.ini metadata, mirroring ScanItem.get_metadata_ini --------------
+//
+// The name, artist, charter, song_length and delay keys, read through
+// read_song_ini_keys (the one song.ini reader, shared with the Preview's
+// delay). Its declaration in analysis.h says which lines count.
+
+ChartMeta read_metadata_ini(const std::string& path) {
+    const std::map<std::string, std::string> ini = read_song_ini_keys(path);
+
+    ChartMeta out;
+    if (auto it = ini.find("name"); it != ini.end()) out.title = it->second;
+    if (auto it = ini.find("artist"); it != ini.end()) out.artist = it->second;
     // Only `charter` — Python's get_metadata_ini never reads the `frets`
     // alias, and some inis carry both with different values.
-    if (auto it = ini.find("charter"); it != ini.end()) charter = it->second;
-    return {title, artist, charter};
+    if (auto it = ini.find("charter"); it != ini.end()) out.charter = it->second;
+    if (auto it = ini.find("song_length"); it != ini.end())
+        out.timing.length_ms = stated_length_ms_of_text(it->second);
+    out.timing.delay_ms = ini_delay_ms(ini);
+    return out;
 }
 
 // ---- .sng metadata, mirroring ScanItem.get_metadata_sng -------------------
@@ -157,53 +166,44 @@ std::tuple<std::string, std::string, std::string> read_metadata_ini(const std::s
 // legitimate block.
 constexpr size_t kSngHeadCapture = 1 << 20;
 
-std::tuple<std::string, std::string, std::string> parse_sng_metadata(
-    const std::vector<uint8_t>& buf) {
-    // Empty = missing or blank; discover_charts applies the one fallback for
-    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
-    std::string title;
-    std::string artist;
-    std::string charter;
-
-    for (const auto& [raw_key, value] : sng_read_metadata(buf)) {
+ChartMeta parse_sng_metadata(const std::vector<uint8_t>& buf) {
+    ChartMeta out;
+    const std::vector<std::pair<std::string, std::string>> pairs = sng_read_metadata(buf);
+    for (const auto& [raw_key, value] : pairs) {
         const std::string key = to_lower_ascii(raw_key);
-        if (key == "name") title = value;
-        else if (key == "artist") artist = value;
-        else if (key == "charter") charter = value;
+        if (key == "name") out.title = value;
+        else if (key == "artist") out.artist = value;
+        else if (key == "charter") out.charter = value;
+        else if (key == "song_length") out.timing.length_ms = stated_length_ms_of_text(value);
     }
-
-    return {title, artist, charter};
+    out.timing.delay_ms = sng_metadata_delay_ms(pairs);
+    return out;
 }
 
 // ---- .srb metadata --------------------------------------------------------
 //
 // Clone Hero's bundled songs (see parse/srb.h for the reverse-engineered
-// container layout). srb_read_metadata reads the metadata block, which the
-// head bytes captured while hashing always contain (kSngHeadCapture). Any
-// parse failure leaves the fields empty, matching the .sng path.
+// container layout). srb_read_metadata reads the metadata block from `src`:
+// the scan hands it the head bytes captured while hashing, which always
+// contain the block (kSngHeadCapture), and read_chart_timing_meta the file.
+// Any parse failure leaves the fields empty, matching the .sng path. A .srb
+// states no delay.
 
-std::tuple<std::string, std::string, std::string> parse_srb_metadata(
-    const std::vector<uint8_t>& buf) {
-    // Empty = missing or blank; discover_charts applies the one fallback for
-    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
-    std::string title;
-    std::string artist;
-    std::string charter;
-
+ChartMeta parse_srb_metadata(const ByteSource& src) {
+    ChartMeta out;
     try {
-        const ByteSource head = memory_byte_source(buf);
-        const SrbMetadataRead read = srb_read_metadata(head);
+        const SrbMetadataRead read = srb_read_metadata(src);
         if (read.parsed) {
             const SrbMetadata& md = read.fields;
-            if (!md.name.empty()) title = md.name;
-            artist = md.artist;
-            charter = md.charter;
+            if (!md.name.empty()) out.title = md.name;
+            out.artist = md.artist;
+            out.charter = md.charter;
+            if (md.song_length_ms) out.timing.length_ms = stated_length_ms(*md.song_length_ms);
         }
     } catch (const std::exception&) {
         // Corrupt/truncated container: keep the defaults.
     }
-
-    return {title, artist, charter};
+    return out;
 }
 
 // ---- discovery ----------------------------------------------------------
@@ -359,7 +359,25 @@ store::ChartLibraryEntry to_library_entry(const ScanItem& item) {
     e.notespath = item.notespath;
     e.rootfolder = item.rootfolder;
     e.sig = item.sig;
+    e.timing = item.timing;
     return e;
+}
+
+store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath) {
+    switch (chart_kind_of(notespath)) {
+        case ChartKind::Sng:
+            return parse_sng_metadata(sng_read_head(file_byte_source(notespath))).timing;
+        case ChartKind::Srb: return parse_srb_metadata(file_byte_source(notespath)).timing;
+        case ChartKind::Folder: break;
+    }
+    const std::string ini = find_song_ini(parent_folder(notespath));
+    if (ini.empty()) return {};
+    return read_metadata_ini(ini).timing;
+}
+
+store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingMeta>& scanned,
+                                         const std::string& notespath) {
+    return scanned ? *scanned : read_chart_timing_meta(notespath);
 }
 
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
@@ -458,6 +476,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                             item.title = it->second.title;
                             item.artist = it->second.artist;
                             item.charter = it->second.charter;
+                            item.timing = it->second.timing;
                             item.notespath = pc.notes_path;
                             item.rootfolder = pc.rootfolder;
                             item.sig = pc.sig;
@@ -468,20 +487,23 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                     if (!results[i]) {
                         if (!md5) md5.emplace();
                         ScanItem item;
+                        ChartMeta meta;
                         if (pc.kind != ChartKind::Folder) {
                             HashedFile hf =
                                 stream_md5(md5->handle(), pc.notes_path, kSngHeadCapture);
                             item.md5 = std::move(hf.md5);
-                            std::tie(item.title, item.artist, item.charter) =
-                                pc.kind == ChartKind::Sng
-                                    ? parse_sng_metadata(hf.head)
-                                    : parse_srb_metadata(hf.head);
+                            meta = pc.kind == ChartKind::Sng
+                                       ? parse_sng_metadata(hf.head)
+                                       : parse_srb_metadata(memory_byte_source(hf.head));
                         } else {
                             HashedFile hf = stream_md5(md5->handle(), pc.notes_path, 0);
                             item.md5 = std::move(hf.md5);
-                            std::tie(item.title, item.artist, item.charter) =
-                                read_metadata_ini(pc.ini_path);
+                            meta = read_metadata_ini(pc.ini_path);
                         }
+                        item.title = std::move(meta.title);
+                        item.artist = std::move(meta.artist);
+                        item.charter = std::move(meta.charter);
+                        item.timing = meta.timing;
                         item.notespath = pc.notes_path;
                         item.rootfolder = pc.rootfolder;
                         item.sig = pc.sig;
@@ -561,7 +583,7 @@ struct WorkResult {
     std::optional<AnalysisResult> analysis;
     // Counted on the worker, so the consumer only writes.
     std::optional<store::DynamicsEntry> dynamics;
-    // The song's audio length, read on the worker; not read without a reader.
+    // The song's length, worked out on the worker (analysis_song_length).
     store::SongLength length;
     // A failed chart, from its analysis or its save: record_failure fills
     // these in from the exception while its type is still known (the
@@ -606,16 +628,13 @@ BatchPlan plan_batch(const std::vector<ScanItem>& items,
     return plan;
 }
 
-store::SongLength song_length_found(std::optional<double> audio_length_ms) {
-    if (audio_length_ms && !has_song_length(*audio_length_ms)) audio_length_ms.reset();
-    return store::SongLength::found(audio_length_ms);
-}
-
-store::SongLength read_song_length_or_keep(const SongLengthReader& reader,
-                                           const std::string& notespath, const Song& song) {
-    if (!reader) return {};
+store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
+                                       const std::string& notespath, const Song& song,
+                                       const AnalysisSettings& settings) {
     try {
-        return song_length_found(reader(notespath, song));
+        return store::SongLength::found(
+            chart_song_length_ms(chart_timing_meta(scanned, notespath), notespath, song,
+                                 settings.difficulty, settings.bass2x, settings.rules));
     } catch (const std::exception&) {
         return {};
     }
@@ -663,8 +682,7 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                 wr.dynamics = dynamics_entry_from_analysis(
                     item.md5, ar.song, settings.bass2x, settings.difficulty,
                     settings.prodrums);
-                wr.length =
-                    read_song_length_or_keep(callbacks.read_song_length, item.notespath, ar.song);
+                wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);
                 wr.analysis = std::move(ar);
             } catch (const AnalysisCancelled&) {
                 wr.cancelled = true;

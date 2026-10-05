@@ -170,9 +170,8 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
-    // Where the scrubber ends: the song's length, the audio's end in chart
-    // time (audio::song_length_ms, D69), or playback_end_ms() for a chart
-    // with no readable audio (app::scrub_end_ms).
+    // Where the scrubber ends: the song's length (app::song_length_ms, D75),
+    // or playback_end_ms() for a chart with none (app::scrub_end_ms).
     double scrub_end_ms() const;
     // Where playback stops: the later of the last note and the audio's end
     // (PreviewTransport::length_ms). Play, the clock and jumps run to here.
@@ -316,6 +315,10 @@ private:
     // Result::audio_end_ms), kept with the song so every base built for it
     // runs the beat lines to the same end. Empty without audio.
     std::optional<double> audio_end_ms_;
+    // The song's length (the load's Result::song_length_ms, D75), kept the
+    // same way: the scrubber ends at it and every base's SP meter closes at
+    // it. Empty when the chart has none.
+    std::optional<double> song_length_ms_;
     // The song's path-free scene and timeline, shared read-only with scene
     // jobs so a path change builds only the overlay. poll() starts base_job_
     // to build it once the load has landed (a scene job that runs first

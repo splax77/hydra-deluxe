@@ -99,7 +99,8 @@ void PreviewController::start_scene_job() {
     const Path* drawn = drawn_path(path_, chart_changed_);
     std::optional<Path> path = drawn ? std::optional<Path>(*drawn) : std::nullopt;
     scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, std::move(path), sp_cap_,
-                                                   rules_, path_key_, track_opts(), audio_end_ms_);
+                                                   rules_, path_key_, track_opts(), audio_end_ms_,
+                                                   song_length_ms_);
     scene_job_->start();
 }
 
@@ -124,6 +125,7 @@ void PreviewController::close() {
     pending_track_.reset();  // scene_ is empty now; render() builds its (empty) timeline
     song_.reset();
     audio_end_ms_.reset();
+    song_length_ms_.reset();
     scene_base_.reset();
     path_.reset();
     sp_cap_ = kCloneHeroSpCap;
@@ -171,7 +173,8 @@ void PreviewController::poll() {
         base_job_.reset();
     }
     if (base_due()) {
-        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts(), audio_end_ms_);
+        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts(), audio_end_ms_,
+                                                     song_length_ms_);
         base_job_->start();
         base_started_ = true;
     }
@@ -183,6 +186,7 @@ void PreviewController::poll() {
         PreviewLoadJob::Result result = job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
         audio_end_ms_ = result.audio_end_ms;
+        song_length_ms_ = result.song_length_ms;
         chart_changed_ = result.chart_changed;
         scene_ = std::move(result.scene);
         pending_track_ = std::move(result.track_state);
@@ -289,12 +293,12 @@ bool PreviewController::playing() const { return transport_.playing(); }
 
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
-// The scrubber's range: the song's length, the audio's end the load measured
-// (audio::song_length_ms's answer, D69), so the slider and its gold marks end
-// where the audio does. A chart with no readable audio falls back to
-// playback_end_ms(), its last drawn note (app::scrub_end_ms, D70 item 1).
+// The scrubber's range: the song's length the load worked out
+// (app::chart_song_length_ms, D75), so the slider and its gold marks end where
+// the Paths timeline does. A chart with no length falls back to
+// playback_end_ms() (app::scrub_end_ms, D70 item 1).
 double PreviewController::scrub_end_ms() const {
-    return hydra::app::scrub_end_ms(audio_end_ms_, playback_end_ms());
+    return hydra::app::scrub_end_ms(song_length_ms_, playback_end_ms());
 }
 
 // Where playback stops: the transport's length, the later of the last note

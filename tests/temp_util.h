@@ -17,8 +17,12 @@
 #endif
 #include <windows.h>
 
+#include <cstdint>
+#include <cstdio>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "core/winstr.h"
 
@@ -40,6 +44,16 @@ inline std::string temp_dir(const std::string& tag) {
     const std::string dir = temp_path(tag, "");
     std::filesystem::create_directories(hydra::os_path(dir));
     return dir;
+}
+
+// Writes `data` to `path` byte for byte, replacing the file. The one writer
+// for a test's binary fixture files; a text file goes through
+// audiochart::write_text_file.
+inline void write_bytes(const std::string& path, const std::vector<uint8_t>& data) {
+    std::FILE* f = hydra::fopen_utf8(path, L"wb");
+    if (f == nullptr) throw std::runtime_error("cannot write " + path);
+    if (!data.empty()) std::fwrite(data.data(), 1, data.size(), f);
+    std::fclose(f);
 }
 
 // A scratch file (temp_path) that is deleted when it goes out of scope.

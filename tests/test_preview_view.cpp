@@ -20,6 +20,7 @@
 #include "app/config.h"  // Settings: the app's default analysis settings
 #include "app/preview_view.h"
 #include "app/path_view.h"
+#include "app/song_length.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
@@ -258,7 +259,7 @@ TEST_CASE("build_preview_scene: notes carry lane and drum attributes") {
     CHECK(scene.notes[3].double_kick);
     CHECK(scene.notes[4].lane == PreviewLane::Green);
 
-    // The song's length is its audio's end (D69); none was given.
+    // The song's length is the one the load hands in (D75); none was given.
     CHECK(scene.song_length_ms == 0.0);
 }
 
@@ -270,23 +271,27 @@ TEST_CASE("color_of: each lane maps back to the colour it was drawn from") {
         CHECK(color_of(lane_of(c)) == c);
 }
 
-// The scene's song length is the audio's end it is given (D69), never a
-// note's time: not the last drawn note, and not a later note-less timestamp.
-// Without an audio end there is no length. The beat lines without one still
-// end two measures past the last drawn note, as before.
-TEST_CASE("build_preview_scene: the song length is the audio's end") {
+// The scene's song length is the length it is given (D75), never a note's
+// time: not the last drawn note, and not a later note-less timestamp. Without
+// one there is no length. The beat lines without an audio end still end two
+// measures past the last drawn note, as before.
+TEST_CASE("build_preview_scene: the song length is the one handed in, never the audio's end") {
     Song song = make_hand_song();
     SongTimestamp empty;  // a timestamp with no notes, after the last chord
     empty.timecode = song.timecode(960);
     song.sequence.push_back(empty);
 
+    // An audio end alone is not a length (D75): the song's length is handed
+    // in on its own.
     const PreviewScene with_audio =
         build_preview_scene(song, nullptr, kCloneHeroSpCap, core::default_rules(), 4321.0);
-    CHECK(with_audio.song_length_ms == 4321.0);
+    CHECK(with_audio.song_length_ms == 0.0);
 
     PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.has_notes);
     CHECK(last_note_ms(scene) == doctest::Approx(750.0));
+    // The chart-level answer ignores the note-less timestamp the same way.
+    CHECK(app::last_note_start_ms(song) == last_note_ms(scene));
     CHECK(scene.song_length_ms == 0.0);
     const PreviewScene before = build_preview_scene(make_hand_song(), nullptr);
     REQUIRE_FALSE(scene.beats.empty());
@@ -1851,9 +1856,9 @@ TEST_CASE("song_fraction: has_song_length takes only a positive length") {
 // later, at 6000 ms. One activation on the note at tick 1440 (750 ms); one
 // bar of SP runs two measures, so its window ends at tick 5280. The scrubber
 // is built the way the Preview builds it (its right edge from scrub_end_ms
-// over the audio's end, the transport reaching the same end) and the Paths
-// timeline over the same length, the song's audio length (D69), and the two
-// marks must be the same number.
+// over the song's length) and the Paths timeline over the same length
+// (app::song_length_ms, D75; this chart's stated length is its 6000 ms), and
+// the two marks must be the same number.
 TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when the audio outlasts the notes") {
     const test::AudioTailChart c = test::audio_tail_chart();
     Path path;
@@ -1873,8 +1878,9 @@ TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when
     CHECK(marks[0] == *view.acts[0].song_fraction);
 }
 
-// The scrubber's right end is the audio's end (D69), so past the last note
-// the thumb keeps following the playhead, all the way to that end.
+// The scrubber's right end is the song's length (D75; this chart states
+// 6000 ms), so past the last note the thumb keeps following the playhead, all
+// the way to that end.
 TEST_CASE("scrub marks: a playhead past the last note parks the thumb at the right end") {
     const test::AudioTailChart c = test::audio_tail_chart();
     const double end = scrub_end_ms(c.audio_end_ms, c.audio_end_ms);

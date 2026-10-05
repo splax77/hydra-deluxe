@@ -7,7 +7,6 @@
 
 #include "audio/frames.h"
 #include "audio/mapped_file.h"
-#include "core/winstr.h"  // read_file_bytes
 
 namespace hydra::audio {
 
@@ -80,14 +79,6 @@ SongMix mix_song_stems(std::vector<std::unique_ptr<StemReader>> readers, double 
     if (out.mix->length_frames() > front_pad)
         out.end_chart_ms = audio_end_chart_ms(*out.mix, out.audio_offset_ms);
     return out;
-}
-
-std::optional<double> song_length_ms(const std::string& notespath, const Song& song) {
-    const app::SharedBytes container = app::read_preview_container(read_file_bytes, notespath);
-    const double offset_ms = app::chart_audio_offset_ms(notespath, container, song.chart_offset_s);
-    std::vector<std::unique_ptr<StemReader>> readers =
-        open_song_stems(map_song_stems(app::resolve_preview_stems(notespath, container)));
-    return mix_song_stems(std::move(readers), offset_ms).end_chart_ms;
 }
 
 }  // namespace hydra::audio
