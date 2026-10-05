@@ -66,7 +66,7 @@ row asks, each with a comment saying why.
 Scoring an old range against today's rows: -RulesAt HEAD. At the range's own
 last commit the scan already passes, so its rows mostly show known copies.
 
-THE FOUR CHECKS
+THE CHECKS
 
 1. Helpers defined twice (kind C). Every function defined at namespace level
    in a C++ test file (see WHICH FILES), and every named lambda (auto f = [..](..) {), is matched against
@@ -179,9 +179,16 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# The checks, in order: check N is the Nth function here. This list is the
+# one place that says how many checks there are. -Disable's validation and
+# the run at the end read it, and the self-test loads it from this text to
+# turn each check off in turn.
+$checks = @('Invoke-Check1', 'Invoke-Check2', 'Invoke-Check3', 'Invoke-Check4')
 # -Disable takes check numbers, as a list or comma-separated (-Disable 2 or -Disable 1,3).
 $Disable = @($Disable | ForEach-Object { "$_" -split ',' } | Where-Object { $_ } | ForEach-Object {
-    if ($_ -notmatch '^[1-4]$') { throw "-Disable takes check numbers 1 to 4, not '$_'" }; [int]$_ })
+    if ($_ -notmatch '^\d+$' -or [int]$_ -lt 1 -or [int]$_ -gt $checks.Count) {
+        throw "-Disable takes check numbers 1 to $($checks.Count), not '$_'"
+    }; [int]$_ })
 $utf8 = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $utf8
 $OutputEncoding = $utf8
@@ -1271,10 +1278,9 @@ function Invoke-Check4 {
 
 # ---------------------------------------------------------------- run
 
-if ($Disable -notcontains 1) { Invoke-Check1 }
-if ($Disable -notcontains 2) { Invoke-Check2 }
-if ($Disable -notcontains 3) { Invoke-Check3 }
-if ($Disable -notcontains 4) { Invoke-Check4 }
+for ($checkNo = 1; $checkNo -le $checks.Count; $checkNo++) {
+    if ($Disable -notcontains $checkNo) { & $checks[$checkNo - 1] }
+}
 
 foreach ($w in $rowWarnings) { Write-Host "$warnPrefix$w (this row could not be read as expected: std::regex and .NET may read its pattern differently, or a scan struct's members moved and `$ScanStructFields is out of date; trust the scan)" }
 if (-not $scanAt.Count) { Write-Host "$warnPrefix$scanFile is not at $($rulesRev.Substring(0, 7)), so no scan rows were applied" }

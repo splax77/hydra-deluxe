@@ -16,8 +16,9 @@ scan rows list as must-not-match (a gap between two chart ticks, a "!= SqIn"
 skip). The script must report the five planted items (check 4 has two), and
 must not report the decided 45 or the two
 must-not-match lines. Then the fixture runs again once per check with that check
-turned off, and each of those runs must miss its planted item, which proves
-every check is needed for this test to pass.
+turned off, and each of those runs must miss every item that check plants,
+which proves every check is needed for this test to pass. The list of checks
+is the precheck's own ($checks), so a new check with no planted item fails.
 
 Part 2 runs the script on the two first-review ranges of the 2026-10-04
 gate (c6debcd^2...c6debcd and 11b9d44^2...11b9d44) in this repository and
@@ -37,7 +38,8 @@ fixture lives in a temp folder that is deleted at the end.
 #>
 [CmdletBinding()]
 param(
-    [ValidateRange(1, 4)][int[]]$DisableCheck = @(),
+    # Check numbers; the precheck refuses one it does not have.
+    [int[]]$DisableCheck = @(),
     [switch]$FixtureOnly
 )
 
@@ -230,12 +232,13 @@ TEST_CASE("model.h mentions the window") {
     Invoke-FixtureGit @('add', '-A')
     Invoke-FixtureGit @('commit', '-q', '-m', 'feature')
 
+    # Kind, file, wording, and the number of the check that plants it.
     $expect = @(
-        @('C', 'tests/helpers_b.cpp', 'add_up.*same body.*sum_values'),
-        @('B', 'tests/test_offsets.cpp', 'How far is a note from an SP end.*end\.ms\(\)'),
-        @('D', 'tests/test_offsets.cpp', '\b37 in:'),
-        @('E', 'tests/test_stray_scan.cpp', 'HYDRA_SOURCE_DIR'),
-        @('E', $scanFile, 'planted row has no examples.*no must-match examples')
+        @('C', 'tests/helpers_b.cpp', 'add_up.*same body.*sum_values', 1),
+        @('B', 'tests/test_offsets.cpp', 'How far is a note from an SP end.*end\.ms\(\)', 2),
+        @('D', 'tests/test_offsets.cpp', '\b37 in:', 3),
+        @('E', 'tests/test_stray_scan.cpp', 'HYDRA_SOURCE_DIR', 4),
+        @('E', $scanFile, 'planted row has no examples.*no must-match examples', 4)
     )
     $absent = @('\b45 in:', '^[A-E] tests/helpers_a\.cpp:', '^[A-E] tests/test_offsets\.cpp:\d+  .*timecode\(69120\)',
                 '^[A-E] tests/test_offsets\.cpp:\d+  .*SpEndKind::SqIn')
@@ -243,13 +246,19 @@ TEST_CASE("model.h mentions the window") {
     $lines = Invoke-Precheck $fixture 'main...feature' $DisableCheck
     Assert-Expectations 'fixture' $lines $expect $absent
 
-    # Each check, turned off, must lose its own planted item.
+    # Each check, turned off, must lose every item it plants. The checks are
+    # the precheck's own $checks list, loaded from its text, so a new check
+    # with no planted item fails here by name.
     if (-not $DisableCheck.Count) {
-        foreach ($n in 1..4) {
+        $checkCount = @((Find-PrecheckAst '$checks').Right.Expression.SafeGetValue()).Count
+        foreach ($n in 1..$checkCount) {
+            $planted = $expect.Where({ $_[3] -eq $n })
+            if (-not $planted.Count) { $script:Failures.Add("fixture: check $n plants no item, so nothing proves the test needs check $n"); continue }
             $off = Invoke-Precheck $fixture 'main...feature' @($n)
-            $e = $expect[$n - 1]
-            if (Test-Expect $off $e[0] $e[1] $e[2]) { $script:Passes++ }
-            else { $script:Failures.Add("fixture with check $n off: still reports its planted item, so the test cannot see check $n") }
+            foreach ($e in $planted) {
+                if (Test-Expect $off $e[0] $e[1] $e[2]) { $script:Passes++ }
+                else { $script:Failures.Add("fixture with check $n off: still reports '$($e[0]) $($e[1])', so the test cannot see check $n") }
+            }
         }
     }
 } finally {
