@@ -97,7 +97,7 @@ THE CHECKS
    typed 2.0 within two lines of a hit window (D49 records that two-line
    reach for the typed 500, now a row; the two-hit budget row catches only
    the budget's product shapes, and only in src/ and tools/); a tied-path count checked against a
-   second count; a CHECK whose expected side is arithmetic over other calls;
+   second count; an assertion whose expected side is arithmetic over other calls;
    an expected answer built from the predicate's own comparisons ("want = a
    == x || ..."); and, in Python tests, a fixture that decides with the
    module's own constants or asserts one module constant equals a formula of
@@ -136,9 +136,10 @@ THE CHECKS
      its line compares, as in "x >= (1 << 30)"), the right side of a plain
      "=", a returned value, a std::min/max/clamp bound, or a duration.
      Table rows in braces are data and are skipped.
-   - In test files, a number on a CHECK, REQUIRE or assert line that is not in a
-     < > <= >= comparison: that is a pinned result from a run, which is what
-     a test should hold, not a threshold.
+   - In test files, a number on an assertion line (any doctest CHECK,
+     REQUIRE or WARN macro, or an assert) that is not in a < > <= >=
+     comparison: that is a pinned result from a run, which is what a test
+     should hold, not a threshold.
    - In test files, fixture data: tick lists, notes, offsets and other values set
      on a hand-built chart. Only these test numbers are checked: one in a
      comparison; a loop bound on a line about seeds, trials, repeats, samples,
