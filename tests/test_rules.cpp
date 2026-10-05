@@ -24,6 +24,7 @@
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
+#include "temp_util.h"
 
 using namespace hydra;
 
@@ -31,7 +32,7 @@ namespace {
 
 std::filesystem::path write_rules(const char* tag, const std::string& text) {
     std::filesystem::path p =
-        std::filesystem::temp_directory_path() / (std::string("hydra_rules_") + tag + ".ini");
+        hydra::os_path(testtemp::temp_path(std::string("rules_") + tag, ".ini"));
     std::ofstream f(p, std::ios::trunc);
     f << text;
     return p;
@@ -74,8 +75,8 @@ TEST_CASE("rules: defaults are the values Hydra always used") {
 
 TEST_CASE("rules: a missing file and an empty file both load the defaults") {
     const uint64_t fp = core::default_rules().fingerprint();
-    CHECK(app::load_rules_file(std::filesystem::temp_directory_path() /
-                               "hydra_rules_does_not_exist.ini")
+    CHECK(app::load_rules_file(
+              hydra::os_path(testtemp::temp_path("rules_does_not_exist", ".ini")))
               .fingerprint() == fp);
     CHECK(app::load_rules_file(write_rules("empty", "# nothing here\n\n")).fingerprint() == fp);
 }
@@ -138,7 +139,7 @@ TEST_CASE("rules: no rules value has the no-rules fingerprint") {
 }
 
 TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") {
-    Chord chord;
+    hydra::Chord chord;  // qualified: windows.h (through temp_util.h) declares a Chord too
     chord.add_note(NoteColor::Red);
     chord.add_note(NoteColor::Blue);
     // Combo 0, so both notes sit at a 1x multiplier and are worth 50 each.

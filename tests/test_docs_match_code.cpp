@@ -15,11 +15,6 @@
 // tests/test_single_owner.cpp does.
 #include "doctest.h"
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-
 #include <cctype>
 #include <cmath>
 #include <filesystem>
@@ -37,6 +32,7 @@
 #include "core/rules.h"
 #include "core/strutil.h"
 #include "source_tree.h"
+#include "temp_util.h"
 
 namespace fs = std::filesystem;
 
@@ -361,10 +357,7 @@ TEST_CASE("docs match code: the User Guide's hydra_rules.ini sample is the defau
     REQUIRE_MESSAGE(found, "docs/UserGuide.md: no fenced block under the \"Scoring rules\" heading");
     REQUIRE(sample.find('=') != std::string::npos);
 
-    // The process id keeps two runs at once from sharing the file.
-    const fs::path p = fs::temp_directory_path() /
-                       ("hydra_docs_match_code_rules_" + std::to_string(GetCurrentProcessId()) +
-                        ".ini");
+    const fs::path p = hydra::os_path(testtemp::temp_path("docs_match_code_rules", ".ini"));
     {
         std::ofstream f(p, std::ios::trunc);
         f << sample;
