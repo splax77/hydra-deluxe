@@ -2228,10 +2228,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"What fields does a phrase-end note carry in a hand-built Song?",
          "tests/test_preview_view.cpp", "ts.flag_sp = true;",
          "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
-        {"What is the lowest legal output gain?", "src/ui/preview_transport.cpp",
-         "gain_ = gain < 0.0f ? 0.0f : gain;",
-         "phase 7 task PV (D58 item 5: the transport's set_gain leaves the floor to "
-         "Playhead::set_gain); task J3-5 if PV does not take it"},
         {"Which test helper reads an audio fixture?", "tests/test_stem_reader.cpp",
          "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
          "task J2-6 (test_stem_reader.cpp's path builder calls fixture_path)"},
