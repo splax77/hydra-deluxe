@@ -589,9 +589,11 @@ TEST_CASE("the three report pages share one stylesheet and one script") {
         CHECK(page->find(".delta {") == std::string::npos);
         CHECK(page->find(".rank {") == std::string::npos);
         CHECK(page->find("data-theme") == std::string::npos);
-        // The pages search the Library's way (D48 Q31): no page joins its
-        // fields and looks for the query as one lowercased run, and every page
-        // carries the fold table Hydra built from the library's fold.
+        // The pages search words only (D56 item 1, D57 item 3): accents fold,
+        // and every typed word must appear in the text the page shows; quotes
+        // and field prefixes are ordinary words. No page joins its fields and
+        // looks for the query as one lowercased run, and every page carries
+        // the fold table Hydra built from the library's fold.
         CHECK(page->find("toLowerCase().includes(") == std::string::npos);
         CHECK(page->find("const FOLD = {\"A\":\"a\",") != std::string::npos);
     }

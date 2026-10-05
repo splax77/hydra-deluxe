@@ -82,8 +82,8 @@ int main() {
     // it reports under that rule whatever the app's "1.0 fills" setting says,
     // as it did before results carried their rule. Any other file follows the
     // app's setting.
-    if (store->engine_mode() == std::string(
-            hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch10)))
+    const std::optional<std::string> mode = store->engine_mode();
+    if (mode && hydra::fill_rule_from_stamp(*mode) == hydra::FillDeadlineRule::Ch10)
         settings.legacy_fills = true;
     options.lens = settings.lens();
     hydra::app::report::GeneratedReport report =

@@ -84,6 +84,24 @@ TEST_CASE("library query: invalid UTF-8 passes through byte for byte") {
     CHECK(fold_for_search("\xEF\xBC") == "\xEF\xBC");  // half a full-width letter
 }
 
+TEST_CASE("library query: only a real lead byte starts a kept character") {
+    // A kept character maps back to all of its bytes, so a match that starts
+    // on its last byte lights up the whole character. "©" (C2 A9), "€"
+    // (E2 82 AC) and the guitar (F0 9F 8E B8) are two, three and four bytes.
+    CHECK(spans_equal(match_spans(parse_library_query("\xA9" "y"), QueryField::Title, "\xC2\xA9" "y"),
+                      std::vector<MatchSpan>{MatchSpan{0, 3}}));
+    CHECK(spans_equal(match_spans(parse_library_query("\xAC" "y"), QueryField::Title, "\xE2\x82\xAC" "y"),
+                      std::vector<MatchSpan>{MatchSpan{0, 4}}));
+    CHECK(spans_equal(match_spans(parse_library_query("\xB8" "y"), QueryField::Title, "\xF0\x9F\x8E\xB8" "y"),
+                      std::vector<MatchSpan>{MatchSpan{0, 5}}));
+    // C1 and F5 never start a character, so the byte after them is its own
+    // and the span starts there.
+    CHECK(spans_equal(match_spans(parse_library_query("\xBF" "ab"), QueryField::Title, "\xC1\xBF" "ab"),
+                      std::vector<MatchSpan>{MatchSpan{1, 4}}));
+    CHECK(spans_equal(match_spans(parse_library_query("\x80" "a"), QueryField::Title, "\xF5\x80\x80\x80" "a"),
+                      std::vector<MatchSpan>{MatchSpan{3, 5}}));
+}
+
 TEST_CASE("library query: rich-text tags are stripped and other angle brackets kept") {
     CHECK(strip_rich_tags("<color=#e02222>Blood</color>line") == "Bloodline");
     CHECK(strip_rich_tags("<COLOR=red>Loud</Color>") == "Loud");
