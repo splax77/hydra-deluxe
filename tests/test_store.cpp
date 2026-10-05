@@ -26,6 +26,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "app/user_messages.h"
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/squeeze_rating.h"
@@ -1720,6 +1721,31 @@ TEST_CASE("a save_analysis that fails leaves nothing behind") {
         store.save_analysis("ok", "Song", "Artist", "Charter", fixture().song,
                             prepare_row(ok, at_cap(4)), std::nullopt);
         CHECK(store.get_record(ok).status == RecordStatus::Ready);
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("a database write the old matcher missed reads as a database error") {
+    // A trigger refuses the song-length write inside save_analysis.
+    const std::string path = testtemp::temp_path("save_length_fail", ".db");
+    std::remove(path.c_str());
+    { RecordStore store(path); }
+    exec_on_file(path,
+                 "CREATE TRIGGER refuse_length BEFORE UPDATE OF length_ms ON songmeta"
+                 " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    {
+        RecordStore store(path);
+        const RecordKey key{"len", "mode", CapQuery::at(4)};
+        try {
+            store.save_analysis("len", "Song", "Artist", "Charter", fixture().song,
+                                prepare_row(key, at_cap(4)), std::nullopt);
+            FAIL("the refused song-length write saved");
+        } catch (const std::exception& e) {
+            CHECK(std::string(e.what()).rfind("saving the song's length failed: ", 0) == 0);
+            CHECK(hydra::app::plain_error(e) ==
+                  "Hydra couldn't save to its database (hydra.db). Check that the disk isn't "
+                  "full and that no other copy of Hydra is running, then try again.");
+        }
     }
     std::remove(path.c_str());
 }

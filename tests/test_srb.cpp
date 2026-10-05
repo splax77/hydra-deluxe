@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/user_messages.h"
 #include "byte_source_util.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
@@ -118,6 +119,20 @@ TEST_CASE("srb: malformed containers throw instead of crashing") {
     write_bytes(truncated, whole);
     CHECK_THROWS_AS(load_songpath_srb(truncated, true, true),
                     std::runtime_error);
+}
+
+TEST_CASE("srb: a truncated file reads as an unreadable chart") {
+    std::vector<uint8_t> whole = make_srb(make_metadata("notes.mid", "N", "A", "C"),
+                                          read_bytes(corpus_chart_path(".mid")), {});
+    whole.resize(whole.size() / 2);
+    try {
+        load_songbytes_srb(whole, true, true);
+        FAIL("a truncated .srb loaded");
+    } catch (const std::exception& e) {
+        CHECK(app::plain_error(e) ==
+              "Hydra couldn't read this chart file. It may be damaged or in a format Hydra "
+              "doesn't support; try downloading the song again.");
+    }
 }
 
 namespace {

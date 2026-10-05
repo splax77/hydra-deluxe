@@ -22,6 +22,7 @@
 
 #include "audio/mapped_file.h"
 #include "core/audio_sniff.h"  // AudioFormat, for open_ma_reader
+#include "core/error_kind.h"
 
 namespace hydra::app {
 struct PreviewAudioStem;
@@ -67,15 +68,15 @@ struct StemBytes {
     std::size_t size() const { return mapped ? mapped->size() : owned.size(); }
 };
 
-struct OpenCancelled : std::exception {
-    const char* what() const noexcept override { return "cancelled"; }
+struct OpenCancelled : KindedError {
+    OpenCancelled() : KindedError(ErrorKind::Cancelled, "cancelled") {}
 };
 // bytes_done / bytes_total; return false to cancel (open throws OpenCancelled).
 using OpenProgress = std::function<bool(uint64_t bytes_done, uint64_t bytes_total)>;
 
-// Throws std::runtime_error ("decode_audio: ...") for an unrecognized or
-// unreadable stream, so user_messages.cpp keeps classifying it as an audio
-// decode error. A loose file that can't be opened throws "cannot open file: ...".
+// Throws a KindedError of kind AudioDecode ("decode_audio: ...") for an
+// unrecognized or unreadable stream. A loose file that can't be opened throws
+// kind SongFileMissing ("cannot open file: ...").
 std::unique_ptr<StemReader> open_stem_reader(StemBytes bytes,
                                              const OpenProgress& progress = nullptr);
 std::unique_ptr<StemReader> open_stem_reader(const app::PreviewAudioStem& stem,

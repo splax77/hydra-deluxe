@@ -10,6 +10,7 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "core/error_kind.h"
 #include "core/strutil.h"
 #include "core/winstr.h"  // read_file_bytes, file_byte_source, memory_byte_source
 #include "parse/midi.h"
@@ -34,22 +35,26 @@ bool is_timing_refusal(std::string_view what) {
 void check_timing_maps(int64_t tick_resolution,
                        const std::map<int64_t, int64_t>& tpm_changes,
                        const std::map<int64_t, double>& bpm_changes) {
+    constexpr ErrorKind kRefused = ErrorKind::ChartTimingRefused;
     if (tick_resolution <= 0)
-        throw ChartFileError(std::string(kResolutionRefusalPrefix) +
-                             std::to_string(tick_resolution) + ", and it must be above 0");
+        throw ChartFileError(kRefused, std::string(kResolutionRefusalPrefix) +
+                                           std::to_string(tick_resolution) +
+                                           ", and it must be above 0");
     for (const auto& [tick, len] : tpm_changes)
         if (len <= 0)
-            throw ChartFileError(std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
-                                 " makes a measure " + std::to_string(len) + " ticks long");
+            throw ChartFileError(kRefused, std::string(kTimeSignatureRefusalPrefix) +
+                                               std::to_string(tick) + " makes a measure " +
+                                               std::to_string(len) + " ticks long");
     for (const auto& [tick, bpm] : bpm_changes) {
         // A .mid tempo of 0 microseconds per beat reads back as an infinite BPM
         // (D12): say so, rather than "not above 0 BPM".
         if (std::isinf(bpm) && bpm > 0.0)
-            throw ChartFileError(std::string(kTempoRefusalPrefix) + std::to_string(tick) +
-                                 " is infinite (0 microseconds per beat)");
+            throw ChartFileError(kRefused, std::string(kTempoRefusalPrefix) +
+                                               std::to_string(tick) +
+                                               " is infinite (0 microseconds per beat)");
         if (!std::isfinite(bpm) || bpm <= 0.0)
-            throw ChartFileError(std::string(kTempoRefusalPrefix) + std::to_string(tick) +
-                                 " is not above 0 BPM");
+            throw ChartFileError(kRefused, std::string(kTempoRefusalPrefix) +
+                                               std::to_string(tick) + " is not above 0 BPM");
     }
 }
 
@@ -184,8 +189,9 @@ bool is_disco_off_marker(std::string_view s, char mix_digit) {
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
     if (numerator == 0) return;
     if (denominator <= 0)
-        throw ChartFileError(std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
-                             " has a bottom number that is out of range");
+        throw ChartFileError(ErrorKind::ChartTimingRefused,
+                             std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
+                                 " has a bottom number that is out of range");
     song.tpm_changes[tick] = song.tick_resolution() * static_cast<int64_t>(numerator) * 4 /
                              static_cast<int64_t>(denominator);
     song.timesig_changes[tick] = {numerator, denominator};
@@ -309,7 +315,7 @@ std::string no_notes_message(Difficulty difficulty, bool prodrums) {
 }
 
 NoNotesError::NoNotesError(Difficulty difficulty, bool prodrums)
-    : ChartFileError(no_notes_message(difficulty, prodrums)) {}
+    : ChartFileError(ErrorKind::AlreadyPlain, no_notes_message(difficulty, prodrums)) {}
 
 namespace {
 
@@ -1544,10 +1550,12 @@ Song load_container_sng(const ByteSource& src, bool pro, bool bass2x,
     names.reserve(entries.size());
     for (const SngFileEntry& e : entries) names.push_back(e.name);
     const std::optional<NotesFilePick> pick = pick_notes_file(names);
-    if (!pick) throw std::runtime_error("No chart files found in SNG file.");
+    // A file-level failure is a KindedError, not a ChartFileError: the
+    // per-note catches swallow ChartFileError.
+    if (!pick) throw KindedError(ErrorKind::ChartUnreadable, "No chart files found in SNG file.");
 
     std::optional<std::vector<uint8_t>> notebytes = sng_read_file(src, head, entries[pick->index]);
-    if (!notebytes) throw std::runtime_error("Truncated SNG file.");
+    if (!notebytes) throw KindedError(ErrorKind::ChartUnreadable, "Truncated SNG file.");
     if (pick->format == ChartFormat::Mid)
         return load_songbytes_mid(*notebytes, pro, bass2x, difficulty, rules);
     return load_songbytes_chart(*notebytes, pro, bass2x, difficulty, rules);
@@ -1623,7 +1631,7 @@ Song load_songpath_reading(const ByteSource& src, const std::string& path, bool 
         case ChartFormat::Srb: return load_container_srb(src, pro, bass2x, difficulty, rules);
         case ChartFormat::None: break;
     }
-    throw std::runtime_error("unexpected chart type: " + path);
+    throw KindedError(ErrorKind::ChartUnreadable, "unexpected chart type: " + path);
 }
 
 Song load_songpath(const std::string& path, bool pro, bool bass2x,

@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "core/error_kind.h"
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "store/serialize.h"
@@ -58,8 +59,8 @@ struct ResetOnExit {
 Stmt prepare(sqlite3* db, const char* sql) {
     Stmt s;
     if (sqlite3_prepare_v2(db, sql, -1, &s.p, nullptr) != SQLITE_OK)
-        throw std::runtime_error(std::string("prepare failed: ") + sqlite3_errmsg(db) +
-                                 " (" + sql + ")");
+        throw KindedError(ErrorKind::DatabaseWrite,
+                          std::string("prepare failed: ") + sqlite3_errmsg(db) + " (" + sql + ")");
     return s;
 }
 
@@ -691,7 +692,8 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
         std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown error";
         if (db_) sqlite3_close(db_);
         db_ = nullptr;
-        throw std::runtime_error("failed to open database '" + dbpath + "': " + msg);
+        throw KindedError(ErrorKind::DatabaseOpen,
+                          "failed to open database '" + dbpath + "': " + msg);
     }
 
     // WAL journal mode (orchestrator's call, 2026-09-26 audit plan): a commit
@@ -817,7 +819,7 @@ void RecordStore::exec(const char* sql) {
     if (sqlite3_exec(db_, sql, nullptr, nullptr, &errmsg) != SQLITE_OK) {
         std::string msg = errmsg ? errmsg : "unknown error";
         sqlite3_free(errmsg);
-        throw std::runtime_error("sqlite exec failed: " + msg);
+        throw KindedError(ErrorKind::DatabaseWrite, "sqlite exec failed: " + msg);
     }
 }
 
@@ -841,7 +843,8 @@ void RecordStore::meta_set(const std::string& key, const std::string& value) {
     bind_text(s, 1, key);
     bind_text(s, 2, value);
     if (sqlite3_step(s) != SQLITE_DONE)
-        throw std::runtime_error(std::string("meta_set failed: ") + sqlite3_errmsg(db_));
+        throw KindedError(ErrorKind::DatabaseWrite,
+                          std::string("meta_set failed: ") + sqlite3_errmsg(db_));
 }
 
 // The meta table's keys, each typed once.
@@ -890,7 +893,8 @@ void RecordStore::insert_dynamics(const DynamicsKey& key, const std::vector<uint
     bind_blob(s, 4, blob);
     sqlite3_bind_int(s, 5, count_version);
     if (sqlite3_step(s) != SQLITE_DONE)
-        throw std::runtime_error(std::string("put_dynamics failed: ") + sqlite3_errmsg(db_));
+        throw KindedError(ErrorKind::DatabaseWrite,
+                          std::string("put_dynamics failed: ") + sqlite3_errmsg(db_));
 }
 
 void RecordStore::save_analysis(const std::string& hyhash, const std::string& ref_name,
@@ -1051,8 +1055,8 @@ void RecordStore::write_song_length(const std::string& hyhash, std::optional<dou
     bind_text(s, 3, hyhash);
     if (only_from_stamp) sqlite3_bind_int(s, 4, *only_from_stamp);
     if (sqlite3_step(s) != SQLITE_DONE)
-        throw std::runtime_error(std::string("saving the song's length failed: ") +
-                                 sqlite3_errmsg(db_));
+        throw KindedError(ErrorKind::DatabaseWrite,
+                          std::string("saving the song's length failed: ") + sqlite3_errmsg(db_));
 }
 
 // Which copy names an md5 (D51 call 10): the first copy the scan listed, the
@@ -1101,7 +1105,8 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
     bind_text(s, 4, charter);
     bind_blob(s, 5, tempomap);
     if (sqlite3_step(s) != SQLITE_DONE)
-        throw std::runtime_error(std::string("add_song failed: ") + sqlite3_errmsg(db_));
+        throw KindedError(ErrorKind::DatabaseWrite,
+                          std::string("add_song failed: ") + sqlite3_errmsg(db_));
 }
 
 void RecordStore::add_record(const RecordKey& key, const HydraRecord& record) {
@@ -1127,8 +1132,8 @@ void RecordStore::write_row(const PreparedRow& row) {
     // so a failure anywhere leaves the store exactly as it was.
     auto run = [&](Stmt& s, const char* what) {
         if (sqlite3_step(s) != SQLITE_DONE)
-            throw std::runtime_error(std::string("add_row ") + what + " failed: " +
-                                     sqlite3_errmsg(db_));
+            throw KindedError(ErrorKind::DatabaseWrite, std::string("add_row ") + what +
+                                                            " failed: " + sqlite3_errmsg(db_));
     };
     // Deletes the results a subquery names, and their refs. `where` is a
     // fragment over `results`, bound by `bind`.
@@ -1248,8 +1253,8 @@ void RecordStore::collect_orphan_paths(const std::string& hyhash,
     bind_text(s, 4, chartmode);
     // Same message as before for write_row: "add_row path gc failed: ...".
     if (sqlite3_step(s) != SQLITE_DONE)
-        throw std::runtime_error(std::string(caller) + " path gc failed: " +
-                                 sqlite3_errmsg(db_));
+        throw KindedError(ErrorKind::DatabaseWrite,
+                          std::string(caller) + " path gc failed: " + sqlite3_errmsg(db_));
 }
 
 namespace {
@@ -1290,8 +1295,9 @@ void RecordStore::delete_auto_results() {
             Stmt s = prepare(db_, sql.c_str());
             bind_blob(s, 1, auto_fp);
             if (sqlite3_step(s) != SQLITE_DONE)
-                throw std::runtime_error(std::string("deleting Auto results failed: ") +
-                                         sqlite3_errmsg(db_));
+                throw KindedError(ErrorKind::DatabaseWrite,
+                                  std::string("deleting Auto results failed: ") +
+                                      sqlite3_errmsg(db_));
         }
         for (const auto& [hyhash, chartmode] : charts)
             collect_orphan_paths(hyhash, chartmode, "Auto cleanup");
@@ -1693,7 +1699,8 @@ int RecordStore::reindex() {
             bind_text(update, kSummaryColumnCount + 1, best_path_text(record));
             sqlite3_bind_int64(update, kSummaryColumnCount + 2, row.result_id);
             if (sqlite3_step(update) != SQLITE_DONE)
-                throw std::runtime_error(std::string("reindex failed: ") + sqlite3_errmsg(db_));
+                throw KindedError(ErrorKind::DatabaseWrite,
+                                  std::string("reindex failed: ") + sqlite3_errmsg(db_));
             ++done;
         }
         exec("COMMIT");
@@ -1751,8 +1758,9 @@ int RecordStore::fill_missing_stars() {
             else sqlite3_bind_null(update, 1);
             sqlite3_bind_int64(update, 2, id);
             if (sqlite3_step(update) != SQLITE_DONE)
-                throw std::runtime_error(std::string("fill_missing_stars failed: ") +
-                                         sqlite3_errmsg(db_));
+                throw KindedError(ErrorKind::DatabaseWrite,
+                                  std::string("fill_missing_stars failed: ") +
+                                      sqlite3_errmsg(db_));
             ++filled;
         }
         exec("COMMIT");
@@ -1867,8 +1875,9 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
             bind_text(s, 6, item.rootfolder);
             bind_text(s, 7, item.sig);
             if (sqlite3_step(s) != SQLITE_DONE)
-                throw std::runtime_error(std::string("rebuild_chart_library failed: ") +
-                                         sqlite3_errmsg(db_));
+                throw KindedError(ErrorKind::DatabaseWrite,
+                                  std::string("rebuild_chart_library failed: ") +
+                                      sqlite3_errmsg(db_));
         }
         // Song names follow song.ini (user decision 2026-09-26): a chart that
         // already has a song row takes the names this scan read. When the

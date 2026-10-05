@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "core/backend_value.h"
+#include "core/error_kind.h"
 #include "core/rules.h"
 #include "core/timing.h"
 
@@ -36,10 +37,13 @@ inline constexpr int kCloneHeroSpCap = 4;
 
 // A chart file that does not work. Chord and
 // the parsers raise it; the parsers swallow it per-op exactly as Python does.
-class ChartFileError : public std::runtime_error {
+// Its kind is ChartUnreadable unless the thrower names another (a refused
+// timing line, or NoNotesError's sentence).
+class ChartFileError : public KindedError {
 public:
     explicit ChartFileError(const std::string& what)
-        : std::runtime_error(what) {}
+        : KindedError(ErrorKind::ChartUnreadable, what) {}
+    ChartFileError(ErrorKind kind, const std::string& what) : KindedError(kind, what) {}
 };
 
 // ---- enums --------------------------------------------------------------

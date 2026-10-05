@@ -19,7 +19,7 @@ DecodedAudio read_all(StemReader& r) {
     DecodedAudio out;
     out.channels = r.channels();
     out.sample_rate = r.sample_rate();
-    if (out.channels <= 0) throw std::runtime_error("decode_audio: the stream has no channels");
+    if (out.channels <= 0) throw KindedError(ErrorKind::AudioDecode,"decode_audio: the stream has no channels");
     const std::size_t ch = static_cast<std::size_t>(out.channels);
     int64_t cap = r.length_frames();
     out.samples.resize(static_cast<std::size_t>(cap) * ch);
@@ -39,7 +39,7 @@ DecodedAudio read_all(StemReader& r) {
             n += got;
         }
     }
-    if (r.failed()) throw std::runtime_error("decode_audio: the stream failed to decode");
+    if (r.failed()) throw KindedError(ErrorKind::AudioDecode,"decode_audio: the stream failed to decode");
     out.samples.resize(static_cast<std::size_t>(n) * ch);
     return out;
 }

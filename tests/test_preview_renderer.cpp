@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "app/preview_view.h"
+#include "app/user_messages.h"
 #include "render/highway_draw.h"  // track_height
 #include "render/preview_renderer.h"
 #include "ui/preview_load_job.h"  // track_options
@@ -253,4 +254,11 @@ TEST_CASE("PreviewRenderer: a missing asset dir is a clear error") {
     ComPtr<ID3D11DeviceContext> ctx;
     REQUIRE(warp::make_device(dev, ctx));
     CHECK_THROWS_AS(PreviewRenderer(dev.Get(), ctx.Get(), "C:\\no\\such\\dir"), std::runtime_error);
+    try {
+        PreviewRenderer(dev.Get(), ctx.Get(), "C:\\no\\such\\dir");
+        FAIL("a missing asset dir made a renderer");
+    } catch (const std::exception& e) {
+        CHECK(hydra::app::plain_error(e) ==
+              "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+    }
 }

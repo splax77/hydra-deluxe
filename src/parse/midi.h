@@ -22,12 +22,14 @@
 #include <string>
 #include <vector>
 
+#include "core/error_kind.h"
+
 namespace hydra {
 
 // Thrown for input that is not a usable MIDI file (mirrors hymidi's ValueError).
-class MidiError : public std::runtime_error {
+class MidiError : public KindedError {
 public:
-    explicit MidiError(const std::string& what) : std::runtime_error(what) {}
+    explicit MidiError(const std::string& what) : KindedError(ErrorKind::ChartUnreadable, what) {}
 };
 
 // One event. A single struct covers channel and meta messages, matching the

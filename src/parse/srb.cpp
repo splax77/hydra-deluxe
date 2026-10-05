@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "core/error_kind.h"
 #include "core/little_endian.h"
 #include "miniz.h"
 
@@ -25,7 +26,7 @@ std::vector<uint8_t> inflate_raw(const NextInput& next_input, size_t max_out,
     mz_stream s{};
     // Negative window bits selects a raw deflate stream, zlib-style.
     if (mz_inflateInit2(&s, -MZ_DEFAULT_WINDOW_BITS) != MZ_OK)
-        throw std::runtime_error("SRB inflate init failed.");
+        throw KindedError(ErrorKind::ChartUnreadable,"SRB inflate init failed.");
 
     // Hands the inflater the next piece once it has used up the last one.
     bool file_ended = false;
@@ -42,7 +43,7 @@ std::vector<uint8_t> inflate_raw(const NextInput& next_input, size_t max_out,
     refill();
     if (file_ended) {
         mz_inflateEnd(&s);
-        throw std::runtime_error("SRB stream starts past end of file.");
+        throw KindedError(ErrorKind::ChartUnreadable,"SRB stream starts past end of file.");
     }
 
     std::vector<uint8_t> out;
@@ -55,12 +56,12 @@ std::vector<uint8_t> inflate_raw(const NextInput& next_input, size_t max_out,
         status = mz_inflate(&s, MZ_NO_FLUSH);
         if (status != MZ_OK && status != MZ_STREAM_END) {
             mz_inflateEnd(&s);
-            throw std::runtime_error("SRB stream is corrupt.");
+            throw KindedError(ErrorKind::ChartUnreadable,"SRB stream is corrupt.");
         }
         out.insert(out.end(), chunk, chunk + (sizeof(chunk) - s.avail_out));
         if (out.size() > max_out) {
             mz_inflateEnd(&s);
-            throw std::runtime_error("SRB stream exceeds size limit.");
+            throw KindedError(ErrorKind::ChartUnreadable,"SRB stream exceeds size limit.");
         }
         // All input consumed without reaching the stream's end marker, and
         // the file holds no more.
@@ -68,7 +69,7 @@ std::vector<uint8_t> inflate_raw(const NextInput& next_input, size_t max_out,
             refill();
             if (s.avail_in == 0) {
                 mz_inflateEnd(&s);
-                throw std::runtime_error("SRB stream is truncated.");
+                throw KindedError(ErrorKind::ChartUnreadable,"SRB stream is truncated.");
             }
         }
     }
@@ -139,7 +140,7 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
 }
 
 SrbMetadataRead srb_read_metadata(const ByteSource& src) {
-    if (src.size <= kSrbHeaderSize) throw std::runtime_error("Truncated SRB file.");
+    if (src.size <= kSrbHeaderSize) throw KindedError(ErrorKind::ChartUnreadable,"Truncated SRB file.");
     SrbMetadataRead out;
     const std::vector<uint8_t> meta =
         srb_inflate_stream_reading(src, kSrbHeaderSize, kSrbMaxMetadata, &out.notes_offset);

@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string>
 
+#include "core/error_kind.h"
+
 namespace hydra::render {
 
 namespace {
@@ -71,7 +73,8 @@ void push_fan(ObjMesh& mesh, const std::vector<ObjVertex>& corners) {
 size_t resolve(long idx, size_t n, const char* what) {
     long r = idx > 0 ? idx - 1 : static_cast<long>(n) + idx;
     if (idx == 0 || r < 0 || static_cast<size_t>(r) >= n)
-        throw std::runtime_error(std::string("obj: ") + what + " index out of range");
+        throw KindedError(ErrorKind::PreviewAssets,
+                          std::string("obj: ") + what + " index out of range");
     return static_cast<size_t>(r);
 }
 
@@ -125,7 +128,7 @@ ObjMesh load_obj(std::string_view text) {
         }
         // mtllib / usemtl / o / g / s and anything else: ignored.
     }
-    if (mesh.vertices.empty()) throw std::runtime_error("obj: no faces");
+    if (mesh.vertices.empty()) throw KindedError(ErrorKind::PreviewAssets, "obj: no faces");
     sort_far_first(mesh);
     return mesh;
 }

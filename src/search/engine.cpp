@@ -2035,7 +2035,7 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
     if (on_progress) engine.set_progress_cb(on_progress);
 
     if (!engine.run())
-        throw std::runtime_error("search reached a broken state");
+        throw KindedError(ErrorKind::SearchBroken, "search reached a broken state");
 
     return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
                    engine.out_ends(), engine.out_ticks(), graph.tail_backends(),

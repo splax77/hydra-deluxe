@@ -19,6 +19,7 @@
 #include <windows.h>
 #include <winioctl.h>  // FSCTL_SET_SPARSE
 
+#include "app/user_messages.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "temp_util.h"
@@ -169,6 +170,20 @@ TEST_CASE("shell_execute_ok: 32 and below fail, 33 and above succeed") {
     CHECK_FALSE(ok(0));
     CHECK_FALSE(ok(32));
     CHECK(ok(33));
+}
+
+TEST_CASE("a missing file reads as a moved song file") {
+    const std::string path = testtemp::temp_path("no_such_song", ".chart");
+    std::remove(path.c_str());
+    try {
+        hydra::read_file_bytes(path);
+        FAIL("a missing file was read");
+    } catch (const std::exception& e) {
+        CHECK(std::string(e.what()).rfind("cannot open file: ", 0) == 0);
+        CHECK(hydra::app::plain_error(e) ==
+              "Hydra couldn't open the song file. It may have been moved or deleted; run Scan "
+              "library to update the library.");
+    }
 }
 
 TEST_CASE("read_file_bytes of an empty file is empty, not an error") {
