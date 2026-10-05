@@ -2489,3 +2489,139 @@ TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one ow
     CHECK(depth_hits.front() ==
           "src/app/config.cpp: return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;");
 }
+
+// J3-8 (findings 232 to 236, 238, 239, 273, 328): the Clone Hero probe's song
+// writers and runners. The row scan above reads .cpp and .h only, so these
+// rows scan every .py file under tools/ (a __pycache__ .pyc is never read).
+// The rows have J3-7's ProbeRow shape and its scan loop: J3-7's table is not
+// on this branch yet, so the loop is J3-7's, carried here only until the
+// merge joins these rows into J3-7's table and drops this case. "allowed"
+// lists the owner's lines ("rel: trimmed line"); a listed line that no longer
+// exists fails as stale. Python comment lines are skipped.
+TEST_CASE("single-owner: the Clone Hero probe's songs and runners each have one owner (J3-8)") {
+    struct ProbeRow {
+        std::string question;
+        std::string pattern;
+        std::vector<std::string> allowed;  // "rel: trimmed line": owner lines
+        std::vector<std::string> must_match;
+        std::vector<std::string> must_not_match;
+    };
+    const std::vector<ProbeRow> rows = {
+        {"How long does a runner wait before reading a press's result?",
+         R"x(\b\w*SETTLE_MS\s*=(?!=))x",
+         {"tools/ch_probe/constants.py: INPUT_SETTLE_MS = 250"},
+         {"SETTLE_MS = 250        # wait this long past the note before reading the result",
+          "SETTLE_MS = 250   # read the result this long after the note (as walk_edges.py)"},
+         {"wait_for(max(p.second_ms, p.second_ms + p.offset_ms) + constants.INPUT_SETTLE_MS)"}},
+        {"Did a press register as a hit?",
+         R"x(\b(after|score_after)\s*>\s*(before|score_before)\b|\bafter_score\s*>\s*before_score\b)x"
+         R"x(|\.score\s*>\s*\w+\.score\b)x",
+         {"tools/ch_probe/engine.py: return score_after > score_before"},
+         {"hit = after_score > before_score", "hit = score_after > score_before",
+          "measured if from_engine else None, after.score > before.score, measured)",
+          "score_rises = sum(1 for a, b in zip(samples, samples[1:]) if b.score > a.score)"},
+         {"hit = pressed_input_hit(score_before, score_after)"}},
+        {"How does a runner find the game window?",
+         R"x(\bFindWindowW\b)x",
+         {"tools/ch_probe/input_driver.py: find = ctypes.windll.user32.FindWindowW"},
+         {R"x(ch_hwnd = user32.FindWindowW(None, "Clone Hero"))x",
+          R"x(return ctypes.windll.user32.FindWindowW(None, "Clone Hero") or 0)x"},
+         {"ch_hwnd = find_game_window()"}},
+        {"Which .chart note is the probe's kick?",
+         R"x(\b\w*KICK\s*=\s*0\b)x",
+         {"tools/ch_probe/constants.py: PROBE_CHART_NOTE_KICK = 0"},
+         {"KICK = 0  # .chart drum lane 0; play_chart.py maps it to the kick key"},
+         {"KICK = 4", "DRUM_NOTE_KICK = C.PROBE_CHART_NOTE_KICK"}},
+        // The test pins are today's text, pinned once (test_song_names_are_spelled_once).
+        {"Where are the probe songs installed, and what are they called?",
+         R"x(Clone Hero\\songs\\Hydra Probe|"Window Map"|"Edge Walk"|"Hydra Probe - ")x",
+         {R"x(tools/ch_probe/probe_songs.py: DEFAULT_OUT = r"C:\Clone Hero\songs\Hydra Probe")x",
+          R"x(tools/ch_probe/probe_songs.py: WINDOW_MAP = "Window Map")x",
+          R"x(tools/ch_probe/probe_songs.py: EDGE_WALK = "Edge Walk")x",
+          R"x(tools/ch_probe/probe_songs.py: NAME_PREFIX = "Hydra Probe - ")x",
+          R"x(tools/ch_probe/tests/test_probe_songs.py: self.assertEqual(P.WINDOW_MAP, "Window Map"))x",
+          R"x(tools/ch_probe/tests/test_probe_songs.py: self.assertEqual(P.EDGE_WALK, "Edge Walk"))x",
+          R"x(tools/ch_probe/tests/test_probe_songs.py: self.assertEqual(P.NAME_PREFIX, "Hydra Probe - "))x"},
+         {R"x(PROBE_ROOT = r"C:\Clone Hero\songs\Hydra Probe")x",
+          R"x(return os.path.join(live.PROBE_ROOT, "Window Map"))x"},
+         {R"x(python tools\\ch_probe\\experiments\\watch_window.py [<probe song name> | folder])x"}},
+        {"How many ticks is a millisecond (probe)?",
+         R"x(/\s*60000(\.0)?\b|\*\s*\w+\s*/\s*60000)x",
+         {"tools/ch_probe/probe_chart.py: return resolution * bpm / 60000.0"},
+         {"self.assertEqual(P.RESOLUTION * P.BPM / 60000.0, 1.0)"},
+         {"return int(round(ms * _ticks_per_ms(resolution, bpm)))"}},
+        {"What window does the formula predict?",
+         R"x(\*\*\s*exponent\b)x",
+         {"tools/ch_probe/experiments/analysis.py: return (t * c1 - (t ** exponent) * c2) * c3"},
+         {"return ((t * c1 - (t ** exponent) * c2) * c3 - c4) / divisor",
+          "return (c0 - (t * c1 - (t ** exponent) * c2) * c3) / divisor"},
+         {"exponent=exponent) - c4) / divisor"}},
+        {"Which lines of a probe .chart are drum notes? (probe tests)",
+         R"x(N\\s\+\(\\d\+\)\\s\+\(\\d\+\)|= N 0 0\$)x",
+         {R"x(tools/ch_probe/tests/chart_reader.py: _NOTE_LINE = re.compile(r"^(\d+)\s*=\s*N\s+(\d+)\s+(\d+)$"))x"},
+         {R"x(match = re.match(r"^(\d+)\s*=\s*N\s+(\d+)\s+(\d+)$", stripped))x",
+          R"x(return [int(m) for m in re.findall(r"^\s*(\d+) = N 0 0$", text, re.M)])x"},
+         {R"x(i_drums = text.find("[ExpertDrums]"))x"}},
+        // The test line pins D54's recorded value.
+        {"How long is a key held?",
+         R"x(\b0\.003\b)x",
+         {"tools/ch_probe/input_driver.py: KEY_HOLD_S = 0.003",
+          "tools/ch_probe/tests/test_input_driver.py: self.assertEqual(input_driver.KEY_HOLD_S, 0.003)"},
+         {"def press_chord(self, lanes: Iterable[int], *, hold_s: float = 0.003,",
+          "def press_chord(self, lanes: Sequence[int], *, hold_s: float = 0.003) -> list:"},
+         {"def press_chord(self, lanes: Iterable[int], *, hold_s: float = KEY_HOLD_S,"}},
+        // The owner is the named constants in constants.py, which the pattern
+        // (the old inline cut-offs) does not match.
+        {"Which cut-offs judge the probe's verdicts?",
+         R"x(<=\s*10\.0\b|fresh_s:\s*float\s*=\s*0\.002|max_fill_s:\s*float\s*=\s*0\.05)x"
+         R"x(|tolerance_ms:\s*float\s*=\s*1\.0|decisive_fraction:\s*float\s*=\s*0\.8)x",
+         {},
+         {"if len(hits) == score_rises and max(abs(d) for d in diffs) <= 10.0:",
+          "fresh_s: float = 0.002, max_fill_s: float = 0.05) -> None:",
+          "tolerance_ms: float = 1.0,", "decisive_fraction: float = 0.8,"},
+         {"clock = SongClock(engine.song_clock, max_fill_s=0.0)",
+          "fresh_s: float = C.CLOCK_FRESH_S,"}},
+    };
+
+    std::vector<std::regex> compiled;
+    for (const ProbeRow& r : rows) {
+        compiled.emplace_back(r.pattern);
+        for (const std::string& line : r.must_match) {
+            INFO(r.question << " should flag: " << line);
+            CHECK(std::regex_search(line, compiled.back()));
+        }
+        for (const std::string& line : r.must_not_match) {
+            INFO(r.question << " should not flag: " << line);
+            CHECK_FALSE(std::regex_search(line, compiled.back()));
+        }
+    }
+
+    std::vector<std::set<std::string>> seen(rows.size());
+    std::vector<std::string> problems;
+    sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+        if (rel.compare(0, 6, "tools/") != 0 || path.extension() != ".py") return;
+        std::ifstream in(path);
+        std::string line;
+        while (std::getline(in, line)) {
+            const std::string t = hydra::trim(line);
+            if (t.empty() || t[0] == '#') continue;
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (!std::regex_search(t, compiled[i])) continue;
+                const std::string key = rel + ": " + t;
+                const std::set<std::string> allowed(rows[i].allowed.begin(),
+                                                    rows[i].allowed.end());
+                if (allowed.count(key))
+                    seen[i].insert(key);
+                else
+                    problems.push_back("answers \"" + rows[i].question + "\": " + key);
+            }
+        }
+    });
+    for (size_t i = 0; i < rows.size(); ++i)
+        for (const std::string& a : rows[i].allowed)
+            if (!seen[i].count(a)) problems.push_back("listed line is gone (stale): " + a);
+    std::ostringstream report;
+    for (const std::string& p : problems) report << p << "\n";
+    INFO(report.str());
+    CHECK(problems.empty());
+}
