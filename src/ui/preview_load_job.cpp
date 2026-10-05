@@ -153,8 +153,8 @@ void PreviewLoadJob::run() {
         throw_if_cancelled();
 
         // Has the chart changed since it was analyzed (finding 126)? First the
-        // rescan's own shortcut: files whose size and modified time match the
-        // scan's fingerprint still have the scan's md5, so nothing is read.
+        // rescan's own shortcut: when app::chart_files_unchanged says yes, the
+        // files still have the scan's md5, so nothing is read.
         // Otherwise the file is hashed with the scan's own rule, so the two
         // can never disagree, on a thread of its own beside both branches: a
         // .sng's hash covers all its audio, so in front of the stem open it

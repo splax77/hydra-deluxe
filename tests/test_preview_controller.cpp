@@ -526,8 +526,8 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
 }
 
 // A 1 GB .sng costs seconds to hash, so the changed-chart check asks the
-// rescan's own shortcut first: files whose size and modified time still match
-// the scan's fingerprint keep the scan's md5 and are not read again. The
+// rescan's own shortcut first: files app::chart_files_unchanged calls
+// unchanged keep the scan's md5 and are not read again. The
 // entry's md5 here is deliberately wrong; only a re-hash could notice that.
 TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unchanged chart") {
     using namespace hydra;
