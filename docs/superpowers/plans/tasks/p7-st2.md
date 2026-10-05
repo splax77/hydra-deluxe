@@ -93,6 +93,8 @@ No result row or blob changes, and the results stamp stays "2.1.0". Two things a
 
 ## Open questions (each with a recommended answer)
 
+**Decided (D58):** the user took the recommended answer to every question below. Treat each recommendation as the decision.
+
 1. **Old scan caches** (needs the user: one slower scan). A file from before the stamp has no `chart_meta_version` row. Recommended: it reads as not current, so the first scan after upgrading re-reads every chart file once, the way dynamics rows from before their stamp are recounted (ADR 0018). The alternative, stamping the old rows current on open, saves that one scan but trusts a cache no stamp vouches for.
 2. **What old records show** (needs the user: what old records display). Recommended: a record with no per-difficulty row reads the old per-chart length, so nothing on screen changes until the difficulty is analyzed again. The alternative, showing no length, would drop the timeline's end on every old record at once.
 3. **The flag's shape** (code-only). Recommended: a `PathSummary` member function over `score`; a stored bool would need its own column or a second place that sets it.

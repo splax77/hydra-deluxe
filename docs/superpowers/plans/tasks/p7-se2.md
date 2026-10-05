@@ -80,6 +80,8 @@ None. Every value a box accepts today lands where it landed; only a typed value 
 
 ## Open questions (each with a recommended answer)
 
+**Decided (D58):** the user took the recommended answer to every question below. Treat each recommendation as the decision.
+
 1. **A GUI case that types 900 into the Path limit box (code-only).** The real proof of this task is a typed value landing on 500, and `uitest_details.cpp` already types into `##spcap` with `ItemInputValue`. Both GUI test files that could hold it belong to phase 6 in this wave (J2-4, J2-7). Recommended: the scan rows and case 1 are this task's proof, and the main session adds one typed-value step (900 in `##mslimitvalue` reads 500, 0 in `##spcap` reads 1) to `settings-and-reports` at M7-2, when `uitest_batch_reports.cpp` is free.
 2. **The cap box's local copy (code-only).** `render_sp_cap` edits a local `cap` so the field never holds an unclamped value for a frame; the other three boxes bind the field directly. Recommended: keep each box's binding as it is and only change what it writes; making all four alike is a J4-3 widgets question.
 

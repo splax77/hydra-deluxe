@@ -71,6 +71,8 @@ None. The engine never calls `measures_at_tick_f`, `frontend_transfer_scales` do
 
 ## Open questions (each with a recommended answer)
 
+**Decided (D58):** the user took the recommended answer to every question below. Treat each recommendation as the decision.
+
 1. **A fractional position just past the change (code-only).** `section_at` takes a whole tick, and the continuous function takes a double. Recommended: a position strictly between tick 2400 and 2401 is past the change and reads the new section, so the whole tick at or after the position is the one asked about; exactly 2400.0 reads the earlier section. This keeps every value off the change tick as it is today. The only caller passes whole ticks, so no screen can show the difference.
 2. **Does `tick_at_measures_f` change (code-only)?** Recommended: no, unless case 2 goes red; its entry rule already returns 2400 for both readings of the change tick. Say which happened.
 

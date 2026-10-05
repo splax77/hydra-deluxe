@@ -97,6 +97,8 @@ None. No record, score or path changes. The results stamp stays "2.1.0".
 
 ## Open questions (each with a recommended answer)
 
+**Decided (D58):** the user took the recommended answer to every question below. Treat each recommendation as the decision.
+
 1. **Where the changed-chart line sits** (needs the user: a display choice). Recommended: one warning-colour line above the highway, where the "No audio device" line sits, with the highway still drawn below it; the whole overlay hides (activations, score box, scrub marks), and the SP gauge draws the unanalyzed fill-only curve.
 2. **Where the hash runs** (code-only). Recommended: at the start of the audio branch, hidden behind the stem open, which is the slow step. Report the blink-182 Discography .sng load time before and after.
 3. **The slider's end stops** (code-only). Recommended: derive them from `Settings::clamp` at the int extremes; a range accessor on the key table would be cleaner but config.cpp is phase 6 J2-1's this wave. Note it for J2-1 in your report.
