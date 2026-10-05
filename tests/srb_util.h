@@ -69,7 +69,7 @@ inline std::vector<uint8_t> make_srb(
     const std::vector<std::vector<uint8_t>>& trailing = {stand_in_audio()}) {
     std::vector<uint8_t> out;
     for (int i = 0; i < 12; ++i) out.push_back(static_cast<uint8_t>(0xA0 + i));
-    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(i == 0 ? 17 : 0));
+    testbytes::put_u32(out, 17);
     auto put = [&out](const std::vector<uint8_t>& stream) {
         const std::vector<uint8_t> d = deflate_raw(stream);
         out.insert(out.end(), d.begin(), d.end());
