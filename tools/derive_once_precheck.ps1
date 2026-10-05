@@ -414,14 +414,23 @@ function Split-Fields([string]$Code, [int]$Open, [int]$Close) {
     if ($Close -gt $start -and $Code.Substring($start, $Close - $start).Trim()) { $out.Add(@($start, $Close)) }
     ,$out
 }
-$strRx = [regex]'R"(?<d>[^(\s"\\]{0,16})\((?<r>[\s\S]*?)\)\k<d>"|"(?<s>(?:\\.|[^"\\\n])*)"'
 $escRx = [regex]'\\(x[0-9A-Fa-f]+|[0-7]{1,3}|.)'
+# The string literals in a text, each as the text it holds. Where a literal
+# starts and ends is the C++ lexer's answer ($cppLex), so a char literal such
+# as '"' is a char literal here too and never opens a string; this function
+# only takes the text out of each string.
 function Get-Strings([string]$Text) {
     $out = [System.Collections.Generic.List[string]]::new()
-    foreach ($m in $strRx.Matches($Text)) {
-        if ($m.Groups['r'].Success) { $out.Add($m.Groups['r'].Value); continue }
+    foreach ($m in $cppLex.Matches($Text)) {
+        $lit = $m.Groups['s'].Value
+        if (-not $m.Groups['s'].Success -or $lit[0] -eq "'") { continue }  # a comment or a char literal
+        if ($m.Groups['d'].Success) {
+            # A raw string, R"d(...)d": the text between the parentheses, as written.
+            $d = $m.Groups['d'].Length
+            $out.Add($lit.Substring($d + 3, $lit.Length - 2 * $d - 5)); continue
+        }
         # C++ escapes, decoded in one pass so "\\n" stays a backslash and an n.
-        $out.Add($escRx.Replace($m.Groups['s'].Value, {
+        $out.Add($escRx.Replace($lit.Substring(1, $lit.Length - 2), {
             param($e)
             $c = $e.Groups[1].Value
             switch -CaseSensitive -Regex ($c) {
