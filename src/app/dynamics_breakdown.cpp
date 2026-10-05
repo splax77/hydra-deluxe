@@ -96,9 +96,12 @@ std::string dynamics_kick2x_line(const DynamicsBreakdown& bd) {
     // Every kick, 2x Bass on or off: the line is a fact about the chart.
     const int twice = bd.row(DynamicsRow::Kick2x).all();
     const int total = bd.kicks_total(/*bass2x=*/true).all();
-    const std::string pct = total > 0 ? format_percent(twice, total, 0) : "0%";
     return "2x kicks: " + group_thousands(twice) + " of " +
-           counted(total, "kick note", "kick notes") + " (" + pct + ")";
+           counted(total, "kick note", "kick notes") + " (" + dynamics_share(twice, total) + ")";
+}
+
+std::string dynamics_share(int part, int total) {
+    return total > 0 ? format_percent(part, total, 0) : "0%";
 }
 
 DynamicsBreakdown count_dynamics(const Song& song) {

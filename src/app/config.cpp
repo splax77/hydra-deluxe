@@ -105,7 +105,7 @@ Key free_text_list(const char* name, std::vector<std::string> Settings::* m) {
 }
 
 // In the order save_file writes them. Each key's default is its field's
-// initializer in config.h; the ranges are the ones the boxes enforce.
+// initializer in config.h; the boxes and clamp take their ranges from here.
 const std::vector<Key>& keys() {
     static const std::vector<Key> k = {
         on_off("is_rescan", &Settings::is_rescan),
@@ -224,7 +224,6 @@ DepthMode Settings::search_depth_mode() const {
 }
 
 float Settings::volume_gain(int percent) {
-    // No caller yet: the Preview's volume moves here in wave 2 (task PV).
     return static_cast<float>(clamp(&Settings::preview_volume, percent)) / 100.0f;
 }
 

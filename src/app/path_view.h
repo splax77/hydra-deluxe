@@ -170,10 +170,11 @@ struct PathListView {
     // Groups in traversal order.
     std::vector<PathGroupView> groups;
 
-    // The all-0 section: shown only when the generated list does not already
-    // contain that path (same score AND same notation).
+    // The all-0 section: the all-0 paths the generated list does not already
+    // contain (path_identity); a duplicate hides only itself (D51 call 4b).
+    // Shown when any survive.
     bool show_allzero = false;
-    std::string allzero_label;  // score, plus the delta against optimal
+    std::string allzero_label;  // the first survivor's score
     std::vector<const Path*> allzero;
 };
 // Pointers into `record`; valid until the record is modified or moved.
@@ -192,8 +193,10 @@ struct PathButtonView {
     // empty when the path needs no timing.
     std::string timing;
     bool timing_warn = false;  // Path::is_difficult()
-    // The line under the title: "2,360 below optimal" on the all-0 path,
-    // else empty.
+    // The line under the title: "2,360 below optimal" on the all-0 path;
+    // on every path of a record whose cap is below kSpActivationBars
+    // (core/timing.h), "A 1-bar cap can never activate Star Power."; else
+    // empty.
     std::string detail;
 };
 
@@ -202,16 +205,15 @@ struct PathButtonsView {
     // (every path tied at the best score), then the rest of the generated
     // list, then the all-0 path when build_path_list shows it.
     std::vector<PathButtonView> buttons;
-    std::string within_label;  // the heading over the Within group
+    // The heading over the Within group: "Within 2 scores", "Within 1 score",
+    // "Within 5,000 points".
+    std::string within_label;
 };
-
-// The heading over the non-optimal paths: "Within 2 scores", "Within 1 score",
-// "Within 5,000 points". depth_mode 0 is scores, 1 is points (Settings).
-std::string within_label(int depth_mode, int depth_value);
 
 // Pointers into `record`, like build_path_list's. The viewed record is always
 // the one stored under the current Score range (records are keyed by it), so
-// the caller passes the current Settings::depth_mode and depth_value.
+// the caller passes the current Settings::depth_mode and depth_value; the
+// int is read through Settings::search_depth_mode.
 PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, int depth_value);
 
 // What the Paths tab has unfolded, and a pending "Show in Preview". Kept on

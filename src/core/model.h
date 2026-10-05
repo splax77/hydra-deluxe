@@ -207,8 +207,8 @@ private:
 enum class SqueezeKind { SqIn, SqOut };
 
 // How hard a squeeze is, in ms: a SqIn's offset, or a SqOut's offset negated.
-// "-x + 0.0" turns -0.0 into +0.0 so a dead-on SqOut prints "0.0". The engine's
-// act_difficulty and SPSqueeze::difficulty both call this.
+// "-x + 0.0" turns -0.0 into +0.0 so a dead-on SqOut prints "0.0".
+// SPSqueeze::difficulty calls this; the engine's limit check asks that.
 inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
     return is_sqin ? offset_ms : (-offset_ms + 0.0);
 }
@@ -231,6 +231,12 @@ inline bool is_e0(double e_offset, int skips) {
 
 // How hard an E0 activation's early fill is, in ms.
 inline double early_fill_difficulty(double e_offset) { return -e_offset + 0.0; }
+
+// Does an early fill need timing? Only when SP is ready no earlier than the
+// fill's deadline: a fill with time to spare spawns however the player hits
+// the activation. Zero slack counts, like a squeeze-out on the SP end (D51
+// call 4, D13). Activation::hardest and the engine's limit check ask it.
+inline bool early_fill_needs_timing(double e_offset) { return early_fill_difficulty(e_offset) >= 0.0; }
 
 // How frontend (activation-hit) timing error transfers to the SP end. SP
 // length is measure-based, so hitting the frontend d ms off moves the SP end
@@ -519,12 +525,19 @@ struct Activation {
     // With none of those, an E-critical activation that skipped fills still
     // answers with its optional early fill (D48 Q10): that fill's timing
     // decides whether the first fill shows up at all, which is what the skip
-    // count counts. Empty means nothing to time, so no badge.
+    // count counts. Only timings that need hitting take part (D51 call 4,
+    // D13): a free squeeze or a fill with time to spare never names it.
+    // Empty means nothing to time, so no badge.
     std::optional<HardestTiming> hardest() const;
     // hardest()'s ms when it is a squeeze or a required fill; empty for an
     // optional early fill, so the search, filter and warning colors never
-    // count one.
+    // count one. Empty, too, for an activation with nothing to time.
     std::optional<double> difficulty() const;
+    // Does this activation need any timing at all? The per-activation half of
+    // Path::needs_timing. The Paths tab's badge reads hardest(), and its path
+    // button and the stored summary read Path::difficulty(); all of them rest
+    // on hardest() (D51 call 4, D13).
+    bool needs_timing() const;
     bool is_difficult() const;
 
     // Is this backend the note squeezed out of SP? Compares against the
@@ -657,6 +670,9 @@ struct Path {
     void prepare_variants();
 
     std::optional<double> difficulty() const;
+    // Does any activation on this path need timing (Activation::needs_timing)?
+    // False for a path with no activations.
+    bool needs_timing() const;
     // True when the hardest squeeze or E0 fill is past kDifficultMs: the
     // warning color's rule, asked of the path instead of re-derived by callers.
     bool is_difficult() const;

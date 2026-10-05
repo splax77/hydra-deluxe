@@ -60,7 +60,7 @@ struct ScanCallbacks {
 // The walk itself is a serial single pass; hashing/metadata reads run on a
 // batch_worker_count() thread pool. Results keep the serial walk's order.
 // `cache` (from RecordStore::chart_library_cache), if given, lets a chart
-// whose files' sizes+mtimes are unchanged reuse its previous md5/metadata
+// whose fingerprint is unchanged reuse its previous md5/metadata
 // without any file I/O. A failing chart file is skipped with an error entry;
 // its folder's other charts and subtree still scan (unlike the Python
 // original, which dropped the whole folder).
@@ -77,6 +77,14 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 // songmeta/charts rows, so a tool can look a chart up in the record store
 // by path alone. Returns an empty string if the file cannot be read.
 std::string hash_chart_file(const std::string& path);
+
+// Whether a chart's files still give the fingerprint the scan stored in
+// `sig` (ScanItem::sig, ChartLibraryEntry::sig); pending_chart_of in
+// analysis.cpp decides which files that covers. This is the
+// rescan's own shortcut: when it says yes, the stored md5 still holds and the
+// file need not be hashed again. False when `sig` is empty, the file is gone,
+// or a folder chart has lost its song.ini, so the caller hashes.
+bool chart_files_unchanged(const std::string& notespath, const std::string& sig);
 
 // A chart hash in the one spelling used for matching: its ASCII letters
 // lowered. The scan already writes lowercase hex (see hash_chart_file), so
@@ -173,7 +181,8 @@ struct BatchCallbacks {
 // Runs the analysis + store::prepare_row for every item on a
 // batch_worker_count()-sized pool (app/work_pool.h), writing results into
 // `store` from the calling thread only. Skips a chart that already has a
-// record under `run` unless `redo`.
+// record under `run` unless `redo`, and runs a chart found in several folders
+// (one md5) once, so the progress total counts charts, not copies.
 void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                store::RecordStore& store, bool redo, int worker_count,
                const BatchCallbacks& callbacks = {});

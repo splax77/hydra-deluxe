@@ -1015,18 +1015,67 @@ const std::vector<OwnerRule>& rules() {
          {{"src/search/graph.h",
            "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
            "fill_rule_for, the owner"}}},
-        // A database's engine_mode stamp compared to a rule's spelling by
-        // hand, through the store's accessor or a stamp held in `mode`.
+        // A database's engine_mode stamp compared by hand: through the
+        // store's accessor, or any line spelling a rule's stamp text, which
+        // only engine_mode_stamp in search/graph.h may write.
         {"Which fill rule does a database's stamp name?",
          "fill_rule_from_stamp in src/search/graph.h",
-         R"(engine_mode\(\)\s*==|\*?\bmode\s*==\s*"ch1[01]")",
+         R"(engine_mode\(\)\s*==|"ch1[01]")",
          R"(\bfill_rule_from_stamp\()",
+         {"src/search/graph.h"},
          {},
-         {},
-         "M_D review round 2 findings 2 and 5 (phase 3 task FX2-R)",
+         "M_D review round 2 findings 2 and 5 (phase 3 task FX2-R); widened by the M7-2b "
+         "review, finding 4",
          {"if (store->engine_mode() == std::string(",
-          "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";"},
-         {"if (mode && hydra::fill_rule_from_stamp(*mode) != expected)"}},
+          "const std::string legacy = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
+          "legacy_fills = stamp == \"ch10\" ? \"1\" : \"0\";",
+          "if (m == \"ch11\") return;"},
+         {"if (mode && hydra::fill_rule_from_stamp(*mode) != expected)",
+          "legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? \"1\" : \"0\";"}},
+        // The meta key the stamp is stored under, typed outside the store's
+        // getter and setter.
+        {"Which meta key holds the fill-rule stamp?",
+         "RecordStore::engine_mode and set_engine_mode in src/store/record_store.cpp",
+         R"("engine_mode")",
+         "",
+         {},
+         {},
+         "audit R7.26 (M7-2b review, finding 1)",
+         {"if (const std::optional<std::string> mode = meta_get(\"engine_mode\"))"},
+         {"if (const std::optional<std::string> mode = engine_mode())"},
+         {{"src/store/record_store.cpp", "return meta_get(\"engine_mode\");",
+           "engine_mode, the owner"},
+          {"src/store/record_store.cpp", "meta_set(\"engine_mode\", mode);",
+           "set_engine_mode, the owner"}}},
+        // The charts table grouped by md5 to pick a copy, outside the one
+        // query that does it.
+        {"Which copy names a chart the scan found twice?",
+         "kNamingCopiesSql in src/store/record_store.cpp",
+         R"(MIN\(rowid\)|GROUP BY md5)",
+         "",
+         {},
+         {},
+         "D51 call 10 and D63 (task ST2)",
+         {"\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""},
+         {"kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"},
+         {{"src/store/record_store.cpp",
+           "\"(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts\"",
+           "kNamingCopiesSql, the owner"},
+          {"src/store/record_store.cpp", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
+        // A stored row turned into a record outside decode_record, which
+        // also sets the record's fill rule.
+        {"Where does record_store.cpp turn a stored row into a record?",
+         "decode_record in src/store/record_store.cpp",
+         R"(\brebuild_record\()",
+         "",
+         {},
+         {},
+         "ST1 (audit findings 116 and 132); a row since the M7-2b review, finding 4",
+         {"HydraRecord r = rebuild_record(flat);"},
+         {"HydraRecord record = decode_record(structure, nodes, key.lens.legacy_fills == 1);"},
+         {{"src/store/record_store.cpp", "HydraRecord record = rebuild_record(",
+           "decode_record, the owner"}},
+         {"src/store/record_store.cpp"}},
         // ---- one cleaned song title (phase 3 task O3a) ----
         // Clone Hero's rich-text tags spelled as text: a tag in angle
         // brackets at the start of a string, a tag name kept in a named
@@ -1034,7 +1083,8 @@ const std::vector<OwnerRule>& rules() {
         // called "color" or "size" are not flagged.
         {"Which tags does Hydra strip from a song name?",
          "strip_rich_tags in src/parse/song.cpp, read through display_title "
-         "(and display_artist, which forwards to it, D50 item 5)",
+         "(and display_artist, which applies display_title then the artist placeholder, D50 "
+         "item 5 and D56 item 2)",
          R"re("</?(color|size|b|i|u|s|sub|sup)\b|=\s*"(color|size|sub|sup)"\s*;|\{\s*"(color|size|b|i|u|s|sub|sup)"\s*,\s*(true|false)\s*\})re",
          R"(\b(strip_rich_tags|display_title|display_artist)\()",
          {},
@@ -1963,6 +2013,135 @@ const std::vector<OwnerRule>& rules() {
           "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
          {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
          {"tests"}},
+        // Picking a tick's meter section by ordering it against the sections'
+        // first ticks. section_at answers that with keys_ directly, so no
+        // keys_at ordering is the owner's. An equality test against a section
+        // start (plusmeasure's barline check), reading a section's bounds, and
+        // the measure-space entry in tick_at_measures_f answer other
+        // questions.
+        {"Which meter section is a tick measured in?",
+         "MeasureIndex::section_at in src/core/timing.cpp",
+         R"(keys_at\([^()]*\)\)*\s*[<>]|(^|[^-])[<>]=?\s*(\w+(\.|->))?keys_at\()",
+         "",
+         {},
+         {},
+         "audit finding 58; D51 call 22; phase 7 task TM (D58)",
+         {"while (i > 0 && static_cast<double>(idx.keys_at(i)) > ticks) --i;",
+          "if (mi.keys_at(i) <= tick) s = i;",
+          "while (s + 1 < n && tick >= mi->keys_at(s + 1)) ++s;"},
+         {"if (j < len && handled_ticks == idx.keys_at(j)) {",
+          "const int64_t section_end = last_section ? last_tick : mi.keys_at(i + 1);",
+          "static_cast<double>(idx.keys_at(s) - idx.starts_at(s)) /",
+          "const int64_t first = mi->keys_at(i);",
+          "const int i = idx.section_at(static_cast<int64_t>(std::ceil(ticks)));"}},
+        // Fingerprinting a chart's files by hand: anything that calls sig_of
+        // has chosen which files go in. Only pending_chart_of chooses, and
+        // the scan walk and chart_files_unchanged both ask it.
+        {"Which files make up a chart's fingerprint?",
+         "pending_chart_of in src/app/analysis.cpp",
+         R"(\bsig_of\()",
+         "",
+         {},
+         {},
+         "derive-once review of M7-2c, finding 1 (phase 7 task PV join)",
+         {"pc.sig = sig_of(*notes, found_ini);",
+          "return sig_unchanged(sig, sig_of(*notes, ini));"},
+         {"return sig_of_chart(entries, notes);",
+          "const std::optional<PendingChart> now = pending_chart_of(dir, e, entries);"},
+         {{"src/app/analysis.cpp", "std::string sig_of(const DirEntry& notes, const DirEntry* ini) {",
+           "sig_of, the string format pending_chart_of uses"},
+          {"src/app/analysis.cpp", "pc.sig = sig_of(chart, ini);", "pending_chart_of, the owner"}}},
+        // Moving between chart time and audio time with the offset written
+        // out, either way, instead of calling the sync rule's two owners.
+        {"How does chart time become audio time, and back?",
+         "audio_ms_of_chart_ms and chart_ms_of_audio_ms in src/ui/preview_transport.h",
+         R"(\w*chart_ms\s*[+-]\s*audio_offset_ms|\bms\s*[+-]\s*audio_offset_ms_|-\s*audio_offset_ms\b)",
+         "",
+         {},
+         {},
+         "derive-once review of M7-2c, finding 2 (phase 7 task PV join)",
+         {"playhead_->seek_ms(ms + audio_offset_ms_);", "return chart_ms + audio_offset_ms;",
+          "return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;"},
+         {"playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_));",
+          "front_pad = audio::frames_of_ms(-offset_ms, kOutRate);"},
+         {{"src/ui/preview_transport.h", "return chart_ms + audio_offset_ms;",
+           "audio_ms_of_chart_ms, the owner"},
+          {"src/ui/preview_transport.h", "return audio_ms - audio_offset_ms;",
+           "chart_ms_of_audio_ms, the owner"}}},
+        // ---- audio owners (phase 6 task J1-4) ----
+        // The frame pair's row is phase 3's ("How many ms do audio frames
+        // last...", above).
+        {"What is the lowest legal output gain?",
+         "Playhead::set_gain in src/audio/player.h",
+         R"(gain < 0\.0f \? 0\.0f)",
+         "",
+         {},
+         {},
+         "audit finding 225, folded under D53 (phase 6 task J1-4)",
+         {"gain_ = gain < 0.0f ? 0.0f : gain;"},
+         {"float gain() const { return gain_; }"},
+         {{"src/audio/player.h",
+           "void set_gain(float gain) { gain_ = gain < 0.0f ? 0.0f : gain; }",
+           "Playhead::set_gain, the owner"}}},
+        {"How is a stem converted to the output format?",
+         "stem_converter_config in src/audio/mixer.cpp",
+         R"(ma_data_converter_config_init\()",
+         "",
+         {},
+         {},
+         "audit finding R7.28; D54 records miniaudio's converter defaults as they are",
+         {"ma_data_converter_config cfg = ma_data_converter_config_init(",
+          "s->init_converter(ma_data_converter_config_init("},
+         {"s->init_converter(sc.config);"},
+         {{"src/audio/mixer.cpp", "c.config = ma_data_converter_config_init(",
+           "stem_converter_config, the owner"}}},
+        {"Which test helper reads an audio fixture?",
+         "fixture_path and read_fixture in tests/audio_util.h",
+         // No closing quote after /audio/, so a build that names the file
+         // inside the literal is caught too (review of M6-J1c finding 1).
+         R"(HYDRA_TESTDATA_DIR\) \+ "/audio/)",
+         "",
+         {},
+         {},
+         "audit finding 277, folded under D53 (phase 6 task J1-4)",
+         {"return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name);",
+          R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)"},
+         {"ogg.path = fixture_path(\"sine220.ogg\");", "#ifndef HYDRA_TESTDATA_DIR"},
+         {{"tests/audio_util.h",
+           "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
+           "fixture_path, the owner (read_fixture reads through it)"}},
+         {"tests"}},
+        {"Which test helper estimates a tone's frequency?",
+         "estimate_freq_hz in tests/audio_util.h",
+         R"(\b(double|float|auto)\s+estimate_freq_hz\s*\()",
+         "",
+         {},
+         {},
+         "audit finding 277, folded under D53 (phase 6 task J1-4)",
+         {"double estimate_freq_hz(const DecodedAudio& a) {",
+          "double estimate_freq_hz(const DecodedAudio& a, int channel) {"},
+         {"CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));"},
+         {{"tests/audio_util.h",
+           "inline double estimate_freq_hz(const hydra::audio::DecodedAudio& a, int channel) {",
+           "estimate_freq_hz, the owner"}},
+         {"tests"}},
+        // The byte-at-a-time shift loop is the form every copy used. A u16
+        // writer's lone `n >> 8` line is not caught (review of M6-J1c
+        // finding 3 leaves that shape to the owner).
+        {"Which test helper writes a little-endian number?",
+         "put_le in tests/bytes_util.h",
+         R"(static_cast<uint8_t>\(\w+ >> \(8 \* i\)\))",
+         "",
+         {},
+         {},
+         "review of M6-J1c finding 3, folded under D53 (phase 6 task J1-4)",
+         {"for (int i = 0; i < 4; ++i) o.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+          "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"},
+         {"o.push_back(static_cast<uint8_t>(n >> 8));"},
+         {{"tests/bytes_util.h",
+           "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
+           "put_le, the owner (put_u16, put_u32 and put_u64 write through it)"}},
+         {"tests"}},
         // ---- app state, jobs and the toolbar (phase 6 task J2-4) ----
         // A batch or analyze job tested for "held and not finished". The scan
         // job's guard is a different job with no owner yet; the GUI harness's
@@ -2096,15 +2275,6 @@ const std::vector<OwnerRule>& rules() {
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        // A one-time schema 2 to 3 migration reads the stamp text old files
-        // already hold, so it keeps the literal "ch10" even if
-        // engine_mode_stamp were ever spelled differently, and src/store never
-        // includes src/search. test_store.cpp seeds the migration test's
-        // stamp with engine_mode_stamp, so a respelling turns that test red.
-        {"Which fill rule does a database's stamp name?", "src/store/record_store.cpp",
-         "legacy_fills = mode && *mode == \"ch10\" ? \"1\" : \"0\";",
-         "never: a migration reads the historic stamp text, and store never includes search "
-         "(M_D review round 2)"},
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
@@ -2114,21 +2284,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
          "put_bytes(file, {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 3, 0, 192});",
          "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
-        {"What range may a number setting hold?", "src/ui/preview_controller.cpp",
-         "volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;",
-         "task PV (the volume reads through Settings::clamp)"},
-        {"What range may a number setting hold?", "src/ui/preview_tab.cpp",
-         "const int cap = std::max(1, pc->sp_meter_cap());", "task PV (the Preview's cap floors)"},
-        {"What range may a number setting hold?", "src/app/preview_view.cpp",
-         "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "task PV (the Preview's cap floors)"},
-        {"What range may a number setting hold?", "src/app/preview_view.cpp",
-         "curve.cap = sp_cap < 1 ? 1 : sp_cap;", "task PV (the Preview's cap floors)"},
-        {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
-         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
-         "task PV (the Preview calls Settings::volume_gain)"},
-        {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
-         "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
-         "task PV (the Preview calls Settings::volume_gain)"},
         {"Is a span on after this instant?", "src/render/highway_draw.cpp",
          "bool toggle_on(Toggle t) { return t != Toggle::Empty && t != Toggle::End; }",
          "J2-8 (the draw code calls toggle_on_after)"},
@@ -2190,6 +2345,35 @@ const std::vector<KnownCopy>& known_copies() {
         {"What fields does a phrase-end note carry in a hand-built Song?",
          "tests/test_preview_view.cpp", "ts.flag_sp = true;",
          "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"Which test helper reads an audio fixture?", "tests/test_stem_reader.cpp",
+         "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
+         "task J2-6 (test_stem_reader.cpp's path builder calls fixture_path)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
+         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
+         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
+         R"(hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.opus");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
+         R"(write_file(song, hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg"));)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_golden.cpp",
+         "auto put32 = [&](int at, uint32_t v) { for (int i = 0; i < 4; ++i) hdr[at + i] = "
+         "static_cast<uint8_t>(v >> (8 * i)); };",
+         "M6-J2 sweep (test_preview_golden.cpp, J2-8's file this wave)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
+         "for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+         "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
+         "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+         "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
         {"What does the song panel's Analyze button say?", "tests/ui/uitest_details.cpp",
          R"(IM_CHECK(ctx->ItemExists("**/Analyze this song"));)",
          "task J4-3 (uitest_details calls analyze_button_label; audit finding 289)"},
@@ -2431,20 +2615,34 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
     CHECK(rule.find("src/parse") != std::string::npos);
 }
 
-// ST1 (findings 116 and 132): in record_store.cpp a stored row becomes a
-// record only through decode_record, which sets the fill rule. It is one
-// code line in the file; comment lines are skipped like the row scan does.
-// The best path's text has its own row above ("What text is a record's best
-// path?").
-TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
-    std::ifstream in(sourcetree::root() / "src" / "store" / "record_store.cpp");
-    REQUIRE(in.good());
-    int decodes = 0;
-    std::string line;
-    while (std::getline(in, line)) {
-        const std::string t = hydra::trim(line);
-        if (t.compare(0, 2, "//") == 0) continue;
-        if (t.find("rebuild_record(") != std::string::npos) ++decodes;
-    }
-    CHECK(decodes == 1);
+// E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is
+// Path::needs_timing's, so no code line under src/ or tools/ asks it with a
+// zero test of its own, such as the all-0 pass's old 0 ms limit. What the
+// Score range's INI int means is Settings::search_depth_mode's, the one line
+// in src/app/config.cpp that compares it, however the comparison is spelled.
+// Comment lines are skipped like the row scan does.
+TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one owner (E3)") {
+    const std::regex zero_limit(
+        R"(difficulty\(\)\.value_or\(0(\.0+)?\)\s*(<=|>|<|>=)\s*0(\.0+)?(?![\d.]))"
+        R"(|value_or\(0(\.0+)?\)\s*<=\s*0(\.0+)?(?![\d.]))"
+        R"(|ms_filter\s*=\s*(std::optional<double>\()?0(\.0+)?(?![\d.]))");
+    const std::regex depth_int(R"(\bdepth_mode\s*(==|!=|>=|<=|>|<)\s*[01]\b|case\s+1\s*:.*depth)");
+    std::vector<std::string> zero_hits, depth_hits;
+    sourcetree::for_each_source_file([&](const fs::path& file, const std::string& rel) {
+        if (rel.compare(0, 6, "tests/") == 0) return;
+        const std::string ext = file.extension().string();
+        if (ext != ".cpp" && ext != ".h") return;
+        std::ifstream in(file);
+        std::string line;
+        while (std::getline(in, line)) {
+            const std::string t = hydra::trim(line);
+            if (t.compare(0, 2, "//") == 0) continue;
+            if (std::regex_search(t, zero_limit)) zero_hits.push_back(rel + ": " + t);
+            if (std::regex_search(t, depth_int)) depth_hits.push_back(rel + ": " + t);
+        }
+    });
+    CHECK_MESSAGE(zero_hits.empty(), (zero_hits.empty() ? std::string() : zero_hits.front()));
+    REQUIRE(depth_hits.size() == 1);
+    CHECK(depth_hits.front() ==
+          "src/app/config.cpp: return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;");
 }

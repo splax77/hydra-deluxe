@@ -6,7 +6,7 @@
 #include <windows.h>
 
 #include "app/preview_view.h"  // path_overlay_key, scrub_thumb_ms
-#include "core/model.h"        // kCloneHeroSpCap
+#include "core/model.h"
 #include "imgui.h"
 #include "imgui_internal.h"  // SetKeyOwner, owner-aware IsKeyPressed
 #include "render/overlay_layout.h"
@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -188,12 +189,12 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // Open (or keep open) for the current selection; a no-op once running for
     // this chart. This is where the async decode starts.
     pc->set_volume(app.settings.preview_volume);  // before the audio exists too
-    // The meter's ceiling is the cap the viewed record was analyzed at; a
-    // chart with no record yet previews at the Settings cap, the one the next
-    // analysis will run at (D48, Q24).
-    const int sp_cap = app.viewed.status == store::RecordStatus::Ready
-                           ? app.viewed.record->sp_cap.value_or(kCloneHeroSpCap)
-                           : app.settings.sp_cap;
+    // The meter's ceiling is the Settings cap, Ready record or not. The key
+    // columns own a record's cap (finding 130): the viewed record is fetched
+    // at the Settings cap's key, and prepare_row refuses a record whose cap
+    // differs from its key's. A chart with no record yet previews at the cap
+    // the next analysis will run at (D48, Q24).
+    const int sp_cap = app.settings.sp_cap;
     // The overlay key is the path's verbose string: rebuilt when the
     // selection or the record changes, not every frame.
     DetailsViewState& ui = app.details_ui;
@@ -232,6 +233,14 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     if (pc->has_audio_warning()) {
         ImGui::TextColored(kWarningColor, "No audio device found; the preview is muted.");
         hint(pc->audio_warning().c_str());
+    }
+    // The chart file changed since its record was analyzed: the highway
+    // draws the new notes with no path over them, and one line says why
+    // (D51 call 18).
+    if (pc->chart_changed()) {
+        WarnColor warn;
+        ImGui::TextWrapped(
+            "This chart changed since it was analyzed. Analyze it again to see its path.");
     }
 
     // "Show in Preview" on the Paths tab: once the overlay for the selected
@@ -277,14 +286,21 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     hint("Forward 5 seconds (Right arrow)");
     ImGui::SameLine(0.0f, px(16.0f));
 
-    // Volume: applied live and remembered in the settings file.
+    // Volume: applied live and remembered in the settings file. The range is
+    // the setting's (finding 72): the end stops are the smallest and largest
+    // int clamped by the owner, and AlwaysClamp keeps Ctrl+click typing
+    // inside them too.
+    using hydra::app::Settings;
+    const int vol_min = Settings::clamp(&Settings::preview_volume, INT_MIN);
+    const int vol_max = Settings::clamp(&Settings::preview_volume, INT_MAX);
     ImGui::TextUnformatted("Vol");
     ImGui::SameLine();
     int volume = app.settings.preview_volume;
     ImGui::SetNextItemWidth(px(110.0f));
-    if (ImGui::SliderInt("##volume", &volume, 0, 100, "%d%%")) {
-        app.settings.preview_volume = volume;
-        pc->set_volume(volume);
+    if (ImGui::SliderInt("##volume", &volume, vol_min, vol_max, "%d%%",
+                         ImGuiSliderFlags_AlwaysClamp)) {
+        app.settings.preview_volume = Settings::clamp(&Settings::preview_volume, volume);
+        pc->set_volume(app.settings.preview_volume);
     }
     if (ImGui::IsItemDeactivatedAfterEdit()) app.commit_settings();
 
@@ -546,7 +562,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             if (gauge_max.y > gauge_min.y) {
                 dl->AddRectFilled(gauge_min, gauge_max, IM_COL32(0, 0, 0, 128), px(4.0f));
 
-                const int cap = std::max(1, pc->sp_meter_cap());
+                // The meter floored its cap at the setting's minimum
+                // (preview_view.cpp, finding 139).
+                const int cap = pc->sp_meter_cap();
                 float fill = static_cast<float>(pc->sp_meter_bars()) / static_cast<float>(cap);
                 fill = fill < 0.0f ? 0.0f : (fill > 1.0f ? 1.0f : fill);
 

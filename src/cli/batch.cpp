@@ -207,7 +207,7 @@ int main() {
 
     std::printf("\nDiscovering charts...\n");
     // The GUI's last library scan, if this database has one. A chart whose
-    // files are unchanged (size and modified time) reuses its hash and song
+    // files are unchanged (sig_unchanged) reuses its hash and song
     // fields instead of being read again. hydra_batch only reads this cache;
     // it never rewrites the GUI's library.
     hydra::store::ChartLibraryCache cache;
