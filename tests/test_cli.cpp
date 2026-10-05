@@ -415,6 +415,10 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
     CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 with a score on one side only"));
+    // The file has no engine_mode stamp, so stamped_fill_rule reads it as
+    // 1.1. Passing it as the 1.0 side warns with the file's name.
+    CHECK(contains(r.output, "Warning"));
+    CHECK(contains(r.output, "both.db"));
 
     // D52: a second chart with a record under both rules but a score under
     // 1.1 only is counted as "with a score on one side only".
@@ -438,35 +442,6 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     // The parts add up to the total: 1 same + 1 with a score on one side.
     CHECK(contains(two.output, "Compared 2 charts: 1 same, 0 1.0 higher, 0 1.1 higher, "
                                "0 only in 1.0, 0 only in 1.1, 1 with a score on one side only"));
-}
-
-TEST_CASE("hydra_fillcompare warns when an unstamped database with results is passed as --old") {
-    // A file with results and no stamp holds the normal 1.1 rule
-    // (RecordStore::stamped_fill_rule), so passing it as the 1.0 side warns.
-    // Built as the one-database case builds it: nothing stamps it.
-    CliSandbox box("fillcompare_unstamped");
-    const std::string db = box.db("unstamped.db");
-    {
-        const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
-        const std::string md5 = hydra::app::hash_chart_file(chart);
-        hydra::store::RecordStore store(db);
-        for (bool legacy : {false, true}) {
-            hydra::app::Settings settings{};  // the defaults the sandboxed exe reads
-            settings.legacy_fills = legacy;
-            hydra::app::AnalysisResult ar =
-                hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
-            store.add_song(md5, "CLI Fixture", "Tester", "Nobody", ar.song);
-            store.add_row(hydra::store::prepare_row(settings.record_key(md5), ar.record));
-        }
-        REQUIRE(store.counts().second == 2);
-    }
-
-    RunResult r = run_exe(box.fillcompare, {"--old", db, "--new", db, "--out",
-                                            (box.dir / "unstamped.html").u8string(), "--no-open"});
-    INFO(r.output);
-    CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Warning"));
-    CHECK(contains(r.output, "unstamped.db"));
 }
 
 TEST_CASE("hydra_report reports a --legacy-fills database under the 1.0 rule") {
