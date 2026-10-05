@@ -49,6 +49,7 @@ DEFAULT_OUT = r"C:\Clone Hero\songs\Hydra Probe"
 WINDOW_MAP = "Window Map"
 EDGE_WALK = "Edge Walk"
 NAME_PREFIX = "Hydra Probe - "
+SONG_OGG = "song.ogg"
 
 LEAD_IN_MS = 3000
 SILENCE_MS = 3000  # between blocks; far wider than any window
@@ -137,7 +138,7 @@ def chart_text(name: str, notes: list[Note]) -> str:
     tempo."""
     ticks = [ms_to_ticks(n.time_ms, RESOLUTION, BPM) for n in notes]
     return _chart_text(name, ticks, resolution=RESOLUTION, bpm=BPM,
-                       note=C.PROBE_CHART_NOTE_KICK, music_stream="song.ogg")
+                       note=C.PROBE_CHART_NOTE_KICK, music_stream=SONG_OGG)
 
 
 def song_ini(name: str, length_ms: int) -> str:
@@ -212,7 +213,7 @@ def write_song_folder(root: str, name: str, chart: str, length_ms: int, *,
         f.write(chart)
     with open(os.path.join(folder, "song.ini"), "w", encoding="utf-8", newline="\n") as f:
         f.write(song_ini(full_name(name), length_ms))
-    write_ogg(os.path.join(folder, "song.ogg"), length_ms)
+    write_ogg(os.path.join(folder, SONG_OGG), length_ms)
     return folder
 
 
