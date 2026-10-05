@@ -15,6 +15,7 @@
 #include "app/preview_view.h"
 #include "render/highway_draw.h"  // track_height
 #include "render/preview_renderer.h"
+#include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
 
 #ifndef HYDRA_ASSET_DIR
@@ -206,8 +207,7 @@ TEST_CASE("PreviewRenderer: a prebuilt track state draws the same pixels (WARP)"
 
     for (bool pro : {true, false}) {
         CAPTURE(pro);
-        TrackStateOptions opts;
-        opts.pro = pro;
+        const TrackStateOptions opts = hydra::ui::track_options(pro);
 
         PreviewRenderer built(dev.Get(), ctx.Get(), kAssets);
         built.resize(W, H);

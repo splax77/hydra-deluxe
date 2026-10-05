@@ -36,6 +36,7 @@
 #include "env_util.h"
 #include "render/preview_renderer.h"
 #include "render/track_state.h"  // note_in_span
+#include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
 
 #ifndef HYDRA_ASSET_DIR
@@ -110,9 +111,7 @@ std::vector<uint8_t> render_chart(const std::string& chart, double time_ms, int 
 
     PreviewRenderer r(dev.Get(), ctx.Get(), HYDRA_ASSET_DIR);
     r.resize(w, h);
-    TrackStateOptions opts;
-    opts.pro = pro;
-    r.set_scene(scene, opts);
+    r.set_scene(scene, hydra::ui::track_options(pro));
     r.render(time_ms);
     return warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), w, h);
 }

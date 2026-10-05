@@ -3690,23 +3690,22 @@ const std::vector<OwnerRule>& rules() {
            "return !scene_path_key_.empty() && overlay_key_path_part(scene_path_key_) == path_key;",
            "shows_path, the owner"}},
          {"src", "tests"}},
-        // test_preview_golden.cpp and test_preview_renderer.cpp build
-        // renderer options by hand too (opts.pro = pro;); no J3-5 file, so
-        // the tests scanned are this task's own.
+        // Every test builds its options through track_options too (the J3
+        // join folded the golden and renderer tests), so all of tests is
+        // scanned.
         {"Which highway options does the Preview draw with?",
          "track_options in src/ui/preview_load_job.h",
          R"(\.pro\s*=\s*pro_?\b|\.pro\s*[!=]=\s*\w+\.pro\b)",
          "",
          {},
          {},
-         "audit finding R7.16; phase 6 task J3-5 (D53, D54)",
+         "audit finding R7.16; phase 6 task J3-5 (D53, D54); widened to all tests by the J3 join",
          {"track_opts.pro = pro_;", "if (pending_track_ && pending_track_opts_.pro == opts.pro)"},
          {"plain.pro = false;", "if (pending_track_ && pending_track_opts_ == opts)"},
          {{"src/ui/preview_load_job.h", "opts.pro = pro;", "track_options, the owner"},
           {"src/render/track_state.h", "return a.pro == b.pro;",
            "TrackStateOptions::operator==, the struct's own compare"}},
-         {"src", "tests/test_preview_controller.cpp", "tests/test_preview_load_progress.cpp",
-          "tests/ui/uitest_preview.cpp"}},
+         {"src", "tests"}},
         // A stem's size read from its path on disk: the load maps every loose
         // stem first and takes the mapped size.
         {"How big is a Preview stem?",
