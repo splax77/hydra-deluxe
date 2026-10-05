@@ -20,11 +20,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "core/winstr.h"
-#include "doctest.h"
 
 namespace testtemp {
 
@@ -51,7 +51,7 @@ inline std::string temp_dir(const std::string& tag) {
 // audiochart::write_text_file.
 inline void write_bytes(const std::string& path, const std::vector<uint8_t>& data) {
     std::FILE* f = hydra::fopen_utf8(path, L"wb");
-    REQUIRE_MESSAGE(f != nullptr, "cannot write " << path);
+    if (f == nullptr) throw std::runtime_error("cannot write " + path);
     if (!data.empty()) std::fwrite(data.data(), 1, data.size(), f);
     std::fclose(f);
 }
