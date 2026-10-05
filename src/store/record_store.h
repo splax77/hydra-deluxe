@@ -82,6 +82,17 @@ struct PathSummary {
     // so a summary read back from the stored columns answers the same as one
     // summarize_record just made.
     bool has_scored_best_path() const { return score.has_value(); }
+
+    // Every field, unset against set counting as a difference. Spelled out
+    // rather than defaulted: this project builds as C++17.
+    bool operator==(const PathSummary& other) const {
+        return score == other.score && actcount == other.actcount &&
+               maxskip == other.maxskip && hardest_ms == other.hardest_ms &&
+               avgmult == other.avgmult && notecount == other.notecount &&
+               sqin_count == other.sqin_count && sqout_count == other.sqout_count &&
+               pathcount == other.pathcount && stars == other.stars;
+    }
+    bool operator!=(const PathSummary& other) const { return !(*this == other); }
 };
 
 PathSummary summarize_path(const Path& path);
@@ -178,6 +189,12 @@ struct PreparedRow {
 // wasn't analyzed under, or if the lens names the other fill rule -- each
 // mismatch would file the result under settings it doesn't belong to.
 PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record);
+
+// Schema 2's results table: its columns in table order (what
+// upgrade_results_key copies into this build's table) and its CREATE TABLE
+// text (read only by the store test, to build a schema 2 file).
+extern const char* const kSchema2ResultsColumns;
+extern const char* const kSchema2ResultsTableSql;
 
 // The results version this build stamps on a row and accepts (ADR 0018; not
 // the app version). For
@@ -560,13 +577,13 @@ private:
     // statement on every path out, including the two skip paths, so nothing is
     // left mid-step when the caller unlocks. Fills
     // `structure` and returns true when the row at `result_id` is still the
-    // record `meta` describes. Returns false when the row is gone, or when its
-    // identity (chart, mode, version, cap) differs -- result ids are reused
-    // after a delete, so a row rewritten since the walk started can land on the
-    // same id, and decoding it as the old record would attach one chart's paths
-    // to another chart's name.
-    bool reload_row(sqlite3_stmt* stmt, const BlobRow& meta, int64_t result_id,
-                    std::vector<uint8_t>& structure);
+    // record `meta` and the walk's `lens` describe. Returns false when the row
+    // is gone, or when its RecordKey or its version stamp differs -- result
+    // ids are reused after a delete, so a row rewritten since the walk started
+    // can land on the same id, and decoding it as the old record would attach
+    // one chart's paths to another chart's name.
+    bool reload_row(sqlite3_stmt* stmt, const BlobRow& meta, const Lens& lens,
+                    int64_t result_id, std::vector<uint8_t>& structure);
     std::optional<std::string> meta_get(const std::string& key);
     void meta_set(const std::string& key, const std::string& value);
 };
