@@ -36,10 +36,12 @@ A test file is any file under tests/, and, under tools/, a file in a tests
 folder or a Python file named test_*.py, at any depth (tools/tests/a.py and
 tools/test_a.py count); every other file is production code
 (Test-TestFile). Wherever a check below says "test file", it means this
-rule. No check reads the lines of tests/test_single_owner.cpp, whose
-literals are pattern examples, or of this script and its self-test, which
-read source text because they are the pre-review tool (Test-SkippedFile).
-Check 1 still compares the helpers the scan file defines with the others.
+rule. The script reads no .ps1 file, so it never reads itself or its
+self-test. No check matches the added lines of tests/test_single_owner.cpp
+against its spellings, because that file's literals are pattern examples
+(Test-SkippedFile). The file is still read in three ways: its rows and
+known copies are loaded (THE SCAN ROWS), check 1 compares the helpers it
+defines with the others, and check 4 reads the rule rows a range adds to it.
 
 THE SCAN ROWS
 
@@ -393,14 +395,13 @@ function Add-Item([string]$Kind, [string]$File, [int]$Line, [string]$What, [stri
 # known_copies() of tests/test_single_owner.cpp: file -> list of (line text, fix)
 $known = @{}
 $scanFile = 'tests/test_single_owner.cpp'
-$selfFiles = @('tools/derive_once_precheck.ps1', 'tools/test_derive_once_precheck.ps1')
-# Which files does the precheck not read line by line? The scan file, whose
-# strings and literals are pattern examples, and this script and its
-# self-test, which read source text because they are the pre-review tool,
-# not a test. Every check that reads added lines asks here. (Check 1's
-# helper list still reads the scan file's helpers, so a helper copied out of
-# it is found.)
-function Test-SkippedFile([string]$File) { $File -eq $scanFile -or $selfFiles -contains $File }
+# Which .cpp, .h or .py file does the precheck not read line by line? Only
+# the scan file, whose strings and literals are pattern examples. Every check
+# that reads added lines asks here. This script and its self-test need no
+# entry: they are .ps1, and every check reads only .cpp, .h and .py files.
+# (Check 1's helper list still reads the scan file's helpers, so a helper
+# copied out of it is found; check 4 reads the rule rows a range adds to it.)
+function Test-SkippedFile([string]$File) { $File -eq $scanFile }
 
 # Splits a braced initializer list into its top-level elements, each as
 # (start offset, end offset) in the text, using the string-blanked view so
