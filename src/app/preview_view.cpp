@@ -300,7 +300,6 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
     // case ("the song length is the store's, even past the last drawn note").
     const SongTiming& timing = song.timing();
     scene.timing = timing;  // the time box names ticks with the engine's math
-    scene.tick_resolution = timing.tick_resolution();
     if (scene.has_notes) {
         const int64_t last_tick = scene.notes.back().tick;
         int64_t grid_end = last_tick;

@@ -151,7 +151,6 @@ TEST_CASE("PreviewRenderer: SP phrase energy gems and active SP floor change pix
     // so a scene with a phrase carries one: one tick per ms (60 BPM at 1000
     // ticks per beat), matching note_at().
     lit.timing = hydra::SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    lit.tick_resolution = 1000;
     hydra::app::PreviewSpan phrase;
     phrase.start_ms = 1100.0;
     phrase.end_ms = 1200.0;
@@ -191,7 +190,6 @@ TEST_CASE("PreviewRenderer: a prebuilt track state draws the same pixels (WARP)"
     scene.notes.push_back(note_at(1150.0, PreviewLane::Yellow, true));
     scene.notes.push_back(note_at(1200.0, PreviewLane::Green));
     scene.timing = hydra::SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    scene.tick_resolution = 1000;
     hydra::app::PreviewSpan phrase;
     phrase.start_ms = 1100.0;
     phrase.end_ms = 1200.0;
