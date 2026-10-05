@@ -318,6 +318,32 @@ TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
     }
 }
 
+// D74 item 2: the leaderboard's own names go through the same display owners
+// as the stored ones, so Clone Hero tags in DMBot's text never reach the page.
+TEST_CASE("collect_dm_rows: a leaderboard row's DMBot names lose their Clone Hero tags") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+
+    net::DmScore tagged = make_score(kHash, optimal - 10);
+    tagged.song_name = "<color=#e02222>Blood</color>line";
+    tagged.artist = " <i>Tagged</i> Artist ";
+    tagged.charter = " <b>Bob</b> ";
+
+    // The same names on a score the library doesn't have, so no stored record
+    // can stand in for them.
+    net::DmScore tagged_unmatched = tagged;
+    tagged_unmatched.identifier = "00ff00ff00ff00ff00ff00ff00ff00ff";
+
+    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store, {tagged, tagged_unmatched}, kMode, store::Lens{});
+    REQUIRE(rows.size() == 2);
+    for (const DmReportRow& r : rows) {
+        CHECK(r.song == "Bloodline");
+        CHECK(r.artist == "Tagged Artist");
+        CHECK(r.charter == "Bob");
+    }
+}
+
 TEST_CASE("collect_dm_rows: a percent rounds once") {
     // 198,010 of 198,020 is 99.99495%: rounded once it reads 99.99%, where
     // rounding to four places first and then to two read 100.00%. The row is
