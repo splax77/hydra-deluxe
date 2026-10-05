@@ -81,6 +81,23 @@ void sort_practice_sections(std::vector<SongSection>& sections) {
                      [](const SongSection& a, const SongSection& b) { return a.tick < b.tick; });
 }
 
+// The one place solo sections are found: each unbroken run of solo-flagged
+// timestamps in the finished sequence is one section. Both parsers call it
+// once their sequence is complete. Two solos with no plain chord between them
+// read as one run, the same as the replay and the Preview have always read
+// them.
+std::vector<SoloSection> find_solo_sections(const std::vector<SongTimestamp>& sequence) {
+    std::vector<SoloSection> sections;
+    for (size_t i = 0; i < sequence.size(); ++i) {
+        if (!sequence[i].flag_solo) continue;
+        if (!sections.empty() && sections.back().last + 1 == i)
+            sections.back().last = i;
+        else
+            sections.push_back({i, i});
+    }
+    return sections;
+}
+
 bool try_parse_int(const std::string& s, int64_t& out) {
     if (s.empty()) return false;
     try {
@@ -281,12 +298,7 @@ const char* difficulty_name(Difficulty difficulty) {
 std::optional<Difficulty> difficulty_from_name(std::string_view name) {
     for (Difficulty d : kAllDifficulties) {
         const std::string_view want = difficulty_name(d);
-        if (name.size() != want.size()) continue;
-        if (std::equal(name.begin(), name.end(), want.begin(), [](char a, char b) {
-                return std::tolower(static_cast<unsigned char>(a)) ==
-                       std::tolower(static_cast<unsigned char>(b));
-            }))
-            return d;
+        if (equals_ci(name, want)) return d;
     }
     return std::nullopt;
 }
@@ -593,25 +605,55 @@ int difficulty_base_pitch(Difficulty difficulty) {
     return difficulty_chart_codes(difficulty).kick_pitch;
 }
 
+// The marker pitches every difficulty shares on the drum track, each named
+// once. kMarkerPitches is the one list of them: is_handled_note reads it, the
+// note-off gate in MidiParser::optype reads it, and both optype switches use
+// these names as their case labels.
+constexpr int kSoloMarkerPitch = 103;
+constexpr int kFlamMarkerPitch = 109;
+constexpr int kYellowTomMarkerPitch = 110;
+constexpr int kBlueTomMarkerPitch = 111;
+constexpr int kGreenTomMarkerPitch = 112;
+constexpr int kSpMarkerPitch = 116;
+constexpr int kFillMarkerPitch = 120;
+constexpr int kMarkerPitches[] = {
+    kSoloMarkerPitch,     kFlamMarkerPitch, kYellowTomMarkerPitch, kBlueTomMarkerPitch,
+    kGreenTomMarkerPitch, kSpMarkerPitch,   kFillMarkerPitch,
+};
+
+constexpr int lowest_marker_pitch() {
+    int lowest = kMarkerPitches[0];
+    for (int pitch : kMarkerPitches)
+        if (pitch < lowest) lowest = pitch;
+    return lowest;
+}
+// The note-off gate drops a note-off on any pitch that is not a marker. That
+// matches the gate it replaced (a note-off below the solo marker is dropped)
+// only while no marker sits below the solo marker; every pad and 2x kick
+// pitch in kDifficultyChartCodes is below it.
+static_assert(lowest_marker_pitch() == kSoloMarkerPitch,
+              "a marker below the solo marker would change the note-off gate");
+
+}  // namespace
+
+bool is_midi_marker_pitch(int pitch) {
+    return std::find(std::begin(kMarkerPitches), std::end(kMarkerPitches), pitch) !=
+           std::end(kMarkerPitches);
+}
+
+namespace {
+
 // `base` is the difficulty's kick pitch and `kick2x` its 2x kick pitch, both
 // from difficulty_chart_codes. The five note pitches follow the kick, and the
-// 2x kick sits one below it. Every other pitch here is a marker shared by all
-// four difficulties. A pitch outside this set belongs to another difficulty
-// (or to another instrument) and is dropped, so Expert's 95 is never read
-// below Expert: Clone Hero reads each 2x kick only into its own difficulty
-// (D20; 0x2155050 at 0x21555CD).
+// 2x kick sits one below it. The rest are the shared markers
+// (is_midi_marker_pitch). A pitch outside this set belongs to another
+// difficulty (or to another instrument) and is dropped, so Expert's 95 is
+// never read below Expert: Clone Hero reads each 2x kick only into its own
+// difficulty (D20; 0x2155050 at 0x21555CD).
 bool is_handled_note(int note, int base, int kick2x) {
     if (note >= base && note <= base + 4) return true;
     if (note == kick2x) return true;
-    switch (note) {
-        case 103:
-        case 109: case 110: case 111: case 112:
-        case 116:
-        case 120:
-            return true;
-        default:
-            return false;
-    }
+    return is_midi_marker_pitch(note);
 }
 
 class MidiParser {
@@ -712,7 +754,9 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
         bool is_noteoff =
             (msg.type == MType::NoteOff || (msg.type == MType::NoteOn && velocity == 0));
 
-        if (is_noteoff && note < 103) return {};
+        // Only markers act on a note-off; a pad or 2x kick note-off is
+        // dropped (see the static_assert beside kMarkerPitches).
+        if (is_noteoff && !is_midi_marker_pitch(note)) return {};
 
         if (is_noteon) {
             // The difficulty's own five pitches come first: base is the kick,
@@ -735,17 +779,17 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 return {};
             }
             switch (note) {
-                case 120:
+                case kFillMarkerPitch:
                     return mop_tick(MPhase::PostDelayed, MAct::FillStart, tick);
-                case 116:
+                case kSpMarkerPitch:
                     return mop_tick(sp_start_tick_.has_value() ? MPhase::PreDelayed
                                                                : MPhase::Pre,
                                     MAct::SpStart, tick);
-                case 112: return mop_tom(NoteColor::Green, NoteCymbalType::Normal);
-                case 111: return mop_tom(NoteColor::Blue, NoteCymbalType::Normal);
-                case 110: return mop_tom(NoteColor::Yellow, NoteCymbalType::Normal);
-                case 109: return mop_flag(MAct::Flam, true);
-                case 103: return mop_flag(MAct::Solo, true);
+                case kGreenTomMarkerPitch: return mop_tom(NoteColor::Green, NoteCymbalType::Normal);
+                case kBlueTomMarkerPitch: return mop_tom(NoteColor::Blue, NoteCymbalType::Normal);
+                case kYellowTomMarkerPitch: return mop_tom(NoteColor::Yellow, NoteCymbalType::Normal);
+                case kFlamMarkerPitch: return mop_flag(MAct::Flam, true);
+                case kSoloMarkerPitch: return mop_flag(MAct::Solo, true);
                 default:
                     return {};
             }
@@ -753,17 +797,17 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
 
         if (is_noteoff) {
             switch (note) {
-                case 120:
+                case kFillMarkerPitch:
                     return mop_tick(MPhase::Pre, MAct::StoreFillEnd, tick);
-                case 116:
+                case kSpMarkerPitch:
                     return mop_tick(sp_start_tick_.has_value() ? MPhase::Pre
                                                                : MPhase::PreDelayed,
                                     MAct::SpEnd, tick);
-                case 112: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
-                case 111: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
-                case 110: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
-                case 109: return mop_flag(MAct::Flam, false);
-                case 103:
+                case kGreenTomMarkerPitch: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
+                case kBlueTomMarkerPitch: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
+                case kYellowTomMarkerPitch: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
+                case kFlamMarkerPitch: return mop_flag(MAct::Flam, false);
+                case kSoloMarkerPitch:
                     // A MIDI solo marker covers ticks up to its note-off, not
                     // including it: end the solo before this tick's notes.
                     // Pinned by ".mid: the note on the solo marker's note-off
@@ -926,6 +970,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         }
     }
     sort_practice_sections(song.practice_sections);
+    song.solo_sections = find_solo_sections(song.sequence);
 
     song.check_activations(rules_);
     return song;
@@ -1442,6 +1487,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         }
         sort_practice_sections(song.practice_sections);
     }
+    song.solo_sections = find_solo_sections(song.sequence);
 
     // .chart ghosts and accents are explicit per-note flags (N 34-37 accent,
     // N 40-43 ghost), applied unconditionally, so a .chart has no opt-in
@@ -1484,46 +1530,31 @@ namespace {
 // once and shares it; its notes are picked out the same way).
 Song load_container_sng(const ByteSource& src, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules) {
-    // A notes.mid wins over a notes.chart; among .chart entries the last one
-    // listed wins (the order this loader has always used).
+    // Which entry is the notes file is pick_notes_file's question.
     const std::vector<uint8_t> head = sng_read_head(src);
     const std::vector<SngFileEntry> entries = sng_read_file_table(head);
-    const SngFileEntry* notes = nullptr;
-    ChartFormat format = ChartFormat::None;
-    for (const SngFileEntry& e : entries) {
-        const ChartFormat f = notes_file_format(e.name);
-        if (f == ChartFormat::Mid) {
-            notes = &e;
-            format = f;
-            break;
-        }
-        if (f == ChartFormat::Chart) {
-            notes = &e;
-            format = f;
-        }
-    }
-    if (!notes) throw std::runtime_error("No chart files found in SNG file.");
+    std::vector<std::string> names;
+    names.reserve(entries.size());
+    for (const SngFileEntry& e : entries) names.push_back(e.name);
+    const std::optional<NotesFilePick> pick = pick_notes_file(names);
+    if (!pick) throw std::runtime_error("No chart files found in SNG file.");
 
-    std::optional<std::vector<uint8_t>> notebytes = sng_read_file(src, head, *notes);
+    std::optional<std::vector<uint8_t>> notebytes = sng_read_file(src, head, entries[pick->index]);
     if (!notebytes) throw std::runtime_error("Truncated SNG file.");
-    if (format == ChartFormat::Mid)
+    if (pick->format == ChartFormat::Mid)
         return load_songbytes_mid(*notebytes, pro, bass2x, difficulty, rules);
     return load_songbytes_chart(*notebytes, pro, bass2x, difficulty, rules);
 }
 
 Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules) {
-    if (src.size <= kSrbHeaderSize) throw std::runtime_error("Truncated SRB file.");
-
     // Stream 1 (metadata) names the notes file; stream 2 is its bytes.
-    uint64_t notes_offset = 0;
-    std::vector<uint8_t> meta =
-        srb_inflate_stream_reading(src, kSrbHeaderSize, kSrbMaxMetadata, &notes_offset);
-    SrbMetadata md;
-    srb_parse_metadata(meta, md);
+    // srb_read_metadata reads stream 1 and refuses a source too short for it.
+    const SrbMetadataRead read = srb_read_metadata(src);
+    const SrbMetadata& md = read.fields;
 
     std::vector<uint8_t> notebytes =
-        srb_inflate_stream_reading(src, notes_offset, kSrbMaxStream, nullptr);
+        srb_inflate_stream_reading(src, read.notes_offset, kSrbMaxStream, nullptr);
 
     // The notes stream's format comes from its name, by the exact-name rule a
     // .sng entry and a loose folder use (notes_file_format). An .srb's notes

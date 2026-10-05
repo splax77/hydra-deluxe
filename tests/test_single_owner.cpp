@@ -2086,6 +2086,61 @@ const std::vector<OwnerRule>& rules() {
           "OutputBaseFilename=HydraDeluxe-{#HYDRA_VERSION}-setup"},
          {},
          {"src", "installer/hydra.iss"}},
+        // A drum-track pitch typed as a bare case label, or the old note-off
+        // gate's bare comparison. The marker table names each pitch once and
+        // has no case label, so after the fold nothing in song.cpp matches
+        // and no owner line is listed.
+        {"Which MIDI pitches does the drum parser act on?",
+         "the marker pitch table (kMarkerPitches, is_midi_marker_pitch) in src/parse/song.cpp",
+         R"(\bcase\s+(95|103|109|110|111|112|116|120)\s*:|\bnote\s*<\s*103\b)",
+         "",
+         {},
+         {},
+         "audit finding R7.19; phase 6 task J2-3 (D54)",
+         {"case 103: return mop_flag(MAct::Solo, true);",
+          "if (is_noteoff && note < 103) return {};",
+          "case 120:"},
+         {"case kSoloMarkerPitch: return mop_flag(MAct::Solo, true);",
+          "if (is_noteoff && !is_midi_marker_pitch(note)) return {};",
+          "constexpr int kSoloMarkerPitch = 103;"},
+         {},
+         {"src/parse/song.cpp"}},
+        // Whether a solo run ends here, read off the next timestamp's flag.
+        // The Preview's span join walks the flags without looking ahead, so
+        // no one-line pattern tells it apart from any other solo check; J3-4
+        // repoints it.
+        {"Where does a solo section start and end?",
+         "Song::solo_sections, built by find_solo_sections in src/parse/song.cpp",
+         R"(sequence\[[^\]]*\+\s*1\s*\]\.flag_solo)",
+         "",
+         {},
+         {},
+         "audit finding 167; phase 6 task J2-3 (D54)",
+         {"i + 1 >= n || !song.sequence[i + 1].flag_solo;",
+          "if (song.sequence[k + 1].flag_solo) continue;"},
+         {"if (!sequence[i].flag_solo) continue;", "if (ts.flag_solo) {",
+          "CHECK(song.sequence[2].flag_solo);"},
+         {},
+         {"src"}},
+        // A test telling a file's format from its extension by hand: a
+        // case-sensitive ends_with, or a path's last six bytes compared with
+        // ".chart". The tests use the case-sensitive ends_with for nothing
+        // else, so any call is flagged.
+        {"Which chart format is a test file? (tests)",
+         "chart_format_of in src/parse/chart_files.cpp",
+         R"(\bends_with\s*\(|\.compare\([^;]*\b6\s*,\s*"\.chart"\))",
+         "",
+         {},
+         {{"tests/test_strutil.cpp", "its ends_with calls test strutil's ends_with itself"}},
+         "audit finding 119; phase 6 task J2-3 (D54)",
+         {R"(const bool is_mid = ends_with(path, ".mid");)",
+          R"(if (!hydra::ends_with(path, ".mid")) continue;)",
+          R"(if (p.size() < 6 || p.compare(p.size() - 6, 6, ".chart") != 0) continue;)"},
+         {"if (chart_format_of(path) != ChartFormat::Mid) continue;",
+          R"(CHECK(ends_with_ci("SONG.Mid", ".mid"));)",
+          R"(const std::string chart = corpus::first_chart_with_suffix(".chart");)"},
+         {},
+         {"tests"}},
     };
     return r;
 }
@@ -2104,12 +2159,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
-        {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
-         "const char* tag = \"MTrk\";",
-         "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
-        {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
-         "put_bytes(file, {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 3, 0, 192});",
-         "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
         {"How long does a UI confirmation stay, and how often does the UI re-check?",
          "src/ui/library_toolbar.cpp",
          "if (!app.status_is_problem && ImGui::GetTime() - shown_at > 6.0) return;",
@@ -2146,12 +2195,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which pad colours a fill lane?", "src/render/highway_draw.cpp",
          "if (inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }",
          "J2-8 (the draw code reads the pad off make_lane_bounds)"},
-        {"Which notes file wins when a song has both?", "src/parse/song.cpp",
-         "const ChartFormat f = notes_file_format(e.name);",
-         "task J2-3 (the .sng loader calls pick_notes_file; audit finding 186)"},
-        {"Where does an .srb's metadata stream start?", "src/parse/song.cpp",
-         "srb_inflate_stream_reading(src, kSrbHeaderSize, kSrbMaxMetadata, &notes_offset);",
-         "task J2-3 (the .srb loader calls srb_read_metadata; audit finding 188)"},
         {"Where does an .srb's metadata stream start?", "src/app/preview_source.cpp",
          "srb_inflate_stream(buf.data(), buf.size(), kSrbHeaderSize,",
          "task J2-5 (the Preview's audio walk starts at srb_read_metadata's offset; audit "
@@ -2226,12 +2269,6 @@ const std::vector<KnownCopy>& known_copies() {
          R"(std::string fade_src = asset_text(asset_dir + "\\shaders\\fade.hlsl");)",
          "task J2-8 (the renderer calls join_folder; audit finding 209)"},
         {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "src/parse/song.cpp", "return std::tolower(static_cast<unsigned char>(a)) ==",
-         "task J2-3 (difficulty_from_name calls equals_ci; audit finding 201)"},
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "src/parse/song.cpp", "std::tolower(static_cast<unsigned char>(b));",
-         "task J2-3 (difficulty_from_name calls equals_ci; audit finding 201)"},
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
          "src/app/library_query.cpp", "bool is_ascii_space(unsigned char c) {",
          "task J2-5 (the library query calls strutil; audit finding 201)"},
         {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
@@ -2259,6 +2296,12 @@ const std::vector<KnownCopy>& known_copies() {
          R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
          "unassigned: the main session names the fold (the NotAnalyzed line takes "
          "its depth word from describe_settings; audit finding 206, D54)"},
+        {"Where does a solo section start and end?", "src/core/replay.cpp",
+         "i + 1 >= n || !song.sequence[i + 1].flag_solo;",
+         "task J3-2 (replay_path reads Song::solo_sections; audit finding 167)"},
+        {"Which chart format is a test file? (tests)", "tests/corpus_util.h",
+         "if (hydra::ends_with(p, suffix)) return p;",
+         "task J2-2 (first_chart_with_suffix asks chart_format_of; audit finding 119)"},
     };
     return k;
 }
