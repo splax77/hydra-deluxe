@@ -691,8 +691,7 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
     : rules_fingerprint_(rules_fingerprint) {
     if (open_sqlite(dbpath, &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) != SQLITE_OK) {
         std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown error";
-        if (db_) sqlite3_close(db_);
-        db_ = nullptr;
+        close();
         throw KindedError(ErrorKind::DatabaseOpen,
                           "failed to open database '" + dbpath + "': " + msg);
     }
