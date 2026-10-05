@@ -7,7 +7,9 @@ with a long silence around them so nothing else can interfere.
 
 The output is the classic Moonscraper text .chart format -- the same one the
 existing notes.chart files in this repo use. It has a [Song] header, a
-[SyncTrack] that sets the tempo, and an [ExpertDrums] section holding the notes.
+[SyncTrack] that sets the tempo, an empty [Events] block, and an [ExpertDrums]
+section holding the notes. chart_text writes every probe chart, including
+probe_songs' named songs.
 
 Everything here is pure text generation. No game and no debugger is involved,
 so the whole module is unit-testable: generate a chart, parse it back, and
@@ -16,7 +18,7 @@ check the tick spacing came out right.
 
 from __future__ import annotations
 
-from typing import Sequence
+from typing import Optional, Sequence
 
 try:
     from . import constants as C
@@ -45,6 +47,12 @@ _PAD_WHOLE_NOTES = 4
 _LEAD_IN_WHOLE_NOTES = 2
 
 
+def _ticks_per_ms(resolution: int, bpm: float) -> float:
+    """The tick rate both conversions below share: `resolution` ticks per
+    quarter note, `bpm` quarter notes per minute, 60000 ms per minute."""
+    return resolution * bpm / 60000.0
+
+
 def ms_to_ticks(ms: float, resolution: int, bpm: float) -> int:
     """Turn a duration in milliseconds into chart ticks, rounded to the nearest.
 
@@ -57,23 +65,36 @@ def ms_to_ticks(ms: float, resolution: int, bpm: float) -> int:
     one bit of math the rest of the module leans on, so it lives alone where a
     test can pin it.
     """
-    ticks_per_ms = resolution * bpm / 60000.0
-    return int(round(ms * ticks_per_ms))
+    return int(round(ms * _ticks_per_ms(resolution, bpm)))
 
 
-def _song_section(resolution: int) -> str:
-    """The [Song] header. Only Resolution matters to us; the rest is filler the
-    loader tolerates."""
+def ticks_to_ms(ticks: float, resolution: int, bpm: float) -> float:
+    """Turn chart ticks into milliseconds: the inverse of ms_to_ticks, with no
+    rounding (a tick count is already whole)."""
+    return ticks / _ticks_per_ms(resolution, bpm)
+
+
+# The [Song] name of the active probe's chart, the one chart that is not a
+# named probe song.
+PROBE_CHART_NAME = "CH hit-window probe"
+
+
+def _song_section(name: str, resolution: int, music_stream: Optional[str]) -> str:
+    """The [Song] header. Resolution matters to the timing; the name shows in
+    the game's song list; `music_stream` names the audio file, or None for no
+    MusicStream line. The rest is filler the loader tolerates."""
+    stream = "" if music_stream is None else f'  MusicStream = "{music_stream}"\n'
     return (
         "[Song]\n"
         "{\n"
-        '  Name = "CH hit-window probe"\n'
+        f'  Name = "{name}"\n'
         '  Artist = "Hydra ch_probe"\n'
         '  Charter = "ch_probe"\n'
         "  Offset = 0\n"
         f"  Resolution = {resolution}\n"
         '  Genre = "Test"\n'
         '  MediaType = "cd"\n'
+        f"{stream}"
         "}\n"
     )
 
@@ -94,6 +115,12 @@ def _sync_track_section(bpm: float) -> str:
     )
 
 
+def _events_section() -> str:
+    """An empty [Events] block. The probe charts mark no sections; a loader
+    reads an empty block as nothing."""
+    return "[Events]\n{\n}\n"
+
+
 def _expert_drums_section(note_ticks: Sequence[int], note: int) -> str:
     """The [ExpertDrums] section. One line per note: `<tick> = N <note> 0`.
 
@@ -107,8 +134,28 @@ def _expert_drums_section(note_ticks: Sequence[int], note: int) -> str:
     return "\n".join(lines) + "\n"
 
 
+def chart_text(
+    name: str,
+    note_ticks: Sequence[int],
+    *,
+    resolution: int,
+    bpm: float,
+    note: int,
+    music_stream: Optional[str],
+) -> str:
+    """The whole .chart text: [Song], [SyncTrack], [Events] and [ExpertDrums],
+    in that order, one `note` at each tick. Every probe chart is written here:
+    probe_songs' named songs and the active probe's pairs chart."""
+    return (
+        _song_section(name, resolution, music_stream)
+        + _sync_track_section(bpm)
+        + _events_section()
+        + _expert_drums_section(note_ticks, note)
+    )
+
+
 def probe_note_ticks(
-    spacings_ms: Sequence[float], *, resolution: int = 192, bpm: float = 120.0
+    spacings_ms: Sequence[float], *, resolution: int, bpm: float
 ) -> list[int]:
     """The tick of every note the probe chart writes, in order: two per
     spacing, with a wide silent pad after each pair. The active probe reads
@@ -131,8 +178,8 @@ def probe_note_ticks(
 def build_probe_chart_text(
     spacings_ms: Sequence[float],
     *,
-    resolution: int = 192,
-    bpm: float = 120.0,
+    resolution: int,
+    bpm: float,
     note: int = DRUM_NOTE_KICK,
 ) -> str:
     """Build the full .chart text for the given spacings and return it.
@@ -140,23 +187,19 @@ def build_probe_chart_text(
     This is `generate_probe_chart` without the file write, split out so a test
     can inspect the text directly. For each spacing we emit two notes that many
     ticks apart, then jump a wide silent gap before the next pair, so no two
-    pairs can overlap or interact.
+    pairs can overlap or interact. The caller names the resolution and tempo.
     """
     note_ticks = probe_note_ticks(spacings_ms, resolution=resolution, bpm=bpm)
-
-    return (
-        _song_section(resolution)
-        + _sync_track_section(bpm)
-        + _expert_drums_section(note_ticks, note)
-    )
+    return chart_text(PROBE_CHART_NAME, note_ticks, resolution=resolution, bpm=bpm,
+                      note=note, music_stream=None)
 
 
 def generate_probe_chart(
     spacings_ms: Sequence[float],
     path: str,
     *,
-    resolution: int = 192,
-    bpm: float = 120.0,
+    resolution: int,
+    bpm: float,
     note: int = DRUM_NOTE_KICK,
 ) -> None:
     """Write a probe .chart to `path`. See interfaces.py for the contract.
@@ -178,9 +221,16 @@ def generate_probe_chart(
 
 if __name__ == "__main__":
     # Default caller: write the spec's suggested spacings to a file next to this
-    # script so someone can eyeball the output.
+    # script so someone can eyeball the output, at the resolution and tempo
+    # the probe songs use.
     import os
 
+    try:
+        from . import probe_songs
+    except ImportError:
+        import probe_songs
+
     out = os.path.join(os.path.dirname(__file__), "probe.chart")
-    generate_probe_chart(DEFAULT_SPACINGS_MS, out)
+    generate_probe_chart(DEFAULT_SPACINGS_MS, out, resolution=probe_songs.RESOLUTION,
+                         bpm=probe_songs.BPM)
     print(f"wrote {out} with {len(DEFAULT_SPACINGS_MS)} note pairs")

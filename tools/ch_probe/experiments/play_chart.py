@@ -34,10 +34,11 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe import engine_finder
-from tools.ch_probe.engine import EngineModel
+from tools.ch_probe import constants as C, engine_finder
+from tools.ch_probe.engine import EngineModel, pressed_input_hit
 from tools.ch_probe.process import open_process
-from tools.ch_probe.input_driver import LANE_NAMES, InputDriver, Lane
+from tools.ch_probe.input_driver import (
+    LANE_NAMES, InputDriver, Lane, find_game_window, focus_window)
 from tools.ch_probe.experiments import live
 from tools.ch_probe.experiments.walk_edges import SongClock
 
@@ -80,7 +81,7 @@ def main() -> None:
         return
     notes_ms = [ms for ms, _lanes in notes]
     print(f"Read {os.path.basename(dump_path)}: {len(notes)} chords")
-    print(f"  First note at {notes_ms[0] / 1000:.2f}s, last at {notes_ms[-1] / 1000:.2f}s")
+    print(f"  First note at {C.ms_to_s(notes_ms[0]):.2f}s, last at {C.ms_to_s(notes_ms[-1]):.2f}s")
 
     print("\nConnecting to Clone Hero...")
     proc = open_process()
@@ -97,17 +98,14 @@ def main() -> None:
     driver = InputDriver()
 
     # Keep Clone Hero focused so SendInput reaches it
-    import ctypes
-    user32 = ctypes.windll.user32
-    ch_hwnd = user32.FindWindowW(None, "Clone Hero")
+    ch_hwnd = find_game_window()
     if ch_hwnd:
         print(f"  Clone Hero window handle: {ch_hwnd:#x}")
     else:
         print("  WARNING: could not find Clone Hero window")
 
     def ensure_focus():
-        if ch_hwnd:
-            user32.SetForegroundWindow(ch_hwnd)
+        focus_window(ch_hwnd)
 
     def read_score():
         return engine.score()
@@ -119,13 +117,13 @@ def main() -> None:
     # Start from wherever the song already is -- no restart required.
     raw_s, _est = clock.read()
     stopped = live.StoppedCheck(raw_s, time.perf_counter())
-    cursor = live.first_note_index(notes_ms, raw_s * 1000)
+    cursor = live.first_note_index(notes_ms, C.s_to_ms(raw_s))
     if cursor >= len(notes):
         print(f"  Song clock at {raw_s:.2f}s is past the last note; nothing to play.")
         proc.close()
         return
     print(f"  Song clock at {raw_s:.2f}s; starting at note {cursor + 1}/{len(notes)} "
-          f"(t={notes_ms[cursor] / 1000:.2f}s)")
+          f"(t={C.ms_to_s(notes_ms[cursor]):.2f}s)")
 
     score_before = read_score()
     total_sent = 0
@@ -147,7 +145,7 @@ def main() -> None:
                 print(f"\n  Song {e}. Re-syncing.")
                 raw_s, _est = clock.read()
                 stopped = live.StoppedCheck(raw_s, time.perf_counter())
-                cursor = live.first_note_index(notes_ms, raw_s * 1000)
+                cursor = live.first_note_index(notes_ms, C.s_to_ms(raw_s))
                 score_before = read_score()
                 total_sent = 0; total_hit = 0; streak = 0; max_streak = 0
                 if cursor >= len(notes):
@@ -160,10 +158,12 @@ def main() -> None:
             # Send input for this note's lanes — press all down, hold, release
             driver.press_chord(lanes)
 
-            # Check hit: the game score only rises when a note registers.
+            # Check hit through engine.pressed_input_hit. Read 5 ms after the
+            # press, not after constants.INPUT_SETTLE_MS: a dense chart's next
+            # chord comes sooner than that settle.
             time.sleep(0.005)
             score_after = read_score()
-            hit = score_after > score_before
+            hit = pressed_input_hit(score_before, score_after)
 
             total_sent += 1
             if hit:
@@ -180,7 +180,7 @@ def main() -> None:
             tag = "HIT" if hit else "MISS"
 
             if total_sent <= 30 or total_sent % 20 == 0 or not hit:
-                print(f"  {total_sent:4d}  {note_ms / 1000:7.2f}  {raw_ms / 1000:7.2f}  "
+                print(f"  {total_sent:4d}  {C.ms_to_s(note_ms):7.2f}  {C.ms_to_s(raw_ms):7.2f}  "
                       f"{diff_ms:+7.1f}  {lane_str:10}  {tag:6}  {streak:6}")
 
             score_before = score_after

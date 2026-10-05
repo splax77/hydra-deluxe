@@ -33,7 +33,6 @@ import argparse
 import csv
 import json
 import os
-import struct
 import sys
 import time
 from typing import Callable, List, Optional, Tuple
@@ -48,7 +47,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe import constants, engine_finder  # noqa: E402
 from tools.ch_probe.experiments import analysis  # noqa: E402
-from tools.ch_probe.process import open_process  # noqa: E402
+from tools.ch_probe.process import decode_u64, open_process  # noqa: E402
 from tools.ch_probe.debugger import Debugger  # noqa: E402
 from tools.ch_probe.engine import EngineModel  # noqa: E402
 
@@ -94,25 +93,27 @@ class PassiveCollector:
         And note the song clock, so consecutive calls give a spacing.
         """
         self._finish_pending()
-        ret = struct.unpack("<Q", debugger.read(thread_context.rsp, 8))[0]
+        ret = decode_u64(debugger.read(thread_context.rsp, 8))
         if ret not in self.return_sites:
             self.return_sites.add(ret)
             debugger.set_breakpoint(ret, self.on_formula_return)
         now = self._engine.song_clock()
         self._spacing_ms = (0.0 if self._last_note_time is None
-                            else (now - self._last_note_time) * 1000.0)
+                            else constants.s_to_ms(now - self._last_note_time))
         self._last_note_time = now
 
     def on_formula_return(self, debugger, thread_context) -> None:
         """Breakpoint callback where the formula returns. Its result (seconds)
         is in xmm0."""
-        self._pending = (self._spacing_ms, thread_context.xmm0_double() * 1000.0)
+        self._pending = (self._spacing_ms,
+                         constants.s_to_ms(thread_context.xmm0_double()))
 
     def _finish_pending(self) -> None:
         if self._pending is None:
             return
         spacing_ms, raw_ms = self._pending
-        self._rows.append((spacing_ms, raw_ms, self._engine.total_window() * 1000.0))
+        self._rows.append((spacing_ms, raw_ms,
+                           constants.s_to_ms(self._engine.total_window())))
         self._pending = None
 
 

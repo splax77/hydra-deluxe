@@ -6,28 +6,83 @@ probe that knows an engine field lives at object_ptr + 0x20. It gets its
 addresses from constants.py and its plumbing (memory reads, breakpoints) from a
 ProcessHandle and a Debugger passed in.
 
-Why the dependency injection: this module never imports process.py or
-debugger.py. It only depends on the ProcessHandle and Debugger Protocols in
-interfaces.py -- the shapes, not the concrete classes. That is what lets the
-unit tests drive it with fake objects and no running game.
+Why the dependency injection: this module never imports debugger.py, nor
+process.py's Process class or its Win32 backend. It only depends on the
+ProcessHandle and Debugger Protocols in interfaces.py -- the shapes, not the
+concrete classes. That is what lets the unit tests drive it with fake objects
+and no running game. The one thing it takes from process.py is the pure byte
+decoders, so a snapshot block decodes exactly as a single-field read does.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 try:
     # Normal case: imported as part of the ch_probe package.
     from . import constants as C
+    from .process import decode_double, decode_u32
 except ImportError:  # pragma: no cover - exercised only by direct-script runs
     # Fallback: the module's own directory is on sys.path and it is imported as
     # a top-level module (how the unit tests load it without a package root).
     import constants as C  # type: ignore[no-redef]
+    from process import decode_double, decode_u32  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
     # Type hints only. These are Protocols (duck-typed shapes), not concrete
     # classes, so importing them creates no link to process.py or debugger.py.
     from .interfaces import Debugger, ProcessHandle, ThreadContext
+
+
+def is_precision(flags: int) -> bool:
+    """True when the flags dword has the PrecisionMode bit set. A clear bit
+    means normal mode; no other bit matters."""
+    return (flags & C.PRECISION_MODE_BIT) != 0
+
+
+def pressed_input_hit(score_before: int, score_after: int) -> bool:
+    """Whether a press hit its note: the score rises only on a hit, proven
+    by play_chart."""
+    return score_after > score_before
+
+
+# One read covers every watched field, so a sample is a consistent snapshot.
+# The hit-time candidate at +0x2e0 is the furthest field out.
+SNAPSHOT_SIZE = C.OFF_HIT_TIME + 8
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """The watched engine fields, all from one read."""
+
+    window_ms: float
+    clock_s: float
+    score: int
+    hit_time_s: float
+    flags: int
+
+    @property
+    def precision(self) -> bool:
+        return is_precision(self.flags)
+
+
+def decode_snapshot(raw: bytes) -> Snapshot:
+    """Turn SNAPSHOT_SIZE bytes read from the engine object into a Snapshot,
+    each field at its offset from constants.py."""
+    def dbl(off: int) -> float:
+        return decode_double(raw[off:off + 8])
+
+    def u32(off: int) -> int:
+        return decode_u32(raw[off:off + 4])
+
+    return Snapshot(
+        window_ms=C.s_to_ms(dbl(C.OFF_TOTAL_WINDOW)),
+        clock_s=dbl(C.OFF_SONG_CLOCK),
+        score=u32(C.OFF_SCORE),
+        hit_time_s=dbl(C.OFF_HIT_TIME),
+        flags=u32(C.OFF_FLAGS),
+    )
 
 
 class EngineModel:
@@ -128,14 +183,14 @@ class EngineModel:
         return self._process.read_u32(self._addr(C.OFF_NOTE_COUNT))
 
     def precision_mode(self) -> bool:
-        """True when the PrecisionMode flag bit is set.
+        """True when the PrecisionMode flag bit is set. The flags field is a
+        dword; is_precision tests the bit."""
+        return is_precision(self._process.read_u32(self._addr(C.OFF_FLAGS)))
 
-        The flags field is a dword; PrecisionMode is one bit inside it
-        (0x1000). Read the whole dword and test that single bit. A clear bit
-        means normal mode.
-        """
-        flags = self._process.read_u32(self._addr(C.OFF_FLAGS))
-        return (flags & C.PRECISION_MODE_BIT) != 0
+    def snapshot(self) -> Snapshot:
+        """Every watched field from one read of the object, so the values
+        belong to the same frame. decode_snapshot does the decoding."""
+        return decode_snapshot(self._process.read(self._addr(0), SNAPSHOT_SIZE))
 
     def song_clock(self) -> float:
         """Current song time in seconds, from +0x100. Proven live on
@@ -155,15 +210,15 @@ class EngineModel:
         read = self._process.read_const_double
         out = {
             # Per-side window constants, both modes.
-            "normal_back": read(C.RVA_CONST_NORMAL_BACK),
-            "normal_front": read(C.RVA_CONST_NORMAL_FRONT),
-            "precision_back": read(C.RVA_CONST_PRECISION_BACK),
-            "precision_front": read(C.RVA_CONST_PRECISION_FRONT),
+            C.CONST_KEY_NORMAL_BACK: read(C.RVA_CONST_NORMAL_BACK),
+            C.CONST_KEY_NORMAL_FRONT: read(C.RVA_CONST_NORMAL_FRONT),
+            C.CONST_KEY_PRECISION_BACK: read(C.RVA_CONST_PRECISION_BACK),
+            C.CONST_KEY_PRECISION_FRONT: read(C.RVA_CONST_PRECISION_FRONT),
             # Shared divisor and exponent.
             C.CONST_KEY_DIVISOR: read(C.RVA_FORMULA_DIVISOR),
             C.CONST_KEY_EXPONENT: read(C.RVA_FORMULA_EXPONENT),
             # Threshold used in the hit-check comparison.
-            "hitcheck_threshold": read(C.RVA_HITCHECK_THRESHOLD),
+            C.CONST_KEY_HITCHECK_THRESHOLD: read(C.RVA_HITCHECK_THRESHOLD),
         }
         # Normal-branch formula constants, prefixed so the names stay clear.
         for name, rva in C.RVA_FORMULA_NORMAL.items():

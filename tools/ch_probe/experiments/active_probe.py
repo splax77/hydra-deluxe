@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import ctypes
 import json
 import os
 import sys
@@ -52,8 +51,9 @@ from tools.ch_probe.experiments import analysis, live  # noqa: E402
 from tools.ch_probe.experiments.walk_edges import SongClock  # noqa: E402
 from tools.ch_probe.process import open_process  # noqa: E402
 from tools.ch_probe.debugger import Debugger  # noqa: E402
-from tools.ch_probe.engine import EngineModel  # noqa: E402
-from tools.ch_probe.input_driver import InputDriver, Lane  # noqa: E402
+from tools.ch_probe.engine import EngineModel, pressed_input_hit  # noqa: E402
+from tools.ch_probe.input_driver import (  # noqa: E402
+    InputDriver, Lane, find_game_window, focus_window)
 
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
@@ -63,7 +63,6 @@ SONG_NAME = "Active Probe"
 DEFAULT_SPACINGS_MS = constants.PROBE_SPACINGS_MS
 # A sweep from clearly inside to clearly outside the ~85 ms edge.
 DEFAULT_OFFSETS_MS = (70, 75, 80, 82, 84, 86, 88, 90, 95, 100)
-SETTLE_MS = 250   # read the result this long after the note (as walk_edges.py)
 
 # One collected input: its spacing, the measured offset (ms), and hit or miss.
 ActiveRow = Tuple[float, float, bool]
@@ -80,31 +79,24 @@ class PlannedInput:
 
 def plan_inputs(spacings_ms: Sequence[float],
                 offsets_ms: Sequence[float]) -> List[PlannedInput]:
-    """One note pair per (spacing, offset), in chart order. At probe_songs'
-    480 ticks per beat and 125 BPM a tick is one millisecond, so the chart's
-    note ticks are the note times in ms."""
+    """One note pair per (spacing, offset), in chart order, at probe_songs'
+    resolution and tempo. Each note's time is its chart tick turned into ms
+    through probe_chart.ticks_to_ms."""
     order = [(s, o) for s in spacings_ms for o in offsets_ms]
-    ticks = probe_chart.probe_note_ticks(
-        [s for s, _ in order], resolution=probe_songs.RESOLUTION, bpm=probe_songs.BPM)
-    return [PlannedInput(i, float(s), float(o), float(ticks[2 * i]), float(ticks[2 * i + 1]))
+    res, bpm = probe_songs.RESOLUTION, probe_songs.BPM
+    ticks = probe_chart.probe_note_ticks([s for s, _ in order], resolution=res, bpm=bpm)
+    ms = [probe_chart.ticks_to_ms(t, res, bpm) for t in ticks]
+    return [PlannedInput(i, float(s), float(o), ms[2 * i], ms[2 * i + 1])
             for i, (s, o) in enumerate(order)]
 
 
 def write_probe_song(root: str, plan: Sequence[PlannedInput]) -> str:
-    """Write the playable probe song folder: notes.chart, song.ini, song.ogg."""
-    folder = os.path.join(root, SONG_NAME)
-    os.makedirs(folder, exist_ok=True)
+    """Write the playable probe song folder through probe_songs.write_song_folder."""
     text = probe_chart.build_probe_chart_text(
         [p.spacing_ms for p in plan], resolution=probe_songs.RESOLUTION,
         bpm=probe_songs.BPM, note=constants.PROBE_CHART_NOTE_KICK)
-    length_ms = int(plan[-1].second_ms) + probe_songs.SILENCE_MS
-    full_name = f"Hydra Probe - {SONG_NAME}"
-    with open(os.path.join(folder, "notes.chart"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(text)
-    with open(os.path.join(folder, "song.ini"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(probe_songs.song_ini(full_name, length_ms))
-    probe_songs.write_silent_ogg(os.path.join(folder, "song.ogg"), length_ms)
-    return folder
+    return probe_songs.write_song_folder(
+        root, SONG_NAME, text, probe_songs.song_length_ms(int(plan[-1].second_ms)))
 
 
 class ActiveCollector:
@@ -142,7 +134,7 @@ def drive_inputs(engine: EngineModel, driver: InputDriver, collector: ActiveColl
         """live.wait_until on this run's clock; the estimate in ms."""
         return live.wait_until(clock, t_ms, stopped=stopped, should_stop=stop.is_set)[1]
 
-    todo = plan[live.first_note_index([p.first_ms for p in plan], raw_s * 1000):]
+    todo = plan[live.first_note_index([p.first_ms for p in plan], constants.s_to_ms(raw_s)):]
     print(f"  {len(todo)}/{len(plan)} pairs still ahead of the clock.")
     print(f"  {'#':>4}  {'spacing':>7}  {'plan':>5}  {'measured':>8}  result")
     for p in todo:
@@ -153,10 +145,10 @@ def drive_inputs(engine: EngineModel, driver: InputDriver, collector: ActiveColl
         before_score, before_hit = engine.score(), engine.hit_time()
         collector.current_index = p.index
         driver.press_chord([Lane.KICK])                  # second kick, late
-        wait_for(max(p.second_ms, p.second_ms + p.offset_ms) + SETTLE_MS)
+        wait_for(max(p.second_ms, p.second_ms + p.offset_ms) + constants.INPUT_SETTLE_MS)
         after_score, after_hit = engine.score(), engine.hit_time()
         collector.current_index = None
-        hit = after_score > before_score
+        hit = pressed_input_hit(before_score, after_score)
         measured, _ = live.hit_offset_ms(p.second_ms, sent_ms, before_hit, after_hit)
         collector.add_row((p.spacing_ms, measured, hit))
         print(f"  {p.index + 1:4d}  {p.spacing_ms:7.0f}  {p.offset_ms:+5.0f}  "
@@ -166,10 +158,6 @@ def drive_inputs(engine: EngineModel, driver: InputDriver, collector: ActiveColl
 def find_any_mode_engine(process) -> int:
     """The live engine in either scoring mode."""
     return engine_finder.find_live_engine(process, engine_finder.all_patterns(process))
-
-
-def find_game_window() -> int:
-    return ctypes.windll.user32.FindWindowW(None, "Clone Hero") or 0
 
 
 def run_active_probe(
@@ -206,8 +194,7 @@ def run_active_probe(
     hwnd = find_window()
 
     def focus() -> None:
-        if hwnd:
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        focus_window(hwnd)
 
     stop = threading.Event()
     done = threading.Event()

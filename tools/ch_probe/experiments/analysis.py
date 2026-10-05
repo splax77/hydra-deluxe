@@ -154,8 +154,8 @@ def clamp_verdict(
     rows: Sequence[SpacingRawStoredRow],
     *,
     cap_ms: float,
-    tolerance_ms: float = 1.0,
-    decisive_fraction: float = 0.8,
+    tolerance_ms: float = C.CLAMP_TOLERANCE_MS,
+    decisive_fraction: float = C.CLAMP_DECISIVE_FRACTION,
 ) -> ClampResult:
     """Decide whether the engine clamps the window at the cap.
 
@@ -208,6 +208,22 @@ def clamp_verdict(
 
 # --- 3. Parabola predictor ---------------------------------------------------
 
+def _scaled_term(
+    spacing: float,
+    *,
+    c1: float,
+    c2: float,
+    c3: float,
+    divisor: float,
+    exponent: float,
+) -> float:
+    """The term both window formulas share: the spacing pre-scaled by the
+    divisor (the code does `t = t * C5`), then (t*C1 - t**e * C2) * C3. Each
+    predictor adds its own outer step."""
+    t = spacing * divisor
+    return (t * c1 - (t ** exponent) * c2) * c3
+
+
 def predicted_window_normal(
     spacing: float,
     *,
@@ -231,8 +247,8 @@ def predicted_window_normal(
     the pre-scale by the divisor is what turns it into the internal unit, so
     keep the caller's unit and the divisor consistent.
     """
-    t = spacing * divisor
-    return ((t * c1 - (t ** exponent) * c2) * c3 - c4) / divisor
+    return (_scaled_term(spacing, c1=c1, c2=c2, c3=c3, divisor=divisor,
+                         exponent=exponent) - c4) / divisor
 
 
 def predicted_window_precision(
@@ -255,8 +271,8 @@ def predicted_window_precision(
     with the same `t = spacing * divisor` pre-scale. Provided for the same
     predicted-versus-measured plot when the test runs in precision mode.
     """
-    t = spacing * divisor
-    return (c0 - (t * c1 - (t ** exponent) * c2) * c3) / divisor
+    return (c0 - _scaled_term(spacing, c1=c1, c2=c2, c3=c3, divisor=divisor,
+                              exponent=exponent)) / divisor
 
 
 # --- Small aggregators the runners lean on -----------------------------------
