@@ -83,3 +83,41 @@ TEST_CASE("strutil: parse_bool takes 0 and 1 only") {
         CHECK_FALSE(parse_bool(text).has_value());
     }
 }
+
+TEST_CASE("strutil: starts_with is exact and starts_with_ci ignores ASCII case") {
+    CHECK(starts_with("song.mid", "song"));
+    CHECK_FALSE(starts_with("song", "song.mid"));
+    CHECK_FALSE(starts_with("SONG.mid", "song"));
+    // The library query's own field prefix.
+    CHECK(starts_with_ci("ARTIST:x", "artist:"));
+    CHECK_FALSE(starts_with_ci("art", "artist:"));
+}
+
+TEST_CASE("strutil: equals_ci matches a mixed-case pair and nothing of another length") {
+    CHECK(equals_ci("Expert", "EXPERT"));
+    CHECK_FALSE(equals_ci("Expert", "Expert "));
+    CHECK(equals_ci("", ""));
+}
+
+TEST_CASE("strutil: is_ascii_space names the six whitespace bytes") {
+    for (char c : {' ', '\t', '\r', '\n', '\v', '\f'}) {
+        CAPTURE(static_cast<int>(c));
+        CHECK(is_ascii_space(c));
+    }
+    CHECK_FALSE(is_ascii_space('a'));
+    CHECK_FALSE(is_ascii_space('0'));
+    CHECK_FALSE(is_ascii_space(static_cast<char>(0x80)));
+    CHECK(lower_ascii('Q') == 'q');
+    CHECK(lower_ascii(static_cast<char>(0xC3)) == static_cast<char>(0xC3));
+}
+
+TEST_CASE("strutil: relative_slash_path strips the root plus one byte and flips backslashes") {
+    CHECK(relative_slash_path("C:\\in\\a\\notes.mid", "C:\\in") == "a/notes.mid");
+    // The byte after the root goes whatever it is (audit finding 274's
+    // example, which wrote "put/x"; rel_of's own run drops the "p" too), so
+    // scan_snapshot.json's keys stay where they were.
+    CHECK(relative_slash_path("C:/input/x", "C:/in") == "ut/x");
+    CHECK(relative_slash_path("C:\\in\\a", "") == "C:/in/a");
+    // Only a longer path is stripped.
+    CHECK(relative_slash_path("C:\\in", "C:\\in") == "C:/in");
+}

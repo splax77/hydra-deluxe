@@ -59,8 +59,6 @@ TEST_CASE("user_messages: database errors say to check the disk") {
 TEST_CASE("user_messages: a missing or unreadable song file") {
     CHECK(plain_error(std::runtime_error("cannot open file: C:\\Songs\\x\\notes.chart")) ==
           kSongFileMissing);
-    CHECK(plain_error(hydra::MidiError("cannot open MIDI file: C:\\Songs\\x\\notes.mid")) ==
-          kSongFileMissing);
     // core/winstr.cpp: a song file whose size Windows can't read.
     CHECK(plain_error(std::runtime_error("cannot read file size: C:\\Songs\\x\\song.opus")) ==
           kSongFileMissing);

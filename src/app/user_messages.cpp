@@ -6,6 +6,7 @@
 #include "app/report.h"  // kNothingUnderSettings
 #include "app/rules_file.h"
 #include "core/model.h"
+#include "core/strutil.h"
 #include "parse/midi.h"
 #include "parse/song.h"
 #include "store/serialize.h"
@@ -60,12 +61,6 @@ constexpr const char* kPreviewAssets =
     "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.";
 constexpr const char* kStopped = "Stopped before it finished.";
 
-bool starts_with(std::string_view s, std::string_view prefix) {
-    return s.substr(0, prefix.size()) == prefix;
-}
-bool ends_with(std::string_view s, std::string_view suffix) {
-    return s.size() >= suffix.size() && s.substr(s.size() - suffix.size()) == suffix;
-}
 bool starts_with_any(std::string_view s, std::initializer_list<std::string_view> prefixes) {
     for (std::string_view p : prefixes)
         if (starts_with(s, p)) return true;
@@ -111,9 +106,9 @@ std::string plain_error_text(std::string_view what) {
     // app/report_files.cpp write_report_file.
     if (starts_with(what, "cannot write ")) return kReportWrite;
 
-    // app/analysis.cpp stream_md5, core/winstr.cpp, parse/midi.cpp.
-    if (starts_with_any(what,
-                        {"cannot open file: ", "cannot open MIDI file: ", "cannot read file size: "}))
+    // app/analysis.cpp stream_md5, audio/mapped_file.cpp, and core/winstr.cpp
+    // (read_file_bytes, which parse/midi.cpp reads through).
+    if (starts_with_any(what, {"cannot open file: ", "cannot read file size: "}))
         return kSongFileMissing;
     if (what == "MD5 hashing failed" || starts_with(what, "BCryptOpenAlgorithmProvider(MD5)"))
         return kHashFailed;
