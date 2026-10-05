@@ -509,6 +509,21 @@ TEST_CASE("set_search: a filter that does not parse leaves the query empty") {
 
 namespace {
 
+// Starts a Redo batch with a test analyzer, and removes it from the global
+// seam at once so no later batch inherits it.
+void start_redo_batch(AppState& app, hydra::app::ChartAnalyzer analyzer) {
+    hydra::ui::set_app_batch_analyzer_for_test(std::move(analyzer), 1);
+    app.start_batch(true);
+    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    REQUIRE(app.batch_job != nullptr);
+}
+
+// Waits until the batch has finished (however it ends).
+void wait_batch_finished(AppState& app) {
+    while (!app.batch_job->snapshot().finished)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+}
+
 // Runs a Redo batch over chart `md5` alone and waits for it to end. The
 // batch's own analysis fails, since the test has no chart file, so it writes
 // nothing: the result the test stored behind the app's back is the one the
@@ -516,17 +531,11 @@ namespace {
 void run_redo_batch_over(AppState& app, const std::string& md5) {
     app.set_search(md5);
     REQUIRE(app.library_shown_count() == 1);
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string&, const hydra::app::AnalysisSettings&,
-           const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-            throw std::runtime_error("no chart file in this test");
-        },
-        1);
-    app.start_batch(true);
-    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
-    REQUIRE(app.batch_job != nullptr);
-    while (!app.batch_job->snapshot().finished)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    start_redo_batch(app, [](const std::string&, const hydra::app::AnalysisSettings&,
+                             const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+        throw std::runtime_error("no chart file in this test");
+    });
+    wait_batch_finished(app);
 }
 
 }  // namespace
@@ -594,24 +603,20 @@ namespace {
 // test presses Stop: each chart's analysis waits on the batch's own cancel
 // check (its progress callback throws once Stop is pressed).
 void start_batch_until_stopped(AppState& app) {
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string&, const hydra::app::AnalysisSettings&,
-           const std::function<void(float)>& on_progress) -> hydra::app::AnalysisResult {
-            for (;;) {
-                on_progress(0.0f);
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-        },
-        1);
-    app.start_batch(true);
-    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    start_redo_batch(app, [](const std::string&, const hydra::app::AnalysisSettings&,
+                             const std::function<void(float)>& on_progress)
+                              -> hydra::app::AnalysisResult {
+        for (;;) {
+            on_progress(0.0f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    });
     REQUIRE(app.batch_running());
 }
 
 void stop_batch(AppState& app) {
     app.batch_job->stop();
-    while (!app.batch_job->snapshot().finished)
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    wait_batch_finished(app);
 }
 
 // Opens library chart 0 on a real corpus chart, its Ready record's song

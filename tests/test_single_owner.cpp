@@ -3024,7 +3024,7 @@ const std::vector<OwnerRule>& rules() {
         // alone.
         {"Which library row is the selected one?",
          "AppState::is_selected_row in src/ui/app_state.cpp",
-         R"(\bnotespath\s*(==|!=)\s*(\w+(\.|->))*selected)",
+         R"(\bnotespath\s*(==|!=)\s*(\w+(\.|->))*selected|\bselected(\w*(\.|->))*notespath\s*(==|!=)\s*(\w+(\.|->))*notespath)",
          "",
          {},
          {},
@@ -3032,13 +3032,16 @@ const std::vector<OwnerRule>& rules() {
          {"if (view_row(i).notespath != selected->notespath) continue;",
           "if (rows[order[k]].entry.notespath == selected_path) {",
           "const bool selected = !selected_path.empty() && row.entry.notespath == selected_path;",
-          "analyze_job->song().notespath == selected->notespath;"},
+          "analyze_job->song().notespath == selected->notespath;",
+          "if (selected->notespath == e.notespath) return true;",
+          "if (selected->notespath != row.notespath) continue;"},
          {"const std::string selected_path = app.selected ? app.selected->notespath : std::string();",
           "CHECK(app->selected->notespath == app->view_row(1).notespath);",
-          "const bool selected = app.is_selected_row(row.entry);"},
+          "const bool selected = app.is_selected_row(row.entry);",
+          "IM_CHECK(h.app->selected->notespath == h.app->view_row(0).notespath);"},
          {{"src/ui/app_state.cpp", "return selected && row.notespath == selected->notespath;",
            "is_selected_row, the owner"}},
-         {"src", "tests"}},
+         {"src"}},
         // Song folders and the scan job tested together, or the old scan-only
         // guard in start_scan.
         {"May a library scan start now?",
