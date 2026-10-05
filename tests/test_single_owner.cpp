@@ -277,7 +277,10 @@ const std::vector<OwnerRule>& rules() {
          {"return sqout_tick.has_value() && bsq.timecode.ticks() == *sqout_tick;",
           "if (b.timecode.ticks() == *sqout_tick) return &b;"},
          {"if (row_tick < *sqout_tick) return SqOutPosition::Before;",
-          "return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;"}},
+          "return core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::Exact;"},
+         {},
+         // Tests too (J3-2): a test asks sqout_position.
+         {"src", "tools", "tests"}},
         {"Is this SP-end step a squeeze-in?",
          "is_sqin_kind in src/core/model.h",
          R"(\bkind\s*==\s*SpEndKind::SqIn\b)",
@@ -2821,8 +2824,7 @@ const std::vector<OwnerRule>& rules() {
         // Only the value_or fallback is regexable. The bare dereferences of
         // the optional read the same fact: squeeze_rating.cpp's
         // `*row.row.offset_ms` and `*bsq.offset_ms` (main session to assign;
-        // no J3 task owns that file) and the engine's rebuild check
-        // `*act.sqout_row()->offset_ms` (task J3-2). path_codec.cpp's compare
+        // no J3 task owns that file). path_codec.cpp's compare
         // asks whether the offset is set before reading it, the codec's own
         // job, so it stays.
         {"What is a backend row's offset?",
@@ -2930,6 +2932,52 @@ const std::vector<OwnerRule>& rules() {
          {{"src/core/model.h", "return base + combo + sp + solo + accents + ghosts;",
            "score_total, the owner"}},
          {"src"}},
+        // ---- phase 6 task J3-2: the graph, the engine and the replay ----
+        // The engine's message "a variant under 2 bars at its fold passed a
+        // fill" names the number in words and is not a comparison.
+        {"How many SP bars does an activation need?",
+         "kSpActivationBars in src/core/timing.h",
+         R"(\bsp\s*(<|>=)\s*2\b|\bkept\s*<\s*2\b|for \(int sp = 2\b|sp_cap\s*==\s*1\b)",
+         "",
+         {},
+         {},
+         "audit finding 334; D54 (kSpActivationBars, a code-only call); M7-2a review row 3; "
+         "phase 6 task J3-2",
+         {"if (p.sp < 2 || !has_value(p.sp_ready_ms)) return 0;", "if (kept < 2 && sp >= 2) {",
+          "for (int sp = 2; sp <= max_sp_bars(); ++sp) {",
+          "const bool one_bar_cap = record.sp_cap && *record.sp_cap == 1;"},
+         {"if (p.sp < kSpActivationBars) return false;", "inline constexpr int kSpActivationBars = 2;"},
+         {},
+         {"src"}},
+        // graph_build_cap's floor of one is the pather's own and stays there.
+        {"How tall can the SP meter get?",
+         "max_sp_bars in src/search/graph.cpp",
+         R"(std::min\([^;]*(cap[^;]*phrase|phrase[^;]*cap))",
+         "",
+         {},
+         {},
+         "audit finding 260; phase 6 task J3-2 (D53, D54)",
+         {"return std::min(*sp_meter_cap_, sp_phrase_count_);",
+          "return std::min(sp_cap, std::max(sp_phrase_count, 1));"},
+         {"bank = std::min(bank + 1.0, cap);",
+          "return std::max(max_sp_bars(sp_cap, sp_phrase_count), 1);"},
+         {{"src/search/graph.cpp", "return std::min(*sp_meter_cap, sp_phrase_count);",
+           "max_sp_bars, the owner"}},
+         {"src"}},
+        // Only activation edges carry a deadline; the engine refuses one
+        // without it instead of filling in a number.
+        {"What does the engine read when an activation edge has no fill deadline?",
+         "enumerate and index_fills in src/search/engine.cpp",
+         R"(activation_fill_deadline_ms\.value_or\()",
+         "",
+         {},
+         {},
+         "audit R7.35; phase 6 task J3-2 (D53, D54)",
+         {"v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);"},
+         {"v.activation_fill_deadline_ms = o->activation_fill_deadline_ms",
+          "fills.emplace_back(n.tick, deadline);"},
+         {},
+         {"src"}},
     };
     return r;
 }
@@ -2984,37 +3032,18 @@ const std::vector<KnownCopy>& known_copies() {
          R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
          "unassigned: the main session names the fold (the NotAnalyzed line takes "
          "its depth word from describe_settings; audit finding 206, D54)"},
-        {"Where does a solo section start and end?", "src/core/replay.cpp",
-         "i + 1 >= n || !song.sequence[i + 1].flag_solo;",
-         "task J3-2 (replay_path reads Song::solo_sections; audit finding 167)"},
         {"Which fill rule does a record key name?", "src/store/record_store.cpp",
          "if (key.lens.legacy_fills != (record.legacy_fills ? 1 : 0))",
          "task J3-6 (prepare_row reads the record's fill flag through Lens::from)"},
         {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
          "if (r.record.paths.empty()) continue;",
          "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
-        {"How many solo-bonus points does a chord earn?", "src/search/graph.cpp",
-         "store_soloscore(kSoloBonusPerNote * timestamp.chord.count());",
-         "task J3-2 (the graph calls solo_bonus; audit finding 163)"},
-        {"How many solo-bonus points does a chord earn?", "src/core/replay.cpp",
-         "ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;",
-         "task J3-2 (the replay calls solo_bonus; audit finding 163)"},
-        {"What is the combo after a chord?", "src/search/graph.cpp",
-         "combo_ += timestamp.chord.count();",
-         "task J3-2 (the graph reads CategoryScores::combo_after; audit finding 164)"},
-        {"What is the combo after a chord?", "src/core/replay.cpp", "combo += ts.chord.count();",
-         "task J3-2 (the replay reads CategoryScores::combo_after; audit finding 164)"},
-        {"What is the combo after a chord?", "tests/test_search.cpp", "combo += ts.chord.count();",
-         "task J3-2 (the test's hand walk reads combo_after; audit finding 164)"},
         {"What does squeezing out a row cost?", "src/app/path_view.cpp",
          "const int lost = row.points - value;",
          "task J3-3 (the details view calls core::sqout_cost; audit finding 150)"},
         {"What does squeezing out a row cost?", "src/app/path_view.cpp",
          "\" <-- squeezed out (-%d)\", bsq.points - value);",
          "task J3-3 (the details view calls core::sqout_cost; audit finding 150)"},
-        {"What is a backend row's offset?", "src/search/engine.cpp",
-         "const double be_offset = beo.offset_ms.value_or(0.0);",
-         "task J3-2 (create_deactivated_path calls BackendSqueeze::offset; audit finding 346)"},
         {"What is a backend row's offset?", "src/app/path_view.cpp",
          "const double off = row.offset_ms.value_or(0.0);",
          "task J3-3 (the details view calls BackendSqueeze::offset; audit finding 346)"},
@@ -3033,9 +3062,6 @@ const std::vector<KnownCopy>& known_copies() {
          "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
          "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
          "finding 190)"},
-        {"What is a path's total score?", "src/core/replay.h",
-         "int64_t total() const { return base + combo + sp + solo + accent + ghost; }",
-         "task J3-2 (ReplayScore::total calls score_total; audit finding 165)"},
     };
     return k;
 }

@@ -23,6 +23,7 @@
 #include "bank_check.h"
 #include "core/model.h"
 #include "core/replay.h"
+#include "core/scoring.h"
 #include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
@@ -119,7 +120,7 @@ TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order"
         if (song.is_empty()) continue;
         ++charts;
 
-        // An independent spelling: every chord, at the combo before it.
+        // Every chord, at the combo before it.
         std::vector<MultSqueeze> want;
         int combo = 0;
         for (const SongTimestamp& ts : song.sequence) {
@@ -127,7 +128,7 @@ TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order"
                 want.push_back(MultSqueeze(ts.chord, combo));
             } catch (const std::invalid_argument&) {
             }
-            combo += ts.chord.count();
+            combo = category_scores(ts.chord, combo).combo_after;
         }
 
         ScoreGraph graph(song, 4);
@@ -329,11 +330,13 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
                 }
                 int on_sqout = 0;
                 for (const BackendSqueeze& b : act.backends) {
-                    if (b.timecode.ticks() > *act.sqout_tick) {
+                    const core::SqOutPosition pos =
+                        core::sqout_position(b.timecode.ticks(), act.sqout_tick);
+                    if (pos == core::SqOutPosition::After) {
                         d = "backend past the sqout note";
                         break;
                     }
-                    if (b.timecode.ticks() == *act.sqout_tick) ++on_sqout;
+                    if (pos == core::SqOutPosition::Exact) ++on_sqout;
                 }
                 if (d.empty() && on_sqout != 1)
                     d = "not exactly one backend row on the sqout tick";
@@ -1482,6 +1485,11 @@ TEST_CASE("graph_build_cap: never taller than the song's phrases, never below on
     CHECK(graph_build_cap(4, 10) == 4);   // the cap binds
     CHECK(graph_build_cap(32, 3) == 3);   // the song's phrases bind
     CHECK(graph_build_cap(8, 0) == 1);    // a phraseless song still builds one level
+    // The meter's own height, which graph_build_cap reads: no floor of its own.
+    CHECK(max_sp_bars(4, 10) == 4);
+    CHECK(max_sp_bars(32, 3) == 3);
+    CHECK(max_sp_bars(8, 0) == 0);
+    CHECK(max_sp_bars(std::nullopt, 3) == 3);
 }
 
 TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
