@@ -106,7 +106,13 @@ public:
     int sp_meter_cap() const;
     bool sp_meter_has_curve() const;
 
+    // The first load is still running: what the panel's progress bar means.
     bool loading() const { return job_ != nullptr; }
+    // Any Preview job is still running or waiting for poll() to take it in:
+    // the first load, the base build (or one poll() is about to start), the
+    // overlay build, or a replaced overlay build still finishing. False
+    // means every Preview thread is done (finding 109).
+    bool busy() const;
     // Only meaningful while loading(); the load's current step and how far
     // through the audio it is.
     struct LoadProgress {
@@ -123,6 +129,13 @@ public:
     // shows one warning line and keeps drawing.
     bool has_audio_warning() const { return !audio_warning_.empty(); }
     const std::string& audio_warning() const { return audio_warning_; }
+
+    // The chart file is not the one its record was analyzed from: its hash
+    // (app::hash_chart_file, the scan's rule) differs from the entry's md5.
+    // The Preview then draws no path, overlay or score, as for an unanalyzed
+    // chart, and the panel shows one warning line (D51 call 18). Cleared by
+    // close().
+    bool chart_changed() const { return chart_changed_; }
 
     // What opens the output device. Empty (the default) opens the real one; a
     // test installs a factory that throws, standing in for a PC with no audio
@@ -172,9 +185,11 @@ public:
     // heard as a buzz.
     void set_scrubbing(bool held);
 
-    // Playback volume in percent (0..100); applied to the audio as it is
-    // served, and remembered for the next chart opened.
+    // Playback volume in percent, clamped to the preview_volume setting's
+    // range (app::Settings::clamp); applied to the audio as it is served, and
+    // remembered for the next chart opened. Starts at the setting's default.
     void set_volume(int percent);
+    int volume_percent() const { return volume_pct_; }
 
     // The time box the panel draws over the highway (Onyx's top-left text).
     hydra::app::PreviewTimeBox time_box() const;
@@ -295,6 +310,9 @@ private:
     std::shared_ptr<const PreviewSceneBase> scene_base_;
     std::unique_ptr<PreviewBaseJob> base_job_;
     bool base_started_ = false;  // base_job_ ran once for this chart
+    // The next poll() starts base_job_: the song is here, nothing else is
+    // building a base, and none was built or started yet.
+    bool base_due() const;
     std::optional<Path> path_;
     std::string requested_path_key_;  // the path half of path_key_, as open() got it
     std::string path_key_;        // key of path_ + sp_cap_
@@ -307,7 +325,8 @@ private:
     std::string job_path_key_;    // key the in-flight job was started with
     std::string scene_path_key_;  // key scene_'s overlay was built from
 
-    int volume_pct_ = 40;
+    int volume_pct_;  // starts at app::Settings' preview_volume default
+    bool chart_changed_ = false;  // see chart_changed()
     bool scrubbing_ = false;
     bool resume_after_scrub_ = false;
 

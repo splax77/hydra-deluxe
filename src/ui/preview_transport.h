@@ -3,8 +3,10 @@
 // (docs/adr/0008).
 //
 // The clock is the master. It is the song time the highway is drawn at, and
-// the audio is seeked to it on play and then just follows. A chart with no
-// audio still plays and scrubs — the clock runs on its own.
+// the audio is seeked to it on play and then just follows. A seek re-syncs
+// the audio to the clock: while the clock plays, the playhead is set playing
+// again, even if it had paused itself at the end of its audio. A chart with
+// no audio still plays and scrubs — the clock runs on its own.
 //
 // The playhead is shared with the audio thread, so every access to it goes
 // through this object's lock, including the device's pull via read_frames().
@@ -26,8 +28,18 @@
 
 namespace hydra::ui {
 
-// Where `audio` stops in chart time: its length in ms minus `audio_offset_ms`
-// (audio_ms = chart_ms + audio_offset_ms). Empty when there is no audio. The
+// The chart sync rule, chart time to audio time. chart_ms_of_audio_ms is
+// the same rule run backwards.
+inline double audio_ms_of_chart_ms(double chart_ms, double audio_offset_ms) {
+    return chart_ms + audio_offset_ms;
+}
+
+inline double chart_ms_of_audio_ms(double audio_ms, double audio_offset_ms) {
+    return audio_ms - audio_offset_ms;
+}
+
+// Where `audio` stops in chart time: its length in ms, through
+// chart_ms_of_audio_ms. Empty when there is no audio. The
 // one rule for the audio's end: the load job asks it of the mix it opened
 // (where the beat lines stop) and PreviewTransport::load asks it of the
 // playhead it is handed. `audio` is anything with channels(), sample_rate()
@@ -36,7 +48,8 @@ template <class Audio>
 std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {
     if (audio.channels() <= 0 || audio.sample_rate() <= 0 || audio.length_frames() <= 0)
         return std::nullopt;
-    return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;
+    return chart_ms_of_audio_ms(audio::ms_of_frames(audio.length_frames(), audio.sample_rate()),
+                                audio_offset_ms);
 }
 
 class PreviewTransport {
@@ -48,8 +61,8 @@ public:
 
     // Load a chart's audio (may be null/empty for a chart with no audio), the
     // chart's last note time, and where chart time 0 sits in the audio
-    // (audio_ms = chart_ms + audio_offset_ms, never negative; see
-    // PreviewLoadJob). length_ms() becomes the playback range: the later of
+    // (audio_ms_of_chart_ms; never negative, see PreviewLoadJob).
+    // length_ms() becomes the playback range: the later of
     // `last_note_ms` and the audio's end in chart time, so the audio's tail
     // after the last note stays playable (D48, Q25). It is where playback
     // stops, not where the scrubber ends (that is the last note, D50 item 4).
@@ -61,7 +74,9 @@ public:
     void play();    // seeks the playhead to the clock and starts both
     void pause();
     void toggle();
-    void seek_ms(double ms);  // clamped to [0, length_ms()]
+    // Clamped to [0, length_ms()]. Moves the playhead with the clock and,
+    // while the clock plays, sets the playhead playing again.
+    void seek_ms(double ms);
     bool playing() const;
     double length_ms() const;  // the playback range (see load), not the last note
     bool has_audio() const;  // a loaded playhead with > 0 frames
@@ -72,8 +87,9 @@ public:
     double tick();
     double now_ms() const;  // read-only, no end handling
 
-    void set_gain(float gain);  // applied to the playhead if any, remembered
-                                // for the next load
+    // Applied to the playhead if any (audio::Playhead::set_gain owns the
+    // floor at 0), and remembered as given for the next load.
+    void set_gain(float gain);
     float gain() const { return gain_; }
 
     // Device-facing: the pull source. Locks internally. Returns real frames
@@ -85,7 +101,7 @@ public:
 private:
     app::PreviewClock clock_;  // GUI thread only
     double length_ms_ = 0.0;
-    double audio_offset_ms_ = 0.0;  // audio_ms = chart_ms + this
+    double audio_offset_ms_ = 0.0;  // as audio_ms_of_chart_ms takes it
     float gain_ = 1.0f;
     mutable std::mutex mu_;  // guards playhead_ (device thread pulls, GUI controls)
     std::unique_ptr<audio::Playhead> playhead_;
