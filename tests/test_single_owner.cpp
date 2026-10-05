@@ -3164,8 +3164,10 @@ const std::vector<OwnerRule>& rules() {
         // byte-at-a-time shift loop is the form most copies use, whatever the
         // helper is called. A fully unrolled helper with no telling name is
         // not caught. The hash's byte loops store no number, so they are
-        // listed as owner lines, not copies (review of J3-6 finding 1).
-        {"How is a little-endian number written byte by byte?",
+        // listed as owner lines, not copies (review of J3-6 finding 1). The
+        // J2-5 row's question is the same with the u32 helper names; the
+        // suffix keeps the two rows' questions apart.
+        {"How is a little-endian number written byte by byte? (any width or name)",
          "BinaryWriter::u32/u64 and BinaryReader::u32/u64 in src/store/serialize.cpp",
          R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\))",
          "",
@@ -3361,22 +3363,16 @@ const std::vector<KnownCopy>& known_copies() {
          "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
          "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
          "finding 190)"},
-        {"How is a little-endian number written byte by byte?", "src/app/dynamics_breakdown.cpp",
-         "void write_u32_le(std::vector<uint8_t>& out, uint32_t v) {",
-         "task J2-5 (the dynamics blob writes through BinaryWriter on phase 6's J2 branch)"},
-        {"How is a little-endian number written byte by byte?", "src/app/dynamics_breakdown.cpp",
-         "uint32_t read_u32_le(const uint8_t* p) {",
-         "task J2-5 (the dynamics blob reads through BinaryReader on phase 6's J2 branch)"},
-        {"How is a little-endian number written byte by byte?", "src/app/preview_source.cpp",
+        {"How is a little-endian number written byte by byte? (any width or name)", "src/app/preview_source.cpp",
          "v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
          "no phase 6 task yet; byte-order readers outside the store (review of J3-6)"},
-        {"How is a little-endian number written byte by byte?", "src/parse/sng.cpp",
+        {"How is a little-endian number written byte by byte? (any width or name)", "src/parse/sng.cpp",
          "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
          "no phase 6 task yet; byte-order readers outside the store (review of J3-6)"},
-        {"How is a little-endian number written byte by byte?", "src/parse/sng.cpp",
+        {"How is a little-endian number written byte by byte? (any width or name)", "src/parse/sng.cpp",
          "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(buf[pos + i]) << (8 * i);",
          "no phase 6 task yet; byte-order readers outside the store (review of J3-6)"},
-        {"How is a little-endian number written byte by byte?", "src/parse/srb.cpp",
+        {"How is a little-endian number written byte by byte? (any width or name)", "src/parse/srb.cpp",
          "len |= static_cast<uint32_t>(meta[pos + i]) << (8 * i);",
          "no phase 6 task yet; byte-order readers outside the store (review of J3-6)"},
     };
