@@ -1237,6 +1237,23 @@ const std::vector<OwnerRule>& rules() {
          // The pages live in src/app; a scope entry with a slash names one
          // file, so the row scans all of src, where nothing else has one.
          {"src"}},
+        // toFixed rounds the float a page holds, which can tip an exact half
+        // the wrong way (99.005% read 99.00%). The pages show numbers the C++
+        // wrote as text, or work in whole numbers the C++ sent.
+        {"How is a number rounded on a report page?",
+         "the C++ text the payload carries: format_percent and percent_steps, "
+         "format_avg_mult and format_ms_spaced in src/app/display_format.cpp",
+         R"(\.toFixed\()",
+         "",
+         {},
+         {},
+         "audit finding 51; M_D review findings 2 and 8 (phase 3 task FX-R)",
+         {"['num', r.mult.toFixed(3)],",
+          "? (withPct.reduce((a, r) => a + r.pct, 0) / withPct.length).toFixed(2) + '%' : DASH;"},
+         {"['num', r.mult_text],",
+          "avgPct = Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%';"},
+         {},
+         {"src"}},
     };
     return r;
 }

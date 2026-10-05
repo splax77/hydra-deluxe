@@ -32,6 +32,12 @@ std::string format_ms_spaced(double ms);
 // a screen with nothing to count says so itself.
 std::string format_percent(int64_t part, int64_t total, int decimals);
 
+// The number format_percent writes, in whole steps of 10^-decimals percent:
+// 198,010 of 200,000 at 2 is 9901 (99.01%). A page that has to work a percent
+// out itself, like the leaderboard page's average tile, is sent these whole
+// numbers so it rounds nothing in floating point.
+int64_t percent_steps(int64_t part, int64_t total, int decimals);
+
 // A song time as the Preview's clock shows it, "m:ss.mmm" ("1:04.000"). The
 // time rounds to the nearest whole ms first (a half rounds away from zero),
 // then splits into minutes and seconds, so 59,999.6 ms reads "1:00.000".
