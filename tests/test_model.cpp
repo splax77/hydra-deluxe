@@ -243,6 +243,58 @@ TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") 
     CHECK_FALSE(plain().hardest().has_value());
 }
 
+TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none (D51 Q4, D13)") {
+    auto plain = [] {
+        Activation a;
+        test::set_skips(a, 0);
+        a.e_offset = 300.0;  // not e-critical
+        return a;
+    };
+
+    // A squeeze-in 163 ms before the SP end is already in: nothing to time,
+    // so nothing is hardest and there is no difficulty.
+    Activation free_in = plain();
+    free_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -163.0}};
+    CHECK_FALSE(free_in.needs_timing());
+    CHECK_FALSE(free_in.hardest().has_value());
+    CHECK_FALSE(free_in.difficulty().has_value());
+
+    // A squeeze-in dead on the SP end is inside SP too (D13).
+    Activation on_end_in = plain();
+    on_end_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
+    CHECK_FALSE(on_end_in.needs_timing());
+
+    // A squeeze-out dead on the SP end still has to be hit late.
+    Activation on_end_out = plain();
+    on_end_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, 0.0}};
+    CHECK(on_end_out.needs_timing());
+    CHECK(on_end_out.difficulty() == std::optional<double>(0.0));
+
+    Activation late_out = plain();
+    late_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.5}};
+    CHECK(late_out.needs_timing());
+
+    // A required (E0) fill with 10 ms to spare needs none; with none to
+    // spare it does, like the squeeze-out on the SP end.
+    Activation slack_fill = plain();
+    slack_fill.e_offset = 10.0;
+    REQUIRE(slack_fill.is_E0());
+    CHECK_FALSE(slack_fill.needs_timing());
+    CHECK_FALSE(slack_fill.hardest().has_value());
+    Activation tight_fill = plain();
+    tight_fill.e_offset = 0.0;
+    REQUIRE(tight_fill.is_E0());
+    CHECK(tight_fill.needs_timing());
+    CHECK(tight_fill.difficulty() == std::optional<double>(0.0));
+
+    // A path needs timing once any of its activations does.
+    Path p;
+    p.activations = {free_in, on_end_in, slack_fill};
+    CHECK_FALSE(p.needs_timing());
+    p.activations.push_back(late_out);
+    CHECK(p.needs_timing());
+}
+
 TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps") {
     using K = SpEndKind;
     Activation a;

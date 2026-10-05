@@ -186,7 +186,7 @@ Enum enumerate(const ScoreGraph& graph) {
 struct Act {
     int32_t parent;
     int32_t act_node;
-    // How many fills were passed over before it, for act_difficulty's E0
+    // How many fills were passed over before it, for act_within_limit's E0
     // test. The record stores the fills themselves (skip_tail).
     int32_t skips;
     int32_t deact_edge;
@@ -300,7 +300,9 @@ struct Path {
     int32_t banked_phrase_ordinal;
     double sp_ready_ms;
     double skipped_e_offset;
-    double diff_prefix;
+    // Some closed activation already has a timing outside this run's limit
+    // (act_within_limit). Once set it stays set.
+    bool over_prefix;
 };
 
 // The decision-log output (was hy_out_*), rebuilt into core Paths (core/model.h) locally.
@@ -412,7 +414,7 @@ public:
           has_ms_filter_(options.ms_filter.has_value()),
           ms_filter_(options.ms_filter.value_or(0.0)),
           no_skips_(options.no_skips),
-          hard_ms_filter_(options.hard_ms_filter),
+          no_timing_(options.no_timing),
           target_act_ticks_(options.target_act_ticks ? &*options.target_act_ticks
                                                      : nullptr) {
         index_fills();
@@ -555,11 +557,23 @@ private:
     int32_t deactivation_type(const EdgeView& e, const Path& p,
                               const ChoiceView** offered) const;
 
-    double act_difficulty(int32_t act) const;
-    double search_difficulty(const Path& p) const;
+    // Is every timing of this activation inside this run's limit? True for
+    // no activation.
+    bool act_within_limit(int32_t act) const;
     bool passes_ms_filter(const Path& p) const;
-    // The ms limit's test on one difficulty: within it, or no limit set.
-    bool within_ms_limit(double d) const { return !has_ms_filter_ || d <= ms_filter_; }
+    // Is one timing inside this run's limit? The one place that says so. It
+    // takes the timing's ms and whether it needs hitting at all
+    // (SPSqueeze::is_free, early_fill_needs_timing). Under the
+    // all-0 switch a timing is inside only when it needs no hitting
+    // (Path::needs_timing's rule). Under the user's Path limit it is inside at
+    // or below the limit, free ones included, so a negative limit demands
+    // slack. With no limit every timing is inside.
+    bool within_ms_limit(double ms, bool needed) const {
+        if (no_timing_) return !needed;
+        return !has_ms_filter_ || ms <= ms_filter_;
+    }
+    // Does this run limit timing at all?
+    bool has_timing_limit() const { return has_ms_filter_ || no_timing_; }
 
     // The fills on the base track in chart order, for ready_class.
     void index_fills();
@@ -648,10 +662,11 @@ private:
     // Every activation must record skips == 0: the declining parent is dropped
     // whenever branch_activate produced a real child. BFS only.
     bool no_skips_;
-    // Treat ms_filter_ as a requirement rather than a preference: a path over
-    // the limit is dropped outright instead of surviving while nothing
-    // outscores it. BFS only. See reduce_iteration_paths for why this is exact.
-    bool hard_ms_filter_;
+    // Keep only paths that need no timing (EngineOptions::no_timing). It is a
+    // requirement, not a preference: a path with a needed timing is dropped
+    // outright instead of surviving while nothing outscores it. BFS only. See
+    // reduce_iteration_paths for why this is exact.
+    bool no_timing_;
     // When set, the exact node ticks the search must activate at, ascending.
     // Every other fill is declined. Owned by the caller for the run's duration.
     const std::vector<int64_t>* target_act_ticks_ = nullptr;
@@ -754,8 +769,8 @@ uint64_t Engine::ready_class(const Path& p) const {
         if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
         if (fill_refuses(e_offset)) ++refused;
-        if (has_ms_filter_ && is_e0(e_offset, p.currentskips) &&
-            !within_ms_limit(early_fill_difficulty(e_offset)))
+        if (has_timing_limit() && is_e0(e_offset, p.currentskips) &&
+            !within_ms_limit(early_fill_difficulty(e_offset), early_fill_needs_timing(e_offset)))
             ++over;
     }
     if (refused > 0xFFFF || over > 0xFFFF) throw std::logic_error("search group key out of range");
@@ -1086,40 +1101,30 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
 }
 
 // --- difficulty ----------------------------------------------------------
-double Engine::act_difficulty(int32_t act) const {
-    if (act < 0) return NO_DOUBLE;
+// The timings an activation's difficulty is made of, as Activation::difficulty
+// counts them (the engine's own walk of them is audit finding 152). Every one
+// must be inside the limit; under the Path limit that is the same as the
+// hardest one being inside it.
+bool Engine::act_within_limit(int32_t act) const {
+    if (act < 0) return true;
     const Act& a = acts_[(size_t)act];
-
-    double best = NO_DOUBLE;
     for (int32_t s = a.sq_tail; s >= 0; s = sqs_[(size_t)s].prev) {
-        const double d = squeeze_difficulty(sqs_[(size_t)s].kind == SQ_IN, sqs_[(size_t)s].offset);
-        if (!has_value(best) || d > best) best = d;
+        const bool is_in = sqs_[(size_t)s].kind == SQ_IN;
+        const SPSqueeze sq{is_in ? SqueezeKind::SqIn : SqueezeKind::SqOut, sqs_[(size_t)s].offset};
+        if (!within_ms_limit(sq.difficulty(), !sq.is_free())) return false;
     }
-    if (is_e0(a.e_offset, a.skips)) {
-        const double d = early_fill_difficulty(a.e_offset);
-        if (!has_value(best) || d > best) best = d;
-    }
-    return best;
+    if (is_e0(a.e_offset, a.skips) &&
+        !within_ms_limit(early_fill_difficulty(a.e_offset), early_fill_needs_timing(a.e_offset)))
+        return false;
+    return true;
 }
 
 void Engine::close_last_activation(Path& p) const {
-    const double d = act_difficulty(p.act_tail);
-    if (has_value(d) && (!has_value(p.diff_prefix) || d > p.diff_prefix)) {
-        p.diff_prefix = d;
-    }
-}
-
-double Engine::search_difficulty(const Path& p) const {
-    double d = p.diff_prefix;
-    const double last = act_difficulty(p.act_tail);
-    if (has_value(last) && (!has_value(d) || last > d)) d = last;
-    return d;
+    if (!act_within_limit(p.act_tail)) p.over_prefix = true;
 }
 
 bool Engine::passes_ms_filter(const Path& p) const {
-    const double d = search_difficulty(p);
-    if (!has_value(d)) return true;
-    return within_ms_limit(d);
+    return !p.over_prefix && act_within_limit(p.act_tail);
 }
 
 // --- reduce_group --------------------------------------------------------
@@ -1300,7 +1305,7 @@ void Engine::reduce_iteration_paths() {
     filtered_.assign((size_t)n, 0);
     removed_.assign((size_t)n, 0);
 
-    if (has_ms_filter_) {
+    if (has_timing_limit()) {
         for (int32_t i = 0; i < n; ++i) {
             if (!passes_ms_filter(cur_[(size_t)i])) filtered_[(size_t)i] = 1;
         }
@@ -1317,14 +1322,14 @@ void Engine::reduce_iteration_paths() {
         const Path& p = cur_[(size_t)i];
         const bool is_complete = p.node < 0;
 
-        // Hard mode kills an over-limit path here instead of handing it to
-        // reduce_group, which keeps one while nothing outscores it -- a
-        // preference, not a requirement. Dropping it now is exact:
-        // search_difficulty is a running max (diff_prefix only ever rises in
-        // close_last_activation, and a tail's squeeze list only grows), so a
-        // path already over the limit can never come back under it. It also
-        // prunes, since the whole subtree below it is over the limit too.
-        if (hard_ms_filter_ && filtered_[(size_t)i]) {
+        // The all-0 switch kills a path with a needed timing here instead of
+        // handing it to reduce_group, which keeps an over-limit path while
+        // nothing outscores it -- a preference, not a requirement. Dropping
+        // it now is exact: over_prefix only ever gets set in
+        // close_last_activation, and a tail's squeeze list only grows, so a
+        // path already outside the limit can never come back inside it. It
+        // also prunes, since the whole subtree below it is outside too.
+        if (no_timing_ && filtered_[(size_t)i]) {
             removed_[(size_t)i] = 1;
             continue;
         }
@@ -1706,7 +1711,7 @@ bool Engine::run() {
     root.skip_tail = -1;
     root.sp_ready_ms = NO_DOUBLE;
     root.skipped_e_offset = NO_DOUBLE;
-    root.diff_prefix = NO_DOUBLE;
+    root.over_prefix = false;
 
     cur_.clear();
     cur_.push_back(root);

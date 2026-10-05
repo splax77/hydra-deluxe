@@ -1,16 +1,12 @@
-# Fix round
+# Fixing your review findings
 
-You fix the findings a derive-once review raised on a branch, so the next review comes back CLEAN. Read `docs/agents/brief-preamble.md` first; its rules apply to you in full. The orchestrator gives you the review file, the branch, its worktree, the range, and which findings are yours.
+You wrote a change, and the derive-once reviewer has sent you its findings in a message. This page says how to fix them. Read `docs/agents/brief-preamble.md` first if you haven't; its rules apply to you in full.
 
-## Why this brief exists
+You get one chance. The user decided this in D61: the reviewer sends findings once, you fix them once and reply, and then the reviewer checks your fix and fixes anything left itself. There is no second round. So fix every copy now, not only the ones the reviewer listed.
 
-One branch once took seven review rounds to reach CLEAN. Each round fixed only the copies the reviewer had listed. The next reviewer then found the copies nobody had listed, or a third copy of a finding marked fixed, or a new copy the fix itself had written. Three findings came back a round later as "still in N places". This brief ends that pattern: fix every copy of each kind, prove none is left, and leave committed work behind even if you run out of calls.
+## Why this page exists
 
-## Who does what
-
-Production findings and test findings go to two fresh agents that run in parallel. Production findings are kind A, plus kind D where the copy is in `src/`. Test findings are kinds B and C, kind E, and kind D where the copy is in `tests/`. Your brief says which half is yours. Touch only the files on your side. If a finding needs a file on the other side, stop and report it; do not edit it.
-
-You are capped at 100 tool calls. Commit after each finding, so an agent that runs out leaves its finished findings behind.
+One branch once took seven review rounds, and another took ten. Each round fixed only the copies the reviewer had listed. The next review then found copies nobody had listed, a third copy of a finding marked fixed, or a new copy the fix itself had written, often a comment restating a rule. Fix the whole question, prove nothing is left, and write no new copies.
 
 ## The kinds, in one line each
 
@@ -29,36 +25,35 @@ You are capped at 100 tool calls. Commit after each finding, so an agent that ru
 5. **Run the tests your brief names for that finding**, with `-tc=` or `-sf=` filters. Never the full suite.
 6. **Commit that finding alone.** The commit body carries the grep proof: the exact grep you ran and its one-line result, for example "grep for X under src/ and tests/: one hit, the owner in Y". Then the trailers from the preamble.
 
-A sweep for one finding often turns up copies of another kind. Fold those too if they are on your side, and name them in the commit body. If they are on the other side, list them in your report.
+A sweep for one finding often turns up copies of another kind. Fold those too, and name them in the commit body.
 
 ## Things you never do
 
-Never add a new number (a threshold, floor, depth, tolerance or band) to settle a finding. If a fix needs one, stop and report it as a question for the user, in game terms. Never change a displayed text, a score or a stored record unless the review file quotes a user decision for it. Never write a new copy while removing an old one: if your fix needs a helper, check the owner or `tests/` for one first. A comment that describes what a rule matches is a new copy too; name the owner instead (see "If you write code" in the preamble).
+Never add a new number (a threshold, floor, depth, tolerance or band) to settle a finding. If a fix needs one, say so in your reply as a question for the user, in game terms, and leave it unfixed. Never change a displayed text, a score or a stored record unless the review file quotes a user decision for it. Never write a new copy while removing an old one: if your fix needs a helper, check the owner or `tests/` for one first. A comment that describes what a rule matches is a new copy too; name the owner instead (see "If you write code" in the preamble).
 
-If a finding is wrong (the two copies are not the same question, or the reviewer misread the code), do not change the code. Say why in your report, with the truth table that shows the difference.
-
-## After the sweep: run the precheck
-
-When every finding on your side is committed, run `tools/derive_once_precheck.ps1` on the range and repo path. It needs no build. It must print nothing new for your side: no duplicate helper, no recompute spelling, no undecided number, no stray scan. If it does, fix those the same way and commit them. Quote its final output in your report.
+If a finding is wrong (the two copies are not the same question, or the reviewer misread the code), do not change the code. Say why in your reply, with the truth table that shows the difference.
 
 ## Slow proofs run once
 
-Grep proofs and named tests run after each finding. Anything slower runs once, after the last finding: a corpus comparison, an old-against-new output comparison, a self-test over a whole tool. If that one run shows a change, rerun it at each of your commits to find which one. One round once spent most of its 35 minutes repeating a full comparison after each of seven commits, and none of those runs found a change.
+Grep proofs and named tests run after each finding. Anything slower runs once, after the last finding: a corpus comparison, an old-against-new output comparison, a self-test over a whole tool. If that one run shows a change, rerun it at each of your commits to find which one.
 
-## Your diff gets a quick review before you are done
+## When you are done: run the precheck, then reply
 
-When you report, the orchestrator has a fresh reviewer read only your diff, usually within five minutes. Anything it finds comes back to you as a message in the same round, while you still have the code in mind. Fix it, commit, and report again. The full review runs only after this quick review is clean. So list in your report every comment, header line and doc sentence you added or changed. Those are where fix rounds most often write new copies.
+Run `tools/derive_once_precheck.ps1` on the range and repo path. It needs no build. It must print nothing new. If it does, fix those the same way and commit them.
 
-## Your report
+Then reply to the reviewer with SendMessage, to the agent id its message gave (load SendMessage first with ToolSearch, query `select:SendMessage`). Your reply gives:
+- the new branch tip hash,
+- for each finding: the owner, every copy you folded, and the commit hash,
+- every comment, header line and doc sentence you added or changed,
+- the precheck's final output and the test commands you ran with their pass counts,
+- anything you did not fix, and why.
 
-For each finding: its kind letter, the question, the owner, every copy you folded (including ones the reviewer did not list), the commit hash, and the grep proof. Then the precheck's final output, the exact test commands you ran with their pass counts, every comment or doc line you added or changed, and anything you stopped on or left for the other agent.
+Then end your turn with the same text as your report. Do not wait for an answer; the reviewer finishes the job.
 
 ## For the orchestrator
 
-These rules are for the session that runs the review loop.
+These rules are for the session that runs the merge.
 
-Before the first review, run the precheck on the range and fix what it prints. Do the reviewer's step 1 yourself on the branch: list the questions, grep for each. Every finding caught here is a round you don't spend.
+Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read: a change over about 500 lines goes in as two or three merges.
 
-Keep merges small enough to review in one read. A tool or feature over about 500 changed lines goes in as two or three merges, each reviewed on its own. One 1,300-line script took ten rounds as a single merge.
-
-When a fix round reports, send a quick review of the fix diff alone (`git diff <old tip> <new tip>`, with the delta-review section of `derive-once-review.md`) before the full review. If it finds anything, send it back to the same fixer with SendMessage so it keeps its context. A finding of a few lines (a comment, one pattern) you fix yourself, commit with your own trailers, and move on; a 20-minute fix round for a one-line change is the most expensive way to fix it.
+Give the reviewer the key, the range, the branch's worktree, the precheck output, the author's report, and the author's name or agent id (from its spawn result). Then wait for the reviewer's final report. The author's own completion notice arrives in between; it is not the end of the review. When the reviewer reports CLEAN, run the full suite once on the joined tree and merge. When it reports FINDINGS, the finding needs the user: take it to them. Never start another review round.

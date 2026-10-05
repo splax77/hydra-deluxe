@@ -5,32 +5,35 @@
 #include <stdexcept>
 #include <utility>
 
-// miniaudio's configuration macros come from the miniaudio target.
-#include "miniaudio.h"
-
 namespace hydra::audio {
+
+StemConverter stem_converter_config(int in_rate, int in_channels, int out_rate,
+                                    int out_channels) {
+    StemConverter c;
+    c.config = ma_data_converter_config_init(
+        ma_format_f32, ma_format_f32, static_cast<ma_uint32>(in_channels),
+        static_cast<ma_uint32>(out_channels), static_cast<ma_uint32>(in_rate),
+        static_cast<ma_uint32>(out_rate));
+    c.passthrough = in_rate == out_rate && in_channels == out_channels;
+    return c;
+}
 
 namespace {
 
-// Convert one decoded stem to `out_channels` at `out_rate` with miniaudio's
-// resampler and channel mapper, returning interleaved float. A stem already in
-// the output format passes through unchanged.
-// Takes the stem by value so a caller that owns it can move it in; a stem
-// already in the output format then hands over its samples without a copy.
+// Convert one decoded stem to `out_channels` at `out_rate`, returning
+// interleaved float. stem_converter_config decides the settings and whether
+// the stem passes through unchanged.
+// Takes the stem by value so a caller that owns it can move it in; a
+// passthrough stem then hands over its samples without a copy.
 std::vector<float> convert_stem(DecodedAudio s, int out_rate,
                                 int out_channels) {
     if (s.channels <= 0 || s.samples.empty()) return {};
-    if (s.sample_rate == out_rate && s.channels == out_channels)
-        return std::move(s.samples);
-
-    ma_data_converter_config cfg = ma_data_converter_config_init(
-        ma_format_f32, ma_format_f32, static_cast<ma_uint32>(s.channels),
-        static_cast<ma_uint32>(out_channels),
-        static_cast<ma_uint32>(s.sample_rate),
-        static_cast<ma_uint32>(out_rate));
+    const StemConverter sc =
+        stem_converter_config(s.sample_rate, s.channels, out_rate, out_channels);
+    if (sc.passthrough) return std::move(s.samples);
 
     ma_data_converter conv;
-    if (ma_data_converter_init(&cfg, nullptr, &conv) != MA_SUCCESS)
+    if (ma_data_converter_init(&sc.config, nullptr, &conv) != MA_SUCCESS)
         throw std::runtime_error("mix_stems: data converter init failed");
 
     ma_uint64 in_frames = static_cast<ma_uint64>(s.frames());
