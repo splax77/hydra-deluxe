@@ -297,8 +297,9 @@ TEST_CASE("StemReader: seeking past the end reads nothing; seeking to 0 restarts
 }
 
 TEST_CASE("StemReader: an Opus seek mid-page matches the straight decode") {
-    // Opus decodes from a reset state with an 80 ms pre-roll; odd targets land
-    // inside a packet and inside a page.
+    // Opus decodes from a reset state through a pre-roll before the target
+    // (kPreRoll in src/audio/opus_reader.cpp); odd targets land inside a packet
+    // and inside a page.
     std::vector<uint8_t> bytes = read_fixture("sine220.opus");
     DecodedAudio full = old_full_decode(bytes);
     auto r = open_stem_reader(StemBytes{bytes, nullptr});
