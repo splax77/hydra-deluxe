@@ -30,18 +30,19 @@
 
 namespace hydra::audio {
 
-// How one stem turns into the output format.
+// How one stem turns into the output format. Both fields come from
+// stem_converter_config.
 struct StemConverter {
-    ma_data_converter_config config;  // miniaudio's resampler and channel mapper
-    bool passthrough = false;         // already at the output rate and channel count
+    ma_data_converter_config config;  // the converter settings
+    bool passthrough = false;         // the stem needs no converter
 };
 
-// The one converter setup both mixers use (mix_stems here, StreamMix in
-// stream_mix.cpp), so a stream and a whole-stem mix convert alike. The
-// settings are miniaudio's defaults, recorded as they are in decision D54:
-// float in and out, the linear resampler, its first-order low-pass, no dither.
-// A stem already at the output rate and channel count is a passthrough and
-// needs no converter.
+// The one owner of two questions: which converter settings turn a stem into
+// the output format, and whether a stem needs a converter at all. Both mixers
+// call it (mix_stems here, StreamMix in stream_mix.cpp), so a stream and a
+// whole-stem mix convert alike. The definition in mixer.cpp is the only place
+// the settings and the passthrough rule are written. The settings are
+// miniaudio's defaults, kept as they are by decision D54 (R7.28).
 StemConverter stem_converter_config(int in_rate, int in_channels, int out_rate,
                                     int out_channels);
 

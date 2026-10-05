@@ -40,7 +40,7 @@ struct StreamMix::Stem {
     std::unique_ptr<StemReader> reader;
     int in_channels = 0;
     int out_channels = 0;
-    bool passthrough = true;  // already at the output rate and channel count
+    bool passthrough = true;  // from stem_converter_config: no converter needed
 
     // The converter lives in a heap block sized once at construction. A seek
     // re-initializes it in that same block instead of calling
