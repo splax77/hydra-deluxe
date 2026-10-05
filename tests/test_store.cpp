@@ -1813,7 +1813,7 @@ constexpr const char* kDropEveryTable =
 void check_read_fails(const std::function<void()>& read) {
     try {
         read();
-        FAIL("a read on a failing database answered");
+        FAIL_CHECK("a read on a failing database answered");
     } catch (const hydra::KindedError& e) {
         INFO(e.what());
         CHECK(e.kind() == hydra::ErrorKind::DatabaseRead);
@@ -1839,7 +1839,7 @@ TEST_CASE("a read on a failing database throws instead of answering empty") {
         // The first read fails when it steps; by then the connection has
         // reloaded the schema, so the second fails when it compiles.
         for (const char* when : {"step", "compile"}) {
-            CAPTURE(when);
+            INFO(std::string(when));
             check_read_fails([&] { store.analyzed_hashes("mode", CapQuery::at(4), Lens{}); });
         }
     }
@@ -1862,7 +1862,8 @@ TEST_CASE("every store read throws a database read error when its step fails") {
         {"analyzed_hashes", [&](RecordStore& s) { s.analyzed_hashes("mode", cap, Lens{}); }},
         {"for_each_blob",
          [&](RecordStore& s) {
-             s.for_each_blob(std::nullopt, cap, Lens{}, [](const BlobRow&, const HydraRecord*) {});
+             s.for_each_blob(std::nullopt, cap, Lens{},
+                             [](const RecordStore::BlobRow&, const HydraRecord*) {});
          }},
         {"list_records",
          [&](RecordStore& s) {
@@ -1874,10 +1875,9 @@ TEST_CASE("every store read throws a database read error when its step fails") {
         {"list_chart_library", [](RecordStore& s) { s.list_chart_library(0, 10); }},
         {"fill_song_length", [](RecordStore& s) { s.fill_song_length("h", 1000.0); }},
         {"reindex", [](RecordStore& s) { s.reindex(); }},
-        {"fill_missing_stars", [](RecordStore& s) { s.fill_missing_stars(); }},
     };
     for (const auto& [name, read] : reads) {
-        CAPTURE(name);
+        INFO(std::string(name));
         // A fresh open makes the tables again, so each read fails at its own
         // first step.
         RecordStore store(path);

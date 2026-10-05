@@ -57,12 +57,39 @@ struct ResetOnExit {
     }
 };
 
-Stmt prepare(sqlite3* db, const char* sql) {
+// Compiles a statement. A read that fails to compile is a failed read, and a
+// write a failed write (D73), so each call site says which it is through
+// prepare_read or prepare_write. SQLite's own sqlite3_stmt_readonly checks
+// that word: a site that names the wrong one is a bug in this file.
+Stmt prepare_as(sqlite3* db, const char* sql, bool read) {
     Stmt s;
     if (sqlite3_prepare_v2(db, sql, -1, &s.p, nullptr) != SQLITE_OK)
-        throw KindedError(ErrorKind::DatabaseWrite,
+        throw KindedError(read ? ErrorKind::DatabaseRead : ErrorKind::DatabaseWrite,
                           std::string("prepare failed: ") + sqlite3_errmsg(db) + " (" + sql + ")");
+    if ((sqlite3_stmt_readonly(s) != 0) != read)
+        throw std::logic_error(std::string(read ? "a write" : "a read") +
+                               " was prepared as the other kind: " + sql);
     return s;
+}
+Stmt prepare_read(sqlite3* db, const char* sql) { return prepare_as(db, sql, true); }
+Stmt prepare_write(sqlite3* db, const char* sql) { return prepare_as(db, sql, false); }
+
+// Steps a read. True: a row is ready. False: the query has finished. Any
+// other answer throws, so a failed read never passes for an empty one (D73).
+bool step_row(sqlite3_stmt* s) {
+    const int rc = sqlite3_step(s);
+    if (rc == SQLITE_ROW) return true;
+    if (rc == SQLITE_DONE) return false;
+    throw KindedError(ErrorKind::DatabaseRead, std::string("reading the database failed: ") +
+                                                   sqlite3_errmsg(sqlite3_db_handle(s)));
+}
+
+// Steps a write to its end. `what` names the write in the raw text: "<what>
+// failed: <sqlite's message>".
+void step_done(sqlite3_stmt* s, const std::string& what) {
+    if (sqlite3_step(s) != SQLITE_DONE)
+        throw KindedError(ErrorKind::DatabaseWrite,
+                          what + " failed: " + sqlite3_errmsg(sqlite3_db_handle(s)));
 }
 
 void bind_text(sqlite3_stmt* s, int i, const std::string& v) {
@@ -845,26 +872,24 @@ void RecordStore::exec(const char* sql) {
 
 bool RecordStore::has_column(const char* table, const char* column) {
     std::string sql = std::string("PRAGMA table_info(") + table + ")";
-    Stmt info = prepare(db_, sql.c_str());
-    while (sqlite3_step(info) == SQLITE_ROW)
+    Stmt info = prepare_read(db_, sql.c_str());
+    while (step_row(info))
         if (column_text(info, 1) == column) return true;
     return false;
 }
 
 std::optional<std::string> RecordStore::meta_get(const std::string& key) {
-    Stmt s = prepare(db_, "SELECT value FROM meta WHERE key=?");
+    Stmt s = prepare_read(db_, "SELECT value FROM meta WHERE key=?");
     bind_text(s, 1, key);
-    if (sqlite3_step(s) != SQLITE_ROW) return std::nullopt;
+    if (!step_row(s)) return std::nullopt;
     return column_text(s, 0);
 }
 
 void RecordStore::meta_set(const std::string& key, const std::string& value) {
-    Stmt s = prepare(db_, "INSERT OR REPLACE INTO meta (key, value) VALUES (?,?)");
+    Stmt s = prepare_write(db_, "INSERT OR REPLACE INTO meta (key, value) VALUES (?,?)");
     bind_text(s, 1, key);
     bind_text(s, 2, value);
-    if (sqlite3_step(s) != SQLITE_DONE)
-        throw KindedError(ErrorKind::DatabaseWrite,
-                          std::string("meta_set failed: ") + sqlite3_errmsg(db_));
+    step_done(s, "meta_set");
 }
 
 // The meta table's keys, each typed once.
@@ -891,8 +916,8 @@ std::optional<FillDeadlineRule> RecordStore::stamped_fill_rule() {
     if (const std::optional<std::string> mode = engine_mode())
         return fill_rule_from_stamp(*mode);
     // No stamp. Results written without one ran under the normal rule.
-    Stmt any = prepare(db_, "SELECT 1 FROM results LIMIT 1");
-    if (sqlite3_step(any) == SQLITE_ROW) return FillDeadlineRule::Ch11;
+    Stmt any = prepare_read(db_, "SELECT 1 FROM results LIMIT 1");
+    if (step_row(any)) return FillDeadlineRule::Ch11;
     return std::nullopt;
 }
 
@@ -904,7 +929,7 @@ void RecordStore::put_dynamics(const DynamicsKey& key, const std::vector<uint8_t
 
 void RecordStore::insert_dynamics(const DynamicsKey& key, const std::vector<uint8_t>& blob,
                                   int count_version) {
-    Stmt s = prepare(db_,
+    Stmt s = prepare_write(db_,
         "INSERT OR REPLACE INTO dynamics (md5, difficulty, pro, blob, count_version)"
         " VALUES (?,?,?,?,?)");
     bind_text(s, 1, key.md5);
@@ -912,9 +937,7 @@ void RecordStore::insert_dynamics(const DynamicsKey& key, const std::vector<uint
     sqlite3_bind_int(s, 3, key.pro ? 1 : 0);
     bind_blob(s, 4, blob);
     sqlite3_bind_int(s, 5, count_version);
-    if (sqlite3_step(s) != SQLITE_DONE)
-        throw KindedError(ErrorKind::DatabaseWrite,
-                          std::string("put_dynamics failed: ") + sqlite3_errmsg(db_));
+    step_done(s, "put_dynamics");
 }
 
 void RecordStore::save_analysis(const std::string& hyhash, const std::string& ref_name,
@@ -954,12 +977,12 @@ std::optional<std::vector<uint8_t>> RecordStore::get_dynamics(const DynamicsKey&
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     // A row whose count stamp this build doesn't accept reads as missing, so
     // the caller recounts it and put_dynamics restamps it.
-    Stmt s = prepare(db_,
+    Stmt s = prepare_read(db_,
         "SELECT blob, count_version FROM dynamics WHERE md5=? AND difficulty=? AND pro=?");
     bind_text(s, 1, key.md5);
     bind_text(s, 2, key.difficulty);
     sqlite3_bind_int(s, 3, key.pro ? 1 : 0);
-    if (sqlite3_step(s) != SQLITE_ROW) return std::nullopt;
+    if (!step_row(s)) return std::nullopt;
     if (!kDynamicsCountStamp.is_current(sqlite3_column_int(s, 1))) return std::nullopt;
     return column_blob(s, 0);
 }
@@ -1009,14 +1032,14 @@ std::unordered_map<std::string, std::vector<uint8_t>> RecordStore::load_nodes(
     ResetOnExit reset{stmt};
     std::unordered_map<std::string, std::vector<uint8_t>> nodes;
     sqlite3_bind_int64(stmt, 1, result_id);
-    while (sqlite3_step(stmt) == SQLITE_ROW)
+    while (step_row(stmt))
         nodes.emplace(column_text(stmt, 0), column_blob(stmt, 1));
     return nodes;
 }
 
 std::unordered_map<std::string, std::vector<uint8_t>> RecordStore::load_nodes(
     int64_t result_id) {
-    Stmt s = prepare(db_, kLoadNodesSql);
+    Stmt s = prepare_read(db_, kLoadNodesSql);
     return load_nodes(s, result_id);
 }
 
@@ -1027,7 +1050,7 @@ bool RecordStore::reload_row(sqlite3_stmt* stmt, const BlobRow& meta, const Lens
     // left mid-step when the caller unlocks.
     ResetOnExit reset{stmt};
     sqlite3_bind_int64(stmt, 1, result_id);
-    if (sqlite3_step(stmt) != SQLITE_ROW) return false;  // deleted since the walk listed it
+    if (!step_row(stmt)) return false;  // deleted since the walk listed it
     // The row's whole identity (RecordKey), not just "a row is here".
     // result_id is a plain INTEGER PRIMARY KEY, so sqlite hands the same id
     // out again after a delete and a replacement row can occupy it.
@@ -1053,9 +1076,9 @@ void RecordStore::add_song(const std::string& hyhash, const std::string& ref_nam
 
 void RecordStore::fill_song_length(const std::string& hyhash, std::optional<double> length_ms) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt read = prepare(db_, "SELECT length_version FROM songmeta WHERE hyhash = ?");
+    Stmt read = prepare_read(db_, "SELECT length_version FROM songmeta WHERE hyhash = ?");
     bind_text(read, 1, hyhash);
-    if (sqlite3_step(read) != SQLITE_ROW) return;  // not registered: left alone
+    if (!step_row(read)) return;  // not registered: left alone
     const int stamp = sqlite3_column_int(read, 0);
     if (kSongLengthStamp.is_current(stamp)) return;  // an analysis or a backfill got here first
     // Written only while the stamp is still the one just read, so another
@@ -1065,7 +1088,7 @@ void RecordStore::fill_song_length(const std::string& hyhash, std::optional<doub
 
 void RecordStore::write_song_length(const std::string& hyhash, std::optional<double> length_ms,
                                     std::optional<int> only_from_stamp) {
-    Stmt s = prepare(db_, only_from_stamp
+    Stmt s = prepare_write(db_, only_from_stamp
         ? "UPDATE songmeta SET length_ms = ?1, length_version = ?2"
           " WHERE hyhash = ?3 AND length_version = ?4"
         : "UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3");
@@ -1074,9 +1097,7 @@ void RecordStore::write_song_length(const std::string& hyhash, std::optional<dou
     sqlite3_bind_int(s, 2, kSongLengthStamp.written);
     bind_text(s, 3, hyhash);
     if (only_from_stamp) sqlite3_bind_int(s, 4, *only_from_stamp);
-    if (sqlite3_step(s) != SQLITE_DONE)
-        throw KindedError(ErrorKind::DatabaseWrite,
-                          std::string("saving the song's length failed: ") + sqlite3_errmsg(db_));
+    step_done(s, "saving the song's length");
 }
 
 // Which copy names an md5 (D51 call 10): the first copy the scan listed, the
@@ -1105,15 +1126,15 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
         const std::string sql =
             std::string("SELECT name, artist, charter FROM ") + kNamingCopiesSql +
             " WHERE md5 = ? AND copies > 1";
-        Stmt copy = prepare(db_, sql.c_str());
+        Stmt copy = prepare_read(db_, sql.c_str());
         bind_text(copy, 1, hyhash);
-        if (sqlite3_step(copy) == SQLITE_ROW) {
+        if (step_row(copy)) {
             name = column_text(copy, 0);
             artist = column_text(copy, 1);
             charter = column_text(copy, 2);
         }
     }
-    Stmt s = prepare(db_,
+    Stmt s = prepare_write(db_,
         "INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap) "
         "VALUES (?,?,?,?,?) "
         "ON CONFLICT(hyhash) DO UPDATE SET ref_name = excluded.ref_name, "
@@ -1124,9 +1145,7 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
     bind_text(s, 3, artist);
     bind_text(s, 4, charter);
     bind_blob(s, 5, tempomap);
-    if (sqlite3_step(s) != SQLITE_DONE)
-        throw KindedError(ErrorKind::DatabaseWrite,
-                          std::string("add_song failed: ") + sqlite3_errmsg(db_));
+    step_done(s, "add_song");
 }
 
 void RecordStore::add_record(const RecordKey& key, const HydraRecord& record) {
@@ -1150,23 +1169,19 @@ void RecordStore::write_row(const PreparedRow& row) {
     // what keep its paths alive, and the final sweep collects whatever they
     // stopped pointing at. The caller holds the lock and an open transaction,
     // so a failure anywhere leaves the store exactly as it was.
-    auto run = [&](Stmt& s, const char* what) {
-        if (sqlite3_step(s) != SQLITE_DONE)
-            throw KindedError(ErrorKind::DatabaseWrite, std::string("add_row ") + what +
-                                                            " failed: " + sqlite3_errmsg(db_));
-    };
+    auto run = [](Stmt& s, const char* what) { step_done(s, std::string("add_row ") + what); };
     // Deletes the results a subquery names, and their refs. `where` is a
     // fragment over `results`, bound by `bind`.
     auto purge = [&](const std::string& where,
                      const std::function<void(sqlite3_stmt*)>& bind, const char* what) {
         std::string refs = "DELETE FROM path_refs WHERE result_id IN"
                            " (SELECT result_id FROM results WHERE " + where + ")";
-        Stmt r = prepare(db_, refs.c_str());
+        Stmt r = prepare_write(db_, refs.c_str());
         bind(r);
         run(r, what);
 
         std::string rows = "DELETE FROM results WHERE " + where;
-        Stmt d = prepare(db_, rows.c_str());
+        Stmt d = prepare_write(db_, rows.c_str());
         bind(d);
         run(d, what);
     };
@@ -1214,7 +1229,7 @@ void RecordStore::write_row(const PreparedRow& row) {
             " depth_value, legacy_fills, bestpath, structure";
         static constexpr int kRowColumnCount = count_list_names(kRowColumns);
         const std::string structure_param = "?" + std::to_string(kRowColumnCount);
-        Stmt s = prepare(db_,
+        Stmt s = prepare_write(db_,
             (std::string("INSERT INTO results (") + kRowColumns + ", " + kSummaryColumnList +
              ", rules_fp) VALUES (" + placeholders(kRowColumnCount) + ", " +
              placeholders(kSummaryColumnCount) + ", " + rules_fp_of(structure_param.c_str()) +
@@ -1236,10 +1251,10 @@ void RecordStore::write_row(const PreparedRow& row) {
         // Compiled once per row, not once per node, and bound once with what
         // every node shares. Bindings survive a reset, so each node only
         // rebinds its own hash and payload.
-        Stmt path_insert = prepare(db_,
+        Stmt path_insert = prepare_write(db_,
             "INSERT OR IGNORE INTO paths (hyhash, chartmode, phash, payload)"
             " VALUES (?,?,?,?)");
-        Stmt ref_insert = prepare(db_,
+        Stmt ref_insert = prepare_write(db_,
             "INSERT OR IGNORE INTO path_refs (result_id, hyhash, chartmode, phash)"
             " VALUES (?,?,?,?)");
         bind_text(path_insert, 1, row.hyhash);
@@ -1264,7 +1279,7 @@ void RecordStore::write_row(const PreparedRow& row) {
 
 void RecordStore::collect_orphan_paths(const std::string& hyhash,
                                        const std::string& chartmode, const char* caller) {
-    Stmt s = prepare(db_,
+    Stmt s = prepare_write(db_,
         "DELETE FROM paths WHERE hyhash=? AND chartmode=? AND phash NOT IN"
         " (SELECT phash FROM path_refs WHERE hyhash=? AND chartmode=?)");
     bind_text(s, 1, hyhash);
@@ -1272,9 +1287,7 @@ void RecordStore::collect_orphan_paths(const std::string& hyhash,
     bind_text(s, 3, hyhash);
     bind_text(s, 4, chartmode);
     // Same message as before for write_row: "add_row path gc failed: ...".
-    if (sqlite3_step(s) != SQLITE_DONE)
-        throw KindedError(ErrorKind::DatabaseWrite,
-                          std::string(caller) + " path gc failed: " + sqlite3_errmsg(db_));
+    step_done(s, std::string(caller) + " path gc");
 }
 
 namespace {
@@ -1301,10 +1314,10 @@ void RecordStore::delete_auto_results() {
         // The charts that hold one, so their orphaned paths can be collected.
         std::vector<std::pair<std::string, std::string>> charts;
         {
-            Stmt s = prepare(db_,
+            Stmt s = prepare_read(db_,
                              ("SELECT DISTINCT hyhash, chartmode FROM results WHERE " + is_auto).c_str());
             bind_blob(s, 1, auto_fp);
-            while (sqlite3_step(s) == SQLITE_ROW)
+            while (step_row(s))
                 charts.emplace_back(column_text(s, 0), column_text(s, 1));
         }
         // Refs first, always: they are what keep a result's paths alive.
@@ -1312,12 +1325,9 @@ void RecordStore::delete_auto_results() {
              {"DELETE FROM path_refs WHERE result_id IN"
               " (SELECT result_id FROM results WHERE " + is_auto + ")",
               "DELETE FROM results WHERE " + is_auto}) {
-            Stmt s = prepare(db_, sql.c_str());
+            Stmt s = prepare_write(db_, sql.c_str());
             bind_blob(s, 1, auto_fp);
-            if (sqlite3_step(s) != SQLITE_DONE)
-                throw KindedError(ErrorKind::DatabaseWrite,
-                                  std::string("deleting Auto results failed: ") +
-                                      sqlite3_errmsg(db_));
+            step_done(s, "deleting Auto results");
         }
         for (const auto& [hyhash, chartmode] : charts)
             collect_orphan_paths(hyhash, chartmode, "Auto cleanup");
@@ -1367,12 +1377,12 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
                               " FROM results WHERE chartmode=? AND hyhash IN (" +
                               placeholders(n) + ")";
             append_candidate_filter(sql, "");
-            Stmt s = prepare(db_, sql.c_str());
+            Stmt s = prepare_read(db_, sql.c_str());
             int idx = 1;
             bind_text(s, idx++, chartmode);
             for (size_t i = 0; i < n; ++i) bind_text(s, idx++, distinct[first + i]);
             bind_candidate_filter(s, idx, cap, lens);
-            while (sqlite3_step(s) == SQLITE_ROW) {
+            while (step_row(s)) {
                 std::string hyhash = column_text(s, 0);
                 picker.offer(hyhash, chartmode,
                              rank_row(column_text(s, 1), column_blob(s, kAfterSummary),
@@ -1426,7 +1436,7 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
             "SELECT result_id, hyversion, structure FROM results"
             " WHERE hyhash=? AND chartmode=?";
         append_candidate_filter(sql, "");
-        Stmt s = prepare(db_, sql.c_str());
+        Stmt s = prepare_read(db_, sql.c_str());
         bind_text(s, 1, key.hyhash);
         bind_text(s, 2, key.chartmode);
         bind_candidate_filter(s, 3, key.cap, key.lens);
@@ -1438,7 +1448,7 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
         };
         std::vector<Row> rows;  // by offer index
         WinnerPicker picker;
-        while (sqlite3_step(s) == SQLITE_ROW) {
+        while (step_row(s)) {
             Row row{sqlite3_column_int64(s, 0), column_text(s, 1), column_blob(s, 2)};
             // The whole blob is here, and rank_row reads only its head.
             picker.offer(key.hyhash, key.chartmode,
@@ -1485,10 +1495,10 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
 
 std::optional<RecordStore::SongMetaRead> RecordStore::read_tempomap(const std::string& hyhash) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt s = prepare(db_,
+    Stmt s = prepare_read(db_,
                      "SELECT tempomap, length_ms, length_version FROM songmeta WHERE hyhash=?");
     bind_text(s, 1, hyhash);
-    if (sqlite3_step(s) != SQLITE_ROW) return std::nullopt;
+    if (!step_row(s)) return std::nullopt;
     return SongMetaRead{column_blob(s, 0), column_opt_f64(s, 1), sqlite3_column_int(s, 2)};
 }
 
@@ -1503,10 +1513,10 @@ bool RecordStore::has_record(const RecordKey& key) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::string sql =
         "SELECT 1 FROM results WHERE hyhash=? AND " + analyzed_filter() + " LIMIT 1";
-    Stmt s = prepare(db_, sql.c_str());
+    Stmt s = prepare_read(db_, sql.c_str());
     bind_text(s, 1, key.hyhash);
     bind_analyzed_filter(s, 2, key.chartmode, key.cap, key.lens, rules_fingerprint_);
-    return sqlite3_step(s) == SQLITE_ROW;
+    return step_row(s);
 }
 
 std::unordered_set<std::string> RecordStore::analyzed_hashes(const std::string& chartmode,
@@ -1514,10 +1524,10 @@ std::unordered_set<std::string> RecordStore::analyzed_hashes(const std::string& 
                                                              const Lens& lens) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     const std::string sql = "SELECT DISTINCT hyhash FROM results WHERE " + analyzed_filter();
-    Stmt s = prepare(db_, sql.c_str());
+    Stmt s = prepare_read(db_, sql.c_str());
     bind_analyzed_filter(s, 1, chartmode, cap, lens, rules_fingerprint_);
     std::unordered_set<std::string> out;
-    while (sqlite3_step(s) == SQLITE_ROW) out.insert(column_text(s, 0));
+    while (step_row(s)) out.insert(column_text(s, 0));
     return out;
 }
 
@@ -1561,14 +1571,14 @@ void RecordStore::for_each_blob(
         // sqlite's table scan; say so explicitly here.
         sql += " ORDER BY r.result_id";
 
-        Stmt s = prepare(db_, sql.c_str());
+        Stmt s = prepare_read(db_, sql.c_str());
         int idx = 1;
         if (chartmode) bind_text(s, idx++, *chartmode);
         bind_candidate_filter(s, idx, cap, lens);
 
         std::vector<Row> candidates;  // by offer index
         WinnerPicker picker;
-        while (sqlite3_step(s) == SQLITE_ROW) {
+        while (step_row(s)) {
             Row row;
             row.meta.hyhash = column_text(s, 0);
             row.meta.ref_name = column_text(s, 1);
@@ -1618,8 +1628,8 @@ void RecordStore::for_each_blob(
     } stmt_guard{mutex_, reload_stmt, nodes_stmt};
     {
         std::lock_guard<std::recursive_mutex> lock(mutex_);
-        reload_stmt = prepare(db_, kReloadRowSql);
-        nodes_stmt = prepare(db_, kLoadNodesSql);
+        reload_stmt = prepare_read(db_, kReloadRowSql);
+        nodes_stmt = prepare_read(db_, kLoadNodesSql);
     }
 
     for (Row& row : rows) {
@@ -1686,9 +1696,9 @@ int RecordStore::reindex() {
     };
     std::vector<Row> rows;
     {
-        Stmt s = prepare(db_, "SELECT result_id, hyversion, structure, legacy_fills"
-                              " FROM results ORDER BY result_id");
-        while (sqlite3_step(s) == SQLITE_ROW)
+        Stmt s = prepare_read(db_, "SELECT result_id, hyversion, structure, legacy_fills"
+                                   " FROM results ORDER BY result_id");
+        while (step_row(s))
             rows.push_back({sqlite3_column_int64(s, 0), column_text(s, 1), column_blob(s, 2),
                             sqlite3_column_int(s, 3) == 1});
     }
@@ -1699,8 +1709,8 @@ int RecordStore::reindex() {
     // the blob (kSummaryColumnList).
     exec("BEGIN");
     try {
-        Stmt nodes_stmt = prepare(db_, kLoadNodesSql);
-        Stmt update = prepare(db_, ("UPDATE results SET " + summary_columns("", "=?") +
+        Stmt nodes_stmt = prepare_read(db_, kLoadNodesSql);
+        Stmt update = prepare_write(db_, ("UPDATE results SET " + summary_columns("", "=?") +
                                     ", bestpath=? WHERE result_id=?")
                                        .c_str());
         int done = 0;
@@ -1718,9 +1728,7 @@ int RecordStore::reindex() {
             bind_summary(update, 1, summarize_record(record));
             bind_text(update, kSummaryColumnCount + 1, best_path_text(record));
             sqlite3_bind_int64(update, kSummaryColumnCount + 2, row.result_id);
-            if (sqlite3_step(update) != SQLITE_DONE)
-                throw KindedError(ErrorKind::DatabaseWrite,
-                                  std::string("reindex failed: ") + sqlite3_errmsg(db_));
+            step_done(update, "reindex");
             ++done;
         }
         exec("COMMIT");
@@ -1740,11 +1748,11 @@ int RecordStore::fill_missing_stars() {
     // blanking them would wipe the whole library's scores on one bad start.
     std::vector<int64_t> ids;
     {
-        Stmt s = prepare(db_, ("SELECT result_id, hyversion, " + structure_head_of("structure") +
-                               " FROM results"
-                               " WHERE stars IS NULL AND score IS NOT NULL ORDER BY result_id")
-                                  .c_str());
-        while (sqlite3_step(s) == SQLITE_ROW) {
+        Stmt s = prepare_read(db_, ("SELECT result_id, hyversion, " + structure_head_of("structure") +
+                                    " FROM results"
+                                    " WHERE stars IS NULL AND score IS NOT NULL ORDER BY result_id")
+                                       .c_str());
+        while (step_row(s)) {
             const int64_t id = sqlite3_column_int64(s, 0);
             if (rank_row(column_text(s, 1), column_blob(s, 2), id, rules_fingerprint_).ready())
                 ids.push_back(id);
@@ -1757,9 +1765,9 @@ int RecordStore::fill_missing_stars() {
     exec("BEGIN");
     try {
         Stmt structure_stmt =
-            prepare(db_, "SELECT structure, legacy_fills FROM results WHERE result_id=?");
-        Stmt nodes_stmt = prepare(db_, kLoadNodesSql);
-        Stmt update = prepare(db_, "UPDATE results SET stars=? WHERE result_id=?");
+            prepare_read(db_, "SELECT structure, legacy_fills FROM results WHERE result_id=?");
+        Stmt nodes_stmt = prepare_read(db_, kLoadNodesSql);
+        Stmt update = prepare_write(db_, "UPDATE results SET stars=? WHERE result_id=?");
         int filled = 0;
         for (int64_t id : ids) {
             std::vector<uint8_t> structure;
@@ -1767,7 +1775,7 @@ int RecordStore::fill_missing_stars() {
             {
                 ResetOnExit reset{structure_stmt};
                 sqlite3_bind_int64(structure_stmt, 1, id);
-                if (sqlite3_step(structure_stmt) != SQLITE_ROW) continue;
+                if (!step_row(structure_stmt)) continue;
                 structure = column_blob(structure_stmt, 0);
                 legacy_fills = sqlite3_column_int(structure_stmt, 1) == 1;
             }
@@ -1777,10 +1785,7 @@ int RecordStore::fill_missing_stars() {
             if (summary.stars) sqlite3_bind_int(update, 1, *summary.stars);
             else sqlite3_bind_null(update, 1);
             sqlite3_bind_int64(update, 2, id);
-            if (sqlite3_step(update) != SQLITE_DONE)
-                throw KindedError(ErrorKind::DatabaseWrite,
-                                  std::string("fill_missing_stars failed: ") +
-                                      sqlite3_errmsg(db_));
+            step_done(update, "fill_missing_stars");
             ++filled;
         }
         exec("COMMIT");
@@ -1819,14 +1824,14 @@ std::vector<RecordListing> RecordStore::list_records(
     sql += sort_column_name(order_by);
     sql += descending ? " DESC" : " ASC";
 
-    Stmt s = prepare(db_, sql.c_str());
+    Stmt s = prepare_read(db_, sql.c_str());
     int idx = 1;
     if (chartmode) bind_text(s, idx++, *chartmode);
     bind_candidate_filter(s, idx, cap, lens);
 
     std::vector<RecordListing> candidates;  // by offer index
     WinnerPicker picker;
-    while (sqlite3_step(s) == SQLITE_ROW) {
+    while (step_row(s)) {
         RecordListing listing;
         listing.hyhash = column_text(s, 0);
         listing.ref_name = column_text(s, 1);
@@ -1859,13 +1864,11 @@ std::vector<RecordListing> RecordStore::list_records(
 
 std::pair<int64_t, int64_t> RecordStore::counts() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt songs = prepare(db_, "SELECT COUNT(*) FROM songmeta");
-    sqlite3_step(songs);
-    int64_t nsongs = sqlite3_column_int64(songs, 0);
+    Stmt songs = prepare_read(db_, "SELECT COUNT(*) FROM songmeta");
+    const int64_t nsongs = step_row(songs) ? sqlite3_column_int64(songs, 0) : 0;
 
-    Stmt records = prepare(db_, "SELECT COUNT(*) FROM results");
-    sqlite3_step(records);
-    int64_t nrecords = sqlite3_column_int64(records, 0);
+    Stmt records = prepare_read(db_, "SELECT COUNT(*) FROM results");
+    const int64_t nrecords = step_row(records) ? sqlite3_column_int64(records, 0) : 0;
 
     return {nsongs, nrecords};
 }
@@ -1882,7 +1885,7 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
     exec("BEGIN");
     try {
         exec("DELETE FROM charts");
-        Stmt s = prepare(db_,
+        Stmt s = prepare_write(db_,
             "INSERT INTO charts (md5, name, artist, charter, path, folder, sig)"
             " VALUES (?,?,?,?,?,?,?)");
         for (const ChartLibraryEntry& item : items) {
@@ -1894,10 +1897,7 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
             bind_text(s, 5, item.notespath);
             bind_text(s, 6, item.rootfolder);
             bind_text(s, 7, item.sig);
-            if (sqlite3_step(s) != SQLITE_DONE)
-                throw KindedError(ErrorKind::DatabaseWrite,
-                                  std::string("rebuild_chart_library failed: ") +
-                                      sqlite3_errmsg(db_));
+            step_done(s, "rebuild_chart_library");
         }
         // Song names follow song.ini (user decision 2026-09-26): a chart that
         // already has a song row takes the names this scan read. When the
@@ -1926,8 +1926,8 @@ ChartLibraryCache RecordStore::chart_library_cache() {
     const std::optional<std::string> stamp = meta_get(kChartMetaKey);
     if (!stamp || !kChartMetaStamp.is_current(std::atoi(stamp->c_str()))) return cache;
 
-    Stmt s = prepare(db_, "SELECT path, sig, md5, name, artist, charter FROM charts");
-    while (sqlite3_step(s) == SQLITE_ROW) {
+    Stmt s = prepare_read(db_, "SELECT path, sig, md5, name, artist, charter FROM charts");
+    while (step_row(s)) {
         std::string sig = column_text(s, 1);
         if (sig.empty()) continue;
         cache[column_text(s, 0)] = {std::move(sig), column_text(s, 2), column_text(s, 3),
@@ -1939,22 +1939,22 @@ ChartLibraryCache RecordStore::chart_library_cache() {
 int64_t RecordStore::chart_library_count() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-    Stmt s = prepare(db_, "SELECT COUNT(*) FROM charts");
-    if (sqlite3_step(s) != SQLITE_ROW) return 0;
+    Stmt s = prepare_read(db_, "SELECT COUNT(*) FROM charts");
+    if (!step_row(s)) return 0;
     return sqlite3_column_int64(s, 0);
 }
 
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-    Stmt s = prepare(db_,
-                     "SELECT md5, name, artist, charter, path, folder, sig FROM charts"
-                     " ORDER BY name LIMIT ? OFFSET ?");
+    Stmt s = prepare_read(db_,
+                          "SELECT md5, name, artist, charter, path, folder, sig FROM charts"
+                          " ORDER BY name LIMIT ? OFFSET ?");
     sqlite3_bind_int(s, 1, limit);
     sqlite3_bind_int(s, 2, offset);
 
     std::vector<ChartLibraryEntry> out;
-    while (sqlite3_step(s) == SQLITE_ROW) {
+    while (step_row(s)) {
         ChartLibraryEntry e;
         e.md5 = column_text(s, 0);
         e.title = column_text(s, 1);
