@@ -2002,6 +2002,23 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/analysis.cpp", "std::string sig_of(const DirEntry& notes, const DirEntry* ini) {",
            "sig_of, the string format pending_chart_of uses"},
           {"src/app/analysis.cpp", "pc.sig = sig_of(chart, ini);", "pending_chart_of, the owner"}}},
+        // Moving between chart time and audio time with the offset written
+        // out, either way, instead of calling the sync rule's two owners.
+        {"How does chart time become audio time, and back?",
+         "audio_ms_of_chart_ms and chart_ms_of_audio_ms in src/ui/preview_transport.h",
+         R"(\w*chart_ms\s*[+-]\s*audio_offset_ms|\bms\s*[+-]\s*audio_offset_ms_|-\s*audio_offset_ms\b)",
+         "",
+         {},
+         {},
+         "derive-once review of M7-2c, finding 2 (phase 7 task PV join)",
+         {"playhead_->seek_ms(ms + audio_offset_ms_);", "return chart_ms + audio_offset_ms;",
+          "return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;"},
+         {"playhead_->seek_ms(audio_ms_of_chart_ms(ms, audio_offset_ms_));",
+          "front_pad = audio::frames_of_ms(-offset_ms, kOutRate);"},
+         {{"src/ui/preview_transport.h", "return chart_ms + audio_offset_ms;",
+           "audio_ms_of_chart_ms, the owner"},
+          {"src/ui/preview_transport.h", "return audio_ms - audio_offset_ms;",
+           "chart_ms_of_audio_ms, the owner"}}},
     };
     return r;
 }

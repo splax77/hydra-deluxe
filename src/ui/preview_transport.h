@@ -28,23 +28,28 @@
 
 namespace hydra::ui {
 
-// Where `audio` stops in chart time: its length in ms minus `audio_offset_ms`
-// (audio_ms = chart_ms + audio_offset_ms). Empty when there is no audio. The
-// one rule for the audio's end: the load job asks it of the mix it opened
-// (where the beat lines stop) and PreviewTransport::load asks it of the
-// playhead it is handed. `audio` is anything with channels(), sample_rate()
-// and length_frames(): an audio::MixSource or an audio::Playhead.
-// The chart sync rule, chart time to audio time: audio_ms = chart_ms +
-// audio_offset_ms. audio_end_chart_ms below runs it backwards.
+// The chart sync rule, chart time to audio time. chart_ms_of_audio_ms is
+// the same rule run backwards.
 inline double audio_ms_of_chart_ms(double chart_ms, double audio_offset_ms) {
     return chart_ms + audio_offset_ms;
 }
 
+inline double chart_ms_of_audio_ms(double audio_ms, double audio_offset_ms) {
+    return audio_ms - audio_offset_ms;
+}
+
+// Where `audio` stops in chart time: its length in ms, through
+// chart_ms_of_audio_ms. Empty when there is no audio. The
+// one rule for the audio's end: the load job asks it of the mix it opened
+// (where the beat lines stop) and PreviewTransport::load asks it of the
+// playhead it is handed. `audio` is anything with channels(), sample_rate()
+// and length_frames(): an audio::MixSource or an audio::Playhead.
 template <class Audio>
 std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {
     if (audio.channels() <= 0 || audio.sample_rate() <= 0 || audio.length_frames() <= 0)
         return std::nullopt;
-    return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;
+    return chart_ms_of_audio_ms(audio::ms_of_frames(audio.length_frames(), audio.sample_rate()),
+                                audio_offset_ms);
 }
 
 class PreviewTransport {
