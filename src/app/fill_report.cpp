@@ -73,10 +73,10 @@ const char* const kPageJs = R"page(const STATUS_CLASS = {'1.1 higher':'s-newhigh
                       'same':'s-same', 'only 1.0':'s-only', 'only 1.1':'s-only',
                       'in both':'s-only'};
 
-// A chart in both databases with a score on one side reads "no score" on the
-// other; any other missing score reads as a dash.
+// A chart in both databases whose record on one side kept no path reads "no
+// paths" on that side (D51 call 11); any other missing score reads as a dash.
 function scoreText(r, s) {
-  return s === null && r.status === 'in both' ? 'no score' : fmt(s);
+  return s === null && r.status === 'in both' ? 'no paths' : fmt(s);
 }
 
 const PAGE = {
@@ -193,13 +193,16 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         row.artist = display_artist(id->ref_artist);
         row.charter = display_charter(id->ref_charter);
 
+        // Which sides kept a scored best path: the store's one answer.
+        const bool old_scored = old_rec && old_rec->summary.has_scored_best_path();
+        const bool new_scored = new_rec && new_rec->summary.has_scored_best_path();
         if (old_rec) {
-            row.old_score = old_rec->summary.score;
+            if (old_scored) row.old_score = old_rec->summary.score;
             row.old_path = old_rec->bestpath;
             row.old_acts = old_rec->summary.actcount;
         }
         if (new_rec) {
-            row.new_score = new_rec->summary.score;
+            if (new_scored) row.new_score = new_rec->summary.score;
             row.new_path = new_rec->bestpath;
             row.new_acts = new_rec->summary.actcount;
         }
@@ -207,10 +210,10 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 
         // A chart with a score on both sides compares them. A chart only one
         // database holds a record for is labelled by that database, score or
-        // not. When both hold a record but only one has a score, the chart
-        // is in both, and the page writes "no score" on the empty side
-        // (D50 item 2).
-        if (row.old_score && row.new_score) {
+        // not. When both hold a record but only one kept a path, the chart is
+        // in both (D50 item 2), and the page writes "no paths" on the empty
+        // side (D51 call 11).
+        if (old_scored && new_scored) {
             int64_t delta = *row.new_score - *row.old_score;
             row.delta = delta;
             row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");

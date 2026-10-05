@@ -20,6 +20,7 @@
 #include <atomic>
 #include <chrono>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -171,6 +172,9 @@ TEST_CASE("build_dm_html substitutes every placeholder") {
     CHECK(html.find(subtitle) != std::string::npos);
     CHECK(html.find(footer) != std::string::npos);
     CHECK(html.find("Board Title") != std::string::npos);
+    // The help texts name Clone Hero's cap from kCloneHeroSpCap (finding 170).
+    CHECK(html.find("__SP_CAP__") == std::string::npos);
+    CHECK(html.find("at SP cap " + std::to_string(kCloneHeroSpCap)) != std::string::npos);
 }
 
 TEST_CASE("build_dm_html colours the delta from the status") {
@@ -580,4 +584,78 @@ TEST_CASE("collect_dm_rows tells not analyzed from not in library") {
     CHECK(stats.above_optimal == 0);
     CHECK(stats.not_analyzed == 1);
     CHECK(stats.not_in_library == 1);
+}
+
+TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\" (D51 call 11)") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+
+    // A second chart the last scan found, analyzed at Clone Hero's cap, whose
+    // analysis kept no path: a Ready record with no score.
+    constexpr const char* kEmpty = "abcdef00112233445566778899aabbcc";
+    store.add_song(kEmpty, "Empty Title", "Stored Artist", "Stored Charter",
+                   test::beat_song({}, {}, 13440));
+    test::store_batch_result(store,
+                             store::RecordKey{kEmpty, kMode, store::CapQuery::at(kCloneHeroSpCap)});
+    store::ChartLibraryEntry analyzed;
+    analyzed.md5 = kHash;
+    analyzed.title = "Stored Title";
+    store::ChartLibraryEntry empty;
+    empty.md5 = kEmpty;
+    empty.title = "Empty Title";
+    store.rebuild_chart_library({analyzed, empty});
+
+    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store, {make_score(kHash, optimal - 1000), make_score(kEmpty, 5000)}, kMode,
+        store::Lens{});
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].status == "under optimal");
+    CHECK(rows[1].status == "no paths");
+    CHECK_FALSE(rows[1].optimal.has_value());
+
+    const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
+    CHECK(stats.no_paths == 1);
+    CHECK(stats.not_analyzed == 0);
+    const std::string phrase = app::dm_report::counts_phrase(stats);
+    const std::string clause = ", 1 with no paths";
+    REQUIRE(phrase.size() > clause.size());
+    CHECK(phrase.substr(phrase.size() - clause.size()) == clause);
+
+    // With no such row, the phrase has no clause (D62 item 1).
+    CHECK(app::dm_report::counts_phrase(app::dm_report::tally_dm_rows({rows[0]})).find(
+              "with no paths") == std::string::npos);
+
+    // The page offers the status in its filter, with the not-analyzed colour.
+    const std::string html = app::dm_report::build_dm_html(rows, "sub", "foot");
+    CHECK(html.find("<option value=\"no paths\">No paths (analyzed, none kept)</option>") !=
+          std::string::npos);
+    CHECK(html.find("'no paths':'s-notanalyzed'") != std::string::npos);
+    CHECK(html.find("No paths: analyzed, but the analysis kept no path.") != std::string::npos);
+}
+
+TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
+    using app::dm_report::why_not_comparable;
+    const std::string expert = "Needs Expert: the leaderboard only has Expert scores.";
+    const std::string cap =
+        "Needs SP cap 4, Clone Hero's rule: the leaderboard's scores were played under it.";
+    const std::string fills =
+        "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
+        "current Clone Hero.";
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false) == "");
+    CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false) == expert);
+    CHECK(why_not_comparable(Difficulty::Expert, 8, false) == cap);
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true) == fills);
+    // The first rule that fails names the reason.
+    CHECK(why_not_comparable(Difficulty::Easy, 8, true) == expert);
+    CHECK(why_not_comparable(Difficulty::Expert, 8, true) == cap);
+
+    // The join refuses a 1.0-fills lens with the same sentence.
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store) > 0);
+    store::Lens legacy;
+    legacy.legacy_fills = 1;
+    CHECK_THROWS_WITH_AS(
+        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, kMode, legacy),
+        fills.c_str(), std::invalid_argument);
 }

@@ -34,8 +34,11 @@ std::optional<std::filesystem::path> known_documents_dir() {
     return out;
 }
 
-// Every report page lives in reports_dir().
-std::wstring html_artifact_path(const wchar_t* name) { return (reports_dir() / name).wstring(); }
+// Every report page lives in reports_dir(). `name` is one of report_files.h's
+// UTF-8 page names, converted here once.
+std::wstring html_artifact_path(const char* name) {
+    return (reports_dir() / std::filesystem::u8path(name)).wstring();
+}
 
 DocumentsDirFn g_documents_dir;
 OpenInBrowserFn g_open_in_browser;
@@ -122,9 +125,9 @@ bool open_in_browser(const std::wstring& path) {
     return !copy.empty() && shell_open(copy.wstring());
 }
 
-std::wstring report_html_path() { return html_artifact_path(L"hydra_paths.html"); }
+std::wstring report_html_path() { return html_artifact_path(kPathReportFileName); }
 
-std::wstring dm_report_html_path() { return html_artifact_path(L"hydra_dmcompare.html"); }
+std::wstring dm_report_html_path() { return html_artifact_path(kDmReportFileName); }
 
 bool open_report_in_browser() { return open_in_browser(report_html_path()); }
 
