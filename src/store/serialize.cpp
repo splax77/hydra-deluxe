@@ -2,6 +2,8 @@
 
 #include <cstring>
 
+#include "core/little_endian.h"
+
 namespace hydra::store {
 
 // ---- BinaryWriter / BinaryReader ------------------------------------------
@@ -47,14 +49,14 @@ uint8_t BinaryReader::u8() {
 }
 uint32_t BinaryReader::u32() {
     need(4);
-    uint32_t v = 0;
-    for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(bytes_[pos_++]) << (8 * i);
+    const uint32_t v = core::read_le_u32(&bytes_[pos_]);
+    pos_ += 4;
     return v;
 }
 uint64_t BinaryReader::u64() {
     need(8);
-    uint64_t v = 0;
-    for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(bytes_[pos_++]) << (8 * i);
+    const uint64_t v = core::read_le_u64(&bytes_[pos_]);
+    pos_ += 8;
     return v;
 }
 double BinaryReader::f64() {

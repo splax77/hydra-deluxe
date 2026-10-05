@@ -17,6 +17,7 @@
 
 #include "app/analysis.h"
 #include "core/audio_sniff.h"
+#include "core/little_endian.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "parse/chart_files.h"
@@ -38,13 +39,6 @@ std::string stem_of(const std::string& filename) {
     std::string b = base_name(filename);
     size_t dot = b.find_last_of('.');
     return dot == std::string::npos ? b : b.substr(0, dot);
-}
-
-uint64_t read_u64(const std::vector<uint8_t>& buf, size_t pos) {
-    uint64_t v = 0;
-    for (int i = 0; i < 8; ++i)
-        v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);
-    return v;
 }
 
 // AES-128-CFB decryption for SRB audio blobs.  CFB decryption is: for each
@@ -263,7 +257,7 @@ std::vector<PreviewAudioStem> srb_audio_from(const std::vector<uint8_t>& buf,
         if (cursor + 24 > buf.size()) break;
 
         const uint8_t* header = buf.data() + cursor;
-        uint64_t blob_size = read_u64(buf, cursor + 16);
+        uint64_t blob_size = core::read_le_u64(buf.data() + cursor + 16);
         cursor += 24;
 
         if (blob_size > buf.size() - cursor) break;

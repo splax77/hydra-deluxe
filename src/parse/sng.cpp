@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdint>
 
+#include "core/little_endian.h"
+
 namespace hydra {
 
 namespace {
@@ -14,18 +16,6 @@ bool fits(uint64_t size, uint64_t pos, uint64_t n) {
 }
 bool fits(const std::vector<uint8_t>& buf, size_t pos, uint64_t n) {
     return fits(buf.size(), pos, n);
-}
-
-uint64_t u64_at(const std::vector<uint8_t>& buf, size_t pos) {
-    uint64_t v = 0;
-    for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);
-    return v;
-}
-
-uint32_t u32_at(const std::vector<uint8_t>& buf, size_t pos) {
-    uint32_t v = 0;
-    for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(buf[pos + i]) << (8 * i);
-    return v;
 }
 
 std::string string_at(const std::vector<uint8_t>& buf, size_t pos, size_t len) {
@@ -43,12 +33,12 @@ uint64_t needs(size_t pos, uint64_t n) {
 // more than buf.size() (what the first piece that did not fit needs).
 uint64_t walk_file_table(const std::vector<uint8_t>& buf, std::vector<SngFileEntry>* out) {
     if (!fits(buf, kSngMetadataLenOffset, 8)) return needs(kSngMetadataLenOffset, 8);
-    const uint64_t metadata_len = u64_at(buf, kSngMetadataLenOffset);
+    const uint64_t metadata_len = core::read_le_u64(buf.data() + kSngMetadataLenOffset);
     if (!fits(buf, kSngMetadataOffset, metadata_len)) return needs(kSngMetadataOffset, metadata_len);
     size_t pos = kSngMetadataOffset + static_cast<size_t>(metadata_len);
     if (!fits(buf, pos, 16)) return needs(pos, 16);
     pos += 8;  // the file section's length; entries carry absolute offsets
-    const uint64_t count = u64_at(buf, pos);
+    const uint64_t count = core::read_le_u64(buf.data() + pos);
     pos += 8;
     for (uint64_t i = 0; i < count; ++i) {
         if (!fits(buf, pos, 1)) return needs(pos, 1);
@@ -58,8 +48,8 @@ uint64_t walk_file_table(const std::vector<uint8_t>& buf, std::vector<SngFileEnt
         if (out) {
             SngFileEntry e;
             e.name = string_at(buf, pos, name_len);
-            e.length = u64_at(buf, pos + name_len);
-            e.offset = u64_at(buf, pos + name_len + 8);
+            e.length = core::read_le_u64(buf.data() + pos + name_len);
+            e.offset = core::read_le_u64(buf.data() + pos + name_len + 8);
             out->push_back(std::move(e));
         }
         pos += name_len + 16;
@@ -87,17 +77,17 @@ std::vector<std::pair<std::string, std::string>> sng_read_metadata(const std::ve
     std::vector<std::pair<std::string, std::string>> out;
     if (!fits(buf, kSngMetadataOffset, 8)) return out;
     size_t pos = kSngMetadataOffset;
-    const uint64_t count = u64_at(buf, pos);
+    const uint64_t count = core::read_le_u64(buf.data() + pos);
     pos += 8;
     for (uint64_t i = 0; i < count; ++i) {
         if (!fits(buf, pos, 4)) break;
-        const uint32_t key_len = u32_at(buf, pos);
+        const uint32_t key_len = core::read_le_u32(buf.data() + pos);
         pos += 4;
         if (!fits(buf, pos, key_len)) break;
         std::string key = string_at(buf, pos, key_len);
         pos += key_len;
         if (!fits(buf, pos, 4)) break;
-        const uint32_t value_len = u32_at(buf, pos);
+        const uint32_t value_len = core::read_le_u32(buf.data() + pos);
         pos += 4;
         if (!fits(buf, pos, value_len)) break;
         std::string value = string_at(buf, pos, value_len);
