@@ -353,14 +353,16 @@ One of the several audio files a chart may ship instead of a single mix (e.g.
 output, unpacking each from its compressed file as it plays (docs/adr/0019).
 
 **Song length**:
-How long the song's audio runs, in chart time: where its mixed stems end once
-the chart's offset is applied. `audio::song_length_ms` works it out, and the
-store keeps one per song (D69). A song with no readable audio has no length,
-and none is worked out from its notes. The Paths timeline measures against the
-length, so a song without one shows no marks there. The Preview's scrubber
-measures against it too when there is one. For a chart with no readable audio
-the scrubber uses the transport's playback range instead (D48, D70 item 1),
-which is not a song length. `scrub_end_ms` owns that choice.
+How long the song runs, in chart time. It is the length the chart's own
+metadata states (a song.ini `song_length`, a .sng `song_length` key or a .srb
+`song_length_ms`), moved from audio time into chart time by the chart's delay
+or Offset. A chart whose metadata states none gets the start of its last
+Expert drum note instead (2x kick included). No audio is opened for it.
+`app::song_length_ms` works it out (D75), and the store keeps one per song. The
+Paths timeline measures against the length, so a song with none shows no marks
+there. The Preview's scrubber measures against it too when there is one. With
+none, the scrubber uses the transport's playback range instead (D48, D70 item
+1), which is not a song length. `scrub_end_ms` owns that choice.
 
 **Mixer**:
 The step that reads a chart's stems at one shared position, resamples them to

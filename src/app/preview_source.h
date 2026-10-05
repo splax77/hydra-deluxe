@@ -107,7 +107,7 @@ PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes
 // or .sng metadata, against `chart_offset_s` (the parsed Song's
 // chart_offset_s), through preview_audio_offset_ms. `container` is
 // read_preview_container's result for the same notespath. resolve_preview_song
-// and the song's length (audio::song_length_ms) both ask here.
+// asks here.
 double chart_audio_offset_ms(const std::string& notespath, const SharedBytes& container,
                              std::optional<double> chart_offset_s);
 
