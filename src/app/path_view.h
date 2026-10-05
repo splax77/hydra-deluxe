@@ -194,8 +194,9 @@ struct PathButtonView {
     std::string timing;
     bool timing_warn = false;  // Path::is_difficult()
     // The line under the title: "2,360 below optimal" on the all-0 path;
-    // on every path of a record analyzed at a 1-bar cap, "A 1-bar cap can
-    // never activate Star Power."; else empty.
+    // on every path of a record whose cap is below kSpActivationBars
+    // (core/timing.h), "A 1-bar cap can never activate Star Power."; else
+    // empty.
     std::string detail;
 };
 
