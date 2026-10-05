@@ -6,6 +6,7 @@
 
 #include "doctest.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -30,15 +31,20 @@ namespace {
 
 const std::string kAssets = HYDRA_ASSET_DIR;
 
-// Onyx's background #1c1d2b.
-bool is_background(const uint8_t* p) {
-    return std::abs(p[0] - 0x1c) <= 2 && std::abs(p[1] - 0x1d) <= 2 && std::abs(p[2] - 0x2b) <= 2;
+// Is the pixel the renderer's background colour (view.background in the
+// shipped 3d-config.json), each channel within 2 of it as a byte.
+bool is_background(const PreviewConfig& cfg, const uint8_t* p) {
+    const Color& bg = cfg.view.background;
+    auto within = [](uint8_t got, float want) {
+        return std::abs(got - static_cast<int>(std::lround(want * 255.0f))) <= 2;
+    };
+    return within(p[0], bg.r) && within(p[1], bg.g) && within(p[2], bg.b);
 }
 
-int count_non_background(const std::vector<uint8_t>& img) {
+int count_non_background(const PreviewConfig& cfg, const std::vector<uint8_t>& img) {
     int n = 0;
     for (size_t i = 0; i < img.size(); i += 4)
-        if (!is_background(&img[i])) ++n;
+        if (!is_background(cfg, &img[i])) ++n;
     return n;
 }
 
@@ -74,22 +80,22 @@ TEST_CASE("PreviewRenderer: bare highway — background outside, lit floor, hori
     for (size_t i = 3; i < img.size(); i += 4) REQUIRE(img[i] == 255);
 
     // Top corners: past the horizon fade, pure background.
-    CHECK(is_background(warp::pixel(img, W, 1, 1)));
-    CHECK(is_background(warp::pixel(img, W, W - 2, 1)));
+    CHECK(is_background(r.config(), warp::pixel(img, W, 1, 1)));
+    CHECK(is_background(r.config(), warp::pixel(img, W, W - 2, 1)));
     // The whole top 16% of the track is faded to background (fade ends at
     // 83.16% from the bottom).
     for (int y = 0; y < H * 16 / 100; ++y)
-        CHECK(is_background(warp::pixel(img, W, W / 2, y)));
+        CHECK(is_background(r.config(), warp::pixel(img, W, W / 2, y)));
 
     // Just above the strike line, bottom centre: the lit grey floor.
     const uint8_t* floor = warp::pixel(img, W, W / 2, H - 8);
-    CHECK_FALSE(is_background(floor));
+    CHECK_FALSE(is_background(r.config(), floor));
     CHECK(floor[0] > 0x20);
     CHECK(std::abs(floor[0] - floor[1]) < 12);  // grey, not tinted
     CHECK(std::abs(floor[1] - floor[2]) < 12);
 
     // A fair amount of the frame is highway.
-    CHECK(count_non_background(img) > W * H / 4);
+    CHECK(count_non_background(r.config(), img) > W * H / 4);
 }
 
 TEST_CASE("PreviewRenderer: a gem at the strike line adds drawn pixels (WARP)") {
@@ -239,8 +245,9 @@ TEST_CASE("PreviewRenderer: resize and a tall target keep the track at the botto
     r.render(0.0);
     std::vector<uint8_t> img = warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), 100, 300);
     CHECK(img.size() == static_cast<size_t>(100) * 300 * 4);
-    for (int y = 0; y < 300 - track_h - 2; y += 10) CHECK(is_background(warp::pixel(img, 100, 50, y)));
-    CHECK_FALSE(is_background(warp::pixel(img, 100, 50, 292)));
+    for (int y = 0; y < 300 - track_h - 2; y += 10)
+        CHECK(is_background(r.config(), warp::pixel(img, 100, 50, y)));
+    CHECK_FALSE(is_background(r.config(), warp::pixel(img, 100, 50, 292)));
 }
 
 TEST_CASE("PreviewRenderer: a missing asset dir is a clear error") {

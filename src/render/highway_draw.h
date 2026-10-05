@@ -79,13 +79,27 @@ struct HighwayCamera {
 // right-handed. `aspect` is the track rectangle's width / height.
 HighwayCamera make_camera(const PreviewConfig& cfg, float aspect);
 
-// The track rectangle's height in a width x height preview: Onyx lays out one
-// highway min(height, width * height_width_ratio) tall, anchored at the
-// bottom. The renderer sizes its scene target with this and the overlay
-// layout projects through it, so the two cannot disagree. At least 1.
+// Where the track rectangle sits in a width x height preview, and at what
+// size. Onyx lays out one highway min(height, width * height_width_ratio)
+// tall, anchored at the bottom. The renderer sizes its scene target and its
+// camera with this and the overlay layout projects through it, so the two
+// cannot disagree. A size below 1 counts as 1.
+struct TrackRect {
+    int width = 1, height = 1;  // the image, each at least 1
+    int track_height = 1;       // the track rectangle's height, at least 1
+    int top = 0;                // its top row: it hugs the image's bottom edge
+    float aspect = 1.0f;        // the camera's aspect: width / track_height
+};
+TrackRect track_rect(const PreviewConfig& cfg, int width, int height);
+
+// track_rect's track height alone.
 int track_height(const PreviewConfig& cfg, int width, int height);
 
-// Onyx timeToZ: z_now at `now`, z_future at now + secs_future * speed, linear.
+// Onyx's far end of the highway: the time at z_future, now + secs_future *
+// speed.
+double far_time(const PreviewConfig& cfg, double now_s, double speed);
+
+// Onyx timeToZ: z_now at `now`, z_future at far_time, linear.
 double time_to_z(const PreviewConfig& cfg, double now_s, double t_s, double speed);
 // Its inverse: the time at a depth (used for the window's near edge).
 double z_to_time(const PreviewConfig& cfg, double now_s, double z, double speed);
