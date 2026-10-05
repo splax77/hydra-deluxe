@@ -629,10 +629,17 @@ constexpr int lowest_marker_pitch() {
 }
 // The note-off gate drops a note-off on any pitch that is not a marker. That
 // matches the gate it replaced (a note-off below the solo marker is dropped)
-// only while no marker sits below the solo marker; every pad and 2x kick
-// pitch in kDifficultyChartCodes is below it.
+// only while every non-marker pitch is below the solo marker.
 static_assert(lowest_marker_pitch() == kSoloMarkerPitch,
               "a marker below the solo marker would change the note-off gate");
+constexpr int highest_pad_pitch() {
+    int highest = 0;
+    for (const auto& d : kDifficultyChartCodes)
+        if (d.kick_pitch + 4 > highest) highest = d.kick_pitch + 4;
+    return highest;
+}
+static_assert(highest_pad_pitch() < kSoloMarkerPitch,
+              "a pad pitch at or above the solo marker would change the note-off gate");
 
 }  // namespace
 

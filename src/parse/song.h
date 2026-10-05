@@ -162,8 +162,8 @@ struct SongSection {
     std::string name;
 };
 
-// One solo section: the first and last positions (both inclusive) in
-// Song::sequence of one unbroken run of solo-flagged timestamps.
+// One solo section: first and last positions (both inclusive) into
+// Song::sequence. What makes a section: find_solo_sections in song.cpp.
 struct SoloSection {
     size_t first = 0;
     size_t last = 0;
@@ -235,10 +235,9 @@ public:
     // note, so these ticks are not bounded by the sequence.
     std::vector<SongSection> practice_sections;
 
-    // The solo sections in song order, one per run of solo-flagged timestamps
-    // in `sequence`. Both parsers fill it once the sequence is finished, so
-    // the .chart and .mid edges agree. Display and replay only; nothing
-    // stores it.
+    // Solo sections in song order. Both parsers fill it once the sequence is
+    // finished; see find_solo_sections in song.cpp. Display and replay only;
+    // nothing stores it.
     std::vector<SoloSection> solo_sections;
 
     // Snapshot the timing indexes from the current maps. Called once the tempo
