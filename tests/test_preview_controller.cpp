@@ -608,7 +608,7 @@ TEST_CASE("busy covers the overlay and base jobs, not only the first load") {
     CHECK(pc.overlay_path_key().rfind(best_key, 0) == 0);
 }
 
-// The Preview's volume is the setting's: its default and its 0..100 range
+// The Preview's volume is the setting's: its default and its range
 // come from app::Settings, the owner (finding 72).
 TEST_CASE("the Preview volume is the settings owner's: default and clamp") {
     PreviewController pc(nullptr, nullptr);
