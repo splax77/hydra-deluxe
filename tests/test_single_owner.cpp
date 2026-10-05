@@ -2985,12 +2985,8 @@ const std::vector<OwnerRule>& rules() {
           "const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);"},
          {},
          {"src"}},
-        // Only the value_or fallback is regexable. The bare dereferences of
-        // the optional read the same fact: squeeze_rating.cpp's
-        // `*row.row.offset_ms` and `*bsq.offset_ms` (main session to assign;
-        // no J3 task owns that file). path_codec.cpp's compare
-        // asks whether the offset is set before reading it, the codec's own
-        // job, so it stays.
+        // The value_or fallback. A bare dereference of the optional reads the
+        // same fact; the J3-9 row at the end of rules() scans for those.
         {"What is a backend row's offset?",
          "BackendSqueeze::offset in src/core/model.cpp",
          R"(offset_ms\.value_or\()",
@@ -3274,6 +3270,29 @@ const std::vector<OwnerRule>& rules() {
          {"const double expected = *song_length_ms(song);"},
          {},
          {"tests"}},
+        // ---- the J3 join's leftovers (task J3-9) ----
+        // The J3-1 offset row above catches the value_or fallback; this one
+        // catches a bare dereference of the same optional. The star must
+        // follow an opening, an operator or return, so a product with a local
+        // named offset_ms is not flagged. Tests pin stored offsets and stay
+        // out of scope.
+        {"What is a backend row's offset? (a bare dereference)",
+         "BackendSqueeze::offset in src/core/model.cpp",
+         R"((^|[(,=!&|?:{]|\breturn)\s*\*\s*(\w+(\.|->)|\w+\(\)(\.|->))*offset_ms\b)",
+         "",
+         {},
+         {},
+         "audit finding 346; the J3 join (task J3-9)",
+         {"!core::counted_without_squeeze(*row.row.offset_ms, backend_leeway_ms));",
+          "const double o = *bsq.offset_ms;",
+          "const double stored_ms = *act.sqout_row()->offset_ms;"},
+         {"const double o = bsq.offset();", "*w.sqout_offset_ms);",
+          "const double t = scale * offset_ms;"},
+         {{"src/core/model.cpp", "return *offset_ms;", "BackendSqueeze::offset, the owner"},
+          {"src/store/path_codec.cpp",
+           "if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)",
+           "the codec's round-trip compare, which asks whether the offset is set first"}},
+         {}},
     };
     return r;
 }

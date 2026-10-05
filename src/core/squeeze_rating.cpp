@@ -88,7 +88,7 @@ NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end,
 bool is_frontend_decided(const BackendRating& row, double backend_leeway_ms) {
     return row.squeezed_out ||
            (row.row.offset_ms &&
-            !core::counted_without_squeeze(*row.row.offset_ms, backend_leeway_ms));
+            !core::counted_without_squeeze(row.row.offset(), backend_leeway_ms));
 }
 
 ActivationRating rate_activation(const Activation& act,
@@ -114,7 +114,7 @@ ActivationRating rate_activation(const Activation& act,
         // Unknown scales skip rate_note: the row keeps NoteRating's defaults
         // (x1.00, budget 0, no figure), which are not real values.
         if (bsq.offset_ms && out.scales) {
-            const double o = *bsq.offset_ms;
+            const double o = bsq.offset();
             const bool inside = row.squeezed_out
                                     ? core::paid_by_sp_walk(o)
                                     : core::counted_without_squeeze(o, backend_leeway_ms);
