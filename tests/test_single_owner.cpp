@@ -1516,18 +1516,50 @@ const std::vector<OwnerRule>& rules() {
            R"(return (last == '\\' || last == '/') ? folder + name : folder + "\\" + name;)",
            "join_folder, the owner"}},
          {"src"}},
+        // The same pattern as "Is a value inside the squeeze window?", over
+        // tests/. That row's scope stays src and tools; rows are append-only.
+        // Arithmetic and == on the constant (test_squeeze_rating.cpp) and
+        // storing it (test_docs_match_code.cpp) answer other questions.
+        {"Is a value inside the squeeze window? (tests)",
+         "within_squeeze_window in src/core/model.h",
+         R"([<>]=?\s*(\w+::)*kSqueezeWindowMs|(\w+::)*kSqueezeWindowMs\s*[<>])",
+         "",
+         {},
+         {},
+         "audit finding 283; phase 6 task J1-1 (D53, D54)",
+         {"c.ms - phrase_note->ms < kSqueezeWindowMs)",
+          "if (!long_after && c.ms - last_phrase->ms > kSqueezeWindowMs)",
+          "if (hydra::kSqueezeWindowMs > gap) continue;"},
+         {"CHECK(kSqueezeWindowMs == 500.0);",
+          "const double offsets[] = {0.0, 180.0, -300.0, kSqueezeWindowMs - 1.0,",
+          "out[\"kSqueezeWindowMs\"] = {false, hydra::kSqueezeWindowMs};",
+          "-static_cast<int>(hydra::kSqueezeWindowMs));",
+          "if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))"},
+         {},
+         {"tests"}},
+        // A hand-built phrase end sets the flag and the phrase start together,
+        // as the parser's close_sp_phrase does, through one fixture helper.
+        // Reads and comparisons of the flag are not assignments.
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "mark_phrase_end in tests/record_fixtures.h",
+         R"(\bflag_sp\s*=(?!=))",
+         "",
+         {},
+         {},
+         "audit finding 300; phase 6 task J1-1 (D53, D54)",
+         {"ts.flag_sp = tick == 3256;", "ts.flag_sp = phrase;", "ts.flag_sp = true;"},
+         {"if (!ts.flag_sp) continue;",
+          "if (x.flag_solo != y.flag_solo || x.flag_sp != y.flag_sp) return false;",
+          "CHECK(song.sequence[0].flag_sp == true);",
+          "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
+         {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
+         {"tests"}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        {"Is this phrase chord after the SP end?", "src/core/replay.cpp",
-         "const bool past_deact = row.tick > w.deact_tick;",
-         "the replay's past_deact (audit findings 1 and 32, another step)"},
-        {"Is this phrase chord after the SP end?", "src/core/replay.cpp",
-         "} else if (tick > w.deact_tick) {",
-         "the replay's past_deact (audit findings 1 and 32, another step)"},
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
@@ -1631,6 +1663,18 @@ const std::vector<KnownCopy>& known_copies() {
         {"How are a folder and a file name joined?", "src/app/preview_source.cpp",
          R"(s.path = folder + "\\" + e.name;)",
          "task J2-5 (the Preview calls the join owner; review of M6-J1a finding 1)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = n.phrase;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"What fields does a phrase-end note carry in a hand-built Song?",
+         "tests/test_preview_view.cpp", "ts.flag_sp = true;",
+         "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
     };
     return k;
 }
