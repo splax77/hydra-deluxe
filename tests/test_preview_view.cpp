@@ -1213,6 +1213,23 @@ TEST_CASE("sp meter curve: the bank stops at the cap") {
     CHECK(sp_meter_bars_at(capped.sp_meter, 8000.0) == doctest::Approx(2.0));
 }
 
+// The smallest cap is typed once, in the settings key table; both meters
+// floor through Settings::clamp (finding 139). A cap of 0 reads as the
+// owner's floor with a path and without one.
+TEST_CASE("sp meter curve: the cap floor is the settings owner's") {
+    const int floor_cap = Settings::clamp(&Settings::sp_cap, 0);
+    CHECK(floor_cap == 1);
+    Song song = make_sp_song({960, 1920, 5760}, /*last_tick=*/9600);
+
+    const PreviewScene unanalyzed = build_preview_scene(song, nullptr, /*sp_cap=*/0);
+    CHECK(unanalyzed.sp_meter.cap == floor_cap);
+
+    Path path;
+    path.activations = {act_at(song, 3840, /*skipped_fills=*/{})};
+    const PreviewScene with_path = build_preview_scene(song, &path, /*sp_cap=*/0);
+    CHECK(with_path.sp_meter.cap == floor_cap);
+}
+
 TEST_CASE("sp meter curve: without a path the meter fills and never drains") {
     Song song = make_sp_song({960, 1920, 2880, 3840, 4800}, /*last_tick=*/7680);
     PreviewScene scene = build_preview_scene(song, nullptr);
