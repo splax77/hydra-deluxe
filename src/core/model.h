@@ -745,7 +745,7 @@ struct HydraRecord {
     // starts with the default rules' fixed-cap fingerprint, computed once
     // (core::default_stamp), not once per record decoded; analyze_chart
     // stamps the real one. A row stored in an older structure format is never
-    // decoded: structure_is_current (store/record_store.cpp) reads it Stale
+    // decoded: rank_row (store/record_store.cpp) reads it Stale
     // first, and the codec refuses such a structure if asked.
     uint64_t rules_fingerprint = core::default_stamp().fixed;
     // True when fills spawned by Clone Hero 1.0's deadline, not 1.1's.
