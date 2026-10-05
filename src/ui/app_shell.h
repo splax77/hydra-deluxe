@@ -34,6 +34,11 @@ struct ImGuiSetupOptions {
 void setup_imgui(const ImGuiSetupOptions& options);
 void shutdown_imgui();  // DestroyContext
 
+// The colour each frame is cleared to before ImGui draws, as red, green, blue
+// and alpha. Hydra.exe clears its window with it and the GUI test runner its
+// offscreen target.
+inline constexpr float kClearColor[4] = {0.10f, 0.11f, 0.13f, 1.00f};
+
 // ---- The main window's placement, kept in hydra_ui.ini ----------------
 
 // A rectangle in virtual-screen pixels, the units of GetWindowRect and of a
@@ -100,6 +105,10 @@ struct Layout {
 // (0, 1) and hidden values other than 0 and 1.
 std::string format_layout(const Layout& layout);
 void parse_layout_line(std::string_view line, Layout& layout);
+
+// True when `share` is strictly between 0 and 1, so both the library and the
+// song panel keep some width. False for 0, 1 and NaN.
+bool share_is_valid(float share);
 
 // The share setup_imgui read from hydra_ui.ini (kDefaultLibraryShare when
 // there was none), updated by every remember_library_share since.

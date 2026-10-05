@@ -19,6 +19,8 @@
 #include "imgui_internal.h"
 #include "imgui_te_internal.h"
 
+#include "../warp_util.h"  // tests/ is not on the runner's include path
+
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/report_files.h"
@@ -132,6 +134,10 @@ bool Harness::init_attached(ID3D11Device* dev, ID3D11DeviceContext* ctx, IDXGISw
     return true;
 }
 
+bool selects(const std::string& what, const char* test_name) {
+    return what == "all" || what == test_name;
+}
+
 bool Harness::queue(const std::string& what) {
     if (fs::exists(fs::u8path(what)) && !fs::is_directory(fs::u8path(what))) {
         script_path = what;
@@ -145,7 +151,7 @@ bool Harness::queue(const std::string& what) {
     int queued = 0;
     for (ImGuiTest* t : tests) {
         if (std::strcmp(t->Name, "script") == 0) continue;
-        if (what == "all" || what == t->Name) {
+        if (selects(what, t->Name)) {
             ImGuiTestEngine_QueueTest(engine, t, ImGuiTestRunFlags_RunFromCommandLine);
             ++queued;
         }
@@ -171,9 +177,7 @@ int Harness::print_results(FILE* out) {
 }
 
 bool Harness::init() {
-    D3D_FEATURE_LEVEL want = D3D_FEATURE_LEVEL_11_0, got;
-    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &want, 1,
-                                 D3D11_SDK_VERSION, &device, &got, &context))) {
+    if (!warp::make_device(device, context)) {
         std::fprintf(stderr, "hydra_uitest: could not create a WARP D3D11 device\n");
         return false;
     }
@@ -215,10 +219,9 @@ void Harness::frame() {
     ImGui::NewFrame();
     if (app) hydra::ui::run_frame(*app, &frame_text);
     ImGui::Render();
-    const float clear[4] = {0.10f, 0.11f, 0.13f, 1.0f};
     ID3D11RenderTargetView* views[] = {rtv.Get()};
     context->OMSetRenderTargets(1, views, nullptr);
-    context->ClearRenderTargetView(rtv.Get(), clear);
+    context->ClearRenderTargetView(rtv.Get(), hydra::ui::kClearColor);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     ImGuiTestEngine_PostSwap(engine);
 }

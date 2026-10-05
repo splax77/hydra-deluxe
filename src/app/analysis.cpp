@@ -30,21 +30,9 @@ namespace hydra::app {
 
 namespace {
 
-// Folder listings and directory checks come from core/winstr (list_dir,
-// is_directory_utf8), which handle paths of any length.
-
-std::string join_path(const std::string& a, const std::string& b) {
-    if (a.empty()) return b;
-    char last = a.back();
-    return (last == '\\' || last == '/') ? a + b : a + "\\" + b;
-}
-
-std::string parent_of(const std::string& path) {
-    std::string p = path;
-    while (!p.empty() && (p.back() == '\\' || p.back() == '/')) p.pop_back();
-    size_t pos = p.find_last_of("\\/");
-    return pos == std::string::npos ? std::string() : p.substr(0, pos);
-}
+// Folder listings, directory checks and folder-and-name joins come from
+// core/winstr (list_dir, is_directory_utf8, join_folder), which handle paths
+// of any length.
 
 // os.path.relpath(target, base), for the folders this walk already knows are
 // nested under `base` (or equal to it). Falls back to the raw target for any
@@ -160,9 +148,10 @@ std::tuple<std::string, std::string, std::string> read_metadata_ini(const std::s
 // KB. A truncated buffer degrades exactly like a truncated file did: the
 // bounds checks stop early and missing keys stay empty.
 
-// How much of a .sng/.srb to keep for metadata. A .sng block starts at offset
-// 34 and a .srb's deflated block at offset 16; real metadata is a few KB, so
-// 1 MB is far beyond any legitimate block.
+// How much of a .sng/.srb to keep for metadata. A .sng block starts at
+// kSngMetadataOffset and a .srb's deflated block at kSrbHeaderSize, both a few
+// dozen bytes in; real metadata is a few KB, so 1 MB is far beyond any
+// legitimate block.
 constexpr size_t kSngHeadCapture = 1 << 20;
 
 std::tuple<std::string, std::string, std::string> parse_sng_metadata(
@@ -186,10 +175,9 @@ std::tuple<std::string, std::string, std::string> parse_sng_metadata(
 // ---- .srb metadata --------------------------------------------------------
 //
 // Clone Hero's bundled songs (see parse/srb.h for the reverse-engineered
-// container layout). The metadata block is a deflate stream starting right
-// after the 16-byte header, so the head bytes captured while hashing always
-// contain it. Any parse failure leaves the fields empty, matching the .sng
-// path.
+// container layout). srb_read_metadata reads the metadata block, which the
+// head bytes captured while hashing always contain (kSngHeadCapture). Any
+// parse failure leaves the fields empty, matching the .sng path.
 
 std::tuple<std::string, std::string, std::string> parse_srb_metadata(
     const std::vector<uint8_t>& buf) {
@@ -200,10 +188,10 @@ std::tuple<std::string, std::string, std::string> parse_srb_metadata(
     std::string charter;
 
     try {
-        std::vector<uint8_t> meta = srb_inflate_stream(
-            buf.data(), buf.size(), kSrbHeaderSize, kSrbMaxMetadata, nullptr);
-        SrbMetadata md;
-        if (srb_parse_metadata(meta, md)) {
+        const ByteSource head = memory_byte_source(buf);
+        const SrbMetadataRead read = srb_read_metadata(head);
+        if (read.parsed) {
+            const SrbMetadata& md = read.fields;
             if (!md.name.empty()) title = md.name;
             artist = md.artist;
             charter = md.charter;
@@ -303,6 +291,20 @@ std::string hash_chart_file(const std::string& path) {
     }
 }
 
+std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }
+
+store::ChartLibraryEntry to_library_entry(const ScanItem& item) {
+    store::ChartLibraryEntry e;
+    e.md5 = item.md5;
+    e.title = item.title;
+    e.artist = item.artist;
+    e.charter = item.charter;
+    e.notespath = item.notespath;
+    e.rootfolder = item.rootfolder;
+    e.sig = item.sig;
+    return e;
+}
+
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
     const store::ChartLibraryCache* cache) {
@@ -326,28 +328,34 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
         try {
             std::vector<DirEntry> entries = list_dir(dir);
 
-            const DirEntry* found_mid = nullptr;
-            const DirEntry* found_chart = nullptr;
-            const DirEntry* found_ini = nullptr;
+            // The folder's files, by name and entry in the same order, so the
+            // notes-file pick's index leads back to the entry (its size and
+            // mtime go into the signature).
+            std::vector<std::string> file_names;
+            std::vector<const DirEntry*> files;
             std::vector<std::pair<const DirEntry*, ChartKind>> found_archives;
             std::vector<const DirEntry*> subdirs;
             for (const DirEntry& e : entries) {
-                if (e.is_dir) subdirs.push_back(&e);
-                else if (notes_file_format(e.name) == ChartFormat::Mid) found_mid = &e;
-                else if (notes_file_format(e.name) == ChartFormat::Chart) found_chart = &e;
-                else if (is_song_ini(e.name)) found_ini = &e;
-                else if (chart_format_of(e.name) == ChartFormat::Sng)
+                if (e.is_dir) {
+                    subdirs.push_back(&e);
+                    continue;
+                }
+                file_names.push_back(e.name);
+                files.push_back(&e);
+                if (chart_format_of(e.name) == ChartFormat::Sng)
                     found_archives.push_back({&e, ChartKind::Sng});
                 else if (chart_format_of(e.name) == ChartFormat::Srb)
                     found_archives.push_back({&e, ChartKind::Srb});
             }
 
-            std::string rootfolder = relpath(parent_of(dir), origin);
-            const DirEntry* notes = found_mid ? found_mid : found_chart;
+            std::string rootfolder = relpath(parent_folder(dir), origin);
+            const std::optional<NotesFilePick> pick = pick_notes_file(file_names);
+            const DirEntry* notes = pick ? files[pick->index] : nullptr;
+            const DirEntry* found_ini = find_song_ini(entries);
             if (notes && found_ini) {
                 PendingChart pc;
-                pc.notes_path = join_path(dir, notes->name);
-                pc.ini_path = join_path(dir, found_ini->name);
+                pc.notes_path = join_folder(dir, notes->name);
+                pc.ini_path = join_folder(dir, found_ini->name);
                 pc.rootfolder = rootfolder;
                 pc.sig = sig_of(*notes, found_ini);
                 pending.push_back(std::move(pc));
@@ -355,14 +363,14 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
             for (auto [archive, kind] : found_archives) {
                 PendingChart pc;
                 pc.kind = kind;
-                pc.notes_path = join_path(dir, archive->name);
+                pc.notes_path = join_folder(dir, archive->name);
                 pc.rootfolder = rootfolder;
                 pc.sig = sig_of(*archive, nullptr);
                 pending.push_back(std::move(pc));
             }
 
             for (const DirEntry* sub : subdirs) {
-                std::string subpath = join_path(dir, sub->name);
+                std::string subpath = join_folder(dir, sub->name);
                 if (visited.insert(subpath).second) {
                     if (callbacks.on_folders)
                         callbacks.on_folders(static_cast<int>(visited.size()));
@@ -399,9 +407,17 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                     if (cache) {
                         auto it = cache->find(pc.notes_path);
                         if (it != cache->end() && it->second.sig == pc.sig) {
-                            results[i] = ScanItem{it->second.md5, it->second.title,
-                                                  it->second.artist, it->second.charter,
-                                                  pc.notes_path, pc.rootfolder, pc.sig};
+                            // Field by field, like to_library_entry: seven
+                            // strings in a positional list could swap unseen.
+                            ScanItem item;
+                            item.md5 = it->second.md5;
+                            item.title = it->second.title;
+                            item.artist = it->second.artist;
+                            item.charter = it->second.charter;
+                            item.notespath = pc.notes_path;
+                            item.rootfolder = pc.rootfolder;
+                            item.sig = pc.sig;
+                            results[i] = std::move(item);
                             note.cached = true;
                         }
                     }

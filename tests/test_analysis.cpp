@@ -31,6 +31,7 @@
 #include "corpus_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
+#include "sng_util.h"
 #include "store/record_store.h"
 
 #ifndef HYDRA_TESTDATA_DIR
@@ -116,9 +117,7 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
 
     hydra::store::RecordStore store(":memory:");
     std::vector<hydra::store::ChartLibraryEntry> entries;
-    for (const ScanItem& it : items)
-        entries.push_back({it.md5, it.title, it.artist, it.charter, it.notespath,
-                           it.rootfolder, it.sig});
+    for (const ScanItem& it : items) entries.push_back(to_library_entry(it));
     store.rebuild_chart_library(entries);
 
     hydra::store::ChartLibraryCache cache = store.chart_library_cache();
@@ -229,6 +228,53 @@ TEST_CASE("run_work_pool: a cancel mid-run never strands the consumer") {
     CHECK(outcome.get());
 }
 
+// R7.22: batch_worker_count owns the floor of 1. The pool checks the count it
+// is given instead of quietly raising it: with no workers nothing would ever
+// reach the consumer.
+TEST_CASE("run_work_pool refuses a worker count below 1") {
+    int consumed = 0;
+    CHECK_THROWS_AS(run_work_pool<size_t>(
+                        100, 0, nullptr, [](size_t i) { return i; },
+                        [&](size_t&&) { ++consumed; }),
+                    std::invalid_argument);
+    CHECK(consumed == 0);
+    CHECK(batch_worker_count() >= 1);
+}
+
+// Audit finding 256: the scan row and the library entry hold the same seven
+// strings; the conversion copies each one by name.
+TEST_CASE("to_library_entry copies every ScanItem field by name") {
+    ScanItem item;
+    item.md5 = "the md5";
+    item.title = "the title";
+    item.artist = "the artist";
+    item.charter = "the charter";
+    item.notespath = "the notespath";
+    item.rootfolder = "the rootfolder";
+    item.sig = "the sig";
+
+    const hydra::store::ChartLibraryEntry e = to_library_entry(item);
+    CHECK(e.md5 == "the md5");
+    CHECK(e.title == "the title");
+    CHECK(e.artist == "the artist");
+    CHECK(e.charter == "the charter");
+    CHECK(e.notespath == "the notespath");
+    CHECK(e.rootfolder == "the rootfolder");
+    CHECK(e.sig == "the sig");
+}
+
+// Audit finding 192: one spelling of a chart hash for matching.
+TEST_CASE("normalize_chart_hash lowers a hash and leaves a lowercase one alone") {
+    CHECK(normalize_chart_hash("0123456789ABCDEFabcdef0123456789") ==
+          "0123456789abcdefabcdef0123456789");
+    CHECK(normalize_chart_hash("0123456789abcdefabcdef0123456789") ==
+          "0123456789abcdefabcdef0123456789");
+    // The scan's own hash is already in that spelling.
+    const std::string md5 = hash_chart_file(corpus::first_chart_with_notes());
+    REQUIRE(!md5.empty());
+    CHECK(normalize_chart_hash(md5) == md5);
+}
+
 namespace {
 
 // Items for a fake analyzer: nothing is read from disk.
@@ -333,29 +379,6 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
     CHECK(store.counts().second == 0);
 }
 
-namespace {
-
-void write_sng_with_metadata(
-    const std::filesystem::path& path,
-    const std::vector<std::pair<std::string, std::string>>& metadata) {
-    std::ofstream f(path, std::ios::binary);
-    std::string header = "SNGPKG";
-    header.resize(34, '\0');
-    f.write(header.data(), static_cast<std::streamsize>(header.size()));
-    auto put_le = [&f](uint64_t v, int bytes) {
-        for (int i = 0; i < bytes; ++i) f.put(static_cast<char>((v >> (8 * i)) & 0xFF));
-    };
-    put_le(metadata.size(), 8);
-    for (const auto& [key, value] : metadata) {
-        put_le(key.size(), 4);
-        f.write(key.data(), static_cast<std::streamsize>(key.size()));
-        put_le(value.size(), 4);
-        f.write(value.data(), static_cast<std::streamsize>(value.size()));
-    }
-}
-
-}  // namespace
-
 TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
     namespace fs = std::filesystem;
     const std::string chart = corpus::first_chart_with_suffix(".chart");
@@ -380,8 +403,13 @@ TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
         ini << "[song]\nartist = Someone\n";
     }
     // A .sng whose embedded name is empty.
-    write_sng_with_metadata(root / "blank.sng",
-                            {{"name", ""}, {"artist", "Someone"}, {"charter", "C"}});
+    {
+        const std::vector<uint8_t> sng =
+            testsng::make_sng({{"name", ""}, {"artist", "Someone"}, {"charter", "C"}}, {});
+        std::ofstream f(root / "blank.sng", std::ios::binary);
+        f.write(reinterpret_cast<const char*>(sng.data()),
+                static_cast<std::streamsize>(sng.size()));
+    }
 
     auto [items, errors] = discover_charts({root.u8string()});
     fs::remove_all(root);
@@ -404,9 +432,9 @@ TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
     hydra::store::RecordStore store(":memory:");
     std::vector<hydra::store::ChartLibraryEntry> entries;
     for (size_t i = 0; i < items.size(); ++i) {
-        const ScanItem& it = items[i];
-        entries.push_back({it.md5, i % 2 ? "<unknown title>" : "", it.artist, it.charter,
-                           it.notespath, it.rootfolder, it.sig});
+        hydra::store::ChartLibraryEntry e = to_library_entry(items[i]);
+        e.title = i % 2 ? "<unknown title>" : "";
+        entries.push_back(std::move(e));
     }
     store.rebuild_chart_library(entries);
     hydra::store::ChartLibraryCache cache = store.chart_library_cache();

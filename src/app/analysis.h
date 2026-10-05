@@ -14,6 +14,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core/model.h"
@@ -50,8 +51,10 @@ struct ScanCallbacks {
     const std::atomic<bool>* cancel = nullptr;
 };
 
-// Recursively searches rootfolders for chart-bearing folders: notes.mid (or
-// notes.chart, if no .mid) alongside a song.ini, plus every .sng and .srb file.
+// Recursively searches rootfolders for chart-bearing folders: a notes file
+// (pick_notes_file says which) alongside a song.ini (find_song_ini), plus
+// every .sng and .srb file. A chart's rootfolder is its folder's parent
+// (parent_folder), relative to the root it was found under.
 // Re-encountered folders are skipped.
 //
 // The walk itself is a serial single pass; hashing/metadata reads run on a
@@ -74,6 +77,17 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 // songmeta/charts rows, so a tool can look a chart up in the record store
 // by path alone. Returns an empty string if the file cannot be read.
 std::string hash_chart_file(const std::string& path);
+
+// A chart hash in the one spelling used for matching: its ASCII letters
+// lowered. The scan already writes lowercase hex (see hash_chart_file), so
+// this is for hashes from elsewhere, such as a leaderboard or an older row
+// (audit finding 192).
+std::string normalize_chart_hash(std::string_view hash);
+
+// The library entry a scan row becomes. The two types hold the same seven
+// strings; this copies each by name, so a reordered field cannot slip through
+// a positional copy (audit finding 256).
+store::ChartLibraryEntry to_library_entry(const ScanItem& item);
 
 // The [song] section of a song.ini as lower-cased key -> value, with the
 // value's leading blanks trimmed. A key seen twice keeps its last value.
