@@ -583,7 +583,7 @@ struct WorkResult {
     std::optional<AnalysisResult> analysis;
     // Counted on the worker, so the consumer only writes.
     std::optional<store::DynamicsEntry> dynamics;
-    // The song's audio length, read on the worker; not read without a reader.
+    // The song's length, worked out on the worker (analysis_song_length).
     store::SongLength length;
     // A failed chart, from its analysis or its save: record_failure fills
     // these in from the exception while its type is still known (the
