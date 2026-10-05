@@ -3320,7 +3320,7 @@ const std::vector<OwnerRule>& rules() {
          {},
          {},
          "audit finding 195, folded under D53 (phase 6 tasks J3-6 and J3-9d); widened by review of J3-6 "
-         "finding 1 and by J3-9d",
+         "finding 1 and by J3-9d; tests scanned since the J3 join",
          {"uint64_t read_le(const std::vector<uint8_t>& b, size_t at, int bytes) {",
           "std::vector<uint8_t> write_le(uint64_t v, int bytes) {",
           "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
@@ -3361,7 +3361,7 @@ const std::vector<OwnerRule>& rules() {
           {"src/store/path_codec.cpp",
            "for (int i = 0; i < 8; ++i) out[8 + i] = static_cast<uint8_t>(h2 >> (8 * i));",
            "murmur3_x64_128's output; it writes a hash, not a stored number"}},
-         {"src"}},
+         {"src", "tests"}},
         // A second read of a row's head to say why it is Stale.
         {"Why is a stored row Stale?",
          "rank_row in src/store/record_store.cpp",
@@ -3756,6 +3756,14 @@ const std::vector<KnownCopy>& known_copies() {
          "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
          "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
          "finding 190)"},
+        // The test fixtures' one byte writer also writes 16-bit WAV fields,
+        // and BinaryWriter has no 16-bit method; folding it needs one added
+        // in src/store/serialize.h, outside the J3 join.
+        {"How is a little-endian number written byte by byte? (any width or name)",
+         "tests/bytes_util.h",
+         "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
+         "unassigned: the main session names the fold (put_le writes through BinaryWriter once it "
+         "has a 16-bit method; audit finding 195)"},
     };
     return k;
 }
