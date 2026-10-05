@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <map>
+#include <new>
 #include <stdexcept>
 #include <string_view>
 
@@ -696,6 +697,26 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
                           "failed to open database '" + dbpath + "': " + msg);
     }
 
+    // SQLite notices a locked file, or one that isn't a database, only at
+    // the first statement below. Any throw from here on is still a failed
+    // open (D72 item 2), with the raw text kept. A constructor that throws
+    // never runs the destructor, so the handle is closed here. Running out of
+    // memory keeps its own type, which plain_error answers by.
+    try {
+        set_up_schema();
+    } catch (const std::bad_alloc&) {
+        close();
+        throw;
+    } catch (const std::exception& e) {
+        close();
+        throw KindedError(ErrorKind::DatabaseOpen, e.what());
+    } catch (...) {
+        close();
+        throw;
+    }
+}
+
+void RecordStore::set_up_schema() {
     // WAL journal mode (orchestrator's call, 2026-09-26 audit plan): a commit
     // appends to hydra.db-wal instead of rewriting pages in place, and with
     // synchronous=NORMAL it syncs to disk only at checkpoints, not on every

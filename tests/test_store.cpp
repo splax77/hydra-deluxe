@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <map>
 #include <stdexcept>
 #include <system_error>
@@ -27,6 +28,7 @@
 #include <vector>
 
 #include "app/user_messages.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/squeeze_rating.h"
@@ -1749,6 +1751,53 @@ TEST_CASE("a database write the old matcher missed reads as a database error") {
         }
     }
     std::remove(path.c_str());
+}
+
+// D72 item 2: SQLite notices a file that isn't a database only at its first
+// statement, after sqlite3_open_v2 said yes. It still reads "couldn't open".
+TEST_CASE("a database file that isn't a database fails to open as DatabaseOpen") {
+    const std::string path = testtemp::temp_path("junk_db", ".db");
+    {
+        std::ofstream f(path, std::ios::binary);
+        f << std::string(4096, 'x');
+    }
+    try {
+        RecordStore store(path);
+        FAIL("a file of junk bytes opened as a database");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::DatabaseOpen);
+        CHECK(std::string(e.what()) == "sqlite exec failed: file is not a database");
+    }
+    CHECK(std::remove(path.c_str()) == 0);
+}
+
+// D72 items 2 and 3: a file another connection has locked fails at once, as
+// "couldn't open", and the failed open lets go of the file.
+TEST_CASE("a database another connection has locked fails to open as DatabaseOpen, and lets "
+          "go of the file") {
+    const std::string path = testtemp::temp_path("locked_db", ".db");
+    std::remove(path.c_str());
+    // A rollback-journal file (not WAL), so an exclusive lock keeps readers out.
+    sqlite3* holder = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &holder) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(holder, "CREATE TABLE t (x); BEGIN EXCLUSIVE; INSERT INTO t VALUES (1);",
+                         nullptr, nullptr, nullptr) == SQLITE_OK);
+    try {
+        RecordStore store(path);
+        FAIL("a locked file opened");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::DatabaseOpen);
+        CHECK(std::string(e.what()) == "sqlite exec failed: database is locked");
+    }
+    REQUIRE(sqlite3_exec(holder, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_close(holder);
+
+    { RecordStore store(path); }
+    // Nothing holds the file now: SQLite opens it without delete sharing, so a
+    // handle the failed open left behind would make this fail.
+    std::remove((path + "-wal").c_str());
+    std::remove((path + "-shm").c_str());
+    CHECK(std::remove(path.c_str()) == 0);
 }
 
 TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {
