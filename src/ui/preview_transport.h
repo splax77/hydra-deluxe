@@ -3,8 +3,10 @@
 // (docs/adr/0008).
 //
 // The clock is the master. It is the song time the highway is drawn at, and
-// the audio is seeked to it on play and then just follows. A chart with no
-// audio still plays and scrubs — the clock runs on its own.
+// the audio is seeked to it on play and then just follows. A seek re-syncs
+// the audio to the clock: while the clock plays, the playhead is set playing
+// again, even if it had paused itself at the end of its audio. A chart with
+// no audio still plays and scrubs — the clock runs on its own.
 //
 // The playhead is shared with the audio thread, so every access to it goes
 // through this object's lock, including the device's pull via read_frames().
@@ -61,7 +63,9 @@ public:
     void play();    // seeks the playhead to the clock and starts both
     void pause();
     void toggle();
-    void seek_ms(double ms);  // clamped to [0, length_ms()]
+    // Clamped to [0, length_ms()]. Moves the playhead with the clock and,
+    // while the clock plays, sets the playhead playing again.
+    void seek_ms(double ms);
     bool playing() const;
     double length_ms() const;  // the playback range (see load), not the last note
     bool has_audio() const;  // a loaded playhead with > 0 frames
@@ -72,8 +76,9 @@ public:
     double tick();
     double now_ms() const;  // read-only, no end handling
 
-    void set_gain(float gain);  // applied to the playhead if any, remembered
-                                // for the next load
+    // Applied to the playhead if any (audio::Playhead::set_gain owns the
+    // floor at 0), and remembered as given for the next load.
+    void set_gain(float gain);
     float gain() const { return gain_; }
 
     // Device-facing: the pull source. Locks internally. Returns real frames

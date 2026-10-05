@@ -28,7 +28,15 @@ std::string overlay_key(const std::string& path_key, int sp_cap) {
 }  // namespace
 
 PreviewController::PreviewController(ID3D11Device* device, ID3D11DeviceContext* context)
-    : device_(device), context_(context) {}
+    : device_(device), context_(context), volume_pct_(app::Settings{}.preview_volume) {}
+
+bool PreviewController::base_due() const {
+    return !base_started_ && !job_ && !scene_job_ && !scene_base_ && song_ && !song_->is_empty();
+}
+
+bool PreviewController::busy() const {
+    return job_ || base_job_ || scene_job_ || !retired_scene_jobs_.empty() || base_due();
+}
 
 PreviewController::~PreviewController() { close(); }
 
@@ -75,8 +83,11 @@ void PreviewController::start_scene_job() {
     }
     render::TrackStateOptions track_opts;
     track_opts.pro = pro_;
-    scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_, sp_cap_, rules_,
-                                                   path_key_, track_opts, audio_end_ms_);
+    // A changed chart keeps drawing no path: the record's path belongs to the
+    // old notes (finding 126).
+    std::optional<Path> path = chart_changed_ ? std::nullopt : path_;
+    scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, std::move(path), sp_cap_,
+                                                   rules_, path_key_, track_opts, audio_end_ms_);
     scene_job_->start();
 }
 
@@ -114,6 +125,7 @@ void PreviewController::close() {
     open_key_ = PreviewSongKey{};
     error_.clear();
     audio_warning_.clear();
+    chart_changed_ = false;
 }
 
 void PreviewController::poll() {
@@ -144,7 +156,7 @@ void PreviewController::poll() {
         if (base_job_->ok() && !scene_base_) scene_base_ = base_job_->take_base();
         base_job_.reset();
     }
-    if (!base_started_ && !job_ && !scene_job_ && !scene_base_ && song_ && !song_->is_empty()) {
+    if (base_due()) {
         render::TrackStateOptions track_opts;
         track_opts.pro = pro_;
         base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts, audio_end_ms_);
@@ -159,12 +171,13 @@ void PreviewController::poll() {
         PreviewLoadJob::Result result = job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
         audio_end_ms_ = result.audio_end_ms;
+        chart_changed_ = result.chart_changed;
         scene_ = std::move(result.scene);
         pending_track_ = std::move(result.track_state);
         pending_track_opts_ = result.track_opts;
         scene_path_key_ = job_path_key_;
         scene_dirty_ = true;
-        transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);
+        transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
                         scene_.song_length_ms, result.audio_offset_ms);
         // Open the output device only when there is audio to play; a chart with
@@ -303,10 +316,11 @@ void PreviewController::set_scrubbing(bool held) {
 bool PreviewController::has_audio() const { return transport_.has_audio(); }
 
 // The volume percent lives here, not on the transport: it is a setting that
-// outlives the chart, remembered for the next one opened.
+// outlives the chart, remembered for the next one opened. Its range and its
+// percent-to-gain rule are the setting's (app::Settings, finding 72).
 void PreviewController::set_volume(int percent) {
-    volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;
-    transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);
+    volume_pct_ = app::Settings::clamp(&app::Settings::preview_volume, percent);
+    transport_.set_gain(app::Settings::volume_gain(volume_pct_));
 }
 
 hydra::app::PreviewTimeBox PreviewController::time_box() const {

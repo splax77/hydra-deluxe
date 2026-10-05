@@ -4,6 +4,7 @@
 #include <future>
 #include <string>
 
+#include "app/analysis.h"  // hash_chart_file
 #include "app/preview_source.h"
 #include "audio/frames.h"  // frames_of_ms
 #include "app/preview_view.h"
@@ -151,6 +152,18 @@ void PreviewLoadJob::run() {
         app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
         throw_if_cancelled();
 
+        // Has the chart changed since it was analyzed (finding 126)? The file
+        // is hashed with the scan's own rule, so the two can never disagree,
+        // on a thread of its own beside both branches: a .sng's hash covers
+        // all its audio, so in front of the stem open it would add to the
+        // load. A hash that is not the record's means the chart changed. An
+        // empty hash (an unreadable file) is not a change: the parse error
+        // speaks for that. The future waits for the hash if this job throws.
+        std::future<bool> changed_check = std::async(std::launch::async, [this] {
+            const std::string hash = app::hash_chart_file(entry_.notespath);
+            return !hash.empty() && hash != entry_.md5;
+        });
+
         // Branch (b) on its own thread. If this branch throws, `stop` tells it
         // to give up and the guard waits for it, so it never outlives the job.
         std::atomic<bool> stop{false};
@@ -180,6 +193,7 @@ void PreviewLoadJob::run() {
 
         // Both branches done: mix. get() rethrows the audio branch's cancel.
         std::vector<std::unique_ptr<audio::StemReader>> readers = audio_branch.get();
+        const bool chart_changed = changed_check.get();
         throw_if_cancelled();
         // The chart sync rule: audio_ms = chart_ms + audio_offset_ms. A
         // negative offset means the chart starts before the audio and the
@@ -196,8 +210,10 @@ void PreviewLoadJob::run() {
         const std::optional<double> audio_end_ms = audio_end_chart_ms(*mix, offset_ms);
 
         // The scene and the highway wait for the audio, because the beat
-        // lines run to its end (D48, Q25).
-        const Path* path = path_ ? &*path_ : nullptr;
+        // lines run to its end (D48, Q25). A changed chart is drawn with no
+        // path, as an unanalyzed one is: the record's path belongs to the old
+        // notes.
+        const Path* path = path_ && !chart_changed ? &*path_ : nullptr;
         app::PreviewScene scene =
             app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms);
         scene_done_.store(true);
@@ -212,7 +228,7 @@ void PreviewLoadJob::run() {
 
         result_ = Result{std::move(scene),       std::move(mix),         offset_ms,
                          audio_end_ms,           std::move(ps.song),     std::move(track_state),
-                         track_opts};
+                         track_opts,             chart_changed};
         return true;
     });
 }
