@@ -1049,6 +1049,19 @@ TEST_CASE("a current-version record with no paths is Ready, not Stale") {
     CHECK(lookup.hyversion == current_record_version());
     CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4)}).status == RecordStatus::Ready);
     CHECK(store.has_record(RecordKey{"h", "mode", CapQuery::at(4)}));
+
+    // D51 call 11 (finding 88): such a record has no scored best path, and
+    // the summary says so in one place. A record with paths has one. The
+    // listing's row, read back from the summary columns, says the same.
+    CHECK_FALSE(summarize_record(empty).has_scored_best_path());
+    CHECK(summarize_record(at_cap(4)).has_scored_best_path());
+    store.add_song("g", "Other", "Artist", "Charter", fixture().song);
+    store.add_record(RecordKey{"g", "mode", CapQuery::at(4)}, at_cap(4));
+    const std::vector<RecordListing> rows =
+        store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::RefName, false);
+    REQUIRE(rows.size() == 2);
+    for (const RecordListing& row : rows)
+        CHECK(row.summary.has_scored_best_path() == (row.hyhash == "g"));
 }
 
 // ---- lens identity --------------------------------------------------------
@@ -2060,4 +2073,117 @@ TEST_CASE("a saved song's tempo map follows the latest analysis") {
     timing = store.get_timing("h");
     REQUIRE(timing.has_value());
     CHECK(timing->timecode(tick).ms() == second_ms);
+}
+
+TEST_CASE("a song's length is stored per difficulty") {
+    // D51 call 9 (finding 62): each difficulty's timeline ends at its own
+    // last note. The one per-chart length used to follow whichever
+    // difficulty was analyzed last.
+    const Song& first = fixture().song;
+    const Song second = hydra::test::beat_song({}, {}, 1920);
+    const std::optional<double> first_len = song_length_ms(first);
+    const std::optional<double> second_len = song_length_ms(second);
+    REQUIRE(first_len.has_value());
+    REQUIRE(second_len.has_value());
+    REQUIRE(*first_len != *second_len);
+
+    RecordStore store(":memory:");
+    const RecordKey a{"h", "a", CapQuery::at(4)};
+    const RecordKey b{"h", "b", CapQuery::at(4)};
+    store.save_analysis("h", "Song", "Artist", "Charter", first, prepare_row(a, at_cap(4)),
+                        std::nullopt);
+    store.save_analysis("h", "Song", "Artist", "Charter", second, prepare_row(b, at_cap(4)),
+                        std::nullopt);
+    CHECK(store.get_record(a).song_length_ms == first_len);
+    CHECK(store.get_record(b).song_length_ms == second_len);
+}
+
+TEST_CASE("an old database's one length shows until that difficulty is analyzed again") {
+    // A file from before per-difficulty lengths has only the chart's one
+    // length. Every difficulty reads it, as today, until that difficulty is
+    // analyzed again (D58, question 2).
+    const Song& first = fixture().song;
+    const Song second = hydra::test::beat_song({}, {}, 1920);
+    const RecordKey a{"h", "a", CapQuery::at(4)};
+    const RecordKey b{"h", "b", CapQuery::at(4)};
+
+    RecordStore store(":memory:");
+    store.add_song("h", "Song", "Artist", "Charter", first);
+    store.add_record(a, at_cap(4));
+    store.add_record(b, at_cap(4));
+    CHECK(store.get_record(a).song_length_ms == song_length_ms(first));
+    CHECK(store.get_record(b).song_length_ms == song_length_ms(first));
+
+    store.save_analysis("h", "Song", "Artist", "Charter", second, prepare_row(a, at_cap(4)),
+                        std::nullopt);
+    CHECK(store.get_record(a).song_length_ms == song_length_ms(second));
+    CHECK(store.get_record(b).song_length_ms == song_length_ms(first));
+
+    // Filling a difficulty's own length touches only a difficulty with none.
+    store.set_song_length("h", "b", *song_length_ms(second));
+    store.set_song_length("h", "a", *song_length_ms(first));
+    CHECK(store.get_record(a).song_length_ms == song_length_ms(second));
+    CHECK(store.get_record(b).song_length_ms == song_length_ms(second));
+}
+
+TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
+    // D51 call 10 (finding 63): one rule names a chart the scan found twice,
+    // the first copy it listed. Analyzing the second copy used to rename it.
+    RecordStore store(":memory:");
+    const ChartLibraryEntry first = chart_entry("h", "Scanned Title");
+    ChartLibraryEntry second = chart_entry("h", "Second Copy");
+    second.notespath = "C:\\charts\\copy\\notes.chart";
+    store.rebuild_chart_library({first, second});
+
+    // Analyzing copy B saves the names its own song.ini gave.
+    store.add_song("h", "Second Copy", "Artist", "Charter", fixture().song);
+    store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
+    const std::vector<RecordListing> rows =
+        store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].ref_name == "Scanned Title");
+}
+
+TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
+    // D51 call 12 (finding 345): the rescan cache carries kChartMetaStamp. A
+    // file without a current stamp hands back no cache, so the next scan
+    // reads every chart again and stamps the table it writes.
+    const std::string path = temp_db("chart_meta_stamp");
+    std::remove(path.c_str());
+    const ChartLibraryEntry entry = chart_entry("a", "A");
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({entry});
+    }
+    {
+        RecordStore store(path);
+        CHECK(store.chart_library_cache().count(entry.notespath) == 1);
+    }
+    exec_on_file(path, "DELETE FROM meta WHERE key = 'chart_meta_version'");
+    {
+        RecordStore store(path);
+        CHECK(store.chart_library_cache().empty());
+        store.rebuild_chart_library({entry});
+        CHECK(store.chart_library_cache().count(entry.notespath) == 1);
+    }
+    std::remove(path.c_str());
+}
+
+TEST_CASE("the store names the fill rule a file holds") {
+    // Finding 54: the store reads its own engine_mode stamp. A file with
+    // results and no stamp was written under the normal 1.1 rule; an empty
+    // unstamped file holds no rule at all.
+    RecordStore ch10(":memory:");
+    ch10.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch10));
+    RecordStore ch11(":memory:");
+    ch11.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch11));
+    RecordStore unstamped(":memory:");
+    unstamped.add_song("h", "Song", "Artist", "Charter", fixture().song);
+    unstamped.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
+    RecordStore empty(":memory:");
+
+    CHECK(ch10.stamped_fill_rule() == FillDeadlineRule::Ch10);
+    CHECK(ch11.stamped_fill_rule() == FillDeadlineRule::Ch11);
+    CHECK(unstamped.stamped_fill_rule() == FillDeadlineRule::Ch11);
+    CHECK_FALSE(empty.stamped_fill_rule().has_value());
 }

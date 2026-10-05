@@ -379,6 +379,42 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
     CHECK(store.counts().second == 0);
 }
 
+TEST_CASE("run_batch analyzes a chart found in two folders once") {
+    // D51 call 10 (finding 63): two copies of one chart are one chart. The
+    // batch used to analyze it once per folder and count each copy.
+    const std::string chart = corpus::first_chart_with_notes();
+    ScanItem first;
+    first.md5 = hash_chart_file(chart);
+    first.title = "t";
+    first.notespath = chart;
+    ScanItem second = first;
+    second.notespath = "C:\\charts\\copy\\notes.chart";
+
+    // Both copies hold the same bytes, so the analyzer reads the one real
+    // file whichever copy it is handed, and counts each run.
+    std::atomic<int> runs{0};
+    std::atomic<int> total{-1};
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&](const std::string&, const AnalysisSettings& s,
+                            const std::function<void(float)>& on_progress) {
+        ++runs;
+        return analyze_chart_file(chart, s, on_progress);
+    };
+    callbacks.on_progress = [&total](const BatchProgress& p) { total = p.total; };
+
+    BatchRun run;
+    run.chartmode = "dedupe-test";
+    run.lens = hydra::store::Lens::from(std::optional<int>(10), 0, 10);
+    run.settings.depth_mode = hydra::DepthMode::Scores;
+    run.settings.depth_value = 10;
+    run.settings.ms_filter = 10.0;
+    hydra::store::RecordStore store(":memory:");
+    run_batch({first, second}, run, store, /*redo=*/false, 1, callbacks);
+
+    CHECK(total.load() == 1);
+    CHECK(runs.load() == 1);
+}
+
 TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
     namespace fs = std::filesystem;
     const std::string chart = corpus::first_chart_with_suffix(".chart");
