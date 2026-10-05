@@ -4,16 +4,18 @@
 #include "doctest.h"
 
 #include "app/config.h"
+#include "core/model.h"  // counted
 #include "ui/library_parts.h"
 
+using hydra::counted;
 using hydra::app::Settings;
 using namespace hydra::ui::detail;
 
 TEST_CASE("batch text: counts group thousands and pick the right noun") {
-    CHECK(count_label(0, "chart", "charts") == "0 charts");
-    CHECK(count_label(1, "chart", "charts") == "1 chart");
-    CHECK(count_label(2, "chart", "charts") == "2 charts");
-    CHECK(count_label(12345, "chart", "charts") == "12,345 charts");
+    CHECK(counted(0, "chart", "charts") == "0 charts");
+    CHECK(counted(1, "chart", "charts") == "1 chart");
+    CHECK(counted(2, "chart", "charts") == "2 charts");
+    CHECK(counted(12345, "chart", "charts") == "12,345 charts");
 }
 
 TEST_CASE("batch text: durations read m:ss under an hour and h:mm:ss over it") {
@@ -63,6 +65,30 @@ TEST_CASE("batch text: cap 1 reads 1 bar and cap 1000 reads 1,000 bars") {
     CHECK(batch_settings_summary(s).sp_cap == "1 bar (a what-if)");
     s.sp_cap = 1000;
     CHECK(batch_settings_summary(s).sp_cap == "1,000 bars (a what-if)");
+}
+
+// D74 item 3: the scan modal's running counts group thousands like every
+// other count.
+TEST_CASE("batch text: the scan dialog's counts read 1,234") {
+    CHECK(scan_folders_found_text(1234) == "Discovering folders... (1,234 found)");
+    CHECK(scan_reused_text(1234) == "1,234 unchanged since last scan, reused.");
+}
+
+TEST_CASE("batch text: the confirm's Fills line names the fill rule") {
+    Settings s;
+    s.legacy_fills = false;
+    CHECK(batch_settings_summary(s).fills == "Clone Hero 1.1");
+    s.legacy_fills = true;
+    CHECK(batch_settings_summary(s).fills == "Clone Hero 1.0");
+}
+
+// D74 item 4: the tooltip's deadline sentences are the ones the reports use.
+TEST_CASE("batch text: the 1.0 fills help text uses the shared fill-rule sentences") {
+    CHECK(legacy_fills_help_text() ==
+          "Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if "
+          "your Star Power was ready in time. Clone Hero 1.1 made it a flat 4 beats. Clone "
+          "Hero 1.0 gave you until about one fill-length before the fill. For runs played on "
+          "1.0; current Clone Hero plays by 1.1.");
 }
 
 TEST_CASE("batch text: the empty library says what to do next") {

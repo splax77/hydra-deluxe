@@ -1,11 +1,11 @@
 #include "ui/details_parts.h"
 
 #include "app/dynamics_breakdown.h"
-#include "core/model.h"  // group_thousands
+#include "core/model.h"  // group_thousands, counted
 #include "imgui.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/fonts.h"
-#include "ui/library_parts.h"  // format_duration, count_label
+#include "ui/library_parts.h"  // format_duration
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -76,7 +76,7 @@ std::string dynamics_enabled_text(const app::DynamicsBreakdown& bd) {
     if (!bd.dynamics_enabled) return "Dynamics enabled: no (markings ignored by Clone Hero)";
     if (!bd.late_tag_ms) return "Dynamics enabled: yes";
     return "Dynamics enabled: from " + format_duration(*bd.late_tag_ms / 1000.0) + " on (" +
-           count_label(bd.marks_before_tag, "earlier marking", "earlier markings") +
+           counted(bd.marks_before_tag, "earlier marking", "earlier markings") +
            " ignored by Clone Hero)";
 }
 

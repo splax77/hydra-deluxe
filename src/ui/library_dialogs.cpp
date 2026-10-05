@@ -60,9 +60,6 @@ std::string batch_counts(const BatchJob::Snapshot& s) {
 
 }  // namespace
 
-// Kept for the Dynamics tab, which still calls it by this name.
-std::string count_label(int64_t n, const char* one, const char* many) { return counted(n, one, many); }
-
 std::string format_duration(double seconds) {
     const long long total = seconds <= 0.0 ? 0 : static_cast<long long>(seconds + 0.5);
     const long long h = total / 3600, m = (total / 60) % 60, s = total % 60;
@@ -87,6 +84,14 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
                           : counted(s.depth_value, "point", "points");
     out.path_limit = s.mslimit_enabled ? std::to_string(s.mslimit_value) + " ms" : "off";
     return out;
+}
+
+std::string scan_folders_found_text(int64_t folders_seen) {
+    return "Discovering folders... (" + group_thousands(folders_seen) + " found)";
+}
+
+std::string scan_reused_text(int64_t charts_cached) {
+    return group_thousands(charts_cached) + " unchanged since last scan, reused.";
 }
 
 const char* empty_library_message(const app::Settings& s) {
@@ -214,14 +219,11 @@ void render_scan_modal(AppState& app) {
     }
 
     ScanProgress p = app.scan_job->snapshot();
-    if (p.phase == ScanProgress::Phase::Enumerating) {
-        ImGui::Text("Discovering folders... (%d found)", p.folders_seen);
-    } else {
-        ImGui::Text("Discovering folders... (%d found)", p.folders_seen);
+    ImGui::TextUnformatted(scan_folders_found_text(p.folders_seen).c_str());
+    if (p.phase != ScanProgress::Phase::Enumerating) {
         ImGui::TextUnformatted("Reading charts...");
         progress_bar_counted(p.charts_done, p.charts_total);
-        if (p.charts_cached > 0)
-            ImGui::Text("%d unchanged since last scan, reused.", p.charts_cached);
+        if (p.charts_cached > 0) ImGui::TextUnformatted(scan_reused_text(p.charts_cached).c_str());
     }
 
     if (p.phase == ScanProgress::Phase::Writing)
