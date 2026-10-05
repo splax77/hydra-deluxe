@@ -81,9 +81,8 @@ int main() {
         hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
 
     // Engine-mode sanity check (D65, ADR 0010): warn only when the file's
-    // stamp names the other side's rule. An unstamped file never warns —
-    // engine_mode() is nullopt, and fill_rule_from_stamp reads the stamp, not
-    // the "unstamped = 1.1" default stamped_fill_rule adds.
+    // stamp names the other side's rule. An unstamped file never warns, so this
+    // reads the stamp itself rather than asking stamped_fill_rule.
     auto warn_if_not = [](const std::string& path, hydra::store::RecordStore& store,
                           hydra::FillDeadlineRule expected) {
         const std::optional<std::string> stamp = store.engine_mode();

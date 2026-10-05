@@ -437,8 +437,9 @@ public:
     // The fill-spawn stamp hydra_batch last wrote this file with, as stored
     // (search/graph.h engine_mode_stamp writes it). Unset on a db nothing has
     // stamped yet. Only a label on the file: each result carries its own rule
-    // in its Lens (docs/adr/0010). Read by stamped_fill_rule, and directly by
-    // cli/batch.cpp, cli/report.cpp and cli/fillcompare.cpp.
+    // in its Lens (docs/adr/0010). A caller that needs the stamp itself (whether
+    // there is one, and its text) reads it here; a caller that needs the rule a
+    // file holds asks stamped_fill_rule.
     std::optional<std::string> engine_mode();
     void set_engine_mode(const std::string& mode);
     // Which fill rule this file holds: its engine_mode stamp read back through
