@@ -81,8 +81,7 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     if (s.effective_bass2x()) out.difficulty += " \xC2\xB7 2x Bass";
     out.sp_cap = counted(s.sp_cap, "bar", "bars") +
                  (s.sp_cap == kCloneHeroSpCap ? " (Clone Hero's rule)" : " (a what-if)");
-    out.fills = fill_rule_name(s.legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11,
-                               FillRuleNameStyle::Long);
+    out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);
     out.score_range = s.depth_mode == 0 ? counted(s.depth_value, "score", "scores")
                                         : counted(s.depth_value, "point", "points");
     out.path_limit = s.mslimit_enabled ? std::to_string(s.mslimit_value) + " ms" : "off";

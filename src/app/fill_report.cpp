@@ -6,8 +6,8 @@
 
 #include "app/html_page.h"
 #include "app/report.h"  // records_by_hash
-#include "core/model.h"  // group_thousands
-#include "parse/song.h"  // display_title, strip_rich_tags
+#include "core/model.h"  // group_thousands, counted
+#include "parse/song.h"  // display_title, display_artist, display_charter
 #include "search/graph.h"  // fill_rule_name, fill_rule_description
 
 namespace hydra::app::fill_report {
@@ -191,7 +191,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         const store::RecordListing* id = new_rec ? new_rec : old_rec;
         row.song = display_title(id->ref_name);
         row.artist = display_artist(id->ref_artist);
-        row.charter = strip_rich_tags(id->ref_charter);
+        row.charter = display_charter(id->ref_charter);
 
         if (old_rec) {
             row.old_score = old_rec->summary.score;
@@ -309,7 +309,7 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
     }
 
     std::string subtitle =
-        group_thousands(out.stats.total) + " charts in " + chartmode + ": " +
+        counted(out.stats.total, "chart", "charts") + " in " + chartmode + ": " +
         group_thousands(out.stats.ch11_higher) + " score higher under 1.1, " +
         group_thousands(out.stats.ch10_higher) + " higher under 1.0, " +
         group_thousands(out.stats.same) + " unchanged, " +
@@ -319,9 +319,12 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
     std::string footer =
         "A drum fill only appears if your Star Power meter filled up in time. " +
         fill_rule_description(FillDeadlineRule::Ch10) + " " +
-        fill_rule_description(FillDeadlineRule::Ch11) +
-        " Four beats is usually the "
-        "longer wait, so short fills got stricter and most charts tie or drop. "
+        fill_rule_description(FillDeadlineRule::Ch11) + " " +
+        // The rule's length is fill_rule_description's to say; this sentence
+        // only names the rule.
+        fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long) +
+        "'s wait is usually the longer one, so short fills got stricter and most "
+        "charts tie or drop. "
         "Long fills got looser, which is where the rare gains come from. "
         "Delta is the 1.1 score minus the 1.0 score.";
     out.html = build_fill_html(rows, subtitle, footer);

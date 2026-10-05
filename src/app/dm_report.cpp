@@ -9,7 +9,7 @@
 #include "app/report.h"  // records_by_hash
 #include "core/model.h"  // counted
 #include "core/strutil.h"  // to_lower_ascii
-#include "parse/song.h"  // display_title, strip_rich_tags
+#include "parse/song.h"  // display_title, display_artist, display_charter
 
 namespace hydra::app::dm_report {
 
@@ -127,11 +127,19 @@ const PAGE = {
     const notAnalyzed = rows.filter(r => r.status === 'not analyzed');
     const notInLibrary = rows.filter(r => r.status === 'not in library');
     const otherSpeed = rows.filter(r => r.status === 'other speed');
-    // The one percent the page works out itself: the mean of the full
-    // percents of the rows the filter shows, rounded once here.
-    const withPct = rows.filter(r => r.pct !== null && r.pct !== undefined);
-    const avgPct = withPct.length
-      ? (withPct.reduce((a, r) => a + r.pct, 0) / withPct.length).toFixed(2) + '%' : DASH;
+    // The one percent the page works out itself, because it follows the
+    // filters: the mean of the cells' percents, which the payload carries in
+    // whole hundredths (percent_steps, the number format_percent writes).
+    // Whole numbers only, and the mean rounds half up like format_percent, so
+    // one row's tile reads exactly its cell.
+    const withPct = rows.filter(r => r.pct_h !== null && r.pct_h !== undefined);
+    let avgPct = DASH;
+    if (withPct.length) {
+      const n = withPct.length;
+      const sum = withPct.reduce((a, r) => a + r.pct_h, 0);
+      const h = Math.floor((2 * sum + n) / (2 * n));
+      avgPct = Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%';
+    }
     // Only a score under optimal leaves points on the table.
     const left = under.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);
     return [
@@ -203,13 +211,13 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         } else if (rec) {
             row.song = display_title(rec->ref_name);
             row.artist = display_artist(rec->ref_artist);
-            row.charter = strip_rich_tags(rec->ref_charter);
+            row.charter = display_charter(rec->ref_charter);
         } else {
             row.song = s.song_name;
             row.artist = s.artist;
             row.charter = s.charter;
         }
-        if (row.charter.empty() && rec) row.charter = strip_rich_tags(rec->ref_charter);
+        if (row.charter.empty() && rec) row.charter = display_charter(rec->ref_charter);
 
         // Hydra's optimal is a base-speed answer, and Clone Hero keeps a
         // leaderboard per speed. An off-speed score shows Hydra's numbers when
@@ -255,16 +263,17 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
         data += ",\"actual\":" + std::to_string(r.actual);
         data += ",\"optimal\":" + (r.optimal ? std::to_string(*r.optimal) : std::string("null"));
         data += ",\"delta\":" + (r.delta ? std::to_string(*r.delta) : std::string("null"));
-        // `pct` is the full percent the column sorts on and the average tile
-        // reads; `pct_txt` is what the cell shows, rounded once by
-        // format_percent.
+        // `pct` is the full percent the column sorts on; `pct_txt` is what the
+        // cell shows, rounded once by format_percent; `pct_h` is that same
+        // rounded percent in whole hundredths, which the average tile reads.
         if (r.pct && r.optimal) {
             std::snprintf(num, sizeof(num), "%.17g", *r.pct);
             data += ",\"pct\":" + std::string(num);
             data += ",\"pct_txt\":";
             json_escape_into(data, format_percent(r.actual, *r.optimal, 2));
+            data += ",\"pct_h\":" + std::to_string(percent_steps(r.actual, *r.optimal, 2));
         } else {
-            data += ",\"pct\":null,\"pct_txt\":null";
+            data += ",\"pct\":null,\"pct_txt\":null,\"pct_h\":null";
         }
         data += ",\"fc\":" + std::string(r.is_fc ? "1" : "0");
         data += ",\"percent\":" + std::to_string(r.percent);

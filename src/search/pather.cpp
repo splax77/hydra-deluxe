@@ -205,9 +205,7 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
     // Built as tall as the main search builds it (decision D45).
     ScoreGraph graph(song,
                      std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
-                     settings.legacy_fill_deadline ? FillDeadlineRule::Ch10
-                                                   : FillDeadlineRule::Ch11,
-                     settings.rules);
+                     fill_rule_for(settings.legacy_fill_deadline), settings.rules);
 
     // The caller named the path, so nothing may prune it: the widest possible
     // points band keeps every survivor, and no timing filter is applied.
@@ -248,10 +246,7 @@ HydraRecord analyze_at_cap(const Song& song, int sp_cap, DepthMode depth_mode,
                            const std::function<void(float)>& on_progress = {}) {
     std::optional<int> cap = build_cap.has_value() ? build_cap
                                                    : std::optional<int>(sp_cap);
-    ScoreGraph graph(song, cap,
-                     legacy_fills ? FillDeadlineRule::Ch10
-                                  : FillDeadlineRule::Ch11,
-                     rules);
+    ScoreGraph graph(song, cap, fill_rule_for(legacy_fills), rules);
     const bool split = want_allzero && static_cast<bool>(on_progress);
     HydraRecord record = read(
         graph, depth_mode, depth_value, ms_filter,

@@ -274,6 +274,30 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
         CHECK(row.charter == "");
     }
     CHECK(saw_u0);
+
+    // The scan's artist placeholder reads "(unknown)" too (D56 item 2), and a
+    // charter loses its tags and the spaces at its ends (display_charter).
+    store.add_song("u0", "Song", kUnknownArtist, " <b>Bob</b> ", test::beat_song({}, {}, 13440));
+    rows = report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
+    saw_u0 = false;
+    for (const report::ReportRow& row : rows) {
+        if (row.hyhash != "u0") continue;
+        saw_u0 = true;
+        CHECK(row.artist == kUnknownTitle);
+        CHECK(row.charter == "Bob");
+    }
+    CHECK(saw_u0);
+}
+
+TEST_CASE("fill_rule_for: the legacy_fills flag and the file stamp each name one fill rule") {
+    // legacy_fills on is the Clone Hero 1.0 rule; off is the normal 1.1 rule.
+    CHECK(fill_rule_for(true) == FillDeadlineRule::Ch10);
+    CHECK(fill_rule_for(false) == FillDeadlineRule::Ch11);
+    // A stamp reads back as the rule that wrote it; any other text is no rule.
+    CHECK(fill_rule_from_stamp("ch10") == FillDeadlineRule::Ch10);
+    CHECK(fill_rule_from_stamp("ch11") == FillDeadlineRule::Ch11);
+    CHECK_FALSE(fill_rule_from_stamp("ch12").has_value());
+    CHECK_FALSE(fill_rule_from_stamp("").has_value());
 }
 
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
@@ -379,6 +403,21 @@ TEST_CASE("report payload carries the hit window and the tier table") {
                                                timed.charter + " " + timed.path);
     CHECK(search == "through the fire dragonforce some charter 1");
     CHECK(occurrences(rows, "\"search\":\"" + search + "\"") == 2);
+}
+
+TEST_CASE("report payload: the average multiplier is C++ text from format_avg_mult") {
+    // The cell prints the payload's mult_text; the number beside it stays
+    // for sorting. The page never formats the multiplier itself.
+    report::ReportRow row;
+    row.song = "Song";
+    row.path = "1";
+    row.tier = "None";
+    row.tok = "tn";
+    row.mult = 2.5;
+    const std::string html = report::build_html({row}, "sub", "foot", 85.0);
+    CHECK(html.find("\"mult\":2.5,\"mult_text\":\"2.500\"") != std::string::npos);
+    CHECK(html.find("['num', r.mult_text],") != std::string::npos);
+    CHECK(html.find("r.mult.toFixed(") == std::string::npos);
 }
 
 TEST_CASE("report payload: the search field is folded and tag-free") {

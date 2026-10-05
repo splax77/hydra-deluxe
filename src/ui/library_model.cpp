@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "core/model.h"  // group_thousands
-#include "parse/song.h"  // display_title, display_artist
+#include "parse/song.h"  // display_title, display_artist, display_charter
 
 namespace hydra::ui {
 
@@ -107,7 +107,7 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
         LibraryRow row;
         row.title = display_title(entry.title);  // "(unknown)" when only tags
         row.artist = display_artist(entry.artist);  // the same rule as the title
-        row.charter = app::strip_rich_tags(entry.charter);
+        row.charter = display_charter(entry.charter);
         row.searchable =
             app::make_searchable(entry.title, entry.artist, entry.charter, entry.rootfolder);
         row.entry = std::move(entry);

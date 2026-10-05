@@ -200,6 +200,18 @@ TEST_CASE("library model: an artist made only of tags reads (unknown), and searc
     CHECK(m.order().empty());
 }
 
+TEST_CASE("library model: an empty or placeholder artist reads (unknown), and the charter is trimmed") {
+    // D56 item 2: every missing artist reads "(unknown)". The charter reads
+    // display_charter's text: tags gone, the spaces at its ends trimmed.
+    LibraryModel m;
+    m.set_charts({chart("a", "Song A", "", " <b>Bob</b> ", "common"),
+                  chart("b", "Song B", "<unknown artist>", "Charter", "common")});
+    REQUIRE(m.rows().size() == 2);
+    CHECK(m.rows()[0].artist == "(unknown)");
+    CHECK(m.rows()[0].charter == "Bob");
+    CHECK(m.rows()[1].artist == "(unknown)");
+}
+
 TEST_CASE("library model: status_label is the one source of the three status words") {
     using hydra::ui::status_label;
     CHECK(std::string(status_label(RecordStatus::Ready)) == "Analyzed");

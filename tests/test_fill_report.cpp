@@ -193,17 +193,11 @@ TEST_CASE("collect_fill_rows: an old record with no score and no new record") {
     store::RecordStore new_store(":memory:");
 
     // The 1.0 database holds a Ready record with no paths, so its summary has
-    // no score, and the 1.1 database holds nothing for the chart. This is the
-    // empty record display_fixtures.h's store_batch_result writes, filed here
-    // under the 1.0 key: that fixture files under the default lens, which is
-    // the 1.1 rule, and the 1.0 side never reads a 1.1 result.
-    HydraRecord empty;
-    empty.sp_cap = kCloneHeroSpCap;
-    empty.ms_limit = app::Settings{}.mslimit_value;
-    empty.legacy_fills = true;
+    // no score, and the 1.1 database holds nothing for the chart. The record
+    // is filed under the 1.0 key: the 1.0 side never reads a 1.1 result.
     old_store.add_song(kOldOnly, "Song bb22", "Test Artist", "Test Charter",
                        sample_chart().song);
-    old_store.add_record(key_for(kOldOnly, true), empty);
+    test::store_batch_result(old_store, key_for(kOldOnly, true));
 
     std::vector<FillCompareRow> rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);
@@ -398,6 +392,29 @@ TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].artist == kUnknownTitle);
     CHECK(rows[0].charter == "");
+
+    // An empty artist and the scan's placeholder read "(unknown)" too (D56
+    // item 2); a charter loses the spaces at its ends (display_charter).
+    for (const char* artist : {"", kUnknownArtist}) {
+        new_store.add_song(kBoth, "Song", artist, " <b>Bob</b> ", sample_chart().song);
+        rows = compare(old_store, new_store);
+        REQUIRE(rows.size() == 1);
+        CHECK(rows[0].artist == kUnknownTitle);
+        CHECK(rows[0].charter == "Bob");
+    }
+}
+
+TEST_CASE("generate_fill_report: one chart reads \"1 chart\" in the subtitle") {
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+    put_ch10(old_store, kBoth, 1000000, 3, "old-path-one");
+    put_ch11(new_store, kBoth, 1000000, 3, "new-path-one");
+    const app::fill_report::GeneratedFillReport result =
+        app::fill_report::generate_fill_report(old_store, new_store, kMode,
+                                               store::CapQuery::at(kCloneHeroSpCap),
+                                               store::Lens{});
+    CHECK(result.html.find("1 chart in ") != std::string::npos);
+    CHECK(result.html.find("1 charts") == std::string::npos);
 }
 
 TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in both") {
@@ -406,13 +423,9 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     // listed under "in both", not under "only 1.1".
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
-    HydraRecord empty;
-    empty.sp_cap = kCloneHeroSpCap;
-    empty.ms_limit = app::Settings{}.mslimit_value;
-    empty.legacy_fills = true;
     old_store.add_song(kBoth, "Song aa11", "Test Artist", "Test Charter",
                        sample_chart().song);
-    old_store.add_record(key_for(kBoth, true), empty);
+    test::store_batch_result(old_store, key_for(kBoth, true));
     put_ch11(new_store, kBoth, 1050000, 4, "new-path-F");
 
     std::vector<FillCompareRow> rows = compare(old_store, new_store);
@@ -426,10 +439,8 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     store::RecordStore old2(":memory:");
     store::RecordStore new2(":memory:");
     put_ch10(old2, kBoth, 1000000, 3, "old-path-F");
-    HydraRecord empty11 = empty;
-    empty11.legacy_fills = false;
     new2.add_song(kBoth, "Song aa11", "Test Artist", "Test Charter", sample_chart().song);
-    new2.add_record(key_for(kBoth, false), empty11);
+    test::store_batch_result(new2, key_for(kBoth, false));
     rows = compare(old2, new2);
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].status == "in both");
@@ -453,13 +464,9 @@ TEST_CASE("generate_fill_report: a score on one side only is counted, and the pa
     put_ch10(old_store, kOldOnly, 900000, 2, "only-old");   // only 1.0
     put_ch11(new_store, kNewOnly, 800000, 5, "only-new");   // only 1.1
     // A record on both sides, but the 1.0 one has no paths and so no score.
-    HydraRecord empty;
-    empty.sp_cap = kCloneHeroSpCap;
-    empty.ms_limit = app::Settings{}.mslimit_value;
-    empty.legacy_fills = true;
     old_store.add_song(kOneSided, "Song dd44", "Test Artist", "Test Charter",
                        sample_chart().song);
-    old_store.add_record(key_for(kOneSided, true), empty);
+    test::store_batch_result(old_store, key_for(kOneSided, true));
     put_ch11(new_store, kOneSided, 700000, 2, "one-sided");
 
     app::fill_report::GeneratedFillReport result =

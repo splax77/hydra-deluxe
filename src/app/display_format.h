@@ -21,8 +21,9 @@ std::string format_avg_mult(double v);
 std::string format_ms(double ms);
 
 // A timing in ms for a sentence or a label: one decimal, a space, the unit
-// ("163.0 ms"). The new Paths and Preview text uses this; format_ms keeps the
-// older "163.0ms" form the report and the backend table print.
+// ("163.0 ms"). The Paths and Preview text and the path report's timing
+// columns use this; format_ms keeps the older "163.0ms" form of the Paths
+// panel's early-fill line.
 std::string format_ms_spaced(double ms);
 
 // Part over total as a percentage with the sign, rounded to the nearest at
@@ -30,6 +31,12 @@ std::string format_ms_spaced(double ms);
 // "99.99%". An exact half rounds away from zero. The total must be above 0;
 // a screen with nothing to count says so itself.
 std::string format_percent(int64_t part, int64_t total, int decimals);
+
+// The number format_percent writes, in whole steps of 10^-decimals percent:
+// 198,010 of 200,000 at 2 is 9901 (99.01%). A page that has to work a percent
+// out itself, like the leaderboard page's average tile, is sent these whole
+// numbers so it rounds nothing in floating point.
+int64_t percent_steps(int64_t part, int64_t total, int decimals);
 
 // A song time as the Preview's clock shows it, "m:ss.mmm" ("1:04.000"). The
 // time rounds to the nearest whole ms first (a half rounds away from zero),

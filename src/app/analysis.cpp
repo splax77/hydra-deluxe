@@ -446,9 +446,11 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     scanitems.reserve(results.size());
     for (std::optional<ScanItem>& r : results) {
         if (!r) continue;
-        // The one fallback for each field, whichever source produced it: a
-        // fresh song.ini, .sng or .srb read, or the rescan cache holding an
-        // older scan's blank or "<unknown title>".
+        // The one stored fallback for each field, whichever source produced
+        // it: a fresh song.ini, .sng or .srb read, or the rescan cache holding
+        // an older scan's blank or "<unknown title>". What a screen shows is
+        // decided later by display_title, display_artist and display_charter;
+        // a stored "<unknown artist>" shows as "(unknown)" (D56 item 2).
         r->title = title_or_unknown(std::move(r->title));
         r->artist = artist_or_unknown(std::move(r->artist));
         r->charter = charter_or_unknown(std::move(r->charter));

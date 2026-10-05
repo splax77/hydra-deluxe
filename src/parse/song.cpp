@@ -299,11 +299,22 @@ std::string no_notes_message(Difficulty difficulty, bool prodrums) {
 NoNotesError::NoNotesError(Difficulty difficulty, bool prodrums)
     : ChartFileError(no_notes_message(difficulty, prodrums)) {}
 
+namespace {
+
+// The one test for "this name is missing": it is empty or holds the
+// placeholder the scan stored for a missing one. Either way it reads
+// kUnknownTitle.
+std::string name_or_unknown(std::string name, std::string_view placeholder) {
+    if (name.empty() || name == placeholder) return kUnknownTitle;
+    return name;
+}
+
+}  // namespace
+
 std::string title_or_unknown(std::string title) {
     // The placeholder the metadata readers used before kUnknownTitle.
     static constexpr const char* kOldPlaceholder = "<unknown title>";
-    if (title.empty() || title == kOldPlaceholder) return kUnknownTitle;
-    return title;
+    return name_or_unknown(std::move(title), kOldPlaceholder);
 }
 
 // ---- rich-text tags ---------------------------------------------------------
@@ -369,9 +380,23 @@ std::string strip_rich_tags(std::string_view text) {
     return out;
 }
 
+namespace {
+
+// How every shown name is cleaned: the tags go and the ends are trimmed.
+std::string clean_name(std::string_view text) { return trim(strip_rich_tags(text)); }
+
+}  // namespace
+
 std::string display_title(std::string_view title) {
-    return title_or_unknown(trim(strip_rich_tags(title)));
+    return title_or_unknown(clean_name(title));
 }
+
+std::string display_artist(std::string_view artist) {
+    // display_title's rule, plus the artist placeholder the scan stores.
+    return name_or_unknown(display_title(artist), kUnknownArtist);
+}
+
+std::string display_charter(std::string_view charter) { return clean_name(charter); }
 
 Song::Song(int64_t resolution) : tick_resolution_(resolution) {
     apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);

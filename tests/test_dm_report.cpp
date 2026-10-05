@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/display_format.h"  // format_percent, percent_steps
 #include "core/model.h"
 #include "app/dm_report.h"
 #include "corpus_util.h"
@@ -256,6 +257,17 @@ TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].artist == kUnknownTitle);
     CHECK(rows[0].charter == "");
+
+    // An empty artist and the scan's placeholder read "(unknown)" too (D56
+    // item 2); a charter loses the spaces at its ends (display_charter).
+    for (const char* artist : {"", kUnknownArtist}) {
+        tags_only.add_song(kHash, "Stored Title", artist, " <b>Bob</b> ",
+                           test::beat_song({}, {}, 13440));
+        rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
+        REQUIRE(rows.size() == 1);
+        CHECK(rows[0].artist == kUnknownTitle);
+        CHECK(rows[0].charter == "Bob");
+    }
 }
 
 TEST_CASE("collect_dm_rows: a percent rounds once") {
@@ -277,6 +289,37 @@ TEST_CASE("collect_dm_rows: a percent rounds once") {
     // Counts and the over-optimal delta go through the page's shared fmt.
     CHECK(html.find(".toLocaleString()]") == std::string::npos);
     CHECK(html.find("(-r.delta).toLocaleString()") == std::string::npos);
+}
+
+TEST_CASE("build_dm_html: the average tile reads a percent the way the cells do") {
+    // 198,010 of 200,000 is exactly 99.005%. format_percent rounds the half
+    // up, so the cell reads 99.01%. The page's old tile rounded the float
+    // 99.00499999... with toFixed(2) and read 99.00%.
+    CHECK(app::format_percent(198010, 200000, 2) == "99.01%");
+    CHECK(app::percent_steps(198010, 200000, 2) == 9901);
+
+    DmReportRow row;
+    row.song = "Half Song";
+    row.actual = 198010;
+    row.optimal = 200000;
+    row.delta = 1990;
+    row.pct = 99.005;
+    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
+
+    // The cell's text and the tile's input both come from percent_steps: the
+    // payload carries the cell's percent in whole hundredths.
+    CHECK(html.find("\"pct_txt\":\"99.01%\"") != std::string::npos);
+    CHECK(html.find("\"pct_h\":9901") != std::string::npos);
+    // The tile averages those hundredths in whole numbers and rounds the mean
+    // half up, so one row's tile is (2 x 9901 + 1) / 2 rounded down: 9901,
+    // "99.01%", the cell's own text.
+    CHECK(html.find("const sum = withPct.reduce((a, r) => a + r.pct_h, 0);") !=
+          std::string::npos);
+    CHECK(html.find("const h = Math.floor((2 * sum + n) / (2 * n));") != std::string::npos);
+    CHECK(html.find("Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%'") !=
+          std::string::npos);
+    // No number on the page is rounded by the browser's float rounding.
+    CHECK(html.find(".toFixed(") == std::string::npos);
 }
 
 namespace {

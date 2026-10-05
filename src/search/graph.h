@@ -11,6 +11,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -41,6 +42,20 @@ enum class FillDeadlineRule { Ch11, Ch10 };
 // hydra_fillcompare can tell which rule produced it later (docs/adr/0010).
 inline const char* engine_mode_stamp(FillDeadlineRule rule) {
     return rule == FillDeadlineRule::Ch10 ? "ch10" : "ch11";
+}
+
+// The one reading of a legacy_fills flag (a setting, a Lens or a command-line
+// switch): on is the Clone Hero 1.0 rule, off the normal 1.1 rule.
+inline FillDeadlineRule fill_rule_for(bool legacy_fills) {
+    return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;
+}
+
+// engine_mode_stamp read backwards: the rule a database's stamp names, or
+// nothing for a stamp neither rule writes.
+inline std::optional<FillDeadlineRule> fill_rule_from_stamp(std::string_view stamp) {
+    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
+        if (stamp == engine_mode_stamp(rule)) return rule;
+    return std::nullopt;
 }
 
 // How a fill rule's name is written: Long in sentences and labels, Short in
