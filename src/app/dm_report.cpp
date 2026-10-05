@@ -213,7 +213,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     // like the leaderboard join, so a score with no current result can say
     // whether analyzing would fix it.
     std::unordered_set<std::string> in_library;
-    for (const store::ChartLibraryEntry& e : store.list_chart_library(std::nullopt, 0, -1))
+    for (const store::ChartLibraryEntry& e : store.list_chart_library(0, -1))
         in_library.insert(normalize_chart_hash(e.md5));
 
     std::vector<DmReportRow> rows;

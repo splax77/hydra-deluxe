@@ -15,6 +15,7 @@
 #include "core/stars.h"
 #include "core/timing.h"
 #include "corpus_util.h"
+#include "scratch_settings.h"
 
 using namespace hydra;
 
@@ -295,10 +296,7 @@ TEST_CASE("stars: Burnout's optimal path earns 7 stars") {
     // 378,315 against a 7-star cutoff of 335,500 (the plan's reference data).
     const std::string chart = corpus::root() +
         "/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid";
-    app::AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    settings.ms_filter = 10.0;
+    const app::AnalysisSettings settings = scratch_settings().to_analysis_settings();
     const HydraRecord& record = corpus::analyzed(chart, settings);
     REQUIRE(!record.paths.empty());
     const Path& best = record.best_path();

@@ -58,7 +58,6 @@ PreviewFill fill(PreviewSpan s, PreviewFillState state) {
 PreviewScene timed_scene() {
     PreviewScene s;
     s.timing = SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    s.tick_resolution = 1000;
     return s;
 }
 
@@ -557,7 +556,6 @@ PreviewScene phrase_then_next_tick_scene() {
     };
     PreviewScene scene;
     scene.timing = timing;
-    scene.tick_resolution = 480;
     scene.notes = {at_tick(0, PreviewLane::Red), at_tick(480, PreviewLane::Yellow),
                    at_tick(481, PreviewLane::Blue)};
     PreviewSpan phrase;

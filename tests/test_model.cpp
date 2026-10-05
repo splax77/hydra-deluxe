@@ -52,31 +52,40 @@ TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's mult
                                         NoteCymbalType::Cymbal, false};
     const std::vector<ChordNote> notes = c.notes(true);
     REQUIRE(notes.size() == 2);
-    for (int combo : {0, 8, 9, 29, 45}) {
+    // The cuts for this chord (a Red tom worth 50 and an accented Yellow
+    // cymbal worth 130), pinned from one run of category_scores on
+    // 2026-10-05, one row per combo before the chord. The combos straddle the
+    // multiplier steps, so the two notes sometimes pay at different ones.
+    struct Row {
+        int combo;
+        int first_cut;  // first_note: only the Red tom loses its doubling
+        int whole_cut;  // whole_chord: both notes lose it
+    };
+    const Row rows[] = {
+        {0, 50, 180}, {8, 50, 310}, {9, 100, 360}, {29, 200, 720}, {45, 200, 720},
+    };
+    for (const Row& row : rows) {
+        const int combo = row.combo;
         CAPTURE(combo);
         // first_note (the default): only note 0 loses its SP doubling.
         std::vector<CategoryScores> per_note;
         const CategoryScores cs = category_scores(c, combo, &per_note);
-        const int first_cut = notes[0].basescore() * to_multiplier(combo + 1);
-        CHECK(cs.sqout_reduction == first_cut);
+        CHECK(cs.sqout_reduction == row.first_cut);
         REQUIRE(per_note.size() == 2);
-        CHECK(per_note[0].sqout_reduction == first_cut);
+        CHECK(per_note[0].sqout_reduction == row.first_cut);
         CHECK(per_note[1].sqout_reduction == 0);
         CHECK(cs.sqout_sp() == cs.sp - cs.sqout_reduction);
 
-        // whole_chord: every note loses it, each at its own multiplier.
+        // whole_chord: every note loses it, each at its own multiplier. The
+        // Red tom's share is the same as under first_note.
         std::vector<CategoryScores> whole_per_note;
         const CategoryScores whole =
             category_scores(c, combo, &whole_per_note, core::SqOutRule::WholeChord);
-        int whole_cut = 0;
-        for (size_t i = 0; i < notes.size(); ++i) {
-            const int note_cut =
-                notes[i].basescore() * to_multiplier(combo + 1 + static_cast<int>(i));
-            REQUIRE(whole_per_note.size() == 2);
-            CHECK(whole_per_note[i].sqout_reduction == note_cut);
-            whole_cut += note_cut;
-        }
-        CHECK(whole.sqout_reduction == whole_cut);
+        REQUIRE(whole_per_note.size() == 2);
+        CHECK(whole_per_note[0].sqout_reduction == row.first_cut);
+        CHECK(whole_per_note[0].sqout_reduction + whole_per_note[1].sqout_reduction ==
+              row.whole_cut);
+        CHECK(whole.sqout_reduction == row.whole_cut);
         CHECK(whole.sqout_sp() == whole.sp - whole.sqout_reduction);
     }
 }

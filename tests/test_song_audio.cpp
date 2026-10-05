@@ -35,13 +35,13 @@ std::optional<double> length_of(const std::string& notespath) {
 TEST_CASE("song length: a loose chart's length is its audio's end in chart time") {
     // The chart's last note is at 100 ms; its song.ogg is the 5 s sine.
     const std::optional<double> length =
-        length_of(audiochart::short_chart_with_long_audio(L"len_"));
+        length_of(audiochart::short_chart_with_long_audio("prevctl_len"));
     REQUIRE(length.has_value());
     CHECK(*length == 5000.0);
 }
 
 TEST_CASE("song length: the chart's offset moves the end") {
-    const std::string chart = audiochart::short_chart_with_long_audio(L"len_delay_");
+    const std::string chart = audiochart::short_chart_with_long_audio("prevctl_len_delay");
     const std::string ini = hydra::parent_folder(chart) + "\\song.ini";
 
     // A positive delay puts chart time 0 that far into the audio, so the
@@ -59,7 +59,7 @@ TEST_CASE("song length: the chart's offset moves the end") {
 }
 
 TEST_CASE("song length: a chart with no readable audio has none") {
-    const std::string chart = audiochart::short_chart_with_long_audio(L"len_none_");
+    const std::string chart = audiochart::short_chart_with_long_audio("prevctl_len_none");
     const std::string ogg = hydra::parent_folder(chart) + "\\song.ogg";
 
     // Junk bytes under an audio name: the stem will not open.
@@ -72,7 +72,7 @@ TEST_CASE("song length: a chart with no readable audio has none") {
 }
 
 TEST_CASE("song length: the Preview's audio end and the song length agree") {
-    const std::string chart = audiochart::short_chart_with_long_audio(L"len_preview_");
+    const std::string chart = audiochart::short_chart_with_long_audio("prevctl_len_preview");
     const std::optional<double> length = length_of(chart);
     REQUIRE(length.has_value());
 

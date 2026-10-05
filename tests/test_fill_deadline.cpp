@@ -108,16 +108,32 @@ TEST_CASE("fill deadline: CH 1.0 preroll clamps at 10000 ms") {
 
 TEST_CASE("fill deadline: CH 1.1 is unchanged 4-beats-before math") {
     // The default rule must still be exactly what add_act_edge computed inline
-    // before the rule became a parameter: the ms of the tick 4 beats before
-    // the fill starts.
-    for (int64_t res : {192, 480}) {
-        for (double bpm : {90.0, 120.0, 200.0}) {
-            SongTiming t = flat_timing(res, bpm);
-            for (int64_t fill_length : {96, 384, 960}) {
+    // before the rule became a parameter. activation_fill_deadline_ms in
+    // search/graph.cpp owns it. These deadlines were pinned from one run of
+    // that code on 2026-10-05, one per resolution, tempo and fill length, so a
+    // change to the rule fails here instead of being repeated here.
+    const double want[2][3][3] = {
+        // res 192: 90, 120 and 200 BPM; fills of 96, 384 and 960 ticks.
+        {{23666.666666666668, 22666.666666666668, 20666.666666666668},
+         {17750.0, 17000.0, 15500.0},
+         {10650.0, 10200.0, 9300.0}},
+        // res 480: the same tempos and fill lengths.
+        {{7866.6666666666661, 7466.666666666667, 6666.666666666667},
+         {5900.0, 5600.0, 5000.0},
+         {3540.0, 3360.0, 3000.0}},
+    };
+    const int64_t resolutions[] = {192, 480};
+    const double tempos[] = {90.0, 120.0, 200.0};
+    const int64_t fill_lengths[] = {96, 384, 960};
+    for (size_t r = 0; r < 2; ++r) {
+        for (size_t b = 0; b < 3; ++b) {
+            SongTiming t = flat_timing(resolutions[r], tempos[b]);
+            for (size_t f = 0; f < 3; ++f) {
+                CAPTURE(resolutions[r]);
+                CAPTURE(tempos[b]);
+                CAPTURE(fill_lengths[f]);
                 const int64_t fill_end = 7680;
-                const int64_t tick_e = fill_end - fill_length - 4 * res;
-                CHECK(ch11(t, fill_end, fill_length) ==
-                      doctest::Approx(t.timecode(tick_e).ms()));
+                CHECK(ch11(t, fill_end, fill_lengths[f]) == doctest::Approx(want[r][b][f]));
             }
         }
     }

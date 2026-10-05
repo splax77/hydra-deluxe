@@ -26,6 +26,7 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 #include "ui/preview_load_job.h"
 #include "ui/widgets.h"  // progress_fraction
 
@@ -50,16 +51,7 @@ P make(S step, uint64_t done, uint64_t total, double elapsed = 0.0, double left 
     return p;
 }
 
-// ---- a scratch chart folder ------------------------------------------------
-
-std::string make_temp_dir(const char* tag) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    std::wstring dir = std::wstring(tmp) + L"hydra_" + hydra::utf8_to_wide(tag) + L"_" +
-                       std::to_wstring(GetCurrentProcessId());
-    CreateDirectoryW(dir.c_str(), nullptr);
-    return hydra::wide_to_utf8(dir);
-}
+// ---- a scratch chart folder (made with testtemp::temp_dir) -----------------
 
 void write_file(const std::string& path, const std::vector<uint8_t>& bytes) {
     std::FILE* f = hydra::fopen_utf8(path, L"wb");
@@ -270,7 +262,7 @@ TEST_CASE("ByteRateClock measures over a second and answers at most once a secon
 // cancel in the middle of opening a huge stem must be noticed within the
 // Opus index's 4 MB reporting step, not after the whole file.
 TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promptly") {
-    const std::string dir = make_temp_dir("loadcancel");
+    const std::string dir = testtemp::temp_dir("loadcancel");
     const std::string notes = dir + "\\notes.chart";
     const std::string song = dir + "\\song.opus";
     write_file(notes, hydra::read_file_bytes(corpus::first_chart_with_suffix(".chart")));
@@ -320,7 +312,7 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
 // A negative chart offset becomes silence in front of the audio, and the job
 // reports offset 0, exactly as the old padded buffer did.
 TEST_CASE("a Preview load turns a negative chart offset into front silence") {
-    const std::string dir = make_temp_dir("loadpad");
+    const std::string dir = testtemp::temp_dir("loadpad");
     const std::string notes = dir + "\\notes.chart";
     const std::string song = dir + "\\song.ogg";
     const std::string ini = dir + "\\song.ini";

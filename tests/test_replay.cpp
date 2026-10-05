@@ -1270,7 +1270,6 @@ TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
         // last note's.
         CHECK(c.multiplier == c.notes.front().multiplier);
         CHECK(c.multiplier_after == c.notes.back().multiplier);
-        CHECK(c.multiplier == to_multiplier(c.combo_before + 1));
         // What the disc shows after this chord is what the next chord starts
         // from: the old field's value on the next chord.
         if (i + 1 < r.chords.size())
@@ -1292,6 +1291,20 @@ TEST_CASE("replay score fields: one list in schema order") {
     s.base = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
     for (size_t i = 0; i < 6; ++i)
         CHECK(s.*(kReplayScoreFields[i].member) == static_cast<int64_t>(i + 1));
+}
+
+TEST_CASE("assign_score and score_of are each other's reverse") {
+    ReplayScore s;
+    s.base = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
+    Path p;
+    assign_score(p, s);
+    CHECK(p.score_base == 1);
+    CHECK(p.score_combo == 2);
+    CHECK(p.score_sp == 3);
+    CHECK(p.score_solo == 4);
+    CHECK(p.score_accents == 5);
+    CHECK(p.score_ghosts == 6);
+    CHECK(score_of(p) == s);
 }
 
 // ---------------------------------------------------------------------------

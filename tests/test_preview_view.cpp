@@ -205,13 +205,7 @@ const AnalysisResult& analyzed() {
 Path priced_path(const Song& song, std::vector<Activation> acts) {
     Path p;
     p.activations = std::move(acts);
-    const ReplayScore s = replay_stored_path(song, p).result.final;
-    p.score_base = s.base;
-    p.score_combo = s.combo;
-    p.score_sp = s.sp;
-    p.score_solo = s.solo;
-    p.score_accents = s.accent;
-    p.score_ghosts = s.ghost;
+    assign_score(p, replay_stored_path(song, p).result.final);
     return p;
 }
 
@@ -466,7 +460,8 @@ TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
     // runs the plan's 5 s past the last note (tick 720, 750 ms), to 5750 ms.
     PreviewScene scene = build_preview_scene(song, nullptr, kCloneHeroSpCap,
                                              core::default_rules(), 5750.0);
-    CHECK(scene.tick_resolution == 480);
+    REQUIRE(scene.timing.has_value());
+    CHECK(scene.timing->tick_resolution() == 480);
     REQUIRE(scene.tempos.size() == 1);
     CHECK(scene.tempos[0].bpm == doctest::Approx(120.0));
     REQUIRE(!scene.beats.empty());
@@ -811,7 +806,6 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                 x.ms_index().tps_at(t) != y.ms_index().tps_at(t))
                 return "timing (ms index at tick " + std::to_string(t) + ")";
     }
-    if (a.tick_resolution != b.tick_resolution) return "tick_resolution";
     if (a.song_length_ms != b.song_length_ms) return "song_length_ms";
     if (a.has_notes != b.has_notes) return "has_notes";
     return "";
@@ -1452,7 +1446,10 @@ TEST_CASE("score box: a solo's bonus lands on its last note") {
 
     const ReplayResult r = replay_path(song, {});
     REQUIRE(r.chords[1].points.solo > 0);
-    CHECK(scene.score.steps[1].total == r.chords[1].cum.total() - r.chords[1].points.solo);
+    // replay_path owns the withheld total; 180 was pinned from one run on
+    // 2026-10-05 as a fixed oracle beside it.
+    CHECK(scene.score.steps[1].total == r.chords[1].cum_onscreen_total);
+    CHECK(scene.score.steps[1].total == 180);
     CHECK(scene.score.steps[2].total == r.chords[2].cum.total());
     CHECK(scene.score.steps[3].total == path.totalscore());
 

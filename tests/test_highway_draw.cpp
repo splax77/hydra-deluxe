@@ -52,7 +52,6 @@ PreviewFill fill(PreviewSpan s, PreviewFillState state) {
 PreviewScene timed_scene() {
     PreviewScene s;
     s.timing = SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    s.tick_resolution = 1000;
     return s;
 }
 
@@ -222,13 +221,15 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
     CHECK(bars == 1);
     CHECK(halves == 1);
 
-    // Fill: four lane strips from 1.3 s to 1.5005 s.
+    // Fill: four lane strips from 1.3 s to kSpanEndTicks past the 1.5 s note.
+    // timed_scene() has one tick per millisecond, hence the 1000.
     int lanes = 0;
     for (const DrawCommand& c : cmds) {
         if (c.material.texture >= TextureId::LaneRed && c.material.texture <= TextureId::LaneGreen) {
             ++lanes;
             CHECK(c.lo[2] == doctest::Approx(time_to_z(cfg, now, 1.3, 1.0)));
-            CHECK(c.hi[2] == doctest::Approx(time_to_z(cfg, now, 1.5005, 1.0)));
+            CHECK(c.hi[2] ==
+                  doctest::Approx(time_to_z(cfg, now, 1.5 + kSpanEndTicks / 1000.0, 1.0)));
         }
     }
     CHECK(lanes == 4);
@@ -354,7 +355,9 @@ TEST_CASE("build_highway_draws: hit flash and target glow after a note passes") 
     for (const DrawCommand& c : cmds)
         if (c.material.texture == TextureId::TargetGreenLight) {
             ++glows;
-            CHECK(c.alpha == doctest::Approx(1.0f - 0.05f / 0.1666666f));
+            // Pinned from one run on 2026-10-05; the fade length is the
+            // shipped json's targets_secs_light.
+            CHECK(c.alpha == doctest::Approx(0.7f));
         }
     CHECK(glows == 1);
     for (const DrawCommand& c : cmds) CHECK(c.material.texture != TextureId::TargetRedLight);
@@ -366,7 +369,7 @@ TEST_CASE("build_highway_draws: hit flash and target glow after a note passes") 
     for (const DrawCommand& c : cmds)
         if (c.material.texture == TextureId::TargetGreenLight) {
             ++glows;
-            CHECK(c.alpha == doctest::Approx(1.0f - 0.15f / 0.1666666f));
+            CHECK(c.alpha == doctest::Approx(0.1f));  // same run, same owner
         }
     CHECK(glows == 1);
 
@@ -460,7 +463,9 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
             ++lit_green;
             // The extra pass covers the fill's stretch, not the strike line.
             CHECK(c.lo[2] == doctest::Approx(time_to_z(cfg, 1.0, 1.3, 1.0)));
-            CHECK(c.hi[2] == doctest::Approx(time_to_z(cfg, 1.0, 1.5005, 1.0)));
+            // kSpanEndTicks past the 1.5 s note, at one tick per millisecond.
+            CHECK(c.hi[2] ==
+                  doctest::Approx(time_to_z(cfg, 1.0, 1.5 + kSpanEndTicks / 1000.0, 1.0)));
             CHECK(c.lo[0] == doctest::Approx(0.5f));  // the green lane's x span
             CHECK(c.hi[0] == doctest::Approx(1.0f));
         }
@@ -585,7 +590,6 @@ TEST_CASE("build_highway_draws: a chord one tick after a phrase ends draws plain
     };
     PreviewScene scene;
     scene.timing = timing;
-    scene.tick_resolution = 480;
     scene.notes = {at_tick(480, PreviewLane::Yellow), at_tick(481, PreviewLane::Blue)};
     PreviewSpan phrase;
     phrase.start_tick = 0;

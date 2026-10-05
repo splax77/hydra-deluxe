@@ -28,6 +28,7 @@
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_bytes.h"
 #include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
@@ -753,10 +754,7 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
 
     // no_skips plus "keep only paths that need no timing" is exactly the
     // all-0 search.
-    EngineOptions allzero;
-    allzero.no_skips = true;
-    allzero.no_timing = true;
-    const std::vector<Path> z = run_search(graph, allzero);
+    const std::vector<Path> z = run_search(graph, allzero_options());
     for (const Path& p : z) CHECK_FALSE(p.needs_timing());
     const std::vector<Path> want_z = search_allzero(graph);
     REQUIRE_FALSE(want_z.empty());
@@ -776,6 +774,40 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
     REQUIRE_FALSE(again.empty());
     CHECK(again.front().pathstring() == best.front().pathstring());
     CHECK(again.front().totalscore() == best.front().totalscore());
+}
+
+// The all-0 search's options have one owner, so search_allzero and the case
+// above run the same search.
+TEST_CASE("allzero_options: no skips, no timing, everything else default") {
+    const EngineOptions z = allzero_options();
+    const EngineOptions plain{};
+    CHECK(z.no_skips);
+    CHECK(z.no_timing);
+    CHECK(z.depth_mode == plain.depth_mode);
+    CHECK(z.depth_value == plain.depth_value);
+    CHECK(z.ms_filter == plain.ms_filter);
+    CHECK_FALSE(z.target_act_ticks.has_value());
+}
+
+// The test cache keys a stored analysis by settings_key. The default's text is
+// pinned from one run, so the key's shape cannot drift, and each SearchSettings
+// field must move it, so a field left out of the key shows up here.
+TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every field moves it") {
+    const SearchSettings plain{};
+    const std::string key = settings_key(plain);
+    CHECK(key == "4|0|4|none|0|8129816903421021426|");
+
+    std::vector<SearchSettings> changed(6, plain);
+    changed[0].sp_cap = 1;
+    changed[1].depth_mode = DepthMode::Points;
+    changed[2].depth_value = 5;
+    changed[3].ms_filter = 10.0;
+    changed[4].legacy_fill_deadline = true;
+    changed[5].rules.max_tied_paths += 1;
+    for (size_t i = 0; i < changed.size(); ++i) {
+        INFO("changed field " << i);
+        CHECK(settings_key(changed[i]) != key);
+    }
 }
 
 // analyze_chart used to run Clone Hero's 4 bars down its own branch, with the
@@ -821,12 +853,7 @@ TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths"
         tall.allzero_paths = search_allzero(g_tall);
         built.allzero_paths = search_allzero(g_built);
 
-        const store::FlatRecord a = store::flatten_record(tall);
-        const store::FlatRecord b = store::flatten_record(built);
-        bool same = a.structure == b.structure && a.nodes.size() == b.nodes.size();
-        for (size_t i = 0; same && i < a.nodes.size(); ++i)
-            same = a.nodes[i].payload == b.nodes[i].payload;
-        CHECK_MESSAGE(same, "a song with " << song.sp_phrase_count() << " phrases");
+        CHECK_MESSAGE(record_bytes(tall) == record_bytes(built), "a song with " << song.sp_phrase_count() << " phrases");
         ++compared;
     }
     MESSAGE("compared " << compared << " songs with fewer than 4 phrases");

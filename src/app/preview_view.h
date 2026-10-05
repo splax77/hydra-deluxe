@@ -250,7 +250,6 @@ struct PreviewScene {
     // tempo/meter lists above. Empty only on a default-built PreviewScene (no
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
-    int64_t tick_resolution = 0;       // ticks per quarter note
     // The song's length: its audio's end in chart time, as
     // audio::song_length_ms answers it (D69), handed to build_preview_base.
     // 0 when the song has no readable audio. The SP curve closes here. The
@@ -444,7 +443,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 //
 // The base reads the song alone. It owns these fields: notes, sp_phrases,
 // solos, the fill windows (each fills[i].span), beats, tempos, sections,
-// meters, time_sigs, timing, tick_resolution, song_length_ms and has_notes.
+// meters, time_sigs, timing, song_length_ms and has_notes.
 // Every fill in a base reads Hidden, the field's default.
 //
 // The overlay owns the rest: activations, every fill's state, score and

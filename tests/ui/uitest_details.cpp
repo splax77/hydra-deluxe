@@ -14,6 +14,7 @@
 #include "ui/details_view.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/fonts.h"  // px()
+#include "ui/library_view.h"  // library_split_width
 #include "ui/preview_controller.h"
 
 namespace uitest {
@@ -245,7 +246,7 @@ void test_dynamics_stored(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->library_row_at(0).title == "Acid Romance");
     // Clear any leftover dynamics state from the other chart.
     h.app->dynamics_result.reset();
-    h.app->dynamics_key.clear();
+    h.app->dynamics_key.reset();
     if (h.app->dynamics_job) { h.app->dynamics_job->cancel(); h.app->dynamics_job.reset(); }
     open_details(ctx, 0);
     if (ctx->IsError()) return;
@@ -495,8 +496,7 @@ void test_panel_split(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     const float room = library()->Size.x + panel()->Size.x;
     const float min_panel = hydra::ui::px(hydra::ui::kMinSongPanelW);
-    // (std::min) in brackets: windows.h, through the harness, defines min.
-    const float opened = (std::min)(hydra::ui::kDefaultLibraryShare * room, room - min_panel);
+    const float opened = hydra::ui::library_split_width(room, hydra::ui::kDefaultLibraryShare);
     IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, opened, 1.0f);
     IM_CHECK_GE(panel()->Size.x, min_panel - 1.0f);
 
@@ -531,7 +531,7 @@ void test_panel_split(ImGuiTestContext* ctx) {
     IM_CHECK_FLOAT_NEAR_EQ(hydra::ui::library_share(), 0.3f, 0.0001f);
     open();
     if (ctx->IsError()) return;
-    IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, (std::max)(hydra::ui::px(320.0f), 0.3f * room), 1.0f);
+    IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, hydra::ui::library_split_width(room, 0.3f), 1.0f);
 }
 
 // "Hide library" gives the song panel the whole width and flips to "Show
@@ -757,7 +757,11 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     IM_CHECK(visible_text(h).find("(unknown) \xC2\xB7 charted by Hoph2o") != std::string::npos);
     h.app->selected->artist = "Green Day";
     ctx->Yield(2);
-    IM_CHECK(ctx->ItemExists("**/Analyze this song"));
+    // The button the panel shows for a record in this state.
+    auto button = [](hydra::store::RecordStatus status) {
+        return "**/" + std::string(hydra::ui::analyze_button_label(status));
+    };
+    IM_CHECK(ctx->ItemExists(button(hydra::store::RecordStatus::NotAnalyzed).c_str()));
 
     analyze_open_song(ctx);
     if (ctx->IsError()) return;
@@ -770,7 +774,7 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     // The hardest timing sits beside each path in the list, not in the headline.
     IM_CHECK(text.find("hardest squeeze") == std::string::npos);
     IM_CHECK(text.find("163.0 ms") != std::string::npos);
-    IM_CHECK(ctx->ItemExists("**/Re-analyze"));
+    IM_CHECK(ctx->ItemExists(button(hydra::store::RecordStatus::Ready).c_str()));
 
     // A result from another Hydra build, under these rules: the headline and
     // the Paths tab name only that cause, and the button stays Re-analyze.
@@ -782,7 +786,7 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("Out of date: this result came from another Hydra version. Re-analyze "
                        "to refresh it.") != std::string::npos);
     IM_CHECK(text.find("hydra_rules.ini") == std::string::npos);
-    IM_CHECK(ctx->ItemExists("**/Re-analyze"));
+    IM_CHECK(ctx->ItemExists(button(hydra::store::RecordStatus::Stale).c_str()));
 }
 
 // Closing the panel mid-analysis no longer cancels it: the result is stored
@@ -794,7 +798,7 @@ void test_panel_keeps_analysis(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     open_details(ctx, 0);
     if (ctx->IsError()) return;
-    ctx->ItemClick("**/Analyze this song");
+    ctx->ItemClick(analyze_button_ref(h).c_str());
     ctx->ItemClick("X##closepanel");
     ctx->Yield(2);
     IM_CHECK(!h.app->details_open());

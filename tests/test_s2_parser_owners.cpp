@@ -3,11 +3,6 @@
 
 #include "doctest.h"
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -27,6 +22,7 @@
 #include "parse/song.h"
 #include "srb_util.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 
 using namespace hydra;
 
@@ -101,9 +97,7 @@ TEST_CASE("s2 owners: a .chart Offset that is not a plain number is absent (R7.5
 
 TEST_CASE("s2 owners: a song.ini delay that is not a plain number is absent (R7.5)") {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() /
-                         ("hydra_s2_delay_" + std::to_string(GetCurrentProcessId()));
-    fs::create_directories(dir);
+    const fs::path dir = hydra::os_path(testtemp::temp_dir("s2_delay"));
     const fs::path ini = dir / "song.ini";
     auto delay = [&](const std::string& value) {
         {
@@ -192,8 +186,7 @@ TEST_CASE("s2 owners: a blank artist or charter reads the placeholder (60)") {
     namespace fs = std::filesystem;
     const std::string chart = corpus::first_chart_with_suffix(".chart");
     REQUIRE(!chart.empty());
-    const fs::path root = fs::temp_directory_path() /
-                          ("hydra_s2_blank_meta_" + std::to_string(GetCurrentProcessId()));
+    const fs::path root = hydra::os_path(testtemp::temp_dir("s2_blank_meta"));
     fs::remove_all(root);
     // "artist =" and "charter =" present but blank (56 library song.ini files
     // have a blank charter).

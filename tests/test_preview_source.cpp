@@ -29,6 +29,7 @@
 #include "parse/song.h"
 #include "sng_util.h"
 #include "srb_util.h"
+#include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::app;
@@ -42,18 +43,8 @@ void write_bytes(const std::string& path, const std::vector<uint8_t>& data) {
     std::fclose(f);
 }
 
-// A fresh directory under %TEMP% for this process's fixtures.
-std::string fixture_dir() {
-    static std::string dir = [] {
-        wchar_t tmp[MAX_PATH];
-        GetTempPathW(MAX_PATH, tmp);
-        std::wstring d = std::wstring(tmp) + L"hydra_prevsrc_" +
-                         std::to_wstring(GetCurrentProcessId());
-        CreateDirectoryW(d.c_str(), nullptr);
-        return wide_to_utf8(d);
-    }();
-    return dir;
-}
+// This process's scratch folder for the fixtures (testtemp::temp_dir).
+std::string fixture_dir() { return testtemp::temp_dir("prevsrc"); }
 
 std::string make_subdir(const std::string& name) {
     std::string dir = fixture_dir() + "\\" + name;

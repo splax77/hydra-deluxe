@@ -25,6 +25,7 @@
 #include "parse/song.h"
 #include "sng_util.h"
 #include "song_equal.h"
+#include "temp_util.h"
 
 using namespace hydra;
 using testsong::songs_equal;
@@ -41,10 +42,11 @@ std::vector<uint8_t> tiny_mid() {
                                            testmidi::end_of_track()}));
 }
 
+// A scratch path (testtemp::temp_path) for one fixture. The name's extension
+// stays last, where the loaders look for it.
 std::string sng_fixture_path(const char* name) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    return wide_to_utf8(tmp) + "hydra_sng_" + std::to_string(GetCurrentProcessId()) + "_" + name;
+    const std::filesystem::path p = std::filesystem::u8path(name);
+    return testtemp::temp_path("sng_" + p.stem().u8string(), p.extension().u8string());
 }
 
 void write_fixture(const std::string& path, const std::vector<uint8_t>& bytes) {

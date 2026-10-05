@@ -29,6 +29,7 @@
 #include "parse/song.h"
 #include "render/track_state.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
@@ -67,7 +68,6 @@ ChartLibraryEntry entry_for(const std::string& notespath) {
 using audiochart::chart_with_audio;
 using audiochart::copy_file_utf8;
 using audiochart::short_chart_with_long_audio;
-using audiochart::temp_chart_dir;
 
 // Every field of two timelines, instant by instant.
 void check_same_track(const hydra::render::TrackState& got,
@@ -108,15 +108,8 @@ AnalyzedChart first_chart_with_a_path() {
     settings.depth_mode = DepthMode::Scores;
     settings.depth_value = 2;
     settings.ms_filter = 10.0;
-    for (const std::string& p : corpus::chart_paths()) {
-        try {
-            AnalysisResult r = analyze_chart_file(p, settings);
-            if (!r.record.paths.empty()) return {p, r.record.best_path()};
-        } catch (const std::exception&) {
-        }
-    }
-    FAIL("no corpus chart has a path");
-    return {};
+    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(settings);
+    return {found.chart, found.result.record.best_path()};
 }
 
 }  // namespace
@@ -386,21 +379,9 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
     settings.depth_mode = DepthMode::Scores;
     settings.depth_value = 2;
     settings.ms_filter = 10.0;
-    std::string chart;
-    std::optional<AnalysisResult> analyzed;
-    for (const std::string& p : corpus::chart_paths()) {
-        try {
-            AnalysisResult r = analyze_chart_file(p, settings);
-            if (!r.record.paths.empty()) {
-                chart = p;
-                analyzed.emplace(std::move(r));
-                break;
-            }
-        } catch (const std::exception&) {
-        }
-    }
-    REQUIRE(analyzed.has_value());
-    const Path& best = analyzed->record.best_path();
+    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(settings);
+    const std::string& chart = found.chart;
+    const Path& best = found.result.record.best_path();
     const std::string best_key = path_overlay_key(&best);
 
     PreviewController pc(nullptr, nullptr);
@@ -559,7 +540,7 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
 // entry's md5 here is deliberately wrong; only a re-hash could notice that.
 TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unchanged chart") {
     using namespace hydra;
-    const std::string dir = temp_chart_dir(L"sig_");
+    const std::string dir = testtemp::temp_dir("prevctl_sig");
     copy_file_utf8(corpus::first_chart_with_suffix(".chart"), dir + "\\notes.chart");
     std::FILE* ini = fopen_utf8(dir + "\\song.ini", L"wb");
     REQUIRE(ini != nullptr);
@@ -576,7 +557,7 @@ TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unc
     // The library list hands the Preview the same fingerprint the scan stored.
     store::RecordStore db(":memory:");
     db.rebuild_chart_library({scanned});
-    const std::vector<ChartLibraryEntry> listed = db.list_chart_library(std::nullopt, 0, -1);
+    const std::vector<ChartLibraryEntry> listed = db.list_chart_library(0, -1);
     REQUIRE(listed.size() == 1);
     CHECK(listed[0].sig == scanned.sig);
 

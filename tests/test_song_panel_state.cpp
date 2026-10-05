@@ -23,6 +23,7 @@
 #include "app/config.h"
 #include "core/winstr.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
 
@@ -33,12 +34,7 @@ using hydra::ui::AppState;
 
 namespace {
 
-std::string temp_path(const char* tag, const char* ext) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    return hydra::wide_to_utf8(tmp) + "hydra_test_" + tag + "_" +
-           std::to_string(GetCurrentProcessId()) + ext;
-}
+using testtemp::temp_path;
 
 // Scratch INI and DB for one test; the process's paths come back afterwards.
 struct ScratchPaths {

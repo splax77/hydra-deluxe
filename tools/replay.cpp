@@ -550,13 +550,12 @@ int cmd_dump(const Args& a, const app::Settings& s) {
             // The settings the lookup was keyed by, read back from s.
             const std::string ms =
                 s.mslimit_enabled ? std::to_string(s.mslimit_value) : std::string("off");
-            const char* depth_mode =
-                s.search_depth_mode() == DepthMode::Points ? "points" : "scores";
+            const std::string depth = app::describe_settings(s.to_analysis_settings()).depth;
             std::fprintf(stderr,
                          "NotAnalyzed: no record for %s under '%s', cap %d, "
-                         "ms %s, depth %s/%d.%s\n",
+                         "ms %s, depth %s.%s\n",
                          hyhash.c_str(), s.chartmode_key().c_str(), s.sp_cap,
-                         ms.c_str(), depth_mode, s.depth_value,
+                         ms.c_str(), depth.c_str(),
                          a.no_analyze ? "" : " Analyzing the chart fresh instead.");
         } else {
             // One line per reason. The follow-up ("Re-analyze" or "Analyzing

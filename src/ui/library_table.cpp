@@ -29,13 +29,6 @@ namespace hydra::ui::detail {
 
 namespace {
 
-// The table's columns, by index. Each column's user ID is its LibrarySort.
-constexpr int kColumnTitle = 0;
-constexpr int kColumnArtist = 1;
-constexpr int kColumnCharter = 2;
-constexpr int kColumnFolder = 3;
-constexpr int kColumnBestPath = 4;
-
 // The chips' look, from the approved mockup: the selected chip is filled
 // teal with an accent border, the others are outlined only. White on the
 // selected fill is about 7:1.
@@ -82,7 +75,7 @@ void render_search_box(AppState& app) {
         ui.search_synced = true;
     }
     const ImGuiStyle& style = ImGui::GetStyle();
-    const float clear_w = ImGui::CalcTextSize("X").x + style.FramePadding.x * 2.0f;
+    const float clear_w = button_slot_width("X##clearsearch");
     ImGui::SetNextItemWidth(-(clear_w + style.ItemSpacing.x));
 
     // Ctrl+F jumps here from anywhere except behind a dialog: focusing a
@@ -157,10 +150,8 @@ void render_chips(AppState& app) {
     };
     const ChipCounts& counts = app.library.counts();
     // A chip that doesn't fit after the last one starts a new line. A
-    // button's width is its label plus the frame padding, known before it is
-    // drawn.
+    // button's width is known before it is drawn (button_slot_width).
     const ImGuiStyle& style = ImGui::GetStyle();
-    const float right_edge = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
     for (size_t i = 0; i < std::size(kChips); ++i) {
         const Chip& c = kChips[i];
         const size_t n = counts.of(c.chip);
@@ -168,12 +159,8 @@ void render_chips(AppState& app) {
         const char* name = status ? status_label(*status) : "All";
         const std::string label = std::string(name) + " (" +
                                   group_thousands(static_cast<int64_t>(n)) + ")##" + c.id;
-        if (i > 0) {
-            const float w =
-                ImGui::CalcTextSize(label.c_str(), nullptr, true).x + style.FramePadding.x * 2.0f;
-            if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + w <= right_edge)
-                ImGui::SameLine();
-        }
+        if (i > 0 && fits_on_line(button_slot_width(label.c_str()), style.ItemSpacing.x))
+            ImGui::SameLine();
         const bool on = app.library.chip() == c.chip;
         if (chip_button(label.c_str(), on, !on && n == 0)) app.library.set_chip(c.chip);
         // The chip stands for many rows with either cause, so its hint names
@@ -256,7 +243,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
         ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuterH |
         ImGuiTableFlags_SizingStretchProp;
-    if (!ImGui::BeginTable("##librarytable", 5, flags, size)) return used;
+    if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, flags, size)) return used;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
     ImGui::TableSetupColumn("Title",
