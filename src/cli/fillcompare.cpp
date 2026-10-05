@@ -85,8 +85,7 @@ int fillcompare_main() {
         old_store = hydra::app::open_store(*old_path, hydra::core::RulesStamp::of(settings.rules));
         new_store = hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
-        return 2;
+        return hydra::app::tool_error(e, 2);
     }
 
     // Engine-mode sanity check (D65, ADR 0010): warn only when the file's

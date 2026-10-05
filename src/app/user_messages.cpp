@@ -118,12 +118,16 @@ std::string plain_error_block(const std::exception& e) {
     return plain_error(e) + "\n\n" + plain_error_detail(e);
 }
 
+int tool_error(const std::exception& e, int exit_code) {
+    std::fprintf(stderr, "%s\n", plain_error_block(e).c_str());
+    return exit_code;
+}
+
 int run_tool(const std::function<int()>& body) {
     try {
         return body();
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "%s\n", plain_error_block(e).c_str());
-        return 1;
+        return tool_error(e, 1);
     }
 }
 

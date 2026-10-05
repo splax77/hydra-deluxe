@@ -144,8 +144,7 @@ int batch_main() {
     try {
         store_ptr = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
-        return 2;
+        return hydra::app::tool_error(e, 2);
     }
     hydra::store::RecordStore& store = *store_ptr;
 

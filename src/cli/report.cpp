@@ -85,8 +85,7 @@ int report_main() {
     try {
         store = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
     } catch (const std::exception& e) {
-        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
-        return 2;
+        return hydra::app::tool_error(e, 2);
     }
     // A database hydra_batch --legacy-fills filled holds only 1.0 results, so
     // it reports under that rule whatever the app's "1.0 fills" setting says,

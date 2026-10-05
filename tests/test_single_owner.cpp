@@ -4221,6 +4221,23 @@ const std::vector<OwnerRule>& rules() {
           "step_done(s, \"meta_set\");"},
          {{"src/store/record_store.cpp", "const int rc = sqlite3_step(s);", "step_row"},
           {"src/store/record_store.cpp", "if (sqlite3_step(s) != SQLITE_DONE)", "step_done"}}},
+        // A tool that prints an error's block itself is a second way for a
+        // tool to end on an error (D73 review finding 2).
+        {"How does a command-line tool end on an error?",
+         "tool_error in src/app/user_messages.cpp",
+         R"(plain_error_block\()",
+         "",
+         {},
+         {{"src/ui/main.cpp", "the startup message box shows the block in a window (D72 item 1)"}},
+         "D72 item 5, D73 item 4",
+         {"std::fprintf(stderr, \"%s\\n\", hydra::app::plain_error_block(e).c_str());"},
+         {"return hydra::app::tool_error(e, 2);"},
+         {{"src/app/user_messages.h", "std::string plain_error_block(const std::exception& e);",
+           "the declaration"},
+          {"src/app/user_messages.cpp", "std::string plain_error_block(const std::exception& e) {",
+           "the definition"},
+          {"src/app/user_messages.cpp",
+           "std::fprintf(stderr, \"%s\\n\", plain_error_block(e).c_str());", "tool_error"}}},
         // A read that failed to compile read the save sentence (D73).
         {"Did a database statement compile, and what kind is its failure?",
          "prepare_as in src/store/record_store.cpp",

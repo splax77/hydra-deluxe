@@ -34,9 +34,13 @@ std::string plain_error_detail(const std::exception& e);
 // command-line tools' stderr, D72).
 std::string plain_error_block(const std::exception& e);
 
+// How a command-line tool ends on an error: its plain_error_block on stderr,
+// then the exit code the caller passes (D72 item 5, D73 item 4).
+int tool_error(const std::exception& e, int exit_code);
+
 // Runs a command-line tool's main body and returns its exit code. An error
-// that escapes the body prints its plain_error_block to stderr and the tool
-// exits 1 (D73 item 4), so no tool ends with no message.
+// that escapes the body ends the tool through tool_error with code 1 (D73
+// item 4), so no tool ends with no message.
 int run_tool(const std::function<int()>& body);
 
 // Why a stored result is out of date, naming the real cause the store found

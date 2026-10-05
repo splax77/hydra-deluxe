@@ -217,22 +217,23 @@ bool AppState::selected_file_ok(double now) {
                              [this] { return file_exists_utf8(selected->notespath); });
 }
 
+void AppState::show_no_record() {
+    viewed_summary = store::PathSummary{};
+    viewed = store::RecordLookup{};
+    viewed_key_.reset();
+    record_generation.bump();
+}
+
 void AppState::refresh_viewed_record() {
     if (!selected) {
-        viewed_summary = store::PathSummary{};
-        viewed = store::RecordLookup{};
-        viewed_key_.reset();
+        show_no_record();
         return;
     }
     store::RecordKey key = settings.record_key(selected->md5);
     if (!read_store([&] { viewed = store->get_record(key); })) {
         // The same chart under the same settings keeps what it showed. Any
         // other shows nothing: the last lookup answered a different question.
-        if (viewed_key_ && *viewed_key_ == key) return;
-        viewed = store::RecordLookup{};
-        viewed_key_.reset();
-        viewed_summary = store::PathSummary{};
-        record_generation.bump();
+        if (!viewed_key_ || !(*viewed_key_ == key)) show_no_record();
         return;
     }
     viewed_key_ = std::move(key);

@@ -469,6 +469,8 @@ private:
     std::optional<size_t> relative_row(int delta) const;
     // Re-reads viewed_summary for the open song under the current settings.
     void refresh_viewed_summary();
+    // The panel's empty state: no record, no summary, no key it answers.
+    void show_no_record();
     // Runs one store read on the UI thread. A read that throws puts its
     // sentence in the status line and returns false, and the caller keeps
     // what it showed (D73 item 3). Every read whose answer a screen shows
