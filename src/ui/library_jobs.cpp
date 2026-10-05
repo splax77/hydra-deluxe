@@ -74,9 +74,7 @@ void ScanJob::run() {
 
     std::vector<store::ChartLibraryEntry> entries;
     entries.reserve(items.size());
-    for (const app::ScanItem& item : items)
-        entries.push_back({item.md5, item.title, item.artist, item.charter, item.notespath,
-                           item.rootfolder, item.sig});
+    for (const app::ScanItem& item : items) entries.push_back(app::to_library_entry(item));
 
     try {
         store_.rebuild_chart_library(entries);
@@ -135,13 +133,16 @@ std::optional<double> batch_eta_s(double elapsed_s, int completed, int total) {
     return elapsed_s / completed * (total - completed);
 }
 
-BatchJob::BatchJob(std::optional<std::string> search, app::BatchRun run,
-                   store::RecordStore& store, bool redo)
-    : search_(std::move(search)),
-      run_(std::move(run)),
-      store_(store),
-      redo_(redo),
-      workers_(app::batch_worker_count()) {}
+app::ScanItem scan_item_of(const store::ChartLibraryEntry& e) {
+    app::ScanItem item;
+    item.md5 = e.md5;
+    item.title = e.title;
+    item.artist = e.artist;
+    item.charter = e.charter;
+    item.notespath = e.notespath;
+    item.rootfolder = e.rootfolder;
+    return item;
+}
 
 BatchJob::BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun run,
                    store::RecordStore& store, bool redo)
@@ -153,7 +154,7 @@ BatchJob::BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun r
 
 void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
     analyze_ = std::move(analyze);
-    workers_ = std::max(1, workers);
+    workers_ = workers;  // stored as given: run_work_pool checks it
 }
 
 namespace {
@@ -238,15 +239,12 @@ BatchJob::Snapshot BatchJob::snapshot() const {
 }
 
 void BatchJob::run() {
-    // Load the item list here rather than on the UI thread: an unbounded
-    // SELECT over a big library takes long enough to freeze a frame.
+    // Turn the given rows into scan rows here rather than on the UI thread:
+    // a big library takes long enough to freeze a frame.
     try {
-        std::vector<store::ChartLibraryEntry> entries =
-            given_ ? std::move(*given_)
-                   : store_.list_chart_library(search_, 0, -1);  // LIMIT -1 = no limit
+        const std::vector<store::ChartLibraryEntry> entries = std::move(given_);
         items_.reserve(entries.size());
-        for (const store::ChartLibraryEntry& e : entries)
-            items_.push_back({e.md5, e.title, e.artist, e.charter, e.notespath, e.rootfolder});
+        for (const store::ChartLibraryEntry& e : entries) items_.push_back(scan_item_of(e));
     } catch (const std::exception& e) {
         std::lock_guard<std::mutex> lock(mu_);
         snap_.preparing = false;
@@ -270,21 +268,19 @@ void BatchJob::run() {
         return;
     }
 
-    bool total_known = false;
-
     app::BatchCallbacks callbacks;
-    callbacks.on_progress = [this, &total_known](const app::BatchProgress& p) {
+    // run_batch counts; the snapshot copies all five numbers in one step, so
+    // a frame never reads a failure before the chart it belongs to.
+    callbacks.on_progress = [this](const app::BatchProgress& p) {
         std::lock_guard<std::mutex> lock(mu_);
         snap_.total = p.total;
         snap_.completed = p.completed;
-        if (!total_known) {
-            snap_.skipped = static_cast<int>(items_.size()) - p.total;
-            total_known = true;
-        }
+        snap_.analyzed = p.analyzed;
+        snap_.skipped = p.skipped;
+        snap_.failed = p.failed;
     };
     callbacks.on_error = [this](const std::string& title, const std::string& error) {
         std::lock_guard<std::mutex> lock(mu_);
-        ++snap_.failed;
         snap_.failures.push_back(title + ": " + app::plain_error_text(error));
         snap_.failure_details.push_back(title + ": " + error);
     };
@@ -339,10 +335,7 @@ void AnalyzeJob::start() {
             });
         });
     } catch (const std::exception& e) {
-        error_ = e.what();
-        message_ = app::plain_error(e);
-        ok_ = false;
-        finished_.store(true);
+        fail(e);
     }
 }
 
@@ -351,7 +344,7 @@ app::AnalysisResult AnalyzeJob::take_result() { return std::move(*result_); }
 // ---- ReportJob --------------------------------------------------------
 
 ReportJob::ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-                     bool open_when_done, int hit_window_ms)
+                     bool open_when_done, double hit_window_ms)
     : store_(store),
       cap_(cap),
       lens_(lens),

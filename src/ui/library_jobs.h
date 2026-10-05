@@ -91,13 +91,13 @@ inline constexpr int kEtaMinFinished = 3;
 // charts still to go. Empty until kEtaMinFinished charts have finished.
 std::optional<double> batch_eta_s(double elapsed_s, int completed, int total);
 
+// A library entry as the batch's scan row: the fields of the same names, with
+// `sig` left empty (nothing the batch runs reads it). The other direction is
+// app::to_library_entry; this one can move beside it once analysis.h is free.
+app::ScanItem scan_item_of(const store::ChartLibraryEntry& e);
+
 class BatchJob : public JobBase {
 public:
-    // The job queries the library itself (filtered by `search`, like the
-    // table) on its own thread — loading thousands of rows synchronously
-    // before the progress modal appeared froze the UI for the whole query.
-    BatchJob(std::optional<std::string> search, app::BatchRun run,
-             store::RecordStore& store, bool redo);
     // Analyzes exactly these charts, in this order. The library screen's own
     // search (T12) decides which rows match, so "Analyze search (N)..." hands
     // over the N rows it shows instead of a search string SQL would read
@@ -128,11 +128,18 @@ public:
     // callers to stop().
     void cancel() { stop(); }
 
+    // The batch's settings: what its results are filed under, for the report
+    // that follows it.
+    const app::BatchRun& batch_run() const { return run_; }
+
     struct Snapshot {
-        bool preparing = true;  // still loading the item list from the store
-        int total = 0;      // items actually dispatched (excludes pre-skipped)
-        int completed = 0;  // finished charts, stored or failed
-        int skipped = 0;    // already stored, known up front (not part of total)
+        bool preparing = true;  // still building the scan list (BatchJob::run)
+        // The batch's counts, copied from app::BatchProgress (run_batch is
+        // their owner; see its fields for what each one counts).
+        int total = 0;
+        int completed = 0;
+        int analyzed = 0;
+        int skipped = 0;
         int failed = 0;
         bool paused = false;
         // Wall time since start(), paused time left out; frozen once finished.
@@ -157,8 +164,7 @@ private:
     // On a worker: records the chart it is starting as the current one.
     void note_started(const std::string& notespath);
 
-    std::optional<std::string> search_;
-    std::optional<std::vector<store::ChartLibraryEntry>> given_;
+    std::vector<store::ChartLibraryEntry> given_;
     std::vector<app::ScanItem> items_;
     // notespath -> index into items_. Built before run_batch starts and only
     // read after that, so workers read it without a lock.
@@ -238,11 +244,15 @@ public:
     // cap/lens: which records the page lists (the user's current SP cap, ms
     // limit and score range).
     ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-              bool open_when_done,
-              int hit_window_ms = static_cast<int>(kDefaultHitWindowMs));
+              bool open_when_done, double hit_window_ms = kDefaultHitWindowMs);
     ~ReportJob() { shutdown(); }
 
     void start();
+
+    // What the page is built from, as given to the constructor.
+    const store::CapQuery& cap() const { return cap_; }
+    const store::Lens& lens() const { return lens_; }
+    double hit_window_ms() const { return hit_window_ms_; }
 
     // Valid once finished() && ok(): where the page was written, whether the
     // browser opened it, and why not when it was asked to and didn't.
@@ -257,7 +267,7 @@ private:
     store::CapQuery cap_;
     store::Lens lens_;
     bool open_when_done_;
-    int hit_window_ms_;
+    double hit_window_ms_;
     ReportOutcome outcome_;
 };
 

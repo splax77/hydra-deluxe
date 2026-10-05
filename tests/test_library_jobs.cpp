@@ -1,7 +1,8 @@
 // Unit tests for the library and leaderboard jobs: Pause, Stop, the batch
-// clock and time-left estimate, the chart being analyzed, plain failure
-// lines, report pages the browser refuses, and quiet cancels. The analyzer
-// and the network are fakes, so nothing here reads a chart or goes online.
+// clock and time-left estimate, the chart being analyzed, the batch's counts,
+// plain failure lines, report pages the browser refuses, and quiet cancels.
+// The analyzer and the network are fakes; only the counts case reads one
+// corpus chart, for a result the store can save.
 
 #include "doctest.h"
 
@@ -16,6 +17,8 @@
 
 #include "app/analysis.h"
 #include "app/report_files.h"
+#include "app/user_messages.h"  // plain_error
+#include "corpus_util.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
@@ -215,6 +218,43 @@ TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
     CHECK(s.failure_details[0] == "fake 0: cannot open file: C:\\Songs\\x\\notes.chart");
 }
 
+TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
+    // Finding 142: one progress callback writes all five numbers, so no frame
+    // can read a failure counted before its chart is.
+    // The two charts that succeed store one real chart's result.
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    RecordStore store(":memory:");
+    BatchJob job(fake_charts(3), test_run(), store, /*redo=*/false);
+    job.set_analyzer_for_test(
+        [&real](const std::string& path, const AnalysisSettings&,
+                const std::function<void(float)>&) -> AnalysisResult {
+            if (path == "fake_1.chart") throw std::runtime_error("MD5 hashing failed");
+            return real;
+        },
+        /*workers=*/1);
+    job.start();
+    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+
+    const BatchJob::Snapshot s = job.snapshot();
+    CHECK(s.analyzed == 2);
+    CHECK(s.failed == 1);
+    CHECK(s.completed == 3);
+    CHECK(s.skipped == 0);
+    CHECK(s.total == 3);
+    CHECK(job.batch_run().lens == test_run().lens);
+    CHECK(job.batch_run().chartmode == test_run().chartmode);
+}
+
+TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
+    RecordStore store(":memory:");
+    const hydra::store::CapQuery cap = hydra::store::CapQuery::at(6);
+    const hydra::store::Lens lens = hydra::store::Lens::from(std::optional<int>(20), 1, 7);
+    const hydra::ui::ReportJob job(store, cap, lens, /*open_when_done=*/false, 85.5);
+    CHECK(job.cap() == cap);
+    CHECK(job.lens() == lens);
+    CHECK(job.hit_window_ms() == 85.5);  // the decimal is kept (D51 call 15)
+}
+
 TEST_CASE("jobs: a report the browser refuses is saved, not failed") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "hydra_jobs_test_report";
@@ -299,4 +339,49 @@ TEST_CASE("jobs: a failed leaderboard fetch says what to do") {
           "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.");
     CHECK(job.error() == "could not send the request (error 12029)");
     hydra::net::set_fetcher({});
+}
+
+// Finding 212: run_guarded and AnalyzeJob::start's thread-start catch record a
+// failure through one fail(). This job exposes it so the test can call it.
+TEST_CASE("jobs: a failed job records the raw text, the plain message, not ok and finished") {
+    struct FailingJob : hydra::ui::ResultJobBase {
+        using ResultJobBase::fail;
+    };
+    const std::runtime_error boom("boom");
+
+    FailingJob job;
+    job.fail(boom);
+    CHECK(job.error() == "boom");
+    CHECK(job.message() == hydra::app::plain_error(boom));
+    CHECK_FALSE(job.ok());
+    CHECK(job.finished());
+
+    // A cancel is the user's own click: the raw text stays, the message is empty.
+    FailingJob cancelled;
+    cancelled.cancel();
+    cancelled.fail(boom);
+    CHECK(cancelled.error() == "boom");
+    CHECK(cancelled.message().empty());
+    CHECK_FALSE(cancelled.ok());
+    CHECK(cancelled.finished());
+}
+
+// The batch turns each library entry into a scan row through scan_item_of.
+TEST_CASE("jobs: scan_item_of copies a library entry's fields by name") {
+    ChartLibraryEntry e;
+    e.md5 = "md5 a";
+    e.title = "title b";
+    e.artist = "artist c";
+    e.charter = "charter d";
+    e.notespath = "notes e.chart";
+    e.rootfolder = "root f";
+    e.sig = "sig g";
+    const hydra::app::ScanItem item = hydra::ui::scan_item_of(e);
+    CHECK(item.md5 == "md5 a");
+    CHECK(item.title == "title b");
+    CHECK(item.artist == "artist c");
+    CHECK(item.charter == "charter d");
+    CHECK(item.notespath == "notes e.chart");
+    CHECK(item.rootfolder == "root f");
+    CHECK(item.sig.empty());  // as the batch's rows have always had it
 }

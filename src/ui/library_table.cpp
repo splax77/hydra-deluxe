@@ -461,7 +461,7 @@ void render_library(AppState& app) {
     // Job-driven refreshes first, every frame, whatever is drawn below.
     app.tick_library(ImGui::GetTime());
     // An empty library shows the main window's "no songs" message instead.
-    if (app.library_total == 0) return;
+    if (app.library.rows().empty()) return;
 
     render_heading(app);
     render_search_box(app);

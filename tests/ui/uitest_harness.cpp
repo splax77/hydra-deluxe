@@ -28,6 +28,7 @@
 #include "audio/device.h"
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
+#include "ui/details_view.h"  // analyze_button_label
 #include "ui/library_jobs.h"
 #include "ui/library_model.h"
 #include "ui/preview_controller.h"
@@ -345,8 +346,8 @@ bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double
 bool jobs_busy(Harness& h) {
     auto& a = *h.app;
     if (a.scan_job && !a.scan_job->snapshot().finished) return true;
-    if (a.batch_job && !a.batch_job->snapshot().finished) return true;
-    if (a.analyze_job && !a.analyze_job->finished()) return true;
+    if (a.batch_running()) return true;
+    if (a.analyze_running()) return true;
     if (a.report_job && !a.report_job->finished()) return true;
     if (a.dm_fetch_job && !a.dm_fetch_job->finished()) return true;
     if (a.dm_report_job && !a.dm_report_job->finished()) return true;
@@ -439,7 +440,7 @@ void dump_widgets(ImGuiTestContext* ctx, const std::string& window_name) {
 void dump_state(Harness& h) {
     auto& a = *h.app;
     std::printf("state:\n");
-    std::printf("  library_total=%lld shown=%zu search=\"%s\"\n", (long long)a.library_total,
+    std::printf("  charts=%zu shown=%zu search=\"%s\"\n", a.library.rows().size(),
                 a.library_shown_count(), a.search.c_str());
     for (size_t i = 0; i < a.library_shown_count() && i < 20; ++i) {
         const auto& r = a.library_row_at(i);
@@ -511,7 +512,7 @@ void scan_library(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     ctx->SetRef("//Hydra");
     IM_CHECK(h.app->scan_job == nullptr);
-    IM_CHECK(h.app->library_total > 0);
+    IM_CHECK(!h.app->library.rows().empty());
     IM_CHECK(h.app->library_shown_count() > 0);
 }
 
@@ -556,11 +557,9 @@ void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::st
     open_details(ctx, idx);
 }
 
-// The analyze button's ref for the open song: its label depends on whether
-// the song has a result.
+// The analyze button's ref for the open song: the panel's own label for it.
 std::string analyze_button_ref(Harness& h) {
-    return h.app->viewed.status == hydra::store::RecordStatus::NotAnalyzed ? "**/Analyze this song"
-                                                                          : "**/Re-analyze";
+    return std::string("**/") + hydra::ui::analyze_button_label(h.app->viewed.status);
 }
 
 // Analyze the open song and wait for a Ready record.
