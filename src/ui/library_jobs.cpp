@@ -234,10 +234,14 @@ void BatchJob::note_started(const std::string& notespath) {
 
 void BatchJob::finish_failed(const std::exception& e, std::string detail) {
     std::lock_guard<std::mutex> lock(mu_);
-    snap_.preparing = false;
     snap_.failures.push_back(app::plain_error(e));
     snap_.failure_details.push_back(std::move(detail));
     ++snap_.failed;
+    finish_locked();
+}
+
+void BatchJob::finish_locked() {
+    snap_.preparing = false;
     snap_.current_title.clear();
     snap_.current_artist.clear();
     snap_.paused = false;
@@ -272,8 +276,7 @@ void BatchJob::run() {
     }
     if (cancel_.load()) {
         std::lock_guard<std::mutex> lock(mu_);
-        clock_.finish(steady_seconds());
-        snap_.finished = true;
+        finish_locked();
         return;
     }
 
@@ -316,11 +319,7 @@ void BatchJob::run() {
     }
 
     std::lock_guard<std::mutex> lock(mu_);
-    snap_.current_title.clear();
-    snap_.current_artist.clear();
-    snap_.paused = false;
-    clock_.finish(steady_seconds());
-    snap_.finished = true;
+    finish_locked();
 }
 
 // ---- AnalyzeJob -------------------------------------------------------
