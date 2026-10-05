@@ -75,8 +75,8 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
     std::vector<TextLine> out;
     for (size_t i = 0; i < act.sqinouts.size(); ++i) {
         const SPSqueeze& sq = act.sqinouts[i];
-        // timing() is the edge SPSqueeze::description() prints: a SqOut must
-        // be hit later than it, a SqIn earlier than it. Which wording applies
+        // timing() is the edge the sentence below prints: a SqOut must be hit
+        // later than it, a SqIn earlier than it. Which wording applies
         // is SPSqueeze::is_free's answer, the one the rating reads too (D13).
         const double t = sq.timing();
         const std::string edge = format_ms(std::fabs(t));
