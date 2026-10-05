@@ -39,8 +39,9 @@ inline const ImVec4 kAccentColor{0 / 255.0f, 180 / 255.0f, 180 / 255.0f, 1.0f};
 inline const ImVec4 kButtonColor{0 / 255.0f, 122 / 255.0f, 122 / 255.0f, 1.0f};
 inline const ImVec4 kButtonHoveredColor{0 / 255.0f, 104 / 255.0f, 104 / 255.0f, 1.0f};
 inline const ImVec4 kButtonActiveColor{0 / 255.0f, 88 / 255.0f, 88 / 255.0f, 1.0f};
-// The hover face of an input frame and of a list or table header.
-inline const ImVec4 kFrameHoveredColor{0 / 255.0f, 100 / 255.0f, 100 / 255.0f, 1.0f};
+// The hover face of an input frame and of a list or table header. It is the
+// button hover teal (D74), so it names that one rather than spelling a second.
+inline const ImVec4& kFrameHoveredColor = kButtonHoveredColor;
 
 // Surfaces. The window is DPG's baseline (it used to be a local in
 // apply_theme); the settings bar and the song panel sit a shade lighter so

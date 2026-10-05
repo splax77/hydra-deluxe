@@ -7,7 +7,7 @@
 #include "core/model.h"
 #include "imgui.h"
 #include "parse/song.h"    // display_title
-#include "search/graph.h"  // fill_rule_name
+#include "search/graph.h"  // fill_rule_name, fill_rule_description
 #include "ui/app_state.h"
 #include "ui/fonts.h"
 #include "ui/library_parts.h"
@@ -20,6 +20,16 @@
 #include <type_traits>
 
 namespace hydra::ui::detail {
+
+std::string legacy_fills_help_text() {
+    return std::string("Spawn drum fills by ") +
+           fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
+           "'s rule instead of 1.1's. A fill only appears if your Star Power was "
+           "ready in time. " +
+           fill_rule_description(FillDeadlineRule::Ch11) + " " +
+           fill_rule_description(FillDeadlineRule::Ch10) +
+           " For runs played on 1.0; current Clone Hero plays by 1.1.";
+}
 
 namespace {
 
@@ -98,13 +108,7 @@ void render_sp_cap(AppState& app, bool locked) {
     begin_disabled_checkbox(locked);
     if (ImGui::Checkbox("1.0 fills", &app.settings.legacy_fills)) app.commit_settings();
     end_disabled_checkbox(locked);
-    help_marker((std::string("Spawn drum fills by ") +
-                 fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
-                 "'s rule instead of 1.1's. A fill only appears if your Star Power was "
-                 "ready in time: 1.1 wants it 4 beats before the fill, 1.0 about one "
-                 "fill-length before. For runs played on 1.0; current Clone Hero plays "
-                 "by 1.1.")
-                    .c_str());
+    help_marker(legacy_fills_help_text().c_str());
 }
 
 void render_score_range(AppState& app, bool locked) {

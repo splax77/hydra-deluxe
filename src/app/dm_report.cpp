@@ -233,20 +233,12 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         const store::RecordListing* rec = it != by_hash.end() ? &it->second : nullptr;
 
         // Identity: the leaderboard's own metadata when it has it, else the
-        // joined Hydra record's, else the "Unknown Song: <hash>" placeholder.
-        if (s.known && !s.song_name.empty()) {
-            row.song = s.song_name;
-            row.artist = s.artist;
-            row.charter = s.charter;
-        } else if (rec) {
-            row.song = display_title(rec->ref_name);
-            row.artist = display_artist(rec->ref_artist);
-            row.charter = display_charter(rec->ref_charter);
-        } else {
-            row.song = s.song_name;
-            row.artist = s.artist;
-            row.charter = s.charter;
-        }
+        // joined Hydra record's, else whatever the leaderboard sent. Either
+        // source goes through the same display owners (D74 item 2).
+        const bool board_names = (s.known && !s.song_name.empty()) || !rec;
+        row.song = display_title(board_names ? s.song_name : rec->ref_name);
+        row.artist = display_artist(board_names ? s.artist : rec->ref_artist);
+        row.charter = display_charter(board_names ? s.charter : rec->ref_charter);
         if (row.charter.empty() && rec) row.charter = display_charter(rec->ref_charter);
 
         // Hydra's optimal is a base-speed answer, and Clone Hero keeps a
