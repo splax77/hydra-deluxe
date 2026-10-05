@@ -63,6 +63,15 @@ Merge order and steps, once a merge's reviewer submits CLEAN:
 Briefs: `docs/superpowers/plans/tasks/p7-rp.md`, `p7-doc.md`, `p7-lb1.md` and `p7-lb2.md`, all decided by D62.
 - **Order:** RP first. LB1 forks from RP's commit, and LB2 from LB1's. DOC runs alongside.
 - **Base:** main after M7-2 and phase 6's M6-J2. Don't wait for the merges themselves (memory "parallel-by-default"). Fork from phase 6's J2 join once it holds J2-1, J2-2 and J2-4, with the M7-2 joins merged in. I asked phase 6 for its J2 join branch name; its reply may be waiting. RP's files are J2-2's this wave, LB1's include J2-1's `config.*` and J2-4's library work, and LB2's are J2-4's.
+- **Phase 6 has stopped too**, and it has no J2 join branch. Its handoff is `docs/handoffs/2026-10-04-phase6-execution-handoff.md` (main 0a1e06e). Its task tips all sit on p3-d2 8b5a99d, without main merged in:
+  - J2-1 is `claude/p6-j2-1` 3f12d19 (CLEAN).
+  - J2-2 is `claude/p6-j2-2` 3e6dcab. It has one open user question: should the "+N over" leaderboard text stay for off-speed rows? The recommended answer is yes.
+  - J2-4 is `claude/p6-j2-4` 8f7bc54, on SE2's 156d162.
+  - J2-7 (16916e7) and J2-8 (5b7b358) are CLEAN.
+  - J2-3 (beac57b) and J2-5 (f8c4c08) are not yet checked.
+  - J2-6 has no commit.
+
+  RP can fork from J2-2's tip, apart from that one dm_report line. LB1 forks from J2-1 plus J2-4.
 - **At the M7-3 join**, the main session changes the Path limit tooltip in `src/ui/settings_bar.cpp` to "hardest squeeze or required early fill" (D51 call 5, D62). M7-3 also runs `hydra_uitest` once. LB2 names the real uitest scripts, because no script is called `library` or `batch`.
 
 ## Wave 4 (ER)
