@@ -829,9 +829,10 @@ TEST_CASE("reports_dir is Documents\\Hydra, made on first use") {
     const fs::path dir = reports_dir();
     CHECK(dir == box.root / "Hydra");
     CHECK(fs::is_directory(dir));
-    // Every report path helper lives in it, named by its page's constant.
-    CHECK(fs::path(report_html_path()) == dir / fs::u8path(kPathReportFileName));
-    CHECK(fs::path(dm_report_html_path()) == dir / fs::u8path(kDmReportFileName));
+    // Every report path helper lives in it. The names are what a person finds
+    // on disk, so the test pins them as text.
+    CHECK(fs::path(report_html_path()) == dir / "hydra_paths.html");
+    CHECK(fs::path(dm_report_html_path()) == dir / "hydra_dmcompare.html");
 }
 
 TEST_CASE("reports_dir falls back to the database folder without Documents") {
