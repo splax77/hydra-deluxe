@@ -29,6 +29,7 @@
 #include "app/report_files.h"
 #include "audio/song_audio.h"
 #include "audio_chart_fixtures.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
@@ -823,4 +824,48 @@ TEST_CASE("the confirm counts charts with a result from the store, once per char
 
     CHECK(app.batch_scope_charts == 2);
     CHECK(app.batch_scope_with_result == 1);
+}
+
+// D72 item 2: the startup constructor's store open reads "couldn't open"
+// even when SQLite only notices the junk at its first statement. main() shows
+// it in a message box.
+TEST_CASE("an AppState whose database can't open throws DatabaseOpen") {
+    ScratchPaths paths("appstate_junkdb");  // puts the overrides back when it ends
+    {
+        std::ofstream f(paths.db, std::ios::binary);
+        f << std::string(4096, 'x');
+    }
+    try {
+        AppState app;
+        FAIL("an AppState opened a file of junk bytes");
+    } catch (const hydra::KindedError& e) {
+        CHECK(e.kind() == hydra::ErrorKind::DatabaseOpen);
+    }
+}
+
+// D72 item 4: the Analyze-library click asks the store which charts already
+// have a result. When that read fails, the status line says so, no confirm
+// opens, and no batch starts.
+TEST_CASE("Analyze library on a database that fails shows the sentence and opens no confirm") {
+    ScratchPaths paths("appstate_confirmfail");
+    std::unique_ptr<AppState> app = app_on(paths);
+    {  // A second connection drops the results table under the app.
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(paths.db.c_str(), &db) == SQLITE_OK);
+        REQUIRE(sqlite3_exec(db, "DROP TABLE results", nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_close(db);
+    }
+    // Any read on the app's own connection makes it reload the schema, as
+    // the app's next read would (see the batch case in test_library_jobs).
+    (void)app->store->engine_mode();
+
+    app->open_batch_confirm();
+    CHECK(app->status_message ==
+          "Hydra couldn't save to its database (hydra.db). Check that the disk isn't full and "
+          "that no other copy of Hydra is running, then try again.");
+    CHECK(app->status_is_problem);
+    CHECK_FALSE(app->batch_confirm_pending);
+
+    app->start_batch(false);
+    CHECK(app->batch_job == nullptr);
 }
