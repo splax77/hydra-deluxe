@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "audio/mapped_file.h"
+#include "core/audio_sniff.h"  // AudioFormat, for open_ma_reader
 
 namespace hydra::app {
 struct PreviewAudioStem;
@@ -96,7 +97,10 @@ struct OpusReaderOptions {
 std::unique_ptr<StemReader> open_opus_reader(StemBytes bytes, const OpenProgress& progress,
                                              const OpusReaderOptions& options = {});
 std::unique_ptr<StemReader> open_vorbis_reader(StemBytes bytes);
-std::unique_ptr<StemReader> open_ma_reader(StemBytes bytes);
+// `format` is sniff_format's answer for these bytes (Wav, Mp3 or Flac), so
+// the reader does not sniff again: Mp3 goes to dr_mp3, the rest to
+// ma_decoder.
+std::unique_ptr<StemReader> open_ma_reader(StemBytes bytes, AudioFormat format);
 
 // What one decode call did, as CountedLength asks it: the frames it decoded,
 // whether the stem goes on after them, and whether a decode error stopped it.
