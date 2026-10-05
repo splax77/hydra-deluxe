@@ -111,16 +111,10 @@ TEST_CASE("replay: combo_after is the combo once the chord is hit") {
 }
 
 // The on-screen total holds a solo's bonus back until the section's last
-// chord. The chart is test_song.cpp's two solos split by one plain chord.
+// chord. The chart is kTwoSolosDrums (tests/chart_text.h).
 TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's last chord") {
-    const Song song = load_songbytes_chart(
-        testchart::chart_bytes(testchart::section("ExpertDrums",
-                                                  "  0 = E solo\n  0 = N 1 0\n"
-                                                  "  192 = N 2 0\n  192 = E soloend\n"
-                                                  "  384 = N 3 0\n"
-                                                  "  576 = E solo\n  576 = N 4 0\n"
-                                                  "  576 = E soloend\n")),
-        true, true);
+    const Song song =
+        load_songbytes_chart(testchart::chart_bytes(testchart::kTwoSolosDrums), true, true);
     REQUIRE(song.solo_sections.size() == 2);
     REQUIRE(song.solo_sections[0].first == 0);
     REQUIRE(song.solo_sections[0].last == 1);

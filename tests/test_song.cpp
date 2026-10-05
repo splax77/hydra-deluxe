@@ -277,14 +277,8 @@ TEST_CASE("song: solo_sections lists each run of solo chords once") {
     CHECK(mid.solo_sections[0].last == 1);
 
     // Two solos split by one plain chord: chords 0 and 1, then chord 3.
-    const Song two = load_songbytes_chart(
-        testchart::chart_bytes(testchart::section("ExpertDrums",
-                                                  "  0 = E solo\n  0 = N 1 0\n"
-                                                  "  192 = N 2 0\n  192 = E soloend\n"
-                                                  "  384 = N 3 0\n"
-                                                  "  576 = E solo\n  576 = N 4 0\n"
-                                                  "  576 = E soloend\n")),
-        true, true);
+    const Song two =
+        load_songbytes_chart(testchart::chart_bytes(testchart::kTwoSolosDrums), true, true);
     REQUIRE(two.sequence.size() == 4);
     REQUIRE(two.solo_sections.size() == 2);
     CHECK(two.solo_sections[0].first == 0);

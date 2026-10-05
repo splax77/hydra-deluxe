@@ -35,6 +35,16 @@ inline std::string chart_text(const std::string& sections, int64_t resolution = 
            section("SyncTrack", sync) + sections;
 }
 
+// An [ExpertDrums] section with two solos split by one plain chord. The song
+// test pins where each solo section starts and ends; the replay test reads
+// the same chart for when a solo's bonus reaches the total.
+inline const std::string kTwoSolosDrums = section("ExpertDrums",
+                                                  "  0 = E solo\n  0 = N 1 0\n"
+                                                  "  192 = N 2 0\n  192 = E soloend\n"
+                                                  "  384 = N 3 0\n"
+                                                  "  576 = E solo\n  576 = N 4 0\n"
+                                                  "  576 = E soloend\n");
+
 // chart_text() as the bytes a loader reads.
 inline std::vector<uint8_t> chart_bytes(const std::string& sections, int64_t resolution = 192,
                                         const std::string& song_extra = "",
