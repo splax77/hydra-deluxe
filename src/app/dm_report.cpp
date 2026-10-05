@@ -180,9 +180,9 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     const std::unordered_map<std::string, store::RecordListing> by_hash =
         report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);
 
-    // Every chart the last scan found, lower-cased like the leaderboard's
-    // identifiers, so a score with no current result can say whether
-    // analyzing would fix it.
+    // Every chart the last scan found, keyed through normalize_chart_hash
+    // like the leaderboard join, so a score with no current result can say
+    // whether analyzing would fix it.
     std::unordered_set<std::string> in_library;
     for (const store::ChartLibraryEntry& e : store.list_chart_library(std::nullopt, 0, -1))
         in_library.insert(normalize_chart_hash(e.md5));
@@ -228,12 +228,13 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             row.optimal = opt;
             row.delta = opt - s.score;
             if (base && opt > 0) row.pct_h = percent_steps(s.score, opt, 2);
-            row.status = s.score > opt    ? "above optimal"
+            const bool above = s.score > opt;
+            row.status = above       ? "above optimal"
                          : s.score == opt ? "at optimal"
                                           : "under optimal";
             // Kept apart from the status, which an off-speed score overwrites
             // below; the page's "+N over" reads it (D64).
-            row.above_optimal = row.status == "above optimal";
+            row.above_optimal = above;
         } else {
             row.status = in_library.count(s.identifier) ? "not analyzed" : "not in library";
         }

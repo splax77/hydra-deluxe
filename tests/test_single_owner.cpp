@@ -2016,7 +2016,7 @@ const std::vector<OwnerRule>& rules() {
         // assignments carry no `r.` and are the owner.
         {"Which side of a report comparison is higher?",
          "the status field set by collect_dm_rows and collect_fill_rows, and the above_optimal "
-         "field collect_dm_rows copies from it",
+         "field collect_dm_rows sets from the same comparison",
          R"(r\.delta\s*[<>]\s*0\s*\?)",
          "",
          {},
@@ -2026,10 +2026,10 @@ const std::vector<OwnerRule>& rules() {
           ": (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));",
           "const left = under.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);",
           "const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'"},
-         {R"(row.status = s.score > opt    ? "above optimal")",
+         {R"(row.status = above       ? "above optimal")",
           R"(row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");)",
           "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');",
-          R"(row.above_optimal = row.status == "above optimal";)",
+          "row.above_optimal = above;",
           ": (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));"},
          {},
          {"src"}},
