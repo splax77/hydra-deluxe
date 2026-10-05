@@ -18,9 +18,8 @@
 //     collect a node the moment nothing points at it.
 //
 // `songmeta` holds one row per chart file, keyed by content hash: its names,
-// its tempo map, and the song's one length (its audio's end in chart time)
-// with that length's stamp. RecordLookup::song_length_ms says where the
-// length comes from.
+// its tempo map, and the song's one length with that length's stamp.
+// RecordLookup::song_length_ms says where the length comes from.
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -219,21 +218,20 @@ struct RecordLookup {
     bool stale_rules = false;  // this path layout, analyzed under other rules
     std::optional<HydraRecord> record;  // set only when Ready
     std::optional<SongTiming> timing;   // set when Ready and the song is registered
-    // The song's audio length in chart time (audio::song_length_ms, D69), one
-    // per song, saved by an analysis or the open-song backfill
-    // (save_analysis, fill_song_length) under kSongLengthStamp. Empty when
-    // the song's audio was not read under the current stamp, or was read and
-    // has no usable length. Nothing falls back to the notes.
+    // The song's length in chart time (app::song_length_ms, D75), one per
+    // song, saved by an analysis or the open-song backfill (save_analysis,
+    // fill_song_length) under kSongLengthStamp. Empty when the length was not
+    // worked out under the current stamp, or was and the owner gave none.
     std::optional<double> song_length_ms;
-    // Whether the song's audio was read under the current stamp, so the
-    // backfill knows whether to read it. False for an unregistered song.
+    // Whether the length was worked out under the current stamp, so the
+    // backfill knows whether to work it out. False for an unregistered song.
     bool song_length_read = false;
 };
 
-// A song's length as one audio read found it, handed to save_analysis. `read`
-// says whether anything read the audio; an analysis with no audio reader
-// leaves it false and the stored length alone. A read that found no usable
-// length has `read` set and no `ms`.
+// A song's length as app::song_length_ms found it, handed to save_analysis.
+// `read` says whether the length was worked out; an analysis that could not
+// work it out leaves it false and the stored length alone. A length the owner
+// gave none for has `read` set and no `ms`.
 struct SongLength {
     bool read = false;
     std::optional<double> ms;
@@ -364,8 +362,8 @@ public:
                  const std::string& ref_artist, const std::string& ref_charter,
                  const Song& song);
 
-    // The open-song backfill's writer: saves the song's audio length (or
-    // none, for a song with no usable audio) with kSongLengthStamp, but only
+    // The open-song backfill's writer: saves the song's length (or none,
+    // when the owner gave none) with kSongLengthStamp, but only
     // while the stored length is not current, so a slower backfill never
     // overwrites an analysis. An unregistered song is left alone. Touches no
     // result.

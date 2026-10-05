@@ -128,13 +128,18 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
     std::string* fields[] = {&out.notes_filename, &out.name,    &out.artist,
                              &out.album,          &out.genre,   &out.charter,
                              &out.year,           &out.description};
+    // A little-endian u32 at `pos`, moving past it; false when it does not fit.
+    const auto read_u32 = [&](uint32_t* into) {
+        if (sizeof(uint32_t) > meta.size() - pos) return false;
+        *into = core::read_le_u32(meta.data() + pos);
+        pos += sizeof(uint32_t);
+        return true;
+    };
     // A length-prefixed string at `pos`, moving past it; false when it does
     // not fit.
     const auto read_string = [&](std::string* into) {
-        if (pos + 4 > meta.size()) return false;
-        const uint32_t len = core::read_le_u32(meta.data() + pos);
-        pos += 4;
-        if (len > meta.size() - pos) return false;
+        uint32_t len = 0;
+        if (!read_u32(&len) || len > meta.size() - pos) return false;
         if (into) into->assign(reinterpret_cast<const char*>(meta.data() + pos), len);
         pos += len;
         return true;
@@ -153,9 +158,12 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
     // name (a string), the playlist and album track numbers (i32 each), then
     // song_length_ms (i32). The checksum and table of contents that follow are
     // not read.
-    if (!skip(12) || !skip(4) || !read_string(nullptr) || !skip(4) || !skip(4)) return true;
-    if (pos + 4 > meta.size()) return true;
-    out.song_length_ms = static_cast<int32_t>(core::read_le_u32(meta.data() + pos));
+    uint32_t scratch = 0;
+    if (!skip(12) || !read_u32(&scratch) || !read_string(nullptr) || !read_u32(&scratch) ||
+        !read_u32(&scratch))
+        return true;
+    uint32_t song_length = 0;
+    if (read_u32(&song_length)) out.song_length_ms = static_cast<int32_t>(song_length);
     return true;
 }
 

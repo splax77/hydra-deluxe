@@ -41,12 +41,7 @@ std::vector<uint8_t> read_bytes(const std::string& path) {
     return hydra::read_file_bytes(path);
 }
 
-void write_bytes(const std::string& path, const std::vector<uint8_t>& data) {
-    FILE* f = hydra::fopen_utf8(path, L"wb");
-    REQUIRE_MESSAGE(f != nullptr, "cannot write " << path);
-    if (!data.empty()) std::fwrite(data.data(), 1, data.size(), f);
-    std::fclose(f);
-}
+using testtemp::write_bytes;
 
 // This process's scratch folder for the fixtures (testtemp::temp_dir).
 std::string fixture_dir() { return testtemp::temp_dir("srb"); }

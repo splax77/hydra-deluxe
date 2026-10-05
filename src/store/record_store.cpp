@@ -809,11 +809,11 @@ void RecordStore::set_up_schema() {
     if (!has_column("songmeta", "length_ms")) exec("ALTER TABLE songmeta ADD COLUMN length_ms REAL");
     // A songmeta table from before the length stamp (kSongLengthStamp). Its
     // rows read 0, which matches no real stamp, so every length worked out
-    // from notes reads as not read until the song's audio is read (D69).
+    // from notes reads as not read until it is worked out again (D75).
     if (!has_column("songmeta", "length_version"))
         exec("ALTER TABLE songmeta ADD COLUMN length_version INTEGER NOT NULL DEFAULT 0");
     // Each difficulty's own last-note length (D51 call 9), which D69
-    // replaced with one audio length per song. Nothing reads it.
+    // replaced with one length per song. Nothing reads it.
     exec("DROP TABLE IF EXISTS songlength");
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
@@ -964,8 +964,8 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
     exec("BEGIN");
     try {
         upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap);
-        // The audio belongs to the song, so an analysis of any difficulty
-        // saves its one length (D69 item 2). With no read, it stays as it was.
+        // The length belongs to the song, so an analysis of any difficulty
+        // saves its one length (D75). With no read, it stays as it was.
         if (length.read) write_song_length(hyhash, length.ms);
         write_row(row);
         if (dynamics) {
@@ -1497,8 +1497,8 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
     if (songmeta) {
         out.timing = decode_tempomap(songmeta->tempomap);
         restore_timecodes(record, *out.timing);
-        // A length under another stamp, as every length from before D69, is
-        // not read yet; nothing falls back to the notes.
+        // A length under another stamp is not read yet: the backfill works it
+        // out again (SongLengthJob).
         out.song_length_read = kSongLengthStamp.is_current(songmeta->length_version);
         if (out.song_length_read) out.song_length_ms = songmeta->length_ms;
     }

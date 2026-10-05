@@ -53,12 +53,7 @@ P make(S step, uint64_t done, uint64_t total, double elapsed = 0.0, double left 
 
 // ---- a scratch chart folder (made with testtemp::temp_dir) -----------------
 
-void write_file(const std::string& path, const std::vector<uint8_t>& bytes) {
-    std::FILE* f = hydra::fopen_utf8(path, L"wb");
-    REQUIRE(f != nullptr);
-    if (!bytes.empty()) std::fwrite(bytes.data(), 1, bytes.size(), f);
-    std::fclose(f);
-}
+using testtemp::write_bytes;
 
 void remove_file(const std::string& path) { DeleteFileW(hydra::utf8_to_wide(path).c_str()); }
 
@@ -265,7 +260,7 @@ TEST_CASE("a Preview load cancelled while opening a 300 MB Opus stem stops promp
     const std::string dir = testtemp::temp_dir("loadcancel");
     const std::string notes = dir + "\\notes.chart";
     const std::string song = dir + "\\song.opus";
-    write_file(notes, hydra::read_file_bytes(corpus::first_chart_with_suffix(".chart")));
+    write_bytes(notes, hydra::read_file_bytes(corpus::first_chart_with_suffix(".chart")));
     write_big_opus(song, 300000000ull);
     REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);
 
@@ -316,10 +311,10 @@ TEST_CASE("a Preview load turns a negative chart offset into front silence") {
     const std::string notes = dir + "\\notes.chart";
     const std::string song = dir + "\\song.ogg";
     const std::string ini = dir + "\\song.ini";
-    write_file(notes, hydra::read_file_bytes(corpus::first_chart_with_suffix(".chart")));
-    write_file(song, testaudio::read_fixture("sine220.ogg"));
+    write_bytes(notes, hydra::read_file_bytes(corpus::first_chart_with_suffix(".chart")));
+    write_bytes(song, testaudio::read_fixture("sine220.ogg"));
     const std::string ini_text = "[song]\ndelay = -250\n";
-    write_file(ini, std::vector<uint8_t>(ini_text.begin(), ini_text.end()));
+    write_bytes(ini, std::vector<uint8_t>(ini_text.begin(), ini_text.end()));
 
     {
         PreviewLoadJob job(entry_for(notes), true, true, hydra::Difficulty::Expert, std::nullopt,
