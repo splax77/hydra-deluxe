@@ -61,6 +61,11 @@ constexpr bool rows_in_order() {
 }
 static_assert(rows_in_order(), "the table lists the rows in DynamicsRow order");
 
+// Does this row hold its lane's notes with the lane flag on (lane_flag)?
+constexpr bool row_has_flag(const DynamicsRowInfo& info) {
+    return info.cymbal || info.is2x;
+}
+
 }  // namespace
 
 const DynamicsRowInfo& dynamics_row_info(DynamicsRow r) {
@@ -73,7 +78,7 @@ DynamicsRow dynamics_row_for(const ChordNote& note) {
     // that note still counts as the snare.
     const bool flag = lane_allows_flag(note.colortype) && lane_flag(note);
     for (const DynamicsRowInfo& info : kDynamicsRows)
-        if (info.color == note.colortype && (info.cymbal || info.is2x) == flag) return info.row;
+        if (info.color == note.colortype && row_has_flag(info) == flag) return info.row;
     return DynamicsRow::Kick;  // unreachable: every lane has a row
 }
 
@@ -82,7 +87,7 @@ DynamicsRow dynamics_row_for(const ChordNote& note) {
 ChordNote dynamics_row_note(DynamicsRow r) {
     const DynamicsRowInfo& info = dynamics_row_info(r);
     ChordNote note{info.color};
-    if (info.cymbal || info.is2x) set_lane_flag(note);
+    if (row_has_flag(info)) set_lane_flag(note);
     return note;
 }
 
