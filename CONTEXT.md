@@ -342,6 +342,13 @@ One of the several audio files a chart may ship instead of a single mix (e.g.
 `drums`, `guitar`, `song`). The Preview mixes all of a chart's stems into one
 output, unpacking each from its compressed file as it plays (docs/adr/0019).
 
+**Song length**:
+How long the song's audio runs, in chart time: where its mixed stems end once
+the chart's offset is applied. `audio::song_length_ms` works it out, and the
+store keeps one per song (D69). A song with no readable audio has no length,
+and nothing falls back to its last note. The Paths timeline and the Preview's
+scrubber both measure against it.
+
 **Mixer**:
 The step that reads a chart's stems at one shared position, resamples them to
 one common format, and sums them into a single signal to play. It reads a few

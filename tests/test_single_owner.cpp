@@ -3727,6 +3727,28 @@ const std::vector<OwnerRule>& rules() {
            "playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;",
            "PreviewTransport::load's playback range (D48), not a song length"}},
          {"src"}},
+        // ---- the stored length is the audio's, one per song (D69, task AL2) ----
+        // A songmeta length written anywhere but the one write an analysis and
+        // the open-song backfill share, so no length skips its stamp.
+        {"How long is this song? (the stored length)",
+         "RecordStore::write_song_length in src/store/record_store.cpp, called by save_analysis "
+         "and fill_song_length",
+         R"(\bSET\s+length_ms\b|\blength_ms\s*=\s*(\?|excluded\b|COALESCE)|INTO\s+songmeta\s*\([^)]*\blength_ms\b)",
+         "",
+         {},
+         {},
+         "D69 item 2 (one audio length per song, saved with its stamp); phase 7 task AL2",
+         {"\"UPDATE songmeta SET length_ms = ? WHERE hyhash = ? AND length_ms IS NULL\");",
+          "\"length_ms = COALESCE(excluded.length_ms, songmeta.length_ms)\");",
+          "\"INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap, length_ms) \""},
+         {"\"SELECT tempomap, length_ms, length_version FROM songmeta WHERE hyhash=?\");",
+          "out.song_length_ms = songmeta->length_ms;"},
+         {{"src/store/record_store.cpp",
+           "? \"UPDATE songmeta SET length_ms = ?1, length_version = ?2\"",
+           "write_song_length, the owner"},
+          {"src/store/record_store.cpp",
+           ": \"UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3\");",
+           "write_song_length, the owner"}}},
     };
     return r;
 }
@@ -3764,11 +3786,6 @@ const std::vector<KnownCopy>& known_copies() {
          "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
          "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
          "finding 190)"},
-        // The record's length from notes, which D69 replaces with the audio's
-        // end. Nothing in the Preview calls it any more.
-        {"When is the song's last note?", "src/store/record_store.cpp",
-         "return song.sequence.back().timecode.ms();",
-         "task AL2 (store::song_length_ms is deleted; the stored length is the audio's, D69)"},
     };
     return k;
 }

@@ -107,7 +107,7 @@ The left side lists the paths the analysis kept, grouped by score. **Optimal** c
 
 Each path shows its own hardest timing right after it, like `378,315 · 3- 1 2   163.0 ms`: the hardest squeeze or required early fill that path needs. It turns orange past the difficult limit. A path that needs no timing shows nothing there.
 
-The right side starts with a summary, like `Activations 3 · no SP left over`. Under it, a timeline runs from the first measure to the last, with a mark for each activation. A mark is outlined in orange only when its row's timing is orange too. For a result saved before version 1.9, the timeline appears a moment after you open the song: Hydra Deluxe reads the chart once for its length and remembers it. Nothing is re-analyzed.
+The right side starts with a summary, like `Activations 3 · no SP left over`. Under it, a timeline runs from the first measure to the end of the song's audio, with a mark for each activation. A song with a long outro ends its last mark well before the right edge. A mark is outlined in orange only when its row's timing is orange too. A chart with no audio shows no marks. For a result saved before this version, the timeline appears a moment after you open the song: Hydra Deluxe reads the song's audio once for its length and remembers it. Nothing is re-analyzed.
 
 Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for its hardest timing, like `squeeze out 163 ms` or `early fill 20 ms`. An activation that skips fills keeps its early fill badge when its Star Power is ready no earlier than the fill's deadline, because that timing decides whether the first fill shows up. An early fill with time to spare has nothing to time, so it gets no badge. Click a row to open it, or use `Expand all` and `Collapse all`.
 
@@ -153,7 +153,7 @@ The transport buttons are `-5s`, `< 5 Ticks`, `Play`/`Pause`, `5 Ticks >` and `+
 
 The same keys are drawn as keycaps in a bar under the highway, in the buttons' order. Each button's tooltip names its key too.
 
-The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the chart's last note, like the Paths timeline, so an activation sits at the same spot on both. You can still play the audio past the last note, and the beat lines run on to the end of the audio.
+The scrubber under the highway shows where you are. Its gold marks are the path's activations, in the same gold as the next-activation box. The scrubber measures position against the end of the song's audio, like the Paths timeline, so an activation sits at the same spot on both. The beat lines run on to the end of the audio.
 
 The boxes on the highway:
 

@@ -196,6 +196,10 @@ void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
     }
 }
 
+// The song length paths-rows hands the open record before checking its
+// timeline marks, in ms: an input, since the GUI test library has no audio.
+constexpr double kMarksSongLengthMs = 600000.0;
+
 // The activation rows: one line each, the first open, one open at a time,
 // Expand all and Collapse all, and the plain sentence instead of the old line.
 void test_paths_rows(ImGuiTestContext* ctx) {
@@ -218,7 +222,11 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, "SqOut: Note timing"));
     IM_CHECK(!on_screen(h, "Frontend:"));
     // The timeline outlines: row 1's 163 ms squeeze is orange, rows 2 and 3
-    // have no badge and no outline.
+    // have no badge and no outline. The GUI test library has no audio, so the
+    // open record gets a length as an input: ten minutes, past either chart's
+    // last activation (D70, open question 4).
+    h.app->viewed.song_length_ms = kMarksSongLengthMs;
+    ctx->Yield(2);
     check_marks(ctx, *h.app, {Outline::Orange, Outline::None, Outline::None});
 
     // "Show in Preview" asks the Preview for activation 1 (Task 11 consumes it)
@@ -259,6 +267,8 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     ctx->Yield(2);
     // Row 1 is the squeeze-out, row 4 the early fill; rows 2 and 3 have no badge.
+    h.app->viewed.song_length_ms = kMarksSongLengthMs;
+    ctx->Yield(2);
     check_marks(ctx, *h.app, {Outline::Grey, Outline::None, Outline::None, Outline::Grey});
 }
 
@@ -543,29 +553,35 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     check("m1024.1.120", "m1024.1.120", "12 bars", hydra::app::longest_activation_badge());
 }
 
-// A result saved before Hydra stored song lengths has none, so the timeline
-// has no end. Opening the song reads the chart for it and the timeline shows,
-// with no re-analysis: the same length an analysis stores, the same record.
+// The GUI test library has no audio, so Burnout has no length: the timeline
+// has no end label and no marks, and nothing falls back to its last note (D69
+// item 3). A result saved before Hydra read audio lengths reads its audio
+// once on open, with no re-analysis, and a song with no audio is not read
+// again.
 void test_paths_length_backfill(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     hydra::ui::AppState& app = *h.app;
-    IM_CHECK(app.viewed.song_length_ms.has_value());
-    if (!app.viewed.song_length_ms) return;
-    const double stored = *app.viewed.song_length_ms;
+    IM_CHECK(app.viewed.song_length_read);  // its analysis read the audio
+    IM_CHECK(!app.viewed.song_length_ms.has_value());
+    IM_CHECK(!on_screen(h, "m96"));  // the timeline's end label
+    IM_CHECK(drawn_marks(ctx).empty());
     const hydra::HydraRecord* record = &*app.viewed.record;
-    IM_CHECK(on_screen(h, "m96"));  // the timeline's end label
 
-    // As an old result reads: no length.
-    app.viewed.song_length_ms.reset();
-    IM_CHECK(wait_until(ctx, [&] { return app.viewed.song_length_ms.has_value(); }, 10));
-    if (!app.viewed.song_length_ms) return;
-    IM_CHECK_FLOAT_NEAR_EQ(static_cast<float>(*app.viewed.song_length_ms),
-                           static_cast<float>(stored), 0.01f);
+    // As an old result reads: not read.
+    app.viewed.song_length_read = false;
+    IM_CHECK(wait_until(ctx, [&] { return app.viewed.song_length_read; }, 10));
+    IM_CHECK(!app.viewed.song_length_ms.has_value());
     IM_CHECK(&*app.viewed.record == record);  // not re-read, not re-analyzed
     IM_CHECK(!app.analyze_job);
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "m96"));
+    IM_CHECK(!on_screen(h, "m96"));
+    IM_CHECK(drawn_marks(ctx).empty());
+
+    // Read once: the chart is not read again this session.
+    app.viewed.song_length_read = false;
+    ctx->Yield(5);
+    IM_CHECK(!app.length_job);
 }
 
 }  // namespace
