@@ -2803,8 +2803,8 @@ const std::vector<OwnerRule>& rules() {
            "std::vector<uint8_t> t = {'I', 'D', '3', 3, 0, static_cast<uint8_t>(flags),",
            "id3_tag, the owner"}},
          {"tests"}},
-        // The details table's "(-N)" used to undo backend_row_value's price
-        // to get the cost back.
+        // The row's full SP value less what backend_row_value pays it as the
+        // squeezed-out chord.
         {"What does squeezing out a row cost?",
          "core::sqout_cost in src/core/backend_value.h",
          R"((\.|->)points\s*-\s*value\b)",

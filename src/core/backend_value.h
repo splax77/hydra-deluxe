@@ -52,8 +52,7 @@ inline int backend_row_value(double offset_ms, int points, int sqout_points,
 }
 
 // What squeezing this row out costs: its full SP value less what
-// backend_row_value pays it as the squeezed-out chord. The details table's
-// "(-N)" reads it, so the cost and the price cannot drift apart.
+// backend_row_value pays it as the squeezed-out chord.
 inline int sqout_cost(double offset_ms, int points, int sqout_points, double leeway_ms) {
     return points - backend_row_value(offset_ms, points, sqout_points, SqOutPosition::Exact,
                                       leeway_ms);
