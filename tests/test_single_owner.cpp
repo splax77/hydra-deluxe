@@ -3411,14 +3411,16 @@ const std::vector<OwnerRule>& rules() {
          {},
          {}},
         {"When is the song's last note? (tests)",
-         "store::song_length_ms in src/store/record_store.cpp",
+         "last_drawn_note in src/app/preview_view.cpp, and last_note_ms for its onset",
          R"(sequence\.back\(\)\.timecode\.ms\(\))",
          "",
          {},
          {},
-         "audit finding 191, the store test's compare (phase 6 task J3-6)",
+         "audit finding 191, the store test's compare (phase 6 task J3-6); re-pointed by D69 "
+         "(phase 7 task AL2)",
          {"const double expected = song.sequence.back().timecode.ms();"},
-         {"const double expected = *song_length_ms(song);"},
+         {"const double expected = hydra::app::last_note_ms(scene);",
+          "scene.song_length_ms = audio_end_ms.value_or(0.0);"},
          {},
          {"tests"}},
         // ---- the J3 join's leftovers (task J3-9) ----
@@ -3749,6 +3751,31 @@ const std::vector<OwnerRule>& rules() {
           {"src/store/record_store.cpp",
            ": \"UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3\");",
            "write_song_length, the owner"}}},
+        // An audio length read, or its answer turned into a stored length,
+        // anywhere but the one helper an analysis reads through, so no third
+        // try/catch decides what a failed read leaves. The call must follow
+        // an opening, an operator, `return` or the line's start, so the
+        // definition and declaration of song_length_found are not flagged.
+        {"What does a failed audio length read leave in the store?",
+         "read_song_length_or_keep in src/app/analysis.cpp",
+         R"((^|[^\w\s]|\breturn)\s*song_length_found\s*\(|\baudio::song_length_ms\s*\()",
+         "",
+         {},
+         {},
+         "derive-once review of AL2, finding 1 (D69); phase 7 task AL2",
+         {"length_ = app::song_length_found(",
+          "song_length_found(callbacks.read_song_length(item.notespath, ar.song));",
+          "audio::song_length_ms(song_.notespath, result_->song));"},
+         {"store::SongLength song_length_found(std::optional<double> audio_length_ms) {",
+          "store::SongLength song_length_found(std::optional<double> audio_length_ms);",
+          "callbacks.read_song_length = audio::song_length_ms;  // each song's length (D69)",
+          "length_ = app::read_song_length_or_keep(audio::song_length_ms,"},
+         {{"src/app/analysis.cpp", "return song_length_found(reader(notespath, song));",
+           "read_song_length_or_keep, the owner"},
+          {"src/ui/song_length_job.cpp",
+           "length_ = app::song_length_found(audio::song_length_ms(entry_.notespath, song));",
+           "SongLengthJob::run: its read is the whole job; AppState::update_song_length "
+           "decides what a failed job leaves"}}},
     };
     return r;
 }
