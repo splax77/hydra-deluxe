@@ -31,6 +31,10 @@ struct StarCutoffs {
     int64_t base = 0;        // Path::chart_base_score()
     int64_t solo_bonus = 0;  // Path::score_solo; not counted toward stars
     std::array<int64_t, kMaxStars> cutoffs{};  // [0] is 1 star
+    // The score you see at each cutoff if you also collect every solo bonus:
+    // the cutoff plus solo_bonus. The Stars tab's "With full solo bonus"
+    // column. [0] is 1 star.
+    std::array<int64_t, kMaxStars> with_solo{};
 };
 
 StarCutoffs star_cutoffs(const Path& path);
@@ -40,8 +44,12 @@ StarCutoffs star_cutoffs(const Path& path);
 // the solo bonus only after counting stars.
 int stars_for_score(const StarCutoffs& cutoffs, int64_t score_without_solo);
 
-// The stars a path earns: its total score minus its solo bonus, against its
-// own cutoffs. The one place a star count is worked out.
+// A path's score as the game counts it for stars: its total minus its solo
+// bonus.
+int64_t score_without_solo(const Path& path);
+
+// The stars a path earns: score_without_solo against its own cutoffs. The one
+// place a star count is worked out.
 int path_stars(const Path& path);
 
 }  // namespace hydra

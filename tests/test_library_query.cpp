@@ -226,6 +226,15 @@ TEST_CASE("library query: artist: charter: folder: and title: limit a term to on
     CHECK_FALSE(q.terms[1].phrase);
 }
 
+TEST_CASE("library query: a term applies to its own column, and Any applies everywhere") {
+    CHECK(term_applies_to(QueryField::Any, QueryField::Title));
+    CHECK(term_applies_to(QueryField::Title, QueryField::Title));
+    CHECK_FALSE(term_applies_to(QueryField::Title, QueryField::Artist));
+    // A column of Any counts every term (match_spans' rule).
+    CHECK(term_applies_to(QueryField::Title, QueryField::Any));
+    CHECK(term_applies_to(QueryField::Any, QueryField::Any));
+}
+
 TEST_CASE("library query: unknown field names are words and empty field values are dropped") {
     const LibraryQuery unknown = parse_library_query("genre:rock");
     REQUIRE(unknown.terms.size() == 1);

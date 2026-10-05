@@ -15,16 +15,14 @@ using namespace DirectX;
 namespace hydra::render {
 
 ImagePoint project_to_image(const PreviewConfig& cfg, int width, int height, const Vec3& p) {
-    const int w = std::max(1, width);
-    const int h = std::max(1, height);
-    const int th = track_height(cfg, w, h);
-    const HighwayCamera cam = make_camera(cfg, static_cast<float>(w) / static_cast<float>(th));
+    const TrackRect r = track_rect(cfg, width, height);
+    const HighwayCamera cam = make_camera(cfg, r.aspect);
     const XMMATRIX view_proj = XMLoadFloat4x4(&cam.view) * XMLoadFloat4x4(&cam.proj);
     const XMVECTOR ndc = XMVector3TransformCoord(XMVectorSet(p.x, p.y, p.z, 1.0f), view_proj);
     ImagePoint out;
-    out.x = (XMVectorGetX(ndc) + 1.0f) * 0.5f * static_cast<float>(w);
-    // The track rectangle hugs the bottom of the image.
-    out.y = static_cast<float>(h - th) + (1.0f - XMVectorGetY(ndc)) * 0.5f * static_cast<float>(th);
+    out.x = (XMVectorGetX(ndc) + 1.0f) * 0.5f * static_cast<float>(r.width);
+    out.y = static_cast<float>(r.top) +
+            (1.0f - XMVectorGetY(ndc)) * 0.5f * static_cast<float>(r.track_height);
     return out;
 }
 
@@ -65,7 +63,8 @@ float overlay_scale(const PreviewConfig& cfg, int width, int height, const Overl
 }
 
 float bottom_left_room(const PreviewConfig& cfg, int width, int height, float gap) {
-    return highway_span_at(cfg, width, height, static_cast<float>(std::max(1, height))).left - gap;
+    const float bottom_row = static_cast<float>(track_rect(cfg, width, height).height);
+    return highway_span_at(cfg, width, height, bottom_row).left - gap;
 }
 
 namespace {
@@ -117,18 +116,11 @@ std::vector<std::string> wrap_words(const std::string& text, float max_w,
 
 float widest_word(const std::string& text,
                   const std::function<float(const std::string&)>& width_of, size_t keep_last) {
+    // At width 0 every break wrap_words allows is taken, so its widest line is
+    // the narrowest box it can make.
     float widest = 0.0f;
-    const size_t tail = tail_start(text, keep_last);
-    size_t tail_end = text.size();
-    while (tail_end > tail && text[tail_end - 1] == ' ') --tail_end;
-    if (tail_end > tail) widest = width_of(text.substr(tail, tail_end - tail));
-    size_t start = 0;
-    while (start < tail) {
-        size_t end = text.find(' ', start);
-        if (end == std::string::npos) end = text.size();
-        if (end > start) widest = std::max(widest, width_of(text.substr(start, end - start)));
-        start = end + 1;
-    }
+    for (const std::string& line : wrap_words(text, 0.0f, width_of, keep_last))
+        widest = std::max(widest, width_of(line));
     return widest;
 }
 

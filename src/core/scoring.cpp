@@ -2,28 +2,33 @@
 
 #include <vector>
 
-#include "core/timing.h"  // to_multiplier
+#include "core/timing.h"  // to_multiplier, kStarPowerMultiplier
 
 namespace hydra {
+
+namespace {
+
+// One note's price: what it is worth at 1x (ChordNote::basescore, the one
+// rule for that) and what it pays at a combo multiplier. Every share
+// category_scores reports, and multsqueeze_gain's two orders, read this.
+struct NoteValue {
+    int at_1x;
+    int paid;
+};
+
+NoteValue note_value(const ChordNote& note, int multiplier) {
+    const int at_1x = note.basescore();
+    return {at_1x, at_1x * multiplier};
+}
+
+}  // namespace
 
 CategoryScores category_scores(const Chord& chord, int combo,
                                 std::vector<CategoryScores>* per_note,
                                 core::SqOutRule sqout_rule) {
-    // Every possible cross-multiplication of the score multipliers, named as
-    // in the original.
-    int base_note = 0, base_cymbal = 0;
-    int combo_note = 0, combo_cymbal = 0;
-    int sp_note = 0, sp_cymbal = 0;
-    int combosp_note = 0, combosp_cymbal = 0;
-    int dynamic_note_accent = 0, dynamic_cymbal = 0;
-    int dynamic_note_ghost = 0;
-    int combodynamic_note = 0, combodynamic_cymbal = 0;
-    int spdynamic_note = 0, spdynamic_cymbal = 0;
-    int combospdynamic_note = 0, combospdynamic_cymbal = 0;
-
-    int sqout_reduction = 0;
-    int first_multiplier = to_multiplier(combo);
-    int last_multiplier = first_multiplier;
+    CategoryScores out;
+    out.multiplier = to_multiplier(combo);
+    out.multiplier_after = out.multiplier;
 
     const std::vector<ChordNote> ordering = chord.notes(true);
     if (per_note) {
@@ -32,87 +37,60 @@ CategoryScores category_scores(const Chord& chord, int combo,
     }
     for (size_t i = 0; i < ordering.size(); ++i) {
         const ChordNote& note = ordering[i];
-        const bool is_cymbal = note.is_cymbal();
-        const bool is_accent = note.is_accent();
-        const bool is_ghost = note.is_ghost();
-        // is_dynamic() is dynamictype != NORMAL, i.e. accent or ghost.
-        const bool is_dynamic = is_accent || is_ghost;
-
         combo += 1;
         const int combo_multiplier = to_multiplier(combo);
-        const int extra = combo_multiplier - 1;
-        if (i == 0) first_multiplier = combo_multiplier;
-        last_multiplier = combo_multiplier;
+        if (i == 0) out.multiplier = combo_multiplier;
+        out.multiplier_after = combo_multiplier;
 
-        const int basevalue = kNoteBasePoints;
-        const int cymbvalue = kCymbalBonusPoints;
-
-        const int cymb = is_cymbal ? cymbvalue : 0;
-        const int dyn_cymb = (is_cymbal && is_dynamic) ? cymbvalue : 0;
-
-        base_note += basevalue;
-        base_cymbal += cymb;
-        combo_note += basevalue * extra;
-        combo_cymbal += cymb * extra;
-        sp_note += basevalue;
-        sp_cymbal += cymb;
-        combosp_note += basevalue * extra;
-        combosp_cymbal += cymb * extra;
-        dynamic_note_accent += is_accent ? basevalue : 0;
-        dynamic_note_ghost += is_ghost ? basevalue : 0;
-        dynamic_cymbal += dyn_cymb;
-        combodynamic_note += is_dynamic ? basevalue * extra : 0;
-        combodynamic_cymbal += dyn_cymb * extra;
-        spdynamic_note += is_dynamic ? basevalue : 0;
-        spdynamic_cymbal += dyn_cymb;
-        combospdynamic_note += is_dynamic ? basevalue * extra : 0;
-        combospdynamic_cymbal += dyn_cymb * extra;
-
+        const NoteValue value = note_value(note, combo_multiplier);
+        // A ghost or accent's own category holds the pad's 50 at 1x; the
+        // base category holds the rest of the 1x value, and the combo
+        // category everything the multiplier adds on top.
+        const int accent = note.is_accent() ? kNoteBasePoints : 0;
+        const int ghost = note.is_ghost() ? kNoteBasePoints : 0;
+        const int base = value.at_1x - accent - ghost;
+        const int combo_share = value.paid - value.at_1x;
+        // Star Power multiplies the whole paid value by kStarPowerMultiplier,
+        // so its own share is that many copies less the one already paid.
+        const int sp = (kStarPowerMultiplier - 1) * value.paid;
         // SqOut: the notes that lose their SP doubling. FirstNote takes note 0
-        // only; WholeChord takes every note. A lost doubling is the note's full
-        // value at its own multiplier, and basescore() is that value.
+        // only; WholeChord takes every note. A lost doubling is the note's
+        // paid value.
         const bool loses_sp = i == 0 || sqout_rule == core::SqOutRule::WholeChord;
-        const int note_sqout = loses_sp ? note.basescore() * combo_multiplier : 0;
-        sqout_reduction += note_sqout;
+        const int note_sqout = loses_sp ? value.paid : 0;
+
+        out.base += base;
+        out.combo += combo_share;
+        out.sp += sp;
+        out.accent += accent;
+        out.ghost += ghost;
+        out.sqout_reduction += note_sqout;
 
         if (per_note) {
             CategoryScores note_scores;
-            note_scores.base = basevalue + cymb + dyn_cymb;
-            note_scores.combo = basevalue * extra + cymb * extra +
-                                 (is_dynamic ? basevalue * extra : 0) +
-                                 dyn_cymb * extra;
-            note_scores.sp = basevalue + cymb + basevalue * extra +
-                              cymb * extra + (is_dynamic ? basevalue : 0) +
-                              dyn_cymb + (is_dynamic ? basevalue * extra : 0) +
-                              dyn_cymb * extra;
-            note_scores.accent = is_accent ? basevalue : 0;
-            note_scores.ghost = is_ghost ? basevalue : 0;
+            note_scores.base = base;
+            note_scores.combo = combo_share;
+            note_scores.sp = sp;
+            note_scores.accent = accent;
+            note_scores.ghost = ghost;
+            note_scores.sqout_reduction = note_sqout;
             note_scores.multiplier = combo_multiplier;
             note_scores.multiplier_after = combo_multiplier;
-            // The dynamics terms the totals above add for this note:
-            // dynamic_note_* and combodynamic_note (the pad's basevalue) plus
-            // dynamic_cymbal and combodynamic_cymbal (dyn_cymb), each paid
-            // once at 1x and once more per extra.
-            note_scores.dynamics_bonus =
-                ((is_dynamic ? basevalue : 0) + dyn_cymb) * combo_multiplier;
-            note_scores.sqout_reduction = note_sqout;
+            note_scores.combo_after = combo;
+            // What the ghost or accent earns: this note's paid value less a
+            // plain note's on the same pad at the same multiplier.
+            ChordNote plain = note;
+            plain.dynamictype = NoteDynamicType::Normal;
+            note_scores.dynamics_bonus = value.paid - note_value(plain, combo_multiplier).paid;
             per_note->push_back(note_scores);
         }
     }
-
-    CategoryScores out;
-    out.base = base_note + base_cymbal + dynamic_cymbal;
-    out.combo =
-        combo_note + combo_cymbal + combodynamic_note + combodynamic_cymbal;
-    out.sp = sp_note + sp_cymbal + combosp_note + combosp_cymbal +
-             spdynamic_note + spdynamic_cymbal + combospdynamic_note +
-             combospdynamic_cymbal;
-    out.accent = dynamic_note_accent;
-    out.ghost = dynamic_note_ghost;
-    out.sqout_reduction = sqout_reduction;
-    out.multiplier = first_multiplier;
-    out.multiplier_after = last_multiplier;
+    out.combo_after = combo;
     return out;
+}
+
+int solo_bonus(const Chord& chord, bool flag_solo) {
+    return flag_solo ? kSoloBonusPerNote * chord.count() : 0;
 }
 
 int multsqueeze_gain(const Chord& chord, int combo) {
@@ -123,10 +101,8 @@ int multsqueeze_gain(const Chord& chord, int combo) {
     const size_t n = best.size();
     int best_total = 0, worst_total = 0;
     for (size_t i = 0; i < n; ++i) {
-        // basescore() is a note's full value at 1x, as the SqOut line above
-        // also reads it.
-        best_total += best[i].basescore() * per_note[i].multiplier;
-        worst_total += best[n - 1 - i].basescore() * per_note[i].multiplier;
+        best_total += note_value(best[i], per_note[i].multiplier).paid;
+        worst_total += note_value(best[n - 1 - i], per_note[i].multiplier).paid;
     }
     return best_total - worst_total;
 }

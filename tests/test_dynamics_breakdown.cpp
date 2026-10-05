@@ -335,3 +335,17 @@ TEST_CASE("dynamics_breakdown: row labels pro vs non-pro") {
     CHECK(std::string(dynamics_row_label(DynamicsRow::GreenTom, true)) ==
           note_label(green_tom, true));
 }
+
+TEST_CASE("dynamics_breakdown: dynamic() counts ghosts and accents and not normals") {
+    DynamicsCounts c;
+    c.ghost = 2;
+    c.accent = 3;
+    c.normal = 4;
+    CHECK(c.dynamic() == 5);
+    CHECK(c.all() == 9);
+    CHECK(c.has_dynamics());
+
+    const DynamicsCounts zero;
+    CHECK(zero.dynamic() == 0);
+    CHECK_FALSE(zero.has_dynamics());
+}

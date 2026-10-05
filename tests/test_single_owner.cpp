@@ -2013,239 +2013,6 @@ const std::vector<OwnerRule>& rules() {
           "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
          {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
          {"tests"}},
-        // The join row above, for any name: a string literal that starts with
-        // a backslash and a name, glued on with +, or a bare backslash added
-        // with +=. join_folder's own "\\" is followed by a quote, not a name.
-        // Rows are append-only, so the first row stays as it is.
-        {"How are a folder and a file name joined? (any name, not only folder)",
-         "join_folder in src/core/winstr.cpp",
-         R"(\+\s*"\\\\\w|\+=\s*"\\\\")",
-         "",
-         {},
-         {},
-         "audit finding 209; phase 6 task J2-1 (D53)",
-         {R"(return exe_dir() + "\\hydra.db";)",
-          R"(if (resource_dir.back() != '\\' && resource_dir.back() != '/') resource_dir += "\\";)"},
-         {R"(return (last == '\\' || last == '/') ? folder + name : folder + "\\" + name;)",
-          R"(constexpr std::wstring_view kLongPrefix = L"\\\\?\\";)",
-          R"(case '\\': out += "\\\\"; break;)",
-          R"(return join_folder(exe_dir(), "hydra.db");)"},
-         {},
-         {"src", "tools"}},
-        // A string literal naming the resource folder under the exe. The
-        // owner joins the bare name "resource", so no line matches it.
-        {"Where is the resource folder?",
-         "resource_dir in src/app/config.cpp",
-         R"("[^"]*\\\\resource)",
-         "",
-         {},
-         {},
-         "audit finding 209; phase 6 task J2-1 (D53)",
-         {R"(options.resource_dir.empty() ? app::exe_dir() + "\\resource" : options.resource_dir;)",
-          R"(const std::string dir = hydra::app::exe_dir() + "\\resource\\";)"},
-         {R"(std::string resource_dir() { return join_folder(exe_dir(), "resource"); })",
-          R"(#include "ui/resource.h")"},
-         {},
-         {"src"}},
-        // A byte lowered through the C locale, or a private definition of one
-        // of strutil's ASCII helpers (a definition line has no ; after its
-        // open paren). C2's wide starts_with in winstr.cpp stays where it is
-        // (J2-1, decided at launch).
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "lower_ascii, equals_ci, starts_with(_ci), ends_with(_ci) and is_ascii_space in "
-         "src/core/strutil.cpp",
-         R"(std::tolower\(|\b(bool|char)\s+(starts_with|starts_with_ci|ends_with|ends_with_ci|equals_ci|iequals_ascii|is_ascii_space|ascii_lower|lower_ascii)\s*\([^;]*$)",
-         "",
-         {},
-         {},
-         "audit finding 201; phase 6 task J2-1 (D53)",
-         {"bool starts_with(std::string_view s, std::string_view prefix) {",
-          "bool ends_with(std::string_view s, std::string_view suffix) {",
-          "return std::tolower(static_cast<unsigned char>(a)) =="},
-         {"bool starts_with(std::string_view s, std::string_view prefix);",
-          "bool starts_with_any(std::string_view s, std::initializer_list<std::string_view> prefixes) {",
-          R"(if (starts_with(what, "cannot write ")) return kReportWrite;)",
-          "c = lower_ascii(c);"},
-         {{"src/core/strutil.cpp", "char lower_ascii(char c) {", "lower_ascii, the owner"},
-          {"src/core/strutil.cpp", "bool is_ascii_space(char c) {", "is_ascii_space, the owner"},
-          {"src/core/strutil.cpp", "bool equals_ci(std::string_view a, std::string_view b) {",
-           "equals_ci, the owner"},
-          {"src/core/strutil.cpp", "bool starts_with(std::string_view s, std::string_view prefix) {",
-           "starts_with, the owner"},
-          {"src/core/strutil.cpp",
-           "bool starts_with_ci(std::string_view s, std::string_view prefix) {",
-           "starts_with_ci, the owner"},
-          {"src/core/strutil.cpp", "bool ends_with(std::string_view s, std::string_view suffix) {",
-           "ends_with, the owner"},
-          {"src/core/strutil.cpp", "bool ends_with_ci(std::string_view s, std::string_view suffix) {",
-           "ends_with_ci, the owner"},
-          {"src/core/winstr.cpp", "bool starts_with(const std::wstring& s, std::wstring_view prefix) {",
-           "the wide prefix test winstr keeps for its long-path prefixes (J2-1, decided at launch)"}}},
-        // The root and one more byte cut off a path. relpath in analysis.cpp
-        // cuts only after a separator and keeps backslashes: Python's
-        // os.path.relpath for the library's stored path, another question.
-        {"How is a scanned path keyed in the scan snapshot?",
-         "relative_slash_path in src/core/strutil.cpp",
-         R"(\.substr\(\s*\w+\.size\(\)\s*\+\s*1\s*\))",
-         "",
-         {},
-         {{"src/app/analysis.cpp",
-           "relpath: the library's stored relative path (a separator is required and backslashes "
-           "stay), not the snapshot key"}},
-         "audit finding 274; phase 6 task J2-1 (D53, D54)",
-         {"p = p.substr(rel.size() + 1);", "rel = rel.substr(root.size() + 1);"},
-         {"return slash == std::string::npos ? path : path.substr(slash + 1);",
-          "const std::string tail = s.substr(s.size() - 4);"},
-         {{"src/core/strutil.cpp", "path = path.substr(root.size() + 1);",
-           "relative_slash_path, the owner"}},
-         {"src", "tools", "tests"}},
-        // A depth unit word chosen from the search's enum, or bench's header
-        // words. The GUI's own wordings ("Within 4 scores", the score-range
-        // box) are separate display text and do not name the enum.
-        {"How do the analysis settings read as text?",
-         "describe_settings in src/app/config.cpp",
-         R"re(DepthMode::\w+.*"(scores|points)"|score range %d|%dms limit)re",
-         "",
-         {},
-         {},
-         "audit finding 206; phase 6 task J2-1 (D53, D54)",
-         {R"(case hydra::DepthMode::Scores: depth_name = "scores"; break;)",
-          R"(case hydra::DepthMode::Points: depth_name = "points"; break;)",
-          R"(std::printf("Settings: the GUI default (SP cap %d, score range %d, %dms limit).\n\n",)"},
-         {R"(const char* modes[] = {"scores", "points"};)",
-          R"(hydra::counted(out.stats.total, "score", "scores") + ": " +)",
-          R"(if (a.depth_mode) s.depth_mode = *a.depth_mode == "points" ? 1 : 0;)"},
-         {{"src/app/config.cpp",
-           R"(const char* unit = settings.depth_mode == DepthMode::Points ? "points" : "scores";)",
-           "describe_settings, the owner"}}},
-        // The two strings typed anywhere but CMakeLists.txt, which the walk
-        // does not read (so no owner line is listed). The installer script is
-        // checked by the case below this table's scan.
-        {"What name and taskbar identity does the app present?",
-         "HYDRA_APP_NAME and HYDRA_APP_USER_MODEL_ID in CMakeLists.txt",
-         R"(Hydra\.Hydra|Hydra Deluxe)",
-         "",
-         {},
-         {},
-         "audit finding 257; phase 6 task J2-1 (D53)",
-         {R"(inline constexpr const wchar_t* kWindowTitleW = L"Hydra Deluxe";)",
-          R"(inline constexpr const wchar_t* kAppUserModelIDW = L"Hydra.Hydra";)",
-          "AppName=Hydra Deluxe"},
-         {"inline constexpr const wchar_t* kWindowTitleW = HYDRA_WIDEN(HYDRA_APP_NAME);",
-          "AppName={#HYDRA_APP_NAME}", R"(DefaultDirName={autopf}\Hydra)",
-          "OutputBaseFilename=HydraDeluxe-{#HYDRA_VERSION}-setup"},
-         {},
-         {"src", "installer/hydra.iss"}},
-        // The path report's page script once found the Beyond edge as the
-        // largest tier cutoff and counted rows past it by their ms. The page
-        // now reads the edge from the payload and counts rows whose tier
-        // tier_for already set to Beyond.
-        {"Where does the Beyond tier start on the report page?",
-         "beyond_edge_ms and tier_for, carried in the payload by src/app/report.cpp",
-         R"(Math\.max\(\.\.\.DATA\.tiers|r\.ms\s*>=?\s*BEYOND)",
-         "",
-         {},
-         {},
-         "audit finding 155; phase 6 task J2-2 (D53)",
-         {"const BEYOND = Math.max(...DATA.tiers.filter(t => t.cutoff !== null).map(t => t.cutoff));",
-          "const beyond = rows.filter(r => r.ms !== null && r.ms > BEYOND).length;"},
-         {"const beyond = rows.filter(r => r.tier === 'Beyond').length;",
-          "return name === 'Beyond' ? 'Beyond ' + DATA.beyond_edge_ms + ' ms'"},
-         {},
-         {"src"}},
-        // A record's paths come best first from all_paths() (pather::read
-        // sorts the roots; each variant sits under its parent). Sorting them
-        // by score again is a second answer.
-        {"In what order does a record list its paths?",
-         "HydraRecord::all_paths, in the order pather::read builds",
-         R"(totalscore\(\)\s*>\s*\w+->totalscore\(\))",
-         "",
-         {},
-         {},
-         "audit finding 169; phase 6 task J2-2 (D53)",
-         {"return a->totalscore() > b->totalscore();"},
-         {"CHECK(all[i]->totalscore() <= all[i - 1]->totalscore());",
-          "const std::vector<const Path*> paths = record->all_paths();"},
-         {},
-         {"src", "tools", "tests"}},
-        // The subtitle's chart count and the page's chart ids come from one
-        // file-local helper in report.cpp.
-        {"How many charts does a report page list?",
-         "chart_ids in src/app/report.cpp",
-         R"(songs\.insert\(\s*r\.hyhash)",
-         "",
-         {},
-         {},
-         "audit finding 242; phase 6 task J2-2 (D53)",
-         {"songs.insert(r.hyhash);"},
-         {"out.songs = static_cast<int64_t>(chart_ids(rows).size());"},
-         {},
-         {"src"}},
-        // collect_dm_rows and collect_fill_rows set each row's status from
-        // the one comparison; the page scripts read it instead of testing the
-        // delta's sign. The leaderboard row also keeps that answer in
-        // above_optimal, which an off-speed status hides (D64). The C++
-        // assignments carry no `r.` and are the owner.
-        {"Which side of a report comparison is higher?",
-         "the status field set by collect_dm_rows and collect_fill_rows, and the above_optimal "
-         "field collect_dm_rows sets from the same comparison",
-         R"(r\.delta\s*[<>]\s*0\s*\?)",
-         "",
-         {},
-         {},
-         "audit finding 168; phase 6 task J2-2 (D53)",
-         {"const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');",
-          ": (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));",
-          "const left = under.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);",
-          "const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'"},
-         {R"(row.status = above       ? "above optimal")",
-          R"(row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");)",
-          "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');",
-          "row.above_optimal = above;",
-          ": (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));"},
-         {},
-         {"src"}},
-        // A record key's fill flag is encoded once, by Lens::from.
-        {"Which fill rule does a record key name?",
-         "Lens::from in src/store/record_store.h",
-         R"(legacy_fills\s*\?\s*1\s*:\s*0)",
-         "",
-         {"src/store/record_store.h"},
-         {},
-         "audit finding 240; phase 6 task J2-2 (D53)",
-         {"lens.legacy_fills = legacy_fills ? 1 : 0;"},
-         {"store::Lens::from(std::nullopt, 0, 0, legacy_fills)};",
-          "old_lens.legacy_fills = 1;"},
-         {},
-         {"src", "tests"}},
-        // Walking the corpus for the first charts that analyze to a path.
-        {"Which corpus chart is the first with paths?",
-         "analyzed_with_paths in tests/corpus_util.h",
-         R"(\.record\.paths\.empty\(\)\)\s*continue)",
-         "",
-         {"tests/corpus_util.h"},
-         {},
-         "audit finding 277; phase 6 task J2-2 (D53)",
-         {"if (result.song.is_empty() || result.record.paths.empty()) continue;",
-          "if (r.song.is_empty() || r.record.paths.empty()) continue;"},
-         {"for (const AnalysisResult& result : corpus::analyzed_with_paths(settings, names.size())) {",
-          "CHECK(!r.paths.empty());"},
-         {},
-         {"tests"}},
-        // The WCAG relative-luminance formula, typed once with 2.2's
-        // threshold.
-        {"What is the contrast of two colours?",
-         "tests/wcag_util.h",
-         R"(0\.03928|0\.04045)",
-         "",
-         {"tests/wcag_util.h"},
-         {},
-         "audit finding 288; D54 (the WCAG 2.2 threshold, 0.04045); phase 6 task J2-2",
-         {"return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);",
-          "return c <= 0.04045f ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);"},
-         {"return testwcag::relative_luminance(channel(1), channel(3), channel(5));"},
-         {},
-         {"src", "tests"}},
         // Picking a tick's meter section by ordering it against the sections'
         // first ticks. section_at answers that with keys_ directly, so no
         // keys_at ordering is the owner's. An equality test against a section
@@ -2375,6 +2142,667 @@ const std::vector<OwnerRule>& rules() {
            "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
            "put_le, the owner (put_u16, put_u32 and put_u64 write through it)"}},
          {"tests"}},
+        // The join row above, for any name: a string literal that starts with
+        // a backslash and a name, glued on with +, or a bare backslash added
+        // with +=. join_folder's own "\\" is followed by a quote, not a name.
+        // Rows are append-only, so the first row stays as it is.
+        {"How are a folder and a file name joined? (any name, not only folder)",
+         "join_folder in src/core/winstr.cpp",
+         R"(\+\s*"\\\\\w|\+=\s*"\\\\")",
+         "",
+         {},
+         {},
+         "audit finding 209; phase 6 task J2-1 (D53)",
+         {R"(return exe_dir() + "\\hydra.db";)",
+          R"(if (resource_dir.back() != '\\' && resource_dir.back() != '/') resource_dir += "\\";)"},
+         {R"(return (last == '\\' || last == '/') ? folder + name : folder + "\\" + name;)",
+          R"(constexpr std::wstring_view kLongPrefix = L"\\\\?\\";)",
+          R"(case '\\': out += "\\\\"; break;)",
+          R"(return join_folder(exe_dir(), "hydra.db");)"},
+         {},
+         {"src", "tools"}},
+        // A string literal naming the resource folder under the exe. The
+        // owner joins the bare name "resource", so no line matches it.
+        {"Where is the resource folder?",
+         "resource_dir in src/app/config.cpp",
+         R"("[^"]*\\\\resource)",
+         "",
+         {},
+         {},
+         "audit finding 209; phase 6 task J2-1 (D53)",
+         {R"(options.resource_dir.empty() ? app::exe_dir() + "\\resource" : options.resource_dir;)",
+          R"(const std::string dir = hydra::app::exe_dir() + "\\resource\\";)"},
+         {R"(std::string resource_dir() { return join_folder(exe_dir(), "resource"); })",
+          R"(#include "ui/resource.h")"},
+         {},
+         {"src"}},
+        // A byte lowered through the C locale, or a private definition of one
+        // of strutil's ASCII helpers (a definition line has no ; after its
+        // open paren). C2's wide starts_with in winstr.cpp stays where it is
+        // (J2-1, decided at launch).
+        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
+         "lower_ascii, equals_ci, starts_with(_ci), ends_with(_ci) and is_ascii_space in "
+         "src/core/strutil.cpp",
+         R"(std::tolower\(|\b(bool|char)\s+(starts_with|starts_with_ci|ends_with|ends_with_ci|equals_ci|iequals_ascii|is_ascii_space|ascii_lower|lower_ascii)\s*\([^;]*$)",
+         "",
+         {},
+         {},
+         "audit finding 201; phase 6 task J2-1 (D53)",
+         {"bool starts_with(std::string_view s, std::string_view prefix) {",
+          "bool ends_with(std::string_view s, std::string_view suffix) {",
+          "return std::tolower(static_cast<unsigned char>(a)) =="},
+         {"bool starts_with(std::string_view s, std::string_view prefix);",
+          "bool starts_with_any(std::string_view s, std::initializer_list<std::string_view> prefixes) {",
+          R"(if (starts_with(what, "cannot write ")) return kReportWrite;)",
+          "c = lower_ascii(c);"},
+         {{"src/core/strutil.cpp", "char lower_ascii(char c) {", "lower_ascii, the owner"},
+          {"src/core/strutil.cpp", "bool is_ascii_space(char c) {", "is_ascii_space, the owner"},
+          {"src/core/strutil.cpp", "bool equals_ci(std::string_view a, std::string_view b) {",
+           "equals_ci, the owner"},
+          {"src/core/strutil.cpp", "bool starts_with(std::string_view s, std::string_view prefix) {",
+           "starts_with, the owner"},
+          {"src/core/strutil.cpp",
+           "bool starts_with_ci(std::string_view s, std::string_view prefix) {",
+           "starts_with_ci, the owner"},
+          {"src/core/strutil.cpp", "bool ends_with(std::string_view s, std::string_view suffix) {",
+           "ends_with, the owner"},
+          {"src/core/strutil.cpp", "bool ends_with_ci(std::string_view s, std::string_view suffix) {",
+           "ends_with_ci, the owner"},
+          {"src/core/winstr.cpp", "bool starts_with(const std::wstring& s, std::wstring_view prefix) {",
+           "the wide prefix test winstr keeps for its long-path prefixes (J2-1, decided at launch)"}}},
+        // The root and one more byte cut off a path. relpath in analysis.cpp
+        // cuts only after a separator and keeps backslashes: Python's
+        // os.path.relpath for the library's stored path, another question.
+        {"How is a scanned path keyed in the scan snapshot?",
+         "relative_slash_path in src/core/strutil.cpp",
+         R"(\.substr\(\s*\w+\.size\(\)\s*\+\s*1\s*\))",
+         "",
+         {},
+         {{"src/app/analysis.cpp",
+           "relpath: the library's stored relative path (a separator is required and backslashes "
+           "stay), not the snapshot key"}},
+         "audit finding 274; phase 6 task J2-1 (D53, D54)",
+         {"p = p.substr(rel.size() + 1);", "rel = rel.substr(root.size() + 1);"},
+         {"return slash == std::string::npos ? path : path.substr(slash + 1);",
+          "const std::string tail = s.substr(s.size() - 4);"},
+         {{"src/core/strutil.cpp", "path = path.substr(root.size() + 1);",
+           "relative_slash_path, the owner"}},
+         {"src", "tools", "tests"}},
+        // A depth unit word chosen from the search's enum, or bench's header
+        // words. The GUI's own wordings ("Within 4 scores", the score-range
+        // box) are separate display text and do not name the enum.
+        {"How do the analysis settings read as text?",
+         "describe_settings in src/app/config.cpp",
+         R"re(DepthMode::\w+.*"(scores|points)"|score range %d|%dms limit)re",
+         "",
+         {},
+         {},
+         "audit finding 206; phase 6 task J2-1 (D53, D54)",
+         {R"(case hydra::DepthMode::Scores: depth_name = "scores"; break;)",
+          R"(case hydra::DepthMode::Points: depth_name = "points"; break;)",
+          R"(std::printf("Settings: the GUI default (SP cap %d, score range %d, %dms limit).\n\n",)"},
+         {R"(const char* modes[] = {"scores", "points"};)",
+          R"(hydra::counted(out.stats.total, "score", "scores") + ": " +)",
+          R"(if (a.depth_mode) s.depth_mode = *a.depth_mode == "points" ? 1 : 0;)"},
+         {{"src/app/config.cpp",
+           R"(const char* unit = settings.depth_mode == DepthMode::Points ? "points" : "scores";)",
+           "describe_settings, the owner"}}},
+        // The two strings typed anywhere but CMakeLists.txt, which the walk
+        // does not read (so no owner line is listed). The installer script is
+        // checked by the case below this table's scan.
+        {"What name and taskbar identity does the app present?",
+         "HYDRA_APP_NAME and HYDRA_APP_USER_MODEL_ID in CMakeLists.txt",
+         R"(Hydra\.Hydra|Hydra Deluxe)",
+         "",
+         {},
+         {},
+         "audit finding 257; phase 6 task J2-1 (D53)",
+         {R"(inline constexpr const wchar_t* kWindowTitleW = L"Hydra Deluxe";)",
+          R"(inline constexpr const wchar_t* kAppUserModelIDW = L"Hydra.Hydra";)",
+          "AppName=Hydra Deluxe"},
+         {"inline constexpr const wchar_t* kWindowTitleW = HYDRA_WIDEN(HYDRA_APP_NAME);",
+          "AppName={#HYDRA_APP_NAME}", R"(DefaultDirName={autopf}\Hydra)",
+          "OutputBaseFilename=HydraDeluxe-{#HYDRA_VERSION}-setup"},
+         {},
+         {"src", "installer/hydra.iss"}},
+        // A drum-track pitch typed as a bare case label, or the old note-off
+        // gate's bare comparison. The marker table names each pitch once and
+        // has no case label, so after the fold nothing in song.cpp matches
+        // and no owner line is listed.
+        {"Which MIDI pitches does the drum parser act on?",
+         "the marker pitch table (kMarkerPitches, is_midi_marker_pitch) in src/parse/song.cpp",
+         R"(\bcase\s+(95|103|109|110|111|112|116|120)\s*:|\bnote\s*<\s*103\b)",
+         "",
+         {},
+         {},
+         "audit finding R7.19; phase 6 task J2-3 (D54)",
+         {"case 103: return mop_flag(MAct::Solo, true);",
+          "if (is_noteoff && note < 103) return {};",
+          "case 120:"},
+         {"case kSoloMarkerPitch: return mop_flag(MAct::Solo, true);",
+          "if (is_noteoff && !is_midi_marker_pitch(note)) return {};",
+          "constexpr int kSoloMarkerPitch = 103;"},
+         {},
+         {"src/parse/song.cpp"}},
+        // Whether a solo run ends here, read off the next timestamp's flag.
+        // The Preview's span join walks the flags without looking ahead, so
+        // no one-line pattern tells it apart from any other solo check; J3-4
+        // repoints it.
+        {"Where does a solo section start and end?",
+         "Song::solo_sections, built by find_solo_sections in src/parse/song.cpp",
+         R"(sequence\[[^\]]*\+\s*1\s*\]\.flag_solo)",
+         "",
+         {},
+         {},
+         "audit finding 167; phase 6 task J2-3 (D54)",
+         {"i + 1 >= n || !song.sequence[i + 1].flag_solo;",
+          "if (song.sequence[k + 1].flag_solo) continue;"},
+         {"if (!sequence[i].flag_solo) continue;", "if (ts.flag_solo) {",
+          "CHECK(song.sequence[2].flag_solo);"},
+         {},
+         {"src"}},
+        // A test telling a file's format from its extension by hand: a
+        // case-sensitive ends_with, or a path's last six bytes compared with
+        // ".chart". The tests use the case-sensitive ends_with for nothing
+        // else, so any call is flagged.
+        {"Which chart format is a test file? (tests)",
+         "chart_format_of in src/parse/chart_files.cpp",
+         R"(\bends_with\s*\(|\.compare\([^;]*\b6\s*,\s*"\.chart"\))",
+         "",
+         {},
+         {{"tests/test_strutil.cpp", "its ends_with calls test strutil's ends_with itself"}},
+         "audit finding 119; phase 6 task J2-3 (D54)",
+         {R"(const bool is_mid = ends_with(path, ".mid");)",
+          R"(if (!hydra::ends_with(path, ".mid")) continue;)",
+          R"(if (p.size() < 6 || p.compare(p.size() - 6, 6, ".chart") != 0) continue;)"},
+         {"if (chart_format_of(path) != ChartFormat::Mid) continue;",
+          R"(CHECK(ends_with_ci("SONG.Mid", ".mid"));)",
+          R"(const std::string chart = corpus::first_chart_with_suffix(".chart");)"},
+         {},
+         {"tests"}},
+        // The stars filter's range typed out as text. The owner builds the
+        // top of the range from kMaxStars, so no line matches it. The tests
+        // pin the whole sentence on purpose, so they are outside the scope.
+        {"What does the stars filter say when its number is out of range?",
+         "stars_error in src/app/library_query.cpp",
+         R"(\b0 to 7\b)",
+         "",
+         {},
+         {},
+         "audit finding 171; phase 6 task J2-5 (D53)",
+         {R"(constexpr const char* kStarsError = "stars: needs a number from 0 to 7";)"},
+         {R"(return "stars: needs a number from 0 to " + std::to_string(kMaxStars);)",
+          "std::optional<int> stars;             // stars:N, N in 0..kMaxStars"},
+         {},
+         {"src"}},
+        // Whether a term limited to one field counts in a column. Matching
+        // and highlighting each asked it their own way; both now call the
+        // owner. Any line naming QueryField::Any inside either function
+        // answers it again.
+        {"Does a term apply to a column? (matching)",
+         "term_applies_to in src/app/library_query.cpp",
+         R"(QueryField::Any)",
+         R"(term_applies_to\()",
+         {},
+         {},
+         "audit finding 204; phase 6 task J2-5 (D53)",
+         {"case QueryField::Any:"},
+         {"if (term_applies_to(term.field, c.column) && contains(c.text, term.folded))",
+          "return term_applies_to(QueryField::Any, column);"},
+         {},
+         {},
+         "src/app/library_query.cpp",
+         "bool term_matches("},
+        {"Does a term apply to a column? (highlighting)",
+         "term_applies_to in src/app/library_query.cpp",
+         R"(QueryField::Any)",
+         R"(term_applies_to\()",
+         {},
+         {},
+         "audit finding 204; phase 6 task J2-5 (D53)",
+         {"if (field != QueryField::Any && term.field != QueryField::Any && term.field != field)"},
+         {"if (!term_applies_to(term.field, field)) continue;",
+          "return term_applies_to(QueryField::Any, column);"},
+         {},
+         {},
+         "src/app/library_query.cpp",
+         "std::vector<MatchSpan> match_spans("},
+        // Ghosts plus accents, on a bare count or through a variable. The
+        // three-way sum that goes on to add normals is all(), another
+        // question.
+        {"How many dynamic notes does a count hold?",
+         "DynamicsCounts::dynamic in src/app/dynamics_breakdown.h",
+         R"((\b\w+\.)?\bghost\s*\+\s*\w*\.?accent\b(?!\s*\+))",
+         "",
+         {},
+         {},
+         "audit finding 205; phase 6 task J2-5 (D53)",
+         {"bool has_dynamics() const { return ghost + accent > 0; }",
+          "int dyn = played.ghost + played.accent;"},
+         {"int all() const { return ghost + accent + normal; }",
+          "int dyn = played.dynamic();",
+          "bool has_dynamics() const { return dynamic() > 0; }"},
+         {{"src/app/dynamics_breakdown.h", "int dynamic() const { return ghost + accent; }",
+           "DynamicsCounts::dynamic, the owner"}},
+         {"src", "tests"}},
+        // A private byte-by-byte little-endian helper. The store's
+        // BinaryWriter and BinaryReader are the codec; the store's own
+        // read_le/write_le are task J3-6's and are not in this row.
+        {"How is a little-endian number written byte by byte?",
+         "BinaryWriter::u32 and BinaryReader::u32 in src/store/serialize.cpp",
+         R"(\b(write|read)_u32_le\()",
+         "",
+         {"src/store/serialize.cpp"},
+         {},
+         "audit finding 195 (the Dynamics half); phase 6 task J2-5 (D53)",
+         {"write_u32_le(out, static_cast<uint32_t>(b.rows[i].ghost));",
+          "const uint32_t tag_ms = read_u32_le(p);                        p += 4;"},
+         {"w.u32(static_cast<uint32_t>(b.rows[i].ghost));", "const uint32_t tag_ms = r.u32();"},
+         {},
+         {"src"}},
+        // A path's suffix tested against a chart extension. A test of
+        // ends_with_ci itself passes a literal as the text, not a path, and
+        // asks how the suffix test works, so a literal first argument is not
+        // flagged.
+        {"Which chart format is a path?",
+         "chart_format_of in src/parse/chart_files.cpp",
+         R"re(ends_with_ci\(\s*[^"\s].*"\.(sng|srb|mid|chart)")re",
+         "",
+         {"src/parse/chart_files.cpp"},
+         {},
+         "audit findings 187 and R7.17; phase 6 task J2-5 (D53)",
+         {R"(return ends_with_ci(notespath, ".sng") || ends_with_ci(notespath, ".srb");)",
+          R"(if (ends_with_ci(notespath, ".sng")) {)",
+          R"(if (ends_with_ci(notespath, ".sng")) return sng_audio_from(*container, keep_going);)"},
+         {R"(CHECK(ends_with_ci("SONG.Mid", ".mid"));)",
+          R"(CHECK_FALSE(ends_with_ci("s", ".sng"));)",
+          "if (chart_format_of(notespath) == ChartFormat::Sng) {",
+          R"(return ends_with_ci(filename, ".ogg") || ends_with_ci(filename, ".opus") ||)"},
+         {},
+         {"src", "tools", "tests"}},
+        // The path report's page script once found the Beyond edge as the
+        // largest tier cutoff and counted rows past it by their ms. The page
+        // now reads the edge from the payload and counts rows whose tier
+        // tier_for already set to Beyond.
+        {"Where does the Beyond tier start on the report page?",
+         "beyond_edge_ms and tier_for, carried in the payload by src/app/report.cpp",
+         R"(Math\.max\(\.\.\.DATA\.tiers|r\.ms\s*>=?\s*BEYOND)",
+         "",
+         {},
+         {},
+         "audit finding 155; phase 6 task J2-2 (D53)",
+         {"const BEYOND = Math.max(...DATA.tiers.filter(t => t.cutoff !== null).map(t => t.cutoff));",
+          "const beyond = rows.filter(r => r.ms !== null && r.ms > BEYOND).length;"},
+         {"const beyond = rows.filter(r => r.tier === 'Beyond').length;",
+          "return name === 'Beyond' ? 'Beyond ' + DATA.beyond_edge_ms + ' ms'"},
+         {},
+         {"src"}},
+        // A record's paths come best first from all_paths() (pather::read
+        // sorts the roots; each variant sits under its parent). Sorting them
+        // by score again is a second answer.
+        {"In what order does a record list its paths?",
+         "HydraRecord::all_paths, in the order pather::read builds",
+         R"(totalscore\(\)\s*>\s*\w+->totalscore\(\))",
+         "",
+         {},
+         {},
+         "audit finding 169; phase 6 task J2-2 (D53)",
+         {"return a->totalscore() > b->totalscore();"},
+         {"CHECK(all[i]->totalscore() <= all[i - 1]->totalscore());",
+          "const std::vector<const Path*> paths = record->all_paths();"},
+         {},
+         {"src", "tools", "tests"}},
+        // The subtitle's chart count and the page's chart ids come from one
+        // file-local helper in report.cpp.
+        {"How many charts does a report page list?",
+         "chart_ids in src/app/report.cpp",
+         R"(songs\.insert\(\s*r\.hyhash)",
+         "",
+         {},
+         {},
+         "audit finding 242; phase 6 task J2-2 (D53)",
+         {"songs.insert(r.hyhash);"},
+         {"out.songs = static_cast<int64_t>(chart_ids(rows).size());"},
+         {},
+         {"src"}},
+        // collect_dm_rows and collect_fill_rows set each row's status from
+        // the one comparison; the page scripts read it instead of testing the
+        // delta's sign. The leaderboard row also keeps that answer in
+        // above_optimal, which an off-speed status hides (D64). The C++
+        // assignments carry no `r.` and are the owner.
+        {"Which side of a report comparison is higher?",
+         "the status field set by collect_dm_rows and collect_fill_rows, and the above_optimal "
+         "field collect_dm_rows sets from the same comparison",
+         R"(r\.delta\s*[<>]\s*0\s*\?)",
+         "",
+         {},
+         {},
+         "audit finding 168; phase 6 task J2-2 (D53)",
+         {"const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');",
+          ": (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));",
+          "const left = under.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);",
+          "const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'"},
+         {R"(row.status = above       ? "above optimal")",
+          R"(row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");)",
+          "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');",
+          "row.above_optimal = above;",
+          ": (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));"},
+         {},
+         {"src"}},
+        // A record key's fill flag is encoded once, by Lens::from.
+        {"Which fill rule does a record key name?",
+         "Lens::from in src/store/record_store.h",
+         R"(legacy_fills\s*\?\s*1\s*:\s*0)",
+         "",
+         {"src/store/record_store.h"},
+         {},
+         "audit finding 240; phase 6 task J2-2 (D53)",
+         {"lens.legacy_fills = legacy_fills ? 1 : 0;"},
+         {"store::Lens::from(std::nullopt, 0, 0, legacy_fills)};",
+          "old_lens.legacy_fills = 1;"},
+         {},
+         {"src", "tests"}},
+        // Walking the corpus for the first charts that analyze to a path.
+        {"Which corpus chart is the first with paths?",
+         "analyzed_with_paths in tests/corpus_util.h",
+         R"(\.record\.paths\.empty\(\)\)\s*continue)",
+         "",
+         {"tests/corpus_util.h"},
+         {},
+         "audit finding 277; phase 6 task J2-2 (D53)",
+         {"if (result.song.is_empty() || result.record.paths.empty()) continue;",
+          "if (r.song.is_empty() || r.record.paths.empty()) continue;"},
+         {"for (const AnalysisResult& result : corpus::analyzed_with_paths(settings, names.size())) {",
+          "CHECK(!r.paths.empty());"},
+         {},
+         {"tests"}},
+        // The WCAG relative-luminance formula, typed once with 2.2's
+        // threshold.
+        {"What is the contrast of two colours?",
+         "tests/wcag_util.h",
+         R"(0\.03928|0\.04045)",
+         "",
+         {"tests/wcag_util.h"},
+         {},
+         "audit finding 288; D54 (the WCAG 2.2 threshold, 0.04045); phase 6 task J2-2",
+         {"return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);",
+          "return c <= 0.04045f ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);"},
+         {"return testwcag::relative_luminance(channel(1), channel(3), channel(5));"},
+         {},
+         {"src", "tests"}},
+        // The game counts stars on the total less the solo bonus. Adding the
+        // categories up into the total is a different question.
+        {"What is a path's score without the solo bonus?",
+         "score_without_solo in src/core/stars.cpp",
+         R"(\btotalscore\(\)\s*-\s*(\w+(\.|->))?score_solo\b)",
+         "",
+         {},
+         {},
+         "audit finding 166; phase 6 task J2-7 (D53, D54)",
+         {"return stars_for_score(star_cutoffs(path), path.totalscore() - path.score_solo);",
+          "int64_t multscore = totalscore() - score_solo;"},
+         {"return score_base + score_combo + score_sp + score_solo + score_accents +",
+          "return stars_for_score(star_cutoffs(path), score_without_solo(path));",
+          "CHECK(path.totalscore() == 6680);"},
+         {{"src/core/stars.cpp",
+           "int64_t score_without_solo(const Path& path) { return path.totalscore() - path.score_solo; }",
+           "score_without_solo, the owner"}},
+         {"src", "tools", "tests"}},
+        // The Stars tab's "With full solo bonus" column and its GUI test read
+        // StarCutoffs::with_solo instead of adding the two themselves.
+        {"What score shows at a star cutoff with the full solo bonus?",
+         "star_cutoffs filling StarCutoffs::with_solo in src/core/stars.cpp",
+         R"(\bcutoffs?(\[[^\]]*\])?\s*\+\s*(\w+(\.|->))?solo_bonus\b)",
+         "",
+         {},
+         {},
+         "audit finding 166; phase 6 task J2-7 (D53, D54)",
+         {"ImGui::TextUnformatted(group_thousands(cutoff + sc.solo_bonus).c_str());",
+          "IM_CHECK(text.find(hydra::group_thousands(cutoff + sc.solo_bonus)) != std::string::npos);"},
+         {"ImGui::TextUnformatted(group_thousands(sc.with_solo[stars - 1]).c_str());",
+          "out.solo_bonus = path.score_solo;",
+          "const bool has_solo = sc.solo_bonus > 0;"},
+         {{"src/core/stars.cpp",
+           "out.with_solo[stars - 1] = out.cutoffs[stars - 1] + out.solo_bonus;",
+           "star_cutoffs, the owner"}},
+         {"src", "tests"}},
+        // The constant multiplied by a note count. Pinning the constant
+        // (test_model.cpp) is not an answer.
+        {"How many solo-bonus points does a chord earn?",
+         "solo_bonus in src/core/scoring.cpp",
+         R"(\bkSoloBonusPerNote\)?\s*\*|\*\s*(\w+::)*kSoloBonusPerNote\b)",
+         "",
+         {},
+         {},
+         "audit finding 163; phase 6 task J2-7 (D53, D54)",
+         {"store_soloscore(kSoloBonusPerNote * timestamp.chord.count());",
+          "ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;",
+          "int solo = ts.chord.count() * hydra::kSoloBonusPerNote;"},
+         {"CHECK(kSoloBonusPerNote == 100);",
+          "inline constexpr int kSoloBonusPerNote = 100;",
+          "store_soloscore(solo_bonus(timestamp.chord, timestamp.flag_solo));"},
+         {{"src/core/scoring.cpp", "return flag_solo ? kSoloBonusPerNote * chord.count() : 0;",
+           "solo_bonus, the owner"}},
+         {"src", "tools", "tests"}},
+        // A running combo stepped by a whole chord's note count. The scorer
+        // steps one note at a time (combo += 1), so it has no owner line.
+        {"What is the combo after a chord?",
+         "CategoryScores::combo_after in src/core/scoring.h",
+         R"(\bcombo_?\s*\+=\s*.*\bcount\(\))",
+         "",
+         {},
+         {},
+         "audit finding 164; phase 6 task J2-7 (D53, D54)",
+         {"combo_ += timestamp.chord.count();", "combo += ts.chord.count();"},
+         {"combo += 1;", "note_scores.combo_after = combo;", "combo_ = scores.combo_after;"},
+         {},
+         {"src", "tools", "tests"}},
+        // ---- phase 6 task J2-8: render callers and the Onyx numbers ----
+        // The highway's far end is now plus speed times secs_future; time_to_z,
+        // z_to_time and the draw list's window all ask far_time.
+        {"Where is the far end of the highway?",
+         "far_time in src/render/highway_draw.cpp",
+         R"(\b(?:speed\s*\*\s*(?:cfg\.track|T)\.secs_future|(?:cfg\.track|T)\.secs_future\s*\*\s*speed)\b)",
+         "",
+         {},
+         {},
+         "audit finding 224; phase 6 task J2-8 (D54)",
+         {"const double far_time = now_s + speed * cfg.track.secs_future;",
+          "const double far_t = now_s + speed * T.secs_future;",
+          "const double far_t = T.secs_future * speed;"},
+         {"const double far_t = far_time(cfg, now_s, speed);",
+          "CHECK(c.track.secs_future == doctest::Approx(1.35));"},
+         {{"src/render/highway_draw.cpp", "return now_s + speed * cfg.track.secs_future;",
+           "far_time, the owner"}}},
+        // The track rectangle: the size floor (below 1 counts as 1), the
+        // camera aspect (width over track height) and the bottom anchor (the
+        // track's top row is the image height less the track height). The last
+        // alternative is the renderer's old fade rectangle, which divided the
+        // track height by the image height; it now converts track_rect's top
+        // row to screen coordinates.
+        {"Where does the track rectangle sit, and at what size?",
+         "track_rect in src/render/highway_draw.cpp",
+         R"(std::max\(\s*1\s*,\s*(?:width|height)\s*\))"
+         R"(|static_cast<float>\([^()]*\)\s*/\s*static_cast<float>\((?:\w+\.)*(?:th|track_h|track_height)\))"
+         R"(|\b(?:\w+\.)*(?:h|height)\s*-\s*(?:\w+\.)*(?:th|track_h|track_height)\b)"
+         R"(|static_cast<float>\((?:\w+\.)*(?:th|track_h|track_height)\)\s*/\s*static_cast<float>\()",
+         "",
+         {},
+         {},
+         "audit finding 221; phase 6 task J2-8 (D54)",
+         {"const int w = std::max(1, width);",
+          "const int h = std::max(1, height);",
+          "const HighwayCamera cam = make_camera(cfg, static_cast<float>(w) / static_cast<float>(th));",
+          "out.y = static_cast<float>(h - th) + (1.0f - XMVectorGetY(ndc)) * 0.5f * static_cast<float>(th);",
+          "return highway_span_at(cfg, width, height, static_cast<float>(std::max(1, height))).left - gap;",
+          "d.width = std::max(1, width);",
+          "d.height = std::max(1, height);",
+          "HighwayCamera cam = make_camera(cfg, static_cast<float>(d.width) / static_cast<float>(d.track_h));",
+          "fc.rect_max = XMFLOAT2(1.0f, -1.0f + 2.0f * static_cast<float>(d.track_h) / "
+          "static_cast<float>(d.height));"},
+         {"const int want = std::max(1, cfg.hydra.msaa);",
+          "XMFLOAT2(1.0f, 1.0f - 2.0f * static_cast<float>(d.rect.top) / static_cast<float>(d.rect.height));",
+          "const HighwayCamera cam = make_camera(cfg, r.aspect);",
+          "r.track_height = std::max(1, t);"},
+         {{"src/render/highway_draw.cpp", "r.width = std::max(1, width);", "track_rect, the owner"},
+          {"src/render/highway_draw.cpp", "r.height = std::max(1, height);", "track_rect, the owner"},
+          {"src/render/highway_draw.cpp", "r.top = r.height - r.track_height;", "track_rect, the owner"},
+          {"src/render/highway_draw.cpp",
+           "r.aspect = static_cast<float>(r.width) / static_cast<float>(r.track_height);",
+           "track_rect, the owner"}}},
+        // A polygon becomes triangles as a fan from its first corner (Onyx's
+        // triangulate). load_obj's faces and the built flat and box meshes all
+        // push their vertices through push_fan.
+        {"In what order does a polygon become triangles?",
+         "push_fan in src/render/obj_loader.cpp",
+         R"(\.vertices\.push_back\()",
+         "",
+         {},
+         {},
+         "audit finding 226; phase 6 task J2-8 (D54)",
+         {"m.vertices.push_back(a);", "m.vertices.push_back(b);", "m.vertices.push_back(c);",
+          "m.vertices.push_back(a);", "m.vertices.push_back(c);", "m.vertices.push_back(d);",
+          "mesh.vertices.push_back(make_vertex(corners[0]));"},
+         {"for (int k = 0; k < 3; ++k) sorted.push_back(mesh.vertices[tri * 3 + k]);",
+          "push_fan(m, {a, b, c, d});"},
+         {{"src/render/obj_loader.cpp", "mesh.vertices.push_back(corners[0]);", "push_fan, the owner"},
+          {"src/render/obj_loader.cpp", "mesh.vertices.push_back(corners[i]);", "push_fan, the owner"},
+          {"src/render/obj_loader.cpp", "mesh.vertices.push_back(corners[i + 1]);",
+           "push_fan, the owner"}},
+         {"src/render/obj_loader.cpp"}},
+        // Where a Preview text box's line may break: wrap_words walks the
+        // spaces, and widest_word takes the widest line it makes at width 0.
+        {"Where may a line break fall in a Preview text box?",
+         "wrap_words in src/render/overlay_layout.cpp",
+         R"(\.find\(\s*' ')",
+         "",
+         {},
+         {},
+         "audit finding 75; phase 6 task J2-8 (D54)",
+         {"size_t end = text.find(' ', start);"},
+         {"while (start < text.size() && text[start] == ' ') ++start;",
+          "for (const std::string& line : wrap_words(text, 0.0f, width_of, keep_last))"},
+         {{"src/render/overlay_layout.cpp", "size_t next = text.find(' ', end);",
+           "wrap_words, the owner"}},
+         {"src/render/overlay_layout.cpp"}},
+        // The Preview's numbers live in assets/preview/3d-config.json alone; a
+        // PreviewConfig that was not loaded holds zeros. A field set to a
+        // number, or a brace initializer holding one, would be a second copy.
+        // Color's white and Vec3's origin are the types' own defaults, not
+        // Onyx's numbers, so their two member lines are left out.
+        {"Whose numbers does the Preview draw with?",
+         "assets/preview/3d-config.json, read by load_preview_config (docs/adr/0008)",
+         R"(^(?!\s*float [rx] = ).*(?:\b\w+\s*=\s*-?\d|\w\{[^}]*\d))",
+         "",
+         {},
+         {},
+         "audit finding 220; phase 6 task J2-8 (D54)",
+         {"float secs_future = 1.35f;  // events this far ahead sit at z_future",
+          "Color background{0x1c / 255.0f, 0x1d / 255.0f, 0x2b / 255.0f, 1};",
+          "Vec3 camera_position{0, 1.4f, 3};",
+          "LightConfig light{{0, -0.5f, 0.5f}};",
+          "int msaa = 4;  // mirrors Onyx's prefMSAA default",
+          "float y = -1;  // the floor"},
+         {"float r = 1, g = 1, b = 1, a = 1;",
+          "float x = 0, y = 0, z = 0;",
+          "float secs_future{};  // events this far ahead sit at z_future",
+          "LightConfig light{};"},
+         {},
+         {"src/render/preview_config.h"}},
+        // ---- tool text and the stem readers (phase 6 task J2-6) ----
+        // The dump writer's line reads act.sqout_tick off the engine's
+        // activation, not the JSON, so it does not match.
+        {"Which field names a dump window's squeezed-out chord?",
+         "read_sqout in tools/replay_json.cpp",
+         R"(act\["sqout_tick"\])",
+         "",
+         {},
+         {},
+         "audit finding 128 (tool half); phase 6 task J2-6 (D53)",
+         {R"(if (act.contains("sqout_tick") && act["sqout_tick"].is_number() &&)",
+          R"(w.sqout_tick = act["sqout_tick"].get<int64_t>();)"},
+         {R"({"sqout_tick", act.sqout_tick ? *act.sqout_tick : -1},)"},
+         {{"tools/replay_json.cpp",
+           R"(if (act.contains("sqout_tick") && act["sqout_tick"].is_number() &&)",
+           "read_sqout, the owner"},
+          {"tools/replay_json.cpp", R"(act["sqout_tick"].get<int64_t>() >= 0) {)",
+           "read_sqout, the owner"},
+          {"tools/replay_json.cpp", R"(w.sqout_tick = act["sqout_tick"].get<int64_t>();)",
+           "read_sqout, the owner"}},
+         {"tools"}},
+        {"How many frames are the Opus packet and pre-roll?",
+         "frames_of_ms in src/audio/frames.h",
+         R"(\b(5760|19200)\b)",
+         "",
+         {},
+         {},
+         "audit finding 227; phase 6 task J2-6 (D53)",
+         {"constexpr int kMaxFrame = 5760;        // 120 ms, the largest Opus packet",
+          "constexpr int64_t kPreRoll = 19200;    // 400 ms decoder warm-up before a seek target"},
+         {"const int kMaxFrame = static_cast<int>(frames_of_ms(120.0, kRate));",
+          "const int64_t kPreRoll = frames_of_ms(400.0, kRate);"},
+         {},
+         {"src"}},
+        {"How long is an ID3v2 tag, and what sits behind it?",
+         "id3v2_tag_length in src/core/audio_sniff.cpp",
+         R"(&\s*0x7F\)\s*<<\s*21)",
+         "",
+         {},
+         {},
+         "audit R7.23; phase 6 task J2-6 (D53)",
+         {"std::size_t tag = (static_cast<std::size_t>(d[6] & 0x7F) << 21) |",
+          "pos = 10 + ((static_cast<std::size_t>(b[6] & 0x7F) << 21) | ((b[7] & 0x7F) << 14) |"},
+         {"std::size_t pos = id3v2_tag_length(b.data(), b.size());"},
+         {{"src/core/audio_sniff.cpp",
+           "const std::size_t body = (static_cast<std::size_t>(data[6] & 0x7F) << 21) |",
+           "id3v2_tag_length, the owner"}},
+         {"src", "tools", "tests"}},
+        {"How many reservoir bytes does an MP3 frame leave?",
+         "reservoir_after in src/audio/ma_reader.cpp",
+         R"(std::min\(kMaxReservoir)",
+         "",
+         {},
+         {},
+         "audit R7.24; phase 6 task J2-6 (D53)",
+         {"reserv = std::min(kMaxReservoir, std::min(reserv, back) + static_cast<int>(s.own[j]));",
+          "reserv = std::min(kMaxReservoir, std::min(reserv, static_cast<int>(s.back[j])) +"},
+         {"reserv = reservoir_after(reserv, back, s.own[j]);"},
+         {{"src/audio/ma_reader.cpp",
+           "return std::min(kMaxReservoir, std::min(reserv, back) + own);",
+           "reservoir_after, the owner"}},
+         {"src/audio/ma_reader.cpp"}},
+        // The copied dr_mp3 declarations are verbatim and guarded by the
+        // miniaudio version static_assert, so their two 511s stay.
+        {"How big is dr_mp3's bit reservoir?",
+         "MA_DR_MP3_MAX_BITRESERVOIR_BYTES, in the copied dr_mp3 declarations of "
+         "src/audio/ma_reader.cpp",
+         R"(\b511\b)",
+         "",
+         {},
+         {},
+         "audit R7.24; phase 6 task J2-6 (D53)",
+         {"constexpr int kMaxReservoir = 511;  // dr_mp3's MA_DR_MP3_MAX_BITRESERVOIR_BYTES"},
+         {"constexpr int kMaxReservoir = MA_DR_MP3_MAX_BITRESERVOIR_BYTES;"},
+         {{"src/audio/ma_reader.cpp", "#define MA_DR_MP3_MAX_BITRESERVOIR_BYTES      511",
+           "the macro, in the verbatim dr_mp3 copy"},
+          {"src/audio/ma_reader.cpp", "ma_uint8 header[4], reserv_buf[511];",
+           "dr_mp3's own struct field, in the verbatim copy (kept byte for byte)"}},
+         {"src/audio/ma_reader.cpp"}},
+        {"Which test helper builds a small ID3v2 tag?",
+         "id3_tag in tests/audio_util.h",
+         R"(\{\s*'I',\s*'D',\s*'3')",
+         "",
+         {},
+         {},
+         "phase 6 task J2-6 derive-once review, finding 1",
+         {"std::vector<uint8_t> t = bytes({'I', 'D', '3', 3, 0, flags, 0, 0, 0, 20});",
+          "std::vector<uint8_t> tagged = {'I', 'D', '3', 3, 0, 0, 0, 0, 0, 20};",
+          "CHECK(sniff_format(bytes({'I', 'D', '3', 3, 0, 0})) == AudioFormat::Mp3);"},
+         {"std::vector<uint8_t> tagged = id3_tag(0);"},
+         {{"tests/audio_util.h",
+           "std::vector<uint8_t> t = {'I', 'D', '3', 3, 0, static_cast<uint8_t>(flags),",
+           "id3_tag, the owner"}},
+         {"tests"}},
     };
     return r;
 }
@@ -2384,59 +2812,16 @@ const std::vector<KnownCopy>& known_copies() {
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
          "display_backends' trim (audit finding 146, another step)"},
-        {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
-         "const char* tag = \"MTrk\";",
-         "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
-        {"Which test helper writes MThd/MTrk chunks?", "tests/test_song.cpp",
-         "put_bytes(file, {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 1, 0, 3, 0, 192});",
-         "test_song.cpp's put_track and put_varlen move to tests/midi_util.h (audit finding 286)"},
         {"How long does a UI confirmation stay, and how often does the UI re-check?",
          "src/ui/library_toolbar.cpp",
          "if (!app.status_is_problem && ImGui::GetTime() - shown_at > 6.0) return;",
          "finding 219, not yet scheduled"},
-        {"Is a span on after this instant?", "src/render/highway_draw.cpp",
-         "bool toggle_on(Toggle t) { return t != Toggle::Empty && t != Toggle::End; }",
-         "J2-8 (the draw code calls toggle_on_after)"},
-        {"Which pad colours a fill lane?", "src/render/highway_draw.cpp",
-         "if (inst.t >= s.t1 && inst.t <= s.t2 && inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }",
-         "J2-8 (the draw code reads the pad off make_lane_bounds)"},
-        {"Which pad colours a fill lane?", "src/render/highway_draw.cpp",
-         "if (inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }",
-         "J2-8 (the draw code reads the pad off make_lane_bounds)"},
-        {"Which notes file wins when a song has both?", "src/parse/song.cpp",
-         "const ChartFormat f = notes_file_format(e.name);",
-         "task J2-3 (the .sng loader calls pick_notes_file; audit finding 186)"},
-        {"Where does an .srb's metadata stream start?", "src/parse/song.cpp",
-         "srb_inflate_stream_reading(src, kSrbHeaderSize, kSrbMaxMetadata, &notes_offset);",
-         "task J2-3 (the .srb loader calls srb_read_metadata; audit finding 188)"},
-        {"Where does an .srb's metadata stream start?", "src/app/preview_source.cpp",
-         "srb_inflate_stream(buf.data(), buf.size(), kSrbHeaderSize,",
-         "task J2-5 (the Preview's audio walk starts at srb_read_metadata's offset; audit "
-         "finding 188)"},
-        {"Which file is the folder's song.ini?", "src/app/preview_source.cpp",
-         R"(if (!e.is_dir && is_song_ini(e.name)) return folder + "\\" + e.name;)",
-         "task J2-5 (the Preview's private find_song_ini goes; audit finding 189)"},
-        {"What is a path's parent folder?", "src/app/preview_source.cpp",
-         R"(return slash == std::string::npos ? std::string(".") : path.substr(0, slash);)",
-         "task J2-5 (dir_name goes; audit finding 251)"},
-        {"Which test helper builds a .sng?", "tests/test_preview_source.cpp",
-         "std::vector<uint8_t> make_sng(",
-         "task J2-5 (test_preview_source.cpp uses tests/sng_util.h; audit finding 117)"},
         {"How does a scan row become a library entry?", "src/ui/library_jobs.cpp",
          "entries.push_back({item.md5, item.title, item.artist, item.charter, item.notespath,",
          "task J2-4 (ScanJob::run calls to_library_entry; audit finding 256)"},
-        {"How does a scan row become a library entry?", "tools/bench.cpp",
-         "entries.push_back({it.md5, it.title, it.artist, it.charter, it.notespath,",
-         "task J2-6 (scan_mode calls to_library_entry; audit finding 256)"},
         {"How many workers does a batch get?", "src/ui/library_jobs.cpp",
          "workers_ = std::max(1, workers);",
          "task J2-4 (set_analyzer_for_test drops its floor; audit R7.22)"},
-        {"How are a folder and a file name joined?", "src/app/preview_source.cpp",
-         R"(if (!e.is_dir && is_song_ini(e.name)) return folder + "\\" + e.name;)",
-         "task J2-5 (the Preview calls the join owner; review of M6-J1a finding 1)"},
-        {"How are a folder and a file name joined?", "src/app/preview_source.cpp",
-         R"(s.path = folder + "\\" + e.name;)",
-         "task J2-5 (the Preview calls the join owner; review of M6-J1a finding 1)"},
         {"What fields does a phrase-end note carry in a hand-built Song?",
          "tests/test_preview_view.cpp", "ts.flag_sp = true;",
          "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
@@ -2449,73 +2834,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"What fields does a phrase-end note carry in a hand-built Song?",
          "tests/test_preview_view.cpp", "ts.flag_sp = true;",
          "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
-        {"How are a folder and a file name joined? (any name, not only folder)",
-         "src/render/preview_renderer.cpp",
-         R"(std::vector<uint8_t> bytes = asset_bytes(asset_dir + "\\textures\\" + file);)",
-         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
-        {"How are a folder and a file name joined? (any name, not only folder)",
-         "src/render/preview_renderer.cpp",
-         R"(std::string text = asset_text(asset_dir + "\\models\\" + file);)",
-         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
-        {"How are a folder and a file name joined? (any name, not only folder)",
-         "src/render/preview_renderer.cpp",
-         R"(std::string cfg_text = asset_text(asset_dir + "\\3d-config.json");)",
-         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
-        {"How are a folder and a file name joined? (any name, not only folder)",
-         "src/render/preview_renderer.cpp",
-         R"(throw std::runtime_error("PreviewRenderer: missing " + asset_dir + "\\3d-config.json");)",
-         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
-        {"How are a folder and a file name joined? (any name, not only folder)",
-         "src/render/preview_renderer.cpp",
-         R"(std::string obj_src = asset_text(asset_dir + "\\shaders\\object.hlsl");)",
-         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
-        {"How are a folder and a file name joined? (any name, not only folder)",
-         "src/render/preview_renderer.cpp",
-         R"(std::string fade_src = asset_text(asset_dir + "\\shaders\\fade.hlsl");)",
-         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "src/parse/song.cpp", "return std::tolower(static_cast<unsigned char>(a)) ==",
-         "task J2-3 (difficulty_from_name calls equals_ci; audit finding 201)"},
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "src/parse/song.cpp", "std::tolower(static_cast<unsigned char>(b));",
-         "task J2-3 (difficulty_from_name calls equals_ci; audit finding 201)"},
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "src/app/library_query.cpp", "bool is_ascii_space(unsigned char c) {",
-         "task J2-5 (the library query calls strutil; audit finding 201)"},
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "src/app/library_query.cpp", "char ascii_lower(unsigned char c) {",
-         "task J2-5 (the library query calls strutil; audit finding 201)"},
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "src/app/library_query.cpp", "bool iequals_ascii(std::string_view a, std::string_view b) {",
-         "task J2-5 (the library query calls strutil; audit finding 201)"},
-        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
-         "src/app/library_query.cpp", "bool starts_with_ci(std::string_view s, std::string_view prefix) {",
-         "task J2-5 (the library query calls strutil; audit finding 201)"},
-        {"How is a scanned path keyed in the scan snapshot?", "tools/bench.cpp",
-         "p = p.substr(rel.size() + 1);",
-         "task J2-6 (relify calls relative_slash_path; audit finding 274)"},
-        {"How is a scanned path keyed in the scan snapshot?", "tests/test_analysis.cpp",
-         "rel = rel.substr(root.size() + 1);",
-         "task J4-6 (rel_of calls relative_slash_path; audit finding 274)"},
-        {"How do the analysis settings read as text?", "tools/bench.cpp",
-         R"(std::printf("Settings: the GUI default (SP cap %d, score range %d, %dms limit).\n\n",)",
-         "task J2-6 (bench's header uses describe_settings; audit finding 206, D54)"},
-        // hydra_replay's NotAnalyzed line picks the depth word from DepthMode
-        // itself, the rule describe_settings owns. No phase 6 task owns
-        // tools/replay.cpp yet, so the main session names the fold.
-        {"How do the analysis settings read as text?", "tools/replay.cpp",
-         R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
-         "unassigned: the main session names the fold (the NotAnalyzed line takes "
-         "its depth word from describe_settings; audit finding 206, D54)"},
-        {"Which fill rule does a record key name?", "src/store/record_store.cpp",
-         "if (key.lens.legacy_fills != (record.legacy_fills ? 1 : 0))",
-         "task J3-6 (prepare_row reads the record's fill flag through Lens::from)"},
-        {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
-         "if (r.record.paths.empty()) continue;",
-         "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
-        {"Which test helper reads an audio fixture?", "tests/test_stem_reader.cpp",
-         "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
-         "task J2-6 (test_stem_reader.cpp's path builder calls fixture_path)"},
         {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
          R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
          "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
@@ -2532,16 +2850,41 @@ const std::vector<KnownCopy>& known_copies() {
          R"(write_file(song, hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg"));)",
          "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
          "finding 1)"},
-        {"Which test helper writes a little-endian number?", "tests/test_preview_golden.cpp",
-         "auto put32 = [&](int at, uint32_t v) { for (int i = 0; i < 4; ++i) hdr[at + i] = "
-         "static_cast<uint8_t>(v >> (8 * i)); };",
-         "M6-J2 sweep (test_preview_golden.cpp, J2-8's file this wave)"},
-        {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
-         "for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
-         "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
-        {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
-         "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
-         "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
+        {"How is a scanned path keyed in the scan snapshot?", "tests/test_analysis.cpp",
+         "rel = rel.substr(root.size() + 1);",
+         "task J4-6 (rel_of calls relative_slash_path; audit finding 274)"},
+        // hydra_replay's NotAnalyzed line picks the depth word from DepthMode
+        // itself, the rule describe_settings owns. No phase 6 task owns
+        // tools/replay.cpp yet, so the main session names the fold.
+        {"How do the analysis settings read as text?", "tools/replay.cpp",
+         R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
+         "unassigned: the main session names the fold (the NotAnalyzed line takes "
+         "its depth word from describe_settings; audit finding 206, D54)"},
+        {"Where does a solo section start and end?", "src/core/replay.cpp",
+         "i + 1 >= n || !song.sequence[i + 1].flag_solo;",
+         "task J3-2 (replay_path reads Song::solo_sections; audit finding 167)"},
+        {"Which fill rule does a record key name?", "src/store/record_store.cpp",
+         "if (key.lens.legacy_fills != (record.legacy_fills ? 1 : 0))",
+         "task J3-6 (prepare_row reads the record's fill flag through Lens::from)"},
+        {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
+         "if (r.record.paths.empty()) continue;",
+         "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
+        {"What is a path's score without the solo bonus?", "src/core/model.cpp",
+         "int64_t multscore = totalscore() - score_solo;",
+         "task J3-1 (Path::avg_mult calls score_without_solo; audit finding 166)"},
+        {"How many solo-bonus points does a chord earn?", "src/search/graph.cpp",
+         "store_soloscore(kSoloBonusPerNote * timestamp.chord.count());",
+         "task J3-2 (the graph calls solo_bonus; audit finding 163)"},
+        {"How many solo-bonus points does a chord earn?", "src/core/replay.cpp",
+         "ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;",
+         "task J3-2 (the replay calls solo_bonus; audit finding 163)"},
+        {"What is the combo after a chord?", "src/search/graph.cpp",
+         "combo_ += timestamp.chord.count();",
+         "task J3-2 (the graph reads CategoryScores::combo_after; audit finding 164)"},
+        {"What is the combo after a chord?", "src/core/replay.cpp", "combo += ts.chord.count();",
+         "task J3-2 (the replay reads CategoryScores::combo_after; audit finding 164)"},
+        {"What is the combo after a chord?", "tests/test_search.cpp", "combo += ts.chord.count();",
+         "task J3-2 (the test's hand walk reads combo_after; audit finding 164)"},
     };
     return k;
 }
@@ -2771,31 +3114,6 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
     CHECK(rule.find("src/parse") != std::string::npos);
 }
 
-// The walk reads only .cpp and .h files under src, tools and tests, so a row
-// scoped to a single file outside them (installer/hydra.iss, Inno Setup's
-// script) is checked here, with the same verdict. No listed line covers such
-// a file, so any flagged line fails. Comment lines are skipped as the walk
-// skips them.
-TEST_CASE("single-owner rules hold in the single files outside the walk") {
-    for (const CompiledRule& c : compile_rules()) {
-        for (const std::string& s : c.rule->scope) {
-            const std::string top = s.substr(0, s.find('/'));
-            if (s.find('/') == std::string::npos || top == "src" || top == "tools" || top == "tests")
-                continue;
-            std::ifstream in(sourcetree::root() / fs::u8path(s));
-            REQUIRE(in.good());
-            std::string line;
-            while (std::getline(in, line)) {
-                const std::string t = hydra::trim(line);
-                if (t.compare(0, 2, "//") == 0 && !c.rule->scan_comments) continue;
-                INFO(s << " answers \"" << c.rule->question << "\", which belongs to "
-                       << c.rule->owner << ": " << t);
-                CHECK_FALSE(flags_line(c, line));
-            }
-        }
-    }
-}
-
 // E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is
 // Path::needs_timing's, so no code line under src/ or tools/ asks it with a
 // zero test of its own, such as the all-0 pass's old 0 ms limit. What the
@@ -2826,4 +3144,29 @@ TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one ow
     REQUIRE(depth_hits.size() == 1);
     CHECK(depth_hits.front() ==
           "src/app/config.cpp: return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;");
+}
+
+// The walk reads only .cpp and .h files under src, tools and tests, so a row
+// scoped to a single file outside them (installer/hydra.iss, Inno Setup's
+// script) is checked here, with the same verdict. No listed line covers such
+// a file, so any flagged line fails. Comment lines are skipped as the walk
+// skips them.
+TEST_CASE("single-owner rules hold in the single files outside the walk") {
+    for (const CompiledRule& c : compile_rules()) {
+        for (const std::string& s : c.rule->scope) {
+            const std::string top = s.substr(0, s.find('/'));
+            if (s.find('/') == std::string::npos || top == "src" || top == "tools" || top == "tests")
+                continue;
+            std::ifstream in(sourcetree::root() / fs::u8path(s));
+            REQUIRE(in.good());
+            std::string line;
+            while (std::getline(in, line)) {
+                const std::string t = hydra::trim(line);
+                if (t.compare(0, 2, "//") == 0 && !c.rule->scan_comments) continue;
+                INFO(s << " answers \"" << c.rule->question << "\", which belongs to "
+                       << c.rule->owner << ": " << t);
+                CHECK_FALSE(flags_line(c, line));
+            }
+        }
+    }
 }

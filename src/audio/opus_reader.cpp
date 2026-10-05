@@ -24,13 +24,14 @@
 // count mid-stem).
 //
 // Straight-through output is bit-identical to the old whole-file decoder: the
-// same packets go through the same opus_decode_float calls into a 5760-frame
-// buffer, the pre-skip is dropped from each link's start, and nothing is
+// same packets go through the same opus_decode_float calls into a 120 ms
+// (kMaxFrame) buffer, the pre-skip is dropped from each link's start, and nothing is
 // scaled when the gain is zero.
 
 #include "audio/stem_reader.h"
 
 #include "audio/decode.h"
+#include "audio/frames.h"
 
 #include <algorithm>
 #include <array>
@@ -48,8 +49,11 @@ namespace hydra::audio::detail {
 namespace {
 
 constexpr int kRate = 48000;           // Opus always decodes at 48 kHz
-constexpr int kMaxFrame = 5760;        // 120 ms, the largest Opus packet
-constexpr int64_t kPreRoll = 19200;    // 400 ms decoder warm-up before a seek target
+// 120 ms, the largest Opus packet, in frames at kRate (frames_of_ms owns the
+// conversion).
+const int kMaxFrame = static_cast<int>(frames_of_ms(120.0, kRate));
+// 400 ms decoder warm-up before a seek target, in frames at kRate.
+const int64_t kPreRoll = frames_of_ms(400.0, kRate);
 constexpr uint64_t kProgressStep = 4ull << 20;  // report at least every 4 MB
 constexpr std::size_t kMaxPageBytes = 27 + 255 + 255 * 255;
 

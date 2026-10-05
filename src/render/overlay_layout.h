@@ -85,6 +85,8 @@ std::vector<std::string> wrap_words(const std::string& text, float max_w,
 
 // The width of the widest word (the runs between spaces) in `text`, the last
 // `keep_last` words counting as one: the narrowest wrap_words can make it.
+// It is the widest line wrap_words makes at width 0, so the two never
+// disagree on where a line may break.
 float widest_word(const std::string& text,
                   const std::function<float(const std::string&)>& width_of,
                   size_t keep_last = 1);

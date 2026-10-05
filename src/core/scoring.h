@@ -1,10 +1,8 @@
 // Per-chord score breakdown — the hottest function in chart analysis.
 //
-// The loop is a line-for-line transcription of the original category_scores,
-// including the duplicated sp_* accumulators, which mirror base_*/combo_*
-// exactly. They are kept rather than folded together so a change to the
-// scoring rules can be diffed against the history; the compiler collapses
-// them anyway.
+// Each note is priced once, as ChordNote::basescore (the owner of a note's
+// 1x value) times its combo multiplier, and every share below is read off
+// that one value.
 
 #ifndef HYDRA_CORE_SCORING_H
 #define HYDRA_CORE_SCORING_H
@@ -32,11 +30,15 @@ struct CategoryScores {
     // The multiplier applied to the chord's last note: what the game's disc
     // shows once the whole chord is hit. Per note, the same as `multiplier`.
     int multiplier_after = 1;
+    // The combo once the chord is hit: the combo passed in plus the chord's
+    // note count. Per note, the combo once that note is hit, so the last
+    // note's equals the chord's.
+    int combo_after = 0;
     // Per note only (left 0 on the chord total): the points this note's
-    // ghost or accent earns, multiplier included -- the pad's 50 plus the
-    // cymbal's 15 when the note is a dynamic cymbal. A mis-hit dynamic note
-    // loses exactly this, twice over inside Star Power. `accent` and `ghost`
-    // above hold only the pad's 50, before the multiplier.
+    // ghost or accent earns, multiplier included -- its paid value less a
+    // plain note's on the same pad. A mis-hit dynamic note loses exactly
+    // this, twice over inside Star Power. `accent` and `ghost` above hold
+    // only the pad's 50, before the multiplier.
     int dynamics_bonus = 0;
 };
 
@@ -52,6 +54,10 @@ struct CategoryScores {
 CategoryScores category_scores(const Chord& chord, int combo,
                                 std::vector<CategoryScores>* per_note = nullptr,
                                 core::SqOutRule sqout_rule = core::SqOutRule::FirstNote);
+
+// The solo bonus a chord earns: kSoloBonusPerNote for each of its notes when
+// the chord is in a solo section (flag_solo), else 0.
+int solo_bonus(const Chord& chord, bool flag_solo);
 
 // What hitting a chord in the right order gains over the wrong order, in
 // points, when the chord straddles a multiplier step (a multiplier squeeze).
