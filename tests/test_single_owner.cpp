@@ -2011,10 +2011,12 @@ const std::vector<OwnerRule>& rules() {
          {"src"}},
         // collect_dm_rows and collect_fill_rows set each row's status from
         // the one comparison; the page scripts read it instead of testing the
-        // delta's sign. The C++ status assignments carry no `r.` and are the
-        // owner.
+        // delta's sign. The leaderboard row also keeps that answer in
+        // above_optimal, which an off-speed status hides (D64). The C++
+        // assignments carry no `r.` and are the owner.
         {"Which side of a report comparison is higher?",
-         "the status field set by collect_dm_rows and collect_fill_rows",
+         "the status field set by collect_dm_rows and collect_fill_rows, and the above_optimal "
+         "field collect_dm_rows copies from it",
          R"(r\.delta\s*[<>]\s*0\s*\?)",
          "",
          {},
@@ -2026,7 +2028,9 @@ const std::vector<OwnerRule>& rules() {
           "const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'"},
          {R"(row.status = s.score > opt    ? "above optimal")",
           R"(row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");)",
-          "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');"},
+          "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');",
+          R"(row.above_optimal = row.status == "above optimal";)",
+          ": (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));"},
          {},
          {"src"}},
         // A record key's fill flag is encoded once, by Lens::from.
@@ -2179,13 +2183,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"What fields does a phrase-end note carry in a hand-built Song?",
          "tests/test_preview_view.cpp", "ts.flag_sp = true;",
          "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
-        // An off-speed score has status "other speed", so the status cannot
-        // say whether it beat Hydra's optimal; today such a row still reads
-        // "+N over". Keying the text on the status would change that row.
-        {"Which side of a report comparison is higher?", "src/app/dm_report.cpp",
-         ": (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));",
-         "waits on the user: should an off-speed score above optimal keep reading "
-         "\"+N over\" (J2-2 report)"},
         {"Which fill rule does a record key name?", "src/store/record_store.cpp",
          "if (key.lens.legacy_fills != (record.legacy_fills ? 1 : 0))",
          "task J3-6 (prepare_row reads the record's fill flag through Lens::from)"},

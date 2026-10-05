@@ -700,11 +700,12 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
     add_path("Song C", "Expert Drums, 1x Bass", 1, "1 1 1", 77000, 90.0, std::nullopt);
 
     std::vector<dm_report::DmReportRow> dm;
-    // The delta and the percent (in hundredths, as the payload carries it) are
-    // typed, not worked out again from the two scores.
+    // The delta, the percent (in hundredths, as the payload carries it) and
+    // whether the score is above optimal are typed, not worked out again from
+    // the two scores.
     auto add_dm = [&](const char* song, int64_t actual, std::optional<int64_t> optimal,
                       std::optional<int64_t> delta, std::optional<int64_t> pct_h,
-                      const char* status, bool fc, std::optional<int> rank) {
+                      const char* status, bool above, bool fc, std::optional<int> rank) {
         dm_report::DmReportRow r;
         r.song = song;
         r.artist = "Artist";
@@ -720,14 +721,15 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
         r.rank = rank;
         r.posted = "2026-09-20T12:34:56Z";
         r.status = status;
+        r.above_optimal = above;
         dm.push_back(r);
     };
-    add_dm("Song A", 120000, 123456, 3456, 9720, "under optimal", true, 3);
-    add_dm("Song B", 251000, 250000, -1000, 10040, "above optimal", false, 1);
+    add_dm("Song A", 120000, 123456, 3456, 9720, "under optimal", false, true, 3);
+    add_dm("Song B", 251000, 250000, -1000, 10040, "above optimal", true, false, 1);
     add_dm("Song C", 90000, std::nullopt, std::nullopt, std::nullopt, "not in library", false,
-           std::nullopt);
+           false, std::nullopt);
     add_dm("Song D", 80000, std::nullopt, std::nullopt, std::nullopt, "not analyzed", false,
-           std::nullopt);
+           false, std::nullopt);
 
     std::vector<fill_report::FillCompareRow> fill;
     auto add_fill = [&](const char* song, std::optional<int64_t> old_score,

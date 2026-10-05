@@ -181,10 +181,36 @@ TEST_CASE("build_dm_html colours the delta from the status") {
     CHECK(html.find("const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : "
                     "(r.status === 'above optimal' ? 'num neg' : 'num');") !=
           std::string::npos);
-    CHECK(html.find("? 'num dim' : (r.delta < 0 ?") == std::string::npos);
     CHECK(html.find("const left = under.reduce((a, r) => a + r.delta, 0);") !=
           std::string::npos);
+    // The "+N over" text reads the row's above_optimal field (D64), so the
+    // script tests the delta's sign nowhere.
+    CHECK(html.find(": (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));") !=
+          std::string::npos);
+    CHECK(html.find("r.delta < 0 ?") == std::string::npos);
     CHECK(html.find("r.delta > 0 ?") == std::string::npos);
+
+    // D64: a score at another speed that beats the optimal keeps reading
+    // "+N over". Its status is "other speed", so the payload carries the
+    // above-optimal answer collect_dm_rows already gave, next to the delta.
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store,
+        {make_score(kHash, optimal + 5), make_score(kHash, optimal + 5, 150),
+         make_score(kHash, optimal - 5, 150)},
+        kMode, store::Lens{});
+    REQUIRE(rows.size() == 3);
+    CHECK(rows[0].status == "above optimal");
+    CHECK(rows[1].status == "other speed");
+    CHECK(rows[2].status == "other speed");
+    const auto payload = [](const DmReportRow& r) {
+        return app::dm_report::build_dm_html({r}, "sub", "foot");
+    };
+    CHECK(payload(rows[0]).find("\"delta\":-5,\"above_optimal\":1,") != std::string::npos);
+    CHECK(payload(rows[1]).find("\"delta\":-5,\"above_optimal\":1,") != std::string::npos);
+    CHECK(payload(rows[2]).find("\"delta\":5,\"above_optimal\":0,") != std::string::npos);
 }
 
 TEST_CASE("report payload: the search field is folded and tag-free") {
