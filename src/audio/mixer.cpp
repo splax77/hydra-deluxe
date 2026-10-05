@@ -5,10 +5,18 @@
 #include <stdexcept>
 #include <utility>
 
-// miniaudio's configuration macros come from the miniaudio target.
-#include "miniaudio.h"
-
 namespace hydra::audio {
+
+StemConverter stem_converter_config(int in_rate, int in_channels, int out_rate,
+                                    int out_channels) {
+    StemConverter c;
+    c.config = ma_data_converter_config_init(
+        ma_format_f32, ma_format_f32, static_cast<ma_uint32>(in_channels),
+        static_cast<ma_uint32>(out_channels), static_cast<ma_uint32>(in_rate),
+        static_cast<ma_uint32>(out_rate));
+    c.passthrough = in_rate == out_rate && in_channels == out_channels;
+    return c;
+}
 
 namespace {
 
@@ -20,17 +28,12 @@ namespace {
 std::vector<float> convert_stem(DecodedAudio s, int out_rate,
                                 int out_channels) {
     if (s.channels <= 0 || s.samples.empty()) return {};
-    if (s.sample_rate == out_rate && s.channels == out_channels)
-        return std::move(s.samples);
-
-    ma_data_converter_config cfg = ma_data_converter_config_init(
-        ma_format_f32, ma_format_f32, static_cast<ma_uint32>(s.channels),
-        static_cast<ma_uint32>(out_channels),
-        static_cast<ma_uint32>(s.sample_rate),
-        static_cast<ma_uint32>(out_rate));
+    const StemConverter sc =
+        stem_converter_config(s.sample_rate, s.channels, out_rate, out_channels);
+    if (sc.passthrough) return std::move(s.samples);
 
     ma_data_converter conv;
-    if (ma_data_converter_init(&cfg, nullptr, &conv) != MA_SUCCESS)
+    if (ma_data_converter_init(&sc.config, nullptr, &conv) != MA_SUCCESS)
         throw std::runtime_error("mix_stems: data converter init failed");
 
     ma_uint64 in_frames = static_cast<ma_uint64>(s.frames());
