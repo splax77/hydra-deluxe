@@ -373,6 +373,9 @@ function Get-CloseBrace([object]$V, [int]$Open, [int]$Limit) {
 
 # ------------------------------------------------------------------- output
 
+# How a warning line starts: the script could not read something as the scan
+# does. The self-test loads this from this file and fails on every such line.
+$warnPrefix = 'precheck: '
 $items = [System.Collections.Generic.List[object]]::new()
 function Add-Item([string]$Kind, [string]$File, [int]$Line, [string]$What, [string]$Why) {
     $items.Add([pscustomobject]@{ Kind = $Kind; File = $File; Line = $Line; What = $What; Why = $Why })
@@ -530,7 +533,7 @@ $ScanStructFields = @{
 # The column of one member of one of those structs.
 function Get-Col([string]$Struct, [string]$Member) {
     $i = [array]::IndexOf($ScanStructFields[$Struct], $Member)
-    if ($i -lt 0) { throw "precheck: $Struct has no member $Member in `$ScanStructFields" }
+    if ($i -lt 0) { throw "$warnPrefix$Struct has no member $Member in `$ScanStructFields" }
     $i
 }
 $rows = [System.Collections.Generic.List[object]]::new()
@@ -617,8 +620,14 @@ foreach ($r in $rows) {
     foreach ($x in $r.MustNotMatch) { if (Test-RowFlags $r $x) { $rowWarnings.Add("row ""$($r.Question)"" flags its must-not-match example here: $x") } }
     foreach ($o in $r.OwnerLines) { if (-not (Test-RowFlags $r $o.Text)) { $rowWarnings.Add("row ""$($r.Question)"" does not flag its owner line here: $($o.Text)") } }
 }
-# How a known copy reads in an item's reason: the fix that removes it.
+# How a row hit reads in an item's reason: the row's owner, then a note when
+# the scan lists the line, either as a known copy (the fix that removes it)
+# or as an owner line this range wrote. The self-test loads these three from
+# this file to recognise the wording, so rewording one here cannot leave its
+# whole-tree check reading nothing.
+function Format-RowWhy([string]$Owner) { "the scan row in $scanFile gives this question to $Owner" }
 function Format-KnownCopy([string]$Fix) { "known copy: $Fix" }
+function Format-OwnerLineNote([string]$Why) { "this range lists it as an owner line: ""$Why""; check that reason" }
 function Get-KnownCopy([string]$File, [string[]]$LineTexts) {
     if (-not $known.ContainsKey($File)) { return $null }
     foreach ($t in $LineTexts) {
@@ -697,7 +706,7 @@ function Get-RowHits {
                     # the reviewer judges its reason.
                     $o = $owners[$nth - 1]
                     if (-not $o.Added) { continue }
-                    $note = "this range lists it as an owner line: ""$($o.Why)""; check that reason"
+                    $note = Format-OwnerLineNote $o.Why
                 } elseif ($nth -le $owners.Count + $copies.Count) {
                     $c = $copies[$nth - $owners.Count - 1]
                     $note = (Format-KnownCopy $c.Fix) + $(if ($c.Added) { '; this range added that entry' } else { '' })
@@ -715,7 +724,7 @@ function Get-RowHits {
 function Add-RowItems([string[]]$Kinds) {
     foreach ($h in (Get-RowHits)) {
         if ($Kinds -notcontains $h.Kind) { continue }
-        $why = "the scan row in $scanFile gives this question to $($h.Row.Owner)"
+        $why = Format-RowWhy $h.Row.Owner
         if ($h.Note) { $why += " ($($h.Note))" }
         Add-Item $h.Kind $h.File $h.Line "answers ""$($h.Row.Question)"": $($h.Text)" $why
     }
@@ -1230,7 +1239,7 @@ function Invoke-Check4 {
                 if ($t -match ('\b(ifstream|fopen|_wfopen|open_file\w*)\b[^;]*(' + $cppExt + '"|"[^"]*/?src/)')) { $what = 'opens a source file' }
             }
             if ($what) {
-                Add-Item 'E' $f $ln "$($what): $($t.Trim())" 'tests/test_single_owner.cpp is the one scan of the source tree; make this a row there'
+                Add-Item 'E' $f $ln "$($what): $($t.Trim())" "$scanFile is the one scan of the source tree; make this a row there"
             }
         }
     }
@@ -1257,8 +1266,8 @@ if ($Disable -notcontains 2) { Invoke-Check2 }
 if ($Disable -notcontains 3) { Invoke-Check3 }
 if ($Disable -notcontains 4) { Invoke-Check4 }
 
-foreach ($w in $rowWarnings) { Write-Host "precheck: $w (this row could not be read as expected: std::regex and .NET may read its pattern differently, or a scan struct's members moved and `$ScanStructFields is out of date; trust the scan)" }
-if (-not $scanAt.Count) { Write-Host "precheck: $scanFile is not at $($rulesRev.Substring(0, 7)), so no scan rows were applied" }
+foreach ($w in $rowWarnings) { Write-Host "$warnPrefix$w (this row could not be read as expected: std::regex and .NET may read its pattern differently, or a scan struct's members moved and `$ScanStructFields is out of date; trust the scan)" }
+if (-not $scanAt.Count) { Write-Host "$warnPrefix$scanFile is not at $($rulesRev.Substring(0, 7)), so no scan rows were applied" }
 
 $order = @{ C = 0; B = 1; A = 2; D = 3; E = 4 }
 $sorted = $items | Sort-Object @{ e = { $order[$_.Kind] } }, File, Line, What -Unique

@@ -56,8 +56,9 @@ function Invoke-Precheck([string]$Repo, [string]$Range, [int[]]$Disable, [string
     if ($LASTEXITCODE -ne 0) { throw "precheck failed on $Range ($LASTEXITCODE): $($out | Out-String)" }
     # A "precheck:" line says the script read the scan rows differently from
     # the scan, so it fails the test instead of being dropped (M0 review 2,
-    # finding 1).
-    foreach ($w in ($out | Where-Object { $_ -match '^precheck: ' })) { $script:Failures.Add("${Range}: the precheck warned: $w") }
+    # finding 1). The line's start is the precheck's own $warnPrefix, loaded
+    # from its text below.
+    foreach ($w in ($out | Where-Object { $_.StartsWith($warnPrefix) })) { $script:Failures.Add("${Range}: the precheck warned: $w") }
     @($out | Where-Object { $_ -match '^[A-E] ' })
 }
 
@@ -111,6 +112,7 @@ $structFields = (Find-PrecheckAst '$ScanStructFields').Right.Expression.SafeGetV
 # The scan file's path is the precheck's $scanFile; this repository's copy is
 # read once, for the struct check here and for the fixture below.
 $scanFile = (Find-PrecheckAst '$scanFile').Right.Expression.SafeGetValue()
+$warnPrefix = (Find-PrecheckAst '$warnPrefix').Right.Expression.SafeGetValue()
 $repoScanText = [System.IO.File]::ReadAllText((Join-Path $repoRoot $scanFile))
 $scanSource = Remove-Comments $cppLex $repoScanText
 foreach ($struct in $structFields.Keys) {
@@ -299,9 +301,18 @@ if (-not $FixtureOnly) {
     # scan lists (an owner line or a known copy). A row hit with neither note
     # is a line the scan passes and the precheck flags, which means the
     # precheck read a row differently (M0 review 2, finding 1).
+    # The wording is the precheck's own (Format-RowWhy and the two notes),
+    # loaded from its text, and at least one line must carry it: a reworded
+    # reason fails here by name instead of leaving this check reading nothing.
+    . ([scriptblock]::Create((@('Format-RowWhy', 'Format-KnownCopy', 'Format-OwnerLineNote') | ForEach-Object { (Find-PrecheckAst $_).Extent.Text }) -join "`n"))
+    function ConvertTo-WordingRx([string]$Text) { [regex]::Escape($Text).Replace('<ANY>', '.*') }
+    $rowRx = ConvertTo-WordingRx (Format-RowWhy '<ANY>')
+    $listedRx = '\((?:' + (ConvertTo-WordingRx (Format-KnownCopy '<ANY>')) + '|' + (ConvertTo-WordingRx (Format-OwnerLineNote '<ANY>')) + ')'
     $wt = Invoke-Precheck $repoRoot 'HEAD' $DisableCheck -WholeTree
-    $bare = @($wt | Where-Object { $_ -match 'the scan row in tests/test_single_owner\.cpp gives this question to' -and
-                                   $_ -notmatch '\((known copy: |this range lists it as an owner line: )' })
+    $rowItems = @($wt | Where-Object { $_ -match $rowRx })
+    if (-not $rowItems.Count) { $script:Failures.Add("whole tree at HEAD: no line reads like a row hit (/$rowRx/), so this check would read nothing; did the precheck's wording change?") }
+    else { $script:Passes++ }
+    $bare = @($rowItems | Where-Object { $_ -notmatch $listedRx })
     if ($bare.Count) { foreach ($b in $bare) { $script:Failures.Add("whole tree at HEAD: the scan passes this line, the precheck flags it: $b") } }
     else { $script:Passes++ }
 }
