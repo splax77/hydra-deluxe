@@ -662,7 +662,7 @@ TEST_CASE("the backfill reads a chart's audio once, and every difficulty shows i
     const RecordKey other_key = other.record_key(library_entry(0).md5);
     hydra::test::store_batch_result(*app->store, other_key);
     const std::string path =
-        open_chart_with_no_length(*app, audiochart::short_chart_with_long_audio(L"backfill_"));
+        open_chart_with_no_length(*app, audiochart::short_chart_with_long_audio("backfill"));
 
     run_length_backfill(*app);
 

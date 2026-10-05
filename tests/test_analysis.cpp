@@ -506,7 +506,7 @@ TEST_CASE("a song.ini delay longer than the audio saves no length") {
     // The audio's end lands before chart time 0, so audio::song_length_ms
     // gives a length has_song_length refuses: the song is read, with no
     // length, like a chart with no audio.
-    const std::string notes = audiochart::short_chart_with_long_audio(L"long_delay_");
+    const std::string notes = audiochart::short_chart_with_long_audio("long_delay");
     audiochart::write_text_file(notes.substr(0, notes.rfind('\\')) + "\\song.ini",
                                 "[song]\ndelay = 60000\n");
     REQUIRE(hydra::audio::song_length_ms(notes, hydra::load_songpath(notes, true, true))
