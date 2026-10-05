@@ -34,9 +34,8 @@ constexpr const char* kOldOnly = "bb22cc33dd44ee55ff6677889900aa11";
 constexpr const char* kNewOnly = "cc33dd44ee55ff6677889900aa11bb22";
 
 store::RecordKey key_for(const std::string& hash, bool legacy_fills) {
-    store::Lens lens;
-    lens.legacy_fills = legacy_fills ? 1 : 0;
-    return store::RecordKey{hash, kMode, store::CapQuery::at(kCloneHeroSpCap), lens};
+    return store::RecordKey{hash, kMode, store::CapQuery::at(kCloneHeroSpCap),
+                            store::Lens::from(std::nullopt, 0, 0, legacy_fills)};
 }
 
 // One analyzed corpus chart, kept alive for the whole file: it supplies a real
@@ -44,22 +43,10 @@ store::RecordKey key_for(const std::string& hash, bool legacy_fills) {
 // build PreparedRows from. The scores themselves are overridden per row, so
 // which chart it is doesn't matter.
 const app::AnalysisResult& sample_chart() {
-    static app::AnalysisResult result = [] {
+    static const app::AnalysisResult result = [] {
         app::AnalysisSettings settings;
         settings.depth_value = 0;
-        for (const std::string& path : corpus::chart_paths()) {
-            try {
-                app::AnalysisResult r = app::analyze_chart_file(path, settings);
-                if (r.song.is_empty() || r.record.paths.empty()) continue;
-                return r;
-            } catch (const std::exception&) {
-                continue;
-            }
-        }
-        // Song has no default constructor, so there is no empty AnalysisResult
-        // to fall back on. Throwing keeps the lambda's deduced return type as
-        // the one `return r;` above gives it.
-        throw std::runtime_error("no corpus chart analyzed");
+        return corpus::first_analyzed_with_paths(settings);
     }();
     return result;
 }
@@ -293,6 +280,23 @@ TEST_CASE("build_fill_html substitutes every placeholder") {
     // Counts and deltas go through the page's shared fmt.
     CHECK(html.find(".toLocaleString()]") == std::string::npos);
     CHECK(html.find("'+' + r.delta.toLocaleString()") == std::string::npos);
+}
+
+TEST_CASE("build_fill_html colours and sums the delta from the status") {
+    // collect_fill_rows already decided which side is higher when it set the
+    // row's status; the cell's colour, its "+" and the gains and losses tiles
+    // read that answer instead of testing the delta's sign again.
+    const std::string html = app::fill_report::build_fill_html({}, "sub", "foot");
+    CHECK(html.find("r.status === '1.1 higher'") != std::string::npos);
+    CHECK(html.find("r.status === '1.0 higher'") != std::string::npos);
+    CHECK(html.find("(r.status === '1.1 higher' ? '+' : '') + fmt(r.delta)") !=
+          std::string::npos);
+    CHECK(html.find("const gains = rows.filter(r => r.status === '1.1 higher')") !=
+          std::string::npos);
+    CHECK(html.find("const losses = rows.filter(r => r.status === '1.0 higher')") !=
+          std::string::npos);
+    CHECK(html.find("r.delta > 0 ?") == std::string::npos);
+    CHECK(html.find("r.delta < 0 ?") == std::string::npos);
 }
 
 TEST_CASE("report payload: the search field is folded and tag-free") {
