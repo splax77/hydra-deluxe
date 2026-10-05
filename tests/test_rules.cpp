@@ -317,7 +317,7 @@ TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal
         if (p->pathstring() == "3 E0 1 0- 2 E0") below_kept = true;
         if (p->totalscore() != top || p->pathstring() != "0+ 2 0 0- 2 E0") continue;
         REQUIRE(p->difficulty().has_value());
-        CHECK(app::format_ms(*p->difficulty()) == "78.9ms");
+        CHECK(app::format_ms(*p->difficulty()) == "78.9 ms");
         kept = true;
     }
     CHECK(kept);

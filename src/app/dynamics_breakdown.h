@@ -103,6 +103,10 @@ std::string dynamics_row_label(DynamicsRow r, bool pro);
 // kicks the percent reads 0%.
 std::string dynamics_kick2x_line(const DynamicsBreakdown& bd);
 
+// The Dynamics tab's whole-number share of a count, as "15%". A total of 0
+// reads "0%": the tab shows every line even for a chart with nothing to count.
+std::string dynamics_share(int part, int total);
+
 DynamicsBreakdown count_dynamics(const Song& song);
 
 // Versioned binary encoding for storage in the dynamics table (record_store.h).

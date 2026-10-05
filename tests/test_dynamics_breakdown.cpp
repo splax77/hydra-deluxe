@@ -289,6 +289,14 @@ TEST_CASE("dynamics_breakdown: the 2x kick line counts its noun from the total")
     CHECK(dynamics_kick2x_line(DynamicsBreakdown{}) == "2x kicks: 0 of 0 kick notes (0%)");
 }
 
+TEST_CASE("dynamics_breakdown: one share rule for every Dynamics percent") {
+    // M_D review round 3: the 2x kick line and the tab's "Dynamic notes" line
+    // both read their percent here, so an empty total reads 0% in both.
+    CHECK(dynamics_share(300, 2000) == "15%");
+    CHECK(dynamics_share(1, 3) == "33%");
+    CHECK(dynamics_share(0, 0) == "0%");
+}
+
 TEST_CASE("dynamics_breakdown: flags a row does not have are ignored") {
     // A red note counts as the snare even with a cymbal flag, a kick ignores
     // a cymbal flag, and only a kick can be 2x.

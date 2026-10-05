@@ -1,6 +1,5 @@
 #include "ui/details_parts.h"
 
-#include "app/display_format.h"  // format_percent
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
@@ -205,10 +204,9 @@ void render_dynamics_panel(AppState& app) {
     {
         int dyn = played.dynamic();
         int total = played.all();
-        const std::string pct = total > 0 ? app::format_percent(dyn, total, 0) : "0%";
         ImGui::TextWrapped("Dynamic notes: %s of %s (%s)",
                            group_thousands(dyn).c_str(),
-                           group_thousands(total).c_str(), pct.c_str());
+                           group_thousands(total).c_str(), app::dynamics_share(dyn, total).c_str());
     }
 
     // Chart section.
