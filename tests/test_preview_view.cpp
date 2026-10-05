@@ -79,10 +79,14 @@ Song make_hand_song() {
         c.add_2x();  // adds the Kick note itself, with is2x set
         c.add_note(NoteColor::Green);
         SongTimestamp& ts = push(720, c);
-        ts.flag_sp = true;
-        ts.sp_phrase_start = 240;
+        test::mark_phrase_end(ts, 720, 480);
         ts.activation_length = 480;
     }
+    // The one solo section: the chords at ticks 240 and 480 (sequence
+    // positions 1 and 2). The parsers build this list from the flags
+    // (find_solo_sections in song.cpp, private there); a hand-built song
+    // states it.
+    song.solo_sections = {{1, 2}};
     return song;
 }
 
@@ -137,10 +141,8 @@ Song make_sp_song(const std::vector<int64_t>& phrase_ends, int64_t last_tick,
         SongTimestamp ts;
         ts.timecode = song.timecode(t);
         ts.chord = std::move(c);
-        if (std::find(phrase_ends.begin(), phrase_ends.end(), t) != phrase_ends.end()) {
-            ts.flag_sp = true;
-            ts.sp_phrase_start = t >= step ? t - step : 0;
-        }
+        if (std::find(phrase_ends.begin(), phrase_ends.end(), t) != phrase_ends.end())
+            test::mark_phrase_end(ts, t, step);
         song.sequence.push_back(std::move(ts));
     }
     return song;
@@ -192,8 +194,7 @@ Song make_overfill_song() {
         SongTimestamp ts;
         ts.timecode = song.timecode(n.tick);
         ts.chord.add_note(NoteColor::Red);
-        ts.flag_sp = n.phrase;
-        if (n.phrase) ts.sp_phrase_start = n.tick;
+        if (n.phrase) test::mark_phrase_end(ts, n.tick, 192);
         if (n.fill) ts.activation_length = 384;
         song.sequence.push_back(ts);
     }
@@ -207,15 +208,7 @@ const AnalysisResult& analyzed() {
         settings.depth_mode = DepthMode::Scores;
         settings.depth_value = 10;
         settings.ms_filter = 10.0;
-        for (const std::string& path : corpus::chart_paths()) {
-            try {
-                AnalysisResult r = analyze_chart_file(path, settings);
-                if (!r.song.is_empty() && !r.record.paths.empty()) return r;
-            } catch (const std::exception&) {
-                continue;
-            }
-        }
-        throw std::runtime_error("no analyzable corpus chart");
+        return corpus::first_analyzed_with_paths(settings);
     }();
     return result;
 }
@@ -238,6 +231,20 @@ Path priced_path(const Song& song, std::vector<Activation> acts) {
 
 // The detail line's separator: a middle dot, U+00B7, in UTF-8.
 const std::string kDot = "\xC2\xB7";
+
+// The overlay boxes at `now_ms` with no end to playback, so shown_ms leaves
+// the playhead where it is. The cases that pin what a playhead past the end
+// reads call the builders with a length.
+constexpr double kNoPlaybackEnd = std::numeric_limits<double>::infinity();
+PreviewScoreBox score_box_at(const PreviewScene& sc, double now_ms) {
+    return build_score_box(sc, now_ms, kNoPlaybackEnd);
+}
+PreviewDrainBox drain_box_at(const PreviewScene& sc, double now_ms) {
+    return build_drain_box(sc, now_ms, kNoPlaybackEnd);
+}
+PreviewNextActBox next_act_box_at(const PreviewScene& sc, double now_ms, bool pro_drums) {
+    return build_next_act_box(sc, now_ms, kNoPlaybackEnd, pro_drums);
+}
 
 }  // namespace
 
@@ -320,6 +327,23 @@ TEST_CASE("build_preview_scene: SP phrase, solo, and fill spans") {
     REQUIRE(scene.fills.size() == 1);
     CHECK(scene.fills[0].span.start_tick == 240);  // 720 - 480
     CHECK(scene.fills[0].span.end_tick == 720);
+}
+
+TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") {
+    Song song = make_hand_song();
+    PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.solos.size() == 1);
+    CHECK(scene.solos[0].start_tick == 240);
+    CHECK(scene.solos[0].end_tick == 480);
+
+    // The span is the song's section, not a join of the flags: with no
+    // section there is no span, though each note still says it is in a solo.
+    song.solo_sections.clear();
+    PreviewScene none = build_preview_scene(song, nullptr);
+    CHECK(none.solos.empty());
+    REQUIRE(none.notes.size() > 2);
+    CHECK(none.notes[1].solo);
+    CHECK(none.notes[2].solo);
 }
 
 TEST_CASE("build_preview_scene: an unanalyzed chart offers every candidate fill") {
@@ -1426,7 +1450,7 @@ TEST_CASE("score box: no path hides the box") {
     PreviewScene scene = build_preview_scene(song, nullptr);
     CHECK(scene.score.state == PreviewScore::State::None);
     CHECK(scene.score.steps.empty());
-    CHECK_FALSE(build_score_box(scene, 600.0).shown);
+    CHECK_FALSE(score_box_at(scene, 600.0).shown);
 }
 
 TEST_CASE("score box: a solo's bonus lands on its last note") {
@@ -1445,14 +1469,14 @@ TEST_CASE("score box: a solo's bonus lands on its last note") {
     CHECK(scene.score.steps[3].total == path.totalscore());
 
     // Between the solo's two chords the box shows the withheld total.
-    PreviewScoreBox mid = build_score_box(scene, 400.0);
+    PreviewScoreBox mid = score_box_at(scene, 400.0);
     CHECK(mid.shown);
     CHECK(mid.available);
     CHECK(mid.score == group_thousands(scene.score.steps[1].total));
     CHECK(mid.detail == "x1 " + kDot + " combo 2");
 
     // A chord exactly at the playhead counts as hit.
-    PreviewScoreBox on = build_score_box(scene, scene.score.steps[2].ms);
+    PreviewScoreBox on = score_box_at(scene, scene.score.steps[2].ms);
     CHECK(on.score == group_thousands(scene.score.steps[2].total));
     CHECK(on.detail == "x1 " + kDot + " combo 3");
 }
@@ -1463,7 +1487,7 @@ TEST_CASE("score box: before the first note nothing is hit yet") {
     Path path = priced_path(song, {});
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE(scene.score.state == PreviewScore::State::Ready);
-    PreviewScoreBox box = build_score_box(scene, 100.0);
+    PreviewScoreBox box = score_box_at(scene, 100.0);
     CHECK(box.shown);
     CHECK(box.available);
     CHECK(box.score == "0");
@@ -1500,21 +1524,34 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
 
     // The SP end itself: the chord on it (6500 ms) was paid doubled, but from
     // this instant on the box is plain. A hair earlier it is still doubled.
-    CHECK(build_score_box(scene, 6499.0).detail == "x4 " + kDot + " combo 13");
-    CHECK(build_score_box(scene, 6500.0).detail == "x2 " + kDot + " combo 14");
-    CHECK(build_score_box(scene, scene.activations[0].sp_end_ms).detail ==
+    CHECK(score_box_at(scene, 6499.0).detail == "x4 " + kDot + " combo 13");
+    CHECK(score_box_at(scene, 6500.0).detail == "x2 " + kDot + " combo 14");
+    CHECK(score_box_at(scene, scene.activations[0].sp_end_ms).detail ==
           "x2 " + kDot + " combo 14");
 
     // 2000 ms: five notes hit, before the activation.
-    CHECK(build_score_box(scene, 2000.0).detail == "x1 " + kDot + " combo 5");
+    CHECK(score_box_at(scene, 2000.0).detail == "x1 " + kDot + " combo 5");
     // 2500 ms: the activation chord is hit and paid, so x1 shows as x2.
-    CHECK(build_score_box(scene, 2500.0).detail == "x2 " + kDot + " combo 6");
-    CHECK(build_score_box(scene, 3000.0).detail == "x2 " + kDot + " combo 7");
+    CHECK(score_box_at(scene, 2500.0).detail == "x2 " + kDot + " combo 6");
+    CHECK(score_box_at(scene, 3000.0).detail == "x2 " + kDot + " combo 7");
     // 6600 ms: Star Power has ended, so the disc is plain even though the
     // last chord hit (6500 ms, on the deactivation node) was paid doubled.
-    CHECK(build_score_box(scene, 6600.0).detail == "x2 " + kDot + " combo 14");
+    CHECK(score_box_at(scene, 6600.0).detail == "x2 " + kDot + " combo 14");
     // 7000 ms: the first chord Star Power doesn't pay: the plain x2 of combo 15.
-    CHECK(build_score_box(scene, 7000.0).detail == "x2 " + kDot + " combo 15");
+    CHECK(score_box_at(scene, 7000.0).detail == "x2 " + kDot + " combo 15");
+}
+
+TEST_CASE("score box: past the length it reads the moment the time box shows") {
+    // The fixture above: 2000 ms is five notes in, 7000 ms fifteen.
+    Song song = make_sp_song({1920}, 9600);
+    Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.score.state == PreviewScore::State::Ready);
+
+    CHECK(build_score_box(scene, 7000.0, /*length_ms=*/2000.0).detail ==
+          "x1 " + kDot + " combo 5");
+    CHECK(build_score_box(scene, 7000.0, /*length_ms=*/7000.0).detail ==
+          "x2 " + kDot + " combo 15");
 }
 
 TEST_CASE("score box: a chord exactly on the playhead counts as hit") {
@@ -1529,7 +1566,7 @@ TEST_CASE("score box: a chord exactly on the playhead counts as hit") {
     REQUIRE(scene.score.state == PreviewScore::State::Ready);
     const std::optional<double> jump = activation_jump_ms(scene, 0.0, +1);
     REQUIRE(jump.has_value());
-    CHECK(build_score_box(scene, *jump).detail == "x2 " + kDot + " combo 6");
+    CHECK(score_box_at(scene, *jump).detail == "x2 " + kDot + " combo 6");
 }
 
 // User decision D11 (docs/audit/2026-10-03-fix-decisions.md): a chord just past
@@ -1574,7 +1611,7 @@ TEST_CASE("score box: a leeway chord past the SP end is paid doubled, the box st
     CHECK(scene.score.steps[idx].multiplier_plain == leeway.multiplier_after);
 
     // The box, at its own instant, reads plain.
-    const PreviewScoreBox box = build_score_box(scene, leeway.ms);
+    const PreviewScoreBox box = score_box_at(scene, leeway.ms);
     CHECK(box.detail == "x" + std::to_string(leeway.multiplier_after) + " " + kDot +
                             " combo " + std::to_string(leeway.combo_after));
 }
@@ -1587,7 +1624,7 @@ TEST_CASE("score box: a path the replay can't reproduce says so") {
     wrong.score_base += 1;
     PreviewScene a = build_preview_scene(song, &wrong);
     CHECK(a.score.state == PreviewScore::State::Unavailable);
-    PreviewScoreBox box = build_score_box(a, 600.0);
+    PreviewScoreBox box = score_box_at(a, 600.0);
     CHECK(box.shown);
     CHECK_FALSE(box.available);
     CHECK(box.score == "Score unavailable");
@@ -1599,7 +1636,7 @@ TEST_CASE("score box: a path the replay can't reproduce says so") {
     old.activations.push_back(act_at(song, 720, {}));
     PreviewScene b = build_preview_scene(song, &old);
     CHECK(b.score.state == PreviewScore::State::Unavailable);
-    CHECK(build_score_box(b, 600.0).score == "Score unavailable");
+    CHECK(score_box_at(b, 600.0).score == "Score unavailable");
 }
 
 TEST_CASE("score box: the analyzed chart ends on the path's total") {
@@ -1613,26 +1650,26 @@ TEST_CASE("score box: the analyzed chart ends on the path's total") {
         CHECK(scene.score.steps[i].ms >= scene.score.steps[i - 1].ms);
         CHECK(scene.score.steps[i].combo > scene.score.steps[i - 1].combo);
     }
-    PreviewScoreBox end = build_score_box(scene, scene.song_length_ms);
+    PreviewScoreBox end = score_box_at(scene, scene.song_length_ms);
     CHECK(end.score == group_thousands(best.totalscore()));
 }
 
 // ---- SP drain box -------------------------------------------------------
 
 TEST_CASE("drain box: hidden without an SP gauge") {
-    CHECK_FALSE(build_drain_box(PreviewScene{}, 1000.0).shown);
+    CHECK_FALSE(drain_box_at(PreviewScene{}, 1000.0).shown);
     // Notes but no SP phrase and no path: no gauge, so no box.
     Song song = make_sp_song({}, /*last_tick=*/3840);
     PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.sp_meter.segments.empty());
-    CHECK_FALSE(build_drain_box(scene, 1000.0).shown);
+    CHECK_FALSE(drain_box_at(scene, 1000.0).shown);
 }
 
 TEST_CASE("drain box: idle at a steady tempo reads the rate and a full meter") {
     Song song = make_sp_song({960}, /*last_tick=*/13440);
     PreviewScene scene = build_preview_scene(song, nullptr);
 
-    PreviewDrainBox box = build_drain_box(scene, 2000.0);
+    PreviewDrainBox box = drain_box_at(scene, 2000.0);
     CHECK(box.shown);
     CHECK_FALSE(box.active);
     CHECK(box.header == "SP drain (if activated)");
@@ -1646,14 +1683,28 @@ TEST_CASE("drain box: the rate switches exactly at a tempo change") {
     Song song = make_sp_song({960}, /*last_tick=*/13440, {{5760, 60.0}});
     PreviewScene scene = build_preview_scene(song, nullptr);
 
-    CHECK(build_drain_box(scene, 5990.0).rate == "1 bar / 4.0 s");
-    CHECK(build_drain_box(scene, 6000.0).rate == "1 bar / 8.0 s");
+    CHECK(drain_box_at(scene, 5990.0).rate == "1 bar / 4.0 s");
+    CHECK(drain_box_at(scene, 6000.0).rate == "1 bar / 8.0 s");
 
     // "full meter" is the cap at the bar time in force, so it jumps with the
     // rate, at the change and not before: 4 x 4 s, then 4 x 8 s.
-    CHECK(build_drain_box(scene, 2000.0).detail == "full meter 16.0 s");
-    CHECK(build_drain_box(scene, 5990.0).detail == "full meter 16.0 s");
-    CHECK(build_drain_box(scene, 6000.0).detail == "full meter 32.0 s");
+    CHECK(drain_box_at(scene, 2000.0).detail == "full meter 16.0 s");
+    CHECK(drain_box_at(scene, 5990.0).detail == "full meter 16.0 s");
+    CHECK(drain_box_at(scene, 6000.0).detail == "full meter 32.0 s");
+}
+
+TEST_CASE("drain box: past the length it reads the moment the time box shows") {
+    // The fixture above. A playhead past where playback ends reads the
+    // moment the time box shows (shown_ms), so it lands on the length.
+    Song song = make_sp_song({960}, /*last_tick=*/13440, {{5760, 60.0}});
+    PreviewScene scene = build_preview_scene(song, nullptr);
+
+    const PreviewDrainBox held = build_drain_box(scene, 6000.0, /*length_ms=*/5990.0);
+    CHECK(held.rate == "1 bar / 4.0 s");
+    CHECK(held.detail == "full meter 16.0 s");
+    const PreviewDrainBox at = build_drain_box(scene, 6000.0, /*length_ms=*/6000.0);
+    CHECK(at.rate == "1 bar / 8.0 s");
+    CHECK(at.detail == "full meter 32.0 s");
 }
 
 TEST_CASE("drain box: a 7/8 section drains faster at the same BPM") {
@@ -1662,9 +1713,9 @@ TEST_CASE("drain box: a 7/8 section drains faster at the same BPM") {
     Song song = make_sp_song({960}, /*last_tick=*/13440, {}, 480, {{3840, {7, 8}}});
     PreviewScene scene = build_preview_scene(song, nullptr);
 
-    CHECK(build_drain_box(scene, 2000.0).rate == "1 bar / 4.0 s");
-    CHECK(build_drain_box(scene, 4000.0).rate == "1 bar / 3.5 s");
-    CHECK(build_drain_box(scene, 4000.0).detail == "full meter 14.0 s");
+    CHECK(drain_box_at(scene, 2000.0).rate == "1 bar / 4.0 s");
+    CHECK(drain_box_at(scene, 4000.0).rate == "1 bar / 3.5 s");
+    CHECK(drain_box_at(scene, 4000.0).detail == "full meter 14.0 s");
 }
 
 TEST_CASE("drain box: active inside the stored SP window, idle outside it") {
@@ -1674,19 +1725,19 @@ TEST_CASE("drain box: active inside the stored SP window, idle outside it") {
     path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520)};
     PreviewScene scene = build_preview_scene(song, &path);
 
-    PreviewDrainBox before = build_drain_box(scene, 3999.0);
+    PreviewDrainBox before = drain_box_at(scene, 3999.0);
     CHECK_FALSE(before.active);
     CHECK(before.header == "SP drain (if activated)");
 
-    PreviewDrainBox at = build_drain_box(scene, 4000.0);
+    PreviewDrainBox at = drain_box_at(scene, 4000.0);
     CHECK(at.active);
     CHECK(at.header == "SP drain");
     CHECK(at.rate == "1 bar / 4.0 s");
     CHECK(at.detail == "empties in 8.0 s");
-    CHECK(build_drain_box(scene, 9000.0).detail == "empties in 3.0 s");
+    CHECK(drain_box_at(scene, 9000.0).detail == "empties in 3.0 s");
 
     // At the stored end SP is over, as the gauge reads that boundary too.
-    PreviewDrainBox after = build_drain_box(scene, 12000.0);
+    PreviewDrainBox after = drain_box_at(scene, 12000.0);
     CHECK_FALSE(after.active);
     CHECK(after.detail.rfind("full meter ", 0) == 0);
 }
@@ -1701,7 +1752,7 @@ TEST_CASE("drain box: empties in reads the stored end, not a recount") {
     path.activations = {act};
     PreviewScene scene = build_preview_scene(song, &path);
 
-    PreviewDrainBox box = build_drain_box(scene, 12000.0);
+    PreviewDrainBox box = drain_box_at(scene, 12000.0);
     CHECK(box.active);
     CHECK(box.detail == "empties in 4.0 s");
 }
@@ -1714,10 +1765,51 @@ TEST_CASE("drain box: an activation with no stored end stays idle") {
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE_FALSE(scene.activations[0].has_sp_end);
 
-    PreviewDrainBox box = build_drain_box(scene, 5000.0);
+    PreviewDrainBox box = drain_box_at(scene, 5000.0);
     CHECK(box.shown);
     CHECK_FALSE(box.active);
     CHECK(box.detail.rfind("full meter ", 0) == 0);
+}
+
+TEST_CASE("has_sp_gauge: timing and a curve together") {
+    CHECK_FALSE(PreviewScene{}.has_sp_gauge());
+
+    // Timing but no curve: the scene of "drain box: hidden without an SP gauge".
+    PreviewScene no_curve = build_preview_scene(make_sp_song({}, /*last_tick=*/3840), nullptr);
+    REQUIRE(no_curve.timing.has_value());
+    CHECK_FALSE(no_curve.has_sp_gauge());
+
+    // A curve but no timing.
+    PreviewScene no_timing;
+    no_timing.sp_meter.segments.push_back(SpMeterSegment{});
+    CHECK_FALSE(no_timing.has_sp_gauge());
+
+    // The scene of "drain box: active inside the stored SP window, idle outside it".
+    Song song = make_sp_song({960}, /*last_tick=*/13440);
+    Path path;
+    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520)};
+    CHECK(build_preview_scene(song, &path).has_sp_gauge());
+}
+
+TEST_CASE("sp_window: the stored window, none without an end, none with no length") {
+    // The numbers of test_track_state's "active SP window ends exactly at the
+    // deact node".
+    PreviewActivation a;
+    a.ms = 1000.0;
+    a.has_sp_end = true;
+    a.sp_end_ms = 3000.0;
+    const std::optional<std::pair<double, double>> w = a.sp_window();
+    REQUIRE(w.has_value());
+    CHECK(w->first == 1000.0);
+    CHECK(w->second == 3000.0);
+
+    PreviewActivation no_end = a;
+    no_end.has_sp_end = false;
+    CHECK_FALSE(no_end.sp_window().has_value());
+
+    PreviewActivation no_length = a;
+    no_length.sp_end_ms = 1000.0;
+    CHECK_FALSE(no_length.sp_window().has_value());
 }
 
 namespace {
@@ -1821,24 +1913,31 @@ TEST_CASE("activation jumps: nearest activation before or after the playhead") {
 
 TEST_CASE("next activation box: the activation at or after the playhead") {
     TwoActs t;
-    PreviewNextActBox box = build_next_act_box(t.scene, 0.0, /*pro_drums=*/true);
+    PreviewNextActBox box = next_act_box_at(t.scene, 0.0, /*pro_drums=*/true);
     CHECK(box.shown);
     CHECK(box.header == "Next: activation 1 of 2");
     CHECK(box.detail == "at m2.1.0 " + kDot + " [Red snare]");
-    CHECK(build_next_act_box(t.scene, 2000.0, true).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0, true).header == "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 2001.0, true).detail == "at m5.1.0 " + kDot + " [Red snare]");
-    CHECK_FALSE(build_next_act_box(t.scene, 9000.0, true).shown);
-    CHECK_FALSE(build_next_act_box(build_preview_scene(t.song, nullptr), 0.0, true).shown);
+    CHECK(next_act_box_at(t.scene, 2000.0, true).header == "Next: activation 1 of 2");
+    CHECK(next_act_box_at(t.scene, 2001.0, true).header == "Next: activation 2 of 2");
+    CHECK(next_act_box_at(t.scene, 2001.0, true).detail == "at m5.1.0 " + kDot + " [Red snare]");
+    CHECK_FALSE(next_act_box_at(t.scene, 9000.0, true).shown);
+    CHECK_FALSE(next_act_box_at(build_preview_scene(t.song, nullptr), 0.0, true).shown);
+}
+
+TEST_CASE("next activation box: past the length it reads the moment the time box shows") {
+    TwoActs t;
+    CHECK(build_next_act_box(t.scene, 9000.0, /*length_ms=*/2000.0, true).header ==
+          "Next: activation 1 of 2");
+    CHECK_FALSE(build_next_act_box(t.scene, 9000.0, /*length_ms=*/9000.0, true).shown);
 }
 
 TEST_CASE("next activation box: the note names follow the Pro Drums setting") {
     // The Dynamics wording (note_label): with Pro Drums off the red pad is
     // plain "Red", with it on "Red snare" (D48, Q11).
     TwoActs t;
-    CHECK(build_next_act_box(t.scene, 0.0, /*pro_drums=*/false).detail ==
+    CHECK(next_act_box_at(t.scene, 0.0, /*pro_drums=*/false).detail ==
           "at m2.1.0 " + kDot + " [Red]");
-    CHECK(build_next_act_box(t.scene, 0.0, /*pro_drums=*/true).detail ==
+    CHECK(next_act_box_at(t.scene, 0.0, /*pro_drums=*/true).detail ==
           "at m2.1.0 " + kDot + " [Red snare]");
 }
 
@@ -1846,18 +1945,18 @@ TEST_CASE("next activation box: on an activation within half a millisecond, and 
     TwoActs t;
     // The playhead counts as on an activation up to half a millisecond past
     // it: at 2000.5 ms the box still names activation 1, a hair later 2.
-    CHECK(build_next_act_box(t.scene, -100.0, true).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, 2000.5, true).header == "Next: activation 1 of 2");
-    CHECK(build_next_act_box(t.scene, std::nextafter(2000.5, 1e300), true).header ==
+    CHECK(next_act_box_at(t.scene, -100.0, true).header == "Next: activation 1 of 2");
+    CHECK(next_act_box_at(t.scene, 2000.5, true).header == "Next: activation 1 of 2");
+    CHECK(next_act_box_at(t.scene, std::nextafter(2000.5, 1e300), true).header ==
           "Next: activation 2 of 2");
-    CHECK(build_next_act_box(t.scene, 8000.5, true).header == "Next: activation 2 of 2");
-    CHECK_FALSE(build_next_act_box(t.scene, std::nextafter(8000.5, 1e300), true).shown);
+    CHECK(next_act_box_at(t.scene, 8000.5, true).header == "Next: activation 2 of 2");
+    CHECK_FALSE(next_act_box_at(t.scene, std::nextafter(8000.5, 1e300), true).shown);
 
     // An activation with no chord names only its measure.
     Song song = make_sp_song({960}, /*last_tick=*/13440);
     Path path;
     path.activations = {sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760)};
-    const PreviewNextActBox box = build_next_act_box(build_preview_scene(song, &path), 0.0, true);
+    const PreviewNextActBox box = next_act_box_at(build_preview_scene(song, &path), 0.0, true);
     CHECK(box.header == "Next: activation 1 of 1");
     CHECK(box.detail == "at m2.1.0");
 }
@@ -1992,6 +2091,45 @@ TEST_CASE("build_preview_scene: passed-over fills on several activations, and a 
     CHECK(scene.fills[3].state == PreviewFillState::Taken);
 }
 
+TEST_CASE("build_preview_scene: each activation names the fill it took") {
+    // The fixtures of the three fill cases above; fills end at 480, 960,
+    // 1440 and 1920.
+    Song song = make_fill_song();
+
+    // "skips say which fills the path was offered": the activation takes 1440.
+    Path skips;
+    skips.activations = {act_at(song, 1440, {960})};
+    PreviewScene s1 = build_preview_scene(song, &skips);
+    REQUIRE(s1.activations.size() == 1);
+    CHECK(s1.activations[0].taken_fill == std::optional<size_t>{2});
+
+    // "a fill an activation took stays taken when a later one lists it": the
+    // first still names 960, though the second lists it as passed over.
+    Path tied;
+    tied.activations = {act_at(song, 960, {}), act_at(song, 1920, {960, 1440})};
+    PreviewScene s2 = build_preview_scene(song, &tied);
+    REQUIRE(s2.activations.size() == 2);
+    CHECK(s2.activations[0].taken_fill == std::optional<size_t>{1});
+    CHECK(s2.activations[1].taken_fill == std::optional<size_t>{3});
+
+    // "passed-over fills on several activations, and a tick that is no fill".
+    Path several;
+    several.activations = {act_at(song, 480, {}), act_at(song, 1440, {960}),
+                           act_at(song, 1920, {1700})};
+    PreviewScene s3 = build_preview_scene(song, &several);
+    REQUIRE(s3.activations.size() == 3);
+    CHECK(s3.activations[0].taken_fill == std::optional<size_t>{0});
+    CHECK(s3.activations[1].taken_fill == std::optional<size_t>{2});
+    CHECK(s3.activations[2].taken_fill == std::optional<size_t>{3});
+
+    // An activation on a tick that is no fill names none.
+    Path off_fill;
+    off_fill.activations = {act_at(song, 1700, {})};
+    PreviewScene s4 = build_preview_scene(song, &off_fill);
+    REQUIRE(s4.activations.size() == 1);
+    CHECK_FALSE(s4.activations[0].taken_fill.has_value());
+}
+
 TEST_CASE("sp meter curve: a meter change inside the window changes the drain rate") {
     // 4/4 to tick 7680 (8000 ms, a barline), then 3/4: 1440 ticks, 1500 ms a
     // measure. Two bars from tick 3840 (measure 2) are four measures: two of
@@ -2038,10 +2176,7 @@ TEST_CASE("sp meter curve: a stored SP end that drops a fraction of a tick") {
         SongTimestamp ts;
         ts.timecode = song.timecode(t);
         ts.chord.add_note(NoteColor::Red);
-        if (t == 960 || t == 1920) {
-            ts.flag_sp = true;
-            ts.sp_phrase_start = t - 480;
-        }
+        if (t == 960 || t == 1920) test::mark_phrase_end(ts, t, 480);
         song.sequence.push_back(std::move(ts));
     }
     CHECK(song.timing().plusmeasure(song.timecode(3842), 4).ticks() == 10561);

@@ -283,13 +283,15 @@ TEST_CASE("build_track_state: active SP window ends exactly at the deact node") 
 namespace {
 
 // A lit-lane activation on `tick`: the activation that lights a taken fill
-// ending there.
-PreviewActivation lane_activation(int64_t tick, PreviewLane lane) {
+// ending there. `fill` is that fill's index in the scene's fills, as the
+// scene builder stores it (taken_fill); none when no fill ends there.
+PreviewActivation lane_activation(int64_t tick, PreviewLane lane, std::optional<size_t> fill) {
     PreviewActivation a;
     a.tick = tick;
     a.ms = static_cast<double>(tick);
     a.has_lane = true;
     a.lane = lane;
+    a.taken_fill = fill;
     return a;
 }
 
@@ -302,7 +304,7 @@ PreviewScene taken_offered_hidden_scene() {
     scene.fills = {fill(span(1000.0, 2000.0), PreviewFillState::Taken),
                    fill(span(4000.0, 5000.0), PreviewFillState::Offered),
                    fill(span(7000.0, 8000.0), PreviewFillState::Hidden)};
-    scene.activations = {lane_activation(2000, PreviewLane::Green)};
+    scene.activations = {lane_activation(2000, PreviewLane::Green, 0)};
     return scene;
 }
 
@@ -510,8 +512,8 @@ TEST_CASE("make_lane_bounds: two touching taken fills each light their own lane"
     scene.notes = {note(0.0, PreviewLane::Red), note(4000.0, PreviewLane::Red)};
     scene.fills = {fill(span(1000.0, 2000.0), PreviewFillState::Taken),
                    fill(span(2000.0, 3000.0), PreviewFillState::Taken)};
-    scene.activations = {lane_activation(2000, PreviewLane::Green),
-                         lane_activation(3000, PreviewLane::Yellow)};
+    scene.activations = {lane_activation(2000, PreviewLane::Green, 0),
+                         lane_activation(3000, PreviewLane::Yellow, 1)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
 
     TrackWindow win = st.window(0.5, 3.5);
@@ -677,11 +679,11 @@ TEST_CASE("build_track_state: the one-pass sweep on overlapping, touching, empty
     };
     scene.activations = {act(1200.0, 3000.0, true), act(3500.0, 3500.0, true),
                          act(3600.0, 3400.0, true), act(3700.0, 9000.0, false),
-                         lane_activation(7500, PreviewLane::Green),
-                         lane_activation(7500, PreviewLane::Yellow),
-                         lane_activation(8000, PreviewLane::Blue),
-                         lane_activation(8000, PreviewLane::Kick),
-                         lane_activation(9500, PreviewLane::Red)};
+                         lane_activation(7500, PreviewLane::Green, 1),
+                         lane_activation(7500, PreviewLane::Yellow, 1),
+                         lane_activation(8000, PreviewLane::Blue, 2),
+                         lane_activation(8000, PreviewLane::Kick, 2),
+                         lane_activation(9500, PreviewLane::Red, std::nullopt)};
     // Notes out of time order; a red cymbal (never a cymbal on the highway),
     // a ghost and an accent; one note on the SP phrase's end edge (2.0005).
     scene.notes = {note(5000.0, PreviewLane::Green, false, false, true),
@@ -789,9 +791,14 @@ void randomize_overlay(PreviewScene& scene, std::mt19937& rng, const std::vector
     auto moment = [&]() { return moments[pick(static_cast<uint32_t>(moments.size()))]; };
     scene.activations.clear();
     std::vector<int64_t> taken_ends;
-    for (PreviewFill& f : scene.fills) {
+    std::vector<size_t> taken_index;  // each taken fill's index, beside its end
+    for (size_t k = 0; k < scene.fills.size(); ++k) {
+        PreviewFill& f = scene.fills[k];
         f.state = static_cast<PreviewFillState>(pick(3));
-        if (f.state == PreviewFillState::Taken) taken_ends.push_back(f.span.end_tick);
+        if (f.state == PreviewFillState::Taken) {
+            taken_ends.push_back(f.span.end_tick);
+            taken_index.push_back(k);
+        }
     }
     for (int i = 0; i < 40; ++i) {
         PreviewActivation a;
@@ -803,8 +810,11 @@ void randomize_overlay(PreviewScene& scene, std::mt19937& rng, const std::vector
         if (pick(2) == 0) {
             a.has_lane = true;
             a.lane = static_cast<PreviewLane>(pick(5));
-            if (!taken_ends.empty() && pick(4) != 0)
-                a.tick = taken_ends[pick(static_cast<uint32_t>(taken_ends.size()))];
+            if (!taken_ends.empty() && pick(4) != 0) {
+                const uint32_t j = pick(static_cast<uint32_t>(taken_ends.size()));
+                a.tick = taken_ends[j];
+                a.taken_fill = taken_index[j];
+            }
         }
         scene.activations.push_back(a);
     }

@@ -877,6 +877,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     REQUIRE(view.acts.size() == 1);
     REQUIRE(view.acts[0].song_fraction.has_value());
     CHECK(*view.acts[0].song_fraction == doctest::Approx(0.2));
+    CHECK(view.timeline_start == "m1");
     CHECK(view.timeline_end == "m6");  // 10 s is tick 3840, the start of measure 6
     CHECK(view.summary == "1" + kDot + "no SP left over");
 
@@ -884,6 +885,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     ActivationsView blind = build_activations(p, rec, nullptr, 85.0, std::nullopt,
                                               core::default_rules(), 10000.0);
     CHECK_FALSE(blind.acts[0].song_fraction.has_value());
+    CHECK(blind.timeline_start.empty());
     CHECK(blind.timeline_end.empty());
 }
 
@@ -961,6 +963,33 @@ TEST_CASE("activation badge and copied path agree") {
     PathButtonsView v = build_path_buttons(rec, 0, 2);
     REQUIRE(v.buttons.size() == 1);
     CHECK(v.buttons[0].timing == "12.6 ms");
+}
+
+TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the first measure") {
+    // The timeline case's timing: 192 ticks a beat, 4/4, 120 BPM.
+    std::map<int64_t, int64_t> tpm{{0, 768}};
+    std::map<int64_t, double> bpm{{0, 120.0}};
+    SongTiming timing(192, tpm, bpm);
+    CHECK(measure_label(timing.timecode(768)) == "m2");  // 768 is measure 2
+    CHECK(format_measure(timing.timecode(768)) == "m2.1.0");
+    CHECK(measure_label(timing.timecode(0)) == "m1");
+    CHECK(first_measure_label() == "m1.1.0");
+}
+
+TEST_CASE("backend_table_id: the activation number and the three widths") {
+    CHECK(backend_table_id(1, 48, 40, 56) == "##backends1_48_40_56");
+}
+
+TEST_CASE("longest_activation_badge: the widest wording with the window's figure") {
+    const std::string longest = longest_activation_badge();
+    CHECK(longest == "squeeze out 500 ms");
+    CHECK(longest.size() == 18);
+    // The SqOut fixture of "activation badge: shown for a squeeze or an early fill".
+    Activation sqout;
+    test::set_skips(sqout, 0);
+    sqout.e_offset = 300.0;  // not e-critical
+    sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -163.0});
+    CHECK(longest.size() >= activation_badge(sqout).size());
 }
 
 TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
