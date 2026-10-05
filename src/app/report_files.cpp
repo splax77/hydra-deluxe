@@ -66,7 +66,7 @@ namespace {
 bool shell_open(const std::wstring& path) {
     HINSTANCE rc = ShellExecuteW(nullptr, L"open", path.c_str(), nullptr,
                                  nullptr, SW_SHOWNORMAL);
-    return reinterpret_cast<INT_PTR>(rc) > 32;
+    return shell_execute_ok(rc);
 }
 
 // Starts the program Windows opens .html files with, on `page`. For a short

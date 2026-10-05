@@ -83,6 +83,11 @@ struct Harness {
     bool stopped = false;
 };
 
+// Whether a test name given on the command line picks the test called
+// `test_name`: "all" picks every test, any other name only the test with
+// exactly that name.
+bool selects(const std::string& what, const char* test_name);
+
 // Fresh app state for a test: rewrite the scratch INI (song folders =
 // testdata/input, auto-open off), delete the DB, rebuild AppState on those
 // paths, and (re)install the headless seams. Call at the start of TestFunc —

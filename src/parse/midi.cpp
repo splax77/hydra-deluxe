@@ -1,9 +1,8 @@
 #include "parse/midi.h"
 
 #include <algorithm>
-#include <cstdio>
 
-#include "core/winstr.h"  // fopen_utf8
+#include "core/winstr.h"  // read_file_bytes
 #include "parse/timesig.h"
 
 namespace hydra {
@@ -170,21 +169,9 @@ MidiFile::MidiFile(const uint8_t* data, size_t size) {
 }
 
 MidiFile MidiFile::from_file(const std::string& path) {
-    // The path arrives as UTF-8; chart libraries contain non-ASCII filenames
-    // (e.g. a fullwidth slash), so open through the wide API rather than fopen,
-    // which would use the ANSI codepage and fail to find the file.
-    std::FILE* f = fopen_utf8(path, L"rb");
-    if (!f) throw MidiError("cannot open MIDI file: " + path);
-    std::fseek(f, 0, SEEK_END);
-    long n = std::ftell(f);
-    std::fseek(f, 0, SEEK_SET);
-    std::vector<uint8_t> buf(n > 0 ? static_cast<size_t>(n) : 0);
-    if (!buf.empty()) {
-        size_t got = std::fread(buf.data(), 1, buf.size(), f);
-        buf.resize(got);
-    }
-    std::fclose(f);
-    return MidiFile(buf);
+    // read_file_bytes owns reading a whole file (UTF-8 paths, long paths,
+    // files past 2 GB) and its "cannot open file: " error (D54).
+    return MidiFile(read_file_bytes(path));
 }
 
 void MidiFile::parse(const uint8_t* data, size_t size) {

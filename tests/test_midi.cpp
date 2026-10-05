@@ -81,6 +81,19 @@ TEST_CASE("midi: every corpus .mid reads with a sane structure") {
     MESSAGE("midi smoke: " << mids << " files");
 }
 
+// D54: from_file reads through read_file_bytes, so a missing file fails with
+// that owner's own words.
+TEST_CASE("midi: from_file on a missing path fails with the file owner's error") {
+    const std::string missing = corpus::first_chart_with_suffix(".mid") + ".missing";
+    std::string what;
+    try {
+        hydra::MidiFile::from_file(missing);
+    } catch (const std::exception& e) {
+        what = e.what();
+    }
+    CHECK_MESSAGE(what.rfind("cannot open file: ", 0) == 0, what);
+}
+
 TEST_CASE("midi: running status and zero-velocity note_on") {
     // note_on vel 0 is how most charts spell note_off; consecutive same-status
     // messages exercise running status (the status byte omitted).

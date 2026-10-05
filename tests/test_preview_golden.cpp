@@ -34,6 +34,7 @@
 #include "core/winstr.h"
 #include "env_util.h"
 #include "render/preview_renderer.h"
+#include "render/track_state.h"  // note_in_span
 #include "warp_util.h"
 
 #ifndef HYDRA_ASSET_DIR
@@ -233,7 +234,7 @@ TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
         if (n.ms < time_ms - 500.0 || n.ms > time_ms + 1500.0) continue;
         bool in_sp = false;
         for (const app::PreviewSpan& s : scene.sp_phrases)
-            if (s.start_ms <= n.ms && n.ms <= s.end_ms) in_sp = true;
+            if (render::note_in_span(scene, s, n)) in_sp = true;
         std::string flags;
         if (n.cymbal) flags += " cymbal";
         if (n.ghost) flags += " ghost";
@@ -252,7 +253,7 @@ TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
     for (const app::PreviewNote& n : scene.notes) {
         bool in_sp = false;
         for (const app::PreviewSpan& s : scene.sp_phrases)
-            if (s.start_ms <= n.ms && n.ms <= s.end_ms) in_sp = true;
+            if (render::note_in_span(scene, s, n)) in_sp = true;
         csv << n.ms << "," << n.tick << "," << static_cast<int>(n.lane) << "," << (n.cymbal ? 1 : 0)
             << "," << (in_sp ? 1 : 0) << "\n";
     }

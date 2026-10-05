@@ -279,3 +279,30 @@ TEST_CASE("srb: one named cap bounds every inflated stream") {
     CHECK(kSrbMaxStream == (size_t{1} << 30));
     CHECK(kSrbMaxStream > kSrbMaxMetadata);
 }
+
+TEST_CASE("srb: one reader gives the metadata and where the notes stream starts") {
+    const std::string src = corpus_chart_path(".mid");
+    const std::vector<uint8_t> notes = read_bytes(src);
+    const std::vector<uint8_t> meta = make_metadata("notes.mid");
+    const std::vector<uint8_t> srb = make_srb(meta, notes);
+
+    const SrbMetadataRead got = srb_read_metadata(memory_byte_source(srb));
+    CHECK(got.parsed);
+    CHECK(got.fields.notes_filename == "notes.mid");
+    CHECK(got.fields.name == "Name");
+    CHECK(got.fields.artist == "Artist");
+    CHECK(got.fields.charter == "Charter");
+
+    // The notes stream starts right there.
+    const std::vector<uint8_t> notebytes =
+        srb_inflate_stream_reading(memory_byte_source(srb), got.notes_offset, kSrbMaxStream,
+                                   nullptr);
+    CHECK(songs_equal(load_songbytes_mid(notebytes, true, true), load_songpath(src, true, true)));
+
+    // Only a header, or junk where the metadata should be: it throws.
+    const std::vector<uint8_t> header_only(srb.begin(), srb.begin() + kSrbHeaderSize);
+    CHECK_THROWS_AS(srb_read_metadata(memory_byte_source(header_only)), std::runtime_error);
+    std::vector<uint8_t> junk = srb;
+    for (size_t i = kSrbHeaderSize; i < kSrbHeaderSize + 64; ++i) junk[i] = 0xFF;
+    CHECK_THROWS_AS(srb_read_metadata(memory_byte_source(junk)), std::runtime_error);
+}

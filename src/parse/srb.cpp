@@ -139,4 +139,13 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
     return true;
 }
 
+SrbMetadataRead srb_read_metadata(const ByteSource& src) {
+    if (src.size <= kSrbHeaderSize) throw std::runtime_error("Truncated SRB file.");
+    SrbMetadataRead out;
+    const std::vector<uint8_t> meta =
+        srb_inflate_stream_reading(src, kSrbHeaderSize, kSrbMaxMetadata, &out.notes_offset);
+    out.parsed = srb_parse_metadata(meta, out.fields);
+    return out;
+}
+
 }  // namespace hydra
