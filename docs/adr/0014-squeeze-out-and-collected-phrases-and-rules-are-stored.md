@@ -34,9 +34,10 @@ on 0 becomes 1, because 0 means "no usable rules" (`Rules::fingerprint()` in
 src/core/rules.cpp; the user confirmed this format, D48, Q33).
 The store writes it into the structure blob right after
 the format version, so version and rules make one 12-byte head. That head is
-what decides Ready, in C++ (`structure_is_current`) and in SQL
-(`row_ready_sql()` in `src/store/record_store.cpp`). The rules part of both
-compares one fingerprint, the store's `RulesStamp::fixed`.
+what decides Ready, in C++ (`rank_row` in `src/store/record_store.cpp`,
+whose `.ready()` answers it) and in SQL (`row_ready_sql()` in the same file).
+The rules part of both compares one fingerprint, the store's
+`RulesStamp::fixed`.
 
 Blob format 6, path-node format 4 and path-structure format 4 carry the three
 fields.
@@ -70,7 +71,7 @@ past it stops for the user's call, and no cheaper variant exists.
 
 Superseded 2026-09-27 with Auto itself; kept as history. Today a record
 carries one fingerprint, `Rules::fingerprint()`, and both Ready checks
-(`structure_is_current` and `row_ready_sql()`) compare that one value. The
+(`rank_row` and `row_ready_sql()`) compare that one value. The
 old Auto fingerprint survives only as `Rules::retired_auto_fingerprint()`,
 which the store reads to delete the results Auto saved; no row carrying it
 reads Ready. The names below are the code as it was then.
