@@ -70,9 +70,10 @@ TEST_CASE("collect_dm_rows joins scores to records and labels them") {
 
     CHECK(rows[0].optimal == optimal);
     CHECK(rows[0].delta == 1000);
-    REQUIRE(rows[0].pct.has_value());
-    CHECK(*rows[0].pct == doctest::Approx(
-        static_cast<double>(optimal - 1000) / static_cast<double>(optimal) * 100.0));
+    // The row's percent is percent_steps' whole hundredths, the number the
+    // cell's text is written from.
+    REQUIRE(rows[0].pct_h.has_value());
+    CHECK(*rows[0].pct_h == app::percent_steps(optimal - 1000, optimal, 2));
 
     CHECK(rows[1].delta == 0);
     CHECK(rows[2].delta == -5);
@@ -83,7 +84,7 @@ TEST_CASE("collect_dm_rows joins scores to records and labels them") {
     CHECK(rows[0].song == "Board Title");
 }
 
-TEST_CASE("collect_dm_rows: no pct off 100% speed; store identity fallback") {
+TEST_CASE("collect_dm_rows: no percent off 100% speed; store identity fallback") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
 
@@ -96,7 +97,7 @@ TEST_CASE("collect_dm_rows: no pct off 100% speed; store identity fallback") {
         store, {fast, unknown_meta}, kMode, store::Lens{});
     REQUIRE(rows.size() == 2);
 
-    CHECK_FALSE(rows[0].pct.has_value());  // speed != 100
+    CHECK_FALSE(rows[0].pct_h.has_value());  // speed != 100
     CHECK(rows[1].song == "Stored Title");  // fell back to the matched record
 }
 
@@ -279,13 +280,17 @@ TEST_CASE("collect_dm_rows: a percent rounds once") {
     row.actual = 198010;
     row.optimal = 198020;
     row.delta = 10;
-    row.pct = 99.99495;
+    row.pct_h = 9999;
     const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
 
     // The payload carries the percent's text, and the page shows that text
     // instead of rounding the number itself.
     CHECK(html.find("\"pct_txt\":\"99.99%\"") != std::string::npos);
     CHECK(html.find("r.pct.toFixed(") == std::string::npos);
+    // The row's one percent is the whole hundredths; no unrounded percent
+    // rides along beside it.
+    CHECK(html.find("\"pct_h\":9999") != std::string::npos);
+    CHECK(html.find("\"pct\":") == std::string::npos);
     // Counts and the over-optimal delta go through the page's shared fmt.
     CHECK(html.find(".toLocaleString()]") == std::string::npos);
     CHECK(html.find("(-r.delta).toLocaleString()") == std::string::npos);
@@ -303,7 +308,7 @@ TEST_CASE("build_dm_html: the average tile reads a percent the way the cells do"
     row.actual = 198010;
     row.optimal = 200000;
     row.delta = 1990;
-    row.pct = 99.005;
+    row.pct_h = 9901;
     const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
 
     // The cell's text and the tile's input both come from percent_steps: the
@@ -320,6 +325,45 @@ TEST_CASE("build_dm_html: the average tile reads a percent the way the cells do"
           std::string::npos);
     // No number on the page is rounded by the browser's float rounding.
     CHECK(html.find(".toFixed(") == std::string::npos);
+}
+
+TEST_CASE("collect_dm_rows: the % of opt column sorts on the shown hundredths") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+
+    // The first two scores are one point apart. Their percents differ only
+    // past the second decimal, so both read 100.00% and carry the same whole
+    // hundredths. The third, half the optimal, reads 50.00%: lower at the
+    // shown precision.
+    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store,
+        {make_score(kHash, optimal), make_score(kHash, optimal - 1),
+         make_score(kHash, optimal / 2)},
+        kMode, store::Lens{});
+    REQUIRE(rows.size() == 3);
+    REQUIRE(rows[0].pct_h.has_value());
+    REQUIRE(rows[1].pct_h.has_value());
+    REQUIRE(rows[2].pct_h.has_value());
+    CHECK(*rows[0].pct_h == 10000);
+    CHECK(*rows[1].pct_h == 10000);
+    CHECK(*rows[2].pct_h == 5000);
+    CHECK(app::format_percent(rows[1].actual, optimal, 2) == "100.00%");
+
+    const std::string html = app::dm_report::build_dm_html(rows, "sub", "foot");
+    // The "% of opt" column sorts on that one value. The page sorts numbers by
+    // their difference, so the two 100.00% rows compare equal, and the
+    // browser's sort is stable: they keep the order the payload lists them in.
+    // The 50.00% row sorts below both.
+    CHECK(html.find("{k:'pct_h',   t:'% of opt',") != std::string::npos);
+    CHECK(html.find("return dir * (x - y);") != std::string::npos);
+    const size_t first = html.find("\"actual\":" + std::to_string(optimal) + ",");
+    const size_t second = html.find("\"actual\":" + std::to_string(optimal - 1) + ",");
+    REQUIRE(first != std::string::npos);
+    REQUIRE(second != std::string::npos);
+    CHECK(first < second);
+    CHECK(html.find("\"pct_h\":10000", first) < second);
+    CHECK(html.find("\"pct_h\":10000", second) < html.find("\"pct_h\":5000"));
 }
 
 namespace {

@@ -287,19 +287,6 @@ const ChordNote& Chord::activation_note() const {
     throw std::runtime_error("activation_note on empty chord");
 }
 
-// ---- SPSqueeze ----------------------------------------------------------
-
-std::string SPSqueeze::description() const {
-    char buf[96];
-    if (kind == SqueezeKind::SqIn)
-        std::snprintf(buf, sizeof(buf),
-                      "SqIn: Note timing must be earlier than %.1fms.", timing());
-    else
-        std::snprintf(buf, sizeof(buf),
-                      "SqOut: Note timing must be later than %.1fms.", timing());
-    return buf;
-}
-
 // ---- BackendSqueeze -----------------------------------------------------
 
 bool BackendSqueeze::operator==(const BackendSqueeze& o) const {

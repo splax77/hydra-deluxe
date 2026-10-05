@@ -57,9 +57,9 @@ TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a r
     // The numbers still show; only the comparison is withheld.
     CHECK(rows[0].optimal == optimal);
     CHECK(rows[1].delta == 1000);
-    CHECK_FALSE(rows[0].pct.has_value());
-    CHECK_FALSE(rows[1].pct.has_value());
-    REQUIRE(rows[3].pct.has_value());
+    CHECK_FALSE(rows[0].pct_h.has_value());
+    CHECK_FALSE(rows[1].pct_h.has_value());
+    REQUIRE(rows[3].pct_h.has_value());
 
     const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
     CHECK(stats.total == 4);
