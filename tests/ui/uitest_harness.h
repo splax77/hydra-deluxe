@@ -74,9 +74,15 @@ struct Harness {
     IDXGISwapChain* swapchain = nullptr;  // attached only
     // Queue a test by name or, when `what` names a file, as a script.
     bool queue(const std::string& what);
-    // Print [PASS]/[FAIL] per run test (+ the log of each failure) to `out`;
-    // returns the failure count.
+    // Print [PASS]/[FAIL] (+ the log of each failure) for every test that has
+    // finished since the last call; returns the failure count of all tests
+    // printed so far. The runner calls it after every frame, so a crash later
+    // in the run still leaves the earlier results on screen.
     int print_results(FILE* out);
+    std::vector<const ImGuiTest*> printed;  // tests print_results has shown
+    int printed_failures = 0;
+    // The test the engine is running now, or nullptr between tests.
+    const ImGuiTest* running_test() const;
     // Stop the engine and drop the app. Must run before ImGui::DestroyContext;
     // shutdown() calls it too (idempotent).
     void stop();

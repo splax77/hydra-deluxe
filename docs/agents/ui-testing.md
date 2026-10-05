@@ -63,7 +63,7 @@ screenshot stars.png
 | `check <ref>` / `uncheck <ref>` | set a checkbox |
 | `type <ref> \| <text>` | put text into an input |
 | `wait <seconds>` | let frames run |
-| `wait-idle` | wait until every background job (scan, analyze, batch, report, DM, Preview loading) has finished |
+| `wait-idle` | wait until every background job has finished; the list is `AppState::any_job_running` |
 | `wait-text <substring>` | wait until the text appears on screen |
 | `expect-text <substring>` / `expect-not-text <substring>` | assert on screen text now |
 | `text` | print everything on screen as text |

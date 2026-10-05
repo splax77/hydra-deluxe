@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "core/model.h"
@@ -140,10 +141,14 @@ using ChartAnalyzer = std::function<AnalysisResult(
     const std::string& path, const AnalysisSettings& settings,
     const std::function<void(float)>& on_progress)>;
 
-// How far a batch run has got.
+// How far a batch run has got. run_batch is the only writer of every count
+// here; a reader copies them rather than counting its own callbacks.
 struct BatchProgress {
-    int completed = 0;
-    int total = 0;
+    int completed = 0;  // analyzed + failed
+    int total = 0;      // charts to run: plan_batch's to-do list
+    int analyzed = 0;   // stored
+    int skipped = 0;    // plan_batch's skipped count, known before the first chart
+    int failed = 0;
     std::string current_title;
 };
 
@@ -160,7 +165,32 @@ struct BatchRun {
     std::string chartmode;
     store::Lens lens;
     AnalysisSettings settings;
+
+    // The SP cap this run's results are filed under and looked up by:
+    // CapQuery::at is the owner.
+    store::CapQuery cap_query() const { return store::CapQuery::at(settings.sp_cap); }
 };
+
+// The charts a batch under `run` skips because they already have a result
+// (store::RecordStore::analyzed_hashes decides what counts), as md5s. Empty
+// when `redo`. One query for the whole library.
+std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
+                                                   const BatchRun& run, bool redo);
+
+// What a batch over a scan list will do.
+struct BatchPlan {
+    // The charts to run, in input order. A chart the scan found in several
+    // folders (one md5) is here once, as its first copy (D51 call 10).
+    std::vector<ScanItem> todo;
+    // Charts left out because `already` holds them, each counted once. A
+    // second copy of a chart counts neither here nor in todo (D62 item 3).
+    int skipped = 0;
+};
+
+// The one place a scan list becomes a batch's to-do list and skipped count.
+// `already` is charts_with_result's answer.
+BatchPlan plan_batch(const std::vector<ScanItem>& items,
+                     const std::unordered_set<std::string>& already);
 
 // Progress, result and cancel hooks for run_batch. The three callbacks fire
 // on the calling thread only (never a worker), so they may touch UI state.
@@ -180,9 +210,9 @@ struct BatchCallbacks {
 
 // Runs the analysis + store::prepare_row for every item on a
 // batch_worker_count()-sized pool (app/work_pool.h), writing results into
-// `store` from the calling thread only. Skips a chart that already has a
-// record under `run` unless `redo`, and runs a chart found in several folders
-// (one md5) once, so the progress total counts charts, not copies.
+// `store` from the calling thread only. Which charts run and which are
+// skipped is charts_with_result and plan_batch's answer. Every BatchProgress
+// count comes from here, all in one callback.
 void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                store::RecordStore& store, bool redo, int worker_count,
                const BatchCallbacks& callbacks = {});

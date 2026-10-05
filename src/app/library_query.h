@@ -83,16 +83,18 @@ SearchableRow make_searchable(std::string_view title, std::string_view artist,
 // (query_matches) and highlighting (match_spans).
 bool term_applies_to(QueryField term_field, QueryField column);
 
-// The best path's stored facts a filter can test; nullopt when not analyzed.
-// A row counts as analyzed when `stars` holds a value.
+// The best path's stored facts a filter can test. A row with no facts matches
+// no filter; when a row has facts is the library's call (facts_of in
+// ui/library_model.cpp).
 struct RowFacts {
     std::optional<int> stars;
-    std::optional<double> hardest_ms;  // nullopt = no squeeze on the path
+    // nullopt = the path needs no timing (Path::needs_timing).
+    std::optional<double> hardest_ms;
 };
 
 // True when every term counts (see term_applies_to) and every filter holds.
-// A stars: or squeeze filter never matches a row with no facts.
-// A path with no squeeze passes any squeeze limit. Allocates nothing.
+// A row with no facts matches no filter. A path that needs no timing
+// (Path::needs_timing) passes any squeeze limit. Allocates nothing.
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts);
 
 // Where the query's terms appear in one displayed (unfolded, tag-stripped)

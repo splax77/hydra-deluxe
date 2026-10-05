@@ -83,7 +83,8 @@ struct Settings {
     // The per-side hit window in real ms; feeds the squeeze budgets, the
     // backend ratings, and the report tiers. Display-layer only: it never
     // reaches the search, so changing it never invalidates stored records.
-    int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);
+    // A decimal typed in the file is kept (D51 call 15).
+    double hit_window_ms = kDefaultHitWindowMs;
 
     // Preview playback volume in percent. A summed multi-stem mix at 100 % is
     // loud and clips, so the default sits well below it.
@@ -101,8 +102,10 @@ struct Settings {
     // hydra_batch ignores it and takes --legacy-fills instead.
     bool legacy_fills = false;
 
-    // Open the HTML path report in the browser as soon as a batch run builds
-    // it; off by default (the finished modal offers an "Open report" button).
+    // Open a report in the browser as soon as Hydra builds it. It covers every
+    // report Hydra builds, the batch's path report and the leaderboard
+    // comparison alike (D51 call 23): ReportJob and DmReportJob both read it.
+    // Off by default (the finished modal offers an "Open report" button).
     bool auto_open_report = false;
 
     // The dmleaderboards user (Discord ID) last compared against, so the
@@ -127,12 +130,13 @@ struct Settings {
     // A number setting pulled into its allowed range: the one the key table
     // in config.cpp keeps, which its box reads too. A value outside the range
     // lands on the nearest edge (D51 Q14). Name the setting by its field:
-    // clamp(&Settings::mslimit_value, 900) is 500. Two keys land on their
-    // default instead, because they have no edge to land on: hit_window_ms at
-    // 0 or below (its range is "above 0"), and depth_mode at anything but 0
-    // or 1 (a switch, where anything but 1 means scores). load_file runs every
-    // number through here, with one more rule for sp_cap: in the file, 0 and
-    // junk (and 1.8.4's "auto") read as the default 4, not as the floor 1.
+    // clamp(&Settings::mslimit_value, 900) is 500. depth_mode lands on its
+    // default instead, because a switch has no edge to land on (anything but
+    // 1 means scores). load_file runs every whole-number setting through
+    // here, with one more rule for sp_cap: in the file, 0 and junk (and
+    // 1.8.4's "auto") read as the default 4, not as the floor 1. The hit
+    // window is a decimal, not a box: only load_file pulls it into range, by
+    // the same key table.
     static int clamp(int Settings::* field, int value);
 
     // depth_mode as the search's enum: 1 is points, anything else scores.

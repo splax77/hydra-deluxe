@@ -103,7 +103,7 @@ MP3 seek up to one second ahead decodes forward instead of using them
 (src/audio/ma_reader.cpp). The mixer works in 4096-frame blocks
 (`StreamMix::kBlockFrames`). The 4 GiB MP3 and 2 GiB Vorbis limits above stay.
 The format sniff looks for the OpusHead or vorbis tag only in a file's first
-64 bytes (`sniff_format` in src/audio/decode.cpp).
+64 bytes (`sniff_format` in src/core/audio_sniff.cpp).
 
 A stem with a decode error in the middle plays up to the damage, then goes
 silent while the other stems carry on. The old full decode threw on that
@@ -118,3 +118,24 @@ otherwise hide: the Opus page index, the MP3 seek points, and the converter
 restart. Each one is covered by tests against a straight read. Do not go back
 to unpacking a whole stem "because it's simpler"; long charts are real, and
 they need the file to stay compressed.
+
+## Amendment, 2026-10-04: stem length and damage (D51 calls 19 and 20)
+
+The `StemReader` contract in src/audio/stem_reader.h now says two more
+things.
+
+A stem's length. A header that says the stem has 0 frames means "unknown",
+not empty; RFC 9639 says so for FLAC, and stb_vorbis says it when it finds
+no end page. For such a stem, `length_frames` is a count made by decoding
+the stem once on open (D51 call 19). Every other header keeps the fast open.
+The decoder still believes the header's total of 0 and cannot seek on it
+(dr_flac clamps to 0; stb_vorbis has no length to seek within), so a
+counted stem seeks by decoding instead, forward from where it is or from the
+start (`CountedLength`, shared by `MaReader` and `VorbisReader`). That is
+exact, and slower than a real seek, in this rare case only.
+
+A damaged stem. `failed()` turns true at the first decode error and stays
+true for the reader's life. A seek to before the error plays the stem again
+from there, in every format, Opus included (D51 call 20). Before this, a
+damaged Opus stem stayed silent after a scrub back, while the other formats
+played again.

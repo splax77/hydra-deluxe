@@ -128,11 +128,18 @@ public:
     // callers to stop().
     void cancel() { stop(); }
 
+    // The batch's settings: what its results are filed under, for the report
+    // that follows it.
+    const app::BatchRun& batch_run() const { return run_; }
+
     struct Snapshot {
         bool preparing = true;  // still building the scan list (BatchJob::run)
-        int total = 0;      // items actually dispatched (excludes pre-skipped)
-        int completed = 0;  // finished charts, stored or failed
-        int skipped = 0;    // already stored, known up front (not part of total)
+        // The batch's counts, copied from app::BatchProgress (run_batch is
+        // their owner; see its fields for what each one counts).
+        int total = 0;
+        int completed = 0;
+        int analyzed = 0;
+        int skipped = 0;
         int failed = 0;
         bool paused = false;
         // Wall time since start(), paused time left out; frozen once finished.
@@ -237,11 +244,15 @@ public:
     // cap/lens: which records the page lists (the user's current SP cap, ms
     // limit and score range).
     ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-              bool open_when_done,
-              int hit_window_ms = static_cast<int>(kDefaultHitWindowMs));
+              bool open_when_done, double hit_window_ms = kDefaultHitWindowMs);
     ~ReportJob() { shutdown(); }
 
     void start();
+
+    // What the page is built from, as given to the constructor.
+    const store::CapQuery& cap() const { return cap_; }
+    const store::Lens& lens() const { return lens_; }
+    double hit_window_ms() const { return hit_window_ms_; }
 
     // Valid once finished() && ok(): where the page was written, whether the
     // browser opened it, and why not when it was asked to and didn't.
@@ -256,7 +267,7 @@ private:
     store::CapQuery cap_;
     store::Lens lens_;
     bool open_when_done_;
-    int hit_window_ms_;
+    double hit_window_ms_;
     ReportOutcome outcome_;
 };
 

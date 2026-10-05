@@ -208,6 +208,7 @@ const std::map<std::string, KnownDefault>& known_defaults() {
         out["Settings::backendlimit_enabled"] = {true, s.backendlimit_enabled ? 1.0 : 0.0};
         out["Rules::backend_leeway_ms"] = {false, r.backend_leeway_ms};
         out["kSqueezeWindowMs"] = {false, hydra::kSqueezeWindowMs};
+        out["kEarlyFillWindowMs"] = {false, hydra::kEarlyFillWindowMs};
         return out;
     }();
     return m;

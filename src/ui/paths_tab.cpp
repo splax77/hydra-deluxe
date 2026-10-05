@@ -156,7 +156,7 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
             ImGui::TextDisabled("%s", heading);
             if (b.group == Group::AllZero)
                 hint("The best path that activates at the first chance every time "
-                     "(no skips). It needs no squeeze timing.");
+                     "(no skips). It needs no timing.");
         }
         if (path_button(i, b, b.path == selected_path)) selected_path = b.path;
     }

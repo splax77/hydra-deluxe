@@ -334,7 +334,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     if (selected_path != app.library_ui.scrolled_to) {
         app.library_ui.scrolled_to = selected_path;
         for (size_t k = 0; k < order.size(); ++k)
-            if (rows[order[k]].entry.notespath == selected_path) {
+            if (app.is_selected_row(rows[order[k]].entry)) {
                 scroll_to = k;
                 break;
             }
@@ -357,7 +357,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             ImGui::TableSetColumnIndex(kColumnTitle);
             const ImVec2 title_pos = ImGui::GetCursorScreenPos();
             const float title_w = ImGui::GetContentRegionAvail().x;
-            const bool selected = !selected_path.empty() && row.entry.notespath == selected_path;
+            const bool selected = app.is_selected_row(row.entry);
             // A title too long for its cell ends in "..." like the other
             // columns: the Selectable keeps its label (its ID, and the text
             // log) but draws it invisibly and lays out only the cell's width,

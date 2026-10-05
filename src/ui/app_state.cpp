@@ -143,8 +143,7 @@ std::optional<size_t> AppState::relative_row(int delta) const {
     if (!selected || delta == 0) return std::nullopt;
     const size_t n = view_row_count();
     for (size_t i = 0; i < n; ++i) {
-        // notespath, not md5: the same chart can sit in two folders.
-        if (view_row(i).notespath != selected->notespath) continue;
+        if (!is_selected_row(view_row(i))) continue;
         const long long j = static_cast<long long>(i) + delta;
         if (j < 0 || j >= static_cast<long long>(n)) return std::nullopt;
         return static_cast<size_t>(j);
@@ -189,7 +188,7 @@ void AppState::close_details() {
     if (length_job) {
         length_job->cancel();
         length_job.reset();
-        length_tried_md5_.clear();  // cut short, not failed: try again next open
+        length_tried_ = {};  // cut short, not failed: try again next open
     }
     // The next open looks at the chart file at once.
     details_ui.file_checked_at = -1.0;
@@ -266,9 +265,31 @@ bool AppState::analyze_running() const { return analyze_job && !analyze_job->fin
 
 bool AppState::batch_running() const { return batch_job && !batch_job->snapshot().finished; }
 
+AppState::SettingsLock AppState::settings_lock() const {
+    if (batch_running()) return SettingsLock::Batch;
+    if (analyze_running()) return SettingsLock::Analysis;
+    return SettingsLock::None;
+}
+
+bool AppState::is_selected_row(const store::ChartLibraryEntry& row) const {
+    return selected && row.notespath == selected->notespath;
+}
+
+bool AppState::can_scan() const {
+    return !settings.chartfolders.empty() && !scan_job && !batch_running();
+}
+
+bool AppState::any_job_running() const {
+    return (scan_job && !scan_job->snapshot().finished) || batch_running() || analyze_running() ||
+           (report_job && !report_job->finished()) ||
+           (dm_fetch_job && !dm_fetch_job->finished()) ||
+           (dm_report_job && !dm_report_job->finished()) ||
+           (dynamics_job && !dynamics_job->finished()) ||
+           (length_job && !length_job->finished()) || (preview && preview->busy());
+}
+
 bool AppState::analyze_job_shown() const {
-    return analyze_job && show_details && selected &&
-           analyze_job->song().notespath == selected->notespath;
+    return analyze_job && show_details && is_selected_row(analyze_job->song());
 }
 
 void AppState::tick(double now) {
@@ -285,19 +306,23 @@ void AppState::update_song_length() {
         const std::optional<double> length = length_job->ok() ? length_job->length_ms()
                                                                : std::nullopt;
         if (length) {
-            // Best effort: a failed write only means the chart is read again
-            // on its next open.
+            // The difficulty the job read: its own songlength row (D51 call
+            // 9). Best effort: a failed write only means the chart is read
+            // again on its next open.
             try {
-                store->set_song_length(chart.md5, *length);
+                store->set_song_length(chart.md5, length_job_chartmode_, *length);
             } catch (const std::exception&) {
             }
-            // Every lookup held for this song shows it now: the viewed one
-            // and the ones parked under other settings.
+            // Every lookup held for this song and difficulty shows it now:
+            // the viewed one and the ones parked under other settings.
             if (selected && selected->md5 == chart.md5) {
-                if (viewed.status == store::RecordStatus::Ready && !viewed.song_length_ms)
+                if (committed_chartmode_ == length_job_chartmode_ &&
+                    viewed.status == store::RecordStatus::Ready && !viewed.song_length_ms)
                     viewed.song_length_ms = length;
                 for (auto& parked : parked_lookups_)
-                    if (!parked.second.song_length_ms) parked.second.song_length_ms = length;
+                    if (parked.first.chartmode == length_job_chartmode_ &&
+                        !parked.second.song_length_ms)
+                        parked.second.song_length_ms = length;
             }
         }
         length_job.reset();
@@ -305,8 +330,12 @@ void AppState::update_song_length() {
     if (length_job || !show_details || !selected) return;
     if (viewed.status != store::RecordStatus::Ready || !viewed.timing || viewed.song_length_ms)
         return;
-    if (length_tried_md5_ == selected->md5) return;
-    length_tried_md5_ = selected->md5;
+    // The chart is read under these settings, and its length is filed under
+    // their chart mode.
+    std::pair<std::string, std::string> want{selected->md5, settings.chartmode_key()};
+    if (length_tried_ == want) return;
+    length_tried_ = want;
+    length_job_chartmode_ = std::move(want.second);
     length_job = std::make_unique<SongLengthJob>(*selected, settings.to_analysis_settings());
     length_job->start();
 }
@@ -424,17 +453,31 @@ void AppState::reap_dynamics() {
 }
 
 void AppState::start_scan() {
-    if (scan_job && !scan_job->snapshot().finished) return;
+    if (!can_scan()) {
+        // The toolbar's button is off during a batch, but "Scan now" and the
+        // panel's "Rescan library" ask from here: say why nothing happened.
+        if (batch_running()) set_status("A batch is running.");
+        return;
+    }
     scan_job = std::make_unique<ScanJob>(settings.chartfolders, *store);
     scan_reloaded_ = false;
     scan_job->start();
 }
 
 void AppState::open_batch_confirm() {
-    // Exactly the charts the library's search matches, and how many of them
-    // already have a current result (the Analyzed chip's count).
+    // Exactly the rows the library's search matches. Which charts they are
+    // and which already have a result is the plan the batch itself makes when
+    // it starts (app::plan_batch over the store), so the confirm and the
+    // strip's "skipped" agree.
     batch_scope = library_matches();
-    batch_scope_with_result = static_cast<int64_t>(library.counts().analyzed);
+    std::vector<app::ScanItem> items;
+    items.reserve(batch_scope.size());
+    for (const store::ChartLibraryEntry& e : batch_scope) items.push_back(scan_item_of(e));
+    const app::BatchPlan plan =
+        app::plan_batch(items, app::charts_with_result(*store, settings.batch_run(), false));
+    // plan_batch puts each chart once in todo or in skipped (BatchPlan).
+    batch_scope_charts = static_cast<int64_t>(plan.todo.size()) + plan.skipped;
+    batch_scope_with_result = plan.skipped;
     batch_confirm_pending = true;
 }
 
@@ -449,6 +492,7 @@ void AppState::start_batch(bool redo) {
     batch_job = std::make_unique<BatchJob>(std::move(batch_scope), settings.batch_run(), *store,
                                            redo);
     batch_scope.clear();
+    batch_scope_charts = 0;
     batch_scope_with_result = 0;
     report_started = false;
     report_outcome_shown = false;
@@ -468,7 +512,11 @@ void AppState::update_background_jobs() {
         // as the whole of it.
         if (!batch_job->is_cancelled() && !report_started) {
             report_started = true;
-            report_job = std::make_unique<ReportJob>(*store, settings.cap_query(), settings.lens(),
+            // The report lists the records the batch filed: its cap and lens,
+            // not whatever the settings bar holds now. Opening the page and
+            // its timing bands only shape the page, so they stay live.
+            const app::BatchRun& run = batch_job->batch_run();
+            report_job = std::make_unique<ReportJob>(*store, run.cap_query(), run.lens,
                                                      settings.auto_open_report,
                                                      settings.hit_window_ms);
             report_job->start();

@@ -66,8 +66,9 @@ _Avoid_: view options
 What the user types to narrow the library. Every word must match the title,
 artist, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `charter:` and `folder:` limit a word or phrase to one
-field. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze at most N
-ms) test the stored best path and only ever match ready records. Matching
+field. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze or
+required early fill at most N ms; `squeeze<N` means the same) test the stored
+best path and only ever match ready records. Matching
 folds case and accents away, so `beyonce` finds "Beyoncé", and ignores Clone
 Hero's rich-text tags.
 
@@ -125,8 +126,8 @@ that note (Clone Hero's rule, docs/adr/0023).
 _Avoid_: star power section
 
 **All-0 path**:
-The best path whose activations all record zero skips, found under a 0 ms
-timing limit.
+The best path whose activations all record zero skips and that needs no
+timing (`Path::needs_timing`; D51 call 4, D13).
 
 ### Squeezes
 
@@ -166,7 +167,11 @@ src/core/stars.cpp; D48, Q33).
 
 **Early fill (E)**:
 An activation timing (the `E` notation) where the fill must be summoned by
-hitting early; its window is fixed, not the hit-window setting.
+hitting early. Its window is 60 ms<!-- default: kEarlyFillWindowMs -->
+(`kEarlyFillWindowMs`), fixed, not the hit-window setting. It was tightened
+from 85 ms. The user kept 60 ms because paths were cluttered with early fills
+that never matter (D51 call 7); the hardest real early fill on 18,773 charts
+was 57.7 ms.
 
 **Fill spawn deadline (CH 1.1)**:
 The latest your SP meter can fill up and still have a fill appear. Clone Hero
@@ -248,8 +253,8 @@ Hero engine methods read; the 3 ms<!-- default: Rules::backend_leeway_ms -->
 is Hydra's own setting.
 
 **Difficulty**:
-A path's or activation's hardest required squeeze, in raw gap ms — never
-scaled by the transfer scale.
+A path's or activation's hardest squeeze or required early fill, in raw gap
+ms — never scaled by the transfer scale.
 
 ### Preview
 
@@ -343,7 +348,9 @@ one common format, and sums them into a single signal to play. It reads a few
 milliseconds at a time from each stem's compressed bytes; nothing is unpacked
 up front. A stem it cannot open is skipped, so one broken stem does not
 silence the rest. A stem that hits a decode error part way through goes
-silent from that point.
+silent from that point, and a seek to before the damage plays it again (D51
+call 20). A stem whose header gives no length, a FLAC whose total is 0, is
+counted by decoding it once on open (D51 call 19).
 
 **Transport**:
 The Preview's play, pause, and seek control together with its clock. The clock

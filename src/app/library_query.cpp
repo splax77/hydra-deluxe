@@ -370,9 +370,9 @@ SearchableRow make_searchable(std::string_view title, std::string_view artist,
 
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts) {
     if (q.stars || q.squeeze_max_ms) {
-        if (!facts.stars) return false;  // not analyzed: nothing to test
+        if (!facts.stars) return false;  // a row with no facts matches no filter (facts_of)
         if (q.stars && *facts.stars != *q.stars) return false;
-        // A path with no squeeze passes any squeeze limit.
+        // A path that needs no timing (Path::needs_timing) passes any limit.
         if (q.squeeze_max_ms && facts.hardest_ms && *facts.hardest_ms > *q.squeeze_max_ms)
             return false;
     }

@@ -122,14 +122,14 @@ void render_main_window(AppState& app) {
         if (app.dm_fetch_job && app.dm_fetch_job->finished()) app.dm_fetch_job.reset();
     }
 
-    // The song panel's "Rescan library" remedy lands here: the scan modal
-    // belongs to this window, so the scan has to start from its frame.
+    // The song panel's "Rescan library" and the Song folders' "Scan now"
+    // land here: the scan modal belongs to this window, so the scan has to
+    // start from its frame. start_scan refuses when AppState::can_scan says
+    // no, and then there is no modal to open.
     if (app.request_scan) {
         app.request_scan = false;
-        if (!app.settings.chartfolders.empty() && !app.scan_job) {
-            app.start_scan();
-            ImGui::OpenPopup("Scanning charts");
-        }
+        app.start_scan();
+        if (app.scan_job) ImGui::OpenPopup("Scanning charts");
     }
 
     detail::render_actions_row(app);

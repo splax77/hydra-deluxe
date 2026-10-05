@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <climits>
 #include <cstdio>
@@ -163,18 +164,26 @@ bool Harness::queue(const std::string& what) {
 int Harness::print_results(FILE* out) {
     ImVector<ImGuiTest*> tests;
     ImGuiTestEngine_GetTestList(engine, &tests);
-    int failed = 0;
     for (ImGuiTest* t : tests) {
-        if (t->Output.Status == ImGuiTestStatus_Unknown) continue;  // not run
-        bool ok = t->Output.Status == ImGuiTestStatus_Success;
+        // Not run, still waiting, or still running: nothing to print yet.
+        const ImGuiTestStatus status = t->Output.Status;
+        if (status != ImGuiTestStatus_Success && status != ImGuiTestStatus_Error) continue;
+        if (std::find(printed.begin(), printed.end(), t) != printed.end()) continue;
+        printed.push_back(t);
+        const bool ok = status == ImGuiTestStatus_Success;
         std::fprintf(out, "[%s] %s/%s\n", ok ? "PASS" : "FAIL", t->Category, t->Name);
         if (!ok) {
-            ++failed;
+            ++printed_failures;
             std::fprintf(out, "---- log ----\n%s---- end ----\n", t->Output.Log.Buffer.c_str());
         }
     }
     std::fflush(out);
-    return failed;
+    return printed_failures;
+}
+
+const ImGuiTest* Harness::running_test() const {
+    if (!engine || !engine->TestContext) return nullptr;
+    return engine->TestContext->Test;
 }
 
 bool Harness::init() {
@@ -291,8 +300,8 @@ void reset_app(Harness& h, const std::string& rules_text) {
             }
         }
     }
-    fs::remove(fs::u8path(h.temp_dir + "\\hydra_paths.html"), ec);
-    fs::remove(fs::u8path(h.temp_dir + "\\hydra_dmcompare.html"), ec);
+    fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kPathReportFileName), ec);
+    fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kDmReportFileName), ec);
     {
         std::ofstream f(fs::u8path(h.ini_path), std::ios::trunc);
         f << "chartfolder=" << HYDRA_INPUT_DIR << "\n";
@@ -334,17 +343,7 @@ bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double
     return true;
 }
 
-bool jobs_busy(Harness& h) {
-    auto& a = *h.app;
-    if (a.scan_job && !a.scan_job->snapshot().finished) return true;
-    if (a.batch_running()) return true;
-    if (a.analyze_running()) return true;
-    if (a.report_job && !a.report_job->finished()) return true;
-    if (a.dm_fetch_job && !a.dm_fetch_job->finished()) return true;
-    if (a.dm_report_job && !a.dm_report_job->finished()) return true;
-    if (a.preview && a.preview->loading()) return true;
-    return false;
-}
+bool jobs_busy(Harness& h) { return h.app->any_job_running(); }
 
 namespace {
 // Statics, not gate members: a batch job keeps its copy of the analyzer and
