@@ -1,12 +1,14 @@
 #include "core/model.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <limits>
 
 #include "core/backend_value.h"
 #include "core/scoring.h"  // category_scores, multsqueeze_gain
+#include "core/stars.h"    // score_without_solo
 
 namespace hydra {
 
@@ -37,6 +39,13 @@ std::string dynamic_str(NoteDynamicType t) {
     return "none";
 }
 
+std::string dynamic_label(NoteDynamicType t) {
+    if (t == NoteDynamicType::Normal) return "";
+    std::string word = dynamic_str(t);
+    word[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(word[0])));
+    return word;
+}
+
 std::string color_notationstr(NoteColor c) {
     switch (c) {
         case NoteColor::Kick: return "K";
@@ -49,7 +58,7 @@ std::string color_notationstr(NoteColor c) {
 }
 
 std::string note_label(const ChordNote& note, bool pro) {
-    if (note.colortype == NoteColor::Kick) return note.is2x ? "2x kick" : "Kick";
+    if (note.colortype == NoteColor::Kick) return lane_flag(note) ? "2x kick" : "Kick";
     const std::string colour = color_str(note.colortype);
     if (!allows_cymbals(note.colortype)) return pro ? colour + " snare" : colour;  // red
     if (note.is_cymbal()) return colour + " cymbal";
@@ -67,13 +76,8 @@ bool ChordNote::operator==(const ChordNote& o) const {
 // ghost or accent in parentheses, so a ghost 2x kick reads "2x kick (Ghost)".
 // Every lane carries dynamics, the kick included (ADR 0012).
 std::string ChordNote::str(bool pro) const {
-    std::string mod;
-    switch (dynamictype) {
-        case NoteDynamicType::Normal: break;
-        case NoteDynamicType::Ghost: mod = " (Ghost)"; break;
-        case NoteDynamicType::Accent: mod = " (Accent)"; break;
-    }
-    return note_label(*this, pro) + mod;
+    const std::string word = dynamic_label(dynamictype);
+    return note_label(*this, pro) + (word.empty() ? "" : " (" + word + ")");
 }
 
 int ChordNote::basescore() const {
@@ -84,19 +88,21 @@ int ChordNote::basescore() const {
 
 // ---- Chord: code --------------------------------------------------------
 
-namespace {
-
-// A lane's "upper case" flag: a cymbal on yellow/blue/green, 2x on the kick.
-// Red has neither, so a red note is always lower case.
-bool lane_flag(const ChordNote& note) {
-    return note.colortype == NoteColor::Kick ? note.is2x : note.is_cymbal();
-}
-
 bool lane_allows_flag(NoteColor c) {
     return c == NoteColor::Kick || allows_cymbals(c);
 }
 
-}  // namespace
+void set_lane_flag(ChordNote& note) {
+    if (!lane_allows_flag(note.colortype))
+        throw std::logic_error("set_lane_flag: " + color_str(note.colortype) +
+                               " has no flag");
+    if (note.colortype == NoteColor::Kick) note.is2x = true;
+    else note.cymbaltype = NoteCymbalType::Cymbal;
+}
+
+bool lane_flag(const ChordNote& note) {
+    return note.colortype == NoteColor::Kick ? note.is2x : note.is_cymbal();
+}
 
 std::string Chord::code() const {
     std::string out(5, '.');
@@ -105,11 +111,17 @@ std::string Chord::code() const {
         const ChordNote& note = *notemap_[i];
         // A flag this lane cannot carry (a red cymbal, a 2x pad, a kick
         // cymbal) never comes out of the parsers; spelling it anyway would
-        // read back as a different chord.
-        const bool stray_flag = note.colortype == NoteColor::Kick
-                                    ? note.is_cymbal()
-                                    : note.is2x || (!allows_cymbals(note.colortype) &&
-                                                    note.is_cymbal());
+        // read back as a different chord. The note must be its plain self or
+        // its lane's flagged self (set_lane_flag), nothing else.
+        ChordNote plain = note;
+        plain.is2x = false;
+        plain.cymbaltype = NoteCymbalType::Normal;
+        bool stray_flag = note != plain;
+        if (stray_flag && lane_allows_flag(note.colortype)) {
+            ChordNote flagged = plain;
+            set_lane_flag(flagged);
+            stray_flag = note != flagged;
+        }
         if (stray_flag)
             throw std::logic_error("chord note has a flag its lane cannot carry");
         char ch = note.dynamictype == NoteDynamicType::Ghost    ? 'g'
@@ -142,8 +154,7 @@ Chord Chord::from_code(const std::string& code) {
         if (flag) {
             if (!lane_allows_flag(color))
                 throw std::out_of_range("unknown chord code: " + code);
-            if (color == NoteColor::Kick) note.is2x = true;
-            else note.cymbaltype = NoteCymbalType::Cymbal;
+            set_lane_flag(note);
         }
         chord.insert_note(note);
     }
@@ -253,8 +264,7 @@ ChordNote& Chord::add_note(NoteColor color) {
 void Chord::insert_note(const ChordNote& note) { at(note.colortype) = note; }
 
 void Chord::add_2x() {
-    add_note(NoteColor::Kick);
-    at(NoteColor::Kick)->is2x = true;
+    set_lane_flag(add_note(NoteColor::Kick));
 }
 
 // A cymbal, ghost or accent marker with no note of its colour under it is a
@@ -287,6 +297,14 @@ const ChordNote& Chord::activation_note() const {
     throw std::runtime_error("activation_note on empty chord");
 }
 
+// ---- SPSqueeze ----------------------------------------------------------
+
+std::optional<SqueezeKind> squeeze_kind_from_name(std::string_view name) {
+    for (SqueezeKind kind : {SqueezeKind::SqIn, SqueezeKind::SqOut})
+        if (name == SPSqueeze{kind, 0.0}.type_name()) return kind;
+    return std::nullopt;
+}
+
 // ---- BackendSqueeze -----------------------------------------------------
 
 bool BackendSqueeze::operator==(const BackendSqueeze& o) const {
@@ -294,9 +312,16 @@ bool BackendSqueeze::operator==(const BackendSqueeze& o) const {
            sqout_points == o.sqout_points && offset_ms == o.offset_ms;
 }
 
+double BackendSqueeze::offset() const {
+    if (!offset_ms)
+        throw std::logic_error("backend row on tick " + std::to_string(timecode.ticks()) +
+                               " has no offset");
+    return *offset_ms;
+}
+
 std::string BackendSqueeze::summarystr(bool squeezed_out, double hit_window_ms,
                                        double leeway_ms) const {
-    double off = offset_ms.value_or(0.0);
+    const double off = offset();
     const double w = hit_window_ms;
     const double band = kBackendInnerBandMs;
     if (squeezed_out) {
@@ -510,20 +535,15 @@ std::string Activation::notationstr_verbose() const {
 // ---- Path ---------------------------------------------------------------
 
 std::vector<Activation> Path::all_activations() const {
-    std::vector<Activation> out;
-    out.reserve(activations.size() + variant_tail.size());
-    out.insert(out.end(), activations.begin(), activations.end());
-    out.insert(out.end(), variant_tail.begin(), variant_tail.end());
-    return out;
+    const ActivationWalk walk = walk_activations();
+    return std::vector<Activation>(walk.begin(), walk.end());
 }
 
-bool Path::has_activations() const {
-    return !activations.empty() || !variant_tail.empty();
-}
+bool Path::has_activations() const { return !walk_activations().empty(); }
 
 int64_t Path::totalscore() const {
-    return score_base + score_combo + score_sp + score_solo + score_accents +
-           score_ghosts;
+    return score_total(score_base, score_combo, score_sp, score_solo, score_accents,
+                       score_ghosts);
 }
 
 std::string Path::pathstring() const {
@@ -544,7 +564,7 @@ std::string Path::pathstring_verbose(const std::vector<MultSqueeze>& multsqueeze
         std::string s;
         for (size_t i = 0; i < multsqueezes.size(); ++i) {
             if (i) s += ", ";
-            s += std::to_string(multsqueezes[i].multiplier()) + "x";
+            s += multsqueezes[i].notationstr();
         }
         sections.push_back(s);
     } else {
@@ -742,27 +762,29 @@ void Activation::set_sqout(int64_t tick) {
                    backends.end());
     sqout_tick = tick;
     const BackendSqueeze* row = sqout_row();
-    if (!row || !row->offset_ms) {
+    // No row on the tick, or a row with no offset (BackendSqueeze::offset
+    // throws): undo the stamp and fail loudly.
+    try {
+        if (!row)
+            throw std::logic_error("set_sqout: no backend row on tick " + std::to_string(tick));
+        sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, row->offset()});
+    } catch (const std::logic_error&) {
         sqout_tick.reset();
-        throw std::logic_error("set_sqout: no backend row with an offset on tick " +
-                               std::to_string(tick));
+        throw;
     }
-    sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, *row->offset_ms});
 }
 
 std::vector<BackendSqueeze> Activation::display_backends() const {
     // Nothing past a squeezed-out note can be a backend: the sqout note is hit
     // after SP has ended, and every later note is hit after that one. The
     // engine's copy-out already drops those rows; this keeps the display
-    // honest for any list that still holds one. Chart order is tick order.
-    auto is_beyond_sqout = [this](const BackendSqueeze& bsq) {
-        return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;
-    };
-
+    // honest for any list that still holds one. core::sqout_position says
+    // which rows are past it.
     std::vector<BackendSqueeze> out;
     for (const BackendSqueeze& bsq : backends) {
-        if (is_beyond_sqout(bsq)) continue;
-        if (within_squeeze_window(bsq.offset_ms.value_or(0.0)) || is_sqout_backend(bsq))
+        if (core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::After)
+            continue;
+        if (within_squeeze_window(bsq.offset()) || is_sqout_backend(bsq))
             out.push_back(bsq);
     }
     return out;
@@ -781,7 +803,7 @@ int64_t Path::chart_base_score() const {
 }
 
 double Path::avg_mult() const {
-    int64_t multscore = totalscore() - score_solo;
+    const int64_t multscore = score_without_solo(*this);
     int64_t basescore = chart_base_score();
     if (basescore == 0) return 0.0;
     return static_cast<double>(multscore) / static_cast<double>(basescore);

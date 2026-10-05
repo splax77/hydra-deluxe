@@ -20,6 +20,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core/backend_value.h"
@@ -48,8 +49,19 @@ enum class NoteDynamicType { Normal = 1, Ghost = 2, Accent = 3 };
 enum class NoteCymbalType { Normal = 1, Cymbal = 2 };
 
 bool allows_cymbals(NoteColor c);
+struct ChordNote;
+// A lane's one flag, the upper-case letter of Chord::code: 2x on the kick, a
+// cymbal on a cymbal pad (allows_cymbals). lane_allows_flag says whether the
+// lane has one, set_lane_flag is the one writer of it, and lane_flag reads
+// it back.
+bool lane_allows_flag(NoteColor c);
+void set_lane_flag(ChordNote& note);
+bool lane_flag(const ChordNote& note);
 std::string color_str(NoteColor c);         // "Kick"/"Red"/...
 std::string dynamic_str(NoteDynamicType t); // "none"/"ghost"/"accent"
+// The display word for a dynamic: dynamic_str capitalised, and "" for
+// Normal, which has no word on screen.
+std::string dynamic_label(NoteDynamicType t);
 std::string color_notationstr(NoteColor c); // "K"/"R"/"Y"/"B"/"G"
 
 struct ChordNote;
@@ -126,6 +138,14 @@ inline constexpr int kNoteBasePoints = 50;
 inline constexpr int kCymbalBonusPoints = 15;
 // Solo bonus: this many points per note hit inside a solo section.
 inline constexpr int kSoloBonusPerNote = 100;
+
+// A path's total score: the one sum of the six stored score categories, in
+// the order Path stores them. Path::totalscore calls it; a free function so
+// a caller with no Path can too.
+inline int64_t score_total(int64_t base, int64_t combo, int64_t sp, int64_t solo,
+                           int64_t accents, int64_t ghosts) {
+    return base + combo + sp + solo + accents + ghosts;
+}
 
 // ---- ChordNote ----------------------------------------------------------
 
@@ -290,12 +310,20 @@ struct SPSqueeze {
     std::optional<TransferScale> transfer;
 };
 
+// The kind whose type_name is `name`; empty for any other word.
+std::optional<SqueezeKind> squeeze_kind_from_name(std::string_view name);
+
 struct BackendSqueeze {
     Timecode timecode;
     Chord chord;
     int points = 0;
     int sqout_points = 0;
     std::optional<double> offset_ms;
+
+    // The one reader of offset_ms. The engine always stores one; a row
+    // without it (hand-built or corrupt) throws std::logic_error naming its
+    // tick instead of showing a confident 0 ms (audit finding 346).
+    double offset() const;
 
     bool operator==(const BackendSqueeze& o) const;
     // Rating label. The outer +/-W edges come from the hit window; the inner
