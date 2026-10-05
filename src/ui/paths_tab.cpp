@@ -72,11 +72,6 @@ void end_overlay(const ImVec2& top, float h) {
     ImGui::Dummy(ImVec2(0.0f, 0.0f));
 }
 
-// True when an item `w` wide still fits after the last item, `spacing` apart.
-bool fits_on_line(float w, float spacing) {
-    return ImGui::GetItemRectMax().x + spacing + w <= ImGui::GetCurrentWindow()->WorkRect.Max.x;
-}
-
 // Keep the next item, `w` wide, on the last item's line when it fits there;
 // otherwise it starts the next line. A row of variable-length pieces wraps
 // instead of running past the column's edge.
@@ -90,10 +85,6 @@ void align_right(float w) {
     if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
     const float room = ImGui::GetContentRegionAvail().x - w;
     if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);
-}
-
-float button_width(const char* label) {
-    return ImGui::CalcTextSize(label, nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
 }
 
 // ---- the path list ----------------------------------------------------------
@@ -376,7 +367,7 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
     ImGui::PopFont();
     char show[48];
     std::snprintf(show, sizeof(show), "Show in Preview >##showact%d", a.number);
-    align_right(button_width("Show in Preview >"));
+    align_right(button_slot_width("Show in Preview >"));
     if (ImGui::SmallButton(show)) ui.preview_jump = i;
 
     if (!a.early_fill.empty()) ImGui::TextUnformatted(a.early_fill.c_str());
@@ -432,7 +423,7 @@ void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
     }
     const bool all = ui.all_open();
     const char* toggle = all ? "Collapse all" : "Expand all";
-    align_right(button_width(toggle));
+    align_right(button_slot_width(toggle));
     if (ImGui::SmallButton(toggle)) ui.set_all(!all);
 
     render_timeline(view);
@@ -469,9 +460,9 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     const std::string summary = app::multsqueeze_summary(d.squeezes);
     flow_next(ImGui::CalcTextSize(summary.c_str()).x, spacing);
     ImGui::TextDisabled("%s", summary.c_str());
-    flow_next(button_width("Score breakdown##breakdown"), px(16.0f));
+    flow_next(button_slot_width("Score breakdown##breakdown"), px(16.0f));
     fold_button("Score breakdown##breakdown", ui.breakdown_open);
-    flow_next(button_width("Copy path"), px(24.0f));
+    flow_next(button_slot_width("Copy path"), px(24.0f));
     if (ImGui::Button("Copy path")) copy_selected_path(app);
     hint("Ctrl+C also copies the selected path");
     const double copied_at = app.details_ui.copied_at;

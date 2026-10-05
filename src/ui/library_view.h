@@ -13,6 +13,20 @@ namespace hydra::ui {
 
 void render_main_window(AppState& app);
 
+// The library's narrowest and widest widths with the song panel open, in
+// `room` px for the two together: the library keeps kMinLibraryW and the
+// panel kMinSongPanelW (both in details_view.h, through px()); when the room
+// can't hold both, the library keeps its minimum.
+struct LibrarySplitBounds {
+    float min_w = 0.0f;
+    float max_w = 0.0f;
+};
+LibrarySplitBounds library_split_bounds(float room);
+
+// How wide the library is with the song panel open: `share` of `room`, held
+// inside library_split_bounds(room).
+float library_split_width(float room, float share);
+
 }  // namespace hydra::ui
 
 #endif  // HYDRA_UI_LIBRARY_VIEW_H

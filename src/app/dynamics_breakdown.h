@@ -140,11 +140,8 @@ std::optional<DynamicsBreakdown> load_stored_dynamics(store::RecordStore& store,
 void save_dynamics(store::RecordStore& store, const store::DynamicsKey& key,
                    const DynamicsBreakdown& breakdown);
 
-// The in-memory key of one count: the chart file, the pro-drums view and the
-// difficulty, as "path|pro|Expert" or "path|std|Hard".
-std::string dynamics_cache_key(const std::string& notespath, bool pro, Difficulty difficulty);
-
-// The stored-row key for one count.
+// The key of one count, for its stored row and for the Dynamics tab's copy in
+// memory alike.
 store::DynamicsKey dynamics_store_key(const std::string& md5, Difficulty difficulty, bool pro);
 
 // After an analysis, its dynamics count as a free by-product (the chart is

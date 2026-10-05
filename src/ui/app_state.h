@@ -295,7 +295,7 @@ public:
     // pro + difficulty; invalidated when any of those change).
     std::unique_ptr<DynamicsLoadJob> dynamics_job;
     std::optional<app::DynamicsBreakdown> dynamics_result;
-    std::string dynamics_key;  // the key the cached result was built for
+    std::optional<store::DynamicsKey> dynamics_key;  // the key the cached result was built for
     std::string dynamics_store_error;  // non-empty when put_dynamics failed
 
     // Dynamics lifecycle: check the store for a cached breakdown, manage the
