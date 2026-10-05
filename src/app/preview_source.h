@@ -50,11 +50,11 @@ struct PreviewAudioStem {
 struct PreviewSource {
     Song song;
     std::vector<PreviewAudioStem> stems;
-    // Where chart time 0 sits in the audio: audio_ms = chart_ms +
-    // audio_offset_ms. From the delay (ms) and the .chart Offset (s), as
-    // Clone Hero applies them. A folder chart's delay comes from its song.ini
-    // and a .sng's from its metadata block. A .srb has no delay field, so
-    // only its chart's Offset counts.
+    // Where chart time 0 sits in the audio (audio_ms_of_chart_ms in
+    // ui/preview_transport.h turns it into a position). From the delay (ms)
+    // and the .chart Offset (s), as Clone Hero applies them. A folder
+    // chart's delay comes from its song.ini and a .sng's from its metadata
+    // block. A .srb has no delay field, so only its chart's Offset counts.
     double audio_offset_ms = 0.0;
 };
 
