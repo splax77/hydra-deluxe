@@ -132,8 +132,7 @@ void render_path_picker(AppState& app) {
         widest = std::max(widest, ImGui::CalcTextSize(hydra::app::preview_path_label(b).c_str()).x);
     const float chrome = ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
     const float box_w = std::min(widest + chrome, ImGui::GetContentRegionAvail().x);
-    const std::string shown = render::ellipsize(
-        current, box_w - chrome, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });
+    const std::string shown = render::ellipsize(current, box_w - chrome, text_width);
     ImGui::SetNextItemWidth(box_w);
     const bool open = ImGui::BeginCombo("##previewpath", shown.c_str());
     if (!open && shown != current) overflow_tooltip(current.c_str());
@@ -295,7 +294,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // The scrubber ends at the last note (D50 item 4); while the audio plays
     // on past it, the thumb waits at the right end.
     const hydra::app::PreviewTimeBox box = pc->time_box();
-    const double scrub_len_ms = pc->length_ms();
+    const double scrub_len_ms = pc->scrub_end_ms();
     float pos_s =
         static_cast<float>(hydra::app::scrub_thumb_ms(pc->position_ms(), scrub_len_ms) / 1000.0);
     const float len_s = static_cast<float>(scrub_len_ms / 1000.0);
@@ -579,8 +578,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // box's panel style. How long a bar of SP lasts at the playhead, then
         // "empties in" (teal, SP running on the path) or "full meter" (grey,
         // if activated here). Every number is build_drain_box's. Teal means
-        // SP running everywhere (D48, Q26), so the text reads the floor's own
-        // teal from the preview config and the two can never differ.
+        // SP running everywhere (D48, Q26), so the text reads the same teal
+        // the floor starts from (the preview config's sp_active_color). The
+        // floor draws it darkened (sp_active_darken); the text uses it as is.
         if (drain_drawn) {
             float d_w = 0.0f;
             for (const char* l : d_lines) d_w = std::max(d_w, text_width(size, l));

@@ -232,12 +232,11 @@ struct PreviewScene {
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
     int64_t tick_resolution = 0;       // ticks per quarter note
-    // The last note's onset: where the SP curve closes and the Preview's own
-    // song end. Playback runs to the transport's length instead
-    // (PreviewTransport::load takes the later of this and the audio's end).
-    // The scrubber's right edge does not read this field: it reads
-    // store::song_length_ms, the length song_fraction and the Paths timeline
-    // read (see scrub_end_ms).
+    // The song's length, store::song_length_ms of the song (0 with no
+    // notes): the same number the scrubber's right edge (scrub_end_ms) and
+    // the Paths timeline read. The SP curve closes here, and the transport
+    // takes it as the last note time (PreviewTransport::load plays to the
+    // later of this and the audio's end).
     double song_length_ms = 0.0;
     bool has_notes = false;
 };
@@ -284,7 +283,8 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms);
 // Is a note at `note_ms` struck with the playhead at `now_ms`? Yes when it is
 // at or before the playhead, so a note exactly on the playhead counts as hit
 // and a jump to an activation lands on a struck chord (D48, Q27). The score
-// box and the highway's gem flash both ask this.
+// box, the highway's gem flash and the drain box's "is SP running" check all
+// ask this.
 inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }
 
 // The Star Power drain box the Preview draws beside the SP gauge, at `now_ms`.

@@ -146,10 +146,17 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
-    double length_ms() const;
+    // Where the scrubber ends: the last note (app::scrub_end_ms, D50 item 4),
+    // or playback_end_ms() for a chart with no notes. Not where playback
+    // stops.
+    double scrub_end_ms() const;
+    // Where playback stops: the later of the last note and the audio's end
+    // (PreviewTransport::length_ms). Play, the clock and jumps run to here.
+    double playback_end_ms() const;
     void seek_ms(double ms);
     // Move the playhead by `delta_ms` (the -5s/+5s buttons, Left/Right).
-    // Playing stays playing; the transport stops it at the song's ends.
+    // Playing stays playing; the transport stops it at 0 and at
+    // playback_end_ms().
     void jump_ms(double delta_ms);
     // Pause, then move the playhead `delta_ticks` chart ticks from the tick
     // the time box shows (the < 5 Ticks / 5 Ticks > buttons, comma and period).
@@ -179,7 +186,7 @@ public:
     hydra::app::PreviewDrainBox drain_box() const;
 
     // The drawn path's activations on the scrubber, as fractions of
-    // length_ms() (app::build_scrub_marks). Empty until a path's scene is in.
+    // scrub_end_ms() (app::build_scrub_marks). Empty until a path's scene is in.
     // Built once per scene and length, then cached (see SceneCache below);
     // the reference holds until the next call.
     const std::vector<double>& scrub_marks() const;

@@ -21,6 +21,7 @@
 #include <optional>
 
 #include "app/preview_clock.h"
+#include "audio/frames.h"
 #include "audio/player.h"
 
 namespace hydra::ui {
@@ -35,8 +36,7 @@ template <class Audio>
 std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {
     if (audio.channels() <= 0 || audio.sample_rate() <= 0 || audio.length_frames() <= 0)
         return std::nullopt;
-    return static_cast<double>(audio.length_frames()) * 1000.0 / audio.sample_rate() -
-           audio_offset_ms;
+    return audio::ms_of_frames(audio.length_frames(), audio.sample_rate()) - audio_offset_ms;
 }
 
 class PreviewTransport {
@@ -49,10 +49,10 @@ public:
     // Load a chart's audio (may be null/empty for a chart with no audio), the
     // chart's last note time, and where chart time 0 sits in the audio
     // (audio_ms = chart_ms + audio_offset_ms, never negative; see
-    // PreviewLoadJob). length_ms() becomes the scrub range: the later of
+    // PreviewLoadJob). length_ms() becomes the playback range: the later of
     // `last_note_ms` and the audio's end in chart time, so the audio's tail
-    // after the last note stays playable (D48, Q25). It is how far the
-    // scrubber reaches, not where the song's notes end.
+    // after the last note stays playable (D48, Q25). It is where playback
+    // stops, not where the scrubber ends (that is the last note, D50 item 4).
     // Resets the playhead to the offset, paused.
     void load(std::unique_ptr<audio::Playhead> playhead, double last_note_ms,
               double audio_offset_ms = 0.0);
@@ -63,7 +63,7 @@ public:
     void toggle();
     void seek_ms(double ms);  // clamped to [0, length_ms()]
     bool playing() const;
-    double length_ms() const;  // the scrub range (see load), not the last note
+    double length_ms() const;  // the playback range (see load), not the last note
     bool has_audio() const;  // a loaded playhead with > 0 frames
 
     // The song time now. If playing and at/after the end, pauses and pins the

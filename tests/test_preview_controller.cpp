@@ -335,7 +335,7 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
     CHECK(pc.has_audio());        // the stem decoded; only the device failed
     CHECK_FALSE(pc.has_error());  // so no "Preview failed"
     CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_init failed");
-    CHECK(pc.length_ms() > 0.0);  // the scene is there to draw
+    CHECK(pc.scrub_end_ms() > 0.0);  // the scene is there to draw
     pc.play();
     CHECK(pc.playing());          // the clock runs without a device
 
@@ -345,9 +345,9 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
 
 // The scrubber ends at the last note while the music plays on (D50 item 4).
 // The chart's last note is at 100 ms and its audio runs 5 s. The slider's
-// range is length_ms(), so it reaches only the last note; a drag to its right
-// end seeks there, not to the audio's end. Playback can still run into the
-// tail, and there the thumb waits at the right end.
+// range is scrub_end_ms(), so it reaches only the last note; a drag to its
+// right end seeks there, not to the audio's end. Playback can still run into
+// the tail, and there the thumb waits at the right end.
 TEST_CASE("scrub marks: the Preview's scrubber ends at the last note while the audio plays on") {
     PreviewController pc(nullptr, nullptr);
     pc.set_audio_device_factory(
@@ -364,14 +364,38 @@ TEST_CASE("scrub marks: the Preview's scrubber ends at the last note while the a
     REQUIRE_FALSE(pc.loading());
     REQUIRE(pc.has_audio());
 
-    CHECK(pc.length_ms() == doctest::Approx(100.0));  // the slider's right end
-    pc.seek_ms(pc.length_ms());                        // a drag to that end
+    CHECK(pc.scrub_end_ms() == doctest::Approx(100.0));  // the slider's right end
+    pc.seek_ms(pc.scrub_end_ms());                        // a drag to that end
     CHECK(pc.position_ms() == doctest::Approx(100.0));
 
     pc.jump_ms(4000.0);  // into the tail, which still plays
     CHECK(pc.position_ms() == doctest::Approx(4100.0));
-    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.length_ms()) ==
+    CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.scrub_end_ms()) ==
           doctest::Approx(100.0));
+}
+
+// A jump past the end stops where playback stops: the audio's end, not the
+// scrubber's. Same chart: last note at 100 ms, the sine runs 5 s.
+TEST_CASE("a jump past the end of the Preview stops at the audio's end") {
+    PreviewController pc(nullptr, nullptr);
+    pc.set_audio_device_factory(
+        [](int, int, PreviewController::AudioSource)
+            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+            throw std::runtime_error("no device in tests");
+        });
+    pc.open(entry_for(short_chart_with_long_audio()), true, true, Difficulty::Expert, nullptr, "",
+            4);
+    for (int i = 0; i < 1200 && pc.loading(); ++i) {
+        pc.poll();
+        Sleep(50);
+    }
+    REQUIRE_FALSE(pc.loading());
+    REQUIRE(pc.has_audio());
+
+    CHECK(pc.playback_end_ms() == doctest::Approx(5000.0));
+    CHECK(pc.scrub_end_ms() == doctest::Approx(100.0));
+    pc.jump_ms(60000.0);
+    CHECK(pc.position_ms() == doctest::Approx(5000.0));
 }
 
 // Picking another path with the Preview open used to rebuild the scene inside

@@ -1,11 +1,11 @@
 #include "ui/preview_load_job.h"
 
 #include <algorithm>
-#include <cmath>
 #include <future>
 #include <string>
 
 #include "app/preview_source.h"
+#include "audio/frames.h"  // frames_of_ms
 #include "app/preview_view.h"
 #include "core/model.h"
 #include "core/winstr.h"
@@ -188,7 +188,7 @@ void PreviewLoadJob::run() {
         double offset_ms = ps.audio_offset_ms;
         int64_t front_pad = 0;
         if (offset_ms < 0.0) {
-            front_pad = static_cast<int64_t>(std::llround(-offset_ms * kOutRate / 1000.0));
+            front_pad = audio::frames_of_ms(-offset_ms, kOutRate);
             offset_ms = 0.0;
         }
         auto mix = std::make_unique<audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,

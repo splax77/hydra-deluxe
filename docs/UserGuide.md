@@ -157,7 +157,7 @@ The scrubber under the highway shows where you are. Its gold marks are the path'
 
 The boxes on the highway:
 
-- **Time box** (top left): the measure you're at and the song's last measure, the tempo and time signature, and the practice section when the chart has them.
+- **Time box** (top left): the measure you're at and the measure where playback ends, the tempo and time signature, and the practice section when the chart has them. Playback ends at the end of the audio (or at the last note, when the audio stops first), and the clock beside the scrubber counts to that same point.
 - **Score box** (under it): the running score in large type, then the multiplier and combo, like `x4 · combo 212`. It appears once the song is analyzed. It reads `Score unavailable` when the path can't be replayed to its stored score.
 - **Next activation** (bottom left): the next activation's number, where it is, and its chord.
 - **SP meter** (right edge): a gauge of banked Star Power, one line per bar, with the bars shown under it. It rises one bar at each phrase you collect and drains through each activation, reaching empty exactly where the path's SP ends. It holds as many bars as the result's SP cap. Before the song is analyzed, it uses the SP cap from the Analysis settings, the one the next analysis will run at.

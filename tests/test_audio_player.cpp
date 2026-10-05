@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "audio/decode.h"
+#include "audio/frames.h"
 #include "audio/player.h"
 
 using namespace hydra::audio;
@@ -38,6 +39,19 @@ TEST_CASE("Playhead starts paused at the start with the mix's format") {
     CHECK(t.sample_rate() == 48000);
     CHECK(t.length_ms() == doctest::Approx(100.0));  // 4800 / 48000 s
     CHECK(t.position_ms() == doctest::Approx(0.0));
+}
+
+// The one frames-and-ms conversion (audit finding 182). Frames to ms is exact
+// division; a rate of 0 (no audio) reads as 0 ms. Ms to frames rounds to the
+// nearest frame, a half away from zero.
+TEST_CASE("ms_of_frames and frames_of_ms convert at the sample rate") {
+    CHECK(ms_of_frames(4800, 48000) == 100.0);
+    CHECK(ms_of_frames(240000, 48000) == 5000.0);
+    CHECK(ms_of_frames(4800, 0) == 0.0);
+    CHECK(frames_of_ms(100.0, 48000) == 4800);
+    CHECK(frames_of_ms(2.5, 1000) == 3);
+    CHECK(frames_of_ms(2.4, 1000) == 2);
+    CHECK(frames_of_ms(-2.5, 1000) == -3);
 }
 
 TEST_CASE("play, pause, and toggle drive the playhead state") {

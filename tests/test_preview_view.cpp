@@ -274,6 +274,27 @@ TEST_CASE("build_preview_scene: notes carry lane and drum attributes") {
     CHECK(scene.song_length_ms == doctest::Approx(750.0));
 }
 
+// The scene's song length is the store's (store::song_length_ms): the last
+// timestamp's onset. A last timestamp with no notes used to split them, the
+// scene stopping at the earlier note. The parsers never emit one today, so
+// this hand-built song is the one place the two could differ. The beat lines
+// still end two measures past the last drawn note, as before.
+TEST_CASE("build_preview_scene: the song length is the store's, even past the last drawn note") {
+    Song song = make_hand_song();
+    SongTimestamp empty;  // a timestamp with no notes, after the last chord
+    empty.timecode = song.timecode(960);
+    song.sequence.push_back(empty);
+    PreviewScene scene = build_preview_scene(song, nullptr);
+
+    REQUIRE(scene.has_notes);
+    CHECK(scene.notes.back().ms == doctest::Approx(750.0));
+    CHECK(scene.song_length_ms == doctest::Approx(1000.0));  // tick 960
+    const PreviewScene before = build_preview_scene(make_hand_song(), nullptr);
+    REQUIRE_FALSE(scene.beats.empty());
+    REQUIRE_FALSE(before.beats.empty());
+    CHECK(scene.beats.back().tick == before.beats.back().tick);
+}
+
 TEST_CASE("build_preview_scene: SP phrase, solo, and fill spans") {
     Song song = make_hand_song();
     PreviewScene scene = build_preview_scene(song, nullptr);
