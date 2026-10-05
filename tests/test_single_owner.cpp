@@ -3719,6 +3719,93 @@ const std::vector<OwnerRule>& rules() {
          {"REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);"},
          {},
          {"src"}},
+        // ---- phase 6 task J4-5: unit tests read production constants ----
+        // A test that types the 1.1 deadline's tick math again instead of
+        // pinning the ms from one run.
+        {"By what millisecond must a 1.1 fill spawn? (tests)",
+         "activation_fill_deadline_ms in src/search/graph.cpp",
+         R"(fill_length - 4 \* res)",
+         "",
+         {},
+         {},
+         "audit finding 263; phase 6 task J4-5 (D53, D54)",
+         {"const int64_t tick_e = fill_end - fill_length - 4 * res;"},
+         {"CHECK(ch11(t, fill_end, fill_lengths[f]) == doctest::Approx(want[r][b][f]));"},
+         {},
+         {"tests"}},
+        // A test that adds one to a combo to find a note's multiplier, where
+        // category_scores already stamps it.
+        {"What multiplier does each note in a chord score at? (tests)",
+         "category_scores in src/core/scoring.cpp",
+         R"(to_multiplier\([\w.]+ \+ 1)",
+         "",
+         {},
+         {},
+         "audit finding 266; phase 6 task J4-5 (D53, D54)",
+         {"const int first_cut = notes[0].basescore() * to_multiplier(combo + 1);",
+          "notes[i].basescore() * to_multiplier(combo + 1 + static_cast<int>(i));",
+          "CHECK(c.multiplier == to_multiplier(c.combo_before + 1));"},
+         {"CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));"},
+         {},
+         {"tests"}},
+        // The highway's half-tick span end and the glow's fade length typed
+        // into the draw tests as numbers.
+        {"Where does a highway span end, and how fast does a target glow fade? (tests)",
+         "kSpanEndTicks in src/render/track_state.h and targets.secs_light in "
+         "assets/preview/3d-config.json",
+         R"(1\.5005|0\.1666666)",
+         "",
+         {},
+         {},
+         "audit finding 276 (the highway half); phase 6 task J4-5 (D53, D54)",
+         {"CHECK(c.hi[2] == doctest::Approx(time_to_z(cfg, now, 1.5005, 1.0)));",
+          "CHECK(c.alpha == doctest::Approx(1.0f - 0.05f / 0.1666666f));",
+          "CHECK(c.alpha == doctest::Approx(1.0f - 0.15f / 0.1666666f));",
+          "CHECK(c.hi[2] == doctest::Approx(time_to_z(cfg, 1.0, 1.5005, 1.0)));"},
+         {"doctest::Approx(time_to_z(cfg, now, 1.5 + kSpanEndTicks / 1000.0, 1.0)));"},
+         {{"tests/test_preview_config.cpp",
+           "CHECK(c.track.targets_secs_light == doctest::Approx(0.1666666));",
+           "the config test pins the shipped json's own value (D54, item 220)"}},
+         {"tests"}},
+        // A test that takes the solo bonus back off the running total itself.
+        {"What running total does the score box show during a solo? (tests)",
+         "replay_path's cum_onscreen_total in src/core/replay.cpp",
+         R"(\.cum\.total\(\)\s*-\s*)",
+         "",
+         {},
+         {},
+         "audit finding 281; phase 6 task J4-5 (D53, D54)",
+         {"CHECK(scene.score.steps[1].total == r.chords[1].cum.total() - "
+          "r.chords[1].points.solo);"},
+         {"CHECK(c.cum_onscreen_total <= c.cum.total());"},
+         {},
+         {"tests"}},
+        // Copying a ReplayScore into a Path field by field anywhere but
+        // assign_score.
+        {"Which Path field holds which ReplayScore category?",
+         "score_of and assign_score in src/core/replay.cpp",
+         R"(score_ghosts\s*=\s*\w+\.ghost)",
+         "",
+         {},
+         {},
+         "audit finding 282; phase 6 task J4-5 (D53, D54)",
+         {"p.score_ghosts = s.ghost;"},
+         {"s.ghost = path.score_ghosts;"},
+         {{"src/core/replay.cpp", "path.score_ghosts = s.ghost;", "assign_score, the owner"}},
+         {"src", "tools", "tests"}},
+        // A field written beside PreviewScene::timing that holds its
+        // resolution a second time.
+        {"How many ticks per quarter note does the Preview scene have?",
+         "PreviewScene::timing in src/app/preview_view.h",
+         R"(\.tick_resolution\s*=\s*)",
+         "",
+         {},
+         {},
+         "audit finding 135; phase 6 task J4-5 (D53, D54)",
+         {"scene.tick_resolution = timing.tick_resolution();", "s.tick_resolution = 1000;"},
+         {"CHECK(scene.timing->tick_resolution() == 480);"},
+         {},
+         {"src", "tools", "tests"}},
     };
     return r;
 }
