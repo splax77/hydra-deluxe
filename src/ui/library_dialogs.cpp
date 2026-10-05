@@ -279,7 +279,8 @@ void render_batch_confirm(AppState& app) {
         return;
     }
 
-    // Charts, not rows: a chart in two folders is one chart (D62 item 3).
+    // Library rows, each copy of a chart counted, like the library's own
+    // counts (D76).
     const int64_t total = app.batch_scope_charts;
     const int64_t with = app.batch_scope_with_result;
     const int64_t without = total - with;

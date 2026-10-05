@@ -8,6 +8,7 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -385,9 +386,9 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
     CHECK(store.counts().second == 0);
 }
 
-TEST_CASE("run_batch analyzes a chart found in two folders once") {
-    // D51 call 10 (finding 63): two copies of one chart are one chart. The
-    // batch used to analyze it once per folder and count each copy.
+TEST_CASE("run_batch analyzes a chart found in two folders once, and counts both rows") {
+    // D51 call 10 (finding 63): two copies of one chart are analyzed once.
+    // D76: both rows count, the way the library counts them.
     std::vector<ScanItem> items = fake_items(1);
     items.push_back(items[0]);
     items[1].notespath = "copy_fake_0.chart";
@@ -408,7 +409,7 @@ TEST_CASE("run_batch analyzes a chart found in two folders once") {
     hydra::store::RecordStore store(":memory:");
     run_batch(items, run, store, /*redo=*/false, 1, callbacks);
 
-    CHECK(total.load() == 1);
+    CHECK(total.load() == 2);
     CHECK(runs.load() == 1);
 }
 
@@ -426,9 +427,9 @@ std::vector<ScanItem> items_with_a_copy() {
 
 }  // namespace
 
-TEST_CASE("plan_batch: a second copy is one chart and a stored chart is skipped") {
-    // D51 call 10 and D62 item 3: the copy counts nowhere, the stored chart
-    // counts once as skipped.
+TEST_CASE("plan_batch: a second copy runs with its first and counts as a row") {
+    // D51 call 10: the copy is not run again. D76: it adds a row to its
+    // chart, so the plan's rows add up to the scan's.
     const std::vector<ScanItem> items = items_with_a_copy();
     const BatchPlan plan = plan_batch(items, {"fake2"});
 
@@ -436,7 +437,20 @@ TEST_CASE("plan_batch: a second copy is one chart and a stored chart is skipped"
     CHECK(plan.todo[0].md5 == "fake0");
     CHECK(plan.todo[0].notespath == "fake_0.chart");  // the first copy wins
     CHECK(plan.todo[1].md5 == "fake1");
+    CHECK(plan.rows == std::vector<int>{2, 1});
     CHECK(plan.skipped == 1);
+    CHECK(plan.todo_rows() + plan.skipped == static_cast<int>(items.size()));
+}
+
+TEST_CASE("plan_batch: every copy of a stored chart counts as skipped") {
+    std::vector<ScanItem> items = items_with_a_copy();
+    const BatchPlan plan = plan_batch(items, {"fake0"});
+
+    REQUIRE(plan.todo.size() == 2);
+    CHECK(plan.todo[0].md5 == "fake1");
+    CHECK(plan.todo[1].md5 == "fake2");
+    CHECK(plan.skipped == 2);
+    CHECK(plan.todo_rows() + plan.skipped == static_cast<int>(items.size()));
 }
 
 TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
@@ -465,12 +479,44 @@ TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
     callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
     run_batch(items, run, store, /*redo=*/false, 1, callbacks);
 
+    // Chart A runs once for both its rows (D51 call 10), and both count (D76).
     CHECK(runs.load() == 3);
-    CHECK(last.total == 2);
-    CHECK(last.analyzed == 1);
+    CHECK(last.total == 3);
+    CHECK(last.analyzed == 2);
     CHECK(last.failed == 1);
     CHECK(last.skipped == 1);
-    CHECK(last.completed == 2);
+    CHECK(last.completed == 3);
+    CHECK(last.analyzed + last.failed + last.skipped == static_cast<int>(items.size()));
+}
+
+TEST_CASE("run_batch reports a failed chart once per copy, under its first copy's name") {
+    // D76: a failure list is as long as its count. D51 call 10: the first
+    // copy names the chart.
+    std::vector<ScanItem> items = items_with_a_copy();
+    items[2].title = "a later copy's own name";
+    BatchCallbacks callbacks;
+    std::atomic<int> runs{0};
+    callbacks.analyze = [&runs](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) -> AnalysisResult {
+        ++runs;
+        throw std::runtime_error("fake analyzer");
+    };
+    std::vector<std::string> titles;
+    callbacks.on_error = [&titles](const std::string& title, const std::string&,
+                                   const std::string&) { titles.push_back(title); };
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+
+    BatchRun run;
+    run.chartmode = "copy-fail-test";
+    hydra::store::RecordStore store(":memory:");
+    run_batch(items, run, store, /*redo=*/false, 1, callbacks);
+
+    CHECK(runs.load() == 3);
+    CHECK(last.failed == 4);
+    REQUIRE(titles.size() == 4);
+    CHECK(std::count(titles.begin(), titles.end(), items[0].title) == 2);
+    CHECK(std::count(titles.begin(), titles.end(), items[2].title) == 0);
 }
 
 // Finding 193 (D71, open question 5): a save that fails during a batch used
