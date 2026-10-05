@@ -715,8 +715,7 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
         r.actual = actual;
         r.optimal = optimal;
         if (optimal) r.delta = *optimal - actual;
-        if (optimal && *optimal > 0)
-            r.pct = static_cast<double>(actual) / static_cast<double>(*optimal) * 100.0;
+        if (optimal && *optimal > 0) r.pct_h = app::percent_steps(actual, *optimal, 2);
         r.is_fc = fc;
         r.percent = fc ? 100 : 97;
         r.speed = 100;
@@ -1001,7 +1000,7 @@ TEST_CASE("path report counts charts by hash in the tile and the subtitle") {
 
 TEST_CASE("comparison page explains its columns and splits the missing scores") {
     const std::string html = dm_report::build_dm_html({}, "sub", "foot");
-    for (const char* key : {"actual", "optimal", "delta", "pct", "fc", "speed", "rank",
+    for (const char* key : {"actual", "optimal", "delta", "pct_h", "fc", "speed", "rank",
                             "posted", "status"}) {
         INFO(key);
         CHECK(col_line(html, key).find("d:'") != std::string::npos);

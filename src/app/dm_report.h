@@ -30,7 +30,10 @@ struct DmReportRow {
     int64_t actual = 0;                 // score the player posted
     std::optional<int64_t> optimal;     // Hydra best-path score; unset with no current result
     std::optional<int64_t> delta;       // optimal - actual (points left); <0 == above optimal
-    std::optional<double> pct;          // actual/optimal*100, only at base speed
+    // Actual as a percent of optimal, in whole hundredths of a percent
+    // (percent_steps, the number the cell's text is written from: 9901 reads
+    // 99.01%). Set only at base speed with an optimal score above zero.
+    std::optional<int64_t> pct_h;
     bool is_fc = false;
     int percent = 0;
     int speed = net::kBaseSpeedPercent;

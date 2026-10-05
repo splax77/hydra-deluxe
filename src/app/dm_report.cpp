@@ -1,10 +1,9 @@
 #include "app/dm_report.h"
 
-#include <cstdio>
 #include <unordered_map>
 #include <unordered_set>
 
-#include "app/display_format.h"  // format_percent
+#include "app/display_format.h"  // format_percent, percent_steps
 #include "app/html_page.h"
 #include "app/report.h"  // records_by_hash
 #include "core/model.h"  // counted
@@ -83,7 +82,7 @@ const PAGE = {
     {k:'actual',  t:'Actual',    num:true,  d:'The score the player posted.'},
     {k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap 4, the Clone Hero rule.'},
     {k:'delta',   t:'Points left', num:true, d:'Hydra opt minus Actual. Marked over when the posted score is higher.'},
-    {k:'pct',     t:'% of opt',  num:true,  d:'Actual as a percent of Hydra opt. Only for scores played at __BASE_SPEED__% speed.'},
+    {k:'pct_h',   t:'% of opt',  num:true,  d:'Actual as a percent of Hydra opt. Only for scores played at __BASE_SPEED__% speed.'},
     {k:'fc',      t:'FC',        num:true,  d:'Full combo: every note hit.'},
     {k:'percent', t:'Percent',   num:true,  d:'The percent the leaderboard lists for this score.'},
     {k:'speed',   t:'Speed',     num:true,  d:'The playback speed the score was set at. __BASE_SPEED__% is normal speed.'},
@@ -227,8 +226,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             int64_t opt = *rec->summary.score;
             row.optimal = opt;
             row.delta = opt - s.score;
-            if (base && opt > 0)
-                row.pct = static_cast<double>(s.score) / static_cast<double>(opt) * 100.0;
+            if (base && opt > 0) row.pct_h = percent_steps(s.score, opt, 2);
             row.status = s.score > opt    ? "above optimal"
                          : s.score == opt ? "at optimal"
                                           : "under optimal";
@@ -247,7 +245,6 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
     data.reserve(rows.size() * 200 + 2);
     data.push_back('[');
     bool first = true;
-    char num[32];
     for (const DmReportRow& r : rows) {
         if (!first) data.push_back(',');
         first = false;
@@ -263,17 +260,15 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
         data += ",\"actual\":" + std::to_string(r.actual);
         data += ",\"optimal\":" + (r.optimal ? std::to_string(*r.optimal) : std::string("null"));
         data += ",\"delta\":" + (r.delta ? std::to_string(*r.delta) : std::string("null"));
-        // `pct` is the full percent the column sorts on; `pct_txt` is what the
-        // cell shows, rounded once by format_percent; `pct_h` is that same
-        // rounded percent in whole hundredths, which the average tile reads.
-        if (r.pct && r.optimal) {
-            std::snprintf(num, sizeof(num), "%.17g", *r.pct);
-            data += ",\"pct\":" + std::string(num);
+        // `pct_h` is the row's one percent, in whole hundredths: the column
+        // sorts on it and the average tile reads it. `pct_txt` is the same
+        // rounded percent as the cell shows it, written by format_percent.
+        if (r.pct_h && r.optimal) {
+            data += ",\"pct_h\":" + std::to_string(*r.pct_h);
             data += ",\"pct_txt\":";
             json_escape_into(data, format_percent(r.actual, *r.optimal, 2));
-            data += ",\"pct_h\":" + std::to_string(percent_steps(r.actual, *r.optimal, 2));
         } else {
-            data += ",\"pct\":null,\"pct_txt\":null,\"pct_h\":null";
+            data += ",\"pct_h\":null,\"pct_txt\":null";
         }
         data += ",\"fc\":" + std::string(r.is_fc ? "1" : "0");
         data += ",\"percent\":" + std::to_string(r.percent);

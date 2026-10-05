@@ -273,7 +273,6 @@ struct SPSqueeze {
     const char* type_name() const {
         return kind == SqueezeKind::SqIn ? "SqIn" : "SqOut";
     }
-    std::string description() const;
 
     // A SqIn's frontend transfer scale: at squeeze_end_tick, measured from
     // squeeze_anchor_tick. Stamped by the search at copy-out through
