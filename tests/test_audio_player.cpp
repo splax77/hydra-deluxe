@@ -115,6 +115,19 @@ TEST_CASE("seek clamps to the valid range in both frames and ms") {
     CHECK(t.position_frames() == 24);
 }
 
+// The pair's Playhead pins at 48000 (seek_ms(0.5) and position_ms after 3
+// frames) and its 44100 pins. The 100 ms / 4800 frames pins are in the
+// "convert at the sample rate" case above.
+TEST_CASE("frames_of_ms and ms_of_frames: pinned at 48000 and 44100") {
+    CHECK(frames_of_ms(0.5, 48000) == 24);
+    CHECK(ms_of_frames(3, 48000) == 0.0625);  // 3 frames: the position_ms pin above
+    CHECK(frames_of_ms(1000.0, 44100) == 44100);
+    CHECK(ms_of_frames(44100, 44100) == 1000.0);
+    CHECK(frames_of_ms(1.0, 44100) == 44);  // pinned from one run
+    // The Playhead's own seek_ms(0.5) pin in the case above now runs through
+    // frames_of_ms, so a changed rounding shows there too.
+}
+
 TEST_CASE("Playhead applies the output gain to served frames") {
     Playhead t(make_ramp(100));
     CHECK(t.gain() == doctest::Approx(1.0f));

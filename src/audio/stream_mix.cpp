@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <utility>
 
+#include "audio/mixer.h"  // stem_converter_config, shared with mix_stems
+
 // miniaudio's configuration macros come from the miniaudio target.
 #include "miniaudio.h"
 
@@ -193,15 +195,14 @@ StreamMix::StreamMix(std::vector<std::unique_ptr<StemReader>> stems, int out_rat
         const int in_rate = r->sample_rate();
         const int64_t in_len = std::max<int64_t>(r->length_frames(), 0);
         s->reader = std::move(r);
-        s->passthrough = in_rate == out_rate && s->in_channels == out_channels;
+        // The same converter setup mix_stems uses, so the output matches.
+        const StemConverter sc =
+            stem_converter_config(in_rate, s->in_channels, out_rate, out_channels);
+        s->passthrough = sc.passthrough;
         if (s->passthrough) {
             s->converted_length = in_len;
         } else {
-            // The same converter settings mix_stems uses, so the output matches.
-            s->init_converter(ma_data_converter_config_init(
-                ma_format_f32, ma_format_f32, static_cast<ma_uint32>(s->in_channels),
-                static_cast<ma_uint32>(out_channels), static_cast<ma_uint32>(in_rate),
-                static_cast<ma_uint32>(out_rate)));
+            s->init_converter(sc.config);
             ma_uint64 expected = 0;
             ma_data_converter_get_expected_output_frame_count(
                 &s->conv, static_cast<ma_uint64>(in_len), &expected);
