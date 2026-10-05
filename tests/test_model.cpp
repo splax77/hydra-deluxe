@@ -694,14 +694,14 @@ TEST_CASE("MultSqueeze::howto names every note that crosses the step") {
     kryb.apply_cymbal(NoteColor::Yellow);
     kryb.apply_cymbal(NoteColor::Blue);
     const MultSqueeze ms(kryb, 7);
-    CHECK(ms.howto() == "Hit [YellowCym] and [BlueCym] last.");
+    CHECK(ms.howto() == "Hit [Yellow cymbal] and [Blue cymbal] last.");
     CHECK(ms.multiplier() == 2);
 
     // Accent the Red (100): now the two cymbals tie across the step, so
     // either may cross. The kick must stay before the step and the accented
     // Red must cross it.
     kryb.apply_accent(NoteColor::Red);
-    CHECK(MultSqueeze(kryb, 7).howto() == "Hit [Kick] first and [Red (Accent)] last.");
+    CHECK(MultSqueeze(kryb, 7).howto() == "Hit [Kick] first and [Red snare (Accent)] last.");
 }
 
 // A 3-note chord splits two and one across the step. When one end holds a

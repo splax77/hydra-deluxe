@@ -1860,7 +1860,7 @@ const std::vector<KnownCopy>& known_copies() {
         // The widened count row (M_D review finding 4) also finds the bench
         // tool's "%d paths"; bench.cpp is outside task FX-R's files.
         {"How is a count written next to its noun?", "tools/bench.cpp",
-         "std::printf(\"  best score %lld | %d paths | sp_cap %d\\n\\n\", best,",
+         "std::printf(\"  best score %s | %d paths | sp_cap %d\\n\\n\", best_text.c_str(),",
          "a follow-up task: tools/bench.cpp prints its path count through counted"},
         {"Is this row the squeezed-out chord, or past it?", "src/core/model.cpp",
          "return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;",
