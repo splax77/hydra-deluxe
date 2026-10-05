@@ -64,6 +64,8 @@ Before you commit, do the reviewer's first step yourself. List each question you
 
 Every rule in Hydra is worked out in one place. A test pins a literal from one run or calls the production function; it never computes the expected value again. A new number (a threshold, depth, floor or tolerance) needs a user decision your brief names; if it has none, stop and ask.
 
+A comment names where a rule lives; it never restates the rule. "Test files: see `Test-TestFile`" stays true when the code changes. "Files under tools/ named test_*.py" is a second copy of the rule, and it drifts the next time someone edits the pattern. Comments may say why a rule exists, or what it deliberately leaves out, as long as they don't spell out what it matches. The same goes for header comments, help text and docs: point at the owner. Four review rounds in a row once failed on comments like these, most of them written by the fix rounds themselves.
+
 ## Plain English
 
 Write plain English in every doc, comment, commit message and report. Lead with the plain version. One idea per sentence. Gloss any jargon in one line right after it. No bullet walls of file:line references; put sentences around them. See the "How to explain things" section of `CLAUDE.md`.

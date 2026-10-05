@@ -47,6 +47,18 @@ The precheck covers B to E. Quote its lines for those kinds; do not hunt for the
 
 Rules: a grep that finds nothing proves nothing, so say where you looked. Never call code wrong without ground truth (the engine, a test or a run). Every name comes from the repo, not memory.
 
+**The first review reads everything.** On a range's first review, read every changed function in full, not only the diff hunks, and report every finding you can see in that one pass. Later rounds read the fix diff and the functions it touches. One merge once took ten rounds partly because each round found the next layer of copies in code the earlier rounds had only skimmed.
+
+**A comment that restates a rule is kind D.** A comment, header or doc line that spells out what a rule matches, instead of naming the function that owns it, is a second copy, even when it agrees with the code today. Name the owner it should point to.
+
+## Developer tools: wording is a note
+
+Under `tools/` (developer tools, not shipped in Hydra) a comment, header or doc line that states a rule differently from code that behaves correctly is a note, not a finding. List it under "Notes" and write `Verdict: CLEAN` if nothing else is wrong. A copy that can give two different answers on a real input is still a finding there, and so is a comment that would mislead someone into changing working code. In `src/`, `tests/` and every shipped file, every kind D wording finding still blocks. The user decided this in D59.
+
+## Delta review
+
+When the orchestrator gives you an old tip and a new tip instead of a range from `main`, you are checking one fix round's diff before the full review. Read `git diff <old tip> <new tip>` and the functions it touches, nothing else. Ask the same questions: did this diff add a second answer to any question, did it restate a rule in a comment, does every new helper have all its callers. This should take under five minutes. Write the same review file but do not submit it; the orchestrator submits only full reviews.
+
 ## Builds and test runs
 
 Do not rebuild the old code to see a test fail first. Quote the implementer's red line from its report instead. Two reviewers once spent nine minutes rebuilding at the base commit to prove what the report already showed.
@@ -67,6 +79,7 @@ Use `Verdict: FINDINGS` instead if there is at least one finding. Write `CLEAN` 
 - **Questions this change answers**: each one, and the function that owns it after this change.
 - **Findings**: one paragraph per finding. For each, the kind letter, the question, every copy (function, file, lines), the truth table when the copies are worded differently, the input where they disagree if they do, and the owner you propose. For a B to E finding, quote the precheck line it came from.
 - **Precheck lines dropped**: any precheck line you found not to be a real copy, with one sentence why.
+- **Notes**: things worth fixing that don't block, such as wording under `tools/` (see "Developer tools: wording is a note") or a gap in a single owner's list.
 - **Touched, already on the fix list**: audit findings this change moves without fixing.
 - **Proposed scan rules**: for any finding a grep can guard, a row for `tests/test_single_owner.cpp`: the question, the owner file, and a pattern with two lines it must match and one it must not.
 - **Where I looked**: files and functions read.

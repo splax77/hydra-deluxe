@@ -33,7 +33,7 @@ A sweep for one finding often turns up copies of another kind. Fold those too if
 
 ## Things you never do
 
-Never add a new number (a threshold, floor, depth, tolerance or band) to settle a finding. If a fix needs one, stop and report it as a question for the user, in game terms. Never change a displayed text, a score or a stored record unless the review file quotes a user decision for it. Never write a new copy while removing an old one: if your fix needs a helper, check the owner or `tests/` for one first.
+Never add a new number (a threshold, floor, depth, tolerance or band) to settle a finding. If a fix needs one, stop and report it as a question for the user, in game terms. Never change a displayed text, a score or a stored record unless the review file quotes a user decision for it. Never write a new copy while removing an old one: if your fix needs a helper, check the owner or `tests/` for one first. A comment that describes what a rule matches is a new copy too; name the owner instead (see "If you write code" in the preamble).
 
 If a finding is wrong (the two copies are not the same question, or the reviewer misread the code), do not change the code. Say why in your report, with the truth table that shows the difference.
 
@@ -41,6 +41,24 @@ If a finding is wrong (the two copies are not the same question, or the reviewer
 
 When every finding on your side is committed, run `tools/derive_once_precheck.ps1` on the range and repo path. It needs no build. It must print nothing new for your side: no duplicate helper, no recompute spelling, no undecided number, no stray scan. If it does, fix those the same way and commit them. Quote its final output in your report.
 
+## Slow proofs run once
+
+Grep proofs and named tests run after each finding. Anything slower runs once, after the last finding: a corpus comparison, an old-against-new output comparison, a self-test over a whole tool. If that one run shows a change, rerun it at each of your commits to find which one. One round once spent most of its 35 minutes repeating a full comparison after each of seven commits, and none of those runs found a change.
+
+## Your diff gets a quick review before you are done
+
+When you report, the orchestrator has a fresh reviewer read only your diff, usually within five minutes. Anything it finds comes back to you as a message in the same round, while you still have the code in mind. Fix it, commit, and report again. The full review runs only after this quick review is clean. So list in your report every comment, header line and doc sentence you added or changed. Those are where fix rounds most often write new copies.
+
 ## Your report
 
-For each finding: its kind letter, the question, the owner, every copy you folded (including ones the reviewer did not list), the commit hash, and the grep proof. Then the precheck's final output, the exact test commands you ran with their pass counts, and anything you stopped on or left for the other agent.
+For each finding: its kind letter, the question, the owner, every copy you folded (including ones the reviewer did not list), the commit hash, and the grep proof. Then the precheck's final output, the exact test commands you ran with their pass counts, every comment or doc line you added or changed, and anything you stopped on or left for the other agent.
+
+## For the orchestrator
+
+These rules are for the session that runs the review loop.
+
+Before the first review, run the precheck on the range and fix what it prints. Do the reviewer's step 1 yourself on the branch: list the questions, grep for each. Every finding caught here is a round you don't spend.
+
+Keep merges small enough to review in one read. A tool or feature over about 500 changed lines goes in as two or three merges, each reviewed on its own. One 1,300-line script took ten rounds as a single merge.
+
+When a fix round reports, send a quick review of the fix diff alone (`git diff <old tip> <new tip>`, with the delta-review section of `derive-once-review.md`) before the full review. If it finds anything, send it back to the same fixer with SendMessage so it keeps its context. A finding of a few lines (a comment, one pattern) you fix yourself, commit with your own trailers, and move on; a 20-minute fix round for a one-line change is the most expensive way to fix it.

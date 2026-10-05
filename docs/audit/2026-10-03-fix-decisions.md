@@ -243,3 +243,10 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 4. **ST2, old scan caches.** A scan cache with no version stamp reads as not current. So the first scan after upgrading re-reads every chart file once, the way unstamped dynamics rows are recounted (ADR 0018).
 5. **ST2, old song lengths.** A record with no per-difficulty length reads the old per-chart length, so nothing changes on screen until that difficulty is analyzed again.
 6. **PV, the changed-chart line.** D51 call 18's sentence shows as one warning-colour line above the highway, where "No audio device" sits. The highway still draws. The activations, score box and scrub marks hide, and the SP gauge shows the unanalyzed curve.
+
+**D59 (review loop rules), 2026-10-04.** After M0 took ten derive-once review rounds, the user approved item 1 and asked for the brief changes in items 2 and 3. Items 4 and 5 are the orchestrator's recommendations, written into the same briefs; the user can overrule them. All five change how reviews and fix rounds run (`docs/agents/brief-preamble.md`, `fix-round.md`, `derive-once-review.md`).
+1. **Developer-tool wording is a note.** Under `tools/`, a comment or doc line that states a rule differently from code that behaves correctly no longer blocks a merge; the reviewer lists it as a note. A copy that can give two answers on a real input still blocks there. In `src/`, `tests/` and shipped files every wording finding still blocks.
+2. **Comments name the owner.** A comment points at the function that owns a rule; it never spells out what the rule matches.
+3. **Quick review of each fix diff.** After each fix round, a fresh reviewer reads only that round's diff before the full review, and its findings go back to the same fixer.
+4. **Orchestrator habits.** The orchestrator runs the precheck and its own first-step pass before the first review, fixes few-line findings itself, and splits a change over about 500 lines into two or three merges. The 500 is a rough guide, not a gate.
+5. **Slow proofs once per round.** Corpus and old-against-new comparisons run once after a fix round's last finding, not after each commit.
