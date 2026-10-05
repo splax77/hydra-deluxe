@@ -300,3 +300,31 @@ changes a score on the library.
   2^30, and each of `ready_class`'s two fill counts gets 16 bits. A chart
   past any of these fails to analyze with an error. It never folds paths
   wrongly. These widths come with D35's ready-time key.
+
+## Amendment, 2026-10-04: results under other rules are kept (D51 call 8)
+
+"No fallback" above promised that a record analyzed under other rules is
+kept, and reads Ready again when the rules are switched back. Until now the
+store broke that promise: its unique key had no rules in it, so saving a
+result under rules A deleted the chart's rules-B row (audit finding 65). The
+promise now holds, and its two sentences stay as they are.
+
+The results table's unique key gains the rules fingerprint, as a `rules_fp`
+column. It is filled from the structure blob's head by `rules_fp_of`, the one
+SQL spelling of "which rules was this row analyzed under". Schema 4 rebuilds
+the table once, in `upgrade_results_key`, and keeps every row, result id and
+blob, so nothing is analyzed again. A rules-A row and a rules-B row for the
+same chart, mode, cap and lens now sit side by side.
+
+`row_ready_sql()` is no longer one undivided check. It is
+`row_readable_sql()` (this build can read the row: its results version and
+path format) plus the rules part (the row's fingerprint is this process's).
+A write under rules A purges only the rows that fail the first part, so the
+rules-B row is kept.
+
+Two cases follow from this (D55 items 3 and 4). `hydra_batch --reindex`
+leaves a row it cannot read untouched instead of blanking its summary
+columns, so a result kept under other rules keeps its cached score and stars
+in the library. The `rules_fp` column has no default, so an older Hydra that
+opens an upgraded file fails to save, with a clear error, instead of writing
+a row with a wrong rules value in its key.
