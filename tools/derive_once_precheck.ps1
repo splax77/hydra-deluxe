@@ -158,7 +158,9 @@ THE CHECKS
    under tests/ or tools/ (see WHICH FILES). In C++: an ifstream, fopen,
    _wfopen or open_file of a .cpp or .h path or of a path under src/ (the
    row matches only HYDRA_SOURCE_DIR). In Python: an open() of a .cpp or .h
-   path, or os.walk, glob, rglob or os.listdir over a path holding src.
+   path, or a call to os.walk, glob.glob, os.listdir or a .glob/.rglob
+   method whose own parentheses hold "src" (a bare glob() or a src path
+   on the receiver, as in Path("src").rglob(...), is not flagged).
    Then every rule row the range adds to rules() in
    tests/test_single_owner.cpp is checked for an empty or missing must-match
    or must-not-match list, and for a negative lookahead that names variables
