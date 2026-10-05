@@ -166,8 +166,8 @@ struct BatchRun {
     store::Lens lens;
     AnalysisSettings settings;
 
-    // The SP cap this run's results are filed under and looked up by. The
-    // one spelling of it; run_batch's RecordKey and charts_with_result use it.
+    // The SP cap this run's results are filed under and looked up by:
+    // CapQuery::at is the owner.
     store::CapQuery cap_query() const { return store::CapQuery::at(settings.sp_cap); }
 };
 

@@ -128,8 +128,8 @@ const std::vector<Key>& keys() {
         number("mslimit_value", &Settings::mslimit_value, -kWindowMs, kWindowMs),
         on_off("backendlimit_enabled", &Settings::backendlimit_enabled),
         number("backendlimit_value", &Settings::backendlimit_value, 0, kWindowMs),
-        // "Above 0": 0 and below have no edge to land on. The floor is the
-        // 1 ms it was while the setting was a whole number.
+        // Below 1 (including 0) has no edge to land on, so it reads the
+        // default. The floor is the 1 ms it was while the setting was whole.
         number("hit_window_ms", &Settings::hit_window_ms, 1.0, kNoCeiling, Outside::Default),
         number("preview_volume", &Settings::preview_volume, 0, 100),
         // The smallest cap is 1 bar: it can never activate SP, but it stays

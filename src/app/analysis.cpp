@@ -568,8 +568,7 @@ struct WorkResult {
 std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
                                                    const BatchRun& run, bool redo) {
     if (redo) return {};
-    // Under exactly this run's chart mode, cap and lens, so other settings'
-    // rows are re-run rather than skipped.
+    // RecordStore::analyzed_hashes decides what "already has a result" means.
     return store.analyzed_hashes(run.chartmode, run.cap_query(), run.lens);
 }
 
