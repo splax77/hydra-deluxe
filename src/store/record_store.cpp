@@ -1033,10 +1033,10 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
     // fixed song.ini reaches the reports on the next analysis (user decision
     // 2026-09-26). The one exception is a chart with duplicate copies in the
     // library: the copy kNamingCopiesSql picks names it, whichever copy was
-    // analyzed (D63, D51 call 10). Each analysis rewrites the tempo map too (D51 call 12): the map is
-    // whatever the chart reader made of the file this time, so a reader fix
-    // reaches the stored map on the next analysis instead of never. The
-    // per-chart length is written on update when the call carries one
+    // analyzed (D63, D51 call 10). Each analysis rewrites the tempo map too
+    // (D51 call 12): the map is whatever the chart reader made of the file
+    // this time, so a reader fix reaches the stored map on the next analysis
+    // instead of never. The per-chart length is written on update when the call carries one
     // (add_song does; save_analysis files its length per difficulty).
     std::string name = ref_name, artist = ref_artist, charter = ref_charter;
     {
