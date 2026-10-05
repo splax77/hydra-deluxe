@@ -570,6 +570,7 @@ private:
     void reduce_group(const int32_t* members, int32_t n);
     bool outside_depth_band(int64_t score, int64_t best, int32_t outscored_by) const;
     bool can_outscore(int32_t idx) const;
+    std::optional<int64_t> best_eligible_score(const int32_t* members, int32_t n) const;
 
     void emit_path(const Path& p);
     void emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
@@ -1146,17 +1147,24 @@ bool Engine::can_outscore(int32_t idx) const {
            (has_optimal_ && cur_[(size_t)idx].score == optimal_score_);
 }
 
-void Engine::reduce_group(const int32_t* members, int32_t n) {
-    // The best score in this group that may eliminate a path. An over-limit
-    // path below it is beaten (D55 item 5), whether it leads or ties.
-    bool has_top = false;
-    int64_t top = 0;
+// The best score among the group's paths that may eliminate a path
+// (can_outscore), or none when no path in the group may.
+std::optional<int64_t> Engine::best_eligible_score(const int32_t* members, int32_t n) const {
+    std::optional<int64_t> top;
     for (int32_t k = 0; k < n; ++k) {
         const int32_t idx = members[k];
         if (!can_outscore(idx)) continue;
-        if (!has_top || cur_[(size_t)idx].score > top) top = cur_[(size_t)idx].score;
-        has_top = true;
+        if (!top || cur_[(size_t)idx].score > *top) top = cur_[(size_t)idx].score;
     }
+    return top;
+}
+
+void Engine::reduce_group(const int32_t* members, int32_t n) {
+    // An over-limit path below the group's best eligible score is beaten
+    // (D55 item 5), whether it ties an inside leader or leads its own score.
+    // Both places that drop one ask `outscored`.
+    const std::optional<int64_t> top = best_eligible_score(members, n);
+    const auto outscored = [&top](int64_t score) { return top && score < *top; };
 
     // Fold ties. D51 call 1: the tie limit (max_tied_paths_) is one count per
     // score, so a complete path inside the Path limit meets a complete
@@ -1191,7 +1199,7 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
         // dropped, as it would be if it led its own score. An over-limit
         // leader that is beaten goes in the final loop below, after its score
         // has counted toward the depth band.
-        if (over_limit_pass && !filtered_[(size_t)leader_idx] && has_top && p.score < top) {
+        if (over_limit_pass && !filtered_[(size_t)leader_idx] && outscored(p.score)) {
             removed_[(size_t)idx] = 1;
             continue;
         }
@@ -1252,7 +1260,8 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
                       dominating_.end());
     const int64_t best_all = dominating_.back();
 
-    // The scores allowed to eliminate an achievable path (can_outscore). An
+    // The distinct scores allowed to eliminate an achievable path
+    // (can_outscore), for the "Within N scores" count; `top` heads them. An
     // over-limit path riding as an inside leader's variant got here only at
     // `top`, and its leader is outscored by nothing either.
     // May be empty mid-search (every live path in this group is filtered):
@@ -1266,20 +1275,19 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
     std::sort(beating_.begin(), beating_.end());
     beating_.erase(std::unique(beating_.begin(), beating_.end()),
                    beating_.end());
-    const int64_t best = beating_.empty() ? 0 : beating_.back();
 
     for (size_t i = 0; i < survivors_.size(); ++i) {
         const int32_t idx = survivors_[i];
         const int64_t score = cur_[(size_t)idx].score;
-        const int32_t outscored_by = scores_above(beating_, score);
         bool drop;
         if (filtered_[(size_t)idx]) {
             // An over-limit leader goes as soon as an achievable score beats
             // it, else when it leaves the band over every score.
-            drop = outscored_by > 0 ||
+            drop = outscored(score) ||
                    outside_depth_band(score, best_all, scores_above(dominating_, score));
         } else {
-            drop = outside_depth_band(score, best, outscored_by);
+            // An inside leader may eliminate, so `top` is set.
+            drop = outside_depth_band(score, *top, scores_above(beating_, score));
         }
         if (drop) removed_[(size_t)idx] = 1;
     }

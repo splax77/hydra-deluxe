@@ -1171,6 +1171,36 @@ const std::vector<OwnerRule>& rules() {
          {"\") AND substr(structure,1,4) IN (\" + placeholders(kPathFormatStamp.accepted.size()) +"},
          {},
          {"src"}},
+        // hydra_replay score writes each chord's gems once, from ReplayNote;
+        // play_chart reads them there.
+        {"Which pads (color, cymbal) does a replayed chord hit?",
+         "the \"notes\" list cmd_score writes in tools/replay.cpp, from ReplayNote",
+         R"(\{\s*"cymbal"\s*,)",
+         "",
+         {},
+         {},
+         "phase 7 M7-1 derive-once review round 2, finding 1 (2026-10-04)",
+         {"{\"cymbal\", n.cymbal},",
+          "lanes.push_back(nlohmann::json{{\"color\", color_str(n.colortype)}, {\"cymbal\", "
+          "n.is_cymbal()}});"},
+         {"{\"is_fill\", c.is_fill},", "{\"color\", color_str(n.color)},"},
+         {{"tools/replay.cpp", "{\"cymbal\", n.cymbal},", "the chord's \"notes\" list, the owner"}}},
+        // reduce_group reads this one answer both where a tied over-limit path
+        // is folded and where an over-limit leader is dropped.
+        {"What is the best score allowed to eliminate a path in its group?",
+         "Engine::best_eligible_score in src/search/engine.cpp",
+         R"(if \(!can_outscore\(|beating_\.back\(\))",
+         "",
+         {},
+         {},
+         "phase 7 M7-1 derive-once review round 2, finding 2 (2026-10-04)",
+         {"if (!can_outscore(idx)) continue;",
+          "const int64_t best = beating_.empty() ? 0 : beating_.back();"},
+         {"if (can_outscore(idx)) beating_.push_back(cur_[(size_t)idx].score);",
+          "return !filtered_[(size_t)idx] ||"},
+         {{"src/search/engine.cpp", "if (!can_outscore(idx)) continue;",
+           "best_eligible_score, the owner"}},
+         {"src/search/engine.cpp"}},
     };
     return r;
 }
