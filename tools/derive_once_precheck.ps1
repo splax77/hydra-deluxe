@@ -155,9 +155,11 @@ THE CHECKS
 4. Scans outside the scan file (kind E). The scan rows' E lines (a test
    using HYDRA_SOURCE_DIR or walking the source tree), then two spellings no
    row asks about, in an added line of a C++ or Python file the script reads
-   under tests/ or tools/ (see WHICH FILES): an ifstream or open() of a
-   .cpp or .h path or of a path under src/ (the row matches only
-   HYDRA_SOURCE_DIR), and os.walk/glob/rglob over src in Python. Then every rule row the range adds to rules() in
+   under tests/ or tools/ (see WHICH FILES). In C++: an ifstream, fopen,
+   _wfopen or open_file of a .cpp or .h path or of a path under src/ (the
+   row matches only HYDRA_SOURCE_DIR). In Python: an open() of a .cpp or .h
+   path, or os.walk, glob, rglob or os.listdir over a path holding src.
+   Then every rule row the range adds to rules() in
    tests/test_single_owner.cpp is checked for an empty or missing must-match
    or must-not-match list, and for a negative lookahead that names variables
    inside its pattern (an exemption no owner line records, which applies in
@@ -755,9 +757,10 @@ function Add-RowItems([string[]]$Kinds) {
 # Case counts, and the pattern says so itself ("(?-i:"), so every reader gets
 # the same answer whichever operator it uses: CHECK( is an assertion, a local
 # helper named check( is not. The doctest macros are the whole assertion
-# family third_party/doctest/doctest.h defines: CHECK, REQUIRE or WARN, alone
-# or with one of its suffixes (_EQ, _FALSE, _MESSAGE, _NOTHROW, _THROWS_AS...).
-$doctestAsserts = '(?:CHECK|REQUIRE|WARN)(?:_(?:EQ|NE|GT|GE|LT|LE|UNARY(?:_FALSE)?|FALSE(?:_MESSAGE)?|MESSAGE|NOTHROW(?:_MESSAGE)?|THROWS\w*))?'
+# family third_party/doctest/doctest.h defines: CHECK, REQUIRE or WARN, with
+# or without the FAST_ prefix, alone or with one of its suffixes (_EQ,
+# _FALSE, _MESSAGE, _NOTHROW, _THROWS_AS...).
+$doctestAsserts = '(?:FAST_)?(?:CHECK|REQUIRE|WARN)(?:_(?:EQ|NE|GT|GE|LT|LE|UNARY(?:_FALSE)?|FALSE(?:_MESSAGE)?|MESSAGE|NOTHROW(?:_MESSAGE)?|THROWS\w*))?'
 $assertRx = "(?-i:\b($doctestAsserts|assert\w*|self\.assert\w*)\s*\()"
 
 # ------------------------------------------- check 1: helpers defined twice
