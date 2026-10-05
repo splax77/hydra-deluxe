@@ -533,9 +533,10 @@ struct Activation {
     // optional early fill, so the search, filter and warning colors never
     // count one. Empty, too, for an activation with nothing to time.
     std::optional<double> difficulty() const;
-    // Does this activation need any timing at all? The one answer the search's
-    // all-0 pass, the Paths tab and the stored summary read (D51 call 4, D13):
-    // a free squeeze and an early fill with time to spare need none.
+    // Does this activation need any timing at all? The per-activation half of
+    // Path::needs_timing. The Paths tab's badge reads hardest(), and its path
+    // button and the stored summary read Path::difficulty(); all of them rest
+    // on hardest() (D51 call 4, D13).
     bool needs_timing() const;
     bool is_difficult() const;
 
