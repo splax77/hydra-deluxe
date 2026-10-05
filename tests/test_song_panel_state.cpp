@@ -1,6 +1,7 @@
 // The song panel's state rules on AppState: next/previous walk the rows the
 // library shows and never wrap, the panel's teardown runs on its closing
-// edge (from tick(), not from draw code), and nothing is locked while idle.
+// edge (from tick(), not from draw code), nothing is locked while idle, and a
+// running batch locks the settings as a batch.
 
 #include "doctest.h"
 
@@ -9,15 +10,21 @@
 #endif
 #include <windows.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdio>
+#include <functional>
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "app/config.h"
 #include "core/winstr.h"
 #include "store/record_store.h"
 #include "ui/app_state.h"
+#include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -130,6 +137,37 @@ TEST_CASE("song panel: nothing is locked while idle") {
     ScratchPaths paths("panel_lock");
     auto app = app_with_library(paths, 5);
     CHECK_FALSE(app->settings_locked());
+    CHECK(app->settings_lock() == AppState::SettingsLock::None);
     CHECK_FALSE(app->analyze_running());
     CHECK_FALSE(app->batch_running());
+}
+
+// The settings bar reads the lock once per frame and picks its message from
+// that one answer. It used to ask batch_running() a second time; a batch that
+// ended on its worker in between sent it to the one-song message, which read
+// the analyze job's song through a null analyze_job (an access violation in
+// hydra_uitest's batch-strip-workers under load).
+TEST_CASE("song panel: a running batch locks the settings as a batch, then unlocks") {
+    ScratchPaths paths("panel_batchlock");
+    auto app = app_with_library(paths, 5);
+    std::atomic<bool> release{false};
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [&release](const std::string&, const hydra::app::AnalysisSettings&,
+                   const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+            while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            throw std::runtime_error("no chart file in this test");
+        },
+        1);
+    app->start_batch(false);
+    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    REQUIRE(app->batch_job != nullptr);
+    CHECK(app->settings_lock() == AppState::SettingsLock::Batch);
+    CHECK(app->settings_locked());
+    CHECK(app->analyze_job == nullptr);  // the Batch answer needs no analyze job
+
+    release = true;
+    while (!app->batch_job->snapshot().finished)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    CHECK(app->settings_lock() == AppState::SettingsLock::None);
+    CHECK_FALSE(app->settings_locked());
 }
