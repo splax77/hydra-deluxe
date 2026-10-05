@@ -178,7 +178,7 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     h.app->commit_settings();
     ctx->Yield(2);
     IM_CHECK(compare_disabled());
-    h.app->settings.sp_cap = 4;
+    h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
     h.app->commit_settings();
 
     // The difficulty picker lives in the settings bar; the button in the
@@ -551,7 +551,7 @@ void test_compare_disabled(ImGuiTestContext* ctx) {
     h.app->commit_settings();
     ctx->Yield(2);
     IM_CHECK(disabled());
-    h.app->settings.sp_cap = 4;
+    h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
     h.app->settings.view_difficulty = "Hard";
     h.app->commit_settings();
     ctx->Yield(2);

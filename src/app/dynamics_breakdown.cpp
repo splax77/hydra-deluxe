@@ -68,13 +68,12 @@ const DynamicsRowInfo& dynamics_row_info(DynamicsRow r) {
 }
 
 DynamicsRow dynamics_row_for(const ChordNote& note) {
-    // Only Yellow, Blue and Green have cymbal rows; a red cymbal flag, if a
-    // chart ever set one, still counts as the snare.
-    const bool cymbal = note.is_cymbal() && allows_cymbals(note.colortype);
-    const bool is2x = note.colortype == NoteColor::Kick && note.is2x;
+    // A row is a lane with its flag on or off (lane_flag). A flag the lane
+    // cannot carry (a red cymbal, if a chart ever set one) counts as off, so
+    // that note still counts as the snare.
+    const bool flag = lane_allows_flag(note.colortype) && lane_flag(note);
     for (const DynamicsRowInfo& info : kDynamicsRows)
-        if (info.color == note.colortype && info.cymbal == cymbal && info.is2x == is2x)
-            return info.row;
+        if (info.color == note.colortype && (info.cymbal || info.is2x) == flag) return info.row;
     return DynamicsRow::Kick;  // unreachable: every lane has a row
 }
 
@@ -83,8 +82,7 @@ DynamicsRow dynamics_row_for(const ChordNote& note) {
 ChordNote dynamics_row_note(DynamicsRow r) {
     const DynamicsRowInfo& info = dynamics_row_info(r);
     ChordNote note{info.color};
-    note.cymbaltype = info.cymbal ? NoteCymbalType::Cymbal : NoteCymbalType::Normal;
-    note.is2x = info.is2x;
+    if (info.cymbal || info.is2x) set_lane_flag(note);
     return note;
 }
 
@@ -176,10 +174,6 @@ std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blo
 }
 
 // ---- the cache rules --------------------------------------------------------
-
-std::string dynamics_cache_key(const std::string& notespath, bool pro, Difficulty difficulty) {
-    return notespath + "|" + (pro ? "pro" : "std") + "|" + difficulty_name(difficulty);
-}
 
 store::DynamicsKey dynamics_store_key(const std::string& md5, Difficulty difficulty, bool pro) {
     return store::DynamicsKey{md5, difficulty_name(difficulty), pro};
