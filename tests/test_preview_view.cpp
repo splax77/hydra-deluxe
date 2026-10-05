@@ -181,24 +181,10 @@ void check_curve_well_formed(const SpMeterCurve& curve) {
 // tick set so the Preview draws the phrases. 192 ticks per beat, 4/4, 120
 // BPM: a measure is 768 ticks and 2000 ms.
 Song make_overfill_song() {
-    struct N { int64_t tick; bool phrase; bool fill; };
-    const std::vector<N> notes = {{0, true, false},    {768, true, false},
-                                  {2304, false, true}, {3072, true, false},
-                                  {3840, true, false}, {4608, false, false},
-                                  {5376, false, false}, {6000, false, false},
-                                  {6768, false, false}, {7500, false, false}};
-    Song song(192);
-    song.bpm_changes[0] = 120.0;
-    song.build_timing();
-    for (const N& n : notes) {
-        SongTimestamp ts;
-        ts.timecode = song.timecode(n.tick);
-        ts.chord.add_note(NoteColor::Red);
-        if (n.phrase) test::mark_phrase_end(ts, n.tick, 192);
-        if (n.fill) ts.activation_length = 384;
-        song.sequence.push_back(ts);
-    }
-    return song;
+    return test::build_fixture_song(192, 120.0,
+                                    {{0, true},     {768, true},  {2304, false, 384}, {3072, true},
+                                     {3840, true},  {4608},       {5376},             {6000},
+                                     {6768},        {7500}});
 }
 
 // One analyzed corpus chart (the first that yields paths), shared across cases.
