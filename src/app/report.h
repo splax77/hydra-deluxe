@@ -102,17 +102,17 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
 
 // The path report's default: the top 5 paths per chart.
 inline constexpr int64_t kDefaultReportPaths = 5;
-// "--all-paths" asks for this many, which no chart reaches.
+// What "--all-paths" asks for, a count no chart reaches. It is the one answer
+// to "does this page list every path" (finding 86): generate_report's subtitle
+// reads it, so any smaller --paths is written as a count.
 inline constexpr int64_t kEveryPathSentinel = 1000000000;
-// A max_paths above this is labeled "every path" in the subtitle.
-inline constexpr int64_t kEveryPathLabelThreshold = 100000000;
 
 struct ReportOptions {
     int64_t max_paths = kDefaultReportPaths;
     // Which records the page lists: the user's current SP cap and lens.
     store::CapQuery cap = store::CapQuery::at(kCloneHeroSpCap);
     store::Lens lens;
-    int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);
+    double hit_window_ms = kDefaultHitWindowMs;
     std::string db_path;  // names the footer's source database
     // Set this and the walk stops between records and generate_report hands
     // back an empty result -- no rows, no html. Closing the app while a report

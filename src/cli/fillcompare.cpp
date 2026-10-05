@@ -80,18 +80,27 @@ int main() {
     std::unique_ptr<hydra::store::RecordStore> new_store =
         hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
 
-    // Engine-mode sanity check: a stamp that names another rule than the side
-    // it was passed as (or no rule at all) is a warning, not a fatal error —
-    // an unstamped (nullopt) db just means "assume the normal rule" and never
-    // warns.
-    auto warn_if_not = [](const std::string& path, const std::optional<std::string>& mode,
+    // Fill-rule sanity check: a file that holds another rule than the side it
+    // was passed as is a warning, not a fatal error. Which rule a file holds
+    // is RecordStore::stamped_fill_rule's answer; an empty file holds none and
+    // never warns. The stamp's own text is read only to word the warning.
+    auto warn_if_not = [](const std::string& path, hydra::store::RecordStore& store,
                           hydra::FillDeadlineRule expected) {
-        if (mode && hydra::fill_rule_from_stamp(*mode) != expected)
+        const std::optional<hydra::FillDeadlineRule> held = store.stamped_fill_rule();
+        if (held == expected) return;
+        if (const std::optional<std::string> stamp = store.engine_mode())
             std::fprintf(stderr, "Warning: %s is stamped engine_mode=%s, not %s\n",
-                         path.c_str(), mode->c_str(), hydra::engine_mode_stamp(expected));
+                         path.c_str(), stamp->c_str(), hydra::engine_mode_stamp(expected));
+        else if (held)
+            std::fprintf(stderr,
+                         "Warning: %s has no engine_mode stamp, so it counts as a %s "
+                         "database, not %s\n",
+                         path.c_str(),
+                         hydra::fill_rule_name(*held, hydra::FillRuleNameStyle::Long),
+                         hydra::fill_rule_name(expected, hydra::FillRuleNameStyle::Long));
     };
-    warn_if_not(*old_path, old_store->engine_mode(), hydra::FillDeadlineRule::Ch10);
-    warn_if_not(*new_path, new_store->engine_mode(), hydra::FillDeadlineRule::Ch11);
+    warn_if_not(*old_path, *old_store, hydra::FillDeadlineRule::Ch10);
+    warn_if_not(*new_path, *new_store, hydra::FillDeadlineRule::Ch11);
 
     hydra::app::fill_report::GeneratedFillReport report =
         hydra::app::fill_report::generate_fill_report(*old_store, *new_store, chartmode, cap, lens);

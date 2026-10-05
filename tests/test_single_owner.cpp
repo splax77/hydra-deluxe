@@ -2320,6 +2320,43 @@ const std::vector<OwnerRule>& rules() {
            "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
            "put_le, the owner (put_u16, put_u32 and put_u64 write through it)"}},
          {"tests"}},
+        // ---- report pages (phase 7 task RP) ----
+        // A report page's file name typed outside its constant. The GUI test
+        // harness clears both pages, so it is scanned too.
+        {"What file name does each report page have?",
+         "kPathReportFileName and kDmReportFileName in src/app/report_files.h",
+         R"(hydra_(paths|dmcompare)\.html)",
+         "",
+         {},
+         {},
+         "audit finding 202, D51's code-only calls (phase 7 task RP)",
+         {"std::string out = \"hydra_paths.html\";",
+          "std::wstring dm_report_html_path() { return html_artifact_path(L\"hydra_dmcompare.html\"); }"},
+         {"std::string out = hydra::app::kPathReportFileName;",
+          "std::string out = \"fill_compare.html\";"},
+         {{"src/app/report_files.h",
+           "inline constexpr const char* kPathReportFileName = \"hydra_paths.html\";",
+           "kPathReportFileName, the owner"},
+          {"src/app/report_files.h",
+           "inline constexpr const char* kDmReportFileName = \"hydra_dmcompare.html\";",
+           "kDmReportFileName, the owner"}},
+         {"src", "tools", "tests/ui/uitest_harness.cpp"}},
+        // Clone Hero's SP cap written as text, where the leaderboard page
+        // names it.
+        {"Which SP cap does the leaderboard comparison name?",
+         "kCloneHeroSpCap in src/core/model.h",
+         R"(SP cap 4\b)",
+         "",
+         {},
+         {},
+         "audit finding 170, D51's code-only calls (phase 7 task RP)",
+         {"{k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart "
+          "at SP cap 4, the Clone Hero rule.'},",
+          "\"at SP cap 4: analyze them, then compare again.\";"},
+         {"\"at SP cap \" + std::to_string(kCloneHeroSpCap) + \": analyze them, then compare "
+          "again.\";",
+          "\"SP cap 40\""},
+         {}},
     };
     return r;
 }
@@ -2514,6 +2551,12 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
          "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
          "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
+        {"What file name does each report page have?", "tests/ui/uitest_harness.cpp",
+         R"(fs::remove(fs::u8path(h.temp_dir + "\\hydra_paths.html"), ec);)",
+         "phase 7 task LB (the harness names the pages through report_files.h's constants)"},
+        {"What file name does each report page have?", "tests/ui/uitest_harness.cpp",
+         R"(fs::remove(fs::u8path(h.temp_dir + "\\hydra_dmcompare.html"), ec);)",
+         "phase 7 task LB (the harness names the pages through report_files.h's constants)"},
     };
     return k;
 }
