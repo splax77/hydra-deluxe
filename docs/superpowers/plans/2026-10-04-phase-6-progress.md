@@ -32,6 +32,22 @@ J2-4 forks from phase 7's SE2 commit. SE2 started first, so the agreed `test_app
 
 Phase 7's PV takes J3-5's transport gain-floor line early, so J3-5 drops it. PV's volume slider reads `Settings::clamp` without editing `config.cpp`, which stays J2-1's.
 
+## Phase 6 finished (session 9ce5e1bb, 2026-10-05)
+
+Every wave is on main, and nothing is pushed. Each merge had a CLEAN derive-once review, one full suite run and one GUI suite run. Corpus scores matched on all 97 charts every time.
+
+- **M6-J1c** merged J1-4 once phase 3's M_D was in.
+- **M6-J2 (a1d4c28)** merged J2-1, J2-2, J2-3, J2-5, J2-6, J2-7 and J2-8 as one join. **M6-J2b (1967e93)** merged J2-4, which waited for phase 7's SE2. D64 kept the leaderboard's "+N over".
+- **The GUI suite crash (a39f3c7).** `hydra_uitest --all` died about half the time with an access violation. The settings bar asked "is a batch running?" twice in one frame. When the batch finished between the two reads, it read the song title through an analysis job that was already gone. `AppState::settings_lock()` now answers once. The runner also prints each result as its test ends, and names a test that crashes.
+- **M6-J3 (e9e2eeb)** merged J3-1 to J3-8, plus the join leftovers J3-9 and J3-9d. J3-9d puts one owner for reading and writing little-endian numbers in `src/core/little_endian.h`. D68 is the one visible change: the Preview's overlay check compares the whole path key.
+- **M6-J4 (e4833e0)** merged J4-1 to J4-7. J4-7 folded the remaining test scratch paths onto `tests/temp_util.h`, which J4-6 added. The join also gave `ScopedFile` one home and wrote CONTEXT.md's sentences for `kDefaultDepthValue` and `kSpActivationBars` (D54).
+- **AL2 (2c4b63e)** is phase 7's audio song length (D69 and D70). Phase 7 handed it over for phase 6 to merge after M6-J4.
+
+Still open:
+- J2-7's analysis timing check needs a quiet machine.
+- A corrupted structure blob shorter than 12 bytes now reads Stale with "another build" instead of "other rules". No writer can produce one, so it stays as it is unless the user says otherwise.
+- The old phase 6 worktrees are still on disk. They come out with the user's yes.
+
 ## Notes for later waves (from the J1 brief writers)
 
 - **J2-8 and J3-4:** J1-3 exports the "is a toggle on after this instant" helper as `toggle_on_after`, not `toggle_on`. The plan's name would clash with the private `toggle_on(Toggle)` in `highway_draw.cpp`. J2-8 adopts the new name.
