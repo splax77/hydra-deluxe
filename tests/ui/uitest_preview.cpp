@@ -107,16 +107,19 @@ ImGuiID preview_path_combo(ImGuiTestContext* ctx) {
     return ImHashStr("##previewpath", 0, act.ParentID);
 }
 
-// Pick path `index` (its place in the Paths tab's list, ##path<index>) in the
-// Preview's "Showing" list. The Preview tab must be showing.
-void pick_preview_path(ImGuiTestContext* ctx, size_t index) {
+// Pick `path` in the Preview's "Showing" list: the item whose button in
+// build_path_buttons' list stands for it, by the id the tab gives it
+// (path_item_id). The Preview tab must be showing.
+void pick_preview_path(ImGuiTestContext* ctx, const hydra::Path* path) {
     Harness& h = harness(ctx);
     const hydra::app::PathButtonsView list = hydra::app::build_path_buttons(
         *h.app->viewed.record, h.app->settings.depth_mode, h.app->settings.depth_value);
-    IM_CHECK(index < list.buttons.size());
+    size_t index = 0;
+    while (index < list.buttons.size() && list.buttons[index].path != path) ++index;
+    IM_CHECK(index < list.buttons.size());  // the path is in the list
     if (index >= list.buttons.size()) return;
     const std::string item =
-        hydra::app::preview_path_label(list.buttons[index]) + "##" + std::to_string(index);
+        hydra::app::path_item_id(hydra::app::preview_path_label(list.buttons[index]), index);
     ctx->ItemClick(preview_path_combo(ctx));
     ctx->Yield(1);
     ctx->ItemClick(("//$FOCUSED/" + item).c_str());
@@ -147,17 +150,13 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     for (const hydra::Path* p : h.app->viewed.record->all_allzero_paths())
         rows.push_back(p);
     const hydra::Path* other = nullptr;
-    size_t other_index = 0;  // its place in the list: the list follows all_paths()
     for (size_t i = 1; i < paths.size() && other == nullptr; ++i) {
         std::string label = paths[i]->pathstring();
         if (label == paths[0]->pathstring()) continue;
         size_t seen = 0;
         for (const hydra::Path* p : rows)
             if (p->pathstring() == label) ++seen;
-        if (seen == 1) {
-            other = paths[i];
-            other_index = i;
-        }
+        if (seen == 1) other = paths[i];
     }
     IM_CHECK(other != nullptr);  // the fixture must keep 2+ distinguishable paths
     const std::string first_key = hydra::app::path_overlay_key(paths[0]);
@@ -191,7 +190,7 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
 
     // Pick the other path in the Preview's list, then visit Paths and come
     // back, so the Preview is re-opened on the same chart.
-    pick_preview_path(ctx, other_index);
+    pick_preview_path(ctx, other);
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
     ctx->ItemClick("##DetailsTabs/Preview");
@@ -202,7 +201,7 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->preview->overlay_path_key() != first_overlay);
 
     // The same chart still previews the first path when it is picked again.
-    pick_preview_path(ctx, 0);
+    pick_preview_path(ctx, paths.front());
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
     ctx->ItemClick("##DetailsTabs/Preview");
@@ -524,15 +523,12 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
         const ImRect act = ctx->ItemInfo("**/< Act##prevact").RectFull;
         IM_CHECK_GE(act.Min.y, combo.Max.y);
         const ImGuiStyle& s = ImGui::GetStyle();
-        const float size = s.FontSizeBase * s.FontScaleMain * s.FontScaleDpi;
         const hydra::app::PathButtonsView list = hydra::app::build_path_buttons(
             *h.app->viewed.record, h.app->settings.depth_mode, h.app->settings.depth_value);
         float widest = 0.0f;
         for (const hydra::app::PathButtonView& b : list.buttons) {
             const std::string label = hydra::app::preview_path_label(b);
-            widest = (std::max)(widest, hydra::ui::g_mono_font
-                                            ->CalcTextSizeA(size, FLT_MAX, 0.0f, label.c_str())
-                                            .x);
+            widest = (std::max)(widest, text_width(label.c_str(), hydra::ui::g_mono_font));
         }
         const float fit = widest + s.FramePadding.x * 2.0f + combo.GetHeight();
         IM_CHECK_FLOAT_NEAR_EQ(combo.GetWidth(), fit, 1.0f);
@@ -550,11 +546,10 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
         IM_CHECK(win != nullptr);
         if (win == nullptr) return;
         const ImGuiStyle& s = ImGui::GetStyle();
-        const float size = s.FontSizeBase * s.FontScaleMain * s.FontScaleDpi;
         const float line = win->WorkRect.Max.x - combo.RectFull.Min.x;  // the most the box gets
         const float chrome = s.FramePadding.x * 2.0f + combo.RectFull.GetHeight();
-        auto width_of = [&](const std::string& t) {
-            return hydra::ui::g_mono_font->CalcTextSizeA(size, FLT_MAX, 0.0f, t.c_str()).x;
+        auto width_of = [](const std::string& t) {
+            return text_width(t.c_str(), hydra::ui::g_mono_font);
         };
         std::string long_label;
         for (int i = 0; i < 40; ++i) long_label += (i % 3 == 0 ? "2- " : "1 ");
@@ -579,7 +574,7 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     ctx->Yield(1);
     IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
 
-    pick_preview_path(ctx, 1);
+    pick_preview_path(ctx, h.app->viewed.record->all_paths()[1]);
     IM_CHECK(h.app->details_ui.selected_path != nullptr);
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
     const std::string key = hydra::app::path_overlay_key(h.app->details_ui.selected_path);
@@ -591,7 +586,7 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 
     // Back to the optimal path, then a pending jump to its first activation.
-    pick_preview_path(ctx, 0);
+    pick_preview_path(ctx, h.app->viewed.record->all_paths().front());
     IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
     pc.seek_ms(0.0);
     h.app->details_ui.paths_tab.ui().preview_jump = 0;

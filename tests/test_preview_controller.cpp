@@ -141,15 +141,8 @@ AnalyzedChart first_chart_with_a_path() {
     settings.depth_mode = DepthMode::Scores;
     settings.depth_value = 2;
     settings.ms_filter = 10.0;
-    for (const std::string& p : corpus::chart_paths()) {
-        try {
-            AnalysisResult r = analyze_chart_file(p, settings);
-            if (!r.record.paths.empty()) return {p, r.record.best_path()};
-        } catch (const std::exception&) {
-        }
-    }
-    FAIL("no corpus chart has a path");
-    return {};
+    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(settings);
+    return {found.chart, found.result.record.best_path()};
 }
 
 }  // namespace
@@ -420,21 +413,9 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
     settings.depth_mode = DepthMode::Scores;
     settings.depth_value = 2;
     settings.ms_filter = 10.0;
-    std::string chart;
-    std::optional<AnalysisResult> analyzed;
-    for (const std::string& p : corpus::chart_paths()) {
-        try {
-            AnalysisResult r = analyze_chart_file(p, settings);
-            if (!r.record.paths.empty()) {
-                chart = p;
-                analyzed.emplace(std::move(r));
-                break;
-            }
-        } catch (const std::exception&) {
-        }
-    }
-    REQUIRE(analyzed.has_value());
-    const Path& best = analyzed->record.best_path();
+    const corpus::ChartWithPaths found = corpus::first_chart_with_paths(settings);
+    const std::string& chart = found.chart;
+    const Path& best = found.result.record.best_path();
     const std::string best_key = path_overlay_key(&best);
 
     PreviewController pc(nullptr, nullptr);

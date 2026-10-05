@@ -2505,16 +2505,20 @@ const std::vector<OwnerRule>& rules() {
           "old_lens.legacy_fills = 1;"},
          {},
          {"src", "tests"}},
-        // Walking the corpus for the first charts that analyze to a path.
+        // Walking the corpus for the first charts that analyze to a path,
+        // skipping the rest (continue) or stopping on the first (return).
         {"Which corpus chart is the first with paths?",
-         "analyzed_with_paths in tests/corpus_util.h",
-         R"(\.record\.paths\.empty\(\)\)\s*continue)",
+         "charts_with_paths and its forms (analyzed_with_paths, first_chart_with_paths, "
+         "first_analyzed_with_paths) in tests/corpus_util.h",
+         R"(\.record\.paths\.empty\(\)\)\s*(continue|return))",
          "",
          {"tests/corpus_util.h"},
          {},
-         "audit finding 277; phase 6 task J2-2 (D53)",
+         "audit finding 277; phase 6 task J2-2 (D53); the return form added by task J4-4",
          {"if (result.song.is_empty() || result.record.paths.empty()) continue;",
-          "if (r.song.is_empty() || r.record.paths.empty()) continue;"},
+          "if (r.song.is_empty() || r.record.paths.empty()) continue;",
+          "if (!r.song.is_empty() && !r.record.paths.empty()) return r;",
+          "if (!r.record.paths.empty()) return {p, r.record.best_path()};"},
          {"for (const AnalysisResult& result : corpus::analyzed_with_paths(settings, names.size())) {",
           "CHECK(!r.paths.empty());"},
          {},
@@ -3771,16 +3775,18 @@ const std::vector<OwnerRule>& rules() {
         // Placing an item after the last one and comparing with a right edge.
         {"Does the next item fit on this line?",
          "fits_in_row and fits_on_line in src/ui/widgets.h",
-         R"(GetItemRectMax\(\)\.x \+ \w+(\.ItemSpacing\.x)?\s*\+|line_end \+ .*<= right_edge)",
+         R"(GetItemRectMax\(\)\.x \+ \w+(\.ItemSpacing\.x)?\s*\+|line_end \+ .*<= right_edge|\w+ \+ \w+_w > \w*width\b)",
          "",
          {"src/ui/widgets.h"},
          {},
-         "audit finding 214; phase 6 task J4-3 (D53, D54)",
+         "audit finding 214; phase 6 task J4-3 (D53, D54); the key bar's form added by task J4-4",
          {"if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + w <= right_edge)",
           "if (line_end + ImGui::GetStyle().ItemSpacing.x + w <= right_edge) ImGui::SameLine();",
-          "if (line_end + separator_w + block_w[i] <= right_edge) {"},
+          "if (line_end + separator_w + block_w[i] <= right_edge) {",
+          "if (x > 0.0f && x + group_w > width) {"},
          {"if (fits_in_row(line_end + separator_w, block_w[i], right_edge)) {",
-          "if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();"},
+          "if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();",
+          "if (x > 0.0f && !fits_in_row(x, group_w, width)) {"},
          {},
          {"src"}},
         // A quoted run of six 0s or 9s is a hand-picked "widest six digits".
@@ -3862,6 +3868,68 @@ const std::vector<OwnerRule>& rules() {
          {"key_(app::dynamics_store_key(entry_.md5, difficulty_, pro_)) {}"},
          {},
          {"src", "tools", "tests"}},
+        // The GUI harness writes its ini from scratch_settings(), and the
+        // Burnout reference cases run through its to_analysis_settings. Other
+        // depths in these files are a case's own input.
+        {"Which settings do the GUI tests and the Burnout reference results run under? (tests)",
+         "scratch_settings in tests/scratch_settings.h",
+         R"re(depth_value\s*=\s*2;|"depth_value=2)re",
+         "",
+         {"tests/scratch_settings.h"},
+         {},
+         "audit finding 280; phase 6 task J4-4 (D53, D54)",
+         {"f << \"depth_value=2\\n\";  // keep analyses short", "settings.depth_value = 2;"},
+         {"settings.depth_value = 10;",
+          "const AnalysisSettings settings = scratch_settings().to_analysis_settings();"},
+         {},
+         {"tests/ui/uitest_harness.cpp", "tests/test_path_view.cpp", "tests/test_stars.cpp"}},
+        // The font size ImGui draws text at, for a GUI test that measures
+        // text itself.
+        {"At what pixel size does ImGui draw text? (tests)",
+         "text_width in tests/ui/uitest_harness.cpp",
+         R"(FontSizeBase \*)",
+         "",
+         {},
+         {},
+         "audit finding 295; phase 6 task J4-4 (D53, D54)",
+         {"const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
+          "const float size = s.FontSizeBase * s.FontScaleMain * s.FontScaleDpi;"},
+         {"widest = (std::max)(widest, text_width(label.c_str(), hydra::ui::g_mono_font));"},
+         {{"tests/ui/uitest_harness.cpp",
+           "const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;",
+           "text_width, the owner"}},
+         {"tests"}},
+        // The Preview picker's "label##index" id. The library's chip id
+        // (")##" + c.id) is another widget's and does not fit.
+        {"How is a picker item's id spelled?",
+         "path_item_id in src/app/path_view.h",
+         R"("##" \+ std::to_string\()",
+         "",
+         {},
+         {},
+         "audit finding 352; phase 6 task J4-4 (D53, D54)",
+         {"const std::string item = hydra::app::preview_path_label(b) + \"##\" + std::to_string(i);",
+          "hydra::app::preview_path_label(list.buttons[index]) + \"##\" + std::to_string(index);"},
+         {"group_thousands(static_cast<int64_t>(n)) + \")##\" + c.id;",
+          "const std::string item = hydra::app::path_item_id(hydra::app::preview_path_label(b), i);"},
+         {{"src/app/path_view.h", "return label + \"##\" + std::to_string(index);",
+           "path_item_id, the owner"}},
+         {"src", "tools", "tests"}},
+        // pick_preview_path finds the button whose path pointer is the one
+        // asked for, so no caller names a place in the list. It lives in an
+        // unnamed namespace in uitest_preview.cpp, so only that file can call it.
+        {"Which path does the Preview picker's test click?",
+         "pick_preview_path in tests/ui/uitest_preview.cpp, by the button's path pointer",
+         R"(pick_preview_path\(ctx, \d)",
+         "",
+         {},
+         {},
+         "audit finding 352; phase 6 task J4-4 (D53, D54)",
+         {"pick_preview_path(ctx, 0);", "pick_preview_path(ctx, 1);"},
+         {"pick_preview_path(ctx, other);",
+          "pick_preview_path(ctx, h.app->viewed.record->all_paths()[1]);"},
+         {},
+         {"tests/ui/uitest_preview.cpp"}},
     };
     return r;
 }
@@ -3875,9 +3943,6 @@ const std::vector<KnownCopy>& known_copies() {
          R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
          "unassigned: the main session names the fold (the NotAnalyzed line takes "
          "its depth word from describe_settings; audit finding 206, D54)"},
-        {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
-         "if (r.record.paths.empty()) continue;",
-         "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
         // The test fixtures' one byte writer also writes 16-bit WAV fields,
         // and BinaryWriter has no 16-bit method; folding it needs one added
         // in src/store/serialize.h, outside the J3 join.
@@ -3886,16 +3951,14 @@ const std::vector<KnownCopy>& known_copies() {
          "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
          "unassigned: the main session names the fold (put_le writes through BinaryWriter once it "
          "has a 16-bit method; audit finding 195)"},
-        // The three test files J4-6 left for the tasks that fork from it.
+        // The test files J4-6 left for the tasks that fork from it (J4-4
+        // folded the GUI harness's).
         {"How does a test build a per-process scratch path?", "tests/test_config.cpp",
          "GetTempPathW(MAX_PATH, tmp);",
          "task J4-1 (the config tests call testtemp::temp_path; audit finding 287)"},
         {"How does a test build a per-process scratch path?", "tests/test_store.cpp",
          "GetTempPathW(MAX_PATH, tmp);",
          "task J4-2 (the store tests call testtemp::temp_path; audit finding 287)"},
-        {"How does a test build a per-process scratch path?", "tests/ui/uitest_harness.cpp",
-         "DWORD n = GetTempPathW(MAX_PATH, buf);",
-         "task J4-4 (the GUI harness calls testtemp::temp_dir; audit finding 287)"},
     };
     return k;
 }

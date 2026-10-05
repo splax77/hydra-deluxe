@@ -429,14 +429,6 @@ void test_paths_long_path(ImGuiTestContext* ctx) {
     }
 }
 
-// A width in the font the app draws with (`font` null: the default one).
-float text_w(const char* s, ImFont* font = nullptr) {
-    const ImGuiStyle& st = ImGui::GetStyle();
-    const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
-    if (!font) font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
-    return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x;
-}
-
 // The narrowest song panel: the library as wide as it goes.
 bool narrowest_panel(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -492,7 +484,7 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     // The squeezed-out line is longer than the cell, so it did wrap: the
     // cell is narrower than the line.
     const float line_w =
-        text_w("Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)", hydra::ui::g_mono_font);
+        text_width("Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)", hydra::ui::g_mono_font);
     IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, line_w);
     // The three fixed columns fit their text: no cell runs past its column.
     for (int c = 0; c < 3; ++c) {
@@ -524,10 +516,10 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     auto check = [&](const std::string& widest_measure, const std::string& measure,
                      const std::string& bars, const std::string& badge) {
         const hydra::ui::ActivationRowLayout l = hydra::ui::activation_row_layout(
-            text_w(widest_measure.c_str(), mono), badge.empty() ? 0.0f : text_w(badge.c_str()),
+            text_width(widest_measure.c_str(), mono), badge.empty() ? 0.0f : text_width(badge.c_str()),
             row_w, scale);
-        const float measure_end = l.measure_x + text_w(measure.c_str(), mono);
-        const float bars_end = l.bars_x + text_w(bars.c_str());
+        const float measure_end = l.measure_x + text_width(measure.c_str(), mono);
+        const float bars_end = l.bars_x + text_width(bars.c_str());
         ctx->LogInfo("measure %s ends %.1f, bars at %.1f..%.1f, badge pill from %.1f (row %.1f)",
                      measure.c_str(), measure_end, l.bars_x, bars_end, l.badge_pill_min, row_w);
         IM_CHECK_LE(measure_end + gap, l.bars_x + 0.01f);
@@ -537,7 +529,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     const hydra::app::ActivationsView& view = shown_activations(*h.app);
     std::string widest;
     for (const hydra::app::ActivationRowView& a : view.acts)
-        if (text_w(a.measure.c_str(), mono) > text_w(widest.c_str(), mono)) widest = a.measure;
+        if (text_width(a.measure.c_str(), mono) > text_width(widest.c_str(), mono)) widest = a.measure;
     IM_CHECK(!view.acts.empty());
     for (const hydra::app::ActivationRowView& a : view.acts) check(widest, a.measure, a.bars, a.badge);
     check("m1024.1.120", "m1024.1.120", "12 bars", hydra::app::longest_activation_badge());
