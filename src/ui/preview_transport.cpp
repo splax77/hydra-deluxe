@@ -78,7 +78,8 @@ bool PreviewTransport::has_audio() const {
 }
 
 double PreviewTransport::tick() {
-    // Stop at the end of the song rather than scrolling into the void.
+    // Stop where playback ends (length_ms_, the later of the audio end and
+    // the last note) rather than scrolling into the void.
     if (clock_.playing() && length_ms_ > 0.0 && clock_.now_ms() >= length_ms_) {
         pause();
         seek_ms(length_ms_);

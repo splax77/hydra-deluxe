@@ -24,6 +24,14 @@ M7-1 merged first, as 6c65208. J1-1 then merged alone as 8fe0356. At the join, i
 
 J1-4 is at c87899b on `claude/p6-j1-4`, and its answer check was CLEAN. Phase 3's FX-P (inside M_D) also adds `src/audio/frames.h` with `frames_of_ms` and `ms_of_frames`, and it also edits `player.cpp` and `test_audio_player.cpp`. Agreed with the phase 3 session: M_D goes first. Then J1-4 merges main in, takes phase 3's `frames.h` (with its rate guard) and its `player.cpp` changes as they are, and keeps only J1-4's other folds: `stem_converter_config`, `tests/audio_util.h` and the mixer oracle pin. After that come the precheck, a review, the full suite and the scores, then the merge as M6-J1c.
 
+## Wave J2
+
+Phase 7 launched its wave 2 from phase 3's join branch, `claude/p3-d2` at 8b5a99d, without waiting for M_D. That commit already holds M7-1, M6-J1a, J1-1 and M0, so phase 6 did the same. The workflow is wf_82ef1b6e-5e5. J2-1, J2-2, J2-7 and J2-8 fork from 8b5a99d. J2-3 and J2-5 fork from J2-1's commit, because they need strutil's new exports. J2-6 forks from J2-1 and merges the J1-4 port, which brings `tests/audio_util.h`. The J1-4 port is `claude/p6-j1-4c`, on 8b5a99d, and it takes phase 3's `frames.h` and `player.cpp`. M6-J2 cannot merge before M_D does, and it merges main in first.
+
+J2-4 forks from phase 7's SE2 commit. SE2 started first, so the agreed `test_app_state.cpp` order is swapped, and J2-4 waits for that hash.
+
+Phase 7's PV takes J3-5's transport gain-floor line early, so J3-5 drops it. PV's volume slider reads `Settings::clamp` without editing `config.cpp`, which stays J2-1's.
+
 ## Notes for later waves (from the J1 brief writers)
 
 - **J2-8 and J3-4:** J1-3 exports the "is a toggle on after this instant" helper as `toggle_on_after`, not `toggle_on`. The plan's name would clash with the private `toggle_on(Toggle)` in `highway_draw.cpp`. J2-8 adopts the new name.
