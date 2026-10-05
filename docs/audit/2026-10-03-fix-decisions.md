@@ -235,3 +235,11 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 1. Every one-decimal millisecond figure is written with a space ("163.5 ms"), matching whole numbers ("171 ms") and the report pages. One formatter answers it.
 2. The Paths tab backend tooltip names the normal budget at one decimal in both places ("on the normal 170.5 ms scale … not 170.5 ms").
 3. Report-page search looks at the text each page shows, so a tag-only title or artist searches as "(unknown)". The Library keeps searching the stored text.
+
+**D58 (phase 7 wave 2 briefs), 2026-10-04.** The wave 2 brief writers raised six display and stored-record questions. The user took the recommended answer to each. Every code-only question in the briefs takes the brief's recommendation.
+1. **E3, a 0.0 ms fill.** A required early fill with exactly 0.0 ms of slack still needs timing, the same as a squeeze-out at exactly 0.0 ms (D13).
+2. **E3, the 1-bar line.** "A 1-bar cap can never activate Star Power." shows on a cap-1 record in the detail line under each path button.
+3. **E3, the stored hardest timing.** When the best path has nothing to time, its stored `hardest_ms` is empty, and reports show a dash. The library's `squeeze<=N` filter passes such paths, as the guide says. The 2.1.0 re-analysis rewrites the column, and the implementer reports how many charts change.
+4. **ST2, old scan caches.** A scan cache with no version stamp reads as not current. So the first scan after upgrading re-reads every chart file once, the way unstamped dynamics rows are recounted (ADR 0018).
+5. **ST2, old song lengths.** A record with no per-difficulty length reads the old per-chart length, so nothing changes on screen until that difficulty is analyzed again.
+6. **PV, the changed-chart line.** D51 call 18's sentence shows as one warning-colour line above the highway, where "No audio device" sits. The highway still draws. The activations, score box and scrub marks hide, and the SP gauge shows the unanalyzed curve.
