@@ -122,6 +122,20 @@ inline bool button_in_slot(const char* label, float slot_w) {
     return ImGui::Button(label, ImVec2(slot_w, 0.0f));
 }
 
+// ---- Wrapping a row: does the next item fit on this line? ----------------
+
+// True when an item `w` wide, placed at screen x `x`, ends by screen x
+// `right`. The bare rule, for a caller that places items itself.
+inline bool fits_in_row(float x, float w, float right) { return x + w <= right; }
+
+// True when an item `w` wide still fits after the last item, `spacing`
+// apart, inside the window's work rect. Inside a table cell or a child that
+// right edge is the same number as the cursor plus the available width.
+inline bool fits_on_line(float w, float spacing) {
+    return fits_in_row(ImGui::GetItemRectMax().x + spacing, w,
+                       ImGui::GetCurrentWindow()->WorkRect.Max.x);
+}
+
 // A popup modal that keeps one width while its text changes. Pair with
 // ImGuiWindowFlags_AlwaysAutoResize: height still follows the content,
 // width is pinned to `width`.
@@ -159,7 +173,7 @@ inline void text_ellipsized(const char* text, float max_width = FLT_MAX) {
     ImGuiWindow* window = ImGui::GetCurrentWindow();
     if (window->SkipItems) return;
 
-    const float avail = std::min(ImGui::GetContentRegionAvail().x, max_width);
+    const float avail = (std::min)(ImGui::GetContentRegionAvail().x, max_width);
     const std::string shown = render::ellipsize(text, avail, text_width);
     if (shown == text) {
         ImGui::TextUnformatted(text);

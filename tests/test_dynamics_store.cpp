@@ -190,14 +190,18 @@ TEST_CASE("RecordStore dynamics put/get") {
 }
 
 TEST_CASE("dynamics keys come from one place") {
-    CHECK(dynamics_cache_key("C:\\songs\\a\\notes.mid", true, hydra::Difficulty::Expert) ==
-          "C:\\songs\\a\\notes.mid|pro|Expert");
-    CHECK(dynamics_cache_key("x.chart", false, hydra::Difficulty::Hard) == "x.chart|std|Hard");
-
     DynamicsKey k = dynamics_store_key("abc123", hydra::Difficulty::Medium, true);
     CHECK(k.md5 == "abc123");
     CHECK(k.difficulty == "Medium");
     CHECK(k.pro);
+
+    // The in-memory count is filed under the same key, so two keys compare
+    // field by field: the same chart, difficulty and view are one count, and
+    // a change to any one of them is another.
+    CHECK(k == dynamics_store_key("abc123", hydra::Difficulty::Medium, true));
+    CHECK(k != dynamics_store_key("abc124", hydra::Difficulty::Medium, true));
+    CHECK(k != dynamics_store_key("abc123", hydra::Difficulty::Hard, true));
+    CHECK(k != dynamics_store_key("abc123", hydra::Difficulty::Medium, false));
 
     // The background count always parses with 2x kicks kept.
     CHECK(kDynamicsParseBass2x);

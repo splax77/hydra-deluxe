@@ -28,6 +28,16 @@ enum class StatusChip { All, NotAnalyzed, Stale, Analyzed };
 // table, so a sort spec maps straight back to one of these.
 enum class LibrarySort { Title = 0, Artist = 1, Charter = 2, Folder = 3, BestPath = 4 };
 
+// The table's columns, by index: each column sits at its LibrarySort value.
+// The GUI tests read them too.
+inline constexpr int kColumnTitle = static_cast<int>(LibrarySort::Title);
+inline constexpr int kColumnArtist = static_cast<int>(LibrarySort::Artist);
+inline constexpr int kColumnCharter = static_cast<int>(LibrarySort::Charter);
+inline constexpr int kColumnFolder = static_cast<int>(LibrarySort::Folder);
+inline constexpr int kColumnBestPath = static_cast<int>(LibrarySort::BestPath);
+// How many columns the table has: one per LibrarySort value.
+inline constexpr int kLibraryColumnCount = kColumnBestPath + 1;
+
 // One scanned chart as the table shows it.
 struct LibraryRow {
     store::ChartLibraryEntry entry;       // as scanned; entry.md5 is the chart's hash

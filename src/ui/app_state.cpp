@@ -181,7 +181,7 @@ void AppState::close_details() {
         dynamics_job.reset();
     }
     dynamics_result.reset();
-    dynamics_key.clear();
+    dynamics_key.reset();
     dynamics_store_error.clear();
     // Keep a length that already came in; cancel a read still running.
     update_song_length();
@@ -396,12 +396,12 @@ void AppState::update_dynamics() {
 
     bool pro = settings.view_prodrums;
     Difficulty diff = settings.difficulty();
-    std::string want_key = app::dynamics_cache_key(selected->notespath, pro, diff);
+    const store::DynamicsKey want_key = app::dynamics_store_key(selected->md5, diff, pro);
 
     // If the cached result is from a different key, drop it.
-    if (!dynamics_key.empty() && dynamics_key != want_key) {
+    if (dynamics_key && *dynamics_key != want_key) {
         dynamics_result.reset();
-        dynamics_key.clear();
+        dynamics_key.reset();
         dynamics_store_error.clear();
     }
     // Cancel any in-flight job that was started for a different key.
@@ -415,8 +415,7 @@ void AppState::update_dynamics() {
 
     // Try the store before starting a background parse.
     if (!dynamics_job) {
-        auto stored =
-            app::load_stored_dynamics(*store, app::dynamics_store_key(selected->md5, diff, pro));
+        auto stored = app::load_stored_dynamics(*store, want_key);
         if (stored) {
             dynamics_result = std::move(*stored);
             dynamics_key = want_key;
@@ -440,11 +439,7 @@ void AppState::reap_dynamics() {
     dynamics_key = dynamics_job->key();
     // Persist under what the job counted, so the next open is instant.
     try {
-        app::save_dynamics(*store,
-                           app::dynamics_store_key(dynamics_job->entry().md5,
-                                                   dynamics_job->difficulty(),
-                                                   dynamics_job->pro()),
-                           *dynamics_result);
+        app::save_dynamics(*store, dynamics_job->key(), *dynamics_result);
         dynamics_store_error.clear();
     } catch (const std::exception& e) {
         dynamics_store_error = std::string("Counted, but saving failed: ") + e.what();

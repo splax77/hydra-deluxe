@@ -295,6 +295,10 @@ struct DynamicsKey {
     std::string md5;
     std::string difficulty;  // difficulty_name(), e.g. "Expert"
     bool pro = false;
+    bool operator==(const DynamicsKey& o) const {
+        return md5 == o.md5 && difficulty == o.difficulty && pro == o.pro;
+    }
+    bool operator!=(const DynamicsKey& o) const { return !(*this == o); }
 };
 
 // One dynamics count ready to store: its key, its encoded blob and its count
