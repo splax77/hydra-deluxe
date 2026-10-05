@@ -6,9 +6,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <unordered_set>
 #include <unordered_map>
 
+#include "app/analysis.h"  // normalize_chart_hash
 #include "app/display_format.h"
 #include "app/html_page.h"
 #include "core/model.h"
@@ -66,15 +66,14 @@ const char* const kBody = R"page(<div class="wrap">
 
 )page";
 
-// The payload is {hit_window, tiers, rows}. The tier dropdown and the
-// "Past N ms" tile read the tier table, so they always match the bands the
-// rows were labeled with.
-const char* const kPageJs = R"page(const BEYOND = Math.max(...DATA.tiers.filter(t => t.cutoff !== null).map(t => t.cutoff));
-
-// One name per tier, for both the dropdown and the chips, so a row's chip
+// The payload is {hit_window, beyond_edge_ms, tiers, rows}. The tier dropdown
+// reads the tier table, and the Beyond chip and the "Past N ms" tile read the
+// edge C++ worked out, so they always match the bands the rows were labeled
+// with.
+const char* const kPageJs = R"page(// One name per tier, for both the dropdown and the chips, so a row's chip
 // reads the same words as the filter that finds it.
 function tierLabel(name) {
-  return name === 'Beyond' ? 'Beyond ' + BEYOND + ' ms'
+  return name === 'Beyond' ? 'Beyond ' + DATA.beyond_edge_ms + ' ms'
        : name === 'None' ? 'No squeezes'
        : name;
 }
@@ -150,13 +149,13 @@ const PAGE = {
     const withMs = rows.filter(r => r.ms !== null && r.ms !== undefined);
     const hardest = withMs.length ? withMs.reduce((a, b) => b.ms > a.ms ? b : a) : null;
     const maxSkip = rows.length ? Math.max(...rows.map(r => r.skip)) : 0;
-    // The Beyond rows: a timing on the edge itself is still Insane+.
-    const beyond = rows.filter(r => r.ms !== null && r.ms > BEYOND).length;
+    // The rows tier_for put in Beyond (a timing on the edge itself is Insane+).
+    const beyond = rows.filter(r => r.tier === 'Beyond').length;
     return [
       ['Charts', fmt(new Set(rows.map(r => r.c)).size)],
       ['Paths shown', fmt(rows.length)],
       ['Hardest ms', hardest === null ? DASH : hardest.ms_text],
-      ['Past ' + BEYOND + ' ms', fmt(beyond)],
+      ['Past ' + DATA.beyond_edge_ms + ' ms', fmt(beyond)],
       ['Highest skip', maxSkip],
     ];
   },
@@ -193,6 +192,20 @@ void ms_text_into(std::string& data, const std::optional<double>& ms) {
         data += "null";
 }
 
+// The Beyond edge as the page and its footer print it: beyond_edge_ms, whole.
+std::string beyond_edge_text(double hit_window_ms) {
+    return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
+}
+
+// A small number per chart, in order of first appearance among the rows. The
+// page's Charts tile counts distinct charts by it, without the 32-character
+// hash on every row, and the subtitle's chart count is its size.
+std::unordered_map<std::string, int> chart_ids(const std::vector<ReportRow>& rows) {
+    std::unordered_map<std::string, int> ids;
+    for (const ReportRow& r : rows) ids.emplace(r.hyhash, static_cast<int>(ids.size()));
+    return ids;
+}
+
 }  // namespace
 
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
@@ -225,7 +238,7 @@ std::unordered_map<std::string, store::RecordListing> records_by_hash(
     for (store::RecordListing& r : store.list_records(chartmode, cap, lens,
                                                        store::SortColumn::Score,
                                                        /*descending=*/true))
-        by_hash.emplace(to_lower_ascii(r.hyhash), std::move(r));
+        by_hash.emplace(normalize_chart_hash(r.hyhash), std::move(r));
     return by_hash;
 }
 
@@ -245,10 +258,9 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
         // did in Python.
         if (!record) return;
 
-        std::vector<const Path*> paths = record->all_paths();
-        std::stable_sort(paths.begin(), paths.end(), [](const Path* a, const Path* b) {
-            return a->totalscore() > b->totalscore();
-        });
+        // all_paths() is already best first (pather::read sorts the roots and
+        // each variant sits under its parent), so ranks number it as it comes.
+        const std::vector<const Path*> paths = record->all_paths();
 
         int64_t shown = std::min<int64_t>(max_paths, static_cast<int64_t>(paths.size()));
         for (int64_t idx = 0; idx < shown; ++idx) {
@@ -289,12 +301,14 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
 
 std::string build_html(const std::vector<ReportRow>& rows, const std::string& subtitle,
                        const std::string& footer, double hit_window_ms) {
-    // The payload: {hit_window, tiers, rows}. The page builds its tier
-    // dropdown and the stats tiles from hit_window/tiers, so the embedded UI
-    // can never drift from the bands the rows were labeled with.
+    // The payload: {hit_window, beyond_edge_ms, tiers, rows}. The page builds
+    // its tier dropdown from the tiers and its Beyond chip and tile from the
+    // edge, so the embedded UI can never drift from the bands the rows were
+    // labeled with.
     std::string data;
     data.reserve(rows.size() * 160 + 256);
     data += "{\"hit_window\":" + py_repr(hit_window_ms);
+    data += ",\"beyond_edge_ms\":" + beyond_edge_text(hit_window_ms);
     data += ",\"tiers\":[";
     {
         bool first_tier = true;
@@ -311,18 +325,13 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
         }
     }
     data += "],\"rows\":[";
-    // A small number per chart, in order of first appearance: the Charts
-    // tile counts distinct charts by it, the way the subtitle counts chart
-    // hashes, without the 32-character hash on every row.
-    std::unordered_map<std::string, int> chart_ids;
+    const std::unordered_map<std::string, int> ids = chart_ids(rows);
     bool first_row = true;
     for (const ReportRow& r : rows) {
         if (!first_row) data.push_back(',');
         first_row = false;
-        const int chart_id =
-            chart_ids.emplace(r.hyhash, static_cast<int>(chart_ids.size())).first->second;
 
-        data += "{\"c\":" + std::to_string(chart_id);
+        data += "{\"c\":" + std::to_string(ids.at(r.hyhash));
         data += ",\"song\":";
         json_escape_into(data, r.song);
         data += ",\"artist\":";
@@ -401,13 +410,10 @@ GeneratedReport generate_report(store::RecordStore& store,
         return out;
     }
     // The subtitle counts what the page lists: every record on it has exactly
-    // one rank-1 row, and its songs are the distinct charts among the rows.
-    std::unordered_set<std::string> songs;
-    for (const ReportRow& r : rows) {
+    // one rank-1 row, and its songs are the charts the page numbers.
+    for (const ReportRow& r : rows)
         if (r.rank == 1) ++out.records;
-        songs.insert(r.hyhash);
-    }
-    out.songs = static_cast<int64_t>(songs.size());
+    out.songs = static_cast<int64_t>(chart_ids(rows).size());
 
     // Counts read the house rule (hydra::counted, D48 Q12). The cut is per
     // chart and mode, and the page lists every mode at the current cap.
@@ -431,8 +437,7 @@ GeneratedReport generate_report(store::RecordStore& store,
                          ". Timing tiers measure how big each squeeze is, in steps "
                          "of your hit window. The Paths tab's row labels measure how "
                          "far a hit lands from the Star Power end, so the two can "
-                         "differ. 'Beyond' means past the " +
-                         std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) +
+                         "differ. 'Beyond' means past the " + beyond_edge_text(w) +
                          " ms window.";
     out.html = build_html(rows, subtitle, footer, w);
     return out;

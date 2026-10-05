@@ -29,7 +29,7 @@ struct DmReportRow {
     std::string identifier;             // chart-file MD5 (the join key)
     int64_t actual = 0;                 // score the player posted
     std::optional<int64_t> optimal;     // Hydra best-path score; unset with no current result
-    std::optional<int64_t> delta;       // optimal - actual (points left); <0 == above optimal
+    std::optional<int64_t> delta;       // optimal - actual (points left)
     // Actual as a percent of optimal, in whole hundredths of a percent
     // (percent_steps, the number the cell's text is written from: 9901 reads
     // 99.01%). Set only at base speed with an optimal score above zero.
@@ -47,6 +47,10 @@ struct DmReportRow {
     // "other speed" (played at a speed other than net::kBaseSpeedPercent;
     // shown, never compared).
     std::string status;
+    // Whether the score beat Hydra's optimal: collect_dm_rows' "above optimal"
+    // answer, kept even when the status became "other speed", so an off-speed
+    // row still reads "+N over" on the page (D64).
+    bool above_optimal = false;
 };
 
 // Joins every fetched score against the store's records for `chartmode`,

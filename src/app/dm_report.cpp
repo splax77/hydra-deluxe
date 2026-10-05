@@ -3,11 +3,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "app/analysis.h"  // normalize_chart_hash
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "app/html_page.h"
 #include "app/report.h"  // records_by_hash
-#include "core/model.h"  // counted
-#include "core/strutil.h"  // to_lower_ascii
+#include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
 
 namespace hydra::app::dm_report {
@@ -99,9 +99,9 @@ const PAGE = {
   },
   cells(r) {
     const noDelta = r.delta === null || r.delta === undefined;
-    const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');
+    const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');
     const deltaTxt = noDelta ? DASH
-                   : (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));
+                   : (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));
     return [
       ['song trunc', r.song],
       ['dim trunc artist', r.artist],
@@ -139,8 +139,9 @@ const PAGE = {
       const h = Math.floor((2 * sum + n) / (2 * n));
       avgPct = Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%';
     }
-    // Only a score under optimal leaves points on the table.
-    const left = under.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);
+    // Only a score under optimal leaves points on the table, and every such
+    // row's delta is the points it left.
+    const left = under.reduce((a, r) => a + r.delta, 0);
     return [
       ['Scores', fmt(rows.length)],
       ['Under optimal', fmt(under.length)],
@@ -184,7 +185,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     // analyzing would fix it.
     std::unordered_set<std::string> in_library;
     for (const store::ChartLibraryEntry& e : store.list_chart_library(std::nullopt, 0, -1))
-        in_library.insert(to_lower_ascii(e.md5));
+        in_library.insert(normalize_chart_hash(e.md5));
 
     std::vector<DmReportRow> rows;
     rows.reserve(scores.size());
@@ -230,6 +231,9 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             row.status = s.score > opt    ? "above optimal"
                          : s.score == opt ? "at optimal"
                                           : "under optimal";
+            // Kept apart from the status, which an off-speed score overwrites
+            // below; the page's "+N over" reads it (D64).
+            row.above_optimal = row.status == "above optimal";
         } else {
             row.status = in_library.count(s.identifier) ? "not analyzed" : "not in library";
         }
@@ -260,6 +264,7 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
         data += ",\"actual\":" + std::to_string(r.actual);
         data += ",\"optimal\":" + (r.optimal ? std::to_string(*r.optimal) : std::string("null"));
         data += ",\"delta\":" + (r.delta ? std::to_string(*r.delta) : std::string("null"));
+        data += ",\"above_optimal\":" + std::string(r.above_optimal ? "1" : "0");
         // `pct_h` is the row's one percent, in whole hundredths: the column
         // sorts on it and the average tile reads it. `pct_txt` is the same
         // rounded percent as the cell shows it, written by format_percent.
