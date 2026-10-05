@@ -719,8 +719,8 @@ void RecordStore::upgrade_results_key() {
     // What the rebuilt table's legacy_fills column is filled from.
     std::string legacy_fills;
     if (!has_column("results", "legacy_fills")) {
-        // Schema 2. hydra_batch --legacy-fills stamps its file with the 1.0
-        // rule; everything else in a schema 2 file ran under 1.1.
+        // Schema 2: every row ran under the rule the file's stamp names
+        // (stamped_fill_rule), or 1.1 when it names none.
         legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? "1" : "0";
     } else if (!has_column("results", "rules_fp")) {
         // Schema 3: each row keeps its own fill rule.

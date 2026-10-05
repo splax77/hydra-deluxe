@@ -434,22 +434,18 @@ public:
     // {songs, results} row counts.
     std::pair<int64_t, int64_t> counts();
 
-    // Which fill-spawn rule hydra_batch last wrote this file with: "ch11"
-    // (Clone Hero 1.1, the normal one) or "ch10" (--legacy-fills, search/graph.h
-    // FillDeadlineRule). Unset on a db nothing has stamped yet, which reads as
-    // "assume the normal rule". Only a label on the file: each result carries
-    // its own rule in its Lens. The one decision it still feeds is the schema
-    // 3 migration, which files a ch10-stamped database's older rows under the
-    // 1.0 rule (docs/adr/0010).
+    // The fill-spawn stamp hydra_batch last wrote this file with, as stored
+    // (search/graph.h engine_mode_stamp writes it). Unset on a db nothing has
+    // stamped yet. Only a label on the file: each result carries its own rule
+    // in its Lens (docs/adr/0010). Read by stamped_fill_rule, and directly by
+    // cli/batch.cpp, cli/report.cpp and cli/fillcompare.cpp.
     std::optional<std::string> engine_mode();
     void set_engine_mode(const std::string& mode);
-    // Which fill rule this file holds, read from its engine_mode stamp: "ch10"
-    // is the 1.0 rule and "ch11" the 1.1 rule (search/graph.h
-    // fill_rule_from_stamp). A file with results and no stamp holds the 1.1
-    // rule, the one everything but --legacy-fills runs. An unstamped file with
-    // no results, or a stamp neither rule writes, holds none. The one reading
-    // of the stamp: the schema 3 migration asks it, and the CLI tools' own
-    // readings move here in wave 3 (task RP).
+    // Which fill rule this file holds: its engine_mode stamp read back through
+    // search/graph.h fill_rule_from_stamp. A file with results and no stamp
+    // holds the 1.1 rule, the one everything but --legacy-fills runs. An
+    // unstamped file with no results, or a stamp fill_rule_from_stamp does not
+    // know, holds none. upgrade_results_key reads it for a schema 2 file.
     std::optional<FillDeadlineRule> stamped_fill_rule();
 
     // ---- chart library (scan results) ----------------------------------
@@ -501,7 +497,7 @@ private:
     // sit in the UNIQUE constraint, which SQLite cannot alter, so the table
     // is rebuilt once with every row, result_id and blob kept (path_refs
     // point at the ids); nothing is analyzed again. A schema 2 file's rows go
-    // under the 1.0 rule when hydra_batch stamped the file ch10, else 1.1.
+    // under the fill rule stamped_fill_rule names, or 1.1 when it names none.
     void upgrade_results_key();
     // Fills the stars column of every Ready row that lacks it (rows written
     // before the column existed). Runs on every open; with nothing to fill
