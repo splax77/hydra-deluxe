@@ -27,12 +27,14 @@
 
 #include "app/analysis.h"
 #include "app/work_pool.h"
+#include "core/strutil.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
 #include "sng_util.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
@@ -64,17 +66,6 @@ TEST_CASE("discover_charts returns nothing for an empty root list") {
 
 namespace {
 
-// notespath/rootfolder relative to testdata/input, forward slashes — the
-// keying testdata/scan_snapshot.json uses (see tools/bench.cpp's --dump-rel).
-std::string rel_of(const std::string& path, const std::string& root) {
-    std::string rel = path;
-    if (!root.empty() && rel.size() > root.size() && rel.compare(0, root.size(), root) == 0)
-        rel = rel.substr(root.size() + 1);
-    for (char& c : rel)
-        if (c == '\\') c = '/';
-    return rel;
-}
-
 // A scan row for one real chart file, for the run_batch cases that analyze it.
 ScanItem chart_item(const std::string& chart) {
     ScanItem item;
@@ -103,7 +94,9 @@ TEST_CASE("discover_charts output matches the checked-in scan snapshot") {
     CHECK(items.size() == snapshot.size());
 
     std::map<std::string, const ScanItem*> by_rel;
-    for (const ScanItem& item : items) by_rel[rel_of(item.notespath, input)] = &item;
+    // Keyed as the snapshot keys it (hydra::relative_slash_path owns the rule).
+    for (const ScanItem& item : items)
+        by_rel[hydra::relative_slash_path(item.notespath, input)] = &item;
 
     for (const auto& row : snapshot) {
         const std::string rel = row["path"].get<std::string>();
@@ -114,7 +107,9 @@ TEST_CASE("discover_charts output matches the checked-in scan snapshot") {
         CHECK_MESSAGE(item.title == row["title"].get<std::string>(), rel);
         CHECK_MESSAGE(item.artist == row["artist"].get<std::string>(), rel);
         CHECK_MESSAGE(item.charter == row["charter"].get<std::string>(), rel);
-        CHECK_MESSAGE(rel_of(item.rootfolder, "") == row["folder"].get<std::string>(), rel);
+        CHECK_MESSAGE(hydra::relative_slash_path(item.rootfolder, "") ==
+                          row["folder"].get<std::string>(),
+                      rel);
     }
 }
 
@@ -473,8 +468,7 @@ TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
     const std::string chart = corpus::first_chart_with_suffix(".chart");
     REQUIRE(!chart.empty());
 
-    const fs::path root = fs::temp_directory_path() /
-        ("hydra_unknown_title_" + std::to_string(GetCurrentProcessId()));
+    const fs::path root = hydra::os_path(testtemp::temp_dir("unknown_title"));
     fs::remove_all(root);
 
     // An empty `name =` line.
@@ -535,14 +529,9 @@ TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
 
 namespace {
 
-// A fresh folder under %TEMP% for one scan fixture.
+// This process's scratch folder for one scan fixture (testtemp::temp_dir).
 std::string scan_fixture_dir(const char* name) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    std::string dir = hydra::wide_to_utf8(tmp) + "hydra_scan_case_" +
-                      std::to_string(GetCurrentProcessId()) + "_" + name;
-    CreateDirectoryW(hydra::utf8_to_wide(dir).c_str(), nullptr);
-    return dir;
+    return testtemp::temp_dir(std::string("scan_case_") + name);
 }
 
 void write_fixture(const std::string& path, const std::vector<uint8_t>& bytes) {

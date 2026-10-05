@@ -3703,15 +3703,44 @@ const std::vector<OwnerRule>& rules() {
          {"REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);"},
          {},
          {"src"}},
+        // Production's own temp folder for the shell (copy_to_short_temp in
+        // src/app/report_files.cpp) answers a different question (audit
+        // R7.12), so only tests/ is scanned. The temp_util case in
+        // test_winstr.cpp reads the temp folder once as its input.
+        {"How does a test build a per-process scratch path?",
+         "temp_path and temp_dir in tests/temp_util.h",
+         R"(\bGetTempPathW\()",
+         "",
+         {"tests/temp_util.h"},
+         {},
+         "audit finding 287; phase 6 task J4-6 (D53, D54)",
+         {"GetTempPathW(MAX_PATH, tmp);", "DWORD n = GetTempPathW(MAX_PATH, buf);"},
+         {"const std::string path = testtemp::temp_path(\"report_file\", \".html\");",
+          "root = hydra::os_path(testtemp::temp_dir(std::string(\"docs_\") + tag));"},
+         {{"tests/test_winstr.cpp", "GetTempPathW(MAX_PATH, tmp);",
+           "the temp_util case reads the temp folder once, the input its pins start "
+           "from"}},
+         {"tests"}},
+        // The owner lives in src, so no line under tests/ is an owner line.
+        {"How is wide text converted to UTF-8 in a test?",
+         "wide_to_utf8 in src/core/winstr.cpp",
+         R"(\bWideCharToMultiByte\()",
+         "",
+         {},
+         {},
+         "audit finding 287 (test_srb.cpp's hand conversion); phase 6 task J4-6 (D53, D54)",
+         {"int len = WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, nullptr, 0,",
+          "WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, &out[0], len, nullptr,"},
+         {"return hydra::wide_to_utf8(dir.wstring());",
+          "MultiByteToWideChar(CP_UTF8, 0, s.data(), n, out.data(), len);"},
+         {},
+         {"tests"}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        {"How is a scanned path keyed in the scan snapshot?", "tests/test_analysis.cpp",
-         "rel = rel.substr(root.size() + 1);",
-         "task J4-6 (rel_of calls relative_slash_path; audit finding 274)"},
         // hydra_replay's NotAnalyzed line picks the depth word from DepthMode
         // itself, the rule describe_settings owns. No phase 6 task owns
         // tools/replay.cpp yet, so the main session names the fold.
@@ -3740,6 +3769,16 @@ const std::vector<KnownCopy>& known_copies() {
          "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
          "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
          "finding 190)"},
+        // The three test files J4-6 left for the tasks that fork from it.
+        {"How does a test build a per-process scratch path?", "tests/test_config.cpp",
+         "GetTempPathW(MAX_PATH, tmp);",
+         "task J4-1 (the config tests call testtemp::temp_path; audit finding 287)"},
+        {"How does a test build a per-process scratch path?", "tests/test_store.cpp",
+         "GetTempPathW(MAX_PATH, tmp);",
+         "task J4-2 (the store tests call testtemp::temp_path; audit finding 287)"},
+        {"How does a test build a per-process scratch path?", "tests/ui/uitest_harness.cpp",
+         "DWORD n = GetTempPathW(MAX_PATH, buf);",
+         "task J4-4 (the GUI harness calls testtemp::temp_dir; audit finding 287)"},
     };
     return k;
 }

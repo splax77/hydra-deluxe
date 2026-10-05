@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -18,18 +19,18 @@
 #include <windows.h>
 #include <winioctl.h>  // FSCTL_SET_SPARSE
 
+#include "core/strutil.h"
 #include "core/winstr.h"
+#include "temp_util.h"
 
 namespace {
 
-// A file in the temp folder that is deleted when the test ends, pass or fail.
+// A scratch file (testtemp::temp_path) that is deleted when the test ends,
+// pass or fail. The wide form is kept for the Win32 calls below.
 struct TempFile {
     std::wstring path;
-    explicit TempFile(const wchar_t* name) {
-        wchar_t dir[MAX_PATH];
-        GetTempPathW(MAX_PATH, dir);
-        path = std::wstring(dir) + name;
-    }
+    TempFile(const char* tag, const char* ext)
+        : path(hydra::win32_path(testtemp::temp_path(tag, ext))) {}
     ~TempFile() { DeleteFileW(path.c_str()); }
     std::string utf8() const { return hydra::wide_to_utf8(path); }
 };
@@ -58,7 +59,7 @@ void make_sparse(const TempFile& tmp, long long bytes) {
 // ftell returns a 32-bit long on Windows, so a file past 2 GB used to read
 // back as empty.
 TEST_CASE("file_size_bytes reports sizes past 2 GB") {
-    TempFile tmp(L"hydra_sparse_test.bin");
+    TempFile tmp("sparse_test", ".bin");
     make_sparse(tmp, 2'500'000'000LL);
     CHECK(hydra::file_size_bytes(tmp.utf8()) == 2'500'000'000ULL);
 }
@@ -66,7 +67,7 @@ TEST_CASE("file_size_bytes reports sizes past 2 GB") {
 // Past 4 GB the size needs its high 32 bits; a helper that dropped them would
 // answer 705,032,704 here.
 TEST_CASE("every size helper reports a size past 4 GB, open or not") {
-    TempFile tmp(L"hydra_sparse_test_5gb.bin");
+    TempFile tmp("sparse_test_5gb", ".bin");
     make_sparse(tmp, 5'000'000'000LL);
     CHECK(hydra::file_size_bytes(tmp.utf8()) == 5'000'000'000ULL);
 
@@ -88,7 +89,7 @@ TEST_CASE("every size helper reports a size past 4 GB, open or not") {
 // The seek to the end that ImFileGetSize used to do flushed the stream first,
 // so bytes not yet on disk counted. The helper keeps that.
 TEST_CASE("open_file_size_bytes counts bytes still in a stream's write buffer") {
-    TempFile tmp(L"hydra_file_size_buffered.bin");
+    TempFile tmp("file_size_buffered", ".bin");
     std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
     REQUIRE(f != nullptr);
     const char payload[] = "hello, hydra";
@@ -114,7 +115,7 @@ TEST_CASE("the open-file size helpers say nothing for something that is not a fi
 // holds open exclusively still answers, and a folder answers rather than
 // throwing (a fresh empty folder on NTFS holds 0 bytes).
 TEST_CASE("file_size_bytes answers for a file held open exclusively, and for a folder") {
-    TempFile tmp(L"hydra_file_size_locked.bin");
+    TempFile tmp("file_size_locked", ".bin");
     std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
     REQUIRE(f != nullptr);
     std::fwrite("12345", 1, 5, f);
@@ -125,7 +126,7 @@ TEST_CASE("file_size_bytes answers for a file held open exclusively, and for a f
     CHECK(hydra::file_size_bytes(tmp.utf8()) == 5);
     CloseHandle(lock);
 
-    TempFile dir(L"hydra_file_size_empty_folder");
+    TempFile dir("file_size_empty_folder", "");
     RemoveDirectoryW(dir.path.c_str());  // a leftover from an aborted run
     REQUIRE(CreateDirectoryW(dir.path.c_str(), nullptr));
     CHECK(hydra::file_size_bytes(dir.utf8()) == 0);
@@ -133,7 +134,7 @@ TEST_CASE("file_size_bytes answers for a file held open exclusively, and for a f
 }
 
 TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing one") {
-    TempFile tmp(L"hydra_file_size_small.bin");
+    TempFile tmp("file_size_small", ".bin");
     std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
     REQUIRE(f != nullptr);
     const char payload[] = "hello, hydra";
@@ -143,7 +144,7 @@ TEST_CASE("file_size_bytes matches a small file's bytes and throws for a missing
     const std::vector<uint8_t> bytes = hydra::read_file_bytes(tmp.utf8());
     CHECK(std::string(bytes.begin(), bytes.end()) == "hello, hydra");
 
-    TempFile missing(L"hydra_file_size_missing_does_not_exist.bin");
+    TempFile missing("file_size_missing_does_not_exist", ".bin");
     CHECK_THROWS_AS(hydra::file_size_bytes(missing.utf8()), std::runtime_error);
     CHECK_THROWS_AS(hydra::read_file_bytes(missing.utf8()), std::runtime_error);
 }
@@ -176,7 +177,7 @@ TEST_CASE("shell_execute_ok: 32 and below fail, 33 and above succeed") {
 }
 
 TEST_CASE("read_file_bytes of an empty file is empty, not an error") {
-    TempFile tmp(L"hydra_file_size_empty.bin");
+    TempFile tmp("file_size_empty", ".bin");
     std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
     REQUIRE(f != nullptr);
     std::fclose(f);
@@ -187,7 +188,7 @@ TEST_CASE("read_file_bytes of an empty file is empty, not an error") {
 // A container's notes sit in a small part of a large file, so the note loader
 // reads only that part.
 TEST_CASE("file_byte_source reads a slice, fewer bytes at the end, none past it") {
-    TempFile tmp(L"hydra_file_range.bin");
+    TempFile tmp("file_range", ".bin");
     std::FILE* f = hydra::fopen_utf8(tmp.utf8(), L"wb");
     REQUIRE(f != nullptr);
     std::fwrite("0123456789", 1, 10, f);
@@ -207,7 +208,7 @@ TEST_CASE("file_byte_source reads a slice, fewer bytes at the end, none past it"
     // A length far past the end holds only what the file has: no huge buffer.
     CHECK(range(0, SIZE_MAX) == "0123456789");
 
-    TempFile missing(L"hydra_file_range_missing_does_not_exist.bin");
+    TempFile missing("file_range_missing_does_not_exist", ".bin");
     CHECK_THROWS_AS(hydra::file_byte_source(missing.utf8()), std::runtime_error);
 
     // Bytes in memory answer as the file does, offset by offset.
@@ -220,7 +221,7 @@ TEST_CASE("file_byte_source reads a slice, fewer bytes at the end, none past it"
 }
 
 TEST_CASE("file_byte_source reads at an offset past 4 GB") {
-    TempFile tmp(L"hydra_file_range_5gb.bin");
+    TempFile tmp("file_range_5gb", ".bin");
     make_sparse(tmp, 5'000'000'000LL);
     const hydra::ByteSource file = hydra::file_byte_source(tmp.utf8());
     CHECK(file.size == 5'000'000'000ULL);
@@ -267,4 +268,33 @@ TEST_CASE("utf8_argv reads this process's command line") {
     const std::vector<std::string> args = hydra::utf8_argv();
     REQUIRE_FALSE(args.empty());
     CHECK(args[0].find("hydra_tests") != std::string::npos);
+}
+
+// tests/temp_util.h owns every test's per-process scratch name (audit finding
+// 287). The temp folder is read from Windows once here, as the input; the rest
+// is the helper's own output.
+TEST_CASE("temp_util: the scratch path is the temp folder, the tag and this process") {
+    wchar_t tmp[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp);
+    const std::string temp = hydra::wide_to_utf8(tmp);
+    const std::string pid = std::to_string(GetCurrentProcessId());
+
+    const std::string file = testtemp::temp_path("probe", ".db");
+    CHECK(hydra::starts_with(file, temp));
+    CHECK(file.find("hydra_test_probe_") != std::string::npos);
+    CHECK(hydra::ends_with_ci(file, "_" + pid + ".db"));
+
+    const std::string dir = testtemp::temp_dir("probe");
+    CHECK(hydra::is_directory_utf8(dir));
+    CHECK(hydra::starts_with(dir, temp));
+    CHECK(hydra::ends_with_ci(dir, "_" + pid));
+
+    // A non-ASCII tag ("Zoë" as UTF-8) names a folder that exists.
+    const std::string zoe = testtemp::temp_dir("Zo\xC3\xAB");
+    CHECK(hydra::is_directory_utf8(zoe));
+    CHECK(zoe.find("Zo\xC3\xAB") != std::string::npos);
+
+    std::error_code ec;
+    std::filesystem::remove_all(hydra::os_path(dir), ec);
+    std::filesystem::remove_all(hydra::os_path(zoe), ec);
 }

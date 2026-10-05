@@ -18,6 +18,7 @@
 #include "app/config.h"
 #include "core/winstr.h"
 #include "render/preview_renderer.h"
+#include "temp_util.h"
 #include "warp_util.h"
 
 #ifndef HYDRA_ASSET_DIR
@@ -28,17 +29,14 @@ namespace fs = std::filesystem;
 
 namespace {
 
-// A fresh %TEMP%\hydra_Zoë_<tag>_<pid> folder, as a UTF-8 string.
+// A fresh, empty scratch folder (testtemp::temp_dir) whose name holds a
+// non-ASCII "Zoë", as a UTF-8 string.
 std::string non_ascii_dir(const char* tag) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    fs::path dir = fs::path(tmp) / (std::wstring(L"hydra_Zo\u00EB_") +
-                                    hydra::utf8_to_wide(tag) + L"_" +
-                                    std::to_wstring(GetCurrentProcessId()));
+    const std::string dir = testtemp::temp_dir(std::string("Zo\xC3\xAB_") + tag);
     std::error_code ec;
-    fs::remove_all(dir, ec);
-    fs::create_directories(dir);
-    return hydra::wide_to_utf8(dir.wstring());
+    fs::remove_all(hydra::os_path(dir), ec);
+    fs::create_directories(hydra::os_path(dir));
+    return dir;
 }
 
 void remove_dir(const std::string& utf8_dir) {
