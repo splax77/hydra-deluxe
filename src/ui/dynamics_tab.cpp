@@ -155,17 +155,8 @@ void render_dynamics_panel(AppState& app) {
     // Kicks section.
     ImGui::SeparatorText("Kicks");
 
-    {
-        // How many of the chart's kick notes are 2x, counted or not: a fact
-        // about the chart, so it asks for every kick.
-        const app::DynamicsCounts k2x = bd.row(app::DynamicsRow::Kick2x);
-        const app::DynamicsCounts ktot = bd.kicks_total(/*bass2x=*/true);
-        const std::string pct =
-            ktot.all() > 0 ? app::format_percent(k2x.all(), ktot.all(), 0) : "0%";
-        ImGui::TextWrapped("2x kicks: %s of %s kick notes (%s)",
-                    group_thousands(k2x.all()).c_str(),
-                    group_thousands(ktot.all()).c_str(), pct.c_str());
-    }
+    // How many of the chart's kick notes are 2x, counted or not.
+    ImGui::TextWrapped("%s", app::dynamics_kick2x_line(bd).c_str());
 
     if (ImGui::BeginTable("##kicktable", 5, table_flags)) {
         ImGui::TableSetupColumn("Pad");

@@ -142,10 +142,12 @@ TEST_CASE("display format: the average multiplier rounds the exact double") {
     CHECK(py_round3(2.3456) == 2.346);
 }
 
-TEST_CASE("display format: ms text is one decimal and a unit") {
-    CHECK(format_ms(12.3) == "12.3ms");
-    CHECK(format_ms(-20.0) == "-20.0ms");
-    CHECK(format_ms(0.0) == "0.0ms");
+TEST_CASE("display format: ms text is one decimal, a space and the unit") {
+    // D57 item 1: every one-decimal ms figure reads "163.5 ms".
+    CHECK(format_ms(12.3) == "12.3 ms");
+    CHECK(format_ms(-20.0) == "-20.0 ms");
+    CHECK(format_ms(0.0) == "0.0 ms");
+    CHECK(format_ms(163.5) == "163.5 ms");
 }
 
 TEST_CASE("build_activations: the early fill reads positive = early on both lines") {
@@ -170,7 +172,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     CHECK(av.notation == "E0");
     CHECK(av.measure == "m1.1.0");
     CHECK(av.badge == "early fill 12 ms");
-    CHECK(av.early_fill == "Early fill: 12.3ms (required)");
+    CHECK(av.early_fill == "Early fill: 12.3 ms (required)");
 
     // E-critical but not E0: the badge and the details line use the same
     // sign rule, so 20 ms late reads negative. Optional, so never warn-coloured.
@@ -182,7 +184,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     CHECK(av.notation == "E1");
     CHECK(av.badge == "early fill -20 ms");
     CHECK_FALSE(av.difficult);
-    CHECK(av.early_fill == "Early fill: -20.0ms (optional)");
+    CHECK(av.early_fill == "Early fill: -20.0 ms (optional)");
 }
 
 TEST_CASE("path buttons: each path's own hardest timing, warn past the difficult floor") {
@@ -356,7 +358,7 @@ TEST_CASE("build_activations: the scale line shows every multiplier, early first
           "Frontend timing scales x8.59 (early) / x8.76 (late) at the SP end.");
     CHECK(av.scale_warn);
     REQUIRE(av.backends.size() == 1);
-    CHECK(av.backends[0].rating.find(" (eff. 0.0ms)") != std::string::npos);
+    CHECK(av.backends[0].rating.find(" (eff. 0.0 ms)") != std::string::npos);
 
     // A side at exactly x1.00 is left out.
     Activation late_only = base;
@@ -754,7 +756,7 @@ TEST_CASE("format_measure: one form for both tabs") {
     CHECK(format_measure(timing, 960) == "m2.2.0");
     CHECK(format_measure(timing, 1000) == "m2.2.40");
     CHECK(format_measure(timing.timecode(960)) == "m2.2.0");
-    CHECK(format_ms_spaced(163.0) == "163.0 ms");
+    CHECK(format_ms(163.0) == "163.0 ms");
 }
 
 TEST_CASE("activation rows: Burnout's three activations") {
@@ -1025,7 +1027,7 @@ TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. fig
     REQUIRE(v.acts[0].backends.size() == 1);
     const BackendRowView& r = v.acts[0].backends[0];
     CHECK(r.timing == "-400.0");
-    CHECK(r.rating.find(" (eff. 307.7ms)") != std::string::npos);
+    CHECK(r.rating.find(" (eff. 307.7 ms)") != std::string::npos);
     CHECK_FALSE(r.tooltip.empty());
     CHECK(v.acts[0].scale_warning.find("x1.60") != std::string::npos);
 }
@@ -1051,10 +1053,11 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     CHECK(v.acts[0].scale_warn);
     REQUIRE(v.acts[0].backends.size() == 1);
     // 187.5 ms at x0.9973 is worth 187.753... ms.
-    CHECK(v.acts[0].backends[0].rating.find(" (eff. 187.8ms)") != std::string::npos);
+    CHECK(v.acts[0].backends[0].rating.find(" (eff. 187.8 ms)") != std::string::npos);
     const std::string& tip = v.acts[0].backends[0].tooltip;
+    CHECK(tip.find("on the normal 170.0 ms scale") != std::string::npos);
     CHECK(tip.find("scales x0.997 here") != std::string::npos);
-    CHECK(tip.find("budget is 169.8ms, not 170.0ms") != std::string::npos);
+    CHECK(tip.find("budget is 169.8 ms, not 170.0 ms") != std::string::npos);
     // The squeeze-out's figure lives on its row only (decision 2).
     REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
     CHECK(v.acts[0].squeeze_sentences[0].text.find("eff.") == std::string::npos);
@@ -1069,10 +1072,10 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
           "Frontend timing scales x0.999999998 (early) at the SP end.");
 }
 
-TEST_CASE("backend table: the tooltip's normal scale is whole ms, a half rounding up") {
-    // A hit window of 85.25 ms makes the normal budget 170.5 ms. Every
-    // whole-ms text rounds that half up (format_ms_whole), so the tooltip
-    // reads 171 too; the one-decimal figures stay as they were.
+TEST_CASE("backend table: the tooltip names the normal budget at one decimal in both places") {
+    // A hit window of 85.25 ms makes the normal budget 170.5 ms. D57 item 2:
+    // the tooltip writes it once, at one decimal, and says it twice, so it
+    // never reads "171 ms" beside "170.5 ms".
     HydraRecord rec;
     Activation act;
     test::set_skips(act, 0);
@@ -1090,9 +1093,9 @@ TEST_CASE("backend table: the tooltip's normal scale is whole ms, a half roundin
     REQUIRE(v.acts.size() == 1);
     REQUIRE(v.acts[0].backends.size() == 1);
     const BackendRowView& r = v.acts[0].backends[0];
-    CHECK(r.rating.find(" (eff. 307.7ms)") != std::string::npos);
-    CHECK(r.tooltip.find("Effectively 307.7ms on the normal 171 ms scale:") == 0);
-    CHECK(r.tooltip.find(", not 170.5ms.") != std::string::npos);
+    CHECK(r.rating.find(" (eff. 307.7 ms)") != std::string::npos);
+    CHECK(r.tooltip.find("Effectively 307.7 ms on the normal 170.5 ms scale:") == 0);
+    CHECK(r.tooltip.find(", not 170.5 ms.") != std::string::npos);
 }
 
 TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {

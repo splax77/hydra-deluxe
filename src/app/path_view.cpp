@@ -36,6 +36,12 @@ std::string format_scale(double r) {
     return buf;
 }
 
+// A note's effective timing as both the SqIn sentence and the backend row
+// add it: " (eff. 163.5 ms)".
+std::string eff_suffix(double effective_ms) {
+    return " (eff. " + format_ms(effective_ms) + ")";
+}
+
 }  // namespace
 
 std::string format_measure(const Timecode& tc) {
@@ -73,7 +79,7 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
         // be hit later than it, a SqIn earlier than it. Which wording applies
         // is SPSqueeze::is_free's answer, the one the rating reads too (D13).
         const double t = sq.timing();
-        const std::string edge = format_ms_spaced(std::fabs(t));
+        const std::string edge = format_ms(std::fabs(t));
         std::string text;
         if (sq.kind == SqueezeKind::SqOut) {
             const std::string note =
@@ -108,7 +114,7 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
             // A SqIn has no backend row to carry its eff. figure (a SqOut's
             // sits on its squeezed-out row), so the sentence carries it.
             if (i < note_effective_ms.size() && note_effective_ms[i])
-                when += " (eff. " + format_ms_spaced(*note_effective_ms[i]) + ")";
+                when += eff_suffix(*note_effective_ms[i]);
             text = "Hit the SP phrase's last note " + when +
                    " so it lands before Star Power ends. The phrase then counts while Star "
                    "Power runs, which makes Star Power last longer.";
@@ -326,14 +332,15 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             if (br.note.effective_ms) {
                 // The budget at identity scale (x1.00): what the combined
                 // budget would be with no frontend-timing scale.
-                const double normal_budget = nominal_budget_ms(W);
+                // Written once and said twice, so both read the same
+                // (D57 item 2: "on the normal 170.5 ms scale ... not 170.5 ms").
+                const std::string normal_budget = format_ms(nominal_budget_ms(W));
                 row.tooltip = "Effectively " + format_ms(*br.note.effective_ms) +
-                              " on the normal " + format_ms_whole(normal_budget) +
+                              " on the normal " + normal_budget +
                               " scale:\nfrontend timing scales " +
                               format_scale(br.note.scale) +
                               " here, so the combined\nsqueeze budget is " +
-                              format_ms(br.note.budget_ms) + ", not " +
-                              format_ms(normal_budget) + ".";
+                              format_ms(br.note.budget_ms) + ", not " + normal_budget + ".";
             }
             row.chord = bsq.chord.notationstr();
             // What the engine actually paid for this row on this path, from
@@ -351,7 +358,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             row.points = std::to_string(value);
             row.rating = bsq.summarystr(br.squeezed_out, W, rules.backend_leeway_ms);
             if (br.note.effective_ms)
-                row.rating += " (eff. " + format_ms(*br.note.effective_ms) + ")";
+                row.rating += eff_suffix(*br.note.effective_ms);
             if (br.squeezed_out) {
                 // "(-N)" and the warning colour only when the squeeze-out
                 // really costs points. A row the engine never counted costs
@@ -473,7 +480,7 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
         b.notation = p->pathstring();
         b.title = group_thousands(p->totalscore()) + kDot + b.notation;
         if (std::optional<double> hardest = p->difficulty()) {
-            b.timing = format_ms_spaced(*hardest);
+            b.timing = format_ms(*hardest);
             b.timing_warn = p->is_difficult();
         }
         if (group == PathButtonView::Group::AllZero) {
