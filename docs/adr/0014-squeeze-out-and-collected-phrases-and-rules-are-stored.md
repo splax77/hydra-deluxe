@@ -319,8 +319,10 @@ same chart, mode, cap and lens now sit side by side.
 `row_ready_sql()` is no longer one undivided check. It is
 `row_readable_sql()` (this build can read the row: its results version and
 path format) plus the rules part (the row's fingerprint is this process's).
-A write under rules A purges only the rows that fail the first part, so the
-rules-B row is kept.
+A write under rules A has two purges: the first removes the rows that fail
+`row_readable_sql()` (unreadable by this build), and the second replaces the
+row with the same key under the same rules. Neither touches the rules-B row,
+so it is kept.
 
 Two cases follow from this (D55 items 3 and 4). `hydra_batch --reindex`
 leaves a row it cannot read untouched instead of blanking its summary
