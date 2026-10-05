@@ -315,3 +315,10 @@ The text matcher is deleted: no third-party text reaches it without Hydra's own 
 4. **The command-line tools print and exit 1** when a read fails partway through: hydra_batch, hydra_report, hydra_fillcompare and hydra_bench.
 5. **A re-read that fails after a good save reads the read sentence,** not "Analyzed, but saving failed".
 6. **Built on DB1,** which already catches a failed read at a batch's start, and merged after it.
+
+**D74 (the audit's last open rows), 2026-10-05.** A read-only scan of every triage row still open after phases 1 to 7 left one open finding (255) and five half done (8, 14, 55, 218, 315); the triage file records each verdict. The user took every recommended answer:
+1. **One hover teal (218).** Frames and headers hover in the button teal, 0,104,104, instead of 0,100,100.
+2. **The leaderboard page cleans DMBot's names (8).** DMBot's song, artist and charter text go through the same tag stripping as every other name Hydra shows.
+3. **The scan dialog groups its counts (14).** "(N found)" and "N unchanged since last scan" read 1,234 like every other count, and the leftover count_label wrapper goes.
+4. **The "1.0 fills" tooltip uses the shared fill-rule sentences (55),** the ones the reports already use, instead of its own wording.
+Code-only calls, approved as recommended: the chart's note total gets one Song-level owner that the engine and the Dynamics tab read, with no change to any number shown or stored (255). The generated-fill rules that were never written down (a distance tie goes to the later chord; distance and fill length are cut to whole ticks) are recorded as they are, unverified against Clone Hero like D26's (315).
