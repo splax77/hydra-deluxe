@@ -33,9 +33,10 @@ WHICH FILES
 
 The script reads the .cpp, .h and .py files under src/, tests/ and tools/.
 A test file is any file under tests/, and, under tools/, a file in a tests
-folder or a Python file named test_*.py; every other file is production
-code (Test-TestFile). Wherever a check below says "test file", it means
-this rule. No check reads the lines of tests/test_single_owner.cpp, whose
+folder or a Python file named test_*.py, at any depth (tools/tests/a.py and
+tools/test_a.py count); every other file is production code
+(Test-TestFile). Wherever a check below says "test file", it means this
+rule. No check reads the lines of tests/test_single_owner.cpp, whose
 literals are pattern examples, or of this script and its self-test, which
 read source text because they are the pre-review tool (Test-SkippedFile).
 Check 1 still compares the helpers the scan file defines with the others.
@@ -249,9 +250,10 @@ $cppExt = '\.(cpp|h)'
 function Test-CppPath([string]$p) { $p -cmatch ($cppExt + '$') }
 function Test-PyPath([string]$p) { $p -match '\.py$' }
 # Is this a test file? Everything under tests/, and under tools/ a file in a
-# tests folder or a Python file named test_*.py. Any file that is not a test
-# is production code.
-function Test-TestFile([string]$p) { (Get-TopFolder $p) -eq 'tests' -or $p -match '^tools/.*(/tests/|/test_[^/]*\.py$)' }
+# tests folder or a Python file named test_*.py, at any depth (tools/tests/
+# and tools/test_x.py count, as tools/test_derive_once_precheck.ps1 sits
+# directly in tools/). Any file that is not a test is production code.
+function Test-TestFile([string]$p) { (Get-TopFolder $p) -eq 'tests' -or $p -match '^tools/(?:.*/)?(?:tests/|test_[^/]*\.py$)' }
 
 # The top folders the precheck reads, the same three the scan walks. Listing
 # and diffing both use this one list, so a listed file is always diffed.
