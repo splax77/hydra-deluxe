@@ -352,10 +352,10 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
 }
 
 // The all-0 pass is a second, constrained search. Its whole contract is that
-// every activation it reports records skips == 0, that the 0 ms limit is a
-// requirement rather than a preference, and that it never scores above the
-// unconstrained optimum.
-TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
+// every activation it reports records skips == 0, that "needs no timing"
+// (Path::needs_timing) is a requirement rather than a preference, and that it
+// never scores above the unconstrained optimum.
+TEST_CASE("search_allzero returns only all-0 paths that need no timing") {
     int checks = 0, mismatches = 0, found = 0;
 
     for (const std::string& path : corpus::chart_paths()) {
@@ -381,8 +381,8 @@ TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
                 d = "not all-0: " + p->pathstring();
                 break;
             }
-            if (p->difficulty().value_or(0.0) > 0.0) {
-                d = "over the 0 ms limit: " + p->pathstring() + " needs " +
+            if (p->needs_timing()) {
+                d = "needs timing: " + p->pathstring() + " needs " +
                     std::to_string(*p->difficulty()) + " ms";
                 break;
             }
@@ -748,12 +748,13 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
     REQUIRE_FALSE(best.empty());
     REQUIRE_FALSE(best.front().activations.empty());
 
-    // no_skips plus a hard 0 ms limit is exactly the all-0 search.
+    // no_skips plus "keep only paths that need no timing" is exactly the
+    // all-0 search.
     EngineOptions allzero;
-    allzero.ms_filter = 0.0;
     allzero.no_skips = true;
-    allzero.hard_ms_filter = true;
+    allzero.no_timing = true;
     const std::vector<Path> z = run_search(graph, allzero);
+    for (const Path& p : z) CHECK_FALSE(p.needs_timing());
     const std::vector<Path> want_z = search_allzero(graph);
     REQUIRE_FALSE(want_z.empty());
     REQUIRE(z.size() == want_z.size());

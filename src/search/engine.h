@@ -32,10 +32,12 @@ struct EngineOptions {
     // player hits by activating at every first opportunity. It removes all
     // activation branching, so such a search is far cheaper.
     bool no_skips = false;
-    // Make ms_filter a requirement. By default an over-limit path still
-    // survives while nothing outscores it, so the best path can need more
-    // timing than the limit allows; with this set it is dropped outright.
-    bool hard_ms_filter = false;
+    // Keep only paths that need no timing (Path::needs_timing): a timing is
+    // inside this run's limit only when it needs no hitting, and ms_filter is
+    // ignored. It is a requirement: where ms_filter's over-limit path still
+    // survives while nothing outscores it, a path that needs timing is
+    // dropped outright. The all-0 pass sets it.
+    bool no_timing = false;
     // When set, the node ticks the search must activate at, ascending, and
     // nowhere else. It replaces no_skips's rule for the same branch point, so
     // the search returns exactly one path (the caller's) with all its squeeze

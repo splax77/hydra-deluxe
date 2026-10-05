@@ -1,4 +1,5 @@
 #include "app/path_view.h"
+#include "app/config.h"  // Settings::search_depth_mode
 #include "app/display_format.h"
 #include "app/preview_view.h"  // song_fraction, has_song_length
 #include "app/user_messages.h"  // kNoPathsFound
@@ -146,6 +147,8 @@ RecordStatusView build_record_status(const store::RecordLookup& lookup) {
                          group_thousands(record.best_path().totalscore()));
     view.lines.push_back("Paths kept:  " +
                          std::to_string((int)record.all_paths().size()));
+    // The blob's cap and limit are the key's: the store's prepare_row (ST1)
+    // refuses a row whose blob disagrees with its key, either way.
     if (record.ms_limit)
         view.lines.push_back("Path limit:  " +
                              std::to_string((int)*record.ms_limit) + " ms");
@@ -436,42 +439,47 @@ PathListView build_path_list(const HydraRecord& record) {
         view.groups.back().paths.push_back(p);
     }
 
-    // The all-0 section is only worth showing when the generated list does
-    // not already contain that path. "The same path" is path_identity, the
-    // one rule the Preview's overlay key reads too.
-    view.allzero = record.all_allzero_paths();
-    if (view.allzero.empty()) return view;
-    for (const Path* z : view.allzero) {
+    // An all-0 path is only worth showing when the generated list does not
+    // already contain it. "The same path" is path_identity, the one rule the
+    // Preview's overlay key reads too. A duplicate hides only itself (D51
+    // call 4b); the section shows when any all-0 path survives.
+    for (const Path* z : record.all_allzero_paths()) {
         const std::string identity = path_identity(*z);
-        for (const Path* p : flat)
-            if (path_identity(*p) == identity) return view;
+        const bool listed = std::any_of(flat.begin(), flat.end(), [&](const Path* p) {
+            return path_identity(*p) == identity;
+        });
+        if (!listed) view.allzero.push_back(z);
     }
+    if (view.allzero.empty()) return view;
     view.show_allzero = true;
-
-    const int64_t score = view.allzero.front()->totalscore();
-    view.allzero_label = group_thousands(score);
-    // The first thing a user asks of this row is what it costs against the
-    // optimal path, so answer it in the header.
-    if (!flat.empty()) {
-        const int64_t delta = score - flat.front()->totalscore();
-        if (delta != 0)
-            view.allzero_label += "   (" + std::string(delta > 0 ? "+" : "-") +
-                                  group_thousands(delta < 0 ? -delta : delta) +
-                                  ")";
-    }
+    // The score alone: what the all-0 path costs against the optimal one is
+    // its button's "N below optimal" line (build_path_buttons).
+    view.allzero_label = group_thousands(view.allzero.front()->totalscore());
     return view;
 }
 
-std::string within_label(int depth_mode, int depth_value) {
-    return "Within " + (depth_mode == 1 ? counted(depth_value, "point", "points")
-                                        : counted(depth_value, "score", "scores"));
+namespace {
+
+// The heading over the non-optimal paths, spelled from the depth mode.
+std::string within_label(DepthMode depth_mode, int depth_value) {
+    return "Within " + (depth_mode == DepthMode::Points
+                            ? counted(depth_value, "point", "points")
+                            : counted(depth_value, "score", "scores"));
 }
+
+}  // namespace
 
 PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, int depth_value) {
     PathButtonsView view;
-    view.within_label = within_label(depth_mode, depth_value);
+    // The callers hold the INI's int; Settings::search_depth_mode (SE1) owns
+    // what it means.
+    Settings settings;
+    settings.depth_mode = depth_mode;
+    view.within_label = within_label(settings.search_depth_mode(), depth_value);
     const PathListView list = build_path_list(record);
     const int64_t best = record.paths.empty() ? 0 : record.best_path().totalscore();
+    // A 1-bar cap never fills the 2 bars an activation needs (D51 call 16).
+    const bool one_bar_cap = record.sp_cap && *record.sp_cap == 1;
 
     auto add = [&](const Path* p, PathButtonView::Group group) {
         PathButtonView b;
@@ -489,6 +497,7 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
             if (delta < 0) b.detail = group_thousands(-delta) + " below optimal";
             if (delta > 0) b.detail = group_thousands(delta) + " above optimal";
         }
+        if (one_bar_cap) b.detail = "A 1-bar cap can never activate Star Power.";
         view.buttons.push_back(std::move(b));
     };
     for (const PathGroupView& g : list.groups)
