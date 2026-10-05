@@ -1964,6 +1964,27 @@ const std::vector<OwnerRule>& rules() {
           "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
          {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
          {"tests"}},
+        // Picking a tick's meter section by ordering it against the sections'
+        // first ticks. section_at answers that with keys_ directly, so no
+        // keys_at ordering is the owner's. An equality test against a section
+        // start (plusmeasure's barline check), reading a section's bounds, and
+        // the measure-space entry in tick_at_measures_f answer other
+        // questions.
+        {"Which meter section is a tick measured in?",
+         "MeasureIndex::section_at in src/core/timing.cpp",
+         R"(keys_at\([^()]*\)\)*\s*[<>]|(^|[^-])[<>]=?\s*(\w+(\.|->))?keys_at\()",
+         "",
+         {},
+         {},
+         "audit finding 58; D51 call 22; phase 7 task TM (D58)",
+         {"while (i > 0 && static_cast<double>(idx.keys_at(i)) > ticks) --i;",
+          "if (mi.keys_at(i) <= tick) s = i;",
+          "while (s + 1 < n && tick >= mi->keys_at(s + 1)) ++s;"},
+         {"if (j < len && handled_ticks == idx.keys_at(j)) {",
+          "const int64_t section_end = last_section ? last_tick : mi.keys_at(i + 1);",
+          "static_cast<double>(idx.keys_at(s) - idx.starts_at(s)) /",
+          "const int64_t first = mi->keys_at(i);",
+          "const int i = idx.section_at(static_cast<int64_t>(std::ceil(ticks)));"}},
     };
     return r;
 }
