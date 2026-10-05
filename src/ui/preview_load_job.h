@@ -91,6 +91,10 @@ public:
         // started with.
         render::TrackState track_state;
         render::TrackStateOptions track_opts;
+        // The chart file's hash (app::hash_chart_file, the scan's rule) is not
+        // the entry's md5: the chart changed since its record was analyzed.
+        // The scene was then built with no path, as for an unanalyzed chart.
+        bool chart_changed = false;
     };
 
     // Valid once finished() && ok(); moves the result out (call once).

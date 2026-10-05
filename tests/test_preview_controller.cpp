@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"  // Settings: the Preview volume's owner
 #include "chart_text.h"
 #include "app/preview_view.h"
 #include "audio/device.h"
@@ -49,9 +50,11 @@ void wait_finished(const Job& job) {
     REQUIRE(job.finished());
 }
 
+// The entry the scan would make: its md5 is the file's own hash, so the
+// Preview takes the chart as unchanged and draws the path it is given.
 ChartLibraryEntry entry_for(const std::string& notespath) {
     ChartLibraryEntry e;
-    e.md5 = "prevctl";
+    e.md5 = hydra::app::hash_chart_file(notespath);
     e.title = "Preview controller test";
     e.notespath = notespath;
     return e;
@@ -481,6 +484,81 @@ TEST_CASE("a difficulty change on the open chart starts a new Preview load") {
     pc.open(entry, false, true, Difficulty::Hard, nullptr, "", 4);
     CHECK(pc.loading());
     settle();
+}
+
+// An edited chart that was not rescanned used to draw its record's path on
+// the new notes (finding 126). The load hashes the file the way the scan
+// does; a hash that is not the record's hides the path, and the panel says
+// so (D51 call 18).
+TEST_CASE("the Preview hides the path when the chart file changed since its record") {
+    using namespace hydra;
+    using namespace hydra::app;
+    const std::string chart = chart_with_audio();
+    AnalysisSettings settings;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 2;
+    settings.ms_filter = 10.0;
+    const AnalysisResult analyzed = analyze_chart_file(chart, settings);
+    REQUIRE_FALSE(analyzed.record.paths.empty());
+    const Path& best = analyzed.record.best_path();
+    const std::string best_key = path_overlay_key(&best);
+
+    for (const bool changed : {true, false}) {
+        CAPTURE(changed);
+        ChartLibraryEntry entry = entry_for(chart);
+        if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
+        PreviewController pc(nullptr, nullptr);
+        pc.set_audio_device_factory(
+            [](int, int, PreviewController::AudioSource)
+                -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+                throw std::runtime_error("no device in tests");
+            });
+        pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 4);
+        for (int i = 0; i < 1200 && pc.loading(); ++i) {
+            pc.poll();
+            Sleep(50);
+        }
+        REQUIRE_FALSE(pc.loading());
+        REQUIRE_FALSE(pc.has_error());
+        CHECK(pc.chart_changed() == changed);
+        CHECK(pc.scrub_marks().empty() == changed);
+    }
+}
+
+// wait-idle in the GUI harness means every Preview thread is done, not only
+// the first load: the base job and the overlay jobs count too (finding 109).
+TEST_CASE("busy covers the overlay and base jobs, not only the first load") {
+    const AnalyzedChart a = first_chart_with_a_path();
+    const std::string best_key = hydra::app::path_overlay_key(&a.best);
+    PreviewController pc(nullptr, nullptr);
+    pc.open(entry_for(a.chart), true, true, Difficulty::Expert, nullptr, "", 4);
+    for (int i = 0; i < 1200 && pc.loading(); ++i) {
+        pc.poll();
+        Sleep(10);
+    }
+    REQUIRE_FALSE(pc.loading());
+
+    pc.open(entry_for(a.chart), true, true, Difficulty::Expert, &a.best, best_key, 4);
+    CHECK(pc.busy());
+    CHECK_FALSE(pc.loading());
+    for (int i = 0; i < 1200 && pc.busy(); ++i) {
+        pc.poll();
+        Sleep(10);
+    }
+    CHECK_FALSE(pc.busy());
+    CHECK_FALSE(pc.has_error());
+    CHECK(pc.overlay_path_key().rfind(best_key, 0) == 0);
+}
+
+// The Preview's volume is the setting's: its default and its 0..100 range
+// come from app::Settings, the owner (finding 72).
+TEST_CASE("the Preview volume is the settings owner's: default and clamp") {
+    PreviewController pc(nullptr, nullptr);
+    CHECK(pc.volume_percent() == hydra::app::Settings{}.preview_volume);
+    pc.set_volume(150);
+    CHECK(pc.volume_percent() == 100);
+    pc.set_volume(-5);
+    CHECK(pc.volume_percent() == 0);
 }
 
 TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song") {
