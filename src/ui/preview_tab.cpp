@@ -394,8 +394,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     if (ImGui::IsItemDeactivatedAfterEdit()) app.commit_settings();
 
     // The clock drives the scrubber, so a chart with no audio still scrubs.
-    // The scrubber ends at the last note (D50 item 4); while the audio plays
-    // on past it, the thumb waits at the right end.
+    // The scrubber's end is PreviewController::scrub_end_ms (D69, D70 item 1);
+    // should playback run past it, the thumb waits at the right end.
     const hydra::app::PreviewTimeBox box = pc->time_box();
     const double scrub_len_ms = pc->scrub_end_ms();
     float pos_s =
