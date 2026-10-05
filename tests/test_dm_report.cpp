@@ -664,9 +664,7 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
     } catch (const KindedError& e) {
         refused = true;
         CHECK(e.kind() == ErrorKind::AlreadyPlain);
-        CHECK(app::plain_error(e) ==
-              "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
-              "current Clone Hero.");
+        CHECK(app::plain_error(e) == fills);
     }
     CHECK(refused);
 }

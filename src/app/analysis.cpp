@@ -563,8 +563,9 @@ struct WorkResult {
     std::optional<store::DynamicsEntry> dynamics;
     // The song's audio length, read on the worker; not read without a reader.
     store::SongLength length;
-    // A failed analysis: plain_error's sentence, worked out on the worker
-    // while the exception's type is still known, and the raw text.
+    // A failed chart, from its analysis or its save: record_failure fills
+    // these in from the exception while its type is still known (the
+    // sentence is plain_error's, the error is the raw text).
     bool failed = false;
     std::string sentence;
     std::string error;
