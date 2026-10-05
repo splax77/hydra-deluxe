@@ -2,6 +2,7 @@
 
 #include <cstring>
 
+#include "app/display_format.h"
 #include "core/model.h"
 #include "parse/song.h"
 
@@ -78,13 +79,26 @@ DynamicsRow dynamics_row_for(const ChordNote& note) {
 
 // ---- labels -------------------------------------------------------------
 
-std::string dynamics_row_label(DynamicsRow r, bool pro) {
-    if (r == DynamicsRow::Count) return std::string();
+ChordNote dynamics_row_note(DynamicsRow r) {
     const DynamicsRowInfo& info = dynamics_row_info(r);
     ChordNote note{info.color};
     note.cymbaltype = info.cymbal ? NoteCymbalType::Cymbal : NoteCymbalType::Normal;
     note.is2x = info.is2x;
-    return note_label(note, pro);
+    return note;
+}
+
+std::string dynamics_row_label(DynamicsRow r, bool pro) {
+    if (r == DynamicsRow::Count) return std::string();
+    return note_label(dynamics_row_note(r), pro);
+}
+
+std::string dynamics_kick2x_line(const DynamicsBreakdown& bd) {
+    // Every kick, 2x Bass on or off: the line is a fact about the chart.
+    const int twice = bd.row(DynamicsRow::Kick2x).all();
+    const int total = bd.kicks_total(/*bass2x=*/true).all();
+    const std::string pct = total > 0 ? format_percent(twice, total, 0) : "0%";
+    return "2x kicks: " + group_thousands(twice) + " of " +
+           counted(total, "kick note", "kick notes") + " (" + pct + ")";
 }
 
 DynamicsBreakdown count_dynamics(const Song& song) {

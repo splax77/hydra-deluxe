@@ -254,13 +254,39 @@ TEST_CASE("dynamics_breakdown: the row table, row by row") {
 TEST_CASE("dynamics_breakdown: every row's own note counts in that row") {
     for (int i = 0; i < static_cast<int>(DynamicsRow::Count); ++i) {
         const DynamicsRow r = static_cast<DynamicsRow>(i);
-        const DynamicsRowInfo& info = dynamics_row_info(r);
-        ChordNote note{info.color};
-        note.cymbaltype = info.cymbal ? NoteCymbalType::Cymbal : NoteCymbalType::Normal;
-        note.is2x = info.is2x;
         INFO("row " << i);
-        CHECK(dynamics_row_for(note) == r);
+        CHECK(dynamics_row_for(dynamics_row_note(r)) == r);
     }
+}
+
+TEST_CASE("dynamics_breakdown: a row's note is the note the table names") {
+    const ChordNote yc = dynamics_row_note(DynamicsRow::YellowCymbal);
+    CHECK(yc.colortype == NoteColor::Yellow);
+    CHECK(yc.is_cymbal());
+    CHECK_FALSE(yc.is2x);
+    const ChordNote k2 = dynamics_row_note(DynamicsRow::Kick2x);
+    CHECK(k2.colortype == NoteColor::Kick);
+    CHECK_FALSE(k2.is_cymbal());
+    CHECK(k2.is2x);
+    const ChordNote gt = dynamics_row_note(DynamicsRow::GreenTom);
+    CHECK(gt.colortype == NoteColor::Green);
+    CHECK_FALSE(gt.is_cymbal());
+}
+
+TEST_CASE("dynamics_breakdown: the 2x kick line counts its noun from the total") {
+    // Reports finding 5: "1 of 1 kick notes" read wrong; counted names the
+    // noun from the total, as the Library's "N of M charts" does.
+    DynamicsBreakdown one;
+    one.rows[static_cast<size_t>(DynamicsRow::Kick2x)].normal = 1;
+    CHECK(dynamics_kick2x_line(one) == "2x kicks: 1 of 1 kick note (100%)");
+
+    DynamicsBreakdown many;
+    many.rows[static_cast<size_t>(DynamicsRow::Kick)].normal = 1700;
+    many.rows[static_cast<size_t>(DynamicsRow::Kick2x)].accent = 300;
+    CHECK(dynamics_kick2x_line(many) == "2x kicks: 300 of 2,000 kick notes (15%)");
+
+    // No kicks at all: nothing to divide by, so the percent reads 0%.
+    CHECK(dynamics_kick2x_line(DynamicsBreakdown{}) == "2x kicks: 0 of 0 kick notes (0%)");
 }
 
 TEST_CASE("dynamics_breakdown: flags a row does not have are ignored") {

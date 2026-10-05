@@ -171,7 +171,7 @@ void LibraryModel::set_sort(LibrarySort column, bool ascending) {
 }
 
 std::vector<size_t> LibraryModel::matches() const {
-    if (query_.empty()) return sorted_;
+    if (!searching()) return sorted_;
     std::vector<size_t> out;
     for (size_t i : sorted_)
         if (matches_query(query_, rows_[i])) out.push_back(i);

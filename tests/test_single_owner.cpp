@@ -951,20 +951,25 @@ const std::vector<OwnerRule>& rules() {
            "counted, the owner"},
           {"src/core/model.cpp", "return n == 1 ? \"has\" : \"have\";", "has_have, the owner"}}},
         // A timing printed as a whole number of ms: printf's %.0f with or
-        // without a space before "ms", or a cast or lround with " ms" after it.
+        // without a space before "ms", or a cast, round, lround or llround
+        // with " ms" after it.
         {"How is a timing written in whole ms?",
          "format_ms_whole in src/core/model.cpp",
-         R"(%\.0f ?ms|static_cast<(long long|long|int|int64_t)>\([^;]*\)\)\s*\+\s*" ms"|\blround\([^;]*\+\s*" ms")",
+         R"(%\.0f ?ms|static_cast<(long long|long|int|int64_t)>\([^;]*\)\)\s*\+\s*" ms"|\bl{0,2}round\([^;]*\+\s*" ms")",
          R"(\bformat_ms_whole\()",
          {},
          {{"src/core/replay.cpp", "it prints the fixed 500 ms squeeze window, not a timing"},
           {"tools/replay.cpp", "it prints the fixed 500 ms squeeze window, not a timing"}},
-         "D48, Q2 (audit findings 4 and 18; phase 3 task O1)",
+         "D48, Q2 (audit findings 4 and 18; phase 3 task O1; M_D review round 2, library "
+         "finding 6)",
          {"std::snprintf(buf, sizeof(buf), \"%s %.0f ms\", what, *hardest);",
           "std::to_string(static_cast<long long>(sq.difficulty())) + \" ms\");",
-          "\"Effectively %.1fms on the normal %.0fms scale:\\n\""},
+          "\"Effectively %.1fms on the normal %.0fms scale:\\n\"",
+          "std::to_string(std::llround(ms)) + \" ms\";",
+          "std::to_string(std::lround(ms)) + \" ms\";"},
          {"std::snprintf(buf, sizeof(buf), \"%.1f ms\", ms);",
-          "std::snprintf(buf, sizeof(buf), \"%.1f\", ms);"},
+          "std::snprintf(buf, sizeof(buf), \"%.1f\", ms);",
+          "const long long total = std::llround(ms);"},
          {{"src/core/model.cpp", "return std::to_string(std::lround(ms)) + \" ms\";",
            "format_ms_whole, the owner"}}},
         // ---- one name per fill rule (phase 3 task O3a) ----
@@ -1075,51 +1080,71 @@ const std::vector<OwnerRule>& rules() {
            R"(static const std::string kEllipsis = "\xE2\x80\xA6";)",
            "ellipsize, the owner: the one ellipsis a cut ends in"}}},
         // ---- M_D review follow-ups (phase 3 task FX-L) ----
-        // A switch over the Dynamics rows, or the 2x test that picks a kick
-        // row: a second table of which note each row holds. The one table
-        // is kDynamicsRows in dynamics_breakdown.cpp, read through
+        // A switch over the Dynamics rows, the 2x test that picks a kick
+        // row, or a test of a row against a named row (the old cymbal-row
+        // hide was "r == app::DynamicsRow::YellowCymbal || ..."): a second
+        // table of which note each row holds. The one table is
+        // kDynamicsRows in dynamics_breakdown.cpp, read through
         // dynamics_row_info and dynamics_row_for.
         {"Which table says what a Dynamics row holds?",
          "kDynamicsRows in src/app/dynamics_breakdown.cpp",
-         R"(case (app::)?DynamicsRow::\w+:|return note\.is2x \? DynamicsRow::)",
+         R"(case (app::)?DynamicsRow::\w+:|return note\.is2x \? DynamicsRow::|==\s*(app::)?DynamicsRow::\w+)",
          "",
          {},
          {},
-         "M_D review, library finding 1 (phase 3 task FX-L)",
+         "M_D review, library finding 1, round 2 library finding 6 (phase 3 tasks FX-L, FX2-L)",
          {"case app::DynamicsRow::GreenTom:     return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);",
           "case DynamicsRow::GreenCymbal:  return pad(NoteColor::Green, NoteCymbalType::Cymbal);",
-          "return note.is2x ? DynamicsRow::Kick2x : DynamicsRow::Kick;"},
+          "return note.is2x ? DynamicsRow::Kick2x : DynamicsRow::Kick;",
+          "if (!pro && (r == app::DynamicsRow::YellowCymbal ||"},
          {"ImVec4 dot = pad_color(r);",
-          "const DynamicsRowInfo& info = dynamics_row_info(r);"}},
-        // "Is the typed search narrowing the library?" asked of the query
-        // from outside the model. LibraryModel::searching answers it, from
-        // the model's own query_.
+          "const DynamicsRowInfo& info = dynamics_row_info(r);"},
+         {{"src/app/dynamics_breakdown.cpp", "if (r == DynamicsRow::Count) return std::string();",
+           "dynamics_row_label's guard: Count marks the end of the rows and names no row"}}},
+        // "Is the typed search narrowing the library?" asked of the query,
+        // from outside the model or inside it. LibraryModel::searching
+        // answers it, from the model's own query_.
         {"Is the typed search narrowing the library?",
          "LibraryModel::searching in src/ui/library_model.h",
-         R"(\bquery\(\)\.empty\(\))",
+         R"(\bquery(\(\)|_)\.empty\(\))",
          "",
          {},
          {},
-         "M_D review, library finding 5 (phase 3 task FX-L)",
+         "M_D review, library finding 5, round 2 library finding 5 (phase 3 tasks FX-L, FX2-L)",
          {"const bool searching = !app.library.query().empty();",
-          "if (app.library.query().empty()) return;"},
+          "if (app.library.query().empty()) return;",
+          "if (query_.empty()) return sorted_;"},
          {"app.library.set_query(search);",
           "const bool searching = app.library.searching();",
-          "bool searching() const { return !query_.empty(); }"}},
-        // A time rounded to a tick by hand. display_tick_at_ms is the one
-        // rule for which tick a screen shows at a time (D48, Q23).
+          "if (!searching()) return sorted_;"},
+         {{"src/ui/library_model.h", "bool searching() const { return !query_.empty(); }",
+           "searching, the owner"}}},
+        // A time turned into a tick outside the timing code. display_tick_at_ms
+        // is the one rule for which tick a screen shows at a time (D48, Q23).
+        // The row flags every raw tick_at_ms call, so a rounding of any kind
+        // (llround, round, floor, a cast) is caught, and so is one split over
+        // two lines, whose second line still holds the call.
         {"Which tick does a screen show at a time?",
          "SongTiming::display_tick_at_ms in src/core/timing.cpp",
-         R"(llround\([^;]*tick_at_ms\()",
+         R"(\btick_at_ms\()",
          "",
          {},
          {},
-         "D48, Q23 (audit finding 183; M_D review, reports finding 7)",
+         "D48, Q23 (audit finding 183; M_D review, reports finding 7, round 2 library finding 6)",
          {"const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));",
-          "const int64_t tick = std::llround(ms_.tick_at_ms(ms));"},
+          "const int64_t t = std::round(timing->ms_index().tick_at_ms(ms));",
+          "const int64_t t = static_cast<int64_t>(ms_.tick_at_ms(ms));",
+          // The second line of "std::llround(\n timing->ms_index().tick_at_ms(ms));".
+          "timing->ms_index().tick_at_ms(ms));"},
          {"const int64_t end_tick = timing->display_tick_at_ms(*song_length_ms);"},
          {{"src/core/timing.cpp", "const int64_t tick = std::llround(ms_.tick_at_ms(ms));",
-           "display_tick_at_ms, the owner"}}},
+           "display_tick_at_ms, the owner"},
+          {"src/core/timing.cpp", "double MsIndex::tick_at_ms(double ms) const {",
+           "the ms-to-tick map itself"},
+          {"src/core/timing.h", "double tick_at_ms(double ms) const;",
+           "the ms-to-tick map's declaration"},
+          {"src/core/timing.cpp", "double t = ms_.tick_at_ms(act_hit_ms);",
+           "sp_end_ms keeps the fractional tick for its continuous map; no screen shows it"}}},
         // ---- phase 3 wave C owners (derive-once review of M_C) ----
         // A status word typed in quotes. The library chips, the Best path
         // cell and the uitest state dump all ask status_label.

@@ -79,25 +79,40 @@ inline store::RecordKey store_batch_result(store::RecordStore& store, const std:
 
 // ---- a Stale result for each cause ----------------------------------------------
 
+// The row `record` makes under `key`, as if another Hydra version wrote it
+// (hyversion "0.0.0"). Stored, it reads Stale for "another build".
+inline store::PreparedRow old_build_row(const store::RecordKey& key, const HydraRecord& record) {
+    store::PreparedRow row = store::prepare_row(key, record);
+    row.hyversion = "0.0.0";
+    return row;
+}
+
+// Rules other than the defaults, as a user's hydra_rules.ini might set them:
+// max_tied_paths 2 instead of the default.
+inline core::Rules other_rules() {
+    core::Rules other = core::default_rules();
+    other.max_tied_paths = 2;
+    return other;
+}
+
+// `record` stamped as analyzed under other_rules(). Stored, it reads Stale for
+// "other rules" in a store running the defaults.
+inline HydraRecord other_rules_record(const HydraRecord& record) {
+    HydraRecord foreign = record;
+    foreign.rules_fingerprint = other_rules().fingerprint();
+    return foreign;
+}
+
 // Stores `record` three times, once for each reason a saved result reads
-// Stale: under `build` as if another Hydra version wrote it (hyversion
-// "0.0.0"), under `rules` stamped with other rules in hydra_rules.ini
-// (max_tied_paths 2 instead of the default), and under `both` with both.
+// Stale: under `build` as an old_build_row, under `rules` as an
+// other_rules_record, and under `both` with both.
 inline void add_stale_rows(store::RecordStore& store, const HydraRecord& record,
                            const store::RecordKey& build, const store::RecordKey& rules,
                            const store::RecordKey& both) {
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
-    HydraRecord foreign = record;
-    foreign.rules_fingerprint = other.fingerprint();
-
-    store::PreparedRow build_row = store::prepare_row(build, record);
-    build_row.hyversion = "0.0.0";
-    store.add_row(build_row);
+    const HydraRecord foreign = other_rules_record(record);
+    store.add_row(old_build_row(build, record));
     store.add_row(store::prepare_row(rules, foreign));
-    store::PreparedRow both_row = store::prepare_row(both, foreign);
-    both_row.hyversion = "0.0.0";
-    store.add_row(both_row);
+    store.add_row(old_build_row(both, foreign));
 }
 
 // ---- a title made only of tags ------------------------------------------------

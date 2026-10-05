@@ -64,6 +64,11 @@ const DynamicsRowInfo& dynamics_row_info(DynamicsRow r);
 // The row a note is counted in.
 DynamicsRow dynamics_row_for(const ChordNote& note);
 
+// The note row `r` holds, built from its table entry: its lane, a cymbal flag
+// for a cymbal row and the 2x flag for the 2x kick row. `r` must be a real
+// row, not Count.
+ChordNote dynamics_row_note(DynamicsRow r);
+
 struct DynamicsBreakdown {
     std::array<DynamicsCounts, static_cast<size_t>(DynamicsRow::Count)> rows{};
     bool dynamics_enabled = false;
@@ -88,6 +93,12 @@ struct DynamicsBreakdown {
 // name of a drum note: "Red snare", "Yellow cymbal", "2x kick", and "Red" or
 // "Yellow" for a pad with Pro Drums off.
 std::string dynamics_row_label(DynamicsRow r, bool pro);
+
+// The Dynamics tab's 2x kick line: how many of the chart's kick notes are 2x,
+// counted or not, as "2x kicks: 300 of 2,000 kick notes (15%)". The noun is
+// counted from the total, so one kick reads "1 of 1 kick note". With no
+// kicks the percent reads 0%.
+std::string dynamics_kick2x_line(const DynamicsBreakdown& bd);
 
 DynamicsBreakdown count_dynamics(const Song& song);
 
