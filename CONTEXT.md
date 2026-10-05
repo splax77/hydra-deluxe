@@ -109,7 +109,9 @@ never hit this (D48, Q33).
 
 **Activation**:
 One use of banked Star Power, written in path notation with its skip count and
-squeeze symbols (e.g. `E2+-`).
+squeeze symbols (e.g. `E2+-`). An activation needs
+2<!-- default: kSpActivationBars --> banked bars of Star Power, a Clone Hero
+rule. `kSpActivationBars` in src/core/timing.h owns that number (D54).
 
 **Skip**:
 A fill an activation deliberately passes over before activating.

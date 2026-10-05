@@ -206,6 +206,7 @@ const std::map<std::string, KnownDefault>& known_defaults() {
         out["kSqueezeWindowMs"] = {false, hydra::kSqueezeWindowMs};
         out["kEarlyFillWindowMs"] = {false, hydra::kEarlyFillWindowMs};
         out["kDefaultDepthValue"] = {false, static_cast<double>(hydra::kDefaultDepthValue)};
+        out["kSpActivationBars"] = {false, static_cast<double>(hydra::kSpActivationBars)};
         return out;
     }();
     return m;
