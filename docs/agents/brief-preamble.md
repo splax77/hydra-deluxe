@@ -1,6 +1,6 @@
 # Brief preamble (every agent reads this first)
 
-These rules apply to every agent: implementers, reviewers, fix rounds, integrators and read-only scouts. Your task brief (the file that sent you here) adds the rest. It names your task id, the session id, your owned files, your worktree or checkout, your scratch folder and the tests you may run. Where the brief and this page disagree, stop and report it; do not pick one.
+These rules apply to every agent: implementers, reviewers, integrators and read-only scouts. Your task brief (the file that sent you here) adds the rest. It names your task id, the session id, your owned files, your worktree or checkout, your scratch folder and the tests you may run. Where the brief and this page disagree, stop and report it; do not pick one.
 
 Each rule below exists because a hook refused it, or an agent lost time to it, in an earlier round. Following them up front costs nothing. Learning them from a denial costs a call and often a minute.
 
@@ -54,6 +54,12 @@ Commit before your 110th tool call, and after each finished step. An agent that 
 
 Run every helper and long command in the foreground. Never use `run_in_background`, and never end your turn waiting for a job. You have no helper agents; do the work yourself.
 
+The one exception is the review exchange. A reviewer that sends findings to the author ends its turn and is resumed by the author's reply. That is a message between two agents, not a job.
+
+## If a reviewer messages you
+
+If you wrote code, the derive-once reviewer may resume you later with a message listing findings in your change. Fix them by `docs/agents/fix-round.md`, reply to the reviewer once, and end your turn. You get one chance; the reviewer fixes whatever you leave.
+
 ## When blocked
 
 When something stops you, stop and report. Give the exact command and the exact error or hook message. Never wait on a prompt, never retry the same call hoping it passes, and never guess a way around a hook. A hook that blocks you wrongly gets fixed by the main session, not routed around.
@@ -63,6 +69,8 @@ When something stops you, stop and report. Give the exact command and the exact 
 Before you commit, do the reviewer's first step yourself. List each question your change answers in plain words ("is this note inside the SP window"). For each one, grep for the inputs it reads, not just for similar names, and check nothing else already answers it. Call the owner if one exists.
 
 Every rule in Hydra is worked out in one place. A test pins a literal from one run or calls the production function; it never computes the expected value again. A new number (a threshold, depth, floor or tolerance) needs a user decision your brief names; if it has none, stop and ask.
+
+A comment names where a rule lives; it never restates the rule. "Test files: see `Test-TestFile`" stays true when the code changes. "Files under tools/ named test_*.py" is a second copy of the rule, and it drifts the next time someone edits the pattern. Comments may say why a rule exists, or what it deliberately leaves out, as long as they don't spell out what it matches. The same goes for header comments, help text and docs: point at the owner. Four review rounds in a row once failed on comments like these, most of them written by the fix rounds themselves.
 
 ## Plain English
 

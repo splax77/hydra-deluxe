@@ -1034,7 +1034,8 @@ const std::vector<OwnerRule>& rules() {
         // called "color" or "size" are not flagged.
         {"Which tags does Hydra strip from a song name?",
          "strip_rich_tags in src/parse/song.cpp, read through display_title "
-         "(and display_artist, which forwards to it, D50 item 5)",
+         "(and display_artist, which applies display_title then the artist placeholder, D50 "
+         "item 5 and D56 item 2)",
          R"re("</?(color|size|b|i|u|s|sub|sup)\b|=\s*"(color|size|sub|sup)"\s*;|\{\s*"(color|size|b|i|u|s|sub|sup)"\s*,\s*(true|false)\s*\})re",
          R"(\b(strip_rich_tags|display_title|display_artist)\()",
          {},
