@@ -450,11 +450,12 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     CHECK(rows[0].status == "in both");
 
     // The tally counts it by name, and the page lists it under "In both" and
-    // writes "no score" on the side that has none.
+    // writes "no paths" on the side whose analysis kept none (D51 call 11).
     CHECK(app::fill_report::tally_fill_rows(rows).in_both == 1);
     const std::string html = app::fill_report::build_fill_html(rows, "sub", "foot");
     CHECK(html.find("<option value=\"in both\">In both</option>") != std::string::npos);
-    CHECK(html.find("'no score'") != std::string::npos);
+    CHECK(html.find("'no paths'") != std::string::npos);
+    CHECK(html.find("'no score'") == std::string::npos);
 }
 
 TEST_CASE("generate_fill_report: a score on one side only is counted, and the parts add up") {

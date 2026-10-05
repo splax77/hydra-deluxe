@@ -416,6 +416,8 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
     CHECK(r.exit_code == 0);
     CHECK(contains(r.output, "Compared 1 chart:"));
     CHECK(contains(r.output, "0 only in 1.0, 0 only in 1.1, 0 with a score on one side only"));
+    // The file has no engine_mode stamp, so it never warns (D65, ADR 0010).
+    CHECK(!contains(r.output, "Warning"));
 
     // D52: a second chart with a record under both rules but a score under
     // 1.1 only is counted as "with a score on one side only".

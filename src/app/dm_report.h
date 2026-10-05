@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "net/dmbot_client.h"
+#include "parse/song.h"  // Difficulty
 #include "store/record_store.h"
 
 namespace hydra::app::dm_report {
@@ -41,8 +42,10 @@ struct DmReportRow {
     std::string posted;                 // ISO-8601 timestamp
     // "under optimal" | "at optimal" | "above optimal" (Hydra has a result:
     // the score is below, equal to or over its optimal) |
-    // "not analyzed" (the last scan found the
-    // chart, but it has no current result at SP cap 4 for this mode) |
+    // "no paths" (Hydra has a result, but its analysis kept no path; D51
+    // call 11) |
+    // "not analyzed" (the last scan found the chart, but it has no current
+    // result at Clone Hero's cap, kCloneHeroSpCap, for this mode) |
     // "not in library" (the last scan never found it) |
     // "other speed" (played at a speed other than net::kBaseSpeedPercent;
     // shown, never compared).
@@ -53,9 +56,18 @@ struct DmReportRow {
     bool above_optimal = false;
 };
 
+// The one gate on comparing with dmleaderboards (finding 170): the leaderboard
+// holds Clone Hero scores, so the comparison needs Clone Hero's rules. Returns
+// an empty string when these settings allow it, and otherwise the sentence
+// that names the first rule they break. The library toolbar's button and
+// collect_dm_rows both ask it.
+std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills);
+
 // Joins every fetched score against the store's records for `chartmode`,
 // preferring the leaderboard's own song/artist metadata and falling back to the
 // joined Hydra record's when the leaderboard entry is an "unknown" one.
+// Throws std::invalid_argument with why_not_comparable's sentence when `lens`
+// breaks a Clone Hero rule.
 std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::vector<net::DmScore>& scores,
                                          const std::string& chartmode,
@@ -79,13 +91,14 @@ struct DmReportStats {
     int not_analyzed = 0;    // in the library, no current result
     int not_in_library = 0;
     int other_speed = 0;     // played off base speed: shown, not compared
+    int no_paths = 0;        // analyzed, but the analysis kept no path
 };
 DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows);
 
 // "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, 1 not in
-// your library", plus
-// ", 2 at other speeds" when there are any. The page subtitle and the
-// finished window both read it, so the two can't drift.
+// your library", plus ", 1 with no paths" and ", 2 at other speeds" when
+// there are any. The page subtitle and the finished window both read it, so
+// the two can't drift.
 std::string counts_phrase(const DmReportStats& stats);
 
 struct GeneratedDmReport {

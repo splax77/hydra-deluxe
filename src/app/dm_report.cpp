@@ -1,5 +1,6 @@
 #include "app/dm_report.h"
 
+#include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -9,6 +10,7 @@
 #include "app/report.h"  // records_by_hash
 #include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
+#include "search/graph.h"  // fill_rule_name
 
 namespace hydra::app::dm_report {
 
@@ -43,6 +45,7 @@ const char* const kBody = R"page(<div class="wrap dm">
       <option value="at optimal">At optimal</option>
       <option value="above optimal">Above optimal</option>
       <option value="not analyzed">Not analyzed (in your library)</option>
+      <option value="no paths">No paths (analyzed, none kept)</option>
       <option value="not in library">Not in your library</option>
       <option value="other speed">Other speed</option>
     </select>
@@ -67,7 +70,8 @@ const char* const kBody = R"page(<div class="wrap dm">
 
 const char* const kPageJs = R"page(const STATUS_CLASS = {'under optimal':'s-matched', 'at optimal':'s-matched',
                       'above optimal':'s-above',
-                      'not analyzed':'s-notanalyzed', 'not in library':'s-unmatched',
+                      'not analyzed':'s-notanalyzed', 'no paths':'s-notanalyzed',
+                      'not in library':'s-unmatched',
                       'other speed':'s-otherspeed'};
 
 const PAGE = {
@@ -80,7 +84,7 @@ const PAGE = {
     {k:'artist',  t:'Artist',    num:false},
     {k:'charter', t:'Charter',   num:false},
     {k:'actual',  t:'Actual',    num:true,  d:'The score the player posted.'},
-    {k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap 4, the Clone Hero rule.'},
+    {k:'optimal', t:'Hydra opt', num:true,  d:'The optimal score Hydra found for the chart at SP cap __SP_CAP__, the Clone Hero rule.'},
     {k:'delta',   t:'Points left', num:true, d:'Hydra opt minus Actual. Marked over when the posted score is higher.'},
     {k:'pct_h',   t:'% of opt',  num:true,  d:'Actual as a percent of Hydra opt. Only for scores played at __BASE_SPEED__% speed.'},
     {k:'fc',      t:'FC',        num:true,  d:'Full combo: every note hit.'},
@@ -88,7 +92,7 @@ const PAGE = {
     {k:'speed',   t:'Speed',     num:true,  d:'The playback speed the score was set at. __BASE_SPEED__% is normal speed.'},
     {k:'rank',    t:'Rank',      num:true,  d:'The score rank on this chart leaderboard.'},
     {k:'posted',  t:'Posted',    num:false, d:'The date the score was posted.'},
-    {k:'status',  t:'Status',    num:false, d:'Under optimal, At optimal or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap 4. Not in your library: the last scan did not find it. Other speed: played at a speed other than __BASE_SPEED__%. Clone Hero keeps a separate leaderboard per speed, so it is shown but not compared.'},
+    {k:'status',  t:'Status',    num:false, d:'Under optimal, At optimal or Above optimal when Hydra has a result. Not analyzed: the chart is in your library but has no current result for this mode at SP cap __SP_CAP__. No paths: analyzed, but the analysis kept no path. Not in your library: the last scan did not find it. Other speed: played at a speed other than __BASE_SPEED__%. Clone Hero keeps a separate leaderboard per speed, so it is shown but not compared.'},
   ],
   controls: [['q', 'input'], ['status', 'change']],
   // The search box is matched against each row's search text in the shared
@@ -119,6 +123,7 @@ const PAGE = {
     ];
   },
   // Mirrors tally_dm_rows in dm_report.cpp; the test "s2 offspeed: the page counts the same statuses" checks the two agree.
+  // A "no paths" row has no tile of its own (D62 item 1); Scores counts it.
   stats(rows) {
     const under = rows.filter(r => r.status === 'under optimal');
     const at = rows.filter(r => r.status === 'at optimal');
@@ -159,24 +164,48 @@ const PAGE = {
 
 // The page shell, built once on first use.
 const std::string& page_template() {
-    // The help texts name the base speed through __BASE_SPEED__, so the page
-    // reads net::kBaseSpeedPercent instead of repeating 100.
-    static const std::string page =
+    // The help texts name the base speed through __BASE_SPEED__ and Clone
+    // Hero's cap through __SP_CAP__, so the page reads net::kBaseSpeedPercent
+    // and kCloneHeroSpCap instead of repeating them.
+    static const std::string page = html::replace_all(
         html::replace_all(html::page_template(kTitle, kBody, kPageJs), "__BASE_SPEED__",
-                          std::to_string(net::kBaseSpeedPercent));
+                          std::to_string(net::kBaseSpeedPercent)),
+        "__SP_CAP__", std::to_string(kCloneHeroSpCap));
     return page;
 }
 
 
 }  // namespace
 
+std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills) {
+    if (difficulty != Difficulty::Expert)
+        return "Needs Expert: the leaderboard only has Expert scores.";
+    if (sp_cap != kCloneHeroSpCap)
+        return "Needs SP cap " + std::to_string(kCloneHeroSpCap) +
+               ", Clone Hero's rule: the leaderboard's scores were played under it.";
+    if (legacy_fills)
+        return std::string("Needs ") +
+               fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long) +
+               " fills: untick \"1.0 fills\". The leaderboard is played on current Clone Hero.";
+    return std::string();
+}
+
 std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::vector<net::DmScore>& scores,
                                          const std::string& chartmode,
                                          const store::Lens& lens) {
+    // The Clone Hero rules come from why_not_comparable. Of its three inputs,
+    // only the fill rule arrives here: the cap is forced to Clone Hero's
+    // below, and the difficulty is folded into `chartmode`, so the caller's
+    // settings take that rule to the same owner (the library toolbar asks it
+    // for all three before a comparison can start).
+    const std::string refused =
+        why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, lens.legacy_fills != 0);
+    if (!refused.empty()) throw std::invalid_argument(refused);
+
     // One query for every stored record in this chartmode, indexed by hash.
-    // Only 4-bar records: the leaderboard plays by Clone Hero's rules, and a
-    // what-if cap's score would read as "above optimal" nonsense.
+    // Only records at Clone Hero's cap: a what-if cap's score would read as
+    // "above optimal" nonsense.
     const std::unordered_map<std::string, store::RecordListing> by_hash =
         report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);
 
@@ -223,7 +252,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
         // leaderboard per speed. An off-speed score shows Hydra's numbers when
         // it has them, but is never called under, at or above optimal.
         const bool base = net::is_base_speed(s.speed);
-        if (rec && rec->summary.score) {
+        if (rec && rec->summary.has_scored_best_path()) {
             int64_t opt = *rec->summary.score;
             row.optimal = opt;
             row.delta = opt - s.score;
@@ -235,6 +264,9 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             // Kept apart from the status, which an off-speed score overwrites
             // below; the page's "+N over" reads it (D64).
             row.above_optimal = above;
+        } else if (rec) {
+            // A Ready result whose analysis kept no path (D51 call 11).
+            row.status = "no paths";
         } else {
             row.status = in_library.count(s.identifier) ? "not analyzed" : "not in library";
         }
@@ -299,6 +331,7 @@ DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows) {
         else if (r.status == "at optimal") ++stats.at_optimal;
         else if (r.status == "above optimal") ++stats.above_optimal;
         else if (r.status == "not analyzed") ++stats.not_analyzed;
+        else if (r.status == "no paths") ++stats.no_paths;
         else if (r.status == "other speed") ++stats.other_speed;
         else ++stats.not_in_library;
     }
@@ -311,6 +344,8 @@ std::string counts_phrase(const DmReportStats& stats) {
                       group_thousands(stats.above_optimal) + " above optimal, " +
                       group_thousands(stats.not_analyzed) + " not analyzed, " +
                       group_thousands(stats.not_in_library) + " not in your library";
+    // Only when there is one, so every other phrase reads as before (D62).
+    if (stats.no_paths > 0) out += ", " + group_thousands(stats.no_paths) + " with no paths";
     if (stats.other_speed > 0)
         out += ", " + hydra::counted(stats.other_speed, "at another speed", "at other speeds");
     return out;
@@ -334,7 +369,7 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
         ". Above-optimal scores are expected — Hydra's optimal excludes several score "
         "backends, and older Clone Hero versions allowed fills that are impossible now. "
         "Not analyzed charts are in your library without a current result for this mode "
-        "at SP cap 4: analyze them, then compare again.";
+        "at SP cap " + std::to_string(kCloneHeroSpCap) + ": analyze them, then compare again.";
     out.html = build_dm_html(rows, subtitle, footer);
     return out;
 }
