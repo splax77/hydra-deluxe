@@ -309,12 +309,12 @@ public:
     // another tab was up used to be thrown away at close.
     void reap_dynamics();
 
-    // Fills in the open song's length when its result has none (saved before
-    // Hydra stored lengths), so the Paths tab's timeline shows without a
-    // re-analysis: SongLengthJob reads the chart, then the length is saved
-    // under the difficulty it was read for (RecordStore::set_song_length,
-    // D51 call 9) and put on the lookups of that difficulty. tick() runs it;
-    // a chart and difficulty that fail to read are not retried this session.
+    // Reads the open song's audio length when its result was saved before
+    // Hydra read audio lengths, so the Paths tab's timeline shows without a
+    // re-analysis: SongLengthJob reads the audio, then the length (or none)
+    // is saved for the song (RecordStore::fill_song_length) and put on every
+    // lookup of it. tick() runs it; a chart whose read fails is not retried
+    // this session.
     std::unique_ptr<SongLengthJob> length_job;
     void update_song_length();
 
@@ -497,13 +497,9 @@ private:
     std::optional<store::RecordKey> viewed_key_;
     std::vector<std::pair<store::RecordKey, store::RecordLookup>> parked_lookups_;
     static constexpr size_t kParkedLookups = 16;
-    // The chart (md5) and chart mode update_song_length last tried, so a
-    // chart it can't read is not read again every frame, while another
-    // difficulty of the same chart still gets its own read.
-    std::pair<std::string, std::string> length_tried_;
-    // The chart mode the running length_job was started under: where its
-    // length is filed.
-    std::string length_job_chartmode_;
+    // The chart (md5) update_song_length last tried, so a chart whose read
+    // fails is not read again every frame. One read serves every difficulty.
+    std::string length_tried_;
     // Shows the lookup for the current settings: parked if seen, read otherwise.
     void show_record_for_settings();
     // A record was just stored: drops the parked lookups and reads the viewed

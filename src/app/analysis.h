@@ -141,6 +141,17 @@ using ChartAnalyzer = std::function<AnalysisResult(
     const std::string& path, const AnalysisSettings& settings,
     const std::function<void(float)>& on_progress)>;
 
+// Reads the song's audio length in chart time, given its notes path and the
+// chart already parsed from it. audio::song_length_ms is the real one;
+// hydra_core does not link the audio library, so callers hand it in.
+using SongLengthReader =
+    std::function<std::optional<double>(const std::string& notespath, const Song& song)>;
+
+// What one audio read says, as the store saves it: the reader's length when
+// has_song_length (app/preview_view.h) calls it usable, else none. A read
+// always counts as read, so a song with no usable audio is not read again.
+store::SongLength song_length_found(std::optional<double> audio_length_ms);
+
 // How far a batch run has got. run_batch is the only writer of every count
 // here; a reader copies them rather than counting its own callbacks.
 struct BatchProgress {
@@ -206,6 +217,10 @@ struct BatchCallbacks {
     const std::atomic<bool>* cancel = nullptr;
     // What analyzes one chart. Empty means analyze_chart_file.
     ChartAnalyzer analyze;
+    // What reads the song's audio length after its analysis, on the pool's
+    // thread: audio::song_length_ms fits as is (D69). Empty means the audio
+    // is not read, and the stored length is left as it was.
+    SongLengthReader read_song_length;
 };
 
 // Runs the analysis + store::prepare_row for every item on a

@@ -547,11 +547,6 @@ std::string best_path_text(const HydraRecord& record) {
 
 // ---- summarize_path / summarize_record / prepare_row -----------------------
 
-std::optional<double> song_length_ms(const Song& song) {
-    if (song.sequence.empty()) return std::nullopt;
-    return song.sequence.back().timecode.ms();
-}
-
 PathSummary summarize_path(const Path& path) {
     PathSummary s;
     const ActivationWalk acts = path.walk_activations();
@@ -698,16 +693,6 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
         "  blob          BLOB NOT NULL,"
         "  count_version INTEGER NOT NULL DEFAULT 0,"
         "  PRIMARY KEY (md5, difficulty, pro)"
-        ");"
-        // Each difficulty's own length (D51 call 9): its last note's onset,
-        // in ms, written by every analysis of that difficulty. A file from
-        // before this table has no rows, and its records read songmeta's one
-        // per-chart length until the difficulty is analyzed again.
-        "CREATE TABLE IF NOT EXISTS songlength ("
-        "  hyhash    TEXT NOT NULL,"
-        "  chartmode TEXT NOT NULL,"
-        "  length_ms REAL NOT NULL,"
-        "  PRIMARY KEY (hyhash, chartmode)"
         ");");
     // A dynamics table from before the stamp gets the column. Its rows read
     // 0, which matches no real stamp, so each is recounted once.
@@ -717,9 +702,16 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
     // rebuild_chart_library empties the table rather than recreating it, so
     // the column is added here, once.
     if (!has_column("charts", "sig")) exec("ALTER TABLE charts ADD COLUMN sig TEXT");
-    // A songmeta table from before stored lengths. Old rows read NULL until
-    // their chart is analyzed again.
+    // A songmeta table from before stored lengths. Old rows read NULL.
     if (!has_column("songmeta", "length_ms")) exec("ALTER TABLE songmeta ADD COLUMN length_ms REAL");
+    // A songmeta table from before the length stamp (kSongLengthStamp). Its
+    // rows read 0, which matches no real stamp, so every length worked out
+    // from notes reads as not read until the song's audio is read (D69).
+    if (!has_column("songmeta", "length_version"))
+        exec("ALTER TABLE songmeta ADD COLUMN length_version INTEGER NOT NULL DEFAULT 0");
+    // Each difficulty's own last-note length (D51 call 9), which D69
+    // replaced with one audio length per song. Nothing reads it.
+    exec("DROP TABLE IF EXISTS songlength");
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
     // Schema 2 = results keyed by the full settings, with shared paths. A
@@ -856,19 +848,16 @@ void RecordStore::insert_dynamics(const DynamicsKey& key, const std::vector<uint
 void RecordStore::save_analysis(const std::string& hyhash, const std::string& ref_name,
                                 const std::string& ref_artist, const std::string& ref_charter,
                                 const Song& song, const PreparedRow& row,
-                                const std::optional<DynamicsEntry>& dynamics) {
+                                const std::optional<DynamicsEntry>& dynamics,
+                                const SongLength& length) {
     const std::vector<uint8_t> tempomap = encode_tempomap(song);  // not a sqlite call
-    const std::optional<double> length_ms = song_length_ms(song);
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     exec("BEGIN");
     try {
-        // The length goes to this difficulty's own row. songmeta's one
-        // per-chart length only gets one when it has none: it is what the
-        // difficulties without a row of their own read, and an analysis of
-        // one difficulty must not move the others' timelines.
-        upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap, std::nullopt);
-        if (length_ms) set_song_length(hyhash, *length_ms);
-        write_song_length(hyhash, row.chartmode, length_ms, /*replace=*/true);
+        upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap);
+        // The audio belongs to the song, so an analysis of any difficulty
+        // saves its one length (D69 item 2). With no read, it stays as it was.
+        if (length.read) write_song_length(hyhash, length.ms);
         write_row(row);
         if (dynamics) {
             // Best effort, inside the same transaction: a failed count write
@@ -986,62 +975,36 @@ void RecordStore::add_song(const std::string& hyhash, const std::string& ref_nam
                            const Song& song) {
     // Encoded before the lock: the lock covers sqlite calls only.
     const std::vector<uint8_t> tempomap = encode_tempomap(song);
-    const std::optional<double> length_ms = song_length_ms(song);
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap, length_ms);
+    upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap);
 }
 
-void RecordStore::set_song_length(const std::string& hyhash, double length_ms) {
+void RecordStore::fill_song_length(const std::string& hyhash, std::optional<double> length_ms) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt s = prepare(db_,
-                     "UPDATE songmeta SET length_ms = ? WHERE hyhash = ? AND length_ms IS NULL");
-    sqlite3_bind_double(s, 1, length_ms);
-    bind_text(s, 2, hyhash);
+    Stmt read = prepare(db_, "SELECT length_version FROM songmeta WHERE hyhash = ?");
+    bind_text(read, 1, hyhash);
+    if (sqlite3_step(read) != SQLITE_ROW) return;  // not registered: left alone
+    const int stamp = sqlite3_column_int(read, 0);
+    if (kSongLengthStamp.is_current(stamp)) return;  // an analysis or a backfill got here first
+    // Written only while the stamp is still the one just read, so another
+    // connection's write in between is kept.
+    write_song_length(hyhash, length_ms, stamp);
+}
+
+void RecordStore::write_song_length(const std::string& hyhash, std::optional<double> length_ms,
+                                    std::optional<int> only_from_stamp) {
+    Stmt s = prepare(db_, only_from_stamp
+        ? "UPDATE songmeta SET length_ms = ?1, length_version = ?2"
+          " WHERE hyhash = ?3 AND length_version = ?4"
+        : "UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3");
+    if (length_ms) sqlite3_bind_double(s, 1, *length_ms);
+    else sqlite3_bind_null(s, 1);
+    sqlite3_bind_int(s, 2, kSongLengthStamp.written);
+    bind_text(s, 3, hyhash);
+    if (only_from_stamp) sqlite3_bind_int(s, 4, *only_from_stamp);
     if (sqlite3_step(s) != SQLITE_DONE)
-        throw std::runtime_error(std::string("set_song_length failed: ") + sqlite3_errmsg(db_));
-}
-
-void RecordStore::set_song_length(const std::string& hyhash, const std::string& chartmode,
-                                  double length_ms) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    write_song_length(hyhash, chartmode, length_ms, /*replace=*/false);
-}
-
-void RecordStore::write_song_length(const std::string& hyhash, const std::string& chartmode,
-                                    std::optional<double> length_ms, bool replace) {
-    // A difficulty with no notes has no length: its row goes, and it reads
-    // the per-chart one like a record from before this table.
-    if (!length_ms) {
-        Stmt del = prepare(db_, "DELETE FROM songlength WHERE hyhash = ? AND chartmode = ?");
-        bind_text(del, 1, hyhash);
-        bind_text(del, 2, chartmode);
-        if (sqlite3_step(del) != SQLITE_DONE)
-            throw std::runtime_error(std::string("set_song_length failed: ") +
-                                     sqlite3_errmsg(db_));
-        return;
-    }
-    // Only a registered song gets a row, as set_song_length(hyhash, length)
-    // leaves an unknown song alone. The WHERE also keeps SQLite from reading
-    // the ON CONFLICT as a join's ON.
-    Stmt s = prepare(db_, replace
-        ? "INSERT OR REPLACE INTO songlength (hyhash, chartmode, length_ms)"
-          " SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM songmeta WHERE hyhash = ?1)"
-        : "INSERT OR IGNORE INTO songlength (hyhash, chartmode, length_ms)"
-          " SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM songmeta WHERE hyhash = ?1)");
-    bind_text(s, 1, hyhash);
-    bind_text(s, 2, chartmode);
-    sqlite3_bind_double(s, 3, *length_ms);
-    if (sqlite3_step(s) != SQLITE_DONE)
-        throw std::runtime_error(std::string("set_song_length failed: ") + sqlite3_errmsg(db_));
-}
-
-std::optional<double> RecordStore::read_song_length(const std::string& hyhash,
-                                                    const std::string& chartmode) {
-    Stmt s = prepare(db_, "SELECT length_ms FROM songlength WHERE hyhash = ? AND chartmode = ?");
-    bind_text(s, 1, hyhash);
-    bind_text(s, 2, chartmode);
-    if (sqlite3_step(s) != SQLITE_ROW) return std::nullopt;
-    return column_opt_f64(s, 0);
+        throw std::runtime_error(std::string("saving the song's length failed: ") +
+                                 sqlite3_errmsg(db_));
 }
 
 // Which copy names an md5 (D51 call 10): the first copy the scan listed, the
@@ -1059,8 +1022,7 @@ constexpr const char* kChartMetaKey = "chart_meta_version";
 
 void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_name,
                               const std::string& ref_artist, const std::string& ref_charter,
-                              const std::vector<uint8_t>& tempomap,
-                              std::optional<double> length_ms) {
+                              const std::vector<uint8_t>& tempomap) {
     // A chart already registered takes the names this call carries, so a
     // fixed song.ini reaches the reports on the next analysis (user decision
     // 2026-09-26). The one exception is a chart with duplicate copies in the
@@ -1068,8 +1030,8 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
     // analyzed (D63, D51 call 10). Each analysis rewrites the tempo map too
     // (D51 call 12): the map is whatever the chart reader made of the file
     // this time, so a reader fix reaches the stored map on the next analysis
-    // instead of never. The per-chart length is written on update when the call carries one
-    // (add_song does; save_analysis files its length per difficulty).
+    // instead of never. The song's length is left alone: only
+    // write_song_length writes it.
     std::string name = ref_name, artist = ref_artist, charter = ref_charter;
     {
         const std::string sql =
@@ -1084,19 +1046,16 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
         }
     }
     Stmt s = prepare(db_,
-        "INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap, length_ms) "
-        "VALUES (?,?,?,?,?,?) "
+        "INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap) "
+        "VALUES (?,?,?,?,?) "
         "ON CONFLICT(hyhash) DO UPDATE SET ref_name = excluded.ref_name, "
         "ref_artist = excluded.ref_artist, ref_charter = excluded.ref_charter, "
-        "tempomap = excluded.tempomap, "
-        "length_ms = COALESCE(excluded.length_ms, songmeta.length_ms)");
+        "tempomap = excluded.tempomap");
     bind_text(s, 1, hyhash);
     bind_text(s, 2, name);
     bind_text(s, 3, artist);
     bind_text(s, 4, charter);
     bind_blob(s, 5, tempomap);
-    if (length_ms) sqlite3_bind_double(s, 6, *length_ms);
-    else sqlite3_bind_null(s, 6);
     if (sqlite3_step(s) != SQLITE_DONE)
         throw std::runtime_error(std::string("add_song failed: ") + sqlite3_errmsg(db_));
 }
@@ -1425,11 +1384,6 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
         structure = std::move(best.structure);
         nodes = load_nodes(best.result_id);
         songmeta = read_tempomap(key.hyhash);
-        // This difficulty's own length when it has one; else the per-chart
-        // length a file from before per-difficulty lengths holds.
-        if (songmeta)
-            if (const std::optional<double> own = read_song_length(key.hyhash, key.chartmode))
-                songmeta->length_ms = own;
     }
 
     out.status = RecordStatus::Ready;
@@ -1440,7 +1394,10 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
     if (songmeta) {
         out.timing = decode_tempomap(songmeta->tempomap);
         restore_timecodes(record, *out.timing);
-        out.song_length_ms = songmeta->length_ms;
+        // A length under another stamp, as every length from before D69, is
+        // not read yet; nothing falls back to the notes.
+        out.song_length_read = kSongLengthStamp.is_current(songmeta->length_version);
+        if (out.song_length_read) out.song_length_ms = songmeta->length_ms;
     }
     out.record = std::move(record);
     return out;
@@ -1448,10 +1405,11 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
 
 std::optional<RecordStore::SongMetaRead> RecordStore::read_tempomap(const std::string& hyhash) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt s = prepare(db_, "SELECT tempomap, length_ms FROM songmeta WHERE hyhash=?");
+    Stmt s = prepare(db_,
+                     "SELECT tempomap, length_ms, length_version FROM songmeta WHERE hyhash=?");
     bind_text(s, 1, hyhash);
     if (sqlite3_step(s) != SQLITE_ROW) return std::nullopt;
-    return SongMetaRead{column_blob(s, 0), column_opt_f64(s, 1)};
+    return SongMetaRead{column_blob(s, 0), column_opt_f64(s, 1), sqlite3_column_int(s, 2)};
 }
 
 std::optional<SongTiming> RecordStore::get_timing(const std::string& hyhash) {

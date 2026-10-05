@@ -17,9 +17,10 @@
 //   * `path_refs` — which nodes each result uses, so the store can garbage
 //     collect a node the moment nothing points at it.
 //
-// `songmeta` (one row per chart file, keyed by content hash) is unchanged.
-// `songlength` holds each difficulty's own length (one row per chart and
-// chart mode); RecordLookup::song_length_ms says how the two are read.
+// `songmeta` holds one row per chart file, keyed by content hash: its names,
+// its tempo map, and the song's one length (its audio's end in chart time)
+// with that length's stamp. RecordLookup::song_length_ms says where the
+// length comes from.
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -218,20 +219,26 @@ struct RecordLookup {
     bool stale_rules = false;  // this path layout, analyzed under other rules
     std::optional<HydraRecord> record;  // set only when Ready
     std::optional<SongTiming> timing;   // set when Ready and the song is registered
-    // This difficulty's last note's onset, in ms (song_length_ms(const
-    // Song&)), stored by its analysis in the songlength table (D51 call 9).
-    // A difficulty with no row of its own, as in every file from before that
-    // table, reads the chart's one per-chart length instead (songmeta), which
-    // is what it showed before. Empty when neither is stored; opening the
-    // song fills it from the chart (set_song_length), and so does its next
-    // analysis.
+    // The song's audio length in chart time (audio::song_length_ms, D69), one
+    // per song, saved by an analysis or the open-song backfill
+    // (save_analysis, fill_song_length) under kSongLengthStamp. Empty when
+    // the song's audio was not read under the current stamp, or was read and
+    // has no usable length. Nothing falls back to the notes.
     std::optional<double> song_length_ms;
+    // Whether the song's audio was read under the current stamp, so the
+    // backfill knows whether to read it. False for an unregistered song.
+    bool song_length_read = false;
 };
 
-// A song's length as the store keeps it: its last note's onset, in ms. Empty
-// for a song with no notes. The one definition every writer uses.
-std::optional<double> song_length_ms(const Song& song);
-
+// A song's length as one audio read found it, handed to save_analysis. `read`
+// says whether anything read the audio; an analysis with no audio reader
+// leaves it false and the stored length alone. A read that found no usable
+// length has `read` set and no `ms`.
+struct SongLength {
+    bool read = false;
+    std::optional<double> ms;
+    static SongLength found(std::optional<double> ms) { return SongLength{true, ms}; }
+};
 // The answer to get_summary: the same status, without touching the blob.
 struct SummaryLookup {
     RecordStatus status = RecordStatus::NotAnalyzed;
@@ -332,27 +339,26 @@ public:
                  const std::string& ref_artist, const std::string& ref_charter,
                  const Song& song);
 
-    // Fills in a registered song's length when it has none (a songmeta row
-    // written before lengths were stored). A length already there is kept,
-    // and an unregistered song is left alone. Touches no result.
-    void set_song_length(const std::string& hyhash, double length_ms);
-    // The same for one difficulty's own length (D51 call 9): filled only when
-    // that difficulty has none, so the length its analysis stored is kept.
-    // An unregistered song is left alone. Touches no result.
-    void set_song_length(const std::string& hyhash, const std::string& chartmode,
-                         double length_ms);
+    // The open-song backfill's writer: saves the song's audio length (or
+    // none, for a song with no usable audio) with kSongLengthStamp, but only
+    // while the stored length is not current, so a slower backfill never
+    // overwrites an analysis. An unregistered song is left alone. Touches no
+    // result.
+    void fill_song_length(const std::string& hyhash, std::optional<double> length_ms);
 
     void add_record(const RecordKey& key, const HydraRecord& record);
     void add_row(const PreparedRow& row);
 
     // One analyzed chart, saved in one transaction: the song's row (as
-    // add_song), the result (as add_row) and, when given, its dynamics count
-    // (as put_dynamics). A failure in the first two rolls all of it back. A
-    // failed dynamics write is dropped on its own and never blocks the result.
+    // add_song), the result (as add_row), the song's length when `length`
+    // was read, and, when given, its dynamics count (as put_dynamics). A
+    // failure in the first three rolls all of it back. A failed dynamics
+    // write is dropped on its own and never blocks the result.
     void save_analysis(const std::string& hyhash, const std::string& ref_name,
                        const std::string& ref_artist, const std::string& ref_charter,
                        const Song& song, const PreparedRow& row,
-                       const std::optional<DynamicsEntry>& dynamics);
+                       const std::optional<DynamicsEntry>& dynamics,
+                       const SongLength& length = {});
 
     // Stores a dynamics-breakdown blob (INSERT OR REPLACE) under the caller's
     // count stamp (kDynamicsCountStamp.written; go through app::save_dynamics).
@@ -523,29 +529,27 @@ private:
     // before the column existed). Runs on every open; with nothing to fill
     // it reads only small columns. Returns rows filled.
     int fill_missing_stars();
-    // The song's raw tempomap blob and its stored length, read under the
-    // lock; the caller decodes the tempomap with no lock held. nullopt if the
-    // song isn't registered.
+    // The song's raw tempomap blob, its stored length and that length's
+    // stamp (kSongLengthStamp), read under the lock; the caller decodes the
+    // tempomap with no lock held. nullopt if the song isn't registered.
     struct SongMetaRead {
         std::vector<uint8_t> tempomap;
         std::optional<double> length_ms;
+        int length_version = 0;
     };
     std::optional<SongMetaRead> read_tempomap(const std::string& hyhash);
-    // One difficulty's own stored length (the songlength table), or nullopt
-    // when it has no row. The caller holds the lock.
-    std::optional<double> read_song_length(const std::string& hyhash,
-                                           const std::string& chartmode);
-    // Writes one difficulty's length: `replace` overwrites the row (an
-    // analysis), otherwise only a missing row is filled. No length removes
-    // the row. Only a registered song gets one. The caller holds the lock.
-    void write_song_length(const std::string& hyhash, const std::string& chartmode,
-                           std::optional<double> length_ms, bool replace);
+    // The one songmeta length write, for save_analysis and fill_song_length:
+    // the length (or none) with the current kSongLengthStamp. With
+    // `only_from_stamp`, only a row still holding that stamp is written. An
+    // unregistered song has no row and is left alone. The caller holds the
+    // lock.
+    void write_song_length(const std::string& hyhash, std::optional<double> length_ms,
+                           std::optional<int> only_from_stamp = std::nullopt);
     // The bodies of add_song, add_row and put_dynamics. The caller holds the
     // lock; write_row also needs an open transaction.
     void upsert_song(const std::string& hyhash, const std::string& ref_name,
                      const std::string& ref_artist, const std::string& ref_charter,
-                     const std::vector<uint8_t>& tempomap,
-                     std::optional<double> length_ms);
+                     const std::vector<uint8_t>& tempomap);
     void write_row(const PreparedRow& row);
     // Deletes this chart's path nodes that no result refers to any more:
     // write_row's last step, and the Auto cleanup's. The caller holds the lock

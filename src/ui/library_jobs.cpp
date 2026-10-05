@@ -9,6 +9,7 @@
 #include "app/report.h"
 #include "app/report_files.h"
 #include "app/user_messages.h"
+#include "audio/song_audio.h"  // song_length_ms
 #include "parse/song.h"  // display_title, display_artist
 
 namespace hydra::ui {
@@ -285,6 +286,7 @@ void BatchJob::run() {
         snap_.failure_details.push_back(title + ": " + error);
     };
     callbacks.cancel = &cancel_;
+    callbacks.read_song_length = audio::song_length_ms;  // each song's length (D69)
     // The pause gate and the "now analyzing" line sit in front of the real
     // analyzer, so run_batch and its pool stay as they are.
     const app::ChartAnalyzer inner =
@@ -328,6 +330,14 @@ void AnalyzeJob::start() {
                                 throw app::AnalysisCancelled{};
                             progress_.store(f, std::memory_order_relaxed);
                         });
+                    // The song's audio length, read here so the save stays
+                    // quick. A failed read costs only the length: it stays
+                    // as it was, and opening the song reads it later.
+                    try {
+                        length_ = app::song_length_found(
+                            audio::song_length_ms(song_.notespath, result_->song));
+                    } catch (const std::exception&) {
+                    }
                     return true;
                 } catch (const app::AnalysisCancelled&) {
                     return false;  // no error text: the UI discards a cancelled job

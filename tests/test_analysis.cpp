@@ -27,6 +27,8 @@
 
 #include "app/analysis.h"
 #include "app/work_pool.h"
+#include "audio/song_audio.h"
+#include "audio_chart_fixtures.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "midi_util.h"
@@ -466,6 +468,70 @@ TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
     CHECK(last.failed == 1);
     CHECK(last.skipped == 1);
     CHECK(last.completed == 2);
+}
+
+TEST_CASE("run_batch saves the length its reader gives") {
+    // D69 item 2: an analysis saves the song's audio length. The reader's
+    // 4321 is an input; the real reader is audio::song_length_ms.
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    std::atomic<int> runs{0};
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&runs, &real](const std::string&, const AnalysisSettings&,
+                                       const std::function<void(float)>&) -> AnalysisResult {
+        ++runs;
+        return real;
+    };
+    callbacks.read_song_length = [](const std::string&, const hydra::Song&) {
+        return std::optional<double>(4321.0);
+    };
+
+    BatchRun run;
+    run.chartmode = "length-test";
+    hydra::store::RecordStore store(":memory:");
+    const std::vector<ScanItem> items = fake_items(2);
+    run_batch({items[0]}, run, store, /*redo=*/false, 1, callbacks);
+    const hydra::store::RecordLookup read =
+        store.get_record({items[0].md5, run.chartmode, run.cap_query(), run.lens});
+    REQUIRE(read.status == hydra::store::RecordStatus::Ready);
+    CHECK(read.song_length_read);
+    CHECK(read.song_length_ms == 4321.0);
+
+    // With no reader the audio was not read.
+    callbacks.read_song_length = nullptr;
+    run_batch({items[1]}, run, store, /*redo=*/false, 1, callbacks);
+    const hydra::store::RecordLookup unread =
+        store.get_record({items[1].md5, run.chartmode, run.cap_query(), run.lens});
+    REQUIRE(unread.status == hydra::store::RecordStatus::Ready);
+    CHECK_FALSE(unread.song_length_read);
+    CHECK_FALSE(unread.song_length_ms.has_value());
+    CHECK(runs.load() == 2);
+}
+
+TEST_CASE("a song.ini delay longer than the audio saves no length") {
+    // The audio's end lands before chart time 0, so audio::song_length_ms
+    // gives a length has_song_length refuses: the song is read, with no
+    // length, like a chart with no audio.
+    const std::string notes = audiochart::short_chart_with_long_audio(L"long_delay_");
+    audiochart::write_text_file(notes.substr(0, notes.rfind('\\')) + "\\song.ini",
+                                "[song]\ndelay = 60000\n");
+    REQUIRE(hydra::audio::song_length_ms(notes, hydra::load_songpath(notes, true, true))
+                .has_value());
+
+    ScanItem item;
+    item.md5 = "delayed";
+    item.title = "delayed";
+    item.notespath = notes;
+    BatchCallbacks callbacks;
+    callbacks.read_song_length = hydra::audio::song_length_ms;
+    BatchRun run;
+    run.chartmode = "delay-test";
+    hydra::store::RecordStore store(":memory:");
+    run_batch({item}, run, store, /*redo=*/false, 1, callbacks);
+    const hydra::store::RecordLookup got =
+        store.get_record({item.md5, run.chartmode, run.cap_query(), run.lens});
+    REQUIRE(got.status == hydra::store::RecordStatus::Ready);
+    CHECK(got.song_length_read);
+    CHECK_FALSE(got.song_length_ms.has_value());
 }
 
 TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {

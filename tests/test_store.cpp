@@ -1979,48 +1979,81 @@ TEST_CASE("under rules that make every row Stale, the stars fill changes nothing
     std::remove(path.c_str());
 }
 
-TEST_CASE("a stored song keeps its length, and an old songmeta row reads none") {
-    // RecordStore has no raw-SQL test hook, so this uses a file database and
-    // nulls the column on a second connection, as the stars-fill case does.
-    const Song& song = fixture().song;
-    REQUIRE_FALSE(song.sequence.empty());
-    const double expected = *song_length_ms(song);
-
+TEST_CASE("an analysis saves the song's length, and an unstamped length reads as not read") {
+    // D69: the stored length is the song's audio length, saved with
+    // kSongLengthStamp. The lengths here are inputs; the audio owner is
+    // pinned in test_song_audio. RecordStore has no raw-SQL test hook, so
+    // this zeroes the stamp on a second connection, as the stars-fill case
+    // does.
     const std::string path = temp_db("song_length");
     std::remove(path.c_str());
     const RecordKey key{"h", "mode", CapQuery::at(4)};
     {
         RecordStore store(path);
-        store.add_song("h", "Song", "Artist", "Charter", song);
-        store.add_record(key, at_cap(4));
+        store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
+                            prepare_row(key, at_cap(4)), std::nullopt,
+                            SongLength::found(4321.0));
         const RecordLookup got = store.get_record(key);
         REQUIRE(got.status == RecordStatus::Ready);
-        REQUIRE(got.song_length_ms.has_value());
-        CHECK(*got.song_length_ms == doctest::Approx(expected));
+        CHECK(got.song_length_read);
+        CHECK(got.song_length_ms == 4321.0);
     }
 
-    // A row written before the column existed reads no length.
-    exec_on_file(path, "UPDATE songmeta SET length_ms = NULL WHERE hyhash = 'h'");
+    // A length with no current stamp, as every length in a file from before
+    // this build, reads as not read.
+    exec_on_file(path, "UPDATE songmeta SET length_version = 0 WHERE hyhash = 'h'");
     {
         RecordStore store(path);
         const RecordLookup got = store.get_record(key);
         REQUIRE(got.status == RecordStatus::Ready);
+        CHECK_FALSE(got.song_length_read);
         CHECK_FALSE(got.song_length_ms.has_value());
 
-        // Opening the song fills it from the chart; the result is untouched.
-        store.set_song_length("h", expected);
+        // Opening the song reads its audio once; the result is untouched.
+        store.fill_song_length("h", 5000.0);
         const RecordLookup filled = store.get_record(key);
         REQUIRE(filled.status == RecordStatus::Ready);
-        REQUIRE(filled.song_length_ms.has_value());
-        CHECK(*filled.song_length_ms == doctest::Approx(expected));
+        CHECK(filled.song_length_read);
+        CHECK(filled.song_length_ms == 5000.0);
         CHECK(filled.record->best_path().totalscore() == got.record->best_path().totalscore());
 
-        // A length already there is kept, and an unknown song is ignored.
-        store.set_song_length("h", expected + 1000.0);
-        CHECK(*store.get_record(key).song_length_ms == doctest::Approx(expected));
-        store.set_song_length("unknown", 5.0);
+        // A second backfill is ignored, and an unknown song is left alone.
+        store.fill_song_length("h", 6000.0);
+        CHECK(store.get_record(key).song_length_ms == 5000.0);
+        store.fill_song_length("unknown", 5.0);
     }
+    CHECK(scalar(path, "SELECT COUNT(*) FROM songmeta WHERE hyhash = 'unknown'") == 0);
     std::remove(path.c_str());
+}
+
+TEST_CASE("an analysis with no audio reader leaves the song's length alone") {
+    // hydra_bench and the tests analyze with no audio reader (D69 item 2).
+    RecordStore store(":memory:");
+    const RecordKey key{"h", "mode", CapQuery::at(4)};
+    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
+                        prepare_row(key, at_cap(4)), std::nullopt, SongLength::found(4321.0));
+    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
+                        prepare_row(key, at_cap(4)), std::nullopt, SongLength{});
+    const RecordLookup got = store.get_record(key);
+    CHECK(got.song_length_read);
+    CHECK(got.song_length_ms == 4321.0);
+}
+
+TEST_CASE("a song with no readable audio reads as read, with no length") {
+    // A read that found no audio is an answer: the backfill does not try it
+    // again (D70, open question 3), and the timeline places no marks.
+    RecordStore store(":memory:");
+    const RecordKey key{"h", "mode", CapQuery::at(4)};
+    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
+                        prepare_row(key, at_cap(4)), std::nullopt,
+                        SongLength::found(std::nullopt));
+    const RecordLookup got = store.get_record(key);
+    REQUIRE(got.status == RecordStatus::Ready);
+    CHECK(got.song_length_read);
+    CHECK_FALSE(got.song_length_ms.has_value());
+    // The backfill writer leaves a read song alone.
+    store.fill_song_length("h", 5000.0);
+    CHECK_FALSE(store.get_record(key).song_length_ms.has_value());
 }
 
 TEST_CASE("a saved song's tempo map follows the latest analysis") {
@@ -2045,55 +2078,49 @@ TEST_CASE("a saved song's tempo map follows the latest analysis") {
     CHECK(timing->timecode(tick).ms() == second_ms);
 }
 
-TEST_CASE("a song's length is stored per difficulty") {
-    // D51 call 9 (finding 62): each difficulty's timeline ends at its own
-    // last note. The one per-chart length used to follow whichever
-    // difficulty was analyzed last.
-    const Song& first = fixture().song;
-    const Song second = hydra::test::beat_song({}, {}, 1920);
-    const std::optional<double> first_len = song_length_ms(first);
-    const std::optional<double> second_len = song_length_ms(second);
-    REQUIRE(first_len.has_value());
-    REQUIRE(second_len.has_value());
-    REQUIRE(*first_len != *second_len);
-
+TEST_CASE("one length per song: every difficulty reads the latest analysis") {
+    // D69 item 2: the audio belongs to the song, so each analysis of any
+    // difficulty saves the one length (D70, open question 5).
     RecordStore store(":memory:");
     const RecordKey a{"h", "a", CapQuery::at(4)};
     const RecordKey b{"h", "b", CapQuery::at(4)};
-    store.save_analysis("h", "Song", "Artist", "Charter", first, prepare_row(a, at_cap(4)),
-                        std::nullopt);
-    store.save_analysis("h", "Song", "Artist", "Charter", second, prepare_row(b, at_cap(4)),
-                        std::nullopt);
-    CHECK(store.get_record(a).song_length_ms == first_len);
-    CHECK(store.get_record(b).song_length_ms == second_len);
+    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
+                        prepare_row(a, at_cap(4)), std::nullopt, SongLength::found(4321.0));
+    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
+                        prepare_row(b, at_cap(4)), std::nullopt, SongLength::found(1234.0));
+    CHECK(store.get_record(a).song_length_ms == 1234.0);
+    CHECK(store.get_record(b).song_length_ms == 1234.0);
 }
 
-TEST_CASE("an old database's one length shows until that difficulty is analyzed again") {
-    // A file from before per-difficulty lengths has only the chart's one
-    // length. Every difficulty reads it, as today, until that difficulty is
-    // analyzed again (D58, question 2).
-    const Song& first = fixture().song;
-    const Song second = hydra::test::beat_song({}, {}, 1920);
-    const RecordKey a{"h", "a", CapQuery::at(4)};
-    const RecordKey b{"h", "b", CapQuery::at(4)};
-
-    RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", first);
-    store.add_record(a, at_cap(4));
-    store.add_record(b, at_cap(4));
-    CHECK(store.get_record(a).song_length_ms == song_length_ms(first));
-    CHECK(store.get_record(b).song_length_ms == song_length_ms(first));
-
-    store.save_analysis("h", "Song", "Artist", "Charter", second, prepare_row(a, at_cap(4)),
-                        std::nullopt);
-    CHECK(store.get_record(a).song_length_ms == song_length_ms(second));
-    CHECK(store.get_record(b).song_length_ms == song_length_ms(first));
-
-    // Filling a difficulty's own length touches only a difficulty with none.
-    store.set_song_length("h", "b", *song_length_ms(second));
-    store.set_song_length("h", "a", *song_length_ms(first));
-    CHECK(store.get_record(a).song_length_ms == song_length_ms(second));
-    CHECK(store.get_record(b).song_length_ms == song_length_ms(second));
+TEST_CASE("a file from before AL loses its songlength table and its last-note lengths") {
+    // D69 replaces D58 item 5: the per-difficulty table goes, and a length
+    // saved from notes reads as not read until the song's audio is read.
+    const std::string path = temp_db("song_length_old");
+    std::remove(path.c_str());
+    const RecordKey key{"h", "mode", CapQuery::at(4)};
+    {
+        RecordStore store(path);
+        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
+        store.add_record(key, at_cap(4));
+    }
+    // The file as a build before this one left it: the songlength table, a
+    // last-note length on songmeta and no stamp column.
+    exec_on_file(path,
+                 "CREATE TABLE IF NOT EXISTS songlength (hyhash TEXT NOT NULL,"
+                 " chartmode TEXT NOT NULL, length_ms REAL NOT NULL,"
+                 " PRIMARY KEY (hyhash, chartmode));"
+                 "INSERT OR REPLACE INTO songlength VALUES ('h', 'mode', 1234.0);"
+                 "UPDATE songmeta SET length_ms = 1234.0 WHERE hyhash = 'h';"
+                 "ALTER TABLE songmeta DROP COLUMN length_version;");
+    {
+        RecordStore store(path);
+        const RecordLookup got = store.get_record(key);
+        REQUIRE(got.status == RecordStatus::Ready);
+        CHECK_FALSE(got.song_length_read);
+        CHECK_FALSE(got.song_length_ms.has_value());
+    }
+    CHECK(scalar(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'songlength'") == 0);
+    std::remove(path.c_str());
 }
 
 TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
