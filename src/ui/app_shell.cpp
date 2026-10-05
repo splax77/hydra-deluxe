@@ -34,6 +34,11 @@ Layout g_layout;
 // The theme at scale 1, captured by setup_imgui after apply_theme().
 ImGuiStyle g_base_style;
 
+// The size every UI font loads at, in pixels at scale 1. The CJK fallback
+// merged into the main font must load at the same size: ImGui scales merged
+// glyphs by the ratio of the two sizes.
+constexpr float kFontSize = 18.0f;
+
 // Reads "<a>,<b>" into two ints; false unless the text is exactly that.
 bool read_int_pair(std::string_view text, int& a, int& b) {
     const size_t comma = text.find(',');
@@ -140,14 +145,16 @@ void parse_layout_line(std::string_view line, Layout& layout) {
     const std::string value(line.substr(kKey.size()));
     char* end = nullptr;
     const float v = std::strtof(value.c_str(), &end);
-    if (end == value.c_str() || *end != '\0' || !(v > 0.0f && v < 1.0f)) return;
+    if (end == value.c_str() || *end != '\0' || !share_is_valid(v)) return;
     layout.library_share = v;
 }
+
+bool share_is_valid(float share) { return share > 0.0f && share < 1.0f; }
 
 float library_share() { return g_layout.library_share; }
 
 void remember_library_share(float share) {
-    if (!(share > 0.0f && share < 1.0f) || share == g_layout.library_share) return;
+    if (!share_is_valid(share) || share == g_layout.library_share) return;
     g_layout.library_share = share;
     if (ImGui::GetCurrentContext()) ImGui::MarkIniSettingsDirty();
 }
@@ -239,9 +246,9 @@ void setup_imgui(const ImGuiSetupOptions& options) {
         options.resource_dir.empty() ? app::exe_dir() + "\\resource" : options.resource_dir;
     if (resource_dir.back() != '\\' && resource_dir.back() != '/') resource_dir += "\\";
     ImFont* main_font = io.Fonts->AddFontFromFileTTF(
-        (resource_dir + "ShipporiAntiqueB1-Regular.ttf").c_str(), 18.0f);
+        (resource_dir + "ShipporiAntiqueB1-Regular.ttf").c_str(), kFontSize);
     g_mono_font = io.Fonts->AddFontFromFileTTF(
-        (resource_dir + "CourierPrime-Regular.ttf").c_str(), 18.0f);
+        (resource_dir + "CourierPrime-Regular.ttf").c_str(), kFontSize);
     if (main_font) io.FontDefault = main_font;
 
     // CJK fallback: Clone Hero libraries are full of Japanese (and other
@@ -259,7 +266,7 @@ void setup_imgui(const ImGuiSetupOptions& options) {
             if (!hydra::file_exists_utf8(path)) continue;
             ImFontConfig merge;
             merge.MergeMode = true;
-            if (io.Fonts->AddFontFromFileTTF(path, 18.0f, &merge)) break;
+            if (io.Fonts->AddFontFromFileTTF(path, kFontSize, &merge)) break;
         }
     }
 }

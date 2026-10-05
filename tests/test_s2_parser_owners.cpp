@@ -224,8 +224,12 @@ TEST_CASE("s2 owners: a blank artist or charter reads the placeholder (60)") {
     // scan reads it through the same fallback.
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> entries;
-    for (const app::ScanItem& it : items)
-        entries.push_back({it.md5, it.title, "", "", it.notespath, it.rootfolder, it.sig});
+    for (const app::ScanItem& it : items) {
+        store::ChartLibraryEntry e = app::to_library_entry(it);
+        e.artist.clear();
+        e.charter.clear();
+        entries.push_back(std::move(e));
+    }
     store.rebuild_chart_library(entries);
     store::ChartLibraryCache cache = store.chart_library_cache();
     auto [cached, errors2] = app::discover_charts({root.u8string()}, app::ScanCallbacks{}, &cache);

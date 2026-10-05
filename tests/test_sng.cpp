@@ -10,6 +10,8 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -18,8 +20,10 @@
 #include "byte_source_util.h"
 #include "core/winstr.h"
 #include "midi_util.h"
+#include "parse/chart_files.h"
 #include "parse/sng.h"
 #include "parse/song.h"
+#include "sng_util.h"
 #include "song_equal.h"
 
 using namespace hydra;
@@ -27,53 +31,7 @@ using testsong::songs_equal;
 
 namespace {
 
-void push_u32(std::vector<uint8_t>& out, uint64_t v) {
-    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
-}
-void push_u64(std::vector<uint8_t>& out, uint64_t v) {
-    for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));
-}
-
-// A .sng: 10 prefix bytes, the 16-byte XOR mask, the metadata block (pair
-// count, then u32-length key and value strings), the file section (its
-// length, the file count, then name/length/absolute-offset entries), then
-// each file's bytes XOR-encoded from its own index 0.
-std::vector<uint8_t> make_sng(
-    const std::vector<std::pair<std::string, std::string>>& meta,
-    const std::vector<std::pair<std::string, std::vector<uint8_t>>>& files) {
-    std::vector<uint8_t> out(10, 0x53);
-    uint8_t mask[16];
-    for (int i = 0; i < 16; ++i) mask[i] = static_cast<uint8_t>(0x30 + i * 7);
-    out.insert(out.end(), mask, mask + 16);
-
-    std::vector<uint8_t> md;
-    push_u64(md, meta.size());
-    for (const auto& [k, v] : meta) {
-        push_u32(md, k.size());
-        md.insert(md.end(), k.begin(), k.end());
-        push_u32(md, v.size());
-        md.insert(md.end(), v.begin(), v.end());
-    }
-    push_u64(out, md.size());
-    out.insert(out.end(), md.begin(), md.end());
-
-    size_t entries = 0;
-    for (const auto& f : files) entries += 1 + f.first.size() + 16;
-    uint64_t offset = out.size() + 16 + entries;
-    push_u64(out, 8 + entries);
-    push_u64(out, files.size());
-    for (const auto& f : files) {
-        out.push_back(static_cast<uint8_t>(f.first.size()));
-        out.insert(out.end(), f.first.begin(), f.first.end());
-        push_u64(out, f.second.size());
-        push_u64(out, offset);
-        offset += f.second.size();
-    }
-    for (const auto& f : files)
-        for (size_t i = 0; i < f.second.size(); ++i)
-            out.push_back(static_cast<uint8_t>(f.second[i] ^ mask[i % 16] ^ (i & 0xff)));
-    return out;
-}
+using testsng::make_sng;
 
 std::vector<uint8_t> tiny_mid() {
     return testmidi::smf(testmidi::concat({testmidi::track_name("PART DRUMS"),
@@ -279,4 +237,43 @@ TEST_CASE("sng: a container parses the same from bytes as from its path") {
                       load_songpath(path, true, true)));
     // The extension still decides the format; an unknown one throws.
     CHECK_THROWS_AS(load_songpath_from_bytes("x.txt", buf, true, true), std::runtime_error);
+}
+
+// The chart-files pins live here because test_song.cpp belongs to another
+// task this phase.
+TEST_CASE("chart_files: pick_notes_file takes the first notes.mid, else the last notes.chart") {
+    const std::optional<NotesFilePick> mid =
+        pick_notes_file({"song.ogg", "notes.chart", "NOTES.MID", "notes.chart"});
+    REQUIRE(mid.has_value());
+    CHECK(mid->index == 2);
+    CHECK(mid->format == ChartFormat::Mid);
+
+    const std::optional<NotesFilePick> chart =
+        pick_notes_file({"notes.chart", "song.ogg", "Notes.Chart"});
+    REQUIRE(chart.has_value());
+    CHECK(chart->index == 2);
+    CHECK(chart->format == ChartFormat::Chart);
+
+    CHECK_FALSE(pick_notes_file({"song.ogg", "album.png"}).has_value());
+}
+
+TEST_CASE("chart_files: find_song_ini picks the folder's song.ini in any case") {
+    const std::vector<DirEntry> listing = {{"notes.mid"}, {"Song.INI"}, {"song.ogg"}};
+    const DirEntry* ini = find_song_ini(listing);
+    REQUIRE(ini != nullptr);
+    CHECK(ini->name == "Song.INI");
+    CHECK(find_song_ini(std::vector<DirEntry>{{"notes.mid"}, {"song.ogg"}}) == nullptr);
+    DirEntry folder;
+    folder.name = "song.ini";
+    folder.is_dir = true;
+    CHECK(find_song_ini(std::vector<DirEntry>{folder}) == nullptr);
+
+    // The folder form lists a real folder and picks from it.
+    const std::string dir = sng_fixture_path("ini_folder");
+    const std::string empty_dir = sng_fixture_path("ini_folder_empty");
+    std::filesystem::create_directory(os_path(dir));
+    std::filesystem::create_directory(os_path(empty_dir));
+    write_fixture(dir + "\\SONG.INI", {'[', 's', 'o', 'n', 'g', ']'});
+    CHECK(find_song_ini(dir) == dir + "\\SONG.INI");
+    CHECK(find_song_ini(empty_dir).empty());
 }
