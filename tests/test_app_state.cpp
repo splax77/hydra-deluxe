@@ -30,6 +30,7 @@
 #include "corpus_util.h"
 #include "display_fixtures.h"  // store_batch_result
 #include "store/record_store.h"
+#include "temp_util.h"
 #include "ui/app_state.h"
 #include "ui/details_view.h"  // analyze_button_label
 #include "ui/generation.h"
@@ -55,12 +56,7 @@ const int kSeededCap = 4;
 // title, so its row is library_row_at(0).
 const int kChartCount = 60;
 
-std::string temp_path(const char* tag, const char* ext) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    return hydra::wide_to_utf8(tmp) + "hydra_test_" + tag + "_" +
-           std::to_string(GetCurrentProcessId()) + ext;
-}
+using testtemp::temp_path;
 
 // Points app::ini_path()/db_path() at scratch files for one test, then puts
 // the process back the way it was. commit_settings writes the INI through

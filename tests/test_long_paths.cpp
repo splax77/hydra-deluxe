@@ -34,6 +34,7 @@
 #include "audio/stem_reader.h"
 #include "core/winstr.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 
 #ifndef HYDRA_INPUT_DIR
 #error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
@@ -55,22 +56,17 @@ std::wstring long_tail(int segments) {
     return tail;
 }
 
-// A fresh %TEMP%\hydra_long_<tag>_<pid> folder (the root, short) with a
-// folder nested more than 300 characters deep inside it. Both removed at the
-// end of the test.
+// A fresh scratch folder (testtemp::temp_dir; the root, short) with a folder
+// nested more than 300 characters deep inside it. Both removed at the end of
+// the test.
 struct LongDir {
     std::string root;  // UTF-8
     std::string deep;  // UTF-8, longer than 300 characters
 
-    explicit LongDir(const char* tag) {
-        wchar_t tmp[MAX_PATH];
-        GetTempPathW(MAX_PATH, tmp);
-        const std::wstring wroot = std::wstring(tmp) + L"hydra_long_" +
-                                   hydra::utf8_to_wide(tag) + L"_" +
-                                   std::to_wstring(GetCurrentProcessId());
-        std::wstring wdeep = wroot;
+    explicit LongDir(const char* tag)
+        : root(testtemp::temp_dir(std::string("long_") + tag)) {
+        std::wstring wdeep = hydra::utf8_to_wide(root);
         while (wdeep.size() <= 300) wdeep += L"\\" + kSegment;
-        root = hydra::wide_to_utf8(wroot);
         deep = hydra::wide_to_utf8(wdeep);
         std::error_code ec;
         fs::remove_all(hydra::os_path(root), ec);

@@ -30,6 +30,7 @@
 #include "parse/srb.h"
 #include "song_equal.h"
 #include "srb_util.h"
+#include "temp_util.h"
 
 using namespace hydra;
 
@@ -46,24 +47,8 @@ void write_bytes(const std::string& path, const std::vector<uint8_t>& data) {
     std::fclose(f);
 }
 
-// A fresh directory under %TEMP% for this process's fixtures.
-std::string fixture_dir() {
-    static std::string dir = [] {
-        wchar_t tmp[MAX_PATH];
-        GetTempPathW(MAX_PATH, tmp);
-        std::wstring d = std::wstring(tmp) + L"hydra_srb_test_" +
-                         std::to_wstring(GetCurrentProcessId());
-        CreateDirectoryW(d.c_str(), nullptr);
-        int len = WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, nullptr, 0,
-                                      nullptr, nullptr);
-        std::string out(static_cast<size_t>(len), '\0');
-        WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, &out[0], len, nullptr,
-                            nullptr);
-        out.resize(out.size() - 1);
-        return out;
-    }();
-    return dir;
-}
+// This process's scratch folder for the fixtures (testtemp::temp_dir).
+std::string fixture_dir() { return testtemp::temp_dir("srb"); }
 
 using testsrb::make_metadata;
 using testsrb::make_srb;

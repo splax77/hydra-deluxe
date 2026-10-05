@@ -28,6 +28,7 @@
 #include "parse/song.h"
 #include "render/track_state.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
@@ -69,23 +70,14 @@ void copy_file_utf8(const std::string& from, const std::string& to) {
     std::fclose(f);
 }
 
-// This process's own scratch folder for one test's chart, under the temp
-// folder, as UTF-8. `tag` keeps the tests' folders apart. Every test in this
-// file that writes a chart folder makes it here.
-std::string temp_chart_dir(const wchar_t* tag) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    const std::wstring dir = std::wstring(tmp) + L"hydra_prevctl_" + tag +
-                             std::to_wstring(GetCurrentProcessId());
-    CreateDirectoryW(dir.c_str(), nullptr);
-    return hydra::wide_to_utf8(dir);
-}
+// Every test in this file that writes a chart folder makes it with
+// testtemp::temp_dir, one tag per test.
 
 // A chart folder that has audio: a corpus .chart plus the test sine as
 // song.ogg. The GUI test library has no audio at all, so the no-device path
 // can only be reached here.
 std::string chart_with_audio() {
-    const std::string d = temp_chart_dir(L"");
+    const std::string d = testtemp::temp_dir("prevctl");
     copy_file_utf8(corpus::first_chart_with_suffix(".chart"), d + "\\notes.chart");
     copy_file_utf8(testaudio::fixture_path("sine220.ogg"), d + "\\song.ogg");
     return d + "\\notes.chart";
@@ -97,7 +89,7 @@ std::string chart_with_audio() {
 // end the beat lines would stop two measures past the last note, at tick
 // 1728 (900 ms).
 std::string short_chart_with_long_audio() {
-    const std::string d = temp_chart_dir(L"tail_");
+    const std::string d = testtemp::temp_dir("prevctl_tail");
     using namespace testchart;
     const std::string text =
         chart_text(section("ExpertDrums", line(0, "N 0 0") + line(192, "N 1 0")), 192, "",
@@ -601,7 +593,7 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
 // entry's md5 here is deliberately wrong; only a re-hash could notice that.
 TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unchanged chart") {
     using namespace hydra;
-    const std::string dir = temp_chart_dir(L"sig_");
+    const std::string dir = testtemp::temp_dir("prevctl_sig");
     copy_file_utf8(corpus::first_chart_with_suffix(".chart"), dir + "\\notes.chart");
     std::FILE* ini = fopen_utf8(dir + "\\song.ini", L"wb");
     REQUIRE(ini != nullptr);
