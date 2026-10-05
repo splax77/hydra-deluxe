@@ -30,7 +30,9 @@
 #include "display_fixtures.h"  // store_batch_result
 #include "store/record_store.h"
 #include "ui/app_state.h"
+#include "ui/details_view.h"  // analyze_button_label
 #include "ui/generation.h"
+#include "ui/library_parts.h"  // analyze_search_label
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
 
 using hydra::app::Settings;
@@ -372,6 +374,20 @@ TEST_CASE("UI timings: Done!, Copied!, search re-filter and batch refresh keep t
     CHECK(AppState::kCopiedSeconds == 2.0);
     CHECK(AppState::kSearchThrottleSeconds == 0.15);
     CHECK(AppState::kBatchRefreshSeconds == 1.0);
+    CHECK(AppState::kFileCheckSeconds == 2.0);    // D48 Q33, the one file-check interval
+    CHECK(AppState::kStatusFadeSeconds == 6.0);   // the toolbar's since 2026-08-18
+}
+
+// Findings 290 and 289: the batch button's search label and the song panel's
+// Analyze label are each built once; the button, its width sample and the
+// GUI tests call these.
+TEST_CASE("the toolbar and song panel labels come from one function each") {
+    CHECK(hydra::ui::detail::analyze_search_label(1) == "Analyze search (1)...");
+    CHECK(hydra::ui::detail::analyze_search_label(1234) == "Analyze search (1,234)...");
+    using hydra::ui::analyze_button_label;
+    CHECK(analyze_button_label(RecordStatus::NotAnalyzed) == std::string("Analyze this song"));
+    CHECK(analyze_button_label(RecordStatus::Stale) == std::string("Re-analyze"));
+    CHECK(analyze_button_label(RecordStatus::Ready) == std::string("Re-analyze"));
 }
 
 // The number boxes apply each step at once (the shown record follows live)
