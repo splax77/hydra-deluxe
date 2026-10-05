@@ -28,6 +28,7 @@
 #include "app/rules_file.h"
 #include "app/report.h"
 #include "app/report_files.h"
+#include "app/user_messages.h"
 #include "core/model.h"
 #include "core/winstr.h"
 #include "search/graph.h"
@@ -77,7 +78,14 @@ int main() {
     options.hit_window_ms = settings.hit_window_ms;
     options.db_path = db;
 
-    std::unique_ptr<hydra::store::RecordStore> store = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
+    // A database that won't open is a run that can't start (D72 item 5).
+    std::unique_ptr<hydra::store::RecordStore> store;
+    try {
+        store = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "%s\n", hydra::app::plain_error_block(e).c_str());
+        return 2;
+    }
     // A database hydra_batch --legacy-fills filled holds only 1.0 results, so
     // it reports under that rule whatever the app's "1.0 fills" setting says,
     // as it did before results carried their rule. Any other file follows the
