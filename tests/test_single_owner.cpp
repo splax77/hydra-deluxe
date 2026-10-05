@@ -2490,6 +2490,148 @@ TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one ow
           "src/app/config.cpp: return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;");
 }
 
+// J3-7 (findings 229, 230, 231, 271, 272 and the probe's unit factor): the
+// Clone Hero probe under tools/ is Python, which the row scan above skips
+// (it reads .cpp and .h only), so these rows get their own scan of every .py
+// file under tools/. A __pycache__ .pyc is never read: only .py files are.
+// Each row lists the owner's lines and, where J3-8 still has to repoint a
+// caller, the known copies by exact text. Listed lines follow
+// take_listed_line, like the row scan's. Python comment lines are skipped.
+TEST_CASE("single-owner: the Clone Hero probe's engine and memory facts each have one owner (J3-7)") {
+    struct ProbeRow {
+        std::string question;
+        std::string pattern;
+        std::vector<std::string> allowed;  // "rel: trimmed line": owner lines, then known copies
+        std::vector<std::string> must_match;
+        std::vector<std::string> must_not_match;
+    };
+    const std::vector<ProbeRow> rows = {
+        {"Where does the probe skip GameAssembly's own copies of the window constants?",
+         R"x(\b0x4000000\b)x",
+         {"tools/ch_probe/engine_finder.py: MODULE_SPAN = 0x4000000"},
+         {"module_end = proc.module_base + 0x4000000"},
+         {"MODULE_SPAN = 0x40000000"}},
+        {"How do raw engine bytes become numbers?",
+         R"x(struct\.unpack(_from)?\()x",
+         {R"x(tools/ch_probe/process.py: return struct.unpack("<d", raw)[0])x",
+          R"x(tools/ch_probe/process.py: return struct.unpack("<I", raw)[0])x",
+          R"x(tools/ch_probe/process.py: return struct.unpack("<Q", raw)[0])x"},
+         {R"x(return struct.unpack_from("<d", raw, off)[0])x",
+          R"x(return struct.unpack("<d", bytes(xmm0_bytes[:8]))[0])x"},
+         {R"x(struct.pack_into("<d", block, C.OFF_SONG_CLOCK, 12.5))x"}},
+        {"Is the engine in precision mode?",
+         R"x(&\s*C\.PRECISION_MODE_BIT\)|flags\s*&\s*C\.PRECISION_MODE_BIT)x",
+         {"tools/ch_probe/engine.py: return (flags & C.PRECISION_MODE_BIT) != 0"},
+         {"return (flags & C.PRECISION_MODE_BIT) != 0",
+          "return bool(self.flags & C.PRECISION_MODE_BIT)"},
+         {"other_bits = 0xFFFFFFFF & ~C.PRECISION_MODE_BIT"}},
+        {"How does the probe read and write game memory?",
+         R"x(k32\.(Read|Write)ProcessMemory\()x",
+         {"tools/ch_probe/process.py: ok = k32.ReadProcessMemory(",
+          "tools/ch_probe/process.py: ok = k32.WriteProcessMemory("},
+         {"ok = self._win32.k32.ReadProcessMemory(",
+          "ok = self._win32.k32.WriteProcessMemory("},
+         {"k32.FlushInstructionCache.restype = wintypes.BOOL"}},
+        // The owner is constants.s_to_ms/ms_to_s, which multiply by MS_PER_S
+        // and so match nothing here. The rest are J3-8's callers to repoint.
+        {"How many milliseconds is a second (probe)?",
+         R"x(\b\w*(_s|_S|raw|est|clock|back|front)\s*\*\s*1000(\.0)?(?![\d.]))x"
+         R"x(|\b\w*(_ms|_MS)\s*/\s*1000(\.0)?(?![\d.])|\)\s*[*/]\s*1000(\.0)?(?![\d.]))x",
+         {R"x(tools/ch_probe/probe_songs.py: "-i", "anullsrc=r=44100:cl=stereo", "-t", f"{length_ms / 1000:.3f}",)x",
+          R"x(tools/ch_probe/probe_songs.py: f"{(t.notes[-1].time_ms + SILENCE_MS) / 1000:.1f} s"))x",
+          R"x(tools/ch_probe/experiments/active_probe.py: todo = plan[live.first_note_index([p.first_ms for p in plan], raw_s * 1000):])x",
+          R"x(tools/ch_probe/experiments/play_chart.py: cursor = live.first_note_index(notes_ms, raw_s * 1000))x",
+          R"x(tools/ch_probe/experiments/play_chart.py: cursor = live.first_note_index(notes_ms, raw_s * 1000))x",
+          R"x(tools/ch_probe/experiments/play_chart.py: print(f"  {total_sent:4d}  {note_ms / 1000:7.2f}  {raw_ms / 1000:7.2f}  ")x",
+          R"x(tools/ch_probe/experiments/walk_edges.py: cursor = live.first_note_index([n["time_ms"] for n in notes], raw_s * 1000))x",
+          R"x(tools/ch_probe/experiments/watch_window.py: end_ms = notes[-1]["time_ms"] + TAIL_S * 1000)x",
+          R"x(tools/ch_probe/experiments/watch_window.py: back = proc.read_double(engine + C.OFF_BACK_WINDOW) * 1000)x",
+          R"x(tools/ch_probe/experiments/watch_window.py: front = proc.read_double(engine + C.OFF_FRONT_WINDOW) * 1000)x",
+          R"x(tools/ch_probe/experiments/watch_window.py: print(f"  Clock {snap.clock_s:.2f} s. Watching until {end_ms/1000:.1f} s.\n"))x",
+          R"x(tools/ch_probe/experiments/watch_window.py: steps.append((s.clock_s - last_clock) * 1000))x",
+          R"x(tools/ch_probe/experiments/watch_window.py: cur = Sample(s.clock_s * 1000, s.window_ms, s.score, s.hit_time_s * 1000))x",
+          R"x(tools/ch_probe/experiments/watch_window.py: print(f"  {cur.clock_ms/1000:8.3f} s  window {cur.window_ms:7.2f} ms"))x",
+          R"x(tools/ch_probe/tests/test_hit_window_scripts.py: struct.pack_into("<d", raw, C.OFF_TOTAL_WINDOW, C.WINDOW_CAP_MS / 1000))x"},
+         {"window_ms=dbl(C.OFF_TOTAL_WINDOW) * 1000.0,",
+          "self._pending = (self._spacing_ms, thread_context.xmm0_double() * 1000.0)"},
+         {"bpm_microbeats = int(round(bpm * 1000))",
+          R"x(f"  0 = B {int(BPM * 1000)}",)x",
+          R"x("-i", "anullsrc=r=44100:cl=stereo",)x"}},
+        {"Which keys does EngineModel.constants() use?",
+         R"x("(normal|precision)_(back|front)"|"hitcheck_threshold"|"(normal|precision)_")x",
+         {R"x(tools/ch_probe/constants.py: CONST_KEY_PREFIX_NORMAL = "normal_")x",
+          R"x(tools/ch_probe/constants.py: CONST_KEY_PREFIX_PRECISION = "precision_")x",
+          R"x(tools/ch_probe/constants.py: CONST_KEY_HITCHECK_THRESHOLD = "hitcheck_threshold")x"},
+         {R"x("normal_back": read(C.RVA_CONST_NORMAL_BACK),)x"},
+         {"C.CONST_KEY_NORMAL_BACK: read(C.RVA_CONST_NORMAL_BACK),"}},
+        // Known copy: test_runners.py's fake, which J3-8 moves to tests/fakes.py.
+        {"How does a test fake turn an RVA into an address?",
+         R"x(return\s+(self\.)?(module_base|BASE)\s*\+\s*rva)x",
+         {"tools/ch_probe/process.py: return self.module_base + rva",
+          "tools/ch_probe/tests/test_runners.py: return BASE + rva"},
+         {"return BASE + rva"},
+         {"expected_addr = proc.resolve(C.RVA_DRUMS_ENGINE_CTOR)"}},
+    };
+
+    std::vector<std::regex> compiled;
+    for (const ProbeRow& r : rows) {
+        compiled.emplace_back(r.pattern);
+        for (const std::string& line : r.must_match) {
+            INFO(r.question << " should flag: " << line);
+            CHECK(std::regex_search(line, compiled.back()));
+        }
+        for (const std::string& line : r.must_not_match) {
+            INFO(r.question << " should not flag: " << line);
+            CHECK_FALSE(std::regex_search(line, compiled.back()));
+        }
+    }
+
+    // The allowed lines count the way the row scan's do: through ListedLine and
+    // take_listed_line. A repo-relative path holds no ": ", so the first one
+    // splits an entry into its file and its text.
+    std::vector<ListedLine> listed;
+    for (const ProbeRow& r : rows)
+        for (const std::string& a : r.allowed) {
+            const size_t split = a.find(": ");
+            REQUIRE(split != std::string::npos);
+            listed.push_back({r.question, a.substr(0, split), a.substr(split + 2),
+                              "listed line is gone (stale)"});
+        }
+    std::vector<bool> used(listed.size(), false);
+    std::vector<std::string> problems;
+    sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+        if (rel.compare(0, 6, "tools/") != 0 || path.extension() != ".py") return;
+        std::ifstream in(path);
+        std::string line;
+        int lineno = 0;
+        while (std::getline(in, line)) {
+            ++lineno;
+            const std::string t = hydra::trim(line);
+            if (t.empty() || t[0] == '#') continue;
+            for (size_t i = 0; i < rows.size(); ++i) {
+                if (!std::regex_search(t, compiled[i])) continue;
+                const Take take = take_listed_line(listed, used, rows[i].question, rel, t);
+                if (take == Take::taken) continue;
+                const std::string where = rel + ":" + std::to_string(lineno);
+                if (take == Take::used_up)
+                    problems.push_back(where + ": a second copy of a listed line (each "
+                                       "entry covers one line) answers \"" +
+                                       rows[i].question + "\": " + t);
+                else
+                    problems.push_back(where + ": answers \"" + rows[i].question + "\": " + t);
+            }
+        }
+    });
+    for (size_t i = 0; i < listed.size(); ++i) {
+        if (used[i]) continue;
+        problems.push_back(listed[i].stale + ": " + listed[i].file + ": " + listed[i].line_text);
+    }
+    std::ostringstream report;
+    for (const std::string& p : problems) report << p << "\n";
+    INFO(report.str());
+    CHECK(problems.empty());
+}
+
 // J3-8 (findings 232 to 236, 238, 239, 273, 328): the Clone Hero probe's song
 // writers and runners. The row scan above reads .cpp and .h only, so these
 // rows scan every .py file under tools/ (a __pycache__ .pyc is never read).
