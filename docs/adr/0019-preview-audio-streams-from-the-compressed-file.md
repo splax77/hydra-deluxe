@@ -125,12 +125,14 @@ The `StemReader` contract in src/audio/stem_reader.h now says two more
 things.
 
 A stem's length. A header that says the stem has 0 frames means "unknown",
-not empty; RFC 9639 says so for FLAC. For such a stem, `length_frames` is a
-count made by decoding the stem once on open (D51 call 19). Every other
-header keeps the fast open. A counted stem seeks by decoding, forward from
-where it is or from the start, because dr_flac clamps every seek to the
-header's total of 0 (`CountedLength`). That is exact, and slower than a real
-seek, in this rare case only.
+not empty; RFC 9639 says so for FLAC, and stb_vorbis says it when it finds
+no end page. For such a stem, `length_frames` is a count made by decoding
+the stem once on open (D51 call 19). Every other header keeps the fast open.
+The decoder still believes the header's total of 0 and cannot seek on it
+(dr_flac clamps to 0; stb_vorbis has no length to seek within), so a
+counted stem seeks by decoding instead, forward from where it is or from the
+start (`CountedLength`, shared by `MaReader` and `VorbisReader`). That is
+exact, and slower than a real seek, in this rare case only.
 
 A damaged stem. `failed()` turns true at the first decode error and stays
 true for the reader's life. A seek to before the error plays the stem again
