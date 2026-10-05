@@ -58,6 +58,26 @@ inline std::vector<uint8_t> make_metadata(const std::string& notes_filename,
     return meta;
 }
 
+// A metadata block laid out the way Clone Hero writes one (the user's .srb
+// format reference): the eight strings above, then the real trailing fields
+// in order. Twelve difficulty bytes, the preview start, the icon name, the
+// playlist and album track numbers, `song_length_ms`, and a 16-byte checksum
+// stand-in.
+inline std::vector<uint8_t> make_metadata_with_length(const std::string& notes_filename,
+                                                      int32_t song_length_ms,
+                                                      const std::string& icon = "icon") {
+    std::vector<uint8_t> meta = make_metadata(notes_filename);
+    meta.resize(meta.size() - 24);  // drop make_metadata's junk tail
+    for (int i = 0; i < 12; ++i) meta.push_back(static_cast<uint8_t>(i));  // difficulties
+    testbytes::put_u32(meta, 30000);                                      // preview_start_ms
+    push_str(meta, icon);
+    testbytes::put_u32(meta, 3);  // playlist_track
+    testbytes::put_u32(meta, 7);  // album_track
+    testbytes::put_u32(meta, static_cast<uint32_t>(song_length_ms));
+    for (int i = 0; i < 16; ++i) meta.push_back(0xC5);  // checksum stand-in
+    return meta;
+}
+
 // A stand-in audio stream for the trailing slot.
 inline std::vector<uint8_t> stand_in_audio() { return std::vector<uint8_t>(4096, 0x55); }
 

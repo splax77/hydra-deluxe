@@ -234,6 +234,34 @@ TEST_CASE("srb: metadata parser reads the string table") {
     CHECK_FALSE(srb_parse_metadata(too_short, none));
 }
 
+// D75: the field after the string table that states the song's length. The
+// reader hands the raw number on; app::stated_length_ms decides what counts.
+TEST_CASE("srb: metadata parser reads song_length_ms after the string table") {
+    // Biology.srb stores 196,905 (the user's .srb format reference).
+    SrbMetadata md;
+    REQUIRE(srb_parse_metadata(testsrb::make_metadata_with_length("notes.chart", 196905), md));
+    CHECK(md.name == "Name");
+    REQUIRE(md.song_length_ms.has_value());
+    CHECK(*md.song_length_ms == 196905);
+
+    // Two shipped files store 0 (unknown). The raw 0 comes back as it is.
+    SrbMetadata zero;
+    REQUIRE(srb_parse_metadata(testsrb::make_metadata_with_length("notes.chart", 0, ""), zero));
+    CHECK(zero.song_length_ms == 0);
+
+    // A block that ends before the field has none.
+    const std::vector<uint8_t> full = testsrb::make_metadata_with_length("notes.chart", 196905);
+    const std::vector<uint8_t> cut(full.begin(), full.end() - 16 - 2);
+    SrbMetadata partial;
+    REQUIRE(srb_parse_metadata(cut, partial));
+    CHECK_FALSE(partial.song_length_ms.has_value());
+
+    // make_metadata's junk tail spells an icon length past the block's end.
+    SrbMetadata junk;
+    REQUIRE(srb_parse_metadata(make_metadata("notes.chart"), junk));
+    CHECK_FALSE(junk.song_length_ms.has_value());
+}
+
 TEST_CASE("srb: discovery surfaces the embedded metadata") {
     // A dedicated folder so the corpus snapshot tests are unaffected.
     std::string dir = fixture_dir() + "\\scan";

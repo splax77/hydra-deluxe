@@ -128,14 +128,34 @@ bool srb_parse_metadata(const std::vector<uint8_t>& meta, SrbMetadata& out) {
     std::string* fields[] = {&out.notes_filename, &out.name,    &out.artist,
                              &out.album,          &out.genre,   &out.charter,
                              &out.year,           &out.description};
-    for (std::string* field : fields) {
-        if (pos + 4 > meta.size()) break;
+    // A length-prefixed string at `pos`, moving past it; false when it does
+    // not fit.
+    const auto read_string = [&](std::string* into) {
+        if (pos + 4 > meta.size()) return false;
         const uint32_t len = core::read_le_u32(meta.data() + pos);
         pos += 4;
-        if (len > meta.size() - pos) break;
-        field->assign(reinterpret_cast<const char*>(meta.data() + pos), len);
+        if (len > meta.size() - pos) return false;
+        if (into) into->assign(reinterpret_cast<const char*>(meta.data() + pos), len);
         pos += len;
-    }
+        return true;
+    };
+    // `n` bytes skipped at `pos`; false when they do not fit.
+    const auto skip = [&](size_t n) {
+        if (n > meta.size() - pos) return false;
+        pos += n;
+        return true;
+    };
+    for (std::string* field : fields)
+        if (!read_string(field)) return true;
+
+    // The binary fields after the strings, in order (the user's .srb format
+    // reference): twelve difficulty bytes, the preview start (i32), the icon
+    // name (a string), the playlist and album track numbers (i32 each), then
+    // song_length_ms (i32). The checksum and table of contents that follow are
+    // not read.
+    if (!skip(12) || !skip(4) || !read_string(nullptr) || !skip(4) || !skip(4)) return true;
+    if (pos + 4 > meta.size()) return true;
+    out.song_length_ms = static_cast<int32_t>(core::read_le_u32(meta.data() + pos));
     return true;
 }
 
