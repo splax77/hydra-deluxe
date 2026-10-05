@@ -1963,6 +1963,112 @@ const std::vector<OwnerRule>& rules() {
           "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
          {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
          {"tests"}},
+        // The path report's page script once found the Beyond edge as the
+        // largest tier cutoff and counted rows past it by their ms. The page
+        // now reads the edge from the payload and counts rows whose tier
+        // tier_for already set to Beyond.
+        {"Where does the Beyond tier start on the report page?",
+         "beyond_edge_ms and tier_for, carried in the payload by src/app/report.cpp",
+         R"(Math\.max\(\.\.\.DATA\.tiers|r\.ms\s*>=?\s*BEYOND)",
+         "",
+         {},
+         {},
+         "audit finding 155; phase 6 task J2-2 (D53)",
+         {"const BEYOND = Math.max(...DATA.tiers.filter(t => t.cutoff !== null).map(t => t.cutoff));",
+          "const beyond = rows.filter(r => r.ms !== null && r.ms > BEYOND).length;"},
+         {"const beyond = rows.filter(r => r.tier === 'Beyond').length;",
+          "return name === 'Beyond' ? 'Beyond ' + DATA.beyond_edge_ms + ' ms'"},
+         {},
+         {"src"}},
+        // A record's paths come best first from all_paths() (pather::read
+        // sorts the roots; each variant sits under its parent). Sorting them
+        // by score again is a second answer.
+        {"In what order does a record list its paths?",
+         "HydraRecord::all_paths, in the order pather::read builds",
+         R"(totalscore\(\)\s*>\s*\w+->totalscore\(\))",
+         "",
+         {},
+         {},
+         "audit finding 169; phase 6 task J2-2 (D53)",
+         {"return a->totalscore() > b->totalscore();"},
+         {"CHECK(all[i]->totalscore() <= all[i - 1]->totalscore());",
+          "const std::vector<const Path*> paths = record->all_paths();"},
+         {},
+         {"src", "tools", "tests"}},
+        // The subtitle's chart count and the page's chart ids come from one
+        // file-local helper in report.cpp.
+        {"How many charts does a report page list?",
+         "chart_ids in src/app/report.cpp",
+         R"(songs\.insert\(\s*r\.hyhash)",
+         "",
+         {},
+         {},
+         "audit finding 242; phase 6 task J2-2 (D53)",
+         {"songs.insert(r.hyhash);"},
+         {"out.songs = static_cast<int64_t>(chart_ids(rows).size());"},
+         {},
+         {"src"}},
+        // collect_dm_rows and collect_fill_rows set each row's status from
+        // the one comparison; the page scripts read it instead of testing the
+        // delta's sign. The C++ status assignments carry no `r.` and are the
+        // owner.
+        {"Which side of a report comparison is higher?",
+         "the status field set by collect_dm_rows and collect_fill_rows",
+         R"(r\.delta\s*[<>]\s*0\s*\?)",
+         "",
+         {},
+         {},
+         "audit finding 168; phase 6 task J2-2 (D53)",
+         {"const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');",
+          ": (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));",
+          "const left = under.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);",
+          "const deltaCls = !hasDelta ? 'num dim' : (r.delta > 0 ? 'num pos'"},
+         {R"(row.status = s.score > opt    ? "above optimal")",
+          R"(row.status = delta == 0 ? "same" : (delta > 0 ? "1.1 higher" : "1.0 higher");)",
+          "const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');"},
+         {},
+         {"src"}},
+        // A record key's fill flag is encoded once, by Lens::from.
+        {"Which fill rule does a record key name?",
+         "Lens::from in src/store/record_store.h",
+         R"(legacy_fills\s*\?\s*1\s*:\s*0)",
+         "",
+         {"src/store/record_store.h"},
+         {},
+         "audit finding 240; phase 6 task J2-2 (D53)",
+         {"lens.legacy_fills = legacy_fills ? 1 : 0;"},
+         {"store::Lens::from(std::nullopt, 0, 0, legacy_fills)};",
+          "old_lens.legacy_fills = 1;"},
+         {},
+         {"src", "tests"}},
+        // Walking the corpus for the first charts that analyze to a path.
+        {"Which corpus chart is the first with paths?",
+         "analyzed_with_paths in tests/corpus_util.h",
+         R"(\.record\.paths\.empty\(\)\)\s*continue)",
+         "",
+         {"tests/corpus_util.h"},
+         {},
+         "audit finding 277; phase 6 task J2-2 (D53)",
+         {"if (result.song.is_empty() || result.record.paths.empty()) continue;",
+          "if (r.song.is_empty() || r.record.paths.empty()) continue;"},
+         {"for (const AnalysisResult& result : corpus::analyzed_with_paths(settings, names.size())) {",
+          "CHECK(!r.paths.empty());"},
+         {},
+         {"tests"}},
+        // The WCAG relative-luminance formula, typed once with 2.2's
+        // threshold.
+        {"What is the contrast of two colours?",
+         "tests/wcag_util.h",
+         R"(0\.03928|0\.04045)",
+         "",
+         {"tests/wcag_util.h"},
+         {},
+         "audit finding 288; D54 (the WCAG 2.2 threshold, 0.04045); phase 6 task J2-2",
+         {"return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);",
+          "return c <= 0.04045f ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);"},
+         {"return testwcag::relative_luminance(channel(1), channel(3), channel(5));"},
+         {},
+         {"src", "tests"}},
     };
     return r;
 }
@@ -2054,15 +2160,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"How many workers does a batch get?", "src/ui/library_jobs.cpp",
          "workers_ = std::max(1, workers);",
          "task J2-4 (set_analyzer_for_test drops its floor; audit R7.22)"},
-        {"How is a chart hash spelled for matching?", "src/app/report.cpp",
-         "by_hash.emplace(to_lower_ascii(r.hyhash), std::move(r));",
-         "task J2-2 (calls normalize_chart_hash; audit finding 192)"},
-        {"How is a chart hash spelled for matching?", "src/app/dm_report.cpp",
-         "in_library.insert(to_lower_ascii(e.md5));",
-         "task J2-2 (calls normalize_chart_hash; audit finding 192)"},
-        {"How is a chart hash spelled for matching?", "src/net/dmbot_client.cpp",
-         R"(s.identifier = to_lower_ascii(jstr(entry, "identifier"));)",
-         "task J2-2 (calls normalize_chart_hash; audit finding 192)"},
         {"How are a folder and a file name joined?", "src/app/preview_source.cpp",
          R"(if (!e.is_dir && is_song_ini(e.name)) return folder + "\\" + e.name;)",
          "task J2-5 (the Preview calls the join owner; review of M6-J1a finding 1)"},
@@ -2081,6 +2178,19 @@ const std::vector<KnownCopy>& known_copies() {
         {"What fields does a phrase-end note carry in a hand-built Song?",
          "tests/test_preview_view.cpp", "ts.flag_sp = true;",
          "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        // An off-speed score has status "other speed", so the status cannot
+        // say whether it beat Hydra's optimal; today such a row still reads
+        // "+N over". Keying the text on the status would change that row.
+        {"Which side of a report comparison is higher?", "src/app/dm_report.cpp",
+         ": (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));",
+         "waits on the user: should an off-speed score above optimal keep reading "
+         "\"+N over\" (J2-2 report)"},
+        {"Which fill rule does a record key name?", "src/store/record_store.cpp",
+         "if (key.lens.legacy_fills != (record.legacy_fills ? 1 : 0))",
+         "not yet scheduled (record_store.cpp is phase 7 wave 2's; J2-2 report)"},
+        {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
+         "if (r.record.paths.empty()) continue;",
+         "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
     };
     return k;
 }

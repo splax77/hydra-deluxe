@@ -3,11 +3,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "app/analysis.h"  // normalize_chart_hash
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "app/html_page.h"
 #include "app/report.h"  // records_by_hash
-#include "core/model.h"  // counted
-#include "core/strutil.h"  // to_lower_ascii
+#include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
 
 namespace hydra::app::dm_report {
@@ -99,7 +99,7 @@ const PAGE = {
   },
   cells(r) {
     const noDelta = r.delta === null || r.delta === undefined;
-    const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.delta < 0 ? 'num neg' : 'num');
+    const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : (r.status === 'above optimal' ? 'num neg' : 'num');
     const deltaTxt = noDelta ? DASH
                    : (r.delta < 0 ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));
     return [
@@ -139,8 +139,9 @@ const PAGE = {
       const h = Math.floor((2 * sum + n) / (2 * n));
       avgPct = Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%';
     }
-    // Only a score under optimal leaves points on the table.
-    const left = under.reduce((a, r) => a + (r.delta > 0 ? r.delta : 0), 0);
+    // Only a score under optimal leaves points on the table, and every such
+    // row's delta is the points it left.
+    const left = under.reduce((a, r) => a + r.delta, 0);
     return [
       ['Scores', fmt(rows.length)],
       ['Under optimal', fmt(under.length)],
@@ -184,7 +185,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     // analyzing would fix it.
     std::unordered_set<std::string> in_library;
     for (const store::ChartLibraryEntry& e : store.list_chart_library(std::nullopt, 0, -1))
-        in_library.insert(to_lower_ascii(e.md5));
+        in_library.insert(normalize_chart_hash(e.md5));
 
     std::vector<DmReportRow> rows;
     rows.reserve(scores.size());

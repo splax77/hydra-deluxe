@@ -25,6 +25,7 @@
 #include "core/rules.h"
 #include "core/strutil.h"
 #include "json.hpp"
+#include "parse/chart_files.h"
 #include "parse/song.h"
 #include "search/pather.h"
 
@@ -55,12 +56,43 @@ inline const std::vector<std::string>& chart_paths() {
     return paths;
 }
 
-// First corpus chart whose path ends in `suffix` (e.g. ".mid").
+// First corpus chart of the format `suffix` names (e.g. ".mid"), read the
+// way the app reads a chart file's format (chart_format_of, any case).
 inline std::string first_chart_with_suffix(const std::string& suffix) {
+    const hydra::ChartFormat want = hydra::chart_format_of(suffix);
     for (const std::string& p : chart_paths()) {
-        if (hydra::ends_with(p, suffix)) return p;
+        if (hydra::chart_format_of(p) == want) return p;
     }
     throw std::runtime_error("no corpus chart ends in " + suffix);
+}
+
+// The first `want` corpus charts, in chart_paths() order, that analyze under
+// `settings` to a song with notes and at least one path. A chart that fails
+// to analyze is skipped, as is one with an empty song or no paths.
+inline std::vector<hydra::app::AnalysisResult> analyzed_with_paths(
+    const hydra::app::AnalysisSettings& settings, size_t want) {
+    std::vector<hydra::app::AnalysisResult> out;
+    for (const std::string& path : chart_paths()) {
+        if (out.size() == want) break;
+        try {
+            hydra::app::AnalysisResult result = hydra::app::analyze_chart_file(path, settings);
+            if (result.song.is_empty() || result.record.paths.empty()) continue;
+            out.push_back(std::move(result));
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+    return out;
+}
+
+// The first corpus chart with paths under `settings`. Throws, naming the
+// corpus, when no chart has any.
+inline hydra::app::AnalysisResult first_analyzed_with_paths(
+    const hydra::app::AnalysisSettings& settings) {
+    std::vector<hydra::app::AnalysisResult> one = analyzed_with_paths(settings, 1);
+    if (one.empty())
+        throw std::runtime_error("no chart under " + root() + " analyzes to any path");
+    return std::move(one.front());
 }
 
 inline std::string read_bytes(const std::string& path) {

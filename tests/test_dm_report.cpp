@@ -71,9 +71,10 @@ TEST_CASE("collect_dm_rows joins scores to records and labels them") {
     CHECK(rows[0].optimal == optimal);
     CHECK(rows[0].delta == 1000);
     // The row's percent is percent_steps' whole hundredths, the number the
-    // cell's text is written from.
+    // cell's text is written from: 99.56% for 1,000 under the first corpus
+    // chart's optimal, read from one run.
     REQUIRE(rows[0].pct_h.has_value());
-    CHECK(*rows[0].pct_h == app::percent_steps(optimal - 1000, optimal, 2));
+    CHECK(*rows[0].pct_h == 9956);
 
     CHECK(rows[1].delta == 0);
     CHECK(rows[2].delta == -5);
@@ -170,6 +171,20 @@ TEST_CASE("build_dm_html substitutes every placeholder") {
     CHECK(html.find(subtitle) != std::string::npos);
     CHECK(html.find(footer) != std::string::npos);
     CHECK(html.find("Board Title") != std::string::npos);
+}
+
+TEST_CASE("build_dm_html colours the delta from the status") {
+    // collect_dm_rows already decided which side is higher when it set the
+    // row's status; the cell's colour and the "left on the table" tile read
+    // that answer instead of testing the delta's sign again.
+    const std::string html = app::dm_report::build_dm_html({}, "sub", "foot");
+    CHECK(html.find("const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : "
+                    "(r.status === 'above optimal' ? 'num neg' : 'num');") !=
+          std::string::npos);
+    CHECK(html.find("? 'num dim' : (r.delta < 0 ?") == std::string::npos);
+    CHECK(html.find("const left = under.reduce((a, r) => a + r.delta, 0);") !=
+          std::string::npos);
+    CHECK(html.find("r.delta > 0 ?") == std::string::npos);
 }
 
 TEST_CASE("report payload: the search field is folded and tag-free") {
