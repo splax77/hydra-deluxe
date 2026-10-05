@@ -28,6 +28,24 @@ namespace hydra::ui::detail {
 
 namespace {
 
+// How far one jump moves the playhead (the -Ns/+Ns buttons and the Left and
+// Right keys), in whole seconds so every label prints an integer; and how
+// many chart ticks one step moves (the tick buttons, comma and period). Every
+// label, tooltip and key-bar word below is built from these two.
+constexpr int kJumpSeconds = 5;
+constexpr int kTickStep = 5;
+constexpr double kJumpMs = kJumpSeconds * 1000.0;
+
+// "5 seconds", "5 ticks": the key bar's words and the tooltips' tails.
+const std::string& jump_words() {
+    static const std::string s = std::to_string(kJumpSeconds) + " seconds";
+    return s;
+}
+const std::string& tick_words() {
+    static const std::string s = std::to_string(kTickStep) + " ticks";
+    return s;
+}
+
 // The bar under the highway naming the Preview's keys: each key drawn as a
 // keycap, then what it does, in the transport buttons' left-to-right order.
 // A pair is back/forward. A group never splits across lines.
@@ -37,8 +55,8 @@ struct KeyHint {
 };
 const KeyHint kKeyHints[] = {
     {{"[", "]"}, "Activation"},
-    {{"\xE2\x86\x90", "\xE2\x86\x92"}, "5 seconds"},  // left and right arrows
-    {{",", "."}, "5 ticks"},
+    {{"\xE2\x86\x90", "\xE2\x86\x92"}, jump_words().c_str()},  // left and right arrows
+    {{",", "."}, tick_words().c_str()},
     {{"Space", nullptr}, "Play/pause"},
 };
 
@@ -170,6 +188,68 @@ void draw_scrub_marks(const std::vector<double>& marks) {
     }
 }
 
+// One line of overlay text at `size`: the time box's, the drain box's, the
+// next-activation box's and the gauge's "SP" label all step by it.
+float line_height(float size) { return size * 1.25f; }
+
+// Every text overlay box's extents at one scale (finding R7.18). The fit pass
+// asks at scale 1 to choose the scale, the draw pass at the chosen one, so
+// each box's size is worked out here only.
+struct OverlayBoxSizes {
+    float size = 0.0f;    // the time box's text size
+    float margin = 0.0f;  // from the image's corner to the text
+    float pad = 0.0f;     // inside a panel, around its text
+    float gap = 0.0f;     // between two panels
+    float line_h = 0.0f;  // line_height(size)
+    float time_w = 0.0f;  // the time box, margin and pads included
+    float time_h = 0.0f;
+    float score_size = 0.0f;    // the running score's text size
+    float score_line_h = 0.0f;  // the running score's line
+    float score_w = 0.0f;       // the score box, margin and pads included
+    float score_h = 0.0f;       // the score box, pads included
+    float drain_w = 0.0f;       // the drain box, pads included
+    float drain_h = 0.0f;
+};
+
+// `lines` are the time box's lines, `score` the score box, `d_lines` the
+// drain box's three lines; `text_width(size, text)` measures in the overlay
+// font.
+template <class Measure>
+OverlayBoxSizes overlay_box_sizes(float scale, const render::PreviewConfig& cfg,
+                                  const char* const* lines, int line_count,
+                                  const hydra::app::PreviewScoreBox& score,
+                                  const char* const (&d_lines)[3], const Measure& text_width) {
+    OverlayBoxSizes s;
+    s.size = px(cfg.text.time_box_size) * scale;
+    s.margin = px(cfg.text.time_box_margin) * scale;
+    s.pad = px(8.0f) * scale;
+    s.gap = px(6.0f) * scale;
+    s.line_h = line_height(s.size);
+
+    float time_text_w = 0.0f;
+    for (int i = 0; i < line_count; ++i)
+        time_text_w = std::max(time_text_w, text_width(s.size, lines[i]));
+    s.time_w = s.margin + time_text_w + s.pad * 2.0f;
+    s.time_h = s.margin + s.line_h * static_cast<float>(line_count) + s.pad;
+
+    // The running score in large type, then its detail line at the time
+    // box's size; "Score unavailable" is at the time box's size too.
+    s.score_size = score.available ? s.size * 1.8f : s.size;
+    s.score_line_h = s.score_size * 1.2f;
+    float score_text_w = text_width(s.score_size, score.score.c_str());
+    if (!score.detail.empty())
+        score_text_w = std::max(score_text_w, text_width(s.size, score.detail.c_str()));
+    const float score_lines_h = s.score_line_h + (score.detail.empty() ? 0.0f : s.line_h);
+    s.score_w = s.margin + score_text_w + s.pad * 2.0f;
+    s.score_h = s.pad + score_lines_h + s.pad;
+
+    float drain_text_w = 0.0f;
+    for (const char* l : d_lines) drain_text_w = std::max(drain_text_w, text_width(s.size, l));
+    s.drain_w = drain_text_w + s.pad * 2.0f;
+    s.drain_h = s.line_h * 3.0f + s.pad * 2.0f;
+    return s;
+}
+
 }  // namespace
 
 // The Preview tab: a transport row over the 3D note highway. Reached only while
@@ -246,7 +326,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // "Show in Preview" on the Paths tab: once the overlay for the selected
     // path is in, move the playhead to that activation.
     std::optional<size_t>& jump = app.details_ui.paths_tab.ui().preview_jump;
-    if (jump && pc->overlay_path_key().rfind(ui.overlay_key, 0) == 0) {
+    if (jump && pc->shows_path(ui.overlay_key)) {
         pc->seek_activation(*jump);
         jump.reset();
     }
@@ -255,8 +335,16 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     // transport buttons and the volume. Row 3: the scrubber, a gold mark per
     // activation, and the clock. The clock sits in a fixed slot (see
     // widgets.h), so nothing walks under a held mouse as its digits change.
-    // The tick buttons and comma/period step this many chart ticks.
-    constexpr int kTickStep = 5;
+    // The jump and tick buttons' words, built once from kJumpSeconds and
+    // kTickStep.
+    static const std::string back_jump = "-" + std::to_string(kJumpSeconds) + "s";
+    static const std::string fwd_jump = "+" + std::to_string(kJumpSeconds) + "s";
+    static const std::string back_ticks = "< " + std::to_string(kTickStep) + " Ticks";
+    static const std::string fwd_ticks = std::to_string(kTickStep) + " Ticks >";
+    static const std::string back_jump_tip = "Back " + jump_words() + " (Left arrow)";
+    static const std::string fwd_jump_tip = "Forward " + jump_words() + " (Right arrow)";
+    static const std::string back_ticks_tip = "Back " + tick_words() + " (Comma)";
+    static const std::string fwd_ticks_tip = "Forward " + tick_words() + " (Period)";
     render_path_picker(app);
     // Read once per frame (the controller caches it per scene); the
     // scrubber's gold ticks below draw from the same list.
@@ -269,21 +357,21 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     end_disabled_button(no_acts);
     hint("Previous or next activation ([ and ])");
     ImGui::SameLine(0.0f, px(16.0f));
-    if (ImGui::Button("-5s")) pc->jump_ms(-5000.0);
-    hint("Back 5 seconds (Left arrow)");
+    if (ImGui::Button(back_jump.c_str())) pc->jump_ms(-kJumpMs);
+    hint(back_jump_tip.c_str());
     ImGui::SameLine();
-    if (ImGui::Button("< 5 Ticks")) pc->step_ticks(-kTickStep);
-    hint("Back 5 ticks (Comma)");
+    if (ImGui::Button(back_ticks.c_str())) pc->step_ticks(-kTickStep);
+    hint(back_ticks_tip.c_str());
     ImGui::SameLine();
     const float play_w = std::max(button_slot_width("Play"), button_slot_width("Pause"));
     if (button_in_slot(pc->playing() ? "Pause" : "Play", play_w)) pc->toggle();
     hint("Play or pause (Space)");
     ImGui::SameLine();
-    if (ImGui::Button("5 Ticks >")) pc->step_ticks(kTickStep);
-    hint("Forward 5 ticks (Period)");
+    if (ImGui::Button(fwd_ticks.c_str())) pc->step_ticks(kTickStep);
+    hint(fwd_ticks_tip.c_str());
     ImGui::SameLine();
-    if (ImGui::Button("+5s")) pc->jump_ms(5000.0);
-    hint("Forward 5 seconds (Right arrow)");
+    if (ImGui::Button(fwd_jump.c_str())) pc->jump_ms(kJumpMs);
+    hint(fwd_jump_tip.c_str());
     ImGui::SameLine(0.0f, px(16.0f));
 
     // Volume: applied live and remembered in the settings file. The range is
@@ -335,8 +423,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     ImGui::PopFont();
     ImGui::NewLine();  // text_in_slot leaves the cursor on its line; the highway goes below
 
-    // Keys: Space plays or pauses, Left/Right jump 5 s, comma/period step
-    // 5 ticks, [ and ] jump between activations; a held arrow or comma/period repeats. Not while a text field
+    // Keys: Space plays or pauses, Left/Right jump kJumpSeconds, comma/period
+    // step kTickStep ticks, [ and ] jump between activations; a held arrow or
+    // comma/period repeats. Not while a text field
     // has the keyboard. Keyboard navigation (on in app_shell.cpp) reads the
     // arrows and Space only when nobody owns them, so the Preview claims them
     // every frame it shows; a claim made this frame still holds during next
@@ -350,9 +439,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         ImGui::SetKeyOwner(ImGuiKey_Space, keys_owner);
         if (ImGui::IsKeyPressed(ImGuiKey_Space, ImGuiInputFlags_None, keys_owner)) pc->toggle();
         if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow, ImGuiInputFlags_Repeat, keys_owner))
-            pc->jump_ms(-5000.0);
+            pc->jump_ms(-kJumpMs);
         if (ImGui::IsKeyPressed(ImGuiKey_RightArrow, ImGuiInputFlags_Repeat, keys_owner))
-            pc->jump_ms(5000.0);
+            pc->jump_ms(kJumpMs);
         if (ImGui::IsKeyPressed(ImGuiKey_Comma, true)) pc->step_ticks(-kTickStep);
         if (ImGui::IsKeyPressed(ImGuiKey_Period, true)) pc->step_ticks(kTickStep);
         // [ and ] jump between the drawn path's activations; no repeat.
@@ -398,9 +487,11 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         if (!box.section_line.empty()) lines[line_count++] = box.section_line.c_str();
         hydra::app::PreviewNextActBox next = pc->next_act_box();
         hydra::app::PreviewScoreBox score = pc->score_box();
-        const bool has_gauge = pc->sp_meter_has_curve();
+        const bool has_gauge = pc->has_sp_gauge();
         hydra::app::PreviewDrainBox drain = pc->drain_box();
-        const bool drain_drawn = has_gauge && drain.shown;
+        // The drain box is shown only over a scene with a gauge: it asks the
+        // same has_sp_gauge itself (app::build_drain_box).
+        const bool drain_drawn = drain.shown;
         const char* d_lines[3] = {drain.header.c_str(), drain.rate.c_str(),
                                   drain.detail.c_str()};
 
@@ -412,32 +503,18 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         const float gauge_left = img_max.x - inset - bar_w;
 
         // Scale-1 sizes, and the extents the fit needs (image pixels).
-        const float size1 = px(pcfg.text.time_box_size);
-        const float margin1 = px(pcfg.text.time_box_margin);
-        const float pad1 = px(8.0f);
-        const float gap1 = px(6.0f);
-        const float line_h1 = size1 * 1.25f;
-        float time_text_w1 = 0.0f;
-        for (int i = 0; i < line_count; ++i)
-            time_text_w1 = std::max(time_text_w1, text_width(size1, lines[i]));
+        const OverlayBoxSizes sz1 =
+            overlay_box_sizes(1.0f, pcfg, lines, line_count, score, d_lines, text_width);
         render::OverlayBoxes fit;
-        fit.left_w = margin1 + time_text_w1 + pad1 * 2.0f;
-        fit.left_h = margin1 + line_h1 * static_cast<float>(line_count) + pad1;
+        fit.left_w = sz1.time_w;
+        fit.left_h = sz1.time_h;
         if (score.shown) {
-            const float score_size1 = score.available ? size1 * 1.8f : size1;
-            float score_w1 = text_width(score_size1, score.score.c_str());
-            if (!score.detail.empty())
-                score_w1 = std::max(score_w1, text_width(size1, score.detail.c_str()));
-            const float score_lines_h1 =
-                score_size1 * 1.2f + (score.detail.empty() ? 0.0f : line_h1);
-            fit.left_w = std::max(fit.left_w, margin1 + score_w1 + pad1 * 2.0f);
-            fit.left_h += gap1 + pad1 + score_lines_h1 + pad1;
+            fit.left_w = std::max(fit.left_w, sz1.score_w);
+            fit.left_h += sz1.gap + sz1.score_h;
         }
         if (drain_drawn) {
-            float drain_w1 = 0.0f;
-            for (const char* l : d_lines) drain_w1 = std::max(drain_w1, text_width(size1, l));
-            fit.right_w = drain_w1 + pad1 * 2.0f;
-            fit.right_h = line_h1 * 3.0f + pad1 * 2.0f;
+            fit.right_w = sz1.drain_w;
+            fit.right_h = sz1.drain_h;
             fit.right_edge = gauge_left - d_gap - origin.x;
             fit.right_top = v_margin;
         }
@@ -454,26 +531,24 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         float next_word_w1 = 0.0f;
         for (const hydra::app::PreviewNextActBox& b : pc->next_act_boxes())
             next_word_w1 = std::max({next_word_w1,
-                                     render::widest_word(b.header, width_at(size1), kHeaderCountWords),
-                                     render::widest_word(b.detail, width_at(size1))});
-        if (next_word_w1 > 0.0f) fit.bottom_left_w = margin1 + next_word_w1 + pad1 * 2.0f;
-        fit.gap = gap1;
+                                     render::widest_word(b.header, width_at(sz1.size), kHeaderCountWords),
+                                     render::widest_word(b.detail, width_at(sz1.size))});
+        if (next_word_w1 > 0.0f) fit.bottom_left_w = sz1.margin + next_word_w1 + sz1.pad * 2.0f;
+        fit.gap = sz1.gap;
         const float scale = render::overlay_scale(pcfg, w, h, fit);
         pc->set_overlay_scale(scale);
 
-        const float size = size1 * scale;
-        const float margin = margin1 * scale;
-        const float pad = pad1 * scale;
-        const float gap = gap1 * scale;
-        const float line_h = size * 1.25f;
+        const OverlayBoxSizes sz =
+            overlay_box_sizes(scale, pcfg, lines, line_count, score, d_lines, text_width);
+        const float size = sz.size;
+        const float margin = sz.margin;
+        const float pad = sz.pad;
+        const float line_h = sz.line_h;
         const float corner = px(6.0f) * scale;
 
         // The time box.
-        float text_w = 0.0f;
-        for (int i = 0; i < line_count; ++i) text_w = std::max(text_w, text_width(size, lines[i]));
         ImVec2 box_min(origin.x, origin.y);
-        ImVec2 box_max(origin.x + margin + text_w + pad * 2.0f,
-                       origin.y + margin + line_h * static_cast<float>(line_count) + pad);
+        ImVec2 box_max(origin.x + sz.time_w, origin.y + sz.time_h);
         dl->AddRectFilled(box_min, box_max, IM_COL32(0, 0, 0, 128), corner,
                           ImDrawFlags_RoundCornersBottomRight);
         for (int i = 0; i < line_count; ++i)
@@ -486,21 +561,15 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // the time box's size) when the path can't be replayed to its stored
         // score. Right corners rounded, since it sits against the left edge.
         if (score.shown) {
-            const float score_size = score.available ? size * 1.8f : size;
-            const float score_h = score_size * 1.2f;
-            const float score_w = text_width(score_size, score.score.c_str());
-            const float detail_w =
-                score.detail.empty() ? 0.0f : text_width(size, score.detail.c_str());
-            const float lines_h = score_h + (score.detail.empty() ? 0.0f : line_h);
-            ImVec2 s_min(origin.x, box_max.y + gap);
-            ImVec2 s_max(origin.x + margin + std::max(score_w, detail_w) + pad * 2.0f,
-                         s_min.y + pad + lines_h + pad);
+            ImVec2 s_min(origin.x, box_max.y + sz.gap);
+            ImVec2 s_max(origin.x + sz.score_w, s_min.y + sz.score_h);
             dl->AddRectFilled(s_min, s_max, IM_COL32(0, 0, 0, 128), corner,
                               ImDrawFlags_RoundCornersRight);
-            dl->AddText(font, score_size, ImVec2(origin.x + margin, s_min.y + pad),
+            dl->AddText(font, sz.score_size, ImVec2(origin.x + margin, s_min.y + pad),
                         IM_COL32(255, 255, 255, 255), score.score.c_str());
             if (!score.detail.empty())
-                dl->AddText(font, size, ImVec2(origin.x + margin, s_min.y + pad + score_h),
+                dl->AddText(font, size,
+                            ImVec2(origin.x + margin, s_min.y + pad + sz.score_line_h),
                             IM_COL32(200, 200, 200, 255), score.detail.c_str());
         }
 
@@ -511,7 +580,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // wraps at its spaces, so the box grows up rather than over the lane.
         if (next.shown) {
             const float text_room =
-                render::bottom_left_room(pcfg, w, h, gap1) - margin - pad * 2.0f;
+                render::bottom_left_room(pcfg, w, h, sz1.gap) - margin - pad * 2.0f;
             const std::vector<std::string> head =
                 render::wrap_words(next.header, text_room, width_at(size), kHeaderCountWords);
             const std::vector<std::string> body =
@@ -546,7 +615,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             // "SP" above the gauge in the Star Power gold, the banked bars
             // under it.
             const float label_size = px(14.0f);
-            const float label_h = label_size * 1.25f;
+            const float label_h = line_height(label_size);
             const float centre_x = gauge_left + bar_w * 0.5f;
             dl->AddText(font, label_size,
                         ImVec2(centre_x - text_width(label_size, "SP") * 0.5f, origin.y + v_margin),
@@ -598,10 +667,8 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
         // the floor starts from (the preview config's sp_active_color). The
         // floor draws it darkened (sp_active_darken); the text uses it as is.
         if (drain_drawn) {
-            float d_w = 0.0f;
-            for (const char* l : d_lines) d_w = std::max(d_w, text_width(size, l));
-            ImVec2 d_min(gauge_left - d_gap - d_w - pad * 2.0f, origin.y + v_margin);
-            ImVec2 d_max(gauge_left - d_gap, d_min.y + line_h * 3.0f + pad * 2.0f);
+            ImVec2 d_min(gauge_left - d_gap - sz.drain_w, origin.y + v_margin);
+            ImVec2 d_max(gauge_left - d_gap, d_min.y + sz.drain_h);
             dl->AddRectFilled(d_min, d_max, IM_COL32(0, 0, 0, 128), corner);
             const render::Color& sp_teal = pcfg.hydra.sp_active_color;
             const ImU32 accent =

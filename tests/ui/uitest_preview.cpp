@@ -175,14 +175,12 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
     IM_CHECK(wait_until(ctx, [&] { return !h.app->preview->loading(); }, 120));
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
-    // The overlay key carries the SP cap after the path's own key, so match the
-    // prefix and then compare whole keys against this first one.
-    // The path's overlay can land a frame or two after the load itself.
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->preview->overlay_path_key().rfind(first_key, 0) == 0;
-    }, 10));
+    // The overlay key carries the SP cap after the path's own key, so ask
+    // shows_path whose path it is, then compare whole keys against this first
+    // one. The path's overlay can land a frame or two after the load itself.
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview->shows_path(first_key); }, 10));
     const std::string first_overlay = h.app->preview->overlay_path_key();
-    IM_CHECK_EQ(first_overlay.rfind(first_key, 0), (size_t)0);
+    IM_CHECK(h.app->preview->shows_path(first_key));
 
     // Park the playhead mid-song: a reload would rewind it to zero.
     IM_CHECK(h.app->preview->scrub_end_ms() > 0.0);
@@ -199,9 +197,7 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     ctx->ItemClick("##DetailsTabs/Preview");
     ctx->Yield(2);
     IM_CHECK(!h.app->preview->loading());  // swapped in place, not reloaded
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->preview->overlay_path_key().rfind(other_key, 0) == 0;
-    }, 10));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview->shows_path(other_key); }, 10));
     IM_CHECK_FLOAT_NEAR_EQ(h.app->preview->position_ms(), held, 1.0);
     IM_CHECK(h.app->preview->overlay_path_key() != first_overlay);
 
@@ -300,7 +296,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     ctx->ItemClick("##DetailsTabs/Preview");
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 60));
-    IM_CHECK(pc.sp_meter_has_curve());
+    IM_CHECK(pc.has_sp_gauge());
 
     // Before anything is banked or spent: the idle box.
     pc.seek_ms(0.0);
@@ -587,7 +583,7 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->details_ui.selected_path != nullptr);
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
     const std::string key = hydra::app::path_overlay_key(h.app->details_ui.selected_path);
-    IM_CHECK(wait_until(ctx, [&] { return pc.overlay_path_key().rfind(key, 0) == 0; }, 30));
+    IM_CHECK(wait_until(ctx, [&] { return pc.shows_path(key); }, 30));
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");

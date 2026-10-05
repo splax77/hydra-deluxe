@@ -88,42 +88,41 @@ std::vector<std::unique_ptr<audio::StemReader>> PreviewLoadJob::open_audio(
     container.reset();  // this branch's hold on the container
     if (!keep_going()) throw JobCancelled{};
 
-    // The bar's byte total: a loose file's size on disk, a container stem's
-    // extracted bytes.
-    std::vector<uint64_t> sizes;
-    sizes.reserve(stems.size());
+    // Map every loose stem first, so the bar's byte total is the size of the
+    // bytes the readers will walk (MappedFile::size), read once; a container
+    // stem's size is its extracted bytes. A loose file that will not map is
+    // skipped with a size of 0, as one that will not open always was.
+    std::vector<std::optional<audio::StemBytes>> stem_bytes;
+    stem_bytes.reserve(stems.size());
     uint64_t total = 0;
-    for (const app::PreviewAudioStem& s : stems) {
-        uint64_t n = 0;
+    for (app::PreviewAudioStem& s : stems) {
+        std::optional<audio::StemBytes> bytes;
         if (s.from_file()) {
             try {
-                n = file_size_bytes(s.path);
+                bytes.emplace();
+                bytes->mapped = audio::MappedFile::open(s.path);
             } catch (const std::exception&) {
-                n = 0;  // the open below fails too and skips this stem
+                bytes.reset();
             }
         } else {
-            n = s.bytes.size();
+            bytes.emplace();
+            bytes->owned = std::move(s.bytes);
         }
-        sizes.push_back(n);
-        total += n;
+        if (bytes) total += bytes->size();
+        stem_bytes.push_back(std::move(bytes));
     }
     bytes_total_.store(total);
 
     std::vector<std::unique_ptr<audio::StemReader>> readers;
     uint64_t before = 0;  // bytes of the stems already opened
-    for (std::size_t i = 0; i < stems.size(); ++i) {
-        app::PreviewAudioStem& s = stems[i];
-        const uint64_t size = sizes[i];
+    for (std::optional<audio::StemBytes>& bytes : stem_bytes) {
+        if (!bytes) continue;  // it would not map: no bytes, no reader
+        const uint64_t size = bytes->size();
         try {
-            audio::StemBytes bytes;
-            if (s.from_file())
-                bytes.mapped = audio::MappedFile::open(s.path);
-            else
-                bytes.owned = std::move(s.bytes);
             // The Opus index reports every 4 MB; returning false stops it there.
             readers.push_back(audio::open_stem_reader(
-                std::move(bytes), [this, &keep_going, before, size](uint64_t done, uint64_t) {
-                    bytes_done_.store(before + std::min(done, size));
+                std::move(*bytes), [this, &keep_going, before](uint64_t done, uint64_t) {
+                    bytes_done_.store(before + done);
                     return keep_going();
                 }));
         } catch (const audio::OpenCancelled&) {
@@ -221,11 +220,9 @@ void PreviewLoadJob::run() {
             app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms);
         scene_done_.store(true);
         throw_if_cancelled();
-        // The highway timeline, built here so the UI thread only uploads it.
-        // The pro-drums setting that picked the drum track also picks how the
-        // pads draw (cymbals or all toms), as the controller would.
-        render::TrackStateOptions track_opts;
-        track_opts.pro = pro_;
+        // The highway timeline, built here so the UI thread only uploads it,
+        // with the options the controller draws with (track_options).
+        const render::TrackStateOptions track_opts = track_options(pro_);
         render::TrackState track_state = render::build_track_state(scene, track_opts);
         highway_done_.store(true);
 
@@ -350,7 +347,7 @@ void PreviewSceneJob::run() {
         // build it here when there is none yet (or it was drawn with other
         // timeline options).
         std::shared_ptr<const PreviewSceneBase> base = base_;
-        if (!base || base->track_opts.pro != track_opts_.pro)
+        if (!base || base->track_opts != track_opts_)
             base = build_scene_base(*song_, track_opts_, audio_end_ms_,
                                     [this] { throw_if_cancelled(); });
         // Only the overlay is built per path: the scene's, then the

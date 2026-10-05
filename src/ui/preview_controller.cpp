@@ -5,6 +5,8 @@
 #include <exception>
 #include <memory>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "app/config.h"
@@ -18,11 +20,23 @@ namespace hydra::ui {
 
 namespace {
 
+// Between the path part and the cap in an overlay key, typed once for the
+// writer and the reader below.
+constexpr const char* kCapSeparator = "|cap";
+
 // The overlay's identity: the path it was built from plus the SP cap the
 // meter was scaled to. A cap change must rebuild the scene just like a
 // path change, so both live in the one key the three key_ members compare.
 std::string overlay_key(const std::string& path_key, int sp_cap) {
-    return path_key + "|cap" + std::to_string(sp_cap);
+    return path_key + kCapSeparator + std::to_string(sp_cap);
+}
+
+// The path part of an overlay_key: the one place a key is read back. The cap
+// is written last, so the last separator ends the path part. Empty for an
+// empty key (nothing has loaded).
+std::string overlay_key_path_part(const std::string& key) {
+    const std::size_t at = key.rfind(kCapSeparator);
+    return at == std::string::npos ? std::string() : key.substr(0, at);
 }
 
 }  // namespace
@@ -81,13 +95,11 @@ void PreviewController::start_scene_job() {
         scene_job_->cancel();
         retired_scene_jobs_.push_back(std::move(scene_job_));
     }
-    render::TrackStateOptions track_opts;
-    track_opts.pro = pro_;
     // A changed chart keeps drawing no path (drawn_path, finding 126).
     const Path* drawn = drawn_path(path_, chart_changed_);
     std::optional<Path> path = drawn ? std::optional<Path>(*drawn) : std::nullopt;
     scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, std::move(path), sp_cap_,
-                                                   rules_, path_key_, track_opts, audio_end_ms_);
+                                                   rules_, path_key_, track_opts(), audio_end_ms_);
     scene_job_->start();
 }
 
@@ -157,9 +169,7 @@ void PreviewController::poll() {
         base_job_.reset();
     }
     if (base_due()) {
-        render::TrackStateOptions track_opts;
-        track_opts.pro = pro_;
-        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts, audio_end_ms_);
+        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts(), audio_end_ms_);
         base_job_->start();
         base_started_ = true;
     }
@@ -231,13 +241,12 @@ ID3D11ShaderResourceView* PreviewController::render(int width, int height) {
             rt_h_ = height;
         }
         if (scene_dirty_) {
-            render::TrackStateOptions opts;
-            opts.pro = pro_;
+            const render::TrackStateOptions opts = track_opts();
             // A job built scene_'s timeline on its worker: just move it in.
-            // If it was built for another pro-drums setting than the one
-            // drawn now, or there is none (the empty scene after close()),
-            // build it here as before.
-            if (pending_track_ && pending_track_opts_.pro == opts.pro)
+            // If it was built for other options than the ones drawn now, or
+            // there is none (the empty scene after close()), build it here as
+            // before.
+            if (pending_track_ && pending_track_opts_ == opts)
                 renderer_->set_scene(scene_, std::move(*pending_track_));
             else
                 renderer_->set_scene(scene_, opts);
@@ -380,9 +389,13 @@ bool PreviewController::seek_activation(size_t index) {
     return true;
 }
 
+// The renderer's json is the one source of the Preview's numbers; there is no
+// default-built struct to fall back on (finding 220).
 const render::PreviewConfig& PreviewController::preview_config() const {
-    static const render::PreviewConfig kOnyxDefaults;
-    return renderer_ ? renderer_->config() : kOnyxDefaults;
+    if (!renderer_)
+        throw std::logic_error(
+            "PreviewController::preview_config: no renderer yet (the first render() builds it)");
+    return renderer_->config();
 }
 
 double PreviewController::sp_meter_bars() const {
@@ -391,8 +404,12 @@ double PreviewController::sp_meter_bars() const {
 
 int PreviewController::sp_meter_cap() const { return scene_.sp_meter.cap; }
 
-bool PreviewController::sp_meter_has_curve() const {
-    return !scene_.sp_meter.segments.empty();
+bool PreviewController::has_sp_gauge() const { return scene_.has_sp_gauge(); }
+
+bool PreviewController::shows_path(const std::string& path_key) const {
+    return !scene_path_key_.empty() && overlay_key_path_part(scene_path_key_) == path_key;
 }
+
+render::TrackStateOptions PreviewController::track_opts() const { return track_options(pro_); }
 
 }  // namespace hydra::ui

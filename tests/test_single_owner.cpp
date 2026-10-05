@@ -3106,6 +3106,92 @@ const std::vector<OwnerRule>& rules() {
           "CHECK(scene.notes[3].lane == PreviewLane::Kick);"},
          {},
          {"src"}},
+        // A jump through the controller pointer with a number typed in, a
+        // quoted control word naming the step, or a second definition of
+        // either constant. The tests drive the controller with typed
+        // distances (pc.jump_ms(5000.0)) and pin the shown text, so src only.
+        {"How far does a Preview jump move, and what do its controls call it?",
+         "kJumpSeconds and kTickStep in src/ui/preview_tab.cpp",
+         R"(->jump_ms\(\s*-?\d|"[^"]*\b(5 seconds|5 ticks|5 Ticks)\b[^"]*"|"[-+]5s"|\b(kJumpSeconds|kTickStep)\s*=\s*\d)",
+         "",
+         {},
+         {},
+         "audit finding 215; phase 6 task J3-5 (D53, D54)",
+         {R"(if (ImGui::Button("-5s")) pc->jump_ms(-5000.0);)", R"({{",", "."}, "5 ticks"},)"},
+         {"pc.jump_ms(5000.0);", "inline constexpr double kAudioTailMs = 5000.0;"},
+         {{"src/ui/preview_tab.cpp", "constexpr int kJumpSeconds = 5;", "kJumpSeconds, the owner"},
+          {"src/ui/preview_tab.cpp", "constexpr int kTickStep = 5;", "kTickStep, the owner"}},
+         {"src"}},
+        // highway_draw.cpp and overlay_layout.cpp have their own factors
+        // under J2-8's rows, so only the tab is scanned.
+        {"How big is each Preview overlay box at a scale?",
+         "overlay_box_sizes and line_height in src/ui/preview_tab.cpp",
+         R"(\* 1\.25f|\* 1\.8f|\* 1\.2f)",
+         "",
+         {},
+         {},
+         "audit finding R7.18; phase 6 task J3-5 (D53, D54)",
+         {"const float line_h = size * 1.25f;",
+          "const float score_size = score.available ? size * 1.8f : size;"},
+         {"const float line_h = line_height(size);", "s.pad = px(8.0f) * scale;"},
+         {{"src/ui/preview_tab.cpp", "float line_height(float size) { return size * 1.25f; }",
+           "line_height, the owner"},
+          {"src/ui/preview_tab.cpp", "s.score_size = score.available ? s.size * 1.8f : s.size;",
+           "overlay_box_sizes, the owner"},
+          {"src/ui/preview_tab.cpp", "s.score_line_h = s.score_size * 1.2f;",
+           "overlay_box_sizes, the owner"}},
+         {"src/ui/preview_tab.cpp"}},
+        // A prefix test on a drawn overlay key, or a read of the key's path
+        // part (overlay_key_path_part) anywhere but shows_path. Tests may
+        // still compare two keys whole.
+        {"Is the drawn overlay the selected path's?",
+         "PreviewController::shows_path in src/ui/preview_controller.cpp",
+         R"(overlay_path_key\(\)\.rfind\(|rfind\(\w*overlay_key\w*, 0\)|\boverlay_key_path_part\()",
+         "",
+         {},
+         {},
+         "audit finding 340; phase 6 task J3-5 (D53, D54)",
+         {"if (jump && pc->overlay_path_key().rfind(ui.overlay_key, 0) == 0) {",
+          "return h.app->preview->overlay_path_key().rfind(first_key, 0) == 0;"},
+         {"if (jump && pc->shows_path(ui.overlay_key)) {",
+          "IM_CHECK(h.app->preview->overlay_path_key() != first_overlay);"},
+         {{"src/ui/preview_controller.cpp",
+           "std::string overlay_key_path_part(const std::string& key) {",
+           "the one reader of an overlay key's path part, beside overlay_key"},
+          {"src/ui/preview_controller.cpp",
+           "return !scene_path_key_.empty() && overlay_key_path_part(scene_path_key_) == path_key;",
+           "shows_path, the owner"}},
+         {"src", "tests"}},
+        // test_preview_golden.cpp and test_preview_renderer.cpp build
+        // renderer options by hand too (opts.pro = pro;); no J3-5 file, so
+        // the tests scanned are this task's own.
+        {"Which highway options does the Preview draw with?",
+         "track_options in src/ui/preview_load_job.h",
+         R"(\.pro\s*=\s*pro_?\b|\.pro\s*[!=]=\s*\w+\.pro\b)",
+         "",
+         {},
+         {},
+         "audit finding R7.16; phase 6 task J3-5 (D53, D54)",
+         {"track_opts.pro = pro_;", "if (pending_track_ && pending_track_opts_.pro == opts.pro)"},
+         {"plain.pro = false;", "if (pending_track_ && pending_track_opts_ == opts)"},
+         {{"src/ui/preview_load_job.h", "opts.pro = pro;", "track_options, the owner"},
+          {"src/render/track_state.h", "return a.pro == b.pro;",
+           "TrackStateOptions::operator==, the struct's own compare"}},
+         {"src", "tests/test_preview_controller.cpp", "tests/test_preview_load_progress.cpp",
+          "tests/ui/uitest_preview.cpp"}},
+        // A stem's size read from its path on disk: the load maps every loose
+        // stem first and takes the mapped size.
+        {"How big is a Preview stem?",
+         "MappedFile::size in src/audio/mapped_file.h",
+         R"(\bfile_size_bytes\(\s*\w+(\.|->)path\b)",
+         "",
+         {},
+         {},
+         "audit finding R7.25; phase 6 task J3-5 (D53, D54)",
+         {"n = file_size_bytes(s.path);"},
+         {"REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);"},
+         {},
+         {"src"}},
     };
     return r;
 }
@@ -3122,22 +3208,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"How many workers does a batch get?", "src/ui/library_jobs.cpp",
          "workers_ = std::max(1, workers);",
          "task J2-4 (set_analyzer_for_test drops its floor; audit R7.22)"},
-        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
-         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
-         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
-         "finding 1)"},
-        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
-         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
-         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
-         "finding 1)"},
-        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
-         R"(hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.opus");)",
-         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
-         "finding 1)"},
-        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
-         R"(write_file(song, hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg"));)",
-         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
-         "finding 1)"},
         {"How is a scanned path keyed in the scan snapshot?", "tests/test_analysis.cpp",
          "rel = rel.substr(root.size() + 1);",
          "task J4-6 (rel_of calls relative_slash_path; audit finding 274)"},
@@ -3182,9 +3252,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"What is a path's total score?", "src/core/replay.h",
          "int64_t total() const { return base + combo + sp + solo + accent + ghost; }",
          "task J3-2 (ReplayScore::total calls score_total; audit finding 165)"},
-        {"Does the Preview scene have an SP gauge?", "src/ui/preview_controller.cpp",
-         "return !scene_.sp_meter.segments.empty();",
-         "task J3-5 (sp_meter_has_curve asks PreviewScene::has_sp_gauge; audit finding 216)"},
     };
     return k;
 }
