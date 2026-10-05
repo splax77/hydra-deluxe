@@ -128,8 +128,12 @@ public:
         std::string detail;     // time left ("about 0:40 left"), or ""
     };
     LoadProgress load_progress() const;
+    // Why the Preview failed: the sentence app::plain_error gives for the
+    // failure's kind (the panel prints it after "Preview failed: "), with the
+    // raw text beside it for the dimmed details line.
     bool has_error() const { return !error_.empty(); }
     const std::string& error() const { return error_; }
+    const std::string& error_detail() const { return error_detail_; }
 
     // Set when the audio output device would not open. Not an error: the
     // chart still loads, draws and plays on the clock, just muted. The panel
@@ -348,6 +352,7 @@ private:
     bool active_ = false;
     PreviewSongKey open_key_;  // the song open() last loaded
     std::string error_;
+    std::string error_detail_;
     std::string audio_warning_;
     AudioDeviceFactory device_factory_;
 };

@@ -228,7 +228,9 @@ int main() {
     hydra::app::BatchCallbacks callbacks;
     callbacks.read_song_length = hydra::audio::song_length_ms;  // each song's length (D69)
     callbacks.on_progress = [&](const hydra::app::BatchProgress& p) { last = p; };
-    callbacks.on_error = [&](const std::string& raw_title, const std::string& error) {
+    // hydra_batch prints the raw text; the sentence is the GUI's.
+    callbacks.on_error = [&](const std::string& raw_title, const std::string& /*sentence*/,
+                             const std::string& error) {
         ++done;
         const std::string title = hydra::display_title(raw_title);
         failures.push_back(title + ": " + error);

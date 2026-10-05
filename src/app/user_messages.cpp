@@ -1,14 +1,9 @@
 #include "app/user_messages.h"
 
-#include <initializer_list>
 #include <new>
 #include <optional>
 
-#include "app/report.h"  // kNothingUnderSettings
-#include "app/rules_file.h"
 #include "core/error_kind.h"
-#include "core/strutil.h"
-#include "parse/song.h"  // is_timing_refusal
 
 namespace hydra::app {
 
@@ -60,24 +55,9 @@ constexpr const char* kPreviewAssets =
     "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.";
 constexpr const char* kStopped = "Stopped before it finished.";
 
-bool starts_with_any(std::string_view s, std::initializer_list<std::string_view> prefixes) {
-    for (std::string_view p : prefixes)
-        if (starts_with(s, p)) return true;
-    return false;
-}
-
-// The sentence of parse/song.h NoNotesError, built by no_notes_message: "No
-// <difficulty> [Pro ]Drums notes in this chart." It is already written for
-// the user. It is matched by its words, not by the error's type, because a
-// batch failure reaches plain_error_text as text only (ui/library_jobs.cpp).
-bool is_no_notes_message(std::string_view s) {
-    return starts_with(s, "No ") && ends_with(s, " notes in this chart.");
-}
-
-// The two sentences built around a detail. The switch and the text matcher
-// both say them through these.
-std::string http_status_sentence(std::string_view code) {
-    return "dmleaderboards returned an error (HTTP " + std::string(code) + "). Try again later.";
+// The two sentences built around a detail.
+std::string http_status_sentence(int code) {
+    return "dmleaderboards returned an error (HTTP " + std::to_string(code) + "). Try again later.";
 }
 
 std::string timing_refusal_sentence(std::string_view what) {
@@ -102,8 +82,7 @@ std::optional<std::string> kind_sentence(const KindedError& e) {
         case ErrorKind::NetUnreachable: return kNetUnreachable;
         case ErrorKind::NetTimeout: return kNetTimeout;
         case ErrorKind::NetHttpStatus:
-            if (const std::optional<int> code = e.http_status())
-                return http_status_sentence(std::to_string(*code));
+            if (const std::optional<int> code = e.http_status()) return http_status_sentence(*code);
             return std::nullopt;  // no code to name
         case ErrorKind::NetBadReply: return kNetBadReply;
         case ErrorKind::NoScores: return kNoScores;
@@ -119,88 +98,13 @@ std::optional<std::string> kind_sentence(const KindedError& e) {
 
 }  // namespace
 
-std::string plain_error_text(std::string_view what) {
-    // A cancel: net/dmbot_client.cpp and ui/job_base.h's JobCancelled.
-    if (what == "cancelled") return kStopped;
-
-    // net/dmbot_client.cpp: fail() appends " (error <GetLastError>)" to these.
-    // 12002 is ERROR_WINHTTP_TIMEOUT.
-    if (what.find("(error 12002)") != std::string_view::npos) return kNetTimeout;
-    if (starts_with_any(what, {"malformed leaderboard URL", "could not start the network session",
-                               "could not connect to the leaderboard", "could not build the request",
-                               "could not send the request", "no response from the leaderboard",
-                               "could not read the response"}))
-        return kNetUnreachable;
-    if (starts_with(what, "leaderboard returned HTTP "))
-        return http_status_sentence(what.substr(std::string_view("leaderboard returned HTTP ").size()));
-    if (what == "the leaderboard sent a response Hydra couldn't read" ||
-        what == "unexpected user-list format")
-        return kNetBadReply;
-    // ui/dm_jobs.cpp and ui/library_jobs.cpp.
-    if (what == "this user has no scores to compare") return kNoScores;
-    if (what == "no records stored yet") return kNoRecords;
-    // app/report.cpp generate_report: results exist, but none under the
-    // report's cap and fill rule. The sentence names them and is already
-    // written for the user.
-    if (starts_with(what, report::kNothingUnderSettings)) return std::string(what);
-    // app/report_files.cpp write_report_file.
-    if (starts_with(what, "cannot write ")) return kReportWrite;
-
-    // app/analysis.cpp stream_md5, audio/mapped_file.cpp, and core/winstr.cpp
-    // (read_file_bytes, which parse/midi.cpp reads through).
-    if (starts_with_any(what, {"cannot open file: ", "cannot read file size: "}))
-        return kSongFileMissing;
-    if (what == "MD5 hashing failed" || starts_with(what, "BCryptOpenAlgorithmProvider(MD5)"))
-        return kHashFailed;
-
-    // store/record_store.cpp.
-    if (starts_with(what, "failed to open database ")) return kDatabaseOpen;
-    if (starts_with_any(what, {"add_song failed", "add_row ", "put_dynamics failed",
-                               "meta_set failed", "reindex failed",
-                               "rebuild_chart_library failed", "sqlite exec failed",
-                               "prepare failed"}))
-        return kDatabaseWrite;
-
-    // search/engine.cpp.
-    if (what == "search reached a broken state") return kSearchBroken;
-
-    // The chart readers: core/model.cpp, parse/song.cpp, parse/srb.cpp,
-    // parse/midi.cpp. The no-notes message is already plain.
-    if (is_no_notes_message(what)) return std::string(what);
-    // parse/song.cpp check_timing_maps and apply_timesig: timing that can't
-    // measure time. The raw text names the line, so the user sees it.
-    if (is_timing_refusal(what)) return timing_refusal_sentence(what);
-    if (what == "Duplicate note." || what == "expected a [section] header" ||
-        what == "No chart files found in SNG file." || what == "Truncated SNG file." ||
-        what == "Truncated SRB file." || what == "SMPTE time division is not supported" ||
-        starts_with_any(what, {"unexpected chart type: ", "SRB stream", "SRB inflate",
-                               "not a MIDI file", "Message length "}))
-        return kChartUnreadable;
-
-    // store/serialize.cpp and store/path_codec.cpp.
-    if (what == "truncated blob" ||
-        starts_with_any(what, {"path node ", "unsupported path node format",
-                               "unsupported path structure format"}))
-        return kStoredResult;
-
-    // audio/decode.cpp, audio/stream_mix.cpp, render/preview_renderer.cpp,
-    // render/preview_config.cpp. audio/mixer.cpp's mix_stems is a test
-    // reference only, so its text has no entry.
-    if (starts_with_any(what, {"decode_audio:", "StreamMix: "})) return kAudioDecode;
-    if (starts_with_any(what, {"PreviewRenderer: missing", "3d-config.json:"}))
-        return kPreviewAssets;
-
-    return kSomethingWentWrong;
-}
-
 std::string plain_error(const std::exception& e) {
     if (dynamic_cast<const std::bad_alloc*>(&e)) return kOutOfMemory;
-    // A kinded error is answered by kind_sentence alone.
+    // A kinded error is answered by kind_sentence alone; its words never
+    // pick the sentence.
     if (const auto* kinded = dynamic_cast<const KindedError*>(&e))
         if (std::optional<std::string> sentence = kind_sentence(*kinded)) return *sentence;
-    // Errors with no kind yet: the app folder's throwers and the batch's text.
-    if (dynamic_cast<const RulesFileError*>(&e)) return kRulesFile;
-    return plain_error_text(e.what());
+    return kSomethingWentWrong;
 }
 
 std::string plain_error_detail(const std::exception& e) { return e.what(); }

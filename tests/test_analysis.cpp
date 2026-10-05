@@ -23,11 +23,15 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <unordered_set>
 #include <vector>
+
+#include <sqlite3.h>
 
 #include "app/analysis.h"
 #include "app/work_pool.h"
 #include "audio/song_audio.h"
+#include "core/error_kind.h"
 #include "audio_chart_fixtures.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
@@ -316,7 +320,9 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
     std::atomic<bool> cancel{false};
     callbacks.cancel = &cancel;
     int errors = 0, results = 0;
-    callbacks.on_error = [&errors](const std::string&, const std::string&) { ++errors; };
+    callbacks.on_error = [&errors](const std::string&, const std::string&, const std::string&) {
+        ++errors;
+    };
     callbacks.on_result = [&results](const ScanItem&, const hydra::store::PreparedRow&) {
         ++results;
     };
@@ -362,7 +368,9 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
         });
     };
     int errors = 0, results = 0;
-    callbacks.on_error = [&errors](const std::string&, const std::string&) { ++errors; };
+    callbacks.on_error = [&errors](const std::string&, const std::string&, const std::string&) {
+        ++errors;
+    };
     callbacks.on_result = [&results](const ScanItem&, const hydra::store::PreparedRow&) {
         ++results;
     };
@@ -463,6 +471,77 @@ TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
     CHECK(last.failed == 1);
     CHECK(last.skipped == 1);
     CHECK(last.completed == 2);
+}
+
+// Finding 193 (D71, open question 5): a save that fails during a batch used
+// to leave run_batch and close Hydra. Now that chart is a failure like any
+// other, and the batch goes on.
+TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
+    const std::vector<ScanItem> items = fake_items(2);
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) -> AnalysisResult {
+        return real;
+    };
+    std::vector<std::string> errors;
+    callbacks.on_error = [&errors](const std::string& title, const std::string& sentence,
+                                   const std::string& error) {
+        errors.push_back(title + "|" + sentence + "|" + error);
+    };
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+
+    const std::string path = testtemp::temp_path("batch_save_fail", ".db");
+    std::remove(path.c_str());
+    { hydra::store::RecordStore store(path); }
+    {  // A trigger refuses chart fake1's result, so its save throws.
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+        REQUIRE(sqlite3_exec(db,
+                             "CREATE TRIGGER refuse_fake1 BEFORE INSERT ON results"
+                             " WHEN NEW.hyhash = 'fake1' BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_close(db);
+    }
+    BatchRun run;
+    run.chartmode = "save-fail-test";
+    {
+        hydra::store::RecordStore store(path);
+        run_batch(items, run, store, /*redo=*/false, 1, callbacks);
+
+        REQUIRE(errors.size() == 1);
+        CHECK(errors[0].rfind("fake 1|Hydra couldn't save to its database (hydra.db). Check that "
+                              "the disk isn't full and that no other copy of Hydra is running, "
+                              "then try again.|add_row",
+                              0) == 0);
+        const std::unordered_set<std::string> stored = charts_with_result(store, run, false);
+        CHECK(stored.count("fake0") == 1);
+        CHECK(stored.count("fake1") == 0);
+        CHECK(last.analyzed == 1);
+        CHECK(last.failed == 1);
+    }
+    std::remove(path.c_str());
+}
+
+// The batch works the sentence out while the exception's type is known, so
+// the screens never read an error's words (D71, ER2 open question 7).
+TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [](const std::string&, const AnalysisSettings&,
+                           const std::function<void(float)>&) -> AnalysisResult {
+        throw hydra::KindedError(hydra::ErrorKind::StoredResult, "x");
+    };
+    std::vector<std::string> sentences;
+    callbacks.on_error = [&sentences](const std::string&, const std::string& sentence,
+                                      const std::string&) { sentences.push_back(sentence); };
+    BatchRun run;
+    run.chartmode = "sentence-test";
+    hydra::store::RecordStore store(":memory:");
+    run_batch(fake_items(1), run, store, /*redo=*/false, 1, callbacks);
+
+    REQUIRE(sentences.size() == 1);
+    CHECK(sentences[0] == "A saved result couldn't be read. Re-analyze this song to replace it.");
 }
 
 TEST_CASE("run_batch saves the length its reader gives") {

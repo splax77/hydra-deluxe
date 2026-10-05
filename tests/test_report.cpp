@@ -505,8 +505,10 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
         "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
         "Analyze with these settings, or change them.";
     CHECK(off.why_empty == sentence);
-    // The app's ReportJob throws that sentence, and the strip shows it as it is.
-    CHECK(plain_error(std::runtime_error(off.why_empty)) == sentence);
+    // The app's ReportJob throws that sentence as AlreadyPlain, and the strip
+    // shows it as it is.
+    CHECK(plain_error(hydra::KindedError(hydra::ErrorKind::AlreadyPlain, off.why_empty)) ==
+          sentence);
 }
 
 TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths stays a count (86)") {

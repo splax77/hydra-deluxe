@@ -704,7 +704,10 @@ void test_long_error_wraps(ImGuiTestContext* ctx) {
                !h.app->dynamics_job->ok();
     }, 30));
     ctx->Yield(3);
-    const std::string line = "Dynamics failed: " + h.app->dynamics_job->error();
+    // The sentence leads; the long path is on the dimmed details line under it.
+    IM_CHECK(visible_text(h).find("Dynamics failed: " + h.app->dynamics_job->message()) !=
+             std::string::npos);
+    const std::string line = h.app->dynamics_job->error();
     IM_CHECK(visible_text(h).find(line) != std::string::npos);
     // Unwrapped, the line would be wider than the whole screen.
     IM_CHECK_GT(ImGui::CalcTextSize(line.c_str()).x, ImGui::GetIO().DisplaySize.x);

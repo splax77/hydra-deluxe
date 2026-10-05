@@ -216,7 +216,11 @@ BatchPlan plan_batch(const std::vector<ScanItem>& items,
 // on the calling thread only (never a worker), so they may touch UI state.
 struct BatchCallbacks {
     std::function<void(const BatchProgress&)> on_progress;
-    std::function<void(const std::string& title, const std::string& error)> on_error;
+    // A chart that failed, in its analysis or its save: the sentence
+    // app::plain_error gives for the exception, and its raw text.
+    std::function<void(const std::string& title, const std::string& sentence,
+                       const std::string& error)>
+        on_error;
     // Fires after the row is written to the store, with the row it wrote (the
     // batch CLI prints score and best path from it).
     std::function<void(const ScanItem&, const store::PreparedRow&)> on_result;

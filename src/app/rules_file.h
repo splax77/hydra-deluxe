@@ -8,14 +8,17 @@
 #define HYDRA_APP_RULES_FILE_H
 
 #include <filesystem>
-#include <stdexcept>
+#include <string>
 
+#include "core/error_kind.h"
 #include "core/rules.h"
 
 namespace hydra::app {
 
-struct RulesFileError : std::runtime_error {
-    using std::runtime_error::runtime_error;
+// A line of hydra_rules.ini that can't be read. Its text names the file, the
+// line and the key; its kind is RulesFile.
+struct RulesFileError : KindedError {
+    explicit RulesFileError(const std::string& what) : KindedError(ErrorKind::RulesFile, what) {}
 };
 
 core::Rules load_rules_file(const std::filesystem::path& path);

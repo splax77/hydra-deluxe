@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "app/config.h"
+#include "core/error_kind.h"
 #include "core/winstr.h"
 
 namespace hydra::app {
@@ -144,15 +145,18 @@ void write_report_file(const std::filesystem::path& outpath, const std::string& 
     // with one rename once it's complete.
     std::filesystem::path tmp = outpath;
     tmp += ".tmp";
+    const auto cannot_write = [&outpath] {
+        return KindedError(ErrorKind::ReportWrite, "cannot write " + outpath.u8string());
+    };
 
     std::ofstream f(os_path(tmp), std::ios::binary | std::ios::trunc);
-    if (!f) throw std::runtime_error("cannot write " + outpath.u8string());
+    if (!f) throw cannot_write();
     f << html;
     f.close();
     if (!f) {
         std::error_code ec;
         std::filesystem::remove(os_path(tmp), ec);
-        throw std::runtime_error("cannot write " + outpath.u8string());
+        throw cannot_write();
     }
 
     try {
@@ -160,7 +164,7 @@ void write_report_file(const std::filesystem::path& outpath, const std::string& 
     } catch (const std::filesystem::filesystem_error&) {
         std::error_code ec;
         std::filesystem::remove(os_path(tmp), ec);
-        throw std::runtime_error("cannot write " + outpath.u8string());
+        throw cannot_write();
     }
 }
 

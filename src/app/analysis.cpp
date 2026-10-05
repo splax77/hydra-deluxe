@@ -19,7 +19,9 @@
 
 #include "app/dynamics_breakdown.h"
 #include "app/preview_view.h"  // has_song_length
+#include "app/user_messages.h"  // plain_error
 #include "app/work_pool.h"
+#include "core/error_kind.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "parse/srb.h"
@@ -62,7 +64,7 @@ public:
     Md5Provider() {
         if (!BCRYPT_SUCCESS(
                 BCryptOpenAlgorithmProvider(&alg_, BCRYPT_MD5_ALGORITHM, nullptr, 0)))
-            throw std::runtime_error("BCryptOpenAlgorithmProvider(MD5) failed");
+            throw KindedError(ErrorKind::HashFailed, "BCryptOpenAlgorithmProvider(MD5) failed");
     }
     ~Md5Provider() {
         if (alg_) BCryptCloseAlgorithmProvider(alg_, 0);
@@ -84,12 +86,12 @@ struct HashedFile {
 HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
                       size_t head_capture) {
     FILE* f = fopen_utf8(path, L"rb");
-    if (f == nullptr) throw std::runtime_error("cannot open file: " + path);
+    if (f == nullptr) throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + path);
 
     BCRYPT_HASH_HANDLE hash = nullptr;
     if (!BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0))) {
         std::fclose(f);
-        throw std::runtime_error("MD5 hashing failed");
+        throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
     }
 
     HashedFile out;
@@ -107,7 +109,7 @@ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
     UCHAR digest[16];
     bool ok = BCRYPT_SUCCESS(BCryptFinishHash(hash, digest, sizeof(digest), 0));
     BCryptDestroyHash(hash);
-    if (!ok) throw std::runtime_error("MD5 hashing failed");
+    if (!ok) throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
 
     static const char* kHexDigits = "0123456789abcdef";
     out.md5.resize(32);
@@ -561,10 +563,21 @@ struct WorkResult {
     std::optional<store::DynamicsEntry> dynamics;
     // The song's audio length, read on the worker; not read without a reader.
     store::SongLength length;
+    // A failed analysis: plain_error's sentence, worked out on the worker
+    // while the exception's type is still known, and the raw text.
+    bool failed = false;
+    std::string sentence;
     std::string error;
     // The search stopped at a cancel: neither a result nor a failure.
     bool cancelled = false;
 };
+
+// The one way a chart becomes a failure, from its analysis or its save.
+void record_failure(WorkResult& wr, const std::exception& e) {
+    wr.failed = true;
+    wr.sentence = plain_error(e);
+    wr.error = e.what();
+}
 
 }  // namespace
 
@@ -655,7 +668,7 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
             } catch (const AnalysisCancelled&) {
                 wr.cancelled = true;
             } catch (const std::exception& e) {
-                wr.error = e.what();
+                record_failure(wr, e);
             }
             return wr;
         },
@@ -665,13 +678,21 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
             // that finished alongside the cancel is dropped.
             if (wr.cancelled || (cancel && cancel->load())) return;
 
-            if (!wr.error.empty()) {
+            if (!wr.failed) {
+                // A save that fails makes this chart a failure, and the batch
+                // goes on with the next one (D71, ER2 open question 5).
+                try {
+                    store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
+                                        wr.item.charter, wr.analysis->song, *wr.row,
+                                        wr.dynamics, wr.length);
+                } catch (const std::exception& e) {
+                    record_failure(wr, e);
+                }
+            }
+            if (wr.failed) {
                 ++progress.failed;
-                if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.error);
+                if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
             } else {
-                store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
-                                    wr.item.charter, wr.analysis->song, *wr.row, wr.dynamics,
-                                    wr.length);
                 ++progress.analyzed;
                 if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
             }

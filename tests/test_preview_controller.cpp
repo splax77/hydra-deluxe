@@ -316,6 +316,23 @@ TEST_CASE("preview_config: asked before the first render it fails loudly") {
     CHECK_THROWS_AS(pc.preview_config(), std::logic_error);
 }
 
+// Finding 193: a missing Preview file reads its kind's sentence, the one D51
+// call 25 chose, and the raw text stays for the details line.
+TEST_CASE("a Preview asset failure reads Reinstall Hydra, with the raw text as its detail") {
+    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
+    hydra::app::PathOverrides overrides = previous;
+    overrides.asset_dir = testtemp::temp_path("no_preview_assets", "");
+    hydra::app::set_path_overrides(overrides);
+    {
+        PreviewController pc(nullptr, nullptr);
+        CHECK(pc.render(64, 64) == nullptr);
+        CHECK(pc.error() ==
+              "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+        CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
+    }
+    hydra::app::set_path_overrides(previous);
+}
+
 // The scrubber ends at the audio's end, the song's length (D69). The chart's
 // last note is at 100 ms and its audio runs 5 s. The slider's range is
 // scrub_end_ms(), so a drag to its right end seeks to the audio's end, and the

@@ -95,7 +95,11 @@ void render_dynamics_panel(AppState& app) {
     // Error state: job finished but failed (kept around for its message).
     // Wrapped: the message can carry a long file path.
     if (app.dynamics_job && app.dynamics_job->finished() && !app.dynamics_job->ok()) {
-        ImGui::TextWrapped("Dynamics failed: %s", app.dynamics_job->error().c_str());
+        ImGui::TextWrapped("Dynamics failed: %s", app.dynamics_job->message().c_str());
+        // The raw text, dimmed, as the song panel's Analyze error shows it.
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", app.dynamics_job->error().c_str());
+        ImGui::PopStyleColor();
         return;
     }
     if (!app.dynamics_result) return;

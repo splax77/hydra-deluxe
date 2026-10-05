@@ -22,6 +22,8 @@
 #include <thread>
 #include <vector>
 
+#include <sqlite3.h>
+
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/report_files.h"
@@ -344,6 +346,36 @@ TEST_CASE("close_details keeps a Dynamics count that finished on another tab") {
     const hydra::store::DynamicsKey key = hydra::app::dynamics_store_key(
         library_entry(0).md5, app->settings.difficulty(), app->settings.view_prodrums);
     CHECK(hydra::app::load_stored_dynamics(*app->store, key).has_value());
+}
+
+// Finding 193: a Dynamics count whose save fails reads the database's
+// sentence, in the same shape as "Analyzed, but saving failed. ".
+TEST_CASE("a Dynamics save failure reads the database sentence") {
+    ScratchPaths paths("appstate_dyn_savefail");
+    seeded_store(paths.db).reset();
+    {  // A trigger refuses every Dynamics row, so put_dynamics throws.
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(paths.db.c_str(), &db) == SQLITE_OK);
+        REQUIRE(sqlite3_exec(db,
+                             "CREATE TRIGGER refuse_dynamics BEFORE INSERT ON dynamics"
+                             " BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_close(db);
+    }
+    std::unique_ptr<AppState> app = app_on(paths);
+    app->selected->notespath = corpus::first_chart_with_suffix(".chart");
+
+    app->update_dynamics();  // the parse starts
+    REQUIRE(app->dynamics_job != nullptr);
+    for (int i = 0; i < 1200 && !app->dynamics_job->finished(); ++i) Sleep(50);
+    REQUIRE(app->dynamics_job->finished());
+    REQUIRE(app->dynamics_job->ok());
+    app->update_dynamics();  // collects the count and tries to save it
+
+    CHECK(app->dynamics_store_error ==
+          "Counted, but saving failed. Hydra couldn't save to its database (hydra.db). Check "
+          "that the disk isn't full and that no other copy of Hydra is running, then try "
+          "again.");
 }
 
 // The "Song file not found" check asks the disk when the window opens and
