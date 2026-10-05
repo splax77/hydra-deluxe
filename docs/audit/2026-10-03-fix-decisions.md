@@ -250,3 +250,7 @@ The code-only calls at the end of the sheet are approved as written. They cover 
 3. **Quick review of each fix diff.** After each fix round, a fresh reviewer reads only that round's diff before the full review, and its findings go back to the same fixer.
 4. **Orchestrator habits.** The orchestrator runs the precheck and its own first-step pass before the first review, fixes few-line findings itself, and splits a change over about 500 lines into two or three merges. The 500 is a rough guide, not a gate.
 5. **Slow proofs once per round.** Corpus and old-against-new comparisons run once after a fix round's last finding, not after each commit.
+
+**D60 (phase 7 E3 results), 2026-10-04.** The user saw E3's counts on the 97 test charts and took the recommended answer to both questions.
+1. **The all-0 lists.** D58 item 1 stands. A required early fill whose SP becomes ready exactly on the fill's deadline note has zero slack, so it needs timing, like a squeeze-out exactly on the SP end (D13). Seven charts lose their "Best all-0 path" (61 of 97 keep one, down from 68): Feast of Fire, Tapped Out, Sugar/Tzu, The Sentinel, Limb From Limb, YYZ and I Am... All Of Me. A few more swap a path with a squeeze-out exactly on the SP end for a free one. Fifteen best paths store no hardest timing instead of 0 or a negative number (D58 item 3).
+2. **The optional-fill badge.** An optional early fill with time to spare shows no badge, because there is nothing to time (D51 call 4). Its detail line "Early fill: -20.0 ms (optional)" stays.
