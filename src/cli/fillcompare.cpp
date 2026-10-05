@@ -80,23 +80,18 @@ int main() {
     std::unique_ptr<hydra::store::RecordStore> new_store =
         hydra::app::open_store(*new_path, hydra::core::RulesStamp::of(settings.rules));
 
-    // Engine-mode sanity check: a stamp that disagrees with the flag it was
-    // passed under is a warning, not a fatal error — an unstamped (nullopt)
-    // db just means "assume the normal rule" and never warns.
-    const char* ch10_stamp = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch10);
-    const char* ch11_stamp = hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch11);
-    std::optional<std::string> old_mode = old_store->engine_mode();
-    if (old_mode && *old_mode != ch10_stamp) {
-        std::fprintf(stderr,
-            "Warning: %s is stamped engine_mode=%s, not %s\n",
-            old_path->c_str(), old_mode->c_str(), ch10_stamp);
-    }
-    std::optional<std::string> new_mode = new_store->engine_mode();
-    if (new_mode && *new_mode != ch11_stamp) {
-        std::fprintf(stderr,
-            "Warning: %s is stamped engine_mode=%s, not %s\n",
-            new_path->c_str(), new_mode->c_str(), ch11_stamp);
-    }
+    // Engine-mode sanity check: a stamp that names another rule than the side
+    // it was passed as (or no rule at all) is a warning, not a fatal error —
+    // an unstamped (nullopt) db just means "assume the normal rule" and never
+    // warns.
+    auto warn_if_not = [](const std::string& path, const std::optional<std::string>& mode,
+                          hydra::FillDeadlineRule expected) {
+        if (mode && hydra::fill_rule_from_stamp(*mode) != expected)
+            std::fprintf(stderr, "Warning: %s is stamped engine_mode=%s, not %s\n",
+                         path.c_str(), mode->c_str(), hydra::engine_mode_stamp(expected));
+    };
+    warn_if_not(*old_path, old_store->engine_mode(), hydra::FillDeadlineRule::Ch10);
+    warn_if_not(*new_path, new_store->engine_mode(), hydra::FillDeadlineRule::Ch11);
 
     hydra::app::fill_report::GeneratedFillReport report =
         hydra::app::fill_report::generate_fill_report(*old_store, *new_store, chartmode, cap, lens);
