@@ -24,9 +24,12 @@
 #include "audio/player.h"
 #include "audio/stem_reader.h"
 #include "audio/stream_mix.h"
-#include "core/winstr.h"
+#include "audio_util.h"
 
 using namespace hydra::audio;
+using testaudio::max_diff;
+using testaudio::read_fixture;
+using testaudio::read_frames;
 
 // ---- Heap-allocation counter -------------------------------------------------
 // Replaces the global operator new for the test binary (a plain malloc
@@ -50,48 +53,20 @@ void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 
 namespace {
 
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-
 constexpr double kPi = 3.14159265358979323846;
-
-void put_u16(std::vector<uint8_t>& o, uint16_t n) {
-    o.push_back(static_cast<uint8_t>(n));
-    o.push_back(static_cast<uint8_t>(n >> 8));
-}
-void put_u32(std::vector<uint8_t>& o, uint32_t n) {
-    for (int i = 0; i < 4; ++i) o.push_back(static_cast<uint8_t>(n >> (8 * i)));
-}
 
 // A PCM16 WAV of `seconds` of a sine per channel (channel c at freq * (c + 1)),
 // so every channel and every stem is recognizably different.
 std::vector<uint8_t> tone_wav(int channels, uint32_t rate, double seconds, double freq) {
     const auto frames = static_cast<uint32_t>(rate * seconds);
-    const uint32_t data_len = frames * channels * 2;
-    std::vector<uint8_t> o;
-    o.insert(o.end(), {'R', 'I', 'F', 'F'});
-    put_u32(o, 36 + data_len);
-    o.insert(o.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
-    put_u32(o, 16);
-    put_u16(o, 1);  // PCM
-    put_u16(o, static_cast<uint16_t>(channels));
-    put_u32(o, rate);
-    put_u32(o, rate * channels * 2);
-    put_u16(o, static_cast<uint16_t>(channels * 2));
-    put_u16(o, 16);
-    o.insert(o.end(), {'d', 'a', 't', 'a'});
-    put_u32(o, data_len);
+    std::vector<int16_t> samples;
+    samples.reserve(static_cast<std::size_t>(frames) * channels);
     for (uint32_t i = 0; i < frames; ++i)
         for (int c = 0; c < channels; ++c) {
             const double v = 0.4 * std::sin(2 * kPi * freq * (c + 1) * i / rate);
-            put_u16(o, static_cast<uint16_t>(static_cast<int16_t>(std::lround(v * 32767))));
+            samples.push_back(static_cast<int16_t>(std::lround(v * 32767)));
         }
-    return o;
-}
-
-std::vector<uint8_t> fixture(const std::string& name) {
-    return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/" + name);
+    return testaudio::pcm16_wav(channels, rate, samples);
 }
 
 std::unique_ptr<StemReader> open_bytes(const std::vector<uint8_t>& bytes) {
@@ -111,27 +86,6 @@ DecodedAudio reference(const std::vector<std::vector<uint8_t>>& stems, int64_t p
     DecodedAudio mix = mix_stems(decoded, 48000, 2);
     mix.samples.insert(mix.samples.begin(), static_cast<std::size_t>(pad) * 2, 0.0f);
     return mix;
-}
-
-// Reads `frames` frames (or to the end) in `block`-frame pieces.
-std::vector<float> read_frames(MixSource& src, int64_t frames, int64_t block = 511) {
-    std::vector<float> out;
-    std::vector<float> buf(static_cast<std::size_t>(block) * src.channels());
-    int64_t left = frames;
-    while (left > 0) {
-        const int64_t k = src.read(buf.data(), std::min(block, left));
-        if (k == 0) break;
-        out.insert(out.end(), buf.begin(), buf.begin() + k * src.channels());
-        left -= k;
-    }
-    return out;
-}
-
-double max_diff(const std::vector<float>& a, const float* b, std::size_t from, std::size_t count) {
-    double worst = 0.0;
-    for (std::size_t i = from; i < count; ++i)
-        worst = std::max(worst, std::fabs(static_cast<double>(a[i]) - b[i]));
-    return worst;
 }
 
 // Each case: the stems and the front pad.
@@ -348,7 +302,7 @@ TEST_CASE("StreamMix: a seek lands on the same audio as a straight read") {
 TEST_CASE("StreamMix: real fixtures mix and seek like the decoded mix") {
     // Opus (48 kHz), Vorbis and MP3 together: three different readers.
     const std::vector<std::vector<uint8_t>> stems = {
-        fixture("sine220.opus"), fixture("sine220.ogg"), fixture("sine220.mp3")};
+        read_fixture("sine220.opus"), read_fixture("sine220.ogg"), read_fixture("sine220.mp3")};
     DecodedAudio ref = reference(stems, 0);
     StreamMix mix = make_mix(stems, 0);
     REQUIRE(mix.length_frames() == ref.frames());
@@ -371,7 +325,7 @@ std::vector<uint8_t> flac_with_unknown_length();
 }
 
 TEST_CASE("StreamMix: a FLAC stem whose header says 0 plays for its real length") {
-    StreamMix plain = make_mix({fixture("sine220.flac")}, 0);
+    StreamMix plain = make_mix({read_fixture("sine220.flac")}, 0);
     StreamMix zeroed = make_mix({hydra::audio_test::flac_with_unknown_length()}, 0);
     CHECK(zeroed.length_frames() == plain.length_frames());
     const std::vector<float> want = read_frames(plain, plain.length_frames());

@@ -1964,6 +1964,7 @@ const std::vector<OwnerRule>& rules() {
           "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
          {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
          {"tests"}},
+<<<<<<< HEAD
         // The join row above, for any name: a string literal that starts with
         // a backslash and a name, glued on with +, or a bare backslash added
         // with +=. join_folder's own "\\" is followed by a quote, not a name.
@@ -2197,6 +2198,80 @@ const std::vector<OwnerRule>& rules() {
          {"return testwcag::relative_luminance(channel(1), channel(3), channel(5));"},
          {},
          {"src", "tests"}},
+        // ---- audio owners (phase 6 task J1-4) ----
+        // The frame pair's row is phase 3's ("How many ms do audio frames
+        // last...", above).
+        {"What is the lowest legal output gain?",
+         "Playhead::set_gain in src/audio/player.h",
+         R"(gain < 0\.0f \? 0\.0f)",
+         "",
+         {},
+         {},
+         "audit finding 225, folded under D53 (phase 6 task J1-4)",
+         {"gain_ = gain < 0.0f ? 0.0f : gain;"},
+         {"float gain() const { return gain_; }"},
+         {{"src/audio/player.h",
+           "void set_gain(float gain) { gain_ = gain < 0.0f ? 0.0f : gain; }",
+           "Playhead::set_gain, the owner"}}},
+        {"How is a stem converted to the output format?",
+         "stem_converter_config in src/audio/mixer.cpp",
+         R"(ma_data_converter_config_init\()",
+         "",
+         {},
+         {},
+         "audit finding R7.28; D54 records miniaudio's converter defaults as they are",
+         {"ma_data_converter_config cfg = ma_data_converter_config_init(",
+          "s->init_converter(ma_data_converter_config_init("},
+         {"s->init_converter(sc.config);"},
+         {{"src/audio/mixer.cpp", "c.config = ma_data_converter_config_init(",
+           "stem_converter_config, the owner"}}},
+        {"Which test helper reads an audio fixture?",
+         "fixture_path and read_fixture in tests/audio_util.h",
+         // No closing quote after /audio/, so a build that names the file
+         // inside the literal is caught too (review of M6-J1c finding 1).
+         R"(HYDRA_TESTDATA_DIR\) \+ "/audio/)",
+         "",
+         {},
+         {},
+         "audit finding 277, folded under D53 (phase 6 task J1-4)",
+         {"return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name);",
+          R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)"},
+         {"ogg.path = fixture_path(\"sine220.ogg\");", "#ifndef HYDRA_TESTDATA_DIR"},
+         {{"tests/audio_util.h",
+           "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
+           "fixture_path, the owner (read_fixture reads through it)"}},
+         {"tests"}},
+        {"Which test helper estimates a tone's frequency?",
+         "estimate_freq_hz in tests/audio_util.h",
+         R"(\b(double|float|auto)\s+estimate_freq_hz\s*\()",
+         "",
+         {},
+         {},
+         "audit finding 277, folded under D53 (phase 6 task J1-4)",
+         {"double estimate_freq_hz(const DecodedAudio& a) {",
+          "double estimate_freq_hz(const DecodedAudio& a, int channel) {"},
+         {"CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));"},
+         {{"tests/audio_util.h",
+           "inline double estimate_freq_hz(const hydra::audio::DecodedAudio& a, int channel) {",
+           "estimate_freq_hz, the owner"}},
+         {"tests"}},
+        // The byte-at-a-time shift loop is the form every copy used. A u16
+        // writer's lone `n >> 8` line is not caught (review of M6-J1c
+        // finding 3 leaves that shape to the owner).
+        {"Which test helper writes a little-endian number?",
+         "put_le in tests/bytes_util.h",
+         R"(static_cast<uint8_t>\(\w+ >> \(8 \* i\)\))",
+         "",
+         {},
+         {},
+         "review of M6-J1c finding 3, folded under D53 (phase 6 task J1-4)",
+         {"for (int i = 0; i < 4; ++i) o.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+          "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"},
+         {"o.push_back(static_cast<uint8_t>(n >> 8));"},
+         {{"tests/bytes_util.h",
+           "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
+           "put_le, the owner (put_u16, put_u32 and put_u64 write through it)"}},
+         {"tests"}},
     };
     return r;
 }
@@ -2367,6 +2442,39 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
          "if (r.record.paths.empty()) continue;",
          "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
+        {"What is the lowest legal output gain?", "src/ui/preview_transport.cpp",
+         "gain_ = gain < 0.0f ? 0.0f : gain;",
+         "phase 7 task PV (D58 item 5: the transport's set_gain leaves the floor to "
+         "Playhead::set_gain); task J3-5 if PV does not take it"},
+        {"Which test helper reads an audio fixture?", "tests/test_stem_reader.cpp",
+         "return std::string(HYDRA_TESTDATA_DIR) + \"/audio/\" + name;",
+         "task J2-6 (test_stem_reader.cpp's path builder calls fixture_path)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
+         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_controller.cpp",
+         R"(copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg", d + "\\song.ogg");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
+         R"(hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.opus");)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper reads an audio fixture?", "tests/test_preview_load_progress.cpp",
+         R"(write_file(song, hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg"));)",
+         "task J3-5 (the Preview tests read fixtures through tests/audio_util.h; review of M6-J1c "
+         "finding 1)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_golden.cpp",
+         "auto put32 = [&](int at, uint32_t v) { for (int i = 0; i < 4; ++i) hdr[at + i] = "
+         "static_cast<uint8_t>(v >> (8 * i)); };",
+         "M6-J2 sweep (test_preview_golden.cpp, J2-8's file this wave)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
+         "for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+         "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
+        {"Which test helper writes a little-endian number?", "tests/test_preview_source.cpp",
+         "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));",
+         "task J2-5 (test_preview_source.cpp builds through sng_util.h)"},
     };
     return k;
 }
@@ -2614,6 +2722,7 @@ TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
     CHECK(decodes == 1);
 }
 
+<<<<<<< HEAD
 // The walk reads only .cpp and .h files under src, tools and tests, so a row
 // scoped to a single file outside them (installer/hydra.iss, Inno Setup's
 // script) is checked here, with the same verdict. No listed line covers such
@@ -2637,4 +2746,36 @@ TEST_CASE("single-owner rules hold in the single files outside the walk") {
             }
         }
     }
+}
+
+// E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is
+// Path::needs_timing's, so no code line under src/ or tools/ asks it with a
+// zero test of its own, such as the all-0 pass's old 0 ms limit. What the
+// Score range's INI int means is Settings::search_depth_mode's, the one line
+// in src/app/config.cpp that compares it, however the comparison is spelled.
+// Comment lines are skipped like the row scan does.
+TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one owner (E3)") {
+    const std::regex zero_limit(
+        R"(difficulty\(\)\.value_or\(0(\.0+)?\)\s*(<=|>|<|>=)\s*0(\.0+)?(?![\d.]))"
+        R"(|value_or\(0(\.0+)?\)\s*<=\s*0(\.0+)?(?![\d.]))"
+        R"(|ms_filter\s*=\s*(std::optional<double>\()?0(\.0+)?(?![\d.]))");
+    const std::regex depth_int(R"(\bdepth_mode\s*(==|!=|>=|<=|>|<)\s*[01]\b|case\s+1\s*:.*depth)");
+    std::vector<std::string> zero_hits, depth_hits;
+    sourcetree::for_each_source_file([&](const fs::path& file, const std::string& rel) {
+        if (rel.compare(0, 6, "tests/") == 0) return;
+        const std::string ext = file.extension().string();
+        if (ext != ".cpp" && ext != ".h") return;
+        std::ifstream in(file);
+        std::string line;
+        while (std::getline(in, line)) {
+            const std::string t = hydra::trim(line);
+            if (t.compare(0, 2, "//") == 0) continue;
+            if (std::regex_search(t, zero_limit)) zero_hits.push_back(rel + ": " + t);
+            if (std::regex_search(t, depth_int)) depth_hits.push_back(rel + ": " + t);
+        }
+    });
+    CHECK_MESSAGE(zero_hits.empty(), (zero_hits.empty() ? std::string() : zero_hits.front()));
+    REQUIRE(depth_hits.size() == 1);
+    CHECK(depth_hits.front() ==
+          "src/app/config.cpp: return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;");
 }

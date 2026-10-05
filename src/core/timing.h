@@ -26,6 +26,9 @@ int to_multiplier(int combo);
 // shows the combo multiplier doubled while it runs.
 inline constexpr int kStarPowerMultiplier = 2;
 
+// Clone Hero's rule: an activation needs two banked bars of Star Power.
+inline constexpr int kSpActivationBars = 2;
+
 // The multiplier the game's disc shows for a chord: its combo multiplier,
 // times kStarPowerMultiplier when Star Power pays the chord.
 int shown_multiplier(int combo_multiplier, bool in_sp);

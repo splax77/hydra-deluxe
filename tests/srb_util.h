@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "bytes_util.h"
 #include "doctest.h"
 #include "miniz.h"
 
@@ -30,10 +31,10 @@ inline std::vector<uint8_t> deflate_raw(const std::vector<uint8_t>& src) {
     return out;
 }
 
-// A little-endian u32 length, then the string's bytes.
+// A little-endian u32 length (written by bytes_util.h), then the string's
+// bytes.
 inline void push_str(std::vector<uint8_t>& out, const std::string& s) {
-    const uint32_t n = static_cast<uint32_t>(s.size());
-    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));
+    testbytes::put_u32(out, static_cast<uint32_t>(s.size()));
     out.insert(out.end(), s.begin(), s.end());
 }
 
@@ -68,7 +69,7 @@ inline std::vector<uint8_t> make_srb(
     const std::vector<std::vector<uint8_t>>& trailing = {stand_in_audio()}) {
     std::vector<uint8_t> out;
     for (int i = 0; i < 12; ++i) out.push_back(static_cast<uint8_t>(0xA0 + i));
-    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(i == 0 ? 17 : 0));
+    testbytes::put_u32(out, 17);
     auto put = [&out](const std::vector<uint8_t>& stream) {
         const std::vector<uint8_t> d = deflate_raw(stream);
         out.insert(out.end(), d.begin(), d.end());
