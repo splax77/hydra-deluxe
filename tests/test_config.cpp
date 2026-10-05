@@ -4,11 +4,6 @@
 
 #include "doctest.h"
 
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -18,23 +13,16 @@
 #include "core/model.h"
 #include "core/version.h"
 #include "core/winstr.h"
+#include "temp_util.h"
 
 using hydra::app::AnalysisSettings;
 using hydra::app::Settings;
 
 namespace {
 
-// A per-process temp INI path, so parallel test runs never collide.
-std::string temp_ini(const char* tag) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    return hydra::wide_to_utf8(tmp) + "hydra_test_" + tag + "_" +
-           std::to_string(GetCurrentProcessId()) + ".ini";
-}
-
 // Loads settings from an INI holding exactly `text`, then deletes the file.
 Settings load_ini_text(const char* tag, const std::string& text) {
-    const std::string path = temp_ini(tag);
+    const std::string path = testtemp::temp_path(tag, ".ini");
     {
         std::ofstream f(path, std::ios::trunc);
         f << text;
@@ -86,7 +74,7 @@ TEST_CASE("settings round-trip through an INI file") {
     s.auto_open_report = true;
     s.dm_last_user = "123456789";
 
-    const std::string path = temp_ini("roundtrip");
+    const std::string path = testtemp::temp_path("roundtrip", ".ini");
     REQUIRE(s.save_file(path));
     Settings r = Settings::load_file(path);
     std::remove(path.c_str());
@@ -96,7 +84,7 @@ TEST_CASE("settings round-trip through an INI file") {
 
 TEST_CASE("settings: load and save name the same keys") {
     // A default Settings reloads field for field equal.
-    const std::string path = temp_ini("samekeys");
+    const std::string path = testtemp::temp_path("samekeys", ".ini");
     const Settings d;
     REQUIRE(d.save_file(path));
     check_same_settings(Settings::load_file(path), d);
@@ -140,7 +128,7 @@ TEST_CASE("the 1.0 fills setting reaches the search and the result's key togethe
 }
 
 TEST_CASE("a missing INI yields defaults") {
-    Settings r = Settings::load_file(temp_ini("missing_never_written"));
+    Settings r = Settings::load_file(testtemp::temp_path("missing_never_written", ".ini"));
     Settings d;
     CHECK(r.sp_cap == 4);
     CHECK(r.chartfolders.empty());
@@ -156,8 +144,15 @@ TEST_CASE("a missing INI yields defaults") {
     CHECK_FALSE(r.legacy_fills);
 }
 
+// The app and the search start from one depth; this is the literal pin.
+TEST_CASE("config: the default depth is the search's, 4") {
+    CHECK(hydra::kDefaultDepthValue == 4);
+    CHECK(Settings{}.depth_value == 4);
+    CHECK(hydra::SearchSettings{}.depth_value == 4);
+}
+
 TEST_CASE("malformed INI lines are tolerated") {
-    const std::string path = temp_ini("malformed");
+    const std::string path = testtemp::temp_path("malformed", ".ini");
     {
         std::ofstream f(path, std::ios::trunc);
         f << "# a comment line\n"
@@ -241,7 +236,7 @@ TEST_CASE("settings: the hit window keeps a decimal, and 0 reads the default (D5
 
     // What save_file writes on the hit_window_ms line: 85.5 as typed, and the
     // default as the whole number today's files hold.
-    const std::string path = temp_ini("hitwin3");
+    const std::string path = testtemp::temp_path("hitwin3", ".ini");
     auto saved_line = [&path](const Settings& s) {
         REQUIRE(s.save_file(path));
         std::ifstream f(path);
@@ -327,7 +322,7 @@ TEST_CASE("chartmode_key: 2x Bass applies at every difficulty (D20)") {
 }
 
 TEST_CASE("view_difficulty round-trips, and a junk value normalizes to Expert") {
-    const std::string path = temp_ini("difficulty");
+    const std::string path = testtemp::temp_path("difficulty", ".ini");
 
     Settings s;
     s.view_difficulty = "Hard";
@@ -350,7 +345,7 @@ TEST_CASE("view_difficulty round-trips, and a junk value normalizes to Expert") 
 }
 
 TEST_CASE("view_difficulty matches any case and loads as the real name") {
-    const std::string path = temp_ini("difficulty_case");
+    const std::string path = testtemp::temp_path("difficulty_case", ".ini");
     for (const char* word : {"hard", "HARD", "hArD"}) {
         CAPTURE(word);
         {
@@ -429,7 +424,7 @@ TEST_CASE("batch_run bundles one Settings' chartmode, lens and search settings")
 }
 
 TEST_CASE("sp_cap round-trips as a number; auto, zero, junk and pre-1.6 keys read as 4") {
-    const std::string path = temp_ini("spcap");
+    const std::string path = testtemp::temp_path("spcap", ".ini");
 
     // A number reads back as that number, and cap_query asks for it exactly.
     Settings s;

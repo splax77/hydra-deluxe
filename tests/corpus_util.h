@@ -124,19 +124,6 @@ struct Outcome {
     std::exception_ptr error;
 };
 
-// Every SearchSettings field that can change a record.
-inline void add_settings(std::ostringstream& k, const hydra::SearchSettings& s) {
-    auto opt = [&k](const auto& o) {
-        if (o) k << *o;
-        else k << "none";
-        k << '|';
-    };
-    k << s.sp_cap << '|';
-    k << static_cast<int>(s.depth_mode) << '|' << s.depth_value << '|';
-    opt(s.ms_filter);
-    k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';
-}
-
 }  // namespace detail
 
 // The Song for one corpus chart, parsed once per run for these load options
@@ -199,8 +186,7 @@ inline const hydra::HydraRecord& analyzed(const std::string& path,
     std::ostringstream key;
     key.precision(17);
     key << path << '|' << settings.prodrums << '|' << settings.bass2x << '|'
-        << static_cast<int>(settings.difficulty) << '|';
-    detail::add_settings(key, settings);
+        << static_cast<int>(settings.difficulty) << '|' << hydra::settings_key(settings);
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::HydraRecord>& o = it->second;
     if (fresh) {
