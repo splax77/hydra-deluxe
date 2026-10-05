@@ -8,11 +8,13 @@
 #include <algorithm>
 #include <chrono>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "app/library_query.h"
+#include "core/winstr.h"  // wide_to_utf8
 
 using namespace hydra::app;
 
@@ -129,6 +131,26 @@ TEST_CASE("library query: the report pages' fold table is the fold, one characte
     CHECK(folded("\xef\xbc\xa1") == std::optional<std::string>("a"));  // full-width A
     CHECK_FALSE(folded("\xc3\x97").has_value());  // × is kept, so it is not listed
     CHECK_FALSE(folded("b").has_value());
+}
+
+TEST_CASE("library query: the report pages' fold table holds every character the fold changes") {
+    // Walk every character below U+10000 (the surrogate halves are not
+    // characters on their own). Each one the library's fold changes has to be
+    // in the table, or a report page would stop folding it. The one exception
+    // is whitespace: the fold turns it into a space, and the page splits the
+    // query on whitespace instead of looking it up.
+    std::set<std::string> listed;
+    for (const FoldEntry& e : search_fold_table()) listed.insert(e.from);
+    std::vector<unsigned> missing;
+    for (unsigned cp = 0; cp <= 0xFFFF; ++cp) {
+        if (cp >= 0xD800 && cp <= 0xDFFF) continue;
+        const std::string from = hydra::wide_to_utf8(std::wstring(1, static_cast<wchar_t>(cp)));
+        const std::string to = fold_for_search(from);
+        if (to == from || to == " ") continue;
+        if (!listed.count(from)) missing.push_back(cp);
+    }
+    INFO("first missing code point: " << (missing.empty() ? 0u : missing.front()));
+    CHECK(missing.size() == 0);
 }
 
 TEST_CASE("library query: words match in any order and across fields") {

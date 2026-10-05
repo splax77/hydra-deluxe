@@ -7,9 +7,11 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <iterator>
 #include <system_error>
 
-#include "core/stars.h"  // kMaxStars
+#include "core/stars.h"    // kMaxStars
+#include "core/winstr.h"   // wide_to_utf8
 
 namespace hydra::app {
 
@@ -20,6 +22,31 @@ constexpr size_t npos = std::string_view::npos;
 constexpr const char* kStarsError = "stars: needs a number from 0 to 7";
 constexpr const char* kSqueezeError =
     "squeeze<= needs a number of milliseconds, like squeeze<=20";
+
+// ---- the characters the fold changes ------------------------------------------
+
+// A run of code points, first to last, both included.
+struct FoldRun {
+    unsigned first, last;
+    constexpr bool holds(unsigned cp) const { return cp >= first && cp <= last; }
+};
+
+// The three runs of characters the fold changes one for one, named once here
+// for fold_into and search_fold_table both. The fold's only other change is
+// whitespace, which becomes one space; the report pages split a query on
+// whitespace instead of looking it up.
+constexpr FoldRun kAsciiUpper{'A', 'Z'};       // lower-cased
+constexpr FoldRun kLatin{0x00C0, 0x017F};      // Latin-1 letters and Latin Extended-A, to ASCII
+constexpr FoldRun kFullWidth{0xFF01, 0xFF5E};  // full-width ASCII, to its ASCII twin, lower-cased
+constexpr FoldRun kFoldRuns[] = {kAsciiUpper, kLatin, kFullWidth};
+
+// search_fold_table writes each character from one UTF-16 unit, so every run
+// sits below U+10000 and clear of the surrogate halves.
+constexpr bool one_utf16_unit(FoldRun run) {
+    return run.last <= 0xFFFF && (run.last < 0xD800 || run.first > 0xDFFF);
+}
+static_assert(one_utf16_unit(kAsciiUpper) && one_utf16_unit(kLatin) &&
+              one_utf16_unit(kFullWidth));
 
 // ---- bytes -----------------------------------------------------------------
 
@@ -38,7 +65,7 @@ bool is_continuation(unsigned char c) {
 }
 
 char ascii_lower(unsigned char c) {
-    return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
+    return static_cast<char>(kAsciiUpper.holds(c) ? c + ('a' - 'A') : c);
 }
 
 bool iequals_ascii(std::string_view a, std::string_view b) {
@@ -56,8 +83,9 @@ bool starts_with_ci(std::string_view s, std::string_view prefix) {
 
 // ---- folding ---------------------------------------------------------------
 
-// ASCII for U+00C0..U+00FF. nullptr keeps the character (the two signs).
-constexpr const char* kLatin1[64] = {
+// ASCII for each character of kLatin, U+00C0..U+017F, in order. nullptr keeps
+// the character (the two signs × and ÷).
+constexpr const char* kLatinAscii[] = {
     "a", "a", "a", "a", "a", "a", "ae", "c",     // C0  À Á Â Ã Ä Å Æ Ç
     "e", "e", "e", "e", "i", "i", "i",  "i",     // C8  È É Ê Ë Ì Í Î Ï
     "d", "n", "o", "o", "o", "o", "o",  nullptr, // D0  Ð Ñ Ò Ó Ô Õ Ö ×
@@ -66,10 +94,7 @@ constexpr const char* kLatin1[64] = {
     "e", "e", "e", "e", "i", "i", "i",  "i",     // E8  è é ê ë ì í î ï
     "d", "n", "o", "o", "o", "o", "o",  nullptr, // F0  ð ñ ò ó ô õ ö ÷
     "o", "u", "u", "u", "u", "y", "th", "y",     // F8  ø ù ú û ü ý þ ÿ
-};
-
-// ASCII for U+0100..U+017F, Latin Extended-A. Every entry is a letter.
-constexpr const char* kLatinExtA[128] = {
+    // Latin Extended-A. Every entry from here on is a letter.
     "a", "a", "a",  "a",  "a", "a", "c", "c",  // 0100  Ā ā Ă ă Ą ą Ć ć
     "c", "c", "c",  "c",  "c", "c", "d", "d",  // 0108  Ĉ ĉ Ċ ċ Č č Ď ď
     "d", "d", "e",  "e",  "e", "e", "e", "e",  // 0110  Đ đ Ē ē Ĕ ĕ Ė ė
@@ -87,6 +112,8 @@ constexpr const char* kLatinExtA[128] = {
     "u", "u", "u",  "u",  "w", "w", "y", "y",  // 0170  Ű ű Ų ų Ŵ ŵ Ŷ ŷ
     "y", "z", "z",  "z",  "z", "z", "z", "s",  // 0178  Ÿ Ź ź Ż ż Ž ž ſ
 };
+static_assert(std::size(kLatinAscii) == kLatin.last - kLatin.first + 1,
+              "one entry per character of kLatin");
 
 // The shown-text bytes one folded byte came from: the whole character, or the
 // whole whitespace run, that produced it.
@@ -139,22 +166,25 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
             continue;
         }
 
-        // U+00C0..U+017F are the two-byte sequences C3 80 to C5 BF.
-        if (c0 >= 0xC3 && c0 <= 0xC5 && is_continuation(c1)) {
+        // A two-byte character in kLatin becomes its ASCII letters.
+        if (c0 >= 0xC2 && c0 <= 0xDF && is_continuation(c1)) {
             const unsigned cp = ((c0 & 0x1Fu) << 6) | (c1 & 0x3Fu);
-            const char* ascii = cp <= 0xFF ? kLatin1[cp - 0xC0] : kLatinExtA[cp - 0x100];
-            if (ascii) emit(ascii, i, i + 2);
-            else emit(text.substr(i, 2), i, i + 2);
-            i += 2;
-            continue;
+            if (kLatin.holds(cp)) {
+                const char* ascii = kLatinAscii[cp - kLatin.first];
+                if (ascii) emit(ascii, i, i + 2);
+                else emit(text.substr(i, 2), i, i + 2);
+                i += 2;
+                continue;
+            }
         }
 
-        // Full-width ASCII, U+FF01..U+FF5E, is EF BC 81 to EF BD 9E. Its ASCII
-        // twin is 0xFEE0 lower.
-        if (c0 == 0xEF && (c1 == 0xBC || c1 == 0xBD) && is_continuation(c2)) {
-            const unsigned cp = 0xF000u | ((c1 & 0x3Fu) << 6) | (c2 & 0x3Fu);
-            if (cp >= 0xFF01 && cp <= 0xFF5E) {
-                const char lower = ascii_lower(static_cast<unsigned char>(cp - 0xFEE0));
+        // A three-byte character in kFullWidth becomes its ASCII twin, which
+        // sits as far below '!' as the run's first character does.
+        if (c0 >= 0xE0 && c0 <= 0xEF && is_continuation(c1) && is_continuation(c2)) {
+            const unsigned cp = ((c0 & 0x0Fu) << 12) | ((c1 & 0x3Fu) << 6) | (c2 & 0x3Fu);
+            if (kFullWidth.holds(cp)) {
+                const char lower =
+                    ascii_lower(static_cast<unsigned char>(cp - (kFullWidth.first - '!')));
                 emit(std::string_view(&lower, 1), i, i + 3);
                 i += 3;
                 continue;
@@ -259,28 +289,12 @@ std::string fold_for_search(std::string_view text) {
 }
 
 std::vector<FoldEntry> search_fold_table() {
-    // The three runs of characters fold_into changes one for one. Whitespace
-    // is left to the page, which splits the query on it.
-    struct Run {
-        unsigned first, last;
-    };
-    constexpr Run kRuns[] = {{'A', 'Z'}, {0x00C0, 0x017F}, {0xFF01, 0xFF5E}};
-
+    // Every character of the fold's three runs, kept when the fold changes
+    // it. Whitespace is left to the page, which splits the query on it.
     std::vector<FoldEntry> table;
-    for (const Run& run : kRuns) {
+    for (const FoldRun& run : kFoldRuns) {
         for (unsigned cp = run.first; cp <= run.last; ++cp) {
-            // UTF-8 for a code point below U+10000: one, two or three bytes.
-            std::string from;
-            if (cp < 0x80) {
-                from.push_back(static_cast<char>(cp));
-            } else if (cp < 0x800) {
-                from.push_back(static_cast<char>(0xC0 | (cp >> 6)));
-                from.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
-            } else {
-                from.push_back(static_cast<char>(0xE0 | (cp >> 12)));
-                from.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
-                from.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
-            }
+            std::string from = wide_to_utf8(std::wstring(1, static_cast<wchar_t>(cp)));
             std::string to = fold_for_search(from);
             if (to != from) table.push_back(FoldEntry{std::move(from), std::move(to)});
         }
