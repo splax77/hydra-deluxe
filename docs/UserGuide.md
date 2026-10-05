@@ -42,13 +42,13 @@ While a batch runs, the bar is locked and says `Stop the batch to change these.`
 
 For example, say you analyzed a song with 2x Bass on and want to see it with 1x bass. Untick 2x Bass and analyze again. Tick it again and the 2x result comes back.
 
-**SP cap.** The most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison only runs at 4 bars.
+**SP cap.** The most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison only runs at 4 bars.
 
 **1.0 fills.** Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. Leave it off for current Clone Hero. Tick it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
 
 **Score range.** How many extra paths below optimal to keep. The dropdown picks the unit. `scores` keeps the next few distinct scores under optimal. `points` keeps every path within that many points of optimal. These paths are a little worse, but handy when the optimal path is awkward to play. More paths make the analysis slower.
 
-**Path limit.** When ticked, an extra path is kept only when its hardest squeeze is within this many milliseconds. That keeps alternates you can realistically hit. It starts on<!-- default: Settings::mslimit_enabled --> at 10 ms<!-- default: Settings::mslimit_value -->. Lower or negative values demand more slack. The limit compares raw squeeze milliseconds at the SP end. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
+**Path limit.** When ticked, an extra path is kept only when its hardest squeeze or required early fill is within this many milliseconds. That keeps alternates you can realistically hit. A path that ties the best score is kept even when its timing is over the limit, and its figure shows in orange; below the best score, a path over the limit is dropped. It starts on<!-- default: Settings::mslimit_enabled --> at 10 ms<!-- default: Settings::mslimit_value -->. Lower or negative values demand more slack. The limit compares raw milliseconds: for a squeeze, the gap at the SP end; for an early fill, the gap at the fill deadline. It does not account for frontend timing scaling (see the Paths tab), so a kept path can be a bit harder than its number suggests where an activation's scale line is orange.
 
 ## Searching the library
 
@@ -79,9 +79,9 @@ Searching ignores case and accents, so `ALLISTER` finds Allister and `beyonce` f
 | `folder:` | the folder only | `folder:"tier 4"` finds the 5 songs in Tier 4 |
 | `title:` | the title only | `title:everlong` finds Everlong |
 | `stars:N` | songs whose optimal path earns exactly N stars (0 to 7) | `stars:7` finds Burnout once it is analyzed |
-| `squeeze<=N` | songs whose optimal path's hardest squeeze is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
+| `squeeze<=N` | songs whose optimal path's hardest squeeze or required early fill is N ms or less | `squeeze<=200` keeps Burnout (163 ms); `squeeze<=20` drops it |
 
-You can mix them: `charter:hoph2o stars:7`. `squeeze<N` works the same as `squeeze<=N`. A path with no squeeze at all passes any squeeze limit.
+You can mix them: `charter:hoph2o stars:7`. `squeeze<N` means the same as `squeeze<=N`: at most N. A path that needs no timing passes any squeeze limit.
 
 `stars:` and `squeeze<=` only look at current results. A song that is not analyzed, or whose result is Stale, never matches them. A filter Hydra Deluxe can't read, like `stars:9`, shows a short note under the search box and is left out of the search.
 
@@ -103,13 +103,13 @@ The panel has four tabs: **Paths**, **Preview**, **Dynamics** and **Stars**.
 
 ## Paths tab
 
-The left side lists the paths the analysis kept, grouped by score. **Optimal** comes first. When several paths tie for the top score, all of them are optimal, because playing any of them earns the same score. Then come the extra paths under a heading like **Within 2 scores**. Last is **Best all-0 path**: the best path that activates at the first chance every time, with no skips and no squeeze timing, and how far it falls below optimal. Click a path to show it on the right.
+The left side lists the paths the analysis kept, grouped by score. **Optimal** comes first. When several paths tie for the top score, all of them are optimal, because playing any of them earns the same score. Then come the extra paths under a heading like **Within 2 scores**. Last is **Best all-0 path**: the best path that activates at the first chance every time, with no skips, and needs no timing. It also shows how far it falls below optimal. Click a path to show it on the right.
 
-Each path shows its own hardest timing right after it, like `378,315 · 3- 1 2   163.0 ms`: the hardest squeeze or early fill that path needs. It turns orange past the difficult limit. A path that needs no timing shows nothing there.
+Each path shows its own hardest timing right after it, like `378,315 · 3- 1 2   163.0 ms`: the hardest squeeze or required early fill that path needs. It turns orange past the difficult limit. A path that needs no timing shows nothing there.
 
 The right side starts with a summary, like `Activations 3 · no SP left over`. Under it, a timeline runs from the first measure to the last, with a mark for each activation. A mark is outlined in orange only when its row's timing is orange too. For a result saved before version 1.9, the timeline appears a moment after you open the song: Hydra Deluxe reads the chart once for its length and remembers it. Nothing is re-analyzed.
 
-Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for its hardest timing, like `squeeze out 163 ms` or `early fill 20 ms`. An activation that skips fills keeps its early fill badge, because that timing decides whether the first fill shows up. Click a row to open it, or use `Expand all` and `Collapse all`.
+Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for its hardest timing, like `squeeze out 163 ms` or `early fill 20 ms`. An activation that skips fills keeps its early fill badge when its Star Power is ready no earlier than the fill's deadline, because that timing decides whether the first fill shows up. An early fill with time to spare has nothing to time, so it gets no badge. Click a row to open it, or use `Expand all` and `Collapse all`.
 
 An open row shows:
 
@@ -138,7 +138,7 @@ One more setting feeds these displays: `hit_window_ms` in `hydra_settings.ini` (
 
 The Preview plays the chart as a 3D note highway, in time with the song's audio. It draws the chosen path on the highway: the Star Power windows as a teal floor, and the fills a player following the path would see.
 
-The Preview follows the Analysis settings. Change the difficulty, Pro Drums or 2x Bass and it reloads with that mode's notes. If the chart has no notes for that mode, it says so, like `No Hard Pro Drums notes in this chart.`
+The Preview follows the Analysis settings. Change the difficulty, Pro Drums or 2x Bass and it reloads with that mode's notes. If the chart has no notes for that mode, it says so, like `No Hard Pro Drums notes in this chart.` If the chart file changed since it was analyzed, the Preview draws no path and shows `This chart changed since it was analyzed. Analyze it again to see its path.`
 
 **`Showing`** picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (best all-0)`.
 
@@ -204,7 +204,7 @@ When it finishes, the strip changes to a summary: how many songs were analyzed, 
 
 A finished batch builds the **path report**, `hydra_paths.html`. It is a sortable, searchable web page of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums and 2x Bass) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
 
-Tiles at the top sum up the rows on show. The **Hardest ms** tile is the hardest squeeze or early fill any of those paths needs. `Best path only` keeps just the optimal paths. When paths tie for the top score, it keeps every one of them, because each is optimal. The search box ignores case and accents. Every word you type must appear somewhere in the song, artist, charter or path the row shows, and the words can match different fields. Quotes and the Library's field prefixes, like `artist:`, are ordinary words here. Numbers read the same as in the app, with commas from 1,000 whatever language your browser uses, and `1 bar` at an SP cap of 1.
+Tiles at the top sum up the rows on show. The **Hardest ms** tile is the hardest squeeze or required early fill any of those paths needs. `Best path only` keeps just the optimal paths. When paths tie for the top score, it keeps every one of them, because each is optimal. The search box ignores case and accents. Every word you type must appear somewhere in the song, artist, charter or path the row shows, and the words can match different fields. Quotes and the Library's field prefixes, like `artist:`, are ordinary words here. Numbers read the same as in the app, with commas from 1,000 whatever language your browser uses, and `1 bar` at an SP cap of 1.
 
 If nothing is analyzed under the current settings but other results exist, the report says so and names the settings it looked under, like `Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).` It then suggests analyzing with these settings or changing them. Only an empty database says no records are stored yet.
 
@@ -214,7 +214,7 @@ The finished strip offers:
 
 - **`Open report`** opens it in your browser.
 - **`Show in folder`** opens the folder that holds it.
-- **`Open automatically`** opens the report by itself whenever a batch finishes.
+- **`Open automatically`**: Open each report in your browser as soon as it's built.
 - Its `X` dismisses the strip.
 
 `Open path report` on the toolbar opens the last report at any time.
@@ -250,13 +250,13 @@ fill_land_slop_beats = 0.03125
 
 What each line does:
 
-- **`backend_leeway_ms`** (default 3.0 ms<!-- default: Rules::backend_leeway_ms -->): a backend note that lands less than this far past the Star Power end still counts in the score. Exactly this far past it does not.
-- **`sqout_rule`** (default `first_note`): what a squeeze-out costs. `first_note` removes the Star Power doubling from one note of the chord (the lowest-value one). `whole_chord` removes it from every note in the chord.
-- **`max_tied_paths`** (default `4`): how many paths Hydra Deluxe keeps when several reach the same score. More paths means longer lists and slower analysis.
-- **`fill_cooldown_measures`** (default `4`): for charts with no authored fills, how many measures must pass after an activation point before Hydra Deluxe places the next one.
-- **`fill_max_distance_beats`** (default `0.5`): for charts with no authored fills, how far from a measure line a note can sit and still get a fill.
-- **`fill_length_measures`** (default `0.5`): for charts with no authored fills, how long each fill Hydra Deluxe places is, in measures.
-- **`fill_land_slop_beats`** (default `0.03125`, a 32nd of a beat): how close after a fill's end a note must be for the fill to land on it. Hydra Deluxe adds one tick to this, as Clone Hero does, so even `0` lets a note one tick late take the fill. It applies only to fills written in the chart.
+- **`backend_leeway_ms`** (default 3.0 ms<!-- default: Rules::backend_leeway_ms -->, must be 0 or more): a backend note that lands less than this far past the Star Power end still counts in the score. Exactly this far past it does not.
+- **`sqout_rule`** (default `first_note`; `first_note` and `whole_chord` are the only values): what a squeeze-out costs. `first_note` removes the Star Power doubling from one note of the chord (the lowest-value one). `whole_chord` removes it from every note in the chord.
+- **`max_tied_paths`** (default `4`, must be 1 or more): how many paths Hydra Deluxe keeps at one score: one count per score, whichever side of the Path limit each path falls on; paths inside the limit come first. More paths means longer lists and slower analysis.
+- **`fill_cooldown_measures`** (default `4`, must be 1 or more): for charts with no authored fills, how many measures must pass after an activation point before Hydra Deluxe places the next one.
+- **`fill_max_distance_beats`** (default `0.5`, must be 0 or more): for charts with no authored fills, how far from a measure line a note can sit and still get a fill.
+- **`fill_length_measures`** (default `0.5`, must be above 0): for charts with no authored fills, how long each fill Hydra Deluxe places is, in measures.
+- **`fill_land_slop_beats`** (default `0.03125`, a 32nd of a beat, must be 0 or more): how close after a fill's end a note must be for the fill to land on it. Hydra Deluxe adds one tick to this, as Clone Hero does, so even `0` lets a note one tick late take the fill. It applies only to fills written in the chart.
 
 Older files may still have `auto_cap_ladder` or `auto_budget_s` lines. Hydra Deluxe reads and ignores them, so those files keep working.
 
