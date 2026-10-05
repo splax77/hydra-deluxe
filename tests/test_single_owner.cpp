@@ -2131,23 +2131,6 @@ const std::vector<OwnerRule>& rules() {
            "inline double estimate_freq_hz(const hydra::audio::DecodedAudio& a, int channel) {",
            "estimate_freq_hz, the owner"}},
          {"tests"}},
-        // The byte-at-a-time shift loop is the form every copy used. A u16
-        // writer's lone `n >> 8` line is not caught (review of M6-J1c
-        // finding 3 leaves that shape to the owner).
-        {"Which test helper writes a little-endian number?",
-         "put_le in tests/bytes_util.h",
-         R"(static_cast<uint8_t>\(\w+ >> \(8 \* i\)\))",
-         "",
-         {},
-         {},
-         "review of M6-J1c finding 3, folded under D53 (phase 6 task J1-4)",
-         {"for (int i = 0; i < 4; ++i) o.push_back(static_cast<uint8_t>(n >> (8 * i)));",
-          "for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"},
-         {"o.push_back(static_cast<uint8_t>(n >> 8));"},
-         {{"tests/bytes_util.h",
-           "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
-           "put_le, the owner (put_u16, put_u32 and put_u64 write through it)"}},
-         {"tests"}},
         // The join row above, for any name: a string literal that starts with
         // a backslash and a name, glued on with +, or a bare backslash added
         // with +=. join_folder's own "\\" is followed by a quote, not a name.
@@ -3316,14 +3299,14 @@ const std::vector<OwnerRule>& rules() {
         // big-endian read (MIDI) and the hash's XOR-ed tail bytes are other
         // questions and are not flagged.
         {"How is a little-endian number written byte by byte? (any width or name)",
-         "read_le in src/core/little_endian.h (reads; BinaryReader::u32/u64 call it) and "
-         "BinaryWriter::u32/u64 in src/store/serialize.cpp (writes)",
+         "read_le and append_le in src/core/little_endian.h (BinaryReader/Writer call the "
+         "readers; BinaryWriter and testbytes::put_le call the writer)",
          R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*|\|\s*\(*\s*(static_cast<\w+>|u?int\d*_t)?\s*\(*\s*[\w.>-]+\[[^\]]*\]\s*\)*\s*<<\s*8\b)",
          "",
          {},
          {},
          "audit finding 195, folded under D53 (phase 6 tasks J3-6 and J3-9d); widened by review of J3-6 "
-         "finding 1 and by J3-9d; tests scanned since the J3 join",
+         "finding 1 and by J3-9d; tests scanned since the J3 join; writing folded in the J3 review fix",
          {"uint64_t read_le(const std::vector<uint8_t>& b, size_t at, int bytes) {",
           "std::vector<uint8_t> write_le(uint64_t v, int bytes) {",
           "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
@@ -3335,7 +3318,8 @@ const std::vector<OwnerRule>& rules() {
           "link->preskip = pos[10] | (pos[11] << 8);",
           "link->gain_q78 = static_cast<int16_t>(pos[16] | (pos[17] << 8));",
           "skip_remaining = op.packet[10] | (static_cast<int>(op.packet[11]) << 8);",
-          "const uint32_t first_four = uint32_t(structure[0]) | uint32_t(structure[1]) << 8 |"},
+          "const uint32_t first_four = uint32_t(structure[0]) | uint32_t(structure[1]) << 8 |",
+          "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"},
          {"void BinaryWriter::u32(uint32_t v) {", "uint32_t BinaryReader::u32() {",
           "out.push_back(static_cast<uint8_t>(v >> 8));",
           "const uint32_t len = core::read_le_u32(meta.data() + pos);",
@@ -3345,16 +3329,16 @@ const std::vector<OwnerRule>& rules() {
           "(uint32_t(d[at + 2]) << 8) | uint32_t(d[at + 3]);",
           "return int16_t((uint16_t(d[at]) << 8) | uint16_t(d[at + 1]));",
           "case 10: k2 ^= static_cast<uint64_t>(tail[9]) << 8;    [[fallthrough]];",
-          "link->channels = pos[9];"},
+          "link->channels = pos[9];",
+          "void BinaryWriter::u32(uint32_t v) { core::append_le_u32(bytes, v); }",
+          "void BinaryWriter::u64(uint64_t v) { core::append_le_u64(bytes, v); }",
+          "hydra::core::append_le(out, v, bytes);"},
          {{"src/core/little_endian.h",
            "for (std::size_t i = 0; i < sizeof(T); ++i) v = static_cast<T>(v | (static_cast<T>(p[i]) << (8 * i)));",
            "read_le, the owner of reading"},
-          {"src/store/serialize.cpp",
-           "for (int i = 0; i < 4; ++i) bytes.push_back(static_cast<uint8_t>(v >> (8 * i)));",
-           "BinaryWriter::u32, the owner of writing"},
-          {"src/store/serialize.cpp",
-           "for (int i = 0; i < 8; ++i) bytes.push_back(static_cast<uint8_t>(v >> (8 * i)));",
-           "BinaryWriter::u64, the owner of writing"},
+          {"src/core/little_endian.h",
+           "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
+           "append_le, the owner of writing"},
           {"src/store/path_codec.cpp",
            "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(p[i]) << (8 * i);",
            "getblock64, the hash's block read; it reads hash input, not a stored number"},
@@ -3780,14 +3764,6 @@ const std::vector<KnownCopy>& known_copies() {
          "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
          "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
          "finding 190)"},
-        // The test fixtures' one byte writer also writes 16-bit WAV fields,
-        // and BinaryWriter has no 16-bit method; folding it needs one added
-        // in src/store/serialize.h, outside the J3 join.
-        {"How is a little-endian number written byte by byte? (any width or name)",
-         "tests/bytes_util.h",
-         "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
-         "unassigned: the main session names the fold (put_le writes through BinaryWriter once it "
-         "has a 16-bit method; audit finding 195)"},
         // The record's length from notes, which D69 replaces with the audio's
         // end. Nothing in the Preview calls it any more.
         {"When is the song's last note?", "src/store/record_store.cpp",
