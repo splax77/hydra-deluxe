@@ -588,7 +588,7 @@ TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unc
     // The library list hands the Preview the same fingerprint the scan stored.
     store::RecordStore db(":memory:");
     db.rebuild_chart_library({scanned});
-    const std::vector<ChartLibraryEntry> listed = db.list_chart_library(std::nullopt, 0, -1);
+    const std::vector<ChartLibraryEntry> listed = db.list_chart_library(0, -1);
     REQUIRE(listed.size() == 1);
     CHECK(listed[0].sig == scanned.sig);
 

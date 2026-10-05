@@ -1037,21 +1037,22 @@ const std::vector<OwnerRule>& rules() {
           "if (m == \"ch11\") return;"},
          {"if (mode && hydra::fill_rule_from_stamp(*mode) != expected)",
           "legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? \"1\" : \"0\";"}},
-        // The meta key the stamp is stored under, typed outside the store's
-        // getter and setter.
+        // The meta key the stamp is stored under, typed anywhere but its one
+        // constant. RecordStore::engine_mode and set_engine_mode read and
+        // write through it.
         {"Which meta key holds the fill-rule stamp?",
-         "RecordStore::engine_mode and set_engine_mode in src/store/record_store.cpp",
+         "kEngineModeKey in src/store/record_store.cpp",
          R"("engine_mode")",
          "",
          {},
          {},
-         "audit R7.26 (M7-2b review, finding 1)",
-         {"if (const std::optional<std::string> mode = meta_get(\"engine_mode\"))"},
-         {"if (const std::optional<std::string> mode = engine_mode())"},
-         {{"src/store/record_store.cpp", "return meta_get(\"engine_mode\");",
-           "engine_mode, the owner"},
-          {"src/store/record_store.cpp", "meta_set(\"engine_mode\", mode);",
-           "set_engine_mode, the owner"}}},
+         "audit R7.26 (M7-2b review, finding 1; the key typed once by phase 6 task J4-2)",
+         {"if (const std::optional<std::string> mode = meta_get(\"engine_mode\"))",
+          "return meta_get(\"engine_mode\");", "meta_set(\"engine_mode\", mode);"},
+         {"if (const std::optional<std::string> mode = engine_mode())",
+          "return meta_get(kEngineModeKey);", "meta_set(kEngineModeKey, mode);"},
+         {{"src/store/record_store.cpp", "constexpr const char* kEngineModeKey = \"engine_mode\";",
+           "kEngineModeKey, the owner"}}},
         // The charts table grouped by md5 to pick a copy, outside the one
         // query that does it.
         {"Which copy names a chart the scan found twice?",
@@ -4068,17 +4069,101 @@ const std::vector<OwnerRule>& rules() {
           "pick_preview_path(ctx, h.app->viewed.record->all_paths()[1]);"},
          {},
          {"tests/ui/uitest_preview.cpp"}},
+        // write_row's replace purge matches the row's own unique key, bound
+        // from the row's stored cap, not a lookup's CapQuery.
+        {"Which rows were stored at this SP cap?",
+         "cap_match in src/store/record_store.cpp",
+         R"(sp_cap=\?)",
+         "",
+         {},
+         {},
+         "audit finding 252; phase 6 task J4-2 (D53, D54)",
+         {"sql += \" AND \" + p + \"sp_cap=?\";", "sql += \" AND sp_cap=?\";"},
+         {"sql += \" AND \" + cap_match(a);", "sql += \" AND \" + cap_match(\"\");"},
+         {{"src/store/record_store.cpp", "return std::string(a) + \"sp_cap=?\";",
+           "cap_match, the owner"},
+          {"src/store/record_store.cpp",
+           "purge(\"hyhash=? AND chartmode=? AND sp_cap=? AND \" + lens_match(\"\") +",
+           "write_row's purge: the row's own unique key, not a lookup"}}},
+        // The INSERT, reindex's UPDATE and list_records build their summary
+        // slots from the list and its count, so a typed run of the ten
+        // placeholders is a second spelling of the list.
+        {"Which columns hold a path summary, and how many?",
+         "kSummaryColumnList and kSummaryColumnCount in src/store/record_store.cpp",
+         R"((\?,){9}\?)",
+         "",
+         {},
+         {},
+         "audit finding 253; phase 6 task J4-2 (D53, D54)",
+         {"kSummaryColumnList + \", rules_fp) VALUES (?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?,?,?,?,?, \" +"},
+         {"placeholders(kSummaryColumnCount) + \", \" + rules_fp_of(structure_param.c_str()) +"},
+         {},
+         {"src"}},
+        // list_records' slots after the summary are counted from the list.
+        {"Which columns hold a path summary, and how many? (slots)",
+         "kSummaryColumnList and kSummaryColumnCount in src/store/record_store.cpp",
+         R"(column_(text|blob|int|int64|opt_i64|opt_f64)\(s,\s*1[6-9]\)|sqlite3_column_\w+\(s,\s*1[6-9]\))",
+         "",
+         {},
+         {},
+         "audit finding 253; phase 6 task J4-2 (D53, D54)",
+         {"listing.sp_cap = sqlite3_column_int(s, 16);",
+          "rank_row(column_text(s, 17), column_blob(s, 19),"},
+         {"listing.sp_cap = sqlite3_column_int(s, kAfterSummary);",
+          "rank_row(column_text(s, kAfterSummary + 1), column_blob(s, kAfterSummary + 3),"},
+         {},
+         {"src/store/record_store.cpp"}},
+        // The constructor adds the sig column on every open, so nothing asks
+        // the table whether it has it. has_column's PRAGMA table_info is a
+        // different spelling; the tests' seeding helpers are out of scope.
+        {"Does the charts table have the sig column?",
+         "has_column in src/store/record_store.cpp",
+         R"(pragma_table_info\()",
+         "",
+         {},
+         {},
+         "audit finding 299; phase 6 task J4-2 (D53, D54)",
+         {"Stmt probe = prepare(db_, \"SELECT COUNT(*) FROM pragma_table_info('charts') \""},
+         {"std::string sql = std::string(\"PRAGMA table_info(\") + table + \")\";"},
+         {},
+         {}},
+        // Hydra never writes the slot (D53 item 1); the column checks are the
+        // one upgrade gate. Comments are read so the header names no number.
+        {"Which schema is this database at?",
+         "the has_column probes in RecordStore::RecordStore (src/store/record_store.cpp)",
+         R"(user_version)",
+         "",
+         {},
+         {},
+         "audit finding 298; phase 6 task J4-2 (D53 item 1, D54)",
+         {"exec(\"PRAGMA user_version = 3\");",
+          "// Three tables carry an analysis (schema user_version 3):"},
+         {"// Three tables carry an analysis:",
+          "if (!has_column(\"charts\", \"sig\")) exec(\"ALTER TABLE charts ADD COLUMN sig TEXT\");"},
+         {},
+         {},
+         "",
+         "",
+         true},
+        // The library's search folds case and accents and knows field
+        // prefixes; an SQL LIKE would be a second, disagreeing rule.
+        {"Which library charts match a typed search?",
+         "query_matches in src/app/library_query.cpp",
+         R"(LIKE \?)",
+         "",
+         {},
+         {},
+         "audit finding 113; phase 6 task J4-2 (D53, D54)",
+         {"if (search) sql += \" WHERE name LIKE ? OR artist LIKE ? OR charter LIKE ?\";"},
+         {"\" ORDER BY name LIMIT ? OFFSET ?\");"},
+         {},
+         {}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
-        // The test files J4-6 left for the tasks that fork from it (J4-4
-        // folded the GUI harness's).
-        {"How does a test build a per-process scratch path?", "tests/test_store.cpp",
-         "GetTempPathW(MAX_PATH, tmp);",
-         "task J4-2 (the store tests call testtemp::temp_path; audit finding 287)"},
     };
     return k;
 }
