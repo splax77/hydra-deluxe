@@ -174,12 +174,12 @@ public:
     // (PreviewTransport::length_ms). Play, the clock and jumps run to here.
     double playback_end_ms() const;
     void seek_ms(double ms);
-    // Move the playhead by `delta_ms` (the -5s/+5s buttons, Left/Right).
+    // Move the playhead by `delta_ms` (the kJumpSeconds buttons, Left/Right).
     // Playing stays playing; the transport stops it at 0 and at
     // playback_end_ms().
     void jump_ms(double delta_ms);
     // Pause, then move the playhead `delta_ticks` chart ticks from the tick
-    // the time box shows (the < 5 Ticks / 5 Ticks > buttons, comma and period).
+    // the time box shows (the kTickStep buttons, comma and period).
     // A step of 0 snaps onto the displayed tick.
     void step_ticks(int delta_ticks);
     bool has_audio() const;

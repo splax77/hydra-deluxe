@@ -36,7 +36,8 @@ constexpr int kJumpSeconds = 5;
 constexpr int kTickStep = 5;
 constexpr double kJumpMs = kJumpSeconds * 1000.0;
 
-// "5 seconds", "5 ticks": the key bar's words and the tooltips' tails.
+// The key bar's words and the tooltips' tails, built from kJumpSeconds and
+// kTickStep.
 const std::string& jump_words() {
     static const std::string s = std::to_string(kJumpSeconds) + " seconds";
     return s;

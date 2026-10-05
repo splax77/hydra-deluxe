@@ -285,7 +285,7 @@ double PreviewController::position_ms() const { return transport_.now_ms(); }
 
 // The scrubber's range (D50 item 4): the song's length as the Paths timeline
 // reads it, so the slider and its gold marks end at the last note. Playback,
-// the clock and the 5 s jumps still run to playback_end_ms(), which reaches
+// the clock and the kJumpSeconds jumps still run to playback_end_ms(), which reaches
 // the audio's end.
 double PreviewController::scrub_end_ms() const {
     return hydra::app::scrub_end_ms(song_ ? store::song_length_ms(*song_) : std::nullopt,
