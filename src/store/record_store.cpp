@@ -1779,7 +1779,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(
     const std::optional<std::string>& search, int offset, int limit) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
-    std::string sql = "SELECT md5, name, artist, charter, path, folder FROM charts";
+    std::string sql = "SELECT md5, name, artist, charter, path, folder, sig FROM charts";
     if (search) sql += " WHERE name LIKE ? OR artist LIKE ? OR charter LIKE ?";
     sql += " ORDER BY name LIMIT ? OFFSET ?";
 
@@ -1804,6 +1804,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(
         e.charter = column_text(s, 3);
         e.notespath = column_text(s, 4);
         e.rootfolder = column_text(s, 5);
+        e.sig = column_text(s, 6);
         out.push_back(std::move(e));
     }
     return out;

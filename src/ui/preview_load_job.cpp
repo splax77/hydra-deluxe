@@ -4,7 +4,7 @@
 #include <future>
 #include <string>
 
-#include "app/analysis.h"  // hash_chart_file
+#include "app/analysis.h"  // chart_files_unchanged, hash_chart_file
 #include "app/preview_source.h"
 #include "audio/frames.h"  // frames_of_ms
 #include "app/preview_view.h"
@@ -152,14 +152,18 @@ void PreviewLoadJob::run() {
         app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
         throw_if_cancelled();
 
-        // Has the chart changed since it was analyzed (finding 126)? The file
-        // is hashed with the scan's own rule, so the two can never disagree,
-        // on a thread of its own beside both branches: a .sng's hash covers
-        // all its audio, so in front of the stem open it would add to the
-        // load. A hash that is not the record's means the chart changed. An
-        // empty hash (an unreadable file) is not a change: the parse error
-        // speaks for that. The future waits for the hash if this job throws.
+        // Has the chart changed since it was analyzed (finding 126)? First the
+        // rescan's own shortcut: files whose size and modified time match the
+        // scan's fingerprint still have the scan's md5, so nothing is read.
+        // Otherwise the file is hashed with the scan's own rule, so the two
+        // can never disagree, on a thread of its own beside both branches: a
+        // .sng's hash covers all its audio, so in front of the stem open it
+        // would add to the load. A hash that is not the record's means the
+        // chart changed. An empty hash (an unreadable file) is not a change:
+        // the parse error speaks for that. The future waits for the hash if
+        // this job throws.
         std::future<bool> changed_check = std::async(std::launch::async, [this] {
+            if (app::chart_files_unchanged(entry_.notespath, entry_.sig)) return false;
             const std::string hash = app::hash_chart_file(entry_.notespath);
             return !hash.empty() && hash != entry_.md5;
         });

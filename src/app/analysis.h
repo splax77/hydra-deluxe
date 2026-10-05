@@ -78,6 +78,13 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 // by path alone. Returns an empty string if the file cannot be read.
 std::string hash_chart_file(const std::string& path);
 
+// Whether a chart's files still have the size and modified time the scan
+// stored in `sig` (ScanItem::sig, ChartLibraryEntry::sig). This is the
+// rescan's own shortcut: when it says yes, the stored md5 still holds and the
+// file need not be hashed again. False when `sig` is empty, the file is gone,
+// or a folder chart has lost its song.ini, so the caller hashes.
+bool chart_files_unchanged(const std::string& notespath, const std::string& sig);
+
 // A chart hash in the one spelling used for matching: its ASCII letters
 // lowered. The scan already writes lowercase hex (see hash_chart_file), so
 // this is for hashes from elsewhere, such as a leaderboard or an older row

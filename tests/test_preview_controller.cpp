@@ -525,6 +525,64 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
     }
 }
 
+// A 1 GB .sng costs seconds to hash, so the changed-chart check asks the
+// rescan's own shortcut first: files whose size and modified time still match
+// the scan's fingerprint keep the scan's md5 and are not read again. The
+// entry's md5 here is deliberately wrong; only a re-hash could notice that.
+TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unchanged chart") {
+    using namespace hydra;
+    wchar_t tmp[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp);
+    const std::wstring wdir = std::wstring(tmp) + L"hydra_prevctl_sig_" +
+                              std::to_wstring(GetCurrentProcessId());
+    CreateDirectoryW(wdir.c_str(), nullptr);
+    const std::string dir = wide_to_utf8(wdir);
+    copy_file_utf8(corpus::first_chart_with_suffix(".chart"), dir + "\\notes.chart");
+    std::FILE* ini = fopen_utf8(dir + "\\song.ini", L"wb");
+    REQUIRE(ini != nullptr);
+    std::fputs("[song]\nname = Fingerprint test\n", ini);
+    std::fclose(ini);
+
+    // The fingerprint and md5 come from the scan itself.
+    auto [items, errors] = app::discover_charts({dir});
+    REQUIRE(items.size() == 1);
+    const ChartLibraryEntry scanned = app::to_library_entry(items[0]);
+    CHECK(app::chart_files_unchanged(scanned.notespath, scanned.sig));
+    CHECK_FALSE(app::chart_files_unchanged(scanned.notespath, ""));
+
+    // The library list hands the Preview the same fingerprint the scan stored.
+    store::RecordStore db(":memory:");
+    db.rebuild_chart_library({scanned});
+    const std::vector<ChartLibraryEntry> listed = db.list_chart_library(std::nullopt, 0, -1);
+    REQUIRE(listed.size() == 1);
+    CHECK(listed[0].sig == scanned.sig);
+
+    // {fingerprint, expected chart_changed}: the scan's own fingerprint skips
+    // the hash, so the wrong md5 goes unnoticed; a stale one or none hashes.
+    const std::pair<std::string, bool> cases[] = {
+        {scanned.sig, false}, {scanned.sig + ":stale", true}, {"", true}};
+    for (const auto& [sig, changed] : cases) {
+        CAPTURE(sig);
+        ChartLibraryEntry entry = listed[0];
+        entry.md5 = "0123456789abcdef0123456789abcdef";
+        entry.sig = sig;
+        PreviewController pc(nullptr, nullptr);
+        pc.set_audio_device_factory(
+            [](int, int, PreviewController::AudioSource)
+                -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+                throw std::runtime_error("no device in tests");
+            });
+        pc.open(entry, true, true, Difficulty::Expert, nullptr, "", 4);
+        for (int i = 0; i < 1200 && pc.loading(); ++i) {
+            pc.poll();
+            Sleep(50);
+        }
+        REQUIRE_FALSE(pc.loading());
+        REQUIRE_FALSE(pc.has_error());
+        CHECK(pc.chart_changed() == changed);
+    }
+}
+
 // wait-idle in the GUI harness means every Preview thread is done, not only
 // the first load: the base job and the overlay jobs count too (finding 109).
 TEST_CASE("busy covers the overlay and base jobs, not only the first load") {

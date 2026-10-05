@@ -231,6 +231,13 @@ std::string sig_of(const DirEntry& notes, const DirEntry* ini) {
     return sig;
 }
 
+// The rescan cache's one "unchanged" test: a fingerprint was stored and the
+// files on disk still give the same one. The scan's cache lookup and
+// chart_files_unchanged both ask it.
+bool sig_unchanged(const std::string& stored, const std::string& now) {
+    return !stored.empty() && stored == now;
+}
+
 }  // namespace
 
 // Chart libraries are UTF-8 in practice; a leading BOM is stripped and
@@ -289,6 +296,27 @@ std::string hash_chart_file(const std::string& path) {
     } catch (const std::exception&) {
         return {};
     }
+}
+
+bool chart_files_unchanged(const std::string& notespath, const std::string& sig) {
+    if (sig.empty()) return false;
+    // The same listing the scan's walk reads, so the size and modified time
+    // come from the same find data the stored fingerprint was made from.
+    const std::string dir = parent_folder(notespath);
+    const std::vector<DirEntry> entries = list_dir(dir);
+    const DirEntry* notes = nullptr;
+    for (const DirEntry& e : entries)
+        if (!e.is_dir && join_folder(dir, e.name) == notespath) {
+            notes = &e;
+            break;
+        }
+    if (!notes) return false;
+    // A .sng or .srb is fingerprinted alone; a folder chart with its song.ini.
+    const ChartFormat format = chart_format_of(notespath);
+    const bool archive = format == ChartFormat::Sng || format == ChartFormat::Srb;
+    const DirEntry* ini = archive ? nullptr : find_song_ini(entries);
+    if (!archive && !ini) return false;
+    return sig_unchanged(sig, sig_of(*notes, ini));
 }
 
 std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }
@@ -406,7 +434,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                 try {
                     if (cache) {
                         auto it = cache->find(pc.notes_path);
-                        if (it != cache->end() && it->second.sig == pc.sig) {
+                        if (it != cache->end() && sig_unchanged(it->second.sig, pc.sig)) {
                             // Field by field, like to_library_entry: seven
                             // strings in a positional list could swap unseen.
                             ScanItem item;

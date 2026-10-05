@@ -236,7 +236,8 @@ enum class SortColumn {
 // One scanned chart file, as browsed in the library table. It lives in the
 // same db file as the records.
 // `sig` is the chart files' size+mtime fingerprint that powers the rescan
-// cache (see chart_library_cache); the UI ignores it.
+// cache (see chart_library_cache). The Preview's changed-chart check reads
+// it too, through app::chart_files_unchanged, to skip re-hashing the file.
 struct ChartLibraryEntry {
     std::string md5;
     std::string title;
