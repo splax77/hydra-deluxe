@@ -283,6 +283,23 @@ TEST_CASE("library model: Best path sorts by score, with unscored rows last both
     CHECK(titles(m).front() == "Halo");  // "beyonce" folds first
 }
 
+// A result whose analysis kept no path is Analyzed, but it has no best path,
+// so a stars: or squeeze filter has nothing to test on it (D51 call 11).
+TEST_CASE("library model: a Ready row with no paths is Analyzed but has no facts (D51 Q11)") {
+    LibraryModel m;
+    m.set_charts({chart("empty", "Empty", "A", "C", "common"),
+                  chart("scored", "Scored", "A", "C", "common")});
+    SummaryLookup no_paths;
+    no_paths.status = RecordStatus::Ready;  // no score, no stars
+    m.set_summaries({no_paths, ready(1000, "1", 7, 100.0)});
+    m.set_query("stars:7");
+    CHECK(titles(m) == std::vector<std::string>{"Scored"});
+    m.set_query("squeeze<=200");
+    CHECK(titles(m) == std::vector<std::string>{"Scored"});
+    m.set_query("");
+    CHECK(m.counts().analyzed == 2);
+}
+
 TEST_CASE("library model: one chart in two folders gets both rows updated") {
     LibraryModel m;
     m.set_charts({chart("same", "Song", "A", "C", "Pack 1"), chart("same", "Song", "A", "C", "Pack 2")});

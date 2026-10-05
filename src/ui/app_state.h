@@ -200,6 +200,9 @@ public:
     std::optional<store::ChartLibraryEntry> selected;
     bool show_details = false;
     void select(const store::ChartLibraryEntry& entry);
+    // Whether this library row is the selected one. By notespath, not md5:
+    // the same chart can sit in two folders, and only the clicked copy is it.
+    bool is_selected_row(const store::ChartLibraryEntry& row) const;
 
     // Whether the song panel is showing. Code outside the panel reads this,
     // not show_details (which the X, Escape and the tests write).
@@ -309,8 +312,9 @@ public:
     // Fills in the open song's length when its result has none (saved before
     // Hydra stored lengths), so the Paths tab's timeline shows without a
     // re-analysis: SongLengthJob reads the chart, then the length is saved
-    // (RecordStore::set_song_length) and put on the viewed lookup. tick()
-    // runs it; a chart that fails to read is not retried this session.
+    // under the difficulty it was read for (RecordStore::set_song_length,
+    // D51 call 9) and put on the lookups of that difficulty. tick() runs it;
+    // a chart and difficulty that fail to read are not retried this session.
     std::unique_ptr<SongLengthJob> length_job;
     void update_song_length();
 
@@ -338,6 +342,17 @@ public:
     enum class SettingsLock { None, Batch, Analysis };
     SettingsLock settings_lock() const;
     bool settings_locked() const { return settings_lock() != SettingsLock::None; }
+    // Whether a library scan may start now: there are song folders, no scan
+    // job is held (its modal is still up until Continue), and no batch is
+    // running. start_scan enforces it; the toolbar button reads it.
+    bool can_scan() const;
+    // Whether any background job is still working: scan, batch, analyze,
+    // path report, the two leaderboard jobs, Dynamics, the song length read,
+    // and the Preview's jobs. A finished job waiting to be collected counts
+    // as done. The parked leaderboard jobs are left out: they were
+    // cancelled, and nothing on screen waits on them. The GUI tests'
+    // wait-idle waits on this.
+    bool any_job_running() const;
     // True when the analyze job belongs to the song the open panel shows, so
     // the panel is where its progress and errors appear.
     bool analyze_job_shown() const;
@@ -379,11 +394,14 @@ public:
     bool batch_redo = false;
 
     // True while the "Analyze library" confirm shows. open_batch_confirm()
-    // loads what it lists: the charts the batch would analyze (the library,
-    // or the search's matches) and how many already have a result under the
-    // current settings. start_batch() analyzes exactly those charts.
+    // loads what it lists: the rows the batch would analyze (the library,
+    // or the search's matches), how many distinct charts they are, and how
+    // many of those already have a result under the current settings. The
+    // two counts are app::plan_batch's answer, the same plan the batch makes
+    // when it starts. start_batch() hands the batch exactly those rows.
     bool batch_confirm_pending = false;
     std::vector<store::ChartLibraryEntry> batch_scope;
+    int64_t batch_scope_charts = 0;
     int64_t batch_scope_with_result = 0;
     void open_batch_confirm();
 
@@ -402,8 +420,9 @@ public:
     void cancel_dm_fetch();
     void cancel_dm_report();
 
-    // Set by the details modal's "Rescan library" remedy: the main window
-    // starts the scan on its next frame (the scan modal belongs to it).
+    // Set by the details modal's "Rescan library" remedy and the Song
+    // folders' "Scan now": the main window calls start_scan on its next frame
+    // (the scan modal belongs to it), which refuses when can_scan says no.
     bool request_scan = false;
 
     // The status line under the toolbar. set_status is news ("Path report
@@ -478,9 +497,13 @@ private:
     std::optional<store::RecordKey> viewed_key_;
     std::vector<std::pair<store::RecordKey, store::RecordLookup>> parked_lookups_;
     static constexpr size_t kParkedLookups = 16;
-    // The chart update_song_length last tried, so a chart it can't read is
-    // not read again every frame.
-    std::string length_tried_md5_;
+    // The chart (md5) and chart mode update_song_length last tried, so a
+    // chart it can't read is not read again every frame, while another
+    // difficulty of the same chart still gets its own read.
+    std::pair<std::string, std::string> length_tried_;
+    // The chart mode the running length_job was started under: where its
+    // length is filed.
+    std::string length_job_chartmode_;
     // Shows the lookup for the current settings: parked if seen, read otherwise.
     void show_record_for_settings();
     // A record was just stored: drops the parked lookups and reads the viewed

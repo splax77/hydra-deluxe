@@ -48,6 +48,13 @@ TEST_CASE("batch text: the confirm lists the settings a batch runs with") {
     CHECK(d.sp_cap == "1 bar (a what-if)");
     CHECK(d.score_range == "2,000 points");
     CHECK(d.path_limit == "off");
+
+    // A hand-edited depth_mode=2 searches by scores, so it reads scores
+    // (Settings::search_depth_mode, D51 addendum).
+    s.depth_mode = 2;
+    s.depth_value = 4;
+    d = batch_settings_summary(s);
+    CHECK(d.score_range == "4 scores");
 }
 
 TEST_CASE("batch text: cap 1 reads 1 bar and cap 1000 reads 1,000 bars") {

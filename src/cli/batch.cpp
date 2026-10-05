@@ -240,7 +240,7 @@ int main() {
         std::string label =
             hydra::display_artist(item.artist) + " - " + hydra::display_title(item.title);
         std::string score =
-            row.summary.score ? hydra::group_thousands(*row.summary.score) : "-";
+            row.summary.has_scored_best_path() ? hydra::group_thousands(*row.summary.score) : "-";
         std::printf("[%d/%d] %10s  %s %s\n", done, last.total, score.c_str(),
                     clip_utf8(label, 52).c_str(), clip_utf8(row.bestpath, 36).c_str());
         std::fflush(stdout);
