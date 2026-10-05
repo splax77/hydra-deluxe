@@ -36,6 +36,11 @@ enum class PreviewLane { Kick = 0, Red = 1, Yellow = 2, Blue = 3, Green = 4 };
 
 PreviewLane lane_of(NoteColor color);
 
+// The colour a lane is drawn from: lane_of read backwards, so a renderer
+// holding only the lane can still ask the core's colour rules
+// (allows_cymbals).
+NoteColor color_of(PreviewLane lane);
+
 // One drawn note. A chord at a tick expands to one PreviewNote per struck lane.
 struct PreviewNote {
     int64_t tick = 0;
@@ -248,13 +253,13 @@ struct PreviewScene {
 std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t last_tick);
 
 // The Preview's time readouts at `now_ms`. `timestamp` is the clock beside the
-// scrubber, playhead and song length as "m:ss.mmm / m:ss.mmm". The time box
+// scrubber, playhead and where playback ends as "m:ss.mmm / m:ss.mmm". The time box
 // over the highway shows the two same points through format_measure, the BPM
 // and time signature in force, and the practice section in force.
 struct PreviewTimeBox {
     std::string timestamp;     // "0:35.000 / 2:06.253"
     std::string position;      // format_measure at the playhead, "m27.2.450"
-    std::string length;        // format_measure at the song's end, "m96.3.240"
+    std::string length;        // format_measure where playback ends, "m96.3.240"
     std::string tempo;         // "BPM 191.001 · 4/4"
     std::string section_line;  // "Section chorus_1"; empty when no section is in force
 };

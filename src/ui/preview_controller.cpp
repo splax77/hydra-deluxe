@@ -267,9 +267,11 @@ double PreviewController::position_ms() const { return transport_.now_ms(); }
 // the audio's end.
 double PreviewController::scrub_end_ms() const {
     return hydra::app::scrub_end_ms(song_ ? store::song_length_ms(*song_) : std::nullopt,
-                                    transport_.length_ms());
+                                    playback_end_ms());
 }
 
+// Where playback stops: the transport's length, the later of the last note
+// and the audio's end. Every reader in this class asks here.
 double PreviewController::playback_end_ms() const { return transport_.length_ms(); }
 
 void PreviewController::seek_ms(double ms) { transport_.seek_ms(ms); }
@@ -283,7 +285,7 @@ void PreviewController::step_ticks(int delta_ticks) {
     if (!active_ || job_) return;
     transport_.pause();
     transport_.seek_ms(hydra::app::step_tick_ms(scene_, transport_.now_ms(),
-                                                transport_.length_ms(), delta_ticks));
+                                                playback_end_ms(), delta_ticks));
 }
 
 void PreviewController::set_scrubbing(bool held) {
@@ -308,8 +310,7 @@ void PreviewController::set_volume(int percent) {
 }
 
 hydra::app::PreviewTimeBox PreviewController::time_box() const {
-    return hydra::app::build_time_box(scene_, transport_.now_ms(),
-                                      transport_.length_ms());
+    return hydra::app::build_time_box(scene_, transport_.now_ms(), playback_end_ms());
 }
 
 hydra::app::PreviewScoreBox PreviewController::score_box() const {

@@ -194,11 +194,7 @@ void render_analyze_progress(AppState& app) {
             // A real bar once the search starts reporting; until the first tick
             // (parse + graph build) there's nothing to show, so leave it off.
             float f = job->progress();
-            if (f >= 0.0f) {
-                char overlay[16];
-                std::snprintf(overlay, sizeof(overlay), "%.0f%%", f * 100.0f);
-                ImGui::ProgressBar(f, ImVec2(-1.0f, 0.0f), overlay);
-            }
+            if (f >= 0.0f) progress_bar_percent(f);
             // A long chart can take a while; the user needs an out that isn't
             // killing the app.
             if (ImGui::Button("Cancel")) job->cancel();

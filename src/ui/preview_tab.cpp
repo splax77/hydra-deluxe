@@ -223,9 +223,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
             ImGui::Text("Loading preview: %s", lp.label.c_str());
         else
             ImGui::Text("Loading preview: %s, %s", lp.label.c_str(), lp.detail.c_str());
-        char overlay[16];
-        std::snprintf(overlay, sizeof(overlay), "%.0f%%", lp.fraction * 100.0f);
-        ImGui::ProgressBar(lp.fraction, ImVec2(-1.0f, 0.0f), overlay);
+        progress_bar_percent(lp.fraction);
         return;
     }
 
@@ -373,7 +371,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
 
         // The time box's lines, the way Onyx draws its own (top-left,
         // monospace, on a translucent dark panel): the playhead's measure and
-        // the song's last, the tempo and signature in force, and the practice
+        // the one where playback ends, the tempo and signature in force, and the practice
         // section (absent on charts that have none). The clock is beside the
         // scrubber now.
         const std::string where = box.position + "  of " + box.length;
@@ -556,9 +554,9 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
                 ImVec2 in_min(gauge_min.x + fill_pad, gauge_min.y + fill_pad);
                 ImVec2 in_max(gauge_max.x - fill_pad, gauge_max.y - fill_pad);
                 const float in_h = in_max.y - in_min.y;
-                // The Star Power gold, a touch see-through (alpha 230 of 255).
+                // The Star Power gold, a touch see-through.
                 ImVec4 fill_color = kStarPowerColor;
-                fill_color.w = 230.0f / 255.0f;
+                fill_color.w = kStarPowerFillAlpha;
                 if (in_h > 0.0f && fill > 0.0f)
                     dl->AddRectFilled(ImVec2(in_min.x, in_max.y - in_h * fill), in_max,
                                       ImGui::GetColorU32(fill_color));

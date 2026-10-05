@@ -24,6 +24,11 @@ namespace uitest {
 
 namespace {
 
+// How long chart 0 of testdata/input must run for the Preview tests below:
+// their jumps and steps go from 10 s to 15 s, so the song has to reach past
+// that. A guard against the fixture, not a rule of the app.
+constexpr double kChart0MinMs = 16000.0;
+
 void test_preview(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -236,7 +241,7 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 60));
 
     // At the song's end the box reads the selected path's total.
-    IM_CHECK(pc.scrub_end_ms() > 12000.0);
+    IM_CHECK(pc.scrub_end_ms() > kChart0MinMs);
     pc.seek_ms(pc.scrub_end_ms());
     hydra::app::PreviewScoreBox end = pc.score_box();
     IM_CHECK(end.shown);
@@ -374,7 +379,7 @@ void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     if (!open_preview(ctx)) return;
     auto& pc = *h.app->preview;
     IM_CHECK(!pc.playing());
-    IM_CHECK(pc.scrub_end_ms() > 16000.0);
+    IM_CHECK(pc.scrub_end_ms() > kChart0MinMs);
 
     pc.seek_ms(10000.0);
     ctx->ItemClick("**/+5s");

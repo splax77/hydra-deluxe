@@ -1339,6 +1339,52 @@ const std::vector<OwnerRule>& rules() {
          {"current, box_w - chrome, [](const std::string& s) { return ImGui::CalcTextSize(s.c_str()).x; });"},
          {"const std::string shown = render::ellipsize(current, box_w - chrome, text_width);",
           "auto text_width = [font](float sz, const char* s) {"}},
+        // ---- the Preview, round 2 (derive-once review of M_D, phase 3 task FX2-P) ----
+        // The transport's length read straight off it, beside the accessor
+        // that names it as where playback stops.
+        {"Where does the Preview's playback stop?",
+         "PreviewController::playback_end_ms in src/ui/preview_controller.cpp",
+         R"(\btransport_?\.length_ms\(\))",
+         "",
+         {},
+         {},
+         "D50 item 4 and D56 item 3; derive-once review of M_D round 2, preview finding C (phase 3 "
+         "task FX2-P)",
+         {"transport_.length_ms());",
+          "return hydra::app::build_time_box(scene_, transport_.now_ms(), transport_.length_ms());"},
+         {"return hydra::app::build_time_box(scene_, transport_.now_ms(), playback_end_ms());",
+          "scrub_marks_cache_.length_ms = length;"},
+         {{"src/ui/preview_controller.cpp",
+           "double PreviewController::playback_end_ms() const { return transport_.length_ms(); }",
+           "PreviewController::playback_end_ms, the owner"}}},
+        // A progress bar's "42%" overlay typed beside the widget that draws it.
+        {"How is a progress bar's percent written?",
+         "progress_bar_percent in src/ui/widgets.h",
+         R"("%\.0f%%")",
+         "",
+         {},
+         {},
+         "derive-once review of M_D round 2, library finding 3 (phase 3 task FX2-P)",
+         {R"(std::snprintf(overlay, sizeof(overlay), "%.0f%%", f * 100.0f);)",
+          R"(std::snprintf(overlay, sizeof(overlay), "%.0f%%", lp.fraction * 100.0f);)"},
+         {R"(ImGui::SliderInt("##volume", &volume, 0, 100, "%d%%"))",
+          "progress_bar_percent(lp.fraction);"},
+         {{"src/ui/widgets.h",
+           R"(std::snprintf(overlay, sizeof(overlay), "%.0f%%", fraction * 100.0f);)",
+           "progress_bar_percent, the owner"}}},
+        // "Not the red lane" written as the cymbal rule instead of asking
+        // allows_cymbals, which names the three lanes that carry one.
+        {"Which drum lanes can carry a cymbal?",
+         "allows_cymbals in src/core/model.cpp",
+         R"([!=]=\s*(app::)?(PreviewLane|NoteColor)::Red\b|\b(PreviewLane|NoteColor)::Red\s*[!=]=)",
+         "",
+         {},
+         {},
+         "derive-once review of M_D round 2, library finding 8 (phase 3 task FX2-P)",
+         {"g.cymbal = pro && n.cymbal && n.lane != PreviewLane::Red;",
+          "if (c == NoteColor::Red) return false;"},
+         {"g.cymbal = pro && n.cymbal && allows_cymbals(app::color_of(n.lane));",
+          "case PreviewLane::Red:    return Pad::Red;"}},
         // ---- the report pages (phase 3 task K1a) ----
         // A bare toLocaleString() groups by the browser's own language, so a
         // German browser prints 1.234 under a subtitle that says 1,234. The

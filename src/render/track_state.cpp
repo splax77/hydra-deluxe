@@ -40,7 +40,7 @@ TrackGem gem_of(const PreviewNote& n, bool pro) {
         g.kick = true;  // 2x kicks are plain kicks (Onyx has no 2x visual)
     } else {
         g.pad = *pad_of(n.lane);
-        g.cymbal = pro && n.cymbal && n.lane != PreviewLane::Red;
+        g.cymbal = pro && n.cymbal && allows_cymbals(app::color_of(n.lane));
     }
     g.velocity = n.ghost ? Velocity::Ghost : n.accent ? Velocity::Accent : Velocity::Normal;
     return g;

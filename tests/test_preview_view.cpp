@@ -274,6 +274,14 @@ TEST_CASE("build_preview_scene: notes carry lane and drum attributes") {
     CHECK(scene.song_length_ms == doctest::Approx(750.0));
 }
 
+// color_of reads lane_of backwards, so a drawn lane can ask the core's colour
+// rules (allows_cymbals) without a second lane table.
+TEST_CASE("color_of: each lane maps back to the colour it was drawn from") {
+    for (NoteColor c : {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow, NoteColor::Blue,
+                        NoteColor::Green})
+        CHECK(color_of(lane_of(c)) == c);
+}
+
 // The scene's song length is the store's (store::song_length_ms): the last
 // timestamp's onset. A last timestamp with no notes used to split them, the
 // scene stopping at the earlier note. The parsers never emit one today, so
