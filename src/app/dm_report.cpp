@@ -8,6 +8,7 @@
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "app/html_page.h"
 #include "app/report.h"  // records_by_hash
+#include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
 #include "search/graph.h"  // fill_rule_name
@@ -201,7 +202,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     // for all three before a comparison can start).
     const std::string refused =
         why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, lens.legacy_fills != 0);
-    if (!refused.empty()) throw std::invalid_argument(refused);
+    if (!refused.empty()) throw KindedError(ErrorKind::AlreadyPlain, refused);
 
     // One query for every stored record in this chartmode, indexed by hash.
     // Only records at Clone Hero's cap: a what-if cap's score would read as
