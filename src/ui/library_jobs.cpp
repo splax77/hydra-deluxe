@@ -9,7 +9,6 @@
 #include "app/report.h"
 #include "app/report_files.h"
 #include "app/user_messages.h"
-#include "audio/song_audio.h"  // song_length_ms
 #include "core/error_kind.h"
 #include "parse/song.h"  // display_title, display_artist
 
@@ -299,7 +298,6 @@ void BatchJob::run() {
         snap_.failure_details.push_back(title + ": " + error);
     };
     callbacks.cancel = &cancel_;
-    callbacks.read_song_length = audio::song_length_ms;  // each song's length (D69)
     // The pause gate and the "now analyzing" line sit in front of the real
     // analyzer, so run_batch and its pool stay as they are.
     const app::ChartAnalyzer inner =
@@ -345,10 +343,10 @@ void AnalyzeJob::start() {
                                 throw app::AnalysisCancelled{};
                             progress_.store(f, std::memory_order_relaxed);
                         });
-                    // The song's audio length, read here so the save stays
+                    // The song's length, worked out here so the save stays
                     // quick.
-                    length_ = app::read_song_length_or_keep(audio::song_length_ms,
-                                                            song_.notespath, result_->song);
+                    length_ = app::analysis_song_length(song_.timing, song_.notespath,
+                                                        result_->song, settings_);
                     return true;
                 } catch (const app::AnalysisCancelled&) {
                     return false;  // no error text: the UI discards a cancelled job

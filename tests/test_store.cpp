@@ -2156,10 +2156,10 @@ TEST_CASE("under rules that make every row Stale, the stars fill changes nothing
 }
 
 TEST_CASE("an analysis saves the song's length, and an unstamped length reads as not read") {
-    // D69: the stored length is the song's audio length, saved with
-    // kSongLengthStamp. The lengths here are inputs; the audio owner is
-    // pinned in test_song_audio. RecordStore has no raw-SQL test hook, so
-    // this zeroes the stamp on a second connection, as the stars-fill case
+    // The stored length is the song's length (app::song_length_ms, D75),
+    // saved with kSongLengthStamp. The lengths here are inputs; the owner is
+    // pinned in test_song_length. RecordStore has no raw-SQL test hook, so
+    // this rewrites the stamp on a second connection, as the stars-fill case
     // does.
     const std::string path = testtemp::temp_path("song_length", ".db");
     std::remove(path.c_str());
@@ -2173,6 +2173,17 @@ TEST_CASE("an analysis saves the song's length, and an unstamped length reads as
         REQUIRE(got.status == RecordStatus::Ready);
         CHECK(got.song_length_read);
         CHECK(got.song_length_ms == 4321.0);
+    }
+
+    // A length stamped 1 was the audio's end (D69), which D75 replaced: it
+    // reads as not read, so opening the song works it out again.
+    exec_on_file(path, "UPDATE songmeta SET length_version = 1 WHERE hyhash = 'h'");
+    {
+        RecordStore store(path);
+        const RecordLookup got = store.get_record(key);
+        REQUIRE(got.status == RecordStatus::Ready);
+        CHECK_FALSE(got.song_length_read);
+        CHECK_FALSE(got.song_length_ms.has_value());
     }
 
     // A length with no current stamp, as every length in a file from before

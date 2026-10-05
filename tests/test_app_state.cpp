@@ -25,7 +25,6 @@
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/report_files.h"
-#include "audio/song_audio.h"
 #include "audio_chart_fixtures.h"
 #include "core/error_kind.h"
 #include "core/model.h"
@@ -683,9 +682,12 @@ void run_length_backfill(AppState& app) {
 
 }  // namespace
 
-// The audio belongs to the song, so one read gives every difficulty its
-// length (D69 item 2).
-TEST_CASE("the backfill reads a chart's audio once, and every difficulty shows it") {
+// The length belongs to the song, so one read gives every difficulty its
+// length (D69 item 2). It comes from song.ini, not the audio (D75): junk
+// bytes under the audio's name change nothing. The library row is one an
+// older scan wrote, with no stated length kept, so the backfill reads
+// song.ini itself (SL1 open question 3).
+TEST_CASE("the backfill reads a chart's stated length once, and every difficulty shows it") {
     ScratchPaths paths("appstate_length");
     std::unique_ptr<AppState> app = app_on(paths);
     // The same chart's Ready record under another chart mode.
@@ -693,34 +695,36 @@ TEST_CASE("the backfill reads a chart's audio once, and every difficulty shows i
     other.view_prodrums = !other.view_prodrums;
     const RecordKey other_key = other.record_key(library_entry(0).md5);
     hydra::test::store_batch_result(*app->store, other_key);
-    const std::string path =
-        open_chart_with_no_length(*app, audiochart::short_chart_with_long_audio("backfill"));
+    const std::string notes = audiochart::short_chart_with_long_audio("backfill");
+    const std::string folder = notes.substr(0, notes.rfind('\\'));
+    audiochart::write_text_file(folder + "\\song.ini", "[song]\nsong_length = 4321\n");
+    audiochart::write_text_file(folder + "\\song.ogg", "not audio at all");
+    open_chart_with_no_length(*app, notes);
 
     run_length_backfill(*app);
 
-    const hydra::app::AnalysisSettings as = app->settings.to_analysis_settings();
-    const std::optional<double> length = hydra::audio::song_length_ms(
-        path, hydra::load_songpath(path, as.prodrums, as.bass2x, as.difficulty, as.rules));
-    REQUIRE(length.has_value());
-    CHECK(app->viewed.song_length_ms == length);
+    CHECK(app->viewed.song_length_ms == 4321.0);
     CHECK(app->store->get_record(app->settings.record_key(library_entry(0).md5)).song_length_ms ==
-          length);
-    CHECK(app->store->get_record(other_key).song_length_ms == length);
+          4321.0);
+    CHECK(app->store->get_record(other_key).song_length_ms == 4321.0);
 }
 
-// A chart with no audio has no length, and nothing falls back to its last
-// note (D69 item 3). The answer is stored, so it is not read again (D70).
-TEST_CASE("a chart with no audio is read once and shows no length") {
+// A chart that states no length reads its last Expert drum note (100 ms
+// here), with no audio file at all (D75 items 2 and 5). The answer is stored,
+// so it is not read again (D70).
+TEST_CASE("a chart with no stated length and no audio reads its last note, once") {
     ScratchPaths paths("appstate_noaudio");
     std::unique_ptr<AppState> app = app_on(paths);
-    open_chart_with_no_length(*app);
+    const std::string notes = audiochart::short_chart_with_long_audio("backfill_noaudio");
+    REQUIRE(std::remove((notes.substr(0, notes.rfind('\\')) + "\\song.ogg").c_str()) == 0);
+    open_chart_with_no_length(*app, notes);
 
     run_length_backfill(*app);
-    CHECK_FALSE(app->viewed.song_length_ms.has_value());
+    CHECK(app->viewed.song_length_ms == 100.0);
     const hydra::store::RecordLookup stored =
         app->store->get_record(app->settings.record_key(library_entry(0).md5));
     CHECK(stored.song_length_read);
-    CHECK_FALSE(stored.song_length_ms.has_value());
+    CHECK(stored.song_length_ms == 100.0);
 
     // Selecting it again starts no job.
     const ChartLibraryEntry open = *app->selected;

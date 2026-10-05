@@ -1403,8 +1403,8 @@ const std::vector<OwnerRule>& rules() {
          {"src"}},
         // ---- the Preview (derive-once review of M_D, phase 3 task FX-P) ----
         // The last drawn note, or the last timestamp's onset, read anywhere
-        // but last_drawn_note. It is never the song's length, which is the
-        // audio's end (audio::song_length_ms, D69).
+        // but last_drawn_note. The song's length has its own owner
+        // (app::song_length_ms, D75), whose backup is listed below.
         {"When is the song's last note?",
          "last_drawn_note in src/app/preview_view.cpp",
          R"(notes\.back\(\)|sequence\.back\(\)\.timecode\.ms\(\))",
@@ -3742,18 +3742,20 @@ const std::vector<OwnerRule>& rules() {
          {"REQUIRE(hydra::file_size_bytes(song) >= 300000000ull);"},
          {},
          {"src"}},
-        // ---- a song's length is its audio length (D69, phase 7 task AL1) ----
-        // A song's stems mixed, or the audio's end asked of a mix, anywhere
-        // but the song's own mix step. The transport asks the audio's end of
-        // its playhead for the playback range (D48), which is not a song
-        // length; that line is allowed.
+        // ---- a song's length comes from its metadata, never its audio (D75) ----
+        // The owner (app::song_length_ms) opens no audio. A song's stems
+        // mixed, or the audio's end asked of a mix, anywhere but the Preview's
+        // own mix step is a length worked out from audio again. The transport
+        // asks the audio's end of its playhead for the playback range (D48),
+        // which is not a song length; that line is allowed.
         {"How long is this song?",
-         "song_length_ms in src/audio/song_audio.cpp",
+         "song_length_ms and chart_song_length_ms in src/app/song_length.cpp; the only mix is "
+         "mix_song_stems in src/audio/song_audio.cpp, for the Preview's playback",
          R"(make_(unique|shared)<\s*(\w+::)*StreamMix\s*>|\b(\w+::)*StreamMix\s+\w+\s*[({]|\baudio_end_chart_ms\s*\((?!\s*const\b))",
          "",
          {"src/audio/song_audio.cpp"},
          {},
-         "D69 (a song's length is its audio length); phase 7 task AL1",
+         "D75 (a song's length comes from its chart metadata); phase 7 task AL1, task SL1",
          {"auto mix = std::make_unique<audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,",
           "auto mix = std::make_unique<hydra::audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,",
           "const std::optional<double> audio_end_ms = audio_end_chart_ms(*mix, offset_ms);",
@@ -3786,29 +3788,26 @@ const std::vector<OwnerRule>& rules() {
           {"src/store/record_store.cpp",
            ": \"UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3\");",
            "write_song_length, the owner"}}},
-        // An audio length read, or its answer turned into a stored length,
-        // anywhere but the one helper an analysis reads through, so no third
-        // try/catch decides what a failed read leaves. The call must follow
-        // an opening, an operator, `return` or the line's start, so the
-        // definition and declaration of song_length_found are not flagged.
-        {"What does a failed audio length read leave in the store?",
-         "read_song_length_or_keep in src/app/analysis.cpp",
-         R"((^|[^\w\s]|\breturn)\s*song_length_found\s*\(|\baudio::song_length_ms\s*\()",
+        // The owner's answer turned into a stored length anywhere but the one
+        // helper an analysis saves through, so no third try/catch decides
+        // what a failed read leaves.
+        {"What does a failed length read leave in the store?",
+         "analysis_song_length in src/app/analysis.cpp",
+         R"(\bSongLength::found\s*\()",
          "",
          {},
          {},
-         "derive-once review of AL2, finding 1 (D69); phase 7 task AL2",
-         {"length_ = app::song_length_found(",
-          "song_length_found(callbacks.read_song_length(item.notespath, ar.song));",
-          "audio::song_length_ms(song_.notespath, result_->song));"},
-         {"store::SongLength song_length_found(std::optional<double> audio_length_ms) {",
-          "store::SongLength song_length_found(std::optional<double> audio_length_ms);",
-          "callbacks.read_song_length = audio::song_length_ms;  // each song's length (D69)",
-          "length_ = app::read_song_length_or_keep(audio::song_length_ms,"},
-         {{"src/app/analysis.cpp", "return song_length_found(reader(notespath, song));",
-           "read_song_length_or_keep, the owner"},
+         "derive-once review of AL2, finding 1 (D69); D75, task SL1",
+         {"return store::SongLength::found(",
+          "length_ = store::SongLength::found(app::chart_song_length_ms(",
+          "wr.length = SongLength::found(len);"},
+         {"static SongLength found(std::optional<double> ms) { return SongLength{true, ms}; }",
+          "store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,",
+          "wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);"},
+         {{"src/app/analysis.cpp", "return store::SongLength::found(",
+           "analysis_song_length, the owner"},
           {"src/ui/song_length_job.cpp",
-           "length_ = app::song_length_found(audio::song_length_ms(entry_.notespath, song));",
+           "length_ = store::SongLength::found(app::chart_song_length_ms(",
            "SongLengthJob::run: its read is the whole job; AppState::update_song_length "
            "decides what a failed job leaves"}}},
         // Production's own temp folder for the shell (copy_to_short_temp in

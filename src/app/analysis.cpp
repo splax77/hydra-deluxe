@@ -19,8 +19,7 @@
 
 #include "app/dynamics_breakdown.h"
 #include "app/preview_source.h"  // ini_delay_ms, sng_metadata_delay_ms
-#include "app/preview_view.h"  // has_song_length
-#include "app/song_length.h"   // stated_length_ms
+#include "app/song_length.h"   // stated_length_ms, chart_song_length_ms
 #include "app/user_messages.h"  // plain_error
 #include "app/work_pool.h"
 #include "core/error_kind.h"
@@ -629,16 +628,13 @@ BatchPlan plan_batch(const std::vector<ScanItem>& items,
     return plan;
 }
 
-store::SongLength song_length_found(std::optional<double> audio_length_ms) {
-    if (audio_length_ms && !has_song_length(*audio_length_ms)) audio_length_ms.reset();
-    return store::SongLength::found(audio_length_ms);
-}
-
-store::SongLength read_song_length_or_keep(const SongLengthReader& reader,
-                                           const std::string& notespath, const Song& song) {
-    if (!reader) return {};
+store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
+                                       const std::string& notespath, const Song& song,
+                                       const AnalysisSettings& settings) {
     try {
-        return song_length_found(reader(notespath, song));
+        return store::SongLength::found(
+            chart_song_length_ms(chart_timing_meta(scanned, notespath), notespath, song,
+                                 settings.difficulty, settings.bass2x, settings.rules));
     } catch (const std::exception&) {
         return {};
     }
@@ -686,8 +682,7 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                 wr.dynamics = dynamics_entry_from_analysis(
                     item.md5, ar.song, settings.bass2x, settings.difficulty,
                     settings.prodrums);
-                wr.length =
-                    read_song_length_or_keep(callbacks.read_song_length, item.notespath, ar.song);
+                wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);
                 wr.analysis = std::move(ar);
             } catch (const AnalysisCancelled&) {
                 wr.cancelled = true;

@@ -109,16 +109,18 @@ inline constexpr StampRule<int, 1> kChartMetaStamp{2, {2}};
 
 // ---- A song's length (songmeta.length_ms) ----------------------------------
 
-// How a song's length is read from its audio (D69). BUMP IT (add 1) whenever
-// the length an unchanged song reads as changes: audio::song_length_ms and
-// the mix step it shares with the Preview (src/audio/song_audio.cpp), the
-// lengths open_stem_reader reports for each stem, and the chart's audio
-// offset (app::preview_audio_offset_ms and what feeds it). A length whose
-// stamp is not current reads as not read, and opening the song reads its
-// audio again. Stored per song, in songmeta.length_version.
+// How a song's length is worked out (app::song_length_ms, D75). BUMP IT (add
+// 1) whenever the length an unchanged song reads as changes: the owner in
+// src/app/song_length.cpp, the metadata readers that feed it
+// (store::ChartTimingMeta), and the chart's audio offset
+// (app::preview_audio_offset_ms and what feeds it). A length whose stamp is
+// not current reads as not read, and opening the song works it out again.
+// Stored per song, in songmeta.length_version.
 // 0 = lengths saved before the stamp existed, all worked out from the last
-// note. 1 = the first stamp: the audio's end in chart time.
-inline constexpr StampRule<int, 1> kSongLengthStamp{1, {1}};
+// note. 1 = the audio's end in chart time (D69). 2 = the chart's stated
+// length in chart time, or its last Expert drum note when it states none
+// (D75).
+inline constexpr StampRule<int, 1> kSongLengthStamp{2, {2}};
 
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));

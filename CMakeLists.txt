@@ -379,9 +379,6 @@ add_executable(hydra_fillcompare src/cli/fillcompare.cpp)
 foreach(tool IN ITEMS hydra_batch hydra_report hydra_fillcompare)
     target_link_libraries(${tool} PRIVATE hydra_core hydra_warnings)
 endforeach()
-# A batch can save each song's length, which opens its audio
-# (audio::song_length_ms, D69 item 2).
-target_link_libraries(hydra_batch PRIVATE hydra_audio)
 
 # ---- hydra_tests: the doctest harness ------------------------------------
 add_executable(hydra_tests
@@ -445,7 +442,6 @@ add_executable(hydra_tests
     tests/test_activation_row_layout.cpp
     tests/test_preview_controller.cpp
     tests/test_preview_load_progress.cpp
-    tests/test_song_audio.cpp
     tests/test_song_length.cpp
     tests/test_utf8_paths.cpp
     tests/test_long_paths.cpp
