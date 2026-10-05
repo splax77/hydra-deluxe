@@ -3774,7 +3774,8 @@ const std::vector<OwnerRule>& rules() {
            "read_song_length_or_keep, the owner"},
           {"src/ui/song_length_job.cpp",
            "length_ = app::song_length_found(audio::song_length_ms(entry_.notespath, song));",
-           "SongLengthJob::run: its failed read fails the job, which writes nothing"}}},
+           "SongLengthJob::run: its read is the whole job; AppState::update_song_length "
+           "decides what a failed job leaves"}}},
     };
     return r;
 }

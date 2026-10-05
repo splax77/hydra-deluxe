@@ -156,8 +156,8 @@ store::SongLength song_length_found(std::optional<double> audio_length_ms);
 // song_length_found's answer when `reader` gives one, or not read when there
 // is no reader or it throws. A failed read costs only the length: it stays as
 // it was, and opening the song reads it later. run_batch and the single-chart
-// Analyze job both read through here; SongLengthJob does not, because its own
-// failure is the answer (the job fails and writes nothing).
+// Analyze job both read through here. SongLengthJob does not: its read is the
+// whole job, and AppState::update_song_length decides what a failed job leaves.
 store::SongLength read_song_length_or_keep(const SongLengthReader& reader,
                                            const std::string& notespath, const Song& song);
 
