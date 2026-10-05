@@ -218,8 +218,8 @@ TEST_CASE("Settings::clamp is the one range every caller asks") {
     // The cap's floor is 1 bar when typed (D51 Q16); only the file reads 0 as 4.
     CHECK(Settings::clamp(&Settings::sp_cap, 0) == 1);
     CHECK(load_ini_text("clamp1", "sp_cap=0\n").sp_cap == 4);
-    // No edge to land on: the default.
-    CHECK(Settings::clamp(&Settings::hit_window_ms, 0) == 85);
+    // No edge to land on: the default. The hit window's case is
+    // "settings: the hit window keeps a decimal", since it is not an int box.
     CHECK(Settings::clamp(&Settings::depth_mode, 2) == 0);
     // The volume percent as a gain.
     CHECK(Settings::volume_gain(40) == 0.4f);
@@ -231,6 +231,28 @@ TEST_CASE("Settings::clamp is the one range every caller asks") {
     CHECK(s.search_depth_mode() == hydra::DepthMode::Points);
     s.depth_mode = 2;
     CHECK(s.search_depth_mode() == hydra::DepthMode::Scores);
+}
+
+TEST_CASE("settings: the hit window keeps a decimal, and 0 reads the default (D51 Q15)") {
+    const Settings half = load_ini_text("hitwin1", "hit_window_ms=85.5\n");
+    CHECK(half.hit_window_ms == 85.5);
+    // 0 has no edge to land on (the file-load form of the old clamp line).
+    CHECK(load_ini_text("hitwin2", "hit_window_ms=0\n").hit_window_ms == hydra::kDefaultHitWindowMs);
+
+    // What save_file writes on the hit_window_ms line: 85.5 as typed, and the
+    // default as the whole number today's files hold.
+    const std::string path = temp_ini("hitwin3");
+    auto saved_line = [&path](const Settings& s) {
+        REQUIRE(s.save_file(path));
+        std::ifstream f(path);
+        std::string line;
+        while (std::getline(f, line))
+            if (line.rfind("hit_window_ms=", 0) == 0) return line;
+        return std::string();
+    };
+    CHECK(saved_line(half) == "hit_window_ms=85.5");
+    CHECK(saved_line(Settings{}) == "hit_window_ms=85");
+    std::remove(path.c_str());
 }
 
 TEST_CASE("settings: a # after a value is a comment (D51 Q15)") {

@@ -407,6 +407,67 @@ TEST_CASE("run_batch analyzes a chart found in two folders once") {
     CHECK(runs.load() == 1);
 }
 
+namespace {
+
+// Four scan rows for the batch-count cases: chart A, chart B, a second copy
+// of A in another folder, then chart C.
+std::vector<ScanItem> items_with_a_copy() {
+    std::vector<ScanItem> items = fake_items(3);
+    ScanItem copy = items[0];
+    copy.notespath = "copy_fake_0.chart";
+    items.insert(items.begin() + 2, copy);
+    return items;
+}
+
+}  // namespace
+
+TEST_CASE("plan_batch: a second copy is one chart and a stored chart is skipped") {
+    // D51 call 10 and D62 item 3: the copy counts nowhere, the stored chart
+    // counts once as skipped.
+    const std::vector<ScanItem> items = items_with_a_copy();
+    const BatchPlan plan = plan_batch(items, {"fake2"});
+
+    REQUIRE(plan.todo.size() == 2);
+    CHECK(plan.todo[0].md5 == "fake0");
+    CHECK(plan.todo[0].notespath == "fake_0.chart");  // the first copy wins
+    CHECK(plan.todo[1].md5 == "fake1");
+    CHECK(plan.skipped == 1);
+}
+
+TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
+    const std::vector<ScanItem> items = items_with_a_copy();
+
+    // Counts its runs; chart B fails and every other chart stores one real
+    // chart's result.
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    std::atomic<int> runs{0};
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&runs, &real](const std::string& path, const AnalysisSettings&,
+                                       const std::function<void(float)>&) -> AnalysisResult {
+        ++runs;
+        if (path == "fake_1.chart") throw std::runtime_error("fake analyzer");
+        return real;
+    };
+
+    BatchRun run;
+    run.chartmode = "counts-test";
+    hydra::store::RecordStore store(":memory:");
+    // Chart C is stored before the batch starts.
+    run_batch({items[3]}, run, store, /*redo=*/false, 1, callbacks);
+    REQUIRE(runs.load() == 1);
+
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+    run_batch(items, run, store, /*redo=*/false, 1, callbacks);
+
+    CHECK(runs.load() == 3);
+    CHECK(last.total == 2);
+    CHECK(last.analyzed == 1);
+    CHECK(last.failed == 1);
+    CHECK(last.skipped == 1);
+    CHECK(last.completed == 2);
+}
+
 TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
     namespace fs = std::filesystem;
     const std::string chart = corpus::first_chart_with_suffix(".chart");
