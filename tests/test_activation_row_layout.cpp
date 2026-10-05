@@ -1,5 +1,5 @@
 // The Paths tab's activation-row rule (ui/activation_row_layout.h): the bars
-// start after the widest measure with a gap, never before +200 px, and at the
+// start after the widest measure with a gap, never before kRowMinBarsX, and at the
 // narrowest details column the badge on the right still clears them.
 //
 // Widths here are the app's fonts at scale 1, as the GUI harness measures
@@ -29,7 +29,7 @@ float text(int chars) { return kTextChar * static_cast<float>(chars); }
 
 }  // namespace
 
-TEST_CASE("activation row: a short measure keeps the bars at +200 px") {
+TEST_CASE("activation row: a short measure keeps the bars at kRowMinBarsX") {
     // "m32.1.0" is 7 characters: it ends well before kRowMinBarsX.
     const ActivationRowLayout l = activation_row_layout(mono(7), 0.0f, 600.0f, 1.0f);
     CHECK(l.measure_x == doctest::Approx(kRowMeasureX));
