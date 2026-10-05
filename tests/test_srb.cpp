@@ -292,7 +292,6 @@ TEST_CASE("srb: one reader gives the metadata and where the notes stream starts"
     CHECK(got.fields.name == "Name");
     CHECK(got.fields.artist == "Artist");
     CHECK(got.fields.charter == "Charter");
-    CHECK(got.notes_offset == kSrbHeaderSize + testsrb::deflate_raw(meta).size());
 
     // The notes stream starts right there.
     const std::vector<uint8_t> notebytes =

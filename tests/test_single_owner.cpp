@@ -1449,10 +1449,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"How does a scan row become a library entry?", "tools/bench.cpp",
          "entries.push_back({it.md5, it.title, it.artist, it.charter, it.notespath,",
          "task J2-6 (scan_mode calls to_library_entry; audit finding 256)"},
-        {"How does a scan row become a library entry?", "tests/test_s2_parser_owners.cpp",
-         R"(entries.push_back({it.md5, it.title, "", "", it.notespath, it.rootfolder, it.sig});)",
-         "not yet scheduled (found by J1-6's row; to_library_entry, then blank artist and "
-         "charter; audit finding 256)"},
         {"How many workers does a batch get?", "src/ui/library_jobs.cpp",
          "workers_ = std::max(1, workers);",
          "task J2-4 (set_analyzer_for_test drops its floor; audit R7.22)"},
