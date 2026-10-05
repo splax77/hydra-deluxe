@@ -2,14 +2,13 @@
 
 #include <initializer_list>
 #include <new>
+#include <optional>
 
 #include "app/report.h"  // kNothingUnderSettings
 #include "app/rules_file.h"
-#include "core/model.h"
+#include "core/error_kind.h"
 #include "core/strutil.h"
-#include "parse/midi.h"
-#include "parse/song.h"
-#include "store/serialize.h"
+#include "parse/song.h"  // is_timing_refusal
 
 namespace hydra::app {
 
@@ -75,6 +74,49 @@ bool is_no_notes_message(std::string_view s) {
     return starts_with(s, "No ") && ends_with(s, " notes in this chart.");
 }
 
+// The two sentences built around a detail. The switch and the text matcher
+// both say them through these.
+std::string http_status_sentence(std::string_view code) {
+    return "dmleaderboards returned an error (HTTP " + std::string(code) + "). Try again later.";
+}
+
+std::string timing_refusal_sentence(std::string_view what) {
+    return "Hydra can't analyze this chart because " + std::string(what) +
+           ". Fix that line in the chart file or download the song again.";
+}
+
+// The one owner of "which plain sentence does this failure show": the
+// thrower named the kind, and each kind has one sentence. Empty when the
+// error can't be answered from its kind alone.
+std::optional<std::string> kind_sentence(const KindedError& e) {
+    switch (e.kind()) {
+        case ErrorKind::Cancelled: return kStopped;
+        case ErrorKind::DatabaseOpen: return kDatabaseOpen;
+        case ErrorKind::DatabaseWrite: return kDatabaseWrite;
+        case ErrorKind::SongFileMissing: return kSongFileMissing;
+        case ErrorKind::HashFailed: return kHashFailed;
+        case ErrorKind::ChartUnreadable: return kChartUnreadable;
+        case ErrorKind::ChartTimingRefused: return timing_refusal_sentence(e.what());
+        case ErrorKind::AlreadyPlain: return std::string(e.what());
+        case ErrorKind::SearchBroken: return kSearchBroken;
+        case ErrorKind::NetUnreachable: return kNetUnreachable;
+        case ErrorKind::NetTimeout: return kNetTimeout;
+        case ErrorKind::NetHttpStatus:
+            if (const std::optional<int> code = e.http_status())
+                return http_status_sentence(std::to_string(*code));
+            return std::nullopt;  // no code to name
+        case ErrorKind::NetBadReply: return kNetBadReply;
+        case ErrorKind::NoScores: return kNoScores;
+        case ErrorKind::NoRecords: return kNoRecords;
+        case ErrorKind::ReportWrite: return kReportWrite;
+        case ErrorKind::RulesFile: return kRulesFile;
+        case ErrorKind::StoredResult: return kStoredResult;
+        case ErrorKind::AudioDecode: return kAudioDecode;
+        case ErrorKind::PreviewAssets: return kPreviewAssets;
+    }
+    return std::nullopt;
+}
+
 }  // namespace
 
 std::string plain_error_text(std::string_view what) {
@@ -91,7 +133,7 @@ std::string plain_error_text(std::string_view what) {
         return kNetUnreachable;
     if (starts_with(what, "leaderboard returned HTTP ")) {
         std::string_view code = what.substr(std::string_view("leaderboard returned HTTP ").size());
-        return "dmleaderboards returned an error (HTTP " + std::string(code) + "). Try again later.";
+        return http_status_sentence(code);
     }
     if (what == "the leaderboard sent a response Hydra couldn't read" ||
         what == "unexpected user-list format")
@@ -129,9 +171,7 @@ std::string plain_error_text(std::string_view what) {
     if (is_no_notes_message(what)) return std::string(what);
     // parse/song.cpp check_timing_maps and apply_timesig: timing that can't
     // measure time. The raw text names the line, so the user sees it.
-    if (is_timing_refusal(what))
-        return "Hydra can't analyze this chart because " + std::string(what) +
-               ". Fix that line in the chart file or download the song again.";
+    if (is_timing_refusal(what)) return timing_refusal_sentence(what);
     if (what == "Duplicate note." || what == "expected a [section] header" ||
         what == "No chart files found in SNG file." || what == "Truncated SNG file." ||
         what == "Truncated SRB file." || what == "SMPTE time division is not supported" ||
@@ -157,14 +197,12 @@ std::string plain_error_text(std::string_view what) {
 
 std::string plain_error(const std::exception& e) {
     if (dynamic_cast<const std::bad_alloc*>(&e)) return kOutOfMemory;
+    // A kinded error is answered by kind_sentence alone.
+    if (const auto* kinded = dynamic_cast<const KindedError*>(&e))
+        if (std::optional<std::string> sentence = kind_sentence(*kinded)) return *sentence;
+    // Errors with no kind yet: the app folder's throwers and the batch's text.
     if (dynamic_cast<const RulesFileError*>(&e)) return kRulesFile;
-    std::string text = plain_error_text(e.what());
-    if (text != kSomethingWentWrong) return text;
-    // Types whose every message means the same thing to the user.
-    if (dynamic_cast<const ChartFileError*>(&e) || dynamic_cast<const MidiError*>(&e))
-        return kChartUnreadable;
-    if (dynamic_cast<const store::SerializeError*>(&e)) return kStoredResult;
-    return text;
+    return plain_error_text(e.what());
 }
 
 std::string plain_error_detail(const std::exception& e) { return e.what(); }

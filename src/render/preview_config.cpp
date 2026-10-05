@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
+#include "core/error_kind.h"
 #include "json.hpp"
 
 namespace hydra::render {
@@ -59,7 +60,7 @@ const json& need(const Node& n, const char* key, bool (*ok)(const json&)) {
         const auto it = n.j.find(key);
         if (it != n.j.end() && ok(*it)) return *it;
     }
-    throw std::runtime_error("3d-config.json: missing key " + key_path(n, key));
+    throw KindedError(ErrorKind::PreviewAssets, "3d-config.json: missing key " + key_path(n, key));
 }
 
 Node sub(const Node& n, const char* key) { return {need(n, key, is_object), key_path(n, key)}; }
@@ -94,7 +95,7 @@ PreviewConfig load_preview_config(const std::string& json_text) {
     try {
         parsed = json::parse(json_text);
     } catch (const json::exception& e) {
-        throw std::runtime_error(std::string("3d-config.json: ") + e.what());
+        throw KindedError(ErrorKind::PreviewAssets, std::string("3d-config.json: ") + e.what());
     }
     const Node root{parsed, ""};
     PreviewConfig c;

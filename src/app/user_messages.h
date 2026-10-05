@@ -18,13 +18,14 @@ inline constexpr const char* kSomethingWentWrong =
     "Something went wrong. Try again, and if it keeps happening, report it with the "
     "details below.";
 
-// What happened and what to do, in at most two short sentences. Uses the
-// exception's type where it says more than its text (a chart-file error
-// Hydra has no specific wording for still reads as a chart problem).
+// What happened and what to do, in at most two short sentences. An error
+// that carries its kind (core/error_kind.h) reads that kind's sentence, from
+// the one switch in user_messages.cpp; its words don't matter.
 std::string plain_error(const std::exception& e);
 
-// The same mapping for an error that arrives as text only. run_batch hands
-// its failures to the job as strings, so the batch uses this one.
+// The older mapping for an error that arrives as text only. run_batch hands
+// its failures to the job as strings, so the batch uses this one, and
+// plain_error falls back to it for an error with no kind.
 std::string plain_error_text(std::string_view what);
 
 // The raw text, for a small details line under the plain message.

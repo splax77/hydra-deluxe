@@ -17,6 +17,8 @@
 #include <stdexcept>
 #include <string_view>
 
+#include "core/error_kind.h"
+
 namespace hydra {
 
 std::wstring utf8_to_wide(const std::string& s) {
@@ -224,7 +226,7 @@ uint64_t file_size_bytes(const std::string& utf8_path) {
                            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     const std::optional<uint64_t> size = open_handle_size_bytes(h);
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    if (!size) throw std::runtime_error("cannot read file size: " + utf8_path);
+    if (!size) throw KindedError(ErrorKind::SongFileMissing, "cannot read file size: " + utf8_path);
     return *size;
 }
 
@@ -237,12 +239,13 @@ ByteSource file_byte_source(const std::string& utf8_path) {
     // Shared for reading and writing, as _wfopen's "rb" shares, so a file
     // another program holds open still reads.
     HANDLE h = CreateFileW(win32_path(utf8_path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) throw std::runtime_error("cannot open file: " + utf8_path);
+    if (h == INVALID_HANDLE_VALUE)
+        throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + utf8_path);
     std::shared_ptr<void> file(h, [](void* p) { CloseHandle(static_cast<HANDLE>(p)); });
     // std::ftell returns a 32-bit long on Windows and fails past 2 GB, which
     // used to hand back an empty buffer; the 64-bit size has no such limit.
     const std::optional<uint64_t> size = open_handle_size_bytes(h);
-    if (!size) throw std::runtime_error("cannot read file size: " + utf8_path);
+    if (!size) throw KindedError(ErrorKind::SongFileMissing, "cannot read file size: " + utf8_path);
 
     ByteSource src;
     src.size = *size;

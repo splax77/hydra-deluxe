@@ -172,12 +172,12 @@ public:
     explicit MaReader(StemBytes bytes) : bytes_(std::move(bytes)) {
         ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 0, 0);
         if (ma_decoder_init_memory(bytes_.data(), bytes_.size(), &cfg, &dec_) != MA_SUCCESS)
-            throw std::runtime_error("decode_audio: miniaudio could not open the stream");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: miniaudio could not open the stream");
         channels_ = static_cast<int>(dec_.outputChannels);
         rate_ = static_cast<int>(dec_.outputSampleRate);
         if (channels_ <= 0) {
             ma_decoder_uninit(&dec_);
-            throw std::runtime_error("decode_audio: miniaudio could not open the stream");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: miniaudio could not open the stream");
         }
         ma_uint64 len = 0;
         if (ma_decoder_get_length_in_pcm_frames(&dec_, &len) != MA_SUCCESS) len = 0;

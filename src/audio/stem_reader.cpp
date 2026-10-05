@@ -21,7 +21,7 @@ std::unique_ptr<StemReader> open_stem_reader(StemBytes bytes,
         case AudioFormat::OggOpus:
             return detail::open_opus_reader(std::move(bytes), progress);
         default:
-            throw std::runtime_error("decode_audio: unrecognized audio container");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: unrecognized audio container");
     }
 }
 

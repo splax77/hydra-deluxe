@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "audio/mixer.h"  // stem_converter_config, shared with mix_stems
+#include "core/error_kind.h"
 
 // miniaudio's configuration macros come from the miniaudio target.
 #include "miniaudio.h"
@@ -82,10 +83,10 @@ struct StreamMix::Stem {
         cfg = config;
         std::size_t heap_bytes = 0;
         if (ma_data_converter_get_heap_size(&cfg, &heap_bytes) != MA_SUCCESS)
-            throw std::runtime_error("StreamMix: data converter init failed");
+            throw KindedError(ErrorKind::AudioDecode, "StreamMix: data converter init failed");
         conv_heap.resize(heap_bytes / sizeof(std::max_align_t) + 1);
         if (!restart_converter())
-            throw std::runtime_error("StreamMix: data converter init failed");
+            throw KindedError(ErrorKind::AudioDecode, "StreamMix: data converter init failed");
     }
 
     // A fresh converter in the same heap block: no state from before.
@@ -185,7 +186,7 @@ StreamMix::StreamMix(std::vector<std::unique_ptr<StemReader>> stems, int out_rat
       out_channels_(out_channels),
       pad_(std::max<int64_t>(front_pad_frames, 0)) {
     if (out_rate <= 0 || out_channels <= 0)
-        throw std::runtime_error("StreamMix: invalid output format");
+        throw KindedError(ErrorKind::AudioDecode, "StreamMix: invalid output format");
     int64_t longest = 0;
     for (std::unique_ptr<StemReader>& r : stems) {
         if (!r || r->channels() <= 0 || r->sample_rate() <= 0) continue;

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <string>
 
+#include "app/user_messages.h"
 #include "core/winstr.h"
 #include "render/obj_loader.h"
 
@@ -87,6 +88,17 @@ TEST_CASE("load_obj handles v//vn, bare v, negative indices, and CRLF") {
     CHECK(m.vertices[0].normal[2] == doctest::Approx(1.0f));
     CHECK(m.vertices[3].normal[2] == doctest::Approx(0.0f));  // no vn on face 2
     CHECK(m.vertices[4].pos[0] == doctest::Approx(1.0f));
+}
+
+TEST_CASE("an .obj with no faces reads as a Preview asset problem") {
+    try {
+        load_obj("v 0 0 0\nv 1 0 0\nv 0 1 0\n");
+        FAIL("an .obj with no faces loaded");
+    } catch (const std::exception& e) {
+        CHECK(hydra::app::plain_error(e) ==
+              "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+        CHECK(std::string(e.what()) == "obj: no faces");
+    }
 }
 
 TEST_CASE("load_obj rejects text with no faces and bad indices") {

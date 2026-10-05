@@ -31,19 +31,20 @@ class VorbisReader final : public StemReader {
 public:
     explicit VorbisReader(StemBytes bytes) : bytes_(std::move(bytes)) {
         if (bytes_.size() > static_cast<std::size_t>(INT_MAX))
-            throw std::runtime_error(
+            throw KindedError(
+                ErrorKind::AudioDecode,
                 "decode_audio: Ogg Vorbis stream is over 2 GB, which stb_vorbis can't open");
         int err = 0;
         v_ = stb_vorbis_open_memory(bytes_.data(), static_cast<int>(bytes_.size()), &err,
                                     nullptr);
         if (v_ == nullptr)
-            throw std::runtime_error("decode_audio: stb_vorbis could not decode the stream");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: stb_vorbis could not decode the stream");
         const stb_vorbis_info info = stb_vorbis_get_info(v_);
         channels_ = info.channels;
         rate_ = static_cast<int>(info.sample_rate);
         if (channels_ <= 0 || rate_ <= 0) {
             stb_vorbis_close(v_);
-            throw std::runtime_error("decode_audio: stb_vorbis could not decode the stream");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: stb_vorbis could not decode the stream");
         }
         scratch_.resize(static_cast<std::size_t>(kChunkFrames) * channels_);
         // stb_vorbis says 0 when it finds no end page or the last granule is

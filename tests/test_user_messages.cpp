@@ -7,10 +7,12 @@
 #include <new>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "app/rules_file.h"
 #include "app/user_messages.h"
 #include "chart_text.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "parse/midi.h"
 #include "parse/song.h"
@@ -75,17 +77,20 @@ TEST_CASE("user_messages: a missing or unreadable song file") {
     CHECK(plain_error(hydra::ChartFileError("a brand new parse failure")) == kChartUnreadable);
 }
 
+// The refusals carry their kind, as check_timing_maps throws them.
+constexpr hydra::ErrorKind kRefused = hydra::ErrorKind::ChartTimingRefused;
+
 TEST_CASE("user_messages: refused chart timing names the tick") {
-    CHECK(plain_error(hydra::ChartFileError("the tempo at tick 384 is not above 0 BPM")) ==
+    CHECK(plain_error(hydra::ChartFileError(kRefused, "the tempo at tick 384 is not above 0 BPM")) ==
           "Hydra can't analyze this chart because the tempo at tick 384 is not above 0 "
           "BPM. Fix that line in the chart file or download the song again.");
     CHECK(plain_error(hydra::ChartFileError(
-              "the time signature at tick 768 makes a measure 0 ticks long")) ==
+              kRefused, "the time signature at tick 768 makes a measure 0 ticks long")) ==
           "Hydra can't analyze this chart because the time signature at tick 768 makes a "
           "measure 0 ticks long. Fix that line in the chart file or download the song "
           "again.");
     CHECK(plain_error(hydra::ChartFileError(
-              "the chart's resolution is 0, and it must be above 0")) ==
+              kRefused, "the chart's resolution is 0, and it must be above 0")) ==
           "Hydra can't analyze this chart because the chart's resolution is 0, and it must "
           "be above 0. Fix that line in the chart file or download the song again.");
 }
@@ -108,7 +113,7 @@ TEST_CASE("user_messages: a real refused load shows the tick sentence") {
 
 TEST_CASE("user_messages: an infinite .mid tempo says so") {
     CHECK(plain_error(hydra::ChartFileError(
-              "the tempo at tick 96 is infinite (0 microseconds per beat)")) ==
+              kRefused, "the tempo at tick 96 is infinite (0 microseconds per beat)")) ==
           "Hydra can't analyze this chart because the tempo at tick 96 is infinite (0 "
           "microseconds per beat). Fix that line in the chart file or download the song "
           "again.");
@@ -116,7 +121,7 @@ TEST_CASE("user_messages: an infinite .mid tempo says so") {
 
 TEST_CASE("user_messages: the no-notes message is already plain and passes through") {
     const std::string msg = "No Expert Pro Drums notes in this chart.";
-    CHECK(plain_error(hydra::ChartFileError(msg)) == msg);
+    CHECK(plain_error(hydra::ChartFileError(hydra::ErrorKind::AlreadyPlain, msg)) == msg);
     CHECK(plain_error_text(msg) == msg);
     // The typed error the loaders throw passes through the same way.
     CHECK(plain_error(hydra::NoNotesError(hydra::Difficulty::Expert, true)) == msg);
@@ -191,6 +196,63 @@ TEST_CASE("user_messages: a Preview mixer failure reads as an audio-decode probl
     // mix_stems is a test reference only; nothing the user runs throws its text.
     CHECK(plain_error_text("mix_stems: data converter init failed") ==
           hydra::app::kSomethingWentWrong);
+}
+
+// The thrower names the kind, so the words of the error don't matter: "x"
+// matches nothing in the old text matcher, and every kind still reads its
+// own sentence.
+TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its words") {
+    using hydra::ErrorKind;
+    using hydra::KindedError;
+    const std::pair<ErrorKind, std::string> cases[] = {
+        {ErrorKind::Cancelled, "Stopped before it finished."},
+        {ErrorKind::DatabaseOpen,
+         "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
+         "running and that the Hydra folder isn't read-only."},
+        {ErrorKind::DatabaseWrite, kDatabaseWrite},
+        {ErrorKind::SongFileMissing, kSongFileMissing},
+        {ErrorKind::HashFailed,
+         "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
+         "library again."},
+        {ErrorKind::ChartUnreadable, kChartUnreadable},
+        {ErrorKind::SearchBroken,
+         "The analysis failed on this chart because of a bug in Hydra. Please report it "
+         "with the song's name."},
+        {ErrorKind::NetUnreachable, kNetUnreachable},
+        {ErrorKind::NetTimeout,
+         "dmleaderboards didn't answer in time. Its server may be waking up; try again in "
+         "a minute."},
+        {ErrorKind::NetBadReply, "dmleaderboards sent a reply Hydra couldn't read. Try again later."},
+        {ErrorKind::NoScores, "This player has no drum scores on dmleaderboards to compare."},
+        {ErrorKind::NoRecords,
+         "There are no analyzed songs to put in a report yet. Analyze some songs first."},
+        {ErrorKind::ReportWrite,
+         "Hydra couldn't save the report file. Check that the disk isn't full and the "
+         "report folder isn't read-only."},
+        {ErrorKind::RulesFile,
+         "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then "
+         "restart Hydra."},
+        {ErrorKind::StoredResult,
+         "A saved result couldn't be read. Re-analyze this song to replace it."},
+        {ErrorKind::AudioDecode, kAudioDecode},
+        {ErrorKind::PreviewAssets,
+         "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them."},
+    };
+    for (const auto& [kind, sentence] : cases) {
+        CAPTURE(static_cast<int>(kind));
+        CHECK(plain_error(KindedError(kind, "x")) == sentence);
+    }
+    CHECK(plain_error(KindedError(ErrorKind::NetHttpStatus, "x", 503)) ==
+          "dmleaderboards returned an error (HTTP 503). Try again later.");
+    CHECK(plain_error(KindedError(ErrorKind::ChartTimingRefused, "x")) ==
+          "Hydra can't analyze this chart because x. Fix that line in the chart file or "
+          "download the song again.");
+    CHECK(plain_error(KindedError(ErrorKind::AlreadyPlain, "x")) == "x");
+    // The typed errors carry their kinds too.
+    CHECK(plain_error(hydra::ChartFileError("x")) == kChartUnreadable);
+    CHECK(plain_error(hydra::MidiError("x")) == kChartUnreadable);
+    CHECK(plain_error(hydra::store::SerializeError("x")) ==
+          "A saved result couldn't be read. Re-analyze this song to replace it.");
 }
 
 TEST_CASE("user_messages: anything else falls back, and the detail keeps the raw text") {

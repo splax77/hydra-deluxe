@@ -177,7 +177,7 @@ void build_index(const uint8_t* d, std::size_t size, const OpenProgress& progres
                 if (packets_seen == 0) {
                     if (seg[i] < 19 || std::memcmp(pos, kOpusHeadTag, sizeof kOpusHeadTag - 1) != 0) {
                         if (links.size() == 1)
-                            throw std::runtime_error("decode_audio: Opus stream has no OpusHead");
+                            throw KindedError(ErrorKind::AudioDecode, "decode_audio: Opus stream has no OpusHead");
                         link->channels = -1;  // unusable link: the chain ends before it
                     } else {
                         link->channels = pos[9];
@@ -211,10 +211,10 @@ public:
         : bytes_(std::move(bytes)) {
         build_index(bytes_.data(), bytes_.size(), progress, pages_, links_);
         if (links_.empty())
-            throw std::runtime_error("decode_audio: Opus stream has no OpusHead");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: Opus stream has no OpusHead");
         channels_ = links_[0].channels;
         if (channels_ < 1 || channels_ > 2)
-            throw std::runtime_error("decode_audio: only mono/stereo Opus is supported");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: only mono/stereo Opus is supported");
 
         // Keep the links that can play as one stream with the first.
         std::size_t keep = 0;
@@ -232,14 +232,14 @@ public:
         }
         links_.resize(keep);
         length_ = total;
-        if (length_ <= 0) throw std::runtime_error("decode_audio: no Opus audio decoded");
+        if (length_ <= 0) throw KindedError(ErrorKind::AudioDecode, "decode_audio: no Opus audio decoded");
 
         pcm_.resize(static_cast<std::size_t>(kMaxFrame) * channels_);
         page_buf_.resize(kMaxPageBytes);
         int err = 0;
         dec_ = opus_decoder_create(kRate, channels_, &err);
         if (err != OPUS_OK || dec_ == nullptr)
-            throw std::runtime_error("decode_audio: opus_decoder_create failed");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: opus_decoder_create failed");
         ogg_stream_init(&os_, static_cast<int>(links_[0].serial));
         start_link(0, links_[0].preskip, links_[0].first_page, 2, 0);
     }

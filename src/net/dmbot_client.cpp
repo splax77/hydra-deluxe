@@ -14,6 +14,7 @@
 #include "json.hpp"
 
 #include "app/analysis.h"  // normalize_chart_hash
+#include "core/error_kind.h"
 #include "core/version.h"
 #include "core/winstr.h"
 
@@ -35,9 +36,15 @@ struct Handle {
     explicit operator bool() const { return h != nullptr; }
 };
 
+// The kind is picked here, where the WinHTTP code is in hand: a timeout reads
+// differently from every other failure to reach the server.
 [[noreturn]] void fail(const std::string& what, DWORD error = GetLastError()) {
-    throw std::runtime_error(what + " (error " + std::to_string(error) + ")");
+    const ErrorKind kind =
+        error == ERROR_WINHTTP_TIMEOUT ? ErrorKind::NetTimeout : ErrorKind::NetUnreachable;
+    throw KindedError(kind, what + " (error " + std::to_string(error) + ")");
 }
+
+[[noreturn]] void throw_cancelled() { throw KindedError(ErrorKind::Cancelled, "cancelled"); }
 
 bool cancelled(const std::atomic<bool>* cancel) { return cancel && cancel->load(); }
 
@@ -121,9 +128,9 @@ struct AsyncRequest {
 // the step. A cancel that lands just as the step fails still reads "cancelled".
 void await_step(AsyncState& st, const std::atomic<bool>* cancel, const char* what) {
     while (WaitForSingleObject(st.done, 50) == WAIT_TIMEOUT)
-        if (cancelled(cancel)) throw std::runtime_error("cancelled");
+        if (cancelled(cancel)) throw_cancelled();
     if (st.error) {
-        if (cancelled(cancel)) throw std::runtime_error("cancelled");
+        if (cancelled(cancel)) throw_cancelled();
         fail(what, st.error);
     }
 }
@@ -132,7 +139,7 @@ void await_step(AsyncState& st, const std::atomic<bool>* cancel, const char* wha
 // user-facing message on any transport error or a non-200 status, or
 // "cancelled" within about 50 ms of `cancel` being set.
 std::string http_get(const std::string& url, const std::atomic<bool>* cancel) {
-    if (cancelled(cancel)) throw std::runtime_error("cancelled");
+    if (cancelled(cancel)) throw_cancelled();
 
     std::wstring wurl = hydra::utf8_to_wide(url);
 
@@ -195,7 +202,7 @@ std::string http_get(const std::string& url, const std::atomic<bool>* cancel) {
         fail("could not send the request");
     await_step(st, cancel, "could not send the request");
 
-    if (cancelled(cancel)) throw std::runtime_error("cancelled");
+    if (cancelled(cancel)) throw_cancelled();
     if (!WinHttpReceiveResponse(request.h, nullptr))
         fail("no response from the leaderboard");
     await_step(st, cancel, "no response from the leaderboard");
@@ -207,12 +214,14 @@ std::string http_get(const std::string& url, const std::atomic<bool>* cancel) {
                              WINHTTP_NO_HEADER_INDEX))
         fail("could not read the response status");
     if (status != 200)
-        throw std::runtime_error("leaderboard returned HTTP " + std::to_string(status));
+        throw KindedError(ErrorKind::NetHttpStatus,
+                          "leaderboard returned HTTP " + std::to_string(status),
+                          static_cast<int>(status));
 
     // In async mode the byte counts arrive through the callback, so the out
     // parameters are null (as the docs require).
     for (;;) {
-        if (cancelled(cancel)) throw std::runtime_error("cancelled");
+        if (cancelled(cancel)) throw_cancelled();
         if (!WinHttpQueryDataAvailable(request.h, nullptr)) fail("could not read the response");
         await_step(st, cancel, "could not read the response");
         DWORD avail = st.bytes;
@@ -279,7 +288,8 @@ json parse_json(const std::string& body) {
     try {
         return json::parse(body);
     } catch (const std::exception&) {
-        throw std::runtime_error("the leaderboard sent a response Hydra couldn't read");
+        throw KindedError(ErrorKind::NetBadReply,
+                          "the leaderboard sent a response Hydra couldn't read");
     }
 }
 
@@ -287,7 +297,7 @@ json parse_json(const std::string& body) {
 
 std::vector<DmUser> parse_users_json(const std::string& body) {
     json root = parse_json(body);
-    if (!root.is_array()) throw std::runtime_error("unexpected user-list format");
+    if (!root.is_array()) throw KindedError(ErrorKind::NetBadReply, "unexpected user-list format");
 
     std::vector<DmUser> users;
     users.reserve(root.size());

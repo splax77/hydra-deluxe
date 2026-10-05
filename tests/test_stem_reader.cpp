@@ -24,6 +24,7 @@
 #include "stb_vorbis.c"
 
 #include "app/preview_source.h"
+#include "app/user_messages.h"
 #include "audio/decode.h"
 #include "audio/stem_reader.h"
 #include "core/little_endian.h"
@@ -410,6 +411,18 @@ TEST_CASE("StemReader: unrecognized bytes throw a decode_audio error") {
     app::PreviewAudioStem missing;
     missing.path = fixture_path("no_such_file.opus");
     CHECK_THROWS_AS(open_stem_reader(missing), std::runtime_error);
+}
+
+TEST_CASE("StemReader: an unrecognized container reads as damaged audio") {
+    std::vector<uint8_t> junk = {0x89, 'P', 'N', 'G', 0, 0, 0, 0};
+    try {
+        open_stem_reader(StemBytes{junk, nullptr});
+        FAIL("expected a throw");
+    } catch (const std::exception& e) {
+        CHECK(app::plain_error(e) ==
+              "Hydra couldn't decode this song's audio files. They may be damaged; try "
+              "downloading the song again.");
+    }
 }
 
 namespace {

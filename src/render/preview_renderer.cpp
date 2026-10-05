@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/error_kind.h"
 #include "core/winstr.h"
 #include "image/decode.h"
 #include "render/highway_draw.h"
@@ -98,7 +99,7 @@ ComPtr<ID3DBlob> compile(const std::string& source, const char* name, const char
         std::string msg = std::string("PreviewRenderer: shader ") + name + " (" + entry + ")";
         if (errors) msg += ": " + std::string(static_cast<const char*>(errors->GetBufferPointer()),
                                               errors->GetBufferSize());
-        throw std::runtime_error(msg);
+        throw KindedError(ErrorKind::PreviewAssets, msg);
     }
     return code;
 }
@@ -159,9 +160,12 @@ struct PreviewRenderer::Impl {
     // samples the image's bottom row, as Onyx's GL upload does.
     ComPtr<ID3D11ShaderResourceView> load_texture(const std::string& file) {
         std::vector<uint8_t> bytes = asset_bytes(join_folder(join_folder(asset_dir, "textures"), file));
-        if (bytes.empty()) throw std::runtime_error("PreviewRenderer: missing texture " + file);
+        if (bytes.empty())
+            throw KindedError(ErrorKind::PreviewAssets, "PreviewRenderer: missing texture " + file);
         image::DecodedImage img = image::decode_image(bytes);
-        if (img.empty()) throw std::runtime_error("PreviewRenderer: undecodable texture " + file);
+        if (img.empty())
+            throw KindedError(ErrorKind::PreviewAssets,
+                              "PreviewRenderer: undecodable texture " + file);
         std::vector<uint8_t> flipped(img.rgba.size());
         const size_t row = static_cast<size_t>(img.width) * 4;
         for (int y = 0; y < img.height; ++y)
@@ -188,7 +192,9 @@ struct PreviewRenderer::Impl {
 
     GpuMesh load_model(const char* file) {
         std::string text = asset_text(join_folder(join_folder(asset_dir, "models"), file));
-        if (text.empty()) throw std::runtime_error(std::string("PreviewRenderer: missing model ") + file);
+        if (text.empty())
+            throw KindedError(ErrorKind::PreviewAssets,
+                              std::string("PreviewRenderer: missing model ") + file);
         return upload(load_obj(text));
     }
 
@@ -291,7 +297,8 @@ PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* cont
 
     const std::string cfg_path = join_folder(asset_dir, "3d-config.json");
     std::string cfg_text = asset_text(cfg_path);
-    if (cfg_text.empty()) throw std::runtime_error("PreviewRenderer: missing " + cfg_path);
+    if (cfg_text.empty())
+        throw KindedError(ErrorKind::PreviewAssets, "PreviewRenderer: missing " + cfg_path);
     d.cfg = load_preview_config(cfg_text);
 
     // Shaders from files, like Onyx loads its GLSL.
@@ -299,7 +306,8 @@ PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* cont
     std::string obj_src = asset_text(join_folder(shader_dir, "object.hlsl"));
     std::string fade_src = asset_text(join_folder(shader_dir, "fade.hlsl"));
     if (obj_src.empty() || fade_src.empty())
-        throw std::runtime_error("PreviewRenderer: missing shader files in " + asset_dir);
+        throw KindedError(ErrorKind::PreviewAssets,
+                          "PreviewRenderer: missing shader files in " + asset_dir);
     ComPtr<ID3DBlob> ovs = compile(obj_src, "object.hlsl", "VSMain", "vs_5_0");
     ComPtr<ID3DBlob> ops = compile(obj_src, "object.hlsl", "PSMain", "ps_5_0");
     ComPtr<ID3DBlob> fvs = compile(fade_src, "fade.hlsl", "VSMain", "vs_5_0");
