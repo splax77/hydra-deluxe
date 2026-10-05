@@ -56,6 +56,17 @@ Corner parse_corner(std::string_view tok) {
     return c;
 }
 
+// A polygon's triangles, pushed onto `mesh`: Onyx's triangulate,
+// [v1,v2,v3] ++ triangulate (v1 : v3 : rest), a fan from corner 0. Every mesh
+// load_obj reads and every mesh built here comes out in this one order.
+void push_fan(ObjMesh& mesh, const std::vector<ObjVertex>& corners) {
+    for (size_t i = 1; i + 1 < corners.size(); ++i) {
+        mesh.vertices.push_back(corners[0]);
+        mesh.vertices.push_back(corners[i]);
+        mesh.vertices.push_back(corners[i + 1]);
+    }
+}
+
 // Resolve a 1-based (or negative relative) index against a list of `n`.
 size_t resolve(long idx, size_t n, const char* what) {
     long r = idx > 0 ? idx - 1 : static_cast<long>(n) + idx;
@@ -108,14 +119,9 @@ ObjMesh load_obj(std::string_view text) {
         } else if (t[0] == "vn" && t.size() >= 4) {
             normals.push_back({to_float(t[1]), to_float(t[2]), to_float(t[3])});
         } else if (t[0] == "f" && t.size() >= 4) {
-            // Onyx's triangulate: [v1,v2,v3] ++ triangulate (v1 : v3 : rest).
-            std::vector<Corner> corners;
-            for (size_t i = 1; i < t.size(); ++i) corners.push_back(parse_corner(t[i]));
-            for (size_t i = 1; i + 1 < corners.size(); ++i) {
-                mesh.vertices.push_back(make_vertex(corners[0]));
-                mesh.vertices.push_back(make_vertex(corners[i]));
-                mesh.vertices.push_back(make_vertex(corners[i + 1]));
-            }
+            std::vector<ObjVertex> corners;
+            for (size_t i = 1; i < t.size(); ++i) corners.push_back(make_vertex(parse_corner(t[i])));
+            push_fan(mesh, corners);
         }
         // mtllib / usemtl / o / g / s and anything else: ignored.
     }
@@ -156,15 +162,10 @@ ObjVertex vtx(float x, float y, float z, float nx, float ny, float nz, float u, 
     return o;
 }
 
-// Two triangles for the quad a,b,c,d (fan from a), matching load_obj's order.
+// The quad a,b,c,d as two triangles, by push_fan like a face load_obj reads.
 void push_quad(ObjMesh& m, const ObjVertex& a, const ObjVertex& b, const ObjVertex& c,
                const ObjVertex& d) {
-    m.vertices.push_back(a);
-    m.vertices.push_back(b);
-    m.vertices.push_back(c);
-    m.vertices.push_back(a);
-    m.vertices.push_back(c);
-    m.vertices.push_back(d);
+    push_fan(m, {a, b, c, d});
 }
 
 }  // namespace

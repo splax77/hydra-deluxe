@@ -1963,6 +1963,117 @@ const std::vector<OwnerRule>& rules() {
           "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
          {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
          {"tests"}},
+        // ---- phase 6 task J2-8: render callers and the Onyx numbers ----
+        // The highway's far end is now plus speed times secs_future; time_to_z,
+        // z_to_time and the draw list's window all ask far_time.
+        {"Where is the far end of the highway?",
+         "far_time in src/render/highway_draw.cpp",
+         R"(\bspeed\s*\*\s*(?:cfg\.track|T)\.secs_future\b)",
+         "",
+         {},
+         {},
+         "audit finding 224; phase 6 task J2-8 (D54)",
+         {"const double far_time = now_s + speed * cfg.track.secs_future;",
+          "const double far_t = now_s + speed * T.secs_future;"},
+         {"const double far_t = far_time(cfg, now_s, speed);",
+          "CHECK(c.track.secs_future == doctest::Approx(1.35));"},
+         {{"src/render/highway_draw.cpp", "return now_s + speed * cfg.track.secs_future;",
+           "far_time, the owner"}}},
+        // The track rectangle: the size floor (below 1 counts as 1), the
+        // camera aspect (width over track height) and the bottom anchor (the
+        // track's top row is the image height less the track height). The last
+        // alternative is the renderer's old fade rectangle, which divided the
+        // track height by the image height; it now converts track_rect's top
+        // row to screen coordinates.
+        {"Where does the track rectangle sit, and at what size?",
+         "track_rect in src/render/highway_draw.cpp",
+         R"(std::max\(\s*1\s*,\s*(?:width|height)\s*\))"
+         R"(|static_cast<float>\([^()]*\)\s*/\s*static_cast<float>\((?:\w+\.)*(?:th|track_h|track_height)\))"
+         R"(|\b(?:\w+\.)*(?:h|height)\s*-\s*(?:\w+\.)*(?:th|track_h|track_height)\b)"
+         R"(|static_cast<float>\((?:\w+\.)*(?:th|track_h|track_height)\)\s*/\s*static_cast<float>\()",
+         "",
+         {},
+         {},
+         "audit finding 221; phase 6 task J2-8 (D54)",
+         {"const int w = std::max(1, width);",
+          "const int h = std::max(1, height);",
+          "const HighwayCamera cam = make_camera(cfg, static_cast<float>(w) / static_cast<float>(th));",
+          "out.y = static_cast<float>(h - th) + (1.0f - XMVectorGetY(ndc)) * 0.5f * static_cast<float>(th);",
+          "return highway_span_at(cfg, width, height, static_cast<float>(std::max(1, height))).left - gap;",
+          "d.width = std::max(1, width);",
+          "d.height = std::max(1, height);",
+          "HighwayCamera cam = make_camera(cfg, static_cast<float>(d.width) / static_cast<float>(d.track_h));",
+          "fc.rect_max = XMFLOAT2(1.0f, -1.0f + 2.0f * static_cast<float>(d.track_h) / "
+          "static_cast<float>(d.height));"},
+         {"const int want = std::max(1, cfg.hydra.msaa);",
+          "XMFLOAT2(1.0f, 1.0f - 2.0f * static_cast<float>(d.rect.top) / static_cast<float>(d.rect.height));",
+          "const HighwayCamera cam = make_camera(cfg, r.aspect);",
+          "r.track_height = std::max(1, t);"},
+         {{"src/render/highway_draw.cpp", "r.width = std::max(1, width);", "track_rect, the owner"},
+          {"src/render/highway_draw.cpp", "r.height = std::max(1, height);", "track_rect, the owner"},
+          {"src/render/highway_draw.cpp", "r.top = r.height - r.track_height;", "track_rect, the owner"},
+          {"src/render/highway_draw.cpp",
+           "r.aspect = static_cast<float>(r.width) / static_cast<float>(r.track_height);",
+           "track_rect, the owner"}}},
+        // A polygon becomes triangles as a fan from its first corner (Onyx's
+        // triangulate). load_obj's faces and the built flat and box meshes all
+        // push their vertices through push_fan.
+        {"In what order does a polygon become triangles?",
+         "push_fan in src/render/obj_loader.cpp",
+         R"(\.vertices\.push_back\()",
+         "",
+         {},
+         {},
+         "audit finding 226; phase 6 task J2-8 (D54)",
+         {"m.vertices.push_back(a);", "m.vertices.push_back(b);", "m.vertices.push_back(c);",
+          "m.vertices.push_back(a);", "m.vertices.push_back(c);", "m.vertices.push_back(d);",
+          "mesh.vertices.push_back(make_vertex(corners[0]));"},
+         {"for (int k = 0; k < 3; ++k) sorted.push_back(mesh.vertices[tri * 3 + k]);",
+          "push_fan(m, {a, b, c, d});"},
+         {{"src/render/obj_loader.cpp", "mesh.vertices.push_back(corners[0]);", "push_fan, the owner"},
+          {"src/render/obj_loader.cpp", "mesh.vertices.push_back(corners[i]);", "push_fan, the owner"},
+          {"src/render/obj_loader.cpp", "mesh.vertices.push_back(corners[i + 1]);",
+           "push_fan, the owner"}},
+         {"src/render/obj_loader.cpp"}},
+        // Where a Preview text box's line may break: wrap_words walks the
+        // spaces, and widest_word takes the widest line it makes at width 0.
+        {"Where may a line break fall in a Preview text box?",
+         "wrap_words in src/render/overlay_layout.cpp",
+         R"(\.find\(\s*' ')",
+         "",
+         {},
+         {},
+         "audit finding 75; phase 6 task J2-8 (D54)",
+         {"size_t end = text.find(' ', start);"},
+         {"while (start < text.size() && text[start] == ' ') ++start;",
+          "for (const std::string& line : wrap_words(text, 0.0f, width_of, keep_last))"},
+         {{"src/render/overlay_layout.cpp", "size_t next = text.find(' ', end);",
+           "wrap_words, the owner"}},
+         {"src/render/overlay_layout.cpp"}},
+        // The Preview's numbers live in assets/preview/3d-config.json alone; a
+        // PreviewConfig that was not loaded holds zeros. A field set to a
+        // number, or a brace initializer holding one, would be a second copy.
+        // Color's white and Vec3's origin are the types' own defaults, not
+        // Onyx's numbers, so their two member lines are left out.
+        {"Whose numbers does the Preview draw with?",
+         "assets/preview/3d-config.json, read by load_preview_config (docs/adr/0008)",
+         R"(^(?!\s*float [rx] = ).*(?:\b\w+\s*=\s*-?\d|\w\{[^}]*\d))",
+         "",
+         {},
+         {},
+         "audit finding 220; phase 6 task J2-8 (D54)",
+         {"float secs_future = 1.35f;  // events this far ahead sit at z_future",
+          "Color background{0x1c / 255.0f, 0x1d / 255.0f, 0x2b / 255.0f, 1};",
+          "Vec3 camera_position{0, 1.4f, 3};",
+          "LightConfig light{{0, -0.5f, 0.5f}};",
+          "int msaa = 4;  // mirrors Onyx's prefMSAA default",
+          "float y = -1;  // the floor"},
+         {"float r = 1, g = 1, b = 1, a = 1;",
+          "float x = 0, y = 0, z = 0;",
+          "float secs_future{};  // events this far ahead sit at z_future",
+          "LightConfig light{};"},
+         {},
+         {"src/render/preview_config.h"}},
     };
     return r;
 }
@@ -2014,15 +2125,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"What gain does a volume percent play at?", "src/ui/preview_controller.cpp",
          "transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);",
          "task PV (the Preview calls Settings::volume_gain)"},
-        {"Is a span on after this instant?", "src/render/highway_draw.cpp",
-         "bool toggle_on(Toggle t) { return t != Toggle::Empty && t != Toggle::End; }",
-         "J2-8 (the draw code calls toggle_on_after)"},
-        {"Which pad colours a fill lane?", "src/render/highway_draw.cpp",
-         "if (inst.t >= s.t1 && inst.t <= s.t2 && inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }",
-         "J2-8 (the draw code reads the pad off make_lane_bounds)"},
-        {"Which pad colours a fill lane?", "src/render/highway_draw.cpp",
-         "if (inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }",
-         "J2-8 (the draw code reads the pad off make_lane_bounds)"},
         {"Which notes file wins when a song has both?", "src/parse/song.cpp",
          "const ChartFormat f = notes_file_format(e.name);",
          "task J2-3 (the .sng loader calls pick_notes_file; audit finding 186)"},

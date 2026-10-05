@@ -116,7 +116,9 @@ struct PreviewRenderer::Impl {
     std::string asset_dir;
     PreviewConfig cfg;
 
-    int width = 0, height = 0, track_h = 0;
+    // Where the track sits in the target, from track_rect; all zero until the
+    // first resize.
+    TrackRect rect{0, 0, 0, 0, 0.0f};
     UINT msaa = 1;
 
     // Final target (what the GUI shows) and the scene target it composites.
@@ -156,7 +158,7 @@ struct PreviewRenderer::Impl {
     // Decode an image file and upload it with its rows flipped so that v = 0
     // samples the image's bottom row, as Onyx's GL upload does.
     ComPtr<ID3D11ShaderResourceView> load_texture(const std::string& file) {
-        std::vector<uint8_t> bytes = asset_bytes(asset_dir + "\\textures\\" + file);
+        std::vector<uint8_t> bytes = asset_bytes(join_folder(join_folder(asset_dir, "textures"), file));
         if (bytes.empty()) throw std::runtime_error("PreviewRenderer: missing texture " + file);
         image::DecodedImage img = image::decode_image(bytes);
         if (img.empty()) throw std::runtime_error("PreviewRenderer: undecodable texture " + file);
@@ -185,7 +187,7 @@ struct PreviewRenderer::Impl {
     }
 
     GpuMesh load_model(const char* file) {
-        std::string text = asset_text(asset_dir + "\\models\\" + file);
+        std::string text = asset_text(join_folder(join_folder(asset_dir, "models"), file));
         if (text.empty()) throw std::runtime_error(std::string("PreviewRenderer: missing model ") + file);
         return upload(load_obj(text));
     }
@@ -195,8 +197,8 @@ struct PreviewRenderer::Impl {
         final_rtv.Reset(); scene_rtv.Reset(); final_srv.Reset(); scene_srv.Reset(); dsv.Reset();
 
         D3D11_TEXTURE2D_DESC td = {};
-        td.Width = static_cast<UINT>(width);
-        td.Height = static_cast<UINT>(height);
+        td.Width = static_cast<UINT>(rect.width);
+        td.Height = static_cast<UINT>(rect.height);
         td.MipLevels = 1;
         td.ArraySize = 1;
         td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -209,7 +211,7 @@ struct PreviewRenderer::Impl {
 
         // The scene target is the track rectangle, multisampled when supported.
         D3D11_TEXTURE2D_DESC sd = td;
-        sd.Height = static_cast<UINT>(track_h);
+        sd.Height = static_cast<UINT>(rect.track_height);
         UINT quality = 0;
         msaa = 1;
         const int want = std::max(1, cfg.hydra.msaa);
@@ -223,7 +225,7 @@ struct PreviewRenderer::Impl {
         check(device->CreateRenderTargetView(scene_tex.Get(), nullptr, &scene_rtv), "scene rtv");
 
         D3D11_TEXTURE2D_DESC rd = td;
-        rd.Height = static_cast<UINT>(track_h);
+        rd.Height = static_cast<UINT>(rect.track_height);
         rd.BindFlags = D3D11_BIND_SHADER_RESOURCE;
         check(device->CreateTexture2D(&rd, nullptr, &scene_resolved), "resolve texture");
         check(device->CreateShaderResourceView(scene_resolved.Get(), nullptr, &scene_srv), "scene srv");
@@ -287,14 +289,15 @@ PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* cont
     d.context = context;
     d.asset_dir = asset_dir;
 
-    std::string cfg_text = asset_text(asset_dir + "\\3d-config.json");
-    if (cfg_text.empty())
-        throw std::runtime_error("PreviewRenderer: missing " + asset_dir + "\\3d-config.json");
+    const std::string cfg_path = join_folder(asset_dir, "3d-config.json");
+    std::string cfg_text = asset_text(cfg_path);
+    if (cfg_text.empty()) throw std::runtime_error("PreviewRenderer: missing " + cfg_path);
     d.cfg = load_preview_config(cfg_text);
 
     // Shaders from files, like Onyx loads its GLSL.
-    std::string obj_src = asset_text(asset_dir + "\\shaders\\object.hlsl");
-    std::string fade_src = asset_text(asset_dir + "\\shaders\\fade.hlsl");
+    const std::string shader_dir = join_folder(asset_dir, "shaders");
+    std::string obj_src = asset_text(join_folder(shader_dir, "object.hlsl"));
+    std::string fade_src = asset_text(join_folder(shader_dir, "fade.hlsl"));
     if (obj_src.empty() || fade_src.empty())
         throw std::runtime_error("PreviewRenderer: missing shader files in " + asset_dir);
     ComPtr<ID3DBlob> ovs = compile(obj_src, "object.hlsl", "VSMain", "vs_5_0");
@@ -383,9 +386,7 @@ PreviewRenderer::~PreviewRenderer() { delete impl_; }
 
 void PreviewRenderer::resize(int width, int height) {
     Impl& d = *impl_;
-    d.width = std::max(1, width);
-    d.height = std::max(1, height);
-    d.track_h = track_height(d.cfg, d.width, d.height);
+    d.rect = track_rect(d.cfg, width, height);
     d.create_targets();
 }
 
@@ -409,7 +410,7 @@ void PreviewRenderer::render(double now_ms) {
     std::vector<DrawCommand> cmds =
         build_highway_draws(d.state, cfg, now_ms / 1000.0, kPlaybackSpeed);
 
-    HighwayCamera cam = make_camera(cfg, static_cast<float>(d.width) / static_cast<float>(d.track_h));
+    HighwayCamera cam = make_camera(cfg, d.rect.aspect);
     PerFrame pf = {};
     pf.view = cam.view;
     pf.proj = cam.proj;
@@ -418,7 +419,8 @@ void PreviewRenderer::render(double now_ms) {
 
     ID3D11RenderTargetView* rtv = d.scene_rtv.Get();
     ctx->OMSetRenderTargets(1, &rtv, d.dsv.Get());
-    D3D11_VIEWPORT vp = {0, 0, static_cast<float>(d.width), static_cast<float>(d.track_h), 0.0f, 1.0f};
+    D3D11_VIEWPORT vp = {0, 0, static_cast<float>(d.rect.width),
+                         static_cast<float>(d.rect.track_height), 0.0f, 1.0f};
     ctx->RSSetViewports(1, &vp);
     const float clear[4] = {0, 0, 0, 0};
     ctx->ClearRenderTargetView(rtv, clear);
@@ -452,15 +454,18 @@ void PreviewRenderer::render(double now_ms) {
     // ---- composite pass: background colour + horizon-faded highway --------
     rtv = d.final_rtv.Get();
     ctx->OMSetRenderTargets(1, &rtv, nullptr);
-    D3D11_VIEWPORT fvp = {0, 0, static_cast<float>(d.width), static_cast<float>(d.height), 0.0f, 1.0f};
+    D3D11_VIEWPORT fvp = {0, 0, static_cast<float>(d.rect.width), static_cast<float>(d.rect.height),
+                          0.0f, 1.0f};
     ctx->RSSetViewports(1, &fvp);
     const float bg[4] = {cfg.view.background.r, cfg.view.background.g, cfg.view.background.b, 1.0f};
     ctx->ClearRenderTargetView(rtv, bg);
 
     FadeCB fc = {};
-    // The track rect hugs the bottom: NDC y from -1 up to -1 + 2*track_h/height.
+    // The track rect in NDC: from the image's bottom edge (y -1) up to its top
+    // row, image row r sitting at NDC y 1 - 2r/height.
     fc.rect_min = XMFLOAT2(-1.0f, -1.0f);
-    fc.rect_max = XMFLOAT2(1.0f, -1.0f + 2.0f * static_cast<float>(d.track_h) / static_cast<float>(d.height));
+    fc.rect_max =
+        XMFLOAT2(1.0f, 1.0f - 2.0f * static_cast<float>(d.rect.top) / static_cast<float>(d.rect.height));
     fc.start_fade = cfg.view.track_fade_bottom;
     fc.end_fade = cfg.view.track_fade_top;
     d.update_cb(d.cb_fade.Get(), fc);
@@ -487,8 +492,8 @@ void PreviewRenderer::render(double now_ms) {
 }
 
 ID3D11ShaderResourceView* PreviewRenderer::texture_srv() const { return impl_->final_srv.Get(); }
-int PreviewRenderer::width() const { return impl_->width; }
-int PreviewRenderer::height() const { return impl_->height; }
+int PreviewRenderer::width() const { return impl_->rect.width; }
+int PreviewRenderer::height() const { return impl_->rect.height; }
 const PreviewConfig& PreviewRenderer::config() const { return impl_->cfg; }
 
 }  // namespace hydra::render
