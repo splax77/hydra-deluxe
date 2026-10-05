@@ -34,7 +34,7 @@ These numbers are Hydra's, not Onyx's. The user confirmed each one as it is.
 
 An SP phrase, solo or fill span ends half a tick past its last note, so its
 edge clears that note and stops short of the next tick at any resolution and
-tempo (`kSpanEndTicks` in src/render/track_state.cpp).
+tempo (`kSpanEndTicks` in src/render/track_state.h).
 
 The activation jump buttons and the next-activation box count the playhead as
 on an activation when it is within half a millisecond of it

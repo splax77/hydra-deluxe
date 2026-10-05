@@ -125,6 +125,12 @@ std::string parent_folder(const std::string& path) {
     return pos == std::string::npos ? std::string() : p.substr(0, pos);
 }
 
+std::string join_folder(const std::string& folder, const std::string& name) {
+    if (folder.empty()) return name;
+    const char last = folder.back();
+    return (last == '\\' || last == '/') ? folder + name : folder + "\\" + name;
+}
+
 std::filesystem::path os_path(const std::filesystem::path& p) {
     return std::filesystem::path(win32_path(p.native()));
 }

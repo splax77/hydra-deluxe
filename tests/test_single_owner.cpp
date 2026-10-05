@@ -1375,6 +1375,24 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/analysis.cpp",
            "std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }",
            "normalize_chart_hash, the owner"}}},
+        // A folder and a file name glued with a bare backslash. join_folder
+        // adds none when the folder already ends in a slash, which a bare join
+        // gets wrong. The owner's own line is listed, so a second copy of it
+        // fails too.
+        {"How are a folder and a file name joined?",
+         "join_folder in src/core/winstr.cpp",
+         R"(\bfolder\s*\+\s*"\\\\"\s*\+)",
+         "",
+         {},
+         {},
+         "review of M6-J1a, finding 1 (phase 6 wave J1 sweep)",
+         {R"(return ini ? folder + "\\" + ini->name : std::string();)",
+          R"(if (!e.is_dir && is_song_ini(e.name)) return folder + "\\" + e.name;)"},
+         {R"(return (last == '\\' || last == '/') ? a + b : a + "\\" + b;)"},
+         {{"src/core/winstr.cpp",
+           R"(return (last == '\\' || last == '/') ? folder + name : folder + "\\" + name;)",
+           "join_folder, the owner"}},
+         {"src"}},
     };
     return r;
 }
@@ -1465,6 +1483,12 @@ const std::vector<KnownCopy>& known_copies() {
         {"How is a chart hash spelled for matching?", "src/net/dmbot_client.cpp",
          R"(s.identifier = to_lower_ascii(jstr(entry, "identifier"));)",
          "task J2-2 (calls normalize_chart_hash; audit finding 192)"},
+        {"How are a folder and a file name joined?", "src/app/preview_source.cpp",
+         R"(if (!e.is_dir && is_song_ini(e.name)) return folder + "\\" + e.name;)",
+         "task J2-5 (the Preview calls the join owner; review of M6-J1a finding 1)"},
+        {"How are a folder and a file name joined?", "src/app/preview_source.cpp",
+         R"(s.path = folder + "\\" + e.name;)",
+         "task J2-5 (the Preview calls the join owner; review of M6-J1a finding 1)"},
     };
     return k;
 }
