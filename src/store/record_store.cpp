@@ -3,6 +3,7 @@
 #include <sqlite3.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <map>
 #include <stdexcept>
 
@@ -550,6 +551,11 @@ PathSummary summarize_path(const Path& path) {
     return s;
 }
 
+// A Ready record with no paths has no facts (D51 call 11): every field is
+// unset and has_scored_best_path() is false. That flag is the one answer to
+// "is there a scored best path"; in wave 3 LB's facts_of and query_matches
+// and RP's leaderboard and fill pages read it instead of each checking a
+// field of their own.
 PathSummary summarize_record(const HydraRecord& record) {
     if (record.paths.empty()) return PathSummary{};
 
@@ -664,6 +670,16 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
         "  blob          BLOB NOT NULL,"
         "  count_version INTEGER NOT NULL DEFAULT 0,"
         "  PRIMARY KEY (md5, difficulty, pro)"
+        ");"
+        // Each difficulty's own length (D51 call 9): its last note's onset,
+        // in ms, written by every analysis of that difficulty. A file from
+        // before this table has no rows, and its records read songmeta's one
+        // per-chart length until the difficulty is analyzed again.
+        "CREATE TABLE IF NOT EXISTS songlength ("
+        "  hyhash    TEXT NOT NULL,"
+        "  chartmode TEXT NOT NULL,"
+        "  length_ms REAL NOT NULL,"
+        "  PRIMARY KEY (hyhash, chartmode)"
         ");");
     // A dynamics table from before the stamp gets the column. Its rows read
     // 0, which matches no real stamp, so each is recounted once.
@@ -703,11 +719,9 @@ void RecordStore::upgrade_results_key() {
     // What the rebuilt table's legacy_fills column is filled from.
     std::string legacy_fills;
     if (!has_column("results", "legacy_fills")) {
-        // Schema 2. hydra_batch --legacy-fills stamps its file "ch10"
-        // (search/graph.h engine_mode_stamp); everything else in a schema 2
-        // file ran under 1.1.
-        const std::optional<std::string> mode = meta_get("engine_mode");
-        legacy_fills = mode && *mode == "ch10" ? "1" : "0";
+        // Schema 2. hydra_batch --legacy-fills stamps its file with the 1.0
+        // rule; everything else in a schema 2 file ran under 1.1.
+        legacy_fills = stamped_fill_rule() == FillDeadlineRule::Ch10 ? "1" : "0";
     } else if (!has_column("results", "rules_fp")) {
         // Schema 3: each row keeps its own fill rule.
         legacy_fills = "legacy_fills";
@@ -781,6 +795,16 @@ void RecordStore::set_engine_mode(const std::string& mode) {
     meta_set("engine_mode", mode);
 }
 
+std::optional<FillDeadlineRule> RecordStore::stamped_fill_rule() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    if (const std::optional<std::string> mode = meta_get("engine_mode"))
+        return fill_rule_from_stamp(*mode);
+    // No stamp. Results written without one ran under the normal rule.
+    Stmt any = prepare(db_, "SELECT 1 FROM results LIMIT 1");
+    if (sqlite3_step(any) == SQLITE_ROW) return FillDeadlineRule::Ch11;
+    return std::nullopt;
+}
+
 void RecordStore::put_dynamics(const DynamicsKey& key, const std::vector<uint8_t>& blob,
                                int count_version) {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -810,7 +834,13 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     exec("BEGIN");
     try {
-        upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap, length_ms);
+        // The length goes to this difficulty's own row. songmeta's one
+        // per-chart length only gets one when it has none: it is what the
+        // difficulties without a row of their own read, and an analysis of
+        // one difficulty must not move the others' timelines.
+        upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap, std::nullopt);
+        if (length_ms) set_song_length(hyhash, *length_ms);
+        write_song_length(hyhash, row.chartmode, length_ms, /*replace=*/true);
         write_row(row);
         if (dynamics) {
             // Best effort, inside the same transaction: a failed count write
@@ -939,17 +969,87 @@ void RecordStore::set_song_length(const std::string& hyhash, double length_ms) {
         throw std::runtime_error(std::string("set_song_length failed: ") + sqlite3_errmsg(db_));
 }
 
+void RecordStore::set_song_length(const std::string& hyhash, const std::string& chartmode,
+                                  double length_ms) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    write_song_length(hyhash, chartmode, length_ms, /*replace=*/false);
+}
+
+void RecordStore::write_song_length(const std::string& hyhash, const std::string& chartmode,
+                                    std::optional<double> length_ms, bool replace) {
+    // A difficulty with no notes has no length: its row goes, and it reads
+    // the per-chart one like a record from before this table.
+    if (!length_ms) {
+        Stmt del = prepare(db_, "DELETE FROM songlength WHERE hyhash = ? AND chartmode = ?");
+        bind_text(del, 1, hyhash);
+        bind_text(del, 2, chartmode);
+        if (sqlite3_step(del) != SQLITE_DONE)
+            throw std::runtime_error(std::string("set_song_length failed: ") +
+                                     sqlite3_errmsg(db_));
+        return;
+    }
+    // Only a registered song gets a row, as set_song_length(hyhash, length)
+    // leaves an unknown song alone. The WHERE also keeps SQLite from reading
+    // the ON CONFLICT as a join's ON.
+    Stmt s = prepare(db_, replace
+        ? "INSERT OR REPLACE INTO songlength (hyhash, chartmode, length_ms)"
+          " SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM songmeta WHERE hyhash = ?1)"
+        : "INSERT OR IGNORE INTO songlength (hyhash, chartmode, length_ms)"
+          " SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM songmeta WHERE hyhash = ?1)");
+    bind_text(s, 1, hyhash);
+    bind_text(s, 2, chartmode);
+    sqlite3_bind_double(s, 3, *length_ms);
+    if (sqlite3_step(s) != SQLITE_DONE)
+        throw std::runtime_error(std::string("set_song_length failed: ") + sqlite3_errmsg(db_));
+}
+
+std::optional<double> RecordStore::read_song_length(const std::string& hyhash,
+                                                    const std::string& chartmode) {
+    Stmt s = prepare(db_, "SELECT length_ms FROM songlength WHERE hyhash = ? AND chartmode = ?");
+    bind_text(s, 1, hyhash);
+    bind_text(s, 2, chartmode);
+    if (sqlite3_step(s) != SQLITE_ROW) return std::nullopt;
+    return column_opt_f64(s, 0);
+}
+
+// Which copy names an md5 (D51 call 10): the first copy the scan listed, the
+// charts row with the smallest rowid for that md5. One row per md5, with its
+// name, artist and charter (SQLite takes a bare column from the MIN(rowid)
+// row). The rebuild's rename and upsert_song both read names through it.
+constexpr const char* kNamingCopiesSql =
+    "(SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)";
+
+// The meta row that holds the charts table's kChartMetaStamp, written once
+// per file by rebuild_chart_library and checked by chart_library_cache.
+constexpr const char* kChartMetaKey = "chart_meta_version";
+
 void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_name,
                               const std::string& ref_artist, const std::string& ref_charter,
                               const std::vector<uint8_t>& tempomap,
                               std::optional<double> length_ms) {
-    // A chart already registered takes the names this call carries. They
-    // come from the scan, so a fixed song.ini reaches the reports on the next
-    // analysis (user decision 2026-09-26). Each analysis rewrites the tempo
-    // map too (D51 call 12): the map is whatever the chart reader made of the
-    // file this time, so a reader fix reaches the stored map on the next
-    // analysis instead of never. The length is written on update too: a new
-    // analysis may be of another difficulty, with a different last note.
+    // A chart already registered takes the names this call carries, unless
+    // the scan listed it: then the copy the scan listed first names it
+    // (D51 call 10, kNamingCopiesSql), whichever copy was analyzed. A fixed
+    // song.ini still reaches the reports on the next analysis or scan (user
+    // decision 2026-09-26). A chart the scan never listed (the tests,
+    // hydra_bench, a chart analyzed before any scan) takes the call's names.
+    // Each analysis rewrites the tempo map too (D51 call 12): the map is
+    // whatever the chart reader made of the file this time, so a reader fix
+    // reaches the stored map on the next analysis instead of never. The
+    // per-chart length is written on update when the call carries one
+    // (add_song does; save_analysis files its length per difficulty).
+    std::string name = ref_name, artist = ref_artist, charter = ref_charter;
+    {
+        const std::string sql =
+            std::string("SELECT name, artist, charter FROM ") + kNamingCopiesSql + " WHERE md5 = ?";
+        Stmt copy = prepare(db_, sql.c_str());
+        bind_text(copy, 1, hyhash);
+        if (sqlite3_step(copy) == SQLITE_ROW) {
+            name = column_text(copy, 0);
+            artist = column_text(copy, 1);
+            charter = column_text(copy, 2);
+        }
+    }
     Stmt s = prepare(db_,
         "INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap, length_ms) "
         "VALUES (?,?,?,?,?,?) "
@@ -958,9 +1058,9 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
         "tempomap = excluded.tempomap, "
         "length_ms = COALESCE(excluded.length_ms, songmeta.length_ms)");
     bind_text(s, 1, hyhash);
-    bind_text(s, 2, ref_name);
-    bind_text(s, 3, ref_artist);
-    bind_text(s, 4, ref_charter);
+    bind_text(s, 2, name);
+    bind_text(s, 3, artist);
+    bind_text(s, 4, charter);
     bind_blob(s, 5, tempomap);
     if (length_ms) sqlite3_bind_double(s, 6, *length_ms);
     else sqlite3_bind_null(s, 6);
@@ -1299,6 +1399,11 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
         structure = std::move(best.structure);
         nodes = load_nodes(best.result_id);
         songmeta = read_tempomap(key.hyhash);
+        // This difficulty's own length when it has one; else the per-chart
+        // length a file from before per-difficulty lengths holds.
+        if (songmeta)
+            if (const std::optional<double> own = read_song_length(key.hyhash, key.chartmode))
+                songmeta->length_ms = own;
     }
 
     out.status = RecordStatus::Ready;
@@ -1726,11 +1831,13 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
         // Song names follow song.ini (user decision 2026-09-26): a chart that
         // already has a song row takes the names this scan read. When the
         // scan found the same chart twice, the first copy it listed names it
-        // (sqlite takes a bare column from the MIN(rowid) row).
-        exec("UPDATE songmeta SET ref_name = c.name, ref_artist = c.artist,"
-             " ref_charter = c.charter"
-             " FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)"
-             " AS c WHERE songmeta.hyhash = c.md5");
+        // (kNamingCopiesSql).
+        exec((std::string("UPDATE songmeta SET ref_name = c.name, ref_artist = c.artist,"
+                          " ref_charter = c.charter FROM ") +
+              kNamingCopiesSql + " AS c WHERE songmeta.hyhash = c.md5")
+                 .c_str());
+        // The readers that filled these rows answer for them (kChartMetaStamp).
+        meta_set(kChartMetaKey, std::to_string(kChartMetaStamp.written));
         exec("COMMIT");
     } catch (...) {
         rollback_if_open(db_);
@@ -1742,6 +1849,11 @@ ChartLibraryCache RecordStore::chart_library_cache() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
 
     ChartLibraryCache cache;
+    // Rows the current readers didn't vouch for are no cache at all: a file
+    // from before the stamp, or one an older reader filled (D51 call 12).
+    // The next scan reads every chart once and stamps what it writes.
+    const std::optional<std::string> stamp = meta_get(kChartMetaKey);
+    if (!stamp || !kChartMetaStamp.is_current(std::atoi(stamp->c_str()))) return cache;
     // A db written before the sig column existed has no usable fingerprints;
     // treat it as no cache rather than failing the scan.
     Stmt probe = prepare(db_, "SELECT COUNT(*) FROM pragma_table_info('charts') "

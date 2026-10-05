@@ -2327,3 +2327,24 @@ TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
     }
     CHECK(decodes == 1);
 }
+
+// ST2 (finding 54 and D51 call 10): in record_store.cpp the fill rule's stamp
+// text comes only from search/graph.h engine_mode_stamp, so no code line
+// spells "ch10" or "ch11"; and "which copy names an md5" is written once, so
+// MIN(rowid) appears on one code line. Comment lines are skipped.
+TEST_CASE("single-owner: record_store.cpp reads stamps and names copies once (ST2)") {
+    std::ifstream in(sourcetree::root() / "src" / "store" / "record_store.cpp");
+    REQUIRE(in.good());
+    int stamp_literals = 0;
+    int naming_rules = 0;
+    std::string line;
+    while (std::getline(in, line)) {
+        const std::string t = hydra::trim(line);
+        if (t.compare(0, 2, "//") == 0) continue;
+        if (t.find("\"ch10\"") != std::string::npos || t.find("\"ch11\"") != std::string::npos)
+            ++stamp_literals;
+        if (t.find("MIN(rowid)") != std::string::npos) ++naming_rules;
+    }
+    CHECK(stamp_literals == 0);
+    CHECK(naming_rules == 1);
+}
