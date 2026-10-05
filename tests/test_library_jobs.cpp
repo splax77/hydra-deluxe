@@ -18,6 +18,7 @@
 #include "app/analysis.h"
 #include "app/report_files.h"
 #include "app/user_messages.h"  // plain_error
+#include "core/error_kind.h"
 #include "corpus_util.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "net/dmbot_client.h"
@@ -68,14 +69,16 @@ BatchRun test_run() {
     return run;
 }
 
-// A chart that counts itself, waits for `release`, then fails with `error`.
+// A chart that counts itself, waits for `release`, then fails with `error`,
+// thrown as `kind` the way a real thrower names it.
 hydra::app::ChartAnalyzer gated_failure(std::atomic<int>& started, std::atomic<bool>& release,
-                                        std::string error) {
-    return [&started, &release, error](const std::string&, const AnalysisSettings&,
-                                       const std::function<void(float)>&) -> AnalysisResult {
+                                        std::string error,
+                                        hydra::ErrorKind kind = hydra::ErrorKind::ChartUnreadable) {
+    return [&started, &release, error, kind](const std::string&, const AnalysisSettings&,
+                                             const std::function<void(float)>&) -> AnalysisResult {
         ++started;
         while (!release.load()) std::this_thread::sleep_for(1ms);
-        throw std::runtime_error(error);
+        throw hydra::KindedError(kind, error);
     };
 }
 
@@ -207,7 +210,9 @@ TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
     RecordStore store(":memory:");
     BatchJob job(fake_charts(1), test_run(), store, /*redo=*/false);
     job.set_analyzer_for_test(
-        gated_failure(started, release, "cannot open file: C:\\Songs\\x\\notes.chart"), 1);
+        gated_failure(started, release, "cannot open file: C:\\Songs\\x\\notes.chart",
+                      hydra::ErrorKind::SongFileMissing),
+        1);
     job.start();
     REQUIRE(wait_until([&] { return job.snapshot().finished; }));
     BatchJob::Snapshot s = job.snapshot();
@@ -328,7 +333,8 @@ TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
 
 TEST_CASE("jobs: a failed leaderboard fetch says what to do") {
     hydra::net::set_fetcher([](const std::string&, const std::atomic<bool>*) -> std::string {
-        throw std::runtime_error("could not send the request (error 12029)");
+        throw hydra::KindedError(hydra::ErrorKind::NetUnreachable,
+                                 "could not send the request (error 12029)");
     });
     hydra::ui::DmFetchUsersJob job;
     job.start();

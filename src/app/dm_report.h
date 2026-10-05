@@ -66,8 +66,8 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
 // Joins every fetched score against the store's records for `chartmode`,
 // preferring the leaderboard's own song/artist metadata and falling back to the
 // joined Hydra record's when the leaderboard entry is an "unknown" one.
-// Throws std::invalid_argument with why_not_comparable's sentence when `lens`
-// breaks a Clone Hero rule.
+// Throws an AlreadyPlain KindedError with why_not_comparable's sentence when
+// `lens` breaks a Clone Hero rule.
 std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::vector<net::DmScore>& scores,
                                          const std::string& chartmode,

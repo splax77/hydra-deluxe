@@ -5,6 +5,7 @@
 
 #include "app/dm_report.h"
 #include "app/report_files.h"
+#include "core/error_kind.h"
 #include "net/dmbot_client.h"
 
 namespace hydra::ui {
@@ -49,7 +50,7 @@ void DmReportJob::run() {
             app::dm_report::generate_dm_report(store_, scores, chartmode_, lens_,
                                                username_);
         if (report.stats.total == 0)
-            throw std::runtime_error("this user has no scores to compare");
+            throw KindedError(ErrorKind::NoScores, "this user has no scores to compare");
 
         stats_ = report.stats;
 

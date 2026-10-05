@@ -10,6 +10,7 @@
 #include "app/report_files.h"
 #include "app/user_messages.h"
 #include "audio/song_audio.h"  // song_length_ms
+#include "core/error_kind.h"
 #include "parse/song.h"  // display_title, display_artist
 
 namespace hydra::ui {
@@ -280,9 +281,10 @@ void BatchJob::run() {
         snap_.skipped = p.skipped;
         snap_.failed = p.failed;
     };
-    callbacks.on_error = [this](const std::string& title, const std::string& error) {
+    callbacks.on_error = [this](const std::string& title, const std::string& sentence,
+                                const std::string& error) {
         std::lock_guard<std::mutex> lock(mu_);
-        snap_.failures.push_back(title + ": " + app::plain_error_text(error));
+        snap_.failures.push_back(title + ": " + sentence);
         snap_.failure_details.push_back(title + ": " + error);
     };
     callbacks.cancel = &cancel_;
@@ -384,8 +386,8 @@ void ReportJob::run() {
         // shows as it is; an empty database keeps the app's own sentence.
         if (report.rows == 0) {
             if (report.empty_reason == app::report::EmptyReason::NothingUnderSettings)
-                throw std::runtime_error(report.why_empty);
-            throw std::runtime_error("no records stored yet");
+                throw KindedError(ErrorKind::AlreadyPlain, report.why_empty);
+            throw KindedError(ErrorKind::NoRecords, "no records stored yet");
         }
 
         // A browser that won't open the page is not a failed report: the

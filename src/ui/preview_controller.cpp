@@ -77,6 +77,7 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     open_key_ = key;
     active_ = true;
     error_.clear();
+    error_detail_.clear();
     pro_ = pro;
     sp_cap_ = sp_cap;
 
@@ -135,6 +136,7 @@ void PreviewController::close() {
     resume_after_scrub_ = false;
     open_key_ = PreviewSongKey{};
     error_.clear();
+    error_detail_.clear();
     audio_warning_.clear();
     chart_changed_ = false;
 }
@@ -156,7 +158,8 @@ void PreviewController::poll() {
             scene_path_key_ = scene_job_->key();
             scene_dirty_ = true;
         } else if (error_.empty()) {
-            error_ = scene_job_->error();
+            error_ = scene_job_->message();
+            error_detail_ = scene_job_->error();
         }
         scene_job_.reset();
     }
@@ -211,9 +214,10 @@ void PreviewController::poll() {
             }
         }
     } else {
-        // The job's text is the raw exception ("StreamMix: ..."); the panel
-        // prints the plain sentence for it, the one every other screen uses.
-        error_ = hydra::app::plain_error_text(job_->error());
+        // The job worked out the plain sentence while it still had the
+        // exception; the raw text ("StreamMix: ...") is the details line.
+        error_ = job_->message();
+        error_detail_ = job_->error();
     }
     job_.reset();
     job_path_key_.clear();
@@ -257,7 +261,10 @@ ID3D11ShaderResourceView* PreviewController::render(int width, int height) {
         have_frame_ = true;
         return renderer_->texture_srv();
     } catch (const std::exception& e) {
-        if (error_.empty()) error_ = e.what();
+        if (error_.empty()) {
+            error_ = hydra::app::plain_error(e);
+            error_detail_ = hydra::app::plain_error_detail(e);
+        }
         return nullptr;
     }
 }

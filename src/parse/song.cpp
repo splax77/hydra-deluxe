@@ -21,13 +21,6 @@
 
 namespace hydra {
 
-bool is_timing_refusal(std::string_view what) {
-    for (std::string_view prefix :
-         {kResolutionRefusalPrefix, kTimeSignatureRefusalPrefix, kTempoRefusalPrefix})
-        if (what.substr(0, prefix.size()) == prefix) return true;
-    return false;
-}
-
 // The timing maps Hydra can measure time with: a positive resolution, every
 // measure at least one tick long, every tempo a positive, finite BPM. Both
 // parsers reach this through Song::build_timing, so no chart with a zero,

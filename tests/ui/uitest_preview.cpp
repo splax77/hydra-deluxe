@@ -630,6 +630,9 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
     // below means it wrapped.
     const std::string message = "Preview failed: " + pc.error();
     IM_CHECK(visible_text(h).find("Preview failed:") != std::string::npos);
+    // The raw text is on the details line under it.
+    IM_CHECK(!pc.error_detail().empty());
+    IM_CHECK(visible_text(h).find(pc.error_detail()) != std::string::npos);
     // The song panel's windows, the message's among them. (The settings bar
     // above the library is another task's.)
     int checked = 0;

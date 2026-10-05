@@ -171,16 +171,11 @@ struct SoloSection {
 };
 
 // How a refused-timing message starts. check_timing_maps and apply_timesig
-// build their messages from these, and app/user_messages reads them through
-// is_timing_refusal, so the wording has one owner.
+// in song.cpp build their messages from these; the error's kind,
+// ChartTimingRefused, is what picks its sentence.
 inline constexpr std::string_view kResolutionRefusalPrefix = "the chart's resolution is ";
 inline constexpr std::string_view kTimeSignatureRefusalPrefix = "the time signature at tick ";
 inline constexpr std::string_view kTempoRefusalPrefix = "the tempo at tick ";
-
-// True when `what` is the message of a ChartFileError that check_timing_maps
-// or apply_timesig threw: the text already names the line, so it can be shown
-// to the user as written.
-bool is_timing_refusal(std::string_view what);
 
 // Throws ChartFileError, naming the tick, unless every measure in these maps
 // lasts a positive, finite time: resolution above 0, every measure at least

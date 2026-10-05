@@ -29,6 +29,8 @@
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "core/model.h"
 #include "app/dm_report.h"
+#include "app/user_messages.h"
+#include "core/error_kind.h"
 #include "corpus_util.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "dm_fixture.h"
@@ -650,12 +652,19 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
     CHECK(why_not_comparable(Difficulty::Easy, 8, true) == expert);
     CHECK(why_not_comparable(Difficulty::Expert, 8, true) == cap);
 
-    // The join refuses a 1.0-fills lens with the same sentence.
+    // The join refuses a 1.0-fills lens with the same sentence, as an
+    // AlreadyPlain error, so a screen shows the sentence as it is.
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store) > 0);
     store::Lens legacy;
     legacy.legacy_fills = 1;
-    CHECK_THROWS_WITH_AS(
-        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, kMode, legacy),
-        fills.c_str(), std::invalid_argument);
+    bool refused = false;
+    try {
+        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, kMode, legacy);
+    } catch (const KindedError& e) {
+        refused = true;
+        CHECK(e.kind() == ErrorKind::AlreadyPlain);
+        CHECK(app::plain_error(e) == fills);
+    }
+    CHECK(refused);
 }

@@ -441,7 +441,7 @@ void AppState::reap_dynamics() {
         app::save_dynamics(*store, dynamics_job->key(), *dynamics_result);
         dynamics_store_error.clear();
     } catch (const std::exception& e) {
-        dynamics_store_error = std::string("Counted, but saving failed: ") + e.what();
+        dynamics_store_error = "Counted, but saving failed. " + app::plain_error(e);
     }
     dynamics_job.reset();
 }

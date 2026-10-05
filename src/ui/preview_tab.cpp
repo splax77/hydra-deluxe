@@ -291,8 +291,14 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
 
     if (pc->has_error()) {
         // Wrapped: an error naming a file path runs far past the panel's edge.
-        WarnColor warn;
-        ImGui::TextWrapped("Preview failed: %s", pc->error().c_str());
+        {
+            WarnColor warn;
+            ImGui::TextWrapped("Preview failed: %s", pc->error().c_str());
+        }
+        // The raw text, dimmed, as the song panel's Analyze error shows it.
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", pc->error_detail().c_str());
+        ImGui::PopStyleColor();
         return;
     }
     if (pc->loading()) {
