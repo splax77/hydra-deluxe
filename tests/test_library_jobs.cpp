@@ -15,13 +15,12 @@
 #include <thread>
 #include <vector>
 
-#include <sqlite3.h>
-
 #include "app/analysis.h"
 #include "app/report_files.h"
 #include "app/user_messages.h"  // plain_error
 #include "core/error_kind.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // drop_results_under
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
@@ -234,17 +233,7 @@ TEST_CASE("jobs: a batch whose database fails before it starts finishes as faile
     std::filesystem::remove(path);
     {
         RecordStore store(path);
-        {  // A second connection drops the results table under the store.
-            sqlite3* db = nullptr;
-            REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
-            REQUIRE(sqlite3_exec(db, "DROP TABLE results", nullptr, nullptr, nullptr) ==
-                    SQLITE_OK);
-            sqlite3_close(db);
-        }
-        // Any read on the store's own connection makes it reload the schema,
-        // as the app's next read would. Without one it still holds the old
-        // schema, and analyzed_hashes' statement compiles against that.
-        (void)store.engine_mode();
+        hydra::test::drop_results_under(store, path);
         std::atomic<int> started{0};
         std::atomic<bool> release{true};
         BatchJob job(fake_charts(2), test_run(), store, /*redo=*/false);

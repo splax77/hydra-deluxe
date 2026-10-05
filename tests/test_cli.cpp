@@ -25,6 +25,7 @@
 #include "app/config.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // write_junk_db
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "parse/chart_files.h"
 #include "parse/song.h"
@@ -181,10 +182,7 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
 TEST_CASE("hydra_batch, hydra_report and hydra_fillcompare say why a database won't open") {
     CliSandbox box("junkdb");
     const std::string junk = box.db("junk.db");
-    {
-        std::ofstream f(fs::u8path(junk), std::ios::binary);
-        f << std::string(4096, 'x');
-    }
+    hydra::test::write_junk_db(junk);
     const std::string page = (box.dir / "page.html").u8string();
     const std::pair<fs::path, std::vector<std::string>> runs[] = {
         {box.batch, {"--db", junk, box.folder()}},

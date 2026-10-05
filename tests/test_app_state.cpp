@@ -22,8 +22,6 @@
 #include <thread>
 #include <vector>
 
-#include <sqlite3.h>
-
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/report_files.h"
@@ -33,6 +31,7 @@
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // exec_on_file, drop_results_under, write_junk_db
 #include "display_fixtures.h"  // store_batch_result
 #include "parse/song.h"
 #include "store/record_store.h"
@@ -354,15 +353,10 @@ TEST_CASE("close_details keeps a Dynamics count that finished on another tab") {
 TEST_CASE("a Dynamics save failure reads the database sentence") {
     ScratchPaths paths("appstate_dyn_savefail");
     seeded_store(paths.db).reset();
-    {  // A trigger refuses every Dynamics row, so put_dynamics throws.
-        sqlite3* db = nullptr;
-        REQUIRE(sqlite3_open(paths.db.c_str(), &db) == SQLITE_OK);
-        REQUIRE(sqlite3_exec(db,
-                             "CREATE TRIGGER refuse_dynamics BEFORE INSERT ON dynamics"
-                             " BEGIN SELECT RAISE(ABORT, 'boom'); END;",
-                             nullptr, nullptr, nullptr) == SQLITE_OK);
-        sqlite3_close(db);
-    }
+    // A trigger refuses every Dynamics row, so put_dynamics throws.
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TRIGGER refuse_dynamics BEFORE INSERT ON dynamics"
+                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     std::unique_ptr<AppState> app = app_on(paths);
     app->selected->notespath = corpus::first_chart_with_suffix(".chart");
 
@@ -831,10 +825,7 @@ TEST_CASE("the confirm counts charts with a result from the store, once per char
 // it in a message box.
 TEST_CASE("an AppState whose database can't open throws DatabaseOpen") {
     ScratchPaths paths("appstate_junkdb");  // puts the overrides back when it ends
-    {
-        std::ofstream f(paths.db, std::ios::binary);
-        f << std::string(4096, 'x');
-    }
+    hydra::test::write_junk_db(paths.db);
     try {
         AppState app;
         FAIL("an AppState opened a file of junk bytes");
@@ -849,15 +840,7 @@ TEST_CASE("an AppState whose database can't open throws DatabaseOpen") {
 TEST_CASE("Analyze library on a database that fails shows the sentence and opens no confirm") {
     ScratchPaths paths("appstate_confirmfail");
     std::unique_ptr<AppState> app = app_on(paths);
-    {  // A second connection drops the results table under the app.
-        sqlite3* db = nullptr;
-        REQUIRE(sqlite3_open(paths.db.c_str(), &db) == SQLITE_OK);
-        REQUIRE(sqlite3_exec(db, "DROP TABLE results", nullptr, nullptr, nullptr) == SQLITE_OK);
-        sqlite3_close(db);
-    }
-    // Any read on the app's own connection makes it reload the schema, as
-    // the app's next read would (see the batch case in test_library_jobs).
-    (void)app->store->engine_mode();
+    hydra::test::drop_results_under(*app->store, paths.db);
 
     app->open_batch_confirm();
     CHECK(app->status_message ==

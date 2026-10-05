@@ -543,6 +543,8 @@ void test_analyze_db_fails(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
+    // A copy of drop_results_under (tests/db_file_util.h): the GUI harness
+    // builds with only tests/ui on its include path.
     {  // A second connection drops the scratch library's results table.
         sqlite3* db = nullptr;
         IM_CHECK_NO_RET(sqlite3_open(h.db_path.c_str(), &db) == SQLITE_OK);
