@@ -18,6 +18,13 @@ cmake_minimum_required(VERSION 3.21)
 # The single source of the version: the installer and the HTTP User-Agent
 # (via src/core/version.h) both take it from here.
 project(Hydra VERSION 2.0.0 LANGUAGES C CXX RC)
+# The single source of the name the app shows (the window title, the Start
+# Menu shortcut, the installer) and of its taskbar identity (AppUserModelID).
+# The identity keeps its old value so existing taskbar pins still group with
+# the running window. src/core/version.h and installer/build_installer.ps1
+# both take them from these two lines.
+set(HYDRA_APP_NAME "Hydra Deluxe")
+set(HYDRA_APP_USER_MODEL_ID "Hydra.Hydra")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -189,7 +196,9 @@ add_library(hydra_core STATIC
     src/app/user_messages.cpp
 )
 target_include_directories(hydra_core PUBLIC src)
-target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
+                           HYDRA_APP_NAME="${HYDRA_APP_NAME}"
+                           HYDRA_APP_USER_MODEL_ID="${HYDRA_APP_USER_MODEL_ID}")
 # store/ needs sqlite3; app/ hashes chart files via CNG (bcrypt.lib) and walks
 # folders via the Win32 Find*File API (already linked into every Windows exe).
 # shell32: report_files.cpp hands finished report pages to the browser with

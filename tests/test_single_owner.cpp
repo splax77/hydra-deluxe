@@ -1964,6 +1964,129 @@ const std::vector<OwnerRule>& rules() {
           "if (phrase) test::mark_phrase_end(ts, tick, song.tick_resolution());"},
          {{"tests/record_fixtures.h", "ts.flag_sp = true;", "mark_phrase_end, the owner"}},
          {"tests"}},
+        // The join row above, for any name: a string literal that starts with
+        // a backslash and a name, glued on with +, or a bare backslash added
+        // with +=. join_folder's own "\\" is followed by a quote, not a name.
+        // Rows are append-only, so the first row stays as it is.
+        {"How are a folder and a file name joined? (any name, not only folder)",
+         "join_folder in src/core/winstr.cpp",
+         R"(\+\s*"\\\\\w|\+=\s*"\\\\")",
+         "",
+         {},
+         {},
+         "audit finding 209; phase 6 task J2-1 (D53)",
+         {R"(return exe_dir() + "\\hydra.db";)",
+          R"(if (resource_dir.back() != '\\' && resource_dir.back() != '/') resource_dir += "\\";)"},
+         {R"(return (last == '\\' || last == '/') ? folder + name : folder + "\\" + name;)",
+          R"(constexpr std::wstring_view kLongPrefix = L"\\\\?\\";)",
+          R"(case '\\': out += "\\\\"; break;)",
+          R"(return join_folder(exe_dir(), "hydra.db");)"},
+         {},
+         {"src", "tools"}},
+        // A string literal naming the resource folder under the exe. The
+        // owner joins the bare name "resource", so no line matches it.
+        {"Where is the resource folder?",
+         "resource_dir in src/app/config.cpp",
+         R"("[^"]*\\\\resource)",
+         "",
+         {},
+         {},
+         "audit finding 209; phase 6 task J2-1 (D53)",
+         {R"(options.resource_dir.empty() ? app::exe_dir() + "\\resource" : options.resource_dir;)",
+          R"(const std::string dir = hydra::app::exe_dir() + "\\resource\\";)"},
+         {R"(std::string resource_dir() { return join_folder(exe_dir(), "resource"); })",
+          R"(#include "ui/resource.h")"},
+         {},
+         {"src"}},
+        // A byte lowered through the C locale, or a private definition of one
+        // of strutil's ASCII helpers (a definition line has no ; after its
+        // open paren). C2's wide starts_with in winstr.cpp stays where it is
+        // (J2-1, decided at launch).
+        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
+         "lower_ascii, equals_ci, starts_with(_ci), ends_with(_ci) and is_ascii_space in "
+         "src/core/strutil.cpp",
+         R"(std::tolower\(|\b(bool|char)\s+(starts_with|starts_with_ci|ends_with|ends_with_ci|equals_ci|iequals_ascii|is_ascii_space|ascii_lower|lower_ascii)\s*\([^;]*$)",
+         "",
+         {},
+         {},
+         "audit finding 201; phase 6 task J2-1 (D53)",
+         {"bool starts_with(std::string_view s, std::string_view prefix) {",
+          "bool ends_with(std::string_view s, std::string_view suffix) {",
+          "return std::tolower(static_cast<unsigned char>(a)) =="},
+         {"bool starts_with(std::string_view s, std::string_view prefix);",
+          "bool starts_with_any(std::string_view s, std::initializer_list<std::string_view> prefixes) {",
+          R"(if (starts_with(what, "cannot write ")) return kReportWrite;)",
+          "c = lower_ascii(c);"},
+         {{"src/core/strutil.cpp", "char lower_ascii(char c) {", "lower_ascii, the owner"},
+          {"src/core/strutil.cpp", "bool is_ascii_space(char c) {", "is_ascii_space, the owner"},
+          {"src/core/strutil.cpp", "bool equals_ci(std::string_view a, std::string_view b) {",
+           "equals_ci, the owner"},
+          {"src/core/strutil.cpp", "bool starts_with(std::string_view s, std::string_view prefix) {",
+           "starts_with, the owner"},
+          {"src/core/strutil.cpp",
+           "bool starts_with_ci(std::string_view s, std::string_view prefix) {",
+           "starts_with_ci, the owner"},
+          {"src/core/strutil.cpp", "bool ends_with(std::string_view s, std::string_view suffix) {",
+           "ends_with, the owner"},
+          {"src/core/strutil.cpp", "bool ends_with_ci(std::string_view s, std::string_view suffix) {",
+           "ends_with_ci, the owner"},
+          {"src/core/winstr.cpp", "bool starts_with(const std::wstring& s, std::wstring_view prefix) {",
+           "the wide prefix test winstr keeps for its long-path prefixes (J2-1, decided at launch)"}}},
+        // The root and one more byte cut off a path. relpath in analysis.cpp
+        // cuts only after a separator and keeps backslashes: Python's
+        // os.path.relpath for the library's stored path, another question.
+        {"How is a scanned path keyed in the scan snapshot?",
+         "relative_slash_path in src/core/strutil.cpp",
+         R"(\.substr\(\s*\w+\.size\(\)\s*\+\s*1\s*\))",
+         "",
+         {},
+         {{"src/app/analysis.cpp",
+           "relpath: the library's stored relative path (a separator is required and backslashes "
+           "stay), not the snapshot key"}},
+         "audit finding 274; phase 6 task J2-1 (D53, D54)",
+         {"p = p.substr(rel.size() + 1);", "rel = rel.substr(root.size() + 1);"},
+         {"return slash == std::string::npos ? path : path.substr(slash + 1);",
+          "const std::string tail = s.substr(s.size() - 4);"},
+         {{"src/core/strutil.cpp", "path = path.substr(root.size() + 1);",
+           "relative_slash_path, the owner"}},
+         {"src", "tools", "tests"}},
+        // A depth unit word chosen from the search's enum, or bench's header
+        // words. The GUI's own wordings ("Within 4 scores", the score-range
+        // box) are separate display text and do not name the enum.
+        {"How do the analysis settings read as text?",
+         "describe_settings in src/app/config.cpp",
+         R"re(DepthMode::\w+.*"(scores|points)"|score range %d|%dms limit)re",
+         "",
+         {},
+         {},
+         "audit finding 206; phase 6 task J2-1 (D53, D54)",
+         {R"(case hydra::DepthMode::Scores: depth_name = "scores"; break;)",
+          R"(case hydra::DepthMode::Points: depth_name = "points"; break;)",
+          R"(std::printf("Settings: the GUI default (SP cap %d, score range %d, %dms limit).\n\n",)"},
+         {R"(const char* modes[] = {"scores", "points"};)",
+          R"(hydra::counted(out.stats.total, "score", "scores") + ": " +)",
+          R"(if (a.depth_mode) s.depth_mode = *a.depth_mode == "points" ? 1 : 0;)"},
+         {{"src/app/config.cpp",
+           R"(const char* unit = settings.depth_mode == DepthMode::Points ? "points" : "scores";)",
+           "describe_settings, the owner"}}},
+        // The two strings typed anywhere but CMakeLists.txt, which the walk
+        // does not read (so no owner line is listed). The installer script is
+        // checked by the case below this table's scan.
+        {"What name and taskbar identity does the app present?",
+         "HYDRA_APP_NAME and HYDRA_APP_USER_MODEL_ID in CMakeLists.txt",
+         R"(Hydra\.Hydra|Hydra Deluxe)",
+         "",
+         {},
+         {},
+         "audit finding 257; phase 6 task J2-1 (D53)",
+         {R"(inline constexpr const wchar_t* kWindowTitleW = L"Hydra Deluxe";)",
+          R"(inline constexpr const wchar_t* kAppUserModelIDW = L"Hydra.Hydra";)",
+          "AppName=Hydra Deluxe"},
+         {"inline constexpr const wchar_t* kWindowTitleW = HYDRA_WIDEN(HYDRA_APP_NAME);",
+          "AppName={#HYDRA_APP_NAME}", R"(DefaultDirName={autopf}\Hydra)",
+          "OutputBaseFilename=HydraDeluxe-{#HYDRA_VERSION}-setup"},
+         {},
+         {"src", "installer/hydra.iss"}},
     };
     return r;
 }
@@ -2037,9 +2160,6 @@ const std::vector<KnownCopy>& known_copies() {
         {"Which file is the folder's song.ini?", "src/app/preview_source.cpp",
          R"(if (!e.is_dir && is_song_ini(e.name)) return folder + "\\" + e.name;)",
          "task J2-5 (the Preview's private find_song_ini goes; audit finding 189)"},
-        {"What is a path's parent folder?", "src/app/config.cpp",
-         R"(return pos == std::string::npos ? std::string(".") : path.substr(0, pos);)",
-         "task J2-1 (exe_dir calls parent_folder; audit finding 251)"},
         {"What is a path's parent folder?", "src/app/preview_source.cpp",
          R"(return slash == std::string::npos ? std::string(".") : path.substr(0, slash);)",
          "task J2-5 (dir_name goes; audit finding 251)"},
@@ -2082,6 +2202,64 @@ const std::vector<KnownCopy>& known_copies() {
         {"What fields does a phrase-end note carry in a hand-built Song?",
          "tests/test_preview_view.cpp", "ts.flag_sp = true;",
          "task J3-4 (test_preview_view's hand-built songs call mark_phrase_end)"},
+        {"How are a folder and a file name joined? (any name, not only folder)",
+         "src/render/preview_renderer.cpp",
+         R"(std::vector<uint8_t> bytes = asset_bytes(asset_dir + "\\textures\\" + file);)",
+         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
+        {"How are a folder and a file name joined? (any name, not only folder)",
+         "src/render/preview_renderer.cpp",
+         R"(std::string text = asset_text(asset_dir + "\\models\\" + file);)",
+         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
+        {"How are a folder and a file name joined? (any name, not only folder)",
+         "src/render/preview_renderer.cpp",
+         R"(std::string cfg_text = asset_text(asset_dir + "\\3d-config.json");)",
+         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
+        {"How are a folder and a file name joined? (any name, not only folder)",
+         "src/render/preview_renderer.cpp",
+         R"(throw std::runtime_error("PreviewRenderer: missing " + asset_dir + "\\3d-config.json");)",
+         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
+        {"How are a folder and a file name joined? (any name, not only folder)",
+         "src/render/preview_renderer.cpp",
+         R"(std::string obj_src = asset_text(asset_dir + "\\shaders\\object.hlsl");)",
+         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
+        {"How are a folder and a file name joined? (any name, not only folder)",
+         "src/render/preview_renderer.cpp",
+         R"(std::string fade_src = asset_text(asset_dir + "\\shaders\\fade.hlsl");)",
+         "task J2-8 (the renderer calls join_folder; audit finding 209)"},
+        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
+         "src/parse/song.cpp", "return std::tolower(static_cast<unsigned char>(a)) ==",
+         "task J2-3 (difficulty_from_name calls equals_ci; audit finding 201)"},
+        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
+         "src/parse/song.cpp", "std::tolower(static_cast<unsigned char>(b));",
+         "task J2-3 (difficulty_from_name calls equals_ci; audit finding 201)"},
+        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
+         "src/app/library_query.cpp", "bool is_ascii_space(unsigned char c) {",
+         "task J2-5 (the library query calls strutil; audit finding 201)"},
+        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
+         "src/app/library_query.cpp", "char ascii_lower(unsigned char c) {",
+         "task J2-5 (the library query calls strutil; audit finding 201)"},
+        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
+         "src/app/library_query.cpp", "bool iequals_ascii(std::string_view a, std::string_view b) {",
+         "task J2-5 (the library query calls strutil; audit finding 201)"},
+        {"How is text compared ignoring ASCII case, and which bytes are whitespace?",
+         "src/app/library_query.cpp", "bool starts_with_ci(std::string_view s, std::string_view prefix) {",
+         "task J2-5 (the library query calls strutil; audit finding 201)"},
+        {"How is a scanned path keyed in the scan snapshot?", "tools/bench.cpp",
+         "p = p.substr(rel.size() + 1);",
+         "task J2-6 (relify calls relative_slash_path; audit finding 274)"},
+        {"How is a scanned path keyed in the scan snapshot?", "tests/test_analysis.cpp",
+         "rel = rel.substr(root.size() + 1);",
+         "task J4-6 (rel_of calls relative_slash_path; audit finding 274)"},
+        {"How do the analysis settings read as text?", "tools/bench.cpp",
+         R"(std::printf("Settings: the GUI default (SP cap %d, score range %d, %dms limit).\n\n",)",
+         "task J2-6 (bench's header uses describe_settings; audit finding 206, D54)"},
+        // hydra_replay's NotAnalyzed line picks the depth word from DepthMode
+        // itself, the rule describe_settings owns. No phase 6 task owns
+        // tools/replay.cpp yet, so the main session names the fold.
+        {"How do the analysis settings read as text?", "tools/replay.cpp",
+         R"(s.search_depth_mode() == DepthMode::Points ? "points" : "scores";)",
+         "unassigned: the main session names the fold (the NotAnalyzed line takes "
+         "its depth word from describe_settings; audit finding 206, D54)"},
     };
     return k;
 }
@@ -2327,4 +2505,29 @@ TEST_CASE("single-owner: record_store.cpp decodes a row once (ST1)") {
         if (t.find("rebuild_record(") != std::string::npos) ++decodes;
     }
     CHECK(decodes == 1);
+}
+
+// The walk reads only .cpp and .h files under src, tools and tests, so a row
+// scoped to a single file outside them (installer/hydra.iss, Inno Setup's
+// script) is checked here, with the same verdict. No listed line covers such
+// a file, so any flagged line fails. Comment lines are skipped as the walk
+// skips them.
+TEST_CASE("single-owner rules hold in the single files outside the walk") {
+    for (const CompiledRule& c : compile_rules()) {
+        for (const std::string& s : c.rule->scope) {
+            const std::string top = s.substr(0, s.find('/'));
+            if (s.find('/') == std::string::npos || top == "src" || top == "tools" || top == "tests")
+                continue;
+            std::ifstream in(sourcetree::root() / fs::u8path(s));
+            REQUIRE(in.good());
+            std::string line;
+            while (std::getline(in, line)) {
+                const std::string t = hydra::trim(line);
+                if (t.compare(0, 2, "//") == 0 && !c.rule->scan_comments) continue;
+                INFO(s << " answers \"" << c.rule->question << "\", which belongs to "
+                       << c.rule->owner << ": " << t);
+                CHECK_FALSE(flags_line(c, line));
+            }
+        }
+    }
 }
