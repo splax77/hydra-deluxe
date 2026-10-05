@@ -220,7 +220,7 @@ int main()
         // All runner output (results, dump/state text) goes to the log file:
         // a GUI-subsystem exe has no console. Opened shareable so it can be
         // read (tail -f) while the window is still up.
-        if (uitest_log.empty()) uitest_log = hydra::app::exe_dir() + "\\hydra_uitest.log";
+        if (uitest_log.empty()) uitest_log = hydra::join_folder(hydra::app::exe_dir(), "hydra_uitest.log");
         // (_wfreopen, not _wfreopen_s: the _s form opens without sharing; and
         // a GUI exe has no stdout fd to _dup2 onto. Wide, because the path is
         // UTF-8.)

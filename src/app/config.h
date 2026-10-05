@@ -18,9 +18,14 @@
 
 namespace hydra::app {
 
-// Directory containing the running executable (UTF-8). User files live here,
-// mirroring hymisc.ROOTPATH's app-relative layout.
+// Directory containing the running executable (UTF-8): the exe path's
+// parent_folder, or "." in the impossible case of a path with no folder.
+// User files live here, mirroring hymisc.ROOTPATH's app-relative layout.
 std::string exe_dir();
+
+// The app's fonts and icons: the "resource" folder beside the exe (the build
+// copies resource/ there; see CMakeLists.txt).
+std::string resource_dir();
 
 // The user's database and settings file, next to the exe ("hydra.db" /
 // "hydra_settings.ini").
@@ -174,6 +179,15 @@ struct Settings {
     // from this one Settings, so they cannot disagree.
     BatchRun batch_run() const;
 };
+
+// The search settings a run uses, as the words a tool's header prints. The
+// one place they are spelled; hydra_batch's header lines are filled from them.
+struct SettingsText {
+    std::string depth;   // the unit word, then the number: "scores 4", "points 4"
+    std::string cap;     // the SP cap as a count of bars: "4 bars", "1 bar"
+    std::string timing;  // the ms limit: "10 ms", or "none" when it is off
+};
+SettingsText describe_settings(const AnalysisSettings& settings);
 
 }  // namespace hydra::app
 
