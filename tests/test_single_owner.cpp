@@ -1418,7 +1418,10 @@ const std::vector<OwnerRule>& rules() {
           "const int64_t last_tick = scene.notes.back().tick;"},
          {"scene.song_length_ms = audio_end_ms.value_or(0.0);", "const int64_t last_tick = last->tick;"},
          {{"src/app/preview_view.cpp", "return scene.notes.empty() ? nullptr : &scene.notes.back();",
-           "last_drawn_note, the owner"}}},
+           "last_drawn_note, the owner"},
+          {"src/app/song_length.cpp", "return song.sequence.back().timecode.ms();",
+           "last_note_start_ms: a parsed chart's last note, the backup song length (D75 item 2), "
+           "for analysis, which builds no Preview scene"}}},
         // Frames times 1000 over a sample rate, or ms times a rate over 1000,
         // written out instead of calling the frames helpers.
         {"How many ms do audio frames last, and how many frames do ms hold?",

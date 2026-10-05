@@ -14,6 +14,7 @@
 #include "audio_chart_fixtures.h"
 #include "chart_text.h"
 #include "core/winstr.h"
+#include "parse/chart_files.h"
 #include "parse/song.h"
 #include "sng_util.h"
 #include "srb_util.h"
@@ -142,7 +143,7 @@ TEST_CASE("song length: a .sng's song_length key and a .srb's song_length_ms fie
         REQUIRE(item.timing.has_value());
         // The backfill's own read agrees with the scan's (open question 3).
         CHECK(hydra::app::read_chart_timing_meta(item.notespath) == *item.timing);
-        if (hydra::ends_with_ci(item.notespath, ".sng")) {
+        if (hydra::chart_format_of(item.notespath) == hydra::ChartFormat::Sng) {
             CHECK(item.timing->length_ms == 150000.0);
             CHECK(item.timing->delay_ms == 100.0);
         } else {
