@@ -69,10 +69,10 @@ class LiveHelpersTest(unittest.TestCase):
             def read_raw():
                 ms[0] += 1
                 t[0] += 0.001
-                return ms[0] / 1000
+                return C.ms_to_s(ms[0])
 
             def sleep(s):
-                ms[0] += round(s * 1000)
+                ms[0] += round(C.s_to_ms(s))
                 t[0] += s
 
             clock = W.SongClock(read_raw, now=lambda: t[0])
