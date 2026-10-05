@@ -1738,7 +1738,8 @@ TEST_CASE("a database write the old matcher missed reads as a database error") {
         const RecordKey key{"len", "mode", CapQuery::at(4)};
         try {
             store.save_analysis("len", "Song", "Artist", "Charter", fixture().song,
-                                prepare_row(key, at_cap(4)), std::nullopt);
+                                prepare_row(key, at_cap(4)), std::nullopt,
+                                SongLength::found(180000.0));
             FAIL("the refused song-length write saved");
         } catch (const std::exception& e) {
             CHECK(std::string(e.what()).rfind("saving the song's length failed: ", 0) == 0);

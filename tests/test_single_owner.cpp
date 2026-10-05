@@ -76,6 +76,12 @@ struct KnownCopy {
     std::string removed_by; // the fix that deletes it
 };
 
+// The plain-sentence row's question and its baseline's remover, said once for
+// the row and its known_copies lines.
+constexpr const char* kWhichSentence = "Which plain sentence does this failure show?";
+constexpr const char* kRemovedByEr2 =
+    "task ER2 (the text matcher is deleted once the batch and the screens carry kinds)";
+
 const std::vector<OwnerRule>& rules() {
     static const std::vector<OwnerRule> r = {
         // Only length comparisons count. Sizing a buffer against MAX_PATH
@@ -4235,12 +4241,103 @@ const std::vector<OwnerRule>& rules() {
          {"\" ORDER BY name LIMIT ? OFFSET ?\");"},
          {},
          {}},
+        // The thrower names the kind; reading the exception's words back is a
+        // second answer. The text matcher stays one merge for the batch's
+        // text and the app folder's untyped throwers (known_copies).
+        {kWhichSentence,
+         "plain_error's switch on ErrorKind in src/app/user_messages.cpp",
+         R"re(\b(what|error)(\(\))?\s*[!=]=\s*"|\b(starts_with|ends_with|starts_with_any)\(\s*(\w+\.)?(what|error)(\(\))?\s*,|\b(what|error)(\(\))?\.(find|compare)\(|\b(what|error)(\(\))?\.substr\(.*\)\s*[!=]=)re",
+         "",
+         {},
+         {},
+         "audit finding 193 and R7.20; phase 7 task ER1 (D51 call 25)",
+         {"if (what == \"cancelled\") return kStopped;",
+          "if (starts_with(what, \"cannot write \")) return kReportWrite;",
+          "if (what.find(\"(error 12002)\") != std::string_view::npos) return kNetTimeout;",
+          "if (what.substr(0, prefix.size()) == prefix) return true;"},
+         {"error_ = e.what();", "if (job.error().empty()) return;"},
+         {},
+         {"src"}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
     static const std::vector<KnownCopy> k = {
+        // The text matcher, deleted by ER2 once nothing hands it text.
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what == \"cancelled\") return kStopped;",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what.find(\"(error 12002)\") != std::string_view::npos) return kNetTimeout;",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with_any(what, {\"malformed leaderboard URL\", \"could not start the network session\",",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with(what, \"leaderboard returned HTTP \"))",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what == \"the leaderboard sent a response Hydra couldn't read\" ||",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "what == \"unexpected user-list format\")",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what == \"this user has no scores to compare\") return kNoScores;",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what == \"no records stored yet\") return kNoRecords;",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with(what, report::kNothingUnderSettings)) return std::string(what);",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with(what, \"cannot write \")) return kReportWrite;",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with_any(what, {\"cannot open file: \", \"cannot read file size: \"}))",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what == \"MD5 hashing failed\" || starts_with(what, \"BCryptOpenAlgorithmProvider(MD5)\"))",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with(what, \"failed to open database \")) return kDatabaseOpen;",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with_any(what, {\"add_song failed\", \"add_row \", \"put_dynamics failed\",",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what == \"search reached a broken state\") return kSearchBroken;",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what == \"Duplicate note.\" || what == \"expected a [section] header\" ||",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "what == \"No chart files found in SNG file.\" || what == \"Truncated SNG file.\" ||",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "what == \"Truncated SRB file.\" || what == \"SMPTE time division is not supported\" ||",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "starts_with_any(what, {\"unexpected chart type: \", \"SRB stream\", \"SRB inflate\",",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (what == \"truncated blob\" ||",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "starts_with_any(what, {\"path node \", \"unsupported path node format\",",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with_any(what, {\"decode_audio:\", \"StreamMix: \"})) return kAudioDecode;",
+         kRemovedByEr2},
+        {kWhichSentence, "src/app/user_messages.cpp",
+         "if (starts_with_any(what, {\"PreviewRenderer: missing\", \"3d-config.json:\"}))",
+         kRemovedByEr2},
+        // is_timing_refusal, which the matcher calls.
+        {kWhichSentence, "src/parse/song.cpp",
+         "if (what.substr(0, prefix.size()) == prefix) return true;",
+         kRemovedByEr2},
     };
     return k;
 }
