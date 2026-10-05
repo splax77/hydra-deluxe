@@ -17,6 +17,7 @@
 #include "app/user_messages.h"  // kNoPathsFound
 #include "corpus_util.h"
 #include "record_fixtures.h"
+#include "scratch_settings.h"
 
 using namespace hydra;
 using namespace hydra::app;
@@ -31,15 +32,7 @@ const AnalysisResult& analyzed() {
         settings.depth_mode = DepthMode::Scores;
         settings.depth_value = 10;
         settings.ms_filter = 10.0;
-        for (const std::string& path : corpus::chart_paths()) {
-            try {
-                AnalysisResult r = analyze_chart_file(path, settings);
-                if (!r.song.is_empty() && !r.record.paths.empty()) return r;
-            } catch (const std::exception&) {
-                continue;
-            }
-        }
-        throw std::runtime_error("no analyzable corpus chart");
+        return corpus::first_analyzed_with_paths(settings);
     }();
     return result;
 }
@@ -48,10 +41,7 @@ const AnalysisResult& analyzed() {
 // analyze it: Expert, Pro Drums, 2x Bass, SP cap 4, 2 scores, 10 ms limit.
 const AnalysisResult& burnout() {
     static const AnalysisResult result = [] {
-        AnalysisSettings settings;
-        settings.depth_mode = DepthMode::Scores;
-        settings.depth_value = 2;
-        settings.ms_filter = 10.0;
+        const AnalysisSettings settings = scratch_settings().to_analysis_settings();
         for (const std::string& path : corpus::chart_paths())
             if (path.find("Green Day - Burnout") != std::string::npos)
                 return analyze_chart_file(path, settings);
@@ -682,29 +672,21 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
 }
 
 // Not an invariant: it names a chart the GUI test can open to see an
-// uncounted squeezed-out row for real. Prints nothing when none exists.
+// uncounted squeezed-out row for real. Prints nothing when none exists. It
+// runs under the GUI tests' settings, and only by hand (doctest::skip()), so
+// analyzing every chart before the search starts is fine here.
 TEST_CASE("find a chart with an uncounted squeezed-out row" * doctest::skip()) {
-    AnalysisSettings settings;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 2;
-    for (const std::string& path : corpus::chart_paths()) {
-        // AnalysisResult has no default constructor (Song needs a
-        // resolution), so it lives in an optional.
-        std::optional<AnalysisResult> analyzed_chart;
-        try {
-            analyzed_chart.emplace(analyze_chart_file(path, settings));
-        } catch (const std::exception&) {
-            continue;
-        }
-        const AnalysisResult& r = *analyzed_chart;
-        if (r.record.paths.empty()) continue;
+    const AnalysisSettings settings = scratch_settings().to_analysis_settings();
+    for (const corpus::ChartWithPaths& c :
+         corpus::charts_with_paths(settings, corpus::chart_paths().size())) {
+        const AnalysisResult& r = c.result;
         ActivationsView v = build_activations(r.record.best_path(), r.record,
                                               &r.song.timing(), 85.0);
         for (const ActivationRowView& av : v.acts)
             for (const BackendRowView& row : av.backends)
                 if (row.rating.find("(uncounted) <-- squeezed out") !=
                     std::string::npos) {
-                    MESSAGE(path << " | activation " << av.number << " " << av.notation);
+                    MESSAGE(c.chart << " | activation " << av.number << " " << av.notation);
                     return;
                 }
     }
@@ -1373,4 +1355,22 @@ TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's
     // With it off the chart has no tom or snare, so the pads are plain colours;
     // a cymbal still says cymbal.
     CHECK(chord_of(false) == "[Kick - Red (Ghost) - Yellow - Green cymbal]");
+}
+
+TEST_CASE("scratch_settings: the GUI tests' settings are the app's defaults at depth 2") {
+    const Settings s = scratch_settings();
+    CHECK(s.depth_value == 2);
+    CHECK(s.auto_open_report == false);
+    REQUIRE(s.chartfolders.size() == 1);
+    CHECK(s.chartfolders[0] == HYDRA_INPUT_DIR);
+    CHECK(s.sp_cap == Settings{}.sp_cap);
+    CHECK(s.mslimit_value == Settings{}.mslimit_value);
+    const AnalysisSettings a = scratch_settings().to_analysis_settings();
+    CHECK(a.depth_value == 2);
+    CHECK(a.depth_mode == DepthMode::Scores);
+}
+
+TEST_CASE("path_item_id: the label, two hashes and the index") {
+    CHECK(path_item_id("3- 1 2  (optimal)", 0) == "3- 1 2  (optimal)##0");
+    CHECK(path_item_id("0 4 1", 7) == "0 4 1##7");
 }

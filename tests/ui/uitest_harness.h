@@ -94,8 +94,8 @@ struct Harness {
 // exactly that name.
 bool selects(const std::string& what, const char* test_name);
 
-// Fresh app state for a test: rewrite the scratch INI (song folders =
-// testdata/input, auto-open off), delete the DB, rebuild AppState on those
+// Fresh app state for a test: rewrite the scratch INI from
+// scratch_settings() (tests/scratch_settings.h), delete the DB, rebuild AppState on those
 // paths, and (re)install the headless seams. Call at the start of TestFunc —
 // the GUI thread is parked between frames while TestFunc runs, so swapping
 // the AppState here is safe.
@@ -165,6 +165,11 @@ bool screenshot(ImGuiTestContext* ctx, const std::string& file);
 // ImGuiTestRef ("**/" + escape(title)).
 std::string escape_ref(const std::string& label);
 
+// How wide ImGui draws `s` in `font` (the current font when null), at the
+// size it draws text now: the style's base size times its main and DPI
+// scales. The one place a GUI test measures text.
+float text_width(const char* s, ImFont* font = nullptr);
+
 // ---- the checked-in C++ tests ---------------------------------------------
 
 // One checked-in test: the name --test and --list use, and its body.
@@ -189,7 +194,8 @@ void set_panel_ref(ImGuiTestContext* ctx);
 void open_details(ImGuiTestContext* ctx, size_t index);
 // Type `search` into the library's search box, then open the row titled `title`.
 void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::string& title);
-// "**/Analyze this song" before a result, "**/Re-analyze" after.
+// The ref of the song panel's Analyze button: "**/" and the label
+// hydra::ui::analyze_button_label gives for the viewed record's status.
 std::string analyze_button_ref(Harness& h);
 // Analyze the open song from the panel and wait for a Ready record.
 void analyze_open_song(ImGuiTestContext* ctx);
