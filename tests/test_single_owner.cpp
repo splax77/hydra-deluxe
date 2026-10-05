@@ -2987,6 +2987,21 @@ const std::vector<OwnerRule>& rules() {
           "for (int i = static_cast<int>(digits.size()) - 1; i >= 0; --i) {"},
          {},
          {"src"}},
+        // The settings bar's lock decision: read once per frame so a batch
+        // ending mid-frame cannot send the bar to the one-song message with
+        // no analyze job behind it.
+        {"What locks the analysis settings?",
+         "settings_lock in src/ui/app_state.cpp",
+         R"(\b(app|a)\.(batch_running|analyze_running)\(\))",
+         R"(\bsettings_lock\b)",
+         {},
+         {},
+         "p6-uicrash (the crash this fix addresses)",
+         {"const bool batch_busy = app.batch_running();"},
+         {"const AppState::SettingsLock lock = app.settings_lock();",
+          "const bool locked = lock != AppState::SettingsLock::None;"},
+         {},
+         {"src/ui/settings_bar.cpp"}},
         // The hit window's default cut to a whole number. The setting, the
         // report job and the report keep its decimal (D51 call 15).
         {"What is the hit window's default?",

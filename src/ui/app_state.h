@@ -334,7 +334,14 @@ public:
     // it ran with, so changing them mid-run used to hide the result it made.
     bool analyze_running() const;
     bool batch_running() const;
-    bool settings_locked() const { return analyze_running() || batch_running(); }
+    // Why the settings are locked: a batch (it wins when both run), one song's
+    // analysis, or nothing. A job finishes on its own thread, so two reads of
+    // batch_running() in one frame can disagree; a caller that needs both
+    // "locked?" and "by what?" reads this once. Under Analysis, analyze_job is
+    // set for the rest of the frame (only the UI thread drops it).
+    enum class SettingsLock { None, Batch, Analysis };
+    SettingsLock settings_lock() const;
+    bool settings_locked() const { return settings_lock() != SettingsLock::None; }
     // Whether a library scan may start now: there are song folders, no scan
     // job is held (its modal is still up until Continue), and no batch is
     // running. start_scan enforces it; the toolbar button reads it.

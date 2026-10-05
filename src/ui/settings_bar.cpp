@@ -140,8 +140,8 @@ void render_path_limit(AppState& app, bool locked) {
     if (ImGui::Checkbox("Path limit##mslimit", &app.settings.mslimit_enabled))
         app.commit_settings();
     end_disabled_checkbox(locked);
-    help_marker("Keep extra paths only when their hardest squeeze is within this many "
-                "ms. Lower or negative values demand more slack.");
+    help_marker("Keep extra paths only when their hardest squeeze or required early fill is "
+                "within this many ms. Lower or negative values demand more slack.");
     ImGui::SameLine();
     const bool off = locked || !app.settings.mslimit_enabled;
     begin_disabled_input(off);
@@ -159,7 +159,10 @@ void render_path_limit(AppState& app, bool locked) {
 }  // namespace
 
 void render_settings_bar(AppState& app) {
-    const bool locked = app.settings_locked();
+    // Read once: a batch that ends on its worker mid-frame must not turn a
+    // batch lock into an analysis lock with no analyze job behind it.
+    const AppState::SettingsLock lock = app.settings_lock();
+    const bool locked = lock != AppState::SettingsLock::None;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kSettingsBarBg);
     ImGui::BeginChild("##settingsbar", ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
@@ -238,7 +241,7 @@ void render_settings_bar(AppState& app) {
         // A single analysis names its song, which may not be the one on
         // screen (D48, Q17).
         const std::string why =
-            app.batch_running()
+            lock == AppState::SettingsLock::Batch
                 ? "Stop the batch to change these."
                 : "Settings are locked while " + display_title(app.analyze_job->song().title) +
                       " analyzes.";

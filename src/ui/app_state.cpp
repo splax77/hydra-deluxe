@@ -265,6 +265,12 @@ bool AppState::analyze_running() const { return analyze_job && !analyze_job->fin
 
 bool AppState::batch_running() const { return batch_job && !batch_job->snapshot().finished; }
 
+AppState::SettingsLock AppState::settings_lock() const {
+    if (batch_running()) return SettingsLock::Batch;
+    if (analyze_running()) return SettingsLock::Analysis;
+    return SettingsLock::None;
+}
+
 bool AppState::is_selected_row(const store::ChartLibraryEntry& row) const {
     return selected && row.notespath == selected->notespath;
 }
