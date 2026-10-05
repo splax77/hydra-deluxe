@@ -2187,7 +2187,7 @@ const std::vector<KnownCopy>& known_copies() {
          "\"+N over\" (J2-2 report)"},
         {"Which fill rule does a record key name?", "src/store/record_store.cpp",
          "if (key.lens.legacy_fills != (record.legacy_fills ? 1 : 0))",
-         "not yet scheduled (record_store.cpp is phase 7 wave 2's; J2-2 report)"},
+         "task J3-6 (prepare_row reads the record's fill flag through Lens::from)"},
         {"Which corpus chart is the first with paths?", "tests/test_path_view.cpp",
          "if (r.record.paths.empty()) continue;",
          "task J4-4 (the squeezed-out search walks corpus::analyzed_with_paths)"},
