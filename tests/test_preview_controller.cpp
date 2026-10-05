@@ -70,9 +70,6 @@ void copy_file_utf8(const std::string& from, const std::string& to) {
     std::fclose(f);
 }
 
-// Every test in this file that writes a chart folder makes it with
-// testtemp::temp_dir, one tag per test.
-
 // A chart folder that has audio: a corpus .chart plus the test sine as
 // song.ogg. The GUI test library has no audio at all, so the no-device path
 // can only be reached here.

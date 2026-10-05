@@ -30,7 +30,7 @@ namespace {
 struct TempFile {
     std::wstring path;
     TempFile(const char* tag, const char* ext)
-        : path(hydra::utf8_to_wide(testtemp::temp_path(tag, ext))) {}
+        : path(hydra::win32_path(testtemp::temp_path(tag, ext))) {}
     ~TempFile() { DeleteFileW(path.c_str()); }
     std::string utf8() const { return hydra::wide_to_utf8(path); }
 };
