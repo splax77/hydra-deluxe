@@ -215,9 +215,8 @@ void PreviewLoadJob::run() {
 
         // The scene and the highway wait for the audio, because the beat
         // lines run to its end (D48, Q25). A changed chart is drawn with no
-        // path, as an unanalyzed one is: the record's path belongs to the old
-        // notes.
-        const Path* path = path_ && !chart_changed ? &*path_ : nullptr;
+        // path, as an unanalyzed one is (drawn_path).
+        const Path* path = drawn_path(path_, chart_changed);
         app::PreviewScene scene =
             app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms);
         scene_done_.store(true);

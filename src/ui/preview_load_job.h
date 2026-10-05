@@ -28,6 +28,13 @@
 
 namespace hydra::ui {
 
+// The path a Preview scene draws over the notes: none when the chart file
+// changed since its record was analyzed, because the record's path belongs to
+// the old notes (finding 126). The first load and every later overlay ask here.
+inline const Path* drawn_path(const std::optional<Path>& path, bool chart_changed) {
+    return path && !chart_changed ? &*path : nullptr;
+}
+
 // Turns "bytes done so far" readings into a time-left estimate for the
 // loading bar. The rate is measured over at least one second of the load's
 // own progress, and the answer changes at most once a second, so the text

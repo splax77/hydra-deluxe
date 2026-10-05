@@ -83,9 +83,9 @@ void PreviewController::start_scene_job() {
     }
     render::TrackStateOptions track_opts;
     track_opts.pro = pro_;
-    // A changed chart keeps drawing no path: the record's path belongs to the
-    // old notes (finding 126).
-    std::optional<Path> path = chart_changed_ ? std::nullopt : path_;
+    // A changed chart keeps drawing no path (drawn_path, finding 126).
+    const Path* drawn = drawn_path(path_, chart_changed_);
+    std::optional<Path> path = drawn ? std::optional<Path>(*drawn) : std::nullopt;
     scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, std::move(path), sp_cap_,
                                                    rules_, path_key_, track_opts, audio_end_ms_);
     scene_job_->start();

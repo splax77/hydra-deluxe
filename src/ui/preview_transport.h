@@ -34,6 +34,12 @@ namespace hydra::ui {
 // (where the beat lines stop) and PreviewTransport::load asks it of the
 // playhead it is handed. `audio` is anything with channels(), sample_rate()
 // and length_frames(): an audio::MixSource or an audio::Playhead.
+// The chart sync rule, chart time to audio time: audio_ms = chart_ms +
+// audio_offset_ms. audio_end_chart_ms below runs it backwards.
+inline double audio_ms_of_chart_ms(double chart_ms, double audio_offset_ms) {
+    return chart_ms + audio_offset_ms;
+}
+
 template <class Audio>
 std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {
     if (audio.channels() <= 0 || audio.sample_rate() <= 0 || audio.length_frames() <= 0)
