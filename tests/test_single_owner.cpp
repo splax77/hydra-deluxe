@@ -3162,32 +3162,39 @@ const std::vector<OwnerRule>& rules() {
         // not caught. The hash's byte loops store no number, so they are
         // listed as owner lines, not copies (review of J3-6 finding 1). The
         // J2-5 row's question is the same with the u32 helper names; the
-        // suffix keeps the two rows' questions apart.
+        // suffix keeps the two rows' questions apart. Reading moved down to
+        // core/ in task J3-9d, because parse/ cannot include store/; the
+        // pattern also catches a helper named for its width alone (le32).
         {"How is a little-endian number written byte by byte? (any width or name)",
-         "BinaryWriter::u32/u64 and BinaryReader::u32/u64 in src/store/serialize.cpp",
-         R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\))",
+         "read_le in src/core/little_endian.h (reads; BinaryReader::u32/u64 call it) and "
+         "BinaryWriter::u32/u64 in src/store/serialize.cpp (writes)",
+         R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*)",
          "",
          {},
          {},
-         "audit finding 195, folded under D53 (phase 6 task J3-6); widened by review of J3-6 finding 1",
+         "audit finding 195, folded under D53 (phase 6 tasks J3-6 and J3-9d); widened by review of J3-6 "
+         "finding 1 and by J3-9d",
          {"uint64_t read_le(const std::vector<uint8_t>& b, size_t at, int bytes) {",
           "std::vector<uint8_t> write_le(uint64_t v, int bytes) {",
           "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
-          "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(buf[pos + i]) << (8 * i);"},
+          "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(buf[pos + i]) << (8 * i);",
+          "len |= static_cast<uint32_t>(meta[pos + i]) << (8 * i);",
+          "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(bytes_[pos_++]) << (8 * i);",
+          "uint32_t le32(const uint8_t* p) {", "int64_t le64(const uint8_t* p) {"},
          {"void BinaryWriter::u32(uint32_t v) {", "uint32_t BinaryReader::u32() {",
-          "out.push_back(static_cast<uint8_t>(v >> 8));"},
-         {{"src/store/serialize.cpp",
+          "out.push_back(static_cast<uint8_t>(v >> 8));",
+          "const uint32_t len = core::read_le_u32(meta.data() + pos);",
+          "uint64_t blob_size = core::read_le_u64(buf.data() + cursor + 16);",
+          "constexpr uint32_t read_le_u32(const uint8_t* p) { return read_le<uint32_t>(p); }"},
+         {{"src/core/little_endian.h",
+           "for (std::size_t i = 0; i < sizeof(T); ++i) v = static_cast<T>(v | (static_cast<T>(p[i]) << (8 * i)));",
+           "read_le, the owner of reading"},
+          {"src/store/serialize.cpp",
            "for (int i = 0; i < 4; ++i) bytes.push_back(static_cast<uint8_t>(v >> (8 * i)));",
-           "BinaryWriter::u32, the owner"},
+           "BinaryWriter::u32, the owner of writing"},
           {"src/store/serialize.cpp",
            "for (int i = 0; i < 8; ++i) bytes.push_back(static_cast<uint8_t>(v >> (8 * i)));",
-           "BinaryWriter::u64, the owner"},
-          {"src/store/serialize.cpp",
-           "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(bytes_[pos_++]) << (8 * i);",
-           "BinaryReader::u32, the owner"},
-          {"src/store/serialize.cpp",
-           "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(bytes_[pos_++]) << (8 * i);",
-           "BinaryReader::u64, the owner"},
+           "BinaryWriter::u64, the owner of writing"},
           {"src/store/path_codec.cpp",
            "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(p[i]) << (8 * i);",
            "getblock64, the hash's block read; it reads hash input, not a stored number"},
@@ -3382,18 +3389,13 @@ const std::vector<KnownCopy>& known_copies() {
          "const bool is2x = note.colortype == NoteColor::Kick && note.is2x;",
          "unassigned: the main session names the fold (the breakdown asks lane_flag; audit "
          "finding 190)"},
-        {"How is a little-endian number written byte by byte? (any width or name)", "src/app/preview_source.cpp",
-         "v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
-         "no phase 6 task yet; byte-order readers outside the store (review of J3-6)"},
-        {"How is a little-endian number written byte by byte? (any width or name)", "src/parse/sng.cpp",
-         "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[pos + i]) << (8 * i);",
-         "no phase 6 task yet; byte-order readers outside the store (review of J3-6)"},
-        {"How is a little-endian number written byte by byte? (any width or name)", "src/parse/sng.cpp",
-         "for (int i = 0; i < 4; ++i) v |= static_cast<uint32_t>(buf[pos + i]) << (8 * i);",
-         "no phase 6 task yet; byte-order readers outside the store (review of J3-6)"},
-        {"How is a little-endian number written byte by byte? (any width or name)", "src/parse/srb.cpp",
-         "len |= static_cast<uint32_t>(meta[pos + i]) << (8 * i);",
-         "no phase 6 task yet; byte-order readers outside the store (review of J3-6)"},
+        // Found by J3-9d's sweep; the brief did not own the Opus reader.
+        {"How is a little-endian number written byte by byte? (any width or name)", "src/audio/opus_reader.cpp",
+         "uint32_t le32(const uint8_t* p) {",
+         "no phase 6 task yet; the Opus page reader calls core/little_endian.h (J3-9d sweep)"},
+        {"How is a little-endian number written byte by byte? (any width or name)", "src/audio/opus_reader.cpp",
+         "int64_t le64(const uint8_t* p) {",
+         "no phase 6 task yet; the Opus page reader calls core/little_endian.h (J3-9d sweep)"},
     };
     return k;
 }
