@@ -184,7 +184,6 @@ inline const hydra::HydraRecord& analyzed(const std::string& path,
                                           const hydra::app::AnalysisSettings& settings) {
     static std::map<std::string, detail::Outcome<hydra::HydraRecord>> cache;
     std::ostringstream key;
-    key.precision(17);
     key << path << '|' << settings.prodrums << '|' << settings.bass2x << '|'
         << static_cast<int>(settings.difficulty) << '|' << hydra::settings_key(settings);
     auto [it, fresh] = cache.try_emplace(key.str());

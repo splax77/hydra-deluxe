@@ -1011,13 +1011,15 @@ const std::vector<OwnerRule>& rules() {
          R"(\bfill_rule_for\()",
          {},
          {},
-         "M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R)",
+         "M_D review finding 3 and round 2 finding 5 (phase 3 tasks FX-R and FX2-R); "
+         "widened to tests by audit finding 177 / phase 6 task J4-1 (D53, D54)",
          {"options.lens.legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
           "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;"},
          {"fill_rule_for(settings.legacy_fill_deadline), settings.rules);"},
          {{"src/search/graph.h",
            "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
-           "fill_rule_for, the owner"}}},
+           "fill_rule_for, the owner"}},
+         {"src", "tools", "tests"}},
         // A database's engine_mode stamp compared by hand: through the
         // store's accessor, or any line spelling a rule's stamp text, which
         // only engine_mode_stamp in search/graph.h may write.
@@ -3749,19 +3751,6 @@ const std::vector<OwnerRule>& rules() {
           "WideCharToMultiByte(CP_UTF8, 0, d.c_str(), -1, &out[0], len, nullptr,"},
          {"return hydra::wide_to_utf8(dir.wstring());",
           "MultiByteToWideChar(CP_UTF8, 0, s.data(), n, out.data(), len);"},
-         {},
-         {"tests"}},
-        // The tests' half of "Which fill rule does a legacy_fills flag mean?",
-        // whose rule above scans src and tools and lists the owner's line.
-        {"Which fill rule does a legacy_fills flag mean? (tests)",
-         "fill_rule_for in src/search/graph.h",
-         R"(legacy\w*\s*\?\s*(hydra::)?FillDeadlineRule::Ch1[01])",
-         R"(\bfill_rule_for\()",
-         {},
-         {},
-         "audit finding 177; phase 6 task J4-1 (D53, D54)",
-         {"return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;"},
-         {"CHECK(fill_rule_for(true) == FillDeadlineRule::Ch10);"},
          {},
          {"tests"}},
         // A struct default, not a test input: the leading int keeps lines that
