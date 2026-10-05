@@ -31,6 +31,7 @@
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // add_stale_rows
 #include "parse/song.h"
 #include "record_bytes.h"
 #include "search/graph.h"
@@ -674,36 +675,26 @@ TEST_CASE("a row analyzed under other rules reads Stale until the rules match ag
 }
 
 TEST_CASE("a Stale lookup says why: another build, other rules, or both") {
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
     RecordStore store(":memory:");
     store.add_song("h", "Song", "Artist", "Charter", fixture().song);
+    const RecordKey build_key{"h", "build", CapQuery::at(8)};
+    const RecordKey rules_key{"h", "rules", CapQuery::at(8)};
+    const RecordKey both_key{"h", "both", CapQuery::at(8)};
+    test::add_stale_rows(store, at_cap(8), build_key, rules_key, both_key);
 
     // This build, other rules.
-    const RecordKey rules_key{"h", "rules", CapQuery::at(8)};
-    HydraRecord foreign = at_cap(8);
-    foreign.rules_fingerprint = other.fingerprint();
-    store.add_row(prepare_row(rules_key, foreign));
     RecordLookup by_rules = store.get_record(rules_key);
     CHECK(by_rules.status == RecordStatus::Stale);
     CHECK(by_rules.stale_rules);
     CHECK_FALSE(by_rules.stale_build);
 
     // Another build, these rules.
-    const RecordKey build_key{"h", "build", CapQuery::at(8)};
-    PreparedRow old_build = prepare_row(build_key, at_cap(8));
-    old_build.hyversion = "0.0.0";
-    store.add_row(old_build);
     RecordLookup by_build = store.get_record(build_key);
     CHECK(by_build.status == RecordStatus::Stale);
     CHECK(by_build.stale_build);
     CHECK_FALSE(by_build.stale_rules);
 
     // Another build and other rules: both reasons.
-    const RecordKey both_key{"h", "both", CapQuery::at(8)};
-    PreparedRow both = prepare_row(both_key, foreign);
-    both.hyversion = "0.0.0";
-    store.add_row(both);
     RecordLookup by_both = store.get_record(both_key);
     CHECK(by_both.status == RecordStatus::Stale);
     CHECK(by_both.stale_build);
@@ -1457,8 +1448,6 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
     // The Ready rule is spelled once in C++ (rank_row) and once in SQL
     // (kRowReadySql, which has_record and add_row's purge use). This pins the
     // two spellings together across every kind of row.
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
     RecordStore store(":memory:");
     store.add_song("h", "Song", "Artist", "Charter", fixture().song);
 
@@ -1466,9 +1455,9 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
     store.add_record(ready, at_cap(8));
 
     const RecordKey old_build{"h", "build", CapQuery::at(8)};
-    PreparedRow build_row = prepare_row(old_build, at_cap(8));
-    build_row.hyversion = "0.0.0";
-    store.add_row(build_row);
+    const RecordKey other_rules{"h", "rules", CapQuery::at(8)};
+    const RecordKey both{"h", "both", CapQuery::at(8)};
+    test::add_stale_rows(store, at_cap(8), old_build, other_rules, both);
 
     const RecordKey old_format{"h", "format", CapQuery::at(8)};
     PreparedRow format_row = prepare_row(old_format, at_cap(8));
@@ -1478,12 +1467,7 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
     format_row.structure[3] = 0;
     store.add_row(format_row);
 
-    const RecordKey other_rules{"h", "rules", CapQuery::at(8)};
-    HydraRecord foreign = at_cap(8);
-    foreign.rules_fingerprint = other.fingerprint();
-    store.add_row(prepare_row(other_rules, foreign));
-
-    for (const RecordKey& key : {ready, old_build, old_format, other_rules}) {
+    for (const RecordKey& key : {ready, old_build, old_format, other_rules, both}) {
         INFO(key.chartmode);
         CHECK(store.has_record(key) ==
               (store.get_summary(key).status == RecordStatus::Ready));

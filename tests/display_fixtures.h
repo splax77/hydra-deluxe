@@ -13,6 +13,7 @@
 #include "app/config.h"
 #include "app/library_query.h"
 #include "core/model.h"
+#include "core/rules.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "store/record_store.h"
@@ -74,6 +75,29 @@ inline store::RecordKey store_batch_result(store::RecordStore& store, const std:
     const store::RecordKey key = batch_result_key(md5, cap);
     store_batch_result(store, key);
     return key;
+}
+
+// ---- a Stale result for each cause ----------------------------------------------
+
+// Stores `record` three times, once for each reason a saved result reads
+// Stale: under `build` as if another Hydra version wrote it (hyversion
+// "0.0.0"), under `rules` stamped with other rules in hydra_rules.ini
+// (max_tied_paths 2 instead of the default), and under `both` with both.
+inline void add_stale_rows(store::RecordStore& store, const HydraRecord& record,
+                           const store::RecordKey& build, const store::RecordKey& rules,
+                           const store::RecordKey& both) {
+    core::Rules other = core::default_rules();
+    other.max_tied_paths = 2;
+    HydraRecord foreign = record;
+    foreign.rules_fingerprint = other.fingerprint();
+
+    store::PreparedRow build_row = store::prepare_row(build, record);
+    build_row.hyversion = "0.0.0";
+    store.add_row(build_row);
+    store.add_row(store::prepare_row(rules, foreign));
+    store::PreparedRow both_row = store::prepare_row(both, foreign);
+    both_row.hyversion = "0.0.0";
+    store.add_row(both_row);
 }
 
 // ---- a title made only of tags ------------------------------------------------

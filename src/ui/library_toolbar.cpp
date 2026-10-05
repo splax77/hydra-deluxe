@@ -74,7 +74,7 @@ void render_actions_row(AppState& app) {
 
     // A search that narrows nothing (empty, or a filter that does not parse,
     // like "stars:9") leaves the button on the whole library (D48, Q15).
-    const bool searching = !app.library.query().empty();
+    const bool searching = app.library.searching();
     const int64_t analyzable = searching ? static_cast<int64_t>(app.library_match_count()) : app.library_total;
     const std::string label = searching
                                   ? "Analyze search (" + group_thousands(analyzable) + ")..."

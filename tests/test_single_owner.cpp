@@ -950,19 +950,21 @@ const std::vector<OwnerRule>& rules() {
          {{"src/core/model.cpp", "return group_thousands(n) + \" \" + (n == 1 ? one : many);",
            "counted, the owner"},
           {"src/core/model.cpp", "return n == 1 ? \"has\" : \"have\";", "has_have, the owner"}}},
-        // A timing printed as a whole number of ms: printf's %.0f, or a cast
-        // or lround with " ms" after it.
+        // A timing printed as a whole number of ms: printf's %.0f with or
+        // without a space before "ms", or a cast or lround with " ms" after it.
         {"How is a timing written in whole ms?",
          "format_ms_whole in src/core/model.cpp",
-         R"(%\.0f ms|static_cast<(long long|long|int|int64_t)>\([^;]*\)\)\s*\+\s*" ms"|\blround\([^;]*\+\s*" ms")",
+         R"(%\.0f ?ms|static_cast<(long long|long|int|int64_t)>\([^;]*\)\)\s*\+\s*" ms"|\blround\([^;]*\+\s*" ms")",
          R"(\bformat_ms_whole\()",
          {},
          {{"src/core/replay.cpp", "it prints the fixed 500 ms squeeze window, not a timing"},
           {"tools/replay.cpp", "it prints the fixed 500 ms squeeze window, not a timing"}},
          "D48, Q2 (audit findings 4 and 18; phase 3 task O1)",
          {"std::snprintf(buf, sizeof(buf), \"%s %.0f ms\", what, *hardest);",
-          "std::to_string(static_cast<long long>(sq.difficulty())) + \" ms\");"},
-         {"std::snprintf(buf, sizeof(buf), \"%.1f ms\", ms);"},
+          "std::to_string(static_cast<long long>(sq.difficulty())) + \" ms\");",
+          "\"Effectively %.1fms on the normal %.0fms scale:\\n\""},
+         {"std::snprintf(buf, sizeof(buf), \"%.1f ms\", ms);",
+          "std::snprintf(buf, sizeof(buf), \"%.1f\", ms);"},
          {{"src/core/model.cpp", "return std::to_string(std::lround(ms)) + \" ms\";",
            "format_ms_whole, the owner"}}},
         // ---- one name per fill rule (phase 3 task O3a) ----
@@ -1047,24 +1049,77 @@ const std::vector<OwnerRule>& rules() {
            "return \"Out of date: this result came from \" + cause + \". Re-analyze to refresh it.\";",
            "stale_text, the owner: the sentence's frame"}}},
         // Cutting a label to end in "…": ImGui's own ellipsis renderer, its
-        // ellipsis glyph, or the "…" bytes typed out. ellipsize is the one
+        // ellipsis glyph, the "…" bytes typed out as escapes, or a "…" typed
+        // straight into a string before any // comment. ellipsize is the one
         // rule (no trailing space, an exact fit allowed); text_ellipsized
-        // cuts through it.
+        // cuts through it. The last alternative is built from the three
+        // UTF-8 bytes of "…", so this file holds no raw one in a pattern.
         {"How is a long label cut to fit its space?",
          "ellipsize in src/render/overlay_layout.cpp",
-         R"(RenderTextEllipsis|EllipsisChar|\\xE2\\x80\\xA6)",
+         R"(RenderTextEllipsis|EllipsisChar|\\xE2\\x80\\xA6|^(?:(?!//).)*"(?:(?!//)[^"])*)"
+         "\xE2\x80\xA6",
          "",
          {},
          {},
          "audit finding 70; D48, Q18 (phase 3 task O3b)",
          {"font->RenderChar(draw, size, ImVec2(IM_TRUNC(pos.x + kept_w), pos.y), col, font->EllipsisChar);",
           "ImGui::RenderTextEllipsis(window->DrawList, pos, ImVec2(max_x, pos.y + text_size.y),",
-          R"(return text.substr(0, end) + "\xE2\x80\xA6";)"},
+          R"(return text.substr(0, end) + "\xE2\x80\xA6";)",
+          "return text.substr(0, end) + \"\xE2\x80\xA6\";",
+          "const char* tail = \"\xE2\x80\xA6\";"},
          {"text_ellipsized(text.c_str());",
-          "const std::string shown = ellipsize(label, w, ten_per_char);"},
+          "const std::string shown = ellipsize(label, w, ten_per_char);",
+          "// ends in \"\xE2\x80\xA6\" rather than vanish",
+          "label = \"a\";  // ends in \xE2\x80\xA6 when cut"},
          {{"src/render/overlay_layout.cpp",
            R"(static const std::string kEllipsis = "\xE2\x80\xA6";)",
            "ellipsize, the owner: the one ellipsis a cut ends in"}}},
+        // ---- M_D review follow-ups (phase 3 task FX-L) ----
+        // A switch over the Dynamics rows, or the 2x test that picks a kick
+        // row: a second table of which note each row holds. The one table
+        // is kDynamicsRows in dynamics_breakdown.cpp, read through
+        // dynamics_row_info and dynamics_row_for.
+        {"Which table says what a Dynamics row holds?",
+         "kDynamicsRows in src/app/dynamics_breakdown.cpp",
+         R"(case (app::)?DynamicsRow::\w+:|return note\.is2x \? DynamicsRow::)",
+         "",
+         {},
+         {},
+         "M_D review, library finding 1 (phase 3 task FX-L)",
+         {"case app::DynamicsRow::GreenTom:     return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);",
+          "case DynamicsRow::GreenCymbal:  return pad(NoteColor::Green, NoteCymbalType::Cymbal);",
+          "return note.is2x ? DynamicsRow::Kick2x : DynamicsRow::Kick;"},
+         {"ImVec4 dot = pad_color(r);",
+          "const DynamicsRowInfo& info = dynamics_row_info(r);"}},
+        // "Is the typed search narrowing the library?" asked of the query
+        // from outside the model. LibraryModel::searching answers it, from
+        // the model's own query_.
+        {"Is the typed search narrowing the library?",
+         "LibraryModel::searching in src/ui/library_model.h",
+         R"(\bquery\(\)\.empty\(\))",
+         "",
+         {},
+         {},
+         "M_D review, library finding 5 (phase 3 task FX-L)",
+         {"const bool searching = !app.library.query().empty();",
+          "if (app.library.query().empty()) return;"},
+         {"app.library.set_query(search);",
+          "const bool searching = app.library.searching();",
+          "bool searching() const { return !query_.empty(); }"}},
+        // A time rounded to a tick by hand. display_tick_at_ms is the one
+        // rule for which tick a screen shows at a time (D48, Q23).
+        {"Which tick does a screen show at a time?",
+         "SongTiming::display_tick_at_ms in src/core/timing.cpp",
+         R"(llround\([^;]*tick_at_ms\()",
+         "",
+         {},
+         {},
+         "D48, Q23 (audit finding 183; M_D review, reports finding 7)",
+         {"const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));",
+          "const int64_t tick = std::llround(ms_.tick_at_ms(ms));"},
+         {"const int64_t end_tick = timing->display_tick_at_ms(*song_length_ms);"},
+         {{"src/core/timing.cpp", "const int64_t tick = std::llround(ms_.tick_at_ms(ms));",
+           "display_tick_at_ms, the owner"}}},
         // ---- phase 3 wave C owners (derive-once review of M_C) ----
         // A status word typed in quotes. The library chips, the Best path
         // cell and the uitest state dump all ask status_label.

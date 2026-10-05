@@ -437,11 +437,13 @@ TEST_CASE("set_search narrows the library and the match count") {
     ScratchPaths paths("appstate_search");
     std::unique_ptr<AppState> app = app_on(paths);
     app->set_search("hash017");
+    CHECK(app->library.searching());
     CHECK(app->library_shown_count() == 1);
     CHECK(app->library_match_count() == 1);
     CHECK(app->library_row_at(0).entry.md5 == "hash017");
     CHECK(app->library_matches().size() == 1);
     app->set_search("");
+    CHECK_FALSE(app->library.searching());
     CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
 }
 
@@ -452,6 +454,7 @@ TEST_CASE("set_search: a filter that does not parse leaves the query empty") {
     std::unique_ptr<AppState> app = app_on(paths);
     app->set_search("stars:9");
     CHECK(app->library.query().empty());
+    CHECK_FALSE(app->library.searching());
     CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
 }
 

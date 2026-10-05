@@ -84,22 +84,12 @@ std::vector<std::string> titles(const LibraryModel& m) {
 // "build" came from another Hydra version, "rules" from other rules in
 // hydra_rules.ini, "both" from both. Returns the model's rows, in that order.
 std::vector<hydra::ui::LibraryRow> stale_rows() {
-    hydra::core::Rules other = hydra::core::default_rules();
-    other.max_tied_paths = 2;
     hydra::HydraRecord here;
     here.sp_cap = 8;
-    hydra::HydraRecord foreign = here;
-    foreign.rules_fingerprint = other.fingerprint();
     auto key = [](const char* md5) { return RecordKey{md5, "mode", CapQuery::at(8)}; };
 
     hydra::store::RecordStore store(":memory:");
-    PreparedRow build = hydra::store::prepare_row(key("build"), here);
-    build.hyversion = "0.0.0";
-    store.add_row(build);
-    store.add_row(hydra::store::prepare_row(key("rules"), foreign));
-    PreparedRow both = hydra::store::prepare_row(key("both"), foreign);
-    both.hyversion = "0.0.0";
-    store.add_row(both);
+    hydra::test::add_stale_rows(store, here, key("build"), key("rules"), key("both"));
 
     LibraryModel m;
     m.set_charts({chart("build", "Build", "A", "C", "common"),

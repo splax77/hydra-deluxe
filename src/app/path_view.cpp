@@ -324,18 +324,16 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             std::snprintf(tbuf, sizeof(tbuf), "%.1f", bsq.offset_ms.value_or(0.0));
             row.timing = tbuf;
             if (br.note.effective_ms) {
-                char tip[256];
                 // The budget at identity scale (x1.00): what the combined
                 // budget would be with no frontend-timing scale.
                 const double normal_budget = nominal_budget_ms(W);
-                std::snprintf(tip, sizeof(tip),
-                              "Effectively %.1fms on the normal %.0fms scale:\n"
-                              "frontend timing scales %s here, so the combined\n"
-                              "squeeze budget is %.1fms, not %.1fms.",
-                              *br.note.effective_ms, normal_budget,
-                              format_scale(br.note.scale).c_str(), br.note.budget_ms,
-                              normal_budget);
-                row.tooltip = tip;
+                row.tooltip = "Effectively " + format_ms(*br.note.effective_ms) +
+                              " on the normal " + format_ms_whole(normal_budget) +
+                              " scale:\nfrontend timing scales " +
+                              format_scale(br.note.scale) +
+                              " here, so the combined\nsqueeze budget is " +
+                              format_ms(br.note.budget_ms) + ", not " +
+                              format_ms(normal_budget) + ".";
             }
             row.chord = bsq.chord.notationstr();
             // What the engine actually paid for this row on this path, from
@@ -352,12 +350,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
             row.rating = bsq.summarystr(br.squeezed_out, W, rules.backend_leeway_ms);
-            if (br.note.effective_ms) {
-                char effbuf[32];
-                std::snprintf(effbuf, sizeof(effbuf), " (eff. %.1fms)",
-                              *br.note.effective_ms);
-                row.rating += effbuf;
-            }
+            if (br.note.effective_ms)
+                row.rating += " (eff. " + format_ms(*br.note.effective_ms) + ")";
             if (br.squeezed_out) {
                 // "(-N)" and the warning colour only when the squeeze-out
                 // really costs points. A row the engine never counted costs
@@ -390,7 +384,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         view.summary = std::to_string(view.acts.size()) + kDot + left;
     }
     if (timing && song_length_ms && has_song_length(*song_length_ms)) {
-        const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));
+        const int64_t end_tick = timing->display_tick_at_ms(*song_length_ms);
         view.timeline_end =
             "m" + std::to_string((long long)timing->timecode(end_tick).measure_beats_ticks()[0] + 1);
     }
