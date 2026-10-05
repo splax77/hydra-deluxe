@@ -36,11 +36,12 @@ std::optional<Pad> pad_of(PreviewLane lane) {
 
 TrackGem gem_of(const PreviewNote& n, bool pro) {
     TrackGem g;
-    if (n.lane == PreviewLane::Kick) {
-        g.kick = true;  // 2x kicks are plain kicks (Onyx has no 2x visual)
-    } else {
-        g.pad = *pad_of(n.lane);
+    // A lane with no pad (pad_of) is the kick.
+    if (const std::optional<Pad> pad = pad_of(n.lane)) {
+        g.pad = *pad;
         g.cymbal = pro && n.cymbal && allows_cymbals(app::color_of(n.lane));
+    } else {
+        g.kick = true;  // 2x kicks are plain kicks (Onyx has no 2x visual)
     }
     g.velocity = n.ghost ? Velocity::Ghost : n.accent ? Velocity::Accent : Velocity::Normal;
     return g;
@@ -252,16 +253,15 @@ void TrackState::set_overlay_intervals(const PreviewScene& scene) {
             fill_taken_.push_back(span_interval(scene, f.span));
     }
     for (const PreviewActivation& a : scene.activations) {
-        if (a.has_sp_end && a.sp_end_ms > a.ms)
-            sp_active_.push_back({s_of(a.ms), s_of(a.sp_end_ms)});
-        if (a.has_lane) {
+        // The tinted floor: the activation's sp_window, its owner.
+        if (const std::optional<std::pair<double, double>> w = a.sp_window())
+            sp_active_.push_back({s_of(w->first), s_of(w->second)});
+        // The taken fill lights the activation note's lane. The scene
+        // builder names that fill (taken_fill).
+        if (a.has_lane && a.taken_fill) {
             std::optional<Pad> pad = pad_of(a.lane);
             if (!pad) continue;
-            for (const app::PreviewFill& f : scene.fills) {
-                if (f.state != app::PreviewFillState::Taken || f.span.end_tick != a.tick) continue;
-                fill_lane_.push_back({span_interval(scene, f.span), *pad});
-                break;
-            }
+            fill_lane_.push_back({span_interval(scene, scene.fills[*a.taken_fill].span), *pad});
         }
     }
     fill_lane_ivs_.reserve(fill_lane_.size());

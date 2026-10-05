@@ -446,6 +446,7 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
     a.ms = 1500.0;
     a.has_lane = true;
     a.lane = PreviewLane::Green;
+    a.taken_fill = 0;
     scene.activations = {a};
     TrackState st = build_track_state(scene, TrackStateOptions{});
     std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
@@ -489,10 +490,12 @@ TEST_CASE("build_highway_draws: two touching taken fills light two lanes") {
     green.ms = 2000.0;
     green.has_lane = true;
     green.lane = PreviewLane::Green;
+    green.taken_fill = 0;
     PreviewActivation yellow = green;
     yellow.tick = 3000;
     yellow.ms = 3000.0;
     yellow.lane = PreviewLane::Yellow;
+    yellow.taken_fill = 1;
     scene.activations = {green, yellow};
     TrackState st = build_track_state(scene, TrackStateOptions{});
 
