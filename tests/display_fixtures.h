@@ -12,6 +12,7 @@
 
 #include "app/config.h"
 #include "app/library_query.h"
+#include "app/preview_view.h"  // last_note_ms, for the audio-tail sanity case
 #include "core/model.h"
 #include "core/rules.h"
 #include "parse/song.h"
@@ -25,10 +26,9 @@ namespace hydra::test {
 // How far the audio runs past the last note: 5 s.
 inline constexpr double kAudioTailMs = 5000.0;
 
-// A chart whose audio keeps playing after its last note, so "the song's
-// length" can mean two things. `last_note_ms` is the length the store keeps
-// (store::song_length_ms, the last note's onset); `audio_end_ms` is where the
-// audio stops, kAudioTailMs later. Numbers only, no playhead.
+// A chart whose audio keeps playing after its last note. `last_note_ms` is
+// the last note's onset; `audio_end_ms` is where the audio stops, kAudioTailMs
+// later, which is the song's length (D69). Numbers only, no playhead.
 struct AudioTailChart {
     Song song;
     double last_note_ms = 0.0;
@@ -38,7 +38,7 @@ struct AudioTailChart {
 // beat_song with a note every beat to tick 1920 (one measure, 1000 ms).
 inline AudioTailChart audio_tail_chart() {
     AudioTailChart c{beat_song({}, {}, 1920)};
-    c.last_note_ms = store::song_length_ms(c.song).value_or(0.0);
+    c.last_note_ms = 1000.0;
     c.audio_end_ms = c.last_note_ms + kAudioTailMs;
     return c;
 }
@@ -126,7 +126,7 @@ inline constexpr const char* kTagOnlyTitle = "<color=#FF8000></color><b></b>";
 
 TEST_CASE("fixtures: audio runs 5 s past the last note") {
     const AudioTailChart c = audio_tail_chart();
-    CHECK(c.last_note_ms == store::song_length_ms(c.song));
+    CHECK(c.last_note_ms == app::last_note_ms(app::build_preview_base(c.song)));
     CHECK(c.audio_end_ms - c.last_note_ms == 5000.0);
 }
 

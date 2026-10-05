@@ -22,6 +22,7 @@
 #include "chart_text.h"
 #include "app/preview_view.h"
 #include "audio/device.h"
+#include "audio_chart_fixtures.h"
 #include "audio_util.h"  // fixture_path
 #include "core/winstr.h"
 #include "corpus_util.h"
@@ -62,42 +63,11 @@ ChartLibraryEntry entry_for(const std::string& notespath) {
     return e;
 }
 
-void copy_file_utf8(const std::string& from, const std::string& to) {
-    std::vector<uint8_t> bytes = hydra::read_file_bytes(from);
-    std::FILE* f = hydra::fopen_utf8(to, L"wb");
-    REQUIRE(f != nullptr);
-    if (!bytes.empty()) std::fwrite(bytes.data(), 1, bytes.size(), f);
-    std::fclose(f);
-}
-
-// A chart folder that has audio: a corpus .chart plus the test sine as
-// song.ogg. The GUI test library has no audio at all, so the no-device path
-// can only be reached here.
-std::string chart_with_audio() {
-    const std::string d = testtemp::temp_dir("prevctl");
-    copy_file_utf8(corpus::first_chart_with_suffix(".chart"), d + "\\notes.chart");
-    copy_file_utf8(testaudio::fixture_path("sine220.ogg"), d + "\\song.ogg");
-    return d + "\\notes.chart";
-}
-
-// A chart folder whose audio outlasts its notes: two notes at 600 BPM
-// (resolution 192, so a beat is 100 ms and a measure 400 ms), the last at
-// tick 192 (100 ms), and the 5 s test sine as song.ogg. Without the audio's
-// end the beat lines would stop two measures past the last note, at tick
-// 1728 (900 ms).
-std::string short_chart_with_long_audio() {
-    const std::string d = testtemp::temp_dir("prevctl_tail");
-    using namespace testchart;
-    const std::string text =
-        chart_text(section("ExpertDrums", line(0, "N 0 0") + line(192, "N 1 0")), 192, "",
-                   line(0, "TS 4") + line(0, "B 600000"));
-    std::FILE* f = hydra::fopen_utf8(d + "\\notes.chart", L"wb");
-    REQUIRE(f != nullptr);
-    std::fputs(text.c_str(), f);
-    std::fclose(f);
-    copy_file_utf8(testaudio::fixture_path("sine220.ogg"), d + "\\song.ogg");
-    return d + "\\notes.chart";
-}
+// The chart folders with audio (chart_with_audio, short_chart_with_long_audio)
+// and their helpers live in audio_chart_fixtures.h.
+using audiochart::chart_with_audio;
+using audiochart::copy_file_utf8;
+using audiochart::short_chart_with_long_audio;
 
 // Every field of two timelines, instant by instant.
 void check_same_track(const hydra::render::TrackState& got,
@@ -346,12 +316,11 @@ TEST_CASE("preview_config: asked before the first render it fails loudly") {
     CHECK_THROWS_AS(pc.preview_config(), std::logic_error);
 }
 
-// The scrubber ends at the last note while the music plays on (D50 item 4).
-// The chart's last note is at 100 ms and its audio runs 5 s. The slider's
-// range is scrub_end_ms(), so it reaches only the last note; a drag to its
-// right end seeks there, not to the audio's end. Playback can still run into
-// the tail, and there the thumb waits at the right end.
-TEST_CASE("scrub marks: the Preview's scrubber ends at the last note while the audio plays on") {
+// The scrubber ends at the audio's end, the song's length (D69). The chart's
+// last note is at 100 ms and its audio runs 5 s. The slider's range is
+// scrub_end_ms(), so a drag to its right end seeks to the audio's end, and the
+// thumb follows the playhead all the way there.
+TEST_CASE("scrub marks: the Preview's scrubber ends at the audio's end") {
     PreviewController pc(nullptr, nullptr);
     pc.set_audio_device_factory(
         [](int, int, PreviewController::AudioSource)
@@ -367,18 +336,18 @@ TEST_CASE("scrub marks: the Preview's scrubber ends at the last note while the a
     REQUIRE_FALSE(pc.loading());
     REQUIRE(pc.has_audio());
 
-    CHECK(pc.scrub_end_ms() == doctest::Approx(100.0));  // the slider's right end
-    pc.seek_ms(pc.scrub_end_ms());                        // a drag to that end
-    CHECK(pc.position_ms() == doctest::Approx(100.0));
+    CHECK(pc.scrub_end_ms() == doctest::Approx(5000.0));  // the slider's right end
+    pc.seek_ms(pc.scrub_end_ms());                         // a drag to that end
+    CHECK(pc.position_ms() == doctest::Approx(5000.0));
 
-    pc.jump_ms(4000.0);  // into the tail, which still plays
-    CHECK(pc.position_ms() == doctest::Approx(4100.0));
+    pc.seek_ms(4100.0);  // in the tail after the last note
     CHECK(hydra::app::scrub_thumb_ms(pc.position_ms(), pc.scrub_end_ms()) ==
-          doctest::Approx(100.0));
+          doctest::Approx(4100.0));
 }
 
-// A jump past the end stops where playback stops: the audio's end, not the
-// scrubber's. Same chart: last note at 100 ms, the sine runs 5 s.
+// A jump past the end stops where playback stops: the audio's end, which is
+// also where the scrubber ends. Same chart: last note at 100 ms, the sine
+// runs 5 s.
 TEST_CASE("a jump past the end of the Preview stops at the audio's end") {
     PreviewController pc(nullptr, nullptr);
     pc.set_audio_device_factory(
@@ -396,7 +365,7 @@ TEST_CASE("a jump past the end of the Preview stops at the audio's end") {
     REQUIRE(pc.has_audio());
 
     CHECK(pc.playback_end_ms() == doctest::Approx(5000.0));
-    CHECK(pc.scrub_end_ms() == doctest::Approx(100.0));
+    CHECK(pc.scrub_end_ms() == doctest::Approx(5000.0));
     pc.jump_ms(60000.0);
     CHECK(pc.position_ms() == doctest::Approx(5000.0));
 }

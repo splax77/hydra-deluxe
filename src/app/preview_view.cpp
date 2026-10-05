@@ -13,7 +13,6 @@
 #include "app/display_format.h"  // clock_str
 #include "core/squeeze_rating.h"
 #include "core/replay.h"
-#include "store/record_store.h"  // song_length_ms
 
 namespace hydra::app {
 
@@ -247,6 +246,15 @@ const PreviewActivation* running_activation(const PreviewScene& scene, double no
 
 }  // namespace
 
+const PreviewNote* last_drawn_note(const PreviewScene& scene) {
+    return scene.notes.empty() ? nullptr : &scene.notes.back();
+}
+
+double last_note_ms(const PreviewScene& scene) {
+    const PreviewNote* last = last_drawn_note(scene);
+    return last ? last->ms : 0.0;
+}
+
 PreviewScene build_preview_scene(const Song& song, const Path* path, int sp_cap,
                                  const core::Rules& rules, std::optional<double> audio_end_ms) {
     return apply_preview_overlay(build_preview_base(song, audio_end_ms), song, path, sp_cap,
@@ -282,26 +290,21 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> audio_en
                                               song.sequence[s.last].timecode.ticks()));
 
     scene.has_notes = !scene.notes.empty();
-    // The store's song length, the one the scrubber and the Paths timeline
-    // read: the last timestamp's onset.
-    scene.song_length_ms = store::song_length_ms(song).value_or(0.0);
+    // The song's length is its audio's end in chart time, the answer
+    // audio::song_length_ms gives (D69); the load hands it in. No audio, no
+    // length.
+    scene.song_length_ms = audio_end_ms.value_or(0.0);
 
     // The beat grid runs to the end of the audio, so lines keep scrolling
     // while music plays past the last note (D48, Q25). The end is the tick a
     // playhead there shows, the same rule the time box uses. Without the
-    // audio's end it runs two measures past the last note.
-    //
-    // The grid reads the last drawn note's tick, not song_length_ms above.
-    // It needs a tick because beat lines sit on measures and beats, and
-    // "two measures past" is counted in ticks. The two ends agree on every
-    // parsed song: the parsers only write a timestamp that holds notes, so
-    // the last timestamp is the last drawn chord. Only a hand-built song with
-    // a note-less last timestamp splits them; test_preview_view.cpp pins that
-    // case ("the song length is the store's, even past the last drawn note").
+    // audio's end it runs two measures past the last drawn note
+    // (last_drawn_note), counted in ticks because beat lines sit on measures
+    // and beats.
     const SongTiming& timing = song.timing();
     scene.timing = timing;  // the time box names ticks with the engine's math
-    if (scene.has_notes) {
-        const int64_t last_tick = scene.notes.back().tick;
+    if (const PreviewNote* last = last_drawn_note(scene)) {
+        const int64_t last_tick = last->tick;
         int64_t grid_end = last_tick;
         if (audio_end_ms.has_value()) {
             grid_end = std::max(last_tick, timing.display_tick_at_ms(*audio_end_ms));

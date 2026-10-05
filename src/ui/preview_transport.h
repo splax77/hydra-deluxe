@@ -28,29 +28,11 @@
 
 namespace hydra::ui {
 
-// The chart sync rule, chart time to audio time. chart_ms_of_audio_ms is
-// the same rule run backwards.
-inline double audio_ms_of_chart_ms(double chart_ms, double audio_offset_ms) {
-    return chart_ms + audio_offset_ms;
-}
-
-inline double chart_ms_of_audio_ms(double audio_ms, double audio_offset_ms) {
-    return audio_ms - audio_offset_ms;
-}
-
-// Where `audio` stops in chart time: its length in ms, through
-// chart_ms_of_audio_ms. Empty when there is no audio. The
-// one rule for the audio's end: the load job asks it of the mix it opened
-// (where the beat lines stop) and PreviewTransport::load asks it of the
-// playhead it is handed. `audio` is anything with channels(), sample_rate()
-// and length_frames(): an audio::MixSource or an audio::Playhead.
-template <class Audio>
-std::optional<double> audio_end_chart_ms(const Audio& audio, double audio_offset_ms) {
-    if (audio.channels() <= 0 || audio.sample_rate() <= 0 || audio.length_frames() <= 0)
-        return std::nullopt;
-    return chart_ms_of_audio_ms(audio::ms_of_frames(audio.length_frames(), audio.sample_rate()),
-                                audio_offset_ms);
-}
+// The chart sync rule and the audio's end live in audio/frames.h, so the
+// song's length can ask them without reaching into the UI.
+using audio::audio_end_chart_ms;
+using audio::audio_ms_of_chart_ms;
+using audio::chart_ms_of_audio_ms;
 
 class PreviewTransport {
 public:
@@ -60,13 +42,14 @@ public:
     PreviewTransport& operator=(const PreviewTransport&) = delete;
 
     // Load a chart's audio (may be null/empty for a chart with no audio), the
-    // chart's last note time, and where chart time 0 sits in the audio
-    // (audio_ms_of_chart_ms; never negative, see PreviewLoadJob).
-    // length_ms() becomes the playback range: the later of
-    // `last_note_ms` and the audio's end in chart time, so the audio's tail
-    // after the last note stays playable (D48, Q25). It is where playback
-    // stops, not where the scrubber ends (that is the last note, D50 item 4).
-    // Resets the playhead to the offset, paused.
+    // chart's last drawn note time (app::last_note_ms), and where chart time
+    // 0 sits in the audio (audio_ms_of_chart_ms; never negative, see
+    // audio::mix_song_stems). length_ms() becomes the playback range: the
+    // later of `last_note_ms` and the audio's end in chart time, so the audio
+    // plays out and a chart with no audio still plays to its last note (D48,
+    // Q25). It is where playback stops, not a song length: the scrubber ends
+    // at the song's length, the audio's end (audio::song_length_ms), through
+    // app::scrub_end_ms. Resets the playhead to the offset, paused.
     void load(std::unique_ptr<audio::Playhead> playhead, double last_note_ms,
               double audio_offset_ms = 0.0);
     void unload();  // drop the playhead, back to an empty paused transport
@@ -78,7 +61,7 @@ public:
     // while the clock plays, sets the playhead playing again.
     void seek_ms(double ms);
     bool playing() const;
-    double length_ms() const;  // the playback range (see load), not the last note
+    double length_ms() const;  // the playback range (see load), not the song's length
     bool has_audio() const;  // a loaded playhead with > 0 frames
 
     // The song time now. If playing and at/after the end, pauses and pins the

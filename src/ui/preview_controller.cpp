@@ -13,7 +13,6 @@
 #include "app/user_messages.h"
 #include "audio/device.h"
 #include "audio/player.h"
-#include "store/record_store.h"  // song_length_ms
 #include "ui/preview_load_job.h"
 
 namespace hydra::ui {
@@ -189,7 +188,7 @@ void PreviewController::poll() {
         scene_dirty_ = true;
         transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
-                        scene_.song_length_ms, result.audio_offset_ms);
+                        hydra::app::last_note_ms(scene_), result.audio_offset_ms);
         // Open the output device only when there is audio to play; a chart with
         // no locatable stems previews silently (the highway still draws).
         if (transport_.has_audio()) {
@@ -283,13 +282,12 @@ bool PreviewController::playing() const { return transport_.playing(); }
 
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
-// The scrubber's range (D50 item 4): the song's length as the Paths timeline
-// reads it, so the slider and its gold marks end at the last note. Playback,
-// the clock and the kJumpSeconds jumps still run to playback_end_ms(), which reaches
-// the audio's end.
+// The scrubber's range: the song's length, the audio's end the load measured
+// (audio::song_length_ms's answer, D69), so the slider and its gold marks end
+// where the audio does. A chart with no readable audio falls back to
+// playback_end_ms(), its last drawn note (app::scrub_end_ms, D70 item 1).
 double PreviewController::scrub_end_ms() const {
-    return hydra::app::scrub_end_ms(song_ ? store::song_length_ms(*song_) : std::nullopt,
-                                    playback_end_ms());
+    return hydra::app::scrub_end_ms(audio_end_ms_, playback_end_ms());
 }
 
 // Where playback stops: the transport's length, the later of the last note
