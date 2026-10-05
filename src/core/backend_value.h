@@ -51,6 +51,13 @@ inline int backend_row_value(double offset_ms, int points, int sqout_points,
     return pos == SqOutPosition::Exact ? sqout_points : points;
 }
 
+// What squeezing this row out costs: its full SP value less what
+// backend_row_value pays it as the squeezed-out chord.
+inline int sqout_cost(double offset_ms, int points, int sqout_points, double leeway_ms) {
+    return points - backend_row_value(offset_ms, points, sqout_points, SqOutPosition::Exact,
+                                      leeway_ms);
+}
+
 // Did Star Power pay this row anything on this path? The one yes/no for
 // "inside SP", built from the price above. The replay's xN disc doubles
 // exactly when it is true (decision D2): a squeezed-out chord whose
