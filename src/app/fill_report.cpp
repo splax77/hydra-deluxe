@@ -133,7 +133,7 @@ const PAGE = {
   },
   stats(rows) {
     const n = s => charts(rows.filter(r => r.status === s));
-    // The points tiles add each chart's delta once, not once per copy (D78).
+    // The points tiles add each chart's delta once, not once per copy (D79).
     const gains = rows.filter(r => r.status === '1.1 higher').reduce((a, r) => a + r.delta, 0);
     const losses = rows.filter(r => r.status === '1.0 higher').reduce((a, r) => a - r.delta, 0);
     return [
@@ -178,7 +178,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         report::records_by_hash(old_store, chartmode, cap, old_lens);
     const std::unordered_map<std::string, store::RecordListing> new_by_hash =
         report::records_by_hash(new_store, chartmode, cap, new_lens);
-    // Copies come from the 1.1 database's library (D78 item 3).
+    // Copies come from the 1.1 database's library (D79 item 3).
     const std::unordered_map<std::string, int> library =
         report::library_copies_by_hash(new_store);
 

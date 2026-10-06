@@ -383,8 +383,9 @@ Lens read_lens(sqlite3_stmt* s, int idx) {
 
 // The facts that decide whether a row is readable and how it places among
 // the candidates for its chart and mode, and why a row that is not ready is
-// Stale. rank_row is the only place C++ reads them off a row; row_ready_sql
-// below is the same rule for SQL.
+// Stale. rank_row is the only place they are read off a row. Whether a chart
+// has a current result under some settings is get_summaries' answer, from its
+// winner's ready() (D79).
 struct Candidate {
     bool current = false;  // stamped with this build's results version
     bool format = false;   // this build's path-structure format, analyzed
@@ -419,21 +420,7 @@ Candidate rank_row(const std::string& hyversion, const std::vector<uint8_t>& str
     return c;
 }
 
-// Candidate::ready() spelled in SQL, for the sites that must pick rows in the
-// database: has_record only asks whether a readable row exists. It is two
-// parts joined. row_readable_sql is "this build can read the row at all":
-// this results version and a path format this build reads. The rules part
-// asks whether the row was analyzed under the rules this process runs.
-// write_row's first purge is a DELETE of the rows that fail the first part
-// alone, so a row made under other rules is kept (D51 call 8). Negate with
-// "NOT ", never by spelling the opposite, so each rule has one SQL spelling.
-// Both columns are NOT NULL, so NOT never meets a NULL.
-//
-// Built from the same StampRule lists is_current reads, so the two spellings
-// cannot drift: every accepted results version, every accepted path format
-// and the rules fingerprint, each structure field where path_codec.h's head
-// layout puts it. The bind_ functions bind them in that order and return the
-// next free index.
+// `n` comma-separated "?" placeholders.
 std::string placeholders(size_t n) {
     std::string out;
     for (size_t i = 0; i < n; ++i) out += i ? ", ?" : "?";
@@ -476,6 +463,18 @@ std::vector<uint8_t> rules_fp_bytes(uint64_t fingerprint) {
     return w.bytes;
 }
 
+// "This build can read the row at all", spelled in SQL for write_row's first
+// purge, which deletes in the database the rows that fail it: this results
+// version and a path format this build reads. It leaves out the rules, so a
+// row made under other rules is kept (D51 call 8). Negate with "NOT ", never
+// by spelling the opposite, so the rule has one SQL spelling. Both columns
+// are NOT NULL, so NOT never meets a NULL.
+//
+// Built from the same StampRule lists is_current reads, so the two spellings
+// cannot drift: every accepted results version and every accepted path
+// format, the format where path_codec.h's head layout puts it.
+// bind_readable_params binds them in that order and returns the next free
+// index.
 const std::string& row_readable_sql() {
     static const std::string sql =
         "(hyversion IN (" + placeholders(kResultsStamp.accepted.size()) + ") AND " +
@@ -484,21 +483,9 @@ const std::string& row_readable_sql() {
     return sql;
 }
 
-const std::string& row_ready_sql() {
-    static const std::string sql =
-        "(" + row_readable_sql() + " AND " + rules_fp_of("structure") + " = ?)";
-    return sql;
-}
-
 int bind_readable_params(sqlite3_stmt* s, int idx) {
     for (std::string_view v : kResultsStamp.accepted) bind_text(s, idx++, std::string(v));
     for (uint32_t f : kPathFormatStamp.accepted) bind_blob(s, idx++, path_format_bytes(f));
-    return idx;
-}
-
-int bind_ready_params(sqlite3_stmt* s, int idx, const core::RulesStamp& rules) {
-    idx = bind_readable_params(s, idx);
-    bind_blob(s, idx++, rules_fp_bytes(rules.fixed));
     return idx;
 }
 
@@ -570,27 +557,6 @@ int bind_candidate_filter(sqlite3_stmt* s, int idx, const CapQuery& cap, const L
 // ROLLBACK would then throw over the error that caused it.
 void rollback_if_open(sqlite3* db) {
     if (!sqlite3_get_autocommit(db)) sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
-}
-
-// The rows that make a chart "already analyzed" for a batch run: a readable
-// row under exactly this chart mode, cap and lens. Never another lens's row,
-// or a batch would skip charts whose stored answer came from a different
-// question. has_record and analyzed_hashes share it so the two cannot drift.
-// Binds, from `idx`: the chart mode, the ready parameters, the lens, then the
-// cap.
-std::string analyzed_filter() {
-    std::string sql =
-        "chartmode=? AND " + row_ready_sql() + " AND " + lens_match("");
-    sql += " AND " + cap_match("");
-    return sql;
-}
-int bind_analyzed_filter(sqlite3_stmt* s, int idx, const std::string& chartmode,
-                         const CapQuery& cap, const Lens& lens,
-                         const core::RulesStamp& rules_fingerprint) {
-    bind_text(s, idx++, chartmode);
-    idx = bind_ready_params(s, idx, rules_fingerprint);
-    idx = bind_lens(s, idx, lens);
-    return bind_cap(s, idx, cap);
 }
 
 // The one way a stored row becomes a record: its structure blob, the path
@@ -1515,24 +1481,33 @@ std::optional<SongTiming> RecordStore::get_timing(const std::string& hyhash) {
 }
 
 bool RecordStore::has_record(const RecordKey& key) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    const std::string sql =
-        "SELECT 1 FROM results WHERE hyhash=? AND " + analyzed_filter() + " LIMIT 1";
-    Stmt s = prepare_read(db_, sql.c_str());
-    bind_text(s, 1, key.hyhash);
-    bind_analyzed_filter(s, 2, key.chartmode, key.cap, key.lens, rules_fingerprint_);
-    return step_row(s);
+    // get_summaries owns "this chart has a current result under these
+    // settings" (D79): the library's Analyzed chip reads the same answer.
+    return get_summary(key).status == RecordStatus::Ready;
 }
 
 std::unordered_set<std::string> RecordStore::analyzed_hashes(const std::string& chartmode,
                                                              const CapQuery& cap,
                                                              const Lens& lens) {
+    // Every chart with a candidate row under these settings, then
+    // get_summaries' answer for each (D79), so the batch skips exactly the
+    // charts the library's Analyzed chip counts. One lock over both reads, so
+    // no write lands between them.
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    const std::string sql = "SELECT DISTINCT hyhash FROM results WHERE " + analyzed_filter();
-    Stmt s = prepare_read(db_, sql.c_str());
-    bind_analyzed_filter(s, 1, chartmode, cap, lens, rules_fingerprint_);
+    std::vector<std::string> candidates;
+    {
+        std::string sql = "SELECT DISTINCT hyhash FROM results WHERE chartmode=?";
+        append_candidate_filter(sql, "");
+        Stmt s = prepare_read(db_, sql.c_str());
+        bind_text(s, 1, chartmode);
+        bind_candidate_filter(s, 2, cap, lens);
+        while (step_row(s)) candidates.push_back(column_text(s, 0));
+    }
+
+    const std::vector<SummaryLookup> found = get_summaries(candidates, chartmode, cap, lens);
     std::unordered_set<std::string> out;
-    while (step_row(s)) out.insert(column_text(s, 0));
+    for (size_t i = 0; i < candidates.size(); ++i)
+        if (found[i].status == RecordStatus::Ready) out.insert(candidates[i]);
     return out;
 }
 

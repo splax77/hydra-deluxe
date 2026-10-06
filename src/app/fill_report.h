@@ -39,7 +39,7 @@ struct FillCompareRow {
     // Exact literals: tally_fill_rows and the page's chip colors compare them.
     std::string status;
     // How many library rows the chart counts as, from the 1.1 database's
-    // library (D78 item 3): what tally_fill_rows and the page's tiles add up.
+    // library (D79 item 3): what tally_fill_rows and the page's tiles add up.
     // collect_fill_rows sets it from store::RecordStore::copies_of.
     int copies = 0;
 };
@@ -58,7 +58,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
                                               const store::CapQuery& cap,
                                               const store::Lens& lens);
 
-// Every field counts library rows: each chart adds its copies (D78 item 3).
+// Every field counts library rows: each chart adds its copies (D79 item 3).
 struct FillCompareStats {
     int total = 0;
     int same = 0;

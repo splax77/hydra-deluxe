@@ -159,6 +159,19 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
     }
 }
 
+namespace {
+
+// A batch over `items` the way hydra_batch runs one: one plan from one store
+// read (D79), then that plan.
+void run_planned(const std::vector<ScanItem>& items, const BatchRun& run,
+                 hydra::store::RecordStore& store, bool redo, int workers,
+                 const hydra::app::BatchCallbacks& callbacks = {}) {
+    hydra::app::run_batch(plan_batch(items, charts_with_result(store, run, redo)), run, store,
+                          workers, callbacks);
+}
+
+}  // namespace
+
 TEST_CASE("run_batch files results under the lens it is given") {
     const std::string chart = corpus::first_chart_with_notes();
 
@@ -171,7 +184,7 @@ TEST_CASE("run_batch files results under the lens it is given") {
 
     const ScanItem item = chart_item(chart);
     hydra::store::RecordStore store(":memory:");
-    run_batch({item}, run, store, /*redo=*/false, 1);
+    run_planned({item}, run, store, /*redo=*/false, 1);
 
     const hydra::store::CapQuery cap =
         hydra::store::CapQuery::at(run.settings.sp_cap);
@@ -340,7 +353,7 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
     BatchRun run;
     run.chartmode = "cancel-test";
     const auto t0 = std::chrono::steady_clock::now();
-    run_batch(fake_items(16), run, store, /*redo=*/false, /*worker_count=*/4, callbacks);
+    run_planned(fake_items(16), run, store, /*redo=*/false, /*worker_count=*/4, callbacks);
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     canceller.join();
@@ -379,7 +392,7 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
     hydra::store::RecordStore store(":memory:");
     BatchRun run;
     run.chartmode = "cancel-test";
-    run_batch({item}, run, store, /*redo=*/false, 1, callbacks);
+    run_planned({item}, run, store, /*redo=*/false, 1, callbacks);
 
     CHECK(errors == 0);
     CHECK(results == 0);
@@ -407,7 +420,7 @@ TEST_CASE("run_batch analyzes a chart found in two folders once, and counts both
     BatchRun run;
     run.chartmode = "dedupe-test";
     hydra::store::RecordStore store(":memory:");
-    run_batch(items, run, store, /*redo=*/false, 1, callbacks);
+    run_planned(items, run, store, /*redo=*/false, 1, callbacks);
 
     CHECK(total.load() == 2);
     CHECK(runs.load() == 1);
@@ -472,12 +485,12 @@ TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
     run.chartmode = "counts-test";
     hydra::store::RecordStore store(":memory:");
     // Chart C is stored before the batch starts.
-    run_batch({items[3]}, run, store, /*redo=*/false, 1, callbacks);
+    run_planned({items[3]}, run, store, /*redo=*/false, 1, callbacks);
     REQUIRE(runs.load() == 1);
 
     BatchProgress last;
     callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
-    run_batch(items, run, store, /*redo=*/false, 1, callbacks);
+    run_planned(items, run, store, /*redo=*/false, 1, callbacks);
 
     // Chart A runs once for both its rows (D51 call 10), and both count (D76).
     CHECK(runs.load() == 3);
@@ -510,7 +523,7 @@ TEST_CASE("run_batch reports a failed chart once per copy, under its first copy'
     BatchRun run;
     run.chartmode = "copy-fail-test";
     hydra::store::RecordStore store(":memory:");
-    run_batch(items, run, store, /*redo=*/false, 1, callbacks);
+    run_planned(items, run, store, /*redo=*/false, 1, callbacks);
 
     CHECK(runs.load() == 3);
     CHECK(last.failed == 4);
@@ -554,7 +567,7 @@ TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
     run.chartmode = "save-fail-test";
     {
         hydra::store::RecordStore store(path);
-        run_batch(items, run, store, /*redo=*/false, 1, callbacks);
+        run_planned(items, run, store, /*redo=*/false, 1, callbacks);
 
         REQUIRE(errors.size() == 1);
         CHECK(errors[0].rfind("fake 1|Hydra couldn't save to its database (hydra.db). Check that "
@@ -584,7 +597,7 @@ TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
     BatchRun run;
     run.chartmode = "sentence-test";
     hydra::store::RecordStore store(":memory:");
-    run_batch(fake_items(1), run, store, /*redo=*/false, 1, callbacks);
+    run_planned(fake_items(1), run, store, /*redo=*/false, 1, callbacks);
 
     REQUIRE(sentences.size() == 1);
     CHECK(sentences[0] == "A saved result couldn't be read. Re-analyze this song to replace it.");
@@ -606,7 +619,7 @@ ScanItem scanned_short_chart(const std::string& tag, const std::string& ini) {
 // What run_batch saved for `item` under `run`.
 hydra::store::RecordLookup batch_saved(const ScanItem& item, const BatchRun& run) {
     hydra::store::RecordStore store(":memory:");
-    run_batch({item}, run, store, /*redo=*/false, 1, {});
+    run_planned({item}, run, store, /*redo=*/false, 1, {});
     hydra::store::RecordLookup got =
         store.get_record({item.md5, run.chartmode, run.cap_query(), run.lens});
     REQUIRE(got.status == hydra::store::RecordStatus::Ready);
@@ -634,7 +647,7 @@ TEST_CASE("run_batch saves the song's length from its metadata (D75)") {
     gone.title = "gone";
     gone.notespath = testtemp::temp_dir("batch_len_gone") + "\\gone.sng";
     hydra::store::RecordStore store(":memory:");
-    run_batch({gone}, run, store, /*redo=*/false, 1, callbacks);
+    run_planned({gone}, run, store, /*redo=*/false, 1, callbacks);
     const hydra::store::RecordLookup unread =
         store.get_record({gone.md5, run.chartmode, run.cap_query(), run.lens});
     REQUIRE(unread.status == hydra::store::RecordStatus::Ready);

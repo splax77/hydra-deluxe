@@ -114,6 +114,13 @@ std::string normalize_chart_hash(std::string_view hash);
 // a positional copy (audit finding 256).
 store::ChartLibraryEntry to_library_entry(const ScanItem& item);
 
+// Saves a finished scan as the library, replacing the last one. Scan library
+// and hydra_batch with no folder arguments both save through here (D79), so
+// both leave the same library behind. Empty on success, else the problem line
+// the scan shows.
+std::optional<std::string> save_scan_as_library(store::RecordStore& store,
+                                                const std::vector<ScanItem>& items);
+
 // The [song] section of a song.ini as lower-cased key -> value, with the
 // value's leading blanks trimmed. A key seen twice keeps its last value.
 // Section and key names match in any case, `;` and `#` start comments, and a
@@ -226,13 +233,18 @@ struct BatchPlan {
 };
 
 // The one place a scan list becomes a batch's to-do list and skipped count.
-// `already` is charts_with_result's answer.
+// `already` is charts_with_result's answer. A batch makes its plan once,
+// before it starts, and runs that plan (D79): the GUI's confirm shows the
+// plan the run then takes.
 BatchPlan plan_batch(const std::vector<ScanItem>& items,
                      const std::unordered_set<std::string>& already);
 
 // Progress, result and cancel hooks for run_batch. The three callbacks fire
 // on the calling thread only (never a worker), so they may touch UI state.
 struct BatchCallbacks {
+    // Fires once per library row, after that row is counted and before the
+    // row's own on_error or on_result, so a caller numbering its lines reads
+    // the number here.
     std::function<void(const BatchProgress&)> on_progress;
     // A chart that failed, in its analysis or its save: the sentence
     // app::plain_error gives for the exception, and its raw text.
@@ -251,14 +263,14 @@ struct BatchCallbacks {
     ChartAnalyzer analyze;
 };
 
-// Runs the analysis + store::prepare_row for every item on a
+// Runs the analysis + store::prepare_row for every chart in `plan` on a
 // batch_worker_count()-sized pool (app/work_pool.h), writing results into
 // `store` from the calling thread only. Which charts run and which are
-// skipped is charts_with_result and plan_batch's answer. Every BatchProgress
-// count comes from here, all in one callback.
-void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
-               store::RecordStore& store, bool redo, int worker_count,
-               const BatchCallbacks& callbacks = {});
+// skipped is the plan's answer (plan_batch); the run reads nothing from the
+// store before its first chart. Every BatchProgress count comes from here,
+// all in one callback.
+void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& store,
+               int worker_count, const BatchCallbacks& callbacks = {});
 
 }  // namespace hydra::app
 

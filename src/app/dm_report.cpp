@@ -210,7 +210,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
 
     // Every chart the last scan found, keyed like the leaderboard join, so a
     // score with no current result can say whether analyzing would fix it.
-    // The page counts scores, not charts, so the copies go unused (D78).
+    // The page counts scores, not charts, so the copies go unused (D79).
     const std::unordered_map<std::string, int> library = report::library_copies_by_hash(store);
 
     std::vector<DmReportRow> rows;

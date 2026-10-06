@@ -159,12 +159,17 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     CHECK(contains(r.output, "Tester - CLI Fixture"));
     CHECK(contains(r.output, "Fill rule  : Clone Hero 1.1"));
     CHECK(contains(r.output, "Found 1 chart."));
-    // The closing count is every row in the file, at every setting.
-    CHECK(contains(r.output, "Store now holds 1 record across 1 song, rows for every setting."));
+    // Every number is the batch's progress, in library rows (D79); the
+    // store's raw row count is not printed.
+    CHECK(contains(r.output, "[1/1] "));
+    CHECK(contains(r.output, "Analyzed 1, skipped 0 already stored, 0 failed in "));
+    CHECK_FALSE(contains(r.output, "Store now holds"));
     {
         hydra::store::RecordStore store(normal);
         CHECK(store.engine_mode() == std::optional<std::string>(kCh11));
         CHECK(store.counts().second == 1);
+        // A run over folder arguments leaves the library alone (D79).
+        CHECK(store.list_chart_library(0, -1).empty());
     }
 
     const std::string legacy = box.db("ch10.db");

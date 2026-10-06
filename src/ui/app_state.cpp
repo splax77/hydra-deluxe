@@ -489,43 +489,46 @@ void AppState::start_scan() {
 }
 
 void AppState::open_batch_confirm() {
-    // Exactly the rows the library's search matches. Which charts they are
-    // and which already have a result is the plan the batch itself makes when
-    // it starts (app::plan_batch over the store), so the confirm and the
-    // strip's "skipped" agree.
-    batch_scope = library_matches();
+    // Exactly the rows the library's search matches. The plans made here are
+    // the ones the batch runs (D79), so the confirm, the strip and the
+    // finished counts come from one plan.
     std::vector<app::ScanItem> items;
-    items.reserve(batch_scope.size());
-    for (const store::ChartLibraryEntry& e : batch_scope) items.push_back(scan_item_of(e));
+    {
+        const std::vector<store::ChartLibraryEntry> scope = library_matches();
+        items.reserve(scope.size());
+        for (const store::ChartLibraryEntry& e : scope) items.push_back(scan_item_of(e));
+    }
+    const app::BatchRun run = settings.batch_run();
     std::unordered_set<std::string> with_result;
-    if (!read_store([&] { with_result = app::charts_with_result(*store, settings.batch_run(), false); })) {
+    if (!read_store([&] { with_result = app::charts_with_result(*store, run, false); })) {
         // The database failed: the confirm stays closed (D72 item 4).
-        batch_scope.clear();
-        batch_confirm_pending = false;
+        close_batch_confirm();
         return;
     }
-    const app::BatchPlan plan = app::plan_batch(items, with_result);
-    // plan_batch puts every row in todo's rows or in skipped (BatchPlan, D76).
-    batch_scope_charts = static_cast<int64_t>(plan.todo_rows()) + plan.skipped;
-    batch_scope_with_result = plan.skipped;
+    batch_plan = app::plan_batch(items, with_result);
+    batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
     batch_confirm_pending = true;
+}
+
+void AppState::close_batch_confirm() {
+    batch_confirm_pending = false;
+    batch_plan = {};
+    batch_redo_plan = {};
 }
 
 void AppState::start_batch(bool redo) {
     if (analysis_blocked()) return;
     if (batch_running()) return;
-    // A direct call (a test) has no confirm open: load the list here. When
-    // the store can't answer, the confirm stays closed and nothing starts.
+    // A direct call (a test) has no confirm open: plan here. When the store
+    // can't answer, the confirm stays closed and nothing starts.
     if (!batch_confirm_pending) open_batch_confirm();
     if (!batch_confirm_pending) return;
-    batch_confirm_pending = false;
-    // Exactly the charts the confirm counted -- not a search string that SQL
-    // would match differently from the library's own search.
-    batch_job = std::make_unique<BatchJob>(std::move(batch_scope), settings.batch_run(), *store,
-                                           redo);
-    batch_scope.clear();
-    batch_scope_charts = 0;
-    batch_scope_with_result = 0;
+    // Exactly the plan the confirm counted -- not a search string that SQL
+    // would match differently from the library's own search, and not a
+    // second store read.
+    batch_job = std::make_unique<BatchJob>(redo ? std::move(batch_redo_plan) : std::move(batch_plan),
+                                           settings.batch_run(), *store);
+    close_batch_confirm();
     report_started = false;
     report_outcome_shown = false;
     batch_seen_completed_ = 0;

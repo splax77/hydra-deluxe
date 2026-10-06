@@ -73,18 +73,10 @@ void ScanJob::run() {
         progress_.phase = ScanProgress::Phase::Writing;
     }
 
-    std::vector<store::ChartLibraryEntry> entries;
-    entries.reserve(items.size());
-    for (const app::ScanItem& item : items) entries.push_back(app::to_library_entry(item));
-
-    try {
-        store_.rebuild_chart_library(entries);
-    } catch (const std::exception& e) {
-        std::lock_guard<std::mutex> lock(mu_);
-        progress_.errors.push_back(std::string("Failed to write chart library: ") + e.what());
-    }
+    const std::optional<std::string> problem = app::save_scan_as_library(store_, items);
 
     std::lock_guard<std::mutex> lock(mu_);
+    if (problem) progress_.errors.push_back(*problem);
     progress_.phase = ScanProgress::Phase::Done;
     progress_.finished = true;
 }
@@ -146,12 +138,10 @@ app::ScanItem scan_item_of(const store::ChartLibraryEntry& e) {
     return item;
 }
 
-BatchJob::BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun run,
-                   store::RecordStore& store, bool redo)
-    : given_(std::move(charts)),
+BatchJob::BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& store)
+    : plan_(std::move(plan)),
       run_(std::move(run)),
       store_(store),
-      redo_(redo),
       workers_(app::batch_worker_count()) {}
 
 void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
@@ -226,7 +216,7 @@ void BatchJob::wait_while_paused() {
 void BatchJob::note_started(const std::string& notespath) {
     auto it = by_path_.find(notespath);
     if (it == by_path_.end()) return;
-    const app::ScanItem& item = items_[it->second];
+    const app::ScanItem& item = plan_.todo[it->second];
     std::lock_guard<std::mutex> lock(mu_);
     snap_.current_title = display_title(item.title);
     snap_.current_artist = display_artist(item.artist);
@@ -234,9 +224,8 @@ void BatchJob::note_started(const std::string& notespath) {
 
 void BatchJob::finish_failed(const std::exception& e, std::string detail) {
     std::lock_guard<std::mutex> lock(mu_);
-    snap_.failures.push_back(app::plain_error(e));
-    snap_.failure_details.push_back(std::move(detail));
-    ++snap_.failed;
+    snap_.run_error = app::plain_error(e);
+    snap_.run_error_detail = std::move(detail);
     finish_locked();
 }
 
@@ -258,17 +247,7 @@ BatchJob::Snapshot BatchJob::snapshot() const {
 }
 
 void BatchJob::run() {
-    // Turn the given rows into scan rows here rather than on the UI thread:
-    // a big library takes long enough to freeze a frame.
-    try {
-        const std::vector<store::ChartLibraryEntry> entries = std::move(given_);
-        items_.reserve(entries.size());
-        for (const store::ChartLibraryEntry& e : entries) items_.push_back(scan_item_of(e));
-    } catch (const std::exception& e) {
-        finish_failed(e, std::string("Could not load the library: ") + e.what());
-        return;
-    }
-    for (size_t i = 0; i < items_.size(); ++i) by_path_.emplace(items_[i].notespath, i);
+    for (size_t i = 0; i < plan_.todo.size(); ++i) by_path_.emplace(plan_.todo[i].notespath, i);
 
     {
         std::lock_guard<std::mutex> lock(mu_);
@@ -309,9 +288,11 @@ void BatchJob::run() {
         note_started(path);
         return inner(path, settings, on_progress);
     };
-    // run_batch reads the store before its first chart (D72 item 4).
+    // The plan was made before the job (D79), so run_batch reads nothing
+    // from the store before its first chart. Whatever still throws out of it
+    // ends the run as a whole.
     try {
-        app::run_batch(items_, run_, store_, redo_, workers_, callbacks);
+        app::run_batch(plan_, run_, store_, workers_, callbacks);
     } catch (const std::exception& e) {
         finish_failed(e, app::plain_error_detail(e));
         return;

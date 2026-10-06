@@ -395,17 +395,27 @@ public:
     bool batch_redo = false;
 
     // True while the "Analyze library" confirm shows. open_batch_confirm()
-    // loads what it lists: the rows the batch would analyze (the library,
-    // or the search's matches), how many there are, and how many of those
-    // already have a result under the current settings, every copy of a
-    // chart counted like the library counts it (D76). The
-    // two counts are app::plan_batch's answer, the same plan the batch makes
-    // when it starts. start_batch() hands the batch exactly those rows.
+    // plans the batch over the rows it would analyze (the library, or the
+    // search's matches) from one store read: one plan that skips the charts
+    // with a result and one that redoes them (app::plan_batch). Every number
+    // the confirm shows is read from those plans, every copy of a chart
+    // counted like the library counts it (D76). start_batch() hands the batch
+    // the plan the redo box picks, so the run is the plan the confirm showed
+    // (D79).
     bool batch_confirm_pending = false;
-    std::vector<store::ChartLibraryEntry> batch_scope;
-    int64_t batch_scope_charts = 0;
-    int64_t batch_scope_with_result = 0;
+    app::BatchPlan batch_plan;
+    app::BatchPlan batch_redo_plan;
+    // The rows in scope: the redo plan runs every one of them.
+    int64_t batch_scope_charts() const { return batch_redo_plan.todo_rows(); }
+    // The rows in scope that already have a result: the skip plan's skipped.
+    int64_t batch_scope_with_result() const { return batch_plan.skipped; }
     void open_batch_confirm();
+    // The plan a batch started now would run: the redo plan when `redo`.
+    const app::BatchPlan& batch_plan_for(bool redo) const {
+        return redo ? batch_redo_plan : batch_plan;
+    }
+    // Closes the confirm without starting, letting go of its plans.
+    void close_batch_confirm();
 
     // Once per frame (run_frame), after tick(): when a batch ends, start its
     // path report (never for a stopped batch); when the finished strip was

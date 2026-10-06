@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <string>
 
+#include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "imgui_internal.h"  // GetCurrentWindow, for the window's draw list
 #include "render/overlay_layout.h"  // ellipsize
@@ -57,12 +58,12 @@ inline float progress_fraction(double done, double total) {
     return static_cast<float>(std::clamp(done / total, 0.0, 1.0));
 }
 
-// Full-width progress bar with a "done/total" overlay.
+// Full-width progress bar with a "done / total" overlay, digits grouped the
+// way every count reads (group_thousands, D79).
 inline void progress_bar_counted(int done, int total) {
     const float frac = progress_fraction(done, total);
-    char overlay[32];
-    std::snprintf(overlay, sizeof(overlay), "%d/%d", done, total);
-    ImGui::ProgressBar(frac, ImVec2(-1, 0), overlay);
+    const std::string overlay = group_thousands(done) + " / " + group_thousands(total);
+    ImGui::ProgressBar(frac, ImVec2(-1, 0), overlay.c_str());
 }
 
 // Full-width progress bar filled to `fraction` (0 to 1), with a whole-percent

@@ -274,26 +274,23 @@ void render_batch_confirm(AppState& app) {
     pin_next_modal_width(px(520.0f));
     bool open = true;
     if (!ImGui::BeginPopupModal("Analyze library", &open, ImGuiWindowFlags_AlwaysAutoResize)) {
-        app.batch_confirm_pending = false;  // closed without our buttons
-        app.batch_scope.clear();
+        app.close_batch_confirm();  // closed without our buttons
         return;
     }
 
     // Library rows, each copy of a chart counted, like the library's own
-    // counts (D76).
-    const int64_t total = app.batch_scope_charts;
-    const int64_t with = app.batch_scope_with_result;
-    const int64_t without = total - with;
-    const int64_t to_run = app.batch_redo ? total : without;
+    // counts (D76). What runs is the plan the box picks (D79).
+    const int64_t with = app.batch_scope_with_result();
+    const int64_t to_run = app.batch_plan_for(app.batch_redo).todo_rows();
     std::string question;
     if (to_run == 0)
         question = "Every chart here already has a result.";
     else if (app.batch_redo && with > 0)
-        question = "Analyze " + counted(total, "chart", "charts") + ", re-analyzing " +
+        question = "Analyze " + counted(to_run, "chart", "charts") + ", re-analyzing " +
                    group_thousands(with) + " that already " + has_have(with) + " a result?";
     else
-        question = "Analyze " + counted(without, "chart", "charts") + " that " +
-                   has_have(without) + " no result yet?";
+        question = "Analyze " + counted(to_run, "chart", "charts") + " that " +
+                   has_have(to_run) + " no result yet?";
     ImGui::PushFont(nullptr, 20.0f);
     ImGui::TextWrapped("%s", question.c_str());
     ImGui::PopFont();
@@ -349,8 +346,7 @@ void render_batch_confirm(AppState& app) {
         app.start_batch(app.batch_redo);  // clears batch_confirm_pending
         ImGui::CloseCurrentPopup();
     } else if (cancel) {
-        app.batch_confirm_pending = false;
-        app.batch_scope.clear();
+        app.close_batch_confirm();
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndPopup();
@@ -423,7 +419,7 @@ void render_batch_strip(AppState& app) {
     end_disabled_button(stopping);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         ImGui::SetTooltip("Keeps the %s already finished",
-                          counted(s.analyzed, "result", "results").c_str());
+                          counted(s.analyzed, "chart", "charts").c_str());
     }
     ImGui::EndChild();
 }
@@ -509,9 +505,13 @@ void render_batch_done(AppState& app) {
             app.commit_settings();
         hint("Open each report in your browser as soon as it's built.");
     }
-    if (!s.failures.empty()) {
-        const std::string head = counted((int64_t)s.failures.size(), "chart", "charts") +
-                                 " failed##batchfailures";
+    // A run that failed as a whole shows its error here, and counts no chart.
+    if (!s.run_error.empty()) {
+        ImGui::TextColored(kWarningColor, "%s", s.run_error.c_str());
+        ImGui::TextDisabled("%s", s.run_error_detail.c_str());
+    }
+    if (s.failed > 0) {
+        const std::string head = counted(s.failed, "chart", "charts") + " failed##batchfailures";
         if (ImGui::TreeNode(head.c_str())) {
             // Wrapped: a chart's name and its error can both run long.
             for (size_t i = 0; i < s.failures.size(); ++i) {

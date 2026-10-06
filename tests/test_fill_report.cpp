@@ -228,7 +228,7 @@ TEST_CASE("tally_fill_rows counts every status") {
     // know lands in no bucket, not in "only 1.1".
     rows[6].status = "no such status";
     rows[7].status = "in both";
-    // Each row counts its library copies (D78 item 3).
+    // Each row counts its library copies (D79 item 3).
     for (FillCompareRow& r : rows) r.copies = 1;
     rows[1].copies = 3;
     rows[4].copies = 2;
@@ -245,7 +245,7 @@ TEST_CASE("tally_fill_rows counts every status") {
 }
 
 TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted chart counts once") {
-    // D78 item 3. The 1.1 database's library lists kBoth in two folders. The
+    // D79 item 3. The 1.1 database's library lists kBoth in two folders. The
     // 1.0 database's library lists kOldOnly three times, which the page never
     // reads. kOldOnly and kNewOnly are not in the 1.1 library, so each counts
     // once (store::RecordStore::copies_of).
