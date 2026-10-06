@@ -1670,6 +1670,33 @@ TEST_CASE("a file store runs in WAL mode with an index on chart names") {
     std::remove(path.c_str());
 }
 
+TEST_CASE("the library table's md5 index exists, so each save's copy check reads one chart") {
+    // D76: without it every save read the whole library table, a 92 s batch
+    // instead of 18 s on a 20,000-chart library.
+    const std::string path = testtemp::temp_path("md5_index", ".db");
+    std::remove(path.c_str());
+    { RecordStore store(path); }
+    CHECK(scalar(path, "SELECT COUNT(*) FROM sqlite_master"
+                       " WHERE type='index' AND name='charts_by_md5'") == 1);
+
+    // The plan for the query every save runs is a SEARCH by that index, not
+    // a SCAN of the table.
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    const std::string sql = "EXPLAIN QUERY PLAN " + naming_copy_of_one_sql();
+    REQUIRE(sqlite3_prepare_v2(db, sql.c_str(), -1, &s, nullptr) == SQLITE_OK);
+    std::string plan;
+    while (sqlite3_step(s) == SQLITE_ROW)
+        plan += std::string(reinterpret_cast<const char*>(sqlite3_column_text(s, 3))) + "\n";
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    INFO(plan);
+    CHECK(plan.find("USING INDEX charts_by_md5") != std::string::npos);
+    CHECK(plan.find("SCAN charts") == std::string::npos);
+    std::remove(path.c_str());
+}
+
 TEST_CASE("save_analysis writes the song, the result and the count together") {
     RecordStore store(":memory:");
     const RecordKey key{"h", "mode", CapQuery::at(4)};

@@ -20,7 +20,7 @@ namespace hydra::app::report {
 
 // One table row. Field order is the JSON key order the page's script reads.
 // `hyhash` goes out as "c", a small per-chart number in order of first
-// appearance, which the Charts tile counts.
+// appearance, and `copies` as "k"; the Charts tile adds up "k" once per "c".
 struct ReportRow {
     std::string song;
     std::string artist;
@@ -50,9 +50,15 @@ struct ReportRow {
     int sqin = 0;
     int sqout = 0;
     int notes = 0;
-    // The chart this row belongs to. generate_report counts the distinct
-    // charts with it, and build_html turns it into the page's "c" number.
+    // The chart this row belongs to. page_charts (report.cpp) is the one place
+    // that groups rows by it: the page's "c" number and the subtitle's count.
     std::string hyhash;
+    // How many library rows that chart has, every copy counted (D76): what
+    // the subtitle and the Charts tile add up. collect_rows sets it for a
+    // chart the library lists. A chart it doesn't list (a hydra_batch-only
+    // database, a chart removed since) is on the page, so it counts once:
+    // this default is the one place that rule lives (D77).
+    int copies = 1;
 };
 
 // (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2).
@@ -144,7 +150,8 @@ std::string nothing_under_settings(int cap, const std::string& middle,
 
 struct GeneratedReport {
     std::string html;  // empty when the store held no reportable rows
-    int64_t songs = 0;    // distinct charts (by chart hash) with rows on the page
+    // Both count every library copy of a chart (D76, D77).
+    int64_t songs = 0;    // charts with rows on the page
     int64_t records = 0;  // records with rows on the page (one rank-1 row each)
     int64_t rows = 0;
     EmptyReason empty_reason = EmptyReason::None;

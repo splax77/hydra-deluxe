@@ -1062,7 +1062,7 @@ const std::vector<OwnerRule>& rules() {
         // The charts table grouped by md5 to pick a copy, outside the one
         // query that does it.
         {"Which copy names a chart the scan found twice?",
-         "kNamingCopiesSql in src/store/record_store.cpp",
+         "kNamingCopiesSql in src/store/record_store.h",
          R"(MIN\(rowid\)|GROUP BY md5)",
          "",
          {},
@@ -1070,10 +1070,10 @@ const std::vector<OwnerRule>& rules() {
          "D51 call 10 and D63 (task ST2)",
          {"\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""},
          {"kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"},
-         {{"src/store/record_store.cpp",
+         {{"src/store/record_store.h",
            "\"(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts\"",
            "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.cpp", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
+          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
         // A stored row turned into a record outside decode_record, which
         // also sets the record's fill rule.
         {"Where does record_store.cpp turn a stored row into a record?",
@@ -2453,15 +2453,18 @@ const std::vector<OwnerRule>& rules() {
         // The subtitle's chart count and the page's chart ids come from one
         // file-local helper in report.cpp.
         {"How many charts does a report page list?",
-         "chart_ids in src/app/report.cpp",
-         R"(songs\.insert\(\s*r\.hyhash)",
+         "page_charts in src/app/report.cpp",
+         R"(\.insert\(\s*r\.hyhash|\.emplace\(\s*r\.hyhash)",
          "",
          {},
          {},
-         "audit finding 242; phase 6 task J2-2 (D53)",
-         {"songs.insert(r.hyhash);"},
-         {"out.songs = static_cast<int64_t>(chart_ids(rows).size());"},
-         {},
+         "audit finding 242; phase 6 task J2-2 (D53); D77 (copies)",
+         {"songs.insert(r.hyhash);",
+          "if (seen.insert(r.hyhash).second) n += r.copies;"},
+         {"for (const auto& [hash, chart] : page_charts(rows)) out.songs += chart.copies;"},
+         {{"src/app/report.cpp",
+           "charts.emplace(r.hyhash, PageChart{static_cast<int>(charts.size()), r.copies});",
+           "page_charts, the owner"}},
          {"src"}},
         // collect_dm_rows and collect_fill_rows set each row's status from
         // the one comparison; the page scripts read it instead of testing the

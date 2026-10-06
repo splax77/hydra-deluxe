@@ -336,6 +336,23 @@ struct DynamicsEntry {
     int count_version = 0;
 };
 
+// Which copy names an md5 (D51 call 10): the first copy the scan listed, the
+// charts row with the smallest rowid for that md5. One row per md5, with its
+// name, artist and charter (SQLite takes a bare column from the MIN(rowid)
+// row), plus `copies`, how many rows the scan listed for it. The rebuild's
+// rename, upsert_song and library_copies all read through it.
+inline constexpr const char* kNamingCopiesSql =
+    "(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts"
+    " GROUP BY md5)";
+
+// The naming copy of one md5 (bound as ?1), only when the library lists it
+// more than once: the query every save runs (upsert_song). The charts_by_md5
+// index lets it read that md5's rows alone (D76); a test pins its plan.
+inline std::string naming_copy_of_one_sql() {
+    return std::string("SELECT name, artist, charter FROM ") + kNamingCopiesSql +
+           " WHERE md5 = ?1 AND copies > 1";
+}
+
 class RecordStore {
 public:
     // dbpath may be ":memory:" for an ephemeral store (used by tests). A db
@@ -426,6 +443,11 @@ public:
     // lens, in one query: the batch's skip list for the whole library.
     std::unordered_set<std::string> analyzed_hashes(const std::string& chartmode,
                                                     const CapQuery& cap, const Lens& lens);
+
+    // How many rows the library table lists for each chart, by md5: the
+    // `copies` the naming rule counts (D51 call 10). A chart the library
+    // doesn't list is absent.
+    std::unordered_map<std::string, int> library_copies();
 
     // One record's song identity, as yielded by for_each_blob: the song's
     // metadata row, plus the row's
