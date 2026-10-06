@@ -4565,6 +4565,11 @@ bool is_cpp_source(const fs::path& path) {
     return ext == ".cpp" || ext == ".h";
 }
 
+// Whether a trimmed source line is a comment line, which the scans skip.
+bool is_line_comment(std::string_view trimmed) {
+    return hydra::starts_with(trimmed, "//");
+}
+
 // How a scan that lists lines ends: each entry no source line took is stale,
 // and the case fails with one line per problem.
 void check_scan(std::vector<std::string> problems, const std::vector<ListedLine>& listed,
@@ -4655,7 +4660,7 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
                 ++lineno;
                 const std::string t = hydra::trim(line);
                 if (t.empty()) continue;
-                const bool comment = t.compare(0, 2, "//") == 0;
+                const bool comment = is_line_comment(t);
                 for (size_t ci = 0; ci < compiled.size(); ++ci) {
                     const CompiledRule& c = compiled[ci];
                     const OwnerRule& rule = *c.rule;
@@ -4750,7 +4755,7 @@ TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one ow
         std::string line;
         while (std::getline(in, line)) {
             const std::string t = hydra::trim(line);
-            if (t.compare(0, 2, "//") == 0) continue;
+            if (is_line_comment(t)) continue;
             if (std::regex_search(t, zero_limit)) zero_hits.push_back(rel + ": " + t);
             if (std::regex_search(t, depth_int)) depth_hits.push_back(rel + ": " + t);
         }
@@ -4777,7 +4782,7 @@ TEST_CASE("single-owner rules hold in the single files outside the walk") {
             std::string line;
             while (std::getline(in, line)) {
                 const std::string t = hydra::trim(line);
-                if (t.compare(0, 2, "//") == 0 && !c.rule->scan_comments) continue;
+                if (is_line_comment(t) && !c.rule->scan_comments) continue;
                 INFO(s << " answers \"" << c.rule->question << "\", which belongs to "
                        << c.rule->owner << ": " << t);
                 CHECK_FALSE(flags_line(c, line));
@@ -5033,8 +5038,10 @@ bool is_word_byte(char c) {
 // The text the clone scan compares for one line of source, or empty when the
 // line doesn't count: a blank line, a comment-only line, an #include, or a
 // line of only braces and punctuation. Ends are trimmed and every inner run of
-// whitespace becomes one space. in_comment carries a /* */ comment from one
-// line to the next.
+// whitespace becomes one space. A comment line is one is_line_comment names.
+// The clone scan also skips /* */ comments, which the row scans read as code,
+// because comment text pasted twice is not a rule written twice; in_comment
+// carries such a comment from one line to the next.
 std::string clone_line_text(std::string_view line, bool& in_comment) {
     std::string_view t = hydra::trim_view(line);
     if (in_comment) {
@@ -5051,7 +5058,7 @@ std::string clone_line_text(std::string_view line, bool& in_comment) {
         }
         t = hydra::trim_view(t.substr(end + 2));
     }
-    if (hydra::starts_with(t, "//") || hydra::starts_with(t, "#include")) return {};
+    if (is_line_comment(t) || hydra::starts_with(t, "#include")) return {};
     if (std::none_of(t.begin(), t.end(), is_word_byte)) return {};
     std::string out;
     bool gap = false;
