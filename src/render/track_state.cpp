@@ -253,7 +253,8 @@ void TrackState::set_overlay_intervals(const PreviewScene& scene) {
             fill_taken_.push_back(span_interval(scene, f.span));
     }
     for (const PreviewActivation& a : scene.activations) {
-        // The tinted floor: the activation's sp_window, its owner.
+        // The tinted floor and its end marks: the activation's sp_window, its
+        // owner.
         if (const std::optional<std::pair<double, double>> w = a.sp_window())
             sp_active_.push_back({s_of(w->first), s_of(w->second)});
         // The taken fill lights the activation note's lane. The scene
