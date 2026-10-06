@@ -161,6 +161,24 @@ makes; `tools\test_mutation_probe.ps1` is its self-test.
 Run it before a release, on the scoring and path code. It is not meant for
 every merge: it is slow, and a survivor is a prompt to look, not a failure.
 
+## Continuous integration
+
+GitHub builds Hydra and runs its tests on every push to `main` and on every
+pull request into `main`. The workflow is `.github/workflows/ci.yml`. It is a
+backstop: the local hooks still gate commits first, and CI catches a commit
+that went around them.
+
+The job runs on GitHub's Windows Server 2025 image with Visual Studio 2026,
+the same generator the default CMake preset names. It builds `hydra_tests`
+and `hydra_uitest` with `build_cpp.ps1`, exactly as above, so a compiler
+warning fails the run. Then it runs `hydra_tests` and the headless GUI tests
+in `hydra_uitest`.
+
+One test is left out on GitHub: the one that opens the real sound output
+(`tests/test_audio_device.cpp`), because hosted runners have no audio device.
+Run it locally. A newer push to the same branch or pull request cancels the
+run it replaces.
+
 ## Other developer notes in this folder
 
 `adr/` records design decisions. `agents/` holds instructions for coding

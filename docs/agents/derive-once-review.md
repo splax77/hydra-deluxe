@@ -33,7 +33,7 @@ Earlier rounds found the same five kinds of copy again and again. Name the kind 
 - **D.** A number or rule with no user decision behind it, or a doc or comment stating the rule differently from the code.
 - **E.** A source scan outside `tests/test_single_owner.cpp`, or a scan row loose enough to let copies through.
 
-The precheck covers B to E. Quote its lines for those kinds; do not hunt for them again. Check each quoted line is real (open the file at that line) and drop any that are not, saying why. Then spend your pass on kind A. Kind A is the review's real job, and no script can find it. In earlier rounds, kind A also came from the fix rounds themselves and from old code several reviewers had passed, so read the changed functions' callers and neighbours, not only the diff lines.
+The precheck covers B to E. Quote its lines for those kinds; do not hunt for them again. Check each quoted line is real (open the file at that line) and drop any that are not, saying why. Then spend your pass on kind A. Kind A is the review's real job, and no script can find it. The one exception is a pasted block: the clone scan in `tests/test_single_owner.cpp` (ADR 0025) already fails on any pasted block at least `kCloneWindowLines` code lines long. So spend review time on the copies it can't see: shorter ones, renamed ones, and the same rule worked out a different way. A change that adds an entry to `known_clones` is a finding. In earlier rounds, kind A also came from the fix rounds themselves and from old code several reviewers had passed, so read the changed functions' callers and neighbours, not only the diff lines.
 
 ## How to review
 

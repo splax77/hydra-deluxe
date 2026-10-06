@@ -200,10 +200,11 @@ function Select-Spread([int]$Count, [int]$Max) {
     @(0..($Max - 1) | ForEach-Object { [int][Math]::Floor($_ * $Count / $Max) + 1 })
 }
 
-# How long a mutated test run may take before it counts as stuck. These are
-# PIT's documented defaults (timeoutFactor 1.25, timeoutConst 4000 ms;
+# How long a mutated test run may take before it counts as stuck. The user's
+# decision is D81 item 3 in docs/audit/2026-10-03-fix-decisions.md: PIT's
+# documented defaults (timeoutFactor, timeoutConst;
 # pitest.org/quickstart/commandline), the JVM mutation tool's answer to the
-# same question: the unmutated run's time, a quarter more, plus four seconds.
+# same question.
 function Get-TestTimeoutMs([double]$BaselineSeconds) {
     [int]($BaselineSeconds * 1000 * 1.25 + 4000)
 }
