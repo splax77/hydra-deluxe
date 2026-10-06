@@ -292,6 +292,30 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
                       where.c_str(), *w.sqout_offset_ms, kSqueezeWindowMs);
         throw std::runtime_error(buf);
     }
+    // D83: an offset exactly as close to two or more chords names none of
+    // them, so it is refused rather than priced on a guess.
+    std::vector<const SongTimestamp*> tied;
+    for (const SongTimestamp* ts : cands)
+        if (miss(ts) == miss(best)) tied.push_back(ts);
+    // The one way the refusals below name a chord in a list.
+    const auto chord_text = [&](const SongTimestamp* ts) {
+        char one[96];
+        std::snprintf(one, sizeof(one), "tick %lld (%.2f ms)", (long long)ts->timecode.ticks(),
+                      offset_from_sp_end(ts->timecode.ms(), d_ms));
+        return std::string(one);
+    };
+    if (tied.size() > 1) {
+        std::string named;
+        for (size_t i = 0; i < tied.size(); ++i) {
+            if (i > 0) named += i + 1 == tied.size() ? " and " : ", ";
+            named += chord_text(tied[i]);
+        }
+        std::snprintf(buf, sizeof(buf),
+                      "%s: the SqOut offset %.2f ms is equally close to the phrase chords at ",
+                      where.c_str(), *w.sqout_offset_ms);
+        throw std::runtime_error(std::string(buf) + named +
+                                 ". Type an offset nearer the one you mean. Not priced.");
+    }
     const SqOutNote typed{best->timecode.ticks(),
                           offset_from_sp_end(best->timecode.ms(), d_ms)};
 
@@ -328,10 +352,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     if (std::find(offered.begin(), offered.end(), best) == offered.end()) {
         std::string can;
         for (const SongTimestamp* c : offered) {
-            char one[96];
-            std::snprintf(one, sizeof(one), "%stick %lld (%.2f ms)", can.empty() ? "" : " or ",
-                          (long long)c->timecode.ticks(), offset_from_sp_end(c->timecode.ms(), d_ms));
-            can += one;
+            if (!can.empty()) can += " or ";
+            can += chord_text(c);
         }
         std::snprintf(
             buf, sizeof(buf),

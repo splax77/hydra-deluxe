@@ -940,6 +940,24 @@ const std::vector<OwnerRule>& rules() {
           "(snap.finished || now - batch_refreshed_at_ >= 1.0)) {"},
          {"now - details_ui.file_checked_at >= kFileCheckSeconds) {",
           "if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {"}},
+        // ---- how a SqOut refusal names a chord (REPLAYTIE review) ----
+        // resolve_sqout_note's refusals list chords through one local
+        // lambda; a second hand-written format would drift from it.
+        {"How does a typed SqOut refusal name a chord in a list?",
+         "the chord_text lambda in resolve_sqout_note, src/core/replay.cpp",
+         R"(tick %lld \(%\.2f ms\))",
+         "",
+         {},
+         {},
+         "derive-once review of 0997980, finding 1 (D83)",
+         {"std::snprintf(one, sizeof(one), \"tick %lld (%.2f ms)\",",
+          "std::snprintf(one, sizeof(one), \"%stick %lld (%.2f ms)\", can.empty() ? \"\" : \" or \","},
+         {"named += chord_text(tied[i]);",
+          "can += chord_text(c);",
+          "\"tick %lld (%.2f ms from the SP end)\\n\","},
+         {{"src/core/replay.cpp",
+           "std::snprintf(one, sizeof(one), \"tick %lld (%.2f ms)\", (long long)ts->timecode.ticks(),",
+           "chord_text, the owner"}}},
         // ---- counts and whole-ms timings (phase 3 task O1) ----
         // A test on exactly 1 that picks a word, or a number with " bar" or
         // " bars" typed after it. counted owns the rule and has_have the verb

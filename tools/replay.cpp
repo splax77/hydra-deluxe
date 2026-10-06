@@ -109,7 +109,7 @@ void usage() {
         "squeeze-out offset, which an --acts string typed by hand usually drops\n"
         "and which is worth real points. --index picks the entry of that file's\n"
         "\"paths\" array (default 0). --path and --acts cannot both be given.\n"
-        "A typed SqOut offset is matched to the nearest phrase chord within %.0f ms of the SP end and the chord used is printed on stderr; a chord the engine would never squeeze out is refused.\n"
+        "A typed SqOut offset is matched to the nearest phrase chord within %.0f ms of the SP end and the chord used is printed on stderr; an exact tie between chords, or a chord the engine would never squeeze out, is refused.\n"
         "Where a window ends on a Star Power phrase note but carries no\n"
         "squeeze-out offset, score prints a warning: the score is right if the\n"
         "player did not squeeze that note out, and high if they did. The\n"
@@ -348,9 +348,9 @@ int cmd_score(const Args& a, const app::Settings& s) {
                        : windows_from_file(a.path, a.index);
     // A typed offset (or a dump from before sqout_tick existed) names a chord
     // only approximately. Resolve it and say which chord was used, so a typo
-    // cannot quietly price a different squeeze-out. resolve_sqout_note throws
-    // for a chord the engine never squeezes out; main prints "error: ..." and
-    // exits 1, so nothing is priced.
+    // cannot quietly price a different squeeze-out. When resolve_sqout_note
+    // refuses (its header lists when), main prints "error: ..." and exits 1,
+    // so nothing is priced.
     for (ReplayWindow& w : windows) {
         if (!w.sqout_offset_ms || w.sqout_tick) continue;
         const SqOutNote n = resolve_sqout_note(song, w);
