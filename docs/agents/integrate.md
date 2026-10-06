@@ -34,7 +34,7 @@ Resolve every conflict inside the merge commit. Never rebase, amend, reset or fo
 
 Build the joined branch once with the target your brief names.
 
-Run the precheck: `tools/derive_once_precheck.ps1` on the range `main...<wave branch>` and the worktree path. It needs no build. Fix every item it prints that the join caused, and list the rest for the reviewer.
+Run the precheck: `tools/derive_once_precheck.ps1` on the range `main...<wave branch>` and the worktree path. It needs no build. Fix every item it prints that the join caused, and list the rest for the reviewer. If it prints a large-range note, pass the note on in your report; splitting the wave is the main session's call, not yours.
 
 Run the scan test and the docs test with their filters, and nothing else:
 

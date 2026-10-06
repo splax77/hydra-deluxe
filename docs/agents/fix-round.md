@@ -22,8 +22,9 @@ One branch once took seven review rounds, and another took ten. Each round fixed
 2. **Sweep the whole range for that question.** Do not stop at the copies the reviewer listed. Grep the whole branch (every file the range touches, and their callers) for the inputs the question reads, the fields, constants and units, not just for the names in the finding. Look inside the changed functions too; two copies in one function count. For a kind C finding, grep `tests/` for every other definition of the helper, by name and by its body.
 3. **Fold every copy into the owner.** Each copy calls the owner, or for a test, calls production code or pins a literal from one run. Never compute an expected value in a test.
 4. **Prove nothing is left.** Run the grep again after the fix. It must find only the owner, or only lines the scan already lists as known.
-5. **Run the tests your brief names for that finding**, with `-tc=` or `-sf=` filters. Never the full suite.
-6. **Commit that finding alone.** The commit body carries the grep proof: the exact grep you ran and its one-line result, for example "grep for X under src/ and tests/: one hit, the owner in Y". Then the trailers from the preamble.
+5. **For a kind A finding, guard it with a scan row.** Removing the copy is not enough, because nothing stops the next agent writing it again. Add a row to `tests/test_single_owner.cpp` that would flag the copy you removed if it came back: its must-match examples include that copy's line, and its owner is the function from step 1. Follow the rows already in that file for the form. If no text search can catch this copy, say why in one sentence in the commit body instead. The reviewer checks for one or the other when it signs off.
+6. **Run the tests your brief names for that finding**, with `-tc=` or `-sf=` filters. Never the full suite. If you added a scan row, also run the scan test, `build-cpp\Release\hydra_tests.exe -tc="single-owner*"`.
+7. **Commit that finding alone.** The commit body carries the grep proof: the exact grep you ran and its one-line result, for example "grep for X under src/ and tests/: one hit, the owner in Y". For a kind A finding it also names the scan row's question, or gives the one-sentence reason no row can catch it. Then the trailers from the preamble.
 
 A sweep for one finding often turns up copies of another kind. Fold those too, and name them in the commit body.
 
@@ -43,7 +44,7 @@ Run `tools/derive_once_precheck.ps1` on the range and repo path. It needs no bui
 
 Then reply to the reviewer with SendMessage, to the agent id its message gave (load SendMessage first with ToolSearch, query `select:SendMessage`). Your reply gives:
 - the new branch tip hash,
-- for each finding: the owner, every copy you folded, and the commit hash,
+- for each finding: the owner, every copy you folded, and the commit hash, and for a kind A finding the scan row you added or why no row can catch it,
 - every comment, header line and doc sentence you added or changed,
 - the precheck's final output and the test commands you ran with their pass counts,
 - anything you did not fix, and why.
@@ -54,6 +55,6 @@ Then end your turn with the same text as your report. Do not wait for an answer;
 
 These rules are for the session that runs the merge.
 
-Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read: a change over about 500 lines goes in as two or three merges.
+Before the review, run the precheck on the range and fix what it prints. Keep merges small enough to review in one read. The precheck prints the range's size, and a large-range note when it is over the threshold; `tools/derive_once_precheck.ps1` owns that threshold. A range with that note should go in as two or more merges. The note is a warning, not a gate. When you plan, size each task so its diff stays under the precheck's threshold.
 
 Give the reviewer the key, the range, the branch's worktree, the precheck output, the author's report, and the author's name or agent id (from its spawn result). Then wait for the reviewer's final report. The author's own completion notice arrives in between; it is not the end of the review. When the reviewer reports CLEAN, run the full suite once on the joined tree and merge. When it reports FINDINGS, the finding needs the user: take it to them. Never start another review round.
