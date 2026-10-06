@@ -51,11 +51,11 @@ struct StampRule {
 // keeps its own facts (ADR 0022). Every release from 1.8.4 to 2.0.0 stamped
 // "1.8.2", and those results hold different values, so they read Stale.
 // "2.1.0+allzero": the all-0 list is found under its 0 ms limit again
-// (D85). It is a second bump inside the unreleased 2.1.0, an exception to
-// D23's one-bump-per-release rule that the user chose ("Mark all Stale"),
-// so results saved by earlier 2.1.0 builds, which can be missing their
-// all-0 path, read Stale too. The stamp is only compared as a whole string,
-// never parsed.
+// (D85). It is a second bump inside 2.1.0, made before it shipped, an
+// exception to D23's one-bump-per-release rule that the user chose ("Mark
+// all Stale"), so results saved by earlier 2.1.0 builds, which can be
+// missing their all-0 path, read Stale too. The stamp is only compared as a
+// whole string, never parsed.
 inline constexpr StampRule<std::string_view, 1> kResultsStamp{"2.1.0+allzero", {"2.1.0+allzero"}};
 
 // The stored path layout: the structure blob and the node payloads it points

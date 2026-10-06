@@ -17,7 +17,7 @@
 cmake_minimum_required(VERSION 3.21)
 # The single source of the version: the installer and the HTTP User-Agent
 # (via src/core/version.h) both take it from here.
-project(Hydra VERSION 2.0.0 LANGUAGES C CXX RC)
+project(Hydra VERSION 2.1.0 LANGUAGES C CXX RC)
 # The single source of the name the app shows (the window title, the Start
 # Menu shortcut, the installer) and of its taskbar identity (AppUserModelID).
 # The identity keeps its old value so existing taskbar pins still group with

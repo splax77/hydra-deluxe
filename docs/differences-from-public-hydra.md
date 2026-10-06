@@ -2,13 +2,13 @@
 
 The public Hydra is DragonDelgar's, at [DragonDelgar/hydra](https://github.com/DragonDelgar/hydra). It is a Python app. Its latest release is v1.3.1, from August 7, 2026.
 
-Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.0.0. Up to 1.9.7 it was also called Hydra; since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
+Hydra Deluxe started from that v1.3.1 and has been developed on its own since, from 1.4.1 up to 2.1.0. Up to 1.9.7 it was also called Hydra; since 2.0.0 it is Hydra Deluxe, so the two are easy to tell apart. Nothing flows between the two automatically. The public version has kept changing too (see [What the public version has](#what-the-public-version-has-that-this-one-doesnt)).
 
 Both do the same job. They read Clone Hero drum charts and find the Star Power paths that give the best score. The path notation is the same, and the mechanics pages on the [public wiki](https://github.com/DragonDelgar/hydra/wiki) (squeezes, early fills, the optimal checklist) apply to both.
 
 ## At a glance
 
-| | Public Hydra 1.3.1 | Hydra Deluxe 2.0.0 |
+| | Public Hydra 1.3.1 | Hydra Deluxe 2.1.0 |
 |---|---|---|
 | Written in | Python | C++, a native Windows app |
 | Install | Unzip anywhere, run `Hydra.exe` | Installer into `C:\Program Files\Hydra` |
@@ -125,5 +125,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 1.9.1 to 1.9.6 | Polish: early-fill badges, clearer squeeze tips, every timing scale shown |
 | 1.9.7 | The `1.0 fills` setting in the app |
 | 2.0.0 | The new name, Hydra Deluxe |
+| 2.1.0 | Clone Hero's own rules for disco flip, 2x kick and phrase ends; squeeze scales from the true SP end; the SP end mark in the Preview |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
