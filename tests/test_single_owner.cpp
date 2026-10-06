@@ -4122,15 +4122,19 @@ const std::vector<OwnerRule>& rules() {
         // SPSqueeze::within_limit and fill_within_limit, which ask the owner.
         {"Is a timing inside a ms limit?",
          "timing_within_limit in src/core/model.h",
-         R"((<=|[^-]>)\s*(limit_ms|ms_filter_)\b|\b(limit_ms|ms_filter_)\s*(>=|<))",
+         R"((<=|[^-]>)\s*\*?(\w+(\.|->))*(limit_ms|ms_filter_)\b)"
+         R"(|(<=|[^-]>)\s*(\*\s*(\w+(\.|->))*|(\w+(\.|->))+)squeeze_max_ms\b)"
+         R"(|\b(limit_ms|ms_filter_|squeeze_max_ms)\s*(>=|<))",
          "",
          {},
          {},
          "derive-once review of D85, finding 1; audit finding 152",
          {"if (sq.difficulty() > limit_ms) return false;", "return !e || *e <= limit_ms;",
           "bool within_ms_limit(double ms) const { return !has_ms_filter_ || ms <= ms_filter_; }",
-          "if (limit_ms >= d) return true;"},
+          "if (limit_ms >= d) return true;",
+          "if (q.squeeze_max_ms && facts.hardest_ms && *facts.hardest_ms > *q.squeeze_max_ms)"},
          {"if (!sq.within_limit(ms_filter_)) return false;",
+          "!timing_within_limit(*facts.hardest_ms, *q.squeeze_max_ms))",
           "return fill_within_limit(a.e_offset, a.skips, ms_filter_);",
           "if (has_ms_filter_ && !fill_within_limit(e_offset, p.currentskips, ms_filter_)) ++over;"},
          {{"src/core/model.h",
