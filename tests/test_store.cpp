@@ -1610,9 +1610,8 @@ TEST_CASE("get_record reads a whole row while another thread rewrites it") {
 }
 
 TEST_CASE("has_record and a lookup agree on which rows are readable") {
-    // The Ready rule is spelled once in C++ (rank_row) and once in SQL
-    // (kRowReadySql, which has_record and add_row's purge use). This pins the
-    // two spellings together across every kind of row.
+    // has_record asks get_summary (D78). This pins that across every kind of
+    // row, so a second spelling of the Ready rule there would show up here.
     RecordStore store(":memory:");
     store.add_song("h", "Song", "Artist", "Charter", fixture().song);
 
@@ -1917,6 +1916,39 @@ TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {
     }
     CHECK(store.analyzed_hashes("mode", CapQuery::at(4), Lens{}) ==
           std::unordered_set<std::string>{"ready"});
+}
+
+// D78: the batch's skip list is the library's Analyzed chip. Every kind of row
+// a chart can hold is here, including a chart with a Ready row beside a row
+// made under other rules, and a repeated library hash.
+TEST_CASE("analyzed_hashes names exactly the charts get_summaries reads as Ready") {
+    RecordStore store(":memory:");
+    const CapQuery cap = CapQuery::at(8);
+    const std::vector<std::string> charts = {"ready", "build", "rules", "both",
+                                             "format", "mixed", "none"};
+    for (const std::string& h : charts)
+        store.add_song(h, h, "Artist", "Charter", fixture().song);
+    store.add_record(RecordKey{"ready", "mode", cap}, at_cap(8));
+    test::add_stale_rows(store, at_cap(8), RecordKey{"build", "mode", cap},
+                         RecordKey{"rules", "mode", cap}, RecordKey{"both", "mode", cap});
+    PreparedRow format_row = prepare_row(RecordKey{"format", "mode", cap}, at_cap(8));
+    format_row.structure[kPathFormatOffset] = 1;
+    format_row.structure[1] = 0;
+    format_row.structure[2] = 0;
+    format_row.structure[3] = 0;
+    store.add_row(format_row);
+    store.add_record(RecordKey{"mixed", "mode", cap}, at_cap(8));
+    store.add_row(prepare_row(RecordKey{"mixed", "mode", cap}, test::other_rules_record(at_cap(8))));
+
+    std::vector<std::string> library = charts;
+    library.push_back("ready");  // a second folder's copy
+    const std::vector<SummaryLookup> chips = store.get_summaries(library, "mode", cap, Lens{});
+    const std::unordered_set<std::string> skip = store.analyzed_hashes("mode", cap, Lens{});
+    for (size_t i = 0; i < library.size(); ++i) {
+        INFO(library[i]);
+        CHECK((chips[i].status == RecordStatus::Ready) == (skip.count(library[i]) == 1));
+    }
+    CHECK(skip == std::unordered_set<std::string>{"ready", "mixed"});
 }
 
 TEST_CASE("get_summaries answers a page the same as get_summary row by row") {

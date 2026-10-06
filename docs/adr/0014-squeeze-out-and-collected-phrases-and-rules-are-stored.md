@@ -35,8 +35,9 @@ src/core/rules.cpp; the user confirmed this format, D48, Q33).
 The store writes it into the structure blob right after
 the format version, so version and rules make one 12-byte head. That head is
 what decides Ready, in C++ (`rank_row` in `src/store/record_store.cpp`,
-whose `.ready()` answers it) and in SQL (`row_ready_sql()` in the same file).
-The rules part of both compares one fingerprint, the store's
+whose `.ready()` answers it). An SQL spelling of the same check stood beside
+it until D78 removed it; the batch now asks `RecordStore::get_summaries` too.
+The rules part compares one fingerprint, the store's
 `RulesStamp::fixed`.
 
 Blob format 6, path-node format 4 and path-structure format 4 carry the three
@@ -70,8 +71,8 @@ past it stops for the user's call, and no cheaper variant exists.
 ## Amendment, 2026-09-26: the Auto budget and the Auto ladder (Superseded)
 
 Superseded 2026-09-27 with Auto itself; kept as history. Today a record
-carries one fingerprint, `Rules::fingerprint()`, and both Ready checks
-(`rank_row` and `row_ready_sql()`) compare that one value. The
+carries one fingerprint, `Rules::fingerprint()`, and the Ready check
+(`rank_row`) compares that one value. The
 old Auto fingerprint survives only as `Rules::retired_auto_fingerprint()`,
 which the store reads to delete the results Auto saved; no row carrying it
 reads Ready. The names below are the code as it was then.
@@ -93,8 +94,8 @@ of two fingerprints: `Rules::fingerprint()` (every rule except the ladder and
 the budget) for a fixed-cap run, and `Rules::auto_fingerprint()` (that plus
 the ladder) for an Auto run. The store accepts either (`core::RulesStamp`),
 in C++ (`structure_is_current`) and in SQL (then `kRowReadySql`, with
-`IN (?, ?)`; today `row_ready_sql()`, which compares the one fixed
-fingerprint). A ladder edit marked only Auto runs Stale.
+`IN (?, ?)`; that SQL check is gone since D78, and `rank_row` compares the
+one fixed fingerprint). A ladder edit marked only Auto runs Stale.
 
 The fingerprint's text changed, so every stored record reads Stale once more
 after this lands. It ships with the record-format bump of the same plan,
@@ -317,9 +318,10 @@ the table once, in `upgrade_results_key`, and keeps every row, result id and
 blob, so nothing is analyzed again. A rules-A row and a rules-B row for the
 same chart, mode, cap and lens now sit side by side.
 
-`row_ready_sql()` is no longer one undivided check. It is
+The SQL Ready check stopped being one undivided check here. It became
 `row_readable_sql()` (this build can read the row: its results version and
 path format) plus the rules part (the row's fingerprint is this process's).
+D78 later removed the rules part from SQL; only `rank_row` reads it now.
 A write under rules A has two purges: the first removes the rows that fail
 `row_readable_sql()` (unreadable by this build), and the second replaces the
 row with the same key under the same rules. Neither touches the rules-B row,

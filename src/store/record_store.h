@@ -434,13 +434,15 @@ public:
     // registered.
     std::optional<SongTiming> get_timing(const std::string& hyhash);
 
-    // True when a current-version record exists for this exact key -- cap and
-    // lens both -- the "skip, already analyzed" test for a batch run. Stale
-    // rows don't count, and neither does a result from different settings.
+    // True when get_summary reads this exact key as Ready: get_summaries is
+    // the one owner of "this chart has a current result under these
+    // settings" (D78).
     bool has_record(const RecordKey& key);
 
     // Every chart has_record would say yes to, for one chart mode, cap and
-    // lens, in one query: the batch's skip list for the whole library.
+    // lens: the batch's skip list for the whole library. get_summaries
+    // answers for each chart, so the skip list and the library's Analyzed
+    // chip cannot disagree (D78).
     std::unordered_set<std::string> analyzed_hashes(const std::string& chartmode,
                                                     const CapQuery& cap, const Lens& lens);
 
