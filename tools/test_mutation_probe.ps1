@@ -38,13 +38,15 @@ function Check([bool]$Ok, [string]$What) {
 # ------------------------------------------------------ part 1: the finder
 
 $ast = [System.Management.Automation.Language.Parser]::ParseFile($probe, [ref]$null, [ref]$null)
-$names = 'Get-CodeMask', 'Find-MutationCandidates', 'Get-MutatedText', 'Get-MutatedLine', 'Select-Spread'
+$names = 'Get-PrecheckLexer', 'Get-CodeMask', 'Find-MutationCandidates', 'Get-MutatedText', 'Get-MutatedLine', 'Select-Spread'
 $defs = foreach ($name in $names) {
     $f = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)
     if (-not $f) { throw "the self-test cannot find $name in $probe" }
     $f.Extent.Text
 }
 . ([scriptblock]::Create($defs -join "`n"))
+# The precheck's lexer, which Get-CodeMask calls, loaded as the probe loads it.
+. ([scriptblock]::Create((Get-PrecheckLexer (Join-Path $PSScriptRoot 'derive_once_precheck.ps1'))))
 
 $snippet = @'
 #include <vector>

@@ -21,8 +21,9 @@ for a survivor. With more candidates than -Max, an even spread through the
 file is tried (Select-Spread).
 
 The kinds of edit it makes are Find-MutationCandidates' list below. Edits go
-only into code: comments, strings and preprocessor lines are masked first
-(Get-CodeMask).
+only into code: Get-CodeMask masks the rest first. Comments and string text
+are the precheck's answer (tools\derive_once_precheck.ps1's Remove-Comments,
+loaded from its text, not copied); the probe adds preprocessor lines.
 
 Each run:
   - refuses the main checkout, because it edits source; run it in a task
@@ -70,71 +71,30 @@ $ErrorActionPreference = 'Stop'
 
 # ------------------------------------------------------------------ the finder
 
-# The source text with everything that is not code (comments, string and
-# character literals, raw strings, preprocessor lines) turned into spaces.
-# Line breaks stay, so offsets and line numbers match the source.
-function Get-CodeMask([string]$Text) {
-    $m = $Text.ToCharArray()
-    $n = $m.Length
-    $blank = { param($a, $b) for ($k = $a; $k -lt $b; $k++) { if ($m[$k] -ne "`n" -and $m[$k] -ne "`r") { $m[$k] = ' ' } } }
-    $isWord = { param($c) [char]::IsLetterOrDigit($c) -or $c -eq '_' }
-    $i = 0
-    $lineStart = $true
-    while ($i -lt $n) {
-        $ch = $Text[$i]
-        $next = if ($i + 1 -lt $n) { $Text[$i + 1] } else { [char]0 }
-        if ($ch -eq "`n") { $lineStart = $true; $i++; continue }
-        if ($lineStart -and ($ch -eq ' ' -or $ch -eq "`t" -or $ch -eq "`r")) { $i++; continue }
-        if ($lineStart -and $ch -eq '#') {
-            # A directive runs to the end of the line, longer after a backslash.
-            $j = $i
-            while ($j -lt $n) {
-                if ($Text[$j] -eq "`n") {
-                    $k = $j - 1
-                    if ($k -ge 0 -and $Text[$k] -eq "`r") { $k-- }
-                    if ($k -lt 0 -or $Text[$k] -ne '\') { break }
-                }
-                $j++
-            }
-            & $blank $i $j; $i = $j; continue
-        }
-        $lineStart = $false
-        if ($ch -eq '/' -and $next -eq '/') {
-            $j = $Text.IndexOf("`n", $i); if ($j -lt 0) { $j = $n }
-            & $blank $i $j; $i = $j; continue
-        }
-        if ($ch -eq '/' -and $next -eq '*') {
-            $j = $Text.IndexOf('*/', $i + 2); $j = if ($j -lt 0) { $n } else { $j + 2 }
-            & $blank $i $j; $i = $j; continue
-        }
-        if ($ch -eq 'R' -and $next -eq '"') {
-            # A raw string, unless the R ends a longer name; u8R, uR, UR and LR are prefixes.
-            $head = $Text.Substring([Math]::Max(0, $i - 3), $i - [Math]::Max(0, $i - 3))
-            if ($i -eq 0 -or -not (& $isWord $Text[$i - 1]) -or $head -match '(^|[^\w])(u8|u|U|L)$') {
-                $open = $Text.IndexOf('(', $i + 2)
-                if ($open -ge 0) {
-                    $delim = $Text.Substring($i + 2, $open - $i - 2)
-                    $close = $Text.IndexOf(")$delim`"", $open)
-                    $j = if ($close -lt 0) { $n } else { $close + $delim.Length + 2 }
-                    & $blank $i $j; $i = $j; continue
-                }
-            }
-        }
-        if ($ch -eq '"' -or ($ch -eq "'" -and -not ($i -gt 0 -and (& $isWord $Text[$i - 1])))) {
-            # A string or character literal. A quote right after a letter or
-            # digit is a digit separator (1'000), not a literal.
-            $j = $i + 1
-            while ($j -lt $n) {
-                if ($Text[$j] -eq '\') { $j += 2; continue }
-                if ($Text[$j] -eq $ch) { $j++; break }
-                if ($Text[$j] -eq "`n") { break }
-                $j++
-            }
-            & $blank $i $j; $i = $j; continue
-        }
-        $i++
+# The C++ lexer and its blanking, as definition text from the precheck
+# (path given), so this probe never reads comments and strings its own way.
+# The caller dot-sources the text; the self-test loads it the same way.
+function Get-PrecheckLexer([string]$Precheck) {
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Precheck, [ref]$null, [ref]$null)
+    $want = '$cppLex', 'Blank', 'Blank-Inner', 'Remove-Comments'
+    $text = foreach ($name in $want) {
+        $f = $ast.Find({ param($n)
+                ($n -is [System.Management.Automation.Language.AssignmentStatementAst] -and "$($n.Left)" -eq $name) -or
+                ($n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name) }, $true)
+        if (-not $f) { throw "cannot find $name in $Precheck" }
+        $f.Extent.Text
     }
-    -join $m
+    $text -join "`n"
+}
+. ([scriptblock]::Create((Get-PrecheckLexer (Join-Path $PSScriptRoot 'derive_once_precheck.ps1'))))
+
+# The source text with everything that is not code turned into spaces. Line
+# breaks stay, so offsets and line numbers match the source. Comments and
+# string text are the precheck's Remove-Comments; preprocessor lines are this
+# probe's own addition.
+function Get-CodeMask([string]$Text) {
+    $masked = Remove-Comments $cppLex $Text -AndStrings
+    [regex]::Replace($masked, '(?m)^[ \t]*#(?:[^\n]*\\\r?\n)*[^\n]*', { param($m) Blank $m.Value })
 }
 
 # Every spot in the code this probe can break, in file order, numbered from
