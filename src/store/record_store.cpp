@@ -817,6 +817,10 @@ void RecordStore::set_up_schema() {
     exec("DROP TABLE IF EXISTS songlength");
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
+    // Every save asks kNamingCopiesSql about one md5. Without this index that
+    // reads the whole library per save: 3.7 ms each, over a minute per
+    // whole-library batch on a 20,000-chart library.
+    exec("CREATE INDEX IF NOT EXISTS charts_by_md5 ON charts (md5)");
     // Schema 2 = results keyed by the full settings, with shared paths. A
     // database from Hydra 1.6 or older still holds its old `records` table.
     // Nothing reads it (user decision 2026-09-26), so its charts read Not

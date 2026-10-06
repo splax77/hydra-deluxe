@@ -808,9 +808,10 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     std::filesystem::remove(std::filesystem::path(hydra::app::report_html_path()), ec);
 }
 
-// The confirm counts charts, not copies, and reads which have a result from
-// the store, not from the library's cached rows (D51 call 10, D62 item 3).
-TEST_CASE("the confirm counts charts with a result from the store, once per chart (D51 Q10)") {
+// The confirm counts library rows, every copy included, like the library
+// does (D76), and reads which have a result from the store, not from the
+// library's cached rows.
+TEST_CASE("the confirm counts every library row, and rows with a result from the store (D76)") {
     ScratchPaths paths("appstate_confirm");
     auto store = std::make_unique<RecordStore>(paths.db);
     const ChartLibraryEntry first = library_entry(1);
@@ -825,8 +826,8 @@ TEST_CASE("the confirm counts charts with a result from the store, once per char
     hydra::test::store_batch_result(*app.store, first.md5, Settings{}.sp_cap);
     app.open_batch_confirm();
 
-    CHECK(app.batch_scope_charts == 2);
-    CHECK(app.batch_scope_with_result == 1);
+    CHECK(app.batch_scope_charts == app.library_shown_count());
+    CHECK(app.batch_scope_with_result == 2);  // both copies of chart 1
 }
 
 // D72 item 2: the startup constructor's store open reads "couldn't open"

@@ -505,8 +505,8 @@ void AppState::open_batch_confirm() {
         return;
     }
     const app::BatchPlan plan = app::plan_batch(items, with_result);
-    // plan_batch puts each chart once in todo or in skipped (BatchPlan).
-    batch_scope_charts = static_cast<int64_t>(plan.todo.size()) + plan.skipped;
+    // plan_batch puts every row in todo's rows or in skipped (BatchPlan, D76).
+    batch_scope_charts = static_cast<int64_t>(plan.todo_rows()) + plan.skipped;
     batch_scope_with_result = plan.skipped;
     batch_confirm_pending = true;
 }

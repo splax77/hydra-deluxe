@@ -396,8 +396,9 @@ public:
 
     // True while the "Analyze library" confirm shows. open_batch_confirm()
     // loads what it lists: the rows the batch would analyze (the library,
-    // or the search's matches), how many distinct charts they are, and how
-    // many of those already have a result under the current settings. The
+    // or the search's matches), how many there are, and how many of those
+    // already have a result under the current settings, every copy of a
+    // chart counted like the library counts it (D76). The
     // two counts are app::plan_batch's answer, the same plan the batch makes
     // when it starts. start_batch() hands the batch exactly those rows.
     bool batch_confirm_pending = false;

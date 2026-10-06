@@ -2996,7 +2996,7 @@ const std::vector<OwnerRule>& rules() {
          "",
          {},
          {},
-         "audit finding 142; D51 call 26 and D62 item 3 (phase 7 task LB1)",
+         "audit finding 142; D51 call 26 (phase 7 task LB1); D76 (every copy counted)",
          {"snap_.skipped = static_cast<int>(items_.size()) - p.total;",
           "skipped = static_cast<int>(scanitems.size()) - p.total;",
           "skipped = scanitems.size() - p.total;",

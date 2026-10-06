@@ -171,12 +171,14 @@ store::SongLength analysis_song_length(const std::optional<store::ChartTimingMet
                                        const AnalysisSettings& settings);
 
 // How far a batch run has got. run_batch is the only writer of every count
-// here; a reader copies them rather than counting its own callbacks.
+// here; a reader copies them rather than counting its own callbacks. Every
+// count is in library rows, each copy of a chart counted (D76), so a finished
+// run's analyzed, failed and skipped add up to the rows it was given.
 struct BatchProgress {
     int completed = 0;  // analyzed + failed
-    int total = 0;      // charts to run: plan_batch's to-do list
-    int analyzed = 0;   // stored
-    int skipped = 0;    // plan_batch's skipped count, known before the first chart
+    int total = 0;      // rows to run: plan_batch's to-do rows
+    int analyzed = 0;   // rows whose chart was stored
+    int skipped = 0;    // plan_batch's skipped rows, known before the first chart
     int failed = 0;
     std::string current_title;
 };
@@ -206,14 +208,21 @@ struct BatchRun {
 std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
                                                    const BatchRun& run, bool redo);
 
-// What a batch over a scan list will do.
+// What a batch over a scan list will do. A chart the scan found in several
+// folders (one md5) is analyzed once (D51 call 10), but every count is in
+// scan rows, each copy counted, the way the library counts (D76).
 struct BatchPlan {
-    // The charts to run, in input order. A chart the scan found in several
-    // folders (one md5) is here once, as its first copy (D51 call 10).
+    // The charts to run, in input order, each once as its first copy.
     std::vector<ScanItem> todo;
-    // Charts left out because `already` holds them, each counted once. A
-    // second copy of a chart counts neither here nor in todo (D62 item 3).
+    // How many scan rows todo[i]'s chart has: its first copy and every later
+    // one. Analyzing the chart once settles all of them.
+    std::vector<int> rows;
+    // Scan rows left out because `already` holds their chart, every copy
+    // counted.
     int skipped = 0;
+
+    // The scan rows todo stands for.
+    int todo_rows() const;
 };
 
 // The one place a scan list becomes a batch's to-do list and skipped count.

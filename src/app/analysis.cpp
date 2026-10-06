@@ -14,7 +14,9 @@
 #include <mutex>
 #include <set>
 #include <thread>
+#include <numeric>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "app/dynamics_breakdown.h"
@@ -579,6 +581,8 @@ namespace {
 
 struct WorkResult {
     ScanItem item;
+    // The scan rows this chart settles: BatchPlan::rows (D76).
+    int rows = 1;
     std::optional<store::PreparedRow> row;
     std::optional<AnalysisResult> analysis;
     // Counted on the worker, so the consumer only writes.
@@ -614,19 +618,27 @@ std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
 BatchPlan plan_batch(const std::vector<ScanItem>& items,
                      const std::unordered_set<std::string>& already) {
     BatchPlan plan;
-    // Each md5 is looked at once: its first copy runs or is skipped, and any
-    // later copy is passed over. Whichever copy runs, the store names the
-    // chart from the copy the scan listed first (D63).
-    std::unordered_set<std::string> seen;
+    // Each md5 runs once, as its first copy; a later copy adds a row to it
+    // (D76). Whichever copy runs, the store names the chart from the copy the
+    // scan listed first (D63).
+    std::unordered_map<std::string, size_t> todo_index;
     for (const ScanItem& item : items) {
-        if (!seen.insert(item.md5).second) continue;
-        if (already.count(item.md5))
+        if (already.count(item.md5)) {
             ++plan.skipped;
-        else
+            continue;
+        }
+        const auto [it, first] = todo_index.emplace(item.md5, plan.todo.size());
+        if (first) {
             plan.todo.push_back(item);
+            plan.rows.push_back(1);
+        } else {
+            ++plan.rows[it->second];
+        }
     }
     return plan;
 }
+
+int BatchPlan::todo_rows() const { return std::accumulate(rows.begin(), rows.end(), 0); }
 
 store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
                                        const std::string& notespath, const Song& song,
@@ -651,7 +663,7 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
     const std::vector<ScanItem>& todo = plan.todo;
 
     BatchProgress progress;
-    progress.total = static_cast<int>(todo.size());
+    progress.total = plan.todo_rows();
     progress.skipped = plan.skipped;
     if (callbacks.on_progress) callbacks.on_progress(progress);
     if (todo.empty()) return;
@@ -675,6 +687,7 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
             const ScanItem& item = todo[i];
             WorkResult wr;
             wr.item = item;
+            wr.rows = plan.rows[i];
             try {
                 AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
                 wr.row = store::prepare_row(
@@ -708,12 +721,17 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
                     record_failure(wr, e);
                 }
             }
-            if (wr.failed) {
-                ++progress.failed;
-                if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
-            } else {
-                ++progress.analyzed;
-                if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
+            // Each of the chart's rows is counted and reported, under the
+            // first copy's name (D76, D51 call 10), so a list of failures is
+            // as long as its count.
+            for (int r = 0; r < wr.rows; ++r) {
+                if (wr.failed) {
+                    ++progress.failed;
+                    if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
+                } else {
+                    ++progress.analyzed;
+                    if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
+                }
             }
 
             progress.completed = progress.analyzed + progress.failed;
