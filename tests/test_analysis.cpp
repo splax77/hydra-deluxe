@@ -767,3 +767,19 @@ TEST_CASE("discover_charts finds a folder whose notes and ini names are capitali
     CHECK(items[0].title == "Capital Case");
     CHECK(items[0].notespath == dir + "\\Notes.mid");
 }
+
+// D78: Hormone's Echo's drum track is named "notes" and then "PART DRUMS".
+// It must analyze, not fail with "No Expert Pro Drums notes in this chart."
+TEST_CASE("analyze_chart_file reads a drum track whose first name is unrecognized") {
+    using namespace testmidi;
+    const std::string dir = scan_fixture_dir("two_track_names");
+    write_bytes(dir + "\\notes.mid",
+                smf_tracks({concat({set_tempo(), end_of_track()}),
+                            concat({track_name("notes"), track_name("PART DRUMS"),
+                                    note_on(96, 100), after(120, note_on(96, 0)),
+                                    end_of_track()})}));
+    AnalysisSettings settings;
+    settings.prodrums = true;
+    const AnalysisResult result = analyze_chart_file(dir + "\\notes.mid", settings);
+    CHECK_FALSE(result.song.is_empty());
+}
