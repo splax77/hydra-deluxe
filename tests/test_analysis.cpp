@@ -233,17 +233,22 @@ TEST_CASE("run_work_pool: a slow consumer holds the workers back") {
             produced_while_stalled = last;
         });
     for (int n : seen) CHECK(n == 1);
-    // In flight: one item with the consumer, the waiting line (two per
-    // worker), and one finished item per worker waiting for room in it.
-    CHECK(produced_while_stalled <= 3 * kWorkers + 1);
+    // In flight: one item with the consumer, the waiting line
+    // (kWorkPoolWaitingPerWorker per worker), and one finished item per worker
+    // waiting for room in it.
+    CHECK(produced_while_stalled <=
+          (kWorkPoolWaitingPerWorker + 1) * static_cast<size_t>(kWorkers) + 1);
 }
 
 TEST_CASE("run_work_pool: a consumer that throws while workers wait for room") {
     // Workers blocked on a full line must still leave once the consumer
     // gives up, or the pool never joins.
-    std::atomic<int> started{0};
+    // The consumer's first item sleeps long enough for trivial work to finish
+    // every item if nothing held the workers back; it must not get that far.
+    constexpr size_t kItems = 1000;
+    std::atomic<size_t> started{0};
     CHECK_THROWS_AS(run_work_pool<int>(
-                        1000, 4, nullptr,
+                        kItems, 4, nullptr,
                         [&](size_t i) {
                             ++started;
                             return static_cast<int>(i);
@@ -253,7 +258,7 @@ TEST_CASE("run_work_pool: a consumer that throws while workers wait for room") {
                             throw std::runtime_error("consumer failed");
                         }),
                     std::runtime_error);
-    CHECK(started.load() < 1000);
+    CHECK(started.load() < kItems);
 }
 
 TEST_CASE("run_work_pool: a cancel mid-run never strands the consumer") {
