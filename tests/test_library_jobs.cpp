@@ -70,6 +70,13 @@ BatchRun test_run() {
     return run;
 }
 
+// The plan the confirm would hand over for `charts` when none has a result.
+hydra::app::BatchPlan plan_of(const std::vector<ChartLibraryEntry>& charts) {
+    std::vector<hydra::app::ScanItem> items;
+    for (const ChartLibraryEntry& e : charts) items.push_back(hydra::ui::scan_item_of(e));
+    return hydra::app::plan_batch(items, {});
+}
+
 // A chart that counts itself, waits for `release`, then fails with `error`,
 // thrown as `kind` the way a real thrower names it.
 hydra::app::ChartAnalyzer gated_failure(std::atomic<int>& started, std::atomic<bool>& release,
@@ -116,7 +123,7 @@ TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     std::atomic<int> started{0};
     std::atomic<bool> release{false};
     RecordStore store(":memory:");
-    BatchJob job(fake_charts(3), test_run(), store, /*redo=*/false);
+    BatchJob job(plan_of(fake_charts(3)), test_run(), store);
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
@@ -144,7 +151,7 @@ TEST_CASE("jobs: stop while paused ends the run and fails nothing") {
     std::atomic<int> started{0};
     std::atomic<bool> release{true};
     RecordStore store(":memory:");
-    BatchJob job(fake_charts(4), test_run(), store, /*redo=*/false);
+    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/2);
     job.pause();
@@ -167,7 +174,7 @@ TEST_CASE("jobs: the snapshot names the chart being analyzed and freezes its clo
     std::atomic<int> started{0};
     std::atomic<bool> release{false};
     RecordStore store(":memory:");
-    BatchJob job(fake_charts(1), test_run(), store, /*redo=*/false);
+    BatchJob job(plan_of(fake_charts(1)), test_run(), store);
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
@@ -195,7 +202,7 @@ TEST_CASE("jobs: the progress line's artist reads (unknown) when it is only tags
     RecordStore store(":memory:");
     std::vector<ChartLibraryEntry> charts = fake_charts(1);
     charts[0].artist = hydra::test::kTagOnlyTitle;
-    BatchJob job(charts, test_run(), store, /*redo=*/false);
+    BatchJob job(plan_of(charts), test_run(), store);
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
@@ -209,7 +216,7 @@ TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
     std::atomic<int> started{0};
     std::atomic<bool> release{true};
     RecordStore store(":memory:");
-    BatchJob job(fake_charts(1), test_run(), store, /*redo=*/false);
+    BatchJob job(plan_of(fake_charts(1)), test_run(), store);
     job.set_analyzer_for_test(
         gated_failure(started, release, "cannot open file: C:\\Songs\\x\\notes.chart",
                       hydra::ErrorKind::SongFileMissing),
@@ -225,35 +232,26 @@ TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
     CHECK(s.failure_details[0] == "fake 0: cannot open file: C:\\Songs\\x\\notes.chart");
 }
 
-// D72 item 4: run_batch asks the store which charts already have a result
-// before it starts. When that read fails, the batch finishes as failed and
-// Hydra keeps running.
-TEST_CASE("jobs: a batch whose database fails before it starts finishes as failed") {
-    const std::string path = testtemp::temp_path("jobs_batch_dbfail", ".db");
-    std::filesystem::remove(path);
-    {
-        RecordStore store(path);
-        hydra::test::exec_on_file(path, "DROP TABLE results");
-        std::atomic<int> started{0};
-        std::atomic<bool> release{true};
-        BatchJob job(fake_charts(2), test_run(), store, /*redo=*/false);
-        job.set_analyzer_for_test(gated_failure(started, release, "never analyzed"), 1);
-        job.start();
-        REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+// D78: a run that fails as a whole is not a library row. It finishes with its
+// error shown and counts no chart. A pool of no workers is one such failure.
+// (The store read that D72 item 4 covered now happens in the confirm, before
+// the job: test_app_state.)
+TEST_CASE("jobs: a batch that fails as a whole shows its error and counts no chart") {
+    RecordStore store(":memory:");
+    std::atomic<int> started{0};
+    std::atomic<bool> release{true};
+    BatchJob job(plan_of(fake_charts(2)), test_run(), store);
+    job.set_analyzer_for_test(gated_failure(started, release, "never analyzed"), /*workers=*/0);
+    job.start();
+    REQUIRE(wait_until([&] { return job.snapshot().finished; }));
 
-        const BatchJob::Snapshot s = job.snapshot();
-        CHECK(s.finished);
-        CHECK(s.failed == 1);
-        CHECK(started.load() == 0);
-        REQUIRE(s.failures.size() == 1);
-        REQUIRE(s.failure_details.size() == 1);
-        CHECK(s.failures[0] ==
-              "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra "
-              "is running, then try again.");
-        CHECK(s.failure_details[0] == "reading the database failed: no such table: results");
-    }
-    std::error_code ec;
-    for (const char* tail : {"", "-wal", "-shm"}) std::filesystem::remove(path + tail, ec);
+    const BatchJob::Snapshot s = job.snapshot();
+    CHECK(started.load() == 0);
+    CHECK(s.failed == 0);
+    CHECK(s.completed == 0);
+    CHECK(s.failures.empty());
+    CHECK_FALSE(s.run_error.empty());
+    CHECK(s.run_error_detail.find("worker count") != std::string::npos);
 }
 
 TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
@@ -262,7 +260,7 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
     // The two charts that succeed store one real chart's result.
     const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
     RecordStore store(":memory:");
-    BatchJob job(fake_charts(3), test_run(), store, /*redo=*/false);
+    BatchJob job(plan_of(fake_charts(3)), test_run(), store);
     job.set_analyzer_for_test(
         [&real](const std::string& path, const AnalysisSettings&,
                 const std::function<void(float)>&) -> AnalysisResult {

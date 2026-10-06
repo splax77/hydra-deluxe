@@ -1,8 +1,8 @@
 // hydra_batch — batch-analyze many charts straight into the record store.
 // The C++ port of hydra_batch.py.
 //
-//     hydra_batch                    # every folder in the app's settings
-//     hydra_batch <folder> [...]     # specific folders instead
+//     hydra_batch                    # every folder in the app's settings; saves the scan as the library
+//     hydra_batch <folder> [...]     # specific folders instead; the library is left alone
 //     hydra_batch --redo             # re-analyze charts already stored
 //     hydra_batch --reindex          # only rebuild sort columns, no analysis
 //     hydra_batch --db <path>        # target a specific database
@@ -30,6 +30,7 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <cctype>
 #include <chrono>
 #include <cstdio>
@@ -204,10 +205,11 @@ int batch_main() {
     for (const std::string& f : folders) std::printf("    %s\n", f.c_str());
 
     std::printf("\nDiscovering charts...\n");
-    // The GUI's last library scan, if this database has one. A chart whose
-    // files are unchanged (sig_unchanged) reuses its hash and song
-    // fields instead of being read again. hydra_batch only reads this cache;
-    // it never rewrites the GUI's library.
+    // The last library scan, if this database has one. A chart whose files
+    // are unchanged (sig_unchanged) reuses its hash and song fields instead
+    // of being read again. A run over the app's own folders saves its scan
+    // as the library afterwards, as Scan library does (D78); a run over
+    // folder arguments leaves the library alone.
     hydra::store::ChartLibraryCache cache;
     try {
         cache = store.chart_library_cache();
@@ -216,17 +218,25 @@ int batch_main() {
     }
     auto [scanitems, folder_errors] = hydra::app::discover_charts(
         folders, hydra::app::ScanCallbacks{}, cache.empty() ? nullptr : &cache);
+    if (folder_args.empty()) {
+        if (const std::optional<std::string> problem =
+                hydra::app::save_scan_as_library(store, scanitems))
+            std::printf("  ! %s\n", problem->c_str());
+    }
     for (const std::string& err : folder_errors) std::printf("  ! %s\n", err.c_str());
     std::printf("Found %s.\n\n",
                 hydra::counted(static_cast<int64_t>(scanitems.size()), "chart", "charts").c_str());
 
+    // The one plan for this run (D78). A run that fails as a whole (this
+    // store read) ends through run_tool.
+    const hydra::app::BatchPlan plan =
+        hydra::app::plan_batch(scanitems, hydra::app::charts_with_result(store, run, redo));
+
     auto started = std::chrono::steady_clock::now();
 
-    // The closing line's counts are run_batch's (the last progress it sent).
-    // `done` only numbers the output lines: each line prints before the
-    // progress that counts its chart arrives.
+    // Every number printed is run_batch's: the progress for a row arrives
+    // before that row's line.
     hydra::app::BatchProgress last;
-    int done = 0;
     std::vector<std::string> failures;
 
     hydra::app::BatchCallbacks callbacks;
@@ -234,47 +244,41 @@ int batch_main() {
     // hydra_batch prints the raw text; the sentence is the GUI's.
     callbacks.on_error = [&](const std::string& raw_title, const std::string& /*sentence*/,
                              const std::string& error) {
-        ++done;
         const std::string title = hydra::display_title(raw_title);
         failures.push_back(title + ": " + error);
-        std::printf("[%d/%d] FAILED %s: %s\n", done, last.total, title.c_str(),
+        std::printf("[%d/%d] FAILED %s: %s\n", last.completed, last.total, title.c_str(),
                     error.c_str());
     };
     callbacks.on_result = [&](const hydra::app::ScanItem& item,
                               const hydra::store::PreparedRow& row) {
-        ++done;
         // The artist and the title read the one cleaned form every screen shows.
         std::string label =
             hydra::display_artist(item.artist) + " - " + hydra::display_title(item.title);
         std::string score =
             row.summary.has_scored_best_path() ? hydra::group_thousands(*row.summary.score) : "-";
-        std::printf("[%d/%d] %10s  %s %s\n", done, last.total, score.c_str(),
+        std::printf("[%d/%d] %10s  %s %s\n", last.completed, last.total, score.c_str(),
                     clip_utf8(label, 52).c_str(), clip_utf8(row.bestpath, 36).c_str());
         std::fflush(stdout);
     };
-    // A run that fails as a whole (the store read before the first chart)
-    // ends through run_tool.
-    hydra::app::run_batch(scanitems, run, store, redo, hydra::app::batch_worker_count(),
-                          callbacks);
+    hydra::app::run_batch(plan, run, store, hydra::app::batch_worker_count(), callbacks);
 
     double elapsed =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-    auto [songs, records] = store.counts();
 
-    std::printf("\nAnalyzed %d, skipped %d already stored, %d failed in %.1fs.\n", last.analyzed,
-                last.skipped, last.failed, elapsed);
-    // counts() is every row in the file at every setting, so the line names
-    // that scope; the report counts only the current settings' rows.
-    std::printf("Store now holds %s across %s, rows for every setting.\n",
-                hydra::counted(records, "record", "records").c_str(),
-                hydra::counted(songs, "song", "songs").c_str());
+    // Library rows, every copy of a chart counted (D76).
+    std::printf("\nAnalyzed %s, skipped %s already stored, %s failed in %.1fs.\n",
+                hydra::group_thousands(last.analyzed).c_str(),
+                hydra::group_thousands(last.skipped).c_str(),
+                hydra::group_thousands(last.failed).c_str(), elapsed);
 
-    if (!failures.empty()) {
+    // The first 20 failure lines; the count is the progress's.
+    constexpr int kFailuresShown = 20;
+    if (last.failed > 0) {
         std::printf("\nFailures:\n");
-        size_t shown = failures.size() < 20 ? failures.size() : 20;
-        for (size_t i = 0; i < shown; ++i) std::printf("  %s\n", failures[i].c_str());
-        if (failures.size() > 20)
-            std::printf("  ...and %zu more.\n", failures.size() - 20);
+        const int shown = std::min(last.failed, kFailuresShown);
+        for (int i = 0; i < shown; ++i) std::printf("  %s\n", failures[i].c_str());
+        if (last.failed > shown)
+            std::printf("  ...and %d more.\n", last.failed - shown);
     }
 
     return 0;

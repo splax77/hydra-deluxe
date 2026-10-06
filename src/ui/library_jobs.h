@@ -99,12 +99,11 @@ app::ScanItem scan_item_of(const store::ChartLibraryEntry& e);
 
 class BatchJob : public JobBase {
 public:
-    // Analyzes exactly these charts, in this order. The library screen's own
-    // search (T12) decides which rows match, so "Analyze search (N)..." hands
-    // over the N rows it shows instead of a search string SQL would read
-    // differently.
-    BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun run,
-             store::RecordStore& store, bool redo);
+    // Runs exactly this plan (app::plan_batch), the one the confirm showed
+    // (D78). The library screen's own search (T12) decides which rows the
+    // plan covers, so "Analyze search (N)..." hands over the N rows it shows
+    // instead of a search string SQL would read differently.
+    BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& store);
     ~BatchJob() {
         stop();
         shutdown();
@@ -134,7 +133,7 @@ public:
     const app::BatchRun& batch_run() const { return run_; }
 
     struct Snapshot {
-        bool preparing = true;  // still building the scan list (BatchJob::run)
+        bool preparing = true;  // BatchJob::run has not reached its first chart yet
         // The batch's counts, copied from app::BatchProgress (run_batch is
         // their owner; see its fields for what each one counts).
         int total = 0;
@@ -151,17 +150,23 @@ public:
         // The chart a worker started most recently. Empty once finished.
         std::string current_title;
         std::string current_artist;
+        // One line per failed library row, `failed` long (run_batch's
+        // on_error).
         std::vector<std::string> failures;         // "Title: plain message"
         std::vector<std::string> failure_details;  // "Title: raw error", same order
+        // A run that failed as a whole: the plain sentence and the raw text.
+        // It is not a library row, so no count includes it.
+        std::string run_error;
+        std::string run_error_detail;
         bool finished = false;
     };
     Snapshot snapshot() const;
 
 private:
     void run();
-    // Ends a run that failed as a whole, before or around its charts: the
-    // plain sentence for `e` with `detail` under it, one failure counted, the
-    // clock stopped.
+    // Ends a run that failed as a whole, around its charts: the plain
+    // sentence for `e` with `detail` under it in run_error, the clock
+    // stopped. No count changes.
     void finish_failed(const std::exception& e, std::string detail);
     // Marks the snapshot finished: every way run() ends goes through here.
     // The caller holds mu_.
@@ -172,14 +177,12 @@ private:
     // On a worker: records the chart it is starting as the current one.
     void note_started(const std::string& notespath);
 
-    std::vector<store::ChartLibraryEntry> given_;
-    std::vector<app::ScanItem> items_;
-    // notespath -> index into items_. Built before run_batch starts and only
-    // read after that, so workers read it without a lock.
+    app::BatchPlan plan_;
+    // notespath -> index into plan_.todo. Built before run_batch starts and
+    // only read after that, so workers read it without a lock.
     std::unordered_map<std::string, size_t> by_path_;
     app::BatchRun run_;
     store::RecordStore& store_;
-    bool redo_;
     int workers_;
     app::ChartAnalyzer analyze_;  // empty = app::analyze_chart_file
 

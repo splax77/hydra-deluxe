@@ -365,6 +365,19 @@ store::ChartLibraryEntry to_library_entry(const ScanItem& item) {
     return e;
 }
 
+std::optional<std::string> save_scan_as_library(store::RecordStore& store,
+                                                const std::vector<ScanItem>& items) {
+    std::vector<store::ChartLibraryEntry> entries;
+    entries.reserve(items.size());
+    for (const ScanItem& item : items) entries.push_back(to_library_entry(item));
+    try {
+        store.rebuild_chart_library(entries);
+    } catch (const std::exception& e) {
+        return std::string("Failed to write chart library: ") + e.what();
+    }
+    return std::nullopt;
+}
+
 store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath) {
     switch (chart_kind_of(notespath)) {
         case ChartKind::Sng:
@@ -652,14 +665,11 @@ store::SongLength analysis_song_length(const std::optional<store::ChartTimingMet
     }
 }
 
-void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
-               store::RecordStore& store, bool redo, int worker_count,
-               const BatchCallbacks& callbacks) {
+void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& store,
+               int worker_count, const BatchCallbacks& callbacks) {
     const AnalysisSettings& settings = run.settings;
     const std::atomic<bool>* cancel = callbacks.cancel;
     const store::CapQuery cap = run.cap_query();
-
-    const BatchPlan plan = plan_batch(items, charts_with_result(store, run, redo));
     const std::vector<ScanItem>& todo = plan.todo;
 
     BatchProgress progress;
@@ -723,20 +733,21 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
             }
             // Each of the chart's rows is counted and reported, under the
             // first copy's name (D76, D51 call 10), so a list of failures is
-            // as long as its count.
+            // as long as its count. The progress that counts a row goes out
+            // before that row's own callback, so a caller numbering its lines
+            // reads the number from the progress (D78).
             for (int r = 0; r < wr.rows; ++r) {
+                if (wr.failed) ++progress.failed;
+                else ++progress.analyzed;
+                progress.completed = progress.analyzed + progress.failed;
+                progress.current_title = wr.item.title;
+                if (callbacks.on_progress) callbacks.on_progress(progress);
                 if (wr.failed) {
-                    ++progress.failed;
                     if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
                 } else {
-                    ++progress.analyzed;
                     if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
                 }
             }
-
-            progress.completed = progress.analyzed + progress.failed;
-            progress.current_title = wr.item.title;
-            if (callbacks.on_progress) callbacks.on_progress(progress);
         });
 }
 
