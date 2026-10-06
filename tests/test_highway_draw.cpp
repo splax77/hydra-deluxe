@@ -9,6 +9,7 @@
 #include "app/preview_view.h"
 #include "render/highway_draw.h"
 #include "render/obj_loader.h"
+#include "render/overlay_layout.h"
 #include "render/track_state.h"
 #include "preview_config_util.h"
 
@@ -737,8 +738,7 @@ TEST_CASE("build_highway_draws: the SP end triangles face the camera and point o
     const PreviewConfig cfg = shipped_preview_config();
     TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
     const double now = 1.0;
-    const HighwayCamera cam = make_camera(cfg, 1.0f);
-    const XMMATRIX vp = XMLoadFloat4x4(&cam.view) * XMLoadFloat4x4(&cam.proj);
+    const int w = 1200, h = 400;
     int seen = 0;
     for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0)) {
         if (c.mesh != MeshId::TriangleLeft && c.mesh != MeshId::TriangleRight) continue;
@@ -746,21 +746,25 @@ TEST_CASE("build_highway_draws: the SP end triangles face the camera and point o
         const bool right = c.mesh == MeshId::TriangleRight;
         const ObjMesh mesh = make_triangle(right);
         REQUIRE(mesh.triangle_count() == 1);
-        const XMMATRIX mvp = stretch_matrix(c) * vp;
         float sx[3], sy[3];
         for (int k = 0; k < 3; ++k) {
             const ObjVertex& v = mesh.vertices[k];
-            XMVECTOR p = XMVector3TransformCoord(XMVectorSet(v.pos[0], v.pos[1], v.pos[2], 1.0f), mvp);
-            sx[k] = XMVectorGetX(p);
-            sy[k] = XMVectorGetY(p);
+            const XMVECTOR wp = XMVector3TransformCoord(
+                XMVectorSet(v.pos[0], v.pos[1], v.pos[2], 1.0f), stretch_matrix(c));
+            const ImagePoint p = project_to_image(
+                cfg, w, h, Vec3{XMVectorGetX(wp), XMVectorGetY(wp), XMVectorGetZ(wp)});
+            sx[k] = p.x;
+            sy[k] = p.y;
         }
-        // Counter-clockwise on screen (y up) is the front face the renderer keeps.
+        // Image pixels run y down, so a negative signed area here is
+        // counter-clockwise as the viewer sees it: the front face the
+        // renderer keeps.
         const float area2 = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
-        CHECK(area2 > 0.0f);
+        CHECK(area2 < 0.0f);
         // The apex is the vertex at the side away from the base.
         size_t apex = 0;
         for (size_t k = 0; k < 3; ++k)
-            if (std::fabs(mesh.vertices[k].pos[1]) < 1e-6f) apex = k;
+            if (mesh.vertices[k].pos[1] == 0.0f) apex = k;
         for (size_t k = 0; k < 3; ++k) {
             if (k == apex) continue;
             if (right)
