@@ -50,8 +50,8 @@ struct ReportRow {
     int sqin = 0;
     int sqout = 0;
     int notes = 0;
-    // The chart this row belongs to. generate_report counts the distinct
-    // charts with it, and build_html turns it into the page's "c" number.
+    // The chart this row belongs to. page_charts (report.cpp) is the one place
+    // that groups rows by it: the page's "c" number and the subtitle's count.
     std::string hyhash;
     // How many library rows that chart has, every copy counted (D76): what
     // the subtitle and the Charts tile add up. collect_rows sets it for a
