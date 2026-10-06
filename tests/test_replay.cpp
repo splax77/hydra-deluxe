@@ -908,8 +908,9 @@ TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refus
 }
 
 // A typed offset exactly halfway between two phrase chords the engine could
-// both squeeze out still names one of them.
-TEST_CASE("a typed squeeze-out offset halfway between two phrase chords picks one") {
+// both squeeze out names neither, so it is refused and nothing is priced.
+// Tie rule owner: resolve_sqout_note (decision D83).
+TEST_CASE("a typed squeeze-out offset halfway between two phrase chords is refused") {
     // Phrase chords 93.75 ms before (tick 3036) and after (tick 3108) D = 3072.
     const Song song = song_with({{0, false}, {768, false}, {3036, true},
                                  {3072, false}, {3108, true}});
@@ -917,10 +918,18 @@ TEST_CASE("a typed squeeze-out offset halfway between two phrase chords picks on
     w.act_tick = 0;
     w.deact_tick = 3072;
     w.sqout_offset_ms = 0.0;
-    // Tie rule owner: the nearest-candidate loop in resolve_sqout_note.
-    const SqOutNote n = resolve_sqout_note(song, w);
-    CHECK(n.tick == 3036);
-    CHECK(n.offset_ms == doctest::Approx(-93.75));
+    CHECK_THROWS_WITH_AS(
+        resolve_sqout_note(song, w),
+        "window 0:3072: the SqOut offset 0.00 ms is equally close to the "
+        "phrase chords at tick 3036 (-93.75 ms) and tick 3108 (93.75 ms). "
+        "Type an offset nearer the one you mean. Not priced.",
+        std::runtime_error);
+
+    // A hair off the middle is no tie: the nearer chord is used.
+    w.sqout_offset_ms = 0.01;
+    const SqOutNote late = resolve_sqout_note(song, w);
+    CHECK(late.tick == 3108);
+    CHECK(late.offset_ms == doctest::Approx(93.75));
 }
 
 // A phrase chord at or before the activation was banked before Star Power
