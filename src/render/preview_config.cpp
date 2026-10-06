@@ -155,6 +155,7 @@ PreviewConfig load_preview_config(const std::string& json_text) {
     c.hydra.sp_active_color = get_color(hy, "sp_active_color");
     c.hydra.sp_active_darken = get_f(hy, "sp_active_darken");
     c.hydra.fill_offered_alpha = get_f(hy, "fill_offered_alpha");
+    c.hydra.sp_end_color = get_color(hy, "sp_end_color");
     c.hydra.sp_end_edge_depth = get_f(hy, "sp_end_edge_depth");
     c.hydra.sp_end_marker_width = get_f(hy, "sp_end_marker_width");
     c.hydra.sp_end_marker_height = get_f(hy, "sp_end_marker_height");

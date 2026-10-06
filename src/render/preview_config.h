@@ -83,7 +83,10 @@ struct PreviewConfig {
         // The mark where an active SP window ends (D81): a bright edge across
         // the floor, this deep along the highway, and an upright triangle
         // beside each railing, this wide (base to apex) and this tall (its
-        // base). build_highway_draws places them.
+        // base), both in this colour. It is the mark's own colour, not the
+        // SP teal, so it never reads as an SP gem. build_highway_draws
+        // places them.
+        Color sp_end_color{};
         float sp_end_edge_depth{};
         float sp_end_marker_width{};
         float sp_end_marker_height{};

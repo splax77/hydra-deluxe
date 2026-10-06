@@ -360,14 +360,14 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     //    highway gets a bright edge across the floor and a triangle beside
     //    each railing, where no gem sits. They draw before the gems, so a gem
     //    still covers the edge. The ends are TrackState::sp_active_ends.
-    //    Edge and triangles are unlit, so both show the SP colour as given
-    //    and match. The triangles stand upright facing the camera. Each
-    //    one's base rests on its railing's outer
+    //    Edge and triangles are unlit, so both show the mark's own colour
+    //    (sp_end_color, D84) as given and match. The triangles stand upright
+    //    facing the camera. Each one's base rests on its railing's outer
     //    edge and its apex points away from the lanes, as in the approved
     //    mock; it sits at floor height at the end's depth, so on screen it is
     //    level with the edge.
     {
-        const Material mark = color_mat(cfg.hydra.sp_active_color);
+        const Material mark = color_mat(cfg.hydra.sp_end_color);
         const float half_edge = cfg.hydra.sp_end_edge_depth * 0.5f;
         const float marker_w = cfg.hydra.sp_end_marker_width;
         const float half_marker_h = cfg.hydra.sp_end_marker_height * 0.5f;

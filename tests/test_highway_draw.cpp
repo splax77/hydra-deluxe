@@ -625,13 +625,13 @@ TEST_CASE("build_highway_draws: a chord one tick after a phrase ends draws plain
 }
 
 // D81: where an active SP window ends, a bright edge across the floor and a
-// triangle beside each railing, in the full (undarkened) SP colour.
+// triangle beside each railing, in the mark's own colour (sp_end_color).
 namespace {
 
 bool is_sp_end_mark(const DrawCommand& c, const PreviewConfig& cfg) {
-    const Color& sp = cfg.hydra.sp_active_color;
-    return c.material.kind == MaterialKind::Color && c.material.color.r == sp.r &&
-           c.material.color.g == sp.g && c.material.color.b == sp.b;
+    const Color& mark = cfg.hydra.sp_end_color;
+    return c.material.kind == MaterialKind::Color && c.material.color.r == mark.r &&
+           c.material.color.g == mark.g && c.material.color.b == mark.b;
 }
 
 bool is_gem(const DrawCommand& c) {
@@ -700,7 +700,7 @@ TEST_CASE("build_highway_draws: an SP end gets a floor edge and two rail triangl
         CHECK(i < first_gem);
         CHECK(c.depth == DepthMode::Always);
         CHECK((c.lo[2] + c.hi[2]) * 0.5f == doctest::Approx(z_end));
-        // Unlit, so the edge and the triangles show the same SP colour.
+        // Unlit, so the edge and the triangles show the same colour.
         CHECK(c.light == LightKind::Unlit);
         if (c.mesh == MeshId::Flat) {
             ++edges;
