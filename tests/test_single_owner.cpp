@@ -4117,6 +4117,25 @@ const std::vector<OwnerRule>& rules() {
          {{"src/search/pather.cpp", "options.hard_ms_filter = true;",
            "allzero_options, the owner"}},
          {"src", "tools", "tests"}},
+        // Any comparison against a ms limit by its name, on either side. The
+        // walks (Engine::act_within_limit, Activation::within_ms_limit) call
+        // SPSqueeze::within_limit and fill_within_limit, which ask the owner.
+        {"Is a timing inside a ms limit?",
+         "timing_within_limit in src/core/model.h",
+         R"((<=|[^-]>)\s*(limit_ms|ms_filter_)\b|\b(limit_ms|ms_filter_)\s*(>=|<))",
+         "",
+         {},
+         {},
+         "derive-once review of D85, finding 1; audit finding 152",
+         {"if (sq.difficulty() > limit_ms) return false;", "return !e || *e <= limit_ms;",
+          "bool within_ms_limit(double ms) const { return !has_ms_filter_ || ms <= ms_filter_; }",
+          "if (limit_ms >= d) return true;"},
+         {"if (!sq.within_limit(ms_filter_)) return false;",
+          "return fill_within_limit(a.e_offset, a.skips, ms_filter_);",
+          "if (has_ms_filter_ && !fill_within_limit(e_offset, p.currentskips, ms_filter_)) ++over;"},
+         {{"src/core/model.h",
+           "inline bool timing_within_limit(double ms, double limit_ms) { return ms <= limit_ms; }",
+           "timing_within_limit, the owner"}}},
         // A key streamed field by field. The owner is in src, so no line in
         // scope is an owner line.
         {"Which settings change a stored analysis?",
@@ -4781,7 +4800,8 @@ TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one ow
     const std::regex zero_limit(
         R"(difficulty\(\)\.value_or\(0(\.0+)?\)\s*(<=|>|<|>=)\s*0(\.0+)?(?![\d.]))"
         R"(|value_or\(0(\.0+)?\)\s*<=\s*0(\.0+)?(?![\d.]))"
-        R"(|ms_filter\s*=\s*(std::optional<double>\()?0(\.0+)?(?![\d.]))");
+        R"(|ms_filter\s*=\s*(std::optional<double>\()?0(\.0+)?(?![\d.]))"
+        R"(|within_(ms_)?limit\(\s*0(\.0+)?\s*\))");
     const std::regex depth_int(R"(\bdepth_mode\s*(==|!=|>=|<=|>|<)\s*[01]\b|case\s+1\s*:.*depth)");
     std::vector<std::string> zero_hits, depth_hits;
     sourcetree::for_each_source_file([&](const fs::path& file, const std::string& rel) {
