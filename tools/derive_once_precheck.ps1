@@ -171,6 +171,16 @@ THE CHECKS
 What it cannot see: a production rule written twice (kind A) that no scan
 row spells, a copy whose shape it does not know, a decision that exists only
 as a reviewer's judgement, and code the range does not add.
+
+RANGE SIZE
+
+After the items, the script prints how many lines the range changes. When
+that is over the threshold it also prints a note saying the range should be
+split before review. The note is a warning, not a gate: the exit code does
+not change. The threshold is $largeRangeLines and the files that count are
+Get-RangeSize's rule, both in the "range size" section below. The docs name
+this script as the owner and never restate either. -WholeTree prints no size,
+because the whole tree is not a change.
 #>
 [CmdletBinding()]
 param(
@@ -1285,6 +1295,32 @@ function Invoke-Check4 {
     }
 }
 
+# ---------------------------------------------------------------- range size
+
+# Is this range too big to review in one read? A reviewer reads the whole
+# range in one pass, and big ranges hide copies. The user chose this starting
+# value on 2026-10-05, to be tuned later. This is the one place it lives.
+$largeRangeLines = 400
+# Which top folders do not count toward the size: vendored code and test
+# data, which the reviewer does not read line by line.
+$sizeExcluded = @('third_party', 'testdata')
+# How the two size lines start. The self-test loads these from this file.
+$sizePrefix = 'range size: '
+$largeRangePrefix = 'large range: '
+# How many lines does the range change? Added plus deleted, over every file
+# the range touches outside $sizeExcluded. A binary file counts no lines
+# (git gives it no line counts). This is the one place that rule lives.
+function Get-RangeSize {
+    $add = 0; $del = 0
+    foreach ($l in (Invoke-Git @('diff', '--numstat', '--no-color', '--no-ext-diff', '--no-renames', $base, $tip))) {
+        if ($l -notmatch '^(\d+|-)\t(\d+|-)\t(.+)$') { continue }
+        if ($Matches[1] -eq '-') { continue }  # a binary file
+        if ($sizeExcluded -contains (Get-TopFolder $Matches[3].TrimStart('"'))) { continue }
+        $add += [int]$Matches[1]; $del += [int]$Matches[2]
+    }
+    [pscustomobject]@{ Added = $add; Deleted = $del; Total = $add + $del }
+}
+
 # ---------------------------------------------------------------- run
 
 for ($checkNo = 1; $checkNo -le $checks.Count; $checkNo++) {
@@ -1298,6 +1334,13 @@ $order = @{ C = 0; B = 1; A = 2; D = 3; E = 4 }
 $sorted = $items | Sort-Object @{ e = { $order[$_.Kind] } }, File, Line, What -Unique
 foreach ($i in $sorted) {
     "{0} {1}:{2}  {3}  -- {4}" -f $i.Kind, $i.File, $i.Line, $i.What, $i.Why
+}
+if (-not $WholeTree) {
+    $size = Get-RangeSize
+    Write-Host ("{0}{1} changed lines ({2} added, {3} deleted), not counting {4}" -f $sizePrefix, $size.Total, $size.Added, $size.Deleted, (($sizeExcluded | ForEach-Object { "$_/" }) -join ' or '))
+    if ($size.Total -gt $largeRangeLines) {
+        Write-Host ("{0}{1} changed lines is over the {2}-line threshold. Split this range into smaller merges before review. This is a warning, not a gate." -f $largeRangePrefix, $size.Total, $largeRangeLines)
+    }
 }
 $counts = ($sorted | Group-Object Kind | ForEach-Object { "$($_.Name) $($_.Count)" }) -join ', '
 Write-Host ("derive_once_precheck: {0} items ({1}) for {2} at {3}" -f @($sorted).Count, $(if ($counts) { $counts } else { 'none' }), $(if ($WholeTree) { 'the whole tree' } else { $Range }), $tip.Substring(0, 7))

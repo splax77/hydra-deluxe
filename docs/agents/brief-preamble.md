@@ -78,7 +78,7 @@ A comment names where a rule lives; it never restates the rule. "Test files: see
 
 ## Plain English
 
-Write plain English in every doc, comment, commit message and report. Lead with the plain version. One idea per sentence. Gloss any jargon in one line right after it. No bullet walls of file:line references; put sentences around them. See the "How to explain things" section of `CLAUDE.md`.
+Write plain English in every doc, comment, commit message and report. Lead with the plain version. One idea per sentence. Gloss any jargon in one line right after it. No bullet walls of file:line references; put sentences around them. See the "How to explain things" section of the user's global `CLAUDE.md`, at `C:\Users\Patrick\.claude\CLAUDE.md`. That file is the one home of those rules.
 
 ## Your final report
 
