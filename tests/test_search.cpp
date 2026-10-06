@@ -433,11 +433,15 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
 }
 
 // The all-0 pass is a second, constrained search. Its whole contract is that
-// every activation it reports records skips == 0, that "needs no timing"
-// (Path::needs_timing) is a requirement rather than a preference, and that it
-// never scores above the unconstrained optimum.
-TEST_CASE("search_allzero returns only all-0 paths that need no timing") {
+// every activation it reports records skips == 0, that the 0 ms limit
+// (Path::within_ms_limit) is a requirement rather than a preference, and that
+// it never scores above the unconstrained optimum.
+TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
     int checks = 0, mismatches = 0, found = 0;
+    // Charts whose all-0 list keeps a path with a timing of exactly 0 ms: a
+    // squeeze-out dead on the SP end or a zero-slack early fill. E3 dropped
+    // these (D60); D85 restored them, so the corpus must still have some.
+    std::set<std::string> zero_ms_charts;
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
@@ -462,11 +466,12 @@ TEST_CASE("search_allzero returns only all-0 paths that need no timing") {
                 d = "not all-0: " + p->pathstring();
                 break;
             }
-            if (p->needs_timing()) {
-                d = "needs timing: " + p->pathstring() + " needs " +
-                    std::to_string(*p->difficulty()) + " ms";
+            if (!p->within_ms_limit(0.0)) {
+                d = "over the 0 ms limit: " + p->pathstring();
                 break;
             }
+            // A timing of exactly 0 ms needs hitting yet passes (D85).
+            if (p->needs_timing()) zero_ms_charts.insert(path);
             if (p->totalscore() > optimum) {
                 d = "scores above the optimum: " + p->pathstring();
                 break;
@@ -478,7 +483,9 @@ TEST_CASE("search_allzero returns only all-0 paths that need no timing") {
 
     CHECK(mismatches == 0);
     CHECK(found > 0);
-    MESSAGE("checked " << checks << " charts, " << found << " with an all-0 path");
+    CHECK_FALSE(zero_ms_charts.empty());
+    MESSAGE("checked " << checks << " charts, " << found << " with an all-0 path, "
+                       << zero_ms_charts.size() << " of them with a 0 ms timing");
 }
 
 // ---- SP that outlasts the chart ----------------------------------------
@@ -829,10 +836,9 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
     REQUIRE_FALSE(best.empty());
     REQUIRE_FALSE(best.front().activations.empty());
 
-    // no_skips plus "keep only paths that need no timing" is exactly the
-    // all-0 search.
+    // no_skips plus a hard 0 ms limit is exactly the all-0 search.
     const std::vector<Path> z = run_search(graph, allzero_options());
-    for (const Path& p : z) CHECK_FALSE(p.needs_timing());
+    for (const Path& p : z) CHECK(p.within_ms_limit(0.0));
     const std::vector<Path> want_z = search_allzero(graph);
     REQUIRE_FALSE(want_z.empty());
     REQUIRE(z.size() == want_z.size());
@@ -855,14 +861,15 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
 
 // The all-0 search's options have one owner, so search_allzero and the case
 // above run the same search.
-TEST_CASE("allzero_options: no skips, no timing, everything else default") {
+TEST_CASE("allzero_options: no skips, a hard 0 ms limit, everything else default") {
     const EngineOptions z = allzero_options();
     const EngineOptions plain{};
     CHECK(z.no_skips);
-    CHECK(z.no_timing);
+    CHECK(z.hard_ms_filter);
+    REQUIRE(z.ms_filter.has_value());
+    CHECK(*z.ms_filter == 0.0);  // D85: the 0 ms limit, whatever the Path limit
     CHECK(z.depth_mode == plain.depth_mode);
     CHECK(z.depth_value == plain.depth_value);
-    CHECK(z.ms_filter == plain.ms_filter);
     CHECK_FALSE(z.target_act_ticks.has_value());
 }
 

@@ -575,6 +575,12 @@ struct Activation {
     // read Path::difficulty(), which rests on hardest() (D51 call 4, D13). The
     // row badge alone also shows a free squeeze (badge_timing, D80).
     bool needs_timing() const;
+    // Is every timing of this activation at or below `limit_ms`? Every
+    // squeeze counts, free ones included, and so does a required (E0) early
+    // fill, so a limit of 0 lets a dead-on squeeze-out through. The search
+    // asks the same of its own running paths (Engine::act_within_limit). The
+    // per-activation half of Path::within_ms_limit.
+    bool within_ms_limit(double limit_ms) const;
     bool is_difficult() const;
 
     // Is this backend the note squeezed out of SP? Compares against the
@@ -710,6 +716,10 @@ struct Path {
     // Does any activation on this path need timing (Activation::needs_timing)?
     // False for a path with no activations.
     bool needs_timing() const;
+    // Is every timing on this path at or below `limit_ms`
+    // (Activation::within_ms_limit)? True for a path with no activations.
+    // The all-0 pass's shortcut asks it at its 0 ms limit (search/pather.cpp).
+    bool within_ms_limit(double limit_ms) const;
     // True when the hardest squeeze or E0 fill is past kDifficultMs: the
     // warning color's rule, asked of the path instead of re-derived by callers.
     bool is_difficult() const;
@@ -771,8 +781,9 @@ struct HydraRecord {
     std::vector<MultSqueeze> multsqueezes;
 
     // The best all-0 path: the highest-scoring path whose activations all
-    // record skips == 0, found under a 0 ms timing limit, plus the tied
-    // variations a early fill or a squeeze in/out produces. The main
+    // record skips == 0, found under the all-0 pass's 0 ms limit
+    // (search/pather.cpp, allzero_options), plus the tied variations an
+    // early fill or a squeeze in/out produces. The main
     // search keeps paths by score band, not by shape, so this path is usually
     // below the band and absent from `paths`. Empty when the search did not run
     // or found nothing. Deliberately NOT part of all_paths(): the reports and

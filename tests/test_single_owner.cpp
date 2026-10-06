@@ -4106,15 +4106,16 @@ const std::vector<OwnerRule>& rules() {
            "kDefaultDepthValue, the owner"}}},
         {"Which options make the all-0 search?",
          "allzero_options in src/search/pather.cpp",
-         R"(\bno_timing\s*=\s*true)",
+         R"(\bhard_ms_filter\s*=\s*true)",
          "",
          {},
          {},
-         "audit finding 284; phase 6 task J4-1 (D53, D54)",
-         {"options.no_timing = true;", "allzero.no_timing = true;"},
+         "audit finding 284; phase 6 task J4-1 (D53, D54); D85",
+         {"options.hard_ms_filter = true;", "allzero.hard_ms_filter = true;"},
          {"const std::vector<Path> z = run_search(graph, allzero_options());",
-          "no_timing_(options.no_timing),"},
-         {{"src/search/pather.cpp", "options.no_timing = true;", "allzero_options, the owner"}},
+          "hard_ms_filter_(options.hard_ms_filter),"},
+         {{"src/search/pather.cpp", "options.hard_ms_filter = true;",
+           "allzero_options, the owner"}},
          {"src", "tools", "tests"}},
         // A key streamed field by field. The owner is in src, so no line in
         // scope is an owner line.
@@ -4770,11 +4771,13 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
 
 // E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is
 // Path::needs_timing's, so no code line under src/ or tools/ asks it with a
-// zero test of its own, such as the all-0 pass's old 0 ms limit. What the
-// Score range's INI int means is Settings::search_depth_mode's, the one line
-// in src/app/config.cpp that compares it, however the comparison is spelled.
-// Comment lines are skipped like the row scan does.
-TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one owner (E3)") {
+// zero test of its own. The all-0 list's 0 ms limit (D85) is set in one
+// place, allzero_options, and the shortcut that skips the all-0 pass reads it
+// from there. What the Score range's INI int means is
+// Settings::search_depth_mode's, the one line in src/app/config.cpp that
+// compares it, however the comparison is spelled. Comment lines are skipped
+// like the row scan does.
+TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one owner (E3, D85)") {
     const std::regex zero_limit(
         R"(difficulty\(\)\.value_or\(0(\.0+)?\)\s*(<=|>|<|>=)\s*0(\.0+)?(?![\d.]))"
         R"(|value_or\(0(\.0+)?\)\s*<=\s*0(\.0+)?(?![\d.]))"
@@ -4793,7 +4796,9 @@ TEST_CASE("single-owner: the all-0 limit and the depth-mode int each have one ow
             if (std::regex_search(t, depth_int)) depth_hits.push_back(rel + ": " + t);
         }
     });
-    CHECK_MESSAGE(zero_hits.empty(), (zero_hits.empty() ? std::string() : zero_hits.front()));
+    REQUIRE_MESSAGE(zero_hits.size() == 1,
+                    (zero_hits.size() < 2 ? std::string() : zero_hits[1]));
+    CHECK(zero_hits.front() == "src/search/pather.cpp: options.ms_filter = 0.0;");
     REQUIRE(depth_hits.size() == 1);
     CHECK(depth_hits.front() ==
           "src/app/config.cpp: return depth_mode == 1 ? DepthMode::Points : DepthMode::Scores;");

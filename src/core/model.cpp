@@ -523,6 +523,15 @@ std::optional<double> Activation::difficulty() const {
 // difficulty() is empty exactly when there is nothing to time.
 bool Activation::needs_timing() const { return difficulty().has_value(); }
 
+// The same timings Engine::act_within_limit walks: every squeeze, and the
+// early fill only when it is required (e_difficulty without verbose).
+bool Activation::within_ms_limit(double limit_ms) const {
+    for (const SPSqueeze& sq : sqinouts)
+        if (sq.difficulty() > limit_ms) return false;
+    const std::optional<double> e = e_difficulty();
+    return !e || *e <= limit_ms;
+}
+
 bool Activation::is_difficult() const {
     const std::optional<double> d = difficulty();
     return d && past_difficult_floor(*d);
@@ -666,6 +675,12 @@ bool Path::needs_timing() const {
     for (const Activation& act : walk_activations())
         if (act.needs_timing()) return true;
     return false;
+}
+
+bool Path::within_ms_limit(double limit_ms) const {
+    for (const Activation& act : walk_activations())
+        if (!act.within_ms_limit(limit_ms)) return false;
+    return true;
 }
 
 bool Path::is_difficult() const {

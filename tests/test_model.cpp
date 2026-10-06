@@ -304,6 +304,62 @@ TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none (D5
     CHECK(p.needs_timing());
 }
 
+// D85: the all-0 list's 0 ms limit lets a timing of exactly 0 ms through,
+// though such a timing needs hitting (Activation::needs_timing). A free
+// squeeze counts too, so a negative limit can still refuse one.
+TEST_CASE("Activation::within_ms_limit: 0 ms timings pass a 0 ms limit (D85)") {
+    auto plain = [] {
+        Activation a;
+        test::set_skips(a, 0);
+        a.e_offset = 300.0;  // not e-critical
+        return a;
+    };
+
+    Activation on_end_out = plain();
+    on_end_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, 0.0}};
+    REQUIRE(on_end_out.needs_timing());
+    CHECK(on_end_out.within_ms_limit(0.0));
+
+    Activation tight_fill = plain();
+    tight_fill.e_offset = 0.0;
+    REQUIRE(tight_fill.is_E0());
+    REQUIRE(tight_fill.needs_timing());
+    CHECK(tight_fill.within_ms_limit(0.0));
+
+    Activation late_out = plain();
+    late_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -0.5}};
+    CHECK_FALSE(late_out.within_ms_limit(0.0));
+    CHECK(late_out.within_ms_limit(0.5));
+
+    Activation late_fill = plain();
+    late_fill.e_offset = -0.5;
+    REQUIRE(late_fill.is_E0());
+    CHECK_FALSE(late_fill.within_ms_limit(0.0));
+
+    // An optional fill (not E0) is never a limit's business.
+    Activation optional_fill = plain();
+    test::set_skips(optional_fill, 1);
+    test::set_sp_meter(optional_fill, 2);
+    optional_fill.e_offset = -30.0;
+    REQUIRE_FALSE(optional_fill.is_E0());
+    CHECK(optional_fill.within_ms_limit(0.0));
+
+    // A free squeeze-in 163 ms inside SP is -163 ms: inside 0, outside -200.
+    Activation free_in = plain();
+    free_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -163.0}};
+    REQUIRE_FALSE(free_in.needs_timing());
+    CHECK(free_in.within_ms_limit(0.0));
+    CHECK_FALSE(free_in.within_ms_limit(-200.0));
+
+    // A path is inside when every activation is; no activations is inside.
+    Path p;
+    CHECK(p.within_ms_limit(0.0));
+    p.activations = {on_end_out, tight_fill, free_in};
+    CHECK(p.within_ms_limit(0.0));
+    p.activations.push_back(late_out);
+    CHECK_FALSE(p.within_ms_limit(0.0));
+}
+
 TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps") {
     using K = SpEndKind;
     Activation a;
