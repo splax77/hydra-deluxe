@@ -159,6 +159,36 @@ TEST_CASE("make_box: four outward faces, no bottom or back") {
     CHECK(saw_right);
 }
 
+TEST_CASE("make_triangle: one upright unit triangle facing +Z, apex at +X or -X") {
+    for (bool apex_right : {true, false}) {
+        CAPTURE(apex_right);
+        ObjMesh m = make_triangle(apex_right);
+        REQUIRE(m.triangle_count() == 1);
+        float mn[3], mx[3];
+        mesh_bounds(m, mn, mx);
+        CHECK(mn[0] == -0.5f);
+        CHECK(mx[0] == 0.5f);
+        CHECK(mn[1] == -0.5f);
+        CHECK(mx[1] == 0.5f);
+        CHECK(mn[2] == 0.0f);
+        CHECK(mx[2] == 0.0f);
+        for (const ObjVertex& v : m.vertices) {
+            CHECK(v.normal[0] == 0.0f);
+            CHECK(v.normal[1] == 0.0f);
+            CHECK(v.normal[2] == 1.0f);
+        }
+        // Corner order, counter-clockwise seen from +Z: base bottom first.
+        const float want_right[3][2] = {{-0.5f, -0.5f}, {0.5f, 0.0f}, {-0.5f, 0.5f}};
+        const float want_left[3][2] = {{0.5f, -0.5f}, {0.5f, 0.5f}, {-0.5f, 0.0f}};
+        const float(&want)[3][2] = apex_right ? want_right : want_left;
+        for (int k = 0; k < 3; ++k) {
+            CAPTURE(k);
+            CHECK(m.vertices[k].pos[0] == want[k][0]);
+            CHECK(m.vertices[k].pos[1] == want[k][1]);
+        }
+    }
+}
+
 TEST_CASE("the copied Onyx drum models load with their known extents") {
     const std::string dir = std::string(HYDRA_ASSET_DIR) + "/models/";
     float mn[3], mx[3];
