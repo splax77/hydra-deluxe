@@ -279,7 +279,7 @@ void render_batch_confirm(AppState& app) {
     }
 
     // Library rows, each copy of a chart counted, like the library's own
-    // counts (D76). What runs is the plan the box picks (D78).
+    // counts (D76). What runs is the plan the box picks (D79).
     const int64_t with = app.batch_scope_with_result();
     const int64_t to_run = app.batch_plan_for(app.batch_redo).todo_rows();
     std::string question;

@@ -735,7 +735,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
             // first copy's name (D76, D51 call 10), so a list of failures is
             // as long as its count. The progress that counts a row goes out
             // before that row's own callback, so a caller numbering its lines
-            // reads the number from the progress (D78).
+            // reads the number from the progress (D79).
             for (int r = 0; r < wr.rows; ++r) {
                 if (wr.failed) ++progress.failed;
                 else ++progress.analyzed;

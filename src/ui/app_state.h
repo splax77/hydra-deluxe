@@ -401,7 +401,7 @@ public:
     // the confirm shows is read from those plans, every copy of a chart
     // counted like the library counts it (D76). start_batch() hands the batch
     // the plan the redo box picks, so the run is the plan the confirm showed
-    // (D78).
+    // (D79).
     bool batch_confirm_pending = false;
     app::BatchPlan batch_plan;
     app::BatchPlan batch_redo_plan;

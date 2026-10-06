@@ -1610,7 +1610,7 @@ TEST_CASE("get_record reads a whole row while another thread rewrites it") {
 }
 
 TEST_CASE("has_record and a lookup agree on which rows are readable") {
-    // has_record asks get_summary (D78). This pins that across every kind of
+    // has_record asks get_summary (D79). This pins that across every kind of
     // row, so a second spelling of the Ready rule there would show up here.
     RecordStore store(":memory:");
     store.add_song("h", "Song", "Artist", "Charter", fixture().song);
@@ -1918,7 +1918,7 @@ TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {
           std::unordered_set<std::string>{"ready"});
 }
 
-// D78: the batch's skip list is the library's Analyzed chip. Every kind of row
+// D79: the batch's skip list is the library's Analyzed chip. Every kind of row
 // a chart can hold is here, including a chart with a Ready row beside a row
 // made under other rules, and a repeated library hash.
 TEST_CASE("analyzed_hashes names exactly the charts get_summaries reads as Ready") {

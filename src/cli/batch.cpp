@@ -208,7 +208,7 @@ int batch_main() {
     // The last library scan, if this database has one. A chart whose files
     // are unchanged (sig_unchanged) reuses its hash and song fields instead
     // of being read again. A run over the app's own folders saves its scan
-    // as the library afterwards, as Scan library does (D78); a run over
+    // as the library afterwards, as Scan library does (D79); a run over
     // folder arguments leaves the library alone.
     hydra::store::ChartLibraryCache cache;
     try {
@@ -227,7 +227,7 @@ int batch_main() {
     std::printf("Found %s.\n\n",
                 hydra::counted(static_cast<int64_t>(scanitems.size()), "chart", "charts").c_str());
 
-    // The one plan for this run (D78). A run that fails as a whole (this
+    // The one plan for this run (D79). A run that fails as a whole (this
     // store read) ends through run_tool.
     const hydra::app::BatchPlan plan =
         hydra::app::plan_batch(scanitems, hydra::app::charts_with_result(store, run, redo));

@@ -232,7 +232,7 @@ TEST_CASE("jobs: a failed chart reads in plain words and keeps the raw text") {
     CHECK(s.failure_details[0] == "fake 0: cannot open file: C:\\Songs\\x\\notes.chart");
 }
 
-// D78: a run that fails as a whole is not a library row. It finishes with its
+// D79: a run that fails as a whole is not a library row. It finishes with its
 // error shown and counts no chart. A pool of no workers is one such failure.
 // (The store read that D72 item 4 covered now happens in the confirm, before
 // the job: test_app_state.)

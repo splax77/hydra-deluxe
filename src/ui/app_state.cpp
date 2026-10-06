@@ -490,7 +490,7 @@ void AppState::start_scan() {
 
 void AppState::open_batch_confirm() {
     // Exactly the rows the library's search matches. The plans made here are
-    // the ones the batch runs (D78), so the confirm, the strip and the
+    // the ones the batch runs (D79), so the confirm, the strip and the
     // finished counts come from one plan.
     std::vector<app::ScanItem> items;
     {

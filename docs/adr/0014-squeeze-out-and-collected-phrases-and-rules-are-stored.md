@@ -36,7 +36,7 @@ The store writes it into the structure blob right after
 the format version, so version and rules make one 12-byte head. That head is
 what decides Ready, in C++ (`rank_row` in `src/store/record_store.cpp`,
 whose `.ready()` answers it). An SQL spelling of the same check stood beside
-it until D78 removed it; the batch now asks `RecordStore::get_summaries` too.
+it until D79 removed it; the batch now asks `RecordStore::get_summaries` too.
 The rules part compares one fingerprint, the store's
 `RulesStamp::fixed`.
 
@@ -94,7 +94,7 @@ of two fingerprints: `Rules::fingerprint()` (every rule except the ladder and
 the budget) for a fixed-cap run, and `Rules::auto_fingerprint()` (that plus
 the ladder) for an Auto run. The store accepts either (`core::RulesStamp`),
 in C++ (`structure_is_current`) and in SQL (then `kRowReadySql`, with
-`IN (?, ?)`; that SQL check is gone since D78, and `rank_row` compares the
+`IN (?, ?)`; that SQL check is gone since D79, and `rank_row` compares the
 one fixed fingerprint). A ladder edit marked only Auto runs Stale.
 
 The fingerprint's text changed, so every stored record reads Stale once more
@@ -321,7 +321,7 @@ same chart, mode, cap and lens now sit side by side.
 The SQL Ready check stopped being one undivided check here. It became
 `row_readable_sql()` (this build can read the row: its results version and
 path format) plus the rules part (the row's fingerprint is this process's).
-D78 later removed the rules part from SQL; only `rank_row` reads it now.
+D79 later removed the rules part from SQL; only `rank_row` reads it now.
 A write under rules A has two purges: the first removes the rows that fail
 `row_readable_sql()` (unreadable by this build), and the second replaces the
 row with the same key under the same rules. Neither touches the rules-B row,

@@ -385,7 +385,7 @@ Lens read_lens(sqlite3_stmt* s, int idx) {
 // the candidates for its chart and mode, and why a row that is not ready is
 // Stale. rank_row is the only place they are read off a row. Whether a chart
 // has a current result under some settings is get_summaries' answer, from its
-// winner's ready() (D78).
+// winner's ready() (D79).
 struct Candidate {
     bool current = false;  // stamped with this build's results version
     bool format = false;   // this build's path-structure format, analyzed
@@ -1482,7 +1482,7 @@ std::optional<SongTiming> RecordStore::get_timing(const std::string& hyhash) {
 
 bool RecordStore::has_record(const RecordKey& key) {
     // get_summaries owns "this chart has a current result under these
-    // settings" (D78): the library's Analyzed chip reads the same answer.
+    // settings" (D79): the library's Analyzed chip reads the same answer.
     return get_summary(key).status == RecordStatus::Ready;
 }
 
@@ -1490,7 +1490,7 @@ std::unordered_set<std::string> RecordStore::analyzed_hashes(const std::string& 
                                                              const CapQuery& cap,
                                                              const Lens& lens) {
     // Every chart with a candidate row under these settings, then
-    // get_summaries' answer for each (D78), so the batch skips exactly the
+    // get_summaries' answer for each (D79), so the batch skips exactly the
     // charts the library's Analyzed chip counts. One lock over both reads, so
     // no write lands between them.
     std::lock_guard<std::recursive_mutex> lock(mutex_);
@@ -1518,6 +1518,12 @@ std::unordered_map<std::string, int> RecordStore::library_copies() {
     std::unordered_map<std::string, int> out;
     while (step_row(s)) out.emplace(column_text(s, 0), sqlite3_column_int(s, 1));
     return out;
+}
+
+int RecordStore::copies_of(const std::unordered_map<std::string, int>& copies,
+                           const std::string& md5) {
+    const auto listed = copies.find(md5);
+    return listed == copies.end() ? 1 : listed->second;
 }
 
 void RecordStore::for_each_blob(

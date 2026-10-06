@@ -157,7 +157,7 @@ static void scan_mode(const std::string& folder, const std::string& dbpath,
 
     if (store) {
         t0 = clk::now();
-        // Saved the way Scan library saves it (D78).
+        // Saved the way Scan library saves it (D79).
         if (const std::optional<std::string> problem = app::save_scan_as_library(*store, items))
             std::printf("  ! %s\n", problem->c_str());
         std::printf("  library write : %7.2fs (%lld rows)\n", secs_since(t0),

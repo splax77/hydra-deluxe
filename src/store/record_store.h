@@ -436,13 +436,13 @@ public:
 
     // True when get_summary reads this exact key as Ready: get_summaries is
     // the one owner of "this chart has a current result under these
-    // settings" (D78).
+    // settings" (D79).
     bool has_record(const RecordKey& key);
 
     // Every chart has_record would say yes to, for one chart mode, cap and
     // lens: the batch's skip list for the whole library. get_summaries
     // answers for each chart, so the skip list and the library's Analyzed
-    // chip cannot disagree (D78).
+    // chip cannot disagree (D79).
     std::unordered_set<std::string> analyzed_hashes(const std::string& chartmode,
                                                     const CapQuery& cap, const Lens& lens);
 
@@ -450,6 +450,14 @@ public:
     // `copies` the naming rule counts (D51 call 10). A chart the library
     // doesn't list is absent.
     std::unordered_map<std::string, int> library_copies();
+
+    // How many library rows a chart on a page counts as, read from a
+    // library_copies map keyed the way `md5` is. A page lists only charts it
+    // holds a result for, so one the library doesn't list (a hydra_batch-only
+    // database, a chart removed since the scan) still counts once (D77). This
+    // is the one place that rule lives; every page's chart count reads it.
+    static int copies_of(const std::unordered_map<std::string, int>& copies,
+                         const std::string& md5);
 
     // One record's song identity, as yielded by for_each_blob: the song's
     // metadata row, plus the row's

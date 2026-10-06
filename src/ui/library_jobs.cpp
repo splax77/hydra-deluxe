@@ -288,7 +288,7 @@ void BatchJob::run() {
         note_started(path);
         return inner(path, settings, on_progress);
     };
-    // The plan was made before the job (D78), so run_batch reads nothing
+    // The plan was made before the job (D79), so run_batch reads nothing
     // from the store before its first chart. Whatever still throws out of it
     // ends the run as a whole.
     try {

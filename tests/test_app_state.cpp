@@ -830,7 +830,7 @@ TEST_CASE("the confirm counts every library row, and rows with a result from the
     CHECK(app.batch_scope_with_result() == 2);  // both copies of chart 1
 }
 
-// D78: the plan the confirm showed is the plan the batch runs. A result that
+// D79: the plan the confirm showed is the plan the batch runs. A result that
 // lands after the confirm opened changes nothing the batch does, because the
 // run reads no second list from the store.
 TEST_CASE("the batch runs the plan the confirm showed, with no second store read") {

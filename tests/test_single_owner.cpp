@@ -4341,7 +4341,7 @@ const std::vector<OwnerRule>& rules() {
            "return plain_error(e) + \"\\n\\n\" + plain_error_detail(e);",
            "plain_error_block, the owner"}},
          {"src"}},
-        // D78 B1: the batch's skip list and the library's Analyzed chip
+        // D79 B1: the batch's skip list and the library's Analyzed chip
         // once read two spellings of Ready, one in SQL. A second spelling
         // compares a row's rules with this process's in SQL or by hand.
         {"Does this chart have a current result under these settings?",
@@ -4351,7 +4351,7 @@ const std::vector<OwnerRule>& rules() {
          "",
          {},
          {},
-         "D78 item B1 (task COUNT-B)",
+         "D79 item B1 (task COUNT-B)",
          {"bind_blob(s, idx++, rules_fp_bytes(rules.fixed));",
           R"x("(" + row_readable_sql() + " AND " + rules_fp_of("structure") + " = ?)";)x",
           "if (head->rules_fingerprint == rules_fingerprint_.fixed) out.insert(hyhash);"},
@@ -4362,7 +4362,7 @@ const std::vector<OwnerRule>& rules() {
            "const bool same_rules = layout_current && head->rules_fingerprint == rules.fixed;",
            "rank_row, the owner's rules part"}},
          {"src"}},
-        // D78 B3: every batch number is BatchProgress's. A count of the
+        // D79 B3: every batch number is BatchProgress's. A count of the
         // failure lines, or a counter of its own, is a second count.
         {"How many library rows has a batch analyzed, failed or skipped?",
          "BatchProgress, written only by run_batch, with plan_batch's skipped, in "
@@ -4371,7 +4371,7 @@ const std::vector<OwnerRule>& rules() {
          "",
          {},
          {},
-         "D76, D78 item B3 (task COUNT-B)",
+         "D76, D79 item B3 (task COUNT-B)",
          {"++snap_.failed;", "++done;",
           "const std::string head = counted((int64_t)s.failures.size(), \"chart\", \"charts\") +",
           "std::printf(\"  ...and %zu more.\\n\", failures.size() - 20);"},
@@ -4386,23 +4386,23 @@ const std::vector<OwnerRule>& rules() {
            "walks the failure lines; the heading reads s.failed"}},
          {"src/app/analysis.cpp", "src/cli/batch.cpp", "src/ui/library_jobs.cpp",
           "src/ui/library_dialogs.cpp", "src/ui/app_state.cpp"}},
-        // D78 B5: RecordStore::counts() is every stored row at every
+        // D79 B5: RecordStore::counts() is every stored row at every
         // setting, so printing it next to the batch's counts read as a
         // second chart count. It may only say whether the store is empty.
         {"Does a line print the store's raw row count as a count of charts?",
-         "BatchProgress and the library table (D76, D78); RecordStore::counts() only tells an "
+         "BatchProgress and the library table (D76, D79); RecordStore::counts() only tells an "
          "empty store",
          R"(\b\w*store\w*(\.|->)counts\(\))",
          "",
          {},
          {},
-         "D78 item 2 (task COUNT-B)",
+         "D79 item 2 (task COUNT-B)",
          {"auto [songs, records] = store.counts();", "const auto n = app.store->counts().first;"},
          {"CHECK(m.counts().all == 6);", "const ChipCounts& counts = app.library.counts();"},
          {{"src/app/report.cpp", "if (store.counts().second == 0) {",
            "generate_report asks only whether the store is empty"}},
          {}},
-        // D78 B4: Scan library, hydra_batch and the bench tool each saved a
+        // D79 B4: Scan library, hydra_batch and the bench tool each saved a
         // scan their own way. One function saves it, so every one leaves the
         // same library behind.
         {"How does a finished scan become the library?",
@@ -4411,14 +4411,14 @@ const std::vector<OwnerRule>& rules() {
          "",
          {"src/store/record_store.h", "src/store/record_store.cpp"},
          {},
-         "D78 item 1 (task COUNT-B)",
+         "D79 item 1 (task COUNT-B)",
          {"store_.rebuild_chart_library(entries);", "store->rebuild_chart_library(entries);"},
          {"if (const std::optional<std::string> problem = app::save_scan_as_library(*store, items))",
           "step_done(s, \"rebuild_chart_library\");"},
          {{"src/app/analysis.cpp", "store.rebuild_chart_library(entries);",
            "save_scan_as_library, the owner"}},
          {}},
-        // D78 B2: every number the confirm shows is read off its plans. A
+        // D79 B2: every number the confirm shows is read off its plans. A
         // field that holds a plan's count, or a subtraction of one count from
         // another, is a second answer to "how many will run".
         {"How many charts does the confirm's batch cover, run and skip?",
@@ -4428,12 +4428,55 @@ const std::vector<OwnerRule>& rules() {
          "",
          {},
          {},
-         "D78 item B2 (task COUNT-B)",
+         "D79 item B2 (task COUNT-B)",
          {"int64_t batch_scope_charts = 0;", "const int64_t without = total - with;"},
          {"int64_t batch_scope_charts() const { return batch_redo_plan.todo_rows(); }",
           "const int64_t to_run = app.batch_plan_for(app.batch_redo).todo_rows();"},
          {},
          {"src/ui/app_state.cpp", "src/ui/app_state.h", "src/ui/library_dialogs.cpp"}},
+        // A chart on a page that the library doesn't list still counts. One
+        // function says how much; a page that looks a chart up in the copies
+        // map itself, or starts its count at a default, is a second answer.
+        {"How many library rows does a chart on a page count as when the library doesn't list it?",
+         "RecordStore::copies_of in src/store/record_store.cpp",
+         R"(\bcopies\s*=\s*1\s*;|\bcopies\w*\.(find|end)\()",
+         "",
+         {},
+         {},
+         "D77 item 2, D79 item 3 (task COUNT-P)",
+         {"int copies = 1;",
+          "const auto listed = copies.find(meta.hyhash);",
+          "if (listed != copies.end()) row.copies = listed->second;"},
+         {"row.copies = store::RecordStore::copies_of(library, hash);",
+          "int copies = 0;",
+          "for (const auto& [md5, n] : store.library_copies()) by_hash[normalize_chart_hash(md5)] += n;"},
+         {{"src/store/record_store.cpp", "const auto listed = copies.find(md5);",
+           "copies_of, the owner"},
+          {"src/store/record_store.cpp", "return listed == copies.end() ? 1 : listed->second;",
+           "copies_of, the owner"}}},
+        // The path report and the fill comparison count charts by adding up
+        // each row's copies, in C++ and in the page script alike. Counting
+        // rows instead drops every extra copy. The leaderboard page counts
+        // posted scores, not charts (D79), so it is not scanned.
+        {"How many charts does a page or its tool count?",
+         "each row's copies from RecordStore::copies_of, added up by generate_report, "
+         "tally_fill_rows and the pages' stats() through the payload's \"k\"",
+         R"(\['Charts',\s*fmt\(rows\.length\)|rows\.filter\(r\s*=>\s*r\.status\s*===\s*s\)\.length|\+\+stats\.|stats\.total\s*=\s*static_cast<int>\(rows\.size\(\)\))",
+         "",
+         {},
+         {},
+         "D79 item 3 (task COUNT-P)",
+         {"['Charts', fmt(rows.length)],",
+          "const n = s => rows.filter(r => r.status === s).length;",
+          "if (r.status == \"same\") ++stats.same;",
+          "stats.total = static_cast<int>(rows.size());"},
+         {"['Charts', fmt(charts(rows))],",
+          "const n = s => charts(rows.filter(r => r.status === s));",
+          "if (r.status == \"same\") stats.same += r.copies;",
+          "const beyond = rows.filter(r => r.tier === 'Beyond').length;"},
+         {},
+         {"src/app/report.cpp", "src/app/fill_report.cpp", "src/cli/report.cpp",
+          "src/cli/fillcompare.cpp"}},
     };
     return r;
 }

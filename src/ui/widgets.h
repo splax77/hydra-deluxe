@@ -59,7 +59,7 @@ inline float progress_fraction(double done, double total) {
 }
 
 // Full-width progress bar with a "done / total" overlay, digits grouped the
-// way every count reads (group_thousands, D78).
+// way every count reads (group_thousands, D79).
 inline void progress_bar_counted(int done, int total) {
     const float frac = progress_fraction(done, total);
     const std::string overlay = group_thousands(done) + " / " + group_thousands(total);

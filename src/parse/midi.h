@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core/error_kind.h"
@@ -71,8 +72,17 @@ struct Message {
 // mido's name for a message type ("note_on", "set_tempo", "track_name", ...).
 const char* message_type_name(Message::Type type);
 
+// The track names the song parser looks tracks up by (parse/song.cpp). They
+// are also the only names the reader recognizes when it picks a track's name
+// (MidiFile::parse_track, D78), so the lookups and that choice share one list.
+inline constexpr std::string_view kDrumsTrackName = "PART DRUMS";
+inline constexpr std::string_view kEventsTrackName = "EVENTS";
+inline constexpr std::string_view kRecognizedTrackNames[] = {kDrumsTrackName,
+                                                             kEventsTrackName};
+
 class MidiTrack {
 public:
+    // Chosen by MidiFile::parse_track (D78).
     std::string name;
     std::vector<Message> messages;
 };

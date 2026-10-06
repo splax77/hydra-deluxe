@@ -2,12 +2,10 @@
 
 #include <stdexcept>
 #include <unordered_map>
-#include <unordered_set>
 
-#include "app/analysis.h"  // normalize_chart_hash
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "app/html_page.h"
-#include "app/report.h"  // records_by_hash
+#include "app/report.h"  // records_by_hash, library_copies_by_hash
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
 #include "parse/song.h"  // display_title, display_artist, display_charter
@@ -210,12 +208,10 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     const std::unordered_map<std::string, store::RecordListing> by_hash =
         report::records_by_hash(store, chartmode, store::CapQuery::at(kCloneHeroSpCap), lens);
 
-    // Every chart the last scan found, keyed through normalize_chart_hash
-    // like the leaderboard join, so a score with no current result can say
-    // whether analyzing would fix it.
-    std::unordered_set<std::string> in_library;
-    for (const store::ChartLibraryEntry& e : store.list_chart_library(0, -1))
-        in_library.insert(normalize_chart_hash(e.md5));
+    // Every chart the last scan found, keyed like the leaderboard join, so a
+    // score with no current result can say whether analyzing would fix it.
+    // The page counts scores, not charts, so the copies go unused (D79).
+    const std::unordered_map<std::string, int> library = report::library_copies_by_hash(store);
 
     std::vector<DmReportRow> rows;
     rows.reserve(scores.size());
@@ -261,7 +257,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             // A Ready result whose analysis kept no path (D51 call 11).
             row.status = "no paths";
         } else {
-            row.status = in_library.count(s.identifier) ? "not analyzed" : "not in library";
+            row.status = library.count(s.identifier) ? "not analyzed" : "not in library";
         }
         if (!base) row.status = "other speed";
         rows.push_back(std::move(row));

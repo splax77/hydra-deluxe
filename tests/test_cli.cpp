@@ -159,7 +159,7 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
     CHECK(contains(r.output, "Tester - CLI Fixture"));
     CHECK(contains(r.output, "Fill rule  : Clone Hero 1.1"));
     CHECK(contains(r.output, "Found 1 chart."));
-    // Every number is the batch's progress, in library rows (D78); the
+    // Every number is the batch's progress, in library rows (D79); the
     // store's raw row count is not printed.
     CHECK(contains(r.output, "[1/1] "));
     CHECK(contains(r.output, "Analyzed 1, skipped 0 already stored, 0 failed in "));
@@ -168,7 +168,7 @@ TEST_CASE("hydra_batch stamps a new database with the rule it ran under") {
         hydra::store::RecordStore store(normal);
         CHECK(store.engine_mode() == std::optional<std::string>(kCh11));
         CHECK(store.counts().second == 1);
-        // A run over folder arguments leaves the library alone (D78).
+        // A run over folder arguments leaves the library alone (D79).
         CHECK(store.list_chart_library(0, -1).empty());
     }
 

@@ -100,7 +100,7 @@ app::ScanItem scan_item_of(const store::ChartLibraryEntry& e);
 class BatchJob : public JobBase {
 public:
     // Runs exactly this plan (app::plan_batch), the one the confirm showed
-    // (D78). The library screen's own search (T12) decides which rows the
+    // (D79). The library screen's own search (T12) decides which rows the
     // plan covers, so "Analyze search (N)..." hands over the N rows it shows
     // instead of a search string SQL would read differently.
     BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& store);

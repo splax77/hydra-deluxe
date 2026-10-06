@@ -115,7 +115,7 @@ std::string normalize_chart_hash(std::string_view hash);
 store::ChartLibraryEntry to_library_entry(const ScanItem& item);
 
 // Saves a finished scan as the library, replacing the last one. Scan library
-// and hydra_batch with no folder arguments both save through here (D78), so
+// and hydra_batch with no folder arguments both save through here (D79), so
 // both leave the same library behind. Empty on success, else the problem line
 // the scan shows.
 std::optional<std::string> save_scan_as_library(store::RecordStore& store,
@@ -234,7 +234,7 @@ struct BatchPlan {
 
 // The one place a scan list becomes a batch's to-do list and skipped count.
 // `already` is charts_with_result's answer. A batch makes its plan once,
-// before it starts, and runs that plan (D78): the GUI's confirm shows the
+// before it starts, and runs that plan (D79): the GUI's confirm shows the
 // plan the run then takes.
 BatchPlan plan_batch(const std::vector<ScanItem>& items,
                      const std::unordered_set<std::string>& already);

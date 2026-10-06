@@ -135,10 +135,10 @@ TEST_CASE("midi: running status survives a meta event") {
     CHECK(event_view(mid) == expected);
 }
 
-TEST_CASE("midi: first track_name wins over later ones") {
-    // mido's MidiTrack.name is the first track_name meta. Some drum charts
-    // carry extra 0x03 metas mid-track ("Drums" after "PART DRUMS"); if the
-    // last one won, hysong's exact name match would skip the whole track.
+TEST_CASE("midi: a recognized track_name is not displaced by a later name") {
+    // Some drum charts carry extra 0x03 metas mid-track ("Drums" after
+    // "PART DRUMS"); if the last one won, the song parser's exact name match
+    // would skip the whole track.
     std::vector<uint8_t> track = {
         0x00, 0xFF, 0x03, 0x0A, 'P', 'A', 'R', 'T', ' ', 'D', 'R', 'U', 'M', 'S',
         0x00, 0x90, 0x60, 0x64,                    // note_on note 96 vel 100
@@ -148,6 +148,49 @@ TEST_CASE("midi: first track_name wins over later ones") {
     hydra::MidiFile mid(smf(track));
     REQUIRE(mid.tracks.size() == 1);
     CHECK(mid.tracks[0].name == "PART DRUMS");
+}
+
+// D78: Hormone's Echo names its drum track "notes" and then "PART DRUMS",
+// both at tick 0. Clone Hero reads the drums; so must Hydra.
+TEST_CASE("midi: a recognized track_name wins over an earlier unrecognized one") {
+    using namespace testmidi;
+    hydra::MidiFile mid(smf(concat({track_name("notes"), track_name("PART DRUMS"),
+                                    note_on(96, 100), end_of_track()})));
+    REQUIRE(mid.tracks.size() == 1);
+    CHECK(mid.tracks[0].name == "PART DRUMS");
+}
+
+// Hydra keeps names at any tick (YARG reads only tick 0), so a recognized
+// name after tick 0 still wins over an unrecognized one at tick 0.
+TEST_CASE("midi: a recognized track_name after tick 0 still wins") {
+    using namespace testmidi;
+    hydra::MidiFile mid(smf(concat({track_name("notes"), note_on(96, 100),
+                                    after(480, track_name("PART DRUMS")),
+                                    end_of_track()})));
+    REQUIRE(mid.tracks.size() == 1);
+    CHECK(mid.tracks[0].name == "PART DRUMS");
+}
+
+TEST_CASE("midi: the first of two recognized track_names wins") {
+    using namespace testmidi;
+    hydra::MidiFile drums_then_events(smf(concat(
+        {track_name("PART DRUMS"), track_name("EVENTS"), note_on(96, 100), end_of_track()})));
+    REQUIRE(drums_then_events.tracks.size() == 1);
+    CHECK(drums_then_events.tracks[0].name == "PART DRUMS");
+
+    hydra::MidiFile events_then_bass(smf(concat(
+        {track_name("EVENTS"), text_event("[section intro]"),
+         after(480, track_name("PART BASS")), end_of_track()})));
+    REQUIRE(events_then_bass.tracks.size() == 1);
+    CHECK(events_then_bass.tracks[0].name == "EVENTS");
+}
+
+TEST_CASE("midi: a track with no recognized track_name keeps its first name") {
+    using namespace testmidi;
+    hydra::MidiFile mid(smf(concat({track_name("notes"), track_name("Drums"),
+                                    note_on(96, 100), end_of_track()})));
+    REQUIRE(mid.tracks.size() == 1);
+    CHECK(mid.tracks[0].name == "notes");
 }
 
 TEST_CASE("midi: sysex and skipped metas do not lose time") {
