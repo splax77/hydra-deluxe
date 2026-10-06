@@ -119,6 +119,13 @@ XMMATRIX stretch_matrix(const DrawCommand& cmd) {
 
 LightConfig light_for(const PreviewConfig& cfg, const DrawCommand& cmd) {
     if (cmd.light == LightKind::Global) return cfg.track.light;
+    if (cmd.light == LightKind::Unlit) {
+        LightConfig l;
+        l.ambient = Color{1.0f, 1.0f, 1.0f, 1.0f};
+        l.diffuse = Color{0.0f, 0.0f, 0.0f, 0.0f};
+        l.specular = Color{0.0f, 0.0f, 0.0f, 0.0f};
+        return l;
+    }
     // Onyx LightOffset: relative to the box's top centre.
     LightConfig l = cfg.gems.light;
     l.position.x += (cmd.lo[0] + cmd.hi[0]) * 0.5f;
@@ -344,28 +351,42 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
 
     // 6. SP end marks (Hydra, D81), depth off: a gem centred near an active
     //    window's end hides the tint's edge, so each end visible on the
-    //    highway gets a bright edge across the floor and a notch on each
-    //    railing, where no gem sits. They draw before the gems, so a gem
+    //    highway gets a bright edge across the floor and a triangle beside
+    //    each railing, where no gem sits. They draw before the gems, so a gem
     //    still covers the edge. The ends are TrackState::sp_active_ends.
+    //    Edge and triangles are unlit, so both show the SP colour as given
+    //    and match. The triangles stand upright facing the camera. Each
+    //    one's base rests on its railing's outer
+    //    edge and its apex points away from the lanes, as in the approved
+    //    mock; it sits at floor height at the end's depth, so on screen it is
+    //    level with the edge.
     {
         const Material mark = color_mat(cfg.hydra.sp_active_color);
         const float half_edge = cfg.hydra.sp_end_edge_depth * 0.5f;
-        const float half_notch = cfg.hydra.sp_end_notch_size * 0.5f;
+        const float marker_w = cfg.hydra.sp_end_marker_width;
+        const float half_marker_h = cfg.hydra.sp_end_marker_height * 0.5f;
         for (double t_end : state.sp_active_ends(win)) {
             const float z = z_of(t_end);
-            out.push_back(flat(T.x_left, T.y, z + half_edge, T.x_right, z - half_edge, mark, 1.0f,
-                               DepthMode::Always));
+            DrawCommand edge = flat(T.x_left, T.y, z + half_edge, T.x_right, z - half_edge, mark,
+                                    1.0f, DepthMode::Always);
+            edge.light = LightKind::Unlit;
+            out.push_back(edge);
             for (bool right : {false, true}) {
                 float x1, x2;
                 railing_x(cfg, right, x1, x2);
-                const float cx = (x1 + x2) * 0.5f;
+                const float outer = right ? x2 : x1;
                 DrawCommand n;
-                n.mesh = MeshId::Box;
-                n.lo[0] = cx - half_notch; n.lo[1] = T.railing_y_top + cfg.hydra.sp_end_notch_rise;
-                n.lo[2] = z + half_notch;
-                n.hi[0] = cx + half_notch; n.hi[1] = T.railing_y_bottom;
-                n.hi[2] = z - half_notch;
+                n.mesh = right ? MeshId::TriangleRight : MeshId::TriangleLeft;
+                n.lo[0] = right ? outer : outer - marker_w;
+                n.hi[0] = right ? outer + marker_w : outer;
+                n.lo[1] = T.y - half_marker_h;
+                n.hi[1] = T.y + half_marker_h;
+                // The mesh is flat at its own z = 0, so this depth only keeps
+                // the model matrix invertible for the normal matrix.
+                n.lo[2] = z + half_edge;
+                n.hi[2] = z - half_edge;
                 n.material = mark;
+                n.light = LightKind::Unlit;
                 n.depth = DepthMode::Always;
                 out.push_back(n);
             }

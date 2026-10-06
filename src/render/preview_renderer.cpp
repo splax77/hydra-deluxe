@@ -138,7 +138,7 @@ struct PreviewRenderer::Impl {
     ComPtr<ID3D11BlendState> blend_scene, blend_fade;
     ComPtr<ID3D11SamplerState> sampler;
 
-    std::array<GpuMesh, 5> meshes;  // indexed by MeshId
+    std::array<GpuMesh, static_cast<size_t>(MeshId::Count)> meshes;  // indexed by MeshId
     std::array<ComPtr<ID3D11ShaderResourceView>, static_cast<size_t>(TextureId::Count)> textures;
 
     TrackState state;
@@ -379,12 +379,15 @@ PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* cont
     smp.MaxLOD = 0.0f;
     check(device->CreateSamplerState(&smp, &d.sampler), "sampler");
 
-    // The verbatim Onyx drum models and the two built-in shapes.
+    // The verbatim Onyx drum models, Onyx's two built-in shapes and Hydra's
+    // SP end marker triangles.
     d.meshes[static_cast<size_t>(MeshId::Tom)] = d.load_model("drum-tom.obj");
     d.meshes[static_cast<size_t>(MeshId::Cymbal)] = d.load_model("drum-cymbal.obj");
     d.meshes[static_cast<size_t>(MeshId::Kick)] = d.load_model("drum-kick.obj");
     d.meshes[static_cast<size_t>(MeshId::Flat)] = d.upload(make_flat_quad());
     d.meshes[static_cast<size_t>(MeshId::Box)] = d.upload(make_box());
+    d.meshes[static_cast<size_t>(MeshId::TriangleLeft)] = d.upload(make_triangle(false));
+    d.meshes[static_cast<size_t>(MeshId::TriangleRight)] = d.upload(make_triangle(true));
 
     for (int i = 1; i < static_cast<int>(TextureId::Count); ++i)
         d.textures[static_cast<size_t>(i)] = d.load_texture(texture_file(static_cast<TextureId>(i)));

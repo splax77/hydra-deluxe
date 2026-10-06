@@ -199,6 +199,23 @@ ObjMesh make_box() {
     return m;
 }
 
+ObjMesh make_triangle(bool apex_right) {
+    ObjMesh m;
+    const float h = 0.5f;
+    const float base = apex_right ? -h : h;  // the side opposite the apex
+    const float apex = -base;
+    // Counter-clockwise seen from +Z either way: the base's bottom corner,
+    // then round past the apex or the base's top corner as the side requires.
+    const ObjVertex bottom = vtx(base, -h, 0, 0, 0, 1, 0, 0);
+    const ObjVertex top = vtx(base, h, 0, 0, 0, 1, 0, 1);
+    const ObjVertex tip = vtx(apex, 0, 0, 0, 0, 1, 1, 0.5f);
+    if (apex_right)
+        push_fan(m, {bottom, tip, top});
+    else
+        push_fan(m, {bottom, top, tip});
+    return m;
+}
+
 void mesh_bounds(const ObjMesh& mesh, float min[3], float max[3]) {
     for (int k = 0; k < 3; ++k) min[k] = max[k] = 0.0f;
     if (mesh.vertices.empty()) return;

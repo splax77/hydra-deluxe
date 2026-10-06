@@ -138,7 +138,7 @@ One more setting feeds these displays: `hit_window_ms` in `hydra_settings.ini` (
 
 The Preview plays the chart as a 3D note highway, in time with the song's audio. It draws the chosen path on the highway: the Star Power windows as a teal floor, and the fills a player following the path would see.
 
-Where Star Power runs out, a bright teal line crosses the floor and a small teal notch sits on each railing. A note just before the end can cover the line, but the notches stay in view, so you can always see exactly where SP stops.
+Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
 
 The Preview follows the Analysis settings. Change the difficulty, Pro Drums or 2x Bass and it reloads with that mode's notes. If the chart has no notes for that mode, it says so, like `No Hard Pro Drums notes in this chart.` If the chart file changed since it was analyzed, the Preview draws no path and shows `This chart changed since it was analyzed. Analyze it again to see its path.`
 

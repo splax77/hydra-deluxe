@@ -81,11 +81,12 @@ struct PreviewConfig {
         // How dim a fill the path passed over draws, next to the taken one.
         float fill_offered_alpha{};
         // The mark where an active SP window ends (D81): a bright edge across
-        // the floor, this deep along the highway, and a notch on each railing,
-        // this wide and deep, standing this far above the railing's top.
+        // the floor, this deep along the highway, and an upright triangle
+        // beside each railing, this wide (base to apex) and this tall (its
+        // base). build_highway_draws places them.
         float sp_end_edge_depth{};
-        float sp_end_notch_size{};
-        float sp_end_notch_rise{};
+        float sp_end_marker_width{};
+        float sp_end_marker_height{};
     } hydra;
 };
 
