@@ -201,7 +201,7 @@ std::string beyond_edge_text(double hit_window_ms) {
 // the rows, and its library copies (D76, D77).
 struct PageChart {
     int id = 0;
-    int copies = 1;
+    int copies = 0;  // the chart's ReportRow::copies
 };
 
 // The charts the rows belong to, each once. The page's "c" is the number, so
@@ -250,6 +250,13 @@ std::unordered_map<std::string, store::RecordListing> records_by_hash(
     return by_hash;
 }
 
+std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store) {
+    std::unordered_map<std::string, int> by_hash;
+    // Two md5s that differ only in case name one chart, so their rows add up.
+    for (const auto& [md5, n] : store.library_copies()) by_hash[normalize_chart_hash(md5)] += n;
+    return by_hash;
+}
+
 std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths,
                                     const store::CapQuery& cap, const store::Lens& lens,
                                     double hit_window_ms,
@@ -257,7 +264,7 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
     std::vector<ReportRow> rows;
     // Built once for the whole report, not once per row.
     const std::vector<TimingTier> tiers = timing_tiers(hit_window_ms);
-    const std::unordered_map<std::string, int> copies = store.library_copies();
+    const std::unordered_map<std::string, int> library = library_copies_by_hash(store);
 
     store.for_each_blob(std::nullopt, cap, lens,
                         [&](const store::RecordStore::BlobRow& meta,
@@ -266,9 +273,9 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
         // else (a stale stamp) is skipped, as record.is_version_compatible()
         // did in Python.
         if (!record) return;
-        // Every library copy counts (D76). A chart the library doesn't list
-        // keeps ReportRow's default, D77's answer.
-        const auto listed = copies.find(meta.hyhash);
+        // Every library copy counts (D76, D77).
+        const int chart_copies =
+            store::RecordStore::copies_of(library, normalize_chart_hash(meta.hyhash));
 
         // all_paths() is already best first (pather::read sorts the roots and
         // each variant sits under its parent), so ranks number it as it comes.
@@ -305,7 +312,7 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
             row.sqout = *s.sqout_count;
             row.notes = *s.notecount;
             row.hyhash = meta.hyhash;
-            if (listed != copies.end()) row.copies = listed->second;
+            row.copies = chart_copies;
             rows.push_back(std::move(row));
         }
     }, cancel);

@@ -203,6 +203,71 @@ TEST_CASE("report counts every library copy of a chart, and an unlisted chart on
     CHECK(out.html.find("\"k\":1") != std::string::npos);
 }
 
+TEST_CASE("library copies are keyed like records_by_hash, and an unlisted chart counts once") {
+    // The scan writes lower case, but an older row may not: a page joins on
+    // normalize_chart_hash, so the copies do too.
+    store::RecordStore store(":memory:");
+    store::ChartLibraryEntry upper;
+    upper.md5 = "ABCDEF00112233445566778899AABBCC";
+    upper.title = "Upper";
+    upper.notespath = "C:\\songs\\a\\notes.chart";
+    store::ChartLibraryEntry lower = upper;
+    lower.md5 = "abcdef00112233445566778899aabbcc";
+    lower.notespath = "C:\\other\\a\\notes.chart";
+    store.rebuild_chart_library({upper, lower});
+
+    const std::unordered_map<std::string, int> library = report::library_copies_by_hash(store);
+    CHECK(library ==
+          std::unordered_map<std::string, int>{{"abcdef00112233445566778899aabbcc", 2}});
+    CHECK(store::RecordStore::copies_of(library, "abcdef00112233445566778899aabbcc") == 2);
+    CHECK(store::RecordStore::copies_of(library, "00ff00ff00ff00ff00ff00ff00ff00ff") == 1);
+}
+
+// The page's Charts tile adds up "k" once per "c" in JavaScript, and
+// generate_report adds up each chart's copies once in C++. The page has to
+// count per filtered view, so it can't print the C++ total. This pins that
+// both count the same thing: every row carries its chart's number as "c" and
+// that chart's copies as "k", and the tile sums exactly those two fields.
+TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up") {
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store, 4, 2) == 2);
+    std::vector<store::ChartLibraryEntry> library;
+    for (const auto& [md5, copies] : {std::pair<const char*, int>{"h0", 2}, {"h1", 3}}) {
+        for (int i = 0; i < copies; ++i) {
+            store::ChartLibraryEntry e;
+            e.md5 = md5;
+            e.title = md5;
+            e.rootfolder = "C:\\songs" + std::to_string(i);
+            e.notespath = e.rootfolder + "\\" + md5 + "\\notes.chart";
+            library.push_back(e);
+        }
+    }
+    store.rebuild_chart_library(library);
+
+    report::ReportOptions options;
+    options.cap = store::CapQuery::at(4);
+    const report::GeneratedReport out = report::generate_report(store, options);
+    CHECK(out.songs == 5);
+    CHECK(out.html.find(" across 5 charts") != std::string::npos);
+
+    // Every row of a chart carries that chart's copies, and one of two
+    // numbers for the chart.
+    size_t rows_h0 = 0, rows_h1 = 0;
+    for (const report::ReportRow& r :
+         report::collect_rows(store, options.max_paths, options.cap, options.lens))
+        ++(r.hyhash == "h0" ? rows_h0 : rows_h1);
+    REQUIRE(rows_h0 > 0);
+    REQUIRE(rows_h1 > 0);
+    CHECK(static_cast<int64_t>(rows_h0 + rows_h1) == out.rows);
+    CHECK(occurrences(out.html, ",\"k\":2,") == rows_h0);
+    CHECK(occurrences(out.html, ",\"k\":3,") == rows_h1);
+    CHECK(static_cast<int64_t>(occurrences(out.html, "{\"c\":0,") +
+                               occurrences(out.html, "{\"c\":1,")) == out.rows);
+    CHECK(occurrences(out.html, "{\"c\":2,") == 0);
+    CHECK(out.html.find("['Charts', fmt([...new Map(rows.map(r => [r.c, r.k])).values()]"
+                        ".reduce((n, k) => n + k, 0))]") != std::string::npos);
+}
+
 TEST_CASE("report lists only the wanted cap and names it") {
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store, 4, 1) == 1);
@@ -735,6 +800,8 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
         r.sqin = rank;
         r.sqout = 2 - rank % 2;
         r.notes = 1200 + rank;
+        r.hyhash = song;
+        r.copies = 1;
         paths.push_back(r);
     };
     std::string long_path;

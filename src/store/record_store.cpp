@@ -1545,6 +1545,12 @@ std::unordered_map<std::string, int> RecordStore::library_copies() {
     return out;
 }
 
+int RecordStore::copies_of(const std::unordered_map<std::string, int>& copies,
+                           const std::string& md5) {
+    const auto listed = copies.find(md5);
+    return listed == copies.end() ? 1 : listed->second;
+}
+
 void RecordStore::for_each_blob(
     const std::optional<std::string>& chartmode, const CapQuery& cap, const Lens& lens,
     const std::function<void(const BlobRow&, const HydraRecord*)>& fn,

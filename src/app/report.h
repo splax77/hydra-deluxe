@@ -53,12 +53,11 @@ struct ReportRow {
     // The chart this row belongs to. page_charts (report.cpp) is the one place
     // that groups rows by it: the page's "c" number and the subtitle's count.
     std::string hyhash;
-    // How many library rows that chart has, every copy counted (D76): what
-    // the subtitle and the Charts tile add up. collect_rows sets it for a
-    // chart the library lists. A chart it doesn't list (a hydra_batch-only
-    // database, a chart removed since) is on the page, so it counts once:
-    // this default is the one place that rule lives (D77).
-    int copies = 1;
+    // How many library rows that chart counts as, every copy counted (D76):
+    // what the subtitle and the Charts tile add up. collect_rows sets it from
+    // store::RecordStore::copies_of, which also answers for a chart the
+    // library doesn't list (D77).
+    int copies = 0;
 };
 
 // (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2).
@@ -81,6 +80,13 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 std::unordered_map<std::string, store::RecordListing> records_by_hash(
     store::RecordStore& store, const std::string& chartmode, const store::CapQuery& cap,
     const store::Lens& lens);
+
+// Every chart the store's library lists, with its copies
+// (RecordStore::library_copies), keyed like records_by_hash so a page looks
+// up both with one key. Every page reads its library copies and its "is this
+// chart in the library" answer from here; a chart's count goes through
+// RecordStore::copies_of.
+std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store);
 
 // Reads every stored record at the wanted cap and lens (skipping ones the
 // store calls stale) and produces up to max_paths rows per chart, best score

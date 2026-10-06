@@ -228,16 +228,117 @@ TEST_CASE("tally_fill_rows counts every status") {
     // know lands in no bucket, not in "only 1.1".
     rows[6].status = "no such status";
     rows[7].status = "in both";
+    // Each row counts its library copies (D78 item 3).
+    for (FillCompareRow& r : rows) r.copies = 1;
+    rows[1].copies = 3;
+    rows[4].copies = 2;
 
     app::fill_report::FillCompareStats stats =
         app::fill_report::tally_fill_rows(rows);
-    CHECK(stats.total == 8);
+    CHECK(stats.total == 11);
     CHECK(stats.same == 1);
-    CHECK(stats.ch10_higher == 2);
+    CHECK(stats.ch10_higher == 4);
     CHECK(stats.ch11_higher == 1);
-    CHECK(stats.only_old == 1);
+    CHECK(stats.only_old == 2);
     CHECK(stats.only_new == 1);
     CHECK(stats.in_both == 1);
+}
+
+TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted chart counts once") {
+    // D78 item 3. The 1.1 database's library lists kBoth in two folders. The
+    // 1.0 database's library lists kOldOnly three times, which the page never
+    // reads. kOldOnly and kNewOnly are not in the 1.1 library, so each counts
+    // once (store::RecordStore::copies_of).
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+    put_ch10(old_store, kBoth, 1000000, 3, "old-path-K");
+    put_ch11(new_store, kBoth, 1050000, 4, "new-path-K");  // 1.1 higher
+    put_ch10(old_store, kOldOnly, 900000, 2, "only-old");  // only 1.0
+    put_ch11(new_store, kNewOnly, 800000, 5, "only-new");  // only 1.1
+
+    auto library = [](const std::string& md5, int copies) {
+        std::vector<store::ChartLibraryEntry> out;
+        for (int i = 0; i < copies; ++i) {
+            store::ChartLibraryEntry e;
+            e.md5 = md5;
+            e.title = "Song";
+            e.rootfolder = "C:\\songs" + std::to_string(i);
+            e.notespath = e.rootfolder + "\\notes.chart";
+            out.push_back(e);
+        }
+        return out;
+    };
+    new_store.rebuild_chart_library(library(kBoth, 2));
+    old_store.rebuild_chart_library(library(kOldOnly, 3));
+
+    const std::vector<FillCompareRow> rows = compare(old_store, new_store);
+    REQUIRE(rows.size() == 3);
+    CHECK(find(rows, kBoth)->copies == 2);
+    CHECK(find(rows, kOldOnly)->copies == 1);
+    CHECK(find(rows, kNewOnly)->copies == 1);
+
+    // The tally, the subtitle and the payload all count the copies.
+    const app::fill_report::GeneratedFillReport result =
+        app::fill_report::generate_fill_report(old_store, new_store, kMode,
+                                               store::CapQuery::at(kCloneHeroSpCap),
+                                               store::Lens{});
+    const app::fill_report::FillCompareStats& s = result.stats;
+    CHECK(s.total == 4);
+    CHECK(s.ch11_higher == 2);
+    CHECK(s.only_old == 1);
+    CHECK(s.only_new == 1);
+    CHECK(s.same + s.ch10_higher + s.ch11_higher + s.only_old + s.only_new + s.in_both ==
+          s.total);
+    CHECK(result.html.find(
+              "4 charts in Expert Pro Drums, 2x Bass: 2 score higher under 1.1, "
+              "0 higher under 1.0, 0 unchanged, 2 in one database only, "
+              "0 with a score on one side only") != std::string::npos);
+    CHECK(result.html.find("{\"k\":2,") != std::string::npos);
+}
+
+// The page's chart tiles add up each row's "k" by status in JavaScript, and
+// tally_fill_rows adds up each row's copies by status in C++. The page has to
+// count per filtered view, so it can't print the C++ totals. This pins that
+// both count the same thing: every row carries its copies as "k", every
+// status the C++ counts has its own count in the page's stats(), the page
+// sums "k" and nothing else, and it counts no status the C++ doesn't know.
+TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
+    const std::vector<std::string> statuses = {"same",     "1.0 higher", "1.1 higher",
+                                               "only 1.0", "only 1.1",   "in both"};
+    std::vector<FillCompareRow> rows;
+    for (size_t i = 0; i < statuses.size(); ++i) {
+        FillCompareRow r;
+        r.status = statuses[i];
+        r.copies = static_cast<int>(i) + 1;
+        rows.push_back(r);
+    }
+    const app::fill_report::FillCompareStats st = app::fill_report::tally_fill_rows(rows);
+    CHECK(st.total == 21);
+    CHECK(st.same == 1);
+    CHECK(st.ch10_higher == 2);
+    CHECK(st.ch11_higher == 3);
+    CHECK(st.only_old == 4);
+    CHECK(st.only_new == 5);
+    CHECK(st.in_both == 6);
+
+    const std::string html = app::fill_report::build_fill_html(rows, "sub", "foot");
+    for (size_t i = 0; i < statuses.size(); ++i) {
+        CAPTURE(statuses[i]);
+        CHECK(html.find("{\"k\":" + std::to_string(i + 1) + ",") != std::string::npos);
+        CHECK(html.find("n('" + statuses[i] + "')") != std::string::npos);
+    }
+    CHECK(html.find("const charts = rs => rs.reduce((a, r) => a + r.k, 0);") !=
+          std::string::npos);
+    CHECK(html.find("const n = s => charts(rows.filter(r => r.status === s));") !=
+          std::string::npos);
+    CHECK(html.find("['Charts', fmt(charts(rows))],") != std::string::npos);
+    CHECK(html.find("['Charts', fmt(rows.length)]") == std::string::npos);
+    // No status counted on the page that the C++ never assigns.
+    size_t counted = 0;
+    for (const char* call : {"(n('", " n('"})
+        for (size_t at = html.find(call); at != std::string::npos; at = html.find(call, at + 1))
+            ++counted;
+    CHECK(counted == statuses.size());
 }
 
 TEST_CASE("build_fill_html substitutes every placeholder") {
