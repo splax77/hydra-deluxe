@@ -100,6 +100,12 @@ void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2) {
     x2 = x1 + w;
 }
 
+void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2) {
+    const PreviewConfig::Track& T = cfg.track;
+    x1 = right ? T.x_right : T.x_left - T.railing_x_width;
+    x2 = right ? T.x_right + T.railing_x_width : T.x_left;
+}
+
 XMMATRIX stretch_matrix(const DrawCommand& cmd) {
     float sx = std::fabs(cmd.hi[0] - cmd.lo[0]);
     float sy = std::fabs(cmd.hi[1] - cmd.lo[1]);
@@ -207,13 +213,6 @@ TextureId gem_tex(const TrackGem& g, bool od) {
     return TextureId::BoxRed;
 }
 
-// The X extent of the left or right railing. The railings and their SP end
-// notches both place themselves by it.
-void railing_x(const PreviewConfig::Track& T, bool right, float& x1, float& x2) {
-    x1 = right ? T.x_right : T.x_left - T.railing_x_width;
-    x2 = right ? T.x_right + T.railing_x_width : T.x_left;
-}
-
 Color blend(const Color& a, const Color& b) {
     return Color{(a.r + b.r) * 0.5f, (a.g + b.g) * 0.5f, (a.b + b.b) * 0.5f, 1.0f};
 }
@@ -268,7 +267,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     for (bool right : {false, true}) {
         DrawCommand rail;
         rail.mesh = MeshId::Box;
-        railing_x(T, right, rail.lo[0], rail.hi[0]);
+        railing_x(cfg, right, rail.lo[0], rail.hi[0]);
         rail.lo[1] = T.railing_y_top;    rail.lo[2] = T.z_past;
         rail.hi[1] = T.railing_y_bottom; rail.hi[2] = T.z_future;
         rail.material = color_mat(T.railing_color);
@@ -358,7 +357,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
                                DepthMode::Always));
             for (bool right : {false, true}) {
                 float x1, x2;
-                railing_x(T, right, x1, x2);
+                railing_x(cfg, right, x1, x2);
                 const float cx = (x1 + x2) * 0.5f;
                 DrawCommand n;
                 n.mesh = MeshId::Box;

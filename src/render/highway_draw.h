@@ -107,6 +107,11 @@ double z_to_time(const PreviewConfig& cfg, double now_s, double z, double speed)
 // The X extent of a pad's lane: the note area split into four, left to right.
 void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2);
 
+// The X extent of the left (right = false) or right railing. The railings,
+// their SP end notches and the overlay's highway_span_at all place
+// themselves by it.
+void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2);
+
 // The model matrix for a DrawCommand's box (row-major, DirectXMath row vectors).
 DirectX::XMMATRIX stretch_matrix(const DrawCommand& cmd);
 
