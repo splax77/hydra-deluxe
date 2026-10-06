@@ -4341,6 +4341,67 @@ const std::vector<OwnerRule>& rules() {
            "return plain_error(e) + \"\\n\\n\" + plain_error_detail(e);",
            "plain_error_block, the owner"}},
          {"src"}},
+        // D78 B1: the batch's skip list and the library's Analyzed chip
+        // once read two spellings of Ready, one in SQL. A second spelling
+        // compares a row's rules with this process's in SQL or by hand.
+        {"Does this chart have a current result under these settings?",
+         "RecordStore::get_summaries' winner, through Candidate::ready (rank_row) in "
+         "src/store/record_store.cpp",
+         R"(==\s*[\w.>-]*\bfixed\b|rules_fp_bytes\([^)]*\bfixed\b|row_readable_sql\(\)\s*\+\s*"\s*AND)",
+         "",
+         {},
+         {},
+         "D78 item B1 (task COUNT-B)",
+         {"bind_blob(s, idx++, rules_fp_bytes(rules.fixed));",
+          R"x("(" + row_readable_sql() + " AND " + rules_fp_of("structure") + " = ?)";)x",
+          "if (head->rules_fingerprint == rules_fingerprint_.fixed) out.insert(hyhash);"},
+         {"const std::vector<uint8_t> auto_fp = rules_fp_bytes(rules_fingerprint_.retired_auto);",
+          R"x(purge("hyhash=? AND chartmode=? AND NOT " + row_readable_sql(),)x",
+          "if (found[i].status == RecordStatus::Ready) out.insert(candidates[i]);"},
+         {{"src/store/record_store.cpp",
+           "const bool same_rules = layout_current && head->rules_fingerprint == rules.fixed;",
+           "rank_row, the owner's rules part"}},
+         {"src"}},
+        // D78 B3: every batch number is BatchProgress's. A count of the
+        // failure lines, or a counter of its own, is a second count.
+        {"How many library rows has a batch analyzed, failed or skipped?",
+         "BatchProgress, written only by run_batch, with plan_batch's skipped, in "
+         "src/app/analysis.cpp",
+         R"(\+\+\s*[\w.>-]*\b(done|completed|analyzed|failed|skipped)\b|\b(done|completed|analyzed|failed|skipped)\s*\+\+|failures\.size\(\))",
+         "",
+         {},
+         {},
+         "D76, D78 item B3 (task COUNT-B)",
+         {"++snap_.failed;", "++done;",
+          "const std::string head = counted((int64_t)s.failures.size(), \"chart\", \"charts\") +",
+          "std::printf(\"  ...and %zu more.\\n\", failures.size() - 20);"},
+         {"const std::string head = counted(s.failed, \"chart\", \"charts\") + \" failed##batchfailures\";",
+          "for (int i = 0; i < shown; ++i) std::printf(\"  %s\\n\", failures[i].c_str());",
+          "snap_.failed = p.failed;"},
+         {{"src/app/analysis.cpp", "if (wr.failed) ++progress.failed;", "run_batch, the owner"},
+          {"src/app/analysis.cpp", "else ++progress.analyzed;", "run_batch, the owner"},
+          {"src/app/analysis.cpp", "++plan.skipped;", "plan_batch, the owner of skipped"},
+          {"src/app/analysis.cpp", "++done;", "discover_charts' scan progress, not a batch count"},
+          {"src/ui/library_dialogs.cpp", "for (size_t i = 0; i < s.failures.size(); ++i) {",
+           "walks the failure lines; the heading reads s.failed"}},
+         {"src/app/analysis.cpp", "src/cli/batch.cpp", "src/ui/library_jobs.cpp",
+          "src/ui/library_dialogs.cpp", "src/ui/app_state.cpp"}},
+        // D78 B5: RecordStore::counts() is every stored row at every
+        // setting, so printing it next to the batch's counts read as a
+        // second chart count. It may only say whether the store is empty.
+        {"Does a line print the store's raw row count as a count of charts?",
+         "BatchProgress and the library table (D76, D78); RecordStore::counts() only tells an "
+         "empty store",
+         R"(\b\w*store\w*(\.|->)counts\(\))",
+         "",
+         {},
+         {},
+         "D78 item 2 (task COUNT-B)",
+         {"auto [songs, records] = store.counts();", "const auto n = app.store->counts().first;"},
+         {"CHECK(m.counts().all == 6);", "const ChipCounts& counts = app.library.counts();"},
+         {{"src/app/report.cpp", "if (store.counts().second == 0) {",
+           "generate_report asks only whether the store is empty"}},
+         {}},
     };
     return r;
 }
