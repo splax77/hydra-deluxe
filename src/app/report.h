@@ -53,8 +53,11 @@ struct ReportRow {
     // The chart this row belongs to. generate_report counts the distinct
     // charts with it, and build_html turns it into the page's "c" number.
     std::string hyhash;
-    // How many library rows that chart has, every copy counted (D76, D77):
-    // what the subtitle and the Charts tile add up. collect_rows fills it.
+    // How many library rows that chart has, every copy counted (D76): what
+    // the subtitle and the Charts tile add up. collect_rows sets it for a
+    // chart the library lists. A chart it doesn't list (a hydra_batch-only
+    // database, a chart removed since) is on the page, so it counts once:
+    // this default is the one place that rule lives (D77).
     int copies = 1;
 };
 

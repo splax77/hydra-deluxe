@@ -7,7 +7,6 @@
 #include <cstring>
 #include <filesystem>
 #include <unordered_map>
-#include <unordered_set>
 
 #include "app/analysis.h"  // normalize_chart_hash
 #include "app/display_format.h"
@@ -198,23 +197,21 @@ std::string beyond_edge_text(double hit_window_ms) {
     return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
 }
 
-// A small number per chart, in order of first appearance among the rows. The
-// page's Charts tile finds each chart's copies ("k") by it, without the
-// 32-character hash on every row.
-std::unordered_map<std::string, int> chart_ids(const std::vector<ReportRow>& rows) {
-    std::unordered_map<std::string, int> ids;
-    for (const ReportRow& r : rows) ids.emplace(r.hyhash, static_cast<int>(ids.size()));
-    return ids;
-}
+// One chart on the page: a small number, in order of first appearance among
+// the rows, and its library copies (D76, D77).
+struct PageChart {
+    int id = 0;
+    int copies = 1;
+};
 
-// The charts the rows belong to, every library copy counted (D76): the
-// subtitle's chart count. The Charts tile adds up the same "k" per chart.
-int64_t charts_counted(const std::vector<ReportRow>& rows) {
-    std::unordered_set<std::string> seen;
-    int64_t n = 0;
+// The charts the rows belong to, each once. The page's "c" is the number, so
+// the Charts tile finds each chart's "k" without the 32-character hash on
+// every row, and the subtitle's chart count adds up the copies.
+std::unordered_map<std::string, PageChart> page_charts(const std::vector<ReportRow>& rows) {
+    std::unordered_map<std::string, PageChart> charts;
     for (const ReportRow& r : rows)
-        if (seen.insert(r.hyhash).second) n += r.copies;
-    return n;
+        charts.emplace(r.hyhash, PageChart{static_cast<int>(charts.size()), r.copies});
+    return charts;
 }
 
 }  // namespace
@@ -270,10 +267,8 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
         // did in Python.
         if (!record) return;
         // Every library copy counts (D76). A chart the library doesn't list
-        // (a hydra_batch-only database, a chart removed since) is on the page,
-        // so it counts once (D77).
+        // keeps ReportRow's default, D77's answer.
         const auto listed = copies.find(meta.hyhash);
-        const int chart_copies = listed == copies.end() ? 1 : listed->second;
 
         // all_paths() is already best first (pather::read sorts the roots and
         // each variant sits under its parent), so ranks number it as it comes.
@@ -310,7 +305,7 @@ std::vector<ReportRow> collect_rows(store::RecordStore& store, int64_t max_paths
             row.sqout = *s.sqout_count;
             row.notes = *s.notecount;
             row.hyhash = meta.hyhash;
-            row.copies = chart_copies;
+            if (listed != copies.end()) row.copies = listed->second;
             rows.push_back(std::move(row));
         }
     }, cancel);
@@ -343,14 +338,15 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
         }
     }
     data += "],\"rows\":[";
-    const std::unordered_map<std::string, int> ids = chart_ids(rows);
+    const std::unordered_map<std::string, PageChart> charts = page_charts(rows);
     bool first_row = true;
     for (const ReportRow& r : rows) {
         if (!first_row) data.push_back(',');
         first_row = false;
 
-        data += "{\"c\":" + std::to_string(ids.at(r.hyhash));
-        data += ",\"k\":" + std::to_string(r.copies);
+        const PageChart& chart = charts.at(r.hyhash);
+        data += "{\"c\":" + std::to_string(chart.id);
+        data += ",\"k\":" + std::to_string(chart.copies);
         data += ",\"song\":";
         json_escape_into(data, r.song);
         data += ",\"artist\":";
@@ -433,7 +429,7 @@ GeneratedReport generate_report(store::RecordStore& store,
     // count every library copy of a chart (D76, D77).
     for (const ReportRow& r : rows)
         if (r.rank == 1) out.records += r.copies;
-    out.songs = charts_counted(rows);
+    for (const auto& [hash, chart] : page_charts(rows)) out.songs += chart.copies;
 
     // Counts read the house rule (hydra::counted, D48 Q12). The cut is per
     // chart and mode, and the page lists every mode at the current cap.
