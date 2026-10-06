@@ -100,6 +100,12 @@ void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2) {
     x2 = x1 + w;
 }
 
+void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2) {
+    const PreviewConfig::Track& T = cfg.track;
+    x1 = right ? T.x_right : T.x_left - T.railing_x_width;
+    x2 = right ? T.x_right + T.railing_x_width : T.x_left;
+}
+
 XMMATRIX stretch_matrix(const DrawCommand& cmd) {
     float sx = std::fabs(cmd.hi[0] - cmd.lo[0]);
     float sy = std::fabs(cmd.hi[1] - cmd.lo[1]);
@@ -258,17 +264,14 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     }
 
     // 2. Railings: two boxes along the whole visible depth.
-    {
-        DrawCommand l;
-        l.mesh = MeshId::Box;
-        l.lo[0] = T.x_left - T.railing_x_width; l.lo[1] = T.railing_y_top;    l.lo[2] = T.z_past;
-        l.hi[0] = T.x_left;                     l.hi[1] = T.railing_y_bottom; l.hi[2] = T.z_future;
-        l.material = color_mat(T.railing_color);
-        DrawCommand r = l;
-        r.lo[0] = T.x_right;
-        r.hi[0] = T.x_right + T.railing_x_width;
-        out.push_back(l);
-        out.push_back(r);
+    for (bool right : {false, true}) {
+        DrawCommand rail;
+        rail.mesh = MeshId::Box;
+        railing_x(cfg, right, rail.lo[0], rail.hi[0]);
+        rail.lo[1] = T.railing_y_top;    rail.lo[2] = T.z_past;
+        rail.hi[1] = T.railing_y_bottom; rail.hi[2] = T.z_future;
+        rail.material = color_mat(T.railing_color);
+        out.push_back(rail);
     }
 
     // 3. Beat lines (depth test off): bar / beat / half-beat flats.
@@ -339,7 +342,37 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         }
     }
 
-    // 6. Gems, latest (farthest) first. A struck note (on or past the strike
+    // 6. SP end marks (Hydra, D81), depth off: a gem centred near an active
+    //    window's end hides the tint's edge, so each end visible on the
+    //    highway gets a bright edge across the floor and a notch on each
+    //    railing, where no gem sits. They draw before the gems, so a gem
+    //    still covers the edge. The ends are TrackState::sp_active_ends.
+    {
+        const Material mark = color_mat(cfg.hydra.sp_active_color);
+        const float half_edge = cfg.hydra.sp_end_edge_depth * 0.5f;
+        const float half_notch = cfg.hydra.sp_end_notch_size * 0.5f;
+        for (double t_end : state.sp_active_ends(win)) {
+            const float z = z_of(t_end);
+            out.push_back(flat(T.x_left, T.y, z + half_edge, T.x_right, z - half_edge, mark, 1.0f,
+                               DepthMode::Always));
+            for (bool right : {false, true}) {
+                float x1, x2;
+                railing_x(cfg, right, x1, x2);
+                const float cx = (x1 + x2) * 0.5f;
+                DrawCommand n;
+                n.mesh = MeshId::Box;
+                n.lo[0] = cx - half_notch; n.lo[1] = T.railing_y_top + cfg.hydra.sp_end_notch_rise;
+                n.lo[2] = z + half_notch;
+                n.hi[0] = cx + half_notch; n.hi[1] = T.railing_y_bottom;
+                n.hi[2] = z - half_notch;
+                n.material = mark;
+                n.depth = DepthMode::Always;
+                out.push_back(n);
+            }
+        }
+    }
+
+    // 7. Gems, latest (farthest) first. A struck note (on or past the strike
     //    line) flashes white there and fades over secs_fade.
     for (auto it = win.rbegin(); it != win.rend(); ++it) {
         const bool od = toggle_on_after(it->overdrive);

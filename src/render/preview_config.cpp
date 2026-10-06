@@ -155,6 +155,9 @@ PreviewConfig load_preview_config(const std::string& json_text) {
     c.hydra.sp_active_color = get_color(hy, "sp_active_color");
     c.hydra.sp_active_darken = get_f(hy, "sp_active_darken");
     c.hydra.fill_offered_alpha = get_f(hy, "fill_offered_alpha");
+    c.hydra.sp_end_edge_depth = get_f(hy, "sp_end_edge_depth");
+    c.hydra.sp_end_notch_size = get_f(hy, "sp_end_notch_size");
+    c.hydra.sp_end_notch_rise = get_f(hy, "sp_end_notch_rise");
 
     return c;
 }

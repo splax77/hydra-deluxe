@@ -82,6 +82,20 @@ TEST_CASE("the shipped 3d-config.json loads to the Onyx values") {
     check_color(c.hydra.sp_active_color, 0x6c / 255.0f, 0xf7 / 255.0f, 0xc6 / 255.0f);
     CHECK(c.hydra.sp_active_darken == doctest::Approx(0.2));
     CHECK(c.hydra.fill_offered_alpha == doctest::Approx(0.35));
+    // The SP end mark's look, as the user approved it (D81).
+    CHECK(c.hydra.sp_end_edge_depth == doctest::Approx(0.1));
+    CHECK(c.hydra.sp_end_notch_size == doctest::Approx(0.18));
+    CHECK(c.hydra.sp_end_notch_rise == doctest::Approx(0.06));
+}
+
+TEST_CASE("load_preview_config refuses a missing SP end mark key and names it") {
+    for (const char* key : {"sp_end_edge_depth", "sp_end_notch_size", "sp_end_notch_rise"}) {
+        nlohmann::json j = nlohmann::json::parse(shipped_preview_config_text());
+        j["hydra"].erase(key);
+        const std::string expected = std::string("3d-config.json: missing key hydra.") + key;
+        CHECK_THROWS_WITH_AS(load_preview_config(j.dump()), doctest::Contains(expected.c_str()),
+                             std::runtime_error);
+    }
 }
 
 TEST_CASE("load_preview_config refuses a missing key and names it") {
