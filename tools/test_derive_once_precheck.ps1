@@ -19,6 +19,10 @@ must-not-match lines. Then the fixture runs again once per check with that check
 turned off, and each of those runs must miss every item that check plants,
 which proves every check is needed for this test to pass. The list of checks
 is the precheck's own ($checks), so a new check with no planted item fails.
+Last, the range-size lines: the small feature range prints its size and no
+large-range note; a range over the precheck's threshold only in the folders
+it leaves out of the count prints none; the same text in a counted folder
+prints the note. The threshold and the folders are loaded from the precheck.
 
 Part 2 runs the script on the two first-review ranges of the 2026-10-04
 gate (c6debcd^2...c6debcd and 11b9d44^2...11b9d44) in this repository and
@@ -61,6 +65,8 @@ function Invoke-Precheck([string]$Repo, [string]$Range, [int[]]$Disable, [string
     # finding 1). The line's start is the precheck's own $warnPrefix, loaded
     # from its text below.
     foreach ($w in ($out | Where-Object { $_.StartsWith($warnPrefix) })) { $script:Failures.Add("${Range}: the precheck warned: $w") }
+    # The whole output, for the range-size case, which reads the lines after the items.
+    $script:LastOutput = $out
     @($out | Where-Object { $_ -match '^[A-E] ' })
 }
 
@@ -245,6 +251,7 @@ TEST_CASE("model.h mentions the window") {
 
     $lines = Invoke-Precheck $fixture 'main...feature' $DisableCheck
     Assert-Expectations 'fixture' $lines $expect $absent
+    $featureOutput = $script:LastOutput
 
     # Each check, turned off, must lose every item it plants. The checks are
     # the precheck's own $checks list, loaded from its text, so a new check
@@ -261,6 +268,40 @@ TEST_CASE("model.h mentions the window") {
             }
         }
     }
+
+    # Range size. The threshold, the folders left out of the count and the
+    # two line starts are the precheck's own, loaded from its text.
+    $largeRangeLines = (Find-PrecheckAst '$largeRangeLines').Right.Expression.SafeGetValue()
+    $sizeExcluded = @((Find-PrecheckAst '$sizeExcluded').Right.Expression.SafeGetValue())
+    $sizePrefix = (Find-PrecheckAst '$sizePrefix').Right.Expression.SafeGetValue()
+    $largeRangePrefix = (Find-PrecheckAst '$largeRangePrefix').Right.Expression.SafeGetValue()
+    function Assert-Size([string]$Label, [string[]]$Out, [string]$SizeLike, [bool]$Large) {
+        $size = @($Out | Where-Object { $_.StartsWith($sizePrefix) })
+        $SizeLike = '^' + [regex]::Escape($sizePrefix) + $SizeLike
+        if ($size.Count -ne 1 -or $size[0] -notmatch $SizeLike) { $script:Failures.Add("${Label}: want one '$sizePrefix' line matching /$SizeLike/, got: $($size -join ' | ')") }
+        else { $script:Passes++ }
+        $note = @($Out | Where-Object { $_.StartsWith($largeRangePrefix) })
+        if ($Large -ne [bool]$note.Count) { $script:Failures.Add("${Label}: want a '$largeRangePrefix' note: $Large; got: $($note -join ' | ')") }
+        else { $script:Passes++ }
+    }
+    # The feature range is small: its count is pinned from one run.
+    Assert-Size 'size, small range' $featureOutput '33 changed lines \(33 added, 0 deleted\)' $false
+    # A range over the threshold, but only in the folders left out of the
+    # count, gets no note.
+    $overLimit = (1..($largeRangeLines + 1) | ForEach-Object { "line $_" }) -join "`n"
+    Invoke-FixtureGit @('checkout', '-q', '-b', 'vendored', 'feature')
+    foreach ($folder in $sizeExcluded) { Write-Fixture "$folder/big.txt" $overLimit }
+    Invoke-FixtureGit @('add', '-A')
+    Invoke-FixtureGit @('commit', '-q', '-m', 'vendored')
+    [void](Invoke-Precheck $fixture 'feature...vendored' @())
+    Assert-Size 'size, excluded folders only' $script:LastOutput '0 changed lines' $false
+    # The same text in a counted folder gets the note.
+    Invoke-FixtureGit @('checkout', '-q', '-b', 'big', 'feature')
+    Write-Fixture 'docs/big.md' $overLimit
+    Invoke-FixtureGit @('add', '-A')
+    Invoke-FixtureGit @('commit', '-q', '-m', 'big')
+    [void](Invoke-Precheck $fixture 'feature...big' @())
+    Assert-Size 'size, over the threshold' $script:LastOutput '' $true
 } finally {
     Remove-Item -Recurse -Force -LiteralPath $fixture -ErrorAction SilentlyContinue
 }
