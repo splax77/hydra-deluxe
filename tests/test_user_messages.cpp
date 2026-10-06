@@ -1,16 +1,18 @@
-// Unit tests for app/user_messages: every known internal error becomes a
-// short message that says what happened and what to do, and the raw text
-// stays available for a details line.
+// Unit tests for app/user_messages: every error's kind becomes a short
+// message that says what happened and what to do, and the raw text stays
+// available for a details line.
 
 #include "doctest.h"
 
 #include <new>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "app/rules_file.h"
 #include "app/user_messages.h"
 #include "chart_text.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "parse/midi.h"
 #include "parse/song.h"
@@ -18,7 +20,6 @@
 
 using hydra::app::plain_error;
 using hydra::app::plain_error_detail;
-using hydra::app::plain_error_text;
 
 namespace {
 
@@ -33,55 +34,26 @@ const std::string kSongFileMissing =
     "library to update the library.";
 const std::string kNetUnreachable =
     "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.";
+const std::string kAudioDecode =
+    "Hydra couldn't decode this song's audio files. They may be damaged; try downloading "
+    "the song again.";
 
 }  // namespace
 
-TEST_CASE("user_messages: database errors say to check the disk") {
-    for (const char* raw : {"add_song failed: disk I/O error",
-                            "add_row path failed: database is locked",
-                            "put_dynamics failed: disk I/O error",
-                            "meta_set failed: disk I/O error",
-                            "reindex failed: disk I/O error",
-                            "rebuild_chart_library failed: disk I/O error",
-                            "sqlite exec failed: disk I/O error",
-                            "prepare failed: no such table: records"}) {
-        CAPTURE(raw);
-        CHECK(plain_error(std::runtime_error(raw)) == kDatabaseWrite);
-    }
-    CHECK(plain_error(std::runtime_error("failed to open database 'C:\\x\\hydra.db': unable to open")) ==
-          "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
-          "running and that the Hydra folder isn't read-only.");
-}
-
-TEST_CASE("user_messages: a missing or unreadable song file") {
-    CHECK(plain_error(std::runtime_error("cannot open file: C:\\Songs\\x\\notes.chart")) ==
-          kSongFileMissing);
-    CHECK(plain_error(hydra::MidiError("cannot open MIDI file: C:\\Songs\\x\\notes.mid")) ==
-          kSongFileMissing);
-    CHECK(plain_error(std::runtime_error("MD5 hashing failed")) ==
-          "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
-          "library again.");
-    CHECK(plain_error(hydra::ChartFileError("Duplicate note.")) == kChartUnreadable);
-    CHECK(plain_error(hydra::MidiError("not a MIDI file: missing MThd header")) ==
-          kChartUnreadable);
-    CHECK(plain_error(std::runtime_error("Truncated SNG file.")) == kChartUnreadable);
-    CHECK(plain_error(std::runtime_error("unexpected chart type: C:\\x\\song.txt")) ==
-          kChartUnreadable);
-    // A chart-file error Hydra doesn't know yet still reads as a chart problem.
-    CHECK(plain_error(hydra::ChartFileError("a brand new parse failure")) == kChartUnreadable);
-}
+// The refusals carry their kind, as check_timing_maps throws them.
+constexpr hydra::ErrorKind kRefused = hydra::ErrorKind::ChartTimingRefused;
 
 TEST_CASE("user_messages: refused chart timing names the tick") {
-    CHECK(plain_error(hydra::ChartFileError("the tempo at tick 384 is not above 0 BPM")) ==
+    CHECK(plain_error(hydra::ChartFileError(kRefused, "the tempo at tick 384 is not above 0 BPM")) ==
           "Hydra can't analyze this chart because the tempo at tick 384 is not above 0 "
           "BPM. Fix that line in the chart file or download the song again.");
     CHECK(plain_error(hydra::ChartFileError(
-              "the time signature at tick 768 makes a measure 0 ticks long")) ==
+              kRefused, "the time signature at tick 768 makes a measure 0 ticks long")) ==
           "Hydra can't analyze this chart because the time signature at tick 768 makes a "
           "measure 0 ticks long. Fix that line in the chart file or download the song "
           "again.");
     CHECK(plain_error(hydra::ChartFileError(
-              "the chart's resolution is 0, and it must be above 0")) ==
+              kRefused, "the chart's resolution is 0, and it must be above 0")) ==
           "Hydra can't analyze this chart because the chart's resolution is 0, and it must "
           "be above 0. Fix that line in the chart file or download the song again.");
 }
@@ -104,7 +76,7 @@ TEST_CASE("user_messages: a real refused load shows the tick sentence") {
 
 TEST_CASE("user_messages: an infinite .mid tempo says so") {
     CHECK(plain_error(hydra::ChartFileError(
-              "the tempo at tick 96 is infinite (0 microseconds per beat)")) ==
+              kRefused, "the tempo at tick 96 is infinite (0 microseconds per beat)")) ==
           "Hydra can't analyze this chart because the tempo at tick 96 is infinite (0 "
           "microseconds per beat). Fix that line in the chart file or download the song "
           "again.");
@@ -112,38 +84,14 @@ TEST_CASE("user_messages: an infinite .mid tempo says so") {
 
 TEST_CASE("user_messages: the no-notes message is already plain and passes through") {
     const std::string msg = "No Expert Pro Drums notes in this chart.";
-    CHECK(plain_error(hydra::ChartFileError(msg)) == msg);
-    CHECK(plain_error_text(msg) == msg);
-}
-
-TEST_CASE("user_messages: a broken search is reported as Hydra's bug") {
-    CHECK(plain_error(std::runtime_error("search reached a broken state")) ==
-          "The analysis failed on this chart because of a bug in Hydra. Please report it "
-          "with the song's name.");
-}
-
-TEST_CASE("user_messages: leaderboard errors") {
-    CHECK(plain_error(std::runtime_error("could not send the request (error 12029)")) ==
-          kNetUnreachable);
-    CHECK(plain_error(std::runtime_error("could not connect to the leaderboard (error 12007)")) ==
-          kNetUnreachable);
-    CHECK(plain_error(std::runtime_error("no response from the leaderboard (error 12002)")) ==
-          "dmleaderboards didn't answer in time. Its server may be waking up; try again in "
-          "a minute.");
-    CHECK(plain_error(std::runtime_error("leaderboard returned HTTP 503")) ==
-          "dmleaderboards returned an error (HTTP 503). Try again later.");
-    CHECK(plain_error(std::runtime_error("the leaderboard sent a response Hydra couldn't read")) ==
-          "dmleaderboards sent a reply Hydra couldn't read. Try again later.");
-    CHECK(plain_error(std::runtime_error("this user has no scores to compare")) ==
-          "This player has no drum scores on dmleaderboards to compare.");
+    CHECK(plain_error(hydra::ChartFileError(hydra::ErrorKind::AlreadyPlain, msg)) == msg);
+    // The typed error the loaders throw passes through the same way.
+    CHECK(plain_error(hydra::NoNotesError(hydra::Difficulty::Expert, true)) == msg);
+    CHECK(plain_error(hydra::NoNotesError(hydra::Difficulty::Hard, false)) ==
+          "No Hard Drums notes in this chart.");
 }
 
 TEST_CASE("user_messages: report, rules, stored results, memory") {
-    CHECK(plain_error(std::runtime_error("no records stored yet")) ==
-          "There are no analyzed songs to put in a report yet. Analyze some songs first.");
-    CHECK(plain_error(std::runtime_error("cannot write C:\\Users\\x\\Documents\\Hydra\\hydra_paths.html")) ==
-          "Hydra couldn't save the report file. Check that the disk isn't full and the "
-          "report folder isn't read-only.");
     CHECK(plain_error(hydra::app::RulesFileError("hydra_rules.ini:3: unknown key \"x\"")) ==
           "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then "
           "restart Hydra.");
@@ -151,11 +99,106 @@ TEST_CASE("user_messages: report, rules, stored results, memory") {
           "A saved result couldn't be read. Re-analyze this song to replace it.");
     CHECK(plain_error(std::bad_alloc()) ==
           "Hydra ran out of memory on this chart. Close other programs and try again.");
-    CHECK(plain_error(std::runtime_error("decode_audio: opus_decode failed")) ==
-          "Hydra couldn't decode this song's audio files. They may be damaged; try "
-          "downloading the song again.");
-    CHECK(plain_error(std::runtime_error("PreviewRenderer: missing texture x.png")) ==
-          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+}
+
+TEST_CASE("user_messages: stale_text names the real cause") {
+    using hydra::app::stale_text;
+    CHECK(stale_text(/*build=*/true, /*rules=*/false) ==
+          "Out of date: this result came from another Hydra version. Re-analyze to refresh "
+          "it.");
+    CHECK(stale_text(/*build=*/false, /*rules=*/true) ==
+          "Out of date: this result came from different rules in hydra_rules.ini. Re-analyze "
+          "to refresh it.");
+    // Both causes: the sentence the details panel shows today, unchanged.
+    const std::string both =
+        "Out of date: this result came from another Hydra version or from different rules "
+        "in hydra_rules.ini. Re-analyze to refresh it.";
+    CHECK(stale_text(/*build=*/true, /*rules=*/true) == both);
+    // Neither (a caller asking for a row that is not stale): no cause to
+    // name, so today's sentence, never an empty line.
+    CHECK(stale_text(/*build=*/false, /*rules=*/false) == both);
+    CHECK(std::string(hydra::app::kNoPathsFound) == "No paths found.");
+}
+
+// The thrower names the kind, so the words of the error don't matter: every
+// kind reads its own sentence from "x".
+TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its words") {
+    using hydra::ErrorKind;
+    using hydra::KindedError;
+    const std::pair<ErrorKind, std::string> cases[] = {
+        {ErrorKind::Cancelled, "Stopped before it finished."},
+        {ErrorKind::DatabaseOpen,
+         "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
+         "running and that the Hydra folder isn't read-only."},
+        {ErrorKind::DatabaseWrite, kDatabaseWrite},
+        {ErrorKind::DatabaseRead,
+         "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+         "running, then try again."},
+        {ErrorKind::SongFileMissing, kSongFileMissing},
+        {ErrorKind::HashFailed,
+         "Windows couldn't read a song file to identify it. Restart Hydra and run Scan "
+         "library again."},
+        {ErrorKind::ChartUnreadable, kChartUnreadable},
+        {ErrorKind::SearchBroken,
+         "The analysis failed on this chart because of a bug in Hydra. Please report it "
+         "with the song's name."},
+        {ErrorKind::NetUnreachable, kNetUnreachable},
+        {ErrorKind::NetTimeout,
+         "dmleaderboards didn't answer in time. Its server may be waking up; try again in "
+         "a minute."},
+        {ErrorKind::NetBadReply, "dmleaderboards sent a reply Hydra couldn't read. Try again later."},
+        {ErrorKind::NoScores, "This player has no drum scores on dmleaderboards to compare."},
+        {ErrorKind::NoRecords,
+         "There are no analyzed songs to put in a report yet. Analyze some songs first."},
+        {ErrorKind::ReportWrite,
+         "Hydra couldn't save the report file. Check that the disk isn't full and the "
+         "report folder isn't read-only."},
+        {ErrorKind::RulesFile,
+         "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then "
+         "restart Hydra."},
+        {ErrorKind::StoredResult,
+         "A saved result couldn't be read. Re-analyze this song to replace it."},
+        {ErrorKind::AudioDecode, kAudioDecode},
+        {ErrorKind::PreviewAssets,
+         "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them."},
+    };
+    for (const auto& [kind, sentence] : cases) {
+        CAPTURE(static_cast<int>(kind));
+        CHECK(plain_error(KindedError(kind, "x")) == sentence);
+    }
+    CHECK(plain_error(KindedError(ErrorKind::NetHttpStatus, "x", 503)) ==
+          "dmleaderboards returned an error (HTTP 503). Try again later.");
+    CHECK(plain_error(KindedError(ErrorKind::ChartTimingRefused, "x")) ==
+          "Hydra can't analyze this chart because x. Fix that line in the chart file or "
+          "download the song again.");
+    CHECK(plain_error(KindedError(ErrorKind::AlreadyPlain, "x")) == "x");
+    // The typed errors carry their kinds too.
+    CHECK(plain_error(hydra::ChartFileError("x")) == kChartUnreadable);
+    CHECK(plain_error(hydra::MidiError("x")) == kChartUnreadable);
+    CHECK(plain_error(hydra::store::SerializeError("x")) ==
+          "A saved result couldn't be read. Re-analyze this song to replace it.");
+}
+
+// D73 item 4: a tool's body that throws ends with exit code 1 (and its
+// plain_error_block on stderr); one that returns keeps its own code.
+TEST_CASE("user_messages: run_tool turns an escaping error into exit code 1") {
+    using hydra::app::run_tool;
+    CHECK(run_tool([] { return 0; }) == 0);
+    CHECK(run_tool([] { return 2; }) == 2);
+    CHECK(run_tool([]() -> int {
+              throw hydra::KindedError(hydra::ErrorKind::DatabaseRead, "x");
+          }) == 1);
+}
+
+// Only the kind picks a sentence. An untyped error that happens to carry a
+// thrower's words reads the fallback like any other.
+TEST_CASE("user_messages: an untyped error reads the fallback, whatever its words") {
+    for (const char* raw : {"cannot write C:\\x\\hydra_paths.html", "cancelled"}) {
+        CAPTURE(raw);
+        CHECK(plain_error(std::runtime_error(raw)) ==
+              "Something went wrong. Try again, and if it keeps happening, report it with "
+              "the details below.");
+    }
 }
 
 TEST_CASE("user_messages: anything else falls back, and the detail keeps the raw text") {
@@ -165,5 +208,21 @@ TEST_CASE("user_messages: anything else falls back, and the detail keeps the raw
           "Something went wrong. Try again, and if it keeps happening, report it with the "
           "details below.");
     CHECK(plain_error_detail(odd) == "prepare_row: key asks for sp_cap 5");
-    CHECK(plain_error_text("cancelled") == "Stopped before it finished.");
+}
+
+// The startup message box and the command-line tools show both at once
+// (D72 items 1 and 5).
+TEST_CASE("user_messages: plain_error_block puts the sentence above the raw text") {
+    using hydra::app::plain_error_block;
+    CHECK(plain_error_block(hydra::KindedError(hydra::ErrorKind::DatabaseOpen,
+                                               "sqlite exec failed: file is not a database")) ==
+          "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
+          "running and that the Hydra folder isn't read-only.\n"
+          "\n"
+          "sqlite exec failed: file is not a database");
+    CHECK(plain_error_block(std::runtime_error("CreateWindowW failed (GetLastError 0x00000578)")) ==
+          "Something went wrong. Try again, and if it keeps happening, report it with the "
+          "details below.\n"
+          "\n"
+          "CreateWindowW failed (GetLastError 0x00000578)");
 }

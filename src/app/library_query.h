@@ -14,6 +14,8 @@
 #include <string_view>
 #include <vector>
 
+#include "parse/song.h"  // strip_rich_tags
+
 namespace hydra::app {
 
 // Lowercase, accents removed (NFD-style fold for Latin-1 and Latin Extended-A:
@@ -25,11 +27,23 @@ namespace hydra::app {
 // byte; nothing is dropped and nothing throws.
 std::string fold_for_search(std::string_view text);
 
-// Removes Clone Hero rich-text tags: <color=...>, </color>, <b>, </b>, <i>,
-// </i>, <size=...>, </size>, <u>, </u>, <s>, </s>, <sub>, </sub>, <sup>,
-// </sup>, case-insensitive. Anything else in angle brackets is kept, including
-// <color> with no value, a tag that never closes, and "<unknown artist>".
-std::string strip_rich_tags(std::string_view text);
+// One character fold_for_search changes, and what it becomes. Both are UTF-8.
+struct FoldEntry {
+    std::string from;
+    std::string to;
+};
+
+// Every single character fold_for_search changes, with its folded form: each
+// character of the fold's own named runs (library_query.cpp) run through
+// fold_for_search one at a time, keeping only those that come out different.
+// Whitespace is left out; the pages split a query on it. The report pages fold a
+// typed query by looking each character up in this table, so they search the
+// way the library does without a second copy of the fold. In code point order.
+std::vector<FoldEntry> search_fold_table();
+
+// Removes Clone Hero rich-text tags. The rule lives in parse/song.h, beside
+// display_title; the library reads the same function under this name.
+using hydra::strip_rich_tags;
 
 enum class QueryField { Any, Title, Artist, Charter, Folder };
 
@@ -41,9 +55,9 @@ struct QueryTerm {
 
 struct LibraryQuery {
     std::vector<QueryTerm> terms;         // every term must match
-    std::optional<int> stars;             // stars:N, N in 0..7
+    std::optional<int> stars;             // stars:N, N in 0..kMaxStars
     std::optional<double> squeeze_max_ms; // squeeze<=N (also squeeze<N treated as <=)
-    std::vector<std::string> errors;      // e.g. "stars: needs a number from 0 to 7"
+    std::vector<std::string> errors;      // one plain sentence per bad filter value
     bool empty() const;                   // no terms and no filters
 };
 
@@ -64,22 +78,29 @@ struct SearchableRow {
 SearchableRow make_searchable(std::string_view title, std::string_view artist,
                               std::string_view charter, std::string_view folder);
 
-// The best path's stored facts a filter can test; nullopt when not analyzed.
-// A row counts as analyzed when `stars` holds a value.
+// Whether a term limited to `term_field` counts in `column`: true when either
+// is Any or the two are the same field. The one rule for both matching
+// (query_matches) and highlighting (match_spans).
+bool term_applies_to(QueryField term_field, QueryField column);
+
+// The best path's stored facts a filter can test. A row with no facts matches
+// no filter; when a row has facts is the library's call (facts_of in
+// ui/library_model.cpp).
 struct RowFacts {
     std::optional<int> stars;
-    std::optional<double> hardest_ms;  // nullopt = no squeeze on the path
+    // nullopt = the path needs no timing (Path::needs_timing).
+    std::optional<double> hardest_ms;
 };
 
-// True when every term matches its field (or any field) and every filter holds.
-// A stars: or squeeze filter never matches a row with no facts.
-// A path with no squeeze passes any squeeze limit. Allocates nothing.
+// True when every term counts (see term_applies_to) and every filter holds.
+// A row with no facts matches no filter. A path that needs no timing
+// (Path::needs_timing) passes any squeeze limit. Allocates nothing.
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts);
 
 // Where the query's terms appear in one displayed (unfolded, tag-stripped)
 // string, as byte ranges, for highlighting. Ranges are sorted and don't overlap.
-// Only terms for `field` or for any field count; QueryField::Any counts every
-// term. A match covers every byte of each character it touches, so "beyonce"
+// Only terms that term_applies_to says count for `field`. A match covers every
+// byte of each character it touches, so "beyonce"
 // in "Beyoncé" covers both bytes of "é". Touching ranges merge.
 struct MatchSpan { size_t begin = 0, end = 0; };
 std::vector<MatchSpan> match_spans(const LibraryQuery& q, QueryField field,

@@ -41,7 +41,10 @@ struct StampRule {
 // the scoring (src/core), the chart readers (src/parse) when a chart reads
 // differently, or what a record holds. Then shrink `accepted` to the new stamp
 // alone. A stale result reads Stale and asks for re-analysis. Changes that
-// ship in the same release share one bump (decision D23, 2026-10-03).
+// ship in the same release share one bump (decision D23, 2026-10-03). The
+// summary columns (bestpath, score, stars, hardest_ms and the rest) are a
+// cache of the stored paths, so a change that alters any of them is covered
+// by this rule too (record_store.cpp, kSummaryColumnList).
 //
 // "2.1.0": the engine now stores each activation's SP-end history and
 // re-anchors the transfer scales on it (ADR 0021), and each tied variant
@@ -90,11 +93,43 @@ inline constexpr StampRule<int, 1> kDynamicsCountStamp{2, {2}};
 // line (D24).
 inline constexpr StampRule<uint8_t, 1> kDynamicsBlobStamp{2, {2}};
 
+// ---- Scanned chart facts (the charts table) --------------------------------
+
+// How a scan reads a chart's identity and names. BUMP IT (add 1) whenever any
+// of these changes what an unchanged file reads as: hash_chart_file and its
+// 1 MB .sng head rule (D51 call 13), sig_of (the size and mtime fingerprint
+// the rescan cache is keyed on), and the song.ini, .sng and .srb metadata
+// readers (names, stated length and delay). The sig only says a file is
+// unchanged; this stamp says the rows
+// read from it still hold what this build would read. Stored once per file,
+// as the meta row chart_meta_version. A stale or missing stamp drops the
+// whole rescan cache, so the next scan reads every chart once (D51 call 12).
+// 1 = the first stamp. 2 = the scan also reads each chart's stated length
+// and delay (store::ChartTimingMeta, D75).
+inline constexpr StampRule<int, 1> kChartMetaStamp{2, {2}};
+
+// ---- A song's length (songmeta.length_ms) ----------------------------------
+
+// How a song's length is worked out (app::song_length_ms, D75). BUMP IT (add
+// 1) whenever the length an unchanged song reads as changes: the owner in
+// src/app/song_length.cpp, the metadata readers that feed it
+// (store::ChartTimingMeta), and the chart's audio offset
+// (app::preview_audio_offset_ms and what feeds it). A length whose stamp is
+// not current reads as not read, and opening the song works it out again.
+// Stored per song, in songmeta.length_version.
+// 0 = lengths saved before the stamp existed, all worked out from the last
+// note. 1 = the audio's end in chart time (D69). 2 = the chart's stated
+// length in chart time, or its last Expert drum note when it states none
+// (D75).
+inline constexpr StampRule<int, 1> kSongLengthStamp{2, {2}};
+
 // A build always reads back what it writes.
 static_assert(kResultsStamp.is_current(kResultsStamp.written));
 static_assert(kPathFormatStamp.is_current(kPathFormatStamp.written));
 static_assert(kDynamicsCountStamp.is_current(kDynamicsCountStamp.written));
 static_assert(kDynamicsBlobStamp.is_current(kDynamicsBlobStamp.written));
+static_assert(kChartMetaStamp.is_current(kChartMetaStamp.written));
+static_assert(kSongLengthStamp.is_current(kSongLengthStamp.written));
 
 }  // namespace hydra::store
 

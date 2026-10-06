@@ -18,6 +18,8 @@
 #include <cstddef>
 #include <deque>
 #include <mutex>
+#include <stdexcept>
+#include <string>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -47,9 +49,16 @@ constexpr size_t kWorkPoolWaitingPerWorker = 2;
 // If consume throws, workers stop taking items, the pool is joined, and the
 // exception propagates. work must not throw: catch inside it. Result must be
 // default-constructible and movable.
+//
+// worker_count must be at least 1; batch_worker_count (app/analysis.h) owns
+// that floor. A smaller count throws std::invalid_argument naming it, since
+// with no cooks nothing would ever reach the pass.
 template <typename Result, typename Work, typename Consume>
 void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* cancel,
                    Work&& work, Consume&& consume) {
+    if (worker_count < 1)
+        throw std::invalid_argument("run_work_pool: worker count " +
+                                    std::to_string(worker_count) + " is below 1");
     if (count == 0) return;
 
     std::mutex mu;
@@ -59,8 +68,7 @@ void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* canc
     std::atomic<size_t> next{0};
     std::atomic<bool> stop{false};
 
-    const size_t nworkers =
-        std::min(count, static_cast<size_t>(std::max(1, worker_count)));
+    const size_t nworkers = std::min(count, static_cast<size_t>(worker_count));
     const size_t max_waiting = kWorkPoolWaitingPerWorker * nworkers;
     size_t live = nworkers;  // workers still running; guarded by mu
 

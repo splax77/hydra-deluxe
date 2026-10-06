@@ -26,6 +26,9 @@ int to_multiplier(int combo);
 // shows the combo multiplier doubled while it runs.
 inline constexpr int kStarPowerMultiplier = 2;
 
+// Clone Hero's rule: an activation needs two banked bars of Star Power.
+inline constexpr int kSpActivationBars = 2;
+
 // The multiplier the game's disc shows for a chord: its combo multiplier,
 // times kStarPowerMultiplier when Star Power pays the chord.
 int shown_multiplier(int combo_multiplier, bool in_sp);
@@ -44,13 +47,17 @@ public:
     // on a tempo change reads the new tempo, same rule as at()).
     double tps_at(int64_t ticks) const;
 
-    // Continuous (sub-tick) variants for the display-layer exact squeeze
-    // solver: piecewise-linear, monotone, mutually inverse, and agreeing with
-    // at() on integer ticks. NOT part of the bit-for-bit scoring surface (see
-    // the header comment) -- never use them in the graph or the engine's
-    // scoring path. (The engine's rebuild step does call tick_at_ms through
-    // frontend_transfer_scales, but only to fill the display-only transfer
-    // fields after all scoring is done.)
+    // Continuous (sub-tick) variants of at(): piecewise-linear, monotone,
+    // mutually inverse, and agreeing with at() on integer ticks. NOT part of
+    // the bit-for-bit scoring surface (see the header comment) -- never use
+    // them in the graph or the engine's scoring path. tick_at_ms serves
+    // SongTiming::display_tick_at_ms, the tick a screen shows at a time,
+    // which the Preview's time box, drain box, tick steps and beat-line end
+    // and the Paths timeline's end (app/path_view.cpp) call. ms_at_tick_f
+    // serves the end of a shaded span (render/track_state.cpp) and the Clone
+    // Hero 1.0 fill deadline (search/graph.cpp), which is off the scoring
+    // surface on purpose. SongTiming::sp_end_ms (which only tests call) uses
+    // both.
     double ms_at_tick_f(double ticks) const;
     double tick_at_ms(double ms) const;
 
@@ -164,13 +171,22 @@ public:
     // holding SP for `end_measures` measures. All display-layer only, like
     // ms_per_measure_at: they interpolate in doubles with no plusmeasure tick
     // rounding, so they must never feed the graph/engine/stored records.
-    // Right-continuous at section boundaries; exact inverses of each other
-    // when meter changes land on barlines (as real charts do -- a mid-measure
-    // meter change makes the measure position jump, and these follow the
-    // section arrays through it).
+    // A tick exactly on a meter change is measured in the section before it,
+    // the engine's side; MeasureIndex::section_at owns that rule and
+    // measures_at_tick_f reads it (D51 call 22). The two are exact inverses
+    // of each other when meter changes land on barlines (as real charts do --
+    // a mid-measure meter change makes the measure position jump, and these
+    // follow the section arrays through it, the change tick included).
     double measures_at_tick_f(double ticks) const;
     double tick_at_measures_f(double measures) const;
     double sp_end_ms(double act_hit_ms, int64_t end_measures) const;
+
+    // The tick a playhead at `ms` shows: tick_at_ms rounded to the nearest
+    // tick, and never below 0. This is the one rule for which tick the
+    // screens show at a time (D48, Q23), so all four lines of the Preview's
+    // time box switch on the same tick. Display-layer only, like the helpers
+    // above.
+    int64_t display_tick_at_ms(double ms) const;
 
 private:
     int64_t tick_r_;

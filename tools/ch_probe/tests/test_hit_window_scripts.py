@@ -38,10 +38,10 @@ def samples_following(notes: list[dict], window_for) -> list[WW.Sample]:
 class LiveSnapshotTest(unittest.TestCase):
     def test_decode_reads_each_field_at_its_offset(self):
         raw = bytearray(live.SNAPSHOT_SIZE)
-        struct.pack_into("<d", raw, C.OFF_TOTAL_WINDOW, C.WINDOW_CAP_MS / 1000)
+        struct.pack_into("<d", raw, C.OFF_TOTAL_WINDOW, C.ms_to_s(C.WINDOW_CAP_MS))
         struct.pack_into("<I", raw, C.OFF_SCORE, 1234)
         struct.pack_into("<d", raw, C.OFF_SONG_CLOCK, 12.5)
-        struct.pack_into("<I", raw, C.OFF_FLAGS, 0x1000)
+        struct.pack_into("<I", raw, C.OFF_FLAGS, C.PRECISION_MODE_BIT)
         struct.pack_into("<d", raw, C.OFF_HIT_TIME, 12.49)
         s = live.decode_snapshot(bytes(raw))
         self.assertAlmostEqual(s.window_ms, C.WINDOW_CAP_MS)
@@ -54,6 +54,86 @@ class LiveSnapshotTest(unittest.TestCase):
         for name in ("OFF_WINDOW", "OFF_SCORE", "OFF_CLOCK", "OFF_FLAGS",
                      "OFF_HIT_TIME", "find_live_engine"):
             self.assertFalse(hasattr(live, name), name)
+
+
+class LiveHelpersTest(unittest.TestCase):
+    """The one wait loop, start cursor, hit offset and window tolerance."""
+
+    def test_wait_until_fires_at_the_target_or_its_lead(self):
+        for lead_ms, fires_at_ms in ((0.0, 1100.0), (2.0, 1098.0)):
+            # The song clock moves 1 ms per read and the read is always fresh,
+            # so the estimate equals the raw clock. A sleep moves both on.
+            ms = [999]
+            t = [0.0]
+
+            def read_raw():
+                ms[0] += 1
+                t[0] += 0.001
+                return C.ms_to_s(ms[0])
+
+            def sleep(s):
+                ms[0] += round(C.s_to_ms(s))
+                t[0] += s
+
+            clock = W.SongClock(read_raw, now=lambda: t[0])
+            raw_ms, est_ms = live.wait_until(clock, 1100.0, lead_ms=lead_ms,
+                                             now=lambda: t[0], sleep=sleep)
+            self.assertAlmostEqual(est_ms, fires_at_ms)
+            self.assertAlmostEqual(raw_ms, fires_at_ms)
+
+    def test_wait_until_stops_after_five_seconds_frozen(self):
+        self.assertEqual(live.STALL_S, 5.0)
+
+        def run(step_s, raws):
+            t = [0.0]
+            script = list(raws)
+            clock = W.SongClock(lambda: script.pop(0) if len(script) > 1 else script[0],
+                                now=lambda: t[0])
+            return live.wait_until(clock, 10000.0, now=lambda: t[0],
+                                   sleep=lambda s: t.__setitem__(0, t[0] + step_s))
+
+        with self.assertRaises(live.ClockFrozen):
+            run(5.1, [1.0])                      # frozen past 5 s
+        raw_ms, _ = run(4.9, [1.0, 1.0, 10.0])   # frozen 4.9 s, then it moves
+        self.assertEqual(raw_ms, 10000.0)
+
+    def test_wait_until_stops_differently_on_a_jump_back(self):
+        t = [0.0]
+        script = [3 * live.JUMP_BACK_S, 0.0]     # falls by more than the limit
+        clock = W.SongClock(lambda: script.pop(0) if len(script) > 1 else script[0],
+                            now=lambda: t[0])
+        with self.assertRaises(live.ClockJumpedBack) as caught:
+            live.wait_until(clock, 10000.0, now=lambda: t[0],
+                            sleep=lambda s: t.__setitem__(0, t[0] + s))
+        self.assertNotIsInstance(caught.exception, live.ClockFrozen)
+
+    def test_first_note_index_skips_notes_less_than_150ms_ahead(self):
+        self.assertEqual(live.START_LEAD_MS, 150.0)
+        self.assertEqual(live.first_note_index([100.0, 149.0, 150.0, 200.0], 0.0), 2)
+
+    def test_hit_offset_prefers_the_engine_hit_time(self):
+        offset, from_engine = live.hit_offset_ms(10000.0, 10004.0, 10.000, 10.010)
+        self.assertAlmostEqual(offset, 10.0)
+        self.assertTrue(from_engine)
+        offset, from_engine = live.hit_offset_ms(10000.0, 10004.0, 10.000, 10.000)
+        self.assertEqual(offset, 4.0)
+        self.assertFalse(from_engine)
+
+    def test_window_changed_uses_the_one_tolerance(self):
+        self.assertEqual(C.WINDOW_CHANGE_TOLERANCE_MS, 1e-6)
+        self.assertTrue(live.window_changed(85.0, 85.0005))
+        self.assertFalse(live.window_changed(85.0, 85.0))
+
+    def test_old_diagnostics_are_gone(self):
+        from tools.ch_probe import input_driver
+        from tools.ch_probe.experiments import active_probe
+        experiments = os.path.join(_REPO_ROOT, "tools", "ch_probe", "experiments")
+        for script in ("hit_detect.py", "find_clock3.py", "poll_windows.py",
+                       "find_engine.py", "milestone2.py", "test_attach.py"):
+            self.assertFalse(os.path.exists(os.path.join(experiments, script)), script)
+        for module in (W, active_probe, WW, input_driver, input_driver.InputDriver):
+            for name in ("wait_until", "schedule_hit", "STALL_S"):
+                self.assertFalse(hasattr(module, name), f"{module.__name__}.{name}")
 
 
 class WatchWindowTest(unittest.TestCase):
@@ -143,7 +223,7 @@ class WalkEdgesTest(unittest.TestCase):
         r, est = clock.read()
         self.assertAlmostEqual(est, 1.021)
         t[0] = 1.0                                        # capped fill-in
-        self.assertAlmostEqual(clock.read()[1], 1.016 + 0.05)
+        self.assertAlmostEqual(clock.read()[1], 1.016 + C.CLOCK_MAX_FILL_S)
 
     def test_song_clock_ignores_a_change_seen_late(self):
         t = [0.0]
@@ -157,17 +237,20 @@ class WalkEdgesTest(unittest.TestCase):
 
     def test_summary_brackets_the_edge(self):
         def row(p, m, hit):
-            return W.Row(0, 0.0, p, m, m, m if hit else None, hit)
+            return W.Row(0, 0.0, p, m, m, m if hit else None, hit, m)
         rows = [row(0, 0.5, True), row(85, 85.2, True), row(85, 85.4, True),
                 row(86, 86.1, False), row(-85, -85.3, True), row(-86, -86.2, False)]
         lines = W.summarize(rows)
         self.assertIn("On-time notes: 1/1 hit.", lines)
-        self.assertIn("  The late edge is between 85.4 and 86.1 ms.", lines)
-        self.assertIn("  The early edge is between 85.3 and 86.2 ms.", lines)
+        # The edge analysis.find_window_edge gives for these rows, pinned.
+        self.assertIn("  The late edge is 85.75 ms; 0 of 3 notes fall on the wrong"
+                      " side of it.", lines)
+        self.assertIn("  The early edge is 85.75 ms; 0 of 2 notes fall on the wrong"
+                      " side of it.", lines)
 
     def test_summary_flags_overlap_and_all_miss(self):
         def row(p, m, hit):
-            return W.Row(0, 0.0, p, m, m, None, hit)
+            return W.Row(0, 0.0, p, m, m, None, hit, m)
         lines = W.summarize([row(85, 85.0, False), row(86, 86.0, True),
                              row(-80, -80.0, False)])
         self.assertTrue(any("overlap" in l for l in lines))

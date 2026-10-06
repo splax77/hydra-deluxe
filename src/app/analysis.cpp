@@ -14,11 +14,17 @@
 #include <mutex>
 #include <set>
 #include <thread>
+#include <numeric>
 #include <tuple>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "app/dynamics_breakdown.h"
+#include "app/preview_source.h"  // ini_delay_ms, sng_metadata_delay_ms
+#include "app/song_length.h"   // stated_length_ms, chart_song_length_ms
+#include "app/user_messages.h"  // plain_error
 #include "app/work_pool.h"
+#include "core/error_kind.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "parse/srb.h"
@@ -30,21 +36,9 @@ namespace hydra::app {
 
 namespace {
 
-// Folder listings and directory checks come from core/winstr (list_dir,
-// is_directory_utf8), which handle paths of any length.
-
-std::string join_path(const std::string& a, const std::string& b) {
-    if (a.empty()) return b;
-    char last = a.back();
-    return (last == '\\' || last == '/') ? a + b : a + "\\" + b;
-}
-
-std::string parent_of(const std::string& path) {
-    std::string p = path;
-    while (!p.empty() && (p.back() == '\\' || p.back() == '/')) p.pop_back();
-    size_t pos = p.find_last_of("\\/");
-    return pos == std::string::npos ? std::string() : p.substr(0, pos);
-}
+// Folder listings, directory checks and folder-and-name joins come from
+// core/winstr (list_dir, is_directory_utf8, join_folder), which handle paths
+// of any length.
 
 // os.path.relpath(target, base), for the folders this walk already knows are
 // nested under `base` (or equal to it). Falls back to the raw target for any
@@ -73,7 +67,7 @@ public:
     Md5Provider() {
         if (!BCRYPT_SUCCESS(
                 BCryptOpenAlgorithmProvider(&alg_, BCRYPT_MD5_ALGORITHM, nullptr, 0)))
-            throw std::runtime_error("BCryptOpenAlgorithmProvider(MD5) failed");
+            throw KindedError(ErrorKind::HashFailed, "BCryptOpenAlgorithmProvider(MD5) failed");
     }
     ~Md5Provider() {
         if (alg_) BCryptCloseAlgorithmProvider(alg_, 0);
@@ -95,12 +89,12 @@ struct HashedFile {
 HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
                       size_t head_capture) {
     FILE* f = fopen_utf8(path, L"rb");
-    if (f == nullptr) throw std::runtime_error("cannot open file: " + path);
+    if (f == nullptr) throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + path);
 
     BCRYPT_HASH_HANDLE hash = nullptr;
     if (!BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0))) {
         std::fclose(f);
-        throw std::runtime_error("MD5 hashing failed");
+        throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
     }
 
     HashedFile out;
@@ -118,7 +112,7 @@ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
     UCHAR digest[16];
     bool ok = BCRYPT_SUCCESS(BCryptFinishHash(hash, digest, sizeof(digest), 0));
     BCryptDestroyHash(hash);
-    if (!ok) throw std::runtime_error("MD5 hashing failed");
+    if (!ok) throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
 
     static const char* kHexDigits = "0123456789abcdef";
     out.md5.resize(32);
@@ -129,27 +123,35 @@ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
     return out;
 }
 
-// ---- song.ini metadata, mirroring ScanItem.get_metadata_ini --------------
-//
-// The name, artist and charter keys, read through read_song_ini_keys (the
-// one song.ini reader, shared with the Preview's delay). Its declaration in
-// analysis.h says which lines count.
-
-std::tuple<std::string, std::string, std::string> read_metadata_ini(const std::string& path) {
-    const std::map<std::string, std::string> ini = read_song_ini_keys(path);
-
-    // Empty = missing or blank; discover_charts applies the one fallback for
-    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
+// What the scan reads from one chart's metadata. The names are empty when
+// missing or blank; discover_charts applies the one fallback for each
+// (title_or_unknown, artist_or_unknown, charter_or_unknown).
+struct ChartMeta {
     std::string title;
     std::string artist;
     std::string charter;
+    store::ChartTimingMeta timing;
+};
 
-    if (auto it = ini.find("name"); it != ini.end()) title = it->second;
-    if (auto it = ini.find("artist"); it != ini.end()) artist = it->second;
+// ---- song.ini metadata, mirroring ScanItem.get_metadata_ini --------------
+//
+// The name, artist, charter, song_length and delay keys, read through
+// read_song_ini_keys (the one song.ini reader, shared with the Preview's
+// delay). Its declaration in analysis.h says which lines count.
+
+ChartMeta read_metadata_ini(const std::string& path) {
+    const std::map<std::string, std::string> ini = read_song_ini_keys(path);
+
+    ChartMeta out;
+    if (auto it = ini.find("name"); it != ini.end()) out.title = it->second;
+    if (auto it = ini.find("artist"); it != ini.end()) out.artist = it->second;
     // Only `charter` — Python's get_metadata_ini never reads the `frets`
     // alias, and some inis carry both with different values.
-    if (auto it = ini.find("charter"); it != ini.end()) charter = it->second;
-    return {title, artist, charter};
+    if (auto it = ini.find("charter"); it != ini.end()) out.charter = it->second;
+    if (auto it = ini.find("song_length"); it != ini.end())
+        out.timing.length_ms = stated_length_ms_of_text(it->second);
+    out.timing.delay_ms = ini_delay_ms(ini);
+    return out;
 }
 
 // ---- .sng metadata, mirroring ScanItem.get_metadata_sng -------------------
@@ -160,59 +162,50 @@ std::tuple<std::string, std::string, std::string> read_metadata_ini(const std::s
 // KB. A truncated buffer degrades exactly like a truncated file did: the
 // bounds checks stop early and missing keys stay empty.
 
-// How much of a .sng/.srb to keep for metadata. A .sng block starts at offset
-// 34 and a .srb's deflated block at offset 16; real metadata is a few KB, so
-// 1 MB is far beyond any legitimate block.
+// How much of a .sng/.srb to keep for metadata. A .sng block starts at
+// kSngMetadataOffset and a .srb's deflated block at kSrbHeaderSize, both a few
+// dozen bytes in; real metadata is a few KB, so 1 MB is far beyond any
+// legitimate block.
 constexpr size_t kSngHeadCapture = 1 << 20;
 
-std::tuple<std::string, std::string, std::string> parse_sng_metadata(
-    const std::vector<uint8_t>& buf) {
-    // Empty = missing or blank; discover_charts applies the one fallback for
-    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
-    std::string title;
-    std::string artist;
-    std::string charter;
-
-    for (const auto& [raw_key, value] : sng_read_metadata(buf)) {
+ChartMeta parse_sng_metadata(const std::vector<uint8_t>& buf) {
+    ChartMeta out;
+    const std::vector<std::pair<std::string, std::string>> pairs = sng_read_metadata(buf);
+    for (const auto& [raw_key, value] : pairs) {
         const std::string key = to_lower_ascii(raw_key);
-        if (key == "name") title = value;
-        else if (key == "artist") artist = value;
-        else if (key == "charter") charter = value;
+        if (key == "name") out.title = value;
+        else if (key == "artist") out.artist = value;
+        else if (key == "charter") out.charter = value;
+        else if (key == "song_length") out.timing.length_ms = stated_length_ms_of_text(value);
     }
-
-    return {title, artist, charter};
+    out.timing.delay_ms = sng_metadata_delay_ms(pairs);
+    return out;
 }
 
 // ---- .srb metadata --------------------------------------------------------
 //
 // Clone Hero's bundled songs (see parse/srb.h for the reverse-engineered
-// container layout). The metadata block is a deflate stream starting right
-// after the 16-byte header, so the head bytes captured while hashing always
-// contain it. Any parse failure leaves the fields empty, matching the .sng
-// path.
+// container layout). srb_read_metadata reads the metadata block from `src`:
+// the scan hands it the head bytes captured while hashing, which always
+// contain the block (kSngHeadCapture), and read_chart_timing_meta the file.
+// Any parse failure leaves the fields empty, matching the .sng path. A .srb
+// states no delay.
 
-std::tuple<std::string, std::string, std::string> parse_srb_metadata(
-    const std::vector<uint8_t>& buf) {
-    // Empty = missing or blank; discover_charts applies the one fallback for
-    // each (title_or_unknown, artist_or_unknown, charter_or_unknown).
-    std::string title;
-    std::string artist;
-    std::string charter;
-
+ChartMeta parse_srb_metadata(const ByteSource& src) {
+    ChartMeta out;
     try {
-        std::vector<uint8_t> meta = srb_inflate_stream(
-            buf.data(), buf.size(), kSrbHeaderSize, kSrbMaxMetadata, nullptr);
-        SrbMetadata md;
-        if (srb_parse_metadata(meta, md)) {
-            if (!md.name.empty()) title = md.name;
-            artist = md.artist;
-            charter = md.charter;
+        const SrbMetadataRead read = srb_read_metadata(src);
+        if (read.parsed) {
+            const SrbMetadata& md = read.fields;
+            if (!md.name.empty()) out.title = md.name;
+            out.artist = md.artist;
+            out.charter = md.charter;
+            if (md.song_length_ms) out.timing.length_ms = stated_length_ms(*md.song_length_ms);
         }
     } catch (const std::exception&) {
         // Corrupt/truncated container: keep the defaults.
     }
-
-    return {title, artist, charter};
+    return out;
 }
 
 // ---- discovery ----------------------------------------------------------
@@ -221,7 +214,7 @@ std::tuple<std::string, std::string, std::string> parse_srb_metadata(
 // per folder, no file contents touched) collecting every chart-bearing
 // folder's pending work. Read: a batch_worker_count() thread pool hashes the
 // chart files and reads their metadata, short-circuiting through the rescan
-// cache when a file's size+mtime fingerprint is unchanged. Results keep the
+// cache when a chart's fingerprint is unchanged (sig_unchanged). Results keep the
 // walk's order, so output ordering matches the old serial scanner.
 
 // One chart the walk found, before any of its bytes have been read. Folder
@@ -237,10 +230,51 @@ struct PendingChart {
     std::string sig;
 };
 
+// The rescan cache's key: sizes and mtimes, so an unchanged file is not read
+// again. It only says the file is unchanged. Whether the rows read from it
+// still hold what this build's hash and name readers would read is the
+// stored kChartMetaStamp's answer (store/stored_versions.h), not this one's.
 std::string sig_of(const DirEntry& notes, const DirEntry* ini) {
     std::string sig = std::to_string(notes.size) + ":" + std::to_string(notes.mtime);
     if (ini) sig += ":" + std::to_string(ini->size) + ":" + std::to_string(ini->mtime);
     return sig;
+}
+
+// The rescan cache's one "unchanged" test: a fingerprint was stored and the
+// files on disk still give the same one. The scan's cache lookup and
+// chart_files_unchanged both ask it.
+bool sig_unchanged(const std::string& stored, const std::string& now) {
+    return !stored.empty() && stored == now;
+}
+
+// The kind of chart a file is, by its name. Anything that is not an archive
+// can only be a folder chart's notes file.
+ChartKind chart_kind_of(const std::string& name) {
+    switch (chart_format_of(name)) {
+        case ChartFormat::Sng: return ChartKind::Sng;
+        case ChartFormat::Srb: return ChartKind::Srb;
+        default: return ChartKind::Folder;
+    }
+}
+
+// One chart file in its folder's listing, as the scan records it: its kind,
+// its path, the song.ini that goes with a folder chart, and the fingerprint
+// of the files that make it up. Nothing when a folder chart has no song.ini.
+// The walk and chart_files_unchanged both ask this, so which files go into a
+// fingerprint is decided here once. The rootfolder is the caller's to fill.
+std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEntry& chart,
+                                             const std::vector<DirEntry>& listing) {
+    PendingChart pc;
+    pc.kind = chart_kind_of(chart.name);
+    pc.notes_path = join_folder(dir, chart.name);
+    const DirEntry* ini = nullptr;
+    if (pc.kind == ChartKind::Folder) {
+        ini = find_song_ini(listing);
+        if (!ini) return std::nullopt;
+        pc.ini_path = join_folder(dir, ini->name);
+    }
+    pc.sig = sig_of(chart, ini);
+    return pc;
 }
 
 }  // namespace
@@ -303,6 +337,64 @@ std::string hash_chart_file(const std::string& path) {
     }
 }
 
+bool chart_files_unchanged(const std::string& notespath, const std::string& sig) {
+    // The same listing the scan's walk reads, so the fingerprint comes from
+    // the same find data the stored one was made from.
+    const std::string dir = parent_folder(notespath);
+    const std::vector<DirEntry> entries = list_dir(dir);
+    for (const DirEntry& e : entries)
+        if (!e.is_dir && join_folder(dir, e.name) == notespath) {
+            const std::optional<PendingChart> now = pending_chart_of(dir, e, entries);
+            return now && sig_unchanged(sig, now->sig);
+        }
+    return false;
+}
+
+std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }
+
+store::ChartLibraryEntry to_library_entry(const ScanItem& item) {
+    store::ChartLibraryEntry e;
+    e.md5 = item.md5;
+    e.title = item.title;
+    e.artist = item.artist;
+    e.charter = item.charter;
+    e.notespath = item.notespath;
+    e.rootfolder = item.rootfolder;
+    e.sig = item.sig;
+    e.timing = item.timing;
+    return e;
+}
+
+std::optional<std::string> save_scan_as_library(store::RecordStore& store,
+                                                const std::vector<ScanItem>& items) {
+    std::vector<store::ChartLibraryEntry> entries;
+    entries.reserve(items.size());
+    for (const ScanItem& item : items) entries.push_back(to_library_entry(item));
+    try {
+        store.rebuild_chart_library(entries);
+    } catch (const std::exception& e) {
+        return std::string("Failed to write chart library: ") + e.what();
+    }
+    return std::nullopt;
+}
+
+store::ChartTimingMeta read_chart_timing_meta(const std::string& notespath) {
+    switch (chart_kind_of(notespath)) {
+        case ChartKind::Sng:
+            return parse_sng_metadata(sng_read_head(file_byte_source(notespath))).timing;
+        case ChartKind::Srb: return parse_srb_metadata(file_byte_source(notespath)).timing;
+        case ChartKind::Folder: break;
+    }
+    const std::string ini = find_song_ini(parent_folder(notespath));
+    if (ini.empty()) return {};
+    return read_metadata_ini(ini).timing;
+}
+
+store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingMeta>& scanned,
+                                         const std::string& notespath) {
+    return scanned ? *scanned : read_chart_timing_meta(notespath);
+}
+
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
     const store::ChartLibraryCache* cache) {
@@ -326,43 +418,36 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
         try {
             std::vector<DirEntry> entries = list_dir(dir);
 
-            const DirEntry* found_mid = nullptr;
-            const DirEntry* found_chart = nullptr;
-            const DirEntry* found_ini = nullptr;
-            std::vector<std::pair<const DirEntry*, ChartKind>> found_archives;
+            // The folder's files, by name and entry in the same order, so the
+            // notes-file pick's index leads back to the entry (pending_chart_of
+            // fingerprints it).
+            std::vector<std::string> file_names;
+            std::vector<const DirEntry*> files;
+            std::vector<const DirEntry*> found_archives;
             std::vector<const DirEntry*> subdirs;
             for (const DirEntry& e : entries) {
-                if (e.is_dir) subdirs.push_back(&e);
-                else if (notes_file_format(e.name) == ChartFormat::Mid) found_mid = &e;
-                else if (notes_file_format(e.name) == ChartFormat::Chart) found_chart = &e;
-                else if (is_song_ini(e.name)) found_ini = &e;
-                else if (chart_format_of(e.name) == ChartFormat::Sng)
-                    found_archives.push_back({&e, ChartKind::Sng});
-                else if (chart_format_of(e.name) == ChartFormat::Srb)
-                    found_archives.push_back({&e, ChartKind::Srb});
+                if (e.is_dir) {
+                    subdirs.push_back(&e);
+                    continue;
+                }
+                file_names.push_back(e.name);
+                files.push_back(&e);
+                if (chart_kind_of(e.name) != ChartKind::Folder) found_archives.push_back(&e);
             }
 
-            std::string rootfolder = relpath(parent_of(dir), origin);
-            const DirEntry* notes = found_mid ? found_mid : found_chart;
-            if (notes && found_ini) {
-                PendingChart pc;
-                pc.notes_path = join_path(dir, notes->name);
-                pc.ini_path = join_path(dir, found_ini->name);
-                pc.rootfolder = rootfolder;
-                pc.sig = sig_of(*notes, found_ini);
-                pending.push_back(std::move(pc));
-            }
-            for (auto [archive, kind] : found_archives) {
-                PendingChart pc;
-                pc.kind = kind;
-                pc.notes_path = join_path(dir, archive->name);
-                pc.rootfolder = rootfolder;
-                pc.sig = sig_of(*archive, nullptr);
-                pending.push_back(std::move(pc));
-            }
+            std::string rootfolder = relpath(parent_folder(dir), origin);
+            const auto add_chart = [&](const DirEntry& chart) {
+                std::optional<PendingChart> pc = pending_chart_of(dir, chart, entries);
+                if (!pc) return;
+                pc->rootfolder = rootfolder;
+                pending.push_back(std::move(*pc));
+            };
+            const std::optional<NotesFilePick> pick = pick_notes_file(file_names);
+            if (pick) add_chart(*files[pick->index]);
+            for (const DirEntry* archive : found_archives) add_chart(*archive);
 
             for (const DirEntry* sub : subdirs) {
-                std::string subpath = join_path(dir, sub->name);
+                std::string subpath = join_folder(dir, sub->name);
                 if (visited.insert(subpath).second) {
                     if (callbacks.on_folders)
                         callbacks.on_folders(static_cast<int>(visited.size()));
@@ -398,30 +483,42 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
                 try {
                     if (cache) {
                         auto it = cache->find(pc.notes_path);
-                        if (it != cache->end() && it->second.sig == pc.sig) {
-                            results[i] = ScanItem{it->second.md5, it->second.title,
-                                                  it->second.artist, it->second.charter,
-                                                  pc.notes_path, pc.rootfolder, pc.sig};
+                        if (it != cache->end() && sig_unchanged(it->second.sig, pc.sig)) {
+                            // Field by field, like to_library_entry: seven
+                            // strings in a positional list could swap unseen.
+                            ScanItem item;
+                            item.md5 = it->second.md5;
+                            item.title = it->second.title;
+                            item.artist = it->second.artist;
+                            item.charter = it->second.charter;
+                            item.timing = it->second.timing;
+                            item.notespath = pc.notes_path;
+                            item.rootfolder = pc.rootfolder;
+                            item.sig = pc.sig;
+                            results[i] = std::move(item);
                             note.cached = true;
                         }
                     }
                     if (!results[i]) {
                         if (!md5) md5.emplace();
                         ScanItem item;
+                        ChartMeta meta;
                         if (pc.kind != ChartKind::Folder) {
                             HashedFile hf =
                                 stream_md5(md5->handle(), pc.notes_path, kSngHeadCapture);
                             item.md5 = std::move(hf.md5);
-                            std::tie(item.title, item.artist, item.charter) =
-                                pc.kind == ChartKind::Sng
-                                    ? parse_sng_metadata(hf.head)
-                                    : parse_srb_metadata(hf.head);
+                            meta = pc.kind == ChartKind::Sng
+                                       ? parse_sng_metadata(hf.head)
+                                       : parse_srb_metadata(memory_byte_source(hf.head));
                         } else {
                             HashedFile hf = stream_md5(md5->handle(), pc.notes_path, 0);
                             item.md5 = std::move(hf.md5);
-                            std::tie(item.title, item.artist, item.charter) =
-                                read_metadata_ini(pc.ini_path);
+                            meta = read_metadata_ini(pc.ini_path);
                         }
+                        item.title = std::move(meta.title);
+                        item.artist = std::move(meta.artist);
+                        item.charter = std::move(meta.charter);
+                        item.timing = meta.timing;
                         item.notespath = pc.notes_path;
                         item.rootfolder = pc.rootfolder;
                         item.sig = pc.sig;
@@ -446,9 +543,11 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     scanitems.reserve(results.size());
     for (std::optional<ScanItem>& r : results) {
         if (!r) continue;
-        // The one fallback for each field, whichever source produced it: a
-        // fresh song.ini, .sng or .srb read, or the rescan cache holding an
-        // older scan's blank or "<unknown title>".
+        // The one stored fallback for each field, whichever source produced
+        // it: a fresh song.ini, .sng or .srb read, or the rescan cache holding
+        // an older scan's blank or "<unknown title>". What a screen shows is
+        // decided later by display_title, display_artist and display_charter;
+        // a stored "<unknown artist>" shows as "(unknown)" (D56 item 2).
         r->title = title_or_unknown(std::move(r->title));
         r->artist = artist_or_unknown(std::move(r->artist));
         r->charter = charter_or_unknown(std::move(r->charter));
@@ -470,13 +569,10 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 AnalysisResult analyze_chart_file(const std::string& filepath,
                                   const AnalysisSettings& settings,
                                   const std::function<void(float)>& on_progress) {
-    Song song = load_songpath(filepath, settings.prodrums, settings.bass2x,
-                              settings.difficulty, settings.rules);
-    // Say which difficulty is missing. The search's own backstop can only say
-    // "no notes"; here we know what the user asked for, and a chart that
-    // simply has no Hard charting is the common case.
-    if (song.is_empty())
-        throw ChartFileError(no_notes_message(settings.difficulty, settings.prodrums));
+    // A chart with no charting at the asked difficulty (no Hard charting is
+    // the common case) throws NoNotesError, which names that difficulty.
+    Song song = load_songpath_with_notes(filepath, settings.prodrums, settings.bass2x,
+                                         settings.difficulty, settings.rules);
     HydraRecord record = analyze_chart(song, settings, on_progress);
     return AnalysisResult{std::move(record), std::move(song)};
 }
@@ -498,39 +594,87 @@ namespace {
 
 struct WorkResult {
     ScanItem item;
+    // The scan rows this chart settles: BatchPlan::rows (D76).
+    int rows = 1;
     std::optional<store::PreparedRow> row;
     std::optional<AnalysisResult> analysis;
     // Counted on the worker, so the consumer only writes.
     std::optional<store::DynamicsEntry> dynamics;
+    // The song's length, worked out on the worker (analysis_song_length).
+    store::SongLength length;
+    // A failed chart, from its analysis or its save: record_failure fills
+    // these in from the exception while its type is still known (the
+    // sentence is plain_error's, the error is the raw text).
+    bool failed = false;
+    std::string sentence;
     std::string error;
     // The search stopped at a cancel: neither a result nor a failure.
     bool cancelled = false;
 };
 
+// The one way a chart becomes a failure, from its analysis or its save.
+void record_failure(WorkResult& wr, const std::exception& e) {
+    wr.failed = true;
+    wr.sentence = plain_error(e);
+    wr.error = e.what();
+}
+
 }  // namespace
 
-void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
-               store::RecordStore& store, bool redo, int worker_count,
-               const BatchCallbacks& callbacks) {
+std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
+                                                   const BatchRun& run, bool redo) {
+    if (redo) return {};
+    // RecordStore::analyzed_hashes decides what "already has a result" means.
+    return store.analyzed_hashes(run.chartmode, run.cap_query(), run.lens);
+}
+
+BatchPlan plan_batch(const std::vector<ScanItem>& items,
+                     const std::unordered_set<std::string>& already) {
+    BatchPlan plan;
+    // Each md5 runs once, as its first copy; a later copy adds a row to it
+    // (D76). Whichever copy runs, the store names the chart from the copy the
+    // scan listed first (D63).
+    std::unordered_map<std::string, size_t> todo_index;
+    for (const ScanItem& item : items) {
+        if (already.count(item.md5)) {
+            ++plan.skipped;
+            continue;
+        }
+        const auto [it, first] = todo_index.emplace(item.md5, plan.todo.size());
+        if (first) {
+            plan.todo.push_back(item);
+            plan.rows.push_back(1);
+        } else {
+            ++plan.rows[it->second];
+        }
+    }
+    return plan;
+}
+
+int BatchPlan::todo_rows() const { return std::accumulate(rows.begin(), rows.end(), 0); }
+
+store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
+                                       const std::string& notespath, const Song& song,
+                                       const AnalysisSettings& settings) {
+    try {
+        return store::SongLength::found(
+            chart_song_length_ms(chart_timing_meta(scanned, notespath), notespath, song,
+                                 settings.difficulty, settings.bass2x, settings.rules));
+    } catch (const std::exception&) {
+        return {};
+    }
+}
+
+void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& store,
+               int worker_count, const BatchCallbacks& callbacks) {
     const AnalysisSettings& settings = run.settings;
     const std::atomic<bool>* cancel = callbacks.cancel;
-
-    // "Already has a result" means a current-version record at exactly this
-    // run's cap AND under this run's ms limit and score range, so stale rows,
-    // other caps' rows and other settings' rows are re-run rather than skipped.
-    const store::CapQuery cap = store::CapQuery::at(settings.sp_cap);
-    // One query for the whole library, not one per chart.
-    const std::unordered_set<std::string> analyzed =
-        redo ? std::unordered_set<std::string>{}
-             : store.analyzed_hashes(run.chartmode, cap, run.lens);
-    std::vector<const ScanItem*> todo;
-    for (const ScanItem& item : items) {
-        if (analyzed.count(item.md5)) continue;
-        todo.push_back(&item);
-    }
+    const store::CapQuery cap = run.cap_query();
+    const std::vector<ScanItem>& todo = plan.todo;
 
     BatchProgress progress;
-    progress.total = static_cast<int>(todo.size());
+    progress.total = plan.todo_rows();
+    progress.skipped = plan.skipped;
     if (callbacks.on_progress) callbacks.on_progress(progress);
     if (todo.empty()) return;
 
@@ -547,25 +691,26 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
     const ChartAnalyzer analyze =
         callbacks.analyze ? callbacks.analyze : ChartAnalyzer(analyze_chart_file);
 
-    int completed = 0;
     run_work_pool<WorkResult>(
         todo.size(), worker_count, cancel,
         [&](size_t i) {
-            const ScanItem* item = todo[i];
+            const ScanItem& item = todo[i];
             WorkResult wr;
-            wr.item = *item;
+            wr.item = item;
+            wr.rows = plan.rows[i];
             try {
-                AnalysisResult ar = analyze(item->notespath, settings, check_cancel);
+                AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
                 wr.row = store::prepare_row(
-                    store::RecordKey{item->md5, run.chartmode, cap, run.lens}, ar.record);
+                    store::RecordKey{item.md5, run.chartmode, cap, run.lens}, ar.record);
                 wr.dynamics = dynamics_entry_from_analysis(
-                    item->md5, ar.song, settings.bass2x, settings.difficulty,
+                    item.md5, ar.song, settings.bass2x, settings.difficulty,
                     settings.prodrums);
+                wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);
                 wr.analysis = std::move(ar);
             } catch (const AnalysisCancelled&) {
                 wr.cancelled = true;
             } catch (const std::exception& e) {
-                wr.error = e.what();
+                record_failure(wr, e);
             }
             return wr;
         },
@@ -575,18 +720,34 @@ void run_batch(const std::vector<ScanItem>& items, const BatchRun& run,
             // that finished alongside the cancel is dropped.
             if (wr.cancelled || (cancel && cancel->load())) return;
 
-            ++completed;
-            if (!wr.error.empty()) {
-                if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.error);
-            } else {
-                store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
-                                    wr.item.charter, wr.analysis->song, *wr.row, wr.dynamics);
-                if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
+            if (!wr.failed) {
+                // A save that fails makes this chart a failure, and the batch
+                // goes on with the next one (D71, ER2 open question 5).
+                try {
+                    store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
+                                        wr.item.charter, wr.analysis->song, *wr.row,
+                                        wr.dynamics, wr.length);
+                } catch (const std::exception& e) {
+                    record_failure(wr, e);
+                }
             }
-
-            progress.completed = completed;
-            progress.current_title = wr.item.title;
-            if (callbacks.on_progress) callbacks.on_progress(progress);
+            // Each of the chart's rows is counted and reported, under the
+            // first copy's name (D76, D51 call 10), so a list of failures is
+            // as long as its count. The progress that counts a row goes out
+            // before that row's own callback, so a caller numbering its lines
+            // reads the number from the progress (D79).
+            for (int r = 0; r < wr.rows; ++r) {
+                if (wr.failed) ++progress.failed;
+                else ++progress.analyzed;
+                progress.completed = progress.analyzed + progress.failed;
+                progress.current_title = wr.item.title;
+                if (callbacks.on_progress) callbacks.on_progress(progress);
+                if (wr.failed) {
+                    if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
+                } else {
+                    if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
+                }
+            }
         });
 }
 

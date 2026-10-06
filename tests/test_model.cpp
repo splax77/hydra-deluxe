@@ -6,7 +6,9 @@
 #include "doctest.h"
 
 #include <cmath>
+#include <map>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -50,31 +52,40 @@ TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's mult
                                         NoteCymbalType::Cymbal, false};
     const std::vector<ChordNote> notes = c.notes(true);
     REQUIRE(notes.size() == 2);
-    for (int combo : {0, 8, 9, 29, 45}) {
+    // The cuts for this chord (a Red tom worth 50 and an accented Yellow
+    // cymbal worth 130), pinned from one run of category_scores on
+    // 2026-10-05, one row per combo before the chord. The combos straddle the
+    // multiplier steps, so the two notes sometimes pay at different ones.
+    struct Row {
+        int combo;
+        int first_cut;  // first_note: only the Red tom loses its doubling
+        int whole_cut;  // whole_chord: both notes lose it
+    };
+    const Row rows[] = {
+        {0, 50, 180}, {8, 50, 310}, {9, 100, 360}, {29, 200, 720}, {45, 200, 720},
+    };
+    for (const Row& row : rows) {
+        const int combo = row.combo;
         CAPTURE(combo);
         // first_note (the default): only note 0 loses its SP doubling.
         std::vector<CategoryScores> per_note;
         const CategoryScores cs = category_scores(c, combo, &per_note);
-        const int first_cut = notes[0].basescore() * to_multiplier(combo + 1);
-        CHECK(cs.sqout_reduction == first_cut);
+        CHECK(cs.sqout_reduction == row.first_cut);
         REQUIRE(per_note.size() == 2);
-        CHECK(per_note[0].sqout_reduction == first_cut);
+        CHECK(per_note[0].sqout_reduction == row.first_cut);
         CHECK(per_note[1].sqout_reduction == 0);
         CHECK(cs.sqout_sp() == cs.sp - cs.sqout_reduction);
 
-        // whole_chord: every note loses it, each at its own multiplier.
+        // whole_chord: every note loses it, each at its own multiplier. The
+        // Red tom's share is the same as under first_note.
         std::vector<CategoryScores> whole_per_note;
         const CategoryScores whole =
             category_scores(c, combo, &whole_per_note, core::SqOutRule::WholeChord);
-        int whole_cut = 0;
-        for (size_t i = 0; i < notes.size(); ++i) {
-            const int note_cut =
-                notes[i].basescore() * to_multiplier(combo + 1 + static_cast<int>(i));
-            REQUIRE(whole_per_note.size() == 2);
-            CHECK(whole_per_note[i].sqout_reduction == note_cut);
-            whole_cut += note_cut;
-        }
-        CHECK(whole.sqout_reduction == whole_cut);
+        REQUIRE(whole_per_note.size() == 2);
+        CHECK(whole_per_note[0].sqout_reduction == row.first_cut);
+        CHECK(whole_per_note[0].sqout_reduction + whole_per_note[1].sqout_reduction ==
+              row.whole_cut);
+        CHECK(whole.sqout_reduction == row.whole_cut);
         CHECK(whole.sqout_sp() == whole.sp - whole.sqout_reduction);
     }
 }
@@ -86,6 +97,33 @@ TEST_CASE("group_thousands matches Python {:,}") {
     CHECK(group_thousands(228710) == "228,710");
     CHECK(group_thousands(1234567) == "1,234,567");
     CHECK(group_thousands(-1234567) == "-1,234,567");
+}
+
+// D48 Q12: one rule everywhere. Caps 1 and 1000 are the plan's examples.
+TEST_CASE("counted: singular at 1, commas from 1,000") {
+    CHECK(counted(1, "bar", "bars") == "1 bar");
+    CHECK(counted(2, "bar", "bars") == "2 bars");
+    CHECK(counted(1000, "bar", "bars") == "1,000 bars");
+    CHECK(std::string(has_have(1)) == "has");
+    CHECK(std::string(has_have(2)) == "have");
+}
+
+// D48 Q2: whole-ms text rounds to nearest. No exact half is pinned.
+TEST_CASE("format_ms_whole: nearest whole millisecond with the unit") {
+    CHECK(format_ms_whole(12.4) == "12 ms");
+    CHECK(format_ms_whole(12.6) == "13 ms");
+    CHECK(format_ms_whole(12.25) == "12 ms");
+    CHECK(format_ms_whole(163.0) == "163 ms");
+}
+
+// Finding 4: the copied path's timing used to cut 12.6 ms down to "12 ms",
+// while the badge said 13.
+TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 13 ms") {
+    Activation a;
+    test::set_skips(a, 0);
+    a.e_offset = 300.0;  // not e-critical
+    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
+    CHECK(a.notationstr_verbose() == "0+ (13 ms)");
 }
 
 TEST_CASE("squeeze symbols, timing, difficulty") {
@@ -152,6 +190,118 @@ TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
     Path edge = hard;
     edge.activations[0].sqinouts[0].offset_ms = -kDifficultMs;
     CHECK_FALSE(edge.is_difficult());  // exactly at the floor is not past it
+
+    SUBCASE("past_difficult_floor: 2.0 ms is not past it") {
+        // D48 Q3: a timing exactly on an edge is inside it.
+        CHECK_FALSE(past_difficult_floor(2.0));
+        CHECK(past_difficult_floor(2.1));
+        CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 2.0}.is_difficult());
+        CHECK(SPSqueeze{SqueezeKind::SqIn, 2.1}.is_difficult());
+        CHECK_FALSE(edge.activations[0].is_difficult());
+        CHECK(hard.activations[0].is_difficult());
+    }
+}
+
+TEST_CASE("HydraRecord::is_optimal: every path tied at the top score") {
+    const HydraRecord rec = test::tied_variant_record();
+    const Path& root = rec.paths.at(0);
+    CHECK(rec.is_optimal(root));
+    CHECK(rec.is_optimal(root.variants.at(0)));  // the tied variant
+    CHECK_FALSE(rec.is_optimal(rec.paths.at(1)));
+}
+
+TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") {
+    using P = TimingPart;
+    auto plain = [] {
+        Activation a;
+        test::set_skips(a, 0);
+        a.e_offset = 300.0;  // not e-critical
+        return a;
+    };
+
+    // The larger of two SqIns, with its raw value.
+    Activation two = plain();
+    two.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 12.4}, SPSqueeze{SqueezeKind::SqIn, 12.6}};
+    CHECK(two.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeIn, 12.6}));
+    two.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 12.4}};
+    CHECK(two.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeIn, 12.4}));
+
+    // A required (E0) fill and a SqOut at the same ms: the squeeze.
+    Activation tie = plain();
+    tie.e_offset = -12.6;  // early fill 12.6 ms
+    tie.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.6}};
+    REQUIRE(tie.is_E0());
+    CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeOut, 12.6}));
+
+    // The fill alone, when it is harder.
+    tie.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.4}};
+    CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::EarlyFill, 12.6}));
+
+    // An E activation that skips one fill, with no squeeze: its optional
+    // early fill (D48 Q10).
+    Activation skip = plain();
+    test::set_skips(skip, 1);
+    skip.e_offset = -12.6;
+    REQUIRE(skip.is_e_critical());
+    REQUIRE_FALSE(skip.is_E0());
+    CHECK(skip.hardest() == std::optional<HardestTiming>(HardestTiming{P::EarlyFill, 12.6}));
+    // ...which difficulty() still leaves out.
+    CHECK_FALSE(skip.difficulty().has_value());
+
+    // Nothing to time: no badge.
+    CHECK_FALSE(plain().hardest().has_value());
+}
+
+TEST_CASE("Activation::needs_timing: free squeezes and slack fills need none (D51 Q4, D13)") {
+    auto plain = [] {
+        Activation a;
+        test::set_skips(a, 0);
+        a.e_offset = 300.0;  // not e-critical
+        return a;
+    };
+
+    // A squeeze-in 163 ms before the SP end is already in: nothing to time,
+    // so nothing is hardest and there is no difficulty.
+    Activation free_in = plain();
+    free_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -163.0}};
+    CHECK_FALSE(free_in.needs_timing());
+    CHECK_FALSE(free_in.hardest().has_value());
+    CHECK_FALSE(free_in.difficulty().has_value());
+
+    // A squeeze-in dead on the SP end is inside SP too (D13).
+    Activation on_end_in = plain();
+    on_end_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
+    CHECK_FALSE(on_end_in.needs_timing());
+
+    // A squeeze-out dead on the SP end still has to be hit late.
+    Activation on_end_out = plain();
+    on_end_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, 0.0}};
+    CHECK(on_end_out.needs_timing());
+    CHECK(on_end_out.difficulty() == std::optional<double>(0.0));
+
+    Activation late_out = plain();
+    late_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.5}};
+    CHECK(late_out.needs_timing());
+
+    // A required (E0) fill with 10 ms to spare needs none; with none to
+    // spare it does, like the squeeze-out on the SP end.
+    Activation slack_fill = plain();
+    slack_fill.e_offset = 10.0;
+    REQUIRE(slack_fill.is_E0());
+    CHECK_FALSE(slack_fill.needs_timing());
+    CHECK_FALSE(slack_fill.hardest().has_value());
+    Activation tight_fill = plain();
+    tight_fill.e_offset = 0.0;
+    REQUIRE(tight_fill.is_E0());
+    CHECK(tight_fill.needs_timing());
+    CHECK(tight_fill.difficulty() == std::optional<double>(0.0));
+
+    // A path needs timing once any of its activations does.
+    Path p;
+    p.activations = {free_in, on_end_in, slack_fill};
+    CHECK_FALSE(p.needs_timing());
+    p.activations.push_back(late_out);
+    CHECK(p.needs_timing());
 }
 
 TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps") {
@@ -286,12 +436,15 @@ TEST_CASE("Path::walk_activations: own activations then the variant tail, in pla
     const std::vector<Activation> copied = p.all_activations();
     REQUIRE(copied.size() == walk.size());
     for (size_t i = 0; i < copied.size(); ++i) CHECK(copied[i].skips() == walk[i].skips());
+    CHECK(p.has_activations());
 
     // Nothing on either side.
     Path none;
     const ActivationWalk nothing = none.walk_activations();
     CHECK(nothing.empty());
     CHECK(nothing.begin() == nothing.end());
+    CHECK_FALSE(none.has_activations());
+    CHECK(none.all_activations().empty());
 }
 
 // Backend rows past a squeezed-out note are impossible in game: the sqout note
@@ -331,9 +484,9 @@ TEST_CASE("Chord rowstr / notationstr / disco flip") {
     c.add_note(NoteColor::Red);
     c.add_note(NoteColor::Green);
     CHECK(c.notationstr() == "[ R  G]");
-    // Green is cymbal-capable, so a normal green renders as "GreenTom"; red is
-    // not, so it is just "Red".
-    CHECK(c.rowstr() == "[Red - GreenTom]");
+    // The Dynamics tab's words, with Pro Drums on (D48 Q11): a normal green
+    // is a tom and red is the snare.
+    CHECK(c.rowstr() == "[Red snare - Green tom]");
 
     // Disco flip swaps red<->yellow (red becomes a yellow cymbal).
     Chord d;
@@ -361,17 +514,43 @@ TEST_CASE("ChordNote::str shows the kick's dynamic and its 2x flag") {
     CHECK(kick(NoteDynamicType::Normal, false) == "Kick");
     CHECK(kick(NoteDynamicType::Ghost, false) == "Kick (Ghost)");
     CHECK(kick(NoteDynamicType::Accent, false) == "Kick (Accent)");
-    CHECK(kick(NoteDynamicType::Normal, true) == "Kick (2x)");
-    CHECK(kick(NoteDynamicType::Ghost, true) == "Kick (Ghost, 2x)");
-    CHECK(kick(NoteDynamicType::Accent, true) == "Kick (Accent, 2x)");
+    CHECK(kick(NoteDynamicType::Normal, true) == "2x kick");
+    CHECK(kick(NoteDynamicType::Ghost, true) == "2x kick (Ghost)");
+    CHECK(kick(NoteDynamicType::Accent, true) == "2x kick (Accent)");
 
-    // Pads read exactly as they always did.
-    CHECK(ChordNote{NoteColor::Red}.str() == "Red");
+    // Pads take the Dynamics words too; a ghost or accent keeps its
+    // parenthesis.
+    CHECK(ChordNote{NoteColor::Red}.str() == "Red snare");
     CHECK(ChordNote{NoteColor::Red, NoteDynamicType::Ghost}.str() ==
-          "Red (Ghost)");
+          "Red snare (Ghost)");
     CHECK(ChordNote{NoteColor::Yellow, NoteDynamicType::Accent,
                     NoteCymbalType::Cymbal, false}
-              .str() == "YellowCym (Accent)");
+              .str() == "Yellow cymbal (Accent)");
+}
+
+// D48 Q11: a note is called what the Dynamics tab calls it. With Pro Drums
+// off a pad has no tom or snare, so the type word goes.
+TEST_CASE("note_label: the Dynamics words, plain colours with Pro Drums off") {
+    const ChordNote green_tom{NoteColor::Green};
+    const ChordNote yellow_cym{NoteColor::Yellow, NoteDynamicType::Normal,
+                               NoteCymbalType::Cymbal, false};
+    const ChordNote kick2x{NoteColor::Kick, NoteDynamicType::Normal, NoteCymbalType::Normal,
+                           true};
+    const ChordNote yellow_tom{NoteColor::Yellow};
+    const ChordNote red{NoteColor::Red};
+
+    CHECK(note_label(green_tom, true) == "Green tom");
+    CHECK(note_label(yellow_cym, true) == "Yellow cymbal");
+    CHECK(note_label(kick2x, true) == "2x kick");
+    CHECK(note_label(ChordNote{NoteColor::Kick}, true) == "Kick");
+    CHECK(note_label(red, true) == "Red snare");
+
+    CHECK(note_label(yellow_tom, false) == "Yellow");
+    CHECK(note_label(red, false) == "Red");
+    CHECK(note_label(kick2x, false) == "2x kick");
+
+    // A ghost or accent is not part of the name.
+    CHECK(note_label(ChordNote{NoteColor::Green, NoteDynamicType::Ghost}, true) == "Green tom");
 }
 
 TEST_CASE("Chord::code spells a ghost/accent kick in the kick lane") {
@@ -392,7 +571,7 @@ TEST_CASE("Chord::code spells a ghost/accent kick in the kick lane") {
     CHECK(accent.code() == "an...");
     CHECK(Chord::from_code("an...") == accent);
 
-    CHECK(ghost.rowstr() == "[Kick (Ghost) - Red]");
+    CHECK(ghost.rowstr() == "[Kick (Ghost) - Red snare]");
 }
 
 // The engine's three cases, as values. The deactivation edge in
@@ -508,16 +687,20 @@ TEST_CASE("title_or_unknown: one fallback for a song with no usable name") {
 }
 
 // A multiplier squeeze is a chord whose notes straddle a to_multiplier step.
-// For 2- and 3-note chords, MultSqueeze accepts exactly the straddling
-// combos. For 4-note chords it accepts only 7, 17 and 27; this pins that
-// as-is (see the comment on MultSqueeze::validate).
-TEST_CASE("MultSqueeze accepts exactly the 2- and 3-note chords that straddle a multiplier step") {
+// MultSqueeze accepts exactly the straddling chords of every size, 2 to 5
+// notes (D51 call 3: Clone Hero allows 4- and 5-note chords, so Hydra must
+// get them right). The combos are pinned as literals: the steps sit at
+// combos 10, 20 and 30, so a chord of n notes hit at one of these combos
+// pays its first note below a step and its last note at or above it.
+TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a multiplier step") {
     const NoteColor order[] = {NoteColor::Red, NoteColor::Yellow, NoteColor::Kick,
                                NoteColor::Blue, NoteColor::Green};
-    auto chord_of = [&](int n) {
+    auto chord_of = [&](int n, bool cymbal) {
         Chord c;
         for (int i = 0; i < n; ++i) c.add_note(order[i]);
-        c.apply_cymbal(NoteColor::Yellow);  // a cymbal among pads: something to squeeze
+        // A cymbal among pads gives the chord something to squeeze. Without
+        // it every note is worth the same.
+        if (cymbal) c.apply_cymbal(NoteColor::Yellow);
         return c;
     };
     auto accepted = [](const Chord& c, int combo) {
@@ -528,15 +711,61 @@ TEST_CASE("MultSqueeze accepts exactly the 2- and 3-note chords that straddle a 
             return false;
         }
     };
-    for (int n = 2; n <= 3; ++n)
+    const std::map<int, std::set<int>> straddling = {
+        {2, {8, 18, 28}},
+        {3, {7, 8, 17, 18, 27, 28}},
+        {4, {6, 7, 8, 16, 17, 18, 26, 27, 28}},
+        {5, {5, 6, 7, 8, 15, 16, 17, 18, 25, 26, 27, 28}},
+    };
+    for (const auto& [n, combos] : straddling)
         for (int combo = 0; combo < 40; ++combo) {
-            const bool straddles = to_multiplier(combo + 1) < to_multiplier(combo + n);
-            CHECK_MESSAGE(accepted(chord_of(n), combo) == straddles,
+            CHECK_MESSAGE(accepted(chord_of(n, true), combo) == (combos.count(combo) == 1),
                           "n=" << n << " combo=" << combo);
+            CHECK_MESSAGE(!accepted(chord_of(n, false), combo),
+                          "all-same-value n=" << n << " combo=" << combo);
         }
-    for (int combo = 0; combo < 40; ++combo)
-        CHECK_MESSAGE(accepted(chord_of(4), combo) == (combo == 7 || combo == 17 || combo == 27),
-                      "n=4 combo=" << combo);
+}
+
+// Kick and Red (50 each) with yellow and blue cymbals (65 each), hit at
+// combo 7: two notes are paid at 1x and two at 2x. Two notes cross the step,
+// so the right order gains two cymbal bonuses.
+TEST_CASE("MultSqueeze::points is the best order minus the worst order") {
+    Chord kryb;
+    kryb.add_note(NoteColor::Kick);
+    kryb.add_note(NoteColor::Red);
+    kryb.add_note(NoteColor::Yellow);
+    kryb.add_note(NoteColor::Blue);
+    kryb.apply_cymbal(NoteColor::Yellow);
+    kryb.apply_cymbal(NoteColor::Blue);
+    CHECK(MultSqueeze(kryb, 7).points() == 30);
+
+    Chord ry;
+    ry.add_note(NoteColor::Red);
+    ry.add_note(NoteColor::Yellow);
+    ry.apply_cymbal(NoteColor::Yellow);
+    CHECK(MultSqueeze(ry, 8).points() == 15);
+}
+
+// D51 call 3: the advice names every note that has to cross the step.
+TEST_CASE("MultSqueeze::howto names every note that crosses the step") {
+    // Kick and Red (50 each), yellow and blue cymbals (65 each) at combo 7:
+    // both cymbals cross to 2x.
+    Chord kryb;
+    kryb.add_note(NoteColor::Kick);
+    kryb.add_note(NoteColor::Red);
+    kryb.add_note(NoteColor::Yellow);
+    kryb.add_note(NoteColor::Blue);
+    kryb.apply_cymbal(NoteColor::Yellow);
+    kryb.apply_cymbal(NoteColor::Blue);
+    const MultSqueeze ms(kryb, 7);
+    CHECK(ms.howto() == "Hit [Yellow cymbal] and [Blue cymbal] last.");
+    CHECK(ms.multiplier() == 2);
+
+    // Accent the Red (100): now the two cymbals tie across the step, so
+    // either may cross. The kick must stay before the step and the accented
+    // Red must cross it.
+    kryb.apply_accent(NoteColor::Red);
+    CHECK(MultSqueeze(kryb, 7).howto() == "Hit [Kick] first and [Red snare (Accent)] last.");
 }
 
 // A 3-note chord splits two and one across the step. When one end holds a
@@ -561,7 +790,7 @@ TEST_CASE("MultSqueeze::howto names the lone note of a 3-note chord") {
     kry.add_note(NoteColor::Yellow);
     kry.apply_cymbal(NoteColor::Yellow);
     for (int combo : {17, 18, 27, 28})
-        CHECK_MESSAGE(MultSqueeze(kry, combo).howto() == "Hit [YellowCym] last.",
+        CHECK_MESSAGE(MultSqueeze(kry, combo).howto() == "Hit [Yellow cymbal] last.",
                       "combo=" << combo);
 
     // Kick (50) + cymbal (65) + accented Red (100): three values, so the
@@ -572,8 +801,39 @@ TEST_CASE("MultSqueeze::howto names the lone note of a 3-note chord") {
     kya.add_note(NoteColor::Yellow);
     kya.apply_cymbal(NoteColor::Yellow);
     kya.apply_accent(NoteColor::Red);
-    CHECK(MultSqueeze(kya, 17).howto() == "Hit [Red (Accent)] last.");
+    CHECK(MultSqueeze(kya, 17).howto() == "Hit [Red snare (Accent)] last.");
     CHECK(MultSqueeze(kya, 18).howto() == "Hit [Kick] first.");
+}
+
+// The advice names its note in the Pro Drums setting's words, as the chord
+// rows do (D48 Q11, finding 17): with Pro Drums off a pad has no tom or snare.
+TEST_CASE("MultSqueeze::howto names the note in the Pro Drums setting's words") {
+    // Kick (50) + accented yellow tom (100) + blue cymbal (65): combo 17
+    // carries the dear yellow over.
+    Chord kyb;
+    kyb.add_note(NoteColor::Kick);
+    kyb.add_note(NoteColor::Yellow);
+    kyb.add_note(NoteColor::Blue);
+    kyb.apply_cymbal(NoteColor::Blue);
+    kyb.apply_accent(NoteColor::Yellow);
+    CHECK(MultSqueeze(kyb, 17).howto(true) == "Hit [Yellow tom (Accent)] last.");
+    CHECK(MultSqueeze(kyb, 17).howto(false) == "Hit [Yellow (Accent)] last.");
+
+    // Kick (50) + accented red (100) + yellow cymbal (65).
+    Chord kya;
+    kya.add_note(NoteColor::Kick);
+    kya.add_note(NoteColor::Red);
+    kya.add_note(NoteColor::Yellow);
+    kya.apply_cymbal(NoteColor::Yellow);
+    kya.apply_accent(NoteColor::Red);
+    CHECK(MultSqueeze(kya, 17).howto(false) == "Hit [Red (Accent)] last.");
+    // A cymbal says cymbal either way.
+    Chord kry;
+    kry.add_note(NoteColor::Kick);
+    kry.add_note(NoteColor::Red);
+    kry.add_note(NoteColor::Yellow);
+    kry.apply_cymbal(NoteColor::Yellow);
+    CHECK(MultSqueeze(kry, 17).howto(false) == "Hit [Yellow cymbal] last.");
 }
 
 // The graph asks applies() of every chord instead of catching a throw.
@@ -634,4 +894,93 @@ TEST_CASE("refill_tick: a late squeeze-in's bar arrives at the old end") {
     CHECK(a.refill_tick(0) == 5760);
     CHECK(a.refill_tick(1) == 12000);
     CHECK(a.refill_tick(2) == 15360);  // past the end in force: the old end
+}
+
+// The rows of "backend_row_value: every engine case": what the squeezed-out
+// chord gives up against its full value.
+TEST_CASE("backend_value: sqout_cost is what the squeezed-out chord loses") {
+    const double lw = core::default_rules().backend_leeway_ms;  // 3 ms
+    CHECK(core::sqout_cost(-5.0, 460, 260, lw) == 200);
+    CHECK(core::sqout_cost(1.5, 460, 260, lw) == 200);
+    // Round and Round (Ratt): the row the engine counts as 0 loses all of it.
+    CHECK(core::sqout_cost(479.999, 460, 260, lw) == 460);
+    CHECK(core::sqout_cost(5.0, 460, 260, 10.0) == 200);
+}
+
+TEST_CASE("BackendSqueeze::offset: the stored offset, or a loud failure") {
+    BackendSqueeze row;
+    row.timecode = Timecode::raw(300);
+    row.offset_ms = 12.5;
+    CHECK(row.offset() == 12.5);
+
+    row.offset_ms.reset();
+    bool threw = false;
+    try {
+        (void)row.offset();
+    } catch (const std::logic_error& e) {
+        threw = true;
+        CHECK(std::string(e.what()).find("300") != std::string::npos);
+    }
+    CHECK(threw);
+}
+
+// Finding 190's table: the kick's flag is 2x, a cymbal pad's is a cymbal,
+// red has none.
+TEST_CASE("lane flags: the kick carries 2x, the cymbal pads carry a cymbal, red carries nothing") {
+    CHECK(lane_allows_flag(NoteColor::Kick));
+    CHECK(lane_allows_flag(NoteColor::Yellow));
+    CHECK(lane_allows_flag(NoteColor::Blue));
+    CHECK(lane_allows_flag(NoteColor::Green));
+    CHECK_FALSE(lane_allows_flag(NoteColor::Red));
+
+    ChordNote kick{NoteColor::Kick};
+    CHECK_FALSE(lane_flag(kick));
+    set_lane_flag(kick);
+    CHECK(kick.is2x);
+    CHECK(kick.cymbaltype == NoteCymbalType::Normal);
+    CHECK(lane_flag(kick));
+
+    ChordNote yellow{NoteColor::Yellow};
+    CHECK_FALSE(lane_flag(yellow));
+    set_lane_flag(yellow);
+    CHECK(yellow.cymbaltype == NoteCymbalType::Cymbal);
+    CHECK_FALSE(yellow.is2x);
+    CHECK(lane_flag(yellow));
+
+    ChordNote red{NoteColor::Red};
+    CHECK_THROWS_AS(set_lane_flag(red), std::logic_error);
+}
+
+TEST_CASE("dynamic_label: the display word for each dynamic") {
+    CHECK(dynamic_label(NoteDynamicType::Ghost) == "Ghost");
+    CHECK(dynamic_label(NoteDynamicType::Accent) == "Accent");
+    CHECK(dynamic_label(NoteDynamicType::Normal) == "");
+    CHECK(dynamic_str(NoteDynamicType::Ghost) == "ghost");
+    CHECK(dynamic_str(NoteDynamicType::Accent) == "accent");
+    CHECK(dynamic_str(NoteDynamicType::Normal) == "none");
+}
+
+TEST_CASE("squeeze_kind_from_name: type_name's two words and nothing else") {
+    CHECK(squeeze_kind_from_name("SqIn") == std::optional<SqueezeKind>(SqueezeKind::SqIn));
+    CHECK(squeeze_kind_from_name("SqOut") == std::optional<SqueezeKind>(SqueezeKind::SqOut));
+    CHECK_FALSE(squeeze_kind_from_name("sqout").has_value());
+    CHECK_FALSE(squeeze_kind_from_name("").has_value());
+    for (SqueezeKind kind : {SqueezeKind::SqIn, SqueezeKind::SqOut})
+        CHECK(squeeze_kind_from_name(SPSqueeze{kind, 0.0}.type_name()) ==
+              std::optional<SqueezeKind>(kind));
+}
+
+// The same six values "replay score fields: one list in schema order"
+// (tests/test_replay.cpp) assigns.
+TEST_CASE("score_total: the six categories in the stored order") {
+    CHECK(score_total(1, 2, 3, 4, 5, 6) == 21);
+
+    Path p;
+    p.score_base = 100;
+    p.score_combo = 200;
+    p.score_sp = 300;
+    p.score_solo = 400;
+    p.score_accents = 50;
+    p.score_ghosts = 60;
+    CHECK(p.totalscore() == 1110);
 }

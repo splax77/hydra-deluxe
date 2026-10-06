@@ -30,14 +30,26 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
+
+try:
+    from . import constants as C
+    from .probe_chart import chart_text as _chart_text, ms_to_ticks
+except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
+    import constants as C  # type: ignore[no-redef]
+    from probe_chart import chart_text as _chart_text, ms_to_ticks  # type: ignore[no-redef]
 
 RESOLUTION = 480
 BPM = 125.0  # 480 ticks per beat at 125 BPM = 1 tick per ms
 
-KICK = 0  # .chart drum lane 0; play_chart.py maps it to the kick key
-
+# Where the probe songs are installed, the two songs' folder names, and the
+# prefix that turns a folder name into the name the game lists. The runners
+# read these; every probe song folder is written by write_song_folder.
 DEFAULT_OUT = r"C:\Clone Hero\songs\Hydra Probe"
+WINDOW_MAP = "Window Map"
+EDGE_WALK = "Edge Walk"
+NAME_PREFIX = "Hydra Probe - "
+SONG_OGG = "song.ogg"
 
 LEAD_IN_MS = 3000
 SILENCE_MS = 3000  # between blocks; far wider than any window
@@ -69,7 +81,9 @@ class Note:
 
 
 class Timeline:
-    """Lays notes down left to right. Times are ms == ticks."""
+    """Lays notes down left to right, in ms. At RESOLUTION and BPM a tick is
+    one ms, so the chart's ticks equal these times; chart_text still turns
+    each through probe_chart.ms_to_ticks."""
 
     def __init__(self) -> None:
         self.notes: list[Note] = []
@@ -119,27 +133,12 @@ def edge_walk() -> Timeline:
 
 
 def chart_text(name: str, notes: list[Note]) -> str:
-    lines = [
-        "[Song]", "{",
-        f'  Name = "{name}"',
-        '  Artist = "Hydra ch_probe"',
-        '  Charter = "ch_probe"',
-        "  Offset = 0",
-        f"  Resolution = {RESOLUTION}",
-        '  Genre = "Test"',
-        '  MediaType = "cd"',
-        '  MusicStream = "song.ogg"',
-        "}",
-        "[SyncTrack]", "{",
-        "  0 = TS 4",
-        f"  0 = B {int(BPM * 1000)}",
-        "}",
-        "[Events]", "{", "}",
-        "[ExpertDrums]", "{",
-    ]
-    lines += [f"  {n.time_ms} = N {KICK} 0" for n in notes]
-    lines.append("}")
-    return "\n".join(lines) + "\n"
+    """The song's notes.chart: every note a kick, through probe_chart's one
+    writer, each note's ms turned into its tick at this song's resolution and
+    tempo."""
+    ticks = [ms_to_ticks(n.time_ms, RESOLUTION, BPM) for n in notes]
+    return _chart_text(name, ticks, resolution=RESOLUTION, bpm=BPM,
+                       note=C.PROBE_CHART_NOTE_KICK, music_stream=SONG_OGG)
 
 
 def song_ini(name: str, length_ms: int) -> str:
@@ -187,36 +186,56 @@ def write_silent_ogg(path: str, length_ms: int) -> None:
         raise RuntimeError("ffmpeg not on PATH; needed to write song.ogg")
     subprocess.run(
         [ffmpeg, "-y", "-loglevel", "error", "-f", "lavfi",
-         "-i", "anullsrc=r=44100:cl=stereo", "-t", f"{length_ms / 1000:.3f}",
+         "-i", "anullsrc=r=44100:cl=stereo", "-t", f"{C.ms_to_s(length_ms):.3f}",
          "-c:a", "libvorbis", "-q:a", "0", path],
         check=True,
     )
 
 
-def write_song(root: str, name: str, t: Timeline) -> str:
+def full_name(name: str) -> str:
+    """The name the game lists for the probe song in folder `name`."""
+    return NAME_PREFIX + name
+
+
+def song_length_ms(last_note_ms: int) -> int:
+    """A probe song's length: its last note, then SILENCE_MS of quiet."""
+    return last_note_ms + SILENCE_MS
+
+
+def write_song_folder(root: str, name: str, chart: str, length_ms: int, *,
+                      write_ogg: Callable[[str, int], None] = write_silent_ogg) -> str:
+    """Make <root>/<name> and write a playable song there: `chart` as
+    notes.chart, a song.ini and a silent song.ogg of `length_ms`. Returns the
+    folder."""
     folder = os.path.join(root, name)
     os.makedirs(folder, exist_ok=True)
-    length_ms = t.notes[-1].time_ms + SILENCE_MS
-    full_name = f"Hydra Probe - {name}"
     with open(os.path.join(folder, "notes.chart"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(chart_text(full_name, t.notes))
+        f.write(chart)
     with open(os.path.join(folder, "song.ini"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(song_ini(full_name, length_ms))
-    with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
-        json.dump(manifest(full_name, t.notes), f, indent=1)
-    write_silent_ogg(os.path.join(folder, "song.ogg"), length_ms)
+        f.write(song_ini(full_name(name), length_ms))
+    write_ogg(os.path.join(folder, SONG_OGG), length_ms)
     return folder
+
+
+def write_song(root: str, name: str, t: Timeline) -> tuple[str, int]:
+    """Write one probe song folder plus its manifest.json. Returns the folder
+    and the song's length in ms."""
+    length_ms = song_length_ms(t.notes[-1].time_ms)
+    title = full_name(name)
+    folder = write_song_folder(root, name, chart_text(title, t.notes), length_ms)
+    with open(os.path.join(folder, "manifest.json"), "w", encoding="utf-8", newline="\n") as f:
+        json.dump(manifest(title, t.notes), f, indent=1)
+    return folder, length_ms
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--out", default=DEFAULT_OUT)
     args = ap.parse_args()
-    for name, build in (("Window Map", window_map), ("Edge Walk", edge_walk)):
+    for name, build in ((WINDOW_MAP, window_map), (EDGE_WALK, edge_walk)):
         t = build()
-        folder = write_song(args.out, name, t)
-        print(f"{folder}: {len(t.notes)} notes, "
-              f"{(t.notes[-1].time_ms + SILENCE_MS) / 1000:.1f} s")
+        folder, length_ms = write_song(args.out, name, t)
+        print(f"{folder}: {len(t.notes)} notes, {C.ms_to_s(length_ms):.1f} s")
 
 
 if __name__ == "__main__":

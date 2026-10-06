@@ -13,76 +13,23 @@
 
 #include "app/preview_source.h"
 #include "audio/decode.h"
-#include "core/winstr.h"
+#include "audio_util.h"
+#include "midi_util.h"  // testmidi::concat
 
 using namespace hydra;
 using namespace hydra::audio;
+using testaudio::estimate_freq_hz;
+using testaudio::fixture_path;
+using testaudio::id3_tag;
+using testaudio::read_fixture;
 
 namespace {
-
-#ifndef HYDRA_TESTDATA_DIR
-#error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
-#endif
-
-std::vector<uint8_t> read_fixture(const std::string& name) {
-    return hydra::read_file_bytes(std::string(HYDRA_TESTDATA_DIR) + "/audio/" +
-                                  name);
-}
 
 std::vector<uint8_t> bytes(std::initializer_list<int> vals) {
     std::vector<uint8_t> out;
     out.reserve(vals.size());
     for (int v : vals) out.push_back(static_cast<uint8_t>(v));
     return out;
-}
-
-void put_u16(std::vector<uint8_t>& o, uint16_t n) {
-    o.push_back(static_cast<uint8_t>(n));
-    o.push_back(static_cast<uint8_t>(n >> 8));
-}
-void put_u32(std::vector<uint8_t>& o, uint32_t n) {
-    for (int i = 0; i < 4; ++i) o.push_back(static_cast<uint8_t>(n >> (8 * i)));
-}
-
-// A canonical 44-byte-header PCM16 WAV around the given mono samples.
-std::vector<uint8_t> make_wav_mono16(const std::vector<int16_t>& pcm,
-                                     uint32_t sample_rate) {
-    const uint16_t channels = 1, bits = 16;
-    const uint32_t data_len = static_cast<uint32_t>(pcm.size()) * 2;
-    const uint32_t byte_rate = sample_rate * channels * (bits / 8);
-    std::vector<uint8_t> o;
-    o.insert(o.end(), {'R', 'I', 'F', 'F'});
-    put_u32(o, 36 + data_len);
-    o.insert(o.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
-    put_u32(o, 16);
-    put_u16(o, 1);  // PCM
-    put_u16(o, channels);
-    put_u32(o, sample_rate);
-    put_u32(o, byte_rate);
-    put_u16(o, static_cast<uint16_t>(channels * (bits / 8)));  // block align
-    put_u16(o, bits);
-    o.insert(o.end(), {'d', 'a', 't', 'a'});
-    put_u32(o, data_len);
-    for (int16_t s : pcm) put_u16(o, static_cast<uint16_t>(s));
-    return o;
-}
-
-// Dominant frequency of channel 0, from zero crossings over the middle half of
-// the signal (edges carry encoder padding/fades). Good enough to confirm a
-// decoded stem really is the 220 Hz sine, not silence or garbage.
-double estimate_freq_hz(const DecodedAudio& a) {
-    if (a.channels <= 0 || a.frames() < 4) return 0.0;
-    int64_t n = a.frames();
-    int64_t lo = n / 4, hi = n - n / 4;  // middle 50%
-    int crossings = 0;
-    float prev = a.samples[static_cast<size_t>(lo) * a.channels];
-    for (int64_t i = lo + 1; i < hi; ++i) {
-        float s = a.samples[static_cast<size_t>(i) * a.channels];
-        if ((prev < 0.0f && s >= 0.0f) || (prev >= 0.0f && s < 0.0f)) ++crossings;
-        prev = s;
-    }
-    double dur = static_cast<double>(hi - lo) / a.sample_rate;
-    return (crossings / 2.0) / dur;
 }
 
 float peak_abs(const DecodedAudio& a) {
@@ -101,7 +48,9 @@ TEST_CASE("sniff_format classifies audio containers by their magic bytes") {
     CHECK(sniff_format(bytes({'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'A', 'V',
                               'E'})) == AudioFormat::Wav);
     CHECK(sniff_format(bytes({'f', 'L', 'a', 'C'})) == AudioFormat::Flac);
-    CHECK(sniff_format(bytes({'I', 'D', '3', 3, 0, 0})) == AudioFormat::Mp3);
+    std::vector<uint8_t> cut_tag = id3_tag(0);
+    cut_tag.resize(6);  // an ID3 header cut short
+    CHECK(sniff_format(cut_tag) == AudioFormat::Mp3);
     CHECK(sniff_format(bytes({0xFF, 0xFB, 0x90, 0x00})) ==
           AudioFormat::Mp3);  // raw MP3 frame sync
 
@@ -116,10 +65,35 @@ TEST_CASE("sniff_format classifies audio containers by their magic bytes") {
     CHECK(sniff_format(bytes({0x89, 'P', 'N', 'G'})) == AudioFormat::Unknown);
 }
 
+TEST_CASE("sniff_format: a FLAC behind an ID3 tag is Flac, a tagged MP3 stays Mp3") {
+    using testmidi::concat;
+    const std::vector<uint8_t> flac = read_fixture("sine220.flac");
+    const std::vector<uint8_t> mp3 = read_fixture("sine220.mp3");
+    const std::vector<uint8_t> tag = id3_tag(0);
+    const std::vector<uint8_t> tag_footer = id3_tag(0x10);
+
+    CHECK(sniff_format(concat({tag, flac})) == AudioFormat::Flac);
+    CHECK(sniff_format(concat({tag_footer, flac})) == AudioFormat::Flac);
+    CHECK(sniff_format(concat({tag, tag, flac})) == AudioFormat::Flac);
+    CHECK(sniff_format(concat({tag, mp3})) == AudioFormat::Mp3);
+    CHECK(sniff_format(tag) == AudioFormat::Mp3);
+}
+
+TEST_CASE("audio_sniff: the ID3v2 tag length counts the header, the size and the footer") {
+    const std::vector<uint8_t> tag = id3_tag(0);
+    const std::vector<uint8_t> tag_footer = id3_tag(0x10);
+    CHECK(id3v2_tag_length(tag.data(), tag.size()) == 30);
+    CHECK(id3v2_tag_length(tag_footer.data(), tag_footer.size()) == 40);
+
+    const std::vector<uint8_t> flac = read_fixture("sine220.flac");
+    CHECK(id3v2_tag_length(flac.data(), flac.size()) == 0);
+    CHECK(id3v2_tag_length(tag.data(), 9) == 0);
+}
+
 TEST_CASE("decode_audio: PCM16 WAV decodes to matching float samples") {
     const uint32_t rate = 8000;
     const std::vector<int16_t> pcm = {0, 16384, -16384, 32767, -32768};
-    DecodedAudio out = decode_audio(make_wav_mono16(pcm, rate));
+    DecodedAudio out = decode_audio(testaudio::pcm16_wav(1, rate, pcm));
 
     CHECK(out.channels == 1);
     CHECK(out.sample_rate == static_cast<int>(rate));
@@ -137,7 +111,7 @@ TEST_CASE("decode_audio: MP3 fixture decodes to the 220 Hz sine") {
     CHECK(out.sample_rate >= 8000);
     REQUIRE(out.frames() > out.sample_rate / 10);  // at least ~0.1 s
     CHECK(peak_abs(out) <= 1.0001f);
-    CHECK(estimate_freq_hz(out) == doctest::Approx(220.0).epsilon(0.07));
+    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));
 }
 
 TEST_CASE("decode_audio: OGG Vorbis fixture decodes to the 220 Hz sine") {
@@ -147,13 +121,13 @@ TEST_CASE("decode_audio: OGG Vorbis fixture decodes to the 220 Hz sine") {
     CHECK(out.sample_rate >= 8000);
     REQUIRE(out.frames() > out.sample_rate / 10);
     CHECK(peak_abs(out) <= 1.0001f);
-    CHECK(estimate_freq_hz(out) == doctest::Approx(220.0).epsilon(0.07));
+    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));
 }
 
 TEST_CASE("decode_stem: a file-path stem and a bytes stem decode identically") {
     hydra::app::PreviewAudioStem file_stem;
     file_stem.label = "song";
-    file_stem.path = std::string(HYDRA_TESTDATA_DIR) + "/audio/sine220.ogg";
+    file_stem.path = fixture_path("sine220.ogg");
 
     hydra::app::PreviewAudioStem mem_stem;
     mem_stem.label = "song";
@@ -169,7 +143,7 @@ TEST_CASE("decode_stem: a file-path stem and a bytes stem decode identically") {
     CHECK(a.sample_rate == b.sample_rate);
     REQUIRE(a.samples.size() == b.samples.size());
     CHECK(a.samples == b.samples);  // byte-for-byte the same PCM
-    CHECK(estimate_freq_hz(a) == doctest::Approx(220.0).epsilon(0.07));
+    CHECK(estimate_freq_hz(a, 0) == doctest::Approx(220.0).epsilon(0.07));
 }
 
 TEST_CASE("decode_audio: Ogg-Opus fixture decodes to the 220 Hz sine at 48 kHz") {
@@ -179,7 +153,7 @@ TEST_CASE("decode_audio: Ogg-Opus fixture decodes to the 220 Hz sine at 48 kHz")
     CHECK(out.sample_rate == 48000);  // Opus always decodes at 48 kHz
     REQUIRE(out.frames() > out.sample_rate / 10);
     CHECK(peak_abs(out) <= 1.0001f);
-    CHECK(estimate_freq_hz(out) == doctest::Approx(220.0).epsilon(0.07));
+    CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.07));
 }
 
 // FNV-1a over the decoded float bytes. It pins the Opus decoder's exact output,

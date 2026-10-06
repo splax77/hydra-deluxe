@@ -17,6 +17,11 @@
 namespace hydra::ui {
 
 inline const ImVec4 kBestPathColor{250 / 255.0f, 210 / 255.0f, 0 / 255.0f, 1.0f};
+// The Star Power gold. A different gold from kBestPathColor.
+inline const ImVec4 kStarPowerColor{255 / 255.0f, 204 / 255.0f, 51 / 255.0f, 1.0f};
+// The Preview's SP gauge fills with that gold a touch see-through: alpha 230
+// of 255, the look as shipped.
+inline constexpr float kStarPowerFillAlpha = 230.0f / 255.0f;
 inline const ImVec4 kWarningColor{255 / 255.0f, 127 / 255.0f, 0 / 255.0f, 1.0f};
 // Deliberately lighter than the Python app's (100,100,100): that gray sat at
 // ~2.9:1 against the window background, under the 4.5:1 WCAG AA minimum for
@@ -34,6 +39,9 @@ inline const ImVec4 kAccentColor{0 / 255.0f, 180 / 255.0f, 180 / 255.0f, 1.0f};
 inline const ImVec4 kButtonColor{0 / 255.0f, 122 / 255.0f, 122 / 255.0f, 1.0f};
 inline const ImVec4 kButtonHoveredColor{0 / 255.0f, 104 / 255.0f, 104 / 255.0f, 1.0f};
 inline const ImVec4 kButtonActiveColor{0 / 255.0f, 88 / 255.0f, 88 / 255.0f, 1.0f};
+// The hover face of an input frame and of a list or table header. It is the
+// button hover teal (D74), so it names that one rather than spelling a second.
+inline const ImVec4& kFrameHoveredColor = kButtonHoveredColor;
 
 // Surfaces. The window is DPG's baseline (it used to be a local in
 // apply_theme); the settings bar and the song panel sit a shade lighter so
@@ -60,9 +68,10 @@ inline const ImVec4 kFolderListBg{50 / 255.0f, 50 / 255.0f, 50 / 255.0f, 1.0f};
 // reaches ~4.9:1 and the gray button face still reads as disabled.
 inline const ImVec4 kDisabledButtonTextColor{235 / 255.0f, 235 / 255.0f, 235 / 255.0f, 1.0f};
 inline const ImVec4 kDisabledButtonColor{100 / 255.0f, 100 / 255.0f, 100 / 255.0f, 1.0f};
-// Was (50,50,50): 1.15:1 on its (40,40,40) face, unreadable. (160,160,160)
-// is 5.64:1 there; the flat dark face still says "off".
-inline const ImVec4 kDisabledInputTextColor{160 / 255.0f, 160 / 255.0f, 160 / 255.0f, 1.0f};
+// Was (50,50,50): 1.15:1 on its (40,40,40) face, unreadable. The dimmed grey
+// is 5.64:1 there; the flat dark face still says "off". It is the same grey
+// as dimmed text, so it names that one rather than spelling it again.
+inline const ImVec4& kDisabledInputTextColor = kDimTextColor;
 inline const ImVec4 kDisabledInputBgColor{40 / 255.0f, 40 / 255.0f, 40 / 255.0f, 1.0f};
 
 // Applies the app-wide accent (teal buttons/headers, matching

@@ -54,6 +54,8 @@ const SqueezeChoice* choice_at(const ScoreGraphEdge& e, int64_t chord_tick) {
     return nullptr;
 }
 
+using test::extension_of;
+
 struct SqOutSeen {
     int64_t act_tick;
     int64_t end_tick;   // the record's SP end (the trimmed step list)
@@ -88,6 +90,10 @@ doctest::Approx ms(double v) { return doctest::Approx(v).epsilon(1e-9); }
 
 }  // namespace
 
+// D36 rewrote this case: the edge's own sqout_time and clamped flag are
+// gone, because where the end moved now has one answer, the path's own step.
+// So the step's facts are pinned: end 6528, Clamped, moved from 5376, which
+// can give 3456 back.
 TEST_CASE("finding 37: the squeeze-out edge expects extend_deacts' clamped end") {
     const Song song = build_fast_song(kOneActivation);
     const ScoreGraph graph(song, 2);
@@ -97,9 +103,11 @@ TEST_CASE("finding 37: the squeeze-out edge expects extend_deacts' clamped end")
     REQUIRE(c != nullptr);
     CHECK_FALSE(c->late);
     // min(5376 + 1536, 3456 + 4 * 768) = 6528, and the ceiling won.
-    CHECK(c->sqout_time.ticks() == 6528);  // was 6912
-    CHECK(c->sqin_time.ticks() == 6528);
-    CHECK(c->clamped);
+    const std::optional<SpExtension> x = extension_of(graph, 3456, 5376);
+    REQUIRE(x.has_value());
+    CHECK(x->to_tick == 6528);  // was 6912
+    CHECK(x->clamped);
+    CHECK(x->sqout_node);
 }
 
 TEST_CASE("finding 37: a clamped window still offers its squeeze-out") {
@@ -206,11 +214,18 @@ TEST_CASE("finding 37: a plain bar tying the ceiling squeezes out only for its o
     const SqueezeChoice* cc = choice_at(*clamp, 3456);
     REQUIRE(pc != nullptr);
     REQUIRE(cc != nullptr);
-    // Both choices are for a path whose end is 6528; only one is clamped.
-    CHECK(pc->sqout_time.ticks() == 6528);
-    CHECK_FALSE(pc->clamped);
-    CHECK(cc->sqout_time.ticks() == 6528);
-    CHECK(cc->clamped);
+    // Both steps move to 6528; only one is clamped. Each step names its own
+    // end, which is where its squeeze is offered (D36).
+    const std::optional<SpExtension> px = extension_of(graph, 3456, 4992);
+    const std::optional<SpExtension> cx = extension_of(graph, 3456, 5184);
+    REQUIRE(px.has_value());
+    REQUIRE(cx.has_value());
+    CHECK(px->to_tick == 6528);
+    CHECK_FALSE(px->clamped);
+    CHECK(px->sqout_node);
+    CHECK(cx->to_tick == 6528);
+    CHECK(cx->clamped);
+    CHECK(cx->sqout_node);
 
     for (int64_t act : {int64_t{1920}, int64_t{2112}}) {
         const std::vector<Path> paths = search_target(song, test::scores_settings(2), {act});
@@ -307,9 +322,10 @@ TEST_CASE("finding 37: an unclamped window is unchanged") {
     REQUIRE(e != nullptr);
     const SqueezeChoice* c = choice_at(*e, 3456);
     REQUIRE(c != nullptr);
-    CHECK(c->sqout_time.ticks() == 6912);
-    CHECK(c->sqin_time.ticks() == 6912);
-    CHECK_FALSE(c->clamped);
+    const std::optional<SpExtension> x = extension_of(graph, 3456, 5376);
+    REQUIRE(x.has_value());
+    CHECK(x->to_tick == 6912);
+    CHECK_FALSE(x->clamped);
     const std::vector<SqOutSeen> seen =
         sqouts_of(run_search(graph, test::wide_search()), 3456);
     REQUIRE_FALSE(seen.empty());

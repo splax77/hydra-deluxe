@@ -6,6 +6,7 @@
 #include <cmath>
 #include <string>
 
+#include "app/user_messages.h"
 #include "core/winstr.h"
 #include "render/obj_loader.h"
 
@@ -89,6 +90,17 @@ TEST_CASE("load_obj handles v//vn, bare v, negative indices, and CRLF") {
     CHECK(m.vertices[4].pos[0] == doctest::Approx(1.0f));
 }
 
+TEST_CASE("an .obj with no faces reads as a Preview asset problem") {
+    try {
+        load_obj("v 0 0 0\nv 1 0 0\nv 0 1 0\n");
+        FAIL("an .obj with no faces loaded");
+    } catch (const std::exception& e) {
+        CHECK(hydra::app::plain_error(e) ==
+              "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
+        CHECK(std::string(e.what()) == "obj: no faces");
+    }
+}
+
 TEST_CASE("load_obj rejects text with no faces and bad indices") {
     CHECK_THROWS(load_obj("v 0 0 0\n"));
     CHECK_THROWS(load_obj("v 0 0 0\nf 1 2 3\n"));
@@ -145,6 +157,36 @@ TEST_CASE("make_box: four outward faces, no bottom or back") {
     CHECK(saw_left);
     CHECK(saw_front);
     CHECK(saw_right);
+}
+
+TEST_CASE("make_triangle: one upright unit triangle facing +Z, apex at +X or -X") {
+    for (bool apex_right : {true, false}) {
+        CAPTURE(apex_right);
+        ObjMesh m = make_triangle(apex_right);
+        REQUIRE(m.triangle_count() == 1);
+        float mn[3], mx[3];
+        mesh_bounds(m, mn, mx);
+        CHECK(mn[0] == -0.5f);
+        CHECK(mx[0] == 0.5f);
+        CHECK(mn[1] == -0.5f);
+        CHECK(mx[1] == 0.5f);
+        CHECK(mn[2] == 0.0f);
+        CHECK(mx[2] == 0.0f);
+        for (const ObjVertex& v : m.vertices) {
+            CHECK(v.normal[0] == 0.0f);
+            CHECK(v.normal[1] == 0.0f);
+            CHECK(v.normal[2] == 1.0f);
+        }
+        // Corner order, counter-clockwise seen from +Z: base bottom first.
+        const float want_right[3][2] = {{-0.5f, -0.5f}, {0.5f, 0.0f}, {-0.5f, 0.5f}};
+        const float want_left[3][2] = {{0.5f, -0.5f}, {0.5f, 0.5f}, {-0.5f, 0.0f}};
+        const float(&want)[3][2] = apex_right ? want_right : want_left;
+        for (int k = 0; k < 3; ++k) {
+            CAPTURE(k);
+            CHECK(m.vertices[k].pos[0] == want[k][0]);
+            CHECK(m.vertices[k].pos[1] == want[k][1]);
+        }
+    }
 }
 
 TEST_CASE("the copied Onyx drum models load with their known extents") {

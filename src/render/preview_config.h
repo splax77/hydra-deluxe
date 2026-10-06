@@ -1,8 +1,10 @@
 // The Preview's layout and look as numbers: a struct mirroring Onyx's
-// 3d-config.yml (shipped as assets/preview/3d-config.json), with Onyx's values
-// as the defaults so a missing key changes nothing. Every camera, highway,
-// light and timing constant the renderer uses comes from here — never from a
-// literal in the draw code — so the port stays checkable against Onyx's file.
+// 3d-config.yml, shipped as assets/preview/3d-config.json. That file is the
+// one source of these numbers (docs/adr/0008): the struct holds none of its
+// own, so a PreviewConfig that was not loaded is all zeros, and a key the file
+// lacks is an error, never a fallback. Every camera, highway, light and timing
+// constant the renderer uses comes from here — never from a literal in the
+// draw code — so the port stays checkable against Onyx's file.
 //
 // Colours follow Onyx's `stackColor`: "#rrggbb" -> (r/255, g/255, b/255, 1).
 
@@ -24,68 +26,79 @@ struct Vec3 {
 
 struct LightConfig {
     Vec3 position;
-    Color ambient{0.2f, 0.2f, 0.2f, 1};  // #333333
-    Color diffuse{1, 1, 1, 1};
-    Color specular{1, 1, 1, 1};
+    Color ambient{};
+    Color diffuse{};
+    Color specular{};
 };
 
 struct PreviewConfig {
     struct View {
-        Color background{0x1c / 255.0f, 0x1d / 255.0f, 0x2b / 255.0f, 1};
-        float track_fade_bottom = 0.7734724292101341f;
-        float track_fade_top = 0.8315946348733234f;
-        float height_width_ratio = 1.1666666666f;
-        Vec3 camera_position{0, 1.4f, 3};
-        float camera_rotate = 25;  // degrees down, around X
-        float camera_fov = 45;     // degrees
-        float camera_near = 0.1f;
-        float camera_far = 100;
+        Color background{};
+        float track_fade_bottom{};
+        float track_fade_top{};
+        float height_width_ratio{};
+        Vec3 camera_position{};
+        float camera_rotate{};  // degrees down, around X
+        float camera_fov{};     // degrees
+        float camera_near{};
+        float camera_far{};
     } view;
 
     struct Track {
-        float y = -1;  // the floor
-        float x_left = -1, x_right = 1;  // the note area
-        float z_past = 2, z_now = 0, z_future = -12;
-        float secs_future = 1.35f;  // events this far ahead sit at z_future
-        Color color_normal{0.2f, 0.2f, 0.2f, 1};          // #333333
-        Color color_solo{0.2f, 0.2f, 0.6f, 1};            // #333399
-        Color railing_color{0x73 / 255.0f, 0x73 / 255.0f, 0x73 / 255.0f, 1};
-        float railing_x_width = 0.09f;
-        float railing_y_top = -0.85f, railing_y_bottom = -1.1f;
-        float beats_z_past = 0.05f, beats_z_future = -0.05f;
-        float targets_z_past = 0.13f, targets_z_future = -0.13f;
-        float targets_secs_light = 0.1666666f;
-        LightConfig light{{0, -0.5f, 0.5f}};
+        float y{};  // the floor
+        float x_left{}, x_right{};  // the note area
+        float z_past{}, z_now{}, z_future{};
+        float secs_future{};  // events this far ahead sit at z_future
+        Color color_normal{};
+        Color color_solo{};
+        Color railing_color{};
+        float railing_x_width{};
+        float railing_y_top{}, railing_y_bottom{};
+        float beats_z_past{}, beats_z_future{};
+        float targets_z_past{}, targets_z_future{};
+        float targets_secs_light{};
+        LightConfig light{};
     } track;
 
     struct Gems {
-        Color color_hit{1, 1, 1, 1};
-        float secs_fade = 0.1f;
-        LightConfig light{{0, 1, 0.2f}};  // relative to the gem's bottom centre
+        Color color_hit{};
+        float secs_fade{};
+        LightConfig light{};  // relative to the gem's top centre
     } gems;
 
     // Onyx's text.time_box. Hydra draws the box in its own monospace font,
     // so the file's `font` key is not read; size and margin are.
     struct Text {
-        float time_box_size = 15;
-        float time_box_margin = 10;
+        float time_box_size{};
+        float time_box_margin{};
     } text;
 
     // Hydra-only (not in Onyx's file).
     struct Hydra {
-        int msaa = 4;  // mirrors Onyx's prefMSAA default
-        Color sp_active_color{0x6c / 255.0f, 0xf7 / 255.0f, 0xc6 / 255.0f, 1};
-        float sp_active_darken = 0.2f;
+        int msaa{};  // mirrors Onyx's prefMSAA default
+        Color sp_active_color{};
+        float sp_active_darken{};
         // How dim a fill the path passed over draws, next to the taken one.
-        float fill_offered_alpha = 0.35f;
+        float fill_offered_alpha{};
+        // The mark where an active SP window ends (D81): a bright edge across
+        // the floor, this deep along the highway, and an upright triangle
+        // beside each railing, this wide (base to apex) and this tall (its
+        // base). build_highway_draws places them.
+        float sp_end_edge_depth{};
+        float sp_end_marker_width{};
+        float sp_end_marker_height{};
     } hydra;
 };
 
 // "#rrggbb" or "#rrggbbaa" -> Color; anything else returns opaque magenta.
 Color parse_hex_color(std::string_view text);
 
-// Parse the JSON form of 3d-config.yml. Missing keys keep their defaults.
-// Throws std::runtime_error on malformed JSON.
+// Parse the JSON form of 3d-config.yml. Every key the struct holds must be in
+// the file with the right type (a number, a "#rrggbb" string, or an object):
+// one that is absent or of another type throws std::runtime_error starting
+// "3d-config.json: missing key " and naming the key's dotted path as the file
+// spells it, for example "track.time.secs_future". Malformed JSON throws
+// std::runtime_error too.
 PreviewConfig load_preview_config(const std::string& json_text);
 
 }  // namespace hydra::render

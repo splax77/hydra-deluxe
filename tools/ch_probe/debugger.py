@@ -23,8 +23,10 @@ The code splits into two halves on purpose:
     against a real debuggee, so it is quarantined behind a clear seam and the
     tests do not touch it. Every such spot is marked "LIVE-ONLY".
 
-Do not import process.py from here; this module keeps its own thin Win32
-bindings so the two layers stay independent.
+Memory goes through process.py: its pure decoders turn bytes into numbers,
+and its make_reader/make_writer are the one binding to ReadProcessMemory and
+WriteProcessMemory. This module keeps its own debug-call bindings and adds
+the instruction-cache flush a freshly written 0xCC needs.
 """
 
 from __future__ import annotations
@@ -34,6 +36,11 @@ import ctypes.wintypes  # _Win32 uses it; don't rely on another module importing
 import struct
 import time
 from typing import Callable, Dict, Optional
+
+try:
+    from . import process
+except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
+    import process  # type: ignore[no-redef]
 
 
 # The one-byte trap instruction. Writing this over an instruction's first byte
@@ -51,11 +58,11 @@ def decode_xmm0_double(xmm0_bytes: bytes) -> float:
 
     The hit-window formula returns its answer in XMM0. A double lives in the
     low half of that 128-bit register, little-endian. So take the first 8 bytes
-    and unpack them as an IEEE-754 double.
+    and decode them with process.decode_double.
     """
     if len(xmm0_bytes) < 8:
         raise ValueError("XMM0 buffer must be at least 8 bytes")
-    return struct.unpack("<d", bytes(xmm0_bytes[:8]))[0]
+    return process.decode_double(bytes(xmm0_bytes[:8]))
 
 
 def adjust_rip_after_int3(rip: int) -> int:
@@ -374,7 +381,8 @@ THREAD_ALL_ACCESS = 0x1F03FF
 
 
 class _Win32:
-    """Thin lazily-built wrapper over the Win32 debug and memory calls.
+    """Thin lazily-built wrapper over the Win32 debug calls. Memory reads and
+    writes go through process.make_reader/make_writer instead.
 
     LIVE-ONLY. Built the first time we attach so importing this module never
     touches windll (which keeps the pure logic importable everywhere).
@@ -413,16 +421,6 @@ class _Win32:
         k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
         k32.OpenProcess.restype = wintypes.HANDLE
 
-        k32.ReadProcessMemory.argtypes = [
-            wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p,
-            ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
-        k32.ReadProcessMemory.restype = wintypes.BOOL
-
-        k32.WriteProcessMemory.argtypes = [
-            wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p,
-            ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
-        k32.WriteProcessMemory.restype = wintypes.BOOL
-
         k32.FlushInstructionCache.argtypes = [
             wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t]
         k32.FlushInstructionCache.restype = wintypes.BOOL
@@ -447,6 +445,9 @@ class Debugger:
         self._pid: Optional[int] = None
         self._win32: Optional[_Win32] = None
         self._proc_handle = None
+        # process.make_reader/make_writer over _proc_handle, built by attach().
+        self._read_raw: Optional[process.Reader] = None
+        self._write_raw: Optional[process.Writer] = None
         self._table = BreakpointTable(self._raw_read, self._raw_write)
         # Threads that just stepped over a restored breakpoint and now need the
         # 0xCC written back: thread id -> breakpoint address.
@@ -480,6 +481,8 @@ class Debugger:
         self._proc_handle = k32.OpenProcess(PROCESS_ALL_ACCESS, False, pid)
         if not self._proc_handle:
             raise ctypes.WinError(ctypes.get_last_error())
+        self._read_raw = process.make_reader(self._proc_handle)
+        self._write_raw = process.make_writer(self._proc_handle)
         self._stopped = False
         self._seen_initial = False
 
@@ -565,26 +568,15 @@ class Debugger:
         self._raw_write(addr, data)
 
     def _raw_read(self, addr: int, size: int) -> bytes:
-        """LIVE-ONLY. Straight ReadProcessMemory with no breakpoint masking --
-        the BreakpointTable calls this so it sees true bytes."""
-        buf = (ctypes.c_ubyte * size)()
-        got = ctypes.c_size_t(0)
-        ok = self._win32.k32.ReadProcessMemory(
-            self._proc_handle, ctypes.c_void_p(addr), buf, size, ctypes.byref(got))
-        if not ok:
-            raise ctypes.WinError(ctypes.get_last_error())
-        return bytes(buf[:got.value])
+        """LIVE-ONLY. A straight read through process.make_reader's reader,
+        with no breakpoint masking -- the BreakpointTable calls this so it
+        sees true bytes."""
+        return self._read_raw(addr, size)
 
     def _raw_write(self, addr: int, data: bytes) -> None:
-        """LIVE-ONLY. WriteProcessMemory plus an instruction-cache flush so the
-        CPU sees a freshly written 0xCC."""
-        buf = (ctypes.c_ubyte * len(data)).from_buffer_copy(bytes(data))
-        wrote = ctypes.c_size_t(0)
-        ok = self._win32.k32.WriteProcessMemory(
-            self._proc_handle, ctypes.c_void_p(addr), buf, len(data),
-            ctypes.byref(wrote))
-        if not ok:
-            raise ctypes.WinError(ctypes.get_last_error())
+        """LIVE-ONLY. A write through process.make_writer's writer, plus an
+        instruction-cache flush so the CPU sees a freshly written 0xCC."""
+        self._write_raw(addr, bytes(data))
         self._win32.k32.FlushInstructionCache(
             self._proc_handle, ctypes.c_void_p(addr), len(data))
 

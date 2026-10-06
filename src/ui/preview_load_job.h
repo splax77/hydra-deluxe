@@ -28,6 +28,23 @@
 
 namespace hydra::ui {
 
+// The path a Preview scene draws over the notes: none when the chart file
+// changed since its record was analyzed, because the record's path belongs to
+// the old notes (finding 126). The first load and every later overlay ask here.
+inline const Path* drawn_path(const std::optional<Path>& path, bool chart_changed) {
+    return path && !chart_changed ? &*path : nullptr;
+}
+
+// The one place the Preview's view settings become highway options: the
+// pro-drums setting that picked the drum track also picks how the pads draw
+// (cymbals, or all toms). The load job, the controller and the tests build
+// their options here and compare them whole (finding R7.16).
+inline render::TrackStateOptions track_options(bool pro) {
+    render::TrackStateOptions opts;
+    opts.pro = pro;
+    return opts;
+}
+
 // Turns "bytes done so far" readings into a time-left estimate for the
 // loading bar. The rate is measured over at least one second of the load's
 // own progress, and the answer changes at most once a second, so the text
@@ -50,11 +67,12 @@ private:
 // AnalyzeJob. Two branches run at once:
 //   (a) parse the chart, build the PreviewScene, and build the highway
 //       timeline (render::TrackState) from it;
-//   (b) find every audio stem and open it with audio::open_stem_reader. An
+//   (b) find every audio stem and open it (audio::open_song_stems). An
 //       open reads the compressed file's layout, not its audio, so even an
 //       8-hour stem opens in well under a second.
-// Once both are done the readers go into one audio::StreamMix, which plays
-// them straight from the compressed bytes. The controller pulls the finished
+// Once both are done the readers are mixed by audio::mix_song_stems, the step
+// the song's length uses too, into a stream that plays them straight from
+// the compressed bytes. The controller pulls the finished
 // scene, timeline and mix, hands the timeline to the renderer and the mix to
 // an audio::Playhead. None of this runs on-frame.
 class PreviewLoadJob : public ResultJobBase {
@@ -66,18 +84,21 @@ public:
 
     void start();
 
-    // The output format of the mix: what the audio device plays.
-    static constexpr int kOutRate = 48000;
-    static constexpr int kOutChannels = 2;
-
     struct Result {
         app::PreviewScene scene;
-        // Every stem that opened, mixed while it plays. A negative chart
-        // offset is silence in front of the stems (StreamMix's front pad).
+        // Every stem that opened, mixed while it plays (audio::SongMix::mix).
         std::unique_ptr<audio::MixSource> audio;
-        // Where chart time 0 sits in `audio` (never negative: a negative
-        // chart offset is padded into the front of `audio` instead).
+        // Where chart time 0 sits in `audio` (audio::SongMix::audio_offset_ms).
         double audio_offset_ms = 0.0;
+        // Where the audio stops in chart time (audio::SongMix::end_chart_ms).
+        // The beat lines run to it, and the controller hands it to every
+        // later base build. It is not the song's length.
+        std::optional<double> audio_end_ms;
+        // The song's length (app::chart_song_length_ms, D75), worked out from
+        // the chart's metadata with no audio read. The scene's SP meter
+        // closes at it, the scrubber ends at it, and the controller hands it
+        // to every later base build. Empty when the owner gives none.
+        std::optional<double> song_length_ms;
         // The parsed song the scene was built from. The controller keeps it so
         // a later path selection can rebuild the overlay without re-parsing.
         Song song;
@@ -87,14 +108,21 @@ public:
         // started with.
         render::TrackState track_state;
         render::TrackStateOptions track_opts;
+        // The chart file's hash (app::hash_chart_file, the scan's rule) is not
+        // the entry's md5: the chart changed since its record was analyzed.
+        // The file is hashed only when app::chart_files_unchanged says no
+        // for the entry's sig.
+        // The scene was then built with no path, as for an unanalyzed chart.
+        bool chart_changed = false;
     };
 
     // Valid once finished() && ok(); moves the result out (call once).
     Result take_result();
 
     // Where the load is, for the Preview tab's loading bar. The steps are
-    // shown in this order. Opening audio runs beside the other three, so the
-    // step shown is the first one not yet done.
+    // shown in this order, and the step shown is the first one not yet done.
+    // Opening audio runs beside reading the chart; the scene and the highway
+    // wait for it, because the beat lines run to the audio's end.
     enum class Step { Reading, Opening, Building, Highway };
     struct Progress {
         Step step = Step::Reading;
@@ -112,7 +140,7 @@ public:
         // "Reading chart", "Opening audio: 312 of 625 MB", "Building scene",
         // "Building highway".
         std::string label() const;
-        // "about 40 s left" / "about 3 min left", or "" when the load is
+        // "about 0:40 left" / "about 3:05 left", or "" when the load is
         // under 3 s old, the rate isn't known, or the step isn't Opening audio.
         std::string time_left_text() const;
     };
@@ -159,17 +187,21 @@ struct PreviewSceneBase {
     render::TrackStateOptions track_opts;
 };
 
-// Builds a song's PreviewSceneBase. `check_cancel` runs between the steps and
-// may throw to stop the build.
+// Builds a song's PreviewSceneBase. `audio_end_ms` and `song_length_ms` are
+// the load's Result fields of those names (app::build_preview_base reads
+// both). `check_cancel` runs between the steps and may throw to stop the
+// build.
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
-    const Song& song, render::TrackStateOptions track_opts,
-    const std::function<void()>& check_cancel);
+    const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
+    std::optional<double> song_length_ms, const std::function<void()>& check_cancel);
 
 // Builds the PreviewSceneBase off the UI thread once a chart has loaded, so
 // that even the first path change only lays an overlay over it.
 class PreviewBaseJob : public ResultJobBase {
 public:
-    PreviewBaseJob(std::shared_ptr<const Song> song, render::TrackStateOptions track_opts);
+    PreviewBaseJob(std::shared_ptr<const Song> song, render::TrackStateOptions track_opts,
+                   std::optional<double> audio_end_ms,
+                   std::optional<double> song_length_ms = std::nullopt);
     ~PreviewBaseJob() { shutdown(); }
 
     void start();
@@ -181,6 +213,8 @@ private:
 
     std::shared_ptr<const Song> song_;
     render::TrackStateOptions track_opts_;
+    std::optional<double> audio_end_ms_;
+    std::optional<double> song_length_ms_;
     std::shared_ptr<const PreviewSceneBase> base_;
 };
 
@@ -192,13 +226,16 @@ private:
 // `base` may be null, or built for other timeline options: then the job
 // builds it first and hands it back in Output::base for the next job. `key`
 // is the overlay key the scene is built for; `track_opts` are the timeline
-// options the controller draws with (its pro-drums setting).
+// options the controller draws with (its pro-drums setting); `audio_end_ms`
+// and `song_length_ms` are the load's Result fields, for a base the job has
+// to build.
 class PreviewSceneJob : public ResultJobBase {
 public:
     PreviewSceneJob(std::shared_ptr<const Song> song,
                     std::shared_ptr<const PreviewSceneBase> base, std::optional<Path> path,
                     int sp_cap, core::Rules rules, std::string key,
-                    render::TrackStateOptions track_opts);
+                    render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
+                    std::optional<double> song_length_ms = std::nullopt);
     ~PreviewSceneJob() { shutdown(); }
 
     void start();
@@ -226,6 +263,8 @@ private:
     core::Rules rules_;
     std::string key_;
     render::TrackStateOptions track_opts_;
+    std::optional<double> audio_end_ms_;
+    std::optional<double> song_length_ms_;
     std::optional<Output> output_;
 };
 

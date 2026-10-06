@@ -10,8 +10,14 @@
 
 #include <io.h>  // _get_osfhandle
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <memory>
 #include <stdexcept>
+#include <string_view>
+
+#include "core/error_kind.h"
 
 namespace hydra {
 
@@ -38,18 +44,34 @@ namespace {
 
 // The longest path every wide file function takes without the prefix.
 // CreateDirectoryW's limit is the tightest: MAX_PATH minus room for an 8.3
-// file name, so anything at or past it gets the prefix.
+// file name, so anything at or past it gets the prefix. The shell has its own,
+// looser limit (260); fits_shell owns that one.
 constexpr size_t kPlainPathLimit = MAX_PATH - 12;
 
-bool starts_with(const std::wstring& s, const wchar_t* prefix) {
-    return s.rfind(prefix, 0) == 0;
+// The path prefixes, each spelled once. \\?\ (\\?\UNC\ for a share) marks a
+// long path that skips Win32's own parsing; \\.\ marks a device path. A plain
+// network path starts with just two backslashes.
+constexpr std::wstring_view kLongPrefix = L"\\\\?\\";
+constexpr std::wstring_view kLongUncPrefix = L"\\\\?\\UNC\\";
+constexpr std::wstring_view kDevicePrefix = L"\\\\.\\";
+constexpr std::wstring_view kUncLead = L"\\\\";
+
+bool starts_with(const std::wstring& s, std::wstring_view prefix) {
+    return s.size() >= prefix.size() && s.compare(0, prefix.size(), prefix) == 0;
+}
+
+// Whether the path already carries \\?\ or \\.\, so Windows takes it as it
+// is. The one place that asks: win32_path leaves such a path alone, and
+// fits_shell refuses it, since the shell parses neither.
+bool has_namespace_prefix(const std::wstring& path) {
+    return starts_with(path, kLongPrefix) || starts_with(path, kDevicePrefix);
 }
 
 }  // namespace
 
 std::wstring win32_path(const std::wstring& path) {
     if (path.size() < kPlainPathLimit) return path;
-    if (starts_with(path, L"\\\\?\\") || starts_with(path, L"\\\\.\\")) return path;
+    if (has_namespace_prefix(path)) return path;
     // Make it full first: under the prefix Windows no longer resolves "." or
     // ".." and no longer accepts '/' as a separator.
     DWORD need = GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
@@ -58,17 +80,25 @@ std::wstring win32_path(const std::wstring& path) {
     DWORD got = GetFullPathNameW(path.c_str(), need, &full[0], nullptr);
     if (got == 0 || got >= need) return path;
     full.resize(got);
-    if (starts_with(full, L"\\\\?\\") || starts_with(full, L"\\\\.\\")) return full;
-    if (starts_with(full, L"\\\\")) return L"\\\\?\\UNC\\" + full.substr(2);  // \\server\share
-    return L"\\\\?\\" + full;
+    if (has_namespace_prefix(full)) return full;
+    if (starts_with(full, kUncLead))  // \\server\share
+        return std::wstring(kLongUncPrefix) + full.substr(kUncLead.size());
+    return std::wstring(kLongPrefix) + full;
 }
 
 std::wstring win32_path(const std::string& utf8_path) {
     return win32_path(utf8_to_wide(utf8_path));
 }
 
+// The shell's own limit, 260 (MAX_PATH), not kPlainPathLimit: the shell takes
+// a plain path up to 259 characters, and never a prefixed one, \\?\ or \\.\
+// (the shell's parser refuses both: SHParseDisplayName fails on each).
+bool fits_shell(const std::wstring& path) {
+    return path.size() < MAX_PATH && !has_namespace_prefix(path);
+}
+
 std::wstring shell_path(const std::wstring& path) {
-    if (path.size() < MAX_PATH) return path;
+    if (fits_shell(path)) return path;
     const std::wstring full = win32_path(path);
     const DWORD need = GetShortPathNameW(full.c_str(), nullptr, 0);
     if (need == 0) return L"";  // missing file
@@ -76,10 +106,31 @@ std::wstring shell_path(const std::wstring& path) {
     const DWORD got = GetShortPathNameW(full.c_str(), &s[0], need);
     if (got == 0 || got >= need) return L"";
     s.resize(got);
-    if (starts_with(s, L"\\\\?\\UNC\\")) s = L"\\\\" + s.substr(8);
-    else if (starts_with(s, L"\\\\?\\")) s = s.substr(4);
+    // Drop the \\?\ that win32_path added; a \\.\ path keeps its prefix, so
+    // fits_shell below refuses it.
+    if (starts_with(s, kLongUncPrefix))
+        s = std::wstring(kUncLead) + s.substr(kLongUncPrefix.size());
+    else if (starts_with(s, kLongPrefix))
+        s = s.substr(kLongPrefix.size());
     // A drive without short names hands the long path back.
-    return s.size() < MAX_PATH ? s : L"";
+    return fits_shell(s) ? s : L"";
+}
+
+bool shell_execute_ok(void* shell_execute_result) {
+    return reinterpret_cast<INT_PTR>(shell_execute_result) > 32;
+}
+
+std::string parent_folder(const std::string& path) {
+    std::string p = path;
+    while (!p.empty() && (p.back() == '\\' || p.back() == '/')) p.pop_back();
+    const size_t pos = p.find_last_of("\\/");
+    return pos == std::string::npos ? std::string() : p.substr(0, pos);
+}
+
+std::string join_folder(const std::string& folder, const std::string& name) {
+    if (folder.empty()) return name;
+    const char last = folder.back();
+    return (last == '\\' || last == '/') ? folder + name : folder + "\\" + name;
 }
 
 std::filesystem::path os_path(const std::filesystem::path& p) {
@@ -142,7 +193,7 @@ std::string exe_path_utf8() {
 
 std::optional<uint64_t> open_handle_size_bytes(void* win32_handle) {
     // This owns sizing a file, open or by path: open_file_size_bytes,
-    // file_size_bytes and read_file_bytes all ask it. list_dir is the
+    // file_size_bytes and file_byte_source (so read_file_bytes) all ask it. list_dir is the
     // exception by decision D39: it keeps the size the folder listing already
     // reports, for the rescan cache, since opening every library file would
     // slow scans. GetFileSizeEx answers in 64 bits, so sizes past 2 GB and
@@ -175,24 +226,76 @@ uint64_t file_size_bytes(const std::string& utf8_path) {
                            OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     const std::optional<uint64_t> size = open_handle_size_bytes(h);
     if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    if (!size) throw std::runtime_error("cannot read file size: " + utf8_path);
+    if (!size) throw KindedError(ErrorKind::SongFileMissing, "cannot read file size: " + utf8_path);
     return *size;
 }
 
-std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
-    std::FILE* f = fopen_utf8(utf8_path, L"rb");
-    if (f == nullptr) throw std::runtime_error("cannot open file: " + utf8_path);
+size_t range_length(uint64_t size, uint64_t offset, size_t length) {
+    const uint64_t available = offset < size ? size - offset : 0;
+    return static_cast<size_t>(std::min<uint64_t>(length, available));
+}
+
+ByteSource file_byte_source(const std::string& utf8_path) {
+    // Shared for reading and writing, as _wfopen's "rb" shares, so a file
+    // another program holds open still reads.
+    HANDLE h = CreateFileW(win32_path(utf8_path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + utf8_path);
+    std::shared_ptr<void> file(h, [](void* p) { CloseHandle(static_cast<HANDLE>(p)); });
     // std::ftell returns a 32-bit long on Windows and fails past 2 GB, which
     // used to hand back an empty buffer; the 64-bit size has no such limit.
-    const std::optional<uint64_t> size = open_file_size_bytes(f);
-    if (!size) {
-        std::fclose(f);
-        throw std::runtime_error("cannot read file size: " + utf8_path);
-    }
-    std::vector<uint8_t> buf(static_cast<size_t>(*size));
-    if (size > 0) buf.resize(std::fread(buf.data(), 1, buf.size(), f));
-    std::fclose(f);
-    return buf;
+    const std::optional<uint64_t> size = open_handle_size_bytes(h);
+    if (!size) throw KindedError(ErrorKind::SongFileMissing, "cannot read file size: " + utf8_path);
+
+    ByteSource src;
+    src.size = *size;
+    src.read = [file, total = *size](uint64_t offset, size_t length) {
+        std::vector<uint8_t> buf(range_length(total, offset, length));
+        size_t got = 0;
+        while (got < buf.size()) {
+            // ReadFile takes its position in the OVERLAPPED block, so nothing
+            // seeks, and at most a DWORD of bytes per call.
+            const uint64_t at = offset + got;
+            OVERLAPPED ov{};
+            ov.Offset = static_cast<DWORD>(at);
+            ov.OffsetHigh = static_cast<DWORD>(at >> 32);
+            const DWORD want = static_cast<DWORD>(
+                std::min<size_t>(buf.size() - got, std::numeric_limits<DWORD>::max()));
+            DWORD n = 0;
+            if (!ReadFile(static_cast<HANDLE>(file.get()), buf.data() + got, want, &n, &ov) ||
+                n == 0)
+                break;
+            got += n;
+        }
+        buf.resize(got);
+        return buf;
+    };
+    return src;
+}
+
+ByteSource memory_byte_source(const std::vector<uint8_t>& bytes) {
+    ByteSource src;
+    src.size = bytes.size();
+    src.read = [&bytes](uint64_t offset, size_t length) {
+        const size_t n = range_length(bytes.size(), offset, length);
+        if (n == 0) return std::vector<uint8_t>{};
+        const auto from = bytes.begin() + static_cast<std::ptrdiff_t>(offset);
+        return std::vector<uint8_t>(from, from + static_cast<std::ptrdiff_t>(n));
+    };
+    return src;
+}
+
+size_t next_piece_read(size_t last) {
+    return last > std::numeric_limits<size_t>::max() / 2 ? std::numeric_limits<size_t>::max()
+                                                         : last * 2;
+}
+
+std::vector<uint8_t> read_all(const ByteSource& src) {
+    return src.read(0, static_cast<size_t>(src.size));
+}
+
+std::vector<uint8_t> read_file_bytes(const std::string& utf8_path) {
+    return read_all(file_byte_source(utf8_path));
 }
 
 std::string read_file_text(const std::string& utf8_path) {

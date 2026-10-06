@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "audio/decode.h"
+#include "audio/frames.h"
 #include "audio/player.h"
 
 using namespace hydra::audio;
@@ -40,6 +41,19 @@ TEST_CASE("Playhead starts paused at the start with the mix's format") {
     CHECK(t.position_ms() == doctest::Approx(0.0));
 }
 
+// The one frames-and-ms conversion (audit finding 182). Frames to ms is exact
+// division; a rate of 0 (no audio) reads as 0 ms. Ms to frames rounds to the
+// nearest frame, a half away from zero.
+TEST_CASE("ms_of_frames and frames_of_ms convert at the sample rate") {
+    CHECK(ms_of_frames(4800, 48000) == 100.0);
+    CHECK(ms_of_frames(240000, 48000) == 5000.0);
+    CHECK(ms_of_frames(4800, 0) == 0.0);
+    CHECK(frames_of_ms(100.0, 48000) == 4800);
+    CHECK(frames_of_ms(2.5, 1000) == 3);
+    CHECK(frames_of_ms(2.4, 1000) == 2);
+    CHECK(frames_of_ms(-2.5, 1000) == -3);
+}
+
 TEST_CASE("play, pause, and toggle drive the playhead state") {
     Playhead t(make_ramp(10));
     t.play();
@@ -71,7 +85,7 @@ TEST_CASE("read_frames while playing copies frames and advances the clock") {
     CHECK(t.position_frames() == 3);
     const float expect[] = {0, 0.5f, 1, 1.5f, 2, 2.5f};
     for (int i = 0; i < 6; ++i) CHECK(out[i] == doctest::Approx(expect[i]));
-    CHECK(t.position_ms() == doctest::Approx(3.0 * 1000.0 / 48000.0));
+    CHECK(t.position_ms() == doctest::Approx(0.0625));  // 3 frames at 48 kHz
 }
 
 TEST_CASE("read_frames past the end zero-fills, auto-pauses, clamps position") {
@@ -99,6 +113,19 @@ TEST_CASE("seek clamps to the valid range in both frames and ms") {
     CHECK(t.position_frames() == 100);  // clamped to length
     t.seek_ms(0.5);                     // 0.5 ms at 48 kHz = 24 frames
     CHECK(t.position_frames() == 24);
+}
+
+// The pair's Playhead pins at 48000 (seek_ms(0.5) and position_ms after 3
+// frames) and its 44100 pins. The 100 ms / 4800 frames pins are in the
+// "convert at the sample rate" case above.
+TEST_CASE("frames_of_ms and ms_of_frames: pinned at 48000 and 44100") {
+    CHECK(frames_of_ms(0.5, 48000) == 24);
+    CHECK(ms_of_frames(3, 48000) == 0.0625);  // 3 frames: the position_ms pin above
+    CHECK(frames_of_ms(1000.0, 44100) == 44100);
+    CHECK(ms_of_frames(44100, 44100) == 1000.0);
+    CHECK(frames_of_ms(1.0, 44100) == 44);  // pinned from one run
+    // The Playhead's own seek_ms(0.5) pin in the case above now runs through
+    // frames_of_ms, so a changed rounding shows there too.
 }
 
 TEST_CASE("Playhead applies the output gain to served frames") {

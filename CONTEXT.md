@@ -20,6 +20,9 @@ the library. Distinct from analysis.
 
 **Analyze**:
 The search that computes a chart's paths and stores the result as a record.
+Its progress bar moves in steps of at least half a percent of the chart
+(src/search/engine.cpp), and the main search owns the first 90% of the bar,
+the all-0 pass the rest (src/search/pather.cpp; D48, Q33).
 
 **Record**:
 The stored result of one analysis: the kept paths, their scores, and the
@@ -48,28 +51,67 @@ settings bar and applied to every song: difficulty, Pro Drums and 2x Bass
 (together the chart mode), the SP cap, 1.0 fills (the fill spawn deadline),
 the score range, and the path limit.
 Changing one shows the records made under the new combination; changing it
-back brings the old ones back without analyzing again. The backend limit is
+back brings the old ones back without analyzing again; the app keeps the last
+16 lookups the number boxes stepped away from, so stepping back does not ask
+the store again (src/ui/app_state.h; D48, Q33). The backend limit is
 not one of them: it only hides backend rows on screen and never re-analyzes.
+The path limit starts on<!-- default: Settings::mslimit_enabled -->
+at 10 ms<!-- default: Settings::mslimit_value -->. The backend limit ("Hide
+backend rows beyond") starts off<!-- default: Settings::backendlimit_enabled -->
+with 50 ms<!-- default: Settings::backendlimit_value --> in the box. The user
+confirmed both defaults (D48, Q33); `Settings` in src/app/config.h owns them.
+The score range starts at 4<!-- default: kDefaultDepthValue --> scores below
+the best. `kDefaultDepthValue` in src/search/pather.h owns that number, and
+the search and `Settings` both start from it (D54).
 _Avoid_: view options
 
 **Library search**:
 What the user types to narrow the library. Every word must match the title,
 artist, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `charter:` and `folder:` limit a word or phrase to one
-field. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze at most N
-ms) test the stored best path and only ever match ready records. Matching
+field. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze or
+required early fill at most N ms; `squeeze<N` means the same) test the stored
+best path and only ever match ready records. Matching
 folds case and accents away, so `beyonce` finds "Beyoncé", and ignores Clone
 Hero's rich-text tags.
+
+**Batch time left**:
+The batch strip's estimate of how long the rest of a batch will take: the
+average time per finished chart so far, times the charts still to go. It
+shows only once three charts have finished (`kEtaMinFinished` in
+src/ui/library_jobs.h). Decided in the approved
+docs/superpowers/specs/2026-09-27-ui-redesign-design.md ("The estimate appears
+once three charts have finished").
+
+**UI timings**:
+How long the app's short-lived messages and refreshes wait. The Analyze
+panel's "Done!" stays half a second, the "Copied!" flash after Copy path
+lasts 2 seconds, the library search refilters at most every 0.15 s while
+typing, and a running batch refreshes the library at most once a second
+(src/ui/app_state.cpp, src/ui/paths_tab.cpp, src/ui/library_table.cpp;
+confirmed as they are, D48, Q33).
+
+**Leaderboard fetch**:
+The download of real scores for the leaderboard report. It comes from the
+DMBot API, the backend behind dmleaderboards.com, not from the site itself. It waits at most 15 s to resolve the host, 20 s to connect, 30 s to
+send and 120 s to receive, because the backend cold-starts after idle; it
+checks Cancel every 50 ms; and it accepts only HTTP status 200
+(src/net/dmbot_client.cpp; D48, Q33).
 
 ### Paths
 
 **Path**:
 One way to play a chart's Star Power: which activations to take and what each
-is worth. The first path in a record is optimal.
+is worth. Every path that ties the record's top score is optimal, not only the
+first one listed (D48). A path's average multiplier reads 0.000x when it has no
+scoring notes, instead of dividing by zero (`Path::avg_mult`); real charts
+never hit this (D48, Q33).
 
 **Activation**:
 One use of banked Star Power, written in path notation with its skip count and
-squeeze symbols (e.g. `E2+-`).
+squeeze symbols (e.g. `E2+-`). An activation needs
+2<!-- default: kSpActivationBars --> banked bars of Star Power, a Clone Hero
+rule. `kSpActivationBars` in src/core/timing.h owns that number (D54).
 
 **Skip**:
 A fill an activation deliberately passes over before activating.
@@ -89,8 +131,8 @@ that note (Clone Hero's rule, docs/adr/0023).
 _Avoid_: star power section
 
 **All-0 path**:
-The best path whose activations all record zero skips, found under a 0 ms
-timing limit.
+The best path whose activations all record zero skips and that needs no
+timing (`Path::needs_timing`; D51 call 4, D13).
 
 ### Squeezes
 
@@ -109,9 +151,12 @@ Squeezing an SP phrase's note into (+) or out of (-) an active Star Power
 window, written as the `+`/`-` symbols in path notation. Only a phrase after
 the activation chord can be squeezed: one at or before it was banked before
 SP started (core/sqout_chord.h, `activation_can_squeeze`). A phrase is
-squeezed in only once. Each SP end offers the first phrase in its 500 ms
-window that the window has not banked or already squeezed in, or nothing if
-none is left (`offered_phrase`, D34).
+squeezed in only once (D34). An SP end offers a window at most one phrase
+(`offered_phrase`, D36): its newest phrase, when collecting it is what moved
+the window's end away from this SP end; or, when the window's end is this SP
+end, the first phrase after it that the window has not squeezed in. An older
+phrase can't be squeezed out while a newer one stays in: the newer one is hit
+later, so it would be hit after Star Power ran out too.
 
 **Multiplier squeeze**:
 Ordering the hits of a multi-note chord on a combo-multiplier boundary so the
@@ -120,11 +165,18 @@ more valuable notes score on the higher multiplier.
 **Star cutoff**:
 The score a chart needs for 1 to 7 stars: its base score (every note at 1x,
 no Star Power) times 0.1, 0.5, 1.0, 2.0, 2.8, 3.6 or 4.4, rounded up. Clone
-Hero compares it against your score without the solo bonus.
+Hero compares it against your score without the solo bonus. The product is
+kept as a 32-bit float before it is rounded up, as the decompiled game does,
+which can move a large cutoff by one point (`star_cutoff` in
+src/core/stars.cpp; D48, Q33).
 
 **Early fill (E)**:
 An activation timing (the `E` notation) where the fill must be summoned by
-hitting early; its window is fixed, not the hit-window setting.
+hitting early. Its window is 60 ms<!-- default: kEarlyFillWindowMs -->
+(`kEarlyFillWindowMs`), fixed, not the hit-window setting. It was tightened
+from 85 ms. The user kept 60 ms because paths were cluttered with early fills
+that never matter (D51 call 7); the hardest real early fill on 18,773 charts
+was 57.7 ms.
 
 **Fill spawn deadline (CH 1.1)**:
 The latest your SP meter can fill up and still have a fill appear. Clone Hero
@@ -146,10 +198,19 @@ long, and at least 4 measures after the last one (hydra_rules.ini can change
 these). With two or more meter changes
 between two chords, its length reads the earlier meter; that is not
 verified against Clone Hero (docs/adr/0023).
+When two chords sit equally near the downbeat, the later one gets the fill.
+How far from the downbeat that chord may sit, and the fill's length, are cut
+down to whole ticks.
+Neither rule is verified against Clone Hero either; both live in
+`Song::check_activations` (docs/adr/0023, D74).
 
 **Hit window**:
 The per-side ms window Clone Hero registers a hit in. A setting; feeds the
-squeeze budgets, ratings, and report tiers, never the search.
+squeeze budgets, ratings, and report tiers, never the search. The report's
+timing tiers are Normal below 2 ms (`kDifficultMs`), then Hard below half a
+hit window, Extreme below one window, Insane below one and a half, Insane+
+below two, and Beyond from two windows up (`timing_tiers` in
+src/core/squeeze_rating.cpp; D48, Q33).
 
 **Transfer scale**:
 How frontend timing error carries to the SP end. SP length is measured in
@@ -174,10 +235,18 @@ _Avoid_: SP end tick (when the anchored search position is meant)
 **Cap-clamped window**:
 Normally an activation's Star Power window ends a fixed distance (measures)
 past the activation. But if a phrase collected partway through Star Power
-fills the meter all the way to the SP cap (the max bars of SP you can hold),
-the window's end gets pinned to that phrase's note instead — the meter can't
-go any higher, so collecting more SP can't push the end out any further.
-`clamp_tick` stores which note pinned it, so later code doesn't have to guess.
+would overfill the meter past the SP cap (the max bars of SP you can hold),
+the window's end gets pinned to the cap measured from that phrase's note
+instead. A phrase that only fills the meter exactly to the cap is a tie, and a
+tie does not clamp. The end is pinned only while the meter is full: as it
+drains, a later phrase that fits under the cap extends the end again from
+where it was pinned (`ScoreGraph::extend_deacts`, docs/adr/0013).
+`clamp_tick()` names the note that pinned it, so later code doesn't have to
+guess; a later unclamped extension keeps the earlier note.
+The overfill warning in Song Details needs two things: the window is clamped,
+and the activation lists a SqIn/SqOut or an uncounted or squeezed-out backend
+row (`rate_activation` in squeeze_rating.cpp). A clamp with neither shows no
+warning.
 
 **Squeeze rating**:
 The displayed difficulty judgement of a squeeze: its rating label, its
@@ -186,14 +255,16 @@ material enough to warn about.
 
 **Backend leeway**:
 How long after the SP end a note still scores under Star Power without a
-squeeze: less than `backend_leeway_ms` (3 ms by default). A note exactly
-3.0 ms after the SP end does not score under SP. Hydra's own rule: no such
-constant was found in the Clone Hero engine methods read; the 3 ms is
-Hydra's own setting.
+squeeze: less than `backend_leeway_ms`
+(3 ms<!-- default: Rules::backend_leeway_ms --> by default). A note exactly
+3.0 ms<!-- default: Rules::backend_leeway_ms --> after the SP end does not
+score under SP. Hydra's own rule: no such constant was found in the Clone
+Hero engine methods read; the 3 ms<!-- default: Rules::backend_leeway_ms -->
+is Hydra's own setting.
 
 **Difficulty**:
-A path's or activation's hardest required squeeze, in raw gap ms — never
-scaled by the transfer scale.
+A path's or activation's hardest squeeze or required early fill, in raw gap
+ms — never scaled by the transfer scale.
 
 ### Preview
 
@@ -247,7 +318,8 @@ drawn from the chart's timing.
 **Active SP window**:
 The stretch of the note highway from an activation to its deact node, where
 Star Power is being spent. Comes from the path, not the chart; drawn as a
-tinted floor.
+tinted floor, with a bright edge and a triangle beside each rail where it
+ends (D81).
 
 **Path overlay**:
 Hydra's own analysis drawn on the note highway: the active SP windows and the
@@ -281,17 +353,39 @@ One of the several audio files a chart may ship instead of a single mix (e.g.
 `drums`, `guitar`, `song`). The Preview mixes all of a chart's stems into one
 output, unpacking each from its compressed file as it plays (docs/adr/0019).
 
+**Song length**:
+How long the song runs, in chart time. It is the length the chart's own
+metadata states (a song.ini `song_length`, a .sng `song_length` key or a .srb
+`song_length_ms`), moved from audio time into chart time by the chart's delay
+or Offset. A chart whose metadata states none gets the start of its last
+Expert drum note instead (2x kick included). No audio is opened for it.
+`app::song_length_ms` works it out (D75), and the store keeps one per song. The
+Paths timeline measures against the length, so a song with none shows no marks
+there. The Preview's scrubber measures against it too when there is one. With
+none, the scrubber uses the transport's playback range instead (D48, D70 item
+1), which is not a song length. `scrub_end_ms` owns that choice.
+
 **Mixer**:
 The step that reads a chart's stems at one shared position, resamples them to
 one common format, and sums them into a single signal to play. It reads a few
 milliseconds at a time from each stem's compressed bytes; nothing is unpacked
 up front. A stem it cannot open is skipped, so one broken stem does not
 silence the rest. A stem that hits a decode error part way through goes
-silent from that point.
+silent from that point, and a seek to before the damage plays it again (D51
+call 20). A stem whose header gives no length, a FLAC whose total is 0, is
+counted by decoding it once on open (D51 call 19).
 
 **Transport**:
 The Preview's play, pause, and seek control together with its clock. The clock
 is the master: while playing it is the time at play plus the time since; the
 note highway reads it to place the notes, and the audio follows it.
+The audio is shifted by the chart's audio offset, so the notes land on the
+music as they do in Clone Hero. A nonzero song.ini `delay` replaces the
+.chart `Offset`; a delay of 0 counts as unset. A positive value makes the
+notes come later than the music. `preview_audio_offset_ms` in
+src/app/preview_source.cpp is the one owner. This was decided in
+docs/superpowers/plans/2026-09-24-derivation-fixes.md (decision 9; Task 17's
+gate was measured at the game) and extended to .sng and .srb by
+docs/superpowers/plans/2026-09-26-codebase-audit-fixes.md (decision 4).
 _Avoid_: player (the whole Preview), scrubber (the UI control only), playhead
 (the audio follower only)

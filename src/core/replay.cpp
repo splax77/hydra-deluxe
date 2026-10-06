@@ -25,8 +25,8 @@ struct Window {
 
 // Every phrase chord strictly within kSqueezeWindowMs of deactivation node D,
 // in chart order: the list the graph puts on D's edge
-// (core::squeeze_window_phrases). The engine squeezes out only one of them,
-// the one core::sqout_chord names. A typed offset is matched to the chord
+// (core::squeeze_window_phrases). The engine squeezes out only the ones
+// core::sqout_chords names. A typed offset is matched to the chord
 // nearest it, which is the replay's own question.
 std::vector<const SongTimestamp*> sqout_candidates(const Song& song,
                                                    int64_t deact_tick) {
@@ -65,6 +65,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     int combo = 0;
     ReplayScore cum;
     int64_t solo_pending = 0;
+    size_t next_solo = 0;  // the first solo section not yet passed
 
     const size_t n = song.sequence.size();
     std::vector<CategoryScores> per_note;
@@ -147,10 +148,12 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
             const Window& w = wins[open[k]];
             // The row's offset from the SP end, as the graph measures it. A
             // chord on or before the deactivation node is inside the window
-            // whatever its ms says.
-            const bool past_deact = row.tick > w.deact_tick;
-            const double offset = past_deact ? offset_from_sp_end(row.ms, w.deact_ms)
-                                             : std::min(offset_from_sp_end(row.ms, w.deact_ms), 0.0);
+            // whatever its ms says; time rises with tick (parse refuses
+            // timing that does not, D6), so its offset is never above 0.
+            // Whether the chord is after the SP end is asked of
+            // core::after_sp_end, the rule the graph uses.
+            const bool past_deact = core::after_sp_end(row.tick, w.deact_tick);
+            const double offset = offset_from_sp_end(row.ms, w.deact_ms);
             const core::SqOutPosition pos =
                 core::sqout_position(row.tick, w.sqout_tick);
             const bool paid = core::paid_by_sp(offset, sg.sp, sg.sqout_sp(), pos,
@@ -171,22 +174,27 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.points.base = sg.base;
         row.points.combo = sg.combo;
         row.points.sp = sp_points;
-        row.points.solo =
-            ts.flag_solo ? static_cast<int64_t>(kSoloBonusPerNote) * ts.chord.count() : 0;
+        row.points.solo = solo_bonus(ts.chord, ts.flag_solo);
         row.points.accent = sg.accent;
         row.points.ghost = sg.ghost;
 
-        combo += ts.chord.count();
+        combo = sg.combo_after;
         row.combo_after = combo;
 
         cum.add(row.points);
         row.cum = cum;
 
+        // The game pays a solo's bonus on the section's last chord
+        // (Song::solo_sections says where each one ends).
+        while (next_solo < song.solo_sections.size() && song.solo_sections[next_solo].last < i)
+            ++next_solo;
         if (ts.flag_solo) {
+            if (next_solo >= song.solo_sections.size() || song.solo_sections[next_solo].first > i)
+                throw std::logic_error("replay: the solo chord at tick " +
+                                       std::to_string(row.tick) +
+                                       " is in no solo section");
             solo_pending += row.points.solo;
-            const bool last_of_run =
-                i + 1 >= n || !song.sequence[i + 1].flag_solo;
-            if (last_of_run) solo_pending = 0;
+            if (song.solo_sections[next_solo].last == i) solo_pending = 0;
         }
         row.cum_onscreen_total = cum.total() - solo_pending;
 
@@ -207,6 +215,15 @@ ReplayScore score_of(const Path& path) {
     s.accent = path.score_accents;
     s.ghost = path.score_ghosts;
     return s;
+}
+
+void assign_score(Path& path, const ReplayScore& s) {
+    path.score_base = s.base;
+    path.score_combo = s.combo;
+    path.score_sp = s.sp;
+    path.score_solo = s.solo;
+    path.score_accents = s.accent;
+    path.score_ghosts = s.ghost;
 }
 
 std::vector<int64_t> sqin_phrase_ticks(const Activation& act) {
@@ -232,6 +249,7 @@ std::vector<ReplayWindow> windows_for_path(const Path& path) {
             w.sqout_offset_ms = row->offset_ms;
         }
         w.sqin_ticks = sqin_phrase_ticks(act);
+        w.from_record = true;
         out.push_back(w);
     }
     return out;
@@ -277,8 +295,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     const SqOutNote typed{best->timecode.ticks(),
                           offset_from_sp_end(best->timecode.ms(), d_ms)};
 
-    // The engine squeezes out only the chord core::sqout_chord names for this
-    // window. Anything else is a squeeze-out the search can never produce:
+    // The engine squeezes out only the chords core::sqout_chords names for
+    // this window. Anything else is a squeeze-out the search can never produce:
     // refuse, never price it.
     const Timecode deact_tc = song.timing().timecode(w.deact_tick);
     const bool typed_squeezed_in =
@@ -302,30 +320,27 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
                       where.c_str(), *w.sqout_offset_ms, (long long)typed.tick);
         throw std::runtime_error(buf);
     }
-    const SongTimestamp* engine = core::sqout_chord(song, deact_tc, w.act_tick, w.sqin_ticks);
-    if (!engine) {
-        // best exists, so the window holds a phrase chord, and this window
-        // banked or already squeezed in every one before the typed one. The
-        // typed one is squeezable, so it would be offered: unreachable.
-        throw std::logic_error(where + ": no phrase chord to squeeze out, yet the typed one can be");
-    }
-    if (best != engine) {
-        // The engine's chord comes before the typed one in the window. Say
-        // why the ones before it are passed over, when any are (D34).
-        const std::vector<const SongTimestamp*> window = sqout_candidates(song, w.deact_tick);
-        const bool first = !window.empty() && window.front() == engine;
+    // D36: a window squeezes out only its newest phrase at or before the SP
+    // end, or the first phrase after it. A typed window has no history, so
+    // either is accepted (core::sqout_chords).
+    const std::vector<const SongTimestamp*> offered =
+        core::sqout_chords(song, deact_tc, w.act_tick, w.sqin_ticks, false);
+    if (std::find(offered.begin(), offered.end(), best) == offered.end()) {
+        std::string can;
+        for (const SongTimestamp* c : offered) {
+            char one[96];
+            std::snprintf(one, sizeof(one), "%stick %lld (%.2f ms)", can.empty() ? "" : " or ",
+                          (long long)c->timecode.ticks(), offset_from_sp_end(c->timecode.ms(), d_ms));
+            can += one;
+        }
         std::snprintf(
             buf, sizeof(buf),
             "%s: the SqOut offset %.2f ms lands on the phrase chord at tick "
             "%lld (%.2f ms from the SP end), which the engine never squeezes "
-            "out. The only chord it can squeeze out here is the first phrase "
-            "chord within %.0f ms of the SP end%s, at tick %lld (%.2f ms). "
-            "Not priced.",
-            where.c_str(), *w.sqout_offset_ms, (long long)typed.tick,
-            typed.offset_ms, kSqueezeWindowMs,
-            first ? "" : " that this window did not bank or squeeze in",
-            (long long)engine->timecode.ticks(),
-            offset_from_sp_end(engine->timecode.ms(), d_ms));
+            "out. A window squeezes out only its newest phrase chord at or "
+            "before the SP end or the first one after it%s%s. Not priced.",
+            where.c_str(), *w.sqout_offset_ms, (long long)typed.tick, typed.offset_ms,
+            can.empty() ? "; here neither is left" : ": here ", can.c_str());
         throw std::runtime_error(buf);
     }
     return typed;
@@ -333,7 +348,7 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
 
 std::vector<std::string> ambiguous_window_warnings(
     const Song& song, const ReplayResult& result,
-    const std::vector<ReplayWindow>& windows) {
+    const std::vector<ReplayWindow>& windows, const core::Rules& rules) {
     const SongTiming& timing = song.timing();
     std::vector<std::string> out;
 
@@ -341,11 +356,12 @@ std::vector<std::string> ambiguous_window_warnings(
         // A squeeze-out offset or chord settles the question.
         if (w.sqout_offset_ms || w.sqout_tick) continue;
 
-        // The one chord the engine could squeeze out at this D, for this
-        // window (its activation and the phrases it squeezed in).
-        const SongTimestamp* engine =
-            core::sqout_chord(song, timing.timecode(w.deact_tick), w.act_tick, w.sqin_ticks);
-        if (!engine) continue;
+        // The chords the engine could squeeze out at this D, for this window
+        // (core::sqout_chords, D36): for a stored window that ended plainly,
+        // only a late one; for a typed one, up to two.
+        for (const SongTimestamp* engine :
+             core::sqout_chords(song, timing.timecode(w.deact_tick), w.act_tick, w.sqin_ticks,
+                                w.from_record)) {
         const int64_t tick = engine->timecode.ticks();
 
         // Only a chord the window paid can make the score too high: one at or
@@ -359,22 +375,37 @@ std::vector<std::string> ambiguous_window_warnings(
         std::string where = "on the Star Power phrase note at tick " +
                             std::to_string(tick);
         char gap[32];
-        if (tick < w.deact_tick) {
-            std::snprintf(gap, sizeof(gap), "%.2f",
-                          std::fabs(offset_from_sp_end(chord->ms, deact_ms)));
-            where = "just after the Star Power phrase note at tick " +
-                    std::to_string(tick) + " (" + gap + " ms earlier)";
-        } else if (tick > w.deact_tick) {
+        if (core::after_sp_end(tick, w.deact_tick)) {
             std::snprintf(gap, sizeof(gap), "%.2f",
                           std::fabs(offset_from_sp_end(chord->ms, deact_ms)));
             where = "just before the Star Power phrase note at tick " +
                     std::to_string(tick) + " (" + gap + " ms later)";
+        } else if (tick != w.deact_tick) {
+            std::snprintf(gap, sizeof(gap), "%.2f",
+                          std::fabs(offset_from_sp_end(chord->ms, deact_ms)));
+            where = "just after the Star Power phrase note at tick " +
+                    std::to_string(tick) + " (" + gap + " ms earlier)";
         }
 
+        // What the squeeze-out would take off the total. It is more than the
+        // chord's own sqout_reduction whenever a chord follows it inside the
+        // window, because Star Power ends before the squeezed-out chord and
+        // every later chord loses its doubling too. So ask replay_path, the
+        // owner of that rule: replay the same windows with this one squeezed
+        // out on this chord, under the same rules, and take the difference.
+        std::vector<ReplayWindow> squeezed = windows;
+        squeezed[static_cast<size_t>(&w - windows.data())].sqout_tick = tick;
+        ReplayOptions scores_only;
+        scores_only.scores_only = true;
+        const int64_t cost = result.final.total() -
+                             replay_path(song, squeezed, rules, scores_only).final.total();
         out.push_back("window " + std::to_string(w.act_tick) + ":" +
                       std::to_string(w.deact_tick) + " ends " + where +
                       " with no squeeze-out offset; if the player squeezed it "
-                      "out, this score is high by that note's first-hit share");
+                      "out, this score is " + std::to_string(cost) +
+                      " points high (the same windows replayed with that "
+                      "squeeze-out, under sqout_rule)");
+        }
     }
     return out;
 }

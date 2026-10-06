@@ -118,6 +118,22 @@ inline int check_path_banks(const hydra::Path& p, const std::set<int64_t>& phras
     return acts;
 }
 
+// check_path_banks on every stored path of one record: every path, tied
+// variants included (HydraRecord::all_paths), and the all-zero paths.
+// Returns the number of windows walked.
+inline int check_record_banks(const hydra::Song& song, const hydra::HydraRecord& rec) {
+    std::vector<const hydra::Path*> all = rec.all_paths();
+    for (const hydra::Path* p : rec.all_allzero_paths()) all.push_back(p);
+    const std::set<int64_t> ends = phrase_ends(song);
+    const int64_t chart_end = song.sequence.back().timecode.ticks();
+    int acts = 0;
+    for (const hydra::Path* p : all) {
+        CAPTURE(p->pathstring());
+        acts += check_path_banks(*p, ends, chart_end);
+    }
+    return acts;
+}
+
 }  // namespace bank_check
 
 #endif  // HYDRA_TESTS_BANK_CHECK_H

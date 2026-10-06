@@ -1,14 +1,10 @@
 """Unit tests for the input driver's pure logic.
 
-These run with no game and no debugger. They test two things:
+These run with no game and no debugger. They test the binding map (set then
+get), the key table, and that tap and press_chord send the right key events.
 
-  * The binding map round-trips (set then get).
-  * schedule_hit fires the tap exactly once, and only after the clock has
-    reached the target time -- never before.
-
-The live seams (the real SendInput, and a real song clock) are replaced with
-fakes here. A recorder stands in for the key press; a canned sequence stands in
-for the clock. What only a running Clone Hero can exercise -- that SendInput
+The live seam (the real SendInput) is replaced with a recorder here. What only
+a running Clone Hero can exercise -- that SendInput
 actually reaches the game window -- is out of scope for these tests and is
 commented as LIVE-ONLY in the module.
 
@@ -29,33 +25,17 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_probe import constants as C
+from tools.ch_probe import input_driver
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, LANE_NAMES, InputDriver, Lane
-
-
-class _FakeClock:
-    """A clock that returns each value in a list, one per call.
-
-    The last value repeats forever, so a loop that overshoots the list does not
-    crash -- it just keeps seeing the final time.
-    """
-
-    def __init__(self, values):
-        self._values = list(values)
-        self.calls = 0
-
-    def __call__(self):
-        i = min(self.calls, len(self._values) - 1)
-        self.calls += 1
-        return self._values[i]
 
 
 def _make_driver():
     """An InputDriver whose key press is recorded, not really sent.
 
-    Returns (driver, taps) where `taps` is a list the fake tap appends to.
-    Sleeping is disabled so the polling loop spins instantly.
+    Returns (driver, presses) where `presses` is a list of (vk, key_up).
     """
-    driver = InputDriver(poll_interval_s=0.0)
+    driver = InputDriver()
     presses = []
     # Replace the LIVE-ONLY SendInput seam with a recorder. tap() still runs its
     # real down/up logic on top of this.
@@ -101,54 +81,6 @@ class TestTap(unittest.TestCase):
         self.assertEqual(presses, [(vk, False), (vk, True)])
 
 
-class TestScheduleHit(unittest.TestCase):
-    def test_fires_once_clock_reaches_target(self):
-        driver, presses = _make_driver()
-        # Clock climbs 0.0, 0.5, 1.0. Target is 1.0.
-        clock = _FakeClock([0.0, 0.5, 1.0])
-        driver.schedule_hit(lane=0, at_song_time=1.0, clock=clock)
-        # Exactly one tap (down + up = two key events).
-        self.assertEqual(len(presses), 2)
-
-    def test_does_not_fire_before_target(self):
-        driver, presses = _make_driver()
-        # Record the clock reading at the moment the tap fires by wrapping the
-        # recorder around a clock we can inspect.
-        clock = _FakeClock([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-        fired_at = {}
-
-        real_send = driver.send_key
-
-        def spy(vk, key_up):
-            fired_at.setdefault("clock_calls", clock.calls)
-            real_send(vk, key_up)
-
-        driver.send_key = spy
-        driver.schedule_hit(lane=0, at_song_time=1.0, clock=clock)
-        # The tap must not have fired on any reading below 1.0. The loop calls
-        # the clock once per check; it fires only after the 6th reading (1.0),
-        # so the recorded call count must be at least 6.
-        self.assertGreaterEqual(fired_at["clock_calls"], 6)
-
-    def test_fires_immediately_if_already_past(self):
-        driver, presses = _make_driver()
-        # Clock is already past the target on the first read.
-        clock = _FakeClock([5.0])
-        driver.schedule_hit(lane=0, at_song_time=1.0, clock=clock)
-        self.assertEqual(len(presses), 2)
-        # Only one clock reading was needed.
-        self.assertEqual(clock.calls, 1)
-
-    def test_timeout_when_clock_stalls(self):
-        # A clock stuck below the target must not hang -- it raises instead.
-        driver, presses = _make_driver()
-        driver.timeout_s = 0.05
-        clock = _FakeClock([0.0])  # forever below target 1.0
-        with self.assertRaises(TimeoutError):
-            driver.schedule_hit(lane=0, at_song_time=1.0, clock=clock)
-        self.assertEqual(presses, [])
-
-
 class TestKeyTable(unittest.TestCase):
     """One key table. A lane number means the same key everywhere."""
 
@@ -176,9 +108,14 @@ class TestPressChord(unittest.TestCase):
         sent = driver.press_chord([Lane.RED, Lane.KICK],
                                   sleep=lambda s: presses.append(("sleep", s)))
         red, kick = DEFAULT_BINDINGS[Lane.RED], DEFAULT_BINDINGS[Lane.KICK]
-        self.assertEqual(presses, [(red, False), (kick, False), ("sleep", 0.003),
+        self.assertEqual(presses, [(red, False), (kick, False),
+                                   ("sleep", input_driver.KEY_HOLD_S),
                                    (red, True), (kick, True)])
         self.assertEqual(sent, [red, kick])
+
+    def test_key_hold_is_the_recorded_value(self):
+        # D54 records the 3 ms hold as it is.
+        self.assertEqual(input_driver.KEY_HOLD_S, 0.003)
 
     def test_unbound_lane_is_skipped(self):
         driver = InputDriver(bindings={Lane.KICK: 0x4C})
@@ -186,6 +123,28 @@ class TestPressChord(unittest.TestCase):
         driver.send_key = lambda vk, key_up: presses.append((vk, key_up))
         driver.press_chord([Lane.GREEN, Lane.KICK], sleep=lambda s: None)
         self.assertEqual(presses, [(0x4C, False), (0x4C, True)])
+
+
+class TestGameWindow(unittest.TestCase):
+    """The one way a runner finds and focuses the game window."""
+
+    def test_find_game_window_asks_for_the_one_title(self):
+        asked = []
+
+        def finder(cls, title):
+            asked.append((cls, title))
+            return 0x1234
+
+        self.assertEqual(input_driver.find_game_window(find=finder), 0x1234)
+        self.assertEqual(asked, [(None, C.WINDOW_TITLE)])
+        self.assertEqual(input_driver.find_game_window(find=lambda cls, title: None), 0)
+
+    def test_focus_window_skips_a_missing_window(self):
+        focused = []
+        input_driver.focus_window(0, focus=focused.append)
+        self.assertEqual(focused, [])
+        input_driver.focus_window(0x1234, focus=focused.append)
+        self.assertEqual(focused, [0x1234])
 
 
 if __name__ == "__main__":

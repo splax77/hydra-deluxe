@@ -1,15 +1,19 @@
 #include "ui/preview_load_job.h"
 
 #include <algorithm>
-#include <cmath>
 #include <future>
 #include <string>
 
+#include "app/analysis.h"  // chart_files_unchanged, hash_chart_file
 #include "app/preview_source.h"
 #include "app/preview_view.h"
+#include "app/song_length.h"   // chart_song_length_ms
+#include "audio/song_audio.h"  // map_song_stems, open_song_stems, mix_song_stems
 #include "core/model.h"
 #include "core/winstr.h"
 #include "render/track_state.h"
+#include "ui/library_parts.h"  // time_left_text
+#include "ui/widgets.h"        // progress_fraction
 
 namespace hydra::ui {
 
@@ -84,53 +88,23 @@ std::vector<std::unique_ptr<audio::StemReader>> PreviewLoadJob::open_audio(
     container.reset();  // this branch's hold on the container
     if (!keep_going()) throw JobCancelled{};
 
-    // The bar's byte total: a loose file's size on disk, a container stem's
-    // extracted bytes.
-    std::vector<uint64_t> sizes;
-    sizes.reserve(stems.size());
-    uint64_t total = 0;
-    for (const app::PreviewAudioStem& s : stems) {
-        uint64_t n = 0;
-        if (s.from_file()) {
-            try {
-                n = file_size_bytes(s.path);
-            } catch (const std::exception&) {
-                n = 0;  // the open below fails too and skips this stem
-            }
-        } else {
-            n = s.bytes.size();
-        }
-        sizes.push_back(n);
-        total += n;
-    }
-    bytes_total_.store(total);
+    // Map every loose stem first, so the bar's byte total is the size of the
+    // bytes the readers will walk (MappedFile::size), read once; a container
+    // stem's size is its extracted bytes.
+    std::vector<std::optional<audio::StemBytes>> stem_bytes =
+        audio::map_song_stems(std::move(stems));
+    bytes_total_.store(audio::stems_total_bytes(stem_bytes));
 
+    // The song's own opener, with the bar's byte counter as its progress.
     std::vector<std::unique_ptr<audio::StemReader>> readers;
-    uint64_t before = 0;  // bytes of the stems already opened
-    for (std::size_t i = 0; i < stems.size(); ++i) {
-        app::PreviewAudioStem& s = stems[i];
-        const uint64_t size = sizes[i];
-        try {
-            audio::StemBytes bytes;
-            if (s.from_file())
-                bytes.mapped = audio::MappedFile::open(s.path);
-            else
-                bytes.owned = std::move(s.bytes);
-            // The Opus index reports every 4 MB; returning false stops it there.
-            readers.push_back(audio::open_stem_reader(
-                std::move(bytes), [this, &keep_going, before, size](uint64_t done, uint64_t) {
-                    bytes_done_.store(before + std::min(done, size));
-                    return keep_going();
-                }));
-        } catch (const audio::OpenCancelled&) {
-            throw JobCancelled{};
-        } catch (const std::exception&) {
-            // A stem that won't open is skipped, so one unreadable or corrupt
-            // stem never silences the rest of the chart.
-        }
-        before += size;
-        bytes_done_.store(before);
-        if (!keep_going()) throw JobCancelled{};
+    try {
+        readers = audio::open_song_stems(std::move(stem_bytes),
+                                         [this, &keep_going](uint64_t done, uint64_t) {
+                                             bytes_done_.store(done);
+                                             return keep_going();
+                                         });
+    } catch (const audio::OpenCancelled&) {
+        throw JobCancelled{};
     }
     audio_done_.store(true);
     return readers;
@@ -148,6 +122,22 @@ void PreviewLoadJob::run() {
         app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
         throw_if_cancelled();
 
+        // Has the chart changed since it was analyzed (finding 126)? First the
+        // rescan's own shortcut: when app::chart_files_unchanged says yes, the
+        // files still have the scan's md5, so nothing is read.
+        // Otherwise the file is hashed with the scan's own rule, so the two
+        // can never disagree, on a thread of its own beside both branches: a
+        // .sng's hash covers all its audio, so in front of the stem open it
+        // would add to the load. A hash that is not the record's means the
+        // chart changed. An empty hash (an unreadable file) is not a change:
+        // the parse error speaks for that. The future waits for the hash if
+        // this job throws.
+        std::future<bool> changed_check = std::async(std::launch::async, [this] {
+            if (app::chart_files_unchanged(entry_.notespath, entry_.sig)) return false;
+            const std::string hash = app::hash_chart_file(entry_.notespath);
+            return !hash.empty() && hash != entry_.md5;
+        });
+
         // Branch (b) on its own thread. If this branch throws, `stop` tells it
         // to give up and the guard waits for it, so it never outlives the job.
         std::atomic<bool> stop{false};
@@ -163,46 +153,54 @@ void PreviewLoadJob::run() {
             }
         } guard{stop, audio_branch};
 
-        // Branch (a) here: notes, scene, highway.
+        // Branch (a) here: the notes.
         app::PreviewSong ps =
             app::resolve_preview_song(entry_.notespath, container, pro_, bass2x_, difficulty_, rules_);
+        // The song's length, from the same owner analysis saves through
+        // (D75), with the container already in hand. A failed read costs only
+        // the length: the scrubber then ends where playback does
+        // (app::scrub_end_ms).
+        std::optional<double> song_length_ms;
+        try {
+            song_length_ms = app::chart_song_length_ms(
+                app::chart_timing_meta(entry_.timing, entry_.notespath), entry_.notespath, ps.song,
+                difficulty_, bass2x_, rules_, container);
+        } catch (const std::exception&) {
+        }
         container.reset();
         // A chart with no charting at this difficulty would otherwise build an
         // empty scene and the tab would show a blank highway with no reason
         // given. Throwing here surfaces it as "Preview failed: ...", the same
         // wording analysis uses.
-        if (ps.song.is_empty()) throw ChartFileError(no_notes_message(difficulty_, pro_));
+        require_notes(ps.song, difficulty_, pro_);
         reading_done_.store(true);
         throw_if_cancelled();
-        const Path* path = path_ ? &*path_ : nullptr;
-        app::PreviewScene scene = app::build_preview_scene(ps.song, path, sp_cap_, rules_);
-        scene_done_.store(true);
-        throw_if_cancelled();
-        // The highway timeline, built here so the UI thread only uploads it.
-        // The pro-drums setting that picked the drum track also picks how the
-        // pads draw (cymbals or all toms), as the controller would.
-        render::TrackStateOptions track_opts;
-        track_opts.pro = pro_;
-        render::TrackState track_state = render::build_track_state(scene, track_opts);
-        highway_done_.store(true);
 
         // Both branches done: mix. get() rethrows the audio branch's cancel.
         std::vector<std::unique_ptr<audio::StemReader>> readers = audio_branch.get();
+        const bool chart_changed = changed_check.get();
         throw_if_cancelled();
-        // The chart sync rule: audio_ms = chart_ms + audio_offset_ms. A
-        // negative offset means the chart starts before the audio and the
-        // playhead can't seek below 0, so it becomes silence in front of the
-        // stems (rounded to whole frames) and the offset becomes 0.
-        double offset_ms = ps.audio_offset_ms;
-        int64_t front_pad = 0;
-        if (offset_ms < 0.0) {
-            front_pad = static_cast<int64_t>(std::llround(-offset_ms * kOutRate / 1000.0));
-            offset_ms = 0.0;
-        }
-        auto mix = std::make_unique<audio::StreamMix>(std::move(readers), kOutRate, kOutChannels,
-                                                      front_pad);
-        result_ = Result{std::move(scene),     std::move(mix),         offset_ms,
-                         std::move(ps.song),   std::move(track_state), track_opts};
+        // The song's own mix step: what plays, and where its audio ends.
+        audio::SongMix song_mix = audio::mix_song_stems(std::move(readers), ps.audio_offset_ms);
+        const std::optional<double> audio_end_ms = song_mix.end_chart_ms;
+
+        // The scene and the highway wait for the audio, because the beat
+        // lines run to its end (D48, Q25). A changed chart is drawn with no
+        // path, as an unanalyzed one is (drawn_path).
+        const Path* path = drawn_path(path_, chart_changed);
+        app::PreviewScene scene =
+            app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms, song_length_ms);
+        scene_done_.store(true);
+        throw_if_cancelled();
+        // The highway timeline, built here so the UI thread only uploads it,
+        // with the options the controller draws with (track_options).
+        const render::TrackStateOptions track_opts = track_options(pro_);
+        render::TrackState track_state = render::build_track_state(scene, track_opts);
+        highway_done_.store(true);
+
+        result_ = Result{std::move(scene),  std::move(song_mix.mix),  song_mix.audio_offset_ms,
+                         audio_end_ms,      song_length_ms,           std::move(ps.song),
+                         std::move(track_state), track_opts,          chart_changed};
         return true;
     });
 }
@@ -233,16 +231,12 @@ PreviewLoadJob::Progress PreviewLoadJob::progress() const {
 float PreviewLoadJob::Progress::fraction() const {
     switch (step) {
         case Step::Reading: return 0.0f;
-        case Step::Opening: {
-            // A zero total (no stems, empty files) stays at the slice's start:
-            // never a 0/0 NaN into ImGui::ProgressBar (ImGui issue #7451).
-            const float part =
-                bytes_total > 0
-                    ? static_cast<float>(static_cast<double>(std::min(bytes_done, bytes_total)) /
-                                         static_cast<double>(bytes_total))
-                    : 0.0f;
-            return kReadShare + kOpenShare * part;
-        }
+        case Step::Opening:
+            // The audio slice's fill is the shared progress bar rule: a zero
+            // total (no stems, empty files) reads empty, "nothing reported
+            // yet", so the bar stays at the slice's start.
+            return kReadShare + kOpenShare * progress_fraction(static_cast<double>(bytes_done),
+                                                               static_cast<double>(bytes_total));
         case Step::Building: return kReadShare + kOpenShare;
         case Step::Highway: return kReadShare + kOpenShare + kSceneShare;
     }
@@ -266,21 +260,19 @@ std::string PreviewLoadJob::Progress::label() const {
     return "";
 }
 
+// Only the Preview's own gate lives here: opening audio is the one step with a
+// byte rate, and the loader waits 3 s before guessing. The words are the batch
+// strip's (D48, Q20).
 std::string PreviewLoadJob::Progress::time_left_text() const {
     if (step != Step::Opening || elapsed_s < 3.0 || !(time_left_s >= 0.0)) return "";
-    if (time_left_s < 59.5) {
-        const long long s = std::max(1LL, static_cast<long long>(std::ceil(time_left_s)));
-        return "about " + std::to_string(s) + " s left";
-    }
-    const long long m = std::max(1LL, std::llround(time_left_s / 60.0));
-    return "about " + std::to_string(m) + " min left";
+    return detail::time_left_text(time_left_s);
 }
 
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
-    const Song& song, render::TrackStateOptions track_opts,
-    const std::function<void()>& check_cancel) {
+    const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
+    std::optional<double> song_length_ms, const std::function<void()>& check_cancel) {
     auto built = std::make_shared<PreviewSceneBase>();
-    built->scene = app::build_preview_base(song);
+    built->scene = app::build_preview_base(song, audio_end_ms, song_length_ms);
     check_cancel();
     built->track_state = render::build_track_state(built->scene, track_opts);
     built->track_opts = track_opts;
@@ -289,15 +281,21 @@ std::shared_ptr<const PreviewSceneBase> build_scene_base(
 }
 
 PreviewBaseJob::PreviewBaseJob(std::shared_ptr<const Song> song,
-                               render::TrackStateOptions track_opts)
-    : song_(std::move(song)), track_opts_(track_opts) {}
+                               render::TrackStateOptions track_opts,
+                               std::optional<double> audio_end_ms,
+                               std::optional<double> song_length_ms)
+    : song_(std::move(song)),
+      track_opts_(track_opts),
+      audio_end_ms_(audio_end_ms),
+      song_length_ms_(song_length_ms) {}
 
 void PreviewBaseJob::start() { spawn([this] { run(); }); }
 
 void PreviewBaseJob::run() {
     run_guarded([this] {
         throw_if_cancelled();
-        base_ = build_scene_base(*song_, track_opts_, [this] { throw_if_cancelled(); });
+        base_ = build_scene_base(*song_, track_opts_, audio_end_ms_, song_length_ms_,
+                                 [this] { throw_if_cancelled(); });
         return true;
     });
 }
@@ -305,14 +303,18 @@ void PreviewBaseJob::run() {
 PreviewSceneJob::PreviewSceneJob(std::shared_ptr<const Song> song,
                                  std::shared_ptr<const PreviewSceneBase> base,
                                  std::optional<Path> path, int sp_cap, core::Rules rules,
-                                 std::string key, render::TrackStateOptions track_opts)
+                                 std::string key, render::TrackStateOptions track_opts,
+                                 std::optional<double> audio_end_ms,
+                                 std::optional<double> song_length_ms)
     : song_(std::move(song)),
       base_(std::move(base)),
       path_(std::move(path)),
       sp_cap_(sp_cap),
       rules_(std::move(rules)),
       key_(std::move(key)),
-      track_opts_(track_opts) {}
+      track_opts_(track_opts),
+      audio_end_ms_(audio_end_ms),
+      song_length_ms_(song_length_ms) {}
 
 void PreviewSceneJob::start() { spawn([this] { run(); }); }
 
@@ -323,8 +325,9 @@ void PreviewSceneJob::run() {
         // build it here when there is none yet (or it was drawn with other
         // timeline options).
         std::shared_ptr<const PreviewSceneBase> base = base_;
-        if (!base || base->track_opts.pro != track_opts_.pro)
-            base = build_scene_base(*song_, track_opts_, [this] { throw_if_cancelled(); });
+        if (!base || base->track_opts != track_opts_)
+            base = build_scene_base(*song_, track_opts_, audio_end_ms_, song_length_ms_,
+                                    [this] { throw_if_cancelled(); });
         // Only the overlay is built per path: the scene's, then the
         // timeline's on a copy of the base timeline, so the swap on the UI
         // thread is only a move.

@@ -15,16 +15,14 @@ using namespace DirectX;
 namespace hydra::render {
 
 ImagePoint project_to_image(const PreviewConfig& cfg, int width, int height, const Vec3& p) {
-    const int w = std::max(1, width);
-    const int h = std::max(1, height);
-    const int th = track_height(cfg, w, h);
-    const HighwayCamera cam = make_camera(cfg, static_cast<float>(w) / static_cast<float>(th));
+    const TrackRect r = track_rect(cfg, width, height);
+    const HighwayCamera cam = make_camera(cfg, r.aspect);
     const XMMATRIX view_proj = XMLoadFloat4x4(&cam.view) * XMLoadFloat4x4(&cam.proj);
     const XMVECTOR ndc = XMVector3TransformCoord(XMVectorSet(p.x, p.y, p.z, 1.0f), view_proj);
     ImagePoint out;
-    out.x = (XMVectorGetX(ndc) + 1.0f) * 0.5f * static_cast<float>(w);
-    // The track rectangle hugs the bottom of the image.
-    out.y = static_cast<float>(h - th) + (1.0f - XMVectorGetY(ndc)) * 0.5f * static_cast<float>(th);
+    out.x = (XMVectorGetX(ndc) + 1.0f) * 0.5f * static_cast<float>(r.width);
+    out.y = static_cast<float>(r.top) +
+            (1.0f - XMVectorGetY(ndc)) * 0.5f * static_cast<float>(r.track_height);
     return out;
 }
 
@@ -38,8 +36,9 @@ HighwaySpan highway_span_at(const PreviewConfig& cfg, int width, int height, flo
         const float row = std::max(y, b.y);  // above the far end: the far end's edge
         return a.x + (row - a.y) * (b.x - a.x) / (b.y - a.y);
     };
-    const float xl = T.x_left - T.railing_x_width;
-    const float xr = T.x_right + T.railing_x_width;
+    // The railings' outer edges.
+    const float xl = railing_outer_x(cfg, false);
+    const float xr = railing_outer_x(cfg, true);
     HighwaySpan s;
     s.left = std::min(x_at(xl, T.railing_y_top), x_at(xl, T.railing_y_bottom));
     s.right = std::max(x_at(xr, T.railing_y_top), x_at(xr, T.railing_y_bottom));
@@ -65,7 +64,8 @@ float overlay_scale(const PreviewConfig& cfg, int width, int height, const Overl
 }
 
 float bottom_left_room(const PreviewConfig& cfg, int width, int height, float gap) {
-    return highway_span_at(cfg, width, height, static_cast<float>(std::max(1, height))).left - gap;
+    const float bottom_row = static_cast<float>(track_rect(cfg, width, height).height);
+    return highway_span_at(cfg, width, height, bottom_row).left - gap;
 }
 
 namespace {
@@ -117,45 +117,56 @@ std::vector<std::string> wrap_words(const std::string& text, float max_w,
 
 float widest_word(const std::string& text,
                   const std::function<float(const std::string&)>& width_of, size_t keep_last) {
+    // At width 0 every break wrap_words allows is taken, so its widest line is
+    // the narrowest box it can make.
     float widest = 0.0f;
-    const size_t tail = tail_start(text, keep_last);
-    size_t tail_end = text.size();
-    while (tail_end > tail && text[tail_end - 1] == ' ') --tail_end;
-    if (tail_end > tail) widest = width_of(text.substr(tail, tail_end - tail));
-    size_t start = 0;
-    while (start < tail) {
-        size_t end = text.find(' ', start);
-        if (end == std::string::npos) end = text.size();
-        if (end > start) widest = std::max(widest, width_of(text.substr(start, end - start)));
-        start = end + 1;
-    }
+    for (const std::string& line : wrap_words(text, 0.0f, width_of, keep_last))
+        widest = std::max(widest, width_of(line));
     return widest;
 }
 
 std::string ellipsize(const std::string& text, float max_w,
-                      const std::function<float(const std::string&)>& width_of) {
-    if (width_of(text) <= max_w) return text;
+                      const std::function<float(const std::string&)>& width_of,
+                      float& kept_w) {
+    const float whole_w = width_of(text);
+    if (whole_w <= max_w) {
+        kept_w = whole_w;
+        return text;
+    }
     static const std::string kEllipsis = "\xE2\x80\xA6";
     // The places the text may be cut: every character's start, past the
     // first character. A UTF-8 continuation byte (10xxxxxx) starts none.
     std::vector<size_t> cuts;
     for (size_t i = 1; i < text.size(); ++i)
         if ((static_cast<unsigned char>(text[i]) & 0xC0) != 0x80) cuts.push_back(i);
-    auto shown = [&](size_t cut) {
+    // The text kept before the "…": the spaces a cut would leave go.
+    auto kept = [&](size_t cut) {
         size_t end = cut;
         while (end > 0 && text[end - 1] == ' ') --end;
-        return text.substr(0, end) + kEllipsis;
+        return text.substr(0, end);
     };
     // The longest cut that fits: a longer prefix is never narrower.
     size_t lo = 0, hi = cuts.size();  // cuts[0..lo) fit; cuts[hi..) do not
     while (lo < hi) {
         const size_t mid = lo + (hi - lo) / 2;
-        if (width_of(shown(cuts[mid])) <= max_w)
+        if (width_of(kept(cuts[mid]) + kEllipsis) <= max_w)
             lo = mid + 1;
         else
             hi = mid;
     }
-    return lo == 0 ? kEllipsis : shown(cuts[lo - 1]);
+    if (lo == 0) {
+        kept_w = 0.0f;
+        return kEllipsis;
+    }
+    const std::string shown = kept(cuts[lo - 1]);
+    kept_w = width_of(shown);
+    return shown + kEllipsis;
+}
+
+std::string ellipsize(const std::string& text, float max_w,
+                      const std::function<float(const std::string&)>& width_of) {
+    float kept_w = 0.0f;
+    return ellipsize(text, max_w, width_of, kept_w);
 }
 
 }  // namespace hydra::render

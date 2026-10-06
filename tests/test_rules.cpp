@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "app/config.h"
+#include "app/display_format.h"
 #include "app/rules_file.h"
 #include "core/model.h"
 #include "core/rules.h"
@@ -23,17 +24,21 @@
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
+#include "temp_util.h"
 
 using namespace hydra;
 
 namespace {
 
-std::filesystem::path write_rules(const char* tag, const std::string& text) {
-    std::filesystem::path p =
-        std::filesystem::temp_directory_path() / (std::string("hydra_rules_") + tag + ".ini");
-    std::ofstream f(p, std::ios::trunc);
+// A scratch rules file: ScopedFile handles the cleanup, and write_rules
+// fills it with the given text. The returned ScopedFile stays alive until the
+// full expression ends, so load_rules_file(write_rules(...)) reads the file
+// before ScopedFile's destructor removes it.
+testtemp::ScopedFile write_rules(const char* tag, const std::string& text) {
+    testtemp::ScopedFile file(std::string("rules_") + tag, ".ini");
+    std::ofstream f(hydra::os_path(file.path), std::ios::trunc);
     f << text;
-    return p;
+    return file;
 }
 
 // One measure per note on a 4/4 120 BPM song with no authored fills, so
@@ -73,8 +78,8 @@ TEST_CASE("rules: defaults are the values Hydra always used") {
 
 TEST_CASE("rules: a missing file and an empty file both load the defaults") {
     const uint64_t fp = core::default_rules().fingerprint();
-    CHECK(app::load_rules_file(std::filesystem::temp_directory_path() /
-                               "hydra_rules_does_not_exist.ini")
+    CHECK(app::load_rules_file(
+              hydra::os_path(testtemp::temp_path("rules_does_not_exist", ".ini")))
               .fingerprint() == fp);
     CHECK(app::load_rules_file(write_rules("empty", "# nothing here\n\n")).fingerprint() == fp);
 }
@@ -137,7 +142,7 @@ TEST_CASE("rules: no rules value has the no-rules fingerprint") {
 }
 
 TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") {
-    Chord chord;
+    hydra::Chord chord;  // qualified: windows.h (through temp_util.h) declares a Chord too
     chord.add_note(NoteColor::Red);
     chord.add_note(NoteColor::Blue);
     // Combo 0, so both notes sit at a 1x multiplier and are worth 50 each.
@@ -166,8 +171,50 @@ TEST_CASE("BackendSqueeze::summarystr: the SqOut ladder is for the squeezed-out 
     CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
     CHECK(b.summarystr(false, 85.0) == "Easy");
     b.offset_ms = 150.0;
-    CHECK(b.summarystr(true, 85.0) == "Free SqOut");
+    CHECK(b.summarystr(true, 85.0) == "Free SqOut (uncounted)");
     CHECK(b.summarystr(false, 85.0) == "Insane (uncounted)");
+}
+
+// Finding 33, D48 Q6: a squeezed-out row the engine does not count says so,
+// as the plain rows do, under the same test (counted_without_squeeze).
+TEST_CASE("BackendSqueeze::summarystr: an uncounted squeezed-out row carries the tag") {
+    BackendSqueeze b;
+    b.offset_ms = 150.0;
+    CHECK(b.summarystr(true, 85.0) == "Free SqOut (uncounted)");
+    b.offset_ms = 50.0;
+    CHECK(b.summarystr(true, 85.0) == "Easy SqOut (uncounted)");
+    b.offset_ms = 4.0;
+    CHECK(b.summarystr(true, 85.0) == "Standard SqOut (uncounted)");
+    CHECK(b.summarystr(true, 85.0, 5.0) == "Standard SqOut");
+    b.offset_ms = -50.0;
+    CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
+    // The plain rows read as before.
+    b.offset_ms = 150.0;
+    CHECK(b.summarystr(false, 85.0) == "Insane (uncounted)");
+    b.offset_ms = 50.0;
+    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
+    b.offset_ms = -50.0;
+    CHECK(b.summarystr(false, 85.0) == "Easy");
+}
+
+// Finding 306, D48 Q4: the ladder's inner edges are their own named 10 ms.
+// The labels either side of each edge read as before; past the leeway a
+// squeezed-out row also carries finding 33's "(uncounted)".
+TEST_CASE("kBackendInnerBandMs: the backend ladder's inner edges sit at 10 ms") {
+    CHECK(kBackendInnerBandMs == 10.0);
+    BackendSqueeze b;
+    b.offset_ms = -10.1;
+    CHECK(b.summarystr(true, 85.0) == "Hard SqOut");
+    CHECK(b.summarystr(false, 85.0) == "Easy");
+    b.offset_ms = -10.0;
+    CHECK(b.summarystr(true, 85.0) == "Standard SqOut");
+    CHECK(b.summarystr(false, 85.0) == "Standard");
+    b.offset_ms = 9.9;
+    CHECK(b.summarystr(true, 85.0) == "Standard SqOut (uncounted)");
+    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
+    b.offset_ms = 10.0;
+    CHECK(b.summarystr(true, 85.0) == "Easy SqOut (uncounted)");
+    CHECK(b.summarystr(false, 85.0) == "Hard (uncounted)");
 }
 
 TEST_CASE("rules: the leeway changes what the engine counts") {
@@ -213,6 +260,122 @@ TEST_CASE("rules: max_tied_paths caps the tied paths the engine keeps") {
         if (++charts == 5) break;
     }
     CHECK(charts > 0);
+}
+
+// Finding 95, D51 call 1: the tie limit is one count per score, whichever
+// side of the Path limit a path falls on, and a path inside the limit leads.
+// On this chart two paths tie the top score under 1.0 fills; only the E0
+// path's early fill puts it over a 0 ms limit, so the inside one is kept.
+TEST_CASE("rules: max_tied_paths is one count per score, inside paths first") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("black midi - Sugar") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.legacy_fill_deadline = true;
+    settings.ms_filter = 0.0;
+    settings.rules.max_tied_paths = 1;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    const Path& best = record.best_path();
+    int at_top = 0;
+    std::string seen;
+    for (const Path* p : record.all_paths()) {
+        if (p->totalscore() != best.totalscore()) continue;
+        seen += "'" + p->pathstring() + "' ";
+    }
+    for (const Path& p : record.paths)
+        if (p.totalscore() == best.totalscore()) at_top += p.tied_pathcount();
+    INFO("paths at the top score: ", seen);
+    CHECK(at_top == 1);
+    CHECK(best.tied_pathcount() == 1);
+    CHECK(best.pathstring() == "0 E3+ E5 E1");
+}
+
+// Finding 330, D51 call 2: a path over the Path limit is still kept when it
+// ties the optimal score, and one over the limit below it is dropped.
+TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal score") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("HopH2O - I Am... All Of Me") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.ms_filter = 10.0;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    const int64_t top = record.best_path().totalscore();
+    CHECK(top == 694985);
+    bool kept = false;
+    bool below_kept = false;
+    std::string seen;
+    for (const Path* p : record.all_paths())
+        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) + "; ";
+    INFO("kept paths: ", seen);
+    for (const Path* p : record.all_paths()) {
+        if (p->pathstring() == "3 E0 1 0- 2 E0") below_kept = true;
+        if (p->totalscore() != top || p->pathstring() != "0+ 2 0 0- 2 E0") continue;
+        REQUIRE(p->difficulty().has_value());
+        CHECK(app::format_ms(*p->difficulty()) == "78.9 ms");
+        kept = true;
+    }
+    CHECK(kept);
+    CHECK_FALSE(below_kept);
+}
+
+// D55 item 5: one count per score must not bring back over-limit paths below
+// the best score. On this chart '2 2+ 0- 3' needs a 428.6 ms squeeze and ties
+// the inside path '2 2+ 3 0+' below the top. It is dropped, not filed under
+// that path as a tie.
+TEST_CASE("rules: a path over the Path limit below the best score is dropped even as a tie") {
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("Unbound (The Wild Ride)") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+
+    SearchSettings settings;
+    settings.sp_cap = 4;
+    settings.legacy_fill_deadline = false;
+    settings.ms_filter = 10.0;
+    settings.rules.max_tied_paths = 4;
+    const HydraRecord& record = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(record.paths.empty());
+
+    std::string seen;
+    for (const Path* p : record.all_paths())
+        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) + "; ";
+    INFO("kept paths: ", seen);
+    bool inside_kept = false;
+    bool over_kept = false;
+    for (const Path* p : record.all_paths()) {
+        if (p->pathstring() == "2 2+ 0- 3") over_kept = true;
+        if (p->pathstring() == "2 2+ 3 0+" && p->totalscore() == 859580) inside_kept = true;
+    }
+    CHECK(inside_kept);
+    CHECK_FALSE(over_kept);
+}
+
+// Finding 179: the engine's running tie count (bookkeeping for the limit)
+// must equal the recount of the finished tree, which is what is stored.
+// rebuild throws when they differ; this runs it over real charts.
+TEST_CASE("rules: the engine's tied count matches the recount") {
+    int charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, core::default_rules());
+        std::vector<Path> paths;
+        REQUIRE_NOTHROW(paths = run_search(graph, EngineOptions{}));
+        REQUIRE_FALSE(paths.empty());
+        for (const Path& p : paths) CHECK(p.tied_pathcount() >= 1);
+        if (++charts == 5) break;
+    }
+    CHECK(charts == 5);
 }
 
 TEST_CASE("rules: the generated-fill values come from the rules") {
@@ -261,6 +424,26 @@ TEST_CASE("rules: the retired Auto fingerprint is what Hydra 1.8.4 stamped") {
     ties.max_tied_paths = 2;
     CHECK(ties.retired_auto_fingerprint() != core::default_rules().retired_auto_fingerprint());
     CHECK(ties.retired_auto_fingerprint() != ties.fingerprint());
+}
+
+TEST_CASE("rules: the fingerprint text is byte for byte what 1.8.4 wrote") {
+    // Pinned from the build before the field table existed (6a1bb49). Every
+    // stored result carries one of these, so a change to the text's names,
+    // number form or line order would read every row Stale.
+    CHECK(core::default_rules().fingerprint() == 0x70d2e96669604cf2ull);
+    CHECK(core::default_rules().retired_auto_fingerprint() == 0x5b610b430a43a4beull);
+    // Every field moved off its default, so each line's name and number form
+    // (whole numbers, fractions, the whole_chord word) is in the hash.
+    core::Rules all;
+    all.backend_leeway_ms = 5.0;
+    all.sqout_rule = core::SqOutRule::WholeChord;
+    all.max_tied_paths = 2;
+    all.fill_cooldown_measures = 3;
+    all.fill_max_distance_beats = 0.25;
+    all.fill_length_measures = 0.75;
+    all.fill_land_slop_beats = 0.1;
+    CHECK(all.fingerprint() == 0x786ef3e8a2dbe1e4ull);
+    CHECK(all.retired_auto_fingerprint() == 0x229fa7e95ca76618ull);
 }
 
 TEST_CASE("rules: the default stamp is built once and matches a fresh record") {

@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "app/config.h"  // Settings::clamp, the Backend limit's range
 #include "app/path_view.h"
 #include "core/model.h"
 #include "imgui.h"
@@ -36,6 +37,12 @@ namespace {
 
 ImVec4 text_color() { return ImGui::GetStyleColorVec4(ImGuiCol_Text); }
 ImVec4 dim_color() { return ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled); }
+
+// The colour of a timing mark: the warning colour when its timing is
+// difficult (or, for the scale line, when the scale moves a figure), the dim
+// grey otherwise. A path button's timing, an activation's badge, its outline
+// on the timeline and its scale line all use it.
+ImVec4 warn_or_dim(bool warn) { return warn ? kWarningColor : dim_color(); }
 
 // Draw `text` at `pos` over an item already submitted. `font` null keeps the
 // current font; `wrap_w` > 0 wraps the text at that width.
@@ -65,11 +72,6 @@ void end_overlay(const ImVec2& top, float h) {
     ImGui::Dummy(ImVec2(0.0f, 0.0f));
 }
 
-// True when an item `w` wide still fits after the last item, `spacing` apart.
-bool fits_on_line(float w, float spacing) {
-    return ImGui::GetItemRectMax().x + spacing + w <= ImGui::GetCurrentWindow()->WorkRect.Max.x;
-}
-
 // Keep the next item, `w` wide, on the last item's line when it fits there;
 // otherwise it starts the next line. A row of variable-length pieces wraps
 // instead of running past the column's edge.
@@ -83,10 +85,6 @@ void align_right(float w) {
     if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
     const float room = ImGui::GetContentRegionAvail().x - w;
     if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);
-}
-
-float button_width(const char* label) {
-    return ImGui::CalcTextSize(label, nullptr, true).x + ImGui::GetStyle().FramePadding.x * 2.0f;
 }
 
 // ---- the path list ----------------------------------------------------------
@@ -126,7 +124,7 @@ bool path_button(size_t i, const app::PathButtonView& b, bool selected) {
     if (!b.timing.empty()) {
         const float title_w = std::min(mono_width(b.title), title_wrap_w);
         text_at(ImVec2(top.x + pad + title_w + px(kTimingGap), top.y + pad),
-                b.timing_warn ? kWarningColor : dim_color(), b.timing.c_str(), g_mono_font);
+                warn_or_dim(b.timing_warn), b.timing.c_str(), g_mono_font);
     }
     if (!b.detail.empty())
         text_at(ImVec2(top.x + pad, top.y + pad + title_h + gap),
@@ -149,7 +147,7 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
             ImGui::TextDisabled("%s", heading);
             if (b.group == Group::AllZero)
                 hint("The best path that activates at the first chance every time "
-                     "(no skips). It needs no squeeze timing.");
+                     "(no skips). It needs no timing.");
         }
         if (path_button(i, b, b.path == selected_path)) selected_path = b.path;
     }
@@ -183,11 +181,13 @@ void render_timeline(const app::ActivationsView& view) {
         const ImVec2 m_max(x + px(2.0f), top.y + px(36.0f));
         dl->AddRectFilled(m_min, m_max, ImGui::GetColorU32(kBestPathColor), px(1.0f));
         // A mark whose activation has a badge (a squeeze or an early fill)
-        // gets the badge's outline.
+        // gets an outline in the badge's colour: orange only when the row is
+        // difficult, grey otherwise.
         if (!a.badge.empty())
             dl->AddRect(ImVec2(m_min.x - px(2.0f), m_min.y - px(2.0f)),
                         ImVec2(m_max.x + px(2.0f), m_max.y + px(2.0f)),
-                        ImGui::GetColorU32(kWarningColor), px(1.0f), 0, px(1.5f));
+                        ImGui::GetColorU32(warn_or_dim(a.difficult)), px(1.0f),
+                        0, px(1.5f));
         const std::string num = std::to_string(a.number);
         centres.push_back(x);
         widths.push_back(ImGui::GetFont()->CalcTextSizeA(num_size, FLT_MAX, 0.0f, num.c_str()).x);
@@ -224,7 +224,7 @@ void render_timeline(const app::ActivationsView& view) {
         if (!tip.empty()) ImGui::SetTooltip("%s", tip.c_str());
     }
     ImGui::PushFont(g_mono_font, 0.0f);
-    ImGui::TextDisabled("m1");
+    ImGui::TextDisabled("%s", view.timeline_start.c_str());
     align_right(ImGui::CalcTextSize(view.timeline_end.c_str()).x);
     ImGui::TextDisabled("%s", view.timeline_end.c_str());
     ImGui::PopFont();
@@ -270,7 +270,7 @@ void render_activation_row(size_t i, const app::ActivationRowView& a, app::Paths
         const ImVec2 b_max(bx + sz.x + px(kRowBadgePad), text_y + sz.y + px(2.0f));
         dl->AddRectFilled(b_min, b_max, IM_COL32(51, 38, 26, 255), px(9.0f));
         dl->AddRect(b_min, b_max, IM_COL32(106, 69, 32, 255), px(9.0f));
-        text_at(ImVec2(bx, text_y), a.difficult ? kWarningColor : dim_color(), a.badge.c_str());
+        text_at(ImVec2(bx, text_y), warn_or_dim(a.difficult), a.badge.c_str());
     }
     end_overlay(top, h);
 }
@@ -320,10 +320,10 @@ void render_backend_table(const app::ActivationRowView& a) {
     w_timing = std::ceil(w_timing);
     w_chord = std::ceil(w_chord);
     w_points = std::ceil(w_points);
-    char id[64];
-    std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", a.number, static_cast<int>(w_timing),
-                  static_cast<int>(w_chord), static_cast<int>(w_points));
-    if (ImGui::BeginTable(id, 4,
+    const std::string id =
+        app::backend_table_id(a.number, static_cast<int>(w_timing), static_cast<int>(w_chord),
+                              static_cast<int>(w_points));
+    if (ImGui::BeginTable(id.c_str(), 4,
                           ImGuiTableFlags_Borders | ImGuiTableFlags_Resizable |
                               ImGuiTableFlags_SizingFixedFit)) {
         ImGui::TableSetupColumn("Timing", ImGuiTableColumnFlags_WidthFixed, w_timing);
@@ -367,7 +367,7 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
     ImGui::PopFont();
     char show[48];
     std::snprintf(show, sizeof(show), "Show in Preview >##showact%d", a.number);
-    align_right(button_width("Show in Preview >"));
+    align_right(button_slot_width("Show in Preview >"));
     if (ImGui::SmallButton(show)) ui.preview_jump = i;
 
     if (!a.early_fill.empty()) ImGui::TextUnformatted(a.early_fill.c_str());
@@ -375,9 +375,7 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
         squeeze_box(a.number, k, a.squeeze_sentences[k]);
     if (!a.scale_warning.empty()) {
         // Orange when the scale moves a figure on screen, gray otherwise.
-        ImGui::PushStyleColor(ImGuiCol_Text,
-                              a.scale_warn ? kWarningColor
-                                           : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::PushStyleColor(ImGuiCol_Text, warn_or_dim(a.scale_warn));
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextUnformatted(a.scale_warning.c_str());
         ImGui::PopTextWrapPos();
@@ -425,7 +423,7 @@ void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
     }
     const bool all = ui.all_open();
     const char* toggle = all ? "Collapse all" : "Expand all";
-    align_right(button_width(toggle));
+    align_right(button_slot_width(toggle));
     if (ImGui::SmallButton(toggle)) ui.set_all(!all);
 
     render_timeline(view);
@@ -462,13 +460,13 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     const std::string summary = app::multsqueeze_summary(d.squeezes);
     flow_next(ImGui::CalcTextSize(summary.c_str()).x, spacing);
     ImGui::TextDisabled("%s", summary.c_str());
-    flow_next(button_width("Score breakdown##breakdown"), px(16.0f));
+    flow_next(button_slot_width("Score breakdown##breakdown"), px(16.0f));
     fold_button("Score breakdown##breakdown", ui.breakdown_open);
-    flow_next(button_width("Copy path"), px(24.0f));
+    flow_next(button_slot_width("Copy path"), px(24.0f));
     if (ImGui::Button("Copy path")) copy_selected_path(app);
     hint("Ctrl+C also copies the selected path");
     const double copied_at = app.details_ui.copied_at;
-    if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < 2.0) {
+    if (copied_at >= 0.0 && ImGui::GetTime() - copied_at < AppState::kCopiedSeconds) {
         flow_next(ImGui::CalcTextSize("Copied!").x, spacing);
         ImGui::TextDisabled("Copied!");
     }
@@ -500,8 +498,8 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     begin_disabled_input(limit_off);
     ImGui::SetNextItemWidth(px(100.0f));
     if (ImGui::InputInt("##backendlimitvalue", &app.settings.backendlimit_value)) {
-        app.settings.backendlimit_value = std::clamp(app.settings.backendlimit_value, 0,
-                                                       static_cast<int>(kSqueezeWindowMs));
+        app.settings.backendlimit_value = app::Settings::clamp(&app::Settings::backendlimit_value,
+                                                               app.settings.backendlimit_value);
         app.commit_settings();
     }
     ImGui::SameLine();
@@ -554,7 +552,7 @@ void render_path_panel(AppState& app, const Path*& selected_path) {
             *selected_path, record, generation,
             app.viewed.timing ? &*app.viewed.timing : nullptr,
             static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
-            app.settings.rules, app.viewed.song_length_ms);
+            app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums);
         app::PathsTabUi& ui = cache.ui();
         render_activations(d.activations, ui);
         render_path_footer(app, d, ui);

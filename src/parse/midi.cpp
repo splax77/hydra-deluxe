@@ -1,15 +1,20 @@
 #include "parse/midi.h"
 
 #include <algorithm>
-#include <cstdio>
+#include <iterator>
 
-#include "core/winstr.h"  // fopen_utf8
+#include "core/winstr.h"  // read_file_bytes
 #include "parse/timesig.h"
 
 namespace hydra {
 namespace {
 
 using MType = Message::Type;
+
+bool recognized_track_name(const std::string& name) {
+    return std::find(std::begin(kRecognizedTrackNames), std::end(kRecognizedTrackNames),
+                     name) != std::end(kRecognizedTrackNames);
+}
 
 // mido splits the string-valued metas across two attribute names, and the
 // split is load-bearing (see the header). These are the meta types that carry
@@ -170,21 +175,9 @@ MidiFile::MidiFile(const uint8_t* data, size_t size) {
 }
 
 MidiFile MidiFile::from_file(const std::string& path) {
-    // The path arrives as UTF-8; chart libraries contain non-ASCII filenames
-    // (e.g. a fullwidth slash), so open through the wide API rather than fopen,
-    // which would use the ANSI codepage and fail to find the file.
-    std::FILE* f = fopen_utf8(path, L"rb");
-    if (!f) throw MidiError("cannot open MIDI file: " + path);
-    std::fseek(f, 0, SEEK_END);
-    long n = std::ftell(f);
-    std::fseek(f, 0, SEEK_SET);
-    std::vector<uint8_t> buf(n > 0 ? static_cast<size_t>(n) : 0);
-    if (!buf.empty()) {
-        size_t got = std::fread(buf.data(), 1, buf.size(), f);
-        buf.resize(got);
-    }
-    std::fclose(f);
-    return MidiFile(buf);
+    // read_file_bytes owns reading a whole file (UTF-8 paths, long paths,
+    // files past 2 GB) and its "cannot open file: " error (D54).
+    return MidiFile(read_file_bytes(path));
 }
 
 void MidiFile::parse(const uint8_t* data, size_t size) {
@@ -236,6 +229,7 @@ MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
     int64_t pending = 0;
     int running = 0;
     bool named = false;
+    bool name_recognized = false;
 
     while (pos < end) {
         pending += static_cast<int64_t>(read_varlen(data, pos, end));  // delta time
@@ -269,12 +263,19 @@ MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
 
             Message msg;
             if (meta_message(meta_type, payload, plen, pending, &msg)) {
-                // mido's MidiTrack.name is the FIRST track_name meta; some
-                // charts carry extra 0x03 metas mid-track (e.g. "Drums" after
-                // "PART DRUMS"), and the last one must not win.
-                if (meta_type == 0x03 && !named) {
-                    track.name = msg.str;
-                    named = true;
+                // D78: the first recognized name wins, else the first name.
+                // Charts carry extra 0x03 metas ("notes" before "PART DRUMS",
+                // "Drums" after it). YARG.Core's MidReader does the same with
+                // IsRecognizedTrackName, but only at tick 0; Hydra looks at
+                // every tick because some drum tracks get their only
+                // "PART DRUMS" name after tick 0.
+                if (meta_type == 0x03 && !name_recognized) {
+                    const bool recognized = recognized_track_name(msg.str);
+                    if (recognized || !named) {
+                        track.name = msg.str;
+                        named = true;
+                        name_recognized = recognized;
+                    }
                 }
                 track.messages.push_back(std::move(msg));
                 pending = 0;

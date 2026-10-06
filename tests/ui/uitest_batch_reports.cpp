@@ -1,11 +1,14 @@
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <functional>
 #include <string>
 #include <thread>
 #include <vector>
+
+#include <sqlite3.h>
 
 #include "uitest_harness.h"
 
@@ -16,6 +19,7 @@
 #include "imgui_internal.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
+#include "ui/library_parts.h"  // analyze_search_label
 #include "ui/win32_dialogs.h"
 
 namespace fs = std::filesystem;
@@ -37,9 +41,8 @@ bool batch_search(ImGuiTestContext* ctx, const std::string& search) {
     ctx->SetRef("//Hydra");
     ctx->ItemInputValue("**/##search", search.c_str());
     if (!wait_until(ctx, [&] { return h.app->search == search; }, 5)) return false;
-    const std::string label =
-        "Analyze search (" +
-        hydra::group_thousands(static_cast<int64_t>(h.app->library_match_count())) + ")...";
+    const std::string label = hydra::ui::detail::analyze_search_label(
+        static_cast<int64_t>(h.app->library_match_count()));
     ctx->ItemClick(label.c_str());
     ctx->SetRef("//Analyze library");
     ctx->ItemClick("Start analyzing");
@@ -152,7 +155,8 @@ void test_settings_and_reports(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->dm_report_job && h.app->dm_report_job->finished(); }, 60));
     IM_CHECK_STR_EQ(h.app->dm_report_job->error().c_str(), "");
     IM_CHECK(fs::exists(hydra::app::dm_report_html_path()));
-    IM_CHECK_EQ(h.app->dm_report_job->stats().matched, 1);
+    // The canned score (100,000) is under the chart's optimal.
+    IM_CHECK_EQ(h.app->dm_report_job->stats().under_optimal, 1);
     IM_CHECK_EQ(h.opened_urls.size(), (size_t)1);  // still: auto-open is off
 }
 
@@ -176,7 +180,7 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     h.app->commit_settings();
     ctx->Yield(2);
     IM_CHECK(compare_disabled());
-    h.app->settings.sp_cap = 4;
+    h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
     h.app->commit_settings();
 
     // The difficulty picker lives in the settings bar; the button in the
@@ -216,6 +220,10 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     }, 60));
     IM_CHECK(h.app->dm_report_job->ok());
     IM_CHECK(visible_text(h).find("not analyzed") != std::string::npos);
+    // The counts read under, at and above optimal; nothing is "matched".
+    IM_CHECK(visible_text(h).find("0 under optimal, 0 at optimal, 0 above optimal") !=
+             std::string::npos);
+    IM_CHECK(visible_text(h).find("matched") == std::string::npos);
     IM_CHECK_STR_EQ(h.app->settings.dm_last_user.c_str(), "111");
     IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).dm_last_user.c_str(), "111");
     IM_CHECK_EQ(h.opened_urls.size(), (size_t)0);
@@ -271,9 +279,8 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     IM_CHECK(h.opened_urls[0] == hydra::app::report_html_path());
 
     // "Also re-analyze" re-analyzes the stored chart, and the confirm says so.
-    const std::string label =
-        "Analyze search (" +
-        hydra::group_thousands(static_cast<int64_t>(h.app->library_match_count())) + ")...";
+    const std::string label = hydra::ui::detail::analyze_search_label(
+        static_cast<int64_t>(h.app->library_match_count()));
     ctx->ItemClick(label.c_str());
     ctx->Yield(2);
     ctx->SetRef("//Analyze library");
@@ -512,15 +519,53 @@ void test_status_line(ImGuiTestContext* ctx) {
     h.app->set_status("Saved the thing.");
     ctx->Yield(2);
     IM_CHECK(h.frame_text.text.find("Saved the thing.") != std::string::npos);
-    ctx->Yield(400);  // over 6 s of 1/60 s frames
+    // The fade in the harness's fixed frame time, plus the first frame past
+    // its edge.
+    const int fade_frames = static_cast<int>(std::ceil(
+                                hydra::ui::AppState::kStatusFadeSeconds / ImGui::GetIO().DeltaTime)) +
+                            1;
+    ctx->Yield(fade_frames);
     IM_CHECK(h.frame_text.text.find("Saved the thing.") == std::string::npos);
 
     h.app->set_problem("The thing broke.");
-    ctx->Yield(400);
+    ctx->Yield(fade_frames);
     IM_CHECK(h.frame_text.text.find("The thing broke.") != std::string::npos);
     ctx->ItemClick("**/X##dismissstatus");
     ctx->Yield(2);
     IM_CHECK(h.app->status_message.empty());
+}
+
+// D72 item 4: when the store can't say which charts already have a result,
+// the Analyze-library click shows the database sentence in the status line,
+// opens no confirm, and Hydra keeps running.
+void test_analyze_db_fails(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    // A copy of exec_on_file (tests/db_file_util.h): the GUI harness builds
+    // with only tests/ui on its include path.
+    {  // A second connection drops the scratch library's results table.
+        sqlite3* db = nullptr;
+        IM_CHECK_NO_RET(sqlite3_open(h.db_path.c_str(), &db) == SQLITE_OK);
+        IM_CHECK_NO_RET(sqlite3_exec(db, "DROP TABLE results", nullptr, nullptr, nullptr) ==
+                        SQLITE_OK);
+        sqlite3_close(db);
+    }
+
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->Yield(3);
+    const std::string sentence =
+        "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+        "running, then try again.";
+    IM_CHECK(h.frame_text.text.find(sentence) != std::string::npos);
+    IM_CHECK(h.app->status_is_problem);
+    IM_CHECK(!h.app->batch_confirm_pending);
+    IM_CHECK(h.app->batch_job == nullptr);
+    // Still running: the next frames draw.
+    ctx->Yield(3);
+    IM_CHECK(h.frame_text.text.find(sentence) != std::string::npos);
 }
 
 // The comparison only means something at Clone Hero's cap and Expert; off
@@ -541,7 +586,7 @@ void test_compare_disabled(ImGuiTestContext* ctx) {
     h.app->commit_settings();
     ctx->Yield(2);
     IM_CHECK(disabled());
-    h.app->settings.sp_cap = 4;
+    h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
     h.app->settings.view_difficulty = "Hard";
     h.app->commit_settings();
     ctx->Yield(2);
@@ -574,7 +619,7 @@ void test_dialog_keys(ImGuiTestContext* ctx) {
     ctx->KeyPress(ImGuiKey_Enter);
     ctx->Yield(2);
     IM_CHECK(h.app->scan_job == nullptr);
-    IM_CHECK(h.app->library_total > 0);
+    IM_CHECK(!h.app->library.rows().empty());
 }
 
 }  // namespace
@@ -591,6 +636,7 @@ const std::vector<TestEntry>& batch_report_tests() {
         {"batch-done-strip", test_batch_done_strip},
         {"batch-open-failure", test_batch_open_failure},
         {"status-line", test_status_line},
+        {"analyze-db-fails", test_analyze_db_fails},
         {"compare-disabled", test_compare_disabled},
         {"dialog-keys", test_dialog_keys},
     };

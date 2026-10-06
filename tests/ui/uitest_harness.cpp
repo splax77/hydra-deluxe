@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <climits>
 #include <cstdio>
@@ -19,13 +20,19 @@
 #include "imgui_internal.h"
 #include "imgui_te_internal.h"
 
+#include "../scratch_settings.h"
+#include "../temp_util.h"
+#include "../warp_util.h"  // tests/ is not on the runner's include path
+
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/report_files.h"
 #include "audio/device.h"
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
+#include "ui/details_view.h"  // analyze_button_label
 #include "ui/library_jobs.h"
+#include "ui/library_model.h"
 #include "ui/preview_controller.h"
 
 namespace fs = std::filesystem;
@@ -74,18 +81,9 @@ bool capture_pixels(ImGuiID /*viewport_id*/, int x, int y, int w, int h, unsigne
     return true;
 }
 
-std::string temp_root() {
-    wchar_t buf[MAX_PATH];
-    DWORD n = GetTempPathW(MAX_PATH, buf);
-    std::wstring w(buf, n);
-    fs::path p = fs::path(w) / L"hydra_uitest" / std::to_wstring(GetCurrentProcessId());
-    return p.u8string();
-}
-
 // Scratch folder + the app's path overrides (db, ini, preview assets).
 void init_scratch(Harness& h) {
-    h.temp_dir = temp_root();
-    fs::create_directories(fs::u8path(h.temp_dir));
+    h.temp_dir = testtemp::temp_dir("uitest");
     h.db_path = h.temp_dir + "\\hydra.db";
     h.ini_path = h.temp_dir + "\\hydra_settings.ini";
     h.rules_path = h.temp_dir + "\\hydra_rules.ini";
@@ -131,6 +129,10 @@ bool Harness::init_attached(ID3D11Device* dev, ID3D11DeviceContext* ctx, IDXGISw
     return true;
 }
 
+bool selects(const std::string& what, const char* test_name) {
+    return what == "all" || what == test_name;
+}
+
 bool Harness::queue(const std::string& what) {
     if (fs::exists(fs::u8path(what)) && !fs::is_directory(fs::u8path(what))) {
         script_path = what;
@@ -144,7 +146,7 @@ bool Harness::queue(const std::string& what) {
     int queued = 0;
     for (ImGuiTest* t : tests) {
         if (std::strcmp(t->Name, "script") == 0) continue;
-        if (what == "all" || what == t->Name) {
+        if (selects(what, t->Name)) {
             ImGuiTestEngine_QueueTest(engine, t, ImGuiTestRunFlags_RunFromCommandLine);
             ++queued;
         }
@@ -155,24 +157,30 @@ bool Harness::queue(const std::string& what) {
 int Harness::print_results(FILE* out) {
     ImVector<ImGuiTest*> tests;
     ImGuiTestEngine_GetTestList(engine, &tests);
-    int failed = 0;
     for (ImGuiTest* t : tests) {
-        if (t->Output.Status == ImGuiTestStatus_Unknown) continue;  // not run
-        bool ok = t->Output.Status == ImGuiTestStatus_Success;
+        // Not run, still waiting, or still running: nothing to print yet.
+        const ImGuiTestStatus status = t->Output.Status;
+        if (status != ImGuiTestStatus_Success && status != ImGuiTestStatus_Error) continue;
+        if (std::find(printed.begin(), printed.end(), t) != printed.end()) continue;
+        printed.push_back(t);
+        const bool ok = status == ImGuiTestStatus_Success;
         std::fprintf(out, "[%s] %s/%s\n", ok ? "PASS" : "FAIL", t->Category, t->Name);
         if (!ok) {
-            ++failed;
+            ++printed_failures;
             std::fprintf(out, "---- log ----\n%s---- end ----\n", t->Output.Log.Buffer.c_str());
         }
     }
     std::fflush(out);
-    return failed;
+    return printed_failures;
+}
+
+const ImGuiTest* Harness::running_test() const {
+    if (!engine || !engine->TestContext) return nullptr;
+    return engine->TestContext->Test;
 }
 
 bool Harness::init() {
-    D3D_FEATURE_LEVEL want = D3D_FEATURE_LEVEL_11_0, got;
-    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, &want, 1,
-                                 D3D11_SDK_VERSION, &device, &got, &context))) {
+    if (!warp::make_device(device, context)) {
         std::fprintf(stderr, "hydra_uitest: could not create a WARP D3D11 device\n");
         return false;
     }
@@ -214,10 +222,9 @@ void Harness::frame() {
     ImGui::NewFrame();
     if (app) hydra::ui::run_frame(*app, &frame_text);
     ImGui::Render();
-    const float clear[4] = {0.10f, 0.11f, 0.13f, 1.0f};
     ID3D11RenderTargetView* views[] = {rtv.Get()};
     context->OMSetRenderTargets(1, views, nullptr);
-    context->ClearRenderTargetView(rtv.Get(), clear);
+    context->ClearRenderTargetView(rtv.Get(), hydra::ui::kClearColor);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     ImGuiTestEngine_PostSwap(engine);
 }
@@ -286,13 +293,13 @@ void reset_app(Harness& h, const std::string& rules_text) {
             }
         }
     }
-    fs::remove(fs::u8path(h.temp_dir + "\\hydra_paths.html"), ec);
-    fs::remove(fs::u8path(h.temp_dir + "\\hydra_dmcompare.html"), ec);
-    {
-        std::ofstream f(fs::u8path(h.ini_path), std::ios::trunc);
-        f << "chartfolder=" << HYDRA_INPUT_DIR << "\n";
-        f << "auto_open_report=0\n";
-        f << "depth_value=2\n";  // keep analyses short
+    fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kPathReportFileName), ec);
+    fs::remove(fs::u8path(h.temp_dir + "\\" + hydra::app::kDmReportFileName), ec);
+    // The GUI tests' settings (tests/scratch_settings.h), written the way the
+    // app writes its own ini.
+    if (!scratch_settings().save_file(h.ini_path)) {
+        std::fprintf(stderr, "hydra_uitest: could not write \"%s\"\n", h.ini_path.c_str());
+        std::exit(1);
     }
     if (rules_text.empty()) {
         fs::remove(fs::u8path(h.rules_path), ec);
@@ -329,17 +336,7 @@ bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double
     return true;
 }
 
-bool jobs_busy(Harness& h) {
-    auto& a = *h.app;
-    if (a.scan_job && !a.scan_job->snapshot().finished) return true;
-    if (a.batch_job && !a.batch_job->snapshot().finished) return true;
-    if (a.analyze_job && !a.analyze_job->finished()) return true;
-    if (a.report_job && !a.report_job->finished()) return true;
-    if (a.dm_fetch_job && !a.dm_fetch_job->finished()) return true;
-    if (a.dm_report_job && !a.dm_report_job->finished()) return true;
-    if (a.preview && a.preview->loading()) return true;
-    return false;
-}
+bool jobs_busy(Harness& h) { return h.app->any_job_running(); }
 
 namespace {
 // Statics, not gate members: a batch job keeps its copy of the analyzer and
@@ -426,16 +423,14 @@ void dump_widgets(ImGuiTestContext* ctx, const std::string& window_name) {
 void dump_state(Harness& h) {
     auto& a = *h.app;
     std::printf("state:\n");
-    std::printf("  library_total=%lld shown=%zu search=\"%s\"\n", (long long)a.library_total,
+    std::printf("  charts=%zu shown=%zu search=\"%s\"\n", a.library.rows().size(),
                 a.library_shown_count(), a.search.c_str());
     for (size_t i = 0; i < a.library_shown_count() && i < 20; ++i) {
         const auto& r = a.library_row_at(i);
-        auto s = r.status;
-        const char* st = s == hydra::store::RecordStatus::Ready   ? "current"
-                         : s == hydra::store::RecordStatus::Stale ? "stale"
-                                                                  : "new";
+        // The status chip's word: "Analyzed", "Stale" or "Not analyzed".
         std::printf("    row[%zu] \"%s\" - %s (%s) md5=%s status=%s\n", i, r.title.c_str(),
-                    r.artist.c_str(), r.charter.c_str(), r.entry.md5.c_str(), st);
+                    r.artist.c_str(), r.charter.c_str(), r.entry.md5.c_str(),
+                    hydra::ui::status_label(r.status));
     }
     std::printf("  selected=%s panel_open=%s viewed_record=%s paths=%zu\n",
                 a.selected ? a.selected->title.c_str() : "(none)", yes_no(a.details_open()),
@@ -486,6 +481,13 @@ std::string escape_ref(const std::string& label) {
     return out;
 }
 
+float text_width(const char* s, ImFont* font) {
+    const ImGuiStyle& st = ImGui::GetStyle();
+    const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
+    if (!font) font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
+    return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x;
+}
+
 // Scan testdata/input through the UI and land on the populated library.
 void scan_library(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -500,7 +502,7 @@ void scan_library(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     ctx->SetRef("//Hydra");
     IM_CHECK(h.app->scan_job == nullptr);
-    IM_CHECK(h.app->library_total > 0);
+    IM_CHECK(!h.app->library.rows().empty());
     IM_CHECK(h.app->library_shown_count() > 0);
 }
 
@@ -545,11 +547,9 @@ void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::st
     open_details(ctx, idx);
 }
 
-// The analyze button's ref for the open song: its label depends on whether
-// the song has a result.
+// The analyze button's ref for the open song: the panel's own label for it.
 std::string analyze_button_ref(Harness& h) {
-    return h.app->viewed.status == hydra::store::RecordStatus::NotAnalyzed ? "**/Analyze this song"
-                                                                          : "**/Re-analyze";
+    return std::string("**/") + hydra::ui::analyze_button_label(h.app->viewed.status);
 }
 
 // Analyze the open song and wait for a Ready record.

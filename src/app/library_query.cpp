@@ -1,14 +1,19 @@
-// Library search: folding, rich-tag stripping, the query language, the
-// matcher and the highlight spans. library_query.h describes the rules.
+// Library search: folding, the query language, the matcher and the highlight
+// spans. library_query.h describes the rules. Rich-text tags are stripped by
+// strip_rich_tags in parse/song.cpp.
 
 #include "app/library_query.h"
 
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <iterator>
+#include <string>
 #include <system_error>
 
-#include "core/stars.h"  // kMaxStars
+#include "core/stars.h"    // kMaxStars
+#include "core/strutil.h"  // lower_ascii, is_ascii_space, equals_ci, starts_with_ci
+#include "core/winstr.h"   // wide_to_utf8
 
 namespace hydra::app {
 
@@ -16,9 +21,40 @@ namespace {
 
 constexpr size_t npos = std::string_view::npos;
 
-constexpr const char* kStarsError = "stars: needs a number from 0 to 7";
+// The stars filter's out-of-range sentence, its top built from kMaxStars so
+// the message and the range check below read the same number.
+std::string stars_error() {
+    return "stars: needs a number from 0 to " + std::to_string(kMaxStars);
+}
 constexpr const char* kSqueezeError =
     "squeeze<= needs a number of milliseconds, like squeeze<=20";
+
+// ---- the characters the fold changes ------------------------------------------
+
+// A run of code points, first to last, both included.
+struct FoldRun {
+    unsigned first, last;
+    constexpr bool holds(unsigned cp) const { return cp >= first && cp <= last; }
+};
+
+// The three runs of characters the fold changes one for one. fold_into reads
+// kLatin and kFullWidth; ASCII letters it lowers with strutil's lower_ascii,
+// so kAsciiUpper is only the run search_fold_table tries, and the table keeps
+// a character only when fold_for_search really changes it. The fold's only
+// other change is whitespace, which becomes one space; the report pages split
+// a query on whitespace instead of looking it up.
+constexpr FoldRun kAsciiUpper{'A', 'Z'};       // lower-cased (lower_ascii)
+constexpr FoldRun kLatin{0x00C0, 0x017F};      // Latin-1 letters and Latin Extended-A, to ASCII
+constexpr FoldRun kFullWidth{0xFF01, 0xFF5E};  // full-width ASCII, to its ASCII twin, lower-cased
+constexpr FoldRun kFoldRuns[] = {kAsciiUpper, kLatin, kFullWidth};
+
+// search_fold_table writes each character from one UTF-16 unit, so every run
+// sits below U+10000 and clear of the surrogate halves.
+constexpr bool one_utf16_unit(FoldRun run) {
+    return run.last <= 0xFFFF && (run.last < 0xD800 || run.first > 0xDFFF);
+}
+static_assert(one_utf16_unit(kAsciiUpper) && one_utf16_unit(kLatin) &&
+              one_utf16_unit(kFullWidth));
 
 // ---- bytes -----------------------------------------------------------------
 
@@ -28,39 +64,25 @@ unsigned char byte_at(std::string_view s, size_t i) {
     return i < s.size() ? static_cast<unsigned char>(s[i]) : 0;
 }
 
-bool is_ascii_space(unsigned char c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
-}
-
-bool is_ascii_alpha(char c) {
-    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
 bool is_continuation(unsigned char c) {
     return (c & 0xC0) == 0x80;
 }
 
-char ascii_lower(unsigned char c) {
-    return static_cast<char>(c >= 'A' && c <= 'Z' ? c + ('a' - 'A') : c);
-}
-
-bool iequals_ascii(std::string_view a, std::string_view b) {
-    if (a.size() != b.size()) return false;
-    for (size_t i = 0; i < a.size(); ++i)
-        if (ascii_lower(static_cast<unsigned char>(a[i])) !=
-            ascii_lower(static_cast<unsigned char>(b[i])))
-            return false;
-    return true;
-}
-
-bool starts_with_ci(std::string_view s, std::string_view prefix) {
-    return s.size() >= prefix.size() && iequals_ascii(s.substr(0, prefix.size()), prefix);
+// How many bytes the UTF-8 character that starts with `lead` holds: 2, 3 or
+// 4, or 0 when `lead` cannot start a character of two or more bytes (ASCII,
+// a continuation byte, or a byte UTF-8 never uses as a lead).
+size_t utf8_length(unsigned char lead) {
+    if (lead >= 0xC2 && lead <= 0xDF) return 2;
+    if (lead >= 0xE0 && lead <= 0xEF) return 3;
+    if (lead >= 0xF0 && lead <= 0xF4) return 4;
+    return 0;
 }
 
 // ---- folding ---------------------------------------------------------------
 
-// ASCII for U+00C0..U+00FF. nullptr keeps the character (the two signs).
-constexpr const char* kLatin1[64] = {
+// ASCII for each character of kLatin, U+00C0..U+017F, in order. nullptr keeps
+// the character (the two signs × and ÷).
+constexpr const char* kLatinAscii[] = {
     "a", "a", "a", "a", "a", "a", "ae", "c",     // C0  À Á Â Ã Ä Å Æ Ç
     "e", "e", "e", "e", "i", "i", "i",  "i",     // C8  È É Ê Ë Ì Í Î Ï
     "d", "n", "o", "o", "o", "o", "o",  nullptr, // D0  Ð Ñ Ò Ó Ô Õ Ö ×
@@ -69,10 +91,7 @@ constexpr const char* kLatin1[64] = {
     "e", "e", "e", "e", "i", "i", "i",  "i",     // E8  è é ê ë ì í î ï
     "d", "n", "o", "o", "o", "o", "o",  nullptr, // F0  ð ñ ò ó ô õ ö ÷
     "o", "u", "u", "u", "u", "y", "th", "y",     // F8  ø ù ú û ü ý þ ÿ
-};
-
-// ASCII for U+0100..U+017F, Latin Extended-A. Every entry is a letter.
-constexpr const char* kLatinExtA[128] = {
+    // Latin Extended-A. Every entry from here on is a letter.
     "a", "a", "a",  "a",  "a", "a", "c", "c",  // 0100  Ā ā Ă ă Ą ą Ć ć
     "c", "c", "c",  "c",  "c", "c", "d", "d",  // 0108  Ĉ ĉ Ċ ċ Č č Ď ď
     "d", "d", "e",  "e",  "e", "e", "e", "e",  // 0110  Đ đ Ē ē Ĕ ĕ Ė ė
@@ -90,6 +109,8 @@ constexpr const char* kLatinExtA[128] = {
     "u", "u", "u",  "u",  "w", "w", "y", "y",  // 0170  Ű ű Ų ų Ŵ ŵ Ŷ ŷ
     "y", "z", "z",  "z",  "z", "z", "z", "s",  // 0178  Ÿ Ź ź Ż ż Ž ž ſ
 };
+static_assert(std::size(kLatinAscii) == kLatin.last - kLatin.first + 1,
+              "one entry per character of kLatin");
 
 // The shown-text bytes one folded byte came from: the whole character, or the
 // whole whitespace run, that produced it.
@@ -123,7 +144,7 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
         // Whitespace: ASCII, the no-break space (C2 A0) and the ideographic
         // space (E3 80 80). A run of any mix becomes one space.
         size_t space_len = 0;
-        if (is_ascii_space(c0)) space_len = 1;
+        if (is_ascii_space(static_cast<char>(c0))) space_len = 1;
         else if (c0 == 0xC2 && c1 == 0xA0) space_len = 2;
         else if (c0 == 0xE3 && c1 == 0x80 && c2 == 0x80) space_len = 3;
         if (space_len > 0) {
@@ -136,28 +157,33 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
         in_space = false;
 
         if (c0 < 0x80) {
-            const char lower = ascii_lower(c0);
+            const char lower = lower_ascii(static_cast<char>(c0));
             emit(std::string_view(&lower, 1), i, i + 1);
             i += 1;
             continue;
         }
 
-        // U+00C0..U+017F are the two-byte sequences C3 80 to C5 BF.
-        if (c0 >= 0xC3 && c0 <= 0xC5 && is_continuation(c1)) {
+        const size_t lead_len = utf8_length(c0);
+
+        // A two-byte character in kLatin becomes its ASCII letters.
+        if (lead_len == 2 && is_continuation(c1)) {
             const unsigned cp = ((c0 & 0x1Fu) << 6) | (c1 & 0x3Fu);
-            const char* ascii = cp <= 0xFF ? kLatin1[cp - 0xC0] : kLatinExtA[cp - 0x100];
-            if (ascii) emit(ascii, i, i + 2);
-            else emit(text.substr(i, 2), i, i + 2);
-            i += 2;
-            continue;
+            if (kLatin.holds(cp)) {
+                const char* ascii = kLatinAscii[cp - kLatin.first];
+                if (ascii) emit(ascii, i, i + 2);
+                else emit(text.substr(i, 2), i, i + 2);
+                i += 2;
+                continue;
+            }
         }
 
-        // Full-width ASCII, U+FF01..U+FF5E, is EF BC 81 to EF BD 9E. Its ASCII
-        // twin is 0xFEE0 lower.
-        if (c0 == 0xEF && (c1 == 0xBC || c1 == 0xBD) && is_continuation(c2)) {
-            const unsigned cp = 0xF000u | ((c1 & 0x3Fu) << 6) | (c2 & 0x3Fu);
-            if (cp >= 0xFF01 && cp <= 0xFF5E) {
-                const char lower = ascii_lower(static_cast<unsigned char>(cp - 0xFEE0));
+        // A three-byte character in kFullWidth becomes its ASCII twin, which
+        // sits as far below '!' as the run's first character does.
+        if (lead_len == 3 && is_continuation(c1) && is_continuation(c2)) {
+            const unsigned cp = ((c0 & 0x0Fu) << 12) | ((c1 & 0x3Fu) << 6) | (c2 & 0x3Fu);
+            if (kFullWidth.holds(cp)) {
+                const char lower =
+                    lower_ascii(static_cast<char>(cp - (kFullWidth.first - '!')));
                 emit(std::string_view(&lower, 1), i, i + 3);
                 i += 3;
                 continue;
@@ -166,10 +192,7 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
 
         // Anything else is kept: the whole character when the bytes form a
         // well-shaped UTF-8 sequence, otherwise this one byte as it is.
-        size_t len = 1;
-        if (c0 >= 0xC2 && c0 <= 0xDF) len = 2;
-        else if (c0 >= 0xE0 && c0 <= 0xEF) len = 3;
-        else if (c0 >= 0xF0 && c0 <= 0xF4) len = 4;
+        size_t len = lead_len > 0 ? lead_len : 1;
         for (size_t k = 1; k < len; ++k)
             if (!is_continuation(byte_at(text, i + k))) len = 1;
         emit(text.substr(i, len), i, i + len);
@@ -177,51 +200,13 @@ void fold_into(std::string_view text, std::string& out, std::vector<SourceRange>
     }
 }
 
-// ---- rich-text tags --------------------------------------------------------
-
-struct RichTag {
-    std::string_view name;
-    bool takes_value;  // the opening tag is <name=value>
-};
-
-constexpr RichTag kRichTags[] = {
-    {"color", true}, {"size", true}, {"b", false},   {"i", false},
-    {"u", false},    {"s", false},   {"sub", false}, {"sup", false},
-};
-
-// The byte length of the rich-text tag that starts at text[at] (a '<'), or 0
-// when the text there is not one strip_rich_tags removes.
-size_t rich_tag_length(std::string_view text, size_t at) {
-    size_t i = at + 1;
-    const bool closing = i < text.size() && text[i] == '/';
-    if (closing) ++i;
-    size_t name_end = i;
-    while (name_end < text.size() && is_ascii_alpha(text[name_end])) ++name_end;
-    if (name_end == i || name_end >= text.size()) return 0;
-
-    const std::string_view name = text.substr(i, name_end - i);
-    for (const RichTag& tag : kRichTags) {
-        if (!iequals_ascii(name, tag.name)) continue;
-        if (text[name_end] == '>')
-            return (closing || !tag.takes_value) ? name_end + 1 - at : 0;
-        if (!closing && tag.takes_value && text[name_end] == '=') {
-            const size_t close = text.find('>', name_end);
-            const size_t reopen = text.find('<', name_end);
-            if (close == npos || reopen < close) return 0;
-            return close + 1 - at;
-        }
-        return 0;
-    }
-    return 0;
-}
-
 // ---- parsing ---------------------------------------------------------------
 
 std::optional<QueryField> field_named(std::string_view key) {
-    if (iequals_ascii(key, "title")) return QueryField::Title;
-    if (iequals_ascii(key, "artist")) return QueryField::Artist;
-    if (iequals_ascii(key, "charter")) return QueryField::Charter;
-    if (iequals_ascii(key, "folder")) return QueryField::Folder;
+    if (equals_ci(key, "title")) return QueryField::Title;
+    if (equals_ci(key, "artist")) return QueryField::Artist;
+    if (equals_ci(key, "charter")) return QueryField::Charter;
+    if (equals_ci(key, "folder")) return QueryField::Folder;
     return std::nullopt;
 }
 
@@ -254,7 +239,7 @@ void parse_stars(LibraryQuery& q, std::string_view value) {
     const char* last = value.data() + value.size();
     const auto [end, ec] = std::from_chars(first, last, n);
     if (value.empty() || ec != std::errc{} || end != last || n < 0 || n > kMaxStars) {
-        add_error(q, kStarsError);
+        add_error(q, stars_error());
         return;
     }
     q.stars = n;
@@ -278,20 +263,26 @@ bool contains(const std::string& haystack, const std::string& needle) {
     return haystack.find(needle) != std::string::npos;
 }
 
+// A term matches when any column it applies to holds its folded text.
 bool term_matches(const QueryTerm& term, const SearchableRow& row) {
-    switch (term.field) {
-        case QueryField::Title: return contains(row.title, term.folded);
-        case QueryField::Artist: return contains(row.artist, term.folded);
-        case QueryField::Charter: return contains(row.charter, term.folded);
-        case QueryField::Folder: return contains(row.folder, term.folded);
-        case QueryField::Any:
-            return contains(row.title, term.folded) || contains(row.artist, term.folded) ||
-                   contains(row.charter, term.folded) || contains(row.folder, term.folded);
-    }
+    const struct {
+        QueryField column;
+        const std::string& text;
+    } columns[] = {{QueryField::Title, row.title},
+                   {QueryField::Artist, row.artist},
+                   {QueryField::Charter, row.charter},
+                   {QueryField::Folder, row.folder}};
+    for (const auto& c : columns)
+        if (term_applies_to(term.field, c.column) && contains(c.text, term.folded))
+            return true;
     return false;
 }
 
 }  // namespace
+
+bool term_applies_to(QueryField term_field, QueryField column) {
+    return term_field == QueryField::Any || column == QueryField::Any || term_field == column;
+}
 
 std::string fold_for_search(std::string_view text) {
     std::string out;
@@ -299,21 +290,18 @@ std::string fold_for_search(std::string_view text) {
     return out;
 }
 
-std::string strip_rich_tags(std::string_view text) {
-    std::string out;
-    out.reserve(text.size());
-    size_t i = 0;
-    while (i < text.size()) {
-        if (text[i] == '<') {
-            if (const size_t len = rich_tag_length(text, i)) {
-                i += len;
-                continue;
-            }
+std::vector<FoldEntry> search_fold_table() {
+    // Every character of the fold's three runs, kept when the fold changes
+    // it. Whitespace is left to the page, which splits the query on it.
+    std::vector<FoldEntry> table;
+    for (const FoldRun& run : kFoldRuns) {
+        for (unsigned cp = run.first; cp <= run.last; ++cp) {
+            std::string from = wide_to_utf8(std::wstring(1, static_cast<wchar_t>(cp)));
+            std::string to = fold_for_search(from);
+            if (to != from) table.push_back(FoldEntry{std::move(from), std::move(to)});
         }
-        out.push_back(text[i]);
-        ++i;
     }
-    return out;
+    return table;
 }
 
 bool LibraryQuery::empty() const {
@@ -324,7 +312,7 @@ LibraryQuery parse_library_query(std::string_view text) {
     LibraryQuery q;
     size_t i = 0;
     while (i < text.size()) {
-        if (is_ascii_space(static_cast<unsigned char>(text[i]))) {
+        if (is_ascii_space(text[i])) {
             ++i;
             continue;
         }
@@ -336,7 +324,7 @@ LibraryQuery parse_library_query(std::string_view text) {
         // A word runs to the next space or quote.
         size_t end = i;
         while (end < text.size() && text[end] != '"' &&
-               !is_ascii_space(static_cast<unsigned char>(text[end])))
+               !is_ascii_space(text[end]))
             ++end;
         const std::string_view word = text.substr(i, end - i);
         i = end;
@@ -356,7 +344,7 @@ LibraryQuery parse_library_query(std::string_view text) {
             const std::string_view value = word.substr(colon + 1);
             // field:"a phrase": the quote ended the word right after the colon.
             const bool quoted = value.empty() && i < text.size() && text[i] == '"';
-            if (iequals_ascii(key, "stars")) {
+            if (equals_ci(key, "stars")) {
                 parse_stars(q, quoted ? read_quoted(text, i) : value);
                 continue;
             }
@@ -382,9 +370,9 @@ SearchableRow make_searchable(std::string_view title, std::string_view artist,
 
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts) {
     if (q.stars || q.squeeze_max_ms) {
-        if (!facts.stars) return false;  // not analyzed: nothing to test
+        if (!facts.stars) return false;  // a row with no facts matches no filter (facts_of)
         if (q.stars && *facts.stars != *q.stars) return false;
-        // A path with no squeeze passes any squeeze limit.
+        // A path that needs no timing (Path::needs_timing) passes any limit.
         if (q.squeeze_max_ms && facts.hardest_ms && *facts.hardest_ms > *q.squeeze_max_ms)
             return false;
     }
@@ -403,8 +391,7 @@ std::vector<MatchSpan> match_spans(const LibraryQuery& q, QueryField field,
     fold_into(display_text, folded, &source);
     for (const QueryTerm& term : q.terms) {
         if (term.folded.empty()) continue;
-        if (field != QueryField::Any && term.field != QueryField::Any && term.field != field)
-            continue;
+        if (!term_applies_to(term.field, field)) continue;
         for (size_t at = folded.find(term.folded); at != std::string::npos;
              at = folded.find(term.folded, at + 1))
             spans.push_back(

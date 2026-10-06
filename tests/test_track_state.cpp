@@ -58,7 +58,6 @@ PreviewFill fill(PreviewSpan s, PreviewFillState state) {
 PreviewScene timed_scene() {
     PreviewScene s;
     s.timing = SongTiming(1000, {{0, 4000}}, {{0, 60.0}});
-    s.tick_resolution = 1000;
     return s;
 }
 
@@ -178,14 +177,29 @@ bool same_instant(const TrackInstant& a, const TrackInstant& b) {
 
 }  // namespace
 
-TEST_CASE("toggle_at: Onyx makeToggle truth table") {
+TEST_CASE("SpanSweep: Onyx makeToggle truth table") {
     std::vector<std::pair<double, double>> ivs{{1.0, 2.0}, {2.0, 3.0}};
-    CHECK(toggle_at(ivs, 0.5) == Toggle::Empty);
-    CHECK(toggle_at(ivs, 1.0) == Toggle::Start);
-    CHECK(toggle_at(ivs, 1.5) == Toggle::On);
-    CHECK(toggle_at(ivs, 2.0) == Toggle::Restart);  // one ends, the next starts
-    CHECK(toggle_at(ivs, 3.0) == Toggle::End);
-    CHECK(toggle_at(ivs, 3.5) == Toggle::Empty);
+    SpanSweep sweep(ivs);  // asked in increasing time, as it must be
+    CHECK(sweep.at(0.5) == Toggle::Empty);
+    CHECK(sweep.at(1.0) == Toggle::Start);
+    CHECK(sweep.at(1.5) == Toggle::On);
+    CHECK(sweep.at(2.0) == Toggle::Restart);  // one ends, the next starts
+    CHECK(sweep.at(3.0) == Toggle::End);
+    CHECK(sweep.at(3.5) == Toggle::Empty);
+}
+
+TEST_CASE("toggle_on_after: on after Start, Restart and On; off after End and Empty") {
+    CHECK(toggle_on_after(Toggle::Start));
+    CHECK(toggle_on_after(Toggle::Restart));
+    CHECK(toggle_on_after(Toggle::On));
+    CHECK_FALSE(toggle_on_after(Toggle::End));
+    CHECK_FALSE(toggle_on_after(Toggle::Empty));
+}
+
+TEST_CASE("TrackStateOptions: equal when pro matches") {
+    CHECK(TrackStateOptions{true} == TrackStateOptions{true});
+    CHECK(TrackStateOptions{true} != TrackStateOptions{false});
+    CHECK_FALSE(TrackStateOptions{true} == TrackStateOptions{false});
 }
 
 TEST_CASE("build_track_state: gems, pro-off, and the phrase end note reads inside") {
@@ -265,19 +279,38 @@ TEST_CASE("build_track_state: active SP window ends exactly at the deact node") 
                   "3.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
-TEST_CASE("build_track_state: taken, offered and hidden fills toggle different spans") {
+namespace {
+
+// A lit-lane activation on `tick`: the activation that lights a taken fill
+// ending there. `fill` is that fill's index in the scene's fills, as the
+// scene builder stores it (taken_fill); none when no fill ends there.
+PreviewActivation lane_activation(int64_t tick, PreviewLane lane, std::optional<size_t> fill) {
+    PreviewActivation a;
+    a.tick = tick;
+    a.ms = static_cast<double>(tick);
+    a.has_lane = true;
+    a.lane = lane;
+    a.taken_fill = fill;
+    return a;
+}
+
+// One taken fill [1.0, 2.0] lit Green, one offered [4.0, 5.0], one hidden
+// [7.0, 8.0].
+PreviewScene taken_offered_hidden_scene() {
     PreviewScene scene = timed_scene();
     scene.notes = {note(0.0, PreviewLane::Red), note(2000.0, PreviewLane::Green),
                    note(5000.0, PreviewLane::Green), note(8000.0, PreviewLane::Green)};
     scene.fills = {fill(span(1000.0, 2000.0), PreviewFillState::Taken),
                    fill(span(4000.0, 5000.0), PreviewFillState::Offered),
                    fill(span(7000.0, 8000.0), PreviewFillState::Hidden)};
-    PreviewActivation a;
-    a.tick = 2000;
-    a.ms = 2000.0;
-    a.has_lane = true;
-    a.lane = PreviewLane::Green;
-    scene.activations = {a};
+    scene.activations = {lane_activation(2000, PreviewLane::Green, 0)};
+    return scene;
+}
+
+}  // namespace
+
+TEST_CASE("build_track_state: taken, offered and hidden fills toggle different spans") {
+    PreviewScene scene = taken_offered_hidden_scene();
 
     TrackState st = build_track_state(scene, TrackStateOptions{});
     const TrackInstant* taken = find(st.instants(), 1.0);
@@ -442,8 +475,77 @@ TEST_CASE("make_toggle_bounds: covers [near, far], merges equal neighbours") {
                   "6.500250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
-TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (480 res, 300 BPM)") {
-    // One tick here is 0.417 ms, shorter than the old half-millisecond margin.
+TEST_CASE("make_lane_bounds: one taken fill equals the fill_lane toggle bounds and carries its pad") {
+    TrackState st = build_track_state(taken_offered_hidden_scene(), TrackStateOptions{});
+    // Whole lanes and windows that open inside the lit lane, where the pad
+    // comes from before the window.
+    for (std::pair<double, double> w : {std::pair<double, double>{0.5, 9.0}, {1.5, 2.5}, {2.0002, 3.5}}) {
+        TrackWindow win = st.window(w.first, w.second);
+        std::vector<ToggleSpan> lit;
+        for (const ToggleSpan& s :
+             st.make_toggle_bounds(win, w.first, w.second, &TrackInstant::fill_lane))
+            if (s.on) lit.push_back(s);
+        std::vector<LaneSpan> lanes = st.make_lane_bounds(win, w.first, w.second);
+        REQUIRE(lanes.size() == lit.size());
+        REQUIRE(lanes.size() == 1);
+        for (size_t i = 0; i < lanes.size(); ++i) {
+            CHECK(lanes[i].t1 == lit[i].t1);
+            CHECK(lanes[i].t2 == lit[i].t2);
+            CHECK(lanes[i].pad == Pad::Green);
+        }
+    }
+}
+
+// Two taken fills that touch: the second starts on the first's end tick, so
+// with the half-tick end edge they overlap. Fill A is [1.0, 2.0005] lit Green
+// (its activation is listed first), fill B [2.0, 3.0005] lit Yellow.
+//
+// By hand, by LaneSweep's rule (the earlier-listed interval wins while it
+// starts at or holds t, else the first that ends at t): at 1.0 A starts,
+// Green. At 2.0 B starts but A still holds 2.0, and A is listed first, so
+// Green. At 2.0005 A ends and B holds, so Yellow. At 3.0005 B ends, Yellow.
+// So the lane is Green from 1.0 to 2.0005 and Yellow from 2.0005 to 3.0005,
+// where make_toggle_bounds sees one merged lit stretch [1.0, 3.0005).
+TEST_CASE("make_lane_bounds: two touching taken fills each light their own lane") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(0.0, PreviewLane::Red), note(4000.0, PreviewLane::Red)};
+    scene.fills = {fill(span(1000.0, 2000.0), PreviewFillState::Taken),
+                   fill(span(2000.0, 3000.0), PreviewFillState::Taken)};
+    scene.activations = {lane_activation(2000, PreviewLane::Green, 0),
+                         lane_activation(3000, PreviewLane::Yellow, 1)};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+
+    TrackWindow win = st.window(0.5, 3.5);
+    std::vector<ToggleSpan> merged = st.make_toggle_bounds(win, 0.5, 3.5, &TrackInstant::fill_lane);
+    REQUIRE(merged.size() == 3);
+    CHECK(merged[1].on);
+    CHECK(merged[1].t1 == doctest::Approx(1.0));
+    CHECK(merged[1].t2 == doctest::Approx(3.0005));
+
+    std::vector<LaneSpan> lanes = st.make_lane_bounds(win, 0.5, 3.5);
+    REQUIRE(lanes.size() == 2);
+    CHECK(lanes[0].t1 == doctest::Approx(1.0));
+    CHECK(lanes[0].t2 == doctest::Approx(2.0005));
+    CHECK(lanes[0].pad == Pad::Green);
+    CHECK(lanes[1].t1 == doctest::Approx(2.0005));
+    CHECK(lanes[1].t2 == doctest::Approx(3.0005));
+    CHECK(lanes[1].pad == Pad::Yellow);
+
+    // A window opening between the two edges at 2.0 and 2.0005 enters Green.
+    TrackWindow mid = st.window(2.0002, 3.5);
+    std::vector<LaneSpan> mid_lanes = st.make_lane_bounds(mid, 2.0002, 3.5);
+    REQUIRE(mid_lanes.size() == 2);
+    CHECK(mid_lanes[0].t1 == doctest::Approx(2.0002));
+    CHECK(mid_lanes[0].pad == Pad::Green);
+    CHECK(mid_lanes[1].pad == Pad::Yellow);
+}
+
+namespace {
+
+// At 480 ticks a beat and 300 BPM: an SP phrase from tick 0 to its last note
+// on tick 480, and a note one tick later on 481. One tick here is 0.417 ms,
+// shorter than the old half-millisecond margin.
+PreviewScene phrase_then_next_tick_scene() {
     SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});
     auto at_tick = [&](int64_t tick, PreviewLane lane) {
         PreviewNote n;
@@ -454,7 +556,6 @@ TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (48
     };
     PreviewScene scene;
     scene.timing = timing;
-    scene.tick_resolution = 480;
     scene.notes = {at_tick(0, PreviewLane::Red), at_tick(480, PreviewLane::Yellow),
                    at_tick(481, PreviewLane::Blue)};
     PreviewSpan phrase;
@@ -463,6 +564,22 @@ TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (48
     phrase.start_ms = timing.ms_index().at(0);
     phrase.end_ms = timing.ms_index().at(480);
     scene.sp_phrases = {phrase};
+    return scene;
+}
+
+}  // namespace
+
+TEST_CASE("note_in_span: the phrase's last note is inside, a note one tick later is outside") {
+    PreviewScene scene = phrase_then_next_tick_scene();
+    const PreviewSpan& phrase = scene.sp_phrases[0];
+    CHECK(note_in_span(scene, phrase, scene.notes[0]));        // tick 0, the start
+    CHECK(note_in_span(scene, phrase, scene.notes[1]));        // tick 480, the last note
+    CHECK_FALSE(note_in_span(scene, phrase, scene.notes[2]));  // tick 481
+}
+
+TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (480 res, 300 BPM)") {
+    PreviewScene scene = phrase_then_next_tick_scene();
+    const SongTiming& timing = *scene.timing;
 
     TrackState st = build_track_state(scene, TrackStateOptions{});
     const TrackInstant* last_in = find(st.instants(), timing.ms_index().at(480) / 1000.0);
@@ -558,17 +675,13 @@ TEST_CASE("build_track_state: the one-pass sweep on overlapping, touching, empty
         a.sp_end_tick = static_cast<int64_t>(end_ms);
         return a;
     };
-    auto lane = [&](int64_t tick, PreviewLane l) {
-        PreviewActivation a = act(static_cast<double>(tick), 0.0, false);
-        a.has_lane = true;
-        a.lane = l;
-        return a;
-    };
     scene.activations = {act(1200.0, 3000.0, true), act(3500.0, 3500.0, true),
                          act(3600.0, 3400.0, true), act(3700.0, 9000.0, false),
-                         lane(7500, PreviewLane::Green), lane(7500, PreviewLane::Yellow),
-                         lane(8000, PreviewLane::Blue), lane(8000, PreviewLane::Kick),
-                         lane(9500, PreviewLane::Red)};
+                         lane_activation(7500, PreviewLane::Green, 1),
+                         lane_activation(7500, PreviewLane::Yellow, 1),
+                         lane_activation(8000, PreviewLane::Blue, 2),
+                         lane_activation(8000, PreviewLane::Kick, 2),
+                         lane_activation(9500, PreviewLane::Red, std::nullopt)};
     // Notes out of time order; a red cymbal (never a cymbal on the highway),
     // a ghost and an accent; one note on the SP phrase's end edge (2.0005).
     scene.notes = {note(5000.0, PreviewLane::Green, false, false, true),
@@ -676,9 +789,14 @@ void randomize_overlay(PreviewScene& scene, std::mt19937& rng, const std::vector
     auto moment = [&]() { return moments[pick(static_cast<uint32_t>(moments.size()))]; };
     scene.activations.clear();
     std::vector<int64_t> taken_ends;
-    for (PreviewFill& f : scene.fills) {
+    std::vector<size_t> taken_index;  // each taken fill's index, beside its end
+    for (size_t k = 0; k < scene.fills.size(); ++k) {
+        PreviewFill& f = scene.fills[k];
         f.state = static_cast<PreviewFillState>(pick(3));
-        if (f.state == PreviewFillState::Taken) taken_ends.push_back(f.span.end_tick);
+        if (f.state == PreviewFillState::Taken) {
+            taken_ends.push_back(f.span.end_tick);
+            taken_index.push_back(k);
+        }
     }
     for (int i = 0; i < 40; ++i) {
         PreviewActivation a;
@@ -690,8 +808,11 @@ void randomize_overlay(PreviewScene& scene, std::mt19937& rng, const std::vector
         if (pick(2) == 0) {
             a.has_lane = true;
             a.lane = static_cast<PreviewLane>(pick(5));
-            if (!taken_ends.empty() && pick(4) != 0)
-                a.tick = taken_ends[pick(static_cast<uint32_t>(taken_ends.size()))];
+            if (!taken_ends.empty() && pick(4) != 0) {
+                const uint32_t j = pick(static_cast<uint32_t>(taken_ends.size()));
+                a.tick = taken_ends[j];
+                a.taken_fill = taken_index[j];
+            }
         }
         scene.activations.push_back(a);
     }

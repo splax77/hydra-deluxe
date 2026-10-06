@@ -14,6 +14,7 @@
 #include "ui/details_view.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/fonts.h"  // px()
+#include "ui/library_view.h"  // library_split_width
 #include "ui/preview_controller.h"
 
 namespace uitest {
@@ -90,6 +91,21 @@ void test_cap_switch(ImGuiTestContext* ctx) {
         const std::string& best = cap == 4 ? best4 : best6;
         IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(best) != std::string::npos; }, 5));
     }
+
+    // A cap with no result yet: the Preview's SP gauge pins at the Settings
+    // cap, the one the next analysis will run at, not at 4 (D48, Q24).
+    ctx->ItemInputValue("//Hydra/**/##spcap", 5);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.sp_cap == 5; }, 5));
+    IM_CHECK(!h.app->viewed.record.has_value());
+    set_panel_ref(ctx);
+    ctx->ItemClick("**/##DetailsTabs/Preview");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->preview && h.app->preview->active() && !h.app->preview->loading();
+    }, 120));
+    IM_CHECK(wait_until(ctx, [&] {
+        const std::string readout = h.app->preview->sp_meter_readout();
+        return readout.size() >= 2 && readout.substr(readout.size() - 2) == "/5";
+    }, 60));
 }
 
 // "1.0 fills" keys a result like the SP cap does: ticking it shows the song as
@@ -230,7 +246,7 @@ void test_dynamics_stored(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->library_row_at(0).title == "Acid Romance");
     // Clear any leftover dynamics state from the other chart.
     h.app->dynamics_result.reset();
-    h.app->dynamics_key.clear();
+    h.app->dynamics_key.reset();
     if (h.app->dynamics_job) { h.app->dynamics_job->cancel(); h.app->dynamics_job.reset(); }
     open_details(ctx, 0);
     if (ctx->IsError()) return;
@@ -332,10 +348,10 @@ void test_stars(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("Solo bonus: " + hydra::group_thousands(sc.solo_bonus) +
                        " (not counted toward stars)") != std::string::npos);
     IM_CHECK(text.find("With full solo bonus") != std::string::npos);
-    for (int64_t cutoff : sc.cutoffs) {
+    for (int64_t cutoff : sc.cutoffs)
         IM_CHECK(text.find(hydra::group_thousands(cutoff)) != std::string::npos);
-        IM_CHECK(text.find(hydra::group_thousands(cutoff + sc.solo_bonus)) != std::string::npos);
-    }
+    for (int64_t with_solo : sc.with_solo)
+        IM_CHECK(text.find(hydra::group_thousands(with_solo)) != std::string::npos);
     IM_CHECK(text.find("4.4") != std::string::npos);
 
     // ---- A song with no drum solo ----
@@ -480,8 +496,7 @@ void test_panel_split(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     const float room = library()->Size.x + panel()->Size.x;
     const float min_panel = hydra::ui::px(hydra::ui::kMinSongPanelW);
-    // (std::min) in brackets: windows.h, through the harness, defines min.
-    const float opened = (std::min)(hydra::ui::kDefaultLibraryShare * room, room - min_panel);
+    const float opened = hydra::ui::library_split_width(room, hydra::ui::kDefaultLibraryShare);
     IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, opened, 1.0f);
     IM_CHECK_GE(panel()->Size.x, min_panel - 1.0f);
 
@@ -516,7 +531,7 @@ void test_panel_split(ImGuiTestContext* ctx) {
     IM_CHECK_FLOAT_NEAR_EQ(hydra::ui::library_share(), 0.3f, 0.0001f);
     open();
     if (ctx->IsError()) return;
-    IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, (std::max)(hydra::ui::px(320.0f), 0.3f * room), 1.0f);
+    IM_CHECK_FLOAT_NEAR_EQ(library()->Size.x, hydra::ui::library_split_width(room, 0.3f), 1.0f);
 }
 
 // "Hide library" gives the song panel the whole width and flips to "Show
@@ -689,7 +704,10 @@ void test_long_error_wraps(ImGuiTestContext* ctx) {
                !h.app->dynamics_job->ok();
     }, 30));
     ctx->Yield(3);
-    const std::string line = "Dynamics failed: " + h.app->dynamics_job->error();
+    // The sentence leads; the long path is on the dimmed details line under it.
+    IM_CHECK(visible_text(h).find("Dynamics failed: " + h.app->dynamics_job->message()) !=
+             std::string::npos);
+    const std::string line = h.app->dynamics_job->error();
     IM_CHECK(visible_text(h).find(line) != std::string::npos);
     // Unwrapped, the line would be wider than the whole screen.
     IM_CHECK_GT(ImGui::CalcTextSize(line.c_str()).x, ImGui::GetIO().DisplaySize.x);
@@ -735,7 +753,18 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     std::string text = visible_text(h);
     IM_CHECK(text.find("Green Day \xC2\xB7 charted by Hoph2o") != std::string::npos);
     IM_CHECK(text.find("Not analyzed yet.") != std::string::npos);
-    IM_CHECK(ctx->ItemExists("**/Analyze this song"));
+    // An artist made only of Clone Hero tags reads "(unknown)", as a title
+    // does (D50 item 5).
+    h.app->selected->artist = "<color=#FF8000></color><b></b>";
+    ctx->Yield(2);
+    IM_CHECK(visible_text(h).find("(unknown) \xC2\xB7 charted by Hoph2o") != std::string::npos);
+    h.app->selected->artist = "Green Day";
+    ctx->Yield(2);
+    // The button the panel shows for a record in this state.
+    auto button = [](hydra::store::RecordStatus status) {
+        return "**/" + std::string(hydra::ui::analyze_button_label(status));
+    };
+    IM_CHECK(ctx->ItemExists(button(hydra::store::RecordStatus::NotAnalyzed).c_str()));
 
     analyze_open_song(ctx);
     if (ctx->IsError()) return;
@@ -748,7 +777,19 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     // The hardest timing sits beside each path in the list, not in the headline.
     IM_CHECK(text.find("hardest squeeze") == std::string::npos);
     IM_CHECK(text.find("163.0 ms") != std::string::npos);
-    IM_CHECK(ctx->ItemExists("**/Re-analyze"));
+    IM_CHECK(ctx->ItemExists(button(hydra::store::RecordStatus::Ready).c_str()));
+
+    // A result from another Hydra build, under these rules: the headline and
+    // the Paths tab name only that cause, and the button stays Re-analyze.
+    h.app->viewed.status = hydra::store::RecordStatus::Stale;
+    h.app->viewed.stale_build = true;
+    h.app->viewed.stale_rules = false;
+    ctx->Yield(2);
+    text = visible_text(h);
+    IM_CHECK(text.find("Out of date: this result came from another Hydra version. Re-analyze "
+                       "to refresh it.") != std::string::npos);
+    IM_CHECK(text.find("hydra_rules.ini") == std::string::npos);
+    IM_CHECK(ctx->ItemExists(button(hydra::store::RecordStatus::Stale).c_str()));
 }
 
 // Closing the panel mid-analysis no longer cancels it: the result is stored
@@ -760,7 +801,7 @@ void test_panel_keeps_analysis(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     open_details(ctx, 0);
     if (ctx->IsError()) return;
-    ctx->ItemClick("**/Analyze this song");
+    ctx->ItemClick(analyze_button_ref(h).c_str());
     ctx->ItemClick("X##closepanel");
     ctx->Yield(2);
     IM_CHECK(!h.app->details_open());

@@ -11,6 +11,7 @@
 #define HYDRA_UI_LIBRARY_MODEL_H
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -27,16 +28,36 @@ enum class StatusChip { All, NotAnalyzed, Stale, Analyzed };
 // table, so a sort spec maps straight back to one of these.
 enum class LibrarySort { Title = 0, Artist = 1, Charter = 2, Folder = 3, BestPath = 4 };
 
+// The table's columns, by index: each column sits at its LibrarySort value.
+// The GUI tests read them too.
+inline constexpr int kColumnTitle = static_cast<int>(LibrarySort::Title);
+inline constexpr int kColumnArtist = static_cast<int>(LibrarySort::Artist);
+inline constexpr int kColumnCharter = static_cast<int>(LibrarySort::Charter);
+inline constexpr int kColumnFolder = static_cast<int>(LibrarySort::Folder);
+inline constexpr int kColumnBestPath = static_cast<int>(LibrarySort::BestPath);
+// How many columns the table has: one per LibrarySort value.
+inline constexpr int kLibraryColumnCount = kColumnBestPath + 1;
+
 // One scanned chart as the table shows it.
 struct LibraryRow {
     store::ChartLibraryEntry entry;       // as scanned; entry.md5 is the chart's hash
     std::string title, artist, charter;   // colour tags removed: what the table draws
     app::SearchableRow searchable;        // folded copies, for matching and sorting
     store::RecordStatus status = store::RecordStatus::NotAnalyzed;
+    bool stale_build = false;             // why a Stale row is Stale (the store's
+    bool stale_rules = false;             // SummaryLookup); the tooltip names it
     std::string bestpath;                 // set when Ready
     store::PathSummary summary;           // set when Ready (T7)
     std::string best_label;               // the Best path cell (best_path_label)
 };
+
+// The word for a record's status: "Analyzed", "Stale" or "Not analyzed". The
+// status chips, the Best path cell and hydra_uitest's state dump all read it.
+const char* status_label(store::RecordStatus status);
+
+// The record status a chip filters to, so the chip can show status_label's
+// word. All filters to no one status, so it has none.
+std::optional<store::RecordStatus> status_of(StatusChip chip);
 
 // The Best path cell: "Not analyzed", "Stale", or "<score>  <path>" such as
 // "378,315  3- 1 2". The score is the stored summary's, never recomputed.
@@ -79,6 +100,10 @@ public:
     // "Analyze search (N)..." analyzes.
     std::vector<size_t> matches() const;
     const app::LibraryQuery& query() const { return query_; }
+    // Is the typed search narrowing the library? False for an empty box and
+    // for a filter that does not parse (both leave the query empty). The
+    // toolbar's Analyze button and the table's footer both ask this.
+    bool searching() const { return !query_.empty(); }
     const ChipCounts& counts() const { return counts_; }
     StatusChip chip() const { return chip_; }
     LibrarySort sort_column() const { return sort_column_; }

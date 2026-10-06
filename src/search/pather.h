@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "core/model.h"
@@ -17,12 +18,16 @@
 
 namespace hydra {
 
+// The depth the search and the app start from: how many scores (or points)
+// below the best a path may sit and still be kept. app::Settings reads it too.
+constexpr int kDefaultDepthValue = 4;
+
 // Everything the search needs to know about one run. Mirrors the user's
 // settings, but holds only what reaches the search (the chart-mode flags
 // are parse-time and live on app::AnalysisSettings).
 struct SearchSettings {
     DepthMode depth_mode = DepthMode::Scores;
-    int depth_value = 4;
+    int depth_value = kDefaultDepthValue;
     std::optional<double> ms_filter;
     // The SP meter ceiling in bars (4 = Clone Hero's rule).
     int sp_cap = kCloneHeroSpCap;
@@ -35,6 +40,11 @@ struct SearchSettings {
     core::Rules rules = core::default_rules();
 };
 
+// The settings as one line of text, naming every field that changes a stored
+// analysis. The test cache (corpus::analyzed) keys its analyses by it. A new
+// SearchSettings field that changes the result must be added here.
+std::string settings_key(const SearchSettings& settings);
+
 // A points band wide enough to keep every path: a real chart scores a few
 // million at most. The band is compared as `score + depth_value < best` in
 // int64 arithmetic, so it cannot overflow. search_target uses it, and so do
@@ -46,13 +56,19 @@ constexpr int kKeepEveryPathBand = 1'000'000'000;
 int graph_build_cap(int sp_cap, int sp_phrase_count);
 
 // The best all-0 path over an already-built graph: the highest-scoring path
-// whose activations all record skips == 0, under a fixed 0 ms timing limit,
-// with its tied variations as variants. Empty when the chart offers no such
+// that is all-0 (Path::is_allzero) and needs no timing (Path::needs_timing,
+// applied in the engine through EngineOptions::no_timing), with its tied
+// variations as variants. Empty when the chart offers no such
 // path. This is a second, constrained search because the main search keeps
 // paths by score band and drops the all-0 path when it scores below the band.
 // It has no activation branching, so it is far cheaper than the main search.
 std::vector<Path> search_allzero(const ScoreGraph& graph,
                                  const std::function<void(float)>& on_progress = {});
+
+// The engine options search_allzero runs with: no skips and no timing, every
+// other knob at EngineOptions' default (score depth 0: the top score and its
+// ties).
+EngineOptions allzero_options();
 
 // The engine's own pricing of one specific path: activate at exactly
 // `act_ticks` (node ticks of the activation fills, ascending) and at no other
@@ -61,8 +77,8 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
 // normal search would stamp them. Every returned path, tied variants
 // included, has exactly the named activations; the rest are dropped
 // (keep_target_paths, decision D45 and its addendum). Empty when no path
-// realizes the set (an activation with under 2 bars, a fill it cannot spawn
-// in time, a tick that is not a fill node). The graph is built at
+// realizes the set (an activation under kSpActivationBars, a fill it cannot
+// spawn in time, a tick that is not a fill node). The graph is built at
 // graph_build_cap, as the main search builds it. settings.depth_* and
 // ms_filter are ignored: the search keeps everything and applies no timing
 // filter, because the caller asked for this path, not the best one.
@@ -84,8 +100,9 @@ std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<i
                                     std::vector<bool>* promoted = nullptr);
 
 // Full analysis for one chart: one pass at settings.sp_cap bars (4 is Clone
-// Hero's rule; any other number is a what-if). Throws hydra::ChartFileError
-// when the song has no notes.
+// Hero's rule; any other number is a what-if). Throws std::logic_error when
+// the song has no notes, because that is a caller bug: callers check first
+// with require_notes (song.h), which throws the sentence the user sees.
 HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
                           const std::function<void(float)>& on_progress = {});
 

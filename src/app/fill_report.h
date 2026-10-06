@@ -34,23 +34,31 @@ struct FillCompareRow {
     std::string old_path, new_path;
     std::optional<int> old_acts, new_acts;
     std::optional<int> notes;
-    // "same" | "1.0 higher" | "1.1 higher" | "only 1.0" | "only 1.1".
+    // "same" | "1.0 higher" | "1.1 higher" | "only 1.0" | "only 1.1" |
+    // "in both" (a record on each side, a score on one only).
     // Exact literals: tally_fill_rows and the page's chip colors compare them.
     std::string status;
+    // How many library rows the chart counts as, from the 1.1 database's
+    // library (D79 item 3): what tally_fill_rows and the page's tiles add up.
+    // collect_fill_rows sets it from store::RecordStore::copies_of.
+    int copies = 0;
 };
 
 // Joins the two stores' records for identical settings but the fill rule
 // (old_store's 1.0 results, new_store's 1.1 ones; lens.legacy_fills is
 // ignored), indexed by lowercased
 // hyhash, over the union of both key sets — a chart stored on one side only
-// still gets a row. Song/artist/charter prefer the 1.1 (new) side and are run
-// through report::plain to strip Clone Hero color markup.
+// still gets a row, labelled by the side that holds its record. Song, artist
+// and charter prefer the 1.1 (new) side; the song reads display_title, and
+// the artist and charter have their Clone Hero rich-text tags stripped. Each
+// row's copies come from new_store's library.
 std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
                                               store::RecordStore& new_store,
                                               const std::string& chartmode,
                                               const store::CapQuery& cap,
                                               const store::Lens& lens);
 
+// Every field counts library rows: each chart adds its copies (D79 item 3).
 struct FillCompareStats {
     int total = 0;
     int same = 0;
@@ -58,6 +66,7 @@ struct FillCompareStats {
     int ch11_higher = 0;
     int only_old = 0;
     int only_new = 0;
+    int in_both = 0;
 };
 FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows);
 
@@ -70,6 +79,9 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
 struct GeneratedFillReport {
     std::string html;  // empty when neither database had a record
     FillCompareStats stats;
+    // Why there is no page, in words a person can act on; empty when there
+    // is a page. hydra_fillcompare prints it as it is.
+    std::string reason;
 };
 
 // The whole comparison in one call: join + tally + the standard page framing.

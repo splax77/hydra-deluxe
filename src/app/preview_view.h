@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/model.h"
@@ -35,6 +36,11 @@ namespace hydra::app {
 enum class PreviewLane { Kick = 0, Red = 1, Yellow = 2, Blue = 3, Green = 4 };
 
 PreviewLane lane_of(NoteColor color);
+
+// The colour a lane is drawn from: lane_of read backwards, so a renderer
+// holding only the lane can still ask the core's colour rules
+// (allows_cymbals).
+NoteColor color_of(PreviewLane lane);
 
 // One drawn note. A chord at a tick expands to one PreviewNote per struck lane.
 struct PreviewNote {
@@ -79,13 +85,27 @@ struct PreviewActivation {
     // The fills the path was shown and passed over before this activation,
     // copied from the record (Activation::skipped_fill_ticks).
     std::vector<int64_t> skipped_fill_ticks;
+    // The fill this activation stands on: an index into PreviewScene::fills,
+    // set by apply_preview_overlay when it marks that fill Taken (or finds an
+    // earlier activation already took it). Empty when the activation's tick
+    // ends no fill. The highway's fill-lane colour reads it.
+    std::optional<size_t> taken_fill;
     // The deact node: where this activation's SP runs out, read off the
-    // record (the search stamps it). The active SP window the highway tints
-    // runs from `ms` to `sp_end_ms`. has_sp_end is false only for a record
+    // record (the search stamps it). has_sp_end is false only for a record
     // written before blob v4, which does not carry the node.
     bool has_sp_end = false;
     int64_t sp_end_tick = 0;
     double sp_end_ms = 0.0;
+    // The stretch this activation's Star Power runs over, {ms, sp_end_ms}.
+    // Empty without a stored end, or when the end is not after the start (a
+    // window of no length is no window). The drain box, the score box and
+    // the highway's tinted floor and SP end marks (through the track state's
+    // sp_active intervals) all read it; the drain and score boxes test
+    // the start edge with struck_at.
+    std::optional<std::pair<double, double>> sp_window() const {
+        if (!has_sp_end || !(sp_end_ms > ms)) return std::nullopt;
+        return std::make_pair(ms, sp_end_ms);
+    }
     // Where this window's SP end changed, read off the record: the tick the
     // change takes effect (Activation::refill_tick) and the end after it. The
     // first entry is the activation itself. The gauge draws the window from
@@ -107,9 +127,10 @@ struct PreviewActivation {
     PreviewLane lane = PreviewLane::Kick;
     bool has_lane = false;
     // The activation's position as the Paths tab prints it (format_measure)
-    // and its chord (Chord::rowstr); chord is empty when the record has none.
+    // and its chord, which build_next_act_box names in the Pro Drums
+    // setting's words; chord is empty when the record has none.
     std::string measure;
-    std::string chord;
+    Chord chord;
 };
 
 // A beat line on the highway: a bar line, a beat line, or the fainter
@@ -205,7 +226,7 @@ struct PreviewScore {
 struct PreviewScene {
     std::vector<PreviewNote> notes;
     std::vector<PreviewSpan> sp_phrases;    // from the song's SP-phrase flags
-    std::vector<PreviewSpan> solos;         // from per-note solo flags
+    std::vector<PreviewSpan> solos;         // from the song's solo sections
     std::vector<PreviewFill> fills;         // candidate activation-fill windows
     std::vector<PreviewActivation> activations;  // overlay: the path's activations
     // Overlay: where each bar banked after the path's last window arrived
@@ -230,10 +251,25 @@ struct PreviewScene {
     // tempo/meter lists above. Empty only on a default-built PreviewScene (no
     // song to read); build_preview_scene always fills it.
     std::optional<SongTiming> timing;
-    int64_t tick_resolution = 0;       // ticks per quarter note
-    double song_length_ms = 0.0;  // last note onset; the scrubber's right edge
+    // The song's length, as app::song_length_ms answers it (D75), handed to
+    // build_preview_base. 0 when the song has none. The SP curve closes here.
+    // The scrubber's right edge reads the same length (scrub_end_ms).
+    double song_length_ms = 0.0;
     bool has_notes = false;
+
+    // Does the scene have an SP gauge? Yes when it has timing and a meter
+    // curve to draw. The gauge and the drain box both ask this.
+    bool has_sp_gauge() const { return timing.has_value() && !sp_meter.segments.empty(); }
 };
+
+// The last note the highway draws, or null when the scene has none. The one
+// answer to "when is the song's last note": the beat grid ends past it, and
+// the Preview transport plays to at least it (PreviewTransport::load). It is
+// not the song's length (PreviewScene::song_length_ms, app::song_length_ms).
+const PreviewNote* last_drawn_note(const PreviewScene& scene);
+
+// last_drawn_note's onset in ms, or 0 when the scene has no notes.
+double last_note_ms(const PreviewScene& scene);
 
 // The beat grid from the song's timing alone (no parser change): a Bar at
 // every measure start, a Beat every quarter note inside the measure, and a
@@ -242,13 +278,13 @@ struct PreviewScene {
 std::vector<PreviewBeat> build_beat_events(const SongTiming& timing, int64_t last_tick);
 
 // The Preview's time readouts at `now_ms`. `timestamp` is the clock beside the
-// scrubber, playhead and song length as "m:ss.mmm / m:ss.mmm". The time box
+// scrubber, playhead and where playback ends as "m:ss.mmm / m:ss.mmm". The time box
 // over the highway shows the two same points through format_measure, the BPM
 // and time signature in force, and the practice section in force.
 struct PreviewTimeBox {
     std::string timestamp;     // "0:35.000 / 2:06.253"
     std::string position;      // format_measure at the playhead, "m27.2.450"
-    std::string length;        // format_measure at the song's end, "m96.3.240"
+    std::string length;        // format_measure where playback ends, "m96.3.240"
     std::string tempo;         // "BPM 191.001 · 4/4"
     std::string section_line;  // "Section chorus_1"; empty when no section is in force
 };
@@ -256,7 +292,8 @@ struct PreviewTimeBox {
 PreviewTimeBox build_time_box(const PreviewScene& scene, double now_ms,
                               double length_ms);
 
-// The score box the Preview draws under the time box, at `now_ms`. `score`
+// The score box the Preview draws under the time box, at the moment the time
+// box shows for `now_ms` and `length_ms` (shown_ms in preview_view.cpp). `score`
 // is the total with thousands separators ("12,345"), and `detail` is
 // "x<multiplier> · combo <n>", both as the last chord hit left them. The
 // multiplier is the replay's. While Star Power runs at the playhead (the
@@ -272,18 +309,24 @@ struct PreviewScoreBox {
     std::string detail;
 };
 
-PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms);
+PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms, double length_ms);
 
-// The Star Power drain box the Preview draws beside the SP gauge, at `now_ms`.
-// `rate` is how long one bar of SP lasts at the playhead ("1 bar / 4.0 s"):
+// Is a note at `note_ms` struck with the playhead at `now_ms`? Yes when it is
+// at or before the playhead, so a note exactly on the playhead counts as hit
+// and a jump to an activation lands on a struck chord (D48, Q27). The score
+// box, the highway's gem flash and the drain box's "is SP running" check all
+// ask this.
+inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }
+
+// The Star Power drain box the Preview draws beside the SP gauge, at the
+// moment the time box shows for `now_ms` and `length_ms` (shown_ms). `rate` is how long one bar of SP lasts at the playhead ("1 bar / 4.0 s"):
 // kMeasuresPerSpBar measures at the local measure length the song's timing
 // gives (SongTiming::ms_per_measure_at). The box is `active` when the path has
-// SP running at the playhead: an activation at or before it whose stored deact
-// node is after it. Then `detail` is "empties in X s", that stored end minus
-// the playhead.
+// SP running at the playhead: the playhead inside an activation's sp_window.
+// Then `detail` is "empties in X s", that stored end minus the playhead.
 // Otherwise `detail` is "full meter X s": the meter's cap in bars at that same
 // bar time, so it jumps exactly when the rate does.
-// Hidden (`shown` false) when the scene has no SP gauge or no timing.
+// Hidden (`shown` false) when the scene has no SP gauge (has_sp_gauge).
 // Nothing here re-derives Star Power: it reads the record and the song's own
 // timing.
 struct PreviewDrainBox {
@@ -294,7 +337,7 @@ struct PreviewDrainBox {
     std::string detail;  // "empties in 7.3 s" or "full meter 16.0 s"
 };
 
-PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms);
+PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms, double length_ms);
 
 // The playhead `delta_ticks` chart ticks from `now_ms`, for the Preview's
 // tick-step buttons. It starts from the tick build_time_box shows for the
@@ -306,9 +349,30 @@ double step_tick_ms(const PreviewScene& scene, double now_ms, double length_ms,
                     int delta_ticks);
 
 // Where each activation of the shown path sits on the scrubber: its onset over
-// `length_ms` (the transport's length, the scrubber's right edge), clamped to
-// 0..1, in activation order. Empty with no path or no length.
+// `length_ms` (the scrubber's right edge, scrub_end_ms), clamped to 0..1, in
+// activation order. Empty with no path or no length.
 std::vector<double> build_scrub_marks(const PreviewScene& scene, double length_ms);
+
+// The Preview scrubber's right edge. It is the song's length,
+// `song_length_ms` (app::song_length_ms, D75), when has_song_length says that
+// length is usable. A chart with no length has its edge at
+// `playback_length_ms`, the transport's length (D70 item 1).
+double scrub_end_ms(std::optional<double> song_length_ms, double playback_length_ms);
+
+// Where the scrubber's thumb sits with the playhead at `now_ms`. It follows
+// the playhead and stays parked at `scrub_end_ms` should playback run past it.
+double scrub_thumb_ms(double now_ms, double scrub_end_ms);
+
+// Is `length_ms` a song length the timeline can use? Only a positive length
+// is. song_fraction and the Paths tab's end-measure label both ask it, so the
+// marks and the label appear and vanish together. The length each caller
+// passes is app::song_length_ms's answer (D75).
+bool has_song_length(double length_ms);
+
+// How far into the song `ms` is: its share of a song length, clamped to 0..1.
+// No value when has_song_length says the length is unusable. The length each
+// caller passes is app::song_length_ms's answer (D75).
+std::optional<double> song_fraction(double ms, double length_ms);
 
 // Where "< Act" (direction -1) or "Act >" (+1) moves the playhead from
 // `now_ms`: the onset of the nearest activation strictly before or after it.
@@ -318,15 +382,19 @@ std::optional<double> activation_jump_ms(const PreviewScene& scene, double now_m
                                          int direction);
 
 // The box at the highway's bottom-left: the first activation at or after the
-// playhead (the same half-millisecond slack), "Next: activation 1 of 3" and
-// "at m32.1.0 · [Kick - GreenCym]". Hidden past the last activation and when
-// the scene has no path.
+// playhead (the same half-millisecond slack), read at the moment the time box
+// shows for `now_ms` and `length_ms` (shown_ms), "Next: activation 1 of 3" and
+// "at m32.1.0 · [Kick - Green cymbal]". The chord's notes are named by
+// Chord::rowstr in the words of `pro_drums`, the Pro Drums setting: "Red
+// snare" with it on, plain "Red" with it off (D48, Q11). Hidden past the last
+// activation and when the scene has no path.
 struct PreviewNextActBox {
     bool shown = false;
     std::string header;
     std::string detail;
 };
-PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms);
+PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, double length_ms,
+                                     bool pro_drums);
 
 // The number under the SP gauge: bars banked at `now_ms` over the cap, one
 // decimal ("2.5/4"). Empty when the curve has no segments.
@@ -358,9 +426,17 @@ double sp_meter_bars_at(const SpMeterCurve& curve, double ms);
 //
 // `rules` prices the running score (the replay reads the backend leeway and
 // the squeeze-out rule from it); nothing else in the scene depends on it.
+//
+// `audio_end_ms` is where the song's audio stops in chart time: the beat
+// lines run to it, so they keep scrolling through music that outlasts the
+// notes (D48, Q25). See build_preview_base for what happens without it.
+// `song_length_ms` is the song's length (app::song_length_ms, D75): it
+// becomes song_length_ms, where the SP meter curve closes.
 PreviewScene build_preview_scene(const Song& song, const Path* path,
                                  int sp_cap = kCloneHeroSpCap,
-                                 const core::Rules& rules = core::default_rules());
+                                 const core::Rules& rules = core::default_rules(),
+                                 std::optional<double> audio_end_ms = std::nullopt,
+                                 std::optional<double> song_length_ms = std::nullopt);
 
 // The same scene in two halves, so a path change rebuilds only what the path
 // changes. build_preview_scene(song, path, cap, rules) is exactly
@@ -368,7 +444,7 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 //
 // The base reads the song alone. It owns these fields: notes, sp_phrases,
 // solos, the fill windows (each fills[i].span), beats, tempos, sections,
-// meters, time_sigs, timing, tick_resolution, song_length_ms and has_notes.
+// meters, time_sigs, timing, song_length_ms and has_notes.
 // Every fill in a base reads Hidden, the field's default.
 //
 // The overlay owns the rest: activations, every fill's state, score and
@@ -379,14 +455,21 @@ PreviewScene build_preview_scene(const Song& song, const Path* path,
 // apply_preview_overlay clears whatever overlay `base` already carries before
 // it builds the new one, so a scene built for another path works as a base too.
 // An empty song gives the empty scene build_preview_scene gives.
-PreviewScene build_preview_base(const Song& song);
+//
+// The beat lines end at the barline or beat on the tick a playhead at
+// `audio_end_ms` shows (SongTiming::display_tick_at_ms), or at the last note
+// if the audio stops sooner. With no audio end given, they run two measures
+// past the last note, as before the audio length was passed in.
+PreviewScene build_preview_base(const Song& song,
+                                std::optional<double> audio_end_ms = std::nullopt,
+                                std::optional<double> song_length_ms = std::nullopt);
 PreviewScene apply_preview_overlay(PreviewScene base, const Song& song, const Path* path,
                                    int sp_cap = kCloneHeroSpCap,
                                    const core::Rules& rules = core::default_rules());
 
-// Identity of the path an overlay was built from. Path has no operator==, so
-// callers that must notice a changed selection compare these keys instead. A
-// null path (no overlay) gives an empty key.
+// Identity of the path an overlay was built from: path_identity, the same
+// rule the Paths tab's all-0 dedupe reads. Callers that must notice a changed
+// selection compare these keys. A null path (no overlay) gives an empty key.
 std::string path_overlay_key(const Path* path);
 
 }  // namespace hydra::app

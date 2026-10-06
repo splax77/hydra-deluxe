@@ -1,6 +1,6 @@
 // The main window's pieces, shared between the files that draw it. Only the
 // library files include this; everything else uses library_view.h.
-// The Dynamics tab includes it too, for format_duration and count_label.
+// The Dynamics tab includes it too, for format_duration.
 //
 // library_view.cpp     render_main_window: lays the window out (the library
 //                      and the song panel side by side), reaps finished
@@ -25,9 +25,15 @@ namespace hydra::ui::detail {
 // library_toolbar.cpp
 void render_status_line(AppState& app);
 void render_actions_row(AppState& app);
+// The batch button's label while a search narrows the library, with the
+// count of matching charts: the button, its width sample and the GUI tests.
+std::string analyze_search_label(int64_t count);
 
 // settings_bar.cpp
 void render_settings_bar(AppState& app);
+// The help text beside the "1.0 fills" checkbox. Each rule's deadline is
+// fill_rule_description's sentence.
+std::string legacy_fills_help_text();
 
 // library_table.cpp: the whole library pane (heading, search, chips, table).
 // Called every frame inside the "##library" child, even when the library is
@@ -39,11 +45,19 @@ void render_folder_manager(AppState& app);
 void render_scan_modal(AppState& app);
 void render_dm_picker_modal(AppState& app);
 
-// "1 chart", "12,345 charts": the count grouped in thousands, then the noun.
-std::string count_label(int64_t n, const char* one, const char* many);
+// The scan modal's two running counts: folders found so far, and charts the
+// rescan cache reused.
+std::string scan_folders_found_text(int64_t folders_seen);
+std::string scan_reused_text(int64_t charts_cached);
 
 // A duration as "0:42", "12:03" or "1:02:05". Negative reads as 0:00.
 std::string format_duration(double seconds);
+
+// How long a job has left, as the batch strip and the Preview loader say it:
+// "about 1:30 left". The time itself is format_duration's.
+inline std::string time_left_text(double seconds) {
+    return "about " + format_duration(seconds) + " left";
+}
 
 // The settings lines the batch confirm lists, in the confirm's order.
 struct BatchSettingsSummary {

@@ -20,14 +20,17 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
+
+#include "core/error_kind.h"
 
 namespace hydra {
 
 // Thrown for input that is not a usable MIDI file (mirrors hymidi's ValueError).
-class MidiError : public std::runtime_error {
+class MidiError : public KindedError {
 public:
-    explicit MidiError(const std::string& what) : std::runtime_error(what) {}
+    explicit MidiError(const std::string& what) : KindedError(ErrorKind::ChartUnreadable, what) {}
 };
 
 // One event. A single struct covers channel and meta messages, matching the
@@ -69,8 +72,17 @@ struct Message {
 // mido's name for a message type ("note_on", "set_tempo", "track_name", ...).
 const char* message_type_name(Message::Type type);
 
+// The track names the song parser looks tracks up by (parse/song.cpp). They
+// are also the only names the reader recognizes when it picks a track's name
+// (MidiFile::parse_track, D78), so the lookups and that choice share one list.
+inline constexpr std::string_view kDrumsTrackName = "PART DRUMS";
+inline constexpr std::string_view kEventsTrackName = "EVENTS";
+inline constexpr std::string_view kRecognizedTrackNames[] = {kDrumsTrackName,
+                                                             kEventsTrackName};
+
 class MidiTrack {
 public:
+    // Chosen by MidiFile::parse_track (D78).
     std::string name;
     std::vector<Message> messages;
 };
@@ -81,8 +93,8 @@ public:
     explicit MidiFile(const std::vector<uint8_t>& data);
     MidiFile(const uint8_t* data, size_t size);
 
-    // Read and parse a file from disk. Throws MidiError if it cannot be read
-    // or is not a MIDI file.
+    // Read and parse a file from disk. A file that cannot be read throws
+    // read_file_bytes' error; one that is not a MIDI file throws MidiError.
     static MidiFile from_file(const std::string& path);
 
     int ticks_per_beat = 0;

@@ -1,21 +1,28 @@
 #include "app/path_view.h"
+#include "app/config.h"  // Settings::search_depth_mode
 #include "app/display_format.h"
+#include "app/preview_view.h"  // song_fraction, has_song_length
+#include "app/user_messages.h"  // kNoPathsFound
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <iterator>
 #include <optional>
+#include <stdexcept>
 
 #include "core/backend_value.h"
+#include "core/timing.h"  // kSpActivationBars
 
 namespace hydra::app {
 
 namespace {
 
 std::string bars_text(int bars) {
-    return std::to_string(bars) + (bars == 1 ? " bar" : " bars");
+    return counted(bars, "bar", "bars");
 }
 
 // The separator the new labels use: " · " (U+00B7 in UTF-8).
@@ -34,38 +41,83 @@ std::string format_scale(double r) {
     return buf;
 }
 
+// A note's effective timing as both the SqIn sentence and the backend row
+// add it: " (eff. 163.5 ms)".
+std::string eff_suffix(double effective_ms) {
+    return " (eff. " + format_ms(effective_ms) + ")";
+}
+
 }  // namespace
+
+std::string measure_label(const Timecode& tc) {
+    return "m" + std::to_string((long long)tc.measure_beats_ticks()[0] + 1);
+}
 
 std::string format_measure(const Timecode& tc) {
     const int64_t* mbt = tc.measure_beats_ticks();
     char buf[48];
-    std::snprintf(buf, sizeof(buf), "m%lld.%lld.%lld", (long long)mbt[0] + 1,
-                  (long long)mbt[1] + 1, (long long)mbt[2]);
-    return buf;
+    std::snprintf(buf, sizeof(buf), ".%lld.%lld", (long long)mbt[1] + 1, (long long)mbt[2]);
+    return measure_label(tc) + buf;
 }
 
 std::string format_measure(const SongTiming& timing, int64_t tick) {
     return format_measure(timing.timecode(tick));
 }
 
+// A default Timecode is the chart's first tick (core/timing.h), so this
+// needs no timing.
+std::string first_measure_label() { return format_measure(Timecode{}); }
+
+std::string backend_table_id(int number, int w_timing, int w_chord, int w_points) {
+    char id[64];
+    std::snprintf(id, sizeof(id), "##backends%d_%d_%d_%d", number, w_timing, w_chord, w_points);
+    return id;
+}
+
+namespace {
+
+// The badge's word for each part Activation::badge_timing() can name.
+struct BadgeWord {
+    TimingPart part;
+    const char* word;
+};
+constexpr BadgeWord kBadgeWords[] = {
+    {TimingPart::SqueezeIn, "squeeze in"},
+    {TimingPart::SqueezeOut, "squeeze out"},
+    {TimingPart::EarlyFill, "early fill"},
+};
+
+std::string badge_word(TimingPart part) {
+    for (const BadgeWord& w : kBadgeWords)
+        if (w.part == part) return w.word;
+    throw std::logic_error("activation_badge: no word for this TimingPart");
+}
+
+}  // namespace
+
 std::string activation_badge(const Activation& act) {
-    std::optional<double> hardest = act.difficulty();
-    // An E activation that skips fills has an optional early fill, which
-    // difficulty() leaves out. It still gets the badge: its timing decides
-    // whether the first fill shows up, and so how the skips are counted.
-    if (!hardest && act.is_e_critical()) hardest = act.e_difficulty(/*verbose=*/true);
-    if (!hardest) return {};
-    // difficulty() is the max over the SqIns/SqOuts and a required fill, so
-    // the squeeze that produced it compares equal; a tie names the squeeze.
-    const char* what = "early fill";
-    for (const SPSqueeze& sq : act.sqinouts)
-        if (sq.difficulty() == *hardest) {
-            what = sq.kind == SqueezeKind::SqIn ? "squeeze in" : "squeeze out";
-            break;
-        }
-    char buf[64];
-    std::snprintf(buf, sizeof(buf), "%s %.0f ms", what, *hardest);
-    return buf;
+    // The activation says which part the badge names and how hard (a tie
+    // names the squeeze, an E activation's optional early fill counts when
+    // nothing else does, and a free squeeze counts when nothing needs timing,
+    // D80); the badge only words it.
+    const std::optional<HardestTiming> shown = act.badge_timing();
+    if (!shown) return {};
+    return badge_word(shown->part) + " " + format_ms_whole(shown->ms);
+}
+
+std::string longest_activation_badge() {
+    // Why the squeeze window bounds every figure a badge shows: every squeeze
+    // offset is one the engine kept inside within_squeeze_window, so a
+    // squeeze's figure lies strictly between -kSqueezeWindowMs and
+    // +kSqueezeWindowMs. An early fill is named only when
+    // early_fill_needs_timing holds, and that figure is at most
+    // kEarlyFillWindowMs, inside the window too. A free squeeze's figure is 0
+    // or less (D80), so the widest figure is the window's, minus sign included.
+    size_t longest = 0;
+    for (size_t i = 1; i < std::size(kBadgeWords); ++i)
+        if (std::strlen(kBadgeWords[i].word) > std::strlen(kBadgeWords[longest].word))
+            longest = i;
+    return std::string(kBadgeWords[longest].word) + " " + format_ms_whole(-kSqueezeWindowMs);
 }
 
 std::vector<TextLine> squeeze_sentences(const Activation& act,
@@ -75,11 +127,11 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
     std::vector<TextLine> out;
     for (size_t i = 0; i < act.sqinouts.size(); ++i) {
         const SPSqueeze& sq = act.sqinouts[i];
-        // timing() is the edge SPSqueeze::description() prints: a SqOut must
-        // be hit later than it, a SqIn earlier than it. Which wording applies
+        // timing() is the edge the sentence below prints: a SqOut must be hit
+        // later than it, a SqIn earlier than it. Which wording applies
         // is SPSqueeze::is_free's answer, the one the rating reads too (D13).
         const double t = sq.timing();
-        const std::string edge = format_ms_spaced(std::fabs(t));
+        const std::string edge = format_ms(std::fabs(t));
         std::string text;
         if (sq.kind == SqueezeKind::SqOut) {
             const std::string note =
@@ -89,14 +141,12 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                                                   : "more than " + edge + " late";
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
             if (squeezed_out) {
-                // What the squeeze-out costs, from the same function the
-                // search prices the row with (the table's "(-N)").
+                // What the squeeze-out costs: core::sqout_cost, which the
+                // table's "(-N)" reads too.
                 const BackendSqueeze& row = squeezed_out->row;
-                const double off = row.offset_ms.value_or(0.0);
+                const double off = row.offset();
                 if (core::counted_without_squeeze(off, leeway_ms)) {
-                    const int value = core::backend_row_value(
-                        off, row.points, row.sqout_points, core::SqOutPosition::Exact, leeway_ms);
-                    const int lost = row.points - value;
+                    const int lost = core::sqout_cost(off, row.points, row.sqout_points, leeway_ms);
                     text += lost > 0 ? " It scores " + std::to_string(lost) +
                                            " fewer points, and its SP phrase banks for later."
                                      : std::string(" It costs no points, and its SP phrase "
@@ -114,7 +164,7 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
             // A SqIn has no backend row to carry its eff. figure (a SqOut's
             // sits on its squeezed-out row), so the sentence carries it.
             if (i < note_effective_ms.size() && note_effective_ms[i])
-                when += " (eff. " + format_ms_spaced(*note_effective_ms[i]) + ")";
+                when += eff_suffix(*note_effective_ms[i]);
             text = "Hit the SP phrase's last note " + when +
                    " so it lands before Star Power ends. The phrase then counts while Star "
                    "Power runs, which makes Star Power last longer.";
@@ -139,35 +189,50 @@ RecordStatusView build_record_status(const store::RecordLookup& lookup) {
     // A Ready record can legitimately hold nothing -- the chart was analyzed
     // and no path survived. Say so instead of asking for a best path.
     if (record.paths.empty()) {
-        view.lines.push_back("No paths found.");
+        view.lines.push_back(kNoPathsFound);
         return view;
     }
     view.lines.push_back("Best score:  " +
                          group_thousands(record.best_path().totalscore()));
     view.lines.push_back("Paths kept:  " +
                          std::to_string((int)record.all_paths().size()));
+    // The blob's cap and limit are the key's: the store's prepare_row (ST1)
+    // refuses a row whose blob disagrees with its key, either way.
     if (record.ms_limit)
         view.lines.push_back("Path limit:  " +
                              std::to_string((int)*record.ms_limit) + " ms");
     else
         view.lines.push_back("Path limit:  off");
     if (record.sp_cap)
-        view.lines.push_back("SP cap:  " + std::to_string(*record.sp_cap) + " bars");
+        view.lines.push_back("SP cap:  " + bars_text(*record.sp_cap));
     return view;
 }
 
-std::vector<MultSqueezeView> build_multsqueezes(const HydraRecord& record) {
+namespace {
+
+// The squeeze rows, naming each note in the words of the Pro Drums setting
+// `pro_drums` (note_label, through Chord::rowstr and MultSqueeze::howto).
+// The Paths tab's cache passes the record's setting.
+std::vector<MultSqueezeView> multsqueeze_views(const HydraRecord& record, bool pro_drums) {
     std::vector<MultSqueezeView> out;
     out.reserve(record.multsqueezes.size());
     for (const MultSqueeze& msq : record.multsqueezes) {
         MultSqueezeView v;
         v.label = msq.notationstr() + "   (+" + std::to_string(msq.points()) +
-                  " pts):   " + msq.chord().rowstr();
-        v.howto = msq.howto();
+                  " pts):   " + msq.chord().rowstr(pro_drums);
+        v.howto = msq.howto(pro_drums);
         v.points = msq.points();
         out.push_back(std::move(v));
     }
     return out;
+}
+
+}  // namespace
+
+// In the Pro Drums-on words; the Paths tab goes through PathsTabCache::details,
+// which passes the record's own setting.
+std::vector<MultSqueezeView> build_multsqueezes(const HydraRecord& record) {
+    return multsqueeze_views(record, /*pro_drums=*/true);
 }
 
 std::string multsqueeze_summary(const std::vector<MultSqueezeView>& squeezes) {
@@ -201,7 +266,8 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                                   double hit_window_ms,
                                   std::optional<double> backend_limit_ms,
                                   const core::Rules& rules,
-                                  std::optional<double> song_length_ms) {
+                                  std::optional<double> song_length_ms,
+                                  bool pro_drums) {
     ActivationsView view;
     const double W = hit_window_ms;
 
@@ -218,11 +284,10 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         av.sp_bars = act.sp_meter();
         av.bars = bars_text(act.sp_meter());
         av.badge = activation_badge(act);
-        av.chord = act.chord.rowstr();
-        if (timing && song_length_ms && *song_length_ms > 0.0) {
-            const double at = timing->timecode(act.timecode.ticks()).ms();
-            av.song_fraction = std::clamp(at / *song_length_ms, 0.0, 1.0);
-        }
+        av.chord = act.chord.rowstr(pro_drums);
+        if (timing && song_length_ms)
+            av.song_fraction =
+                song_fraction(timing->timecode(act.timecode.ticks()).ms(), *song_length_ms);
 
         if (act.is_e_critical()) {
             // Positive = hit early, the same sign as the report:
@@ -309,68 +374,64 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             // line) still read every stored row. A squeezed-out note is the
             // reason the row matters, so it always shows.
             if (backend_limit_ms && !br.squeezed_out &&
-                std::fabs(bsq.offset_ms.value_or(0.0)) > *backend_limit_ms)
+                std::fabs(bsq.offset()) > *backend_limit_ms)
                 continue;
 
             BackendRowView row;
             char tbuf[32];
-            std::snprintf(tbuf, sizeof(tbuf), "%.1f", bsq.offset_ms.value_or(0.0));
+            std::snprintf(tbuf, sizeof(tbuf), "%.1f", bsq.offset());
             row.timing = tbuf;
             if (br.note.effective_ms) {
-                char tip[256];
                 // The budget at identity scale (x1.00): what the combined
                 // budget would be with no frontend-timing scale.
-                const double normal_budget = squeeze_budget_ms(1.0, W);
-                std::snprintf(tip, sizeof(tip),
-                              "Effectively %.1fms on the normal %.0fms scale:\n"
-                              "frontend timing scales %s here, so the combined\n"
-                              "squeeze budget is %.1fms, not %.1fms.",
-                              *br.note.effective_ms, normal_budget,
-                              format_scale(br.note.scale).c_str(), br.note.budget_ms,
-                              normal_budget);
-                row.tooltip = tip;
+                // Written once and said twice, so both read the same
+                // (D57 item 2: "on the normal 170.5 ms scale ... not 170.5 ms").
+                const std::string normal_budget = format_ms(nominal_budget_ms(W));
+                row.tooltip = "Effectively " + format_ms(*br.note.effective_ms) +
+                              " on the normal " + normal_budget +
+                              " scale:\nfrontend timing scales " +
+                              format_scale(br.note.scale) +
+                              " here, so the combined\nsqueeze budget is " +
+                              format_ms(br.note.budget_ms) + ", not " + normal_budget + ".";
             }
             row.chord = bsq.chord.notationstr();
             // What the engine actually paid for this row on this path, from
             // the same function the search calls. display_backends already
             // dropped every row past the squeezed-out chord, so a row here is
-            // either that chord or priced as if nothing was squeezed out.
-            const double off = bsq.offset_ms.value_or(0.0);
+            // either that chord or before it.
+            const double off = bsq.offset();
             const bool counted =
                 core::counted_without_squeeze(off, rules.backend_leeway_ms);
             const int value = core::backend_row_value(
                 off, bsq.points, bsq.sqout_points,
-                br.squeezed_out ? core::SqOutPosition::Exact
-                                : core::SqOutPosition::NoSqOut,
+                core::sqout_position(bsq.timecode.ticks(), act.sqout_tick),
                 rules.backend_leeway_ms);
             row.points = std::to_string(value);
             row.rating = bsq.summarystr(br.squeezed_out, W, rules.backend_leeway_ms);
-            if (br.note.effective_ms) {
-                char effbuf[32];
-                std::snprintf(effbuf, sizeof(effbuf), " (eff. %.1fms)",
-                              *br.note.effective_ms);
-                row.rating += effbuf;
-            }
+            if (br.note.effective_ms)
+                row.rating += eff_suffix(*br.note.effective_ms);
             if (br.squeezed_out) {
                 // "(-N)" and the warning colour only when the squeeze-out
                 // really costs points. A row the engine never counted costs
-                // nothing either way (user decisions 1 and 19).
+                // nothing either way (user decisions 1 and 19); its label
+                // already carries summarystr's "(uncounted)" tag (D48, Q6).
                 char extra[48];
                 if (counted) {
                     std::snprintf(extra, sizeof(extra),
-                                  " <-- squeezed out (-%d)", bsq.points - value);
+                                  " <-- squeezed out (-%d)",
+                                  core::sqout_cost(off, bsq.points, bsq.sqout_points,
+                                                   rules.backend_leeway_ms));
                     row.warn = true;
                 } else {
-                    std::snprintf(extra, sizeof(extra),
-                                  " <-- squeezed out (uncounted)");
+                    std::snprintf(extra, sizeof(extra), " <-- squeezed out");
                 }
                 row.rating += extra;
             }
             av.backends.push_back(std::move(row));
         }
         const size_t shown = av.backends.size();
-        av.backends_label = std::to_string(shown) + (shown == 1 ? " note" : " notes") +
-                            " near the SP end";
+        av.backends_label =
+            counted(static_cast<int64_t>(shown), "note", "notes") + " near the SP end";
 
         view.acts.push_back(std::move(av));
     }
@@ -382,10 +443,10 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                                      : bars_text(path.leftover_sp()) + " of SP left over";
         view.summary = std::to_string(view.acts.size()) + kDot + left;
     }
-    if (timing && song_length_ms && *song_length_ms > 0.0) {
-        const int64_t end_tick = std::llround(timing->ms_index().tick_at_ms(*song_length_ms));
-        view.timeline_end =
-            "m" + std::to_string((long long)timing->timecode(end_tick).measure_beats_ticks()[0] + 1);
+    if (timing && song_length_ms && has_song_length(*song_length_ms)) {
+        const int64_t end_tick = timing->display_tick_at_ms(*song_length_ms);
+        view.timeline_start = measure_label(timing->timecode(0));
+        view.timeline_end = measure_label(timing->timecode(end_tick));
     }
 
     return view;
@@ -428,49 +489,47 @@ PathListView build_path_list(const HydraRecord& record) {
         view.groups.back().paths.push_back(p);
     }
 
-    // The all-0 section is only worth showing when the generated list does
-    // not already contain that path: same score and same notation is the same
-    // path. Score alone would hide a genuinely different all-0 path that ties
-    // some listed path, and notation alone would hide one that reads the same
-    // but banks differently.
-    view.allzero = record.all_allzero_paths();
+    // An all-0 path is only worth showing when the generated list does not
+    // already contain it. "The same path" is path_identity, the one rule the
+    // Preview's overlay key reads too. A duplicate hides only itself (D51
+    // call 4b); the section shows when any all-0 path survives.
+    for (const Path* z : record.all_allzero_paths()) {
+        const std::string identity = path_identity(*z);
+        const bool listed = std::any_of(flat.begin(), flat.end(), [&](const Path* p) {
+            return path_identity(*p) == identity;
+        });
+        if (!listed) view.allzero.push_back(z);
+    }
     if (view.allzero.empty()) return view;
-    for (const Path* z : view.allzero) {
-        const int64_t score = z->totalscore();
-        const std::string notation = z->pathstring();
-        for (const Path* p : flat)
-            if (p->totalscore() == score && p->pathstring() == notation)
-                return view;
-    }
     view.show_allzero = true;
-
-    const int64_t score = view.allzero.front()->totalscore();
-    view.allzero_label = group_thousands(score);
-    // The first thing a user asks of this row is what it costs against the
-    // optimal path, so answer it in the header.
-    if (!flat.empty()) {
-        const int64_t delta = score - flat.front()->totalscore();
-        if (delta != 0)
-            view.allzero_label += "   (" + std::string(delta > 0 ? "+" : "-") +
-                                  group_thousands(delta < 0 ? -delta : delta) +
-                                  ")";
-    }
+    // The score alone: what the all-0 path costs against the optimal one is
+    // its button's "N below optimal" line (build_path_buttons).
+    view.allzero_label = group_thousands(view.allzero.front()->totalscore());
     return view;
 }
 
-std::string within_label(int depth_mode, int depth_value) {
-    const bool points = depth_mode == 1;
-    const std::string n = points ? group_thousands(depth_value) : std::to_string(depth_value);
-    const char* unit = points ? (depth_value == 1 ? " point" : " points")
-                              : (depth_value == 1 ? " score" : " scores");
-    return "Within " + n + unit;
+namespace {
+
+// The heading over the non-optimal paths, spelled from the depth mode.
+std::string within_label(DepthMode depth_mode, int depth_value) {
+    return "Within " + (depth_mode == DepthMode::Points
+                            ? counted(depth_value, "point", "points")
+                            : counted(depth_value, "score", "scores"));
 }
+
+}  // namespace
 
 PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, int depth_value) {
     PathButtonsView view;
-    view.within_label = within_label(depth_mode, depth_value);
+    // The callers hold the INI's int; Settings::search_depth_mode (SE1) owns
+    // what it means.
+    Settings settings;
+    settings.depth_mode = depth_mode;
+    view.within_label = within_label(settings.search_depth_mode(), depth_value);
     const PathListView list = build_path_list(record);
     const int64_t best = record.paths.empty() ? 0 : record.best_path().totalscore();
+    // A cap below kSpActivationBars can never activate (D51 call 16).
+    const bool cap_never_activates = record.sp_cap && *record.sp_cap < kSpActivationBars;
 
     auto add = [&](const Path* p, PathButtonView::Group group) {
         PathButtonView b;
@@ -479,7 +538,7 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
         b.notation = p->pathstring();
         b.title = group_thousands(p->totalscore()) + kDot + b.notation;
         if (std::optional<double> hardest = p->difficulty()) {
-            b.timing = format_ms_spaced(*hardest);
+            b.timing = format_ms(*hardest);
             b.timing_warn = p->is_difficult();
         }
         if (group == PathButtonView::Group::AllZero) {
@@ -488,11 +547,13 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
             if (delta < 0) b.detail = group_thousands(-delta) + " below optimal";
             if (delta > 0) b.detail = group_thousands(delta) + " above optimal";
         }
+        if (cap_never_activates) b.detail = "A 1-bar cap can never activate Star Power.";
         view.buttons.push_back(std::move(b));
     };
-    for (size_t g = 0; g < list.groups.size(); ++g)
-        for (const Path* p : list.groups[g].paths)
-            add(p, g == 0 ? PathButtonView::Group::Optimal : PathButtonView::Group::Within);
+    for (const PathGroupView& g : list.groups)
+        for (const Path* p : g.paths)
+            add(p, record.is_optimal(*p) ? PathButtonView::Group::Optimal
+                                         : PathButtonView::Group::Within);
     if (list.show_allzero)
         for (const Path* p : list.allzero) add(p, PathButtonView::Group::AllZero);
     return view;
@@ -538,20 +599,22 @@ const RecordStatusView& PathsTabCache::status(const store::RecordLookup& lookup,
 const PathsTabCache::Details& PathsTabCache::details(
     const Path& path, const HydraRecord& record, int record_generation,
     const SongTiming* timing, double hit_window_ms, std::optional<double> backend_limit_ms,
-    const core::Rules& rules, std::optional<double> song_length_ms) {
+    const core::Rules& rules, std::optional<double> song_length_ms, bool pro_drums) {
     const bool new_path = record_generation != details_generation_ || &path != details_path_;
     if (new_path || hit_window_ms != details_hit_window_ms_ ||
         backend_limit_ms != details_backend_limit_ms_ ||
-        song_length_ms != details_song_length_ms_) {
-        details_.squeezes = build_multsqueezes(record);
+        song_length_ms != details_song_length_ms_ || pro_drums != details_pro_drums_) {
+        details_.squeezes = multsqueeze_views(record, pro_drums);
         details_.activations = build_activations(path, record, timing, hit_window_ms,
-                                                 backend_limit_ms, rules, song_length_ms);
+                                                 backend_limit_ms, rules, song_length_ms,
+                                                 pro_drums);
         details_.breakdown = build_score_breakdown(path);
         details_generation_ = record_generation;
         details_path_ = &path;
         details_hit_window_ms_ = hit_window_ms;
         details_backend_limit_ms_ = backend_limit_ms;
         details_song_length_ms_ = song_length_ms;
+        details_pro_drums_ = pro_drums;
         // What is unfolded belongs to the path; a display setting keeps it.
         if (new_path) ui_.reset(details_.activations.acts.size());
         ++details_builds_;

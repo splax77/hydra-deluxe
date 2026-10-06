@@ -6,8 +6,39 @@
 #include <string>
 
 #include "core/timing.h"  // SongTiming
+#include "store/record_store.h"  // summarize_record
 
 namespace hydra {
+
+namespace {
+
+// Which field names this window's squeezed-out chord. The stamped tick does
+// when the activation has one (-1 or no key means none). Only without it is
+// the SqOut entry's offset read, for dumps written before the tick existed;
+// `score` in tools/replay.cpp resolves that offset with resolve_sqout_note.
+// That bare offset is the one deliberate exception to the record reader's
+// rule (windows_for_path drops a window it cannot name a squeeze-out chord
+// for); only an old or hand-edited JSON carries one, and the CLI prints which
+// chord it picked, so the user sees the guess. The writer below still writes
+// both, so an older hydra_replay can read a new dump.
+void read_sqout(const nlohmann::json& act, const std::string& where, ReplayWindow& w) {
+    if (act.contains("sqout_tick") && act["sqout_tick"].is_number() &&
+        act["sqout_tick"].get<int64_t>() >= 0) {
+        w.sqout_tick = act["sqout_tick"].get<int64_t>();
+        return;
+    }
+    if (!act.contains("sqinouts") || !act["sqinouts"].is_array()) return;
+    for (const nlohmann::json& sq : act["sqinouts"]) {
+        if (!sq.is_object()) continue;
+        if (squeeze_kind_from_name(sq.value("kind", std::string())) != SqueezeKind::SqOut)
+            continue;
+        if (!sq.contains("offset_ms") || !sq["offset_ms"].is_number())
+            throw std::runtime_error(where + " has a SqOut with no offset_ms");
+        w.sqout_offset_ms = sq["offset_ms"].get<double>();
+    }
+}
+
+}  // namespace
 
 std::vector<ReplayWindow> windows_from_json(const nlohmann::json& path) {
     if (!path.is_object() || !path.contains("activations") ||
@@ -41,11 +72,7 @@ std::vector<ReplayWindow> windows_from_json(const nlohmann::json& path) {
             throw std::runtime_error(where +
                                      " deactivates before it activates");
 
-        // -1 (or no key, from a dump written before v6) means "not stamped".
-        // The caller resolves a bare offset with resolve_sqout_note.
-        if (act.contains("sqout_tick") && act["sqout_tick"].is_number() &&
-            act["sqout_tick"].get<int64_t>() >= 0)
-            w.sqout_tick = act["sqout_tick"].get<int64_t>();
+        read_sqout(act, where, w);
 
         // The phrases this window squeezed in (D34). No key (a dump written
         // before the field) reads as none, as it always did.
@@ -53,16 +80,9 @@ std::vector<ReplayWindow> windows_from_json(const nlohmann::json& path) {
             for (const nlohmann::json& t : act["sqin_ticks"])
                 if (t.is_number()) w.sqin_ticks.push_back(t.get<int64_t>());
 
-        if (act.contains("sqinouts") && act["sqinouts"].is_array()) {
-            for (const nlohmann::json& sq : act["sqinouts"]) {
-                if (!sq.is_object()) continue;
-                if (sq.value("kind", std::string()) != "SqOut") continue;
-                if (!sq.contains("offset_ms") || !sq["offset_ms"].is_number())
-                    throw std::runtime_error(where +
-                                             " has a SqOut with no offset_ms");
-                w.sqout_offset_ms = sq["offset_ms"].get<double>();
-            }
-        }
+        // A dumped window came off a record, so it says how it ended (D36).
+        // No key (an older dump, or a typed list) reads as a typed window.
+        w.from_record = act.value("from_record", false);
         out.push_back(w);
     }
     return out;
@@ -109,6 +129,7 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
                 {"chord_code", act.chord.code()},
                 {"sqinouts", sq},
                 {"sqin_ticks", sqins},
+                {"from_record", true},
             });
         }
         paths.push_back(nlohmann::json{
@@ -120,6 +141,14 @@ nlohmann::json paths_json(const std::vector<const Path*>& all, const SongTiming&
         });
     }
     return paths;
+}
+
+nlohmann::json result_json(const HydraRecord& rec) {
+    // summarize_record owns "what is this record's best score", absent when
+    // the record holds no paths; best_path_text owns its text.
+    const std::optional<int64_t> best = store::summarize_record(rec).score;
+    return nlohmann::json{{"score", best ? nlohmann::json(*best) : nlohmann::json(nullptr)},
+                          {"bestpath", store::best_path_text(rec)}};
 }
 
 }  // namespace hydra

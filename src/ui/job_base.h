@@ -14,13 +14,15 @@
 #include <thread>
 
 #include "app/user_messages.h"
+#include "core/error_kind.h"
 
 namespace hydra::ui {
 
 // Thrown by JobBase::throw_if_cancelled() between a job's steps. run_guarded
-// turns it into a failed run whose error() reads "cancelled".
-struct JobCancelled : std::exception {
-    const char* what() const noexcept override { return "cancelled"; }
+// turns it into a failed run whose error() reads "cancelled". Its kind is
+// Cancelled.
+struct JobCancelled : KindedError {
+    JobCancelled() : KindedError(ErrorKind::Cancelled, "cancelled") {}
 };
 
 // Common lifecycle for every job: an owning worker thread, a cancel flag the
@@ -80,10 +82,19 @@ protected:
         try {
             ok_ = f();
         } catch (const std::exception& e) {
-            error_ = e.what();
-            if (!is_cancelled()) message_ = app::plain_error(e);
-            ok_ = false;
+            fail(e);
+            return;
         }
+        finished_.store(true);
+    }
+
+    // Records a failed run: the raw text, the plain message unless the job
+    // was cancelled, not ok, and then publishes finished. run_guarded's catch
+    // and a job whose thread cannot start both end here.
+    void fail(const std::exception& e) {
+        error_ = e.what();
+        if (!is_cancelled()) message_ = app::plain_error(e);
+        ok_ = false;
         finished_.store(true);
     }
 

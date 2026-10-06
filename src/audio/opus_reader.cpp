@@ -24,11 +24,15 @@
 // count mid-stem).
 //
 // Straight-through output is bit-identical to the old whole-file decoder: the
-// same packets go through the same opus_decode_float calls into a 5760-frame
-// buffer, the pre-skip is dropped from each link's start, and nothing is
+// same packets go through the same opus_decode_float calls into a 120 ms
+// (kMaxFrame) buffer, the pre-skip is dropped from each link's start, and nothing is
 // scaled when the gain is zero.
 
 #include "audio/stem_reader.h"
+
+#include "audio/decode.h"
+#include "audio/frames.h"
+#include "core/little_endian.h"
 
 #include <algorithm>
 #include <array>
@@ -46,20 +50,13 @@ namespace hydra::audio::detail {
 namespace {
 
 constexpr int kRate = 48000;           // Opus always decodes at 48 kHz
-constexpr int kMaxFrame = 5760;        // 120 ms, the largest Opus packet
-constexpr int64_t kPreRoll = 19200;    // 400 ms decoder warm-up before a seek target
+// 120 ms, the largest Opus packet, in frames at kRate (frames_of_ms owns the
+// conversion).
+const int kMaxFrame = static_cast<int>(frames_of_ms(120.0, kRate));
+// 400 ms decoder warm-up before a seek target, in frames at kRate.
+const int64_t kPreRoll = frames_of_ms(400.0, kRate);
 constexpr uint64_t kProgressStep = 4ull << 20;  // report at least every 4 MB
 constexpr std::size_t kMaxPageBytes = 27 + 255 + 255 * 255;
-
-uint32_t le32(const uint8_t* p) {
-    return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
-}
-int64_t le64(const uint8_t* p) {
-    uint64_t v = 0;
-    for (int i = 7; i >= 0; --i) v = (v << 8) | p[i];
-    return static_cast<int64_t>(v);
-}
 
 // The samples one packet decodes to, read from its leading bytes. A zero-byte
 // packet counts as a full 120 ms buffer because opus_decode_float conceals a
@@ -137,8 +134,8 @@ void build_index(const uint8_t* d, std::size_t size, const OpenProgress& progres
         const bool continued = (flags & 0x01) != 0;
         const bool bos = (flags & 0x02) != 0;
         const bool eos = (flags & 0x04) != 0;
-        const int64_t granule = le64(h + 6);
-        const uint32_t serial = le32(h + 14);
+        const int64_t granule = static_cast<int64_t>(core::read_le_u64(h + 6));
+        const uint32_t serial = core::read_le_u32(h + 14);
 
         if (bos && (link == nullptr || link_closed || link->audio_page != 0)) {
             // A new link starts here (the first, or the next in a chain). A BOS
@@ -178,14 +175,14 @@ void build_index(const uint8_t* d, std::size_t size, const OpenProgress& progres
             if (!in_packet) {
                 // A packet starts here. The OpusHead is the link's first.
                 if (packets_seen == 0) {
-                    if (seg[i] < 19 || std::memcmp(pos, "OpusHead", 8) != 0) {
+                    if (seg[i] < 19 || std::memcmp(pos, kOpusHeadTag, sizeof kOpusHeadTag - 1) != 0) {
                         if (links.size() == 1)
-                            throw std::runtime_error("decode_audio: Opus stream has no OpusHead");
+                            throw KindedError(ErrorKind::AudioDecode, "decode_audio: Opus stream has no OpusHead");
                         link->channels = -1;  // unusable link: the chain ends before it
                     } else {
                         link->channels = pos[9];
-                        link->preskip = pos[10] | (pos[11] << 8);
-                        link->gain_q78 = static_cast<int16_t>(pos[16] | (pos[17] << 8));
+                        link->preskip = core::read_le_u16(pos + 10);
+                        link->gain_q78 = static_cast<int16_t>(core::read_le_u16(pos + 16));
                     }
                 } else if (packets_seen >= 2) {
                     const long first = seg[i] >= 2 ? 2 : seg[i];
@@ -214,10 +211,10 @@ public:
         : bytes_(std::move(bytes)) {
         build_index(bytes_.data(), bytes_.size(), progress, pages_, links_);
         if (links_.empty())
-            throw std::runtime_error("decode_audio: Opus stream has no OpusHead");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: Opus stream has no OpusHead");
         channels_ = links_[0].channels;
         if (channels_ < 1 || channels_ > 2)
-            throw std::runtime_error("decode_audio: only mono/stereo Opus is supported");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: only mono/stereo Opus is supported");
 
         // Keep the links that can play as one stream with the first.
         std::size_t keep = 0;
@@ -235,14 +232,14 @@ public:
         }
         links_.resize(keep);
         length_ = total;
-        if (length_ <= 0) throw std::runtime_error("decode_audio: no Opus audio decoded");
+        if (length_ <= 0) throw KindedError(ErrorKind::AudioDecode, "decode_audio: no Opus audio decoded");
 
         pcm_.resize(static_cast<std::size_t>(kMaxFrame) * channels_);
         page_buf_.resize(kMaxPageBytes);
         int err = 0;
         dec_ = opus_decoder_create(kRate, channels_, &err);
         if (err != OPUS_OK || dec_ == nullptr)
-            throw std::runtime_error("decode_audio: opus_decoder_create failed");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: opus_decoder_create failed");
         ogg_stream_init(&os_, static_cast<int>(links_[0].serial));
         start_link(0, links_[0].preskip, links_[0].first_page, 2, 0);
     }
@@ -283,7 +280,9 @@ public:
         frame = std::clamp<int64_t>(frame, 0, length_);
         pcm_count_ = 0;
         pcm_pos_ = 0;
-        if (failed_) return;
+        // No early return on failed_: a seek to before the damage plays again
+        // from there (start_link resets the decoder and clears at_end_), while
+        // failed_ stays set so decode_audio still reports the damaged stream.
         if (frame == length_) {
             at_end_ = true;
             return;

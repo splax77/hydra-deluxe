@@ -25,6 +25,7 @@
 #include "core/rules.h"
 #include "core/strutil.h"
 #include "json.hpp"
+#include "parse/chart_files.h"
 #include "parse/song.h"
 #include "search/pather.h"
 
@@ -55,12 +56,64 @@ inline const std::vector<std::string>& chart_paths() {
     return paths;
 }
 
-// First corpus chart whose path ends in `suffix` (e.g. ".mid").
+// First corpus chart of the format `suffix` names (e.g. ".mid"), read the
+// way the app reads a chart file's format (chart_format_of, any case).
 inline std::string first_chart_with_suffix(const std::string& suffix) {
+    const hydra::ChartFormat want = hydra::chart_format_of(suffix);
     for (const std::string& p : chart_paths()) {
-        if (hydra::ends_with(p, suffix)) return p;
+        if (hydra::chart_format_of(p) == want) return p;
     }
     throw std::runtime_error("no corpus chart ends in " + suffix);
+}
+
+// One corpus chart's file (its full notespath) and its analysis, for a caller
+// that opens the chart again by its path.
+struct ChartWithPaths {
+    std::string chart;
+    hydra::app::AnalysisResult result;
+};
+
+// The first `want` corpus charts, in chart_paths() order, that analyze under
+// `settings` to a song with notes and at least one path, each with its file.
+// A chart that fails to analyze is skipped, as is one with an empty song or
+// no paths.
+inline std::vector<ChartWithPaths> charts_with_paths(
+    const hydra::app::AnalysisSettings& settings, size_t want) {
+    std::vector<ChartWithPaths> out;
+    for (const std::string& path : chart_paths()) {
+        if (out.size() == want) break;
+        try {
+            hydra::app::AnalysisResult result = hydra::app::analyze_chart_file(path, settings);
+            if (result.song.is_empty() || result.record.paths.empty()) continue;
+            out.push_back({path, std::move(result)});
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+    return out;
+}
+
+// The same charts' analyses alone.
+inline std::vector<hydra::app::AnalysisResult> analyzed_with_paths(
+    const hydra::app::AnalysisSettings& settings, size_t want) {
+    std::vector<hydra::app::AnalysisResult> out;
+    for (ChartWithPaths& c : charts_with_paths(settings, want)) out.push_back(std::move(c.result));
+    return out;
+}
+
+// The first corpus chart with paths under `settings`, with its file. Throws,
+// naming the corpus, when no chart has any.
+inline ChartWithPaths first_chart_with_paths(const hydra::app::AnalysisSettings& settings) {
+    std::vector<ChartWithPaths> one = charts_with_paths(settings, 1);
+    if (one.empty())
+        throw std::runtime_error("no chart under " + root() + " analyzes to any path");
+    return std::move(one.front());
+}
+
+// The first corpus chart with paths under `settings`, its analysis alone.
+inline hydra::app::AnalysisResult first_analyzed_with_paths(
+    const hydra::app::AnalysisSettings& settings) {
+    return std::move(first_chart_with_paths(settings).result);
 }
 
 inline std::string read_bytes(const std::string& path) {
@@ -92,19 +145,6 @@ struct Outcome {
     std::exception_ptr error;
 };
 
-// Every SearchSettings field that can change a record.
-inline void add_settings(std::ostringstream& k, const hydra::SearchSettings& s) {
-    auto opt = [&k](const auto& o) {
-        if (o) k << *o;
-        else k << "none";
-        k << '|';
-    };
-    k << s.sp_cap << '|';
-    k << static_cast<int>(s.depth_mode) << '|' << s.depth_value << '|';
-    opt(s.ms_filter);
-    k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';
-}
-
 }  // namespace detail
 
 // The Song for one corpus chart, parsed once per run for these load options
@@ -130,23 +170,50 @@ inline const hydra::Song& song(const std::string& path, bool pro, bool bass2x,
     return *o.value;
 }
 
+namespace detail {
+
+// First corpus chart whose song at `difficulty` (pro drums, 2x bass) has
+// notes when `with_notes` is true, or has none when it is false.
+inline std::string first_chart_where(hydra::Difficulty difficulty, bool with_notes) {
+    for (const std::string& p : chart_paths()) {
+        if (song(p, true, true, difficulty).is_empty() != with_notes) return p;
+    }
+    throw std::runtime_error(std::string("no corpus chart ") +
+                             (with_notes ? "has" : "lacks") + " notes at that difficulty");
+}
+
+}  // namespace detail
+
+// First corpus chart with notes at `difficulty` (pro drums, 2x bass).
+inline std::string first_chart_with_notes(
+    hydra::Difficulty difficulty = hydra::Difficulty::Expert) {
+    return detail::first_chart_where(difficulty, true);
+}
+
+// First corpus chart with no notes at `difficulty` (pro drums, 2x bass), the
+// chart a missing-difficulty test needs.
+inline std::string first_chart_without_notes(hydra::Difficulty difficulty) {
+    return detail::first_chart_where(difficulty, false);
+}
+
 // One corpus chart analyzed under `settings`, once per run: the record
 // analyze_chart_file would return (parsed with settings.prodrums, bass2x,
-// difficulty and rules, then analyze_chart). Throws what that would throw.
+// difficulty and rules, checked with require_notes, then analyze_chart).
+// Throws what analyze_chart_file throws: NoNotesError when the chart has no
+// notes at that difficulty, ChartFileError when the file cannot be read.
 inline const hydra::HydraRecord& analyzed(const std::string& path,
                                           const hydra::app::AnalysisSettings& settings) {
     static std::map<std::string, detail::Outcome<hydra::HydraRecord>> cache;
     std::ostringstream key;
-    key.precision(17);
     key << path << '|' << settings.prodrums << '|' << settings.bass2x << '|'
-        << static_cast<int>(settings.difficulty) << '|';
-    detail::add_settings(key, settings);
+        << static_cast<int>(settings.difficulty) << '|' << hydra::settings_key(settings);
     auto [it, fresh] = cache.try_emplace(key.str());
     detail::Outcome<hydra::HydraRecord>& o = it->second;
     if (fresh) {
         try {
             const hydra::Song& s = song(path, settings.prodrums, settings.bass2x,
                                         settings.difficulty, settings.rules);
+            hydra::require_notes(s, settings.difficulty, settings.prodrums);
             o.value.emplace(hydra::analyze_chart(s, settings));
         } catch (...) {
             o.error = std::current_exception();

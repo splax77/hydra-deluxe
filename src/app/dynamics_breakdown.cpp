@@ -2,8 +2,10 @@
 
 #include <cstring>
 
+#include "app/display_format.h"
 #include "core/model.h"
 #include "parse/song.h"
+#include "store/serialize.h"  // BinaryWriter, BinaryReader
 
 namespace hydra {
 namespace app {
@@ -32,57 +34,79 @@ DynamicsCounts DynamicsBreakdown::played_total(bool bass2x) const {
     return t;
 }
 
-// ---- labels -------------------------------------------------------------
-
-const char* dynamics_row_label(DynamicsRow r, bool pro) {
-    switch (r) {
-        case DynamicsRow::RedSnare:
-            return pro ? "Red snare" : "Red";
-        case DynamicsRow::YellowCymbal:
-            return "Yellow cymbal";
-        case DynamicsRow::YellowTom:
-            return pro ? "Yellow tom" : "Yellow";
-        case DynamicsRow::BlueCymbal:
-            return "Blue cymbal";
-        case DynamicsRow::BlueTom:
-            return pro ? "Blue tom" : "Blue";
-        case DynamicsRow::GreenCymbal:
-            return "Green cymbal";
-        case DynamicsRow::GreenTom:
-            return pro ? "Green tom" : "Green";
-        case DynamicsRow::Kick:
-            return "Kick";
-        case DynamicsRow::Kick2x:
-            return "2x kick";
-        default:
-            return "";
-    }
-}
-
-// ---- counting -----------------------------------------------------------
+// ---- the row table --------------------------------------------------------
 
 namespace {
 
-DynamicsRow row_for(const ChordNote& note) {
-    switch (note.colortype) {
-        case NoteColor::Kick:
-            return note.is2x ? DynamicsRow::Kick2x : DynamicsRow::Kick;
-        case NoteColor::Red:
-            return DynamicsRow::RedSnare;
-        case NoteColor::Yellow:
-            return note.is_cymbal() ? DynamicsRow::YellowCymbal
-                                    : DynamicsRow::YellowTom;
-        case NoteColor::Blue:
-            return note.is_cymbal() ? DynamicsRow::BlueCymbal
-                                    : DynamicsRow::BlueTom;
-        case NoteColor::Green:
-            return note.is_cymbal() ? DynamicsRow::GreenCymbal
-                                    : DynamicsRow::GreenTom;
-    }
-    return DynamicsRow::Kick;  // unreachable
+// The nine rows in DynamicsRow order, each with the notes it holds. Red has
+// no cymbal row: a red note always counts as the snare.
+constexpr DynamicsRowInfo kDynamicsRows[] = {
+    {DynamicsRow::RedSnare,     NoteColor::Red,    false, false},
+    {DynamicsRow::YellowCymbal, NoteColor::Yellow, true,  false},
+    {DynamicsRow::YellowTom,    NoteColor::Yellow, false, false},
+    {DynamicsRow::BlueCymbal,   NoteColor::Blue,   true,  false},
+    {DynamicsRow::BlueTom,      NoteColor::Blue,   false, false},
+    {DynamicsRow::GreenCymbal,  NoteColor::Green,  true,  false},
+    {DynamicsRow::GreenTom,     NoteColor::Green,  false, false},
+    {DynamicsRow::Kick,         NoteColor::Kick,   false, false},
+    {DynamicsRow::Kick2x,       NoteColor::Kick,   false, true},
+};
+static_assert(std::size(kDynamicsRows) == static_cast<size_t>(DynamicsRow::Count),
+              "one table entry per Dynamics row");
+
+constexpr bool rows_in_order() {
+    for (size_t i = 0; i < std::size(kDynamicsRows); ++i)
+        if (static_cast<size_t>(kDynamicsRows[i].row) != i) return false;
+    return true;
+}
+static_assert(rows_in_order(), "the table lists the rows in DynamicsRow order");
+
+// Does this row hold its lane's notes with the lane flag on (lane_flag)?
+constexpr bool row_has_flag(const DynamicsRowInfo& info) {
+    return info.cymbal || info.is2x;
 }
 
 }  // namespace
+
+const DynamicsRowInfo& dynamics_row_info(DynamicsRow r) {
+    return kDynamicsRows[static_cast<size_t>(r)];
+}
+
+DynamicsRow dynamics_row_for(const ChordNote& note) {
+    // A row is a lane with its flag on or off (lane_flag). A flag the lane
+    // cannot carry (a red cymbal, if a chart ever set one) counts as off, so
+    // that note still counts as the snare.
+    const bool flag = lane_allows_flag(note.colortype) && lane_flag(note);
+    for (const DynamicsRowInfo& info : kDynamicsRows)
+        if (info.color == note.colortype && row_has_flag(info) == flag) return info.row;
+    return DynamicsRow::Kick;  // unreachable: every lane has a row
+}
+
+// ---- labels -------------------------------------------------------------
+
+ChordNote dynamics_row_note(DynamicsRow r) {
+    const DynamicsRowInfo& info = dynamics_row_info(r);
+    ChordNote note{info.color};
+    if (row_has_flag(info)) set_lane_flag(note);
+    return note;
+}
+
+std::string dynamics_row_label(DynamicsRow r, bool pro) {
+    if (r == DynamicsRow::Count) return std::string();
+    return note_label(dynamics_row_note(r), pro);
+}
+
+std::string dynamics_kick2x_line(const DynamicsBreakdown& bd) {
+    // Every kick, 2x Bass on or off: the line is a fact about the chart.
+    const int twice = bd.row(DynamicsRow::Kick2x).all();
+    const int total = bd.kicks_total(/*bass2x=*/true).all();
+    return "2x kicks: " + group_thousands(twice) + " of " +
+           counted(total, "kick note", "kick notes") + " (" + dynamics_share(twice, total) + ")";
+}
+
+std::string dynamics_share(int part, int total) {
+    return total > 0 ? format_percent(part, total, 0) : "0%";
+}
 
 DynamicsBreakdown count_dynamics(const Song& song) {
     DynamicsBreakdown bd;
@@ -93,7 +117,7 @@ DynamicsBreakdown count_dynamics(const Song& song) {
 
     for (const SongTimestamp& ts : song.sequence) {
         for (const ChordNote& note : ts.chord.notes()) {
-            DynamicsCounts& c = bd.rows[static_cast<size_t>(row_for(note))];
+            DynamicsCounts& c = bd.rows[static_cast<size_t>(dynamics_row_for(note))];
             switch (note.dynamictype) {
                 case NoteDynamicType::Ghost:  ++c.ghost;  break;
                 case NoteDynamicType::Accent: ++c.accent; break;
@@ -115,60 +139,46 @@ constexpr size_t kRowCount = static_cast<size_t>(DynamicsRow::Count);  // 9
 constexpr size_t kDynamicsBlobSize = 1 + 1 + kRowCount * 3 * 4 + 4 + 4;
 constexpr uint32_t kNoLateTag = 0xFFFFFFFF;
 
-void write_u32_le(std::vector<uint8_t>& out, uint32_t v) {
-    out.push_back(static_cast<uint8_t>(v));
-    out.push_back(static_cast<uint8_t>(v >> 8));
-    out.push_back(static_cast<uint8_t>(v >> 16));
-    out.push_back(static_cast<uint8_t>(v >> 24));
-}
-
-uint32_t read_u32_le(const uint8_t* p) {
-    return static_cast<uint32_t>(p[0]) |
-           (static_cast<uint32_t>(p[1]) << 8) |
-           (static_cast<uint32_t>(p[2]) << 16) |
-           (static_cast<uint32_t>(p[3]) << 24);
-}
-
 }  // namespace
 
+// The numbers go through the store's own codec (store/serialize.h), so the
+// byte order of a stored number is written in one place.
 std::vector<uint8_t> encode_dynamics(const DynamicsBreakdown& b) {
-    std::vector<uint8_t> out;
-    out.reserve(kDynamicsBlobSize);
-    out.push_back(store::kDynamicsBlobStamp.written);
-    out.push_back(b.dynamics_enabled ? 1 : 0);
+    store::BinaryWriter w;
+    w.bytes.reserve(kDynamicsBlobSize);
+    w.u8(store::kDynamicsBlobStamp.written);
+    w.boolean(b.dynamics_enabled);
     for (size_t i = 0; i < kRowCount; ++i) {
-        write_u32_le(out, static_cast<uint32_t>(b.rows[i].ghost));
-        write_u32_le(out, static_cast<uint32_t>(b.rows[i].accent));
-        write_u32_le(out, static_cast<uint32_t>(b.rows[i].normal));
+        w.u32(static_cast<uint32_t>(b.rows[i].ghost));
+        w.u32(static_cast<uint32_t>(b.rows[i].accent));
+        w.u32(static_cast<uint32_t>(b.rows[i].normal));
     }
-    write_u32_le(out, b.late_tag_ms.value_or(kNoLateTag));
-    write_u32_le(out, static_cast<uint32_t>(b.marks_before_tag));
-    return out;
+    w.u32(b.late_tag_ms.value_or(kNoLateTag));
+    w.u32(static_cast<uint32_t>(b.marks_before_tag));
+    return std::move(w.bytes);
 }
 
 std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blob) {
     if (blob.size() < kDynamicsBlobSize) return std::nullopt;
     if (!store::kDynamicsBlobStamp.is_current(blob[0])) return std::nullopt;
 
+    // The size check above means every read below is in range.
+    store::BinaryReader r(blob);
+    r.u8();  // the stamp, checked above
     DynamicsBreakdown b;
-    b.dynamics_enabled = blob[1] != 0;
-    const uint8_t* p = blob.data() + 2;
+    b.dynamics_enabled = r.boolean();
     for (size_t i = 0; i < kRowCount; ++i) {
-        b.rows[i].ghost  = static_cast<int>(read_u32_le(p));      p += 4;
-        b.rows[i].accent = static_cast<int>(read_u32_le(p));      p += 4;
-        b.rows[i].normal = static_cast<int>(read_u32_le(p));      p += 4;
+        b.rows[i].ghost = static_cast<int>(r.u32());
+        b.rows[i].accent = static_cast<int>(r.u32());
+        b.rows[i].normal = static_cast<int>(r.u32());
     }
-    const uint32_t tag_ms = read_u32_le(p);                        p += 4;
+    const uint32_t tag_ms = r.u32();
     if (tag_ms != kNoLateTag) b.late_tag_ms = tag_ms;
-    b.marks_before_tag = static_cast<int>(read_u32_le(p));
+    b.marks_before_tag = static_cast<int>(r.u32());
     return b;
 }
 
 // ---- the cache rules --------------------------------------------------------
-
-std::string dynamics_cache_key(const std::string& notespath, bool pro, Difficulty difficulty) {
-    return notespath + "|" + (pro ? "pro" : "std") + "|" + difficulty_name(difficulty);
-}
 
 store::DynamicsKey dynamics_store_key(const std::string& md5, Difficulty difficulty, bool pro) {
     return store::DynamicsKey{md5, difficulty_name(difficulty), pro};

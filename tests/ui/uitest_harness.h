@@ -74,17 +74,28 @@ struct Harness {
     IDXGISwapChain* swapchain = nullptr;  // attached only
     // Queue a test by name or, when `what` names a file, as a script.
     bool queue(const std::string& what);
-    // Print [PASS]/[FAIL] per run test (+ the log of each failure) to `out`;
-    // returns the failure count.
+    // Print [PASS]/[FAIL] (+ the log of each failure) for every test that has
+    // finished since the last call; returns the failure count of all tests
+    // printed so far. The runner calls it after every frame, so a crash later
+    // in the run still leaves the earlier results on screen.
     int print_results(FILE* out);
+    std::vector<const ImGuiTest*> printed;  // tests print_results has shown
+    int printed_failures = 0;
+    // The test the engine is running now, or nullptr between tests.
+    const ImGuiTest* running_test() const;
     // Stop the engine and drop the app. Must run before ImGui::DestroyContext;
     // shutdown() calls it too (idempotent).
     void stop();
     bool stopped = false;
 };
 
-// Fresh app state for a test: rewrite the scratch INI (song folders =
-// testdata/input, auto-open off), delete the DB, rebuild AppState on those
+// Whether a test name given on the command line picks the test called
+// `test_name`: "all" picks every test, any other name only the test with
+// exactly that name.
+bool selects(const std::string& what, const char* test_name);
+
+// Fresh app state for a test: rewrite the scratch INI from
+// scratch_settings() (tests/scratch_settings.h), delete the DB, rebuild AppState on those
 // paths, and (re)install the headless seams. Call at the start of TestFunc —
 // the GUI thread is parked between frames while TestFunc runs, so swapping
 // the AppState here is safe.
@@ -154,6 +165,11 @@ bool screenshot(ImGuiTestContext* ctx, const std::string& file);
 // ImGuiTestRef ("**/" + escape(title)).
 std::string escape_ref(const std::string& label);
 
+// How wide ImGui draws `s` in `font` (the current font when null), at the
+// size it draws text now: the style's base size times its main and DPI
+// scales. The one place a GUI test measures text.
+float text_width(const char* s, ImFont* font = nullptr);
+
 // ---- the checked-in C++ tests ---------------------------------------------
 
 // One checked-in test: the name --test and --list use, and its body.
@@ -178,7 +194,8 @@ void set_panel_ref(ImGuiTestContext* ctx);
 void open_details(ImGuiTestContext* ctx, size_t index);
 // Type `search` into the library's search box, then open the row titled `title`.
 void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::string& title);
-// "**/Analyze this song" before a result, "**/Re-analyze" after.
+// The ref of the song panel's Analyze button: "**/" and the label
+// hydra::ui::analyze_button_label gives for the viewed record's status.
 std::string analyze_button_ref(Harness& h);
 // Analyze the open song from the panel and wait for a Ready record.
 void analyze_open_song(ImGuiTestContext* ctx);

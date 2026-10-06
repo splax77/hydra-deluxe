@@ -252,7 +252,7 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
     SPSqueeze sqout{SqueezeKind::SqOut, -gap};
     const double r = scales->post.early;
     CHECK(sqout.difficulty() == doctest::Approx(191.0825).epsilon(1e-5));
-    CHECK(sqout.difficulty() / (1.0 + r) == doctest::Approx(96.15).epsilon(1e-3));
+    CHECK(effective_backend_ms(sqout.difficulty(), r) == doctest::Approx(192.308).epsilon(1e-4));
     CHECK(squeeze_budget_ms(r, 85.0) == doctest::Approx(168.92).epsilon(1e-4));
     CHECK(squeeze_budget_ms(r, 70.0) == doctest::Approx(139.11).epsilon(1e-4));
 
@@ -264,11 +264,6 @@ TEST_CASE("field fixture: What's My Age Again? (Sync Chart) SqOut") {
     CHECK(failed < gap);
     CHECK(failed == doctest::Approx(190.76).epsilon(1e-3));
     CHECK(landed > gap);
-
-    // The description keeps the legacy single-hit line.
-    CHECK(sqout.description() == "SqOut: Note timing must be later than 191.1ms.");
-    SPSqueeze easy{SqueezeKind::SqOut, 5.0};
-    CHECK(easy.description() == "SqOut: Note timing must be later than -5.0ms.");
 
     // Stored transfer scales are display-only: difficulty stays the raw gap.
     Activation stamped = act;
@@ -347,10 +342,9 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     double gap = st.timecode(46080).ms() - st.timecode(45960).ms();
     CHECK(gap == doctest::Approx(143.129).epsilon(1e-4));
     const double r = scales->post.early;
-    CHECK(effective_backend_ms(gap, r) ==
-          doctest::Approx(2.0 * gap / (1.0 + r)).epsilon(1e-12));  // ~147.9
     CHECK(effective_backend_ms(gap, r) == doctest::Approx(147.94).epsilon(1e-3));
-    CHECK(gap / (1.0 + r) == doctest::Approx(73.96).epsilon(1e-3));
+    // The budget at this scale for a 70 ms window, pinned from one run.
+    CHECK(squeeze_budget_ms(r, 70.0) == doctest::Approx(135.458).epsilon(1e-4));
     CHECK(74.1 * r + 75.1 > gap);         // the video's successful split
     CHECK(74.1 * 0.890911 + 75.1 < gap);  // the old scale called it a miss
 
@@ -683,6 +677,37 @@ TEST_CASE("timing_tiers: the ladder at W=85 and at W=70") {
     CHECK_FALSE(t70[6].cutoff.has_value());
 }
 
+TEST_CASE("timing_tiers: the Insane+ cutoff is the identity squeeze budget") {
+    // The ladder's top cutoff is the two-hit budget itself, read from its
+    // one owner, not twice the window written again.
+    std::vector<TimingTier> t85 = timing_tiers(kDefaultHitWindowMs);
+    REQUIRE(t85.size() == 7);
+    CHECK(std::string(t85[4].name) == "Insane+");
+    REQUIRE(t85[4].cutoff.has_value());
+    CHECK(*t85[4].cutoff == nominal_budget_ms(kDefaultHitWindowMs));
+    CHECK(*t85[4].cutoff == 170.0);
+
+    std::vector<TimingTier> t70 = timing_tiers(70.0);
+    REQUIRE(t70.size() == 7);
+    REQUIRE(t70[4].cutoff.has_value());
+    CHECK(*t70[4].cutoff == nominal_budget_ms(70.0));
+
+    // Beyond and None still carry no cutoff.
+    CHECK_FALSE(t85[5].cutoff.has_value());
+    CHECK_FALSE(t85[6].cutoff.has_value());
+    CHECK_FALSE(t70[5].cutoff.has_value());
+    CHECK_FALSE(t70[6].cutoff.has_value());
+}
+
+TEST_CASE("effective_backend_ms: the factor of two is the identity budget over the scaled budget") {
+    // At the identity scale the figure is the raw gap: the budget there is
+    // 170.0 ms at the default window, the same as the nominal scale.
+    CHECK(squeeze_budget_ms(1.0, kDefaultHitWindowMs) == 170.0);
+    CHECK(effective_backend_ms(170.0, 1.0) == 170.0);
+    // A scaled row is pinned against the owner in the Dumpweed field
+    // fixture above, at the scale that fixture computes.
+}
+
 TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search graph collects") {
     // The display window IS the search graph's squeeze window (one constant,
     // kSqueezeWindowMs), so nothing the graph gathers gets trimmed at
@@ -828,14 +853,9 @@ TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {
     CHECK(squeeze_budget_ms(1.0, 40.0) == 80.0);
 }
 
-TEST_CASE("beyond_edge_ms: the last finite timing-tier cutoff") {
+TEST_CASE("beyond_edge_ms: pinned at W=85 and W=40") {
     CHECK(beyond_edge_ms(85.0) == 170.0);
     CHECK(beyond_edge_ms(40.0) == 80.0);
-    // It is the tier table's own number, not a second formula.
-    double last = 0.0;
-    for (const TimingTier& t : timing_tiers(85.0))
-        if (t.cutoff) last = *t.cutoff;
-    CHECK(beyond_edge_ms(85.0) == last);
 }
 
 TEST_CASE("rate_activation: an unknown scale rates nothing") {

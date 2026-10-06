@@ -19,8 +19,15 @@ inline constexpr float kMinPathListW = 240.0f;
 inline constexpr float kMaxPathListShare = 0.4f;
 inline constexpr float kMinPathDetailsW = 500.0f;
 inline constexpr float kMinSongPanelW = 820.0f;
+// The library's narrowest width while the song panel is open beside it
+// (library_split_width in library_view.h holds it there).
+inline constexpr float kMinLibraryW = 320.0f;
 
 void render_song_panel(AppState& app);
+
+// The song panel's Analyze button label for a record in this state: the
+// headline, its width sample and the GUI tests.
+const char* analyze_button_label(store::RecordStatus status);
 
 }  // namespace hydra::ui
 

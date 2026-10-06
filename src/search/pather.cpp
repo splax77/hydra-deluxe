@@ -1,6 +1,7 @@
 #include "search/pather.h"
 
 #include <algorithm>
+#include <sstream>
 #include <stdexcept>
 
 #include "search/engine.h"
@@ -41,11 +42,13 @@ std::function<void(float)> scaled_progress(const std::function<void(float)>& cb,
 void attach_allzero(const ScoreGraph& graph, HydraRecord& record,
                     const std::function<void(float)>& on_progress) {
     // Nothing to add when the optimal path is itself an all-0 path that needs
-    // no squeeze timing: it already answers the question, and it is already at
-    // the top of the list.
+    // no timing: it already answers the question, and it is already at the
+    // top of the list. This is the same test search_allzero's paths pass
+    // (Path::is_allzero and Path::needs_timing), so this shortcut and the
+    // display's identity dedupe agree by construction.
     if (!record.paths.empty()) {
         const Path& best = record.best_path();
-        if (best.is_allzero() && best.difficulty().value_or(0.0) <= 0.0) return;
+        if (best.is_allzero() && !best.needs_timing()) return;
     }
     try {
         record.allzero_paths = search_allzero(graph, on_progress);
@@ -59,36 +62,53 @@ void attach_allzero(const ScoreGraph& graph, HydraRecord& record,
 
 }  // namespace
 
+std::string settings_key(const SearchSettings& s) {
+    std::ostringstream k;
+    k.precision(17);
+    k << s.sp_cap << '|';
+    k << static_cast<int>(s.depth_mode) << '|' << s.depth_value << '|';
+    if (s.ms_filter) k << *s.ms_filter;
+    else k << "none";
+    k << '|';
+    k << s.legacy_fill_deadline << '|' << s.rules.fingerprint() << '|';
+    return k.str();
+}
+
+EngineOptions allzero_options() {
+    EngineOptions options;  // score depth 0: only the top score, plus its ties
+    options.no_skips = true;
+    options.no_timing = true;
+    return options;
+}
+
 std::vector<Path> search_allzero(const ScoreGraph& graph,
                                  const std::function<void(float)>& on_progress) {
     // depth_value 0 keeps only the top score; its tied peers still merge into
     // variants (up to Rules::max_tied_paths), which is where the E / + / - variations
-    // of one all-0 path come from. The 0 ms limit keeps the path free of
-    // squeeze timing, so it is fixed here and ignores the user's "Path limit"
-    // setting --
-    // and it is applied hard. The default soft filter only prefers paths inside
-    // the limit and still reports an over-limit one while nothing outscores it,
-    // which in a no-skips search (a tiny candidate set, usually one path per
-    // group) meant the section routinely showed a path needing hundreds of ms.
+    // of one all-0 path come from. The path must need no timing at all
+    // (Path::needs_timing), so the run ignores the user's "Path limit"
+    // setting, and that is a requirement, not a preference. A soft filter
+    // only prefers paths inside the limit and still reports an over-limit one
+    // while nothing outscores it, which in a no-skips search (a tiny candidate
+    // set, usually one path per group) meant the section routinely showed a
+    // path needing hundreds of ms.
     std::vector<Path> paths;
     try {
-        EngineOptions options;  // score depth 0: only the top score, plus its ties
-        options.ms_filter = 0.0;
-        options.no_skips = true;
-        options.hard_ms_filter = true;
-        paths = run_search(graph, options, on_progress);
+        paths = run_search(graph, allzero_options(), on_progress);
     } catch (const std::runtime_error&) {
-        // The hard filter can empty the frontier: this chart offers no all-0
-        // path inside 0 ms. run() reports that the same way it reports a broken
-        // state, so both end here as "no all-0 path". Cancel unwinds through
-        // its own non-std::exception type and still propagates.
+        // The requirement can empty the frontier: this chart offers no all-0
+        // path that needs no timing. run() reports that the same way it
+        // reports a broken state, so both end here as "no all-0 path". Cancel
+        // unwinds through its own non-std::exception type and still propagates.
         return {};
     }
 
-    // A chart can also refuse every activation opportunity (the early
-    // fill can never be summoned in time). The search then returns a single
-    // path with no activations, whose pathstring is empty.
-    if (paths.size() == 1 && !paths[0].has_activations()) paths.clear();
+    // Only all-0 paths stay (Path::is_allzero). That also drops the single
+    // path with no activations the search returns when a chart refuses every
+    // activation opportunity (the early fill can never be summoned in time).
+    paths.erase(std::remove_if(paths.begin(), paths.end(),
+                               [](const Path& p) { return !p.is_allzero(); }),
+                paths.end());
     return paths;
 }
 
@@ -205,9 +225,7 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
     // Built as tall as the main search builds it (decision D45).
     ScoreGraph graph(song,
                      std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
-                     settings.legacy_fill_deadline ? FillDeadlineRule::Ch10
-                                                   : FillDeadlineRule::Ch11,
-                     settings.rules);
+                     fill_rule_for(settings.legacy_fill_deadline), settings.rules);
 
     // The caller named the path, so nothing may prune it: the widest possible
     // points band keeps every survivor, and no timing filter is applied.
@@ -231,7 +249,7 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
 }
 
 int graph_build_cap(int sp_cap, int sp_phrase_count) {
-    return std::min(sp_cap, std::max(sp_phrase_count, 1));
+    return std::max(max_sp_bars(sp_cap, sp_phrase_count), 1);
 }
 
 namespace {
@@ -248,10 +266,7 @@ HydraRecord analyze_at_cap(const Song& song, int sp_cap, DepthMode depth_mode,
                            const std::function<void(float)>& on_progress = {}) {
     std::optional<int> cap = build_cap.has_value() ? build_cap
                                                    : std::optional<int>(sp_cap);
-    ScoreGraph graph(song, cap,
-                     legacy_fills ? FillDeadlineRule::Ch10
-                                  : FillDeadlineRule::Ch11,
-                     rules);
+    ScoreGraph graph(song, cap, fill_rule_for(legacy_fills), rules);
     const bool split = want_allzero && static_cast<bool>(on_progress);
     HydraRecord record = read(
         graph, depth_mode, depth_value, ms_filter,
@@ -270,8 +285,12 @@ HydraRecord analyze_at_cap(const Song& song, int sp_cap, DepthMode depth_mode,
 
 HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
                           const std::function<void(float)>& on_progress) {
+    // Callers check for notes first (require_notes in song.h), because only
+    // they know the difficulty and drum mode the user's sentence names. Reaching
+    // here with an empty song is a caller bug, not a chart problem.
     if (song.is_empty())
-        throw ChartFileError("No drum notes in this chart.");
+        throw std::logic_error("analyze_chart was given a song with no notes; "
+                               "check it with require_notes first");
 
     // One pass at the chosen ceiling, Clone Hero's 4 bars included. The graph
     // is only built as tall as the song has phrases to bank -- no run can

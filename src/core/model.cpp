@@ -1,11 +1,14 @@
 #include "core/model.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <limits>
 
 #include "core/backend_value.h"
+#include "core/scoring.h"  // category_scores, multsqueeze_gain
+#include "core/stars.h"    // score_without_solo
 
 namespace hydra {
 
@@ -36,6 +39,13 @@ std::string dynamic_str(NoteDynamicType t) {
     return "none";
 }
 
+std::string dynamic_label(NoteDynamicType t) {
+    if (t == NoteDynamicType::Normal) return "";
+    std::string word = dynamic_str(t);
+    word[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(word[0])));
+    return word;
+}
+
 std::string color_notationstr(NoteColor c) {
     switch (c) {
         case NoteColor::Kick: return "K";
@@ -47,6 +57,14 @@ std::string color_notationstr(NoteColor c) {
     return "";
 }
 
+std::string note_label(const ChordNote& note, bool pro) {
+    if (note.colortype == NoteColor::Kick) return lane_flag(note) ? "2x kick" : "Kick";
+    const std::string colour = color_str(note.colortype);
+    if (!allows_cymbals(note.colortype)) return pro ? colour + " snare" : colour;  // red
+    if (note.is_cymbal()) return colour + " cymbal";
+    return pro ? colour + " tom" : colour;
+}
+
 // ---- ChordNote ----------------------------------------------------------
 
 bool ChordNote::operator==(const ChordNote& o) const {
@@ -54,28 +72,12 @@ bool ChordNote::operator==(const ChordNote& o) const {
            cymbaltype == o.cymbaltype && is2x == o.is2x;
 }
 
-std::string ChordNote::str() const {
-    std::string cym;
-    if (allows_cymbals(colortype))
-        cym = cymbaltype == NoteCymbalType::Cymbal ? "Cym" : "Tom";
-
-    // Every modifier goes in one parenthesis, dynamic first, so a ghost 2x
-    // kick reads "Kick (Ghost, 2x)".
-    // Every lane carries dynamics, the kick included (ADR 0012).
-    std::vector<std::string> mods;
-    switch (dynamictype) {
-        case NoteDynamicType::Normal: break;
-        case NoteDynamicType::Ghost: mods.push_back("Ghost"); break;
-        case NoteDynamicType::Accent: mods.push_back("Accent"); break;
-    }
-    if (is2x) mods.push_back("2x");
-
-    std::string mod;
-    for (size_t i = 0; i < mods.size(); ++i)
-        mod += (i == 0 ? " (" : ", ") + mods[i];
-    if (!mod.empty()) mod += ")";
-
-    return color_str(colortype) + cym + mod;
+// The note's name (note_label, with the Pro Drums setting `pro`), then a
+// ghost or accent in parentheses, so a ghost 2x kick reads "2x kick (Ghost)".
+// Every lane carries dynamics, the kick included (ADR 0012).
+std::string ChordNote::str(bool pro) const {
+    const std::string word = dynamic_label(dynamictype);
+    return note_label(*this, pro) + (word.empty() ? "" : " (" + word + ")");
 }
 
 int ChordNote::basescore() const {
@@ -86,19 +88,21 @@ int ChordNote::basescore() const {
 
 // ---- Chord: code --------------------------------------------------------
 
-namespace {
-
-// A lane's "upper case" flag: a cymbal on yellow/blue/green, 2x on the kick.
-// Red has neither, so a red note is always lower case.
-bool lane_flag(const ChordNote& note) {
-    return note.colortype == NoteColor::Kick ? note.is2x : note.is_cymbal();
-}
-
 bool lane_allows_flag(NoteColor c) {
     return c == NoteColor::Kick || allows_cymbals(c);
 }
 
-}  // namespace
+void set_lane_flag(ChordNote& note) {
+    if (!lane_allows_flag(note.colortype))
+        throw std::logic_error("set_lane_flag: " + color_str(note.colortype) +
+                               " has no flag");
+    if (note.colortype == NoteColor::Kick) note.is2x = true;
+    else note.cymbaltype = NoteCymbalType::Cymbal;
+}
+
+bool lane_flag(const ChordNote& note) {
+    return note.colortype == NoteColor::Kick ? note.is2x : note.is_cymbal();
+}
 
 std::string Chord::code() const {
     std::string out(5, '.');
@@ -107,11 +111,17 @@ std::string Chord::code() const {
         const ChordNote& note = *notemap_[i];
         // A flag this lane cannot carry (a red cymbal, a 2x pad, a kick
         // cymbal) never comes out of the parsers; spelling it anyway would
-        // read back as a different chord.
-        const bool stray_flag = note.colortype == NoteColor::Kick
-                                    ? note.is_cymbal()
-                                    : note.is2x || (!allows_cymbals(note.colortype) &&
-                                                    note.is_cymbal());
+        // read back as a different chord. The note must be its plain self or
+        // its lane's flagged self (set_lane_flag), nothing else.
+        ChordNote plain = note;
+        plain.is2x = false;
+        plain.cymbaltype = NoteCymbalType::Normal;
+        bool stray_flag = note != plain;
+        if (stray_flag && lane_allows_flag(note.colortype)) {
+            ChordNote flagged = plain;
+            set_lane_flag(flagged);
+            stray_flag = note != flagged;
+        }
         if (stray_flag)
             throw std::logic_error("chord note has a flag its lane cannot carry");
         char ch = note.dynamictype == NoteDynamicType::Ghost    ? 'g'
@@ -144,8 +154,7 @@ Chord Chord::from_code(const std::string& code) {
         if (flag) {
             if (!lane_allows_flag(color))
                 throw std::out_of_range("unknown chord code: " + code);
-            if (color == NoteColor::Kick) note.is2x = true;
-            else note.cymbaltype = NoteCymbalType::Cymbal;
+            set_lane_flag(note);
         }
         chord.insert_note(note);
     }
@@ -195,12 +204,12 @@ int Chord::hands_count() const {
     return at(NoteColor::Kick).has_value() ? count() - 1 : count();
 }
 
-std::string Chord::rowstr() const {
+std::string Chord::rowstr(bool pro) const {
     std::vector<ChordNote> ns = notes();
     std::string inner;
     for (size_t i = 0; i < ns.size(); ++i) {
         if (i) inner += " - ";
-        inner += ns[i].str();
+        inner += ns[i].str(pro);
     }
     return "[" + inner + "]";
 }
@@ -255,8 +264,7 @@ ChordNote& Chord::add_note(NoteColor color) {
 void Chord::insert_note(const ChordNote& note) { at(note.colortype) = note; }
 
 void Chord::add_2x() {
-    add_note(NoteColor::Kick);
-    at(NoteColor::Kick)->is2x = true;
+    set_lane_flag(add_note(NoteColor::Kick));
 }
 
 // A cymbal, ghost or accent marker with no note of its colour under it is a
@@ -291,15 +299,10 @@ const ChordNote& Chord::activation_note() const {
 
 // ---- SPSqueeze ----------------------------------------------------------
 
-std::string SPSqueeze::description() const {
-    char buf[96];
-    if (kind == SqueezeKind::SqIn)
-        std::snprintf(buf, sizeof(buf),
-                      "SqIn: Note timing must be earlier than %.1fms.", timing());
-    else
-        std::snprintf(buf, sizeof(buf),
-                      "SqOut: Note timing must be later than %.1fms.", timing());
-    return buf;
+std::optional<SqueezeKind> squeeze_kind_from_name(std::string_view name) {
+    for (SqueezeKind kind : {SqueezeKind::SqIn, SqueezeKind::SqOut})
+        if (name == SPSqueeze{kind, 0.0}.type_name()) return kind;
+    return std::nullopt;
 }
 
 // ---- BackendSqueeze -----------------------------------------------------
@@ -309,19 +312,31 @@ bool BackendSqueeze::operator==(const BackendSqueeze& o) const {
            sqout_points == o.sqout_points && offset_ms == o.offset_ms;
 }
 
+double BackendSqueeze::offset() const {
+    if (!offset_ms)
+        throw std::logic_error("backend row on tick " + std::to_string(timecode.ticks()) +
+                               " has no offset");
+    return *offset_ms;
+}
+
 std::string BackendSqueeze::summarystr(bool squeezed_out, double hit_window_ms,
                                        double leeway_ms) const {
-    double off = offset_ms.value_or(0.0);
+    const double off = offset();
     const double w = hit_window_ms;
+    const double band = kBackendInnerBandMs;
     if (squeezed_out) {
-        if (off < -w) return "Insane SqOut";
-        if (off < -10) return "Hard SqOut";
-        if (off < 10) return "Standard SqOut";
-        if (off < w) return "Easy SqOut";
-        return "Free SqOut";
+        // A row the engine does not count says so, as the plain rows do
+        // (finding 33): the same test, the same tag.
+        const char* tag = core::counted_without_squeeze(off, leeway_ms) ? "" : " (uncounted)";
+        const char* label = off < -w     ? "Insane SqOut"
+                            : off < -band ? "Hard SqOut"
+                            : off < band  ? "Standard SqOut"
+                            : off < w     ? "Easy SqOut"
+                                          : "Free SqOut";
+        return std::string(label) + tag;
     }
     if (off < -w) return "Free";
-    if (off < -10) return "Easy";
+    if (off < -band) return "Easy";
     // Counted by the engine with no squeeze: the same edge it prices with.
     if (core::counted_without_squeeze(off, leeway_ms)) return "Standard";
     if (off < w) return "Hard (uncounted)";
@@ -335,22 +350,11 @@ MultSqueeze::MultSqueeze(Chord chord, int combo)
     validate();
 }
 
-// A multiplier squeeze is a chord whose notes straddle a to_multiplier step
-// (combos 10, 20, 30): combo_ is the combo before the chord, and note i scores
-// at to_multiplier(combo_ + i). For 2- and 3-note chords, the combo set below
-// plus the mod-10 rule (the last note lands on the step or one past it)
-// accept exactly the straddling chords; the test "MultSqueeze accepts exactly
-// the 2- and 3-note chords that straddle a multiplier step" checks this
-// against to_multiplier. For 4-note chords only combos 7, 17 and 27 are
-// accepted, and 5-note chords never are, although both also straddle from
-// other combos. Why the set stops there is not recorded; it is kept fixed.
+// Every chord of any size whose notes straddle a to_multiplier step counts
+// (D51 call 3, with the user's note that 4- and 5-note chords are valid in
+// Clone Hero, so Hydra must get them right).
 bool MultSqueeze::applies(const Chord& chord, int combo) {
-    switch (combo) {
-        case 7: case 8: case 17: case 18: case 27: case 28: break;
-        default: return false;
-    }
-    const int mod = (chord.count() + combo) % 10;
-    if (mod != 0 && mod != 1) return false;
+    if (!(to_multiplier(combo + 1) < to_multiplier(combo + chord.count()))) return false;
 
     // A chord whose notes are all worth the same has nothing to squeeze.
     const std::vector<ChordNote> notes = chord.notes();
@@ -364,50 +368,90 @@ void MultSqueeze::validate() const {
         throw std::invalid_argument("not a multiplier squeeze at this combo");
 }
 
-int MultSqueeze::multiplier() const { return to_multiplier(combo_) + 1; }
+// The multiplier the last note is paid at when the chord is hit in the best
+// order, read from the payout.
+int MultSqueeze::multiplier() const { return category_scores(chord_, combo_).multiplier_after; }
 
+namespace {
+
+// The notes of a multiplier-squeeze chord the player has to place, read from
+// the payouts: `first` must be hit before the step, `last` past it.
+struct SqueezeAdvice {
+    std::vector<ChordNote> first;
+    std::vector<ChordNote> last;
+};
+
+SqueezeAdvice squeeze_advice(const Chord& chord, int combo) {
+    // In the best order (cheapest first) the notes past the step are the
+    // ones paid at a higher multiplier than the first note.
+    std::vector<CategoryScores> per_note;
+    category_scores(chord, combo, &per_note);
+    const std::vector<ChordNote> best = chord.notes(true);
+    size_t step = 1;
+    while (per_note[step].multiplier == per_note[0].multiplier) ++step;
+    const int dearest_before = best[step - 1].basescore();
+    const int cheapest_past = best[step].basescore();
+
+    // A note cheaper than every note past the step has to stay before it, and
+    // a note dearer than every note before the step has to cross it. A note
+    // worth the value the two sides share can go either way.
+    std::vector<ChordNote> must_stay, must_cross;
+    for (const ChordNote& note : best) {
+        if (note.basescore() < cheapest_past) must_stay.push_back(note);
+        if (note.basescore() > dearest_before) must_cross.push_back(note);
+    }
+    SqueezeAdvice advice;
+    if (must_cross.empty()) {
+        advice.first = must_stay;
+    } else if (must_stay.empty()) {
+        advice.last = must_cross;
+    } else if (dearest_before == cheapest_past) {
+        // Tied notes fill the middle, so both ends need naming.
+        advice.first = must_stay;
+        advice.last = must_cross;
+    } else if (must_stay.size() == 1) {
+        // One note alone before the step: placing it settles the order.
+        advice.first = must_stay;
+    } else {
+        // Otherwise name every note that crosses (D51 call 3).
+        advice.last = must_cross;
+    }
+    return advice;
+}
+
+// "[YellowCym] and [BlueCym]": each note as its own one-note chord, named in
+// the Pro Drums setting's words (Chord::rowstr).
+std::string joined_notes(const std::vector<ChordNote>& notes, bool pro) {
+    std::string joined;
+    for (const ChordNote& note : notes) {
+        Chord one;
+        one.insert_note(note);
+        if (!joined.empty()) joined += " and ";
+        joined += one.rowstr(pro);
+    }
+    return joined;
+}
+
+}  // namespace
+
+// "high" when the advice names notes to hit last, "low" when it names only
+// notes to hit first.
 std::string MultSqueeze::direction() const {
-    return (combo_ % 10 == 7) ? "high" : "low";
+    return squeeze_advice(chord_, combo_).last.empty() ? "low" : "high";
 }
 
-int MultSqueeze::points() const {
-    std::vector<ChordNote> order = chord_.notes(true);
-    return order.back().basescore() - order.front().basescore();
-}
+int MultSqueeze::points() const { return multsqueeze_gain(chord_, combo_); }
 
 std::string MultSqueeze::notationstr() const {
     return std::to_string(multiplier()) + "x";
 }
 
-std::string MultSqueeze::howto() const {
-    // Ports MultSqueeze.guide_chords + .howto: every "edge" note (the note(s)
-    // tied for the highest/lowest basescore, per direction()) is a single-note
-    // chord that alone accomplishes the squeeze when hit last/first.
-    std::vector<ChordNote> ordered = chord_.notes(/*basesorted=*/true);
-    bool high = direction() == "high";
-    // A 3-note chord splits two and one across the step. When only one end
-    // holds a single note, placing that note settles the squeeze from either
-    // side of the step, so name it: Kick + two cymbals is "Hit [Kick] first."
-    // whether the kick is the one left behind or a cymbal is the one carried
-    // over. With three different values the direction decides, as above.
-    if (ordered.size() == 3) {
-        const int lo = ordered[0].basescore();
-        const int mid = ordered[1].basescore();
-        const int hi = ordered[2].basescore();
-        if (lo != mid && mid == hi) high = false;
-        if (lo == mid && mid != hi) high = true;
-    }
-    int edge_score = high ? ordered.back().basescore() : ordered.front().basescore();
-
-    std::string joined;
-    for (const ChordNote& note : ordered) {
-        if (note.basescore() != edge_score) continue;
-        Chord edge;
-        edge.insert_note(note);
-        if (!joined.empty()) joined += " or ";
-        joined += edge.rowstr();
-    }
-    return "Hit " + joined + (high ? " last." : " first.");
+std::string MultSqueeze::howto(bool pro) const {
+    const SqueezeAdvice advice = squeeze_advice(chord_, combo_);
+    if (advice.last.empty()) return "Hit " + joined_notes(advice.first, pro) + " first.";
+    if (advice.first.empty()) return "Hit " + joined_notes(advice.last, pro) + " last.";
+    return "Hit " + joined_notes(advice.first, pro) + " first and " + joined_notes(advice.last, pro) +
+           " last.";
 }
 
 // ---- Activation ---------------------------------------------------------
@@ -422,19 +466,66 @@ std::optional<double> Activation::e_difficulty(bool verbose) const {
     return std::nullopt;
 }
 
-std::optional<double> Activation::difficulty() const {
-    std::vector<double> diffs;
-    for (const SPSqueeze& sq : sqinouts) diffs.push_back(sq.difficulty());
-    if (auto e = e_difficulty()) diffs.push_back(*e);
-    if (diffs.empty()) return std::nullopt;
-    return *std::max_element(diffs.begin(), diffs.end());
+namespace {
+
+// hardest() and badge_timing() in one place; they differ only in whether a
+// free squeeze takes part.
+std::optional<HardestTiming> hardest_part(const Activation& act, bool free_squeezes) {
+    std::optional<HardestTiming> best;
+    // Squeezes first, in list order, and only a strictly larger value takes
+    // over: so a tie keeps the first squeeze, and the fill below must beat
+    // every squeeze to be named.
+    for (const SPSqueeze& sq : act.sqinouts) {
+        if (!free_squeezes && sq.is_free()) continue;
+        const double d = sq.difficulty();
+        if (!best || d > best->ms)
+            best = HardestTiming{sq.kind == SqueezeKind::SqIn ? TimingPart::SqueezeIn
+                                                              : TimingPart::SqueezeOut,
+                                 d};
+    }
+    // Either early fill below counts only when it needs timing.
+    const bool fill_needs_timing = early_fill_needs_timing(act.e_offset);
+    if (const std::optional<double> e = act.e_difficulty(); e && fill_needs_timing) {
+        if (!best || *e > best->ms) best = HardestTiming{TimingPart::EarlyFill, *e};
+    }
+    // The optional early fill of an E activation that skipped fills (D48 Q10).
+    if (!best && fill_needs_timing && act.is_e_critical())
+        best = HardestTiming{TimingPart::EarlyFill, *act.e_difficulty(/*verbose=*/true)};
+    return best;
 }
 
+}  // namespace
+
+std::optional<HardestTiming> Activation::hardest() const {
+    // Only timings that need hitting take part (D51 call 4, D13): a free
+    // squeeze (SPSqueeze::is_free) and an early fill with time to spare
+    // (early_fill_needs_timing) never name the hardest part.
+    return hardest_part(*this, /*free_squeezes=*/false);
+}
+
+std::optional<HardestTiming> Activation::badge_timing() const {
+    // A timing that needs hitting always names the badge. Only when there is
+    // none does a free squeeze get it (D80); fills still follow hardest()'s
+    // rules, so this fallback only ever finds a free squeeze.
+    if (std::optional<HardestTiming> h = hardest()) return h;
+    return hardest_part(*this, /*free_squeezes=*/true);
+}
+
+std::optional<double> Activation::difficulty() const {
+    const std::optional<HardestTiming> h = hardest();
+    if (!h) return std::nullopt;
+    // An optional early fill is never required, so it is not a difficulty.
+    if (h->part == TimingPart::EarlyFill && !is_E0()) return std::nullopt;
+    return h->ms;
+}
+
+// D51 call 4 and D13: hardest() only names a timing that needs hitting, so
+// difficulty() is empty exactly when there is nothing to time.
+bool Activation::needs_timing() const { return difficulty().has_value(); }
+
 bool Activation::is_difficult() const {
-    if (auto e = e_difficulty(); e && *e > kDifficultMs) return true;
-    for (const SPSqueeze& sq : sqinouts)
-        if (sq.is_difficult()) return true;
-    return false;
+    const std::optional<double> d = difficulty();
+    return d && past_difficult_floor(*d);
 }
 
 std::string Activation::notationstr() const {
@@ -446,12 +537,8 @@ std::string Activation::notationstr() const {
 
 std::string Activation::notationstr_verbose() const {
     std::vector<std::string> timings;
-    if (is_e_critical())
-        timings.push_back(
-            std::to_string(static_cast<long long>(*e_difficulty(true))) + " ms");
-    for (const SPSqueeze& sq : sqinouts)
-        timings.push_back(
-            std::to_string(static_cast<long long>(sq.difficulty())) + " ms");
+    if (is_e_critical()) timings.push_back(format_ms_whole(*e_difficulty(true)));
+    for (const SPSqueeze& sq : sqinouts) timings.push_back(format_ms_whole(sq.difficulty()));
 
     if (timings.empty()) return notationstr();
 
@@ -466,20 +553,15 @@ std::string Activation::notationstr_verbose() const {
 // ---- Path ---------------------------------------------------------------
 
 std::vector<Activation> Path::all_activations() const {
-    std::vector<Activation> out;
-    out.reserve(activations.size() + variant_tail.size());
-    out.insert(out.end(), activations.begin(), activations.end());
-    out.insert(out.end(), variant_tail.begin(), variant_tail.end());
-    return out;
+    const ActivationWalk walk = walk_activations();
+    return std::vector<Activation>(walk.begin(), walk.end());
 }
 
-bool Path::has_activations() const {
-    return !activations.empty() || !variant_tail.empty();
-}
+bool Path::has_activations() const { return !walk_activations().empty(); }
 
 int64_t Path::totalscore() const {
-    return score_base + score_combo + score_sp + score_solo + score_accents +
-           score_ghosts;
+    return score_total(score_base, score_combo, score_sp, score_solo, score_accents,
+                       score_ghosts);
 }
 
 std::string Path::pathstring() const {
@@ -500,7 +582,7 @@ std::string Path::pathstring_verbose(const std::vector<MultSqueeze>& multsqueeze
         std::string s;
         for (size_t i = 0; i < multsqueezes.size(); ++i) {
             if (i) s += ", ";
-            s += std::to_string(multsqueezes[i].multiplier()) + "x";
+            s += multsqueezes[i].notationstr();
         }
         sections.push_back(s);
     } else {
@@ -525,6 +607,18 @@ std::string Path::pathstring_verbose(const std::vector<MultSqueeze>& multsqueeze
     for (size_t i = 0; i < sections.size(); ++i) {
         if (i) out += " | ";
         out += sections[i];
+    }
+    return out;
+}
+
+std::string path_identity(const Path& path) {
+    // "score|tick>deact tick ..." with "-" for an activation that has no
+    // deact tick. Only compared, so the form just has to be unambiguous.
+    std::string out = std::to_string(path.totalscore()) + "|";
+    for (const Activation& act : path.walk_activations()) {
+        const std::optional<int64_t> deact = act.deact_tick();
+        out += std::to_string(act.timecode.ticks()) + ">" +
+               (deact ? std::to_string(*deact) : std::string("-")) + " ";
     }
     return out;
 }
@@ -567,9 +661,16 @@ std::optional<double> Path::difficulty() const {
     return best;
 }
 
+// The same activations difficulty() walks (D51 call 4).
+bool Path::needs_timing() const {
+    for (const Activation& act : walk_activations())
+        if (act.needs_timing()) return true;
+    return false;
+}
+
 bool Path::is_difficult() const {
     const std::optional<double> d = difficulty();
-    return d && *d > kDifficultMs;
+    return d && past_difficult_floor(*d);
 }
 
 // ---- the SP-end history's readers -----------------------------------------
@@ -679,27 +780,29 @@ void Activation::set_sqout(int64_t tick) {
                    backends.end());
     sqout_tick = tick;
     const BackendSqueeze* row = sqout_row();
-    if (!row || !row->offset_ms) {
+    // No row on the tick, or a row with no offset (BackendSqueeze::offset
+    // throws): undo the stamp and fail loudly.
+    try {
+        if (!row)
+            throw std::logic_error("set_sqout: no backend row on tick " + std::to_string(tick));
+        sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, row->offset()});
+    } catch (const std::logic_error&) {
         sqout_tick.reset();
-        throw std::logic_error("set_sqout: no backend row with an offset on tick " +
-                               std::to_string(tick));
+        throw;
     }
-    sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, *row->offset_ms});
 }
 
 std::vector<BackendSqueeze> Activation::display_backends() const {
     // Nothing past a squeezed-out note can be a backend: the sqout note is hit
     // after SP has ended, and every later note is hit after that one. The
     // engine's copy-out already drops those rows; this keeps the display
-    // honest for any list that still holds one. Chart order is tick order.
-    auto is_beyond_sqout = [this](const BackendSqueeze& bsq) {
-        return sqout_tick.has_value() && bsq.timecode.ticks() > *sqout_tick;
-    };
-
+    // honest for any list that still holds one. core::sqout_position says
+    // which rows are past it.
     std::vector<BackendSqueeze> out;
     for (const BackendSqueeze& bsq : backends) {
-        if (is_beyond_sqout(bsq)) continue;
-        if (within_squeeze_window(bsq.offset_ms.value_or(0.0)) || is_sqout_backend(bsq))
+        if (core::sqout_position(bsq.timecode.ticks(), sqout_tick) == core::SqOutPosition::After)
+            continue;
+        if (within_squeeze_window(bsq.offset()) || is_sqout_backend(bsq))
             out.push_back(bsq);
     }
     return out;
@@ -718,7 +821,7 @@ int64_t Path::chart_base_score() const {
 }
 
 double Path::avg_mult() const {
-    int64_t multscore = totalscore() - score_solo;
+    const int64_t multscore = score_without_solo(*this);
     int64_t basescore = chart_base_score();
     if (basescore == 0) return 0.0;
     return static_cast<double>(multscore) / static_cast<double>(basescore);
@@ -753,6 +856,10 @@ std::vector<const Path*> HydraRecord::all_allzero_paths() const {
     return flatten_paths(allzero_paths);
 }
 
+bool HydraRecord::is_optimal(const Path& path) const {
+    return !paths.empty() && path.totalscore() == best_path().totalscore();
+}
+
 // ---- helpers ------------------------------------------------------------
 
 std::string group_thousands(int64_t n) {
@@ -771,6 +878,18 @@ std::string group_thousands(int64_t n) {
     std::reverse(out.begin(), out.end());
     if (neg) out = "-" + out;
     return out;
+}
+
+std::string counted(int64_t n, const std::string& one, const std::string& many) {
+    return group_thousands(n) + " " + (n == 1 ? one : many);
+}
+
+const char* has_have(int64_t n) {
+    return n == 1 ? "has" : "have";
+}
+
+std::string format_ms_whole(double ms) {
+    return std::to_string(std::lround(ms)) + " ms";
 }
 
 }  // namespace hydra

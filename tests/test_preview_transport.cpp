@@ -8,13 +8,16 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
+#include "app/preview_view.h"  // scrub_end_ms
 #include "audio/decode.h"
 #include "audio/player.h"
 #include "audio/stem_reader.h"
 #include "audio/stream_mix.h"
+#include "display_fixtures.h"  // audio_tail_chart
 #include "ui/preview_transport.h"
 
 using hydra::audio::DecodedAudio;
@@ -153,6 +156,31 @@ TEST_CASE("tick pauses at the end and pins the time") {
     CHECK(transport.tick() == doctest::Approx(1000.0));
 }
 
+// On a chart whose notes outlast its audio, the playhead pauses itself when
+// the audio runs out while the clock plays on. A jump back used to move the
+// playhead without restarting it: the highway scrolled in silence with the
+// play button lit (finding 73). The clock is the master, so a seek while it
+// plays sets the playhead playing again.
+TEST_CASE("a seek while playing brings the audio back after it ran out") {
+    double t = 0.0;
+    PreviewTransport transport([&] { return t; });
+    auto* playhead = new Playhead(make_ramp(48000));  // 1000 ms
+    transport.load(std::unique_ptr<Playhead>(playhead), 2000.0);
+    transport.play();
+
+    std::vector<float> out(48004 * 2, -1.0f);
+    CHECK(transport.read_frames(out.data(), 48004) == 48000);  // the audio runs out
+    REQUIRE_FALSE(playhead->playing());
+    REQUIRE(transport.playing());  // the notes go on
+
+    transport.seek_ms(500.0);
+    CHECK(playhead->playing());
+    CHECK(playhead->position_ms() == doctest::Approx(500.0));
+    CHECK(transport.read_frames(out.data(), 4) == 4);
+    CHECK(out[0] == doctest::Approx(24000.0f));  // frame 24000, L
+    CHECK(out[1] == doctest::Approx(24000.5f));  // frame 24000, R
+}
+
 TEST_CASE("seek clamps to [0, length]") {
     PreviewTransport transport([] { return 0.0; });
     transport.load(make_playhead(1000.0), 0.0);
@@ -225,6 +253,39 @@ TEST_CASE("an audio offset seeks the playhead ahead of the clock") {
 
     transport.play();
     CHECK(playhead->position_ms() == doctest::Approx(750.0));
+}
+
+// The scrubber's right edge is the song's length (D75). On the audio-tail
+// chart, which states 6000 ms, a drag to that edge seeks to 6000 ms, past the
+// last note at 1000 ms.
+TEST_CASE("scrubber: a drag to the right end seeks to the song's length") {
+    const hydra::test::AudioTailChart c = hydra::test::audio_tail_chart();
+    PreviewTransport transport([] { return 0.0; });
+    transport.load(make_playhead(c.audio_end_ms), c.last_note_ms);
+    CHECK(transport.length_ms() == doctest::Approx(6000.0));  // the tail still plays
+
+    const double right_end = hydra::app::scrub_end_ms(c.audio_end_ms, transport.length_ms());
+    transport.seek_ms(right_end);
+    CHECK(transport.now_ms() == doctest::Approx(6000.0));
+
+    // With no usable song length the edge stays the transport's length.
+    CHECK(hydra::app::scrub_end_ms(0.0, transport.length_ms()) == doctest::Approx(6000.0));
+}
+
+// The transport's audio end comes from audio_end_chart_ms, the owner the load
+// job uses, not from a second copy. The owner is asked about the very kind of
+// audio the transport holds, a Playhead: 2000 ms of audio with chart time 0 at
+// 500 ms ends at 1500 ms both ways.
+TEST_CASE("single-owner: the transport's audio end is audio_end_chart_ms") {
+    const double offset_ms = 500.0;
+    const Playhead same_audio(make_ramp(96000));  // 2000 ms
+    const std::optional<double> owner = hydra::audio::audio_end_chart_ms(same_audio, offset_ms);
+    REQUIRE(owner.has_value());
+    CHECK(*owner == doctest::Approx(1500.0));
+
+    PreviewTransport transport([] { return 0.0; });
+    transport.load(std::make_unique<Playhead>(make_ramp(96000)), 0.0, offset_ms);
+    CHECK(transport.length_ms() == *owner);
 }
 
 TEST_CASE("load with no audio offset behaves exactly as before") {

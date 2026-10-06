@@ -37,6 +37,11 @@ struct TextLine {
 std::string format_measure(const SongTiming& timing, int64_t tick);
 // The same for a Timecode that is already resolved, such as an activation's.
 std::string format_measure(const Timecode& tc);
+// Just the measure, as the timeline's two ends print it: "m96".
+// format_measure builds on it.
+std::string measure_label(const Timecode& tc);
+// The first measure in format_measure's form, for a screen with no timing.
+std::string first_measure_label();
 
 // ---- stored-result panel --------------------------------------------------
 
@@ -79,7 +84,7 @@ struct ActivationRowView {
     int number = 0;              // 1-based; the row's ##act<number> id
     std::string notation;        // Activation::notationstr(), e.g. "3-"
     std::string measure;         // format_measure of the activation, e.g. "m32.1.0"
-    int sp_bars = 0;             // bars of SP the activation spends
+    int sp_bars = 0;             // bars banked when you activate
     std::string bars;            // "3 bars" / "1 bar"
     std::string badge;           // activation_badge(); empty = no badge
     bool difficult = false;      // Activation::is_difficult(): badge and sentences warn-coloured
@@ -88,7 +93,7 @@ struct ActivationRowView {
     std::optional<double> song_fraction;
 
     // The opened row.
-    std::string chord;           // Chord::rowstr(), e.g. "[Kick - GreenCym]"
+    std::string chord;           // Chord::rowstr(pro_drums), e.g. "[Kick - Green cymbal]"
     std::string early_fill;      // "Early fill: " + format_ms(positive = early); empty when not E-critical
     std::vector<TextLine> squeeze_sentences;  // one per SqIn/SqOut, see squeeze_sentences()
     std::string scale_warning;  // the transfer-scale line; empty when every scale prints x1.00
@@ -103,33 +108,48 @@ struct ActivationsView {
     // Beside the "Activations" heading: "3 · no SP left over".
     // Empty when the path has no activations.
     std::string summary;
-    // The timeline's right-hand label, "m96": the measure the song's length
-    // falls in. Empty when there is no timeline (no timing or no length).
+    // The timeline's two labels, measure_label of the song's first tick and
+    // of the tick its length falls on ("m1" and "m96"). Both empty when there
+    // is no timeline (no timing or no length).
+    std::string timeline_start;
     std::string timeline_end;
 };
+
+// The ImGui id of activation `number`'s backend table, given its three fixed
+// column widths in whole pixels (render_backend_table in ui/paths_tab.cpp says
+// why the widths are in it). The GUI test finds the table by the same call.
+std::string backend_table_id(int number, int w_timing, int w_chord, int w_points);
 
 // `timing` may be null (no songmeta row): the stored transfer scales are used
 // (see rate_activation).
 // `backend_limit_ms` hides backend rows beyond +/- that many ms, squeezed-out
 // rows excepted; nullopt (the default) shows every stored row.
-// `song_length_ms` is the chart's length for the timeline; with it and a
-// `timing`, every row gets its song_fraction and the view its timeline_end.
+// `song_length_ms` is the song's length (RecordLookup::song_length_ms);
+// with it and a `timing`, every row gets its song_fraction and the view its
+// timeline_end. With none there is no timeline.
+// `pro_drums` is the Pro Drums setting the record was analyzed with; the
+// chord rows name their notes in its words (note_label).
 ActivationsView build_activations(const Path& path, const HydraRecord& record,
                                   const SongTiming* timing,
                                   double hit_window_ms,
                                   std::optional<double> backend_limit_ms = std::nullopt,
                                   const core::Rules& rules = core::default_rules(),
-                                  std::optional<double> song_length_ms = std::nullopt);
+                                  std::optional<double> song_length_ms = std::nullopt,
+                                  bool pro_drums = true);
 
-// The badge on an activation row. It shows when the activation needs a
-// squeeze, which is when Activation::difficulty() has a value: a SqIn, a
-// SqOut, or a required (E0) early fill. It names the hardest of them,
-// the one difficulty() reports, in whole ms: "squeeze out 163 ms",
-// "squeeze in 12 ms", "early fill 30 ms". With none of those, an optional
-// early fill (an E activation that skips fills) still gets one, same
-// wording; is_difficult() ignores it, so it is never warn-coloured. Empty
-// otherwise.
+// The badge on an activation row: Activation::badge_timing() worded, with its
+// ms whole and rounded to nearest (format_ms_whole): "squeeze out 163 ms",
+// "squeeze in 13 ms" for 12.6, "early fill 30 ms". A squeeze tied with a
+// fill is named. An optional early fill (an E activation that skips fills)
+// gets one too when nothing else does; is_difficult() ignores it, so it is
+// never warn-coloured. A free squeeze gets one when nothing needs timing,
+// with its figure 0 or less ("squeeze in -316 ms", D80), never
+// warn-coloured either. Empty when badge_timing() has nothing.
 std::string activation_badge(const Activation& act);
+
+// The longest text activation_badge can return, for laying out a row that
+// must fit any badge. path_view.cpp says why it is the longest.
+std::string longest_activation_badge();
 
 // One plain sentence per SqIn/SqOut of `act`, in its order, warn-coloured when
 // that squeeze is difficult. `squeezed_out` is the backend row the rating
@@ -169,10 +189,11 @@ struct PathListView {
     // Groups in traversal order.
     std::vector<PathGroupView> groups;
 
-    // The all-0 section: shown only when the generated list does not already
-    // contain that path (same score AND same notation).
+    // The all-0 section: the all-0 paths the generated list does not already
+    // contain (path_identity); a duplicate hides only itself (D51 call 4b).
+    // Shown when any survive.
     bool show_allzero = false;
-    std::string allzero_label;  // score, plus the delta against optimal
+    std::string allzero_label;  // the first survivor's score
     std::vector<const Path*> allzero;
 };
 // Pointers into `record`; valid until the record is modified or moved.
@@ -191,8 +212,10 @@ struct PathButtonView {
     // empty when the path needs no timing.
     std::string timing;
     bool timing_warn = false;  // Path::is_difficult()
-    // The line under the title: "2,360 below optimal" on the all-0 path,
-    // else empty.
+    // The line under the title: "2,360 below optimal" on the all-0 path;
+    // on every path of a record whose cap is below kSpActivationBars
+    // (core/timing.h), "A 1-bar cap can never activate Star Power."; else
+    // empty.
     std::string detail;
 };
 
@@ -201,17 +224,24 @@ struct PathButtonsView {
     // (every path tied at the best score), then the rest of the generated
     // list, then the all-0 path when build_path_list shows it.
     std::vector<PathButtonView> buttons;
-    std::string within_label;  // the heading over the Within group
+    // The heading over the Within group: "Within 2 scores", "Within 1 score",
+    // "Within 5,000 points".
+    std::string within_label;
 };
-
-// The heading over the non-optimal paths: "Within 2 scores", "Within 1 score",
-// "Within 5,000 points". depth_mode 0 is scores, 1 is points (Settings).
-std::string within_label(int depth_mode, int depth_value);
 
 // Pointers into `record`, like build_path_list's. The viewed record is always
 // the one stored under the current Score range (records are keyed by it), so
-// the caller passes the current Settings::depth_mode and depth_value.
+// the caller passes the current Settings::depth_mode and depth_value; the
+// int is read through Settings::search_depth_mode.
 PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, int depth_value);
+
+// The ImGui id of one item in the Preview's path picker: its shown `label`,
+// then "##" and its place in build_path_buttons' list. The suffix keeps two
+// paths with the same notation apart. The Preview picker and its GUI test
+// both build ids here, so a test finds the item the tab drew.
+inline std::string path_item_id(const std::string& label, size_t index) {
+    return label + "##" + std::to_string(index);
+}
 
 // What the Paths tab has unfolded, and a pending "Show in Preview". Kept on
 // AppState through PathsTabCache::ui(), so it dies with the app state.
@@ -259,7 +289,8 @@ public:
     const Details& details(const Path& path, const HydraRecord& record, int record_generation,
                            const SongTiming* timing, double hit_window_ms,
                            std::optional<double> backend_limit_ms, const core::Rules& rules,
-                           std::optional<double> song_length_ms = std::nullopt);
+                           std::optional<double> song_length_ms = std::nullopt,
+                           bool pro_drums = true);
     // The path list as buttons, rebuilt when the record or the score range moves.
     const PathButtonsView& buttons(const HydraRecord& record, int record_generation,
                                    int depth_mode, int depth_value);
@@ -282,6 +313,7 @@ private:
     double details_hit_window_ms_ = 0.0;
     std::optional<double> details_backend_limit_ms_;
     std::optional<double> details_song_length_ms_;
+    bool details_pro_drums_ = true;
     Details details_;
     int details_builds_ = 0;
 

@@ -10,6 +10,8 @@
 #include <deque>
 #include <map>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -42,6 +44,42 @@ inline const char* engine_mode_stamp(FillDeadlineRule rule) {
     return rule == FillDeadlineRule::Ch10 ? "ch10" : "ch11";
 }
 
+// The one reading of a legacy_fills flag (a setting, a Lens or a command-line
+// switch): on is the Clone Hero 1.0 rule, off the normal 1.1 rule.
+inline FillDeadlineRule fill_rule_for(bool legacy_fills) {
+    return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;
+}
+
+// engine_mode_stamp read backwards: the rule a database's stamp names, or
+// nothing for a stamp neither rule writes.
+inline std::optional<FillDeadlineRule> fill_rule_from_stamp(std::string_view stamp) {
+    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
+        if (stamp == engine_mode_stamp(rule)) return rule;
+    return std::nullopt;
+}
+
+// How a fill rule's name is written: Long in sentences and labels, Short in
+// narrow table columns (D48, Q13).
+enum class FillRuleNameStyle { Long, Short };
+
+// The one name of each fill rule wherever it is shown: "Clone Hero 1.0" or
+// "Clone Hero 1.1", and "CH 1.0" or "CH 1.1" in the short style. The "1.0
+// fills" checkbox keeps its own label (docs/adr/0010).
+inline const char* fill_rule_name(FillDeadlineRule rule, FillRuleNameStyle style) {
+    const bool is_short = style == FillRuleNameStyle::Short;
+    if (rule == FillDeadlineRule::Ch10) return is_short ? "CH 1.0" : "Clone Hero 1.0";
+    return is_short ? "CH 1.1" : "Clone Hero 1.1";
+}
+
+// One sentence saying when each rule's fill deadline falls, in the words the
+// fill comparison report's footer uses.
+inline std::string fill_rule_description(FillDeadlineRule rule) {
+    const std::string name = fill_rule_name(rule, FillRuleNameStyle::Long);
+    return rule == FillDeadlineRule::Ch10
+               ? name + " gave you until about one fill-length before the fill."
+               : name + " made it a flat 4 beats.";
+}
+
 // The latest a player's SP may become ready and still have this fill spawn.
 // `fill_end_tick` is the fill marker's end; `fill_length_ticks` its length.
 double activation_fill_deadline_ms(const SongTiming& timing,
@@ -49,17 +87,28 @@ double activation_fill_deadline_ms(const SongTiming& timing,
                                    int64_t fill_length_ticks,
                                    FillDeadlineRule rule);
 
+// How many SP bars the meter can hold on a song: its phrase count, held under
+// the SP meter cap when there is one (unset: uncapped). ScoreGraph's own
+// meter and the pather's graph_build_cap both read it (audit finding 260).
+int max_sp_bars(std::optional<int> sp_meter_cap, int sp_phrase_count);
+
 struct ScoreGraphEdge;
 
 // Where one pending SP end moves when a phrase is collected: +2 measures,
 // unless the SP cap's ceiling (2 * cap measures past the collecting note) is
 // earlier. `clamped` says the ceiling won -- the end is now pinned to the
 // collecting note, not to whatever anchored it before. The deactivation edge
-// asks extend_deacts for the same answer when it prices a squeeze, so the two
-// never disagree (finding 37).
+// asks extend_deacts for the same answer when it prices a squeeze-in, so the
+// two never disagree (finding 37).
 struct SpExtension {
     int64_t to_tick = 0;
     bool clamped = false;
+    // The end it moved from holds the collecting phrase in its squeeze
+    // window, so the graph keeps that end as a node (ScoreGraph::build) and
+    // its deactivation edge lists the phrase. Only there can a squeeze-out
+    // give this phrase back (D36): the engine copies the answer into the
+    // step it writes (EndNode::sqout_at) and never re-derives it.
+    bool sqout_node = false;
 };
 
 // One phrase chord an SP end can squeeze in or out, as its deactivation edge
@@ -69,24 +118,15 @@ struct SqueezeChoice {
     // The chord's ms minus the SP end's ms: what the search ranks by and the
     // record shows.
     double timing = 0.0;
-    // The path end this chord is a choice for. A chord at or before the SP
-    // end was collected while SP ran, which moved the end where
-    // extend_deacts says (one bar on, or the cap's ceiling), so it is a
-    // choice for a path whose end is that moved end. A chord after the end
-    // is a choice for a path whose end is the end itself, and only a late
-    // squeeze-in reaches it.
-    Timecode sqout_time;
-    // Where a squeeze-in on this chord leaves the SP end: extend_deacts'
-    // answer for this end and this chord, the same one the chord's own
-    // advance edge carries (finding 37).
-    Timecode sqin_time;
-    // The cap's ceiling, not the plain bar, set sqin_time (and sqout_time for
-    // a chord at or before the end): the chord filled the meter. A clamped
-    // end is the same tick whichever end the chord moved, so the engine also
-    // checks where the path's end came from (Engine::deactivation_type,
-    // finding 37). Never
-    // set on a late chord: it sits after the end, so its ceiling is too.
-    bool clamped = false;
+    // A late chord only: where a squeeze-in on it leaves the SP end,
+    // extend_deacts' answer for this end and this chord (finding 37). An
+    // early chord has none: its squeeze-in keeps the end its own step
+    // already moved (SpExtension::to_tick, D36).
+    std::optional<Timecode> sqin_time;
+    // After the SP end (core::after_sp_end). Which chord a path is offered,
+    // early or late, is core::offered_phrase's answer (D36): an early chord
+    // only to the path whose newest step moved its end from here, a late one
+    // only to a path whose end is here.
     bool late = false;
 };
 
@@ -101,7 +141,6 @@ struct ScoreGraphNode {
 struct ScoreGraphEdge {
     ScoreGraphNode* dest = nullptr;
 
-    int64_t notecount = 0;
     int64_t basescore = 0;
     int64_t comboscore = 0;
     int64_t spscore = 0;
@@ -130,9 +169,8 @@ struct ScoreGraphEdge {
 
     // Deactivation edges only: every phrase chord in this SP end's squeeze
     // window, in chart order (core::squeeze_window_phrases). The engine
-    // offers a path the first one its running window can still squeeze
-    // (core::offered_phrase); the rest wait behind it.
-    // Each choice carries where a squeeze-in on it moves this SP end
+    // offers a path at most one of them (core::offered_phrase, D36).
+    // Each late choice carries where a squeeze-in on it moves this SP end
     // (SqueezeChoice::sqin_time): under a cap it depends on the chord.
     std::vector<SqueezeChoice> squeeze_choices;
 };
@@ -151,6 +189,9 @@ public:
     std::optional<int> sp_meter_cap() const { return sp_meter_cap_; }
     const core::Rules& rules() const { return rules_; }
     const SongTiming& timing() const { return song_.timing(); }
+    // The chart's note total, Song::note_count. Every path covers the whole
+    // chart, so the engine stores this one number on each.
+    int note_count() const { return song_.note_count(); }
     // The chart's multiplier squeezes, in chart order. One list: the combo
     // that decides them never depends on the path.
     const std::vector<MultSqueeze>& multsqueezes() const { return multsqueezes_; }
@@ -170,7 +211,6 @@ private:
     // Graph construction.
     void build();
 
-    void store_notecount(int64_t count);
     void store_soloscore(int64_t points);
     void store_basescore(int64_t points);
     void store_comboscore(int64_t points);

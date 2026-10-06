@@ -18,6 +18,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "core/little_endian.h"
 #include "core/model.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -68,20 +69,6 @@ const CodecFixture& fixture() {
     return f;
 }
 
-// First field where two summaries differ, empty when equal.
-std::string diff_summary(const PathSummary& a, const PathSummary& b) {
-    if (a.score != b.score) return "score";
-    if (a.actcount != b.actcount) return "actcount";
-    if (a.maxskip != b.maxskip) return "maxskip";
-    if (a.hardest_ms != b.hardest_ms) return "hardest_ms";
-    if (a.avgmult != b.avgmult) return "avgmult";
-    if (a.notecount != b.notecount) return "notecount";
-    if (a.sqin_count != b.sqin_count) return "sqin_count";
-    if (a.sqout_count != b.sqout_count) return "sqout_count";
-    if (a.pathcount != b.pathcount) return "pathcount";
-    return "";
-}
-
 // Every distinct node payload in a record, counted independently of the
 // codec's own dedup bookkeeping.
 void collect_payloads(const Path& path, std::unordered_set<std::string>& out) {
@@ -125,7 +112,7 @@ TEST_CASE("path codec: a rebuilt record flattens to the same bytes") {
     CHECK(back.all_allzero_paths().size() == rec.all_allzero_paths().size());
     CHECK(pathstrings(back.all_paths()) == pathstrings(rec.all_paths()));
     CHECK(pathstrings(back.all_allzero_paths()) == pathstrings(rec.all_allzero_paths()));
-    CHECK(diff_summary(summarize_record(back), summarize_record(rec)) == "");
+    CHECK(summarize_record(back) == summarize_record(rec));
 
     // Every path, variants included, carries its root's score totals and
     // note count again after prepare_variants pushes them down. A variant's
@@ -257,17 +244,38 @@ TEST_CASE("path codec: node payloads are flat and content-addressed") {
 
     // A malformed payload is refused, not misread.
     std::vector<uint8_t> bad_version = payload;
-    bad_version[0] = static_cast<uint8_t>(kPathFormatStamp.written + 1);
+    bad_version[kPathFormatOffset] = static_cast<uint8_t>(kPathFormatStamp.written + 1);
     CHECK_THROWS_AS(decode_path_node(bad_version), SerializeError);
     std::vector<uint8_t> truncated(payload.begin(), payload.begin() + 6);
     CHECK_THROWS_AS(decode_path_node(truncated), SerializeError);
+}
+
+TEST_CASE("path codec: the structure head is the format, then the rules fingerprint") {
+    // Finding 194: the layout the store's SQL and C++ reads are spelled from.
+    CHECK(kPathFormatOffset == 0);
+    CHECK(kPathFormatBytes == 4);
+    CHECK(kRulesFingerprintOffset == 4);
+    CHECK(kRulesFingerprintBytes == 8);
+    CHECK(kStructureHeadBytes == 12);
+
+    const HydraRecord& rec = fixture().record;
+    const std::vector<uint8_t> structure = flatten_record(rec).structure;
+    const std::optional<StructureHead> head = read_structure_head(structure);
+    REQUIRE(head.has_value());
+    CHECK(head->path_format == kPathFormatStamp.written);
+    CHECK(head->rules_fingerprint == rec.rules_fingerprint);
+
+    // The first four bytes, little-endian, are format 7.
+    CHECK(core::read_le_u32(structure.data()) == 7);
+
+    CHECK_FALSE(read_structure_head({structure[0], structure[1], structure[2]}).has_value());
 }
 
 // Only the current node layout is read. A node from an older layout is
 // reachable only through an older structure, which the store never decodes.
 TEST_CASE("path codec: a node in an older layout is rejected") {
     std::vector<uint8_t> old = encode_path_node(fixture().record.best_path());
-    old[0] = 5;  // the 1.8.1 node layout
+    old[kPathFormatOffset] = 5;  // the 1.8.1 node layout
     CHECK_THROWS_AS(decode_path_node(old), SerializeError);
 }
 
@@ -314,44 +322,44 @@ TEST_CASE("path codec: a missing node or a bad structure blob throws") {
 
     // A structure blob from another format version, and a truncated one.
     FlatRecord future = flat;
-    future.structure[0] = static_cast<uint8_t>(kPathFormatStamp.written + 1);
+    future.structure[kPathFormatOffset] = static_cast<uint8_t>(kPathFormatStamp.written + 1);
     CHECK_THROWS_AS(rebuild_record(future), SerializeError);
 
     // Versions 1, 2 and 3 are real old versions, not just "some other
     // number": the structure format was bumped through 1 -> 2 -> 3 -> 4, and
     // the old layouts are refused the same as any unknown one.
     FlatRecord past1 = flat;
-    past1.structure[0] = 1;
+    past1.structure[kPathFormatOffset] = 1;
     CHECK_THROWS_AS(rebuild_record(past1), SerializeError);
 
     FlatRecord past2 = flat;
-    past2.structure[0] = 2;
+    past2.structure[kPathFormatOffset] = 2;
     CHECK_THROWS_AS(rebuild_record(past2), SerializeError);
 
     FlatRecord past3 = flat;
-    past3.structure[0] = 3;
+    past3.structure[kPathFormatOffset] = 3;
     CHECK_THROWS_AS(rebuild_record(past3), SerializeError);
 
     // Version 4 carried the old lookup-table chord codes.
     FlatRecord past4 = flat;
-    past4.structure[0] = 4;
+    past4.structure[kPathFormatOffset] = 4;
     CHECK_THROWS_AS(rebuild_record(past4), SerializeError);
 
     // Version 5 is the 1.8.1 layout: per-path squeezes and totals in nodes.
     FlatRecord past5 = flat;
-    past5.structure[0] = 5;
+    past5.structure[kPathFormatOffset] = 5;
     CHECK_THROWS_AS(rebuild_record(past5), SerializeError);
 
     // Version 6 is the 2.0.0 layout: no SP-end history, bank or fill lists.
     FlatRecord past6 = flat;
-    past6.structure[0] = 6;
+    past6.structure[kPathFormatOffset] = 6;
     CHECK_THROWS_AS(rebuild_record(past6), SerializeError);
 
     // The current version is 7, and the unmodified flat record -- still at
     // that version -- round-trips through rebuild_record without throwing,
     // rules fingerprint included.
     CHECK(kPathFormatStamp.written == 7);
-    CHECK(flat.structure[0] == static_cast<uint8_t>(kPathFormatStamp.written));
+    CHECK(flat.structure[kPathFormatOffset] == static_cast<uint8_t>(kPathFormatStamp.written));
     HydraRecord rebuilt = rebuild_record(flat);
     CHECK(rebuilt.rules_fingerprint == rec.rules_fingerprint);
     CHECK(rebuilt.paths.size() == rec.paths.size());

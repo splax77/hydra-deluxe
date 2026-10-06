@@ -10,15 +10,19 @@
 #include "imgui_impl_win32.h"
 #include "imgui_impl_dx11.h"
 #include <d3d11.h>
+#include <shellscalingapi.h>  // MONITOR_DPI_TYPE only; GetDpiForMonitor is loaded at run time
 #include <shobjidl.h>
 #include <tchar.h>
 
 #include <cstdio>
+#include <exception>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "app/config.h"
+#include "app/user_messages.h"
 #include "core/version.h"
 #include "core/winstr.h"
 #include "ui/resource.h"
@@ -43,7 +47,7 @@ static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 // Set by WM_DPICHANGED, applied by the frame loop before the next frame.
 static float                    g_PendingUiScale = 0.0f;
 
-bool CreateDeviceD3D(HWND hWnd);
+HRESULT CreateDeviceD3D(HWND hWnd);
 void CleanupDeviceD3D();
 void CreateRenderTarget();
 void CleanupRenderTarget();
@@ -68,6 +72,31 @@ static std::vector<hydra::ui::ScreenRect> monitor_work_areas()
     return areas;
 }
 
+// A monitor's DPI, read the way the ImGui Win32 backend reads it. Windows 8.1
+// and later answer through GetDpiForMonitor in shcore.dll, loaded at run time
+// because Hydra does not link Shcore.lib. Older Windows has no per-monitor
+// DPI, so the screen's LOGPIXELSX answers instead. 0 means no reading, which
+// ui_scale_for_dpi turns into the unscaled 1.0.
+static unsigned monitor_dpi(HMONITOR monitor)
+{
+    using GetDpiForMonitorFn = HRESULT(WINAPI*)(HMONITOR, MONITOR_DPI_TYPE, UINT*, UINT*);
+    static const GetDpiForMonitorFn get_dpi = [] {
+        const HMODULE shcore = ::LoadLibraryW(L"shcore.dll");
+        return shcore ? reinterpret_cast<GetDpiForMonitorFn>(
+                            ::GetProcAddress(shcore, "GetDpiForMonitor"))
+                      : nullptr;
+    }();
+    if (get_dpi)
+    {
+        UINT x = 0, y = 0;
+        return SUCCEEDED(get_dpi(monitor, MDT_EFFECTIVE_DPI, &x, &y)) ? x : 0;
+    }
+    const HDC dc = ::GetDC(nullptr);
+    const int dpi = dc ? ::GetDeviceCaps(dc, LOGPIXELSX) : 0;
+    if (dc) ::ReleaseDC(nullptr, dc);
+    return dpi > 0 ? static_cast<unsigned>(dpi) : 0;
+}
+
 // Keeps the remembered placement current as the user moves, resizes,
 // maximizes and restores the window. The un-maximized rectangle is read only
 // while the window is neither maximized nor minimized, so a Hydra closed
@@ -87,6 +116,25 @@ static void note_window_placement(HWND hWnd)
     hydra::ui::remember_window_placement(p);
 }
 
+// Why Hydra can't start, in a Windows message box over `owner` (null until
+// the window exists): the plain sentence with the raw text under it (D72
+// item 1).
+static void show_startup_error(HWND owner, const std::exception& e)
+{
+    const std::wstring text = hydra::utf8_to_wide(hydra::app::plain_error_block(e));
+    ::MessageBoxW(owner, text.c_str(), hydra::kWindowTitleW, MB_OK | MB_ICONERROR);
+}
+
+// The raw text for a Win32, Direct3D or ImGui backend call that failed at
+// startup. It carries no error kind, so the box reads the fallback sentence.
+static std::runtime_error startup_call_failed(const char* call, const char* code_name,
+                                              unsigned long code)
+{
+    char text[128];
+    std::snprintf(text, sizeof(text), "%s failed (%s 0x%08lX)", call, code_name, code);
+    return std::runtime_error(text);
+}
+
 int main()
 {
     // --uitest <what> [--uitest-log <file>]; everything else is ignored.
@@ -103,8 +151,8 @@ int main()
 
     // Make the process DPI aware and read the primary monitor's scale.
     ImGui_ImplWin32_EnableDpiAwareness();
-    float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(
-        ::MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY));
+    const float main_scale = hydra::ui::ui_scale_for_dpi(
+        monitor_dpi(::MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY)));
 
     // An explicit taskbar identity, so pins survive a reinstall to a new path.
     ::SetCurrentProcessExplicitAppUserModelID(hydra::kAppUserModelIDW);
@@ -148,13 +196,31 @@ int main()
         wc.lpszClassName, hydra::kWindowTitleW, WS_OVERLAPPEDWINDOW, rect.left, rect.top,
         rect.width(), rect.height(), nullptr, nullptr, wc.hInstance, nullptr);
 
-    if (!CreateDeviceD3D(hwnd))
+    // Undoes what startup has stood up so far. The normal exit and a failed
+    // startup both end here, so the two can't drift apart.
+    bool win32_backend_up = false, dx11_backend_up = false;
+    auto tear_down = [&]
     {
-        CleanupDeviceD3D();
+        if (dx11_backend_up) ImGui_ImplDX11_Shutdown();
+        if (win32_backend_up) ImGui_ImplWin32_Shutdown();
         hydra::ui::shutdown_imgui();
+        CleanupDeviceD3D();
+        if (hwnd) ::DestroyWindow(hwnd);
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
+    };
+    // A startup step that fails shows why, tears down, and Hydra closes.
+    auto fail_startup = [&](const std::exception& e)
+    {
+        show_startup_error(hwnd, e);
+        tear_down();
         return 1;
-    }
+    };
+
+    if (!hwnd)
+        return fail_startup(startup_call_failed("CreateWindowW", "error", ::GetLastError()));
+    if (const HRESULT hr = CreateDeviceD3D(hwnd); hr != S_OK)
+        return fail_startup(startup_call_failed("D3D11CreateDeviceAndSwapChain", "HRESULT",
+                                                static_cast<unsigned long>(hr)));
 
     // Song-info icons (record/star/pencil/hash), matching hydra_app.py's
     // dpg.add_static_texture loads. Best-effort: see icons.h.
@@ -170,14 +236,20 @@ int main()
 
     // setup_imgui assumed the primary monitor's scale. A window reopened on
     // another monitor may need a different one.
-    const float window_scale = ImGui_ImplWin32_GetDpiScaleForHwnd(hwnd);
-    if (window_scale > 0.0f && window_scale != main_scale)
+    const float window_scale = hydra::ui::ui_scale_for_dpi(
+        monitor_dpi(::MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)));
+    if (window_scale != main_scale)
         hydra::ui::set_ui_scale(window_scale);
 
-    ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+    win32_backend_up = ImGui_ImplWin32_Init(hwnd);
+    if (!win32_backend_up)
+        return fail_startup(startup_call_failed("ImGui_ImplWin32_Init", "error", ::GetLastError()));
+    dx11_backend_up = ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
+    if (!dx11_backend_up)
+        return fail_startup(startup_call_failed("ImGui_ImplDX11_Init", "error", ::GetLastError()));
 
-    const ImVec4 clear_color = ImVec4(0.10f, 0.11f, 0.13f, 1.00f);
+    const ImVec4 clear_color = ImVec4(hydra::ui::kClearColor[0], hydra::ui::kClearColor[1],
+                                      hydra::ui::kClearColor[2], hydra::ui::kClearColor[3]);
 
     // The app state. Normally built here; under --uitest the harness owns it
     // (each test starts from a fresh scratch library) and the frame loop
@@ -192,7 +264,7 @@ int main()
         // All runner output (results, dump/state text) goes to the log file:
         // a GUI-subsystem exe has no console. Opened shareable so it can be
         // read (tail -f) while the window is still up.
-        if (uitest_log.empty()) uitest_log = hydra::app::exe_dir() + "\\hydra_uitest.log";
+        if (uitest_log.empty()) uitest_log = hydra::join_folder(hydra::app::exe_dir(), "hydra_uitest.log");
         // (_wfreopen, not _wfreopen_s: the _s form opens without sharing; and
         // a GUI exe has no stdout fd to _dup2 onto. Wide, because the path is
         // UTF-8.)
@@ -211,7 +283,13 @@ int main()
     }
 #endif
     if (!frame_text) {
-        own_app = std::make_unique<hydra::ui::AppState>();
+        // Opens hydra.db; a database that won't open closes Hydra with a
+        // message box (D72 item 1).
+        try {
+            own_app = std::make_unique<hydra::ui::AppState>();
+        } catch (const std::exception& e) {
+            return fail_startup(e);
+        }
         // Hand the GUI's shared D3D11 device to AppState so the Preview tab
         // can build its renderer on it (same pattern as load_icons above).
         own_app->set_render_device(g_pd3dDevice, g_pd3dDeviceContext);
@@ -307,23 +385,20 @@ int main()
 #endif
     own_app.reset();
 
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    hydra::ui::shutdown_imgui();
+    tear_down();
 #ifdef HYDRA_UITEST_ATTACHED
+    // The engine outlives the ImGui context. Attached, its shutdown touches
+    // neither the device nor the window, so it can follow the teardown.
     if (uitest) {
         uitest->keep_temp = true;  // leave the scratch files for inspection
-        uitest->shutdown();        // the engine outlives the ImGui context
+        uitest->shutdown();
     }
 #endif
-
-    CleanupDeviceD3D();
-    ::DestroyWindow(hwnd);
-    ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
     return 0;
 }
 
-bool CreateDeviceD3D(HWND hWnd)
+// S_OK, or the HRESULT the device creation failed with, for the startup box.
+HRESULT CreateDeviceD3D(HWND hWnd)
 {
     DXGI_SWAP_CHAIN_DESC sd;
     ZeroMemory(&sd, sizeof(sd));
@@ -355,7 +430,7 @@ bool CreateDeviceD3D(HWND hWnd)
             featureLevelArray, 2, D3D11_SDK_VERSION, &sd, &g_pSwapChain,
             &g_pd3dDevice, &featureLevel, &g_pd3dDeviceContext);
     if (res != S_OK)
-        return false;
+        return res;
 
     // Disable DXGI's Alt+Enter, which does not play well with viewports.
     IDXGIFactory* pSwapChainFactory = nullptr;
@@ -366,7 +441,7 @@ bool CreateDeviceD3D(HWND hWnd)
     }
 
     CreateRenderTarget();
-    return true;
+    return S_OK;
 }
 
 void CleanupDeviceD3D()

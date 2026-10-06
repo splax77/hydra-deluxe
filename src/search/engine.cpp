@@ -63,8 +63,7 @@ struct NodeView {
 };
 struct EdgeView {
     int32_t dest;
-    int32_t notecount, basescore, comboscore, spscore, soloscore, accentscore,
-        ghostscore;
+    int32_t basescore, comboscore, spscore, soloscore, accentscore, ghostscore;
     int32_t frontend_points;
     int32_t banked_phrase_ordinal;
     double activation_fill_deadline_ms;
@@ -76,11 +75,8 @@ struct EdgeView {
 struct ChoiceView {
     int64_t chord;
     double timing;
-    int64_t sqout_time;
-    int64_t sqin_time;
+    int64_t sqin_time;  // a late chord's (SqueezeChoice::sqin_time), else NO_TIME
     int32_t late;
-    // The cap's ceiling set the moved end (SqueezeChoice::clamped).
-    int32_t clamped;
 };
 
 struct Enum {
@@ -93,11 +89,6 @@ struct Enum {
     std::vector<EdgeView> edge_views;
     // Every deactivation edge's squeeze choices, back to back.
     std::vector<ChoiceView> choices;
-    // Each early choice as (chord, sqout_time), sorted: some deactivation
-    // edge offers a squeeze-out of that chord to a path whose end is that
-    // tick. Read straight off the choice lists, so it follows their window
-    // rule (core::squeeze_window_phrases) wherever that goes.
-    std::vector<std::pair<int64_t, int64_t>> early_offers;
     int32_t start = -1;
 };
 
@@ -168,7 +159,6 @@ Enum enumerate(const ScoreGraph& graph) {
     for (const ScoreGraphEdge* o : en.edges) {
         EdgeView v;
         v.dest = node_of(o->dest);
-        v.notecount = (int32_t)o->notecount;
         v.basescore = (int32_t)o->basescore;
         v.comboscore = (int32_t)o->comboscore;
         v.spscore = (int32_t)o->spscore;
@@ -177,20 +167,19 @@ Enum enumerate(const ScoreGraph& graph) {
         v.ghostscore = (int32_t)o->ghostscore;
         v.frontend_points = o->frontend_points;
         v.banked_phrase_ordinal = o->banked_phrase_ordinal;
-        v.activation_fill_deadline_ms = o->activation_fill_deadline_ms.value_or(0.0);
+        // Unset on advance and deactivation edges. An activation edge without
+        // one is refused in index_fills (audit R7.35).
+        v.activation_fill_deadline_ms = o->activation_fill_deadline_ms
+                                            ? *o->activation_fill_deadline_ms
+                                            : NO_DOUBLE;
         v.choice_begin = (int32_t)en.choices.size();
         for (const SqueezeChoice& c : o->squeeze_choices)
-            en.choices.push_back(ChoiceView{c.chord.ticks(), c.timing, c.sqout_time.ticks(),
-                                            c.sqin_time.ticks(), c.late ? 1 : 0,
-                                            c.clamped ? 1 : 0});
+            en.choices.push_back(ChoiceView{c.chord.ticks(), c.timing,
+                                            c.sqin_time ? c.sqin_time->ticks() : NO_TIME,
+                                            c.late ? 1 : 0});
         v.choice_end = (int32_t)en.choices.size();
         en.edge_views.push_back(v);
     }
-    for (const ChoiceView& c : en.choices)
-        if (!c.late) en.early_offers.emplace_back(c.chord, c.sqout_time);
-    std::sort(en.early_offers.begin(), en.early_offers.end());
-    en.early_offers.erase(std::unique(en.early_offers.begin(), en.early_offers.end()),
-                          en.early_offers.end());
     return en;
 }
 
@@ -199,7 +188,7 @@ Enum enumerate(const ScoreGraph& graph) {
 struct Act {
     int32_t parent;
     int32_t act_node;
-    // How many fills were passed over before it, for act_difficulty's E0
+    // How many fills were passed over before it, for act_within_limit's E0
     // test. The record stores the fills themselves (skip_tail).
     int32_t skips;
     int32_t deact_edge;
@@ -237,6 +226,13 @@ struct EndNode {
     int64_t tick;
     int64_t end;
     SpEndKind kind;
+    // A Collected or Clamped step: the end it moved from, when that end can
+    // give this phrase back (SpExtension::sqout_node), else NO_TIME. Only
+    // there is the phrase offered as a squeeze (core::offered_phrase, D36).
+    // A step relabelled SqIn keeps it: offered_phrase itself skips a phrase
+    // the window squeezed in (D34). Engine state only; the record's
+    // SpEndStep does not carry it.
+    int64_t sqout_at;
 };
 struct Variant {
     int32_t prev;
@@ -286,14 +282,11 @@ struct Path {
     int32_t act_tail;
     int32_t var_head;
     int32_t tied_count;
-    int32_t notecount;
     int32_t sc[6];
     int64_t score;
     int64_t sp_end_time;
     // The running activation's SP-end steps so far (an index into ends_),
-    // or -1. Handed to the Act at deactivation. Whether the end is under a
-    // clamp, and which end that clamp moved, is read off it
-    // (Engine::last_step_clamp).
+    // or -1. Handed to the Act at deactivation.
     int32_t end_tail;
     // The bars banked since the last window closed, one arrival tick each
     // (an index into banks_), or -1. Always holds p.sp entries. Handed to
@@ -308,17 +301,23 @@ struct Path {
     int32_t banked_phrase_ordinal;
     double sp_ready_ms;
     double skipped_e_offset;
-    double diff_prefix;
+    // Some closed activation already has a timing outside this run's limit
+    // (act_within_limit). Once set it stays set.
+    bool over_prefix;
 };
 
 // The decision-log output (was hy_out_*), rebuilt into core Paths (core/model.h) locally.
 struct OutPath {
     int32_t score_base, score_combo, score_sp, score_solo, score_accents,
         score_ghosts;
-    int32_t notecount;
     int32_t var_point, depth, act_begin, act_end;
     // The bars banked after the last window: out_ticks_[bank_begin, bank_end).
     int32_t bank_begin, bank_end;
+    // On a root path only (depth 0): how many paths the engine folded into it,
+    // its own running count for the tie limit. rebuild checks it against the
+    // recount of the finished tree (Path::recount_tied_paths), which is the
+    // count that is stored. 0 on a variant.
+    int32_t tied_count;
 };
 struct OutAct {
     int32_t act_node, deact_edge, sq_begin, sq_end;
@@ -348,6 +347,7 @@ public:
         if (cap > mask_ + 1) {
             mask_ = cap - 1;
             keys_.assign(cap, 0);
+            keys2_.assign(cap, 0);
             vals_.assign(cap, 0);
             stamps_.assign(cap, 0);
             stamp_ = 0;
@@ -358,16 +358,22 @@ public:
         }
     }
     int32_t get_or_insert(uint64_t key, int32_t want_value, bool* inserted) {
-        size_t i = hash(key) & mask_;
+        return get_or_insert(key, 0, want_value, inserted);
+    }
+    // A two-word key, compared exactly on both words (the search's group
+    // key, D36).
+    int32_t get_or_insert(uint64_t key, uint64_t key2, int32_t want_value, bool* inserted) {
+        size_t i = hash(key ^ hash(key2)) & mask_;
         for (;;) {
             if (stamps_[i] != stamp_) {
                 stamps_[i] = stamp_;
                 keys_[i] = key;
+                keys2_[i] = key2;
                 vals_[i] = want_value;
                 *inserted = true;
                 return want_value;
             }
-            if (keys_[i] == key) {
+            if (keys_[i] == key && keys2_[i] == key2) {
                 *inserted = false;
                 return vals_[i];
             }
@@ -383,6 +389,7 @@ private:
         return x ^ (x >> 31);
     }
     std::vector<uint64_t> keys_;
+    std::vector<uint64_t> keys2_;
     std::vector<int32_t> vals_;
     std::vector<uint32_t> stamps_;
     size_t mask_ = 0;
@@ -407,7 +414,7 @@ public:
           has_ms_filter_(options.ms_filter.has_value()),
           ms_filter_(options.ms_filter.value_or(0.0)),
           no_skips_(options.no_skips),
-          hard_ms_filter_(options.hard_ms_filter),
+          no_timing_(options.no_timing),
           target_act_ticks_(options.target_act_ticks ? &*options.target_act_ticks
                                                      : nullptr) {
         index_fills();
@@ -459,9 +466,19 @@ private:
         sqs_.push_back(s);
         return (int32_t)sqs_.size() - 1;
     }
-    int32_t push_end(int32_t prev, int64_t tick, int64_t end, SpEndKind kind) {
-        ends_.push_back(EndNode{prev, tick, end, kind});
+    int32_t push_end(int32_t prev, int64_t tick, int64_t end, SpEndKind kind,
+                     int64_t sqout_at = NO_TIME) {
+        ends_.push_back(EndNode{prev, tick, end, kind, sqout_at});
         return (int32_t)ends_.size() - 1;
+    }
+    // Where the path's newest step can still be squeezed out (EndNode::
+    // sqout_at), while that SP end is ahead of `tick`; NO_TIME otherwise.
+    // The one future fact the squeeze rule reads that the SP end alone does
+    // not say, so the group key holds it (reduce_iteration_paths, D36).
+    int64_t pending_sqout_at(const Path& p, int64_t tick) const {
+        if (p.end_tail < 0) return NO_TIME;
+        const int64_t at = ends_[(size_t)p.end_tail].sqout_at;
+        return at != NO_TIME && at > tick ? at : NO_TIME;
     }
     // A squeeze-out gives its phrase back, and with it every step at or after
     // the squeezed-out chord. The one statement of that rule: trim_ends and
@@ -471,8 +488,8 @@ private:
     }
     // An early SqIn's step is the step on the squeezed-in chord's tick: a
     // phrase the gauge received, so Collected, or Clamped when the cap pinned
-    // the end on that phrase. Since D34 a lone path never meets an SqIn step
-    // here: a phrase it squeezed in is never offered again. A folded variant
+    // the end on that phrase. A lone path's is its newest step (D36), and
+    // never an SqIn step: a phrase it squeezed in is never offered again. A folded variant
     // can, when its own window squeezed the phrase in before the fold
     // (extreme tempos only); the step stays SqIn. Never the Activation step, which stays
     // first in the window's history. The one statement of that rule:
@@ -503,9 +520,9 @@ private:
         if (t < 0 || !is_sqin_step(ends_[(size_t)t].tick, ends_[(size_t)t].kind, tick))
             return false;
         const EndNode found = ends_[(size_t)t];
-        int32_t out = push_end(found.prev, found.tick, found.end, SpEndKind::SqIn);
+        int32_t out = push_end(found.prev, found.tick, found.end, SpEndKind::SqIn, found.sqout_at);
         for (size_t k = after.size(); k-- > 0;)
-            out = push_end(out, after[k].tick, after[k].end, after[k].kind);
+            out = push_end(out, after[k].tick, after[k].end, after[k].kind, after[k].sqout_at);
         tail = out;
         return true;
     }
@@ -519,42 +536,6 @@ private:
             if (is_sqin_step_on(s.tick, s.kind, tick)) return true;
         }
         return false;
-    }
-    // The clamp the running window's end is under, read off the end chain:
-    // when its last SP-end step is a clamp (is_clamp_kind), that phrase's
-    // tick and the end the clamp moved (the step before's end). Both are
-    // NO_TIME otherwise: after a plain step, an activation, a squeeze-in, or
-    // off SP. A clamped end is the same tick whichever end the phrase moved,
-    // and an end one plain bar short of the ceiling also lands on it, so a
-    // squeeze-out of that phrase back to a node is offered only to the path
-    // that moved from that node's tick (deactivation_type, finding 37).
-    // An early SqIn relabels the clamped step SqIn (relabel_sqin): the path
-    // spent that phrase and is never offered it again (squeezed_in), so no
-    // clamp is in force. Only the last step counts, unlike
-    // Activation::clamp_tick(), the latest Clamped step in the history.
-    struct LastStepClamp {
-        int64_t phrase_tick = NO_TIME;
-        int64_t moved_from = NO_TIME;
-        bool operator==(const LastStepClamp& o) const {
-            return phrase_tick == o.phrase_tick && moved_from == o.moved_from;
-        }
-    };
-    LastStepClamp last_step_clamp(const Path& p) const {
-        if (p.end_tail < 0) return {};
-        const EndNode& s = ends_[(size_t)p.end_tail];
-        // A window's first step is always its Activation step, so a clamp
-        // always has a step before it.
-        if (!is_clamp_kind(s.kind) || s.prev < 0) return {};
-        return {s.tick, ends_[(size_t)s.prev].end};
-    }
-    // Whether the path's end is under a clamp of a phrase that some
-    // deactivation edge offers as a squeeze-out to paths at the path's end
-    // (Enum::early_offers). Only then does the clamp's origin change an offer.
-    bool clamp_offered(const Path& p) const {
-        const LastStepClamp k = last_step_clamp(p);
-        return k.phrase_tick != NO_TIME &&
-               std::binary_search(en_.early_offers.begin(), en_.early_offers.end(),
-                                  std::make_pair(k.phrase_tick, p.sp_end_time));
     }
     int32_t act_count(const Path& p) const {
         return p.act_tail < 0 ? 0 : acts_[(size_t)p.act_tail].depth;
@@ -576,11 +557,23 @@ private:
     int32_t deactivation_type(const EdgeView& e, const Path& p,
                               const ChoiceView** offered) const;
 
-    double act_difficulty(int32_t act) const;
-    double search_difficulty(const Path& p) const;
+    // Is every timing of this activation inside this run's limit? True for
+    // no activation.
+    bool act_within_limit(int32_t act) const;
     bool passes_ms_filter(const Path& p) const;
-    // The ms limit's test on one difficulty: within it, or no limit set.
-    bool within_ms_limit(double d) const { return !has_ms_filter_ || d <= ms_filter_; }
+    // Is one timing inside this run's limit? The one place that says so. It
+    // takes the timing's ms and whether it needs hitting at all
+    // (SPSqueeze::is_free, early_fill_needs_timing). Under the
+    // all-0 switch a timing is inside only when it needs no hitting
+    // (Path::needs_timing's rule). Under the user's Path limit it is inside at
+    // or below the limit, free ones included, so a negative limit demands
+    // slack. With no limit every timing is inside.
+    bool within_ms_limit(double ms, bool needed) const {
+        if (no_timing_) return !needed;
+        return !has_ms_filter_ || ms <= ms_filter_;
+    }
+    // Does this run limit timing at all?
+    bool has_timing_limit() const { return has_ms_filter_ || no_timing_; }
 
     // The fills on the base track in chart order, for ready_class.
     void index_fills();
@@ -589,6 +582,9 @@ private:
 
     void reduce_iteration_paths();
     void reduce_group(const int32_t* members, int32_t n);
+    bool outside_depth_band(int64_t score, int64_t best, int32_t outscored_by) const;
+    bool can_outscore(int32_t idx) const;
+    std::optional<int64_t> best_eligible_score(const int32_t* members, int32_t n) const;
 
     void emit_path(const Path& p);
     void emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& parent_walk,
@@ -666,10 +662,11 @@ private:
     // Every activation must record skips == 0: the declining parent is dropped
     // whenever branch_activate produced a real child. BFS only.
     bool no_skips_;
-    // Treat ms_filter_ as a requirement rather than a preference: a path over
-    // the limit is dropped outright instead of surviving while nothing
-    // outscores it. BFS only. See reduce_iteration_paths for why this is exact.
-    bool hard_ms_filter_;
+    // Keep only paths that need no timing (EngineOptions::no_timing). It is a
+    // requirement, not a preference: a path with a needed timing is dropped
+    // outright instead of surviving while nothing outscores it. BFS only. See
+    // reduce_iteration_paths for why this is exact.
+    bool no_timing_;
     // When set, the exact node ticks the search must activate at, ascending.
     // Every other fill is declined. Owned by the caller for the run's duration.
     const std::vector<int64_t>* target_act_ticks_ = nullptr;
@@ -699,7 +696,6 @@ private:
     std::vector<int64_t> dominating_;
     StampMap group_map_;
     StampMap tie_map_;
-    StampMap distinct_map_;
 
     bool has_optimal_ = false;
     int64_t optimal_score_ = 0;
@@ -730,9 +726,16 @@ private:
 // --- index_fills ---------------------------------------------------------
 void Engine::index_fills() {
     std::vector<std::pair<int64_t, double>> fills;  // tick, deadline
-    for (const NodeView& n : en_.node_views)
-        if (!n.is_sp && n.branch_edge >= 0)
-            fills.emplace_back(n.tick, edge(n.branch_edge).activation_fill_deadline_ms);
+    for (const NodeView& n : en_.node_views) {
+        if (n.is_sp || n.branch_edge < 0) continue;
+        const double deadline = edge(n.branch_edge).activation_fill_deadline_ms;
+        // A NaN deadline would read as "no fill to time" at every check
+        // downstream, so a fill with no deadline refuses the graph here.
+        if (!has_value(deadline))
+            throw std::logic_error("the activation edge at tick " + std::to_string(n.tick) +
+                                   " has no fill deadline");
+        fills.emplace_back(n.tick, deadline);
+    }
     std::sort(fills.begin(), fills.end());
     std::vector<int64_t>& ticks = fill_tick_;
     ticks.reserve(fills.size());
@@ -762,9 +765,9 @@ void Engine::index_fills() {
 // two paths with equal counts are interchangeable. Low 16 bits: fills whose
 // early fill would be over the limit (only while nothing was passed over, so
 // the next activation can be an E0). High 16: fills that refuse it. 0 for a
-// path under 2 bars: its ready time is not set yet.
+// path under kSpActivationBars: its ready time is not set yet.
 uint64_t Engine::ready_class(const Path& p) const {
-    if (p.sp < 2 || !has_value(p.sp_ready_ms)) return 0;
+    if (p.sp < kSpActivationBars || !has_value(p.sp_ready_ms)) return 0;
     uint64_t refused = 0, over = 0;
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
         // Every deadline from here on is at least this one. When even this
@@ -773,8 +776,8 @@ uint64_t Engine::ready_class(const Path& p) const {
         if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
         if (fill_refuses(e_offset)) ++refused;
-        if (has_ms_filter_ && is_e0(e_offset, p.currentskips) &&
-            !within_ms_limit(early_fill_difficulty(e_offset)))
+        if (has_timing_limit() && is_e0(e_offset, p.currentskips) &&
+            !within_ms_limit(early_fill_difficulty(e_offset), early_fill_needs_timing(e_offset)))
             ++over;
     }
     if (refused > 0xFFFF || over > 0xFFFF) throw std::logic_error("search group key out of range");
@@ -802,7 +805,6 @@ void Engine::advance(Path& p) {
     p.sc[5] += e.ghostscore;
     p.score += (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore +
                e.accentscore + e.ghostscore;
-    p.notecount += e.notecount;
 
     const int32_t sp_n = (int32_t)eo->sp_times.size();
 
@@ -826,13 +828,19 @@ void Engine::advance(Path& p) {
                     p.node = NODE_BROKEN;
                     return;
                 }
+                // The step remembers the end it moved, while the old end is
+                // still at hand, when that end can give the phrase back
+                // (D36; this also tells two ends clamped to one tick apart,
+                // finding 37).
+                const int64_t moved_from = sp_end_time;
                 sp_end_time = mit->second.to_tick;
                 // Every other phrase the gauge receives is one step: Clamped
                 // when the cap pinned the end to it, else Collected.
                 p.end_tail = push_end(p.end_tail, eo->sp_times[(size_t)i].first.ticks(),
                                       sp_end_time,
                                       mit->second.clamped ? SpEndKind::Clamped
-                                                          : SpEndKind::Collected);
+                                                          : SpEndKind::Collected,
+                                      mit->second.sqout_node ? moved_from : NO_TIME);
             }
             p.sp_end_time = sp_end_time;
             p.spent = spent;
@@ -871,8 +879,8 @@ void Engine::advance(Path& p) {
                 banks_, p.bank_tail,
                 eo->sp_times[(size_t)(spent_here + banked_here + k)].first.ticks());
 
-        if (kept < 2 && sp >= 2) {
-            const int32_t k = spent_here + banked_here + 1 - kept;
+        if (kept < kSpActivationBars && sp >= kSpActivationBars) {
+            const int32_t k = spent_here + banked_here + (kSpActivationBars - 1) - kept;
             if (k < 0 || k >= sp_n) {
                 p.node = NODE_BROKEN;
                 return;
@@ -890,7 +898,7 @@ void Engine::advance(Path& p) {
 bool Engine::branch_activate(Path& p, Path* child) {
     const NodeView n = node(p.node);
     if (n.branch_edge < 0) return false;
-    if (p.sp < 2) return false;
+    if (p.sp < kSpActivationBars) return false;
 
     const EdgeView e = edge(n.branch_edge);
     const ScoreGraphEdge* eo = eobj(n.branch_edge);
@@ -899,7 +907,8 @@ bool Engine::branch_activate(Path& p, Path* child) {
     if (fill_refuses(e_offset)) return false;
 
     // activation_initial_end_times, keyed by SP meter. The flat form was a list
-    // with NO_TIME gaps in range [0, top]; here the map has meters 2..max.
+    // with NO_TIME gaps in range [0, top]; here the map has meters
+    // kSpActivationBars..max.
     int64_t aiet_val = NO_TIME;
     bool in_range = false;
     if (!eo->activation_initial_end_times.empty()) {
@@ -951,35 +960,32 @@ bool Engine::branch_activate(Path& p, Path* child) {
 int32_t Engine::deactivation_type(const EdgeView& e, const Path& p,
                                   const ChoiceView** offered) const {
     // The edge lists the phrase chords in this SP end's window. The path is
-    // offered the first one its running window can still squeeze
-    // (core::offered_phrase, D34): not one it banked before SP started, not
-    // one it already squeezed in. A late SqIn's phrase still ahead of the
-    // path (Path::spent) holds its SqIn step already, so it is spent too (D32:
-    // when the SqIn's new end, one SP bar on, comes before its phrase, that
-    // phrase was once squeezed in a second time there and the search broke).
-    // The offer is a squeeze choice for a path whose end is its sqout_time.
-    // A clamped end is the cap's ceiling whichever end the chord moved, and
-    // an end exactly one plain bar short of it lands there too. So an early
-    // choice also asks where the path's end came from (finding 37):
-    //  - the path's last step clamped this chord: only from this node;
-    //  - otherwise: only a plain bar from this node, an unclamped choice.
-    // Any other path would stop at an end it never had, and its SqIn branch
-    // would spend the phrase its own end can still squeeze out. Refusing
-    // gives such a path what it got before the clamp was priced: no offer.
-    if (e.choice_begin < e.choice_end) {
-        const ChoiceView* first = &en_.choices[(size_t)e.choice_begin];
-        const ChoiceView* last = first + (e.choice_end - e.choice_begin);
-        const ChoiceView* c = core::offered_phrase(
-            first, last, node(acts_[(size_t)p.act_tail].act_node).tick,
-            [](const ChoiceView& v) { return v.chord; },
-            [this, &p](int64_t tick) { return squeezed_in(p, tick); });
-        const LastStepClamp k = last_step_clamp(p);
-        if (c != last && p.sp_end_time == c->sqout_time &&
-            (c->late || (k.phrase_tick == c->chord ? k.moved_from == node(e.dest).tick
-                                                   : !c->clamped))) {
-            *offered = c;
-            return DEACT_SQINOUT;
-        }
+    // offered at most one (core::offered_phrase, D36): its newest phrase,
+    // when that phrase's step moved its end from this node (EndNode::
+    // sqout_at) and it has not squeezed that phrase in, or, when its end is
+    // this node, the first phrase after it that it has not squeezed in
+    // (D34). A late SqIn's phrase still ahead of the path (Path::spent)
+    // holds its SqIn step already, so it is skipped (D32: that phrase was
+    // once squeezed in a second time at the next end and the search broke).
+    // The newest-step rule also tells apart two ends that move to one tick:
+    // two clamped to one ceiling, or a plain bar tying it (finding 37), or
+    // two ends a tick apart (plusmeasure's rounding). Each offers the phrase
+    // only to the path that moved from it. The graph keeps an end as a node,
+    // and lists the phrase on its edge, exactly when the step says so
+    // (SpExtension::sqout_node), so offered_phrase is asked on an empty
+    // list too: it throws when the step's phrase is missing.
+    const int64_t d = node(e.dest).tick;
+    const EndNode& newest = ends_[(size_t)p.end_tail];
+    const ChoiceView* first = en_.choices.data() + e.choice_begin;
+    const ChoiceView* last = en_.choices.data() + e.choice_end;
+    const ChoiceView* c = core::offered_phrase(
+        first, last, d, p.sp_end_time, newest.tick,
+        newest.sqout_at == NO_TIME ? std::nullopt : std::optional<int64_t>(newest.sqout_at),
+        [](const ChoiceView& v) { return v.chord; },
+        [this, &p](int64_t tick) { return squeezed_in(p, tick); });
+    if (c != last) {
+        *offered = c;
+        return DEACT_SQINOUT;
     }
     // Otherwise SP ends here exactly when the path's end is this node. D32:
     // that includes a path whose end is this node while the window holds a
@@ -1013,6 +1019,9 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
         a.deact_edge = deact_edge;
         // A squeeze-out gives back its phrase and everything after it, so
         // the activation keeps only the steps before it.
+        // D36: what is left ends on this node. An early squeeze-out gives
+        // back only its own step, the newest, which moved the end from here.
+        // rebuild checks it once for every stored window, variants included.
         a.end_tail = sq ? trim_ends(p.end_tail, sq->chord) : p.end_tail;
         if (sq) {
             a.sq_tail = push_sq(a.sq_tail, SQ_OUT, sq->timing);
@@ -1028,7 +1037,7 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
         sq ? std::optional<int64_t>(sq->chord) : std::nullopt;
     int32_t sp_delta = 0;
     for (const BackendSqueeze& beo : eo->backends) {
-        const double be_offset = beo.offset_ms.value_or(0.0);
+        const double be_offset = beo.offset();
         const core::SqOutPosition pos =
             core::sqout_position(beo.timecode.ticks(), sqout_phrase);
         const int32_t already_paid =
@@ -1079,9 +1088,10 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // spent, so advance skips it: its step is written here, on the phrase.
     // An early one's phrase is already a Collected step (advance collected it
     // before this branch point, and the SqOut child above shares that step):
-    // relabel it on this branch only.
+    // relabel it on this branch only. Its end is already the moved one (D36).
     if (sq->late) {
         p.end_tail = push_end(p.end_tail, sq->chord, sq->sqin_time, SpEndKind::SqIn);
+        p.sp_end_time = sq->sqin_time;
     } else if (!relabel_sqin(p.end_tail, sq->chord)) {
         p.node = NODE_BROKEN;  // run() sees it and refuses the search
         return false;
@@ -1091,7 +1101,6 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
     // this one is offered after it (D34). Both branches keep those spent. A
     // late phrase is the next one in line: this branch spends it too, and the
     // SqOut child holds it banked (its bar is already in the child's meter).
-    p.sp_end_time = sq->sqin_time;
     child->spent = p.spent;
     child->banked_ahead = sq->late;
     p.spent += sq->late;
@@ -1099,75 +1108,94 @@ bool Engine::branch_deactivate(Path& p, Path* child, bool* has_child) {
 }
 
 // --- difficulty ----------------------------------------------------------
-double Engine::act_difficulty(int32_t act) const {
-    if (act < 0) return NO_DOUBLE;
+// The timings an activation's difficulty is made of, as Activation::difficulty
+// counts them (the engine's own walk of them is audit finding 152). Every one
+// must be inside the limit; under the Path limit that is the same as the
+// hardest one being inside it.
+bool Engine::act_within_limit(int32_t act) const {
+    if (act < 0) return true;
     const Act& a = acts_[(size_t)act];
-
-    double best = NO_DOUBLE;
     for (int32_t s = a.sq_tail; s >= 0; s = sqs_[(size_t)s].prev) {
-        const double d = squeeze_difficulty(sqs_[(size_t)s].kind == SQ_IN, sqs_[(size_t)s].offset);
-        if (!has_value(best) || d > best) best = d;
+        const bool is_in = sqs_[(size_t)s].kind == SQ_IN;
+        const SPSqueeze sq{is_in ? SqueezeKind::SqIn : SqueezeKind::SqOut, sqs_[(size_t)s].offset};
+        if (!within_ms_limit(sq.difficulty(), !sq.is_free())) return false;
     }
-    if (is_e0(a.e_offset, a.skips)) {
-        const double d = early_fill_difficulty(a.e_offset);
-        if (!has_value(best) || d > best) best = d;
-    }
-    return best;
+    if (is_e0(a.e_offset, a.skips) &&
+        !within_ms_limit(early_fill_difficulty(a.e_offset), early_fill_needs_timing(a.e_offset)))
+        return false;
+    return true;
 }
 
 void Engine::close_last_activation(Path& p) const {
-    const double d = act_difficulty(p.act_tail);
-    if (has_value(d) && (!has_value(p.diff_prefix) || d > p.diff_prefix)) {
-        p.diff_prefix = d;
-    }
-}
-
-double Engine::search_difficulty(const Path& p) const {
-    double d = p.diff_prefix;
-    const double last = act_difficulty(p.act_tail);
-    if (has_value(last) && (!has_value(d) || last > d)) d = last;
-    return d;
+    if (!act_within_limit(p.act_tail)) p.over_prefix = true;
 }
 
 bool Engine::passes_ms_filter(const Path& p) const {
-    const double d = search_difficulty(p);
-    if (!has_value(d)) return true;
-    return within_ms_limit(d);
+    return !p.over_prefix && act_within_limit(p.act_tail);
 }
 
 // --- reduce_group --------------------------------------------------------
-void Engine::reduce_group(const int32_t* members, int32_t n) {
-    if (depth_mode_ == DepthMode::Scores &&
-        (int64_t)n <= (int64_t)depth_value_ + 1) {
-        bool any_filtered = false;
-        for (int32_t i = 0; i < n; ++i) {
-            if (filtered_[(size_t)members[i]]) {
-                any_filtered = true;
-                break;
-            }
-        }
-        if (!any_filtered) {
-            distinct_map_.reset((size_t)n);
-            bool all_distinct = true;
-            for (int32_t i = 0; i < n; ++i) {
-                bool inserted = false;
-                distinct_map_.get_or_insert(
-                    (uint64_t)cur_[(size_t)members[i]].score, i, &inserted);
-                if (!inserted) {
-                    all_distinct = false;
-                    break;
-                }
-            }
-            if (all_distinct) return;
-        }
-    }
 
+// How many distinct scores in `sorted` (ascending, no repeats) are above
+// `score`.
+static int32_t scores_above(const std::vector<int64_t>& sorted, int64_t score) {
+    return (int32_t)(sorted.end() - std::upper_bound(sorted.begin(), sorted.end(), score));
+}
+
+// The depth band the user chose, said once: a path is outside it when it is
+// more than depth_value_ points under `best` ("Within N points"), or when more
+// than depth_value_ distinct scores outscore it ("Within N scores").
+// `outscored_by` counts those scores in the same list `best` tops.
+bool Engine::outside_depth_band(int64_t score, int64_t best, int32_t outscored_by) const {
+    if (depth_mode_ == DepthMode::Points) return score + depth_value_ < best;
+    return outscored_by > depth_value_;
+}
+
+// Whether a path's score may eliminate another path in its group: it is
+// inside the Path limit, or it ties the optimal score (D51 call 2: an
+// over-limit path that ties the optimal score stays kept).
+bool Engine::can_outscore(int32_t idx) const {
+    return !filtered_[(size_t)idx] ||
+           (has_optimal_ && cur_[(size_t)idx].score == optimal_score_);
+}
+
+// The best score among the group's paths that may eliminate a path
+// (can_outscore), or none when no path in the group may.
+std::optional<int64_t> Engine::best_eligible_score(const int32_t* members, int32_t n) const {
+    std::optional<int64_t> top;
+    for (int32_t k = 0; k < n; ++k) {
+        const int32_t idx = members[k];
+        if (!can_outscore(idx)) continue;
+        if (!top || cur_[(size_t)idx].score > *top) top = cur_[(size_t)idx].score;
+    }
+    return top;
+}
+
+void Engine::reduce_group(const int32_t* members, int32_t n) {
+    // An over-limit path below the group's best eligible score is beaten
+    // (D55 item 5), whether it ties an inside leader or leads its own score.
+    // Both places that drop one ask `outscored`.
+    const std::optional<int64_t> top = best_eligible_score(members, n);
+    const auto outscored = [&top](int64_t score) { return top && score < *top; };
+
+    // Fold ties. D51 call 1: the tie limit (max_tied_paths_) is one count per
+    // score, so a complete path inside the Path limit meets a complete
+    // over-limit path at the same score. The inside paths are offered first
+    // and the over-limit ones after, so an inside path leads whenever one
+    // exists, and when the limit is reached the paths left out are over-limit
+    // ones. Each side keeps the group's own order.
+    // D55 item 5: a running over-limit path keeps a key of its own. A later
+    // group may still outscore it, and filed under an inside path as a
+    // variant it could no longer be dropped then. It meets the inside paths
+    // at its score once it is complete, where scores are final.
     survivors_.clear();
     tie_map_.reset((size_t)n);
-    for (int32_t i = 0; i < n; ++i) {
-        const int32_t idx = members[i];
-        const uint64_t key = ((uint64_t)cur_[(size_t)idx].score << 1) |
-                             (filtered_[(size_t)idx] ? 1ull : 0ull);
+    for (int32_t k = 0; k < 2 * n; ++k) {
+        const int32_t idx = members[k % n];
+        const bool over_limit_pass = k >= n;
+        if ((filtered_[(size_t)idx] != 0) != over_limit_pass) continue;
+        const bool apart = over_limit_pass && cur_[(size_t)idx].node >= 0;
+        const uint64_t key = ((uint64_t)cur_[(size_t)idx].score << 1) | (apart ? 1ull : 0ull);
 
         bool inserted = false;
         const int32_t leader_idx = tie_map_.get_or_insert(key, idx, &inserted);
@@ -1178,19 +1206,19 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
 
         Path& leader = cur_[(size_t)leader_idx];
         const Path& p = cur_[(size_t)idx];
-        // Two running paths whose ends tie but came from different ends are
-        // not one future when a squeeze-out of the clamping phrase is offered
-        // at that end: each may take it only back to its own end (finding
-        // 37). Folded, the variant would follow the leader's squeeze choices
-        // and lose its own squeeze-out (the tied-clamps test). Keep both.
-        // Where no edge offers the phrase at that end (clamp_offered), the
-        // origin changes no offer, and the two fold as before. An offer needs
-        // an SP bar inside the squeeze window, so only at extreme tempos.
-        if (p.node >= 0 && !(last_step_clamp(leader) == last_step_clamp(p)) &&
-            (clamp_offered(leader) || clamp_offered(p))) {
-            survivors_.push_back(idx);
+        // D55 item 5: a complete over-limit path tied with an inside leader
+        // rides as its variant only at the top score. Below it the path is
+        // dropped, as it would be if it led its own score. An over-limit
+        // leader that is beaten goes in the final loop below, after its score
+        // has counted toward the depth band.
+        if (over_limit_pass && !filtered_[(size_t)leader_idx] && outscored(p.score)) {
+            removed_[(size_t)idx] = 1;
             continue;
         }
+        // Two running paths whose newest phrase can still be squeezed out at
+        // different SP ends never meet here: the group key holds that end
+        // (pending_sqout_at, D36), so a variant never takes its leader's
+        // squeeze (the tied-clamps test, finding 37).
         if (leader.tied_count + p.tied_count <= max_tied_paths_) {
             Variant v;
             v.prev = leader.var_head;
@@ -1218,17 +1246,23 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
         removed_[(size_t)idx] = 1;
     }
 
+    // A lone leader has nothing to compete with.
     if (survivors_.size() < 2) return;
 
-    // Distinct scores over the whole group, achievable or not. A filtered path
-    // stays only while it is within the depth band here -- while it could still
-    // be the single best path, which is shown even when unachievable. Without
-    // this band a filtered path is dropped only when an achievable path beats
-    // it, and on an uncapped chart the achievable frontier scores far below the
-    // hard paths, so they all survive and the frontier explodes. The band
-    // collapses each group back to the depth setting, as an unfiltered search
-    // does, and cannot drop the eventual best path (score dominance keeps the
-    // top band at every step).
+    // From here on each survivor is a leader with its tied variants riding
+    // along. A complete leader is filtered only when every path at its score
+    // is over the limit: an inside path at that score would have led. A
+    // running over-limit leader may share its score with an inside one.
+
+    // Distinct scores over the whole group, achievable or not. A filtered
+    // leader stays only while it is within the depth band here -- while it
+    // could still be the single best path, which is shown even when
+    // unachievable. Without this band a filtered path is dropped only when an
+    // achievable path beats it, and on an uncapped chart the achievable
+    // frontier scores far below the hard paths, so they all survive and the
+    // frontier explodes. The band collapses each group back to the depth
+    // setting, as an unfiltered search does, and cannot drop the eventual
+    // best path (score dominance keeps the top band at every step).
     dominating_.clear();
     for (size_t i = 0; i < survivors_.size(); ++i) {
         dominating_.push_back(cur_[(size_t)survivors_[i]].score);
@@ -1237,52 +1271,37 @@ void Engine::reduce_group(const int32_t* members, int32_t n) {
     dominating_.erase(std::unique(dominating_.begin(), dominating_.end()),
                       dominating_.end());
     const int64_t best_all = dominating_.back();
-    const int32_t n_dominating = (int32_t)dominating_.size();
 
-    // The scores allowed to eliminate an achievable path. A filtered path
-    // can't, unless it's optimal. May be empty mid-search (every live path in
-    // this group is filtered): there is then no achievable path to prune, and
-    // the band above still reins the filtered ones in.
+    // The distinct scores allowed to eliminate an achievable path
+    // (can_outscore), for the "Within N scores" count; `top` heads them. An
+    // over-limit path riding as an inside leader's variant got here only at
+    // `top`, and its leader is outscored by nothing either.
+    // May be empty mid-search (every live path in this group is filtered):
+    // there is then no achievable path to prune, and the band above still
+    // reins the filtered ones in.
     beating_.clear();
     for (size_t i = 0; i < survivors_.size(); ++i) {
         const int32_t idx = survivors_[i];
-        const int64_t s = cur_[(size_t)idx].score;
-        if (!filtered_[(size_t)idx] || (has_optimal_ && s == optimal_score_)) {
-            beating_.push_back(s);
-        }
+        if (can_outscore(idx)) beating_.push_back(cur_[(size_t)idx].score);
     }
     std::sort(beating_.begin(), beating_.end());
     beating_.erase(std::unique(beating_.begin(), beating_.end()),
                    beating_.end());
-    const int64_t best = beating_.empty() ? 0 : beating_.back();
-    const int32_t n_beating = (int32_t)beating_.size();
 
     for (size_t i = 0; i < survivors_.size(); ++i) {
         const int32_t idx = survivors_[i];
         const int64_t score = cur_[(size_t)idx].score;
-        const int32_t outscored_by =
-            n_beating - (int32_t)(std::upper_bound(beating_.begin(),
-                                                   beating_.end(), score) -
-                                  beating_.begin());
-
+        bool drop;
         if (filtered_[(size_t)idx]) {
-            if (outscored_by) {
-                removed_[(size_t)idx] = 1;
-            } else if (depth_mode_ == DepthMode::Points) {
-                if (score + depth_value_ < best_all) removed_[(size_t)idx] = 1;
-            } else if (depth_mode_ == DepthMode::Scores) {
-                const int32_t outscored_by_all =
-                    n_dominating - (int32_t)(std::upper_bound(
-                                        dominating_.begin(), dominating_.end(),
-                                        score) -
-                                    dominating_.begin());
-                if (outscored_by_all > depth_value_) removed_[(size_t)idx] = 1;
-            }
-        } else if (depth_mode_ == DepthMode::Points) {
-            if (score + depth_value_ < best) removed_[(size_t)idx] = 1;
-        } else if (depth_mode_ == DepthMode::Scores) {
-            if (outscored_by > depth_value_) removed_[(size_t)idx] = 1;
+            // An over-limit leader goes as soon as an achievable score beats
+            // it, else when it leaves the band over every score.
+            drop = outscored(score) ||
+                   outside_depth_band(score, best_all, scores_above(dominating_, score));
+        } else {
+            // An inside leader may eliminate, so `top` is set.
+            drop = outside_depth_band(score, *top, scores_above(beating_, score));
         }
+        if (drop) removed_[(size_t)idx] = 1;
     }
 }
 
@@ -1293,7 +1312,7 @@ void Engine::reduce_iteration_paths() {
     filtered_.assign((size_t)n, 0);
     removed_.assign((size_t)n, 0);
 
-    if (has_ms_filter_) {
+    if (has_timing_limit()) {
         for (int32_t i = 0; i < n; ++i) {
             if (!passes_ms_filter(cur_[(size_t)i])) filtered_[(size_t)i] = 1;
         }
@@ -1310,14 +1329,14 @@ void Engine::reduce_iteration_paths() {
         const Path& p = cur_[(size_t)i];
         const bool is_complete = p.node < 0;
 
-        // Hard mode kills an over-limit path here instead of handing it to
-        // reduce_group, which keeps one while nothing outscores it -- a
-        // preference, not a requirement. Dropping it now is exact:
-        // search_difficulty is a running max (diff_prefix only ever rises in
-        // close_last_activation, and a tail's squeeze list only grows), so a
-        // path already over the limit can never come back under it. It also
-        // prunes, since the whole subtree below it is over the limit too.
-        if (hard_ms_filter_ && filtered_[(size_t)i]) {
+        // The all-0 switch kills a path with a needed timing here instead of
+        // handing it to reduce_group, which keeps an over-limit path while
+        // nothing outscores it -- a preference, not a requirement. Dropping
+        // it now is exact: over_prefix only ever gets set in
+        // close_last_activation, and a tail's squeeze list only grows, so a
+        // path already outside the limit can never come back inside it. It
+        // also prunes, since the whole subtree below it is outside too.
+        if (no_timing_ && filtered_[(size_t)i]) {
             removed_[(size_t)i] = 1;
             continue;
         }
@@ -1348,14 +1367,16 @@ void Engine::reduce_iteration_paths() {
         // [-2^46, 2^46) packs exactly; the check below refuses the rest.
         // These widths, the meter's 2^30 and ready_class's 16 bits per count
         // are decision D40 (recorded in ADR 0014).
-        // The end a clamp moved (last_step_clamp) is not in the key: two
-        // paths that reach one end from different ends share a group, and
-        // the lower one can be pruned before its own squeeze-out node. The
-        // key was the same before finding 37, so that is no regression;
-        // reduce_group never folds the two as ties where the origin changes
-        // an offer (clamp_offered). ADR 0014 records both the exception and
-        // this gap (D44).
+        // While SP runs, the key's second word is the SP end where the
+        // path's newest phrase can still be squeezed out, while that end is
+        // ahead (pending_sqout_at, D36): the one other fact the squeeze rule
+        // reads. Two paths at one node with one SP end and one such end face
+        // the same offers, because their newest phrase is the same. It is
+        // NO_TIME on almost every path, which leaves the groups as they were.
+        // A second word, not more bits in the first: no lossy packing.
         const bool is_sp = !is_complete && node(p.node).is_sp;
+        const uint64_t key2 = is_sp ? (uint64_t)pending_sqout_at(p, node(p.node).tick)
+                                    : (uint64_t)NO_TIME;
         const int64_t sp_value =
             is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);
         uint64_t key_value = (uint64_t)sp_value;
@@ -1373,7 +1394,7 @@ void Engine::reduce_iteration_paths() {
         const uint64_t key = (key_value << 1) | (is_sp ? 1ull : 0ull);
 
         bool inserted = false;
-        const int32_t g = group_map_.get_or_insert(key, n_groups, &inserted);
+        const int32_t g = group_map_.get_or_insert(key, key2, n_groups, &inserted);
         if (inserted) ++n_groups;
         owner_[(size_t)i] = g;
     }
@@ -1578,10 +1599,10 @@ void Engine::own_early_fill(const Variant& var, OutAct* next) {
     if (has_value(first_passed) || has_value(own)) {
         next->e_offset = recorded_e_offset(first_passed, own);
     } else if (var.skip_tail >= 0 || (int32_t)shared.size() != next->skip_end - next->skip_begin) {
-        // Under 2 bars at the fold, as its leader was (same meter): neither
+        // Under kSpActivationBars at the fold, as its leader was (same meter): neither
         // could have passed a fill yet, and both became ready later, at the
         // same phrase. The leader's offset is the variant's.
-        throw std::logic_error("a variant under 2 bars at its fold passed a fill");
+        throw std::logic_error("a variant under kSpActivationBars at its fold passed a fill");
     }
 
     emit_ticks(fills_, var.skip_tail, &next->skip_begin, &next->skip_end);
@@ -1663,6 +1684,15 @@ void Engine::emit_variant(int32_t v, int32_t depth, const std::vector<int32_t>& 
 }
 
 void Engine::emit_path(const Path& p) {
+    // The search ranks by its running p.score; the record stores the six
+    // categories. Every stored total passes through here (a variant copies its
+    // leader's, ADR 0017), so this is where the two must agree (audit 165).
+    const int64_t six = score_total(p.sc[0], p.sc[1], p.sc[2], p.sc[3], p.sc[4], p.sc[5]);
+    if (p.score != six)
+        throw std::logic_error("copy-out: the search's running score " +
+                               std::to_string(p.score) +
+                               " differs from its six categories' total " +
+                               std::to_string(six));
     OutPath op;
     op.score_base = p.sc[0];
     op.score_combo = p.sc[1];
@@ -1670,9 +1700,9 @@ void Engine::emit_path(const Path& p) {
     op.score_solo = p.sc[3];
     op.score_accents = p.sc[4];
     op.score_ghosts = p.sc[5];
-    op.notecount = p.notecount;
     op.var_point = -1;
     op.depth = 0;
+    op.tied_count = p.tied_count;
     emit_ticks(banks_, p.bank_tail, &op.bank_begin, &op.bank_end);
     emit_acts(p.act_tail, p.sp_end_time, p.end_tail, &op.act_begin, &op.act_end);
     out_paths_.push_back(op);
@@ -1696,7 +1726,7 @@ bool Engine::run() {
     root.skip_tail = -1;
     root.sp_ready_ms = NO_DOUBLE;
     root.skipped_e_offset = NO_DOUBLE;
-    root.diff_prefix = NO_DOUBLE;
+    root.over_prefix = false;
 
     cur_.clear();
     cur_.push_back(root);
@@ -1773,7 +1803,7 @@ bool Engine::run() {
                     // that parent can no longer reach an all-0 path, so drop it and
                     // keep only the activating child. branch_activate charges the
                     // skip solely on the branch that produced a child -- a refused
-                    // opportunity (no branch edge, SP under 2 bars, blown fill
+                    // opportunity (no branch edge, SP under kSpActivationBars, blown fill
                     // deadline) leaves currentskips alone, so the surviving path is
                     // still free to activate later and still read as 0 skips.
                     next_.push_back(p);
@@ -1816,10 +1846,12 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                            const std::vector<SpEndStep>& out_ends,
                            const std::vector<int64_t>& out_ticks,
                            const std::vector<BackendSqueeze>& tail_backends,
-                           const SongTiming& timing) {
+                           const SongTiming& timing, int note_count) {
     std::vector<BuildNode> pool;
     pool.reserve(out_paths.size());
     std::vector<int> top_level;
+    // The engine's running tie count for each root, in top_level's order.
+    std::vector<int32_t> engine_tied;
     std::vector<int> by_depth;
 
     for (const OutPath& op : out_paths) {
@@ -1830,7 +1862,9 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
         path.score_solo = op.score_solo;
         path.score_accents = op.score_accents;
         path.score_ghosts = op.score_ghosts;
-        path.notecount = op.notecount;
+        // Every path covers the whole chart, so its note total is the
+        // chart's (ScoreGraph::note_count).
+        path.notecount = note_count;
         path.trailing_bank_ticks.assign(out_ticks.begin() + op.bank_begin,
                                         out_ticks.begin() + op.bank_end);
 
@@ -1898,7 +1932,7 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
                 // The record shows the row's offset; the search ranked by
                 // its own. They must be the same number, or the record
                 // would show a squeeze the search didn't rank.
-                const double stored_ms = *act.sqout_row()->offset_ms;
+                const double stored_ms = act.sqout_row()->offset();
                 if (stored_ms != searched_sqout_ms)
                     throw std::logic_error(
                         "rebuild: the search's SqOut offset " +
@@ -1914,6 +1948,13 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             // search tracked. Nothing here invents a value.
             act.sp_end_steps.assign(out_ends.begin() + oa.end_begin,
                                     out_ends.begin() + oa.end_end);
+            // D36: a closed window's record ends on the node SP ended at, tied
+            // variants included (close_folded_act). A squeeze-out that kept a
+            // later phrase's step once broke this by one bar.
+            if (oa.deact_edge >= 0 &&
+                act.deact_tick() !=
+                    std::optional<int64_t>(en.edges[(size_t)oa.deact_edge]->dest->timecode.ticks()))
+                throw std::logic_error("rebuild: a closed window's record ends off its deactivation node");
 
             // Stamp the frontend transfer scales through the one function
             // that computes them, from the SP-end steps just stamped. When the
@@ -1938,6 +1979,7 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
 
         if (depth == 0) {
             top_level.push_back(idx);
+            engine_tied.push_back(op.tied_count);
         } else {
             pool[(size_t)idx].path.var_point = op.var_point;
             pool[(size_t)by_depth[(size_t)(depth - 1)]].children.push_back(idx);
@@ -1958,9 +2000,17 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
 
     std::vector<MPath> result;
     result.reserve(top_level.size());
-    for (int t : top_level) {
-        MPath p = assemble(t);
-        p.recount_tied_paths();
+    for (size_t k = 0; k < top_level.size(); ++k) {
+        MPath p = assemble(top_level[k]);
+        // Finding 179: the recount of the finished tree is the count stored
+        // and shown; the engine's running sum only enforced the tie limit.
+        // They must be the same number, or the limit the engine enforced is
+        // not the one the record shows.
+        const int recounted = p.recount_tied_paths();
+        if (recounted != engine_tied[k])
+            throw std::logic_error("rebuild: the search counted " + std::to_string(engine_tied[k]) +
+                                   " tied paths but the stored tree holds " +
+                                   std::to_string(recounted));
         p.prepare_variants();
         result.push_back(std::move(p));
     }
@@ -1981,11 +2031,11 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
     if (on_progress) engine.set_progress_cb(on_progress);
 
     if (!engine.run())
-        throw std::runtime_error("search reached a broken state");
+        throw KindedError(ErrorKind::SearchBroken, "search reached a broken state");
 
     return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
                    engine.out_ends(), engine.out_ticks(), graph.tail_backends(),
-                   graph.timing());
+                   graph.timing(), graph.note_count());
 }
 
 }  // namespace hydra

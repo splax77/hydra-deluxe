@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import struct
 import unittest
+from unittest import mock
 
 from tools.ch_probe import debugger
 from tools.ch_probe.debugger import (
@@ -233,10 +234,16 @@ class KillOnExitTests(unittest.TestCase):
                 calls.append(("OpenProcess", pid))
                 return 0x1234
 
+            def FlushInstructionCache(self, handle, addr, size):
+                calls.append(("FlushInstructionCache", handle,
+                              getattr(addr, "value", addr), size))
+                return 1
+
         class FakeWin32:
             def __init__(self):
                 self.k32 = FakeK32()
 
+        self.k32_type = FakeK32
         self._real_win32 = debugger._Win32
         debugger._Win32 = FakeWin32
 
@@ -256,6 +263,40 @@ class KillOnExitTests(unittest.TestCase):
             Debugger().attach(4242)
         self.assertIn(("DebugActiveProcessStop", 4242), self.calls)
         self.assertNotIn(("OpenProcess", 4242), self.calls)
+
+    def test_memory_goes_through_process_bindings(self):
+        # The debugger reads and writes through the reader and writer
+        # process.py builds over its handle; it adds only the cache flush.
+        built, calls = [], self.calls
+
+        def make_reader(handle):
+            built.append(("reader", handle))
+
+            def read(addr, size):
+                calls.append(("read", addr, size))
+                return b"\x90" * size
+            return read
+
+        def make_writer(handle):
+            built.append(("writer", handle))
+
+            def write(addr, data):
+                calls.append(("write", addr, data))
+            return write
+
+        with mock.patch.object(debugger.process, "make_reader", make_reader), \
+                mock.patch.object(debugger.process, "make_writer", make_writer):
+            dbg = Debugger()
+            dbg.attach(4242)
+        self.assertEqual(built, [("reader", 0x1234), ("writer", 0x1234)])
+        self.assertEqual(dbg._raw_read(0x5000, 2), b"\x90\x90")
+        dbg._raw_write(0x5000, b"\xCC")
+        self.assertEqual(calls[-3:], [
+            ("read", 0x5000, 2),
+            ("write", 0x5000, b"\xCC"),
+            ("FlushInstructionCache", 0x1234, 0x5000, 1),
+        ])
+        self.assertFalse(hasattr(self.k32_type, "ReadProcessMemory"))
 
 
 class SafeDetachTests(unittest.TestCase):

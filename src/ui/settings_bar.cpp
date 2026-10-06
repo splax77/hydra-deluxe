@@ -3,8 +3,11 @@
 // is filed under the settings it ran with -- changing SP cap mid-run used to
 // hide the result it had just made.
 
+#include "app/config.h"  // Settings::clamp, the one range each box asks
 #include "core/model.h"
 #include "imgui.h"
+#include "parse/song.h"    // display_title
+#include "search/graph.h"  // fill_rule_name, fill_rule_description
 #include "ui/app_state.h"
 #include "ui/fonts.h"
 #include "ui/library_parts.h"
@@ -17,6 +20,16 @@
 #include <type_traits>
 
 namespace hydra::ui::detail {
+
+std::string legacy_fills_help_text() {
+    return std::string("Spawn drum fills by ") +
+           fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
+           "'s rule instead of 1.1's. A fill only appears if your Star Power was "
+           "ready in time. " +
+           fill_rule_description(FillDeadlineRule::Ch11) + " " +
+           fill_rule_description(FillDeadlineRule::Ch10) +
+           " For runs played on 1.0; current Clone Hero plays by 1.1.";
+}
 
 namespace {
 
@@ -82,7 +95,7 @@ void render_sp_cap(AppState& app, bool locked) {
     // (AppState::edit_settings, flushed by run_frame).
     int cap = app.settings.sp_cap;
     if (ImGui::InputInt("##spcap", &cap)) {
-        app.settings.sp_cap = std::max(1, cap);
+        app.settings.sp_cap = app::Settings::clamp(&app::Settings::sp_cap, cap);
         app.edit_settings();
     }
     ImGui::SameLine();
@@ -95,10 +108,7 @@ void render_sp_cap(AppState& app, bool locked) {
     begin_disabled_checkbox(locked);
     if (ImGui::Checkbox("1.0 fills", &app.settings.legacy_fills)) app.commit_settings();
     end_disabled_checkbox(locked);
-    help_marker("Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only "
-                "appears if your Star Power was ready in time: 1.1 wants it 4 beats "
-                "before the fill, 1.0 about one fill-length before. For runs played on "
-                "1.0; current Clone Hero plays by 1.1.");
+    help_marker(legacy_fills_help_text().c_str());
 }
 
 void render_score_range(AppState& app, bool locked) {
@@ -109,12 +119,14 @@ void render_score_range(AppState& app, bool locked) {
     // Room for six digits beside the two step buttons (each a frame-height
     // square after an inner gap), never less than the old 90 px.
     const ImGuiStyle& style = ImGui::GetStyle();
-    const float six_digits = ImGui::CalcTextSize("000000").x + style.FramePadding.x * 2.0f +
+    const float six_digits = ImGui::CalcTextSize(widest_digits(6).c_str()).x +
+                             style.FramePadding.x * 2.0f +
                              (ImGui::GetFrameHeight() + style.ItemInnerSpacing.x) * 2.0f;
     ImGui::SetNextItemWidth(std::max(px(90), six_digits));
     begin_disabled_input(locked);
     if (ImGui::InputInt("##depthvalue", &app.settings.depth_value)) {
-        if (app.settings.depth_value < 0) app.settings.depth_value = 0;
+        app.settings.depth_value =
+            app::Settings::clamp(&app::Settings::depth_value, app.settings.depth_value);
         app.edit_settings();
     }
     ImGui::SameLine();
@@ -133,16 +145,15 @@ void render_path_limit(AppState& app, bool locked) {
     if (ImGui::Checkbox("Path limit##mslimit", &app.settings.mslimit_enabled))
         app.commit_settings();
     end_disabled_checkbox(locked);
-    help_marker("Keep extra paths only when their hardest squeeze is within this many "
-                "ms. Lower or negative values demand more slack.");
+    help_marker("Keep extra paths only when their hardest squeeze or required early fill is "
+                "within this many ms. Lower or negative values demand more slack.");
     ImGui::SameLine();
     const bool off = locked || !app.settings.mslimit_enabled;
     begin_disabled_input(off);
     ImGui::SetNextItemWidth(px(100));
     if (ImGui::InputInt("##mslimitvalue", &app.settings.mslimit_value)) {
-        // The ceiling is the engine's squeeze window either way (decision D41).
-        const int window = static_cast<int>(kSqueezeWindowMs);
-        app.settings.mslimit_value = std::clamp(app.settings.mslimit_value, -window, window);
+        app.settings.mslimit_value =
+            app::Settings::clamp(&app::Settings::mslimit_value, app.settings.mslimit_value);
         app.edit_settings();
     }
     ImGui::SameLine();
@@ -153,7 +164,10 @@ void render_path_limit(AppState& app, bool locked) {
 }  // namespace
 
 void render_settings_bar(AppState& app) {
-    const bool locked = app.settings_locked();
+    // Read once: a batch that ends on its worker mid-frame must not turn a
+    // batch lock into an analysis lock with no analyze job behind it.
+    const AppState::SettingsLock lock = app.settings_lock();
+    const bool locked = lock != AppState::SettingsLock::None;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, kSettingsBarBg);
     ImGui::BeginChild("##settingsbar", ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
@@ -197,7 +211,7 @@ void render_settings_bar(AppState& app) {
     const float separator_w = gap * 2.0f + kSeparatorW;
     float* block_w = app.library_ui.settings_block_w;
     for (size_t i = 0; i < std::size(kBlocks); ++i) {
-        if (line_end + separator_w + block_w[i] <= right_edge) {
+        if (fits_in_row(line_end + separator_w, block_w[i], right_edge)) {
             const float divider_x = line_end + gap;
             draw_divider(divider_x, line_top, line_bottom);
             const float x = divider_x + kSeparatorW + gap;
@@ -229,15 +243,20 @@ void render_settings_bar(AppState& app) {
     // The lock message is a fifth block, right-aligned on whichever line it
     // lands on.
     if (locked) {
-        const char* why = app.batch_running() ? "Stop the batch to change these."
-                                              : "Settings are locked while this song analyzes.";
-        const float w = ImGui::CalcTextSize(why).x;
-        if (line_end + ImGui::GetStyle().ItemSpacing.x + w <= right_edge) ImGui::SameLine();
+        // A single analysis names its song, which may not be the one on
+        // screen (D48, Q17).
+        const std::string why =
+            lock == AppState::SettingsLock::Batch
+                ? "Stop the batch to change these."
+                : "Settings are locked while " + display_title(app.analyze_job->song().title) +
+                      " analyzes.";
+        const float w = ImGui::CalcTextSize(why.c_str()).x;
+        if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
         ImGui::AlignTextToFramePadding();
         const float right = ImGui::GetContentRegionMax().x - w;
         if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
-        ImGui::TextUnformatted(why);
+        ImGui::TextUnformatted(why.c_str());
         ImGui::PopStyleColor();
     }
     ImGui::EndChild();

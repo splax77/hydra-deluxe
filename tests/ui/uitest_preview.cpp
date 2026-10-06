@@ -7,9 +7,13 @@
 
 #include "uitest_harness.h"
 
+#include "../chart_text.h"
+
 #include "app/preview_view.h"
 #include "core/model.h"
+#include "core/winstr.h"  // fopen_utf8
 #include "imgui_internal.h"
+#include "parse/song.h"  // no_notes_message
 #include "render/overlay_layout.h"
 #include "ui/app_state.h"
 #include "ui/fonts.h"  // g_mono_font
@@ -19,6 +23,11 @@
 namespace uitest {
 
 namespace {
+
+// How long chart 0 of testdata/input must run for the Preview tests below:
+// their jumps and steps go from 10 s to 15 s, so the song has to reach past
+// that. A guard against the fixture, not a rule of the app.
+constexpr double kChart0MinMs = 16000.0;
 
 void test_preview(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -98,16 +107,19 @@ ImGuiID preview_path_combo(ImGuiTestContext* ctx) {
     return ImHashStr("##previewpath", 0, act.ParentID);
 }
 
-// Pick path `index` (its place in the Paths tab's list, ##path<index>) in the
-// Preview's "Showing" list. The Preview tab must be showing.
-void pick_preview_path(ImGuiTestContext* ctx, size_t index) {
+// Pick `path` in the Preview's "Showing" list: the item whose button in
+// build_path_buttons' list stands for it, by the id the tab gives it
+// (path_item_id). The Preview tab must be showing.
+void pick_preview_path(ImGuiTestContext* ctx, const hydra::Path* path) {
     Harness& h = harness(ctx);
     const hydra::app::PathButtonsView list = hydra::app::build_path_buttons(
         *h.app->viewed.record, h.app->settings.depth_mode, h.app->settings.depth_value);
-    IM_CHECK(index < list.buttons.size());
+    size_t index = 0;
+    while (index < list.buttons.size() && list.buttons[index].path != path) ++index;
+    IM_CHECK(index < list.buttons.size());  // the path is in the list
     if (index >= list.buttons.size()) return;
     const std::string item =
-        hydra::app::preview_path_label(list.buttons[index]) + "##" + std::to_string(index);
+        hydra::app::path_item_id(hydra::app::preview_path_label(list.buttons[index]), index);
     ctx->ItemClick(preview_path_combo(ctx));
     ctx->Yield(1);
     ctx->ItemClick(("//$FOCUSED/" + item).c_str());
@@ -138,17 +150,13 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     for (const hydra::Path* p : h.app->viewed.record->all_allzero_paths())
         rows.push_back(p);
     const hydra::Path* other = nullptr;
-    size_t other_index = 0;  // its place in the list: the list follows all_paths()
     for (size_t i = 1; i < paths.size() && other == nullptr; ++i) {
         std::string label = paths[i]->pathstring();
         if (label == paths[0]->pathstring()) continue;
         size_t seen = 0;
         for (const hydra::Path* p : rows)
             if (p->pathstring() == label) ++seen;
-        if (seen == 1) {
-            other = paths[i];
-            other_index = i;
-        }
+        if (seen == 1) other = paths[i];
     }
     IM_CHECK(other != nullptr);  // the fixture must keep 2+ distinguishable paths
     const std::string first_key = hydra::app::path_overlay_key(paths[0]);
@@ -166,38 +174,34 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
     IM_CHECK(wait_until(ctx, [&] { return !h.app->preview->loading(); }, 120));
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
-    // The overlay key carries the SP cap after the path's own key, so match the
-    // prefix and then compare whole keys against this first one.
-    // The path's overlay can land a frame or two after the load itself.
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->preview->overlay_path_key().rfind(first_key, 0) == 0;
-    }, 10));
+    // The overlay key carries the SP cap after the path's own key, so ask
+    // shows_path whose path it is, then compare whole keys against this first
+    // one. The path's overlay can land a frame or two after the load itself.
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview->shows_path(first_key); }, 10));
     const std::string first_overlay = h.app->preview->overlay_path_key();
-    IM_CHECK_EQ(first_overlay.rfind(first_key, 0), (size_t)0);
+    IM_CHECK(h.app->preview->shows_path(first_key));
 
     // Park the playhead mid-song: a reload would rewind it to zero.
-    IM_CHECK(h.app->preview->length_ms() > 0.0);
-    h.app->preview->seek_ms(h.app->preview->length_ms() * 0.5);
+    IM_CHECK(h.app->preview->scrub_end_ms() > 0.0);
+    h.app->preview->seek_ms(h.app->preview->scrub_end_ms() * 0.5);
     ctx->Yield(2);
     double held = h.app->preview->position_ms();
     IM_CHECK(held > 0.0);
 
     // Pick the other path in the Preview's list, then visit Paths and come
     // back, so the Preview is re-opened on the same chart.
-    pick_preview_path(ctx, other_index);
+    pick_preview_path(ctx, other);
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
     ctx->ItemClick("##DetailsTabs/Preview");
     ctx->Yield(2);
     IM_CHECK(!h.app->preview->loading());  // swapped in place, not reloaded
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->preview->overlay_path_key().rfind(other_key, 0) == 0;
-    }, 10));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview->shows_path(other_key); }, 10));
     IM_CHECK_FLOAT_NEAR_EQ(h.app->preview->position_ms(), held, 1.0);
     IM_CHECK(h.app->preview->overlay_path_key() != first_overlay);
 
     // The same chart still previews the first path when it is picked again.
-    pick_preview_path(ctx, 0);
+    pick_preview_path(ctx, paths.front());
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
     ctx->ItemClick("##DetailsTabs/Preview");
@@ -232,15 +236,18 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 60));
 
     // At the song's end the box reads the selected path's total.
-    IM_CHECK(pc.length_ms() > 12000.0);
-    pc.seek_ms(pc.length_ms());
+    IM_CHECK(pc.scrub_end_ms() > kChart0MinMs);
+    pc.seek_ms(pc.scrub_end_ms());
     hydra::app::PreviewScoreBox end = pc.score_box();
     IM_CHECK(end.shown);
     IM_CHECK(end.available);
     const hydra::Path* shown = h.app->viewed.record->all_paths().front();
     IM_CHECK_STR_EQ(end.score.c_str(), hydra::group_thousands(shown->totalscore()).c_str());
 
-    // 5 s jumps, clamped to the song's ends.
+    // 5 s jumps, clamped to 0 and to where playback stops (the audio's end,
+    // or the last note when the audio is shorter). The library's charts have
+    // no audio, so here that is the last note; the audio-tail case is pinned
+    // in test_preview_controller.cpp.
     pc.seek_ms(10000.0);
     pc.jump_ms(5000.0);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 15000.0, 0.5);
@@ -248,8 +255,8 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.5);
     pc.jump_ms(-60000.0);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 0.0, 0.5);
-    pc.jump_ms(pc.length_ms() + 60000.0);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.length_ms(), 0.5);
+    pc.jump_ms(pc.playback_end_ms() + 60000.0);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.playback_end_ms(), 0.5);
 
     // A jump while playing keeps playing.
     pc.seek_ms(10000.0);
@@ -288,7 +295,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     ctx->ItemClick("##DetailsTabs/Preview");
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 60));
-    IM_CHECK(pc.sp_meter_has_curve());
+    IM_CHECK(pc.has_sp_gauge());
 
     // Before anything is banked or spent: the idle box.
     pc.seek_ms(0.0);
@@ -302,7 +309,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     // Somewhere the path has SP running. Walk the playhead to find it, so the
     // test needs no timing of its own.
     double active_ms = -1.0;
-    for (double t = 0.0; t <= pc.length_ms() && active_ms < 0.0; t += 50.0) {
+    for (double t = 0.0; t <= pc.scrub_end_ms() && active_ms < 0.0; t += 50.0) {
         pc.seek_ms(t);
         if (pc.drain_box().active) active_ms = t;
     }
@@ -367,7 +374,7 @@ void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     if (!open_preview(ctx)) return;
     auto& pc = *h.app->preview;
     IM_CHECK(!pc.playing());
-    IM_CHECK(pc.length_ms() > 16000.0);
+    IM_CHECK(pc.scrub_end_ms() > kChart0MinMs);
 
     pc.seek_ms(10000.0);
     ctx->ItemClick("**/+5s");
@@ -516,15 +523,12 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
         const ImRect act = ctx->ItemInfo("**/< Act##prevact").RectFull;
         IM_CHECK_GE(act.Min.y, combo.Max.y);
         const ImGuiStyle& s = ImGui::GetStyle();
-        const float size = s.FontSizeBase * s.FontScaleMain * s.FontScaleDpi;
         const hydra::app::PathButtonsView list = hydra::app::build_path_buttons(
             *h.app->viewed.record, h.app->settings.depth_mode, h.app->settings.depth_value);
         float widest = 0.0f;
         for (const hydra::app::PathButtonView& b : list.buttons) {
             const std::string label = hydra::app::preview_path_label(b);
-            widest = (std::max)(widest, hydra::ui::g_mono_font
-                                            ->CalcTextSizeA(size, FLT_MAX, 0.0f, label.c_str())
-                                            .x);
+            widest = (std::max)(widest, text_width(label.c_str(), hydra::ui::g_mono_font));
         }
         const float fit = widest + s.FramePadding.x * 2.0f + combo.GetHeight();
         IM_CHECK_FLOAT_NEAR_EQ(combo.GetWidth(), fit, 1.0f);
@@ -542,11 +546,10 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
         IM_CHECK(win != nullptr);
         if (win == nullptr) return;
         const ImGuiStyle& s = ImGui::GetStyle();
-        const float size = s.FontSizeBase * s.FontScaleMain * s.FontScaleDpi;
         const float line = win->WorkRect.Max.x - combo.RectFull.Min.x;  // the most the box gets
         const float chrome = s.FramePadding.x * 2.0f + combo.RectFull.GetHeight();
-        auto width_of = [&](const std::string& t) {
-            return hydra::ui::g_mono_font->CalcTextSizeA(size, FLT_MAX, 0.0f, t.c_str()).x;
+        auto width_of = [](const std::string& t) {
+            return text_width(t.c_str(), hydra::ui::g_mono_font);
         };
         std::string long_label;
         for (int i = 0; i < 40; ++i) long_label += (i % 3 == 0 ? "2- " : "1 ");
@@ -571,11 +574,11 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     ctx->Yield(1);
     IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
 
-    pick_preview_path(ctx, 1);
+    pick_preview_path(ctx, h.app->viewed.record->all_paths()[1]);
     IM_CHECK(h.app->details_ui.selected_path != nullptr);
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
     const std::string key = hydra::app::path_overlay_key(h.app->details_ui.selected_path);
-    IM_CHECK(wait_until(ctx, [&] { return pc.overlay_path_key().rfind(key, 0) == 0; }, 30));
+    IM_CHECK(wait_until(ctx, [&] { return pc.shows_path(key); }, 30));
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
@@ -583,7 +586,7 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 
     // Back to the optimal path, then a pending jump to its first activation.
-    pick_preview_path(ctx, 0);
+    pick_preview_path(ctx, h.app->viewed.record->all_paths().front());
     IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
     pc.seek_ms(0.0);
     h.app->details_ui.paths_tab.ui().preview_jump = 0;
@@ -595,38 +598,53 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     IM_CHECK(pc.next_act_box().detail.rfind("at m32.1.0", 0) == 0);
 }
 
-// "Preview failed: …" wraps inside the panel. An error naming a long file
-// path used to run on past the panel's edge, cut off with no way to read it.
+// "Preview failed: …" wraps inside the panel. A long error used to run on
+// past the panel's edge, cut off with no way to read it.
 void test_preview_error_wraps(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;
     auto& pc = *h.app->preview;
-    // The selection now names a chart whose file is gone, in a deep folder,
-    // so the Preview reloads and fails on a message carrying that long path.
+    // The selection now names a chart whose resolution is 0, so the Preview
+    // reloads and fails. The panel prints the plain sentence for it, which
+    // quotes the chart's own refusal and so runs long. (A missing file's
+    // plain sentence no longer carries the path and fits on one line.)
     IM_CHECK(h.app->selected.has_value());
     if (!h.app->selected) return;
-    std::string folder = h.app->selected->rootfolder;
-    for (int i = 0; i < 6; ++i) folder += "\\A folder with a long name to push the path past the edge";
-    h.app->selected->notespath = folder + "\\notes.chart";
+    const std::string chart = h.temp_dir + "\\notes.chart";
+    {
+        const std::string text = testchart::chart_text(
+            testchart::section("ExpertDrums", testchart::line(0, "N 0 0")), /*resolution=*/0);
+        std::FILE* f = hydra::fopen_utf8(chart, L"wb");
+        IM_CHECK(f != nullptr);
+        if (f == nullptr) return;
+        std::fputs(text.c_str(), f);
+        std::fclose(f);
+    }
+    h.app->selected->notespath = chart;
     h.app->selected->md5 = "0123456789abcdef0123456789abcdef";
     IM_CHECK(wait_until(ctx, [&] { return pc.has_error(); }, 30));
     ctx->Yield(3);
 
-    // The message is wider than the whole screen, so on one line it could fit
-    // in no window: nothing overflowing below means it wrapped.
+    // That sentence is wider than any of the song panel's windows, so on one
+    // line it would overflow whichever one holds it: nothing overflowing
+    // below means it wrapped.
     const std::string message = "Preview failed: " + pc.error();
     IM_CHECK(visible_text(h).find("Preview failed:") != std::string::npos);
-    IM_CHECK_GT(ImGui::CalcTextSize(message.c_str()).x, ImGui::GetIO().DisplaySize.x);
+    // The raw text is on the details line under it.
+    IM_CHECK(!pc.error_detail().empty());
+    IM_CHECK(visible_text(h).find(pc.error_detail()) != std::string::npos);
     // The song panel's windows, the message's among them. (The settings bar
     // above the library is another task's.)
     int checked = 0;
     int overflowing = 0;
+    float widest_room = 0.0f;
     for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows) {
         if (!w->WasActive || (w->Flags & ImGuiWindowFlags_Tooltip) ||
             (w->Flags & ImGuiWindowFlags_HorizontalScrollbar) ||
             std::strstr(w->Name, "##songpanel") == nullptr)
             continue;
         ++checked;
+        widest_room = (std::max)(widest_room, w->ContentRegionRect.GetWidth());
         if (w->ContentSize.x > w->ContentRegionRect.GetWidth() + 0.5f) {
             ++overflowing;
             std::fprintf(stderr, "OVERFLOW %s: content %.0f px, room %.0f px\n", w->Name,
@@ -634,7 +652,43 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
         }
     }
     IM_CHECK_GT(checked, 0);
+    IM_CHECK_GT(ImGui::CalcTextSize(message.c_str()).x, widest_room);
     IM_CHECK_EQ(overflowing, 0);
+}
+
+// A mode change on the open chart reloads the Preview (D48, Q22). Evans Blue -
+// Beg charts Expert drums and no Hard, so picking Hard in the settings bar
+// must say so in the Preview, in the no-notes sentence analysis uses, rather
+// than keep drawing Expert's notes. Back on Expert the highway returns.
+void test_preview_mode_reload(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    open_titled(ctx, "Beg", "Beg");
+    if (ctx->IsError()) return;
+    ctx->ItemClick("##DetailsTabs/Preview");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+    if (!h.app->preview) return;
+    auto& pc = *h.app->preview;
+    IM_CHECK(wait_until(ctx, [&] { return !pc.loading(); }, 120));
+    IM_CHECK_STR_EQ(pc.error().c_str(), "");
+
+    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
+    ctx->ComboClick("##difficulty/Hard");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.has_error(); }, 120));
+    const std::string no_hard =
+        hydra::no_notes_message(hydra::Difficulty::Hard, h.app->settings.view_prodrums);
+    IM_CHECK_STR_EQ(pc.error().c_str(), no_hard.c_str());
+    ctx->Yield(2);
+    IM_CHECK(visible_text(h).find(no_hard) != std::string::npos);
+
+    ctx->ComboClick("##difficulty/Expert");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && !pc.has_error() && pc.scrub_end_ms() > 0.0; },
+                        120));
+    IM_CHECK_STR_EQ(pc.error().c_str(), "");
 }
 
 // The text boxes keep one size all through a path. The next-activation box
@@ -667,7 +721,7 @@ void test_preview_overlay_steady(ImGuiTestContext* ctx) {
             IM_CHECK_EQ(pc.overlay_scale(), scale);
         }
         // Past the last activation the box is gone; the scale stays.
-        pc.seek_ms(pc.length_ms());
+        pc.seek_ms(pc.scrub_end_ms());
         ctx->Yield(2);
         IM_CHECK(!pc.next_act_box().shown);
         IM_CHECK_EQ(pc.overlay_scale(), scale);
@@ -693,7 +747,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
 
     pc.seek_ms(0.0);
     IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
-    IM_CHECK_STR_EQ(pc.next_act_box().detail.c_str(), "at m32.1.0 \xC2\xB7 [Kick - GreenCym]");
+    IM_CHECK_STR_EQ(pc.next_act_box().detail.c_str(), "at m32.1.0 \xC2\xB7 [Kick - Green cymbal]");
 
     ctx->ItemClick("**/Act >##nextact");
     const double act1 = pc.position_ms();
@@ -719,7 +773,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     const std::string readout = pc.sp_meter_readout();
     IM_CHECK(readout.size() >= 5);
     IM_CHECK(readout.substr(readout.size() - 2) == "/4");
-    pc.seek_ms(pc.length_ms());
+    pc.seek_ms(pc.playback_end_ms());  // the time box's end is where playback stops
     IM_CHECK_STR_EQ(pc.time_box().length.c_str(), "m96.3.240");
     IM_CHECK_STR_EQ(pc.time_box().position.c_str(), pc.time_box().length.c_str());
     IM_CHECK(pc.time_box().tempo.rfind("BPM ", 0) == 0);
@@ -749,6 +803,7 @@ const std::vector<TestEntry>& preview_tests() {
         {"preview-activation-jumps", test_preview_activation_jumps},
         {"preview-error-wraps", test_preview_error_wraps},
         {"preview-overlay-steady", test_preview_overlay_steady},
+        {"preview-mode-reload", test_preview_mode_reload},
     };
     return entries;
 }

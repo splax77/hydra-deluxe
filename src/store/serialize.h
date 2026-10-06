@@ -14,14 +14,16 @@
 #include <string>
 #include <vector>
 
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/timing.h"
 
 namespace hydra::store {
 
-class SerializeError : public std::runtime_error {
+// A stored result that can't be read back.
+class SerializeError : public KindedError {
 public:
-    explicit SerializeError(const std::string& what) : std::runtime_error(what) {}
+    explicit SerializeError(const std::string& what) : KindedError(ErrorKind::StoredResult, what) {}
 };
 
 // Small little-endian binary primitives, shared by the record blob and the

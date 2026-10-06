@@ -15,7 +15,8 @@
 #include <vector>
 
 #include "app/library_query.h"
-#include "core/model.h"  // group_thousands
+#include "app/user_messages.h"  // stale_text
+#include "core/model.h"         // group_thousands, counted
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiSelectableFlags_SpanAvailWidth
 #include "ui/app_state.h"
@@ -27,17 +28,6 @@
 namespace hydra::ui::detail {
 
 namespace {
-
-// Typing is applied at most this often, so a burst of keys on a big library
-// filters a few times rather than once per key.
-constexpr double kSearchThrottleSeconds = 0.15;
-
-// The table's columns, by index. Each column's user ID is its LibrarySort.
-constexpr int kColumnTitle = 0;
-constexpr int kColumnArtist = 1;
-constexpr int kColumnCharter = 2;
-constexpr int kColumnFolder = 3;
-constexpr int kColumnBestPath = 4;
 
 // The chips' look, from the approved mockup: the selected chip is filled
 // teal with an accent border, the others are outlined only. White on the
@@ -55,7 +45,7 @@ const ImU32 kMatchTextColor = IM_COL32(0xff, 0xe6, 0x80, 0xff);
 
 // "1 chart", "97 charts", "12,345 charts".
 std::string charts_text(size_t n) {
-    return group_thousands(static_cast<int64_t>(n)) + (n == 1 ? " chart" : " charts");
+    return counted(static_cast<int64_t>(n), "chart", "charts");
 }
 
 void clear_search(AppState& app) {
@@ -85,7 +75,7 @@ void render_search_box(AppState& app) {
         ui.search_synced = true;
     }
     const ImGuiStyle& style = ImGui::GetStyle();
-    const float clear_w = ImGui::CalcTextSize("X").x + style.FramePadding.x * 2.0f;
+    const float clear_w = button_slot_width("X##clearsearch");
     ImGui::SetNextItemWidth(-(clear_w + style.ItemSpacing.x));
 
     // Ctrl+F jumps here from anywhere except behind a dialog: focusing a
@@ -105,10 +95,11 @@ void render_search_box(AppState& app) {
     hint("Ctrl+F jumps here. Escape clears it.");
     if (edited) ui.search_pending = true;
 
-    // An emptied box applies at once; typing applies at most every 150 ms.
+    // An emptied box applies at once; typing applies at most once per the
+    // named constant's interval.
     const double now = ImGui::GetTime();
     if (ui.search_pending &&
-        (buf[0] == '\0' || now - ui.search_applied_at >= kSearchThrottleSeconds)) {
+        (buf[0] == '\0' || now - ui.search_applied_at >= AppState::kSearchThrottleSeconds)) {
         ui.search_pending = false;
         ui.search_applied_at = now;
         app.set_search(buf);
@@ -143,42 +134,38 @@ bool chip_button(const char* label, bool on, bool disabled) {
     return clicked;
 }
 
-// All (N), Not analyzed (N), Stale (N), Analyzed (N): counts over what the
-// search matches. A group with nothing in it can't be picked.
+// All, then one chip per record status, each with its count over what the
+// search matches. A status chip shows status_label's word; All keeps its
+// own. A group with nothing in it can't be picked.
 void render_chips(AppState& app) {
     struct Chip {
         StatusChip chip;
-        const char* name;
         const char* id;
     };
     static constexpr Chip kChips[] = {
-        {StatusChip::All, "All", "chipall"},
-        {StatusChip::NotAnalyzed, "Not analyzed", "chipnew"},
-        {StatusChip::Stale, "Stale", "chipstale"},
-        {StatusChip::Analyzed, "Analyzed", "chipdone"},
+        {StatusChip::All, "chipall"},
+        {StatusChip::NotAnalyzed, "chipnew"},
+        {StatusChip::Stale, "chipstale"},
+        {StatusChip::Analyzed, "chipdone"},
     };
     const ChipCounts& counts = app.library.counts();
     // A chip that doesn't fit after the last one starts a new line. A
-    // button's width is its label plus the frame padding, known before it is
-    // drawn.
+    // button's width is known before it is drawn (button_slot_width).
     const ImGuiStyle& style = ImGui::GetStyle();
-    const float right_edge = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
     for (size_t i = 0; i < std::size(kChips); ++i) {
         const Chip& c = kChips[i];
         const size_t n = counts.of(c.chip);
-        const std::string label = std::string(c.name) + " (" +
+        const std::optional<store::RecordStatus> status = status_of(c.chip);
+        const char* name = status ? status_label(*status) : "All";
+        const std::string label = std::string(name) + " (" +
                                   group_thousands(static_cast<int64_t>(n)) + ")##" + c.id;
-        if (i > 0) {
-            const float w =
-                ImGui::CalcTextSize(label.c_str(), nullptr, true).x + style.FramePadding.x * 2.0f;
-            if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + w <= right_edge)
-                ImGui::SameLine();
-        }
+        if (i > 0 && fits_on_line(button_slot_width(label.c_str()), style.ItemSpacing.x))
+            ImGui::SameLine();
         const bool on = app.library.chip() == c.chip;
         if (chip_button(label.c_str(), on, !on && n == 0)) app.library.set_chip(c.chip);
-        if (c.chip == StatusChip::Stale)
-            hint("Analyzed by another Hydra version, or under different rules in "
-                 "hydra_rules.ini. Re-analyze to refresh.");
+        // The chip stands for many rows with either cause, so its hint names
+        // both.
+        if (c.chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());
     }
 }
 
@@ -209,24 +196,10 @@ void cell_text(const std::string& text, const std::vector<app::MatchSpan>& spans
     overlay_matches(pos, text, spans, max_x);
 }
 
-// Draws a row's title at `pos` cut to end in "..." within `max_w`, and returns
-// how wide the kept part is, so the search highlight stops before the "...".
-// It goes straight to the draw list: the row's Selectable already gave the
-// text log the full title.
-float draw_title_ellipsized(ImVec2 pos, float max_w, const std::string& title) {
-    ImFont* font = ImGui::GetFont();
-    const float size = ImGui::GetFontSize();
-    const float ellipsis_w = ImGui::GetFontBaked()->GetCharAdvance(font->EllipsisChar);
-    const char* kept_end = title.data();
-    const float kept_w =
-        font->CalcTextSizeA(size, std::max(max_w - ellipsis_w, 1.0f), 0.0f, title.data(),
-                            title.data() + title.size(), &kept_end)
-            .x;
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    const ImU32 col = ImGui::GetColorU32(ImGuiCol_Text);
-    draw->AddText(font, size, pos, col, title.data(), kept_end);
-    font->RenderChar(draw, size, ImVec2(IM_TRUNC(pos.x + kept_w), pos.y), col, font->EllipsisChar);
-    return kept_w;
+// Draws a row's cut title at `pos`. It goes straight to the draw list: the
+// row's Selectable already gave the text log the full title.
+void draw_cut_title(ImVec2 pos, const std::string& shown) {
+    ImGui::GetWindowDrawList()->AddText(pos, ImGui::GetColorU32(ImGuiCol_Text), shown.c_str());
 }
 
 // Which hidden columns this frame's second lines named, for the footer.
@@ -270,7 +243,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
         ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
         ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuterH |
         ImGuiTableFlags_SizingStretchProp;
-    if (!ImGui::BeginTable("##librarytable", 5, flags, size)) return used;
+    if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, flags, size)) return used;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
     ImGui::TableSetupColumn("Title",
@@ -348,7 +321,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     if (selected_path != app.library_ui.scrolled_to) {
         app.library_ui.scrolled_to = selected_path;
         for (size_t k = 0; k < order.size(); ++k)
-            if (rows[order[k]].entry.notespath == selected_path) {
+            if (app.is_selected_row(rows[order[k]].entry)) {
                 scroll_to = k;
                 break;
             }
@@ -371,12 +344,18 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             ImGui::TableSetColumnIndex(kColumnTitle);
             const ImVec2 title_pos = ImGui::GetCursorScreenPos();
             const float title_w = ImGui::GetContentRegionAvail().x;
-            const bool selected = !selected_path.empty() && row.entry.notespath == selected_path;
+            const bool selected = app.is_selected_row(row.entry);
             // A title too long for its cell ends in "..." like the other
             // columns: the Selectable keeps its label (its ID, and the text
             // log) but draws it invisibly and lays out only the cell's width,
-            // and the cut title is drawn over it.
-            const bool title_cut = ImGui::CalcTextSize(row.title.c_str()).x > title_w;
+            // and the cut title is drawn over it. The cut is the one cutting
+            // rule (render::ellipsize, measured with text_width), which hands
+            // a title that fits back unchanged: that is the fit test. Its
+            // kept width is where the search highlight stops, before the "…".
+            float title_kept_w = 0.0f;
+            const std::string title_shown =
+                render::ellipsize(row.title, title_w, text_width, title_kept_w);
+            const bool title_cut = title_shown != row.title;
             if (title_cut) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
             ImGuiSelectableFlags row_flags = ImGuiSelectableFlags_SpanAllColumns;
             if (title_cut) row_flags |= ImGuiSelectableFlags_SpanAvailWidth;
@@ -386,8 +365,8 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             if (clicked) app.select(row.entry);
             if (ImGui::TableGetHoveredColumn() == kColumnTitle && title_cut)
                 overflow_tooltip(row.title.c_str());
-            const float title_text_w =
-                title_cut ? draw_title_ellipsized(title_pos, title_w, row.title) : title_w;
+            if (title_cut) draw_cut_title(title_pos, title_shown);
+            const float title_text_w = title_cut ? title_kept_w : title_w;
             if (scroll_to && *scroll_to == static_cast<size_t>(k)) ImGui::SetScrollHereY(0.5f);
             if (searching_words)
                 overlay_matches(title_pos, row.title,
@@ -437,8 +416,9 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                     ImGui::SetTooltip("Not analyzed yet. Open the song and press \"Analyze this "
                                       "song\", or use \"Analyze library...\".");
                 else if (row.status == store::RecordStatus::Stale)
-                    ImGui::SetTooltip("Analyzed by another Hydra version, or under different "
-                                      "rules in hydra_rules.ini. Re-analyze to refresh it.");
+                    // This one row's real cause, from the store.
+                    ImGui::SetTooltip(
+                        "%s", app::stale_text(row.stale_build, row.stale_rules).c_str());
             }
             ImGui::PopID();
         }
@@ -468,7 +448,7 @@ void render_library(AppState& app) {
     // Job-driven refreshes first, every frame, whatever is drawn below.
     app.tick_library(ImGui::GetTime());
     // An empty library shows the main window's "no songs" message instead.
-    if (app.library_total == 0) return;
+    if (app.library.rows().empty()) return;
 
     render_heading(app);
     render_search_box(app);
@@ -483,7 +463,7 @@ void render_library(AppState& app) {
         return;
     }
 
-    const bool searching = !app.library.query().empty();
+    const bool searching = app.library.searching();
     const float footer_h = searching ? ImGui::GetFrameHeightWithSpacing() : 0.0f;
     const float table_h = std::max(ImGui::GetContentRegionAvail().y - footer_h,
                                    ImGui::GetTextLineHeightWithSpacing() * 4.0f);

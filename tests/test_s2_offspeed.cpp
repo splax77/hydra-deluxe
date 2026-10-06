@@ -40,9 +40,9 @@ TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a r
 
     const std::vector<net::DmScore> scores = {
         score_at(kHash, optimal + 5, 150),     // would read "above optimal"
-        score_at(kHash, optimal - 1000, 75),   // would read "matched"
+        score_at(kHash, optimal - 1000, 75),   // would read "under optimal"
         score_at("00ff00ff00ff00ff00ff00ff00ff00ff", 123, 150),  // no result at all
-        score_at(kHash, optimal - 1000, 100),  // base speed: matched, as today
+        score_at(kHash, optimal - 1000, 100),  // base speed: under optimal
     };
     const std::vector<DmReportRow> rows =
         app::dm_report::collect_dm_rows(store, scores, kMode, store::Lens{});
@@ -52,18 +52,19 @@ TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a r
     CHECK(rows[0].status == "other speed");
     CHECK(rows[1].status == "other speed");
     CHECK(rows[2].status == "other speed");
-    CHECK(rows[3].status == "matched");
+    CHECK(rows[3].status == "under optimal");
 
     // The numbers still show; only the comparison is withheld.
     CHECK(rows[0].optimal == optimal);
     CHECK(rows[1].delta == 1000);
-    CHECK_FALSE(rows[0].pct.has_value());
-    CHECK_FALSE(rows[1].pct.has_value());
-    REQUIRE(rows[3].pct.has_value());
+    CHECK_FALSE(rows[0].pct_h.has_value());
+    CHECK_FALSE(rows[1].pct_h.has_value());
+    REQUIRE(rows[3].pct_h.has_value());
 
     const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
     CHECK(stats.total == 4);
-    CHECK(stats.matched == 1);
+    CHECK(stats.under_optimal == 1);
+    CHECK(stats.at_optimal == 0);
     CHECK(stats.above_optimal == 0);
     CHECK(stats.other_speed == 3);
     CHECK(stats.not_in_library == 0);
@@ -72,16 +73,17 @@ TEST_CASE("s2 offspeed: an off-speed score is 'other speed', with or without a r
 TEST_CASE("s2 offspeed: the counts sentence names other speeds only when there are some") {
     app::dm_report::DmReportStats st;
     st.total = 4;
-    st.matched = 1;
+    st.under_optimal = 1;
     st.above_optimal = 1;
     st.not_in_library = 1;
     st.other_speed = 1;
     CHECK(app::dm_report::counts_phrase(st) ==
-          "1 matched, 1 above optimal, 0 not analyzed, 1 not in your library, "
-          "1 at another speed");
+          "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, "
+          "1 not in your library, 1 at another speed");
     st.other_speed = 0;
     CHECK(app::dm_report::counts_phrase(st) ==
-          "1 matched, 1 above optimal, 0 not analyzed, 1 not in your library");
+          "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, "
+          "1 not in your library");
 }
 
 TEST_CASE("s2 offspeed: the page filters, colours and counts 'other speed'") {
@@ -92,13 +94,13 @@ TEST_CASE("s2 offspeed: the page filters, colours and counts 'other speed'") {
                 score_at(kHash, optimal - 9, 50)},
         kMode, store::Lens{}, "TestUser");
     CHECK(report.stats.other_speed == 2);
-    CHECK(report.html.find("TestUser — 3 scores: 1 matched, 0 above optimal, 0 not analyzed, "
-                           "0 not in your library, 2 at other speeds") != std::string::npos);
+    CHECK(report.html.find("TestUser — 3 scores: 1 under optimal, 0 at optimal, "
+                           "0 above optimal, 0 not analyzed, 0 not in your library, "
+                           "2 at other speeds") != std::string::npos);
     CHECK(report.html.find("<option value=\"other speed\">Other speed</option>") !=
           std::string::npos);
     CHECK(report.html.find("'other speed':'s-otherspeed'") != std::string::npos);
-    CHECK(report.html.find("['Other speed', otherSpeed.length.toLocaleString()]") !=
-          std::string::npos);
+    CHECK(report.html.find("['Other speed', fmt(otherSpeed.length)]") != std::string::npos);
     CHECK(report.html.find(".s-otherspeed{") != std::string::npos);
 }
 
@@ -109,8 +111,8 @@ TEST_CASE("s2 offspeed: the page filters, colours and counts 'other speed'") {
 // page's stats(), its own filter option and its own chip class, and the page
 // counts no status the C++ doesn't know.
 TEST_CASE("s2 offspeed: the page counts the same statuses tally_dm_rows counts") {
-    const std::vector<std::string> statuses = {"matched", "above optimal", "not analyzed",
-                                               "not in library", "other speed"};
+    const std::vector<std::string> statuses = {"under optimal", "at optimal", "above optimal",
+                                               "not analyzed", "not in library", "other speed"};
     std::vector<DmReportRow> rows;
     for (const std::string& s : statuses) {
         DmReportRow r;
@@ -118,8 +120,9 @@ TEST_CASE("s2 offspeed: the page counts the same statuses tally_dm_rows counts")
         rows.push_back(r);
     }
     const app::dm_report::DmReportStats st = app::dm_report::tally_dm_rows(rows);
-    CHECK(st.total == 5);
-    CHECK(st.matched == 1);
+    CHECK(st.total == 6);
+    CHECK(st.under_optimal == 1);
+    CHECK(st.at_optimal == 1);
     CHECK(st.above_optimal == 1);
     CHECK(st.not_analyzed == 1);
     CHECK(st.not_in_library == 1);

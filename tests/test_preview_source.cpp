@@ -27,32 +27,19 @@
 #include "corpus_util.h"
 #include "multidiff_chart.h"
 #include "parse/song.h"
+#include "sng_util.h"
 #include "srb_util.h"
+#include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::app;
 
 namespace {
 
-void write_bytes(const std::string& path, const std::vector<uint8_t>& data) {
-    FILE* f = hydra::fopen_utf8(path, L"wb");
-    REQUIRE_MESSAGE(f != nullptr, "cannot write " << path);
-    if (!data.empty()) std::fwrite(data.data(), 1, data.size(), f);
-    std::fclose(f);
-}
+using testtemp::write_bytes;
 
-// A fresh directory under %TEMP% for this process's fixtures.
-std::string fixture_dir() {
-    static std::string dir = [] {
-        wchar_t tmp[MAX_PATH];
-        GetTempPathW(MAX_PATH, tmp);
-        std::wstring d = std::wstring(tmp) + L"hydra_prevsrc_" +
-                         std::to_wstring(GetCurrentProcessId());
-        CreateDirectoryW(d.c_str(), nullptr);
-        return wide_to_utf8(d);
-    }();
-    return dir;
-}
+// This process's scratch folder for the fixtures (testtemp::temp_dir).
+std::string fixture_dir() { return testtemp::temp_dir("prevsrc"); }
 
 std::string make_subdir(const std::string& name) {
     std::string dir = fixture_dir() + "\\" + name;
@@ -60,80 +47,11 @@ std::string make_subdir(const std::string& name) {
     return dir;
 }
 
-void push_u32(std::vector<uint8_t>& out, uint32_t n) {
-    for (int i = 0; i < 4; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));
-}
-void push_u64(std::vector<uint8_t>& out, uint64_t n) {
-    for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(n >> (8 * i)));
-}
-
 std::vector<uint8_t> bytes_of(const std::string& s) {
     return std::vector<uint8_t>(s.begin(), s.end());
 }
 
-// ---- .sng fixture --------------------------------------------------------
-
-struct SngFile {
-    std::string name;
-    std::vector<uint8_t> bytes;
-};
-
-// Build a .sng exactly as load_songpath_sng reads it: 10 prefix bytes, a
-// 16-byte XOR mask, a metadata block, then a file table whose contents live at
-// absolute offsets, every file's bytes XOR-masked by mask[j%16]^(j&0xff).
-std::vector<uint8_t> make_sng(
-    const std::vector<SngFile>& files,
-    const std::vector<std::pair<std::string, std::string>>& metadata = {}) {
-    uint8_t mask[16];
-    for (int i = 0; i < 16; ++i) mask[i] = static_cast<uint8_t>(i * 13 + 7);
-    // No pairs: the old 20 junk bytes, which read as no metadata at all, so
-    // every existing fixture stays byte-identical. With pairs: a real block,
-    // u64 count then (u32 length + bytes) key and value strings.
-    std::vector<uint8_t> meta(20, 0xAB);
-    if (!metadata.empty()) {
-        meta.clear();
-        push_u64(meta, metadata.size());
-        for (const auto& [key, value] : metadata) {
-            push_u32(meta, static_cast<uint32_t>(key.size()));
-            meta.insert(meta.end(), key.begin(), key.end());
-            push_u32(meta, static_cast<uint32_t>(value.size()));
-            meta.insert(meta.end(), value.begin(), value.end());
-        }
-    }
-
-    size_t table_bytes = 0;
-    for (const SngFile& f : files) table_bytes += 1 + f.name.size() + 8 + 8;
-    size_t header_bytes = 10 + 16 + (8 + meta.size()) + 8 + 8;
-    size_t contents_start = header_bytes + table_bytes;
-
-    std::vector<uint64_t> offsets;
-    uint64_t cur = contents_start;
-    for (const SngFile& f : files) {
-        offsets.push_back(cur);
-        cur += f.bytes.size();
-    }
-
-    std::vector<uint8_t> out;
-    for (int i = 0; i < 10; ++i) out.push_back(static_cast<uint8_t>('S' + i));
-    out.insert(out.end(), mask, mask + 16);
-    push_u64(out, meta.size());
-    out.insert(out.end(), meta.begin(), meta.end());
-    push_u64(out, 0);  // section length (skipped by the loader)
-    push_u64(out, files.size());
-    for (size_t k = 0; k < files.size(); ++k) {
-        out.push_back(static_cast<uint8_t>(files[k].name.size()));
-        out.insert(out.end(), files[k].name.begin(), files[k].name.end());
-        push_u64(out, files[k].bytes.size());
-        push_u64(out, offsets[k]);
-    }
-    REQUIRE(out.size() == contents_start);
-    for (const SngFile& f : files)
-        for (uint64_t j = 0; j < f.bytes.size(); ++j) {
-            uint8_t xorkey = mask[j % 16] ^ static_cast<uint8_t>(j & 0xff);
-            out.push_back(f.bytes[static_cast<size_t>(j)] ^ xorkey);
-        }
-    return out;
-}
+// .sng fixtures come from testsng::make_sng (tests/sng_util.h).
 
 // ---- .srb fixture --------------------------------------------------------
 
@@ -166,13 +84,28 @@ TEST_CASE("is_audio_filename / looks_like_audio recognize the formats") {
     CHECK_FALSE(is_audio_filename("album.png"));
     CHECK_FALSE(is_audio_filename("notes.chart"));
 
-    CHECK(looks_like_audio(bytes_of("OggS\x00\x02")));
+    // The decoder's rule (audio::sniff_format): an Ogg stream counts only when
+    // its first page names a codec the decoder has, and a RIFF only when it
+    // holds a WAVE.
+    CHECK_FALSE(looks_like_audio(bytes_of("OggS\x00\x02")));
+    CHECK(looks_like_audio(bytes_of("OggS OpusHead")));
+    CHECK(looks_like_audio(bytes_of("OggS vorbis")));
     CHECK(looks_like_audio(bytes_of("RIFF....WAVE")));
+    CHECK_FALSE(looks_like_audio(bytes_of("RIFF....AVI ")));
     CHECK(looks_like_audio(bytes_of("fLaC")));
     CHECK(looks_like_audio(bytes_of("ID3\x03")));
     CHECK(looks_like_audio({0xFF, 0xFB, 0x90, 0x00}));  // MP3 frame sync
     CHECK_FALSE(looks_like_audio(bytes_of("\x89PNG\r\n")));
     CHECK_FALSE(looks_like_audio({}));
+}
+
+TEST_CASE("is_song_stem: an audio file that is not a standalone preview clip") {
+    CHECK(is_song_stem("song.ogg"));
+    CHECK_FALSE(is_song_stem("Preview.OGG"));
+    CHECK_FALSE(is_song_stem("preview.opus"));
+    CHECK(is_song_stem("preview2.ogg"));
+    CHECK_FALSE(is_song_stem("album.jpg"));
+    CHECK_FALSE(is_song_stem("notes.chart"));
 }
 
 TEST_CASE("find_loose_audio: stems beside the notes, preview and art excluded") {
@@ -199,15 +132,19 @@ TEST_CASE("extract_sng_audio: audio entries come back XOR-demasked") {
     std::vector<uint8_t> notes = hydra::read_file_bytes(
         corpus::first_chart_with_suffix(".chart"));
 
-    std::vector<uint8_t> sng = make_sng({{"notes.chart", notes},
-                                         {"song.ogg", song},
-                                         {"drums.opus", drums},
-                                         {"album.jpg", bytes_of("\xFF\xD8" "art")}});
+    std::vector<uint8_t> sng =
+        testsng::make_sng({}, {{"notes.chart", notes},
+                               {"song.ogg", song},
+                               {"drums.opus", drums},
+                               {"preview.ogg", bytes_of("OggS vorbis preview clip")},
+                               {"album.jpg", bytes_of("\xFF\xD8" "art")}});
     std::string path = fixture_dir() + "\\bundle.sng";
     write_bytes(path, sng);
 
     std::vector<PreviewAudioStem> stems = extract_sng_audio(path);
-    REQUIRE(stems.size() == 2);  // notes and the .jpg are not audio
+    // The notes and the .jpg are not audio; the preview clip is not part of
+    // the song.
+    REQUIRE(stems.size() == 2);
     CHECK(stems[0].label == "song");
     CHECK(stems[0].bytes == song);
     CHECK(stems[1].label == "drums");
@@ -222,7 +159,7 @@ TEST_CASE("extract_sng_audio: audio entries come back XOR-demasked") {
 TEST_CASE("extract_srb_audio: trailing audio streams inflate; art is skipped") {
     std::vector<uint8_t> notes = hydra::read_file_bytes(
         corpus::first_chart_with_suffix(".mid"));
-    std::vector<uint8_t> ogg = bytes_of("OggS opus payload for the preview");
+    std::vector<uint8_t> ogg = bytes_of("OggS OpusHead payload for the preview");
     std::vector<uint8_t> art(512, 0);
     std::memcpy(art.data(), "\x89PNG\r\n\x1a\n", 8);
 
@@ -241,6 +178,22 @@ TEST_CASE("extract_srb_audio: trailing audio streams inflate; art is skipped") {
     PreviewSource src = resolve_preview_source(path, true, true);
     CHECK_FALSE(src.song.is_empty());
     CHECK(src.stems.size() == 1);
+}
+
+TEST_CASE("extract_srb_audio: a stream with an audio magic but no codec is not a stem") {
+    // The decoder could not open the bare Ogg stream, so it is not kept, and
+    // the walk goes on to the tagged stream behind it.
+    std::vector<uint8_t> notes = hydra::read_file_bytes(
+        corpus::first_chart_with_suffix(".mid"));
+    std::vector<uint8_t> bare_ogg = bytes_of("OggS");
+    std::vector<uint8_t> tagged_ogg = bytes_of("OggS vorbis the real song");
+
+    std::string path = fixture_dir() + "\\untagged.srb";
+    write_bytes(path, make_srb(notes, {bare_ogg, tagged_ogg}));
+
+    std::vector<PreviewAudioStem> stems = extract_srb_audio(path);
+    REQUIRE(stems.size() == 1);
+    CHECK(stems[0].bytes == tagged_ogg);
 }
 
 TEST_CASE("resolve_preview_source: a .srb with no extractable audio falls "
@@ -284,8 +237,8 @@ TEST_CASE("containers pass the difficulty through to the chart inside") {
     const std::vector<uint8_t> notes = multidiff::chart_bytes();
 
     std::string sng = fixture_dir() + "\\multidiff.sng";
-    write_bytes(sng, make_sng({{"notes.chart", notes},
-                               {"song.ogg", bytes_of("OggS audio")}}));
+    write_bytes(sng, testsng::make_sng({}, {{"notes.chart", notes},
+                                            {"song.ogg", bytes_of("OggS audio")}}));
 
     std::string srb = fixture_dir() + "\\multidiff.srb";
     write_bytes(srb, make_srb(notes, {}, "notes.chart"));
@@ -353,32 +306,36 @@ TEST_CASE("resolve_preview_source reads delay from a song.ini in any case") {
 
 TEST_CASE("sng_delay_ms reads the delay key in any case") {
     const std::vector<uint8_t> notes = multidiff::chart_bytes();
-    const std::vector<uint8_t> upper = make_sng({{"notes.chart", notes}}, {{"DELAY", "-120"}});
+    const std::vector<uint8_t> upper =
+        testsng::make_sng({{"DELAY", "-120"}}, {{"notes.chart", notes}});
     REQUIRE(sng_delay_ms(upper).has_value());
     CHECK(*sng_delay_ms(upper) == doctest::Approx(-120.0));
 
-    CHECK_FALSE(sng_delay_ms(make_sng({{"notes.chart", notes}}, {{"delay", "soon"}})).has_value());
-    CHECK_FALSE(sng_delay_ms(make_sng({{"notes.chart", notes}}, {{"name", "X"}})).has_value());
-    CHECK_FALSE(sng_delay_ms(make_sng({{"notes.chart", notes}})).has_value());
+    CHECK_FALSE(
+        sng_delay_ms(testsng::make_sng({{"delay", "soon"}}, {{"notes.chart", notes}})).has_value());
+    CHECK_FALSE(
+        sng_delay_ms(testsng::make_sng({{"name", "X"}}, {{"notes.chart", notes}})).has_value());
+    CHECK_FALSE(sng_delay_ms(testsng::make_sng({}, {{"notes.chart", notes}})).has_value());
 }
 
 TEST_CASE("resolve_preview_source: a .sng's metadata delay replaces the chart Offset") {
     const std::vector<uint8_t> notes = chart_with_offset("0.25");
 
     const std::string with_delay = fixture_dir() + "\\delay500.sng";
-    write_bytes(with_delay, make_sng({{"notes.chart", notes}}, {{"name", "X"}, {"delay", "500"}}));
+    write_bytes(with_delay,
+                testsng::make_sng({{"name", "X"}, {"delay", "500"}}, {{"notes.chart", notes}}));
     CHECK(resolve_preview_source(with_delay, true, true).audio_offset_ms ==
           doctest::Approx(500.0));
 
     // A delay of 0 counts as unset (the Lunaris rule), whatever the key's case.
     const std::string zero_delay = fixture_dir() + "\\delay0.sng";
-    write_bytes(zero_delay, make_sng({{"notes.chart", notes}}, {{"Delay", "0"}}));
+    write_bytes(zero_delay, testsng::make_sng({{"Delay", "0"}}, {{"notes.chart", notes}}));
     CHECK(resolve_preview_source(zero_delay, true, true).audio_offset_ms ==
           doctest::Approx(250.0));
 
     // No delay key at all: the chart's Offset applies.
     const std::string no_delay = fixture_dir() + "\\nodelay.sng";
-    write_bytes(no_delay, make_sng({{"notes.chart", notes}}, {{"name", "X"}}));
+    write_bytes(no_delay, testsng::make_sng({{"name", "X"}}, {{"notes.chart", notes}}));
     CHECK(resolve_preview_source(no_delay, true, true).audio_offset_ms ==
           doctest::Approx(250.0));
 }
@@ -438,11 +395,11 @@ struct CountingReader {
 
 TEST_CASE("resolve_preview_source reads a .sng or .srb from disk once") {
     const std::vector<uint8_t> notes = chart_with_offset("0.25");
-    const std::vector<uint8_t> ogg = bytes_of("OggS the one stem");
+    const std::vector<uint8_t> ogg = bytes_of("OggS vorbis the one stem");
 
     const std::string sng = fixture_dir() + "\\readonce.sng";
-    write_bytes(sng, make_sng({{"notes.chart", notes}, {"song.ogg", ogg}},
-                              {{"delay", "500"}}));
+    write_bytes(sng,
+                testsng::make_sng({{"delay", "500"}}, {{"notes.chart", notes}, {"song.ogg", ogg}}));
     const std::string srb = fixture_dir() + "\\readonce.srb";
     write_bytes(srb, make_srb(notes, {ogg}, "notes.chart"));
 
@@ -470,9 +427,10 @@ TEST_CASE("resolve_preview_source reads a .sng or .srb from disk once") {
 // The Preview load runs the two halves side by side on one container read.
 TEST_CASE("the song and stem halves share one container read and match the whole") {
     const std::vector<uint8_t> notes = chart_with_offset("0.25");
-    const std::vector<uint8_t> ogg = bytes_of("OggS the one stem");
+    const std::vector<uint8_t> ogg = bytes_of("OggS vorbis the one stem");
     const std::string sng = fixture_dir() + "\\halves.sng";
-    write_bytes(sng, make_sng({{"notes.chart", notes}, {"song.ogg", ogg}}, {{"delay", "500"}}));
+    write_bytes(sng,
+                testsng::make_sng({{"delay", "500"}}, {{"notes.chart", notes}, {"song.ogg", ogg}}));
     const std::string srb = fixture_dir() + "\\halves.srb";
     write_bytes(srb, make_srb(notes, {ogg}, "notes.chart"));
 
@@ -505,8 +463,8 @@ TEST_CASE("container charts give the same Song, stems and offset as the chart in
     const std::vector<uint8_t> chart = chart_with_offset("0.25");
     const std::vector<uint8_t> mid =
         hydra::read_file_bytes(corpus::first_chart_with_suffix(".mid"));
-    const std::vector<uint8_t> song_ogg = bytes_of("OggS song stem");
-    const std::vector<uint8_t> drums_ogg = bytes_of("OggS drums stem, a bit longer");
+    const std::vector<uint8_t> song_ogg = bytes_of("OggS vorbis song stem");
+    const std::vector<uint8_t> drums_ogg = bytes_of("OggS vorbis drums stem, a bit longer");
 
     struct Case {
         const char* file;
@@ -517,12 +475,14 @@ TEST_CASE("container charts give the same Song, stems and offset as the chart in
     };
     const std::vector<Case> cases = {
         {"eq_chart.sng",
-         make_sng({{"notes.chart", chart}, {"song.ogg", song_ogg}, {"drums.ogg", drums_ogg}},
-                  {{"delay", "120"}}),
+         testsng::make_sng({{"delay", "120"}}, {{"notes.chart", chart},
+                                                {"song.ogg", song_ogg},
+                                                {"drums.ogg", drums_ogg}}),
          false, {song_ogg, drums_ogg}, 120.0},
-        {"eq_chart_nodelay.sng", make_sng({{"notes.chart", chart}, {"song.ogg", song_ogg}}),
-         false, {song_ogg}, 250.0},
-        {"eq_mid.sng", make_sng({{"song.ogg", song_ogg}, {"notes.mid", mid}}), true,
+        {"eq_chart_nodelay.sng",
+         testsng::make_sng({}, {{"notes.chart", chart}, {"song.ogg", song_ogg}}), false,
+         {song_ogg}, 250.0},
+        {"eq_mid.sng", testsng::make_sng({}, {{"song.ogg", song_ogg}, {"notes.mid", mid}}), true,
          {song_ogg}, 0.0},
         {"eq_chart.srb", make_srb(chart, {song_ogg, drums_ogg}, "notes.chart"), false,
          {song_ogg, drums_ogg}, 250.0},

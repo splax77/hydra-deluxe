@@ -45,6 +45,24 @@ class PreviewSceneJob;
 class PreviewBaseJob;
 struct PreviewSceneBase;
 
+// What the Preview calls the same song: one chart (its md5) at one
+// difficulty, with Pro Drums and 2x Bass on or off. These are the inputs
+// Settings::to_analysis_settings reads to pick the notes, so another
+// difficulty, Pro Drums or 2x Bass is another song and reloads its notes
+// (D48, Q22).
+struct PreviewSongKey {
+    std::string md5;
+    Difficulty difficulty = Difficulty::Expert;
+    bool pro = false;
+    bool bass2x = false;
+
+    bool operator==(const PreviewSongKey& o) const {
+        return md5 == o.md5 && difficulty == o.difficulty && pro == o.pro &&
+               bass2x == o.bass2x;
+    }
+    bool operator!=(const PreviewSongKey& o) const { return !(*this == o); }
+};
+
 class PreviewController {
 public:
     PreviewController(ID3D11Device* device, ID3D11DeviceContext* context);
@@ -57,8 +75,10 @@ public:
     // shown. `path` (may be null) supplies the path overlay; it is copied, so
     // the caller's Path need not outlive the call. `path_key` is
     // app::path_overlay_key(path), which the caller builds once per selection
-    // (it is too heavy to build per frame). Already open for the same chart,
-    // path key and SP cap: a no-op. Same chart, different path or cap: the new
+    // (it is too heavy to build per frame). Already open for the same song
+    // (PreviewSongKey: chart, difficulty, Pro Drums and 2x Bass), path key and
+    // SP cap: a no-op. Another song is a fresh load. Same song, different
+    // path or cap: the new
     // overlay is built on a background job off the retained song and swapped
     // in by a later poll() — no re-parse, no audio re-decode, playback
     // position untouched; the old overlay stays up until then.
@@ -73,8 +93,13 @@ public:
     // The drawn overlay's identity: the path it was built from
     // (app::path_overlay_key) plus the SP cap its meter was scaled to, in the
     // one string open() compares. Empty until something has loaded. Treat the
-    // exact spelling as opaque — compare two of these, don't parse one.
+    // exact spelling as opaque: a test may compare two of these whole, but
+    // "is this my path" is shows_path's to answer.
     const std::string& overlay_path_key() const { return scene_path_key_; }
+    // The drawn overlay was built from `path_key` (app::path_overlay_key),
+    // whatever SP cap its meter was scaled to. False until something has
+    // loaded.
+    bool shows_path(const std::string& path_key) const;
 
     // Advance the async load; once finished, build the transport + audio device.
     // Call once per frame while the Preview tab is shown.
@@ -84,25 +109,44 @@ public:
     // ceiling — what the panel's gauge draws.
     double sp_meter_bars() const;
     int sp_meter_cap() const;
-    bool sp_meter_has_curve() const;
+    // The scene has a gauge to draw (app::PreviewScene::has_sp_gauge, which
+    // the drain box asks too).
+    bool has_sp_gauge() const;
 
+    // The first load is still running: what the panel's progress bar means.
     bool loading() const { return job_ != nullptr; }
+    // Any Preview job is still running or waiting for poll() to take it in:
+    // the first load, the base build (or one poll() is about to start), the
+    // overlay build, or a replaced overlay build still finishing. False
+    // means every Preview thread is done (finding 109).
+    bool busy() const;
     // Only meaningful while loading(); the load's current step and how far
     // through the audio it is.
     struct LoadProgress {
         float fraction = 0.0f;  // 0..1 estimate
         std::string label;      // "Opening audio: 312 of 625 MB"
-        std::string detail;     // time left ("about 40 s left"), or ""
+        std::string detail;     // time left ("about 0:40 left"), or ""
     };
     LoadProgress load_progress() const;
+    // Why the Preview failed: the sentence app::plain_error gives for the
+    // failure's kind (the panel prints it after "Preview failed: "), with the
+    // raw text beside it for the dimmed details line.
     bool has_error() const { return !error_.empty(); }
     const std::string& error() const { return error_; }
+    const std::string& error_detail() const { return error_detail_; }
 
     // Set when the audio output device would not open. Not an error: the
     // chart still loads, draws and plays on the clock, just muted. The panel
     // shows one warning line and keeps drawing.
     bool has_audio_warning() const { return !audio_warning_.empty(); }
     const std::string& audio_warning() const { return audio_warning_; }
+
+    // The chart file is not the one its record was analyzed from: its hash
+    // (app::hash_chart_file, the scan's rule) differs from the entry's md5.
+    // The Preview then draws no path, overlay or score, as for an unanalyzed
+    // chart, and the panel shows one warning line (D51 call 18). Cleared by
+    // close().
+    bool chart_changed() const { return chart_changed_; }
 
     // What opens the output device. Empty (the default) opens the real one; a
     // test installs a factory that throws, standing in for a PC with no audio
@@ -126,13 +170,19 @@ public:
     void toggle();
     bool playing() const;
     double position_ms() const;
-    double length_ms() const;
+    // Where the scrubber ends: the song's length (app::song_length_ms, D75),
+    // or playback_end_ms() for a chart with none (app::scrub_end_ms).
+    double scrub_end_ms() const;
+    // Where playback stops: the later of the last note and the audio's end
+    // (PreviewTransport::length_ms). Play, the clock and jumps run to here.
+    double playback_end_ms() const;
     void seek_ms(double ms);
-    // Move the playhead by `delta_ms` (the -5s/+5s buttons, Left/Right).
-    // Playing stays playing; the transport stops it at the song's ends.
+    // Move the playhead by `delta_ms` (the kJumpSeconds buttons, Left/Right).
+    // Playing stays playing; the transport stops it at 0 and at
+    // playback_end_ms().
     void jump_ms(double delta_ms);
     // Pause, then move the playhead `delta_ticks` chart ticks from the tick
-    // the time box shows (the < 5 Ticks / 5 Ticks > buttons, comma and period).
+    // the time box shows (the kTickStep buttons, comma and period).
     // A step of 0 snaps onto the displayed tick.
     void step_ticks(int delta_ticks);
     bool has_audio() const;
@@ -145,9 +195,11 @@ public:
     // heard as a buzz.
     void set_scrubbing(bool held);
 
-    // Playback volume in percent (0..100); applied to the audio as it is
-    // served, and remembered for the next chart opened.
+    // Playback volume in percent, clamped to the preview_volume setting's
+    // range (app::Settings::clamp); applied to the audio as it is served, and
+    // remembered for the next chart opened. Starts at the setting's default.
     void set_volume(int percent);
+    int volume_percent() const { return volume_pct_; }
 
     // The time box the panel draws over the highway (Onyx's top-left text).
     hydra::app::PreviewTimeBox time_box() const;
@@ -159,7 +211,7 @@ public:
     hydra::app::PreviewDrainBox drain_box() const;
 
     // The drawn path's activations on the scrubber, as fractions of
-    // length_ms() (app::build_scrub_marks). Empty until a path's scene is in.
+    // scrub_end_ms() (app::build_scrub_marks). Empty until a path's scene is in.
     // Built once per scene and length, then cached (see SceneCache below);
     // the reference holds until the next call.
     const std::vector<double>& scrub_marks() const;
@@ -191,9 +243,9 @@ public:
     void set_overlay_scale(float scale) { overlay_scale_ = scale; }
     float overlay_scale() const { return overlay_scale_; }
 
-    // The Preview's look, as read from 3d-config.json by the renderer. Before
-    // the first render (no renderer yet) this is the struct's defaults, which
-    // are Onyx's values.
+    // The Preview's look, as read from 3d-config.json by the renderer. There
+    // is no second source: only the first render() builds the renderer, and
+    // asking before that throws std::logic_error.
     const render::PreviewConfig& preview_config() const;
 
 private:
@@ -237,6 +289,8 @@ private:
     hydra::app::PreviewScene scene_;
     bool scene_dirty_ = true;  // scene_ changed since the renderer last saw it
     bool pro_ = true;          // the pro-drums view setting the chart was opened with
+    // The highway options drawn with: track_options(pro_).
+    render::TrackStateOptions track_opts() const;
     // The highway timeline a job built from scene_ on its worker, waiting for
     // render() to move it into the renderer, plus the options it was built
     // with. Set together with scene_ whenever a job's scene lands; empty
@@ -257,6 +311,14 @@ private:
     // load is in flight and the Paths tab (or the cap) changed the selection
     // under it; poll() closes the gap.
     std::shared_ptr<const Song> song_;  // shared read-only with scene jobs
+    // Where the song's audio stops in chart time (the load's
+    // Result::audio_end_ms), kept with the song so every base built for it
+    // runs the beat lines to the same end. Empty without audio.
+    std::optional<double> audio_end_ms_;
+    // The song's length (the load's Result::song_length_ms, D75), kept the
+    // same way: the scrubber ends at it and every base's SP meter closes at
+    // it. Empty when the chart has none.
+    std::optional<double> song_length_ms_;
     // The song's path-free scene and timeline, shared read-only with scene
     // jobs so a path change builds only the overlay. poll() starts base_job_
     // to build it once the load has landed (a scene job that runs first
@@ -264,6 +326,9 @@ private:
     std::shared_ptr<const PreviewSceneBase> scene_base_;
     std::unique_ptr<PreviewBaseJob> base_job_;
     bool base_started_ = false;  // base_job_ ran once for this chart
+    // The next poll() starts base_job_: the song is here, nothing else is
+    // building a base, and none was built or started yet.
+    bool base_due() const;
     std::optional<Path> path_;
     std::string requested_path_key_;  // the path half of path_key_, as open() got it
     std::string path_key_;        // key of path_ + sp_cap_
@@ -276,7 +341,8 @@ private:
     std::string job_path_key_;    // key the in-flight job was started with
     std::string scene_path_key_;  // key scene_'s overlay was built from
 
-    int volume_pct_ = 40;
+    int volume_pct_;  // starts at app::Settings' preview_volume default
+    bool chart_changed_ = false;  // see chart_changed()
     bool scrubbing_ = false;
     bool resume_after_scrub_ = false;
 
@@ -287,8 +353,9 @@ private:
     std::unique_ptr<hydra::audio::PreviewAudioDevice> audio_device_;
 
     bool active_ = false;
-    std::string open_key_;
+    PreviewSongKey open_key_;  // the song open() last loaded
     std::string error_;
+    std::string error_detail_;
     std::string audio_warning_;
     AudioDeviceFactory device_factory_;
 };

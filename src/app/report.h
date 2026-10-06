@@ -20,13 +20,19 @@ namespace hydra::app::report {
 
 // One table row. Field order is the JSON key order the page's script reads.
 // `hyhash` goes out as "c", a small per-chart number in order of first
-// appearance, which the Charts tile counts.
+// appearance, and `copies` as "k"; the Charts tile adds up "k" once per "c".
 struct ReportRow {
     std::string song;
     std::string artist;
     std::string charter;
     std::string mode;
+    // The path's place in its record's list, best score first. The subtitle
+    // counts one record per rank-1 row.
     int rank = 1;
+    // Is the path optimal? Read from HydraRecord::is_optimal, so every path
+    // tied at the top score is, as on the Paths tab (D48 Q1). The page's "Best
+    // path only" box and its bold rows read this, not the rank.
+    bool optimal = false;
     std::string path;
     int64_t score = 0;
     int acts = 0;
@@ -44,23 +50,23 @@ struct ReportRow {
     int sqin = 0;
     int sqout = 0;
     int notes = 0;
-    // The chart this row belongs to. generate_report counts the distinct
-    // charts with it, and build_html turns it into the page's "c" number.
+    // The chart this row belongs to. page_charts (report.cpp) is the one place
+    // that groups rows by it: the page's "c" number and the subtitle's count.
     std::string hyhash;
+    // How many library rows that chart counts as, every copy counted (D76):
+    // what the subtitle and the Charts tile add up. collect_rows sets it from
+    // store::RecordStore::copies_of, which also answers for a chart the
+    // library doesn't list (D77).
+    int copies = 0;
 };
 
-// Strips Clone Hero's <color=...> markup from a charter credit / title and
-// trims whitespace. Mirrors hydra_report.plain.
-std::string plain(const std::string& text);
-
-// "1 record" / "12,345 records": the count with thousands grouped, then the
-// singular or plural noun. The report subtitles use it.
-std::string counted(int64_t n, const char* one, const char* many);
-
 // (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2).
-// nullopt -> (None, tn). Bands derive from the two-hit budget 2*W: <2 Normal
-// (an absolute floor), then quarters of 2*W up to Beyond at >= 2*W. At the
-// historical W = 70 this is the original 2/35/70/105/140 ladder.
+// nullopt -> (None, tn). Bands derive from the two-hit budget
+// (nominal_budget_ms): up to and including kDifficultMs is Normal (an absolute
+// floor), then quarters of the budget, and Beyond past the whole budget. A
+// timing exactly on an edge belongs to the band below it (D48 Q3), so 2.0 ms is
+// Normal and the budget itself is Insane+. At the historical W = 70 this is the
+// original 2/35/70/105/140 ladder.
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              double hit_window_ms = kDefaultHitWindowMs);
 
@@ -74,6 +80,13 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 std::unordered_map<std::string, store::RecordListing> records_by_hash(
     store::RecordStore& store, const std::string& chartmode, const store::CapQuery& cap,
     const store::Lens& lens);
+
+// Every chart the store's library lists, with its copies
+// (RecordStore::library_copies), keyed like records_by_hash so a page looks
+// up both with one key. Every page reads its library copies and its "is this
+// chart in the library" answer from here; a chart's count goes through
+// RecordStore::copies_of.
+std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store);
 
 // Reads every stored record at the wanted cap and lens (skipping ones the
 // store calls stale) and produces up to max_paths rows per chart, best score
@@ -101,17 +114,17 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
 
 // The path report's default: the top 5 paths per chart.
 inline constexpr int64_t kDefaultReportPaths = 5;
-// "--all-paths" asks for this many, which no chart reaches.
+// What "--all-paths" asks for, a count no chart reaches. It is the one answer
+// to "does this page list every path" (finding 86): generate_report's subtitle
+// reads it, so any smaller --paths is written as a count.
 inline constexpr int64_t kEveryPathSentinel = 1000000000;
-// A max_paths above this is labeled "every path" in the subtitle.
-inline constexpr int64_t kEveryPathLabelThreshold = 100000000;
 
 struct ReportOptions {
     int64_t max_paths = kDefaultReportPaths;
     // Which records the page lists: the user's current SP cap and lens.
     store::CapQuery cap = store::CapQuery::at(kCloneHeroSpCap);
     store::Lens lens;
-    int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);
+    double hit_window_ms = kDefaultHitWindowMs;
     std::string db_path;  // names the footer's source database
     // Set this and the walk stops between records and generate_report hands
     // back an empty result -- no rows, no html. Closing the app while a report
@@ -119,11 +132,40 @@ struct ReportOptions {
     const std::atomic<bool>* cancel = nullptr;
 };
 
+// Why a report came out with no page (finding 105, D48 Q28).
+enum class EmptyReason {
+    None,                  // there is a page
+    NothingStored,         // the database holds no results at all
+    NothingUnderSettings,  // it holds results, but none Ready at this cap and fill rule
+    Cancelled,             // the caller stopped the walk
+};
+
+// The start of the sentence an empty report gives when the database holds
+// results under other settings. The app's error mapping knows the sentence
+// by it and shows it as it is.
+inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under these settings";
+
+// The whole sentence an empty page gives, built once for every page that
+// lists results (finding 105, D50 item 3): "Nothing is analyzed under these
+// settings (SP cap <cap>, <middle>)<ending>. Analyze with these settings, or
+// change them." The path report passes its fill rule as the middle words and
+// no ending; the fill comparison passes its chart mode and " in either
+// database".
+std::string nothing_under_settings(int cap, const std::string& middle,
+                                   const std::string& ending = std::string());
+
 struct GeneratedReport {
     std::string html;  // empty when the store held no reportable rows
-    int64_t songs = 0;    // distinct charts (by chart hash) with rows on the page
+    // Both count every library copy of a chart (D76, D77).
+    int64_t songs = 0;    // charts with rows on the page
     int64_t records = 0;  // records with rows on the page (one rank-1 row each)
     int64_t rows = 0;
+    EmptyReason empty_reason = EmptyReason::None;
+    // For NothingUnderSettings, the sentence that names the settings: "Nothing
+    // is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).
+    // Analyze with these settings, or change them." Empty otherwise: an empty
+    // database and a cancel keep each caller's own words.
+    std::string why_empty;
 };
 
 GeneratedReport generate_report(store::RecordStore& store,

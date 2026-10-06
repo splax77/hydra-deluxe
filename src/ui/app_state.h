@@ -12,6 +12,7 @@
 #define HYDRA_UI_APP_STATE_H
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -75,9 +76,8 @@ struct DetailsViewState {
     const Path* overlay_key_path = nullptr;
     int overlay_key_generation = -1;
     // The chart file's presence (the "Song file not found" line), as of the
-    // last look. Looked at when the window opens and then every
-    // AppState::kFileCheckSeconds, not every frame: on a sleeping or network
-    // drive one look can stall a frame. -1 = look now.
+    // last look (AppState::cached_file_check), not every frame: on a sleeping
+    // or network drive one look can stall a frame. -1 = look now.
     bool file_ok = true;
     double file_checked_at = -1.0;
 };
@@ -94,7 +94,8 @@ struct LibraryViewState {
     // The folder waiting on the "Remove folder?" confirm.
     std::optional<size_t> confirm_remove;
     // The search box's text and whether it was filled from `search` yet.
-    // Typing is applied at most every 150 ms: `search_pending` holds an edit
+    // Typing is applied at most every AppState::kSearchThrottleSeconds:
+    // `search_pending` holds an edit
     // not applied yet, `search_applied_at` when the last one was.
     char search_buf[256] = "";
     bool search_synced = false;
@@ -112,7 +113,8 @@ struct LibraryViewState {
     std::string scrolled_to;
     // The dmleaderboards picker's name filter.
     char dm_filter[128] = "";
-    // Whether the path report file exists, as of the last look.
+    // Whether the path report file exists, as of the last look
+    // (AppState::cached_file_check).
     bool report_exists = false;
     double report_checked_at = -1.0;  // -1 = look now
     // The split beside the song panel. The share itself lives in
@@ -164,19 +166,22 @@ public:
     // summary, filtered by the search and the status chip and sorted by the
     // table (ui/library_model.h).
     LibraryModel library;
-    std::string search;          // the applied search text; empty = no filter
-    int64_t library_total = 0;   // every chart, for "5 of 97 charts"
+    // The applied search text; empty = no filter. How many charts the
+    // library holds is library.rows().size(), read where it is needed.
+    std::string search;
     // Applies a search at once (the box throttles its own calls).
     void set_search(std::string text);
     // Re-reads every chart and summary: at startup and after a scan.
     void reload_library();
     // Re-reads every row's summary: after a settings change or a batch step.
     void refresh_library_summaries();
-    // Re-reads one chart's summary: after one song's analysis is stored.
-    void refresh_library_row(const std::string& md5);
+    // Re-reads one chart's summary: after one song's analysis is stored, and
+    // for the open chart on each batch refresh. True when its row changed.
+    bool refresh_library_row(const std::string& md5);
     // Once per frame, from the library pane: reloads after a scan finishes,
-    // and re-reads summaries while a batch runs -- at most once a second, and
-    // only when the batch stored something since the last look.
+    // and re-reads summaries while a batch runs -- at most once per
+    // kBatchRefreshSeconds, and only when the batch stored something since
+    // the last look.
     void tick_library(double now);
 
     // The rows on screen, in order, as indices into library.rows().
@@ -196,6 +201,9 @@ public:
     std::optional<store::ChartLibraryEntry> selected;
     bool show_details = false;
     void select(const store::ChartLibraryEntry& entry);
+    // Whether this library row is the selected one. By notespath, not md5:
+    // the same chart can sit in two folders, and only the clicked copy is it.
+    bool is_selected_row(const store::ChartLibraryEntry& row) const;
 
     // Whether the song panel is showing. Code outside the panel reads this,
     // not show_details (which the X, Escape and the tests write).
@@ -225,21 +233,45 @@ public:
     // cancelled: it finishes and is stored (tick()). Safe to call when closed.
     void close_details();
 
-    // Whether the selected chart's file exists, as of the last look; looks
-    // again once `now` (seconds) is kFileCheckSeconds past it.
+    // Whether the selected chart's file exists, as of the last look
+    // (cached_file_check).
     bool selected_file_ok(double now);
+    // How long the UI trusts a cached "this file exists" answer, for the
+    // chart file and the path report alike (D54).
     static constexpr double kFileCheckSeconds = 2.0;
+    // The one cached file check: calls `look` and keeps its answer when
+    // `checked_at` is -1 ("look now") or kFileCheckSeconds old; otherwise
+    // returns the kept answer. `checked_at` and `answer` are the caller's
+    // pair (the song panel's chart file, the library's report file).
+    template <class Look>
+    static bool cached_file_check(double& checked_at, bool& answer, double now, Look look) {
+        if (checked_at < 0.0 || now - checked_at >= kFileCheckSeconds) {
+            answer = look();
+            checked_at = now;
+        }
+        return answer;
+    }
+    // How long a neutral status line stays (set_status); a problem never
+    // fades.
+    static constexpr double kStatusFadeSeconds = 6.0;
+    // How long "Done!" stays after an analysis finishes.
+    static constexpr double kDoneFlashSeconds = 0.5;
+    // How long "Copied!" stays after the path is copied.
+    static constexpr double kCopiedSeconds = 2.0;
+    // Typing in the library search re-filters at most this often, so a burst
+    // of keys on a big library filters a few times rather than once per key.
+    static constexpr double kSearchThrottleSeconds = 0.15;
+    // A running batch refreshes the library's results at most this often.
+    static constexpr double kBatchRefreshSeconds = 1.0;
 
     // The details modal's own per-frame state (see DetailsViewState above).
     DetailsViewState details_ui;
     // The library view's own per-frame state (see LibraryViewState above).
     LibraryViewState library_ui;
 
-    // Whether the path report file exists, as of the last look; looks again
-    // once `now` (seconds) is kReportCheckSeconds past it, or at once after
-    // library_ui.report_checked_at is reset to -1.
+    // Whether the path report file exists, as of the last look
+    // (cached_file_check).
     bool report_file_shown(double now);
-    static constexpr double kReportCheckSeconds = 2.0;
 
     // The stored-record lookup for `selected` under the current chartmode,
     // reloaded on selection and after a fresh analysis. It carries the status
@@ -264,7 +296,7 @@ public:
     // pro + difficulty; invalidated when any of those change).
     std::unique_ptr<DynamicsLoadJob> dynamics_job;
     std::optional<app::DynamicsBreakdown> dynamics_result;
-    std::string dynamics_key;  // the key the cached result was built for
+    std::optional<store::DynamicsKey> dynamics_key;  // the key the cached result was built for
     std::string dynamics_store_error;  // non-empty when put_dynamics failed
 
     // Dynamics lifecycle: check the store for a cached breakdown, manage the
@@ -278,11 +310,12 @@ public:
     // another tab was up used to be thrown away at close.
     void reap_dynamics();
 
-    // Fills in the open song's length when its result has none (saved before
-    // Hydra stored lengths), so the Paths tab's timeline shows without a
-    // re-analysis: SongLengthJob reads the chart, then the length is saved
-    // (RecordStore::set_song_length) and put on the viewed lookup. tick()
-    // runs it; a chart that fails to read is not retried this session.
+    // Works out the open song's length when its result was saved under an
+    // older length rule (kSongLengthStamp), so the Paths tab's timeline shows
+    // without a re-analysis: SongLengthJob asks the owner, then the length (or
+    // none) is saved for the song (RecordStore::fill_song_length) and put on
+    // every lookup of it. tick() runs it; a chart whose job fails is not
+    // retried this session.
     std::unique_ptr<SongLengthJob> length_job;
     void update_song_length();
 
@@ -302,7 +335,25 @@ public:
     // it ran with, so changing them mid-run used to hide the result it made.
     bool analyze_running() const;
     bool batch_running() const;
-    bool settings_locked() const { return analyze_running() || batch_running(); }
+    // Why the settings are locked: a batch (it wins when both run), one song's
+    // analysis, or nothing. A job finishes on its own thread, so two reads of
+    // batch_running() in one frame can disagree; a caller that needs both
+    // "locked?" and "by what?" reads this once. Under Analysis, analyze_job is
+    // set for the rest of the frame (only the UI thread drops it).
+    enum class SettingsLock { None, Batch, Analysis };
+    SettingsLock settings_lock() const;
+    bool settings_locked() const { return settings_lock() != SettingsLock::None; }
+    // Whether a library scan may start now: there are song folders, no scan
+    // job is held (its modal is still up until Continue), and no batch is
+    // running. start_scan enforces it; the toolbar button reads it.
+    bool can_scan() const;
+    // Whether any background job is still working: scan, batch, analyze,
+    // path report, the two leaderboard jobs, Dynamics, the song length read,
+    // and the Preview's jobs. A finished job waiting to be collected counts
+    // as done. The parked leaderboard jobs are left out: they were
+    // cancelled, and nothing on screen waits on them. The GUI tests'
+    // wait-idle waits on this.
+    bool any_job_running() const;
     // True when the analyze job belongs to the song the open panel shows, so
     // the panel is where its progress and errors appear.
     bool analyze_job_shown() const;
@@ -344,13 +395,27 @@ public:
     bool batch_redo = false;
 
     // True while the "Analyze library" confirm shows. open_batch_confirm()
-    // loads what it lists: the charts the batch would analyze (the library,
-    // or the search's matches) and how many already have a result under the
-    // current settings. start_batch() analyzes exactly those charts.
+    // plans the batch over the rows it would analyze (the library, or the
+    // search's matches) from one store read: one plan that skips the charts
+    // with a result and one that redoes them (app::plan_batch). Every number
+    // the confirm shows is read from those plans, every copy of a chart
+    // counted like the library counts it (D76). start_batch() hands the batch
+    // the plan the redo box picks, so the run is the plan the confirm showed
+    // (D79).
     bool batch_confirm_pending = false;
-    std::vector<store::ChartLibraryEntry> batch_scope;
-    int64_t batch_scope_with_result = 0;
+    app::BatchPlan batch_plan;
+    app::BatchPlan batch_redo_plan;
+    // The rows in scope: the redo plan runs every one of them.
+    int64_t batch_scope_charts() const { return batch_redo_plan.todo_rows(); }
+    // The rows in scope that already have a result: the skip plan's skipped.
+    int64_t batch_scope_with_result() const { return batch_plan.skipped; }
     void open_batch_confirm();
+    // The plan a batch started now would run: the redo plan when `redo`.
+    const app::BatchPlan& batch_plan_for(bool redo) const {
+        return redo ? batch_redo_plan : batch_plan;
+    }
+    // Closes the confirm without starting, letting go of its plans.
+    void close_batch_confirm();
 
     // Once per frame (run_frame), after tick(): when a batch ends, start its
     // path report (never for a stopped batch); when the finished strip was
@@ -367,12 +432,13 @@ public:
     void cancel_dm_fetch();
     void cancel_dm_report();
 
-    // Set by the details modal's "Rescan library" remedy: the main window
-    // starts the scan on its next frame (the scan modal belongs to it).
+    // Set by the details modal's "Rescan library" remedy and the Song
+    // folders' "Scan now": the main window calls start_scan on its next frame
+    // (the scan modal belongs to it), which refuses when can_scan says no.
     bool request_scan = false;
 
     // The status line under the toolbar. set_status is news ("Path report
-    // saved"): neutral text that fades after a few seconds. set_problem is
+    // saved"): neutral text that fades (kStatusFadeSeconds). set_problem is
     // something the user should act on: orange, and it stays until dismissed.
     // The view times the fade off status_generation changing.
     std::string status_message;
@@ -414,6 +480,14 @@ private:
     std::optional<size_t> relative_row(int delta) const;
     // Re-reads viewed_summary for the open song under the current settings.
     void refresh_viewed_summary();
+    // The panel's empty state: no record, no summary, no key it answers.
+    void show_no_record();
+    // Runs one store read on the UI thread. A read that throws puts its
+    // sentence in the status line and returns false, and the caller keeps
+    // what it showed (D73 item 3). Every read whose answer a screen shows
+    // goes through it; update_song_length's best-effort fill keeps its own
+    // silent catch.
+    bool read_store(const std::function<void()>& read);
     bool batch_finish_seen_ = false;  // update_background_jobs saw this run end
     ID3D11Device* render_device_ = nullptr;
     ID3D11DeviceContext* render_context_ = nullptr;
@@ -443,11 +517,15 @@ private:
     std::optional<store::RecordKey> viewed_key_;
     std::vector<std::pair<store::RecordKey, store::RecordLookup>> parked_lookups_;
     static constexpr size_t kParkedLookups = 16;
-    // The chart update_song_length last tried, so a chart it can't read is
-    // not read again every frame.
-    std::string length_tried_md5_;
+    // The chart (md5) update_song_length last tried, so a chart whose read
+    // fails is not read again every frame. One read serves every difficulty.
+    std::string length_tried_;
     // Shows the lookup for the current settings: parked if seen, read otherwise.
     void show_record_for_settings();
+    // A record was just stored: drops the parked lookups and reads the viewed
+    // one again. A finished single analysis and a batch that stored the open
+    // chart both run it.
+    void reread_viewed_record();
 };
 
 }  // namespace hydra::ui

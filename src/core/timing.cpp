@@ -204,11 +204,13 @@ double SongTiming::ms_per_measure_at(int64_t ticks) const {
 }
 
 double SongTiming::measures_at_tick_f(double ticks) const {
-    // Right-continuous: a tick exactly on a meter change reads the new
-    // section (section_at(ticks + 1) for integer ticks).
+    // section_at owns which meter rules a tick: a tick exactly on a meter
+    // change is measured in the section before it, as the engine's Timecode
+    // reads it (D51 call 22). A position between two whole ticks is already
+    // past any change at the lower one, so the whole tick at or after the
+    // position is the one asked about.
     const MeasureIndex& idx = mbt_;
-    int i = idx.count() - 1;
-    while (i > 0 && static_cast<double>(idx.keys_at(i)) > ticks) --i;
+    const int i = idx.section_at(static_cast<int64_t>(std::ceil(ticks)));
     return static_cast<double>(idx.measures_at(i)) +
            (ticks - static_cast<double>(idx.starts_at(i))) /
                static_cast<double>(idx.tpm_at(i));
@@ -238,6 +240,11 @@ double SongTiming::sp_end_ms(double act_hit_ms, int64_t end_measures) const {
     double t = ms_.tick_at_ms(act_hit_ms);
     double m = measures_at_tick_f(t) + static_cast<double>(end_measures);
     return ms_.ms_at_tick_f(tick_at_measures_f(m));
+}
+
+int64_t SongTiming::display_tick_at_ms(double ms) const {
+    const int64_t tick = std::llround(ms_.tick_at_ms(ms));
+    return tick < 0 ? 0 : tick;
 }
 
 }  // namespace hydra

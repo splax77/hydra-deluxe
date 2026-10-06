@@ -6,7 +6,8 @@
 // Audio is never stored either: this module locates it. Three sources, matching
 // the chart kinds Hydra scans:
 //   * a loose folder — audio sits beside the notes file (song.ogg, drums.opus,
-//     stems, ...);
+//     stems, ...); a standalone preview clip (preview.ogg) is not part of the
+//     song, so it is left out here and in a .sng alike (is_song_stem);
 //   * a .sng container — audio lives in the same XOR-masked file table the
 //     notes come from;
 //   * a .srb container — art streams follow the notes stream in the DEFLATE
@@ -22,6 +23,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -49,11 +51,8 @@ struct PreviewAudioStem {
 struct PreviewSource {
     Song song;
     std::vector<PreviewAudioStem> stems;
-    // Where chart time 0 sits in the audio: audio_ms = chart_ms +
-    // audio_offset_ms. From the delay (ms) and the .chart Offset (s), as
-    // Clone Hero applies them. A folder chart's delay comes from its song.ini
-    // and a .sng's from its metadata block. A .srb has no delay field, so
-    // only its chart's Offset counts.
+    // Where chart time 0 sits in the audio (audio_ms_of_chart_ms in
+    // audio/frames.h turns it into a position), from chart_audio_offset_ms.
     double audio_offset_ms = 0.0;
 };
 
@@ -103,6 +102,15 @@ PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes
                                  Difficulty difficulty = Difficulty::Expert,
                                  const core::Rules& rules = core::default_rules());
 
+// Where chart time 0 sits in the audio of a chart already parsed
+// (PreviewSource::audio_offset_ms): the chart's own delay, from its song.ini
+// or .sng metadata, against `chart_offset_s` (the parsed Song's
+// chart_offset_s), through preview_audio_offset_ms. `container` is
+// read_preview_container's result for the same notespath. resolve_preview_song
+// asks here.
+double chart_audio_offset_ms(const std::string& notespath, const SharedBytes& container,
+                             std::optional<double> chart_offset_s);
+
 // Asked between a container's audio entries; return false to stop early.
 using KeepGoing = std::function<bool()>;
 // The audio half: every stem, located but not decoded. Loose stems carry a
@@ -118,6 +126,15 @@ std::vector<PreviewAudioStem> resolve_preview_stems(const std::string& notespath
 // missing or the value is not a number.
 std::optional<double> read_ini_delay_ms(const std::string& ini_path);
 
+// The same from a song.ini already read (app::read_song_ini_keys): the
+// library scan reads the file once for its names, length and delay.
+std::optional<double> ini_delay_ms(const std::map<std::string, std::string>& ini);
+
+// A .sng's `delay` from its metadata pairs already read (sng_read_metadata),
+// by sng_delay_ms's rule. The library scan reads it beside the names.
+std::optional<double> sng_metadata_delay_ms(
+    const std::vector<std::pair<std::string, std::string>>& pairs);
+
 // A .sng container's `delay` metadata in milliseconds, the key matched in any
 // case (the last one wins, like the library scan's metadata read), or nullopt
 // when it is missing or not a number.
@@ -131,17 +148,27 @@ double preview_audio_offset_ms(std::optional<double> ini_delay_ms,
 // (.ogg/.opus/.mp3/.wav/.flac), case-insensitive.
 bool is_audio_filename(const std::string& filename);
 
-// True if `bytes` begins with a recognized audio container's magic (OggS, RIFF,
-// fLaC, an ID3 tag, or an MP3 frame sync). Used to pick audio streams out of a
-// .srb's unnamed trailing streams and skip album art.
+// True if `filename` is a song stem: an audio file (is_audio_filename) whose
+// base name is not "preview" in any case. A standalone preview clip is a short
+// clip, not part of the song, so every named source (a loose folder, a .sng)
+// leaves it out of the mix through this one test.
+bool is_song_stem(const std::string& filename);
+
+// True if the decoder can open `bytes`: it asks the decoder's own rule
+// (audio::sniff_format, core/audio_sniff.h), so what the extractor keeps is
+// exactly what the decoder can play. Used to pick audio streams out of a .srb's
+// unnamed trailing streams and skip album art.
 bool looks_like_audio(const std::vector<uint8_t>& bytes);
 
-// Audio files sitting beside a loose notes file: every decodable audio file in
-// `folder` except a standalone "preview" clip. Labels are the base filename.
+// Audio files sitting beside a loose notes file: every song stem in `folder`
+// (is_song_stem), so a standalone "preview" clip is left out, since it is a
+// short clip and not part of the song. Labels are the base filename.
 std::vector<PreviewAudioStem> find_loose_audio(const std::string& folder);
 
-// Audio blobs embedded in a .sng container: its file table's audio entries,
-// XOR-demasked to their original bytes. Labels are the entries' base filenames.
+// Audio blobs embedded in a .sng container: its file table's song stems
+// (is_song_stem), XOR-demasked to their original bytes. A standalone "preview"
+// clip is left out, as in a loose folder, since it is a short clip and not part
+// of the song. Labels are the entries' base filenames.
 std::vector<PreviewAudioStem> extract_sng_audio(const std::string& path);
 
 // Audio from a .srb container's encrypted section.  Walks past the DEFLATE

@@ -17,18 +17,28 @@ have read Ready while holding answers to a different question.
 
 ## The decision
 
-The engine stamps both facts at copy-out. `Activation::sqout_tick` is the deact
-edge's `sqinout_time` when the path took the SqOut branch.
+The engine stamps both facts at copy-out. `Activation::sqout_tick` is the
+phrase chord the path squeezed out when it took the SqOut branch. It was first
+read off the deact edge's squeeze time; since D34 and D36 it is the chord the
+engine offered that window (`sqout_phrase` in engine.cpp), written through
+`Activation::set_sqout`.
 `Activation::collected_phrase_ticks` is every phrase tick the path crossed on
 the SP track, recorded in `advance()` and trimmed back past the squeezed-out
 phrase in `create_deactivated_path`. A late-SqIn phrase and a cap-clamped
 phrase both count, because the gauge received them.
 
 The pather stamps `HydraRecord::rules_fingerprint` with the fingerprint of the
-rules the run used. The store writes it into the structure blob right after
+rules the run used. The fingerprint is FNV-1a 64 over one `name=value` line
+per rule, each number written with 17 significant digits; a hash that lands
+on 0 becomes 1, because 0 means "no usable rules" (`Rules::fingerprint()` in
+src/core/rules.cpp; the user confirmed this format, D48, Q33).
+The store writes it into the structure blob right after
 the format version, so version and rules make one 12-byte head. That head is
-what decides Ready, in C++ (`structure_is_current`) and in SQL
-(`kRowReadySql`).
+what decides Ready, in C++ (`rank_row` in `src/store/record_store.cpp`,
+whose `.ready()` answers it). An SQL spelling of the same check stood beside
+it until D79 removed it; the batch now asks `RecordStore::get_summaries` too.
+The rules part compares one fingerprint, the store's
+`RulesStamp::fixed`.
 
 Blob format 6, path-node format 4 and path-structure format 4 carry the three
 fields.
@@ -58,7 +68,14 @@ The limit was 3% on hydra_bench's corpus timing (best of two runs each, cap 4
 and Auto at depth 4). The change was only committed within that limit; a run
 past it stops for the user's call, and no cheaper variant exists.
 
-## Amendment, 2026-09-26: the Auto budget and the Auto ladder
+## Amendment, 2026-09-26: the Auto budget and the Auto ladder (Superseded)
+
+Superseded 2026-09-27 with Auto itself; kept as history. Today a record
+carries one fingerprint, `Rules::fingerprint()`, and the Ready check
+(`rank_row`) compares that one value. The
+old Auto fingerprint survives only as `Rules::retired_auto_fingerprint()`,
+which the store reads to delete the results Auto saved; no row carrying it
+reads Ready. The names below are the code as it was then.
 
 The first version put every rules field into one fingerprint, so any edit to
 hydra_rules.ini made the whole library Stale. Two fields were over-reach
@@ -76,8 +93,9 @@ The Auto ladder only changes what an Auto run does. A record now carries one
 of two fingerprints: `Rules::fingerprint()` (every rule except the ladder and
 the budget) for a fixed-cap run, and `Rules::auto_fingerprint()` (that plus
 the ladder) for an Auto run. The store accepts either (`core::RulesStamp`),
-in C++ (`structure_is_current`) and in SQL (`kRowReadySql`, now
-`IN (?, ?)`). A ladder edit marks only Auto runs Stale.
+in C++ (`structure_is_current`) and in SQL (then `kRowReadySql`, with
+`IN (?, ?)`; that SQL check is gone since D79, and `rank_row` compares the
+one fixed fingerprint). A ladder edit marked only Auto runs Stale.
 
 The fingerprint's text changed, so every stored record reads Stale once more
 after this lands. It ships with the record-format bump of the same plan,
@@ -104,7 +122,8 @@ banks a bar. A squeeze-in hits it early, to extend SP. A phrase at or before
 the activation chord was banked before SP started. So no activation can
 squeeze it either way.
 
-The squeeze window is 500 ms around an SP end. Usually that is far shorter
+The squeeze window is 500 ms<!-- default: kSqueezeWindowMs --> around an SP
+end (`kSqueezeWindowMs`). Usually that is far shorter
 than one SP bar (two measures), so the window never reaches back past the
 activation. At a very fast tempo or a very short measure it can. The engine
 then offered a squeeze on a phrase the activation had banked. As a
@@ -154,16 +173,50 @@ two charts, each losing one "+", and no score. The next-phrase offer never
 fires there. It needs 500 ms to span an SP bar, so only the hand-made
 4,000 BPM test charts reach it.
 
-One gap stays open at those extreme tempos. The search groups running paths
-without the phrases their window already squeezed in, so a tied variant can
-take its leader's squeeze of the next phrase where alone it would squeeze the
-first (the early_sqin_twice test chart). Normal charts never reach it.
+D36 replaced the early side of this rule. At those extreme tempos "the first
+phrase in the window" let a window squeeze out an older phrase while keeping
+a newer one's step, which no player can do: the newer phrase is hit later,
+so it is hit after Star Power ran out too. The record then named an end one
+bar early. It also let a tied variant take its leader's squeeze (the search
+grouped paths without the phrases their window had squeezed in), and let one
+of two SP ends a tick apart take the other's path.
 
-An early squeeze-in's step is the step on the squeezed-in chord. That step is
-Collected, or Clamped when the cap pinned the end on that phrase. It is never
-the Activation step. A lone path never meets an SqIn step there since D34; a
-folded variant still can at extreme tempos (the gap above), and the step
-stays SqIn. `is_sqin_step` in the engine states that rule once.
+### The newest phrase, at the end it moved (D36)
+
+An SP end D offers a window at most one phrase (`core::offered_phrase`):
+
+- Early side: the window's newest phrase, and only when collecting it moved
+  the window's end from D. The graph decides once, per phrase and pending
+  end, whether that end keeps a node that lists the phrase
+  (`SpExtension::sqout_node`); the engine copies it into the step
+  (`EndNode::sqout_at`). `offered_phrase` skips a phrase the window already
+  squeezed in, so a phrase is still squeezed in only once. A banked phrase
+  never has a step, so D18 holds too.
+- Late side: when the window's end is D, the first phrase after D that it
+  has not squeezed in. This side changed too. Before D36 an older phrase in
+  D's window could block it: the old rule offered the first phrase the window
+  could squeeze, and when that was an early one a path ending at D got
+  nothing, never the late phrase behind it. Now the late phrase is offered
+  whatever sits before D.
+
+The search's group key on SP nodes gains one word: the end where the newest
+phrase can still be squeezed out, while it is ahead. Paths at one node with
+one SP end and one such end have the same newest phrase, so they face the
+same offers. A squeeze-out now gives back exactly its own step, and the
+rebuild throws if a closed window's record ends anywhere but its
+deactivation node. T10's clamp-origin guard (finding 37) was this rule
+for Clamped steps only, so it went with the edge's `sqout_time` and
+`clamped` fields.
+
+`hydra_replay` asks the same function. A stored window that ended plainly had
+its end at D, so only the late side applies. A typed window has no history,
+so it accepts either side's chord.
+
+An early squeeze-in's step is the step on the squeezed-in chord: the
+window's newest step. That step is Collected, or Clamped when the cap pinned
+the end on that phrase. It is never the Activation step. A folded variant's
+step there gets the leader's SqIn label at the close (`close_folded_act`).
+`is_sqin_step` in the engine states that rule once.
 
 ### Tied paths whose clamps came from different ends (D44)
 
@@ -175,21 +228,20 @@ phrase is on offer at the old end, and each path may only take it back to
 its own old end (finding 37, D29).
 
 Folded as ties, the variant would follow its leader's squeeze choices and
-lose its own squeeze-out. So `reduce_group` keeps two such paths apart. It
-does this only when the last SP-end step of either path is a clamp, the two
-clamps differ in phrase or in the end they moved, and some deactivation edge
-offers that phrase as a squeeze-out at that end (`clamp_offered`). Otherwise
-they fold as before. The engine reads each path's clamp off its SP-end
-chain (`last_step_clamp`). An early squeeze-in on the clamped phrase ends
-the clamp, because the path has spent that phrase. The user approved this
-departure from the plan in D44.
+lose its own squeeze-out. T10 first stopped that with a guard of its own:
+`reduce_group` kept two such paths apart when their clamps came from
+different ends. The user approved that departure from the plan in D44. It
+left one gap: the group key did not hold the end a clamp moved, so the lower
+path could still be pruned before its own squeeze-out node.
 
-A gap stays open, like the D34 gap above. The group key does not hold the
-end a clamp moved. So two paths that reach one end from different ends
-share a group, and the lower one can still be pruned before it reaches its
-own squeeze-out node. The key was the same before finding 37, so this is no
-regression. Normal charts never reach it: the offer needs an SP bar inside
-the 500 ms squeeze window.
+D36's rule (above) now covers this case, and T10's guard is gone. A clamped
+step is one more step that moved the SP end. It remembers that end when the
+end can give the phrase back, and the group key holds it while it is ahead.
+So two paths whose clamps came from different ends sit in different groups
+while either can still squeeze. Neither folds into the other, and neither is
+pruned against the other before its squeeze-out node, which closes T10's
+gap too. Normal charts never reach any of this: the offer needs an SP bar
+inside the 500 ms squeeze window.
 
 ### Two more extreme-tempo crashes (D32)
 
@@ -250,3 +302,34 @@ changes a score on the library.
   2^30, and each of `ready_class`'s two fill counts gets 16 bits. A chart
   past any of these fails to analyze with an error. It never folds paths
   wrongly. These widths come with D35's ready-time key.
+
+## Amendment, 2026-10-04: results under other rules are kept (D51 call 8)
+
+"No fallback" above promised that a record analyzed under other rules is
+kept, and reads Ready again when the rules are switched back. Until now the
+store broke that promise: its unique key had no rules in it, so saving a
+result under rules A deleted the chart's rules-B row (audit finding 65). The
+promise now holds, and its two sentences stay as they are.
+
+The results table's unique key gains the rules fingerprint, as a `rules_fp`
+column. It is filled from the structure blob's head by `rules_fp_of`, the one
+SQL spelling of "which rules was this row analyzed under". Schema 4 rebuilds
+the table once, in `upgrade_results_key`, and keeps every row, result id and
+blob, so nothing is analyzed again. A rules-A row and a rules-B row for the
+same chart, mode, cap and lens now sit side by side.
+
+The SQL Ready check stopped being one undivided check here. It became
+`row_readable_sql()` (this build can read the row: its results version and
+path format) plus the rules part (the row's fingerprint is this process's).
+D79 later removed the rules part from SQL; only `rank_row` reads it now.
+A write under rules A has two purges: the first removes the rows that fail
+`row_readable_sql()` (unreadable by this build), and the second replaces the
+row with the same key under the same rules. Neither touches the rules-B row,
+so it is kept.
+
+Two cases follow from this (D55 items 3 and 4). `hydra_batch --reindex`
+leaves a row it cannot read untouched instead of blanking its summary
+columns, so a result kept under other rules keeps its cached score and stars
+in the library. The `rules_fp` column has no default, so an older Hydra that
+opens an upgraded file fails to save, with a clear error, instead of writing
+a row with a wrong rules value in its key.

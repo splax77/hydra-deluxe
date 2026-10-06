@@ -20,6 +20,11 @@ from __future__ import annotations
 
 from typing import Callable, Optional, Protocol, Sequence, runtime_checkable
 
+try:
+    from . import constants as C
+except ImportError:  # pragma: no cover - top-level import, ch_probe on sys.path
+    import constants as C  # type: ignore[no-redef]
+
 
 # --- process.py : the process/address layer ---------------------------------
 #
@@ -187,22 +192,23 @@ def generate_probe_chart(
     spacings_ms: Sequence[float],
     path: str,
     *,
-    resolution: int = 192,
-    bpm: float = 120.0,
-    note: int = 0,
+    resolution: int,
+    bpm: float,
+    note: int = C.PROBE_CHART_NOTE_KICK,
 ) -> None:
     """Function in probe_chart.py. Emit a valid Expert-drums .chart at `path`
     with one isolated note pair per spacing in `spacings_ms`: two notes that
     many ticks apart, with wide silence around each pair so nothing overlaps.
+    The caller names the resolution and tempo it writes with.
     Must round-trip through the game's chart loader."""
     ...
 
 
 # --- input_driver.py : the input driver -------------------------------------
 #
-# Wraps SendInput; schedules a keystroke against the song clock at a target
-# offset. Its timing only needs to land NEAR the edge -- the measured delta is
-# what gets recorded, not the intended one.
+# Wraps SendInput. The runners wait for the song clock themselves
+# (experiments/live.wait_until), then press. Its timing only needs to land NEAR
+# the edge -- the measured delta is what gets recorded, not the intended one.
 
 @runtime_checkable
 class InputDriver(Protocol):
@@ -213,13 +219,6 @@ class InputDriver(Protocol):
         guess -- see the open question in the spec)."""
         ...
 
-    def schedule_hit(
-        self, lane: int, at_song_time: float, clock: Callable[[], float]
-    ) -> None:
-        """Fire a keystroke for `lane` when `clock()` reaches `at_song_time`.
-        `clock` is the engine song clock (seconds)."""
-        ...
-
     def tap(self, lane: int) -> None:
         """Fire the keystroke for `lane` immediately (down then up)."""
         ...
@@ -228,8 +227,9 @@ class InputDriver(Protocol):
         """One key event through SendInput (the only OS call)."""
         ...
 
-    def press_chord(self, lanes: Sequence[int], *, hold_s: float = 0.003) -> list:
-        """All lanes' keys down, hold, all up."""
+    def press_chord(self, lanes: Sequence[int], *, hold_s: float = ...) -> list:
+        """All lanes' keys down, hold `hold_s` (default input_driver.KEY_HOLD_S),
+        all up."""
         ...
 
 

@@ -28,18 +28,21 @@
 #include "app/rules_file.h"
 #include "app/report.h"
 #include "app/report_files.h"
+#include "app/user_messages.h"
 #include "core/model.h"
 #include "core/winstr.h"
 #include "search/graph.h"
 #include "store/record_store.h"
 
-int main() {
+namespace {
+
+int report_main() {
     SetConsoleOutputCP(CP_UTF8);
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
 
     int64_t max_paths = hydra::app::report::kDefaultReportPaths;
-    std::string out = "hydra_paths.html";
+    std::string out = hydra::app::kPathReportFileName;  // in the current folder
     std::optional<std::string> dbpath;
     std::optional<std::string> rulespath;
     bool open_when_done = true;
@@ -77,27 +80,38 @@ int main() {
     options.hit_window_ms = settings.hit_window_ms;
     options.db_path = db;
 
-    std::unique_ptr<hydra::store::RecordStore> store = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
+    // A database that won't open is a run that can't start (D72 item 5).
+    std::unique_ptr<hydra::store::RecordStore> store;
+    try {
+        store = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
+    } catch (const std::exception& e) {
+        return hydra::app::tool_error(e, 2);
+    }
     // A database hydra_batch --legacy-fills filled holds only 1.0 results, so
     // it reports under that rule whatever the app's "1.0 fills" setting says,
     // as it did before results carried their rule. Any other file follows the
-    // app's setting.
-    if (store->engine_mode() == std::string(
-            hydra::engine_mode_stamp(hydra::FillDeadlineRule::Ch10)))
+    // app's setting. Which rule a file holds is RecordStore::stamped_fill_rule's
+    // answer.
+    if (store->stamped_fill_rule() == hydra::FillDeadlineRule::Ch10)
         settings.legacy_fills = true;
     options.lens = settings.lens();
     hydra::app::report::GeneratedReport report =
         hydra::app::report::generate_report(*store, options);
     store->close();
 
+    // No page: generate_report says why. An empty database keeps the tool's
+    // own sentence; results stored under other settings name the settings.
     if (report.rows == 0) {
-        std::printf("No records stored yet. Run hydra_batch first.\n");
+        if (report.empty_reason == hydra::app::report::EmptyReason::NothingUnderSettings)
+            std::printf("%s\n", report.why_empty.c_str());
+        else
+            std::printf("No records stored yet. Run hydra_batch first.\n");
         return 1;
     }
 
     // Make the folder rather than throwing away the work: collecting the rows
     // means inflating every stored record, which is the slow part.
-    std::filesystem::path outpath = std::filesystem::absolute(std::filesystem::u8path(out));
+    std::filesystem::path outpath = std::filesystem::absolute(hydra::os_path(std::filesystem::u8path(out)));
     std::error_code ec;
     std::filesystem::create_directories(hydra::os_path(outpath.parent_path()), ec);
 
@@ -108,8 +122,8 @@ int main() {
         return 1;
     }
 
-    std::printf("Wrote %s path rows to %s\n",
-                hydra::group_thousands(report.rows).c_str(), out.c_str());
+    std::printf("Wrote %s to %s\n",
+                hydra::counted(report.rows, "path row", "path rows").c_str(), out.c_str());
 
     if (open_when_done) {
         // Hand the page to the default browser (the same call the GUI's
@@ -121,3 +135,7 @@ int main() {
     }
     return 0;
 }
+
+}  // namespace
+
+int main() { return hydra::app::run_tool(report_main); }

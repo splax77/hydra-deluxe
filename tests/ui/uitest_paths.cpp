@@ -3,12 +3,14 @@
 // table and its limit, the two folds under the list, and Copy path. Labels are
 // the plan's label contract (docs/superpowers/plans/2026-09-27-ui-redesign.md).
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "uitest_harness.h"
 
@@ -21,6 +23,7 @@
 #include "ui/details_view.h"
 #include "ui/fonts.h"  // px()
 #include "ui/preview_controller.h"
+#include "ui/theme.h"  // kBestPathColor, kWarningColor
 
 namespace uitest {
 
@@ -103,6 +106,100 @@ void test_paths_list(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 0 0 0");
 }
 
+// A window drawn this frame whose name holds `part` (child names are mangled).
+ImGuiWindow* window_named(const char* part) {
+    for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows)
+        if (w->WasActive && std::strstr(w->Name, part)) return w;
+    return nullptr;
+}
+
+// One timeline mark as the Paths tab last drew it: where its gold bar sits,
+// and whether an orange or a grey stroke is drawn around it.
+struct DrawnMark {
+    float x = 0.0f;
+    bool orange = false;
+    bool grey = false;
+};
+
+// The timeline's marks, read from the vertices the Paths tab drew last frame,
+// left to right. The strip is the only gold above the first activation row in
+// the details column, so its gold vertices give each mark's place; a stroke
+// counts as the mark's when it sits within a few pixels of it.
+std::vector<DrawnMark> drawn_marks(ImGuiTestContext* ctx) {
+    std::vector<DrawnMark> marks;
+    ImGuiWindow* details = window_named("##pathdetails");
+    if (!details) return marks;
+    const float row_top = ctx->ItemInfo("**/##act1").RectFull.Min.y;
+    const ImU32 gold = ImGui::GetColorU32(hydra::ui::kBestPathColor);
+    const ImU32 orange = ImGui::GetColorU32(hydra::ui::kWarningColor);
+    const ImU32 grey = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+    const ImVector<ImDrawVert>& vtx = details->DrawList->VtxBuffer;
+    const float reach = hydra::ui::px(6.0f);
+    float top = FLT_MAX, bottom = -FLT_MAX;
+    std::vector<float> xs;
+    for (const ImDrawVert& v : vtx) {
+        if (v.col != gold || v.pos.y >= row_top) continue;
+        top = (std::min)(top, v.pos.y);
+        bottom = (std::max)(bottom, v.pos.y);
+        xs.push_back(v.pos.x);
+    }
+    std::sort(xs.begin(), xs.end());
+    // One mark per cluster of gold, at the middle of its left and right edge.
+    float left = 0.0f, right = 0.0f;
+    for (size_t i = 0; i < xs.size(); ++i) {
+        if (i == 0 || xs[i] - right > reach) {
+            if (i > 0) marks.push_back({(left + right) * 0.5f});
+            left = xs[i];
+        }
+        right = xs[i];
+    }
+    if (!xs.empty()) marks.push_back({(left + right) * 0.5f});
+    for (DrawnMark& m : marks)
+        for (const ImDrawVert& v : vtx) {
+            if (v.pos.y < top - reach || v.pos.y > bottom + reach) continue;
+            if (std::fabs(v.pos.x - m.x) > reach) continue;
+            if (v.col == orange) m.orange = true;
+            if (v.col == grey) m.grey = true;
+        }
+    return marks;
+}
+
+// The open record's activation rows: the same call the Paths tab makes, so
+// this is the cached view it draws.
+const hydra::app::ActivationsView& shown_activations(hydra::ui::AppState& app) {
+    return app.details_ui.paths_tab
+        .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
+                 app.viewed.timing ? &*app.viewed.timing : nullptr,
+                 static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
+                 app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums)
+        .activations;
+}
+
+// The outline a timeline mark is drawn with.
+enum class Outline { None, Orange, Grey };
+
+// Each mark's drawn outline, against the colours this chart's rows are known
+// to have, one per activation in order.
+void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
+                 const std::vector<Outline>& expected) {
+    const hydra::app::ActivationsView& view = shown_activations(app);
+    const std::vector<DrawnMark> marks = drawn_marks(ctx);
+    IM_CHECK_EQ(marks.size(), expected.size());
+    if (marks.size() != expected.size() || view.acts.size() != expected.size()) return;
+    // Every mark is logged before any check, so a failure shows them all.
+    for (size_t i = 0; i < marks.size(); ++i)
+        ctx->LogInfo("mark %d at %.1f: badge \"%s\", orange %d, grey %d", view.acts[i].number,
+                     marks[i].x, view.acts[i].badge.c_str(), marks[i].orange, marks[i].grey);
+    for (size_t i = 0; i < marks.size(); ++i) {
+        IM_CHECK_EQ(marks[i].orange, expected[i] == Outline::Orange);
+        IM_CHECK_EQ(marks[i].grey, expected[i] == Outline::Grey);
+    }
+}
+
+// The song length paths-rows hands the open record before checking its
+// timeline marks, in ms: an input, since the GUI test library has no audio.
+constexpr double kMarksSongLengthMs = 600000.0;
+
 // The activation rows: one line each, the first open, one open at a time,
 // Expand all and Collapse all, and the plain sentence instead of the old line.
 void test_paths_rows(ImGuiTestContext* ctx) {
@@ -117,13 +214,19 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "m88.1.0"));
     IM_CHECK(on_screen(h, "squeeze out 163 ms"));
     // Row 1 starts open: its chord and sentence show, rows 2 and 3 are shut.
-    IM_CHECK(on_screen(h, "[Kick - GreenCym]"));
+    IM_CHECK(on_screen(h, "[Kick - Green cymbal]"));
     IM_CHECK(on_screen(h, "Hit the [  Y  ] note more than 163.0 ms late so it lands after "
                           "Star Power ends."));
     IM_CHECK(on_screen(h, "3 notes near the SP end"));
     IM_CHECK(!on_screen(h, "6 notes near the SP end"));
     IM_CHECK(!on_screen(h, "SqOut: Note timing"));
     IM_CHECK(!on_screen(h, "Frontend:"));
+    // The timeline outlines: row 1's 163 ms squeeze is orange, rows 2 and 3
+    // have no badge and no outline. The open record gets a length as an input:
+    // ten minutes, past either chart's last activation (D75).
+    h.app->viewed.song_length_ms = kMarksSongLengthMs;
+    ctx->Yield(2);
+    check_marks(ctx, *h.app, {Outline::Orange, Outline::None, Outline::None});
 
     // "Show in Preview" asks the Preview for activation 1 (Task 11 consumes it)
     // and switches to the Preview tab, which starts the Preview.
@@ -153,6 +256,19 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, "3 notes near the SP end"));
     IM_CHECK(!on_screen(h, "7 notes near the SP end"));
+
+    // Beg (Evans Blue): its optimal path has a 0 ms squeeze-out and a 0 ms
+    // early fill. Their badges are grey, so their marks are outlined grey,
+    // not orange.
+    open_titled(ctx, "evans blue", "Beg");
+    if (ctx->IsError()) return;
+    analyze_open_song(ctx);
+    if (ctx->IsError()) return;
+    ctx->Yield(2);
+    // Row 1 is the squeeze-out, row 4 the early fill; rows 2 and 3 have no badge.
+    h.app->viewed.song_length_ms = kMarksSongLengthMs;
+    ctx->Yield(2);
+    check_marks(ctx, *h.app, {Outline::Grey, Outline::None, Outline::None, Outline::Grey});
 }
 
 // The backend table folds per activation, and the Backend limit moved here.
@@ -165,7 +281,7 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
     // The stored early x0.99... multiplier isn't 1, so the row shows its
     // figure, however small the shift (one-squeeze-rating decision 1).
-    IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5ms) <-- squeezed out (-260)"));
+    IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
     IM_CHECK(on_screen(h, "Timing is how far each note sits from the Star Power end"));
 
     // Off by default, and the number box is inert until it is ticked.
@@ -205,11 +321,11 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     FakeClipboard clipboard;
 
     IM_CHECK(on_screen(h, "+15"));  // beside the Multiplier squeeze fold
-    IM_CHECK(!on_screen(h, "Hit [Red] first."));
+    IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Hit [Red] first."));
-    IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red - YellowCym]"));
+    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
+    IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red snare - Yellow cymbal]"));
 
     IM_CHECK(!on_screen(h, "Total Score:"));
     ctx->ItemClick("**/Score breakdown##breakdown");
@@ -259,16 +375,9 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
         ctx->Yield(1);
     }
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "squeezed out (uncounted)"));
+    IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
     IM_CHECK(on_screen(h, "It costs no points, because Hydra's score never counted that "
                           "note under Star Power"));
-}
-
-// A window drawn this frame whose name holds `part` (child names are mangled).
-ImGuiWindow* window_named(const char* part) {
-    for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows)
-        if (w->WasActive && std::strstr(w->Name, part)) return w;
-    return nullptr;
 }
 
 // At the panel's narrowest the Paths tab still fits: with every row, a
@@ -329,14 +438,6 @@ void test_paths_long_path(ImGuiTestContext* ctx) {
     }
 }
 
-// A width in the font the app draws with (`font` null: the default one).
-float text_w(const char* s, ImFont* font = nullptr) {
-    const ImGuiStyle& st = ImGui::GetStyle();
-    const float size = st.FontSizeBase * st.FontScaleMain * st.FontScaleDpi;
-    if (!font) font = ImGui::GetIO().FontDefault ? ImGui::GetIO().FontDefault : ImGui::GetFont();
-    return font->CalcTextSizeA(size, FLT_MAX, 0.0f, s).x;
-}
-
 // The narrowest song panel: the library as wide as it goes.
 bool narrowest_panel(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -350,24 +451,22 @@ bool narrowest_panel(ImGuiTestContext* ctx) {
     return true;
 }
 
-// The backend table drawn this frame for activation `number` (its id starts
-// "##backends<number>_"; the rest is its column widths).
+// The backend table drawn this frame for activation `number` (its id is
+// backend_table_id of the number and its column widths).
 ImGuiTable* backend_table(int number) {
     ImGuiContext& g = *ImGui::GetCurrentContext();
     ImGuiWindow* details = window_named("##pathdetails");
     if (!details) return nullptr;
-    const std::string prefix = "##backends" + std::to_string(number) + "_";
     for (int n = 0; n < g.Tables.GetMapSize(); ++n) {
         ImGuiTable* t = g.Tables.TryGetMapData(n);
         if (!t || t->ColumnsCount != 4 || t->LastFrameActive < g.FrameCount - 2) continue;
         if (t->OuterWindow != details) continue;
-        // Match by id, rebuilt from the widths the table was set up with.
-        char id[64];
-        std::snprintf(id, sizeof(id), "%s%d_%d_%d", prefix.c_str(),
-                      static_cast<int>(t->Columns[0].InitStretchWeightOrWidth),
-                      static_cast<int>(t->Columns[1].InitStretchWeightOrWidth),
-                      static_cast<int>(t->Columns[2].InitStretchWeightOrWidth));
-        if (t->ID == details->GetID(id)) return t;
+        // Match by id, built from the widths the table was set up with.
+        const std::string id = hydra::app::backend_table_id(
+            number, static_cast<int>(t->Columns[0].InitStretchWeightOrWidth),
+            static_cast<int>(t->Columns[1].InitStretchWeightOrWidth),
+            static_cast<int>(t->Columns[2].InitStretchWeightOrWidth));
+        if (t->ID == details->GetID(id.c_str())) return t;
     }
     return nullptr;
 }
@@ -381,7 +480,7 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     if (!narrowest_panel(ctx)) return;
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(3);
-    IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5ms) <-- squeezed out (-260)"));
+    IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
     ImGuiTable* t = backend_table(1);
     IM_CHECK(t != nullptr);
     if (ctx->IsError()) return;
@@ -394,7 +493,7 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     // The squeezed-out line is longer than the cell, so it did wrap: the
     // cell is narrower than the line.
     const float line_w =
-        text_w("Insane SqOut (eff. 163.5ms) <-- squeezed out (-260)", hydra::ui::g_mono_font);
+        text_width("Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)", hydra::ui::g_mono_font);
     IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, line_w);
     // The three fixed columns fit their text: no cell runs past its column.
     for (int c = 0; c < 3; ++c) {
@@ -411,8 +510,8 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
 
 // The activation rows at the narrowest panel: the measure, the bars and the
 // badge never overlap, on Burnout's own rows and on the longest pieces real
-// charts have (an 11-character measure, a two-digit bar count, the longest
-// badge wording with a 3-digit time).
+// charts have (an 11-character measure, a two-digit bar count) and the
+// longest badge a row can show (longest_activation_badge).
 void test_paths_row_layout(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
@@ -426,57 +525,53 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     auto check = [&](const std::string& widest_measure, const std::string& measure,
                      const std::string& bars, const std::string& badge) {
         const hydra::ui::ActivationRowLayout l = hydra::ui::activation_row_layout(
-            text_w(widest_measure.c_str(), mono), badge.empty() ? 0.0f : text_w(badge.c_str()),
+            text_width(widest_measure.c_str(), mono), badge.empty() ? 0.0f : text_width(badge.c_str()),
             row_w, scale);
-        const float measure_end = l.measure_x + text_w(measure.c_str(), mono);
-        const float bars_end = l.bars_x + text_w(bars.c_str());
+        const float measure_end = l.measure_x + text_width(measure.c_str(), mono);
+        const float bars_end = l.bars_x + text_width(bars.c_str());
         ctx->LogInfo("measure %s ends %.1f, bars at %.1f..%.1f, badge pill from %.1f (row %.1f)",
                      measure.c_str(), measure_end, l.bars_x, bars_end, l.badge_pill_min, row_w);
         IM_CHECK_LE(measure_end + gap, l.bars_x + 0.01f);
         IM_CHECK_GE(l.bars_x, hydra::ui::px(hydra::ui::kRowMinBarsX));
         if (!badge.empty()) IM_CHECK_LT(bars_end, l.badge_pill_min);
     };
-    // The same call the tab makes, so this is the cached view it draws.
-    hydra::ui::AppState& app = *h.app;
-    const hydra::app::ActivationsView& view =
-        app.details_ui.paths_tab
-            .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
-                     app.viewed.timing ? &*app.viewed.timing : nullptr,
-                     static_cast<double>(app.settings.hit_window_ms), app.settings.backend_limit(),
-                     app.settings.rules, app.viewed.song_length_ms)
-            .activations;
+    const hydra::app::ActivationsView& view = shown_activations(*h.app);
     std::string widest;
     for (const hydra::app::ActivationRowView& a : view.acts)
-        if (text_w(a.measure.c_str(), mono) > text_w(widest.c_str(), mono)) widest = a.measure;
+        if (text_width(a.measure.c_str(), mono) > text_width(widest.c_str(), mono)) widest = a.measure;
     IM_CHECK(!view.acts.empty());
     for (const hydra::app::ActivationRowView& a : view.acts) check(widest, a.measure, a.bars, a.badge);
-    check("m1024.1.120", "m1024.1.120", "12 bars", "early fill 999 ms");
-    check("m1024.1.120", "m1024.1.120", "12 bars", "squeeze out 999 ms");
+    check("m1024.1.120", "m1024.1.120", "12 bars", hydra::app::longest_activation_badge());
 }
 
-// A result saved before Hydra stored song lengths has none, so the timeline
-// has no end. Opening the song reads the chart for it and the timeline shows,
-// with no re-analysis: the same length an analysis stores, the same record.
+// The GUI test library has no audio, but Burnout's song.ini states its
+// length, 130,303 ms, so the timeline places its activation dots (D75). A
+// result saved before the current length rule reads its length once on open,
+// from the metadata, with no re-analysis, and is not read again.
 void test_paths_length_backfill(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     hydra::ui::AppState& app = *h.app;
-    IM_CHECK(app.viewed.song_length_ms.has_value());
-    if (!app.viewed.song_length_ms) return;
-    const double stored = *app.viewed.song_length_ms;
+    IM_CHECK(app.viewed.song_length_read);  // its analysis worked it out
+    IM_CHECK(app.viewed.song_length_ms == 130303.0);
+    ctx->Yield(2);
+    IM_CHECK(!drawn_marks(ctx).empty());
     const hydra::HydraRecord* record = &*app.viewed.record;
-    IM_CHECK(on_screen(h, "m96"));  // the timeline's end label
 
-    // As an old result reads: no length.
+    // As an old result reads: not read.
+    app.viewed.song_length_read = false;
     app.viewed.song_length_ms.reset();
-    IM_CHECK(wait_until(ctx, [&] { return app.viewed.song_length_ms.has_value(); }, 10));
-    if (!app.viewed.song_length_ms) return;
-    IM_CHECK_FLOAT_NEAR_EQ(static_cast<float>(*app.viewed.song_length_ms),
-                           static_cast<float>(stored), 0.01f);
+    IM_CHECK(wait_until(ctx, [&] { return app.viewed.song_length_read; }, 10));
+    IM_CHECK(app.viewed.song_length_ms == 130303.0);
     IM_CHECK(&*app.viewed.record == record);  // not re-read, not re-analyzed
     IM_CHECK(!app.analyze_job);
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "m96"));
+    IM_CHECK(!drawn_marks(ctx).empty());
+
+    // Read once: the chart is not read again this session.
+    app.viewed.song_length_read = false;
+    ctx->Yield(5);
+    IM_CHECK(!app.length_job);
 }
 
 }  // namespace

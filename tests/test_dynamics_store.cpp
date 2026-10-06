@@ -20,6 +20,7 @@
 #include "midi_util.h"
 #include "parse/song.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 
 using namespace hydra::app;
 using namespace hydra::store;
@@ -40,18 +41,7 @@ DynamicsBreakdown make_full_breakdown(bool dynamics_enabled) {
     return b;
 }
 
-// A temporary file path that is deleted on destruction.
-struct TempFile {
-    std::string path;
-    TempFile() {
-        char buf[MAX_PATH + 1];
-        char dir[MAX_PATH + 1];
-        GetTempPathA(MAX_PATH, dir);
-        GetTempFileNameA(dir, "hyd", 0, buf);
-        path = buf;
-    }
-    ~TempFile() { std::remove(path.c_str()); }
-};
+using TempFile = testtemp::ScopedFile;
 
 }  // namespace
 
@@ -100,12 +90,38 @@ TEST_CASE("dynamics decode rejects bad blobs") {
 }
 
 // ---------------------------------------------------------------------------
+// The stored layout, byte for byte: these 118 bytes were copied from one run
+// of encode_dynamics on the build before the blob moved onto serialize's
+// BinaryWriter. If they still match, no stored Dynamics row moved.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("dynamics blob bytes are unchanged by the shared codec") {
+    const std::vector<uint8_t> pinned = {
+        0x02, 0x01,                                            // stamp, enabled
+        0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+        0x04, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00,
+        0x07, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x09, 0x00, 0x00, 0x00,
+        0x0A, 0x00, 0x00, 0x00, 0x0B, 0x00, 0x00, 0x00, 0x0C, 0x00, 0x00, 0x00,
+        0x0D, 0x00, 0x00, 0x00, 0x0E, 0x00, 0x00, 0x00, 0x0F, 0x00, 0x00, 0x00,
+        0x10, 0x00, 0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00,
+        0x13, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x15, 0x00, 0x00, 0x00,
+        0x16, 0x00, 0x00, 0x00, 0x17, 0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00,
+        0x19, 0x00, 0x00, 0x00, 0x1A, 0x00, 0x00, 0x00, 0x1B, 0x00, 0x00, 0x00,
+        0xFF, 0xFF, 0xFF, 0xFF,                                // no late tag
+        0x00, 0x00, 0x00, 0x00,                                // marks before it
+    };
+    const std::vector<uint8_t> blob = encode_dynamics(make_full_breakdown(true));
+    CHECK(blob.size() == 118);
+    CHECK(blob == pinned);
+}
+
+// ---------------------------------------------------------------------------
 // Test 3: RecordStore put/get dynamics — missing key, put+get, replace, and
 //         keys differing only in pro or difficulty are separate rows.
 // ---------------------------------------------------------------------------
 
 TEST_CASE("RecordStore dynamics put/get") {
-    TempFile tmp;
+    TempFile tmp("dynamics_store", ".db");
     const DynamicsBreakdown bd = make_full_breakdown(true);
     const std::vector<uint8_t> blob = encode_dynamics(bd);
 
@@ -164,14 +180,18 @@ TEST_CASE("RecordStore dynamics put/get") {
 }
 
 TEST_CASE("dynamics keys come from one place") {
-    CHECK(dynamics_cache_key("C:\\songs\\a\\notes.mid", true, hydra::Difficulty::Expert) ==
-          "C:\\songs\\a\\notes.mid|pro|Expert");
-    CHECK(dynamics_cache_key("x.chart", false, hydra::Difficulty::Hard) == "x.chart|std|Hard");
-
     DynamicsKey k = dynamics_store_key("abc123", hydra::Difficulty::Medium, true);
     CHECK(k.md5 == "abc123");
     CHECK(k.difficulty == "Medium");
     CHECK(k.pro);
+
+    // The in-memory count is filed under the same key, so two keys compare
+    // field by field: the same chart, difficulty and view are one count, and
+    // a change to any one of them is another.
+    CHECK(k == dynamics_store_key("abc123", hydra::Difficulty::Medium, true));
+    CHECK(k != dynamics_store_key("abc124", hydra::Difficulty::Medium, true));
+    CHECK(k != dynamics_store_key("abc123", hydra::Difficulty::Hard, true));
+    CHECK(k != dynamics_store_key("abc123", hydra::Difficulty::Medium, false));
 
     // The background count always parses with 2x kicks kept.
     CHECK(kDynamicsParseBass2x);
@@ -200,7 +220,7 @@ TEST_CASE("dynamics_entry_from_analysis counts only when the parse kept 2x kicks
 }
 
 TEST_CASE("RecordStore dynamics rows from before the stamp read as missing") {
-    TempFile tmp;
+    TempFile tmp("dynamics_store", ".db");
     {  // A file from before the stamp: the dynamics table has no count_version column.
         sqlite3* db = nullptr;
         REQUIRE(sqlite3_open(tmp.path.c_str(), &db) == SQLITE_OK);
@@ -225,7 +245,7 @@ TEST_CASE("RecordStore dynamics rows from before the stamp read as missing") {
 }
 
 TEST_CASE("RecordStore dynamics rows with another count stamp read as missing") {
-    TempFile tmp;
+    TempFile tmp("dynamics_store", ".db");
     RecordStore store(tmp.path);
     DynamicsKey key{"abc123", "Expert", false};
     const std::vector<uint8_t> blob = encode_dynamics(make_full_breakdown(true));

@@ -10,10 +10,16 @@
 #include <string>
 #include <vector>
 
+#include "app/user_messages.h"  // stale_text, what a Stale row's tooltip shows
+#include "core/rules.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "store/record_store.h"
 #include "ui/library_model.h"
 
+using hydra::store::CapQuery;
 using hydra::store::ChartLibraryEntry;
+using hydra::store::PreparedRow;
+using hydra::store::RecordKey;
 using hydra::store::RecordStatus;
 using hydra::store::SummaryLookup;
 using hydra::ui::LibraryModel;
@@ -73,7 +79,82 @@ std::vector<std::string> titles(const LibraryModel& m) {
     return out;
 }
 
+// A library of three charts whose stored results are Stale, one per cause,
+// read through the store the way the app reads them (get_summaries). Chart
+// "build" came from another Hydra version, "rules" from other rules in
+// hydra_rules.ini, "both" from both. Returns the model's rows, in that order.
+std::vector<hydra::ui::LibraryRow> stale_rows() {
+    hydra::HydraRecord here;
+    here.sp_cap = 8;
+    auto key = [](const char* md5) { return RecordKey{md5, "mode", CapQuery::at(8)}; };
+
+    hydra::store::RecordStore store(":memory:");
+    hydra::test::add_stale_rows(store, here, key("build"), key("rules"), key("both"));
+
+    LibraryModel m;
+    m.set_charts({chart("build", "Build", "A", "C", "common"),
+                  chart("rules", "Rules", "A", "C", "common"),
+                  chart("both", "Both", "A", "C", "common")});
+    m.set_summaries(
+        store.get_summaries(m.hashes(), "mode", CapQuery::at(8), hydra::store::Lens{}));
+    return m.rows();
+}
+
+// The sentence a Stale row's tooltip shows (library_table.cpp asks
+// stale_text with the row's two flags).
+std::string row_tooltip(const hydra::ui::LibraryRow& row) {
+    return hydra::app::stale_text(row.stale_build, row.stale_rules);
+}
+
 }  // namespace
+
+TEST_CASE("library model: a row Stale from another Hydra version says so in its tooltip") {
+    const std::vector<hydra::ui::LibraryRow> rows = stale_rows();
+    REQUIRE(rows.size() == 3);
+    const hydra::ui::LibraryRow& row = rows[0];
+    REQUIRE(row.status == RecordStatus::Stale);
+    CHECK(row.stale_build);
+    CHECK_FALSE(row.stale_rules);
+    CHECK(row_tooltip(row) ==
+          "Out of date: this result came from another Hydra version. Re-analyze to refresh it.");
+}
+
+TEST_CASE("library model: a row Stale from other rules names hydra_rules.ini in its tooltip") {
+    const std::vector<hydra::ui::LibraryRow> rows = stale_rows();
+    REQUIRE(rows.size() == 3);
+    const hydra::ui::LibraryRow& row = rows[1];
+    REQUIRE(row.status == RecordStatus::Stale);
+    CHECK_FALSE(row.stale_build);
+    CHECK(row.stale_rules);
+    CHECK(row_tooltip(row) ==
+          "Out of date: this result came from different rules in hydra_rules.ini. Re-analyze "
+          "to refresh it.");
+}
+
+TEST_CASE("library model: a row Stale from both causes names both in its tooltip") {
+    const std::vector<hydra::ui::LibraryRow> rows = stale_rows();
+    REQUIRE(rows.size() == 3);
+    const hydra::ui::LibraryRow& row = rows[2];
+    REQUIRE(row.status == RecordStatus::Stale);
+    CHECK(row.stale_build);
+    CHECK(row.stale_rules);
+    CHECK(row_tooltip(row) ==
+          "Out of date: this result came from another Hydra version or from different rules "
+          "in hydra_rules.ini. Re-analyze to refresh it.");
+}
+
+TEST_CASE("library model: a Stale row whose cause changes takes the new cause") {
+    LibraryModel m;
+    m.set_charts({chart("h", "Song", "A", "C", "common")});
+    SummaryLookup by_build = stale();
+    by_build.stale_build = true;
+    REQUIRE(m.set_summaries({by_build}) == 1);
+    SummaryLookup by_rules = stale();
+    by_rules.stale_rules = true;
+    CHECK(m.set_summaries({by_rules}) == 1);
+    CHECK_FALSE(m.rows()[0].stale_build);
+    CHECK(m.rows()[0].stale_rules);
+}
 
 TEST_CASE("library model: every chart shows, sorted by title, with its Best path text") {
     const LibraryModel m = sample();
@@ -88,6 +169,57 @@ TEST_CASE("library model: every chart shows, sorted by title, with its Best path
     CHECK(m.counts().not_analyzed == 4);
     CHECK(m.counts().stale == 1);
     CHECK(m.counts().analyzed == 1);
+}
+
+TEST_CASE("library model: a title made only of tags reads (unknown)") {
+    LibraryModel m;
+    m.set_charts({chart("tags", hydra::test::kTagOnlyTitle, "Artist", "Charter", "common")});
+    REQUIRE(m.rows().size() == 1);
+    CHECK(m.rows()[0].title == "(unknown)");
+}
+
+TEST_CASE("library model: an artist made only of tags reads (unknown), and search keeps the stored text") {
+    // D50 item 5: the artist column follows the title's rule. Search and sort
+    // still read the stored text, so "(unknown)" is not a search hit.
+    LibraryModel m;
+    m.set_charts({chart("tags", "Song", hydra::test::kTagOnlyTitle, "Charter", "common")});
+    REQUIRE(m.rows().size() == 1);
+    CHECK(m.rows()[0].artist == "(unknown)");
+    CHECK(m.rows()[0].searchable.artist.find("unknown") == std::string::npos);
+    m.set_query("unknown");
+    CHECK(m.order().empty());
+}
+
+TEST_CASE("library model: an empty or placeholder artist reads (unknown), and the charter is trimmed") {
+    // D56 item 2: every missing artist reads "(unknown)". The charter reads
+    // display_charter's text: tags gone, the spaces at its ends trimmed.
+    LibraryModel m;
+    m.set_charts({chart("a", "Song A", "", " <b>Bob</b> ", "common"),
+                  chart("b", "Song B", "<unknown artist>", "Charter", "common")});
+    REQUIRE(m.rows().size() == 2);
+    CHECK(m.rows()[0].artist == "(unknown)");
+    CHECK(m.rows()[0].charter == "Bob");
+    CHECK(m.rows()[1].artist == "(unknown)");
+}
+
+TEST_CASE("library model: status_label is the one source of the three status words") {
+    using hydra::ui::status_label;
+    CHECK(std::string(status_label(RecordStatus::Ready)) == "Analyzed");
+    CHECK(std::string(status_label(RecordStatus::Stale)) == "Stale");
+    CHECK(std::string(status_label(RecordStatus::NotAnalyzed)) == "Not analyzed");
+    // The Best path cell of a row with no current result shows the same word.
+    const hydra::store::PathSummary none;
+    CHECK(hydra::ui::best_path_label(RecordStatus::Stale, "", none) == "Stale");
+    CHECK(hydra::ui::best_path_label(RecordStatus::NotAnalyzed, "", none) == "Not analyzed");
+}
+
+TEST_CASE("library model: status_of names the one status each chip groups") {
+    using hydra::ui::StatusChip;
+    using hydra::ui::status_of;
+    CHECK(status_of(StatusChip::Analyzed) == RecordStatus::Ready);
+    CHECK(status_of(StatusChip::Stale) == RecordStatus::Stale);
+    CHECK(status_of(StatusChip::NotAnalyzed) == RecordStatus::NotAnalyzed);
+    CHECK_FALSE(status_of(StatusChip::All).has_value());
 }
 
 TEST_CASE("library model: the search narrows the rows and the chip counts follow it") {
@@ -149,6 +281,23 @@ TEST_CASE("library model: Best path sorts by score, with unscored rows last both
     CHECK(titles(m).front() == "YYZ");
     m.set_sort(LibrarySort::Artist, true);
     CHECK(titles(m).front() == "Halo");  // "beyonce" folds first
+}
+
+// A result whose analysis kept no path is Analyzed, but it has no best path,
+// so a stars: or squeeze filter has nothing to test on it (D51 call 11).
+TEST_CASE("library model: a Ready row with no paths is Analyzed but has no facts (D51 Q11)") {
+    LibraryModel m;
+    m.set_charts({chart("empty", "Empty", "A", "C", "common"),
+                  chart("scored", "Scored", "A", "C", "common")});
+    SummaryLookup no_paths;
+    no_paths.status = RecordStatus::Ready;  // no score, no stars
+    m.set_summaries({no_paths, ready(1000, "1", 7, 100.0)});
+    m.set_query("stars:7");
+    CHECK(titles(m) == std::vector<std::string>{"Scored"});
+    m.set_query("squeeze<=200");
+    CHECK(titles(m) == std::vector<std::string>{"Scored"});
+    m.set_query("");
+    CHECK(m.counts().analyzed == 2);
 }
 
 TEST_CASE("library model: one chart in two folders gets both rows updated") {

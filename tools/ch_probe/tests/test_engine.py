@@ -8,12 +8,16 @@ set. That is enough to check every piece of logic in engine.py -- the offset
 arithmetic, the precision-mode bit test, the constant reads, and capturing the
 object pointer from rcx.
 
+The process is a real Process from the shared builder in fakes.py, so the
+address maths and the decoding are production's.
+
 These tests import engine.py as a top-level module. To make that work without a
 package root, we put the ch_probe directory itself on sys.path first, so
 `import engine` and `import constants` resolve.
 """
 
 import os
+import struct
 import sys
 import unittest
 
@@ -25,6 +29,11 @@ if _CH_PROBE_DIR not in sys.path:
 
 import constants as C  # noqa: E402
 import engine  # noqa: E402
+
+try:
+    from . import fakes  # noqa: E402
+except ImportError:  # pragma: no cover - run as a script from this folder
+    import fakes  # type: ignore[no-redef]  # noqa: E402
 
 
 # --- fakes -------------------------------------------------------------------
@@ -39,50 +48,6 @@ class FakeThreadContext:
 
     def xmm0_double(self):
         return 0.0
-
-
-class FakeProcess:
-    """A stand-in for the real Process.
-
-    Give it two lookup tables: `doubles` maps an absolute address to the double
-    stored there, and `dwords` maps an absolute address to the u32 stored there.
-    `consts` maps an RVA to the double at that .rdata spot. Every read is exact:
-    ask for an address we weren't told about and we raise, so a wrong offset in
-    engine.py shows up as a loud KeyError instead of a silent zero.
-    """
-
-    def __init__(self, module_base=0x7FF000000000, doubles=None, dwords=None, consts=None):
-        self.module_base = module_base
-        self._doubles = dict(doubles or {})
-        self._dwords = dict(dwords or {})
-        self._consts = dict(consts or {})
-        # Record which RVAs were asked for, so a test can assert coverage.
-        self.const_rvas_read = []
-
-    def resolve(self, rva):
-        return self.module_base + rva
-
-    def read(self, addr, size):
-        raise NotImplementedError("raw read not needed for these tests")
-
-    def write(self, addr, data):
-        raise NotImplementedError
-
-    def read_double(self, addr):
-        return self._doubles[addr]
-
-    def read_u32(self, addr):
-        return self._dwords[addr]
-
-    def read_u64(self, addr):
-        raise NotImplementedError
-
-    def read_const_double(self, rva):
-        self.const_rvas_read.append(rva)
-        return self._consts.get(rva, 0.0)
-
-    def verify_targets(self):
-        pass
 
 
 class FakeDebugger:
@@ -126,14 +91,17 @@ class FakeDebugger:
 # --- helpers -----------------------------------------------------------------
 
 OBJ = 0x1234000  # a made-up but fixed engine object address
+MODULE_BASE = 0x7FF000000000  # a made-up but fixed GameAssembly.dll base
 
 
 def make_engine(object_ptr=OBJ, doubles=None, dwords=None, consts=None,
-                module_base=0x7FF000000000):
-    proc = FakeProcess(module_base=module_base, doubles=doubles,
-                       dwords=dwords, consts=consts)
+                memory=None):
+    """An EngineModel over a real Process on fake memory, plus a fake
+    debugger. The FakeMemory records every read."""
+    proc, mem = fakes.fake_process(memory, MODULE_BASE, doubles=doubles,
+                                   dwords=dwords, consts=consts)
     dbg = FakeDebugger(ctor_rcx=object_ptr)
-    return engine.EngineModel(proc, dbg), proc, dbg
+    return engine.EngineModel(proc, dbg), proc, dbg, mem
 
 
 # --- tests: capture ----------------------------------------------------------
@@ -141,20 +109,20 @@ def make_engine(object_ptr=OBJ, doubles=None, dwords=None, consts=None,
 
 class TestCaptureObject(unittest.TestCase):
     def test_captures_rcx_as_object_ptr(self):
-        eng, proc, dbg = make_engine(object_ptr=OBJ)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ)
         self.assertIsNone(eng.object_ptr)
         got = eng.capture_object()
         self.assertEqual(got, OBJ)
         self.assertEqual(eng.object_ptr, OBJ)
 
     def test_breakpoint_set_at_resolved_ctor_address(self):
-        eng, proc, dbg = make_engine(object_ptr=OBJ)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ)
         eng.capture_object()
-        expected_addr = proc.module_base + C.RVA_DRUMS_ENGINE_CTOR
+        expected_addr = proc.resolve(C.RVA_DRUMS_ENGINE_CTOR)
         self.assertIn(expected_addr, dbg.breakpoints)
 
     def test_run_not_needed_when_callback_fires_immediately(self):
-        eng, proc, dbg = make_engine(object_ptr=OBJ)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ)
         eng.capture_object()
         # The fake fires the callback inside set_breakpoint, so run() is skipped.
         self.assertFalse(dbg.run_called)
@@ -176,7 +144,7 @@ class TestFieldReads(unittest.TestCase):
             "hit_time": C.OFF_HIT_TIME,
         }
         doubles = {OBJ + offset_of[k]: v for k, v in field_values.items()}
-        eng, proc, dbg = make_engine(object_ptr=OBJ, doubles=doubles)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)
         eng.capture_object()
         return eng
 
@@ -206,7 +174,7 @@ class TestFieldReads(unittest.TestCase):
         self.assertEqual(eng.total_window(), 2 * eng.back_window())
 
     def test_reads_before_capture_raise(self):
-        eng, proc, dbg = make_engine(object_ptr=OBJ, doubles={})
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles={})
         with self.assertRaises(RuntimeError):
             eng.total_window()
 
@@ -214,7 +182,7 @@ class TestFieldReads(unittest.TestCase):
 class TestNoteCount(unittest.TestCase):
     def test_note_count_reads_u32_off_0x8c(self):
         dwords = {OBJ + C.OFF_NOTE_COUNT: 512}
-        eng, proc, dbg = make_engine(object_ptr=OBJ, dwords=dwords)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, dwords=dwords)
         eng.capture_object()
         self.assertEqual(eng.note_count(), 512)
 
@@ -225,7 +193,7 @@ class TestNoteCount(unittest.TestCase):
 class TestPrecisionMode(unittest.TestCase):
     def _mode(self, flags_value):
         dwords = {OBJ + C.OFF_FLAGS: flags_value}
-        eng, proc, dbg = make_engine(object_ptr=OBJ, dwords=dwords)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, dwords=dwords)
         eng.capture_object()
         return eng.precision_mode()
 
@@ -248,6 +216,51 @@ class TestPrecisionMode(unittest.TestCase):
         # Guards against the constant drifting; the spec pins it at 0x1000.
         self.assertEqual(C.PRECISION_MODE_BIT, 0x1000)
 
+    def test_is_precision_reads_the_one_bit(self):
+        # Finding 230's six flag values, through the one pure helper.
+        self.assertTrue(engine.is_precision(0x1000))
+        self.assertFalse(engine.is_precision(0x0FFF))
+        self.assertTrue(engine.is_precision(0xFFFFFFFF))
+        self.assertTrue(engine.is_precision(0x0FF1 | 0x1000))
+        self.assertFalse(engine.is_precision(0xFFFFFFFF & ~0x1000))
+        self.assertFalse(engine.is_precision(0))
+        # The engine's reader agrees with the helper.
+        self.assertTrue(self._mode(0x1000))
+        self.assertFalse(self._mode(0))
+
+
+# --- tests: one-read snapshot ------------------------------------------------
+
+
+class TestSnapshot(unittest.TestCase):
+    def test_snapshot_reads_every_field_in_one_read(self):
+        # The same bytes test_hit_window_scripts.py decodes through live.py.
+        block = bytearray(engine.SNAPSHOT_SIZE)
+        struct.pack_into("<d", block, C.OFF_TOTAL_WINDOW, C.ms_to_s(C.WINDOW_CAP_MS))
+        struct.pack_into("<I", block, C.OFF_SCORE, 1234)
+        struct.pack_into("<d", block, C.OFF_SONG_CLOCK, 12.5)
+        struct.pack_into("<I", block, C.OFF_FLAGS, C.PRECISION_MODE_BIT)
+        struct.pack_into("<d", block, C.OFF_HIT_TIME, 12.49)
+        eng, proc, dbg, mem = make_engine(memory={OBJ: bytes(block)})
+        eng.use_object(OBJ)
+        snap = eng.snapshot()
+        self.assertAlmostEqual(snap.window_ms, C.WINDOW_CAP_MS)
+        self.assertEqual(snap.score, 1234)
+        self.assertEqual(snap.clock_s, 12.5)
+        self.assertTrue(snap.precision)
+        self.assertEqual(snap.hit_time_s, 12.49)
+        self.assertEqual(mem.reads, [(OBJ, engine.SNAPSHOT_SIZE)])
+
+
+# --- tests: did the press hit ------------------------------------------------
+
+
+class TestPressedInputHit(unittest.TestCase):
+    def test_pressed_input_hit_means_the_score_rose(self):
+        self.assertTrue(engine.pressed_input_hit(100, 150))
+        self.assertFalse(engine.pressed_input_hit(100, 100))
+        self.assertFalse(engine.pressed_input_hit(100, 90))
+
 
 # --- tests: constants --------------------------------------------------------
 
@@ -267,11 +280,16 @@ class TestConstants(unittest.TestCase):
         rvas += list(C.RVA_FORMULA_PRECISION.values())
         return rvas
 
+    def _engine_with_every_constant(self):
+        consts = {rva: 0.0 for rva in self._all_expected_rvas()}
+        return make_engine(object_ptr=OBJ, consts=consts)
+
     def test_reads_every_expected_rva(self):
-        eng, proc, dbg = make_engine(object_ptr=OBJ)
+        eng, proc, dbg, mem = self._engine_with_every_constant()
         eng.constants()
+        addrs_read = [addr for addr, _ in mem.reads]
         for rva in self._all_expected_rvas():
-            self.assertIn(rva, proc.const_rvas_read,
+            self.assertIn(proc.resolve(rva), addrs_read,
                           msg="constants() did not read RVA 0x%X" % rva)
 
     def test_returns_a_value_for_every_name(self):
@@ -289,25 +307,33 @@ class TestConstants(unittest.TestCase):
             consts[rva] = 1.0
         for rva in C.RVA_FORMULA_PRECISION.values():
             consts[rva] = 2.0
-        eng, proc, dbg = make_engine(object_ptr=OBJ, consts=consts)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, consts=consts)
         got = eng.constants()
-        self.assertEqual(got["normal_back"], 85.0)
-        self.assertEqual(got["normal_front"], 37.5)
-        self.assertEqual(got["precision_back"], 40.0)
-        self.assertEqual(got["precision_front"], 25.0)
-        self.assertEqual(got["divisor"], 1000.0)
-        self.assertEqual(got["exponent"], 2.0)
-        self.assertEqual(got["hitcheck_threshold"], 0.5)
+        self.assertEqual(got[C.CONST_KEY_NORMAL_BACK], 85.0)
+        self.assertEqual(got[C.CONST_KEY_NORMAL_FRONT], 37.5)
+        self.assertEqual(got[C.CONST_KEY_PRECISION_BACK], 40.0)
+        self.assertEqual(got[C.CONST_KEY_PRECISION_FRONT], 25.0)
+        self.assertEqual(got[C.CONST_KEY_DIVISOR], 1000.0)
+        self.assertEqual(got[C.CONST_KEY_EXPONENT], 2.0)
+        self.assertEqual(got[C.CONST_KEY_HITCHECK_THRESHOLD], 0.5)
         # Every normal-branch and precision-branch coefficient shows up, keyed
         # with its mode prefix.
         for name in C.RVA_FORMULA_NORMAL:
-            self.assertIn("normal_" + name, got)
+            self.assertIn(C.CONST_KEY_PREFIX_NORMAL + name, got)
         for name in C.RVA_FORMULA_PRECISION:
-            self.assertIn("precision_" + name, got)
+            self.assertIn(C.CONST_KEY_PREFIX_PRECISION + name, got)
+
+    def test_window_keys_carry_their_mode_prefix(self):
+        self.assertTrue(C.CONST_KEY_NORMAL_BACK.startswith(C.CONST_KEY_PREFIX_NORMAL))
+        self.assertTrue(C.CONST_KEY_NORMAL_FRONT.startswith(C.CONST_KEY_PREFIX_NORMAL))
+        self.assertTrue(
+            C.CONST_KEY_PRECISION_BACK.startswith(C.CONST_KEY_PREFIX_PRECISION))
+        self.assertTrue(
+            C.CONST_KEY_PRECISION_FRONT.startswith(C.CONST_KEY_PREFIX_PRECISION))
 
     def test_constants_need_no_captured_object(self):
         # constants() reads .rdata, which does not depend on the object pointer.
-        eng, proc, dbg = make_engine(object_ptr=OBJ)
+        eng, proc, dbg, mem = self._engine_with_every_constant()
         self.assertIsNone(eng.object_ptr)
         eng.constants()  # must not raise
 
@@ -321,7 +347,7 @@ class TestSongClock(unittest.TestCase):
         # song clock is +0x100, in seconds.
         self.assertEqual(C.OFF_SONG_CLOCK, 0x100)
         doubles = {OBJ + C.OFF_SONG_CLOCK: 3.5}
-        eng, proc, dbg = make_engine(object_ptr=OBJ, doubles=doubles)
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)
         eng.capture_object()
         self.assertEqual(eng.song_clock(), 3.5)
 
@@ -331,20 +357,21 @@ class TestSongClock(unittest.TestCase):
 
 class TestScoreAndFoundObject(unittest.TestCase):
     def test_score_reads_u32_off_0x94(self):
-        eng, proc, dbg = make_engine(object_ptr=OBJ,
+        eng, proc, dbg, mem = make_engine(object_ptr=OBJ,
                                      dwords={OBJ + C.OFF_SCORE: 4200})
         eng.capture_object()
         self.assertEqual(eng.score(), 4200)
 
     def test_use_object_takes_a_scanned_pointer_without_a_debugger(self):
-        proc = FakeProcess(doubles={OBJ + C.OFF_SONG_CLOCK: 1.25})
+        proc, _ = fakes.fake_process(None, MODULE_BASE,
+                                     doubles={OBJ + C.OFF_SONG_CLOCK: 1.25})
         eng = engine.EngineModel(proc)
         self.assertEqual(eng.use_object(OBJ), OBJ)
         self.assertEqual(eng.object_ptr, OBJ)
         self.assertEqual(eng.song_clock(), 1.25)
 
     def test_capture_without_a_debugger_raises(self):
-        eng = engine.EngineModel(FakeProcess())
+        eng = engine.EngineModel(fakes.fake_process(None, MODULE_BASE)[0])
         with self.assertRaises(RuntimeError):
             eng.capture_object()
 

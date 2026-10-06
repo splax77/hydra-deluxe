@@ -109,3 +109,255 @@ D43 addendum, 2026-10-04: step 1's hand-made tests analyze at "keep the top 40 s
 D44 addendum, 2026-10-04 (T10 on the step 1+2 base): real charts still show 0 changes (97 test charts and the 206 short-measure library charts, caps 2 to 4, all difficulties). On the 48 generated 2,000 to 4,000 BPM test charts, T10 finds squeezes the old search missed when a full meter pins SP's end to the cap's ceiling: best scores rise on seed 37 cap 2 (11,950 to 13,150) and seed 35 caps 2, 3 and 4 (+200, +400, +600); the replay prices each new path at its score on both builds. Elsewhere on those charts fake squeeze marks go and a few lower paths gain real ones (seed 5 gains "0- 0+-", "0- 0++", "0- 0-"; best 7,550 unchanged). The user said land it; the seed-5 tests are re-pinned. T10 ships in 2.1.0 and shares its results stamp.
 
 **D47 (step-2 review, .chart note order), 2026-10-04.** A `.chart` whose drum notes are written out of tick order is read in tick order: the reader settles chord order once, before the phrase rule (D21) and the fill rule (D30), so a phrase's pay-out and a fill's landing always pick the same "last" chord. None of the library's 4,338 loose `.chart` files is out of order, so no saved result changes; the `.sng`/`.srb` containers are checked when the fix lands. Clone Hero's own ordering is not in the evidence file.
+D36 addendum, 2026-10-04 (measured, user said land it): one rule in `core::offered_phrase` — an SP end offers a window at most one phrase: before the end, only the window's newest phrase, at the SP end that collecting it moved; after the end, when the window ends here, the first phrase after it the window hasn't squeezed in (the old rule let an older phrase block it — the design had said that side was unchanged). It replaces T10's clamp-origin guard. Whole library (about 19,900 charts, caps 2 to 4, four difficulties): every stored record byte-identical, including squeeze offsets and backend rows; Thrice - Deadbolt and SoundHaven - Triad identical; speed unchanged within run-to-run noise. Hand-made 2,000 to 4,000 BPM test charts only gain: clamped_sqin_a 12,950 to 13,150 (cap 2), 13,350 to 13,550 (cap 3), 13,350 to 13,950 (cap 4); clamped_sqin_b 12,750 to 12,950 (caps 3 and 4); seed 36 9,550 to 9,950 (caps 3 and 4); some same-score labels gain a "+" or a free "-". Ships under 2.1.0.
+
+## Phases 3 to 5: display, docs, shell path
+
+**D48 (phase 3-5 questions), 2026-10-04.** The user answered "all recommended" to all 33 questions in `docs/audit/2026-10-04-phase-3-5-questions.md`. Each question's "Recommended" line is the decision. In short:
+- Tied top-score paths are all optimal, in the report too (Q1).
+- Whole-ms text rounds to nearest everywhere (Q2).
+- A timing on a tier edge counts as inside (Q3).
+- The ±10 ms backend band stays a named constant, not tied to the leeway (Q4).
+- The report footer is reworded (Q5).
+- Uncounted SqOut rows get the "(uncounted)" tag (Q6).
+- The "Tightest squeeze" tile becomes "Hardest ms" (Q7).
+- The timeline is orange only for difficult rows (Q8).
+- A row's bars mean "banked when you activate" (Q9).
+- The early-fill badge stays and is recorded (Q10).
+- Note names follow the Dynamics wording (Q11).
+- Counts are singular at 1 with commas from 1,000, whatever the browser's language (Q12).
+- Fill rules are named "Clone Hero 1.0" or "CH 1.0" from one owner, and "(legacy)" goes (Q13).
+- Titles are cleaned, with "(unknown)" when nothing is left (Q14).
+- The library and settings-bar items Q15 to Q21 take their recommended forms.
+- The Preview items Q22 to Q27 take theirs. Position is measured against the last note, the beat lines run to the audio end, teal means SP running, and a chord on the playhead counts as hit.
+- The report items Q28 to Q31 take theirs.
+- The nine wording fixes in Q32 are approved.
+- Every number in Q33 is kept as it is and recorded. That includes the 10 ms Path limit on, 50 ms backend hide off, and both path cut-offs (248 and 260).
+
+None of these changes a score, a path or a stored record. The results stamp stays "2.1.0".
+
+**D49 (developer-tool tuning numbers, M0 review), 2026-10-04.** The user chose to record these as they are. They control only how two developer tools behave; none touches a score, a display or a record.
+- `tools/new_worktree.ps1` and its shared build-slot script: at most 3 cold builds at once (the approved phase 3-5 plan's "Cold builds start at most three at a time"), a free-slot check every 15 s, and a "still waiting" line every 60 s.
+- `tools/derive_once_precheck.ps1`: helper bodies under 30 tokens are matched by name only, not by body; a C++ statement split over up to 4 lines is read as one; a typed 500 counts only within 2 lines of a squeeze, window, SqIn/SqOut, leeway, deact or fabs( word, and the same 2-line reach applies to a typed 2.0 beside a hit window (the 500 rule later moved into a scan row, leaving the 2.0 rule as the reach's only user); and a decision cited on the line or the 3 lines above it is the one the number must appear in.
+- Also in the precheck (added after the M0 round-2 review, same kind of tool tuning): the numbers 0, 1 and 2 are never listed as needing a decision, because they are counts, first and second, and off-by-one, not thresholds; 1000, 1024 and 1000000 next to `*` or `/` are unit factors (ms to s, KiB), not limits; and check 1 looks back 200 characters before a function's opening brace for a `namespace` keyword, to tell a free helper from a member.
+- The precheck's run on main is the range run, which prints nothing on a clean merge. A whole-tree run lists every copy already in the tree, as backlog for the audit, not as something a branch added.
+
+**D50 (phase 3 display follow-ups), 2026-10-04.** The user answered "all recommended" to seven display choices D48 did not settle, raised by the phase 3 task briefs and reviews. Each one changes only text or placement on screen; none touches a score, a path or a stored record.
+1. The path report's footer (finding 2) reads: "Timing tiers measure how big each squeeze is, in steps of your hit window. The Paths tab's row labels measure how far a hit lands from the Star Power end, so the two can differ. 'Beyond' means past the N ms window."
+2. In the fill comparison (finding 312), a chart with a record in both databases but paths in only one is listed under "In both", with "no score" on the empty side.
+3. An empty fill comparison (finding 105) says: "Nothing is analyzed under these settings (SP cap N, <mode>) in either database. Analyze with these settings, or change them."
+4. The Preview scrubber's right edge is the last note (finding 9), so activations sit at the same fraction as on the Paths timeline. Playback runs on into the audio tail with the thumb parked at the right end; the tail cannot be dragged into.
+5. An artist made only of Clone Hero tags reads "(unknown)", by the same rule as titles (finding 8).
+6. Two paths are the same path when their score and every activation's tick and SP-end tick match (`path_identity`, finding 249). Measured on the 97 corpus charts: no all-0 list changes.
+7. On the Paths timeline (finding 3), a difficult activation keeps its orange outline; any other badged activation gets a grey outline matching its grey badge.
+
+**D51 (phase 7), 2026-10-04.** The user answered "all recommended" to every question in `docs/audit/2026-10-04-phase-7-questions.md`, including 4b. Each question's Recommended line is the decision. The user added two notes in their own words.
+- On 4- and 5-note chords (Q3, findings 49 and 50): "those should never appear in a real drums chart. but it's valid in clone hero so hydra should account for it correctly." So `MultSqueeze` follows `to_multiplier` for every chord size, and shows the real gain.
+- On the early-fill window (Q7, finding 313): "60 is fine because it doesnt change anything. lots of paths were getting cluttered with early fills that will never matter so i tightened it from 85 to 60." So `kEarlyFillWindowMs` stays 60 ms. It was tightened from 85 ms to drop early fills that never matter.
+
+The calls in short:
+1. The tie limit is one count per score. When some tied paths are inside the Path limit and some are over, the inside ones lead (Q1, 95; changes stored results).
+2. A path that ties the best score stays shown even when it is over the Path limit, and the guide says so (Q2, 330).
+3. See the 4- and 5-note chord note above (Q3, 49 and 50; changes stored results).
+4. A path with nothing to time shows no timing figure. A squeeze-out at exactly 0.0 ms still needs timing, and the all-0 list follows D13 (Q4, 22; may change stored all-0 lists, and the counts go to the user before the merge). One duplicate hides only itself, not the whole "Best all-0 path" section (Q4b, 324).
+5. A required early fill counts against the Path limit like a squeeze, and the words say "hardest squeeze or required early fill" (Q5, 23).
+6. A phrase that fills the meter exactly to the cap is not an overfill (Q6, 307).
+7. See the early-fill window note above (Q7, 313).
+8. Results made under other rules are kept, and read Ready again when the rules match (Q8, 65).
+9. Song length is stored per difficulty (Q9, 62).
+10. The first copy the scan lists names a duplicate chart, and a batch analyzes each chart once (Q10, 63).
+11. A Ready chart with no paths stays under Analyzed. The filters see no facts for it, and the leaderboard and fill pages say "no paths" (Q11, 88).
+12. Each analysis rewrites the stored tempo map, and the scan cache carries its own version stamp (Q12, 343 and 345).
+13. Recorded as they are (Q13). Six items:
+    - The stars column is a cache of `path_stars` (129).
+    - Custom-ladder Auto rows read Stale until re-analyzed (317).
+    - The scan reads .sng and .srb names from the first 1 MB (321).
+    - `squeeze<N` means "at most N" (323).
+    - The six hydra_rules.ini lower bounds stay as they are (325).
+    - The scoring values: cymbal +15, solo 100 per note, multiplier steps at combos 10, 20 and 30 (335).
+14. A hand-edited setting outside its range is pulled to the nearest edge of the range its box enforces, both on load and on typing. The Preview volume is 0 to 100 everywhere (Q14: 322, 311, 31, 56, 72, 138).
+15. A `#` comment after a value in hydra_settings.ini is ignored, and the hit window may hold a decimal (Q15, 66 and 140).
+16. A 1-bar SP cap stays allowed, and the Paths tab says "A 1-bar cap can never activate Star Power." (Q16, 139).
+17. Jumping back after the audio ends brings the sound back (Q17, 73).
+18. A chart file that changed since it was analyzed opens with the path overlay hidden and one line: "This chart changed since it was analyzed. Analyze it again to see its path." (Q18, 126).
+19. A FLAC whose header length is 0 is counted by decoding it once on open (Q19, R7.8).
+20. A damaged Opus stem comes back after a scrub to before the damage, like every other format (Q20, R7.9).
+21. Preview clips are left out of the song mix everywhere, and one "is this playable audio" rule (`audio::sniff_format`) decides (Q21, 74 and 101).
+22. The SP gauge measures a mid-measure meter-change tick under the engine's side, the earlier section (Q22, 58).
+23. "Open automatically" keeps its behaviour. Its hint reads "Open each report in your browser as soon as it's built." (Q23, R7.2).
+24. "Scan now" and "Rescan library" are blocked during a batch, and the status line says "A batch is running." (Q24, R7.3).
+25. Errors carry their kind, and each kind has one plain sentence. A Preview asset problem reads "Reinstall Hydra" (Q25, 193).
+26. The batch reports its own analyzed, skipped and failed counts (Q26, 142).
+
+The code-only calls at the end of the sheet are approved as written. They cover findings 38, 59, 68, 78 to 85, 86, 98, 103, 108, 109, 170, 174, 198 and 202. In particular, the six old probe scripts are deleted.
+
+**D51 addendum (phase 7 wave 1 launch), 2026-10-04.** The wave 1 brief writers raised open questions that D51 didn't spell out. The user answered "go with recommended answers to everything". Each brief's "Decided at launch" section holds the full text.
+- **ST1 (65), stored layout.** The results table's unique key gains the rules fingerprint. Schema 4 rebuilds the table the way `add_fill_rule_column` does: a `rules_fp` column filled from `substr(structure,5,8)` joins the key. Every row, result id and blob is kept, so nothing is re-analyzed. This is what lets a rules-A row and a rules-B row sit side by side.
+- **SE1, `depth_mode` in a hand-edited file.** Any value other than 1 reads as scores. A 2 has always searched by scores, so it keeps doing that. The nearest-edge rule from call 14 covers the ranged number fields, not this switch.
+- **SE1, the SP cap.** 0, junk and `auto` still read as 4. That is the earlier user rule with its own test. The minimum cap of 1 lives in `config.h`'s key table.
+- **E2, the how-to line.** When several notes must go on one side of the step, the line names them all: "Hit [YellowCym] and [BlueCym] last." The cheap side reads "first.". " or " stays only for notes tied in value.
+- **Code-only calls, approved as recommended.** Each wave 1 task adds its own rows at the end of `tests/test_single_owner.cpp`, joined at M7-1. T1's result writer lives in `replay_json`, `--cap 0` still refuses on the command line, and `hydra_bench` is diffed by hand. AU1 pins only the FLAC zero-length case and stops if libopus accepts the bad packet. PS1 moves the byte check behind `audio::sniff_format` into `hydra_core`, so the Preview's dependency on it is declared. PR1 deletes `schedule_hit`, moves `window_verdict` into `watch_window.py`, and uses one 5 s stall limit. PR2 reads a `hydra_replay dump`, and the main session adds its README sentence at M7-1.
+
+**D52 (phase 3, fill comparison counts), 2026-10-04.** The user chose the recommended answer. D50 item 2 puts a chart with a score on only one side under "In both". The fill page's subtitle, its tiles and hydra_fillcompare's "Compared N charts: …" line now count those charts as "N with a score on one side only", with a matching tile. The parts add up to the total again. No score, path or record changes.
+
+**D53 (phase 6 questions), 2026-10-04.** The user answered "use recommended answers to everything" to the four questions in `docs/audit/2026-10-04-phase-6-questions.md`. Each question's Recommended line is the decision.
+1. The database's `user_version` slot (finding 298): Hydra stops writing it. A new database carries 0 there, an existing one keeps its 3, and the column checks stay the only upgrade gate. The two tests that check for 3 and the "schema user_version 3" header wording go.
+2. The Score range box (finding 112) is sized by `widest_digits(6)`, the rule the Analyze button and the Preview already use. It grows by about half a pixel times the DPI scale.
+3. When two taken fills touch (findings 76 and R7.14), each span carries its own pad, so each fill lights its own lane colour. No library chart reaches the case; the one-fill case is unchanged.
+4. The Preview's xN disc at the Star Power end (finding 1's second half) is left as it is and recorded as a known gap: the disc shows the multiplier the last hit chord earned until the next chord, so it reads doubled for a moment after SP ends while the drain box says idle. Changing it would need a new rule checked against Clone Hero video first.
+
+**D54 (phase 6 code-only calls), 2026-10-04.** Approved with D53: the "Recorded as recommended" list in `docs/superpowers/plans/2026-10-04-phase-6.md`, as written. In short:
+- 220: a `3d-config.json` missing a key is refused with an error naming the key (ADR 0008).
+- 207: the chart-file and report-file checks share one 2-second interval and one caching helper.
+- 340: "is the overlay the selected path's" compares the path part and ignores the cap, as today's prefix match does.
+- 210: the startup UI scale comes from `ui_scale_for_dpi`.
+- R7.13: `toggle_at` is deleted, not kept as a test oracle (D42).
+- 288: the contrast formula uses the WCAG 2.2 threshold, 0.04045.
+- 341: closed as "single owner, ImGui internal".
+- Developer-tool and pool numbers are recorded as they are, D49-style: the probe cut-offs in 328, the probe pacing in 273, the 250 ms settle in 232, R7.22's worker rule (hardware threads minus one, 1 when Windows reports 0, the same count for hashing) and R7.28's miniaudio converter defaults.
+- `kSpActivationBars = 2` (finding 334) and `kDefaultDepthValue = 4` (finding 181) get a name and a CONTEXT.md sentence, written by the M6-J4 merge.
+- Two dev-tool wordings change: `hydra_bench`'s header adopts `describe_settings`' words (206), and `MidiFile::from_file`'s raw error becomes winstr's "cannot open file:" (R7.11).
+- 75: `widest_word` takes `wrap_words`' answer.
+
+**D55 (phase 7 wave 1 follow-ups), 2026-10-04.** Four choices came up while wave 1 was built. The user took the recommended answer to each.
+1. **E2, the how-to line when both ends matter.** Some chords need a note held before the step and another note pushed past it, for example kick, yellow cymbal, blue cymbal and an accented red at combo 7. For those, the line names both ends: "Hit [Kick] first and [Red (Accent)] last." This needs a chord of 4 or more notes with an accent or ghost, so no real chart shows it.
+2. **SE1, `#` in free text.** A `#` after a value in hydra_settings.ini starts a comment (D51 call 15), except in the two free-text keys, `chartfolder` and `dm_last_user`. There a `#` stays part of the value, so a folder such as `C:\Songs\#1 Hits` still loads whole.
+3. **ST1, reindex and other rules.** `hydra_batch --reindex` leaves a row it can't read untouched, instead of blanking its summary columns. A result kept under other rules (D51 call 8) keeps its cached score and stars in the library.
+4. **ST1, older builds.** The schema 4 `rules_fp` column has no default. An older Hydra that opens a database this version upgraded fails to save, with a clear error, rather than writing a row with a wrong rules value in its key.
+5. **E1, over-limit ties below the top.** One count per score (D51 call 1) must not bring back over-limit paths below the best score. A path over the Path limit stays only when it ties the best score (D51 call 2). Below the top it is dropped, even when it ties a kept path that is inside the limit. Without this, "Unbound" at a 10 ms limit would show a path needing a 428.6 ms squeeze, and six of 97 test charts would gain such paths.
+
+**D56 (phase 3 M_D review, display calls), 2026-10-04.** The user chose the recommended answer to three questions the M_D derive-once review raised.
+1. Report-page search folds accents and matches every typed word, and nothing more. Quotes and the Library's field prefixes (artist:, title:, charter:) are ordinary words on a report page. The Library keeps the full query language, and the pages carry no second copy of its parser.
+2. A missing artist reads "(unknown)" everywhere, whether the field is empty, holds the scan's old "<unknown artist>" placeholder, or is only Clone Hero tags. Stored text is unchanged; only the shown text changes (extends D50 item 5).
+3. The Preview's clock keeps the full audio length as its total, because playback runs to the audio end. Only the scrubber ends at the last note (D50 item 4). The user guide's wording for the clock is corrected to match.
+
+**D57 (phase 3 M_D review round 2, display calls), 2026-10-04.** The user chose the recommended answer to three questions.
+1. Every one-decimal millisecond figure is written with a space ("163.5 ms"), matching whole numbers ("171 ms") and the report pages. One formatter answers it.
+2. The Paths tab backend tooltip names the normal budget at one decimal in both places ("on the normal 170.5 ms scale … not 170.5 ms").
+3. Report-page search looks at the text each page shows, so a tag-only title or artist searches as "(unknown)". The Library keeps searching the stored text.
+
+**D58 (phase 7 wave 2 briefs), 2026-10-04.** The wave 2 brief writers raised six display and stored-record questions. The user took the recommended answer to each. Every code-only question in the briefs takes the brief's recommendation.
+1. **E3, a 0.0 ms fill.** A required early fill with exactly 0.0 ms of slack still needs timing, the same as a squeeze-out at exactly 0.0 ms (D13).
+2. **E3, the 1-bar line.** "A 1-bar cap can never activate Star Power." shows on a cap-1 record in the detail line under each path button.
+3. **E3, the stored hardest timing.** When the best path has nothing to time, its stored `hardest_ms` is empty, and reports show a dash. The library's `squeeze<=N` filter passes such paths, as the guide says. The 2.1.0 re-analysis rewrites the column, and the implementer reports how many charts change.
+4. **ST2, old scan caches.** A scan cache with no version stamp reads as not current. So the first scan after upgrading re-reads every chart file once, the way unstamped dynamics rows are recounted (ADR 0018).
+5. **ST2, old song lengths.** A record with no per-difficulty length reads the old per-chart length, so nothing changes on screen until that difficulty is analyzed again.
+6. **PV, the changed-chart line.** D51 call 18's sentence shows as one warning-colour line above the highway, where "No audio device" sits. The highway still draws. The activations, score box and scrub marks hide, and the SP gauge shows the unanalyzed curve.
+
+**D59 (review loop rules), 2026-10-04.** After M0 took ten derive-once review rounds, the user approved item 1 and asked for the brief changes in items 2 and 3. Items 4 and 5 are the orchestrator's recommendations, written into the same briefs; the user can overrule them. All five change how reviews and fix rounds run (`docs/agents/brief-preamble.md`, `fix-round.md`, `derive-once-review.md`).
+1. **Developer-tool wording is a note.** Under `tools/`, a comment or doc line that states a rule differently from code that behaves correctly no longer blocks a merge; the reviewer lists it as a note. A copy that can give two answers on a real input still blocks there. In `src/`, `tests/` and shipped files every wording finding still blocks.
+2. **Comments name the owner.** A comment points at the function that owns a rule; it never spells out what the rule matches.
+3. **Quick review of each fix diff.** After each fix round, a fresh reviewer reads only that round's diff before the full review, and its findings go back to the same fixer.
+4. **Orchestrator habits.** (The size guide is replaced by D82 item 2: the precheck's large-range warning.) The orchestrator runs the precheck and its own first-step pass before the first review, fixes few-line findings itself, and splits a change over about 500 lines into two or three merges. The 500 is a rough guide, not a gate.
+5. **Slow proofs once per round.** Corpus and old-against-new comparisons run once after a fix round's last finding, not after each commit.
+
+**D60 (phase 7 E3 results), 2026-10-04.** The user saw E3's counts on the 97 test charts and took the recommended answer to both questions.
+1. **The all-0 lists.** D58 item 1 stands. A required early fill whose SP becomes ready exactly on the fill's deadline note has zero slack, so it needs timing, like a squeeze-out exactly on the SP end (D13). Seven charts lose their "Best all-0 path" (61 of 97 keep one, down from 68): Feast of Fire, Tapped Out, Sugar/Tzu, The Sentinel, Limb From Limb, YYZ and I Am... All Of Me. A few more swap a path with a squeeze-out exactly on the SP end for a free one. Fifteen best paths store no hardest timing instead of 0 or a negative number (D58 item 3).
+2. **The optional-fill badge.** An optional early fill with time to spare shows no badge, because there is nothing to time (D51 call 4). Its detail line "Early fill: -20.0 ms (optional)" stays.
+
+**D61 (one review exchange), 2026-10-04.** The user ended multi-round reviews: "extensive back and forth is just wasteful for very little benefit." A derive-once review now runs as one exchange. The reviewer sends its findings to the agent that wrote the change. That agent fixes them once and replies. The reviewer checks the fix, makes any remaining fixes itself, and signs off. There is no second round. This replaces D59 item 3 (the quick review of each fix round). D59's other items stand. The briefs are `docs/agents/derive-once-review.md`, `fix-round.md` and `brief-preamble.md`.
+1. **The gate.** A CLEAN review now counts when its reviewer wrote some of the range's commits, but not when it wrote all of them. The rule lives in `Get-DeriveOnceRefusal` in the hooks' `lib/derive_once_rules.ps1`, with tests R05 and R05b in `test_h17_git_ref_gate.ps1`.
+2. **What still goes to the user.** A leftover that needs a user decision (a new number, a change to what is shown or stored, a choice between behaviours) is not fixed by the reviewer. Neither is one too big to fix in about 30 tool calls. The reviewer submits FINDINGS naming it, and the orchestrator takes it to the user. The 30 is the orchestrator's guide, not the user's.
+
+**D62 (phase 7 wave 3 briefs), 2026-10-04.** The wave 3 brief writers raised four display questions. The user took the recommended answer to each, and every code-only question in the RP, DOC, LB1 and LB2 briefs takes the brief's recommendation.
+1. **RP, a Ready chart with no paths.** The report pages' status filter gains "No paths (analyzed, none kept)". The Status help adds "No paths: analyzed, but the analysis kept no path." The chip uses the not-analyzed colour. There is no new tile. The counts line adds ", N with no paths" only when N is more than 0.
+2. **RP, the fill page's empty cell.** A chart with a score on one side only shows "no paths" in the empty cell (D51 call 11). D52's counting words stay.
+3. **LB1 and LB2, duplicate copies.** (Replaced by D76: every copy counts.) A chart listed twice counts once everywhere: the batch confirm's "Analyze N charts", the progress strip and hydra_batch's closing line (D51 call 10).
+4. **LB2, "A batch is running."** It shows through the normal status line and fades like any other status.
+The Path limit tooltip's words follow D51 call 5 ("hardest squeeze or required early fill"). The main session changes that one line at the M7-3 join, because no wave 3 task owns `settings_bar.cpp`.
+
+**D63 (ST2, a saved chart's names), 2026-10-05.** The M7-2b review found that `upsert_song` took every listed chart's names from the library table, so a song.ini fixed after the last GUI scan kept its old names when `hydra_batch` ran alone. The user took the recommended answer: only a chart with more than one copy in the library takes its names from the library table (the first copy names it, D51 call 10). Every other chart keeps the names from its newest analysis, so a fixed song.ini reaches the reports on the next analysis, as decided on 2026-09-26.
+
+**D64 (J2-2, the leaderboard's "+N over"), 2026-10-05.** J2-2's fold would key the leaderboard page's delta text on the row's status. A score at a different scroll speed that beats the optimal has the status "other speed", so it would stop reading "+N over". The user took the recommended answer: it keeps reading "+N over". `collect_dm_rows` carries an "above optimal" field into the page's payload, and the page's script reads that field instead of comparing the delta itself. Nothing the user sees changes.
+
+**D65 (RP, an unstamped database in hydra_fillcompare), 2026-10-05.** The RP review found that the brief's question 4 warning ("has no engine_mode stamp, so it counts as a Clone Hero 1.1 database") is false for a file that holds results under both rules, which every result's Lens allows (ADR 0010). The app never stamps hydra.db, so the usual same-file run would warn every time. The user took the recommended answer: no warning for an unstamped file, as ADR 0010 says. hydra_fillcompare warns only when a file's stamp names the other side's rule, with the stamped-file sentence unchanged. Brief question 4 is withdrawn.
+
+**D66 (the all-0 hint), 2026-10-05.** DOC's review found the Paths tab's hint on the "Best all-0 path" heading still says "It needs no squeeze timing.", though since D58 item 1 the all-0 path also needs no required early fill. The user took the recommended answer: the hint reads "It needs no timing.", matching the User Guide. The main session changes it at the M7-3 join with the Path limit tooltip (D62).
+
+**D67 (LB1, a hit window with junk after the number), 2026-10-05.** LB1 makes `hit_window_ms` a decimal read through `parse_finite_number`, the reader every decimal setting uses. A hand-typed value such as `90abc` used to read as 90 (the old reader kept the leading digits) and now reads as the default. The user took the recommended answer: accept the new reading. A value that is not a clean number falls back to the default, like every other decimal setting.
+
+**D68 (J3-5, finding 340, the Preview's "is this my path" check), 2026-10-05.** J3-5 makes `PreviewController::shows_path` compare the drawn overlay's path with the selected one whole, where the tab used to test only whether the overlay's key started with the selected path's key. The two answers differ when the selected path's key is a proper prefix of the drawn path's key, for example a path with no activations scoring the same as a drawn path that has some. There the old test said the overlay was already the selected path's, so the Preview kept showing the other path. The user took the recommended answer: keep the fix. The Preview always shows the selected path's overlay. Only that rare case changes, and the old behaviour there was wrong.
+
+**D69 (a song's length is its audio length), 2026-10-05.** The user asked why Hydra derives a song's length from the chart's last note at all, and decided: use the audio length for everything. This replaces D51 call 9 (a length per difficulty), which D58 item 5 and ST2/LB2 built.
+1. **One length per song.** It is how long the song's audio runs, by the rule the Preview already uses for playback (the longest of the song's audio files). The Paths tab timeline, the Preview's scrub bar and its SP meter all read it. No length is worked out from notes anywhere.
+2. **Where it comes from.** When a chart is analyzed, Hydra opens its audio files' headers and saves the length once per song. Charts analyzed before this read their audio once, the way the old length backfill read the chart.
+3. **No readable audio.** A chart whose audio is missing or unreadable has no length. Its timeline places no activation dots, and nothing falls back to the last note.
+4. **What goes away.** The per-difficulty length table, the length read from the chart (`store::song_length_ms` and `SongLengthJob`'s chart parse), and the per-chart overwrite rule finding 62 described.
+Timelines now include the song's outro, so a song with a long tail ends its last activation before the right edge.
+
+**D70 (AL1 and AL2 open questions), 2026-10-05.** The user said to start the audio-length tasks as soon as their briefs were ready, so every open question in `p7-al1.md` and `p7-al2.md` takes its brief's recommendation. The ones that change what is shown or stored:
+1. **The Preview with no readable audio** still plays and scrubs to its last drawn note, with its marks on that range. That range is the transport's playback rule (D48), not a song length. Only the Paths timeline drops its dots (D69 item 3).
+2. **The length is in chart time:** the audio's end, read through the chart-to-audio sync owner. So the backfill still parses the chart, for its Offset only. No length comes from notes.
+3. **Old last-note lengths are dropped by a new stamp.** They read as not read, and opening the song reads its audio once (the ADR 0018 pattern).
+4. **A chart with no audio is read once.** The stamp records "read, none". A re-analysis reads again, so audio added later shows after the next analysis.
+5. **Every analysis rewrites the song's length.** Audio replaced after analysis keeps the old length until the next analysis.
+
+**D71 (ER1 and ER2 open questions), 2026-10-05.** The user said to start the remaining tasks as soon as their briefs were ready, so every open question in `p7-er1.md` and `p7-er2.md` takes its brief's recommendation. The ones that change what is shown:
+1. **Database writes the old matcher missed** (for example AL2's song-length write) read the database sentence, not "Something went wrong...".
+2. **Preview asset failures** (an undecodable texture, a shader that won't compile, a broken .obj) read the existing "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them." word for word, prefixed "Preview failed: " in the Preview (D51 call 25).
+3. **The Preview error gains a dimmed details line** with the raw text, as its fallback sentence already promises.
+4. **Graphics-card failures and Hydra's own Preview bugs** read the "Something went wrong" sentence instead of raw text.
+5. **The Dynamics tab** shows "Dynamics failed: <sentence>" with a details line, and "Counted, but saving failed. <sentence>".
+6. **A failed save during a batch** adds that chart to the "N charts failed" list with the database sentence, and the batch goes on. Today it closes Hydra.
+The text matcher is deleted: no third-party text reaches it without Hydra's own words around it. A database that cannot open at startup still closes Hydra with no message; fixing that needs a new startup message, so it waits for its own question.
+
+**D72 (a database that fails at startup or at a batch's start), 2026-10-05.** Today Hydra closes with no message when hydra.db can't be opened at startup or fails at the very start of an Analyze-library batch, and the command-line tools end with no message and no exit code (handoff `docs/handoffs/2026-10-05-database-failure-handoff.md`). The user took every recommended answer:
+1. **Startup shows a Windows message box.** It shows the plain sentence with the raw error underneath, then Hydra closes. The same box covers a startup failure of the graphics device, the window or the two ImGui backends, which today also close Hydra silently.
+2. **A startup failure reads "couldn't open".** Every throw from opening the store reads the DatabaseOpen sentence, including a locked or corrupt file that SQLite only notices at its first statement.
+3. **No busy timeout.** A database locked by another copy of Hydra fails at once, and the open sentence already says to close the other copy.
+4. **A batch that can't start fails, and Hydra keeps running.** The batch finishes as failed with the database sentence in the batch strip. A failure on the Analyze-library click shows the sentence in the status line.
+5. **The command-line tools print and exit non-zero.** hydra_batch, hydra_report and hydra_fillcompare print the plain sentence and the raw error to stderr, then exit with a failure code, the way hydra_batch already treats a bad rules file.
+
+**D73 (a database read that fails), 2026-10-05.** DB1 found that a store read whose step fails ends quietly, so the caller gets an empty or "not found" answer: analyzed_hashes on a failing database answered "no charts", and a batch treated every chart as not analyzed. The user took every recommended answer:
+1. **A failed read has its own sentence.** A new kind, DatabaseRead, reads "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is running, then try again." A read that fails while compiling reads it too, not the save sentence.
+2. **Every read throws, not just the loops.** The single-row lookups that took a failed step for "no such row" throw as well. One helper steps every read and one steps every write; a scan test keeps any other step out.
+3. **In the app, the status line shows the sentence and Hydra keeps running.** The library and the details keep what they last read.
+4. **The command-line tools print and exit 1** when a read fails partway through: hydra_batch, hydra_report, hydra_fillcompare and hydra_bench.
+5. **A re-read that fails after a good save reads the read sentence,** not "Analyzed, but saving failed".
+6. **Built on DB1,** which already catches a failed read at a batch's start, and merged after it.
+
+**D74 (the audit's last open rows), 2026-10-05.** A read-only scan of every triage row still open after phases 1 to 7 left one open finding (255) and five half done (8, 14, 55, 218, 315); the triage file records each verdict. The user took every recommended answer:
+1. **One hover teal (218).** Frames and headers hover in the button teal, 0,104,104, instead of 0,100,100.
+2. **The leaderboard page cleans DMBot's names (8).** DMBot's song, artist and charter text go through the same tag stripping as every other name Hydra shows.
+3. **The scan dialog groups its counts (14).** "(N found)" and "N unchanged since last scan" read 1,234 like every other count, and the leftover count_label wrapper goes.
+4. **The "1.0 fills" tooltip uses the shared fill-rule sentences (55),** the ones the reports already use, instead of its own wording.
+Code-only calls, approved as recommended: the chart's note total gets one Song-level owner that the engine and the Dynamics tab read, with no change to any number shown or stored (255). The generated-fill rules that were never written down (a distance tie goes to the later chord; distance and fill length are cut to whole ticks) are recorded as they are, unverified against Clone Hero like D26's (315).
+
+**D75 (a song's length comes from its chart metadata, not its audio), 2026-10-05.** The user found analysis much slower than in 2.0.0. Timing the whole library (19,906 charts, fresh database, same settings) showed why: 2.0.0 analyzed in 25.7 s, main in 56-70 s, and main with the audio-length read switched off in 16-18 s. Reading each song's audio for its length (D69) was the whole slowdown. Thread time went on opening the audio files (193 s, about 3 ms for each first open), reading song.ini a second time for the delay (40 s), starting Vorbis decoders (37 s) and walking every page of each Opus file (35 s). Nearly every chart already states its length in its metadata: 19,816 of 19,822 song.ini files, the `song_length` key in all 54 .sng files, and `song_length_ms` in 28 of the 30 .srb files (two store 0, meaning unknown; the field's place is in the .srb format reference). YARG reads the same field first. The user decided, with every recommended answer:
+1. **Where the length comes from.** The chart's own metadata: song.ini `song_length`, the .sng `song_length` key, or the .srb `song_length_ms` field. A value that is missing, empty, zero, negative or unreadable counts as not stated.
+2. **The backup.** When the metadata states no length, the length is the start of the last note in the Expert drums chart, every note in the file counted, 2x kick included. It does not depend on the Pro or 2x settings, so a song has one length.
+3. **Chart time.** A metadata length counts from the start of the audio, so it is moved into chart time by the chart's delay or Offset, the same conversion D70 item 2 used for the audio's end.
+4. **One length everywhere.** The Paths timeline, the Preview's scrub bar and its SP meter all read this length. The Preview's playback range stays the later of the last note and the audio's end (D48), so audio past the length still plays.
+5. **No audio is opened for a length.** Analysis, the batch tool and the length backfill never open an audio file to find a length.
+This replaces D69 items 1 to 3 and D70 items 2 to 4: a chart with no readable audio now has a length (its metadata's, or its last note's), so its timeline shows its activation dots. Stored lengths from D69 are dropped by a new length stamp and read again the cheap way the first time each song is opened; no chart is analyzed again. Known cost: a charter's `song_length` is not always the audio's length (the .srb reference names Pressure, 273 s stated against 223 s of audio), and Hydra now shows what the charter wrote.
+
+**D76 (a batch counts every copy, and the duplicate check stops reading the whole library), 2026-10-05.** The user ran Analyze library over the whole library in 2.0.0 and on main. Main took 1:42 against 2.0.0's 0:31. It also said "18,811 analyzed · 530 failed" while the library said 19,919 charts. The user called the second a derive-once violation: two counts of one library, worked out in two places, that disagree on the main screen.
+1. **The slowdown.** Since D63, every save asks whether its chart has more than one copy in the library. With no index on the library table's md5, each ask read all 19,919 rows: 3.7 ms per save, about 69 s per run. The library table now has an md5 index, and the same query reads only that chart's rows. On a copy of the user's database, re-analyzing everything took 92.4 s before and 17.9-19.8 s after. 2.0.0 took 26.2 s on its own database.
+2. **One count.** The user chose to count every copy. A chart in several folders is still analyzed once (D51 call 10). But the batch confirm, the progress strip, the finished line and hydra_batch's closing line all count library rows, every copy included, the way the library's own counts do. A finished run's analyzed, failed and skipped add up to the rows it was given (19,378 + 541 = 19,919 on the user's library). A failed chart is listed once per copy under its first copy's name, so the failure list is as long as its count. This replaces D62 item 3.
+
+**D77 (the path report counts every copy too), 2026-10-05.** D76's review found the path report's Charts tile still counting distinct charts. The user asked for the report to count every copy as well, and for a test that keeps D76's md5 index from being dropped. The user took the recommended answer to both questions:
+1. **Both subtitle counts count copies.** "N records across M charts" counts each record once per library copy of its chart, and so does the chart count and the Charts tile. On the user's library it reads "19,378 records across 19,378 charts", the library's Analyzed count. "Paths shown" still counts the table's rows, which list each path once.
+2. **A chart with no library row counts once.** A result whose chart the library doesn't list (a hydra_batch-only database, or a chart removed since) is on the page, so it counts as one chart.
+The copies come from the library table through the same query that picks a duplicate's name (`kNamingCopiesSql`). A test pins the md5 index and checks that the query every save runs searches by it rather than scanning the table.
+
+**D78 (a MIDI track's name is its first recognized name), 2026-10-05.** Hormone's Echo (Artificial Brain, in Drummer's Monthly Drive) failed with "No Expert Pro Drums notes in this chart." Clone Hero plays it with drums, and the user wants Hydra to read it too. Its drum track carries two names, both at the very start: "notes", then "PART DRUMS". Hydra named a track by its first name, so this one was "notes" and the drums were never found. The user asked for the support:
+1. **The rule.** A track's name is its first recognized name. A track with no recognized name keeps its first name, as before. This is YARG.Core's rule (its MIDI reader's `IsRecognizedTrackName`). A recognized name that comes later never displaces an earlier one, so a chart that writes "Drums" or "EVENTS" after "PART DRUMS" stays PART DRUMS.
+2. **Recognized means a name Hydra looks up.** The song parser looks tracks up by two names, and those same constants make up the list the reader recognizes (`kRecognizedTrackNames` in `src/parse/midi.h`), so the two can't drift apart. YARG's longer instrument list isn't copied, because nothing Hydra reads needs it.
+3. **Any tick, not just the first.** YARG only looks at names at tick 0. Hydra looks at every tick, because 7 drum tracks in the user's library (one is a Legacy Cup 2025 tournament chart) get their only "PART DRUMS" name after tick 0, and Hydra already reads those correctly.
+Measured over all 15,477 .mid files in the user's library, exactly one track changes name: Hormone's Echo's drum track, from "notes" to "PART DRUMS". It had no stored result, because it failed, so no stored result changes and no chart needs analyzing again.
+
+**D79 (every count of library charts is worked out once), 2026-10-05.** The user's rule: "anything that references the count should be derived once." A read-only audit after D77 found places that still counted with their own code. The user took the recommended answer to all four questions:
+1. **hydra_batch writes the library when it scans the library's own folders.** With no folder arguments it saves its scan as the library, through the same function Scan library uses (`save_scan_as_library`). With folder arguments it leaves the library alone, and its counts cover only those folders.
+2. **hydra_batch's "Store now holds N records across M songs, rows for every setting" line is removed.** That number was every stored row at every setting, not a count of library charts. The "Analyzed N, skipped N, N failed" line already gives the run's result in library rows.
+3. **The fill comparison counts every copy.** Its page subtitle, its tiles and hydra_fillcompare's closing line count copies from the newer (1.1) database's library table. A chart that library doesn't list counts once, as in D77. The page's "N of M charts" counter counts copies too, like its Charts tile. The "Points gained/lost in 1.1" tiles are not counts: they add each chart's score difference once, not once per copy. The user chose this, because a copy in another folder plays the same.
+4. **Three wording fixes.** The Stop tooltip reads "Keeps the N charts already finished". The scan's progress bar groups digits ("1,234 / 19,919"). hydra_batch's closing line groups digits ("Analyzed 19,378, skipped 0 already stored, 541 failed in 18.0s.").
+The rest changes nothing the user sees. "This chart has a current result under these settings" now has one owner: the batch's skip list asks `RecordStore::get_summaries`, the lookup the library's Analyzed chip reads, instead of a second spelling of the rule in SQL. On a copy of the user's database both read 19,378 before and after the change. A batch makes its plan once. The plan the confirm shows is the plan the batch runs, with no second store read. Every batch number reads the batch's progress. A batch run that fails as a whole is not a library row, so it counts no chart. The finished panel then shows "0 failed", and the run's error on its own line. The leaderboard comparison still counts the player's posted scores, not charts; it only stops building its own library-membership set.
+
+**D80 (a free squeeze keeps its row badge), 2026-10-05.** The user asked why a 5+ activation on The Ministry of Lost Souls had no badge, calling it a regression from 2.0. E3 (D51 call 4) had made the badge skip every free squeeze. D51's question had described a free squeeze as "a squeeze-in at exactly the SP end", but the code's rule (`SPSqueeze::is_free`) is "at or before the SP end, however early", so a squeeze-in 316 ms inside Star Power lost its badge too. The user chose "back to 2.0 exactly" for the row badge: when nothing on the activation needs timing, the badge names its hardest free squeeze with its figure, 0 or below ("squeeze in -316 ms"). `Activation::badge_timing` owns it. Everything else D51 call 4 decided stays: the path button, the Path limit, the library filter, the stored hardest ms, the report and the all-0 list still treat a free squeeze as nothing to time, and an early fill with time to spare still gets no badge.
+
+**D81 (a visible edge where SP ends on the highway), 2026-10-05.** The user noticed that on The Ministry of Lost Souls, activation 4, the Preview's teal floor seemed to end exactly on a note. The end time was right: SP runs out 26 ms after a kick and blue cymbal, and the next chord is 57 ms later. But gems are drawn centred on their hit line, so that cymbal's gem covered the tint's edge. The user saw six mock designs and chose C: a crisp edge plus a small triangle beside each rail. Where each active SP window ends, a thin strip in the full, undarkened SP colour now crosses the floor, under the gems, and a small triangle in the same colour stands just outside each railing at the same depth. Gems never sit there, so the triangles stay visible when a gem hides the edge. Only a window's end is marked, never its start; back-to-back windows each get their own mark, and an end beyond the far edge of the view or behind the near edge draws nothing. The end comes from the existing owner, the activation's `sp_window`, through `TrackState::sp_active_ends`. The edge's depth and the triangle's size are keys in the `hydra` section of `assets/preview/3d-config.json` (`sp_end_edge_depth` 0.1, as thick as a bar line; `sp_end_marker_width` 0.07 from base to apex and `sp_end_marker_height` 0.07, both about 0.8 of the railing's width, as in the mock). The first build drew each mark as a box on the rail; the user rejected that, so the marks are now triangles as mock C draws them. Each one stands upright facing the camera, its base on the railing's outer edge and its apex pointing away from the lanes, centred at floor height so it sits level with the edge on screen. The edge and the triangles draw unlit, so both show the SP colour exactly; under the highway light the triangles had come out pale and the edge dim.
+
+**D82 (three numbers for the maintenance tools), 2026-10-05.** Four maintenance tasks (MR1 to MR4) came out of the user's question about how large codebases stay maintainable. Three of them needed a number, and the user chose each one in chat:
+1. **The clone scan's window is 8 code lines.** The source scan fails on a block of code that appears in two places once the block is this long (ADR 0025). On that day's tree the scan found 102 copied blocks at 6 lines, 26 at 8 and 12 at 10; the user chose 8. The value lives in `kCloneWindowLines` in `tests/test_single_owner.cpp`.
+2. **The precheck's large-range warning starts at 400 changed lines.** Over that size, the precheck prints a note saying the range should be split before review. It is a warning, not a gate. This replaces D59 item 4's rough "about 500". The value lives in `$largeRangeLines` in `tools/derive_once_precheck.ps1`.
+3. **The mutation probe's time limit is PIT's default.** PIT is a widely used mutation tool for Java. A test run on a planted bug may take the untouched run's time times 1.25, plus 4 seconds. A run that goes over counts as killed, because the planted bug most likely made a loop endless. The rule lives in `Get-TestTimeoutMs` in `tools/mutation_probe.ps1`.

@@ -3,8 +3,10 @@
 // (docs/adr/0008).
 //
 // The clock is the master. It is the song time the highway is drawn at, and
-// the audio is seeked to it on play and then just follows. A chart with no
-// audio still plays and scrubs — the clock runs on its own.
+// the audio is seeked to it on play and then just follows. A seek re-syncs
+// the audio to the clock: while the clock plays, the playhead is set playing
+// again, even if it had paused itself at the end of its audio. A chart with
+// no audio still plays and scrubs — the clock runs on its own.
 //
 // The playhead is shared with the audio thread, so every access to it goes
 // through this object's lock, including the device's pull via read_frames().
@@ -18,11 +20,19 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "app/preview_clock.h"
+#include "audio/frames.h"
 #include "audio/player.h"
 
 namespace hydra::ui {
+
+// The chart sync rule and the audio's end live in audio/frames.h, so the
+// song's length can ask them without reaching into the UI.
+using audio::audio_end_chart_ms;
+using audio::audio_ms_of_chart_ms;
+using audio::chart_ms_of_audio_ms;
 
 class PreviewTransport {
 public:
@@ -32,10 +42,14 @@ public:
     PreviewTransport& operator=(const PreviewTransport&) = delete;
 
     // Load a chart's audio (may be null/empty for a chart with no audio), the
-    // song length, and where chart time 0 sits in the audio (audio_ms =
-    // chart_ms + audio_offset_ms, never negative; see PreviewLoadJob). The
-    // length is the later of `last_note_ms` and the audio's end in chart time.
-    // Resets the playhead to the offset, paused.
+    // chart's last drawn note time (app::last_note_ms), and where chart time
+    // 0 sits in the audio (audio_ms_of_chart_ms; never negative, see
+    // audio::mix_song_stems). length_ms() becomes the playback range: the
+    // later of `last_note_ms` and the audio's end in chart time, so the audio
+    // plays out and a chart with no audio still plays to its last note (D48,
+    // Q25). It is where playback stops, not a song length: the scrubber ends
+    // at the song's length (app::song_length_ms, D75), through
+    // app::scrub_end_ms. Resets the playhead to the offset, paused.
     void load(std::unique_ptr<audio::Playhead> playhead, double last_note_ms,
               double audio_offset_ms = 0.0);
     void unload();  // drop the playhead, back to an empty paused transport
@@ -43,9 +57,11 @@ public:
     void play();    // seeks the playhead to the clock and starts both
     void pause();
     void toggle();
-    void seek_ms(double ms);  // clamped to [0, length_ms()]
+    // Clamped to [0, length_ms()]. Moves the playhead with the clock and,
+    // while the clock plays, sets the playhead playing again.
+    void seek_ms(double ms);
     bool playing() const;
-    double length_ms() const;
+    double length_ms() const;  // the playback range (see load), not the song's length
     bool has_audio() const;  // a loaded playhead with > 0 frames
 
     // The song time now. If playing and at/after the end, pauses and pins the
@@ -54,8 +70,9 @@ public:
     double tick();
     double now_ms() const;  // read-only, no end handling
 
-    void set_gain(float gain);  // applied to the playhead if any, remembered
-                                // for the next load
+    // Applied to the playhead if any (audio::Playhead::set_gain owns the
+    // floor at 0), and remembered as given for the next load.
+    void set_gain(float gain);
     float gain() const { return gain_; }
 
     // Device-facing: the pull source. Locks internally. Returns real frames
@@ -67,7 +84,7 @@ public:
 private:
     app::PreviewClock clock_;  // GUI thread only
     double length_ms_ = 0.0;
-    double audio_offset_ms_ = 0.0;  // audio_ms = chart_ms + this
+    double audio_offset_ms_ = 0.0;  // as audio_ms_of_chart_ms takes it
     float gain_ = 1.0f;
     mutable std::mutex mu_;  // guards playhead_ (device thread pulls, GUI controls)
     std::unique_ptr<audio::Playhead> playhead_;

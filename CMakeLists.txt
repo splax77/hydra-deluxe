@@ -18,6 +18,13 @@ cmake_minimum_required(VERSION 3.21)
 # The single source of the version: the installer and the HTTP User-Agent
 # (via src/core/version.h) both take it from here.
 project(Hydra VERSION 2.0.0 LANGUAGES C CXX RC)
+# The single source of the name the app shows (the window title, the Start
+# Menu shortcut, the installer) and of its taskbar identity (AppUserModelID).
+# The identity keeps its old value so existing taskbar pins still group with
+# the running window. src/core/version.h and installer/build_installer.ps1
+# both take them from these two lines.
+set(HYDRA_APP_NAME "Hydra Deluxe")
+set(HYDRA_APP_USER_MODEL_ID "Hydra.Hydra")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -99,7 +106,8 @@ target_compile_options(miniz PRIVATE /W1 /EHsc)
 # libopus (BSD).
 #
 # EXCLUDE_FROM_ALL: each of these builds only when a target that links it is
-# built. hydra_audio links all four, so the CLI tools never compile them.
+# built. hydra_audio links all four, so only the tools that link hydra_audio
+# compile them.
 #
 # miniaudio drives the output device and converts sample rates and channel
 # counts; each audio format is decoded to PCM by dedicated code (stb_vorbis
@@ -161,6 +169,7 @@ add_library(hydra_core STATIC
     src/core/replay.cpp
     src/core/strutil.cpp
     src/core/winstr.cpp
+    src/core/audio_sniff.cpp
     src/parse/midi.cpp
     src/parse/song.cpp
     src/parse/srb.cpp
@@ -182,13 +191,16 @@ add_library(hydra_core STATIC
     src/app/path_view.cpp
     src/app/preview_view.cpp
     src/app/preview_source.cpp
+    src/app/song_length.cpp
     src/app/fill_report.cpp
     src/app/report.cpp
     src/app/report_files.cpp
     src/app/user_messages.cpp
 )
 target_include_directories(hydra_core PUBLIC src)
-target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
+                           HYDRA_APP_NAME="${HYDRA_APP_NAME}"
+                           HYDRA_APP_USER_MODEL_ID="${HYDRA_APP_USER_MODEL_ID}")
 # store/ needs sqlite3; app/ hashes chart files via CNG (bcrypt.lib) and walks
 # folders via the Win32 Find*File API (already linked into every Windows exe).
 # shell32: report_files.cpp hands finished report pages to the browser with
@@ -203,13 +215,16 @@ target_link_libraries(hydra_core PRIVATE bcrypt shell32 shlwapi ole32 uuid hydra
 
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
-# output device. Kept separate from hydra_core so the CLI tools never pull in
-# the codec libraries, and linked by hydra_ui and hydra_tests. The decode and
-# mix code is pure and unit-tested; only the player owns a miniaudio device.
+# output device. It also owns a song's length, the end of its mixed audio
+# (song_audio.cpp, D69). Kept separate from hydra_core so hydra_report and
+# hydra_fillcompare never pull in the codec libraries; linked by hydra_ui,
+# hydra_tests and hydra_batch (so a batch can save song lengths). The decode and mix
+# code is pure and unit-tested; only the player owns a miniaudio device.
 # Depends on hydra_core for the PreviewAudioStem type and file I/O helpers.
 add_library(hydra_audio STATIC
     src/audio/decode.cpp
     src/audio/mapped_file.cpp
+    src/audio/song_audio.cpp
     src/audio/stem_reader.cpp
     src/audio/opus_reader.cpp
     src/audio/vorbis_reader.cpp
@@ -380,6 +395,7 @@ add_executable(hydra_tests
     tests/test_stars.cpp
     tests/test_theme.cpp
     tests/test_batch_text.cpp
+    tests/test_display_format.cpp
     tests/test_path_view.cpp
     tests/test_preview_view.cpp
     tests/test_preview_source.cpp
@@ -426,9 +442,11 @@ add_executable(hydra_tests
     tests/test_activation_row_layout.cpp
     tests/test_preview_controller.cpp
     tests/test_preview_load_progress.cpp
+    tests/test_song_length.cpp
     tests/test_utf8_paths.cpp
     tests/test_long_paths.cpp
     tests/test_single_owner.cpp
+    tests/test_docs_match_code.cpp
     tests/test_s2_difficulty_table.cpp
     tests/test_s2_disco.cpp
     tests/test_s2_kick2x.cpp

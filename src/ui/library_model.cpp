@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "core/model.h"  // group_thousands
+#include "parse/song.h"  // display_title, display_artist, display_charter
 
 namespace hydra::ui {
 
@@ -30,10 +31,13 @@ int unscored_rank(store::RecordStatus status) {
     return 2;
 }
 
-// What a stars: or squeeze filter may test. Only a Ready result's numbers
-// count; anything else has no facts, so those filters never match it.
+// The one place that says when a row has facts a stars: or squeeze filter may
+// test: a Ready result with a scored best path
+// (PathSummary::has_scored_best_path). A result that kept no path is Analyzed
+// but has none, like any other row (D51 call 11).
 app::RowFacts facts_of(const LibraryRow& row) {
-    if (row.status != store::RecordStatus::Ready) return app::RowFacts{};
+    if (row.status != store::RecordStatus::Ready || !row.summary.has_scored_best_path())
+        return app::RowFacts{};
     return app::RowFacts{row.summary.stars, row.summary.hardest_ms};
 }
 
@@ -45,11 +49,14 @@ bool matches_query(const app::LibraryQuery& q, const LibraryRow& row) {
 // filters on changed, so a refresh that finds the same answers costs no
 // re-sort.
 bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
-    if (row.status == lookup.status && row.bestpath == lookup.bestpath &&
+    if (row.status == lookup.status && row.stale_build == lookup.stale_build &&
+        row.stale_rules == lookup.stale_rules && row.bestpath == lookup.bestpath &&
         row.summary.score == lookup.summary.score && row.summary.stars == lookup.summary.stars &&
         row.summary.hardest_ms == lookup.summary.hardest_ms)
         return false;
     row.status = lookup.status;
+    row.stale_build = lookup.stale_build;
+    row.stale_rules = lookup.stale_rules;
     row.bestpath = lookup.bestpath;
     row.summary = lookup.summary;
     row.best_label = best_path_label(row.status, row.bestpath, row.summary);
@@ -58,16 +65,31 @@ bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
 
 }  // namespace
 
+const char* status_label(store::RecordStatus status) {
+    switch (status) {
+        case store::RecordStatus::Ready: return "Analyzed";
+        case store::RecordStatus::Stale: return "Stale";
+        case store::RecordStatus::NotAnalyzed: break;
+    }
+    return "Not analyzed";
+}
+
+// The inverse of chip_of above, read from it: the status whose chip is
+// `chip`. All groups every status, so it has none.
+std::optional<store::RecordStatus> status_of(StatusChip chip) {
+    for (store::RecordStatus s : {store::RecordStatus::NotAnalyzed, store::RecordStatus::Stale,
+                                  store::RecordStatus::Ready})
+        if (chip_of(s) == chip) return s;
+    return std::nullopt;
+}
+
 std::string best_path_label(store::RecordStatus status, const std::string& bestpath,
                             const store::PathSummary& summary) {
-    switch (status) {
-        case store::RecordStatus::Stale: return "Stale";
-        case store::RecordStatus::NotAnalyzed: return "Not analyzed";
-        case store::RecordStatus::Ready: break;
-    }
+    // A row with no current result shows its status word.
+    if (status != store::RecordStatus::Ready) return status_label(status);
     // A Ready result with no paths has no score; its cell shows its path
     // string (empty), as the table always has.
-    if (!summary.score) return bestpath;
+    if (!summary.has_scored_best_path()) return bestpath;
     return group_thousands(*summary.score) + "  " + bestpath;
 }
 
@@ -86,9 +108,9 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
     rows_.reserve(charts.size());
     for (store::ChartLibraryEntry& entry : charts) {
         LibraryRow row;
-        row.title = app::strip_rich_tags(entry.title);
-        row.artist = app::strip_rich_tags(entry.artist);
-        row.charter = app::strip_rich_tags(entry.charter);
+        row.title = display_title(entry.title);  // "(unknown)" when only tags
+        row.artist = display_artist(entry.artist);  // the same rule as the title
+        row.charter = display_charter(entry.charter);
         row.searchable =
             app::make_searchable(entry.title, entry.artist, entry.charter, entry.rootfolder);
         row.entry = std::move(entry);
@@ -152,7 +174,7 @@ void LibraryModel::set_sort(LibrarySort column, bool ascending) {
 }
 
 std::vector<size_t> LibraryModel::matches() const {
-    if (query_.empty()) return sorted_;
+    if (!searching()) return sorted_;
     std::vector<size_t> out;
     for (size_t i : sorted_)
         if (matches_query(query_, rows_[i])) out.push_back(i);
@@ -178,8 +200,8 @@ void LibraryModel::resort() {
         std::sort(sorted_.begin(), sorted_.end(), [&](size_t a, size_t b) {
             const LibraryRow& x = rows_[a];
             const LibraryRow& y = rows_[b];
-            const bool xs = x.summary.score.has_value();
-            const bool ys = y.summary.score.has_value();
+            const bool xs = x.summary.has_scored_best_path();
+            const bool ys = y.summary.has_scored_best_path();
             // Scored rows first in both directions: "not analyzed" is not a
             // low score.
             if (xs != ys) return xs;

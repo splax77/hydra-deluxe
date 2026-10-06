@@ -27,9 +27,9 @@ public:
     // Valid once finished() && ok(); moves the result out (call once).
     app::DynamicsBreakdown take_result();
 
-    // The identity key: chart path + pro + difficulty.  Used to decide
-    // whether the cached result is still valid.
-    const std::string& key() const { return key_; }
+    // The count's key (app::dynamics_store_key) for what the job was started
+    // for: whether the cached result is still valid, and where it is stored.
+    const store::DynamicsKey& key() const { return key_; }
 
     // What the job was started for, so a finished count is stored under the
     // chart and settings it was counted for, not whatever is selected now.
@@ -43,7 +43,7 @@ private:
     store::ChartLibraryEntry entry_;
     bool pro_;
     Difficulty difficulty_;
-    std::string key_;
+    store::DynamicsKey key_;
     std::optional<app::DynamicsBreakdown> result_;
 };
 

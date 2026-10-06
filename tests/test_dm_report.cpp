@@ -20,14 +20,19 @@
 #include <atomic>
 #include <chrono>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/display_format.h"  // format_percent, percent_steps
 #include "core/model.h"
 #include "app/dm_report.h"
+#include "app/user_messages.h"
+#include "core/error_kind.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // kTagOnlyTitle
 #include "dm_fixture.h"
 #include "net/dmbot_client.h"
 #include "parse/song.h"
@@ -48,36 +53,42 @@ TEST_CASE("collect_dm_rows joins scores to records and labels them") {
     REQUIRE(optimal > 0);
 
     std::vector<net::DmScore> scores;
-    scores.push_back(make_score(kHash, optimal - 1000));       // matched
+    scores.push_back(make_score(kHash, optimal - 1000));       // under optimal
+    scores.push_back(make_score(kHash, optimal));              // at optimal
     scores.push_back(make_score(kHash, optimal + 5));          // above optimal
     scores.push_back(make_score("00ff00ff00ff00ff00ff00ff00ff00ff",
-                                123456));                      // unmatched
+                                123456));                      // not in library
 
     std::vector<DmReportRow> rows =
         app::dm_report::collect_dm_rows(store, scores, kMode, store::Lens{});
-    REQUIRE(rows.size() == 3);
+    REQUIRE(rows.size() == 4);
 
     // These exact strings are load-bearing: the page's status filter and chip
-    // classes key on them.
-    CHECK(rows[0].status == "matched");
-    CHECK(rows[1].status == "above optimal");
-    CHECK(rows[2].status == "not in library");
+    // classes key on them. A score under optimal is never called "matched".
+    CHECK(rows[0].status == "under optimal");
+    CHECK(rows[1].status == "at optimal");
+    CHECK(rows[2].status == "above optimal");
+    CHECK(rows[3].status == "not in library");
+    for (const DmReportRow& r : rows) CHECK(r.status != "matched");
 
     CHECK(rows[0].optimal == optimal);
     CHECK(rows[0].delta == 1000);
-    REQUIRE(rows[0].pct.has_value());
-    CHECK(*rows[0].pct == doctest::Approx(
-        static_cast<double>(optimal - 1000) / static_cast<double>(optimal) * 100.0));
+    // The row's percent is percent_steps' whole hundredths, the number the
+    // cell's text is written from: 99.56% for 1,000 under the first corpus
+    // chart's optimal, read from one run.
+    REQUIRE(rows[0].pct_h.has_value());
+    CHECK(*rows[0].pct_h == 9956);
 
-    CHECK(rows[1].delta == -5);
-    CHECK_FALSE(rows[2].optimal.has_value());
-    CHECK_FALSE(rows[2].delta.has_value());
+    CHECK(rows[1].delta == 0);
+    CHECK(rows[2].delta == -5);
+    CHECK_FALSE(rows[3].optimal.has_value());
+    CHECK_FALSE(rows[3].delta.has_value());
 
     // The leaderboard's own metadata wins when it has it.
     CHECK(rows[0].song == "Board Title");
 }
 
-TEST_CASE("collect_dm_rows: no pct off 100% speed; store identity fallback") {
+TEST_CASE("collect_dm_rows: no percent off 100% speed; store identity fallback") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
 
@@ -90,7 +101,7 @@ TEST_CASE("collect_dm_rows: no pct off 100% speed; store identity fallback") {
         store, {fast, unknown_meta}, kMode, store::Lens{});
     REQUIRE(rows.size() == 2);
 
-    CHECK_FALSE(rows[0].pct.has_value());  // speed != 100
+    CHECK_FALSE(rows[0].pct_h.has_value());  // speed != 100
     CHECK(rows[1].song == "Stored Title");  // fell back to the matched record
 }
 
@@ -163,6 +174,59 @@ TEST_CASE("build_dm_html substitutes every placeholder") {
     CHECK(html.find(subtitle) != std::string::npos);
     CHECK(html.find(footer) != std::string::npos);
     CHECK(html.find("Board Title") != std::string::npos);
+    // The help texts name Clone Hero's cap from kCloneHeroSpCap (finding 170).
+    CHECK(html.find("__SP_CAP__") == std::string::npos);
+    CHECK(html.find("at SP cap " + std::to_string(kCloneHeroSpCap)) != std::string::npos);
+}
+
+TEST_CASE("build_dm_html colours the delta from the status") {
+    // collect_dm_rows already decided which side is higher when it set the
+    // row's status; the cell's colour and the "left on the table" tile read
+    // that answer instead of testing the delta's sign again.
+    const std::string html = app::dm_report::build_dm_html({}, "sub", "foot");
+    CHECK(html.find("const deltaCls = (noDelta || r.status === 'other speed') ? 'num dim' : "
+                    "(r.status === 'above optimal' ? 'num neg' : 'num');") !=
+          std::string::npos);
+    CHECK(html.find("const left = under.reduce((a, r) => a + r.delta, 0);") !=
+          std::string::npos);
+    // The "+N over" text reads the row's above_optimal field (D64), so the
+    // script tests the delta's sign nowhere.
+    CHECK(html.find(": (r.above_optimal ? '+' + fmt(-r.delta) + ' over' : fmt(r.delta));") !=
+          std::string::npos);
+    CHECK(html.find("r.delta < 0 ?") == std::string::npos);
+    CHECK(html.find("r.delta > 0 ?") == std::string::npos);
+
+    // D64: a score at another speed that beats the optimal keeps reading
+    // "+N over". Its status is "other speed", so the payload carries the
+    // above-optimal answer collect_dm_rows already gave, next to the delta.
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store,
+        {make_score(kHash, optimal + 5), make_score(kHash, optimal + 5, 150),
+         make_score(kHash, optimal - 5, 150)},
+        kMode, store::Lens{});
+    REQUIRE(rows.size() == 3);
+    CHECK(rows[0].status == "above optimal");
+    CHECK(rows[1].status == "other speed");
+    CHECK(rows[2].status == "other speed");
+    const auto payload = [](const DmReportRow& r) {
+        return app::dm_report::build_dm_html({r}, "sub", "foot");
+    };
+    CHECK(payload(rows[0]).find("\"delta\":-5,\"above_optimal\":1,") != std::string::npos);
+    CHECK(payload(rows[1]).find("\"delta\":-5,\"above_optimal\":1,") != std::string::npos);
+    CHECK(payload(rows[2]).find("\"delta\":5,\"above_optimal\":0,") != std::string::npos);
+}
+
+TEST_CASE("report payload: the search field is folded and tag-free") {
+    DmReportRow row;
+    row.song = "Halo";
+    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
+    row.charter = "<b>Bob</b>";
+    row.status = "not in library";
+    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
+    CHECK(html.find("\"search\":\"halo beyonce bob\"") != std::string::npos);
 }
 
 TEST_CASE("generate_dm_report: tally and framing behind one seam") {
@@ -171,22 +235,27 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
     REQUIRE(optimal > 0);
 
     std::vector<net::DmScore> scores;
-    scores.push_back(make_score(kHash, optimal - 1000));  // matched
+    scores.push_back(make_score(kHash, optimal - 1000));  // under optimal
+    scores.push_back(make_score(kHash, optimal - 10));    // under optimal
+    scores.push_back(make_score(kHash, optimal));         // at optimal
     scores.push_back(make_score(kHash, optimal + 5));     // above optimal
     scores.push_back(make_score("00ff00ff00ff00ff00ff00ff00ff00ff",
-                                123456));                 // unmatched
+                                123456));                 // not in library
 
     app::dm_report::GeneratedDmReport result =
         app::dm_report::generate_dm_report(store, scores, kMode, store::Lens{}, "TestUser");
-    CHECK(result.stats.total == 3);
-    CHECK(result.stats.matched == 1);
+    CHECK(result.stats.total == 5);
+    CHECK(result.stats.under_optimal == 2);
+    CHECK(result.stats.at_optimal == 1);
     CHECK(result.stats.above_optimal == 1);
     CHECK(result.stats.not_analyzed == 0);
     CHECK(result.stats.not_in_library == 1);
 
     // The subtitle the finished modal's counts must agree with.
-    CHECK(result.html.find("TestUser — 3 scores: 1 matched, 1 above optimal, "
-                           "0 not analyzed, 1 not in your library") != std::string::npos);
+    CHECK(result.html.find("TestUser — 5 scores: 2 under optimal, 1 at optimal, "
+                           "1 above optimal, 0 not analyzed, 1 not in your library") !=
+          std::string::npos);
+    CHECK(result.html.find(" matched,") == std::string::npos);
     // (The apostrophe in "Hydra's" is HTML-escaped, so match up to it.)
     CHECK(result.html.find(
               "Actual scores from dmleaderboards.com against Hydra") !=
@@ -212,6 +281,162 @@ TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
         store, {unknown_meta}, kMode, store::Lens{});
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == kUnknownTitle);
+
+    // A stored title made only of tags reads the same fallback.
+    store::RecordStore tags_only(":memory:");
+    fill_store(tags_only, test::kTagOnlyTitle);
+    rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].song == kUnknownTitle);
+
+    // A bold stored title reads without its tags.
+    store::RecordStore bold(":memory:");
+    fill_store(bold, "<b>Bold Title</b>");
+    rows = app::dm_report::collect_dm_rows(bold, {unknown_meta}, kMode, store::Lens{});
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].song == "Bold Title");
+
+    // A stored artist made only of tags reads "(unknown)" by the title's
+    // rule (D50 item 5); a charter made only of tags keeps today's blank.
+    // add_song keeps the latest names it is given.
+    tags_only.add_song(kHash, "Stored Title", test::kTagOnlyTitle, test::kTagOnlyTitle,
+                       test::beat_song({}, {}, 13440));
+    rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].artist == kUnknownTitle);
+    CHECK(rows[0].charter == "");
+
+    // An empty artist and the scan's placeholder read "(unknown)" too (D56
+    // item 2); a charter loses the spaces at its ends (display_charter).
+    for (const char* artist : {"", kUnknownArtist}) {
+        tags_only.add_song(kHash, "Stored Title", artist, " <b>Bob</b> ",
+                           test::beat_song({}, {}, 13440));
+        rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
+        REQUIRE(rows.size() == 1);
+        CHECK(rows[0].artist == kUnknownTitle);
+        CHECK(rows[0].charter == "Bob");
+    }
+}
+
+// D74 item 2: the leaderboard's own names go through the same display owners
+// as the stored ones, so Clone Hero tags in DMBot's text never reach the page.
+TEST_CASE("collect_dm_rows: a leaderboard row's DMBot names lose their Clone Hero tags") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+
+    net::DmScore tagged = make_score(kHash, optimal - 10);
+    tagged.song_name = "<color=#e02222>Blood</color>line";
+    tagged.artist = " <i>Tagged</i> Artist ";
+    tagged.charter = " <b>Bob</b> ";
+
+    // The same names on a score the library doesn't have, so no stored record
+    // can stand in for them.
+    net::DmScore tagged_unmatched = tagged;
+    tagged_unmatched.identifier = "00ff00ff00ff00ff00ff00ff00ff00ff";
+
+    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store, {tagged, tagged_unmatched}, kMode, store::Lens{});
+    REQUIRE(rows.size() == 2);
+    for (const DmReportRow& r : rows) {
+        CHECK(r.song == "Bloodline");
+        CHECK(r.artist == "Tagged Artist");
+        CHECK(r.charter == "Bob");
+    }
+}
+
+TEST_CASE("collect_dm_rows: a percent rounds once") {
+    // 198,010 of 198,020 is 99.99495%: rounded once it reads 99.99%, where
+    // rounding to four places first and then to two read 100.00%. The row is
+    // the one collect_dm_rows makes for that score at base speed.
+    DmReportRow row;
+    row.song = "Percent Song";
+    row.actual = 198010;
+    row.optimal = 198020;
+    row.delta = 10;
+    row.pct_h = 9999;
+    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
+
+    // The payload carries the percent's text, and the page shows that text
+    // instead of rounding the number itself.
+    CHECK(html.find("\"pct_txt\":\"99.99%\"") != std::string::npos);
+    CHECK(html.find("r.pct.toFixed(") == std::string::npos);
+    // The row's one percent is the whole hundredths; no unrounded percent
+    // rides along beside it.
+    CHECK(html.find("\"pct_h\":9999") != std::string::npos);
+    CHECK(html.find("\"pct\":") == std::string::npos);
+    // Counts and the over-optimal delta go through the page's shared fmt.
+    CHECK(html.find(".toLocaleString()]") == std::string::npos);
+    CHECK(html.find("(-r.delta).toLocaleString()") == std::string::npos);
+}
+
+TEST_CASE("build_dm_html: the average tile reads a percent the way the cells do") {
+    // 198,010 of 200,000 is exactly 99.005%. format_percent rounds the half
+    // up, so the cell reads 99.01%. The page's old tile rounded the float
+    // 99.00499999... with toFixed(2) and read 99.00%.
+    CHECK(app::format_percent(198010, 200000, 2) == "99.01%");
+    CHECK(app::percent_steps(198010, 200000, 2) == 9901);
+
+    DmReportRow row;
+    row.song = "Half Song";
+    row.actual = 198010;
+    row.optimal = 200000;
+    row.delta = 1990;
+    row.pct_h = 9901;
+    const std::string html = app::dm_report::build_dm_html({row}, "sub", "foot");
+
+    // The cell's text and the tile's input both come from percent_steps: the
+    // payload carries the cell's percent in whole hundredths.
+    CHECK(html.find("\"pct_txt\":\"99.01%\"") != std::string::npos);
+    CHECK(html.find("\"pct_h\":9901") != std::string::npos);
+    // The tile averages those hundredths in whole numbers and rounds the mean
+    // half up, so one row's tile is (2 x 9901 + 1) / 2 rounded down: 9901,
+    // "99.01%", the cell's own text.
+    CHECK(html.find("const sum = withPct.reduce((a, r) => a + r.pct_h, 0);") !=
+          std::string::npos);
+    CHECK(html.find("const h = Math.floor((2 * sum + n) / (2 * n));") != std::string::npos);
+    CHECK(html.find("Math.floor(h / 100) + '.' + String(h % 100).padStart(2, '0') + '%'") !=
+          std::string::npos);
+    // No number on the page is rounded by the browser's float rounding.
+    CHECK(html.find(".toFixed(") == std::string::npos);
+}
+
+TEST_CASE("collect_dm_rows: the % of opt column sorts on the shown hundredths") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+
+    // The first two scores are one point apart. Their percents differ only
+    // past the second decimal, so both read 100.00% and carry the same whole
+    // hundredths. The third, half the optimal, reads 50.00%: lower at the
+    // shown precision.
+    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store,
+        {make_score(kHash, optimal), make_score(kHash, optimal - 1),
+         make_score(kHash, optimal / 2)},
+        kMode, store::Lens{});
+    REQUIRE(rows.size() == 3);
+    REQUIRE(rows[0].pct_h.has_value());
+    REQUIRE(rows[1].pct_h.has_value());
+    REQUIRE(rows[2].pct_h.has_value());
+    CHECK(*rows[0].pct_h == 10000);
+    CHECK(*rows[1].pct_h == 10000);
+    CHECK(*rows[2].pct_h == 5000);
+    CHECK(app::format_percent(rows[1].actual, optimal, 2) == "100.00%");
+
+    const std::string html = app::dm_report::build_dm_html(rows, "sub", "foot");
+    // The "% of opt" column sorts on that one value. The page sorts numbers by
+    // their difference, so the two 100.00% rows compare equal, and the
+    // browser's sort is stable: they keep the order the payload lists them in.
+    // The 50.00% row sorts below both.
+    CHECK(html.find("{k:'pct_h',   t:'% of opt',") != std::string::npos);
+    CHECK(html.find("return dir * (x - y);") != std::string::npos);
+    const size_t first = html.find("\"actual\":" + std::to_string(optimal) + ",");
+    const size_t second = html.find("\"actual\":" + std::to_string(optimal - 1) + ",");
+    REQUIRE(first != std::string::npos);
+    REQUIRE(second != std::string::npos);
+    CHECK(first < second);
+    CHECK(html.find("\"pct_h\":10000", first) < second);
+    CHECK(html.find("\"pct_h\":10000", second) < html.find("\"pct_h\":5000"));
 }
 
 namespace {
@@ -370,20 +595,102 @@ TEST_CASE("collect_dm_rows tells not analyzed from not in library") {
 
     std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
         store,
-        {make_score(kHash, optimal - 1000),                        // matched
+        {make_score(kHash, optimal - 1000),                        // under optimal
          make_score(kScanned, 5000),                               // in the library, no result
          make_score("00ff00ff00ff00ff00ff00ff00ff00ff", 123456)},  // never scanned
         kMode, store::Lens{});
     REQUIRE(rows.size() == 3);
-    CHECK(rows[0].status == "matched");
+    CHECK(rows[0].status == "under optimal");
     CHECK(rows[1].status == "not analyzed");
     CHECK(rows[2].status == "not in library");
     CHECK_FALSE(rows[1].optimal.has_value());
 
     const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
     CHECK(stats.total == 3);
-    CHECK(stats.matched == 1);
+    CHECK(stats.under_optimal == 1);
+    CHECK(stats.at_optimal == 0);
     CHECK(stats.above_optimal == 0);
     CHECK(stats.not_analyzed == 1);
     CHECK(stats.not_in_library == 1);
+}
+
+TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\" (D51 call 11)") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+
+    // A second chart the last scan found, analyzed at Clone Hero's cap, whose
+    // analysis kept no path: a Ready record with no score.
+    constexpr const char* kEmpty = "abcdef00112233445566778899aabbcc";
+    store.add_song(kEmpty, "Empty Title", "Stored Artist", "Stored Charter",
+                   test::beat_song({}, {}, 13440));
+    test::store_batch_result(store,
+                             store::RecordKey{kEmpty, kMode, store::CapQuery::at(kCloneHeroSpCap)});
+    store::ChartLibraryEntry analyzed;
+    analyzed.md5 = kHash;
+    analyzed.title = "Stored Title";
+    store::ChartLibraryEntry empty;
+    empty.md5 = kEmpty;
+    empty.title = "Empty Title";
+    store.rebuild_chart_library({analyzed, empty});
+
+    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store, {make_score(kHash, optimal - 1000), make_score(kEmpty, 5000)}, kMode,
+        store::Lens{});
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].status == "under optimal");
+    CHECK(rows[1].status == "no paths");
+    CHECK_FALSE(rows[1].optimal.has_value());
+
+    const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
+    CHECK(stats.no_paths == 1);
+    CHECK(stats.not_analyzed == 0);
+    const std::string phrase = app::dm_report::counts_phrase(stats);
+    const std::string clause = ", 1 with no paths";
+    REQUIRE(phrase.size() > clause.size());
+    CHECK(phrase.substr(phrase.size() - clause.size()) == clause);
+
+    // With no such row, the phrase has no clause (D62 item 1).
+    CHECK(app::dm_report::counts_phrase(app::dm_report::tally_dm_rows({rows[0]})).find(
+              "with no paths") == std::string::npos);
+
+    // The page offers the status in its filter, with the not-analyzed colour.
+    const std::string html = app::dm_report::build_dm_html(rows, "sub", "foot");
+    CHECK(html.find("<option value=\"no paths\">No paths (analyzed, none kept)</option>") !=
+          std::string::npos);
+    CHECK(html.find("'no paths':'s-notanalyzed'") != std::string::npos);
+    CHECK(html.find("No paths: analyzed, but the analysis kept no path.") != std::string::npos);
+}
+
+TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
+    using app::dm_report::why_not_comparable;
+    const std::string expert = "Needs Expert: the leaderboard only has Expert scores.";
+    const std::string cap =
+        "Needs SP cap 4, Clone Hero's rule: the leaderboard's scores were played under it.";
+    const std::string fills =
+        "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
+        "current Clone Hero.";
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false) == "");
+    CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false) == expert);
+    CHECK(why_not_comparable(Difficulty::Expert, 8, false) == cap);
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true) == fills);
+    // The first rule that fails names the reason.
+    CHECK(why_not_comparable(Difficulty::Easy, 8, true) == expert);
+    CHECK(why_not_comparable(Difficulty::Expert, 8, true) == cap);
+
+    // The join refuses a 1.0-fills lens with the same sentence, as an
+    // AlreadyPlain error, so a screen shows the sentence as it is.
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store) > 0);
+    store::Lens legacy;
+    legacy.legacy_fills = 1;
+    bool refused = false;
+    try {
+        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, kMode, legacy);
+    } catch (const KindedError& e) {
+        refused = true;
+        CHECK(e.kind() == ErrorKind::AlreadyPlain);
+        CHECK(app::plain_error(e) == fills);
+    }
+    CHECK(refused);
 }

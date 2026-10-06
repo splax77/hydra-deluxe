@@ -17,6 +17,9 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+// dbghelp.h needs windows.h first; only its types are used (the function is
+// looked up at crash time, so nothing links against dbghelp).
+#include <dbghelp.h>
 
 #include <cstddef>
 #include <cstdio>
@@ -31,6 +34,47 @@
 #include "uitest_harness.h"
 
 namespace {
+
+// A crash (an access violation, say) ends the process with no result line of
+// its own. This filter prints one for the test that was running, naming the
+// exception, and writes a minidump into the scratch folder (which a crash
+// never deletes) so the stack can be read later with cdb or WinDbg.
+uitest::Harness* g_crash_harness = nullptr;
+
+LONG WINAPI on_crash(EXCEPTION_POINTERS* info) {
+    const uitest::Harness* h = g_crash_harness;
+    const ImGuiTest* t = h ? h->running_test() : nullptr;
+    const unsigned long code = info->ExceptionRecord->ExceptionCode;
+    std::string dump;
+    if (h && !h->temp_dir.empty()) {
+        dump = h->temp_dir + "\\crash.dmp";
+        using WriteDumpFn = BOOL(WINAPI*)(HANDLE, DWORD, HANDLE, MINIDUMP_TYPE,
+                                          PMINIDUMP_EXCEPTION_INFORMATION,
+                                          PMINIDUMP_USER_STREAM_INFORMATION,
+                                          PMINIDUMP_CALLBACK_INFORMATION);
+        HMODULE dbghelp = LoadLibraryW(L"dbghelp.dll");
+        auto write_dump =
+            dbghelp ? reinterpret_cast<WriteDumpFn>(GetProcAddress(dbghelp, "MiniDumpWriteDump"))
+                    : nullptr;
+        HANDLE f = CreateFileW(hydra::utf8_to_wide(dump).c_str(), GENERIC_WRITE, 0, nullptr,
+                               CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        MINIDUMP_EXCEPTION_INFORMATION mei{GetCurrentThreadId(), info, FALSE};
+        const auto type = static_cast<MINIDUMP_TYPE>(MiniDumpWithIndirectlyReferencedMemory |
+                                                     MiniDumpWithDataSegs | MiniDumpWithThreadInfo);
+        const bool written = f != INVALID_HANDLE_VALUE && write_dump &&
+                             write_dump(GetCurrentProcess(), GetCurrentProcessId(), f, type, &mei,
+                                        nullptr, nullptr);
+        if (f != INVALID_HANDLE_VALUE) CloseHandle(f);
+        if (!written) dump.clear();
+    }
+    std::fflush(stderr);
+    std::printf("[FAIL] hydra/%s\n---- log ----\nthe test process crashed: exception 0x%08lX at "
+                "%p%s%s\n---- end ----\n",
+                t ? t->Name : "(between tests)", code, info->ExceptionRecord->ExceptionAddress,
+                dump.empty() ? "" : "; minidump ", dump.c_str());
+    std::fflush(stdout);
+    return EXCEPTION_EXECUTE_HANDLER;  // end the process with the exception's code
+}
 
 int usage() {
     std::fprintf(stderr,
@@ -80,7 +124,7 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
     for (ImGuiTest* t : tests) {
         if (std::strcmp(t->Name, "script") == 0) continue;
         for (const std::string& w : wanted) {
-            if (w == "all" || w == t->Name) {
+            if (uitest::selects(w, t->Name)) {
                 Child c;
                 c.name = t->Name;
                 c.log = h.temp_dir + "\\" + c.name + ".log";
@@ -90,8 +134,8 @@ int run_parallel(uitest::Harness& h, const std::vector<std::string>& wanted, int
         }
     }
     for (const std::string& w : wanted) {
-        bool found = w == "all";
-        for (const Child& c : children) found = found || c.name == w;
+        bool found = false;
+        for (const Child& c : children) found = found || uitest::selects(w, c.name.c_str());
         if (!found) {
             std::fprintf(stderr,
                          "hydra_uitest: no test \"%s\" (--jobs runs named tests, not scripts)\n",
@@ -236,8 +280,13 @@ int main() {
     }
 
     // Drive frames until the queue drains; the engine runs the tests between
-    // frames on its coroutine thread.
-    while (!ImGuiTestEngine_IsTestQueueEmpty(h.engine)) h.frame();
+    // frames on its coroutine thread. Each result prints as its test ends.
+    g_crash_harness = &h;
+    SetUnhandledExceptionFilter(on_crash);
+    while (!ImGuiTestEngine_IsTestQueueEmpty(h.engine)) {
+        h.frame();
+        h.print_results(stdout);
+    }
     h.frame();
 
     int failed = h.print_results(stdout);

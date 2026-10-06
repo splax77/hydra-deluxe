@@ -12,7 +12,6 @@ plain unittest (`python -m unittest`) because every check is a unittest assert.
 from __future__ import annotations
 
 import os
-import re
 import sys
 import unittest
 
@@ -26,34 +25,14 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe.probe_chart import (  # noqa: E402
     DEFAULT_SPACINGS_MS,
     build_probe_chart_text,
+    chart_text,
     generate_probe_chart,
     ms_to_ticks,
     probe_note_ticks,
+    ticks_to_ms,
 )
-
-
-def parse_drum_ticks(text: str) -> list[int]:
-    """Pull the note ticks out of an [ExpertDrums] section, in file order.
-
-    This is the round-trip half of the test: it reads back exactly what the
-    generator wrote, so we can compare tick deltas to the milliseconds we asked
-    for. It only understands the note line the generator emits.
-    """
-    lines = text.splitlines()
-    in_drums = False
-    ticks: list[int] = []
-    for line in lines:
-        stripped = line.strip()
-        if stripped == "[ExpertDrums]":
-            in_drums = True
-            continue
-        if in_drums:
-            if stripped == "}":
-                break
-            match = re.match(r"^(\d+)\s*=\s*N\s+(\d+)\s+(\d+)$", stripped)
-            if match:
-                ticks.append(int(match.group(1)))
-    return ticks
+# The round-trip half: the one test reader of the notes the generator wrote.
+from tools.ch_probe.tests.chart_reader import drum_ticks  # noqa: E402
 
 
 class TestMsToTicks(unittest.TestCase):
@@ -74,13 +53,19 @@ class TestMsToTicks(unittest.TestCase):
         self.assertEqual(ms_to_ticks(1000, 192, 200.0), 640)
 
     def test_rounds_to_nearest(self):
-        # 30 ms at the default is 11.52 ticks, which rounds to 12.
+        # 30 ms at 192/120 is 11.52 ticks, which rounds to 12.
         self.assertEqual(ms_to_ticks(30, 192, 120.0), 12)
+
+    def test_ticks_to_ms_inverts_ms_to_ticks(self):
+        self.assertEqual(ticks_to_ms(1, 480, 125.0), 1.0)
+        self.assertEqual(ticks_to_ms(960, 480, 120.0), 1000.0)
+        for res in (192, 480, 96):
+            self.assertEqual(ticks_to_ms(ms_to_ticks(500, res, 120.0), res, 120.0), 500.0)
 
 
 class TestSectionsPresentAndOrdered(unittest.TestCase):
     def test_required_sections_in_order(self):
-        text = build_probe_chart_text([100, 200])
+        text = build_probe_chart_text([100, 200], resolution=192, bpm=120.0)
         i_song = text.find("[Song]")
         i_sync = text.find("[SyncTrack]")
         i_drums = text.find("[ExpertDrums]")
@@ -96,21 +81,33 @@ class TestSectionsPresentAndOrdered(unittest.TestCase):
         # Tempo is BPM * 1000 as an integer.
         self.assertIn("0 = B 140000", text)
 
+    def test_chart_text_writes_the_sections_in_order_with_events(self):
+        text = chart_text("x", [0, 100], resolution=192, bpm=120.0, note=0,
+                          music_stream=None)
+        at = [text.find(s) for s in ("[Song]", "[SyncTrack]", "[Events]", "[ExpertDrums]")]
+        self.assertNotIn(-1, at)
+        self.assertEqual(at, sorted(at))
+        self.assertIn("  0 = B 120000\n", text)
+        self.assertNotIn("MusicStream", text)
+        with_stream = chart_text("x", [0, 100], resolution=192, bpm=120.0, note=0,
+                                 music_stream="song.ogg")
+        self.assertIn('  MusicStream = "song.ogg"\n', with_stream)
+
     def test_braces_balanced(self):
-        text = build_probe_chart_text([100, 150])
+        text = build_probe_chart_text([100, 150], resolution=192, bpm=120.0)
         self.assertEqual(text.count("{"), text.count("}"))
 
 
 class TestPairsAndSpacing(unittest.TestCase):
     def test_two_notes_per_spacing(self):
         spacings = [50, 100, 200]
-        ticks = parse_drum_ticks(build_probe_chart_text(spacings))
+        ticks = drum_ticks(build_probe_chart_text(spacings, resolution=192, bpm=120.0))
         self.assertEqual(len(ticks), 2 * len(spacings))
 
     def test_each_pair_is_the_right_delta_apart(self):
         spacings = list(DEFAULT_SPACINGS_MS)
         res, bpm = 192, 120.0
-        ticks = parse_drum_ticks(
+        ticks = drum_ticks(
             build_probe_chart_text(spacings, resolution=res, bpm=bpm)
         )
         for idx, ms in enumerate(spacings):
@@ -128,7 +125,7 @@ class TestPairsAndSpacing(unittest.TestCase):
         # far larger than any single spacing -- that is the silent moat.
         spacings = list(DEFAULT_SPACINGS_MS)
         res, bpm = 192, 120.0
-        ticks = parse_drum_ticks(
+        ticks = drum_ticks(
             build_probe_chart_text(spacings, resolution=res, bpm=bpm)
         )
         self.assertEqual(ticks, sorted(ticks))
@@ -145,7 +142,7 @@ class TestPairsAndSpacing(unittest.TestCase):
             )
 
     def test_ticks_are_strictly_increasing(self):
-        ticks = parse_drum_ticks(build_probe_chart_text([300, 30, 211]))
+        ticks = drum_ticks(build_probe_chart_text([300, 30, 211], resolution=192, bpm=120.0))
         for a, b in zip(ticks, ticks[1:]):
             self.assertLess(a, b)
 
@@ -155,7 +152,7 @@ class TestPairsAndSpacing(unittest.TestCase):
         ticks = probe_note_ticks([211, 30], resolution=480, bpm=125.0)
         self.assertEqual(ticks, [3840, 4051, 11731, 11761])
         text = build_probe_chart_text([211, 30], resolution=480, bpm=125.0)
-        self.assertEqual(parse_drum_ticks(text), ticks)
+        self.assertEqual(drum_ticks(text), ticks)
 
 
 class TestFileWrite(unittest.TestCase):
@@ -167,7 +164,7 @@ class TestFileWrite(unittest.TestCase):
             generate_probe_chart([100, 200], path, resolution=192, bpm=120.0)
             with open(path, "r", encoding="utf-8") as handle:
                 text = handle.read()
-            ticks = parse_drum_ticks(text)
+            ticks = drum_ticks(text)
             self.assertEqual(len(ticks), 4)
             self.assertEqual(ticks[1] - ticks[0], ms_to_ticks(100, 192, 120.0))
             self.assertEqual(ticks[3] - ticks[2], ms_to_ticks(200, 192, 120.0))

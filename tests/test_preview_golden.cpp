@@ -28,12 +28,15 @@
 
 #include "app/analysis.h"
 #include "app/preview_view.h"
+#include "bytes_util.h"
 #include "image/decode.h"
 #include "json.hpp"
 #include "parse/song.h"
 #include "core/winstr.h"
 #include "env_util.h"
 #include "render/preview_renderer.h"
+#include "render/track_state.h"  // note_in_span
+#include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
 
 #ifndef HYDRA_ASSET_DIR
@@ -58,11 +61,19 @@ void write_bmp(const std::string& path, const std::vector<uint8_t>& rgba, int w,
     const int row = (w * 3 + 3) & ~3;
     const uint32_t data = static_cast<uint32_t>(row) * h;
     const uint32_t size = 54 + data;
-    uint8_t hdr[54] = {'B', 'M'};
-    auto put32 = [&](int at, uint32_t v) { for (int i = 0; i < 4; ++i) hdr[at + i] = static_cast<uint8_t>(v >> (8 * i)); };
-    put32(2, size); put32(10, 54); put32(14, 40); put32(18, static_cast<uint32_t>(w));
-    put32(22, static_cast<uint32_t>(h)); hdr[26] = 1; hdr[28] = 24; put32(34, data);
-    f.write(reinterpret_cast<const char*>(hdr), 54);
+    std::vector<uint8_t> hdr = {'B', 'M'};
+    testbytes::put_u32(hdr, size);
+    testbytes::put_u32(hdr, 0);  // reserved
+    testbytes::put_u32(hdr, 54);
+    testbytes::put_u32(hdr, 40);
+    testbytes::put_u32(hdr, static_cast<uint32_t>(w));
+    testbytes::put_u32(hdr, static_cast<uint32_t>(h));
+    testbytes::put_u16(hdr, 1);
+    testbytes::put_u16(hdr, 24);
+    testbytes::put_u32(hdr, 0);  // no compression
+    testbytes::put_u32(hdr, data);
+    hdr.resize(54, 0);  // the resolution and palette fields stay zero
+    f.write(reinterpret_cast<const char*>(hdr.data()), static_cast<std::streamsize>(hdr.size()));
     std::vector<uint8_t> line(static_cast<size_t>(row), 0);
     for (int y = h - 1; y >= 0; --y) {
         for (int x = 0; x < w; ++x) {
@@ -100,9 +111,7 @@ std::vector<uint8_t> render_chart(const std::string& chart, double time_ms, int 
 
     PreviewRenderer r(dev.Get(), ctx.Get(), HYDRA_ASSET_DIR);
     r.resize(w, h);
-    TrackStateOptions opts;
-    opts.pro = pro;
-    r.set_scene(scene, opts);
+    r.set_scene(scene, hydra::ui::track_options(pro));
     r.render(time_ms);
     return warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), w, h);
 }
@@ -220,7 +229,7 @@ TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
     MESSAGE("wrote " << out);
     // Where Hydra thinks that time is, for lining up with Onyx's time box.
     app::PreviewScene scene = app::build_preview_scene(load_songpath(chart, true, bass2x), nullptr);
-    app::PreviewTimeBox box = app::build_time_box(scene, time_ms, scene.song_length_ms);
+    app::PreviewTimeBox box = app::build_time_box(scene, time_ms, app::last_note_ms(scene));
     MESSAGE("time box: " << box.timestamp << " | " << box.position << " of " << box.length
                          << " | " << box.tempo << " | " << box.section_line);
     for (size_t i = 0; i < scene.tempos.size() && i < 6; ++i)
@@ -233,7 +242,7 @@ TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
         if (n.ms < time_ms - 500.0 || n.ms > time_ms + 1500.0) continue;
         bool in_sp = false;
         for (const app::PreviewSpan& s : scene.sp_phrases)
-            if (s.start_ms <= n.ms && n.ms <= s.end_ms) in_sp = true;
+            if (render::note_in_span(scene, s, n)) in_sp = true;
         std::string flags;
         if (n.cymbal) flags += " cymbal";
         if (n.ghost) flags += " ghost";
@@ -252,7 +261,7 @@ TEST_CASE("preview dump (dev aid, HYDRA_PREVIEW_DUMP)") {
     for (const app::PreviewNote& n : scene.notes) {
         bool in_sp = false;
         for (const app::PreviewSpan& s : scene.sp_phrases)
-            if (s.start_ms <= n.ms && n.ms <= s.end_ms) in_sp = true;
+            if (render::note_in_span(scene, s, n)) in_sp = true;
         csv << n.ms << "," << n.tick << "," << static_cast<int>(n.lane) << "," << (n.cymbal ? 1 : 0)
             << "," << (in_sp ? 1 : 0) << "\n";
     }

@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "app/config.h"
+#include "core/error_kind.h"
 #include "core/winstr.h"
 
 namespace hydra::app {
@@ -34,8 +35,11 @@ std::optional<std::filesystem::path> known_documents_dir() {
     return out;
 }
 
-// Every report page lives in reports_dir().
-std::wstring html_artifact_path(const wchar_t* name) { return (reports_dir() / name).wstring(); }
+// Every report page lives in reports_dir(). `name` is one of report_files.h's
+// UTF-8 page names, converted here once.
+std::wstring html_artifact_path(const char* name) {
+    return (reports_dir() / std::filesystem::u8path(name)).wstring();
+}
 
 DocumentsDirFn g_documents_dir;
 OpenInBrowserFn g_open_in_browser;
@@ -66,7 +70,7 @@ namespace {
 bool shell_open(const std::wstring& path) {
     HINSTANCE rc = ShellExecuteW(nullptr, L"open", path.c_str(), nullptr,
                                  nullptr, SW_SHOWNORMAL);
-    return reinterpret_cast<INT_PTR>(rc) > 32;
+    return shell_execute_ok(rc);
 }
 
 // Starts the program Windows opens .html files with, on `page`. For a short
@@ -102,7 +106,7 @@ std::filesystem::path copy_to_short_temp(const std::filesystem::path& page) {
     if (n == 0 || n > MAX_PATH) return {};
     const std::filesystem::path dir = std::filesystem::path(tmp) / L"Hydra";
     const std::filesystem::path copy = dir / page.filename();
-    if (copy.native().size() >= MAX_PATH) return {};
+    if (!fits_shell(copy.native())) return {};
     std::error_code ec;
     std::filesystem::create_directories(os_path(dir), ec);
     std::filesystem::copy_file(os_path(page), os_path(copy),
@@ -112,18 +116,19 @@ std::filesystem::path copy_to_short_temp(const std::filesystem::path& page) {
 
 bool open_in_browser(const std::wstring& path) {
     if (g_open_in_browser) return g_open_in_browser(path);
-    if (path.size() < MAX_PATH) return shell_open(path);
-    // Past 260 characters the shell can't open the page, so hand the browser
-    // the page's short name, or failing that a copy at a short path.
+    if (fits_shell(path)) return shell_open(path);
+    // The shell can't open the page at this path, so hand the browser the
+    // page's short name. When there is no short name, or the .html viewer
+    // won't launch, open a copy at a short path instead.
     const std::wstring short_form = shell_path(path);
     if (!short_form.empty() && launch_html_viewer(short_form)) return true;
     const std::filesystem::path copy = copy_to_short_temp(path);
     return !copy.empty() && shell_open(copy.wstring());
 }
 
-std::wstring report_html_path() { return html_artifact_path(L"hydra_paths.html"); }
+std::wstring report_html_path() { return html_artifact_path(kPathReportFileName); }
 
-std::wstring dm_report_html_path() { return html_artifact_path(L"hydra_dmcompare.html"); }
+std::wstring dm_report_html_path() { return html_artifact_path(kDmReportFileName); }
 
 bool open_report_in_browser() { return open_in_browser(report_html_path()); }
 
@@ -140,15 +145,18 @@ void write_report_file(const std::filesystem::path& outpath, const std::string& 
     // with one rename once it's complete.
     std::filesystem::path tmp = outpath;
     tmp += ".tmp";
+    const auto cannot_write = [&outpath] {
+        return KindedError(ErrorKind::ReportWrite, "cannot write " + outpath.u8string());
+    };
 
     std::ofstream f(os_path(tmp), std::ios::binary | std::ios::trunc);
-    if (!f) throw std::runtime_error("cannot write " + outpath.u8string());
+    if (!f) throw cannot_write();
     f << html;
     f.close();
     if (!f) {
         std::error_code ec;
         std::filesystem::remove(os_path(tmp), ec);
-        throw std::runtime_error("cannot write " + outpath.u8string());
+        throw cannot_write();
     }
 
     try {
@@ -156,7 +164,7 @@ void write_report_file(const std::filesystem::path& outpath, const std::string& 
     } catch (const std::filesystem::filesystem_error&) {
         std::error_code ec;
         std::filesystem::remove(os_path(tmp), ec);
-        throw std::runtime_error("cannot write " + outpath.u8string());
+        throw cannot_write();
     }
 }
 

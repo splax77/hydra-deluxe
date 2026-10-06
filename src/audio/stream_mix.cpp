@@ -6,6 +6,9 @@
 #include <stdexcept>
 #include <utility>
 
+#include "audio/mixer.h"  // stem_converter_config, shared with mix_stems
+#include "core/error_kind.h"
+
 // miniaudio's configuration macros come from the miniaudio target.
 #include "miniaudio.h"
 
@@ -38,7 +41,7 @@ struct StreamMix::Stem {
     std::unique_ptr<StemReader> reader;
     int in_channels = 0;
     int out_channels = 0;
-    bool passthrough = true;  // already at the output rate and channel count
+    bool passthrough = true;  // from stem_converter_config: no converter needed
 
     // The converter lives in a heap block sized once at construction. A seek
     // re-initializes it in that same block instead of calling
@@ -80,10 +83,10 @@ struct StreamMix::Stem {
         cfg = config;
         std::size_t heap_bytes = 0;
         if (ma_data_converter_get_heap_size(&cfg, &heap_bytes) != MA_SUCCESS)
-            throw std::runtime_error("StreamMix: data converter init failed");
+            throw KindedError(ErrorKind::AudioDecode, "StreamMix: data converter init failed");
         conv_heap.resize(heap_bytes / sizeof(std::max_align_t) + 1);
         if (!restart_converter())
-            throw std::runtime_error("StreamMix: data converter init failed");
+            throw KindedError(ErrorKind::AudioDecode, "StreamMix: data converter init failed");
     }
 
     // A fresh converter in the same heap block: no state from before.
@@ -183,7 +186,7 @@ StreamMix::StreamMix(std::vector<std::unique_ptr<StemReader>> stems, int out_rat
       out_channels_(out_channels),
       pad_(std::max<int64_t>(front_pad_frames, 0)) {
     if (out_rate <= 0 || out_channels <= 0)
-        throw std::runtime_error("StreamMix: invalid output format");
+        throw KindedError(ErrorKind::AudioDecode, "StreamMix: invalid output format");
     int64_t longest = 0;
     for (std::unique_ptr<StemReader>& r : stems) {
         if (!r || r->channels() <= 0 || r->sample_rate() <= 0) continue;
@@ -193,15 +196,14 @@ StreamMix::StreamMix(std::vector<std::unique_ptr<StemReader>> stems, int out_rat
         const int in_rate = r->sample_rate();
         const int64_t in_len = std::max<int64_t>(r->length_frames(), 0);
         s->reader = std::move(r);
-        s->passthrough = in_rate == out_rate && s->in_channels == out_channels;
+        // The same converter setup mix_stems uses, so the output matches.
+        const StemConverter sc =
+            stem_converter_config(in_rate, s->in_channels, out_rate, out_channels);
+        s->passthrough = sc.passthrough;
         if (s->passthrough) {
             s->converted_length = in_len;
         } else {
-            // The same converter settings mix_stems uses, so the output matches.
-            s->init_converter(ma_data_converter_config_init(
-                ma_format_f32, ma_format_f32, static_cast<ma_uint32>(s->in_channels),
-                static_cast<ma_uint32>(out_channels), static_cast<ma_uint32>(in_rate),
-                static_cast<ma_uint32>(out_rate)));
+            s->init_converter(sc.config);
             ma_uint64 expected = 0;
             ma_data_converter_get_expected_output_frame_count(
                 &s->conv, static_cast<ma_uint64>(in_len), &expected);

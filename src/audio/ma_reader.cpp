@@ -172,16 +172,24 @@ public:
     explicit MaReader(StemBytes bytes) : bytes_(std::move(bytes)) {
         ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 0, 0);
         if (ma_decoder_init_memory(bytes_.data(), bytes_.size(), &cfg, &dec_) != MA_SUCCESS)
-            throw std::runtime_error("decode_audio: miniaudio could not open the stream");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: miniaudio could not open the stream");
         channels_ = static_cast<int>(dec_.outputChannels);
         rate_ = static_cast<int>(dec_.outputSampleRate);
         if (channels_ <= 0) {
             ma_decoder_uninit(&dec_);
-            throw std::runtime_error("decode_audio: miniaudio could not open the stream");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: miniaudio could not open the stream");
         }
         ma_uint64 len = 0;
         if (ma_decoder_get_length_in_pcm_frames(&dec_, &len) != MA_SUCCESS) len = 0;
-        length_ = static_cast<int64_t>(len);
+        // A header length of 0 is counted (CountedLength). A WAV can't land
+        // there with audio in it, because dr_wav takes its length from the
+        // data chunk's size, so in practice it is a FLAC. dr_flac clamps every
+        // seek target to the header's total, so a counted stem's seeks would
+        // all land on frame 0; CountedLength seeks by decoding instead.
+        scratch_.resize(static_cast<std::size_t>(kSkipChunk) * static_cast<std::size_t>(channels_));
+        length_ = counted_.length(
+            static_cast<int64_t>(len), static_cast<int64_t>(kSkipChunk), at_end_,
+            [this] { return restart(); }, [this](int64_t n) { return skip(n); });
     }
 
     ~MaReader() override { ma_decoder_uninit(&dec_); }
@@ -206,6 +214,7 @@ public:
                 at_end_ = true;
             }
         }
+        pos_ += done;
         return done;
     }
 
@@ -213,17 +222,42 @@ public:
         frame = std::clamp<int64_t>(frame, 0, length_);
         if (frame >= length_) {
             at_end_ = true;
+            pos_ = length_;
+            return;
+        }
+        if (counted_.counted()) {
+            // As in read(): a decode error ends the stem, and failed() stays true.
+            if (counted_.seek(frame, static_cast<int64_t>(kSkipChunk), pos_, at_end_,
+                              [this] { return restart(); }, [this](int64_t n) { return skip(n); }))
+                failed_ = true;
             return;
         }
         at_end_ = ma_decoder_seek_to_pcm_frame(&dec_, static_cast<ma_uint64>(frame)) != MA_SUCCESS;
+        pos_ = frame;
     }
 
 private:
+    // CountedLength's two decoder calls.
+    bool restart() { return ma_decoder_seek_to_pcm_frame(&dec_, 0) == MA_SUCCESS; }
+    DecodeStep skip(int64_t frames) {
+        ma_uint64 got = 0;
+        const ma_result r = ma_decoder_read_pcm_frames(&dec_, scratch_.data(),
+                                                       static_cast<ma_uint64>(frames), &got);
+        DecodeStep step;
+        step.frames = static_cast<int64_t>(got);
+        step.more = r == MA_SUCCESS && got != 0;
+        step.error = r != MA_SUCCESS && r != MA_AT_END && got != 0;
+        return step;
+    }
+
     StemBytes bytes_;
     ma_decoder dec_{};
     int channels_ = 0;
     int rate_ = 0;
     int64_t length_ = 0;
+    int64_t pos_ = 0;         // the frame the next read returns
+    CountedLength counted_;   // the header said 0 frames, so length_ is a count
+    std::vector<float> scratch_;  // decode target for counted and skipped frames
     bool at_end_ = false;
     bool failed_ = false;
 };
@@ -271,7 +305,14 @@ unsigned hdr_frame_size(const uint8_t* h) {
     return bytes + pad;
 }
 
-constexpr int kMaxReservoir = 511;  // dr_mp3's MA_DR_MP3_MAX_BITRESERVOIR_BYTES
+constexpr int kMaxReservoir = MA_DR_MP3_MAX_BITRESERVOIR_BYTES;
+
+// The reservoir bytes left after an MP3 frame that borrows `back` bytes from
+// a reservoir of `reserv` and carries `own` audio-data bytes itself: what it
+// kept plus its own, capped at dr_mp3's reservoir size.
+int reservoir_after(int reserv, int back, int own) {
+    return std::min(kMaxReservoir, std::min(reserv, back) + own);
+}
 
 // What a header walk learns about one stream: where each frame ends, and
 // per frame how far back its audio data starts (main_data_begin) and how many
@@ -334,7 +375,7 @@ int simulate_reset(const FrameScan& s, std::size_t first, std::size_t last) {
     for (std::size_t j = first; j <= last; ++j) {
         const int back = s.back[j];
         const bool ok = reserv >= back;
-        reserv = std::min(kMaxReservoir, std::min(reserv, back) + static_cast<int>(s.own[j]));
+        reserv = reservoir_after(reserv, back, s.own[j]);
         if (ok) ++decoded;
         if (j == last) return ok ? decoded : -1;
     }
@@ -430,8 +471,7 @@ private:
                 first = j;
                 break;
             }
-            reserv = std::min(kMaxReservoir, std::min(reserv, static_cast<int>(s.back[j])) +
-                                                 static_cast<int>(s.own[j]));
+            reserv = reservoir_after(reserv, s.back[j], s.own[j]);
         }
         if (first >= n) return;
         auto raw_start = [&](std::size_t j) {
@@ -509,24 +549,10 @@ private:
     ma_uint64 scan_samples_ = 1;
 };
 
-// An ID3v2 tag in front of a FLAC stream: sniff_format calls it MP3, but
-// ma_decoder (which tries FLAC before MP3) always decoded it as FLAC.
-bool flac_behind_id3(const StemBytes& b) {
-    const uint8_t* d = b.data();
-    if (b.size() < 10 || std::memcmp(d, "ID3", 3) != 0) return false;
-    std::size_t tag = (static_cast<std::size_t>(d[6] & 0x7F) << 21) |
-                      (static_cast<std::size_t>(d[7] & 0x7F) << 14) |
-                      (static_cast<std::size_t>(d[8] & 0x7F) << 7) |
-                      static_cast<std::size_t>(d[9] & 0x7F);
-    tag += 10;
-    if (d[5] & 0x10) tag += 10;
-    return tag + 4 <= b.size() && std::memcmp(d + tag, "fLaC", 4) == 0;
-}
-
 }  // namespace
 
-std::unique_ptr<StemReader> open_ma_reader(StemBytes bytes) {
-    if (sniff_format(bytes.data(), bytes.size()) == AudioFormat::Mp3 && !flac_behind_id3(bytes)) {
+std::unique_ptr<StemReader> open_ma_reader(StemBytes bytes, AudioFormat format) {
+    if (format == AudioFormat::Mp3) {
         auto mp3 = std::make_unique<Mp3Reader>(std::move(bytes));
         if (mp3->ok()) return mp3;
         bytes = mp3->take_bytes();  // let ma_decoder try, and report as before

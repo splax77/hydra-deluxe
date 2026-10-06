@@ -10,22 +10,52 @@
 #include "render/highway_draw.h"
 #include "render/overlay_layout.h"
 #include "render/preview_config.h"
+#include "preview_config_util.h"
 
 using namespace hydra::render;
 
 TEST_CASE("track_height: the width ratio, capped by the image height") {
-    PreviewConfig cfg;  // height_width_ratio 1.1666...
+    PreviewConfig cfg = shipped_preview_config();  // height_width_ratio 1.1666...
     CHECK(track_height(cfg, 1000, 300) == 300);  // height-limited: the usual case
     CHECK(track_height(cfg, 300, 1000) == 350);  // 300 * 1.1666 = 350
     CHECK(track_height(cfg, 0, 0) == 1);
 }
 
+// The values are the derivation audit's table for finding 221.
+TEST_CASE("track_rect: the clamped size, the aspect and the top row") {
+    const PreviewConfig cfg = shipped_preview_config();
+
+    const TrackRect wide = track_rect(cfg, 1920, 1080);
+    CHECK(wide.width == 1920);
+    CHECK(wide.height == 1080);
+    CHECK(wide.track_height == 1080);
+    CHECK(wide.top == 0);
+    CHECK(wide.aspect == 1920.0f / 1080.0f);
+    CHECK(track_height(cfg, 1920, 1080) == wide.track_height);
+
+    const TrackRect tall = track_rect(cfg, 600, 1080);
+    CHECK(tall.track_height == 700);
+    CHECK(tall.top == 380);
+    CHECK(tall.aspect == 600.0f / 700.0f);
+    CHECK(track_height(cfg, 600, 1080) == tall.track_height);
+
+    const TrackRect empty = track_rect(cfg, 0, 0);
+    CHECK(empty.width == 1);
+    CHECK(empty.height == 1);
+    CHECK(empty.track_height == 1);
+    CHECK(empty.top == 0);
+    CHECK(track_height(cfg, 0, 0) == empty.track_height);
+}
+
 TEST_CASE("highway_span_at: passes through the projected railing corners") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     const PreviewConfig::Track& T = cfg.track;
     const int w = 1200, h = 400;
-    const float xr = T.x_right + T.railing_x_width;
-    const float xl = T.x_left - T.railing_x_width;
+    // The railings' outer edges, from the highway's own railing_outer_x.
+    const float xl = railing_outer_x(cfg, false);
+    const float xr = railing_outer_x(cfg, true);
+    CHECK(xl == doctest::Approx(-1.09f));
+    CHECK(xr == doctest::Approx(1.09f));
     // The strike line lies between the railing's two ends, so both edges run
     // through its corners at their rows (or outside them, the wider line winning).
     const ImagePoint r = project_to_image(cfg, w, h, {xr, T.railing_y_top, T.z_now});
@@ -40,7 +70,7 @@ TEST_CASE("highway_span_at: passes through the projected railing corners") {
 }
 
 TEST_CASE("highway_span_at: symmetric, and wider nearer the camera") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     const int w = 1200, h = 400;
     const HighwaySpan top = highway_span_at(cfg, w, h, 60.0f);
     const HighwaySpan bottom = highway_span_at(cfg, w, h, 390.0f);
@@ -52,7 +82,7 @@ TEST_CASE("highway_span_at: symmetric, and wider nearer the camera") {
 TEST_CASE("highway_span_at: a narrower image leaves the highway's size alone") {
     // The track height follows the image height here, so the highway is the
     // same size; a narrower image only trims the empty sides.
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     const HighwaySpan wide = highway_span_at(cfg, 1200, 400, 390.0f);
     const HighwaySpan narrow = highway_span_at(cfg, 600, 400, 390.0f);
     CHECK(narrow.right - narrow.left ==
@@ -60,7 +90,7 @@ TEST_CASE("highway_span_at: a narrower image leaves the highway's size alone") {
 }
 
 TEST_CASE("overlay_scale: full size with room, floored when narrow, clear in between") {
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     const int h = 390;
     auto boxes = [](int w) {
         OverlayBoxes b;
@@ -160,7 +190,7 @@ TEST_CASE("widest_word: the widest run between spaces, the last words as one") {
 TEST_CASE("next-activation box: off the lane at the bottom, one scale for the whole path") {
     // The Preview at the song panel's narrowest (820 px at a 1,280 px window),
     // the box's text 15 px monospace at about 9 px a character.
-    PreviewConfig cfg;
+    PreviewConfig cfg = shipped_preview_config();
     const int w = 800, h = 450;
     const float margin = 10.0f, pad = 8.0f, gap = 6.0f;
     auto nine_per_char = [](const std::string& s) { return 0.9f * ten_per_char(s); };
@@ -236,4 +266,18 @@ TEST_CASE("ellipsize: a 40-activation path fits its line, and a cut never splits
     const std::string accented = "Caf\xC3\xA9 \xC3\xA9t\xC3\xA9";  // "Café été", 8 characters
     CHECK(ellipsize(accented, 50.0f, ten_per_char) == "Caf\xC3\xA9\xE2\x80\xA6");
     CHECK(ellipsize(accented, 40.0f, ten_per_char) == "Caf\xE2\x80\xA6");
+}
+
+TEST_CASE("ellipsize: the kept width is the width of the text before the ellipsis") {
+    const std::string label = "3- 1 2  (optimal)";  // 17 characters, 170 px
+    float kept_w = -1.0f;
+    CHECK(ellipsize(label, 170.0f, ten_per_char, kept_w) == label);
+    CHECK(kept_w == 170.0f);  // it fits: the whole width
+    CHECK(ellipsize(label, 80.0f, ten_per_char, kept_w) == "3- 1 2\xE2\x80\xA6");
+    CHECK(kept_w == 60.0f);  // "3- 1 2", the dropped spaces not counted
+    CHECK(ellipsize(label, 15.0f, ten_per_char, kept_w) == "\xE2\x80\xA6");
+    CHECK(kept_w == 0.0f);  // only the ellipsis shows
+    const std::string accented = "Caf\xC3\xA9 \xC3\xA9t\xC3\xA9";  // "Café été"
+    CHECK(ellipsize(accented, 40.0f, ten_per_char, kept_w) == "Caf\xE2\x80\xA6");
+    CHECK(kept_w == 30.0f);
 }

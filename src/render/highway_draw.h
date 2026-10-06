@@ -23,7 +23,8 @@
 
 namespace hydra::render {
 
-enum class MeshId { Tom, Cymbal, Kick, Flat, Box };
+// TriangleLeft / TriangleRight: make_triangle with its apex toward -X / +X.
+enum class MeshId { Tom, Cymbal, Kick, Flat, Box, TriangleLeft, TriangleRight, Count };
 
 enum class TextureId {
     None,
@@ -50,9 +51,10 @@ struct Material {
     TextureId overlay = TextureId::None;  // TextureOverlay second layer
 };
 
-// Which light a draw uses: the highway's fixed light, or the per-gem light
-// offset from the gem's top centre (Onyx LightOffset).
-enum class LightKind { Global, GemOffset };
+// Which light a draw uses: the highway's fixed light, the per-gem light
+// offset from the gem's top centre (Onyx LightOffset), or none, so the
+// material's colour shows exactly as given (Hydra's SP end marks, D81).
+enum class LightKind { Global, GemOffset, Unlit };
 
 enum class DepthMode { Less, Always };
 
@@ -79,13 +81,27 @@ struct HighwayCamera {
 // right-handed. `aspect` is the track rectangle's width / height.
 HighwayCamera make_camera(const PreviewConfig& cfg, float aspect);
 
-// The track rectangle's height in a width x height preview: Onyx lays out one
-// highway min(height, width * height_width_ratio) tall, anchored at the
-// bottom. The renderer sizes its scene target with this and the overlay
-// layout projects through it, so the two cannot disagree. At least 1.
+// Where the track rectangle sits in a width x height preview, and at what
+// size. Onyx lays out one highway min(height, width * height_width_ratio)
+// tall, anchored at the bottom. The renderer sizes its scene target and its
+// camera with this and the overlay layout projects through it, so the two
+// cannot disagree. A size below 1 counts as 1.
+struct TrackRect {
+    int width = 1, height = 1;  // the image, each at least 1
+    int track_height = 1;       // the track rectangle's height, at least 1
+    int top = 0;                // its top row: it hugs the image's bottom edge
+    float aspect = 1.0f;        // the camera's aspect: width / track_height
+};
+TrackRect track_rect(const PreviewConfig& cfg, int width, int height);
+
+// track_rect's track height alone.
 int track_height(const PreviewConfig& cfg, int width, int height);
 
-// Onyx timeToZ: z_now at `now`, z_future at now + secs_future * speed, linear.
+// Onyx's far end of the highway: the time at z_future, now + secs_future *
+// speed.
+double far_time(const PreviewConfig& cfg, double now_s, double speed);
+
+// Onyx timeToZ: z_now at `now`, z_future at far_time, linear.
 double time_to_z(const PreviewConfig& cfg, double now_s, double t_s, double speed);
 // Its inverse: the time at a depth (used for the window's near edge).
 double z_to_time(const PreviewConfig& cfg, double now_s, double z, double speed);
@@ -93,15 +109,26 @@ double z_to_time(const PreviewConfig& cfg, double now_s, double z, double speed)
 // The X extent of a pad's lane: the note area split into four, left to right.
 void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2);
 
+// The X extent of the left (right = false) or right railing. The railings,
+// their SP end markers and the overlay's highway_span_at all place
+// themselves by it.
+void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2);
+
+// The X of a railing's outer edge, the one away from the lanes. The SP end
+// markers and the overlay's highway_span_at ask it.
+float railing_outer_x(const PreviewConfig& cfg, bool right);
+
 // The model matrix for a DrawCommand's box (row-major, DirectXMath row vectors).
 DirectX::XMMATRIX stretch_matrix(const DrawCommand& cmd);
 
-// The per-draw light: the highway light, or the gem light offset from the
-// box's top centre.
+// The per-draw light: the highway light, the gem light offset from the
+// box's top centre, or for Unlit a full ambient with no diffuse or specular,
+// which the object shader turns into the material colour unchanged.
 LightConfig light_for(const PreviewConfig& cfg, const DrawCommand& cmd);
 
 // One frame's draw list in Onyx's order: floor spans, railings, beat lines,
-// lane strips, strike-line targets and their glows, then gems (far first).
+// lane strips, strike-line targets and their glows, Hydra's SP end marks
+// (D81), then gems (far first).
 std::vector<DrawCommand> build_highway_draws(const TrackState& state,
                                              const PreviewConfig& cfg,
                                              double now_s, double speed);

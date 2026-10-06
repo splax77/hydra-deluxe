@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <map>
 #include <optional>
@@ -20,13 +21,16 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dynamics_breakdown.h"
 #include "bank_check.h"
 #include "core/model.h"
 #include "core/replay.h"
+#include "core/scoring.h"
 #include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "record_bytes.h"
 #include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
@@ -105,6 +109,81 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
     MESSAGE("checked " << charts << " charts");
 }
 
+namespace {
+
+// The invariants case's deep settings above (depth 200, cap 4), so the
+// 2x Bass on runs below reuse its cached records, and a chart has many paths.
+SearchSettings note_total_settings() {
+    SearchSettings cfg;
+    cfg.sp_cap = 4;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = 200;
+    cfg.ms_filter = std::nullopt;
+    return cfg;
+}
+
+// Every stored path of `rec`, variants included, in walk order.
+void each_stored_path(const std::vector<Path>& paths, const std::function<void(const Path&)>& f) {
+    for (const Path& p : paths) {
+        f(p);
+        each_stored_path(p.variants, f);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("note total: every path of How You Remind Me stores the Song's note count") {
+    // Finding 255: the Notes column is the chart's note total, one fact about
+    // the chart, so every path and variant stores the same number.
+    const std::string chart = corpus::root() +
+                              "/common/Summer Blast _25 Setlist/Tier 1/Nickelback - How You Remind Me/"
+                              "notes.chart";
+    const Song& song = corpus::song(chart, true, true);
+    CHECK(song.note_count() == 905);
+    const HydraRecord& rec = corpus::analyzed(chart, note_total_settings());
+    int paths = 0;
+    each_stored_path(rec.paths, [&](const Path& p) {
+        ++paths;
+        CHECK(p.notecount == 905);
+    });
+    CHECK(paths > 1);
+}
+
+TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every corpus chart") {
+    // Finding 255. Under each 2x Bass setting: the Song's note count, every
+    // stored path's notecount, and the Dynamics tab's Totals (counted from its
+    // own 2x-kept parse, then played_total for the setting) are one number.
+    int checked = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        for (const bool bass2x : {false, true}) {
+            CAPTURE(path);
+            CAPTURE(bass2x);
+            const Song& song = corpus::song(path, true, bass2x);
+            if (song.is_empty()) continue;
+            const int total = song.note_count();
+
+            const app::DynamicsBreakdown bd =
+                app::count_dynamics(corpus::song(path, true, app::kDynamicsParseBass2x));
+            CHECK(bd.played_total(bass2x).all() == total);
+
+            app::AnalysisSettings a;
+            static_cast<SearchSettings&>(a) = note_total_settings();
+            a.bass2x = bass2x;
+            const HydraRecord* rec = nullptr;
+            try {
+                rec = &corpus::analyzed(path, a);
+            } catch (const ChartFileError&) {
+                continue;  // charts the engine rejects are covered elsewhere
+            }
+            each_stored_path(rec->paths,
+                             [&](const Path& p) { CHECK(p.notecount == total); });
+            ++checked;
+        }
+    }
+    REQUIRE(checked > 0);
+    MESSAGE("checked " << checked << " chart and 2x Bass pairs");
+}
+
 // The legacy Clone Hero 1.0 fill rule is a whole different spawn deadline, so
 // it reshapes which activations exist at all. That must still produce a normal,
 // complete record -- the score itself is not pinned here (it is a different
@@ -119,7 +198,7 @@ TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order"
         if (song.is_empty()) continue;
         ++charts;
 
-        // An independent spelling: every chord, at the combo before it.
+        // Every chord, at the combo before it.
         std::vector<MultSqueeze> want;
         int combo = 0;
         for (const SongTimestamp& ts : song.sequence) {
@@ -127,7 +206,7 @@ TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order"
                 want.push_back(MultSqueeze(ts.chord, combo));
             } catch (const std::invalid_argument&) {
             }
-            combo += ts.chord.count();
+            combo = category_scores(ts.chord, combo).combo_after;
         }
 
         ScoreGraph graph(song, 4);
@@ -329,11 +408,13 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
                 }
                 int on_sqout = 0;
                 for (const BackendSqueeze& b : act.backends) {
-                    if (b.timecode.ticks() > *act.sqout_tick) {
+                    const core::SqOutPosition pos =
+                        core::sqout_position(b.timecode.ticks(), act.sqout_tick);
+                    if (pos == core::SqOutPosition::After) {
                         d = "backend past the sqout note";
                         break;
                     }
-                    if (b.timecode.ticks() == *act.sqout_tick) ++on_sqout;
+                    if (pos == core::SqOutPosition::Exact) ++on_sqout;
                 }
                 if (d.empty() && on_sqout != 1)
                     d = "not exactly one backend row on the sqout tick";
@@ -352,10 +433,10 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
 }
 
 // The all-0 pass is a second, constrained search. Its whole contract is that
-// every activation it reports records skips == 0, that the 0 ms limit is a
-// requirement rather than a preference, and that it never scores above the
-// unconstrained optimum.
-TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
+// every activation it reports records skips == 0, that "needs no timing"
+// (Path::needs_timing) is a requirement rather than a preference, and that it
+// never scores above the unconstrained optimum.
+TEST_CASE("search_allzero returns only all-0 paths that need no timing") {
     int checks = 0, mismatches = 0, found = 0;
 
     for (const std::string& path : corpus::chart_paths()) {
@@ -381,8 +462,8 @@ TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
                 d = "not all-0: " + p->pathstring();
                 break;
             }
-            if (p->difficulty().value_or(0.0) > 0.0) {
-                d = "over the 0 ms limit: " + p->pathstring() + " needs " +
+            if (p->needs_timing()) {
+                d = "needs timing: " + p->pathstring() + " needs " +
                     std::to_string(*p->difficulty()) + " ms";
                 break;
             }
@@ -648,7 +729,9 @@ TEST_CASE("SP past the last note: tail rows use the 500 ms window from the SP en
 
 // The graph lists, for every deactivation edge, exactly the phrase chords
 // core::squeeze_window_phrases names, in chart order, so the engine can offer
-// the first one a window can still squeeze (D34). This guards against drift.
+// a window the one phrase core::offered_phrase picks (D36): its newest phrase
+// before the end, or the first after it not yet squeezed in. This guards
+// against drift.
 TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrases names") {
     int edges = 0, claimed = 0;
     for (const std::string& path : corpus::chart_paths()) {
@@ -656,14 +739,9 @@ TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrase
         if (song.is_empty()) continue;
         const ScoreGraph graph(song, 4);
 
-        // The SP track is one chain; it starts at the first activation's node.
-        const ScoreGraphNode* sp = nullptr;
-        for (const ScoreGraphNode* b = graph.start(); b && !sp;
-             b = b->adv_edge ? b->adv_edge->dest : nullptr)
-            if (b->branch_edge) sp = b->branch_edge->dest;
-
         std::set<const ScoreGraphEdge*> seen;
-        for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr) {
+        for (const ScoreGraphNode* sp = test::sp_track_start(graph); sp;
+             sp = sp->adv_edge ? sp->adv_edge->dest : nullptr) {
             const ScoreGraphEdge* e = sp->branch_edge;
             if (!e || !seen.insert(e).second) continue;
             ++edges;
@@ -682,6 +760,7 @@ TEST_CASE("graph: every deactivation edge lists the chords squeeze_window_phrase
 }
 
 using test::deact_edge_at;
+using test::extension_of;
 
 // A squeeze choice's facts, pinned on two hand-built songs at 240 BPM (a
 // measure is 1920 ticks and 1000 ms). Both activate at 5760 with two bars,
@@ -695,11 +774,17 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         REQUIRE(e->squeeze_choices.size() == 1);
         const SqueezeChoice& c = e->squeeze_choices[0];
         CHECK(c.chord.ticks() == 12960);
-        CHECK(c.sqin_time.ticks() == 17280);
-        CHECK_FALSE(c.clamped);
         CHECK(c.timing == doctest::Approx(-250.0).epsilon(1e-9));
         CHECK_FALSE(c.late);
-        CHECK(c.sqout_time.ticks() == 17280);
+        // An early chord's moved end is its own step's, not the choice's.
+        CHECK_FALSE(c.sqin_time.has_value());
+        // The phrase's own step moves 13440 to 17280, and 13440 can give it
+        // back: the step offers the squeeze there (D36).
+        const std::optional<SpExtension> x = extension_of(graph, 12960, 13440);
+        REQUIRE(x.has_value());
+        CHECK(x->to_tick == 17280);
+        CHECK_FALSE(x->clamped);
+        CHECK(x->sqout_node);
     }
     SUBCASE("a phrase 250 ms after the end: a late squeeze-in only") {
         const Song song = test::make_late_sqin_song();
@@ -709,11 +794,10 @@ TEST_CASE("graph: a squeeze choice before or after the SP end, pinned") {
         REQUIRE(e->squeeze_choices.size() == 1);
         const SqueezeChoice& c = e->squeeze_choices[0];
         CHECK(c.chord.ticks() == 13920);
-        CHECK(c.sqin_time.ticks() == 17280);
-        CHECK_FALSE(c.clamped);
+        REQUIRE(c.sqin_time.has_value());
+        CHECK(c.sqin_time->ticks() == 17280);
         CHECK(c.timing == doctest::Approx(250.0).epsilon(1e-9));
         CHECK(c.late);
-        CHECK(c.sqout_time.ticks() == 13440);
     }
     SUBCASE("no phrase in the window: the path just ends at the SP end") {
         // Two bars from the fill at 5760, and the next phrase is past the
@@ -745,12 +829,10 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
     REQUIRE_FALSE(best.empty());
     REQUIRE_FALSE(best.front().activations.empty());
 
-    // no_skips plus a hard 0 ms limit is exactly the all-0 search.
-    EngineOptions allzero;
-    allzero.ms_filter = 0.0;
-    allzero.no_skips = true;
-    allzero.hard_ms_filter = true;
-    const std::vector<Path> z = run_search(graph, allzero);
+    // no_skips plus "keep only paths that need no timing" is exactly the
+    // all-0 search.
+    const std::vector<Path> z = run_search(graph, allzero_options());
+    for (const Path& p : z) CHECK_FALSE(p.needs_timing());
     const std::vector<Path> want_z = search_allzero(graph);
     REQUIRE_FALSE(want_z.empty());
     REQUIRE(z.size() == want_z.size());
@@ -769,6 +851,40 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
     REQUIRE_FALSE(again.empty());
     CHECK(again.front().pathstring() == best.front().pathstring());
     CHECK(again.front().totalscore() == best.front().totalscore());
+}
+
+// The all-0 search's options have one owner, so search_allzero and the case
+// above run the same search.
+TEST_CASE("allzero_options: no skips, no timing, everything else default") {
+    const EngineOptions z = allzero_options();
+    const EngineOptions plain{};
+    CHECK(z.no_skips);
+    CHECK(z.no_timing);
+    CHECK(z.depth_mode == plain.depth_mode);
+    CHECK(z.depth_value == plain.depth_value);
+    CHECK(z.ms_filter == plain.ms_filter);
+    CHECK_FALSE(z.target_act_ticks.has_value());
+}
+
+// The test cache keys a stored analysis by settings_key. The default's text is
+// pinned from one run, so the key's shape cannot drift, and each SearchSettings
+// field must move it, so a field left out of the key shows up here.
+TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every field moves it") {
+    const SearchSettings plain{};
+    const std::string key = settings_key(plain);
+    CHECK(key == "4|0|4|none|0|8129816903421021426|");
+
+    std::vector<SearchSettings> changed(6, plain);
+    changed[0].sp_cap = 1;
+    changed[1].depth_mode = DepthMode::Points;
+    changed[2].depth_value = 5;
+    changed[3].ms_filter = 10.0;
+    changed[4].legacy_fill_deadline = true;
+    changed[5].rules.max_tied_paths += 1;
+    for (size_t i = 0; i < changed.size(); ++i) {
+        INFO("changed field " << i);
+        CHECK(settings_key(changed[i]) != key);
+    }
 }
 
 // analyze_chart used to run Clone Hero's 4 bars down its own branch, with the
@@ -814,12 +930,7 @@ TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths"
         tall.allzero_paths = search_allzero(g_tall);
         built.allzero_paths = search_allzero(g_built);
 
-        const store::FlatRecord a = store::flatten_record(tall);
-        const store::FlatRecord b = store::flatten_record(built);
-        bool same = a.structure == b.structure && a.nodes.size() == b.nodes.size();
-        for (size_t i = 0; same && i < a.nodes.size(); ++i)
-            same = a.nodes[i].payload == b.nodes[i].payload;
-        CHECK_MESSAGE(same, "a song with " << song.sp_phrase_count() << " phrases");
+        CHECK_MESSAGE(record_bytes(tall) == record_bytes(built), "a song with " << song.sp_phrase_count() << " phrases");
         ++compared;
     }
     MESSAGE("compared " << compared << " songs with fewer than 4 phrases");
@@ -1478,6 +1589,11 @@ TEST_CASE("graph_build_cap: never taller than the song's phrases, never below on
     CHECK(graph_build_cap(4, 10) == 4);   // the cap binds
     CHECK(graph_build_cap(32, 3) == 3);   // the song's phrases bind
     CHECK(graph_build_cap(8, 0) == 1);    // a phraseless song still builds one level
+    // The meter's own height, which graph_build_cap reads: no floor of its own.
+    CHECK(max_sp_bars(4, 10) == 4);
+    CHECK(max_sp_bars(32, 3) == 3);
+    CHECK(max_sp_bars(8, 0) == 0);
+    CHECK(max_sp_bars(std::nullopt, 3) == 3);
 }
 
 TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
@@ -1512,16 +1628,8 @@ TEST_CASE("Bank: every corpus path banks in order") {
         const Song& song =
             corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty, cfg.rules);
         if (song.is_empty()) continue;
-        const std::set<int64_t> phrase_ends = bank_check::phrase_ends(song);
-        const int64_t chart_end = song.sequence.back().timecode.ticks();
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        std::vector<const Path*> all = rec.all_paths();
-        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
-        for (const Path* p : all) {
-            CAPTURE(chart);
-            CAPTURE(p->pathstring());
-            acts += bank_check::check_path_banks(*p, phrase_ends, chart_end);
-        }
+        CAPTURE(chart);
+        acts += bank_check::check_record_banks(song, corpus::analyzed(chart, cfg));
     }
     CHECK(acts > 1000);  // a floor the user approved (D43)
 }
@@ -1873,6 +1981,49 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once (D
     CHECK(rec.best_path().totalscore() == 2950);
     CHECK(test::path_named(rec.paths, "0++") == nullptr);
     CHECK(test::path_named(rec.paths, "0+-") == nullptr);
+}
+
+// D36 gap c, on the same chart. '0' activates at 19200 and its phrase 30480
+// moves its end from 30720; '1' activates at 21120 and 30480 moves its end
+// from 30721. Both land on 34560, so both SP ends hold a choice of 30480 for
+// a path whose end is 34560. Each window may squeeze 30480 only at the end
+// its own step moved: before D36 the first matching node, 30720, took '1's
+// squeeze too, so its SqIn or SqOut sat 1.04 ms off and a SqOut ended SP at
+// a node its record never names. Each window is checked in a targeted
+// search (search_target) of its own activation, so no fold hides it.
+TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own path (D36)") {
+    const Song song = load_songpath(
+        std::string(HYDRA_INPUT_DIR) + "/test_folded_sqin/twin_end_nodes.chart", true, true);
+    const app::AnalysisSettings cfg = test::scores_settings(2);
+    const ScoreGraph graph(song, 2);
+    CHECK(deact_edge_at(graph, 30720) != nullptr);
+    CHECK(deact_edge_at(graph, 30721) != nullptr);
+    // 120 BPM at 480 ticks a beat: 30480 is 31750 ms, 30720 is 32000 ms and
+    // 30721 is 32001.0417 ms, so each window's squeeze sits 250 ms or
+    // 251.0417 ms (250 + 25/24) before its own end.
+    struct Window {
+        int64_t act, own_end;
+        double own_ms;
+    };
+    for (const Window& w : {Window{19200, 30720, -250.0}, Window{21120, 30721, -251.0 - 1.0 / 24.0}}) {
+        const int64_t act = w.act, own_end = w.own_end;
+        CAPTURE(act);
+        const doctest::Approx own_ms = doctest::Approx(w.own_ms).epsilon(1e-9);
+        int squeezes = 0;
+        const std::vector<Path> kept = search_target(song, cfg, {act});
+        for (const Path* p : flatten_paths(kept)) {
+            CAPTURE(p->pathstring());
+            for (const Activation& a : p->walk_activations()) {
+                REQUIRE(a.timecode.ticks() == act);
+                for (const SPSqueeze& q : a.sqinouts) {
+                    ++squeezes;
+                    CHECK(q.offset_ms == own_ms);
+                }
+                if (a.sqout_tick) CHECK(a.deact_tick() == std::optional<int64_t>(own_end));
+            }
+        }
+        CHECK(squeezes > 0);
+    }
 }
 
 // The corpus-wide lone-pricing check for tied variants (D3) lives in

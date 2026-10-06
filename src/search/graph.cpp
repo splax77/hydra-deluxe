@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <set>
 #include <stdexcept>
 
 #include "core/backend_value.h"
@@ -74,7 +75,8 @@ double activation_fill_deadline_ms(const SongTiming& timing,
     //
     // This uses ms_at_tick_f, which core/timing.h marks as outside the
     // bit-for-bit scoring surface; the legacy mode is deliberately off that
-    // surface, and never writes the database the GUI reads (docs/adr/0010).
+    // surface. A 1.0 result is stored under its own key, beside the 1.1
+    // results (store::Lens::legacy_fills, docs/adr/0010).
     // The res/16 pad matches Python Hydra 1.2 output; kept fixed (see ADR 0010).
     const double res = static_cast<double>(timing.tick_resolution());
     const double fend = timing.ms_index().at(fill_end_tick);
@@ -119,9 +121,7 @@ void ScoreGraph::build() {
 
         set_head_time(timestamp.timecode);
 
-        store_notecount(timestamp.chord.count());
-        if (timestamp.flag_solo)
-            store_soloscore(kSoloBonusPerNote * timestamp.chord.count());
+        store_soloscore(solo_bonus(timestamp.chord, timestamp.flag_solo));
 
         CategoryScores sg = category_scores(timestamp.chord, combo_, nullptr, rules_.sqout_rule);
 
@@ -134,17 +134,22 @@ void ScoreGraph::build() {
         store_accentscore(sg.accent);
         store_ghostscore(sg.ghost);
 
-        combo_ += timestamp.chord.count();
+        combo_ = sg.combo_after;
 
         store_new_backend(timestamp, sg.sp, sg.sqout_sp());
 
         if (timestamp.flag_sp) {
             // Deacts within the squeeze window keep a non-extended copy (SqOut).
+            // The one statement of "this end can give this phrase back": each
+            // extension from such an end says so (SpExtension::sqout_node).
             std::vector<Timecode> sqout_deacts;
+            std::set<int64_t> sqout_ticks;
             for (const auto& kv : pending_deacts_)
                 if (within_squeeze_window(
-                        offset_from_sp_end(timestamp.timecode.ms(), kv.second.ms())))
+                        offset_from_sp_end(timestamp.timecode.ms(), kv.second.ms()))) {
                     sqout_deacts.push_back(kv.second);
+                    sqout_ticks.insert(kv.first);
+                }
 
             // Timecodes this SP phrase can extend: pending deacts plus very
             // recently handled deacts (SqIn). Deduped by ticks via std::map.
@@ -173,7 +178,8 @@ void ScoreGraph::build() {
                 // still holding that end has already ended on it
                 // (Engine::deactivation_type).
                 if (sqin_end_by_phrase(de.to.ticks(), timestamp.timecode.ticks())) continue;
-                ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped};
+                ext_map[de.from.ticks()] = SpExtension{de.to.ticks(), de.clamped,
+                                                       sqout_ticks.count(de.from.ticks()) == 1};
                 new_pending[de.to.ticks()] = de.to;
             }
             for (const Timecode& t : sqout_deacts)
@@ -213,10 +219,6 @@ void ScoreGraph::build() {
     advance_tracks(last.timecode, last.chord);
 }
 
-void ScoreGraph::store_notecount(int64_t count) {
-    proto_base_edge_->notecount += count;
-    proto_sp_edge_->notecount += count;
-}
 void ScoreGraph::store_soloscore(int64_t points) {
     proto_base_edge_->soloscore += points;
     proto_sp_edge_->soloscore += points;
@@ -265,9 +267,13 @@ void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
     }
 }
 
+int max_sp_bars(std::optional<int> sp_meter_cap, int sp_phrase_count) {
+    if (!sp_meter_cap.has_value()) return sp_phrase_count;
+    return std::min(*sp_meter_cap, sp_phrase_count);
+}
+
 int ScoreGraph::max_sp_bars() const {
-    if (!sp_meter_cap_.has_value()) return sp_phrase_count_;
-    return std::min(*sp_meter_cap_, sp_phrase_count_);
+    return hydra::max_sp_bars(sp_meter_cap_, sp_phrase_count_);
 }
 
 std::vector<ScoreGraph::DeactExtension> ScoreGraph::extend_deacts(
@@ -354,7 +360,7 @@ ScoreGraphEdge* ScoreGraph::add_act_edge(int frontend_points, int64_t fill_lengt
         song_.timing(), act_edge->dest->timecode.ticks(), fill_length_ticks,
         rule_);
 
-    for (int sp = 2; sp <= max_sp_bars(); ++sp) {
+    for (int sp = kSpActivationBars; sp <= max_sp_bars(); ++sp) {
         act_edge->activation_initial_end_times[sp] =
             plusmeasure(act_edge->dest->timecode, sp_bars_to_measures(sp));
     }
@@ -388,28 +394,26 @@ void ScoreGraph::add_deact_edge() {
     }
 
     // The phrase chords this SP end can squeeze, in chart order
-    // (core/sqout_chord.h). The engine offers a path the first one its
-    // running window can still squeeze. Where collecting a chord moves this
-    // end is extend_deacts' answer, the same one the chord's own advance edge
-    // carries, cap included (finding 37). On or before the end, both
-    // branches' ends move there. After the end, only a late SqIn reaches it,
-    // so only the SqIn end moves; a chord after the end can never reach the
-    // ceiling (it sits 2 x cap measures past a note later than the end).
+    // (core/sqout_chord.h). The engine offers a path at most one of them
+    // (core::offered_phrase, D36). Where a late squeeze-in moves this end is
+    // extend_deacts' answer, the same one the chord's own advance edge
+    // carries, cap included (finding 37); a chord after the end can never
+    // reach the ceiling (it sits 2 x cap measures past a note later than the
+    // end). An early chord's moved end is on the path's own step already.
     const std::vector<const SongTimestamp*> window = core::squeeze_window_phrases(song_, end);
     for (const SongTimestamp* c : window) {
-        const DeactExtension moved = extend_deacts({end}, c->timecode).front();
         SqueezeChoice choice;
         choice.chord = c->timecode;
         choice.timing = offset_from_sp_end(c->timecode.ms(), end.ms());
         choice.late = core::after_sp_end(c->timecode.ticks(), end.ticks());
-        choice.sqout_time = choice.late ? end : moved.to;
-        choice.sqin_time = moved.to;
-        choice.clamped = moved.clamped;
         deact_edge->squeeze_choices.push_back(choice);
+        if (!choice.late) continue;
+        const DeactExtension moved = extend_deacts({end}, c->timecode).front();
+        deact_edge->squeeze_choices.back().sqin_time = moved.to;
         // A late SqIn's end can come before its own phrase: add its node
         // now, while it is still ahead (sqin_end_by_phrase). Any late
         // chord in the window can be the one offered.
-        if (choice.late && sqin_end_by_phrase(moved.to.ticks(), c->timecode.ticks()) &&
+        if (sqin_end_by_phrase(moved.to.ticks(), c->timecode.ticks()) &&
             pending_deacts_.find(moved.to.ticks()) == pending_deacts_.end()) {
             pending_deacts_[moved.to.ticks()] = moved.to;
             deact_heap_.push_back(moved.to);

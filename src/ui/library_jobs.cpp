@@ -9,6 +9,8 @@
 #include "app/report.h"
 #include "app/report_files.h"
 #include "app/user_messages.h"
+#include "core/error_kind.h"
+#include "parse/song.h"  // display_title, display_artist
 
 namespace hydra::ui {
 
@@ -26,7 +28,7 @@ ScanProgress ScanJob::snapshot() const {
 
 void ScanJob::run() {
     // The previous scan's rows: any chart whose files are unchanged
-    // (size+mtime) reuses its md5/metadata without being read again.
+    // (sig_unchanged) reuses its md5/metadata without being read again.
     store::ChartLibraryCache cache;
     try {
         cache = store_.chart_library_cache();
@@ -71,20 +73,10 @@ void ScanJob::run() {
         progress_.phase = ScanProgress::Phase::Writing;
     }
 
-    std::vector<store::ChartLibraryEntry> entries;
-    entries.reserve(items.size());
-    for (const app::ScanItem& item : items)
-        entries.push_back({item.md5, item.title, item.artist, item.charter, item.notespath,
-                           item.rootfolder, item.sig});
-
-    try {
-        store_.rebuild_chart_library(entries);
-    } catch (const std::exception& e) {
-        std::lock_guard<std::mutex> lock(mu_);
-        progress_.errors.push_back(std::string("Failed to write chart library: ") + e.what());
-    }
+    const std::optional<std::string> problem = app::save_scan_as_library(store_, items);
 
     std::lock_guard<std::mutex> lock(mu_);
+    if (problem) progress_.errors.push_back(*problem);
     progress_.phase = ScanProgress::Phase::Done;
     progress_.finished = true;
 }
@@ -134,25 +126,27 @@ std::optional<double> batch_eta_s(double elapsed_s, int completed, int total) {
     return elapsed_s / completed * (total - completed);
 }
 
-BatchJob::BatchJob(std::optional<std::string> search, app::BatchRun run,
-                   store::RecordStore& store, bool redo)
-    : search_(std::move(search)),
-      run_(std::move(run)),
-      store_(store),
-      redo_(redo),
-      workers_(app::batch_worker_count()) {}
+app::ScanItem scan_item_of(const store::ChartLibraryEntry& e) {
+    app::ScanItem item;
+    item.md5 = e.md5;
+    item.title = e.title;
+    item.artist = e.artist;
+    item.charter = e.charter;
+    item.notespath = e.notespath;
+    item.rootfolder = e.rootfolder;
+    item.timing = e.timing;
+    return item;
+}
 
-BatchJob::BatchJob(std::vector<store::ChartLibraryEntry> charts, app::BatchRun run,
-                   store::RecordStore& store, bool redo)
-    : given_(std::move(charts)),
+BatchJob::BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& store)
+    : plan_(std::move(plan)),
       run_(std::move(run)),
       store_(store),
-      redo_(redo),
       workers_(app::batch_worker_count()) {}
 
 void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
     analyze_ = std::move(analyze);
-    workers_ = std::max(1, workers);
+    workers_ = workers;  // stored as given: run_work_pool checks it
 }
 
 namespace {
@@ -222,10 +216,26 @@ void BatchJob::wait_while_paused() {
 void BatchJob::note_started(const std::string& notespath) {
     auto it = by_path_.find(notespath);
     if (it == by_path_.end()) return;
-    const app::ScanItem& item = items_[it->second];
+    const app::ScanItem& item = plan_.todo[it->second];
     std::lock_guard<std::mutex> lock(mu_);
-    snap_.current_title = item.title;
-    snap_.current_artist = item.artist;
+    snap_.current_title = display_title(item.title);
+    snap_.current_artist = display_artist(item.artist);
+}
+
+void BatchJob::finish_failed(const std::exception& e, std::string detail) {
+    std::lock_guard<std::mutex> lock(mu_);
+    snap_.run_error = app::plain_error(e);
+    snap_.run_error_detail = std::move(detail);
+    finish_locked();
+}
+
+void BatchJob::finish_locked() {
+    snap_.preparing = false;
+    snap_.current_title.clear();
+    snap_.current_artist.clear();
+    snap_.paused = false;
+    clock_.finish(steady_seconds());
+    snap_.finished = true;
 }
 
 BatchJob::Snapshot BatchJob::snapshot() const {
@@ -237,26 +247,7 @@ BatchJob::Snapshot BatchJob::snapshot() const {
 }
 
 void BatchJob::run() {
-    // Load the item list here rather than on the UI thread: an unbounded
-    // SELECT over a big library takes long enough to freeze a frame.
-    try {
-        std::vector<store::ChartLibraryEntry> entries =
-            given_ ? std::move(*given_)
-                   : store_.list_chart_library(search_, 0, -1);  // LIMIT -1 = no limit
-        items_.reserve(entries.size());
-        for (const store::ChartLibraryEntry& e : entries)
-            items_.push_back({e.md5, e.title, e.artist, e.charter, e.notespath, e.rootfolder});
-    } catch (const std::exception& e) {
-        std::lock_guard<std::mutex> lock(mu_);
-        snap_.preparing = false;
-        snap_.failures.push_back(app::plain_error(e));
-        snap_.failure_details.push_back(std::string("Could not load the library: ") + e.what());
-        ++snap_.failed;
-        clock_.finish(steady_seconds());
-        snap_.finished = true;
-        return;
-    }
-    for (size_t i = 0; i < items_.size(); ++i) by_path_.emplace(items_[i].notespath, i);
+    for (size_t i = 0; i < plan_.todo.size(); ++i) by_path_.emplace(plan_.todo[i].notespath, i);
 
     {
         std::lock_guard<std::mutex> lock(mu_);
@@ -264,27 +255,25 @@ void BatchJob::run() {
     }
     if (cancel_.load()) {
         std::lock_guard<std::mutex> lock(mu_);
-        clock_.finish(steady_seconds());
-        snap_.finished = true;
+        finish_locked();
         return;
     }
 
-    bool total_known = false;
-
     app::BatchCallbacks callbacks;
-    callbacks.on_progress = [this, &total_known](const app::BatchProgress& p) {
+    // run_batch counts; the snapshot copies all five numbers in one step, so
+    // a frame never reads a failure before the chart it belongs to.
+    callbacks.on_progress = [this](const app::BatchProgress& p) {
         std::lock_guard<std::mutex> lock(mu_);
         snap_.total = p.total;
         snap_.completed = p.completed;
-        if (!total_known) {
-            snap_.skipped = static_cast<int>(items_.size()) - p.total;
-            total_known = true;
-        }
+        snap_.analyzed = p.analyzed;
+        snap_.skipped = p.skipped;
+        snap_.failed = p.failed;
     };
-    callbacks.on_error = [this](const std::string& title, const std::string& error) {
+    callbacks.on_error = [this](const std::string& title, const std::string& sentence,
+                                const std::string& error) {
         std::lock_guard<std::mutex> lock(mu_);
-        ++snap_.failed;
-        snap_.failures.push_back(title + ": " + app::plain_error_text(error));
+        snap_.failures.push_back(title + ": " + sentence);
         snap_.failure_details.push_back(title + ": " + error);
     };
     callbacks.cancel = &cancel_;
@@ -299,14 +288,18 @@ void BatchJob::run() {
         note_started(path);
         return inner(path, settings, on_progress);
     };
-    app::run_batch(items_, run_, store_, redo_, workers_, callbacks);
+    // The plan was made before the job (D79), so run_batch reads nothing
+    // from the store before its first chart. Whatever still throws out of it
+    // ends the run as a whole.
+    try {
+        app::run_batch(plan_, run_, store_, workers_, callbacks);
+    } catch (const std::exception& e) {
+        finish_failed(e, app::plain_error_detail(e));
+        return;
+    }
 
     std::lock_guard<std::mutex> lock(mu_);
-    snap_.current_title.clear();
-    snap_.current_artist.clear();
-    snap_.paused = false;
-    clock_.finish(steady_seconds());
-    snap_.finished = true;
+    finish_locked();
 }
 
 // ---- AnalyzeJob -------------------------------------------------------
@@ -331,6 +324,10 @@ void AnalyzeJob::start() {
                                 throw app::AnalysisCancelled{};
                             progress_.store(f, std::memory_order_relaxed);
                         });
+                    // The song's length, worked out here so the save stays
+                    // quick.
+                    length_ = app::analysis_song_length(song_.timing, song_.notespath,
+                                                        result_->song, settings_);
                     return true;
                 } catch (const app::AnalysisCancelled&) {
                     return false;  // no error text: the UI discards a cancelled job
@@ -338,10 +335,7 @@ void AnalyzeJob::start() {
             });
         });
     } catch (const std::exception& e) {
-        error_ = e.what();
-        message_ = app::plain_error(e);
-        ok_ = false;
-        finished_.store(true);
+        fail(e);
     }
 }
 
@@ -350,7 +344,7 @@ app::AnalysisResult AnalyzeJob::take_result() { return std::move(*result_); }
 // ---- ReportJob --------------------------------------------------------
 
 ReportJob::ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-                     bool open_when_done, int hit_window_ms)
+                     bool open_when_done, double hit_window_ms)
     : store_(store),
       cap_(cap),
       lens_(lens),
@@ -379,7 +373,14 @@ void ReportJob::run() {
         // because the store is empty, and it must leave the last report on
         // disk alone.
         if (is_cancelled()) return false;
-        if (report.rows == 0) throw std::runtime_error("no records stored yet");
+        // generate_report says why the page is empty. Results stored under
+        // other settings throw the sentence that names them, which the strip
+        // shows as it is; an empty database keeps the app's own sentence.
+        if (report.rows == 0) {
+            if (report.empty_reason == app::report::EmptyReason::NothingUnderSettings)
+                throw KindedError(ErrorKind::AlreadyPlain, report.why_empty);
+            throw KindedError(ErrorKind::NoRecords, "no records stored yet");
+        }
 
         // A browser that won't open the page is not a failed report: the
         // page is saved, and the finished strip says so (audit B1).

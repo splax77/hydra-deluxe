@@ -19,26 +19,41 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/display_format.h"
 #include "app/dm_report.h"
 #include "env_util.h"
 #include "app/fill_report.h"
 #include "app/html_page.h"
+#include "app/library_query.h"
 #include "app/report.h"
 #include "app/report_files.h"
+#include "app/user_messages.h"
+#include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "record_fixtures.h"
+#include "search/graph.h"
 #include "store/record_store.h"
+#include "temp_util.h"
+#include "wcag_util.h"
 
 using namespace hydra;
 using namespace hydra::app;
 
 namespace {
+
+size_t occurrences(const std::string& text, const std::string& what) {
+    size_t n = 0;
+    for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) ++n;
+    return n;
+}
 
 // Analyze the first `want` non-empty corpus charts into a fresh in-memory
 // store and return how many records landed.
@@ -49,21 +64,14 @@ int fill_store(store::RecordStore& store, int cap, int want) {
     settings.sp_cap = cap;
 
     int added = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        if (added == want) break;
-        try {
-            AnalysisResult result = analyze_chart_file(path, settings);
-            if (result.song.is_empty() || result.record.paths.empty()) continue;
-            const std::string hyhash = "h" + std::to_string(added);
-            store.add_song(hyhash, "Title " + std::to_string(added), "Artist",
-                           "Charter", result.song);
-            store.add_record(
-                store::RecordKey{hyhash, "mode", store::CapQuery::at(cap)},
-                result.record);
-            ++added;
-        } catch (const std::exception&) {
-            continue;
-        }
+    for (const AnalysisResult& result :
+         corpus::analyzed_with_paths(settings, static_cast<size_t>(want))) {
+        const std::string hyhash = "h" + std::to_string(added);
+        store.add_song(hyhash, "Title " + std::to_string(added), "Artist", "Charter",
+                       result.song);
+        store.add_record(store::RecordKey{hyhash, "mode", store::CapQuery::at(cap)},
+                         result.record);
+        ++added;
     }
     return added;
 }
@@ -100,9 +108,175 @@ void check_cap(int cap) {
             << " rows, " << html.size() << " bytes");
 }
 
+// Stores H1's tied-variant record for chart `hyhash` at SP cap `cap` under
+// `lens`, with its song, so the report has three paths to list: two tied at
+// the top score and a lower one.
+void store_tied(store::RecordStore& store, const std::string& hyhash, int cap,
+                store::Lens lens = {}) {
+    HydraRecord record = test::tied_variant_record();
+    record.sp_cap = cap;
+    record.legacy_fills = lens.legacy_fills;
+    store.add_song(hyhash, "Tied " + hyhash, "Artist", "Charter", test::beat_song({}, {}, 13440));
+    store.add_record(store::RecordKey{hyhash, "mode", store::CapQuery::at(cap), lens}, record);
+}
+
 }  // namespace
 
+TEST_CASE("report rows: a tied top-score variant is optimal too") {
+    store::RecordStore store(":memory:");
+    store_tied(store, "tied", 4);
+
+    const std::vector<report::ReportRow> rows =
+        report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
+    REQUIRE(rows.size() == 3);
+    // Best score first: the root and its tied variant, then the lower root.
+    CHECK(rows[0].score == rows[1].score);
+    CHECK(rows[2].score < rows[1].score);
+    CHECK(rows[0].optimal);
+    CHECK(rows[1].optimal);
+    CHECK_FALSE(rows[2].optimal);
+
+    report::ReportOptions options;
+    options.cap = store::CapQuery::at(4);
+    const report::GeneratedReport page = report::generate_report(store, options);
+    // The subtitle still counts one record, however many paths tie.
+    CHECK(page.records == 1);
+    CHECK(occurrences(page.html, "\"opt\":true") == 2);
+    CHECK(occurrences(page.html, "\"opt\":false") == 1);
+    // "Best path only" and the bold row read the flag, not the rank.
+    CHECK(page.html.find("if (bestOnly && !r.opt) return false;") != std::string::npos);
+    CHECK(page.html.find("rowClass: r => r.opt ? 'best' : '',") != std::string::npos);
+    CHECK(page.html.find("r.rank !== 1") == std::string::npos);
+    CHECK(page.html.find("r.rank === 1") == std::string::npos);
+}
+
 TEST_CASE("report page embeds every stored record (4 bars)") { check_cap(4); }
+
+// collect_rows lists a record's paths in all_paths() order and numbers them
+// from 1, so that order has to be best first already. This guards it at the
+// report's own settings (fill_store's), where variants appear.
+TEST_CASE("all_paths lists paths best first on every corpus chart") {
+    AnalysisSettings settings;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 10;
+    settings.sp_cap = 4;
+    int charts = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, settings.prodrums, settings.bass2x,
+                                        settings.difficulty, settings.rules);
+        if (song.is_empty()) continue;
+        ++charts;
+        const std::vector<const Path*> all = corpus::analyzed(chart, settings).all_paths();
+        for (size_t i = 1; i < all.size(); ++i) {
+            INFO(chart << " path " << i);
+            CHECK(all[i]->totalscore() <= all[i - 1]->totalscore());
+        }
+    }
+    CHECK(charts > 0);
+}
+
+TEST_CASE("report counts every library copy of a chart, and an unlisted chart once") {
+    // D76: chart h0 sits in two library folders, so it counts twice, like
+    // the library counts it. D77: chart h1 has a result but no library row,
+    // so it counts once.
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store, 4, 2) == 2);
+    store::ChartLibraryEntry first;
+    first.md5 = "h0";
+    first.title = "Title 0";
+    first.notespath = "C:\\songs\\a\\notes.chart";
+    first.rootfolder = "C:\\songs";
+    store::ChartLibraryEntry copy = first;
+    copy.notespath = "C:\\other\\a\\notes.chart";
+    copy.rootfolder = "C:\\other";
+    store.rebuild_chart_library({first, copy});
+    REQUIRE(store.library_copies() == std::unordered_map<std::string, int>{{"h0", 2}});
+
+    report::ReportOptions options;
+    options.cap = store::CapQuery::at(4);
+    const report::GeneratedReport out = report::generate_report(store, options);
+    CHECK(out.records == 3);
+    CHECK(out.songs == 3);
+    CHECK(out.html.find("3 records across 3 charts") != std::string::npos);
+    // The Charts tile adds up "k" once per chart.
+    CHECK(out.html.find("\"k\":2") != std::string::npos);
+    CHECK(out.html.find("\"k\":1") != std::string::npos);
+}
+
+TEST_CASE("library copies are keyed like records_by_hash, and an unlisted chart counts once") {
+    // The scan writes lower case, but an older row may not: a page joins on
+    // normalize_chart_hash, so the copies do too.
+    store::RecordStore store(":memory:");
+    store::ChartLibraryEntry upper;
+    upper.md5 = "ABCDEF00112233445566778899AABBCC";
+    upper.title = "Upper";
+    upper.notespath = "C:\\songs\\a\\notes.chart";
+    store::ChartLibraryEntry lower = upper;
+    lower.md5 = "abcdef00112233445566778899aabbcc";
+    lower.notespath = "C:\\other\\a\\notes.chart";
+    store.rebuild_chart_library({upper, lower});
+
+    const std::unordered_map<std::string, int> library = report::library_copies_by_hash(store);
+    CHECK(library ==
+          std::unordered_map<std::string, int>{{"abcdef00112233445566778899aabbcc", 2}});
+    CHECK(store::RecordStore::copies_of(library, "abcdef00112233445566778899aabbcc") == 2);
+    CHECK(store::RecordStore::copies_of(library, "00ff00ff00ff00ff00ff00ff00ff00ff") == 1);
+}
+
+// The page's Charts tile adds up "k" once per "c" in JavaScript, and
+// generate_report adds up each chart's copies once in C++. The page has to
+// count per filtered view, so it can't print the C++ total. This pins that
+// both count the same thing: every row carries its chart's number as "c" and
+// that chart's copies as "k", and the tile sums exactly those two fields.
+TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up") {
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store, 4, 2) == 2);
+    std::vector<store::ChartLibraryEntry> library;
+    for (const auto& [md5, copies] : {std::pair<const char*, int>{"h0", 2}, {"h1", 3}}) {
+        for (int i = 0; i < copies; ++i) {
+            store::ChartLibraryEntry e;
+            e.md5 = md5;
+            e.title = md5;
+            e.rootfolder = "C:\\songs" + std::to_string(i);
+            e.notespath = e.rootfolder + "\\" + md5 + "\\notes.chart";
+            library.push_back(e);
+        }
+    }
+    store.rebuild_chart_library(library);
+
+    report::ReportOptions options;
+    options.cap = store::CapQuery::at(4);
+    const report::GeneratedReport out = report::generate_report(store, options);
+    CHECK(out.songs == 5);
+    CHECK(out.html.find(" across 5 charts") != std::string::npos);
+
+    // Every row of a chart carries that chart's copies, and one of two
+    // numbers for the chart.
+    size_t rows_h0 = 0, rows_h1 = 0;
+    for (const report::ReportRow& r :
+         report::collect_rows(store, options.max_paths, options.cap, options.lens))
+        ++(r.hyhash == "h0" ? rows_h0 : rows_h1);
+    REQUIRE(rows_h0 > 0);
+    REQUIRE(rows_h1 > 0);
+    CHECK(static_cast<int64_t>(rows_h0 + rows_h1) == out.rows);
+    CHECK(occurrences(out.html, ",\"k\":2,") == rows_h0);
+    CHECK(occurrences(out.html, ",\"k\":3,") == rows_h1);
+    CHECK(static_cast<int64_t>(occurrences(out.html, "{\"c\":0,") +
+                               occurrences(out.html, "{\"c\":1,")) == out.rows);
+    CHECK(occurrences(out.html, "{\"c\":2,") == 0);
+    CHECK(out.html.find("['Charts', fmt([...new Map(rows.map(r => [r.c, r.k])).values()]"
+                        ".reduce((n, k) => n + k, 0))]") != std::string::npos);
+
+    // The count beside the filters counts paths here, and scores on the
+    // leaderboard page: neither page gives its own PAGE.count, so the shared
+    // script counts one per row.
+    CHECK(out.html.find("noun: 'paths',") != std::string::npos);
+    CHECK(out.html.find("\n  count: ") == std::string::npos);
+    const std::string dm = dm_report::build_dm_html({}, "sub", "foot");
+    CHECK(dm.find("noun: 'scores',") != std::string::npos);
+    CHECK(dm.find("\n  count: ") == std::string::npos);
+    CHECK(dm.find("const countOf = PAGE.count || (rs => rs.length);") != std::string::npos);
+}
 
 TEST_CASE("report lists only the wanted cap and names it") {
     store::RecordStore store(":memory:");
@@ -111,17 +285,8 @@ TEST_CASE("report lists only the wanted cap and names it") {
     AnalysisSettings settings;
     settings.depth_value = 10;
     settings.sp_cap = 8;
-    for (const std::string& path : corpus::chart_paths()) {
-        try {
-            AnalysisResult result = analyze_chart_file(path, settings);
-            if (result.song.is_empty() || result.record.paths.empty()) continue;
-            store.add_record(store::RecordKey{"h0", "mode", store::CapQuery::at(8)},
-                             result.record);
-            break;
-        } catch (const std::exception&) {
-            continue;
-        }
-    }
+    store.add_record(store::RecordKey{"h0", "mode", store::CapQuery::at(8)},
+                     corpus::first_analyzed_with_paths(settings).record);
     REQUIRE(store.counts().second == 2);
 
     report::ReportOptions options;
@@ -137,6 +302,28 @@ TEST_CASE("report lists only the wanted cap and names it") {
     for (const report::ReportRow& row : report::collect_rows(store, 100, options.cap, options.lens))
         if (row.rank == 1) ++rank1;
     CHECK(rank1 == 1);
+
+    // The cap reads through the house count rule: one bar, and commas from
+    // 1,000 (D48 Q12).
+    store_tied(store, "one", 1);
+    store_tied(store, "thousand", 1000);
+    options.cap = store::CapQuery::at(1);
+    CHECK(report::generate_report(store, options).html.find("SP cap 1 bar<") !=
+          std::string::npos);
+    options.cap = store::CapQuery::at(1000);
+    CHECK(report::generate_report(store, options).html.find("SP cap 1,000 bars") !=
+          std::string::npos);
+
+    // A 1.0 page names its rule by the fill rule's one long name.
+    store::Lens legacy;
+    legacy.legacy_fills = true;
+    store_tied(store, "legacy", 4, legacy);
+    options.cap = store::CapQuery::at(4);
+    options.lens = legacy;
+    CHECK(report::generate_report(store, options)
+              .html.find(std::string("SP cap 4 bars — ") +
+                         fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
+                         " fills") != std::string::npos);
 }
 
 TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") {
@@ -146,68 +333,125 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
     settings.depth_value = 10;
     settings.sp_cap = 4;
 
-    // songmeta names written before the fallback existed.
-    const std::vector<std::string> stored_names = {"", "<unknown title>"};
+    // songmeta names written before the fallback existed, a title with a
+    // bold tag, and H1's title made only of tags. Each pairs with the name
+    // the report shows.
+    const std::vector<std::pair<std::string, std::string>> names = {
+        {"", kUnknownTitle},
+        {"<unknown title>", kUnknownTitle},
+        {"<b>Bold</b> Song", "Bold Song"},
+        {test::kTagOnlyTitle, kUnknownTitle},
+    };
     size_t added = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        if (added == stored_names.size()) break;
-        try {
-            AnalysisResult result = analyze_chart_file(path, settings);
-            if (result.song.is_empty() || result.record.paths.empty()) continue;
-            const std::string hyhash = "u" + std::to_string(added);
-            store.add_song(hyhash, stored_names[added], "Artist", "Charter", result.song);
-            store.add_record(
-                store::RecordKey{hyhash, "mode", store::CapQuery::at(settings.sp_cap)},
-                result.record);
-            ++added;
-        } catch (const std::exception&) {
-            continue;
-        }
+    for (const AnalysisResult& result : corpus::analyzed_with_paths(settings, names.size())) {
+        const std::string hyhash = "u" + std::to_string(added);
+        store.add_song(hyhash, names[added].first, "<i>Artist</i>", "<b>Charter</b>",
+                       result.song);
+        store.add_record(store::RecordKey{hyhash, "mode", store::CapQuery::at(settings.sp_cap)},
+                         result.record);
+        ++added;
     }
-    REQUIRE(added == stored_names.size());
+    REQUIRE(added == names.size());
 
     std::vector<report::ReportRow> rows =
         report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
     REQUIRE(!rows.empty());
-    for (const report::ReportRow& row : rows) CHECK(row.song == kUnknownTitle);
+    for (const report::ReportRow& row : rows) {
+        INFO(row.hyhash);
+        const size_t i = static_cast<size_t>(std::stoi(row.hyhash.substr(1)));
+        CHECK(row.song == names[i].second);
+        // Artist and charter lose their tags too.
+        CHECK(row.artist == "Artist");
+        CHECK(row.charter == "Charter");
+    }
+
+    // An artist made only of tags reads "(unknown)" by the title's rule
+    // (D50 item 5); a charter made only of tags keeps today's blank.
+    // add_song keeps the latest names it is given.
+    store.add_song("u0", "Song", test::kTagOnlyTitle, test::kTagOnlyTitle,
+                   test::beat_song({}, {}, 13440));
+    rows = report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
+    bool saw_u0 = false;
+    for (const report::ReportRow& row : rows) {
+        if (row.hyhash != "u0") continue;
+        saw_u0 = true;
+        CHECK(row.artist == kUnknownTitle);
+        CHECK(row.charter == "");
+    }
+    CHECK(saw_u0);
+
+    // The scan's artist placeholder reads "(unknown)" too (D56 item 2), and a
+    // charter loses its tags and the spaces at its ends (display_charter).
+    store.add_song("u0", "Song", kUnknownArtist, " <b>Bob</b> ", test::beat_song({}, {}, 13440));
+    rows = report::collect_rows(store, /*max_paths=*/100, store::CapQuery::at(4), store::Lens{});
+    saw_u0 = false;
+    for (const report::ReportRow& row : rows) {
+        if (row.hyhash != "u0") continue;
+        saw_u0 = true;
+        CHECK(row.artist == kUnknownTitle);
+        CHECK(row.charter == "Bob");
+    }
+    CHECK(saw_u0);
+}
+
+TEST_CASE("fill_rule_for: the legacy_fills flag and the file stamp each name one fill rule") {
+    // legacy_fills on is the Clone Hero 1.0 rule; off is the normal 1.1 rule.
+    CHECK(fill_rule_for(true) == FillDeadlineRule::Ch10);
+    CHECK(fill_rule_for(false) == FillDeadlineRule::Ch11);
+    // A stamp reads back as the rule that wrote it; any other text is no rule.
+    CHECK(fill_rule_from_stamp("ch10") == FillDeadlineRule::Ch10);
+    CHECK(fill_rule_from_stamp("ch11") == FillDeadlineRule::Ch11);
+    CHECK_FALSE(fill_rule_from_stamp("ch12").has_value());
+    CHECK_FALSE(fill_rule_from_stamp("").has_value());
 }
 
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     using report::tier_for;
 
     // Default window 85 -> budget 170: bands 2 / 42.5 / 85 / 127.5 / 170.
+    // Each edge belongs to the band below it (D48 Q3): a timing on the
+    // difficult floor is not past it, so 2.0 ms reads Normal, and 170.0 ms is
+    // still inside the two-hit budget, so it reads Insane+.
     CHECK(tier_for(std::nullopt).first == "None");
     CHECK(tier_for(1.9).first == "Normal");
-    CHECK(tier_for(2.0).first == "Hard");
-    CHECK(tier_for(42.4).first == "Hard");
-    CHECK(tier_for(42.5).first == "Extreme");
-    CHECK(tier_for(85.0).first == "Insane");
-    CHECK(tier_for(127.5).first == "Insane+");
-    CHECK(tier_for(169.9).first == "Insane+");
-    CHECK(tier_for(170.0).first == "Beyond");
-    CHECK(tier_for(170.0).second == "t5");
+    CHECK_FALSE(past_difficult_floor(2.0));
+    CHECK(tier_for(2.0).first == "Normal");
+    CHECK(past_difficult_floor(2.1));
+    CHECK(tier_for(2.1).first == "Hard");
+    CHECK(tier_for(42.5).first == "Hard");
+    CHECK(tier_for(42.6).first == "Extreme");
+    CHECK(tier_for(85.0).first == "Extreme");
+    CHECK(tier_for(85.1).first == "Insane");
+    CHECK(tier_for(127.5).first == "Insane");
+    CHECK(tier_for(127.6).first == "Insane+");
+    CHECK(tier_for(170.0).first == "Insane+");
+    CHECK(tier_for(170.0).second == "t4");
+    CHECK(tier_for(170.1).first == "Beyond");
+    CHECK(tier_for(170.1).second == "t5");
 
     // At the historical 70 ms window the original 2/35/70/105/140 ladder
-    // reproduces exactly.
-    CHECK(tier_for(1.9, 70.0).first == "Normal");
-    CHECK(tier_for(34.9, 70.0).first == "Hard");
-    CHECK(tier_for(35.0, 70.0).first == "Extreme");
-    CHECK(tier_for(70.0, 70.0).first == "Insane");
-    CHECK(tier_for(105.0, 70.0).first == "Insane+");
-    CHECK(tier_for(140.0, 70.0).first == "Beyond");
+    // reproduces, with the same edge rule.
+    CHECK(tier_for(2.0, 70.0).first == "Normal");
+    CHECK(tier_for(35.0, 70.0).first == "Hard");
+    CHECK(tier_for(35.1, 70.0).first == "Extreme");
+    CHECK(tier_for(70.1, 70.0).first == "Insane");
+    CHECK(tier_for(105.1, 70.0).first == "Insane+");
+    CHECK(tier_for(140.0, 70.0).first == "Insane+");
+    CHECK(tier_for(140.1, 70.0).first == "Beyond");
 }
 
 TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
     // tier_for and the page's embedded tier table read the one ladder in
     // core/squeeze_rating.h, so every banded entry's cutoff is exactly where
-    // the label flips to the next entry's.
+    // the label flips to the next entry's: the cutoff itself still reads the
+    // entry's own name (D48 Q3), and just past it reads the next one.
     std::vector<TimingTier> tiers = timing_tiers(85.0);
     REQUIRE(tiers.size() >= 2);
     for (size_t i = 0; i + 1 < tiers.size(); ++i) {
         if (!tiers[i].cutoff) continue;
         const double cutoff = *tiers[i].cutoff;
-        CHECK(report::tier_for(cutoff - 0.01, 85.0).first == tiers[i].name);
-        CHECK(report::tier_for(cutoff, 85.0).first == tiers[i + 1].name);
+        CHECK(report::tier_for(cutoff, 85.0).first == tiers[i].name);
+        CHECK(report::tier_for(cutoff + 0.01, 85.0).first == tiers[i + 1].name);
     }
 }
 
@@ -229,13 +473,82 @@ TEST_CASE("report payload carries the hit window and the tier table") {
 
     // The dropdown is payload-built; no hardcoded band strings remain.
     CHECK(html.find("Beyond 140ms") == std::string::npos);
+
+    // The Hardest ms and Early fill cells print the app's own one-decimal
+    // text, so an exact half rounds the way the app rounds it (D48 Q2, Q5).
+    // The numbers stay beside the text for sorting and the tiles.
+    report::ReportRow timed;
+    timed.song = "Through The Fire";
+    timed.artist = "DragonForce";
+    timed.charter = "Some Charter";
+    timed.path = "1";
+    timed.tier = "Hard";
+    timed.tok = "t1";
+    timed.ms = 12.25;
+    timed.efill = -3.25;
+    report::ReportRow untimed = timed;
+    untimed.ms.reset();
+    untimed.efill.reset();
+    const std::string rows = report::build_html({timed, untimed}, "sub", "foot", 85.0);
+    CHECK(rows.find("\"ms\":12.25,\"ms_text\":\"" + format_ms(12.25) + "\"") !=
+          std::string::npos);
+    CHECK(rows.find("\"efill\":-3.25,\"efill_text\":\"" + format_ms(-3.25) + "\"") !=
+          std::string::npos);
+    CHECK(rows.find("\"ms\":null,\"ms_text\":null") != std::string::npos);
+    CHECK(rows.find("\"efill\":null,\"efill_text\":null") != std::string::npos);
+    CHECK(rows.find("['num', r.ms_text === null ? DASH : r.ms_text],") != std::string::npos);
+    CHECK(rows.find("['num', r.efill_text === null ? DASH : r.efill_text],") !=
+          std::string::npos);
+    CHECK(rows.find("fmtMs") == std::string::npos);
+    CHECK(rows.find("toFixed(1)") == std::string::npos);
+
+    // Each row carries its search text: the library's fold of the shown song,
+    // artist, charter and path (D48 Q31).
+    const std::string search = fold_for_search(timed.song + " " + timed.artist + " " +
+                                               timed.charter + " " + timed.path);
+    CHECK(search == "through the fire dragonforce some charter 1");
+    CHECK(occurrences(rows, "\"search\":\"" + search + "\"") == 2);
 }
 
-TEST_CASE("report page reads the Beyond edge from the tier table") {
+TEST_CASE("report payload: the average multiplier is C++ text from format_avg_mult") {
+    // The cell prints the payload's mult_text; the number beside it stays
+    // for sorting. The page never formats the multiplier itself.
+    report::ReportRow row;
+    row.song = "Song";
+    row.path = "1";
+    row.tier = "None";
+    row.tok = "tn";
+    row.mult = 2.5;
+    const std::string html = report::build_html({row}, "sub", "foot", 85.0);
+    CHECK(html.find("\"mult\":2.5,\"mult_text\":\"2.500\"") != std::string::npos);
+    CHECK(html.find("['num', r.mult_text],") != std::string::npos);
+    CHECK(html.find("r.mult.toFixed(") == std::string::npos);
+}
+
+TEST_CASE("report payload: the search field is folded and tag-free") {
+    report::ReportRow row;
+    row.song = "Halo";
+    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
+    row.charter = "<b>Bob</b>";
+    row.path = "1";
+    row.tier = "None";
+    row.tok = "tn";
+    const std::string html = report::build_html({row}, "sub", "foot", 85.0);
+    CHECK(html.find("\"search\":\"halo beyonce bob 1\"") != std::string::npos);
+}
+
+TEST_CASE("report page reads the Beyond edge from the payload") {
+    // The edge travels in the page's data as the whole number the footer
+    // prints, and the "Past N ms" tile counts the rows tier_for already put
+    // in Beyond, so the page never works out either fact again.
     std::string html = report::build_html({}, "sub", "foot", /*hit_window_ms=*/85.0);
-    CHECK(html.find("const BEYOND = Math.max(") != std::string::npos);
+    CHECK(html.find("\"beyond_edge_ms\":170") != std::string::npos);
+    CHECK(html.find("DATA.beyond_edge_ms") != std::string::npos);
+    CHECK(html.find("Math.max(...DATA.tiers") == std::string::npos);
     CHECK(html.find("HIT_WINDOW * 2") == std::string::npos);
-    CHECK(html.find("'Past ' + BEYOND + ' ms'") != std::string::npos);
+    CHECK(html.find("const beyond = rows.filter(r => r.tier === 'Beyond').length;") !=
+          std::string::npos);
+    CHECK(html.find("r.ms > BEYOND") == std::string::npos);
 }
 
 
@@ -253,26 +566,89 @@ TEST_CASE("generate_report: one seam frames the page for every entry point") {
     CHECK(result.rows >= added);
 
     // The framing strings are part of the interface: the CLI and the GUI's
-    // ReportJob both ship exactly this subtitle and footer.
-    std::string subtitle = report::counted(result.records, "record", "records") +
-                           " across " + report::counted(result.songs, "chart", "charts") +
-                           " — top 5 paths per chart";
+    // ReportJob both ship exactly this subtitle and footer. The cut is per
+    // chart and mode, and the page lists every mode at the current cap.
+    CHECK(result.empty_reason == report::EmptyReason::None);
+    std::string subtitle = counted(result.records, "record", "records") + " across " +
+                           counted(result.songs, "chart", "charts") +
+                           " — every mode at the current cap, top 5 paths per chart and mode";
     CHECK(result.html.find(subtitle) != std::string::npos);
-    CHECK(result.html.find("Generated from hydra.db. Timing tiers match") !=
+    // D50 item 1. The default 85 ms hit window puts Beyond past 170 ms, the
+    // same number the Beyond chip and the "Past 170 ms" tile print. The page
+    // escapes the apostrophes.
+    CHECK(result.html.find(
+              "<p>Generated from hydra.db. Timing tiers measure how big each "
+              "squeeze is, in steps of your hit window. The Paths tab&#x27;s row "
+              "labels measure how far a hit lands from the Star Power end, so the "
+              "two can differ. &#x27;Beyond&#x27; means past the 170 ms window.</p>") !=
           std::string::npos);
-    CHECK(result.html.find("past the 170 ms window") != std::string::npos);
+    CHECK(result.html.find("Timing tiers match") == std::string::npos);
 
     // --all-paths wording.
     options.max_paths = report::kEveryPathSentinel;
     CHECK(report::generate_report(store, options)
-              .html.find(report::counted(result.songs, "chart", "charts") + " — every path") !=
+              .html.find(counted(result.songs, "chart", "charts") + " — every path") !=
           std::string::npos);
 
-    // An empty store yields counts but no page.
+    // An empty store yields no page, and says nothing is stored.
     store::RecordStore empty(":memory:");
     report::GeneratedReport none = report::generate_report(empty, options);
     CHECK(none.rows == 0);
     CHECK(none.html.empty());
+    CHECK(none.empty_reason == report::EmptyReason::NothingStored);
+
+    // Records stored at cap 4, asked at cap 8: the page is empty because of
+    // the settings, and the reason names them (finding 105, D48 Q28).
+    options.cap = store::CapQuery::at(8);
+    report::GeneratedReport off = report::generate_report(store, options);
+    CHECK(off.rows == 0);
+    CHECK(off.html.empty());
+    CHECK(off.empty_reason == report::EmptyReason::NothingUnderSettings);
+    const std::string sentence =
+        "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
+        "Analyze with these settings, or change them.";
+    CHECK(off.why_empty == sentence);
+    // The app's ReportJob throws that sentence as AlreadyPlain, and the strip
+    // shows it as it is.
+    CHECK(plain_error(hydra::KindedError(hydra::ErrorKind::AlreadyPlain, off.why_empty)) ==
+          sentence);
+}
+
+TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths stays a count (86)") {
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store, 4, 1) > 0);
+
+    // --all-paths asks for the sentinel, and only that reads "every path".
+    report::ReportOptions options;
+    options.max_paths = report::kEveryPathSentinel;
+    CHECK(report::generate_report(store, options).html.find(" — every path — ") !=
+          std::string::npos);
+
+    // A large --paths below it lists at most that many, so it says so.
+    options.max_paths = 200000000;
+    const std::string html = report::generate_report(store, options).html;
+    CHECK(html.find("top 200,000,000 paths per chart and mode") != std::string::npos);
+    CHECK(html.find(" — every path") == std::string::npos);
+
+    // 140: the hit window keeps a decimal, starting from the default.
+    CHECK(std::is_same<decltype(report::ReportOptions{}.hit_window_ms), double>::value);
+    CHECK(report::ReportOptions{}.hit_window_ms == kDefaultHitWindowMs);
+}
+
+TEST_CASE("nothing_under_settings frames the cap, the middle words and the ending") {
+    // One frame for every empty page (finding 105, D50 item 3): the path
+    // report passes its fill rule, the fill comparison its chart mode and
+    // " in either database".
+    CHECK(report::nothing_under_settings(8, "Clone Hero 1.1 fills") ==
+          "Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills). "
+          "Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings(4, "Expert Pro Drums, 2x Bass",
+                                         " in either database") ==
+          "Nothing is analyzed under these settings (SP cap 4, Expert Pro Drums, 2x Bass) "
+          "in either database. Analyze with these settings, or change them.");
+    CHECK(report::nothing_under_settings(1200, "Clone Hero 1.0 fills") ==
+          "Nothing is analyzed under these settings (SP cap 1,200, Clone Hero 1.0 fills). "
+          "Analyze with these settings, or change them.");
 }
 
 TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
@@ -290,16 +666,11 @@ TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
     report::GeneratedReport result = report::generate_report(store, options);
     CHECK(result.rows == 0);
     CHECK(result.html.empty());
+    CHECK(result.empty_reason == report::EmptyReason::Cancelled);
 }
 
 TEST_CASE("write_report_file swaps the page in and leaves no .tmp behind") {
-    // Same temp-path recipe as tests/test_store.cpp's temp_db: the Windows
-    // temp directory, tagged and pid-suffixed so parallel test runs don't
-    // collide.
-    wchar_t tmp_dir[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp_dir);
-    const std::string path = hydra::wide_to_utf8(tmp_dir) + "hydra_test_report_file_" +
-                              std::to_string(GetCurrentProcessId()) + ".html";
+    const std::string path = testtemp::temp_path("report_file", ".html");
 
     hydra::app::write_report_file(path, "<html>old</html>");
     hydra::app::write_report_file(path, "<html>new</html>");
@@ -347,10 +718,36 @@ TEST_CASE("the three report pages share one stylesheet and one script") {
         CHECK(page->find(".delta {") == std::string::npos);
         CHECK(page->find(".rank {") == std::string::npos);
         CHECK(page->find("data-theme") == std::string::npos);
+        // The pages search words only (D56 item 1, D57 item 3): accents fold,
+        // and every typed word must appear in the text the page shows; quotes
+        // and field prefixes are ordinary words. No page joins its fields and
+        // looks for the query as one lowercased run, and every page carries
+        // the fold table Hydra built from the library's fold.
+        CHECK(page->find("toLowerCase().includes(") == std::string::npos);
+        CHECK(page->find("const FOLD = {\"A\":\"a\",") != std::string::npos);
     }
+    // The shared script folds the query through that table, splits it into
+    // words and keeps a row when every word is in its search text. It holds no
+    // fold of its own: no lowercasing and no accented letter, raw or escaped.
+    const std::string script = html::kReportJs;
+    CHECK(script.find("FOLD[ch]") != std::string::npos);
+    CHECK(script.find(".split(/\\s+/)") != std::string::npos);
+    CHECK(script.find("words.every(w => r.search.includes(w))") != std::string::npos);
+    CHECK(script.find("toLowerCase") == std::string::npos);
+    CHECK(std::none_of(script.begin(), script.end(),
+                       [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
+    for (const char* range : {"\\u00", "\\u01", "\\uff", "\\uFF"})
+        CHECK(script.find(range) == std::string::npos);
     CHECK(paths.find("<div class=\"wrap\">") != std::string::npos);
     CHECK(dm.find("<div class=\"wrap dm\">") != std::string::npos);
     CHECK(fill.find("<div class=\"wrap fill\">") != std::string::npos);
+
+    // Every number on the path report groups through the shared fmt, which
+    // uses one fixed rule (1,234), whatever language the browser is set to
+    // (D48 Q12). The single-owner scan keeps it that way.
+    CHECK(std::string(html::kReportJsHead).find("n.toLocaleString('en-US')") !=
+          std::string::npos);
+    CHECK(paths.find(".toLocaleString()") == std::string::npos);
 }
 
 TEST_CASE("tier_for over a built table matches the window form") {
@@ -365,22 +762,10 @@ TEST_CASE("records_by_hash keys every listed record by its lower-case hash") {
     store::RecordStore store(":memory:");
     AnalysisSettings settings;
     settings.depth_value = 0;
-    bool added = false;
-    for (const std::string& path : corpus::chart_paths()) {
-        try {
-            AnalysisResult result = analyze_chart_file(path, settings);
-            if (result.song.is_empty() || result.record.paths.empty()) continue;
-            store.add_song("ABCDEF0123", "Title", "Artist", "Charter", result.song);
-            store.add_record(
-                store::RecordKey{"ABCDEF0123", "mode", store::CapQuery::at(4)},
-                result.record);
-            added = true;
-            break;
-        } catch (const std::exception&) {
-            continue;
-        }
-    }
-    REQUIRE(added);
+    const AnalysisResult result = corpus::first_analyzed_with_paths(settings);
+    store.add_song("ABCDEF0123", "Title", "Artist", "Charter", result.song);
+    store.add_record(store::RecordKey{"ABCDEF0123", "mode", store::CapQuery::at(4)},
+                     result.record);
 
     const std::unordered_map<std::string, store::RecordListing> by_hash =
         report::records_by_hash(store, "mode", store::CapQuery::at(4), store::Lens{});
@@ -425,6 +810,8 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
         r.sqin = rank;
         r.sqout = 2 - rank % 2;
         r.notes = 1200 + rank;
+        r.hyhash = song;
+        r.copies = 1;
         paths.push_back(r);
     };
     std::string long_path;
@@ -437,8 +824,12 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
     add_path("Song C", "Expert Drums, 1x Bass", 1, "1 1 1", 77000, 90.0, std::nullopt);
 
     std::vector<dm_report::DmReportRow> dm;
+    // The delta, the percent (in hundredths, as the payload carries it) and
+    // whether the score is above optimal are typed, not worked out again from
+    // the two scores.
     auto add_dm = [&](const char* song, int64_t actual, std::optional<int64_t> optimal,
-                      const char* status, bool fc, std::optional<int> rank) {
+                      std::optional<int64_t> delta, std::optional<int64_t> pct_h,
+                      const char* status, bool above, bool fc, std::optional<int> rank) {
         dm_report::DmReportRow r;
         r.song = song;
         r.artist = "Artist";
@@ -446,25 +837,28 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
         r.identifier = "hash";
         r.actual = actual;
         r.optimal = optimal;
-        if (optimal) r.delta = *optimal - actual;
-        if (optimal && *optimal > 0)
-            r.pct = static_cast<double>(actual) / static_cast<double>(*optimal) * 100.0;
+        r.delta = delta;
+        r.pct_h = pct_h;
         r.is_fc = fc;
         r.percent = fc ? 100 : 97;
         r.speed = 100;
         r.rank = rank;
         r.posted = "2026-09-20T12:34:56Z";
         r.status = status;
+        r.above_optimal = above;
         dm.push_back(r);
     };
-    add_dm("Song A", 120000, 123456, "matched", true, 3);
-    add_dm("Song B", 251000, 250000, "above optimal", false, 1);
-    add_dm("Song C", 90000, std::nullopt, "not in library", false, std::nullopt);
-    add_dm("Song D", 80000, std::nullopt, "not analyzed", false, std::nullopt);
+    add_dm("Song A", 120000, 123456, 3456, 9720, "under optimal", false, true, 3);
+    add_dm("Song B", 251000, 250000, -1000, 10040, "above optimal", true, false, 1);
+    add_dm("Song C", 90000, std::nullopt, std::nullopt, std::nullopt, "not in library", false,
+           false, std::nullopt);
+    add_dm("Song D", 80000, std::nullopt, std::nullopt, std::nullopt, "not analyzed", false,
+           false, std::nullopt);
 
     std::vector<fill_report::FillCompareRow> fill;
     auto add_fill = [&](const char* song, std::optional<int64_t> old_score,
-                        std::optional<int64_t> new_score, const char* status) {
+                        std::optional<int64_t> new_score, std::optional<int64_t> delta,
+                        const char* status) {
         fill_report::FillCompareRow r;
         r.song = song;
         r.artist = "Artist";
@@ -472,18 +866,18 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
         r.hyhash = song;
         r.old_score = old_score;
         r.new_score = new_score;
-        if (old_score && new_score) r.delta = *new_score - *old_score;
+        r.delta = delta;
         if (old_score) { r.old_path = "1-E2 0"; r.old_acts = 2; }
         if (new_score) { r.new_path = "1-E2 0-E1"; r.new_acts = 3; }
         r.notes = 900;
         r.status = status;
         fill.push_back(r);
     };
-    add_fill("Song A", 100000, 100500, "1.1 higher");
-    add_fill("Song B", 100000, 99000, "1.0 higher");
-    add_fill("Song C", 100000, 100000, "same");
-    add_fill("Song D", 100000, std::nullopt, "only 1.0");
-    add_fill("Song E", std::nullopt, 100000, "only 1.1");
+    add_fill("Song A", 100000, 100500, 500, "1.1 higher");
+    add_fill("Song B", 100000, 99000, -1000, "1.0 higher");
+    add_fill("Song C", 100000, 100000, 0, "same");
+    add_fill("Song D", 100000, std::nullopt, std::nullopt, "only 1.0");
+    add_fill("Song E", std::nullopt, 100000, std::nullopt, "only 1.1");
 
     write_report_file(out / "paths.html",
                       report::build_html(paths, "Sample subtitle", "Sample footer", 85.0));
@@ -511,10 +905,7 @@ struct DocumentsSandbox {
         PathOverrides cleared = previous;
         cleared.db_path.clear();
         set_path_overrides(cleared);
-        wchar_t tmp[MAX_PATH];
-        GetTempPathW(MAX_PATH, tmp);
-        root = fs::path(tmp) / ("hydra_test_docs_" + std::to_string(GetCurrentProcessId())) /
-               fs::u8path(tag);
+        root = hydra::os_path(testtemp::temp_dir(std::string("docs_") + tag));
         std::error_code ec;
         fs::remove_all(root, ec);
         fs::create_directories(root);
@@ -537,7 +928,8 @@ TEST_CASE("reports_dir is Documents\\Hydra, made on first use") {
     const fs::path dir = reports_dir();
     CHECK(dir == box.root / "Hydra");
     CHECK(fs::is_directory(dir));
-    // Every report path helper lives in it.
+    // Every report path helper lives in it. The names are what a person finds
+    // on disk, so the test pins them as text.
     CHECK(fs::path(report_html_path()) == dir / "hydra_paths.html");
     CHECK(fs::path(dm_report_html_path()) == dir / "hydra_dmcompare.html");
 }
@@ -578,24 +970,16 @@ std::string col_line(const std::string& page, const std::string& key) {
     return page.substr(at, page.find('\n', at) - at);
 }
 
-size_t occurrences(const std::string& text, const std::string& what) {
-    size_t n = 0;
-    for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + 1)) ++n;
-    return n;
-}
-
-// WCAG 2.2 relative luminance of "#rrggbb".
+// WCAG 2.2 relative luminance of "#rrggbb" (testwcag owns the formula).
 double luminance(const std::string& hex) {
     auto channel = [&hex](size_t at) {
-        const double c = std::stoi(hex.substr(at, 2), nullptr, 16) / 255.0;
-        return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4);
+        return std::stoi(hex.substr(at, 2), nullptr, 16) / 255.0;
     };
-    return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+    return testwcag::relative_luminance(channel(1), channel(3), channel(5));
 }
 
 double contrast(const std::string& a, const std::string& b) {
-    const double la = luminance(a), lb = luminance(b);
-    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+    return testwcag::contrast_ratio(luminance(a), luminance(b));
 }
 
 // The "--name: #rrggbb" tokens of the first ":root {" block at or after `from`.
@@ -671,7 +1055,7 @@ TEST_CASE("report pages number their rows in a # column") {
     // The shared script adds the column, so all three pages get it.
     const std::string js = html::kReportJs;
     CHECK(js.find("th.textContent = '#';") != std::string::npos);
-    CHECK(js.find("idx.textContent = (++n).toLocaleString();") != std::string::npos);
+    CHECK(js.find("idx.textContent = fmt(++n);") != std::string::npos);
     // The sort control and the arrows walk the real columns, not the # one.
     CHECK(js.find("document.querySelectorAll('#head th.sortable')") != std::string::npos);
     CHECK(std::string(html::kReportCss).find("th.idx, td.idx {") != std::string::npos);
@@ -698,6 +1082,28 @@ TEST_CASE("path report explains and renames its columns") {
     // The search box and the tier dropdown have names a screen reader reads.
     CHECK(html.find("id=\"q\" aria-label=\"Search paths\"") != std::string::npos);
     CHECK(html.find("id=\"tier\" aria-label=\"Timing tier\"") != std::string::npos);
+    // The tile over the table carries the column's name, since it can show an
+    // early fill as well as a squeeze (D48 Q7), and the text of the row with
+    // the largest Hardest ms.
+    CHECK(html.find("['Hardest ms', hardest === null ? DASH : hardest.ms_text],") !=
+          std::string::npos);
+    CHECK(html.find("Tightest squeeze") == std::string::npos);
+    // The "Past N ms" tile counts the rows tier_for put in Beyond: past the
+    // edge, not on it.
+    CHECK(html.find("const beyond = rows.filter(r => r.tier === 'Beyond').length;") !=
+          std::string::npos);
+    CHECK(col_line(html, "tier").find("Beyond means more than twice the hit window.") !=
+          std::string::npos);
+    // D51 call 5: a required early fill counts like a squeeze, and the words
+    // say so.
+    CHECK(col_line(html, "ms").find(
+              "d:'The hardest squeeze or required early fill the path needs, in raw ms. "
+              "A dash means it needs none.'") != std::string::npos);
+    // The average multiplier's definition opens with its own name.
+    CHECK(col_line(html, "mult").find(
+              "d:'Average multiplier: the score without solo bonuses divided by the base score "
+              "(every note at 1x).'") != std::string::npos);
+    CHECK(html.find("Points per note on average") == std::string::npos);
 }
 
 TEST_CASE("path report counts charts by hash in the tile and the subtitle") {
@@ -717,14 +1123,14 @@ TEST_CASE("path report counts charts by hash in the tile and the subtitle") {
     // Each chart gets a small id in order of first appearance.
     CHECK(occurrences(html, "\"c\":0") == 2);
     CHECK(occurrences(html, "\"c\":1") == 1);
-    CHECK(html.find("['Charts', new Set(rows.map(r => r.c)).size.toLocaleString()]") !=
-          std::string::npos);
+    CHECK(html.find("['Charts', fmt([...new Map(rows.map(r => [r.c, r.k])).values()]"
+                    ".reduce((n, k) => n + k, 0))]") != std::string::npos);
     CHECK(html.find("r.song + r.artist))") == std::string::npos);
 }
 
 TEST_CASE("comparison page explains its columns and splits the missing scores") {
     const std::string html = dm_report::build_dm_html({}, "sub", "foot");
-    for (const char* key : {"actual", "optimal", "delta", "pct", "fc", "speed", "rank",
+    for (const char* key : {"actual", "optimal", "delta", "pct_h", "fc", "speed", "rank",
                             "posted", "status"}) {
         INFO(key);
         CHECK(col_line(html, key).find("d:'") != std::string::npos);
@@ -733,6 +1139,22 @@ TEST_CASE("comparison page explains its columns and splits the missing scores") 
     CHECK(html.find("<option value=\"not in library\">") != std::string::npos);
     CHECK(html.find("value=\"unmatched\"") == std::string::npos);
     CHECK(html.find("'not analyzed':'s-notanalyzed'") != std::string::npos);
+    // A score with a result reads under, at or above optimal; none is "matched".
+    CHECK(html.find("<option value=\"under optimal\">Under optimal</option>") !=
+          std::string::npos);
+    CHECK(html.find("<option value=\"at optimal\">At optimal</option>") != std::string::npos);
+    CHECK(html.find("<option value=\"above optimal\">Above optimal</option>") !=
+          std::string::npos);
+    for (const char* status : {"under optimal", "at optimal", "above optimal"}) {
+        INFO(status);
+        CHECK(html.find(std::string("'") + status + "':'s-") != std::string::npos);
+    }
+    CHECK(html.find("value=\"matched\"") == std::string::npos);
+    CHECK(html.find("'matched'") == std::string::npos);
+    CHECK(html.find("Matched") == std::string::npos);
+    CHECK(col_line(html, "status").find(
+              "d:'Under optimal, At optimal or Above optimal when Hydra has a result.") !=
+          std::string::npos);
     CHECK(html.find("id=\"q\" aria-label=\"Search scores\"") != std::string::npos);
     CHECK(html.find("id=\"status\" aria-label=\"Status\"") != std::string::npos);
     CHECK(html.find("<dl class=\"legend\" id=\"legend\"></dl>") != std::string::npos);

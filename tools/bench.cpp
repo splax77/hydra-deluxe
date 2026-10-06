@@ -8,8 +8,8 @@
 // settings, taken from app::Settings so the two cannot drift -- parse,
 // search, and DB store timed separately:
 //   hydra_bench.exe "C:\Clone Hero\songs\...\blink-182 - Discography"
-// With no argument it best-of-3 times the testdata corpus search across
-// configs.
+// With no argument it best-of-3 times the testdata corpus search at one
+// fixed config, labelled "cap4 d4 no-ms" (corpus_bench).
 
 #include <algorithm>
 #include <chrono>
@@ -27,6 +27,9 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/rules_file.h"
+#include "app/user_messages.h"
+#include "core/model.h"
+#include "core/strutil.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -52,8 +55,9 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
     app::Settings gui;  // struct defaults are the GUI defaults
     gui.rules = rules;
     const app::AnalysisSettings settings = gui.to_analysis_settings();
-    std::printf("Settings: the GUI default (SP cap %d, score range %d, %dms limit).\n\n",
-                gui.sp_cap, gui.depth_value, gui.mslimit_value);
+    const app::SettingsText words = app::describe_settings(settings);
+    std::printf("Settings: the GUI default (SP cap %s, depth %s, timing cap %s).\n\n",
+                words.cap.c_str(), words.depth.c_str(), words.timing.c_str());
 
     store::RecordStore store(":memory:", core::RulesStamp::of(rules));
 
@@ -81,13 +85,33 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
         store.add_record(gui.record_key(it.md5), rec);
         double store_s = secs_since(t);
 
-        long long best = rec.paths.empty() ? 0 : rec.best_path().totalscore();
+        // summarize_record's best score: none for a record with no paths,
+        // printed "-" the way hydra_batch prints it.
+        const std::optional<int64_t> best = store::summarize_record(rec).score;
+        const std::string best_text = best ? std::to_string(*best) : "-";
         std::printf("  parse %.2fs | search %.2fs | store %.2fs  => TOTAL %.2fs\n",
                     parse_s, search_s, store_s, parse_s + search_s + store_s);
-        std::printf("  best score %lld | %d paths | sp_cap %d\n\n", best,
-                    static_cast<int>(rec.all_paths().size()), rec.sp_cap.value_or(-1));
+        std::printf("  best score %s | %s | sp_cap %d\n\n", best_text.c_str(),
+                    counted(static_cast<int64_t>(rec.all_paths().size()), "path", "paths").c_str(),
+                    rec.sp_cap.value_or(-1));
         std::fflush(stdout);
     }
+}
+
+// One library row as the JSON both --dump and --dump-db write, so a scan's dump
+// and a database's dump diff clean. Paths are written as the scan snapshot
+// keys them (relative_slash_path under `rel`, which may be empty), so dumps
+// also compare across machines.
+static nlohmann::json row_json(const std::string& notespath, const std::string& rootfolder,
+                               const std::string& md5, const std::string& title,
+                               const std::string& artist, const std::string& charter,
+                               const std::string& rel) {
+    return {{"path", relative_slash_path(notespath, rel)},
+            {"folder", relative_slash_path(rootfolder, rel)},
+            {"md5", md5},
+            {"title", title},
+            {"artist", artist},
+            {"charter", charter}};
 }
 
 // Scan mode: times the library scan (discovery + hashing) the way ScanJob
@@ -132,26 +156,15 @@ static void scan_mode(const std::string& folder, const std::string& dbpath,
     if (errors.size() > 10) std::printf("  ! ...and %zu more\n", errors.size() - 10);
 
     if (store) {
-        std::vector<store::ChartLibraryEntry> entries;
-        entries.reserve(items.size());
-        for (const app::ScanItem& it : items)
-            entries.push_back({it.md5, it.title, it.artist, it.charter, it.notespath,
-                               it.rootfolder, it.sig});
         t0 = clk::now();
-        store->rebuild_chart_library(entries);
+        // Saved the way Scan library saves it (D79).
+        if (const std::optional<std::string> problem = app::save_scan_as_library(*store, items))
+            std::printf("  ! %s\n", problem->c_str());
         std::printf("  library write : %7.2fs (%lld rows)\n", secs_since(t0),
                     static_cast<long long>(store->chart_library_count()));
     }
 
     if (!dumppath.empty()) {
-        auto relify = [&](std::string p) {
-            if (!dumprel.empty() && p.size() > dumprel.size() &&
-                p.compare(0, dumprel.size(), dumprel) == 0)
-                p = p.substr(dumprel.size() + 1);
-            for (char& c : p)
-                if (c == '\\') c = '/';
-            return p;
-        };
         nlohmann::json arr = nlohmann::json::array();
         std::vector<const app::ScanItem*> sorted;
         for (const app::ScanItem& it : items) sorted.push_back(&it);
@@ -160,12 +173,8 @@ static void scan_mode(const std::string& folder, const std::string& dbpath,
                       return a->notespath < b->notespath;
                   });
         for (const app::ScanItem* it : sorted)
-            arr.push_back({{"path", relify(it->notespath)},
-                           {"folder", relify(it->rootfolder)},
-                           {"md5", it->md5},
-                           {"title", it->title},
-                           {"artist", it->artist},
-                           {"charter", it->charter}});
+            arr.push_back(row_json(it->notespath, it->rootfolder, it->md5, it->title,
+                                   it->artist, it->charter, dumprel));
         // Real libraries carry ANSI-encoded song.ini metadata; replace
         // invalid UTF-8 instead of throwing (both sides of a diff replace
         // identically, so equivalence still holds).
@@ -185,7 +194,12 @@ static void corpus_bench() {
     }
     std::printf("Test corpus: %zu charts. Engine = src/search/engine.cpp.\n\n",
                 songs.size());
-    auto bench = [&](const char* name, int cap, int dvalue) {
+    // Fixed on purpose: this is the before/after yardstick, so it runs the
+    // same search every time -- Clone Hero's SP cap, a 4-score range and no
+    // timing limit -- whatever the GUI's defaults are. The label says so.
+    auto bench = [&](int cap, int dvalue) {
+        char name[32];
+        std::snprintf(name, sizeof(name), "cap%d d%d no-ms", cap, dvalue);
         SearchSettings settings;
         settings.sp_cap = cap;
         settings.depth_mode = DepthMode::Scores;
@@ -204,33 +218,31 @@ static void corpus_bench() {
         }
         std::printf("  %-16s : %7.2fs (best of 3)\n", name, best);
     };
-    bench("cap4 d4", 4, 4);
+    bench(kCloneHeroSpCap, 4);
 }
 
-// Dump a store's charts table as the same JSON shape --dump writes, so two
-// scans' results can be diffed even when one came from another build.
-static void dump_db(const std::string& dbpath, const std::string& outpath) {
+// Dump a store's charts table as the same JSON --dump writes (row_json, with
+// the same --dump-rel root), so two scans' results can be diffed even when one
+// came from another build.
+static void dump_db(const std::string& dbpath, const std::string& outpath,
+                    const std::string& dumprel) {
     store::RecordStore db(dbpath, core::RulesStamp::of(g_rules));
     std::vector<store::ChartLibraryEntry> rows =
-        db.list_chart_library(std::nullopt, 0, INT_MAX);
+        db.list_chart_library(0, INT_MAX);
     std::sort(rows.begin(), rows.end(),
               [](const store::ChartLibraryEntry& a, const store::ChartLibraryEntry& b) {
                   return a.notespath < b.notespath;
               });
     nlohmann::json arr = nlohmann::json::array();
     for (const store::ChartLibraryEntry& e : rows)
-        arr.push_back({{"path", e.notespath},
-                       {"folder", e.rootfolder},
-                       {"md5", e.md5},
-                       {"title", e.title},
-                       {"artist", e.artist},
-                       {"charter", e.charter}});
+        arr.push_back(row_json(e.notespath, e.rootfolder, e.md5, e.title, e.artist,
+                               e.charter, dumprel));
     std::ofstream f(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
     f << arr.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << "\n";
     std::printf("dumped %zu rows from %s\n", rows.size(), dbpath.c_str());
 }
 
-int main() {
+static int bench_main() {
     // --rules <path> may sit anywhere; take it out so the positional mode
     // checks below see the same argv they always did.
     const std::vector<std::string> all = utf8_argv();
@@ -254,7 +266,10 @@ int main() {
     }
 
     if (argc > 3 && argv[1] == "--dump-db") {
-        dump_db(argv[2], argv[3]);
+        std::string dumprel;
+        for (int i = 4; i < argc; ++i)
+            if (argv[i] == "--dump-rel" && i + 1 < argc) dumprel = argv[++i];
+        dump_db(argv[2], argv[3], dumprel);
         return 0;
     }
     if (argc > 2 && argv[1] == "--scan") {
@@ -273,3 +288,5 @@ int main() {
     }
     return 0;
 }
+
+int main() { return app::run_tool(bench_main); }

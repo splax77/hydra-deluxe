@@ -7,9 +7,10 @@ namespace hydra::ui {
 
 DynamicsLoadJob::DynamicsLoadJob(store::ChartLibraryEntry entry, bool pro,
                                  Difficulty difficulty)
-    : entry_(std::move(entry)), pro_(pro), difficulty_(difficulty) {
-    key_ = app::dynamics_cache_key(entry_.notespath, pro_, difficulty_);
-}
+    : entry_(std::move(entry)),
+      pro_(pro),
+      difficulty_(difficulty),
+      key_(app::dynamics_store_key(entry_.md5, difficulty_, pro_)) {}
 
 void DynamicsLoadJob::start() { spawn([this] { run(); }); }
 

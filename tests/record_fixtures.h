@@ -21,6 +21,7 @@
 #include "doctest.h"
 
 #include "app/config.h"
+#include "app/display_format.h"
 #include "core/model.h"
 #include "parse/song.h"
 #include "search/engine.h"
@@ -37,6 +38,15 @@ struct FixtureNote {
     int64_t fill_length = 0;  // 0 = no fill ends here
 };
 
+// Marks the chord at `tick` as a phrase end the way the parser does: the
+// flag and the phrase's start tick together. A hand-built song has no phrase
+// start of its own, so the phrase starts one beat (one resolution) before the
+// end, clamped at 0. That beat is this header's convention, not a game rule.
+inline void mark_phrase_end(SongTimestamp& ts, int64_t tick, int64_t resolution) {
+    ts.flag_sp = true;
+    ts.sp_phrase_start = tick >= resolution ? tick - resolution : 0;
+}
+
 // One red note per entry, flat tempo and 4/4.
 inline Song build_fixture_song(int resolution, double bpm, const std::vector<FixtureNote>& notes) {
     Song song(resolution);
@@ -46,10 +56,7 @@ inline Song build_fixture_song(int resolution, double bpm, const std::vector<Fix
         SongTimestamp ts;
         ts.timecode = song.timecode(n.tick);
         ts.chord.add_note(NoteColor::Red);
-        if (n.phrase) {
-            ts.flag_sp = true;
-            ts.sp_phrase_start = n.tick >= resolution ? n.tick - resolution : 0;
-        }
+        if (n.phrase) mark_phrase_end(ts, n.tick, resolution);
         if (n.fill_length > 0) ts.activation_length = n.fill_length;
         song.sequence.push_back(std::move(ts));
     }
@@ -131,7 +138,7 @@ inline Song build_tempo_song(const std::vector<TailNote>& notes,
         SongTimestamp ts;
         ts.timecode = song.timecode(n.tick);
         ts.chord.add_note(NoteColor::Red);
-        ts.flag_sp = n.sp_phrase;
+        if (n.sp_phrase) mark_phrase_end(ts, n.tick, song.tick_resolution());
         if (n.activation) ts.activation_length = 384;
         song.sequence.push_back(ts);
     }
@@ -230,18 +237,36 @@ inline EngineOptions wide_search() {
     return o;
 }
 
+// Where the graph's SP track starts: the SP track is one chain, opened by
+// the first branch edge on the base track (the first activation). nullptr
+// when the base track has no branch edge.
+inline const ScoreGraphNode* sp_track_start(const ScoreGraph& graph) {
+    for (const ScoreGraphNode* b = graph.start(); b; b = b->adv_edge ? b->adv_edge->dest : nullptr)
+        if (b->branch_edge) return b->branch_edge->dest;
+    return nullptr;
+}
+
 // The deactivation edge on the SP track whose SP end is `end_tick`: the
-// first branch edge, walking the track the first activation opens, whose
-// destination sits at that tick. nullptr when there is none.
+// first branch edge, walking the SP track, whose destination sits at that
+// tick. nullptr when there is none.
 inline const ScoreGraphEdge* deact_edge_at(const ScoreGraph& graph, int64_t end_tick) {
-    const ScoreGraphNode* sp = nullptr;
-    for (const ScoreGraphNode* b = graph.start(); b && !sp;
-         b = b->adv_edge ? b->adv_edge->dest : nullptr)
-        if (b->branch_edge) sp = b->branch_edge->dest;
-    for (; sp; sp = sp->adv_edge ? sp->adv_edge->dest : nullptr)
+    for (const ScoreGraphNode* sp = sp_track_start(graph); sp;
+         sp = sp->adv_edge ? sp->adv_edge->dest : nullptr)
         if (sp->branch_edge && sp->branch_edge->dest->timecode.ticks() == end_tick)
             return sp->branch_edge;
     return nullptr;
+}
+
+// Where collecting the phrase on `phrase_tick` moves the SP end `from_tick`,
+// as the SP track's advance edge records it (the step the engine writes),
+// or nullopt.
+inline std::optional<SpExtension> extension_of(const ScoreGraph& graph, int64_t phrase_tick,
+                                               int64_t from_tick) {
+    for (const ScoreGraphNode* sp = sp_track_start(graph); sp && sp->adv_edge;
+         sp = sp->adv_edge->dest)
+        for (const auto& [tc, ext] : sp->adv_edge->sp_times)
+            if (tc.ticks() == phrase_tick && ext.count(from_tick)) return ext.at(from_tick);
+    return std::nullopt;
 }
 
 // ---- lone pricing (decision D3) --------------------------------------------
@@ -430,6 +455,86 @@ inline void set_transfer(Activation& a, TransferScale scale) {
     set_transfer(a, scale, scale);
 }
 
+// A record whose top score is tied between a root and one variant under it,
+// with a lower second root after them, so the tie is visible. The song is
+// beat_song with no phrases or fills, a note every beat to tick 13440.
+//   root "0 0":     activates at 1920 and 9600.
+//   variant "1 0":  passes one fill and activates at 3840 instead of 1920,
+//                   then shares the root's 9600 window (var_point 1).
+//   second root "0": activates at 1920 only, fewer SP points.
+// Every activation spends one bar and collects nothing, so SP ends two
+// measures (3840 ticks) after it starts. prepare_variants copies the root's
+// scores onto the variant, as loading a stored record does, so the tie is the
+// engine's rule and not typed twice. The scores are made up; only their order
+// matters.
+inline HydraRecord tied_variant_record() {
+    const Song song = beat_song({}, {}, 13440);
+    auto one_bar_act = [&song](int64_t tick, int skips) {
+        Activation a;
+        a.timecode = song.timecode(tick);
+        set_sp_meter(a, 1);
+        set_skips(a, skips);
+        set_plain_window(a, tick + 3840);
+        return a;
+    };
+
+    Path root;
+    root.activations = {one_bar_act(1920, 0), one_bar_act(9600, 0)};
+    root.notecount = 29;
+    root.score_base = 1450;
+    root.score_sp = 600;
+
+    Path variant;
+    variant.var_point = 1;
+    variant.activations = {one_bar_act(3840, 1)};
+    root.variants.push_back(variant);
+    root.prepare_variants();
+    root.recount_tied_paths();
+
+    Path second;
+    second.activations = {one_bar_act(1920, 0)};
+    second.notecount = 29;
+    second.score_base = 1450;
+    second.score_sp = 300;
+
+    HydraRecord rec;
+    rec.paths = {root, second};
+    return rec;
+}
+
+// A path on a chart with no base score: no plain, ghost or accent points, so
+// Clone Hero's average multiplier has nothing to divide by.
+inline Path zero_base_path() {
+    Path p;
+    p.score_base = 0;
+    p.score_ghosts = 0;
+    p.score_accents = 0;
+    return p;
+}
+
+TEST_CASE("fixtures: a record with a tied top-score variant") {
+    const HydraRecord rec = tied_variant_record();
+    const std::vector<const Path*> all = rec.all_paths();
+    REQUIRE(all.size() == 3);
+    const Path& root = rec.paths.at(0);
+    const Path& second = rec.paths.at(1);
+    CHECK(all[0] == &root);
+    CHECK(all[1] == &root.variants.at(0));
+    CHECK(all[2] == &second);
+    CHECK(all[1]->totalscore() == root.totalscore());
+    CHECK(second.totalscore() < root.totalscore());
+    CHECK(&rec.best_path() == &root);
+}
+
+TEST_CASE("fixtures: a path with zero base score") {
+    const Path p = zero_base_path();
+    CHECK(p.chart_base_score() == 0);
+    CHECK(p.avg_mult() == 0.0);
+    // The screen shows "0.000x" (D48 Q33 keeps it); format_avg_mult gives the
+    // number and the Song Details line adds the "x".
+    CHECK(app::format_avg_mult(p.avg_mult()) == "0.000");
+}
+
 // ---- shared test helpers ----------------------------------------------------
 
 // The app's default settings at SP cap `cap`, keeping the top 40 scores
@@ -470,5 +575,9 @@ inline void check_lines(const std::vector<std::string>& got, const std::vector<s
 }
 
 }  // namespace hydra::test
+
+// The display fixtures ride along, so every test file that has these has
+// those too, and their sanity cases build without a .cpp of their own.
+#include "display_fixtures.h"
 
 #endif  // HYDRA_TESTS_RECORD_FIXTURES_H

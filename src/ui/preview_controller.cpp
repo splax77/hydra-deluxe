@@ -5,9 +5,12 @@
 #include <exception>
 #include <memory>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <utility>
 
 #include "app/config.h"
+#include "app/user_messages.h"
 #include "audio/device.h"
 #include "audio/player.h"
 #include "ui/preview_load_job.h"
@@ -16,17 +19,37 @@ namespace hydra::ui {
 
 namespace {
 
+// Between the path part and the cap in an overlay key, typed once for the
+// writer and the reader below.
+constexpr const char* kCapSeparator = "|cap";
+
 // The overlay's identity: the path it was built from plus the SP cap the
 // meter was scaled to. A cap change must rebuild the scene just like a
 // path change, so both live in the one key the three key_ members compare.
 std::string overlay_key(const std::string& path_key, int sp_cap) {
-    return path_key + "|cap" + std::to_string(sp_cap);
+    return path_key + kCapSeparator + std::to_string(sp_cap);
+}
+
+// The path part of an overlay_key: the one place a key is read back. The cap
+// is written last, so the last separator ends the path part. Empty for an
+// empty key (nothing has loaded).
+std::string overlay_key_path_part(const std::string& key) {
+    const std::size_t at = key.rfind(kCapSeparator);
+    return at == std::string::npos ? std::string() : key.substr(0, at);
 }
 
 }  // namespace
 
 PreviewController::PreviewController(ID3D11Device* device, ID3D11DeviceContext* context)
-    : device_(device), context_(context) {}
+    : device_(device), context_(context), volume_pct_(app::Settings{}.preview_volume) {}
+
+bool PreviewController::base_due() const {
+    return !base_started_ && !job_ && !scene_job_ && !scene_base_ && song_ && !song_->is_empty();
+}
+
+bool PreviewController::busy() const {
+    return job_ || base_job_ || scene_job_ || !retired_scene_jobs_.empty() || base_due();
+}
 
 PreviewController::~PreviewController() { close(); }
 
@@ -35,7 +58,8 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
                              const Path* path, const std::string& path_key,
                              int sp_cap, const core::Rules& rules) {
     rules_ = rules;
-    if (active_ && open_key_ == entry.md5) {
+    const PreviewSongKey key{entry.md5, difficulty, pro, bass2x};
+    if (active_ && open_key_ == key) {
         // Same chart, same overlay: nothing to do, and nothing built.
         if (sp_cap == sp_cap_ && path_key == requested_path_key_) return;
         path_ = path ? std::optional<Path>(*path) : std::nullopt;
@@ -50,9 +74,10 @@ void PreviewController::open(const store::ChartLibraryEntry& entry, bool pro,
     }
     close();
 
-    open_key_ = entry.md5;
+    open_key_ = key;
     active_ = true;
     error_.clear();
+    error_detail_.clear();
     pro_ = pro;
     sp_cap_ = sp_cap;
 
@@ -70,10 +95,12 @@ void PreviewController::start_scene_job() {
         scene_job_->cancel();
         retired_scene_jobs_.push_back(std::move(scene_job_));
     }
-    render::TrackStateOptions track_opts;
-    track_opts.pro = pro_;
-    scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, path_, sp_cap_, rules_,
-                                                   path_key_, track_opts);
+    // A changed chart keeps drawing no path (drawn_path, finding 126).
+    const Path* drawn = drawn_path(path_, chart_changed_);
+    std::optional<Path> path = drawn ? std::optional<Path>(*drawn) : std::nullopt;
+    scene_job_ = std::make_unique<PreviewSceneJob>(song_, scene_base_, std::move(path), sp_cap_,
+                                                   rules_, path_key_, track_opts(), audio_end_ms_,
+                                                   song_length_ms_);
     scene_job_->start();
 }
 
@@ -97,6 +124,8 @@ void PreviewController::close() {
     scene_dirty_ = true;  // the renderer (if kept) must drop the old chart
     pending_track_.reset();  // scene_ is empty now; render() builds its (empty) timeline
     song_.reset();
+    audio_end_ms_.reset();
+    song_length_ms_.reset();
     scene_base_.reset();
     path_.reset();
     sp_cap_ = kCloneHeroSpCap;
@@ -107,9 +136,11 @@ void PreviewController::close() {
     active_ = false;
     scrubbing_ = false;
     resume_after_scrub_ = false;
-    open_key_.clear();
+    open_key_ = PreviewSongKey{};
     error_.clear();
+    error_detail_.clear();
     audio_warning_.clear();
+    chart_changed_ = false;
 }
 
 void PreviewController::poll() {
@@ -129,7 +160,8 @@ void PreviewController::poll() {
             scene_path_key_ = scene_job_->key();
             scene_dirty_ = true;
         } else if (error_.empty()) {
-            error_ = scene_job_->error();
+            error_ = scene_job_->message();
+            error_detail_ = scene_job_->error();
         }
         scene_job_.reset();
     }
@@ -140,10 +172,9 @@ void PreviewController::poll() {
         if (base_job_->ok() && !scene_base_) scene_base_ = base_job_->take_base();
         base_job_.reset();
     }
-    if (!base_started_ && !job_ && !scene_job_ && !scene_base_ && song_ && !song_->is_empty()) {
-        render::TrackStateOptions track_opts;
-        track_opts.pro = pro_;
-        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts);
+    if (base_due()) {
+        base_job_ = std::make_unique<PreviewBaseJob>(song_, track_opts(), audio_end_ms_,
+                                                     song_length_ms_);
         base_job_->start();
         base_started_ = true;
     }
@@ -154,14 +185,17 @@ void PreviewController::poll() {
     if (ok) {
         PreviewLoadJob::Result result = job_->take_result();
         song_ = std::make_shared<const Song>(std::move(result.song));
+        audio_end_ms_ = result.audio_end_ms;
+        song_length_ms_ = result.song_length_ms;
+        chart_changed_ = result.chart_changed;
         scene_ = std::move(result.scene);
         pending_track_ = std::move(result.track_state);
         pending_track_opts_ = result.track_opts;
         scene_path_key_ = job_path_key_;
         scene_dirty_ = true;
-        transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);
+        transport_.set_gain(app::Settings::volume_gain(volume_pct_));
         transport_.load(std::make_unique<audio::Playhead>(std::move(result.audio)),
-                        scene_.song_length_ms, result.audio_offset_ms);
+                        hydra::app::last_note_ms(scene_), result.audio_offset_ms);
         // Open the output device only when there is audio to play; a chart with
         // no locatable stems previews silently (the highway still draws).
         if (transport_.has_audio()) {
@@ -184,7 +218,10 @@ void PreviewController::poll() {
             }
         }
     } else {
-        error_ = job_->error();
+        // The job worked out the plain sentence while it still had the
+        // exception; the raw text ("StreamMix: ...") is the details line.
+        error_ = job_->message();
+        error_detail_ = job_->error();
     }
     job_.reset();
     job_path_key_.clear();
@@ -211,13 +248,12 @@ ID3D11ShaderResourceView* PreviewController::render(int width, int height) {
             rt_h_ = height;
         }
         if (scene_dirty_) {
-            render::TrackStateOptions opts;
-            opts.pro = pro_;
+            const render::TrackStateOptions opts = track_opts();
             // A job built scene_'s timeline on its worker: just move it in.
-            // If it was built for another pro-drums setting than the one
-            // drawn now, or there is none (the empty scene after close()),
-            // build it here as before.
-            if (pending_track_ && pending_track_opts_.pro == opts.pro)
+            // If it was built for other options than the ones drawn now, or
+            // there is none (the empty scene after close()), build it here as
+            // before.
+            if (pending_track_ && pending_track_opts_ == opts)
                 renderer_->set_scene(scene_, std::move(*pending_track_));
             else
                 renderer_->set_scene(scene_, opts);
@@ -229,7 +265,10 @@ ID3D11ShaderResourceView* PreviewController::render(int width, int height) {
         have_frame_ = true;
         return renderer_->texture_srv();
     } catch (const std::exception& e) {
-        if (error_.empty()) error_ = e.what();
+        if (error_.empty()) {
+            error_ = hydra::app::plain_error(e);
+            error_detail_ = hydra::app::plain_error_detail(e);
+        }
         return nullptr;
     }
 }
@@ -254,7 +293,17 @@ bool PreviewController::playing() const { return transport_.playing(); }
 
 double PreviewController::position_ms() const { return transport_.now_ms(); }
 
-double PreviewController::length_ms() const { return transport_.length_ms(); }
+// The scrubber's range: the song's length the load worked out
+// (app::chart_song_length_ms, D75), so the slider and its gold marks end where
+// the Paths timeline does. A chart with no length falls back to
+// playback_end_ms() (app::scrub_end_ms, D70 item 1).
+double PreviewController::scrub_end_ms() const {
+    return hydra::app::scrub_end_ms(song_length_ms_, playback_end_ms());
+}
+
+// Where playback stops: the transport's length, the later of the last note
+// and the audio's end. Every reader in this class asks here.
+double PreviewController::playback_end_ms() const { return transport_.length_ms(); }
 
 void PreviewController::seek_ms(double ms) { transport_.seek_ms(ms); }
 
@@ -267,7 +316,7 @@ void PreviewController::step_ticks(int delta_ticks) {
     if (!active_ || job_) return;
     transport_.pause();
     transport_.seek_ms(hydra::app::step_tick_ms(scene_, transport_.now_ms(),
-                                                transport_.length_ms(), delta_ticks));
+                                                playback_end_ms(), delta_ticks));
 }
 
 void PreviewController::set_scrubbing(bool held) {
@@ -285,27 +334,27 @@ void PreviewController::set_scrubbing(bool held) {
 bool PreviewController::has_audio() const { return transport_.has_audio(); }
 
 // The volume percent lives here, not on the transport: it is a setting that
-// outlives the chart, remembered for the next one opened.
+// outlives the chart, remembered for the next one opened. Its range and its
+// percent-to-gain rule are the setting's (app::Settings, finding 72).
 void PreviewController::set_volume(int percent) {
-    volume_pct_ = percent < 0 ? 0 : percent > 100 ? 100 : percent;
-    transport_.set_gain(static_cast<float>(volume_pct_) / 100.0f);
+    volume_pct_ = app::Settings::clamp(&app::Settings::preview_volume, percent);
+    transport_.set_gain(app::Settings::volume_gain(volume_pct_));
 }
 
 hydra::app::PreviewTimeBox PreviewController::time_box() const {
-    return hydra::app::build_time_box(scene_, transport_.now_ms(),
-                                      transport_.length_ms());
+    return hydra::app::build_time_box(scene_, transport_.now_ms(), playback_end_ms());
 }
 
 hydra::app::PreviewScoreBox PreviewController::score_box() const {
-    return hydra::app::build_score_box(scene_, transport_.now_ms());
+    return hydra::app::build_score_box(scene_, transport_.now_ms(), playback_end_ms());
 }
 
 hydra::app::PreviewDrainBox PreviewController::drain_box() const {
-    return hydra::app::build_drain_box(scene_, transport_.now_ms());
+    return hydra::app::build_drain_box(scene_, transport_.now_ms(), playback_end_ms());
 }
 
 const std::vector<double>& PreviewController::scrub_marks() const {
-    const double length = transport_.length_ms();
+    const double length = scrub_end_ms();
     if (!cache_fresh(scrub_marks_cache_) || scrub_marks_cache_.length_ms != length) {
         scrub_marks_ = hydra::app::build_scrub_marks(scene_, length);
         stamp(scrub_marks_cache_);
@@ -315,7 +364,7 @@ const std::vector<double>& PreviewController::scrub_marks() const {
 }
 
 hydra::app::PreviewNextActBox PreviewController::next_act_box() const {
-    return hydra::app::build_next_act_box(scene_, transport_.now_ms());
+    return hydra::app::build_next_act_box(scene_, transport_.now_ms(), playback_end_ms(), pro_);
 }
 
 const std::vector<hydra::app::PreviewNextActBox>& PreviewController::next_act_boxes() const {
@@ -323,7 +372,8 @@ const std::vector<hydra::app::PreviewNextActBox>& PreviewController::next_act_bo
         next_act_boxes_.clear();
         next_act_boxes_.reserve(scene_.activations.size());
         for (const hydra::app::PreviewActivation& a : scene_.activations)
-            next_act_boxes_.push_back(hydra::app::build_next_act_box(scene_, a.ms));
+            next_act_boxes_.push_back(
+                hydra::app::build_next_act_box(scene_, a.ms, playback_end_ms(), pro_));
         stamp(next_act_boxes_cache_);
     }
     return next_act_boxes_;
@@ -348,9 +398,13 @@ bool PreviewController::seek_activation(size_t index) {
     return true;
 }
 
+// The renderer's json is the one source of the Preview's numbers; there is no
+// default-built struct to fall back on (finding 220).
 const render::PreviewConfig& PreviewController::preview_config() const {
-    static const render::PreviewConfig kOnyxDefaults;
-    return renderer_ ? renderer_->config() : kOnyxDefaults;
+    if (!renderer_)
+        throw std::logic_error(
+            "PreviewController::preview_config: no renderer yet (the first render() builds it)");
+    return renderer_->config();
 }
 
 double PreviewController::sp_meter_bars() const {
@@ -359,8 +413,12 @@ double PreviewController::sp_meter_bars() const {
 
 int PreviewController::sp_meter_cap() const { return scene_.sp_meter.cap; }
 
-bool PreviewController::sp_meter_has_curve() const {
-    return !scene_.sp_meter.segments.empty();
+bool PreviewController::has_sp_gauge() const { return scene_.has_sp_gauge(); }
+
+bool PreviewController::shows_path(const std::string& path_key) const {
+    return !scene_path_key_.empty() && overlay_key_path_part(scene_path_key_) == path_key;
 }
+
+render::TrackStateOptions PreviewController::track_opts() const { return track_options(pro_); }
 
 }  // namespace hydra::ui

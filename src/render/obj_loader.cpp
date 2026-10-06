@@ -6,6 +6,8 @@
 #include <stdexcept>
 #include <string>
 
+#include "core/error_kind.h"
+
 namespace hydra::render {
 
 namespace {
@@ -56,11 +58,23 @@ Corner parse_corner(std::string_view tok) {
     return c;
 }
 
+// A polygon's triangles, pushed onto `mesh`: Onyx's triangulate,
+// [v1,v2,v3] ++ triangulate (v1 : v3 : rest), a fan from corner 0. Every mesh
+// load_obj reads and every mesh built here comes out in this one order.
+void push_fan(ObjMesh& mesh, const std::vector<ObjVertex>& corners) {
+    for (size_t i = 1; i + 1 < corners.size(); ++i) {
+        mesh.vertices.push_back(corners[0]);
+        mesh.vertices.push_back(corners[i]);
+        mesh.vertices.push_back(corners[i + 1]);
+    }
+}
+
 // Resolve a 1-based (or negative relative) index against a list of `n`.
 size_t resolve(long idx, size_t n, const char* what) {
     long r = idx > 0 ? idx - 1 : static_cast<long>(n) + idx;
     if (idx == 0 || r < 0 || static_cast<size_t>(r) >= n)
-        throw std::runtime_error(std::string("obj: ") + what + " index out of range");
+        throw KindedError(ErrorKind::PreviewAssets,
+                          std::string("obj: ") + what + " index out of range");
     return static_cast<size_t>(r);
 }
 
@@ -108,18 +122,13 @@ ObjMesh load_obj(std::string_view text) {
         } else if (t[0] == "vn" && t.size() >= 4) {
             normals.push_back({to_float(t[1]), to_float(t[2]), to_float(t[3])});
         } else if (t[0] == "f" && t.size() >= 4) {
-            // Onyx's triangulate: [v1,v2,v3] ++ triangulate (v1 : v3 : rest).
-            std::vector<Corner> corners;
-            for (size_t i = 1; i < t.size(); ++i) corners.push_back(parse_corner(t[i]));
-            for (size_t i = 1; i + 1 < corners.size(); ++i) {
-                mesh.vertices.push_back(make_vertex(corners[0]));
-                mesh.vertices.push_back(make_vertex(corners[i]));
-                mesh.vertices.push_back(make_vertex(corners[i + 1]));
-            }
+            std::vector<ObjVertex> corners;
+            for (size_t i = 1; i < t.size(); ++i) corners.push_back(make_vertex(parse_corner(t[i])));
+            push_fan(mesh, corners);
         }
         // mtllib / usemtl / o / g / s and anything else: ignored.
     }
-    if (mesh.vertices.empty()) throw std::runtime_error("obj: no faces");
+    if (mesh.vertices.empty()) throw KindedError(ErrorKind::PreviewAssets, "obj: no faces");
     sort_far_first(mesh);
     return mesh;
 }
@@ -156,15 +165,10 @@ ObjVertex vtx(float x, float y, float z, float nx, float ny, float nz, float u, 
     return o;
 }
 
-// Two triangles for the quad a,b,c,d (fan from a), matching load_obj's order.
+// The quad a,b,c,d as two triangles, by push_fan like a face load_obj reads.
 void push_quad(ObjMesh& m, const ObjVertex& a, const ObjVertex& b, const ObjVertex& c,
                const ObjVertex& d) {
-    m.vertices.push_back(a);
-    m.vertices.push_back(b);
-    m.vertices.push_back(c);
-    m.vertices.push_back(a);
-    m.vertices.push_back(c);
-    m.vertices.push_back(d);
+    push_fan(m, {a, b, c, d});
 }
 
 }  // namespace
@@ -192,6 +196,23 @@ ObjMesh make_box() {
     // Right (+X)
     push_quad(m, vtx(h, -h, h, 1, 0, 0, 0, 0), vtx(h, -h, -h, 1, 0, 0, 1, 0),
               vtx(h, h, -h, 1, 0, 0, 1, 1), vtx(h, h, h, 1, 0, 0, 0, 1));
+    return m;
+}
+
+ObjMesh make_triangle(bool apex_right) {
+    ObjMesh m;
+    const float h = 0.5f;
+    const float base = apex_right ? -h : h;  // the side opposite the apex
+    const float apex = -base;
+    // Counter-clockwise seen from +Z either way: the base's bottom corner,
+    // then round past the apex or the base's top corner as the side requires.
+    const ObjVertex bottom = vtx(base, -h, 0, 0, 0, 1, 0, 0);
+    const ObjVertex top = vtx(base, h, 0, 0, 0, 1, 0, 1);
+    const ObjVertex tip = vtx(apex, 0, 0, 0, 0, 1, 1, 0.5f);
+    if (apex_right)
+        push_fan(m, {bottom, tip, top});
+    else
+        push_fan(m, {bottom, top, tip});
     return m;
 }
 

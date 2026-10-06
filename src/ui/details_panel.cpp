@@ -6,10 +6,11 @@
 #endif
 #include <windows.h>
 
-#include "app/library_query.h"  // strip_rich_tags
 #include "app/path_view.h"
+#include "app/user_messages.h"  // stale_text, kNoPathsFound
 #include "core/model.h"
 #include "imgui.h"
+#include "parse/song.h"  // display_title, display_artist, display_charter
 #include "ui/app_shell.h"  // library_hidden
 #include "ui/fonts.h"
 #include "ui/generation.h"
@@ -24,11 +25,16 @@
 
 namespace hydra::ui {
 
+const char* analyze_button_label(store::RecordStatus status) {
+    return status == store::RecordStatus::NotAnalyzed ? "Analyze this song" : "Re-analyze";
+}
+
 namespace {
 
 // Title, "artist · charted by charter", and hide library / previous / next /
 // close at the right. Clone Hero rich-text tags (<color=...>) are stripped for
-// display.
+// display; the title is display_title's, the artist display_artist's and the
+// charter display_charter's, so a title or a missing artist reads "(unknown)".
 void render_panel_header(AppState& app) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float button = ImGui::GetFrameHeight();
@@ -65,14 +71,40 @@ void render_panel_header(AppState& app) {
     ImGui::SetCursorPos(ImVec2(left_x, top_y));
     const store::ChartLibraryEntry& song = *app.selected;
     ImGui::PushFont(nullptr, 26.0f);
-    text_ellipsized(app::strip_rich_tags(song.title).c_str(), text_w);
+    text_ellipsized(display_title(song.title).c_str(), text_w);
     ImGui::PopFont();
-    std::string byline = app::strip_rich_tags(song.artist);
-    const std::string charter = app::strip_rich_tags(song.charter);
+    std::string byline = display_artist(song.artist);
+    const std::string charter = display_charter(song.charter);
     if (!charter.empty()) byline += " \xC2\xB7 charted by " + charter;
     ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
     text_ellipsized(byline.c_str(), text_w);
     ImGui::PopStyleColor();
+}
+
+// The one line that stands in for a record's content when there is nothing to
+// draw: `not_analyzed_text` (dim-coloured when `dim`), the out-of-date warning
+// naming the store's real cause (stale_text), or kNoPathsFound. Returns true
+// only when the record is ready to draw. `wrap_x` > 0 wraps the warning at
+// that x (window coordinates); 0 leaves it on one line. The headline and
+// render_record_state both read it, so the states read the same everywhere.
+bool render_state_line(AppState& app, const char* not_analyzed_text, bool dim, float wrap_x) {
+    if (app.viewed.status == store::RecordStatus::NotAnalyzed) {
+        if (dim) ImGui::TextDisabled("%s", not_analyzed_text);
+        else ImGui::TextUnformatted(not_analyzed_text);
+        return false;
+    }
+    if (app.viewed.status == store::RecordStatus::Stale) {
+        if (wrap_x > 0.0f) ImGui::PushTextWrapPos(wrap_x);
+        ImGui::TextColored(kWarningColor, "%s",
+                           app::stale_text(app.viewed.stale_build, app.viewed.stale_rules).c_str());
+        if (wrap_x > 0.0f) ImGui::PopTextWrapPos();
+        return false;
+    }
+    if (app.viewed.record->paths.empty()) {
+        ImGui::TextUnformatted(app::kNoPathsFound);
+        return false;
+    }
+    return true;
 }
 
 // The optimal score and path in gold with one line of facts under it, and the
@@ -81,9 +113,9 @@ void render_panel_header(AppState& app) {
 // out again here.
 void render_headline(AppState& app) {
     const store::RecordStatus status = app.viewed.status;
-    const char* label = status == store::RecordStatus::NotAnalyzed ? "Analyze this song"
-                                                                   : "Re-analyze";
-    const float button_w = button_slot_width("Analyze this song");  // the wider label
+    const char* label = analyze_button_label(status);
+    const float button_w =  // the not-analyzed label, the wider one
+        button_slot_width(analyze_button_label(store::RecordStatus::NotAnalyzed));
     const float left_x = ImGui::GetCursorPosX();
     const float top_y = ImGui::GetCursorPosY();
     const float text_w =
@@ -99,21 +131,11 @@ void render_headline(AppState& app) {
     if (busy && !app.analyze_job_shown() &&
         ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("Wait for %s to finish analyzing.",
-                          app.analyze_job->song().title.c_str());
+                          display_title(app.analyze_job->song().title).c_str());
 
     ImGui::SetCursorPos(ImVec2(left_x, top_y));
     ImGui::BeginGroup();
-    if (status == store::RecordStatus::NotAnalyzed) {
-        ImGui::TextDisabled("Not analyzed yet.");
-    } else if (status == store::RecordStatus::Stale) {
-        ImGui::PushTextWrapPos(left_x + text_w);
-        ImGui::TextColored(kWarningColor,
-                           "Out of date: this result came from another Hydra version or "
-                           "from different rules in hydra_rules.ini. Re-analyze to refresh it.");
-        ImGui::PopTextWrapPos();
-    } else if (app.viewed.record->paths.empty()) {
-        ImGui::TextUnformatted("No paths found.");
-    } else {
+    if (render_state_line(app, "Not analyzed yet.", /*dim=*/true, left_x + text_w)) {
         const Path& best = app.viewed.record->best_path();
         ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
         ImGui::PushFont(nullptr, 40.0f);
@@ -134,9 +156,7 @@ void render_headline(AppState& app) {
         // headline doesn't repeat the optimal one's.
         const store::PathSummary& summary = app.viewed_summary;
         std::string facts = "Optimal path";
-        if (summary.stars)
-            facts += " \xC2\xB7 " + std::to_string(*summary.stars) +
-                     (*summary.stars == 1 ? " star" : " stars");
+        if (summary.stars) facts += " \xC2\xB7 " + counted(*summary.stars, "star", "stars");
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
         ImGui::TextUnformatted(facts.c_str());
         ImGui::PopStyleColor();
@@ -178,11 +198,7 @@ void render_analyze_progress(AppState& app) {
             // A real bar once the search starts reporting; until the first tick
             // (parse + graph build) there's nothing to show, so leave it off.
             float f = job->progress();
-            if (f >= 0.0f) {
-                char overlay[16];
-                std::snprintf(overlay, sizeof(overlay), "%.0f%%", f * 100.0f);
-                ImGui::ProgressBar(f, ImVec2(-1.0f, 0.0f), overlay);
-            }
+            if (f >= 0.0f) progress_bar_percent(f);
             // A long chart can take a while; the user needs an out that isn't
             // killing the app.
             if (ImGui::Button("Cancel")) job->cancel();
@@ -221,21 +237,7 @@ bool render_record_state(AppState& app, const char* not_analyzed_text) {
         render_analyze_progress(app);
         return false;
     }
-    if (app.viewed.status == store::RecordStatus::NotAnalyzed) {
-        ImGui::TextUnformatted(not_analyzed_text);
-        return false;
-    }
-    if (app.viewed.status == store::RecordStatus::Stale) {
-        ImGui::TextColored(kWarningColor,
-                           "Out of date: this result came from another Hydra version or "
-                           "from different rules in hydra_rules.ini. Re-analyze to refresh it.");
-        return false;
-    }
-    if (app.viewed.record->paths.empty()) {
-        ImGui::TextUnformatted("No paths found.");
-        return false;
-    }
-    return true;
+    return render_state_line(app, not_analyzed_text, /*dim=*/false, /*wrap_x=*/0.0f);
 }
 
 }  // namespace detail

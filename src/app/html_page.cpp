@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cstdio>
 
+#include "app/library_query.h"  // make_searchable, search_fold_table
+
 namespace hydra::app::html {
 
 std::string replace_all(std::string s, const std::string& from,
@@ -311,8 +313,10 @@ const char* const kReportJsHead = R"js(<script id="data" type="application/json"
 <script>
 const DATA = JSON.parse(document.getElementById('data').textContent);
 const DASH = '\u2014';
-const fmt = n => n === null || n === undefined ? DASH : n.toLocaleString();
-const fmtMs = n => n === null || n === undefined ? DASH : n.toFixed(1);
+// Every number a page shows groups its thousands here, with one fixed rule
+// (1,234) whatever language the browser is set to, so the table agrees with
+// the subtitle Hydra wrote (D48 Q12).
+const fmt = n => n === null || n === undefined ? DASH : n.toLocaleString('en-US');
 
 )js";
 
@@ -322,11 +326,24 @@ const char* const kReportJs = R"js(
 // and which stats sit above the table.
 const ROWS = PAGE.rows;
 const COLS = PAGE.cols;
+// How many a set of rows counts as, for the count beside the filters: the
+// page's own PAGE.count when it gives one, else one per row.
+const countOf = PAGE.count || (rs => rs.length);
 let sortKey = PAGE.sortKey, sortDir = PAGE.sortDir;
 
+// The search box matches words, and nothing more (D56 item 1). The typed text
+// is folded through FOLD, the table Hydra built from the Library's own fold,
+// so accents fold as they do in the Library. It is then split into words. A
+// row stays when every word, in any order, appears somewhere in its search
+// text, which Hydra folded the same way. Quotes and the Library's field
+// prefixes (artist:, title:, charter:) are ordinary words here; only the
+// Library reads its full query language.
 function visible() {
-  const q = document.getElementById('q').value.trim().toLowerCase();
-  return ROWS.filter(PAGE.filter(q));
+  let folded = '';
+  for (const ch of document.getElementById('q').value) folded += FOLD[ch] ?? ch;
+  const words = folded.split(/\s+/).filter(w => w);
+  const keep = PAGE.filter();
+  return ROWS.filter(r => keep(r) && words.every(w => r.search.includes(w)));
 }
 
 function render() {
@@ -364,7 +381,7 @@ function render() {
     // The "#" column: the row's place in the current sort and filter.
     const idx = document.createElement('td');
     idx.className = 'idx num';
-    idx.textContent = (++n).toLocaleString();
+    idx.textContent = fmt(++n);
     tr.appendChild(idx);
 
     // A cell is [class, text], or [chip class, text, 'chip'] for a coloured
@@ -392,7 +409,7 @@ function render() {
   empty.textContent = 'Nothing matches those filters.';
   empty.hidden = rows.length > 0;
   document.getElementById('count').textContent =
-    rows.length.toLocaleString() + ' of ' + ROWS.length.toLocaleString() + ' ' + PAGE.noun;
+    fmt(countOf(rows)) + ' of ' + fmt(countOf(ROWS)) + ' ' + PAGE.noun;
 
   const el = document.getElementById('stats');
   el.textContent = '';
@@ -498,10 +515,38 @@ std::string page_template(const char* title, const char* body, const char* page_
     page += "</style>\n</head>\n<body>\n";
     page += body;
     page += kReportJsHead;
+    // FOLD: every character the Library's fold changes, and what it becomes,
+    // for the search box in kReportJs. The keys go in as \uXXXX escapes, so
+    // the page stays ASCII.
+    std::string fold = "const FOLD = {";
+    bool first = true;
+    for (const FoldEntry& e : search_fold_table()) {
+        if (!first) fold.push_back(',');
+        first = false;
+        json_escape_into(fold, e.from);
+        fold.push_back(':');
+        json_escape_into(fold, e.to);
+    }
+    fold += "};\n";
+    page += replace_all(std::move(fold), "</", "<\\/");
     page += page_js;
     page += kReportJs;
     page += kEnd;
     return page;
+}
+
+std::string search_field(std::string_view song, std::string_view artist,
+                         std::string_view charter, std::string_view path) {
+    // The library's own row builder folds and strips each field; the path
+    // rides in its folder slot.
+    const SearchableRow row = make_searchable(song, artist, charter, path);
+    std::string out;
+    for (const std::string* field : {&row.title, &row.artist, &row.charter, &row.folder}) {
+        if (field->empty()) continue;
+        if (!out.empty()) out.push_back(' ');
+        out += *field;
+    }
+    return out;
 }
 
 }  // namespace hydra::app::html

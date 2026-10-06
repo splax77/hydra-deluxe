@@ -1,6 +1,5 @@
 #include "audio/decode.h"
 
-#include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -11,26 +10,6 @@ namespace hydra::audio {
 
 namespace {
 
-// data[off..] begins with the literal `lit` (a plain ASCII tag, no NUL).
-bool has_tag(const uint8_t* data, std::size_t size, std::size_t off,
-             const char* lit) {
-    std::size_t n = std::strlen(lit);
-    if (off + n > size) return false;
-    return std::memcmp(data + off, lit, n) == 0;
-}
-
-// The literal `lit` appears anywhere in the first `limit` bytes. Used to read
-// the codec tag out of an Ogg stream's first page without parsing the page.
-bool contains_tag(const uint8_t* data, std::size_t size, std::size_t limit,
-                  const char* lit) {
-    std::size_t n = std::strlen(lit);
-    std::size_t end = size < limit ? size : limit;
-    if (n == 0 || end < n) return false;
-    for (std::size_t i = 0; i + n <= end; ++i)
-        if (std::memcmp(data + i, lit, n) == 0) return true;
-    return false;
-}
-
 // Reads a whole stem through its reader: exactly length_frames() frames are
 // reserved up front, so the buffer never grows or copies. Should a decoder
 // yield more than it promised, the extra is kept (the buffer grows), so the
@@ -40,7 +19,7 @@ DecodedAudio read_all(StemReader& r) {
     DecodedAudio out;
     out.channels = r.channels();
     out.sample_rate = r.sample_rate();
-    if (out.channels <= 0) throw std::runtime_error("decode_audio: the stream has no channels");
+    if (out.channels <= 0) throw KindedError(ErrorKind::AudioDecode, "decode_audio: the stream has no channels");
     const std::size_t ch = static_cast<std::size_t>(out.channels);
     int64_t cap = r.length_frames();
     out.samples.resize(static_cast<std::size_t>(cap) * ch);
@@ -60,33 +39,12 @@ DecodedAudio read_all(StemReader& r) {
             n += got;
         }
     }
-    if (r.failed()) throw std::runtime_error("decode_audio: the stream failed to decode");
+    if (r.failed()) throw KindedError(ErrorKind::AudioDecode, "decode_audio: the stream failed to decode");
     out.samples.resize(static_cast<std::size_t>(n) * ch);
     return out;
 }
 
 }  // namespace
-
-AudioFormat sniff_format(const uint8_t* data, std::size_t size) {
-    if (data == nullptr || size < 2) return AudioFormat::Unknown;
-
-    if (has_tag(data, size, 0, "RIFF") && has_tag(data, size, 8, "WAVE"))
-        return AudioFormat::Wav;
-    if (has_tag(data, size, 0, "fLaC")) return AudioFormat::Flac;
-
-    if (has_tag(data, size, 0, "OggS")) {
-        // Two codecs share the OggS container; the first page names which.
-        if (contains_tag(data, size, 64, "OpusHead")) return AudioFormat::OggOpus;
-        if (contains_tag(data, size, 64, "vorbis")) return AudioFormat::OggVorbis;
-        return AudioFormat::Unknown;
-    }
-
-    // MP3: an ID3v2 tag, or a raw frame sync (11 set bits: FF Ex/Fx).
-    if (has_tag(data, size, 0, "ID3")) return AudioFormat::Mp3;
-    if (data[0] == 0xFF && (data[1] & 0xE0) == 0xE0) return AudioFormat::Mp3;
-
-    return AudioFormat::Unknown;
-}
 
 DecodedAudio decode_audio(const uint8_t* data, std::size_t size) {
     StemBytes bytes;

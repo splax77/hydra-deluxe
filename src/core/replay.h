@@ -43,9 +43,10 @@ struct ReplayWindow {
 
     // Set when the activation ends on a squeeze-out: the tick of the phrase
     // chord squeezed out (Activation::sqout_tick). That chord is hit after
-    // Star Power has ended, so it and everything after it lose their
-    // doubling, and the chord itself keeps only what its non-first hits are
-    // worth (CategoryScores::sqout_reduction is the first hit's share).
+    // Star Power has ended, so everything after it loses its doubling. The
+    // chord itself loses CategoryScores::sqout_reduction: the doubling of
+    // the notes the rules' sqout_rule names (first_note: only its first
+    // note; whole_chord: every note).
     std::optional<int64_t> sqout_tick;
 
     // The same squeeze-out as an ms offset from D, for display, and as typed
@@ -59,6 +60,13 @@ struct ReplayWindow {
     // ambiguous_window_warnings skip these when they name the engine's chord.
     // replay_path does not read it.
     std::vector<int64_t> sqin_ticks;
+
+    // The window comes off a stored record (windows_for_path, or a dump of
+    // one), so its record says how it ended: with the squeeze-out above, or
+    // plainly at D. A plainly ended window's end was D, so the only chord
+    // the engine could have squeezed out there is a late one (D36). A typed
+    // window has no history and may mean either side (core::sqout_chords).
+    bool from_record = false;
 };
 
 // The phrase chord a typed SqOut offset means.
@@ -69,10 +77,10 @@ struct SqOutNote {
 
 // Resolve w.sqout_offset_ms to the phrase chord nearest D + offset, among
 // the phrase chords strictly within kSqueezeWindowMs of D on either side.
-// The engine only ever squeezes out one of those (core::sqout_chord): the
-// first that the window did not bank before its activation and did not
-// already squeeze in (w.sqin_ticks; D34). When the nearest one is any other
-// chord this refuses (plan decision 20 of 2026-09-24). Throws
+// The engine only ever squeezes out its newest phrase at or before D or the
+// first one after D that it did not already squeeze in (core::sqout_chords;
+// w.sqin_ticks, D34; D36); a typed window may mean either. When the nearest
+// one is any other chord this refuses (plan decision 20 of 2026-09-24). Throws
 // std::runtime_error, with a message naming both chords, in that case; also
 // when there is no candidate, or when w has no offset.
 SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w);
@@ -86,7 +94,7 @@ struct ReplayScore {
     int64_t accent = 0;
     int64_t ghost = 0;
 
-    int64_t total() const { return base + combo + sp + solo + accent + ghost; }
+    int64_t total() const { return score_total(base, combo, sp, solo, accent, ghost); }
     void add(const ReplayScore& o) {
         base += o.base;
         combo += o.combo;
@@ -209,6 +217,11 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
 // instead of listing all six fields at each comparison site.
 ReplayScore score_of(const Path& path);
 
+// Writes a ReplayScore's six categories into a Path's score fields. It is
+// score_of's reverse: the two spell the Path-to-ReplayScore field pairing,
+// and nothing else does.
+void assign_score(Path& path, const ReplayScore& score);
+
 // The Star Power windows a stored path describes: one per activation, with
 // its deactivation node read straight off the record (Activation::deact_tick,
 // stamped by the search) and, when the activation squeezed out, the SqOut
@@ -252,14 +265,20 @@ PathReplay replay_stored_path(const Song& song, const Path& path,
 //
 // A squeeze-out lives on the note that ends a Star Power phrase: the player
 // delays that note until after Star Power has run out, so it is not doubled.
-// The chord it can be about is the one the engine would squeeze out there
-// (core::sqout_chord): the first phrase chord strictly within
-// kSqueezeWindowMs of the deactivation node that the window did not bank or
-// already squeeze in. A window with such a chord is ambiguous: the score is
-// right if the player did not squeeze, and high by that chord's first-hit
-// share if they
-// did, and nothing in the window list says which. So this reports the doubt
+// The chords it can be about are the ones the engine could squeeze out there
+// (core::sqout_chords, D36): for a stored window that ended plainly, the
+// first phrase chord after the deactivation node that it did not squeeze
+// in; for a typed window, that one or its newest phrase chord at or before
+// the node. A window with such a chord is ambiguous: the score is right if
+// the player did not squeeze, and high by what the squeeze-out costs if
+// they did, and nothing in the window list says which. So this reports the doubt
 // and nothing else: it never changes a score and never invents an offset.
+// The line quotes that cost in points: `result`'s total minus the total of
+// the same windows replayed with this one squeezed out on that chord, under
+// `rules`. That is the chord's own sqout_reduction under `rules.sqout_rule`
+// plus the full doubling of every later chord the window paid, since Star
+// Power ends before the squeezed-out chord. `rules` must be the rules
+// `result` was replayed under.
 //
 // It warns only when the window paid that chord (`result` must be the replay
 // of these same windows): a chord past the leeway after D was never doubled,
@@ -267,11 +286,12 @@ PathReplay replay_stored_path(const Song& song, const Path& path,
 // squeeze-out offset or chord is settled and is never reported.
 std::vector<std::string> ambiguous_window_warnings(
     const Song& song, const ReplayResult& result,
-    const std::vector<ReplayWindow>& windows);
+    const std::vector<ReplayWindow>& windows, const core::Rules& rules);
 
 // Not offered: a simulated SP meter and skip count. A straightforward
 // simulation (one bar per phrase completed outside Star Power, capped at 4,
-// two bars to activate, a passed fill with two bars banked is a skip) was
+// kSpActivationBars to activate, a passed fill with that many banked is a
+// skip) was
 // measured against every corpus path and does not reproduce the engine: 37
 // of 1486 activations came out with too few bars, and 224 with the wrong
 // skip count, 201 of them too many. The meter misses bars a squeeze-out

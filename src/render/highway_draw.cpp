@@ -4,6 +4,8 @@
 #include <cmath>
 #include <optional>
 
+#include "app/preview_view.h"  // struck_at
+
 using namespace DirectX;
 
 namespace hydra::render {
@@ -60,29 +62,54 @@ HighwayCamera make_camera(const PreviewConfig& cfg, float aspect) {
     return cam;
 }
 
+TrackRect track_rect(const PreviewConfig& cfg, int width, int height) {
+    TrackRect r;
+    r.width = std::max(1, width);
+    r.height = std::max(1, height);
+    const int t =
+        std::min(r.height, static_cast<int>(std::lround(r.width * cfg.view.height_width_ratio)));
+    r.track_height = std::max(1, t);
+    r.top = r.height - r.track_height;
+    r.aspect = static_cast<float>(r.width) / static_cast<float>(r.track_height);
+    return r;
+}
+
 int track_height(const PreviewConfig& cfg, int width, int height) {
-    const int w = std::max(1, width);
-    const int h = std::max(1, height);
-    const int t = std::min(h, static_cast<int>(std::lround(w * cfg.view.height_width_ratio)));
-    return std::max(1, t);
+    return track_rect(cfg, width, height).track_height;
+}
+
+double far_time(const PreviewConfig& cfg, double now_s, double speed) {
+    return now_s + speed * cfg.track.secs_future;
 }
 
 double time_to_z(const PreviewConfig& cfg, double now_s, double t_s, double speed) {
-    const double far_time = now_s + speed * cfg.track.secs_future;
+    const double far_t = far_time(cfg, now_s, speed);
     return cfg.track.z_now +
-           (cfg.track.z_future - cfg.track.z_now) * ((t_s - now_s) / (far_time - now_s));
+           (cfg.track.z_future - cfg.track.z_now) * ((t_s - now_s) / (far_t - now_s));
 }
 
 double z_to_time(const PreviewConfig& cfg, double now_s, double z, double speed) {
-    const double far_time = now_s + speed * cfg.track.secs_future;
-    return now_s + (far_time - now_s) * ((z - cfg.track.z_now) /
-                                         (cfg.track.z_future - cfg.track.z_now));
+    const double far_t = far_time(cfg, now_s, speed);
+    return now_s + (far_t - now_s) * ((z - cfg.track.z_now) /
+                                      (cfg.track.z_future - cfg.track.z_now));
 }
 
 void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2) {
     const float w = (cfg.track.x_right - cfg.track.x_left) / 4.0f;
     x1 = cfg.track.x_left + static_cast<int>(pad) * w;
     x2 = x1 + w;
+}
+
+void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2) {
+    const PreviewConfig::Track& T = cfg.track;
+    x1 = right ? T.x_right : T.x_left - T.railing_x_width;
+    x2 = right ? T.x_right + T.railing_x_width : T.x_left;
+}
+
+float railing_outer_x(const PreviewConfig& cfg, bool right) {
+    float x1, x2;
+    railing_x(cfg, right, x1, x2);
+    return right ? x2 : x1;
 }
 
 XMMATRIX stretch_matrix(const DrawCommand& cmd) {
@@ -98,6 +125,13 @@ XMMATRIX stretch_matrix(const DrawCommand& cmd) {
 
 LightConfig light_for(const PreviewConfig& cfg, const DrawCommand& cmd) {
     if (cmd.light == LightKind::Global) return cfg.track.light;
+    if (cmd.light == LightKind::Unlit) {
+        LightConfig l;
+        l.ambient = Color{1.0f, 1.0f, 1.0f, 1.0f};
+        l.diffuse = Color{0.0f, 0.0f, 0.0f, 0.0f};
+        l.specular = Color{0.0f, 0.0f, 0.0f, 0.0f};
+        return l;
+    }
     // Onyx LightOffset: relative to the box's top centre.
     LightConfig l = cfg.gems.light;
     l.position.x += (cmd.lo[0] + cmd.hi[0]) * 0.5f;
@@ -142,8 +176,6 @@ Material overlay_mat(TextureId base, TextureId overlay) {
     m.overlay = overlay;
     return m;
 }
-
-bool toggle_on(Toggle t) { return t != Toggle::Empty && t != Toggle::End; }
 
 // Gem sizes from Onyx's drawDrumPlay / drawGem (mtolly/onyx,
 // haskell/packages/onyx-lib-game/src/Onyx/Game/Graphics.hs, lines 660-668 at
@@ -204,11 +236,15 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
                                              double now_s, double speed) {
     std::vector<DrawCommand> out;
     const PreviewConfig::Track& T = cfg.track;
-    const double far_t = now_s + speed * T.secs_future;
+    const double far_t = far_time(cfg, now_s, speed);
     const double near_t = z_to_time(cfg, now_s, T.z_past, speed);
     auto z_of = [&](double t) { return static_cast<float>(time_to_z(cfg, now_s, t, speed)); };
 
     const TrackWindow win = state.window(near_t, far_t);
+    // Is the note at `t_s` struck at the playhead? The score box asks the
+    // same predicate in ms, so a chord on the playhead is lit here and counted
+    // there (D48, Q27). The highway works in seconds; convert at the call.
+    auto struck = [now_s](double t_s) { return app::struck_at(now_s * 1000.0, t_s * 1000.0); };
 
     // 1. Floor: one flat per stretch of (solo, active SP) state. Onyx tints
     //    the floor for solos only; the active SP window is Hydra's addition,
@@ -241,17 +277,14 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
     }
 
     // 2. Railings: two boxes along the whole visible depth.
-    {
-        DrawCommand l;
-        l.mesh = MeshId::Box;
-        l.lo[0] = T.x_left - T.railing_x_width; l.lo[1] = T.railing_y_top;    l.lo[2] = T.z_past;
-        l.hi[0] = T.x_left;                     l.hi[1] = T.railing_y_bottom; l.hi[2] = T.z_future;
-        l.material = color_mat(T.railing_color);
-        DrawCommand r = l;
-        r.lo[0] = T.x_right;
-        r.hi[0] = T.x_right + T.railing_x_width;
-        out.push_back(l);
-        out.push_back(r);
+    for (bool right : {false, true}) {
+        DrawCommand rail;
+        rail.mesh = MeshId::Box;
+        railing_x(cfg, right, rail.lo[0], rail.hi[0]);
+        rail.lo[1] = T.railing_y_top;    rail.lo[2] = T.z_past;
+        rail.hi[1] = T.railing_y_bottom; rail.hi[2] = T.z_future;
+        rail.material = color_mat(T.railing_color);
+        out.push_back(rail);
     }
 
     // 3. Beat lines (depth test off): bar / beat / half-beat flats.
@@ -290,16 +323,10 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
             if (!s.on) continue;
             for (Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green}) strip(p, s.t1, s.t2, 1.0f);
         }
-        for (const ToggleSpan& s : state.make_toggle_bounds(win, near_t, far_t, &TrackInstant::fill_lane)) {
-            if (!s.on) continue;
-            std::optional<Pad> pad;
-            for (const TrackInstant& inst : win)
-                if (inst.t >= s.t1 && inst.t <= s.t2 && inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }
-            if (!pad)
-                for (const TrackInstant& inst : win)
-                    if (inst.fill_lane_pad) { pad = inst.fill_lane_pad; break; }
-            if (pad) strip_tex(*pad, s.t1, s.t2, target_tex(*pad, true), 1.0f);
-        }
+        // Each lit stretch carries its own pad, so two taken fills that touch
+        // each light their own lane (D53 item 3).
+        for (const LaneSpan& s : state.make_lane_bounds(win, near_t, far_t))
+            strip_tex(s.pad, s.t1, s.t2, target_tex(s.pad, true), 1.0f);
     }
 
     // 5. Strike line (Onyx targets) and the glow after a hit, depth off.
@@ -313,7 +340,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         // Each lane glows from its most recent hit only; a kick lights nothing.
         bool lit[4] = {false, false, false, false};
         for (auto it = win.rbegin(); it != win.rend(); ++it) {
-            if (it->t >= now_s || it->t <= near_t) continue;
+            if (!struck(it->t) || it->t <= near_t) continue;
             const float alpha = static_cast<float>(1.0 - (now_s - it->t) / T.targets_secs_light);
             if (alpha <= 0.0f) continue;
             for (const TrackGem& g : it->notes) {
@@ -328,12 +355,54 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
         }
     }
 
-    // 6. Gems, latest (farthest) first. A note already past the strike line
-    //    flashes white there and fades over secs_fade.
+    // 6. SP end marks (Hydra, D81), depth off: a gem centred near an active
+    //    window's end hides the tint's edge, so each end visible on the
+    //    highway gets a bright edge across the floor and a triangle beside
+    //    each railing, where no gem sits. They draw before the gems, so a gem
+    //    still covers the edge. The ends are TrackState::sp_active_ends.
+    //    Edge and triangles are unlit, so both show the SP colour as given
+    //    and match. The triangles stand upright facing the camera. Each
+    //    one's base rests on its railing's outer
+    //    edge and its apex points away from the lanes, as in the approved
+    //    mock; it sits at floor height at the end's depth, so on screen it is
+    //    level with the edge.
+    {
+        const Material mark = color_mat(cfg.hydra.sp_active_color);
+        const float half_edge = cfg.hydra.sp_end_edge_depth * 0.5f;
+        const float marker_w = cfg.hydra.sp_end_marker_width;
+        const float half_marker_h = cfg.hydra.sp_end_marker_height * 0.5f;
+        for (double t_end : state.sp_active_ends(win)) {
+            const float z = z_of(t_end);
+            DrawCommand edge = flat(T.x_left, T.y, z + half_edge, T.x_right, z - half_edge, mark,
+                                    1.0f, DepthMode::Always);
+            edge.light = LightKind::Unlit;
+            out.push_back(edge);
+            for (bool right : {false, true}) {
+                const float outer = railing_outer_x(cfg, right);
+                DrawCommand n;
+                n.mesh = right ? MeshId::TriangleRight : MeshId::TriangleLeft;
+                n.lo[0] = right ? outer : outer - marker_w;
+                n.hi[0] = right ? outer + marker_w : outer;
+                n.lo[1] = T.y - half_marker_h;
+                n.hi[1] = T.y + half_marker_h;
+                // The mesh is flat at its own z = 0, so this depth only keeps
+                // the model matrix invertible for the normal matrix.
+                n.lo[2] = z + half_edge;
+                n.hi[2] = z - half_edge;
+                n.material = mark;
+                n.light = LightKind::Unlit;
+                n.depth = DepthMode::Always;
+                out.push_back(n);
+            }
+        }
+    }
+
+    // 7. Gems, latest (farthest) first. A struck note (on or past the strike
+    //    line) flashes white there and fades over secs_fade.
     for (auto it = win.rbegin(); it != win.rend(); ++it) {
-        const bool od = toggle_on(it->overdrive);
+        const bool od = toggle_on_after(it->overdrive);
         std::optional<float> fade;
-        if (it->t < now_s) {
+        if (struck(it->t)) {
             const double age = now_s - it->t;
             if (age >= cfg.gems.secs_fade) continue;
             fade = static_cast<float>(1.0 - age / cfg.gems.secs_fade);

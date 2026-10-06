@@ -1,11 +1,11 @@
 #include "ui/details_parts.h"
 
 #include "app/dynamics_breakdown.h"
-#include "core/model.h"  // group_thousands
+#include "core/model.h"  // group_thousands, counted
 #include "imgui.h"
 #include "ui/dynamics_load_job.h"
 #include "ui/fonts.h"
-#include "ui/library_parts.h"  // format_duration, count_label
+#include "ui/library_parts.h"  // format_duration
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -15,20 +15,21 @@ namespace {
 
 // ---- Dynamics tab ----------------------------------------------------------
 
-// Pad dot colours — Clone Hero's standard lane colours.
-ImVec4 pad_color(app::DynamicsRow row) {
-    switch (row) {
-        case app::DynamicsRow::RedSnare:     return ImVec4(0.85f, 0.15f, 0.15f, 1.0f);
-        case app::DynamicsRow::YellowCymbal: return ImVec4(0.90f, 0.85f, 0.10f, 1.0f);
-        case app::DynamicsRow::YellowTom:    return ImVec4(0.90f, 0.85f, 0.10f, 1.0f);
-        case app::DynamicsRow::BlueCymbal:   return ImVec4(0.20f, 0.45f, 0.90f, 1.0f);
-        case app::DynamicsRow::BlueTom:      return ImVec4(0.20f, 0.45f, 0.90f, 1.0f);
-        case app::DynamicsRow::GreenCymbal:  return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);
-        case app::DynamicsRow::GreenTom:     return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);
-        case app::DynamicsRow::Kick:         return ImVec4(0.90f, 0.55f, 0.10f, 1.0f);
-        case app::DynamicsRow::Kick2x:       return ImVec4(0.90f, 0.55f, 0.10f, 1.0f);
-        default:                             return ImVec4(0.50f, 0.50f, 0.50f, 1.0f);
+// A lane's dot colour: Clone Hero's standard lane colours.
+ImVec4 lane_color(NoteColor color) {
+    switch (color) {
+        case NoteColor::Red:    return ImVec4(0.85f, 0.15f, 0.15f, 1.0f);
+        case NoteColor::Yellow: return ImVec4(0.90f, 0.85f, 0.10f, 1.0f);
+        case NoteColor::Blue:   return ImVec4(0.20f, 0.45f, 0.90f, 1.0f);
+        case NoteColor::Green:  return ImVec4(0.15f, 0.75f, 0.20f, 1.0f);
+        case NoteColor::Kick:   return ImVec4(0.90f, 0.55f, 0.10f, 1.0f);
     }
+    return ImVec4(0.50f, 0.50f, 0.50f, 1.0f);  // unreachable
+}
+
+// A Dynamics row's dot colour: its lane's colour, read off the row table.
+ImVec4 pad_color(app::DynamicsRow row) {
+    return lane_color(app::dynamics_row_info(row).color);
 }
 
 // Draw a small filled circle in `color` before the next text on this line.
@@ -75,7 +76,7 @@ std::string dynamics_enabled_text(const app::DynamicsBreakdown& bd) {
     if (!bd.dynamics_enabled) return "Dynamics enabled: no (markings ignored by Clone Hero)";
     if (!bd.late_tag_ms) return "Dynamics enabled: yes";
     return "Dynamics enabled: from " + format_duration(*bd.late_tag_ms / 1000.0) + " on (" +
-           count_label(bd.marks_before_tag, "earlier marking", "earlier markings") +
+           counted(bd.marks_before_tag, "earlier marking", "earlier markings") +
            " ignored by Clone Hero)";
 }
 
@@ -94,7 +95,11 @@ void render_dynamics_panel(AppState& app) {
     // Error state: job finished but failed (kept around for its message).
     // Wrapped: the message can carry a long file path.
     if (app.dynamics_job && app.dynamics_job->finished() && !app.dynamics_job->ok()) {
-        ImGui::TextWrapped("Dynamics failed: %s", app.dynamics_job->error().c_str());
+        ImGui::TextWrapped("Dynamics failed: %s", app.dynamics_job->message().c_str());
+        // The raw text, dimmed, as the song panel's Analyze error shows it.
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", app.dynamics_job->error().c_str());
+        ImGui::PopStyleColor();
         return;
     }
     if (!app.dynamics_result) return;
@@ -129,8 +134,8 @@ void render_dynamics_panel(AppState& app) {
     const int table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;
     if (ImGui::BeginTable("##padtable", 5, table_flags)) {
         ImGui::TableSetupColumn("Pad");
-        ImGui::TableSetupColumn("Ghost");
-        ImGui::TableSetupColumn("Accent");
+        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());
+        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Accent).c_str());
         ImGui::TableSetupColumn("Normal");
         ImGui::TableSetupColumn("All");
         ImGui::TableHeadersRow();
@@ -140,14 +145,11 @@ void render_dynamics_panel(AppState& app) {
         for (int i = 0; i <= static_cast<int>(app::DynamicsRow::GreenTom); ++i) {
             auto r = static_cast<app::DynamicsRow>(i);
             // Skip cymbal rows when not pro.
-            if (!pro && (r == app::DynamicsRow::YellowCymbal ||
-                         r == app::DynamicsRow::BlueCymbal ||
-                         r == app::DynamicsRow::GreenCymbal))
-                continue;
+            if (!pro && app::dynamics_row_info(r).cymbal) continue;
             const app::DynamicsCounts& c = bd.row(r);
             bool disabled = !c.has_dynamics();
             ImVec4 dot = pad_color(r);
-            dynamics_table_row(app::dynamics_row_label(r, pro), c,
+            dynamics_table_row(app::dynamics_row_label(r, pro).c_str(), c,
                                disabled, &dot);
         }
         ImGui::EndTable();
@@ -156,23 +158,13 @@ void render_dynamics_panel(AppState& app) {
     // Kicks section.
     ImGui::SeparatorText("Kicks");
 
-    {
-        // How many of the chart's kick notes are 2x, counted or not: a fact
-        // about the chart, so it asks for every kick.
-        const app::DynamicsCounts k2x = bd.row(app::DynamicsRow::Kick2x);
-        const app::DynamicsCounts ktot = bd.kicks_total(/*bass2x=*/true);
-        int pct = ktot.all() > 0
-                      ? static_cast<int>(100.0 * k2x.all() / ktot.all())
-                      : 0;
-        ImGui::TextWrapped("2x kicks: %s of %s kick notes (%d%%)",
-                    group_thousands(k2x.all()).c_str(),
-                    group_thousands(ktot.all()).c_str(), pct);
-    }
+    // How many of the chart's kick notes are 2x, counted or not.
+    ImGui::TextWrapped("%s", app::dynamics_kick2x_line(bd).c_str());
 
     if (ImGui::BeginTable("##kicktable", 5, table_flags)) {
         ImGui::TableSetupColumn("Pad");
-        ImGui::TableSetupColumn("Ghost");
-        ImGui::TableSetupColumn("Accent");
+        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Ghost).c_str());
+        ImGui::TableSetupColumn(dynamic_label(NoteDynamicType::Accent).c_str());
         ImGui::TableSetupColumn("Normal");
         ImGui::TableSetupColumn("All");
         ImGui::TableHeadersRow();
@@ -180,7 +172,8 @@ void render_dynamics_panel(AppState& app) {
         {
             const app::DynamicsCounts& k = bd.row(app::DynamicsRow::Kick);
             ImVec4 kdot = pad_color(app::DynamicsRow::Kick);
-            dynamics_table_row("Kick", k, !k.has_dynamics(), &kdot);
+            dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick, pro).c_str(), k,
+                               !k.has_dynamics(), &kdot);
         }
         {
             const app::DynamicsCounts& k2 = bd.row(app::DynamicsRow::Kick2x);
@@ -188,7 +181,8 @@ void render_dynamics_panel(AppState& app) {
             // but keep its numbers.
             bool disabled = !bass2x || !k2.has_dynamics();
             ImVec4 k2dot = pad_color(app::DynamicsRow::Kick2x);
-            dynamics_table_row("2x kick", k2, disabled, &k2dot);
+            dynamics_table_row(app::dynamics_row_label(app::DynamicsRow::Kick2x, pro).c_str(),
+                               k2, disabled, &k2dot);
         }
         {
             // The same kicks Totals counts (finding 12).
@@ -212,12 +206,11 @@ void render_dynamics_panel(AppState& app) {
     ImGui::TextWrapped("Ghosts: %s", group_thousands(played.ghost).c_str());
     ImGui::TextWrapped("Accents: %s", group_thousands(played.accent).c_str());
     {
-        int dyn = played.ghost + played.accent;
+        int dyn = played.dynamic();
         int total = played.all();
-        int pct = total > 0 ? static_cast<int>(100.0 * dyn / total) : 0;
-        ImGui::TextWrapped("Dynamic notes: %s of %s (%d%%)",
+        ImGui::TextWrapped("Dynamic notes: %s of %s (%s)",
                            group_thousands(dyn).c_str(),
-                           group_thousands(total).c_str(), pct);
+                           group_thousands(total).c_str(), app::dynamics_share(dyn, total).c_str());
     }
 
     // Chart section.

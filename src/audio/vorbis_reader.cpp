@@ -31,22 +31,28 @@ class VorbisReader final : public StemReader {
 public:
     explicit VorbisReader(StemBytes bytes) : bytes_(std::move(bytes)) {
         if (bytes_.size() > static_cast<std::size_t>(INT_MAX))
-            throw std::runtime_error(
+            throw KindedError(
+                ErrorKind::AudioDecode,
                 "decode_audio: Ogg Vorbis stream is over 2 GB, which stb_vorbis can't open");
         int err = 0;
         v_ = stb_vorbis_open_memory(bytes_.data(), static_cast<int>(bytes_.size()), &err,
                                     nullptr);
         if (v_ == nullptr)
-            throw std::runtime_error("decode_audio: stb_vorbis could not decode the stream");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: stb_vorbis could not decode the stream");
         const stb_vorbis_info info = stb_vorbis_get_info(v_);
         channels_ = info.channels;
         rate_ = static_cast<int>(info.sample_rate);
-        length_ = stb_vorbis_stream_length_in_samples(v_);
         if (channels_ <= 0 || rate_ <= 0) {
             stb_vorbis_close(v_);
-            throw std::runtime_error("decode_audio: stb_vorbis could not decode the stream");
+            throw KindedError(ErrorKind::AudioDecode, "decode_audio: stb_vorbis could not decode the stream");
         }
         scratch_.resize(static_cast<std::size_t>(kChunkFrames) * channels_);
+        // stb_vorbis says 0 when it finds no end page or the last granule is
+        // -1, and can't seek without a known length: CountedLength counts the
+        // stem and seeks it by decoding.
+        length_ = counted_.length(
+            stb_vorbis_stream_length_in_samples(v_), kChunkFrames, at_end_,
+            [this] { return restart(); }, [this](int64_t n) { return skip(n); });
     }
 
     ~VorbisReader() override { stb_vorbis_close(v_); }
@@ -70,6 +76,7 @@ public:
             for (std::size_t i = 0; i < count; ++i) dst[i] = scratch_[i] / 32768.0f;
             done += got;
         }
+        pos_ += done;
         return done;
     }
 
@@ -77,17 +84,39 @@ public:
         frame = std::clamp<int64_t>(frame, 0, length_);
         if (frame >= length_) {
             at_end_ = true;
+            pos_ = length_;
+            return;
+        }
+        if (counted_.counted()) {
+            // stb_vorbis can't tell a decode error from the end, so a skip that
+            // stops early only ends the stem.
+            counted_.seek(frame, kChunkFrames, pos_, at_end_, [this] { return restart(); },
+                          [this](int64_t n) { return skip(n); });
             return;
         }
         at_end_ = stb_vorbis_seek(v_, static_cast<unsigned>(frame)) == 0;
+        pos_ = frame;
     }
 
 private:
+    // CountedLength's two decoder calls.
+    bool restart() { return stb_vorbis_seek_start(v_) != 0; }
+    DecodeStep skip(int64_t frames) {
+        const int got = stb_vorbis_get_samples_short_interleaved(
+            v_, channels_, scratch_.data(), static_cast<int>(frames) * channels_);
+        DecodeStep step;
+        step.frames = got > 0 ? got : 0;
+        step.more = got > 0;
+        return step;
+    }
+
     StemBytes bytes_;
     stb_vorbis* v_ = nullptr;
     int channels_ = 0;
     int rate_ = 0;
     int64_t length_ = 0;
+    int64_t pos_ = 0;       // the frame the next read returns
+    CountedLength counted_;  // the header said 0 frames, so length_ is a count
     std::vector<short> scratch_;
     bool at_end_ = false;
 };

@@ -19,8 +19,8 @@ hydra_batch --db <path>        Target a specific database
 hydra_batch --rules <path>     Take the rule choices from this file, not hydra_rules.ini
 hydra_batch --legacy-fills     Score fills by Clone Hero 1.0's rule (needs its own --db)
 
-hydra_report                   Sortable HTML report of stored paths (top 5 per chart)
-hydra_report --paths 20        Top 20 per chart
+hydra_report                   Sortable HTML report of stored paths (top 5 per chart and mode)
+hydra_report --paths 20        Top 20 per chart and mode
 hydra_report --all-paths       Everything stored
 hydra_report --out report.html
 hydra_report --db <path>       Report on a specific database
@@ -34,9 +34,11 @@ hydra_fillcompare ... --rules <path>
 hydra_fillcompare ... --no-open
 ```
 
-All three read the app's settings file, so they analyze, report and compare
-at the same chart mode, SP cap, timing limit and score range the app is set to.
-The fill rule is the exception, below. All three read the scoring rules from
+All three read the app's settings file, so they work at the same SP cap,
+timing limit and score range the app is set to. `hydra_batch` and
+`hydra_fillcompare` also use the app's chart mode. `hydra_report` lists every
+chart mode stored at those settings, top N paths per chart and mode. The fill
+rule is the exception, below. All three read the scoring rules from
 `hydra_rules.ini` next to Hydra.exe, or from the file `--rules` names. If that
 file has an error, they print it and stop with exit code 2.
 
@@ -49,11 +51,16 @@ the app's 1.0 fills setting and goes by the flag alone. It still refuses to
 write into the app's own `hydra.db`, so give it its own `--db`. Each database it
 fills is stamped with the rule, and hydra_batch refuses (exit code 2) a run
 whose rule disagrees with the stamp. `--reindex` never changes the stamp.
-`hydra_report` on a database stamped 1.0 reports its 1.0 results.
+`hydra_report` on a database stamped 1.0 reports its 1.0 results. When it
+finds nothing under the current settings but the database holds other
+results, it names the settings it looked under instead of saying the
+database is empty.
 
 To see what the rule change did, compare the two. `hydra_fillcompare` reads
-the 1.0 results from `--old` and the 1.1 results from `--new`. They can be two
-files, or the app's own database twice:
+the 1.0 results from `--old` and the 1.1 results from `--new`. Each chart's
+row is labelled by which database holds a record for it, even when that
+record has no paths. Narrow columns name the rules CH 1.0 and CH 1.1. The two
+databases can be two files, or the app's own database twice:
 
 ```
 hydra_batch --legacy-fills --db ch10.db
@@ -131,6 +138,46 @@ deep the search; this is how you get its number anyway.
 every corpus chart, replays every path the engine found, and fails if the
 replay's six score categories disagree with the engine's own by a single
 point.
+
+## Mutation probe
+
+A passing test only helps if it would fail when the code breaks. The
+mutation probe checks that. It plants one small deliberate bug at a time in
+one source file, such as flipping `<` to `<=` or dropping a `+ 1`. After
+each one it rebuilds `hydra_tests`, runs only the tests you name, and puts
+the file back. A bug that makes a test fail is "killed". A bug no test
+notices is a "survivor": a spot where a test is missing or too loose.
+
+    pwsh -NoProfile -File tools\mutation_probe.ps1 -Source src\core\replay.cpp -Filter sf=*test_replay* -Max 20
+
+The report gives the score (killed out of the edits that compiled) and each
+survivor's line and edit, so a person can write a test for it. The script
+edits source, so it refuses the main checkout; run it in a task worktree
+made with `tools\new_worktree.ps1`. It holds one machine build slot for the
+whole run. Each edit costs a warm rebuild and a test run, so twenty edits
+take a few minutes. The script's header lists its options and the kinds of edit it
+makes; `tools\test_mutation_probe.ps1` is its self-test.
+
+Run it before a release, on the scoring and path code. It is not meant for
+every merge: it is slow, and a survivor is a prompt to look, not a failure.
+
+## Continuous integration
+
+GitHub builds Hydra and runs its tests on every push to `main` and on every
+pull request into `main`. The workflow is `.github/workflows/ci.yml`. It is a
+backstop: the local hooks still gate commits first, and CI catches a commit
+that went around them.
+
+The job runs on GitHub's Windows Server 2025 image with Visual Studio 2026,
+the same generator the default CMake preset names. It builds `hydra_tests`
+and `hydra_uitest` with `build_cpp.ps1`, exactly as above, so a compiler
+warning fails the run. Then it runs `hydra_tests` and the headless GUI tests
+in `hydra_uitest`.
+
+One test is left out on GitHub: the one that opens the real sound output
+(`tests/test_audio_device.cpp`), because hosted runners have no audio device.
+Run it locally. A newer push to the same branch or pull request cancels the
+run it replaces.
 
 ## Other developer notes in this folder
 

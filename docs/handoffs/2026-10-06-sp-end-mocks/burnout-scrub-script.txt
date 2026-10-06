@@ -1,0 +1,22 @@
+click Scan library
+wait-idle
+click //Scanning charts/Continue
+type **/##search | Burnout
+wait 0.2
+click **/Burnout
+click **/Analyze this song
+timeout 300
+wait-idle
+wait 0.5
+click **/##DetailsTabs/Preview
+wait 1.0
+click **/Act >##nextact
+type **/##scrub | 48.3
+wait 0.5
+screenshot scrub_48.3.png
+type **/##scrub | 48.6
+wait 0.5
+screenshot scrub_48.6.png
+type **/##scrub | 48.75
+wait 0.5
+screenshot scrub_48.75.png

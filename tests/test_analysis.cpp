@@ -8,6 +8,7 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -23,15 +24,23 @@
 #include <string>
 #include <thread>
 #include <utility>
+#include <unordered_set>
 #include <vector>
+
+#include <sqlite3.h>
 
 #include "app/analysis.h"
 #include "app/work_pool.h"
+#include "core/error_kind.h"
+#include "audio_chart_fixtures.h"
+#include "core/strutil.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "midi_util.h"
 #include "parse/song.h"
+#include "sng_util.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
@@ -63,15 +72,13 @@ TEST_CASE("discover_charts returns nothing for an empty root list") {
 
 namespace {
 
-// notespath/rootfolder relative to testdata/input, forward slashes — the
-// keying testdata/scan_snapshot.json uses (see tools/bench.cpp's --dump-rel).
-std::string rel_of(const std::string& path, const std::string& root) {
-    std::string rel = path;
-    if (!root.empty() && rel.size() > root.size() && rel.compare(0, root.size(), root) == 0)
-        rel = rel.substr(root.size() + 1);
-    for (char& c : rel)
-        if (c == '\\') c = '/';
-    return rel;
+// A scan row for one real chart file, for the run_batch cases that analyze it.
+ScanItem chart_item(const std::string& chart) {
+    ScanItem item;
+    item.md5 = hash_chart_file(chart);
+    item.title = "t";
+    item.notespath = chart;
+    return item;
 }
 
 }  // namespace
@@ -93,7 +100,9 @@ TEST_CASE("discover_charts output matches the checked-in scan snapshot") {
     CHECK(items.size() == snapshot.size());
 
     std::map<std::string, const ScanItem*> by_rel;
-    for (const ScanItem& item : items) by_rel[rel_of(item.notespath, input)] = &item;
+    // Keyed as the snapshot keys it (hydra::relative_slash_path owns the rule).
+    for (const ScanItem& item : items)
+        by_rel[hydra::relative_slash_path(item.notespath, input)] = &item;
 
     for (const auto& row : snapshot) {
         const std::string rel = row["path"].get<std::string>();
@@ -104,7 +113,9 @@ TEST_CASE("discover_charts output matches the checked-in scan snapshot") {
         CHECK_MESSAGE(item.title == row["title"].get<std::string>(), rel);
         CHECK_MESSAGE(item.artist == row["artist"].get<std::string>(), rel);
         CHECK_MESSAGE(item.charter == row["charter"].get<std::string>(), rel);
-        CHECK_MESSAGE(rel_of(item.rootfolder, "") == row["folder"].get<std::string>(), rel);
+        CHECK_MESSAGE(hydra::relative_slash_path(item.rootfolder, "") ==
+                          row["folder"].get<std::string>(),
+                      rel);
     }
 }
 
@@ -116,9 +127,7 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
 
     hydra::store::RecordStore store(":memory:");
     std::vector<hydra::store::ChartLibraryEntry> entries;
-    for (const ScanItem& it : items)
-        entries.push_back({it.md5, it.title, it.artist, it.charter, it.notespath,
-                           it.rootfolder, it.sig});
+    for (const ScanItem& it : items) entries.push_back(to_library_entry(it));
     store.rebuild_chart_library(entries);
 
     hydra::store::ChartLibraryCache cache = store.chart_library_cache();
@@ -150,12 +159,21 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
     }
 }
 
+namespace {
+
+// A batch over `items` the way hydra_batch runs one: one plan from one store
+// read (D79), then that plan.
+void run_planned(const std::vector<ScanItem>& items, const BatchRun& run,
+                 hydra::store::RecordStore& store, bool redo, int workers,
+                 const hydra::app::BatchCallbacks& callbacks = {}) {
+    hydra::app::run_batch(plan_batch(items, charts_with_result(store, run, redo)), run, store,
+                          workers, callbacks);
+}
+
+}  // namespace
+
 TEST_CASE("run_batch files results under the lens it is given") {
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths()) {
-        if (!hydra::load_songpath(p, true, true).is_empty()) { chart = p; break; }
-    }
-    REQUIRE(!chart.empty());
+    const std::string chart = corpus::first_chart_with_notes();
 
     BatchRun run;
     run.chartmode = "lens-test";
@@ -164,12 +182,9 @@ TEST_CASE("run_batch files results under the lens it is given") {
     run.settings.depth_value = 10;
     run.settings.ms_filter = 10.0;
 
-    ScanItem item;
-    item.md5 = hash_chart_file(chart);
-    item.title = "t";
-    item.notespath = chart;
+    const ScanItem item = chart_item(chart);
     hydra::store::RecordStore store(":memory:");
-    run_batch({item}, run, store, /*redo=*/false, 1);
+    run_planned({item}, run, store, /*redo=*/false, 1);
 
     const hydra::store::CapQuery cap =
         hydra::store::CapQuery::at(run.settings.sp_cap);
@@ -291,6 +306,53 @@ TEST_CASE("run_work_pool: a cancel mid-run never strands the consumer") {
     CHECK(outcome.get());
 }
 
+// R7.22: batch_worker_count owns the floor of 1. The pool checks the count it
+// is given instead of quietly raising it: with no workers nothing would ever
+// reach the consumer.
+TEST_CASE("run_work_pool refuses a worker count below 1") {
+    int consumed = 0;
+    CHECK_THROWS_AS(run_work_pool<size_t>(
+                        100, 0, nullptr, [](size_t i) { return i; },
+                        [&](size_t&&) { ++consumed; }),
+                    std::invalid_argument);
+    CHECK(consumed == 0);
+    CHECK(batch_worker_count() >= 1);
+}
+
+// Audit finding 256: the scan row and the library entry hold the same seven
+// strings; the conversion copies each one by name.
+TEST_CASE("to_library_entry copies every ScanItem field by name") {
+    ScanItem item;
+    item.md5 = "the md5";
+    item.title = "the title";
+    item.artist = "the artist";
+    item.charter = "the charter";
+    item.notespath = "the notespath";
+    item.rootfolder = "the rootfolder";
+    item.sig = "the sig";
+
+    const hydra::store::ChartLibraryEntry e = to_library_entry(item);
+    CHECK(e.md5 == "the md5");
+    CHECK(e.title == "the title");
+    CHECK(e.artist == "the artist");
+    CHECK(e.charter == "the charter");
+    CHECK(e.notespath == "the notespath");
+    CHECK(e.rootfolder == "the rootfolder");
+    CHECK(e.sig == "the sig");
+}
+
+// Audit finding 192: one spelling of a chart hash for matching.
+TEST_CASE("normalize_chart_hash lowers a hash and leaves a lowercase one alone") {
+    CHECK(normalize_chart_hash("0123456789ABCDEFabcdef0123456789") ==
+          "0123456789abcdefabcdef0123456789");
+    CHECK(normalize_chart_hash("0123456789abcdefabcdef0123456789") ==
+          "0123456789abcdefabcdef0123456789");
+    // The scan's own hash is already in that spelling.
+    const std::string md5 = hash_chart_file(corpus::first_chart_with_notes());
+    REQUIRE(!md5.empty());
+    CHECK(normalize_chart_hash(md5) == md5);
+}
+
 namespace {
 
 // Items for a fake analyzer: nothing is read from disk.
@@ -301,6 +363,7 @@ std::vector<ScanItem> fake_items(int n) {
         item.md5 = "fake" + std::to_string(i);
         item.title = "fake " + std::to_string(i);
         item.notespath = "fake_" + std::to_string(i) + ".chart";
+        item.timing = hydra::store::ChartTimingMeta{};  // states nothing, so no file is read
         items.push_back(item);
     }
     return items;
@@ -329,7 +392,9 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
     std::atomic<bool> cancel{false};
     callbacks.cancel = &cancel;
     int errors = 0, results = 0;
-    callbacks.on_error = [&errors](const std::string&, const std::string&) { ++errors; };
+    callbacks.on_error = [&errors](const std::string&, const std::string&, const std::string&) {
+        ++errors;
+    };
     callbacks.on_result = [&results](const ScanItem&, const hydra::store::PreparedRow&) {
         ++results;
     };
@@ -346,7 +411,7 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
     BatchRun run;
     run.chartmode = "cancel-test";
     const auto t0 = std::chrono::steady_clock::now();
-    run_batch(fake_items(16), run, store, /*redo=*/false, /*worker_count=*/4, callbacks);
+    run_planned(fake_items(16), run, store, /*redo=*/false, /*worker_count=*/4, callbacks);
     const double seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     canceller.join();
@@ -359,16 +424,7 @@ TEST_CASE("run_batch: cancel stops running searches within seconds") {
 }
 
 TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure") {
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths()) {
-        if (!hydra::load_songpath(p, true, true).is_empty()) { chart = p; break; }
-    }
-    REQUIRE(!chart.empty());
-
-    ScanItem item;
-    item.md5 = hash_chart_file(chart);
-    item.title = "t";
-    item.notespath = chart;
+    const ScanItem item = chart_item(corpus::first_chart_with_notes());
 
     std::atomic<bool> cancel{false};
     BatchCallbacks callbacks;
@@ -384,7 +440,9 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
         });
     };
     int errors = 0, results = 0;
-    callbacks.on_error = [&errors](const std::string&, const std::string&) { ++errors; };
+    callbacks.on_error = [&errors](const std::string&, const std::string&, const std::string&) {
+        ++errors;
+    };
     callbacks.on_result = [&results](const ScanItem&, const hydra::store::PreparedRow&) {
         ++results;
     };
@@ -392,43 +450,308 @@ TEST_CASE("run_batch: a cancelled real search is neither a result nor a failure"
     hydra::store::RecordStore store(":memory:");
     BatchRun run;
     run.chartmode = "cancel-test";
-    run_batch({item}, run, store, /*redo=*/false, 1, callbacks);
+    run_planned({item}, run, store, /*redo=*/false, 1, callbacks);
 
     CHECK(errors == 0);
     CHECK(results == 0);
     CHECK(store.counts().second == 0);
 }
 
+TEST_CASE("run_batch analyzes a chart found in two folders once, and counts both rows") {
+    // D51 call 10 (finding 63): two copies of one chart are analyzed once.
+    // D76: both rows count, the way the library counts them.
+    std::vector<ScanItem> items = fake_items(1);
+    items.push_back(items[0]);
+    items[1].notespath = "copy_fake_0.chart";
+
+    // The fake analyzer only counts runs; the dedupe happens before it.
+    std::atomic<int> runs{0};
+    std::atomic<int> total{-1};
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&runs](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) -> AnalysisResult {
+        ++runs;
+        throw std::runtime_error("fake analyzer");
+    };
+    callbacks.on_progress = [&total](const BatchProgress& p) { total = p.total; };
+
+    BatchRun run;
+    run.chartmode = "dedupe-test";
+    hydra::store::RecordStore store(":memory:");
+    run_planned(items, run, store, /*redo=*/false, 1, callbacks);
+
+    CHECK(total.load() == 2);
+    CHECK(runs.load() == 1);
+}
+
 namespace {
 
-void write_sng_with_metadata(
-    const std::filesystem::path& path,
-    const std::vector<std::pair<std::string, std::string>>& metadata) {
-    std::ofstream f(path, std::ios::binary);
-    std::string header = "SNGPKG";
-    header.resize(34, '\0');
-    f.write(header.data(), static_cast<std::streamsize>(header.size()));
-    auto put_le = [&f](uint64_t v, int bytes) {
-        for (int i = 0; i < bytes; ++i) f.put(static_cast<char>((v >> (8 * i)) & 0xFF));
-    };
-    put_le(metadata.size(), 8);
-    for (const auto& [key, value] : metadata) {
-        put_le(key.size(), 4);
-        f.write(key.data(), static_cast<std::streamsize>(key.size()));
-        put_le(value.size(), 4);
-        f.write(value.data(), static_cast<std::streamsize>(value.size()));
-    }
+// Four scan rows for the batch-count cases: chart A, chart B, a second copy
+// of A in another folder, then chart C.
+std::vector<ScanItem> items_with_a_copy() {
+    std::vector<ScanItem> items = fake_items(3);
+    ScanItem copy = items[0];
+    copy.notespath = "copy_fake_0.chart";
+    items.insert(items.begin() + 2, copy);
+    return items;
 }
 
 }  // namespace
+
+TEST_CASE("plan_batch: a second copy runs with its first and counts as a row") {
+    // D51 call 10: the copy is not run again. D76: it adds a row to its
+    // chart, so the plan's rows add up to the scan's.
+    const std::vector<ScanItem> items = items_with_a_copy();
+    const BatchPlan plan = plan_batch(items, {"fake2"});
+
+    REQUIRE(plan.todo.size() == 2);
+    CHECK(plan.todo[0].md5 == "fake0");
+    CHECK(plan.todo[0].notespath == "fake_0.chart");  // the first copy wins
+    CHECK(plan.todo[1].md5 == "fake1");
+    CHECK(plan.rows == std::vector<int>{2, 1});
+    CHECK(plan.skipped == 1);
+    CHECK(plan.todo_rows() + plan.skipped == static_cast<int>(items.size()));
+}
+
+TEST_CASE("plan_batch: every copy of a stored chart counts as skipped") {
+    std::vector<ScanItem> items = items_with_a_copy();
+    const BatchPlan plan = plan_batch(items, {"fake0"});
+
+    REQUIRE(plan.todo.size() == 2);
+    CHECK(plan.todo[0].md5 == "fake1");
+    CHECK(plan.todo[1].md5 == "fake2");
+    CHECK(plan.skipped == 2);
+    CHECK(plan.todo_rows() + plan.skipped == static_cast<int>(items.size()));
+}
+
+TEST_CASE("run_batch reports analyzed, skipped and failed itself") {
+    const std::vector<ScanItem> items = items_with_a_copy();
+
+    // Counts its runs; chart B fails and every other chart stores one real
+    // chart's result.
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    std::atomic<int> runs{0};
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&runs, &real](const std::string& path, const AnalysisSettings&,
+                                       const std::function<void(float)>&) -> AnalysisResult {
+        ++runs;
+        if (path == "fake_1.chart") throw std::runtime_error("fake analyzer");
+        return real;
+    };
+
+    BatchRun run;
+    run.chartmode = "counts-test";
+    hydra::store::RecordStore store(":memory:");
+    // Chart C is stored before the batch starts.
+    run_planned({items[3]}, run, store, /*redo=*/false, 1, callbacks);
+    REQUIRE(runs.load() == 1);
+
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+    run_planned(items, run, store, /*redo=*/false, 1, callbacks);
+
+    // Chart A runs once for both its rows (D51 call 10), and both count (D76).
+    CHECK(runs.load() == 3);
+    CHECK(last.total == 3);
+    CHECK(last.analyzed == 2);
+    CHECK(last.failed == 1);
+    CHECK(last.skipped == 1);
+    CHECK(last.completed == 3);
+    CHECK(last.analyzed + last.failed + last.skipped == static_cast<int>(items.size()));
+}
+
+TEST_CASE("run_batch reports a failed chart once per copy, under its first copy's name") {
+    // D76: a failure list is as long as its count. D51 call 10: the first
+    // copy names the chart.
+    std::vector<ScanItem> items = items_with_a_copy();
+    items[2].title = "a later copy's own name";
+    BatchCallbacks callbacks;
+    std::atomic<int> runs{0};
+    callbacks.analyze = [&runs](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) -> AnalysisResult {
+        ++runs;
+        throw std::runtime_error("fake analyzer");
+    };
+    std::vector<std::string> titles;
+    callbacks.on_error = [&titles](const std::string& title, const std::string&,
+                                   const std::string&) { titles.push_back(title); };
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+
+    BatchRun run;
+    run.chartmode = "copy-fail-test";
+    hydra::store::RecordStore store(":memory:");
+    run_planned(items, run, store, /*redo=*/false, 1, callbacks);
+
+    CHECK(runs.load() == 3);
+    CHECK(last.failed == 4);
+    REQUIRE(titles.size() == 4);
+    CHECK(std::count(titles.begin(), titles.end(), items[0].title) == 2);
+    CHECK(std::count(titles.begin(), titles.end(), items[2].title) == 0);
+}
+
+// Finding 193 (D71, open question 5): a save that fails during a batch used
+// to leave run_batch and close Hydra. Now that chart is a failure like any
+// other, and the batch goes on.
+TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
+    const std::vector<ScanItem> items = fake_items(2);
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) -> AnalysisResult {
+        return real;
+    };
+    std::vector<std::string> errors;
+    callbacks.on_error = [&errors](const std::string& title, const std::string& sentence,
+                                   const std::string& error) {
+        errors.push_back(title + "|" + sentence + "|" + error);
+    };
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+
+    const std::string path = testtemp::temp_path("batch_save_fail", ".db");
+    std::remove(path.c_str());
+    { hydra::store::RecordStore store(path); }
+    {  // A trigger refuses chart fake1's result, so its save throws.
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+        REQUIRE(sqlite3_exec(db,
+                             "CREATE TRIGGER refuse_fake1 BEFORE INSERT ON results"
+                             " WHEN NEW.hyhash = 'fake1' BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_close(db);
+    }
+    BatchRun run;
+    run.chartmode = "save-fail-test";
+    {
+        hydra::store::RecordStore store(path);
+        run_planned(items, run, store, /*redo=*/false, 1, callbacks);
+
+        REQUIRE(errors.size() == 1);
+        CHECK(errors[0].rfind("fake 1|Hydra couldn't save to its database (hydra.db). Check that "
+                              "the disk isn't full and that no other copy of Hydra is running, "
+                              "then try again.|add_row",
+                              0) == 0);
+        const std::unordered_set<std::string> stored = charts_with_result(store, run, false);
+        CHECK(stored.count("fake0") == 1);
+        CHECK(stored.count("fake1") == 0);
+        CHECK(last.analyzed == 1);
+        CHECK(last.failed == 1);
+    }
+    std::remove(path.c_str());
+}
+
+// The batch works the sentence out while the exception's type is known, so
+// the screens never read an error's words (D71, ER2 open question 7).
+TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [](const std::string&, const AnalysisSettings&,
+                           const std::function<void(float)>&) -> AnalysisResult {
+        throw hydra::KindedError(hydra::ErrorKind::StoredResult, "x");
+    };
+    std::vector<std::string> sentences;
+    callbacks.on_error = [&sentences](const std::string&, const std::string& sentence,
+                                      const std::string&) { sentences.push_back(sentence); };
+    BatchRun run;
+    run.chartmode = "sentence-test";
+    hydra::store::RecordStore store(":memory:");
+    run_planned(fake_items(1), run, store, /*redo=*/false, 1, callbacks);
+
+    REQUIRE(sentences.size() == 1);
+    CHECK(sentences[0] == "A saved result couldn't be read. Re-analyze this song to replace it.");
+}
+
+namespace {
+
+// short_chart_with_long_audio's chart (last note at 100 ms, a 5 s song.ogg)
+// with `ini` as its song.ini, as the library scan lists it.
+ScanItem scanned_short_chart(const std::string& tag, const std::string& ini) {
+    const std::string notes = audiochart::short_chart_with_long_audio(tag);
+    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini", ini);
+    auto [items, errors] = discover_charts({hydra::parent_folder(notes)});
+    REQUIRE(errors.empty());
+    REQUIRE(items.size() == 1);
+    return items[0];
+}
+
+// What run_batch saved for `item` under `run`.
+hydra::store::RecordLookup batch_saved(const ScanItem& item, const BatchRun& run) {
+    hydra::store::RecordStore store(":memory:");
+    run_planned({item}, run, store, /*redo=*/false, 1, {});
+    hydra::store::RecordLookup got =
+        store.get_record({item.md5, run.chartmode, run.cap_query(), run.lens});
+    REQUIRE(got.status == hydra::store::RecordStatus::Ready);
+    return got;
+}
+
+}  // namespace
+
+TEST_CASE("run_batch saves the song's length from its metadata (D75)") {
+    BatchRun run;
+    run.chartmode = "length-test";
+    const hydra::store::RecordLookup read =
+        batch_saved(scanned_short_chart("batch_len", "[song]\nsong_length = 4321\n"), run);
+    CHECK(read.song_length_read);
+    CHECK(read.song_length_ms == 4321.0);
+
+    // A chart whose metadata cannot be read keeps its length unread: here a
+    // .sng that is gone, on a row an older scan wrote.
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) { return real; };
+    ScanItem gone;
+    gone.md5 = "gone";
+    gone.title = "gone";
+    gone.notespath = testtemp::temp_dir("batch_len_gone") + "\\gone.sng";
+    hydra::store::RecordStore store(":memory:");
+    run_planned({gone}, run, store, /*redo=*/false, 1, callbacks);
+    const hydra::store::RecordLookup unread =
+        store.get_record({gone.md5, run.chartmode, run.cap_query(), run.lens});
+    REQUIRE(unread.status == hydra::store::RecordStatus::Ready);
+    CHECK_FALSE(unread.song_length_read);
+    CHECK_FALSE(unread.song_length_ms.has_value());
+}
+
+TEST_CASE("run_batch's length opens no audio: no audio file, or junk audio, still has one") {
+    // D75 item 5. The stated length needs no audio at all.
+    BatchRun run;
+    run.chartmode = "length-noaudio";
+    ScanItem no_audio = scanned_short_chart("batch_len_noaudio", "[song]\nsong_length = 4321\n");
+    REQUIRE(DeleteFileW(
+        hydra::utf8_to_wide(hydra::parent_folder(no_audio.notespath) + "\\song.ogg").c_str()));
+    hydra::store::RecordLookup got = batch_saved(no_audio, run);
+    CHECK(got.song_length_read);
+    CHECK(got.song_length_ms == 4321.0);
+
+    // No stated length and junk bytes under the audio's name: the last Expert
+    // note (100 ms) is the length.
+    const ScanItem junk = scanned_short_chart("batch_len_junk", "[song]\nname = Junk\n");
+    audiochart::write_text_file(hydra::parent_folder(junk.notespath) + "\\song.ogg",
+                                "not audio at all");
+    got = batch_saved(junk, run);
+    CHECK(got.song_length_read);
+    CHECK(got.song_length_ms == 100.0);
+}
+
+TEST_CASE("a song.ini delay longer than the stated length saves no length") {
+    // The stated length ends before chart time 0, so the owner
+    // (app::chart_song_length_ms) gives no length: the song is read, with
+    // none.
+    BatchRun run;
+    run.chartmode = "delay-test";
+    const hydra::store::RecordLookup got = batch_saved(
+        scanned_short_chart("long_delay", "[song]\nsong_length = 1000\ndelay = 60000\n"), run);
+    CHECK(got.song_length_read);
+    CHECK_FALSE(got.song_length_ms.has_value());
+}
 
 TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
     namespace fs = std::filesystem;
     const std::string chart = corpus::first_chart_with_suffix(".chart");
     REQUIRE(!chart.empty());
 
-    const fs::path root = fs::temp_directory_path() /
-        ("hydra_unknown_title_" + std::to_string(GetCurrentProcessId()));
+    const fs::path root = hydra::os_path(testtemp::temp_dir("unknown_title"));
     fs::remove_all(root);
 
     // An empty `name =` line.
@@ -446,8 +769,13 @@ TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
         ini << "[song]\nartist = Someone\n";
     }
     // A .sng whose embedded name is empty.
-    write_sng_with_metadata(root / "blank.sng",
-                            {{"name", ""}, {"artist", "Someone"}, {"charter", "C"}});
+    {
+        const std::vector<uint8_t> sng =
+            testsng::make_sng({{"name", ""}, {"artist", "Someone"}, {"charter", "C"}}, {});
+        std::ofstream f(root / "blank.sng", std::ios::binary);
+        f.write(reinterpret_cast<const char*>(sng.data()),
+                static_cast<std::streamsize>(sng.size()));
+    }
 
     auto [items, errors] = discover_charts({root.u8string()});
     fs::remove_all(root);
@@ -470,9 +798,9 @@ TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
     hydra::store::RecordStore store(":memory:");
     std::vector<hydra::store::ChartLibraryEntry> entries;
     for (size_t i = 0; i < items.size(); ++i) {
-        const ScanItem& it = items[i];
-        entries.push_back({it.md5, i % 2 ? "<unknown title>" : "", it.artist, it.charter,
-                           it.notespath, it.rootfolder, it.sig});
+        hydra::store::ChartLibraryEntry e = to_library_entry(items[i]);
+        e.title = i % 2 ? "<unknown title>" : "";
+        entries.push_back(std::move(e));
     }
     store.rebuild_chart_library(entries);
     hydra::store::ChartLibraryCache cache = store.chart_library_cache();
@@ -484,39 +812,45 @@ TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
 
 namespace {
 
-// A fresh folder under %TEMP% for one scan fixture.
+// This process's scratch folder for one scan fixture (testtemp::temp_dir).
 std::string scan_fixture_dir(const char* name) {
-    wchar_t tmp[MAX_PATH];
-    GetTempPathW(MAX_PATH, tmp);
-    std::string dir = hydra::wide_to_utf8(tmp) + "hydra_scan_case_" +
-                      std::to_string(GetCurrentProcessId()) + "_" + name;
-    CreateDirectoryW(hydra::utf8_to_wide(dir).c_str(), nullptr);
-    return dir;
+    return testtemp::temp_dir(std::string("scan_case_") + name);
 }
 
-void write_fixture(const std::string& path, const std::vector<uint8_t>& bytes) {
-    FILE* f = hydra::fopen_utf8(path, L"wb");
-    REQUIRE_MESSAGE(f != nullptr, "cannot write " << path);
-    if (!bytes.empty()) std::fwrite(bytes.data(), 1, bytes.size(), f);
-    std::fclose(f);
-}
+using testtemp::write_bytes;
 
 }  // namespace
 
 TEST_CASE("discover_charts finds a folder whose notes and ini names are capitalized") {
     const std::string dir = scan_fixture_dir("caps");
-    write_fixture(dir + "\\Notes.mid",
+    write_bytes(dir + "\\Notes.mid",
                   testmidi::smf(testmidi::concat({testmidi::track_name("PART DRUMS"),
                                                   testmidi::set_tempo(),
                                                   testmidi::note_on(96, 100),
                                                   testmidi::end_of_track()})));
     const std::string ini = "[song]\r\nname = Capital Case\r\nartist = Someone\r\n"
                             "charter = Someone Else\r\n";
-    write_fixture(dir + "\\Song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
+    write_bytes(dir + "\\Song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
 
     auto [items, errors] = discover_charts({dir});
     REQUIRE(errors.empty());
     REQUIRE(items.size() == 1);
     CHECK(items[0].title == "Capital Case");
     CHECK(items[0].notespath == dir + "\\Notes.mid");
+}
+
+// D78: Hormone's Echo's drum track is named "notes" and then "PART DRUMS".
+// It must analyze, not fail with "No Expert Pro Drums notes in this chart."
+TEST_CASE("analyze_chart_file reads a drum track whose first name is unrecognized") {
+    using namespace testmidi;
+    const std::string dir = scan_fixture_dir("two_track_names");
+    write_bytes(dir + "\\notes.mid",
+                smf_tracks({concat({set_tempo(), end_of_track()}),
+                            concat({track_name("notes"), track_name("PART DRUMS"),
+                                    note_on(96, 100), after(120, note_on(96, 0)),
+                                    end_of_track()})}));
+    AnalysisSettings settings;
+    settings.prodrums = true;
+    const AnalysisResult result = analyze_chart_file(dir + "\\notes.mid", settings);
+    CHECK_FALSE(result.song.is_empty());
 }

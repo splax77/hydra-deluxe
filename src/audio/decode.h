@@ -8,7 +8,8 @@
 //   * RIFF/WAVE, fLaC, ID3 or an MP3 sync   -> miniaudio's own decoders
 // Two OggS codecs share the container magic, so sniff_format looks past "OggS"
 // for the codec tag; that discrimination is the whole reason this is a distinct,
-// tested step. This layer never opens an output device — it is pure and fully
+// tested step. sniff_format itself lives in core/audio_sniff.h, so the Preview's
+// container extraction asks the same rule. This layer never opens an output device — it is pure and fully
 // testable off a real audio device (see the player for the device side).
 //
 // The decoders themselves are seekable StemReaders (audio/stem_reader.h);
@@ -21,6 +22,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include "core/audio_sniff.h"  // AudioFormat, sniff_format, kOpusHeadTag
 
 namespace hydra::app {
 struct PreviewAudioStem;
@@ -41,17 +44,6 @@ struct DecodedAudio {
     }
     bool empty() const { return samples.empty(); }
 };
-
-// The container Hydra recognizes for a stem, decided from its leading bytes.
-enum class AudioFormat { Unknown, Wav, Mp3, Flac, OggVorbis, OggOpus };
-
-// Classify audio bytes by content. Distinguishes the two OggS codecs by the
-// codec tag in the first page. Returns Unknown for anything unrecognized or too
-// short to tell.
-AudioFormat sniff_format(const uint8_t* data, std::size_t size);
-inline AudioFormat sniff_format(const std::vector<uint8_t>& bytes) {
-    return sniff_format(bytes.data(), bytes.size());
-}
 
 // Decode compressed audio bytes to float PCM. Throws std::runtime_error on an
 // unrecognized container or a decode failure.

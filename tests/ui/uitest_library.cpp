@@ -8,9 +8,11 @@
 #include "imgui_internal.h"
 #include "ui/app_shell.h"  // remember_library_share
 #include "ui/app_state.h"
+#include "ui/details_view.h"  // kMinLibraryW
 #include "ui/fonts.h"  // px()
 #include "ui/library_model.h"
 #include "ui/preview_controller.h"
+#include "ui/widgets.h"  // widest_digits, button_slot_width
 
 namespace uitest {
 
@@ -19,7 +21,7 @@ namespace {
 void test_scan(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
-    IM_CHECK_EQ(h.app->library_total, 0);
+    IM_CHECK(h.app->library.rows().empty());
     scan_library(ctx);
     if (ctx->IsError()) return;
     // The first row's title is drawn in the table.
@@ -405,12 +407,15 @@ void test_library_layout(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(ctx->ItemInfo("Path limit##mslimit").RectFull.Min.y,
                 ctx->ItemInfo("##mslimitvalue").RectFull.Min.y);
 
-    // Score range holds six digits beside its step buttons.
+    // Score range holds six digits beside its step buttons. The sample
+    // widest_digits gives is one measured run in the shipped font at this
+    // size (audit finding 112).
     h.app->settings.depth_value = 999999;
     ctx->Yield(2);
-    const float six_digits =
-        ImGui::CalcTextSize("999999").x + ImGui::GetStyle().FramePadding.x * 2.0f;
-    IM_CHECK_GE(ctx->ItemInfo("##depthvalue").RectFull.GetWidth(), six_digits);
+    const std::string widest = hydra::ui::widest_digits(6);
+    IM_CHECK_STR_EQ(widest.c_str(), "000000");
+    IM_CHECK_GE(ctx->ItemInfo("##depthvalue").RectFull.GetWidth(),
+                hydra::ui::button_slot_width(widest.c_str()));
     IM_CHECK_LE(ctx->ItemInfo("##depthvalue/+").RectFull.Max.x,
                 ctx->ItemInfo("##depthmode").RectFull.Min.x);
 
@@ -419,7 +424,7 @@ void test_library_layout(ImGuiTestContext* ctx) {
     ImGuiWindow* lib = ctx->WindowInfo("//Hydra/##library").Window;
     IM_CHECK(lib != nullptr);
     if (lib == nullptr) return;
-    IM_CHECK_LE(lib->Size.x, hydra::ui::px(321.0f));
+    IM_CHECK_LE(lib->Size.x, hydra::ui::px(hydra::ui::kMinLibraryW) + 1.0f);
     ctx->SetRef("//Hydra");
     const char* chips[] = {"**/All (97)##chipall", "**/Not analyzed (97)##chipnew",
                            "**/Stale (0)##chipstale", "**/Analyzed (0)##chipdone"};
@@ -470,11 +475,12 @@ void test_library_column_order(ImGuiTestContext* ctx) {
     ImGuiTable* table = library_table();
     IM_CHECK(table != nullptr);
     if (table == nullptr) return;
-    const int best = 4;  // Best path's column index
+    const int best = hydra::ui::kColumnBestPath;
     auto load_sort = [&](int column, char dir) {
         char ini[128];
-        std::snprintf(ini, sizeof(ini), "[Table][0x%08X,5]\nColumn %d  Sort=0%c ID=0x%08X\n",
-                      table->ID, column, dir, table->Columns[column].ID);
+        std::snprintf(ini, sizeof(ini), "[Table][0x%08X,%d]\nColumn %d  Sort=0%c ID=0x%08X\n",
+                      table->ID, hydra::ui::kLibraryColumnCount, column, dir,
+                      table->Columns[column].ID);
         // As at startup: this line is the table's only saved entry (a load on
         // top of an existing entry would add a second one ImGui never reads).
         ImGui::ClearIniSettings();

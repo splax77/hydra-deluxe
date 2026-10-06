@@ -10,8 +10,9 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "core/error_kind.h"
 #include "core/strutil.h"
-#include "core/winstr.h"  // read_file_bytes
+#include "core/winstr.h"  // read_file_bytes, file_byte_source, memory_byte_source
 #include "parse/midi.h"
 #include "parse/sng.h"
 #include "parse/chart_files.h"
@@ -20,13 +21,6 @@
 
 namespace hydra {
 
-bool is_timing_refusal(std::string_view what) {
-    for (std::string_view prefix :
-         {kResolutionRefusalPrefix, kTimeSignatureRefusalPrefix, kTempoRefusalPrefix})
-        if (what.substr(0, prefix.size()) == prefix) return true;
-    return false;
-}
-
 // The timing maps Hydra can measure time with: a positive resolution, every
 // measure at least one tick long, every tempo a positive, finite BPM. Both
 // parsers reach this through Song::build_timing, so no chart with a zero,
@@ -34,22 +28,26 @@ bool is_timing_refusal(std::string_view what) {
 void check_timing_maps(int64_t tick_resolution,
                        const std::map<int64_t, int64_t>& tpm_changes,
                        const std::map<int64_t, double>& bpm_changes) {
+    constexpr ErrorKind kRefused = ErrorKind::ChartTimingRefused;
     if (tick_resolution <= 0)
-        throw ChartFileError(std::string(kResolutionRefusalPrefix) +
-                             std::to_string(tick_resolution) + ", and it must be above 0");
+        throw ChartFileError(kRefused, std::string(kResolutionRefusalPrefix) +
+                                           std::to_string(tick_resolution) +
+                                           ", and it must be above 0");
     for (const auto& [tick, len] : tpm_changes)
         if (len <= 0)
-            throw ChartFileError(std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
-                                 " makes a measure " + std::to_string(len) + " ticks long");
+            throw ChartFileError(kRefused, std::string(kTimeSignatureRefusalPrefix) +
+                                               std::to_string(tick) + " makes a measure " +
+                                               std::to_string(len) + " ticks long");
     for (const auto& [tick, bpm] : bpm_changes) {
         // A .mid tempo of 0 microseconds per beat reads back as an infinite BPM
         // (D12): say so, rather than "not above 0 BPM".
         if (std::isinf(bpm) && bpm > 0.0)
-            throw ChartFileError(std::string(kTempoRefusalPrefix) + std::to_string(tick) +
-                                 " is infinite (0 microseconds per beat)");
+            throw ChartFileError(kRefused, std::string(kTempoRefusalPrefix) +
+                                               std::to_string(tick) +
+                                               " is infinite (0 microseconds per beat)");
         if (!std::isfinite(bpm) || bpm <= 0.0)
-            throw ChartFileError(std::string(kTempoRefusalPrefix) + std::to_string(tick) +
-                                 " is not above 0 BPM");
+            throw ChartFileError(kRefused, std::string(kTempoRefusalPrefix) +
+                                               std::to_string(tick) + " is not above 0 BPM");
     }
 }
 
@@ -79,6 +77,23 @@ bool section_name_of(const std::string& body, std::string* name) {
 void sort_practice_sections(std::vector<SongSection>& sections) {
     std::stable_sort(sections.begin(), sections.end(),
                      [](const SongSection& a, const SongSection& b) { return a.tick < b.tick; });
+}
+
+// The one place solo sections are found: each unbroken run of solo-flagged
+// timestamps in the finished sequence is one section. Both parsers call it
+// once their sequence is complete. Two solos with no plain chord between them
+// read as one run, the same as the replay and the Preview have always read
+// them.
+std::vector<SoloSection> find_solo_sections(const std::vector<SongTimestamp>& sequence) {
+    std::vector<SoloSection> sections;
+    for (size_t i = 0; i < sequence.size(); ++i) {
+        if (!sequence[i].flag_solo) continue;
+        if (!sections.empty() && sections.back().last + 1 == i)
+            sections.back().last = i;
+        else
+            sections.push_back({i, i});
+    }
+    return sections;
 }
 
 bool try_parse_int(const std::string& s, int64_t& out) {
@@ -167,8 +182,9 @@ bool is_disco_off_marker(std::string_view s, char mix_digit) {
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator) {
     if (numerator == 0) return;
     if (denominator <= 0)
-        throw ChartFileError(std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
-                             " has a bottom number that is out of range");
+        throw ChartFileError(ErrorKind::ChartTimingRefused,
+                             std::string(kTimeSignatureRefusalPrefix) + std::to_string(tick) +
+                                 " has a bottom number that is out of range");
     song.tpm_changes[tick] = song.tick_resolution() * static_cast<int64_t>(numerator) * 4 /
                              static_cast<int64_t>(denominator);
     song.timesig_changes[tick] = {numerator, denominator};
@@ -281,12 +297,7 @@ const char* difficulty_name(Difficulty difficulty) {
 std::optional<Difficulty> difficulty_from_name(std::string_view name) {
     for (Difficulty d : kAllDifficulties) {
         const std::string_view want = difficulty_name(d);
-        if (name.size() != want.size()) continue;
-        if (std::equal(name.begin(), name.end(), want.begin(), [](char a, char b) {
-                return std::tolower(static_cast<unsigned char>(a)) ==
-                       std::tolower(static_cast<unsigned char>(b));
-            }))
-            return d;
+        if (equals_ci(name, want)) return d;
     }
     return std::nullopt;
 }
@@ -296,12 +307,107 @@ std::string no_notes_message(Difficulty difficulty, bool prodrums) {
            (prodrums ? " Pro Drums" : " Drums") + " notes in this chart.";
 }
 
+NoNotesError::NoNotesError(Difficulty difficulty, bool prodrums)
+    : ChartFileError(ErrorKind::AlreadyPlain, no_notes_message(difficulty, prodrums)) {}
+
+namespace {
+
+// The one test for "this name is missing": it is empty or holds the
+// placeholder the scan stored for a missing one. Either way it reads
+// kUnknownTitle.
+std::string name_or_unknown(std::string name, std::string_view placeholder) {
+    if (name.empty() || name == placeholder) return kUnknownTitle;
+    return name;
+}
+
+}  // namespace
+
 std::string title_or_unknown(std::string title) {
     // The placeholder the metadata readers used before kUnknownTitle.
     static constexpr const char* kOldPlaceholder = "<unknown title>";
-    if (title.empty() || title == kOldPlaceholder) return kUnknownTitle;
-    return title;
+    return name_or_unknown(std::move(title), kOldPlaceholder);
 }
+
+// ---- rich-text tags ---------------------------------------------------------
+
+namespace {
+
+struct RichTag {
+    std::string_view name;
+    bool takes_value;  // the opening tag is <name=value>
+};
+
+constexpr RichTag kRichTags[] = {
+    {"color", true}, {"size", true}, {"b", false},   {"i", false},
+    {"u", false},    {"s", false},   {"sub", false}, {"sup", false},
+};
+
+bool is_ascii_alpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+// The byte length of the rich-text tag that starts at text[at] (a '<'), or 0
+// when the text there is not one strip_rich_tags removes.
+size_t rich_tag_length(std::string_view text, size_t at) {
+    size_t i = at + 1;
+    const bool closing = i < text.size() && text[i] == '/';
+    if (closing) ++i;
+    size_t name_end = i;
+    while (name_end < text.size() && is_ascii_alpha(text[name_end])) ++name_end;
+    if (name_end == i || name_end >= text.size()) return 0;
+
+    const std::string name = to_lower_ascii(text.substr(i, name_end - i));
+    for (const RichTag& tag : kRichTags) {
+        if (name != tag.name) continue;
+        if (text[name_end] == '>')
+            return (closing || !tag.takes_value) ? name_end + 1 - at : 0;
+        if (!closing && tag.takes_value && text[name_end] == '=') {
+            const size_t close = text.find('>', name_end);
+            const size_t reopen = text.find('<', name_end);
+            if (close == std::string_view::npos || reopen < close) return 0;
+            return close + 1 - at;
+        }
+        return 0;
+    }
+    return 0;
+}
+
+}  // namespace
+
+std::string strip_rich_tags(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    size_t i = 0;
+    while (i < text.size()) {
+        if (text[i] == '<') {
+            if (const size_t len = rich_tag_length(text, i)) {
+                i += len;
+                continue;
+            }
+        }
+        out.push_back(text[i]);
+        ++i;
+    }
+    return out;
+}
+
+namespace {
+
+// How every shown name is cleaned: the tags go and the ends are trimmed.
+std::string clean_name(std::string_view text) { return trim(strip_rich_tags(text)); }
+
+}  // namespace
+
+std::string display_title(std::string_view title) {
+    return title_or_unknown(clean_name(title));
+}
+
+std::string display_artist(std::string_view artist) {
+    // display_title's rule, plus the artist placeholder the scan stores.
+    return name_or_unknown(display_title(artist), kUnknownArtist);
+}
+
+std::string display_charter(std::string_view charter) { return clean_name(charter); }
 
 Song::Song(int64_t resolution) : tick_resolution_(resolution) {
     apply_timesig(*this, 0, kDefaultTimeSigNumerator, kDefaultTimeSigDenominator);
@@ -321,6 +427,14 @@ int Song::sp_phrase_count() const {
     int n = 0;
     for (const SongTimestamp& ts : sequence)
         if (ts.flag_sp) ++n;
+    return n;
+}
+
+// ---- Song::note_count -----------------------------------------------------
+
+int Song::note_count() const {
+    int n = 0;
+    for (const SongTimestamp& ts : sequence) n += ts.chord.count();
     return n;
 }
 
@@ -498,25 +612,62 @@ int difficulty_base_pitch(Difficulty difficulty) {
     return difficulty_chart_codes(difficulty).kick_pitch;
 }
 
+// The marker pitches every difficulty shares on the drum track, each named
+// once. kMarkerPitches is the one list of them: is_handled_note reads it, the
+// note-off gate in MidiParser::optype reads it, and both optype switches use
+// these names as their case labels.
+constexpr int kSoloMarkerPitch = 103;
+constexpr int kFlamMarkerPitch = 109;
+constexpr int kYellowTomMarkerPitch = 110;
+constexpr int kBlueTomMarkerPitch = 111;
+constexpr int kGreenTomMarkerPitch = 112;
+constexpr int kSpMarkerPitch = 116;
+constexpr int kFillMarkerPitch = 120;
+constexpr int kMarkerPitches[] = {
+    kSoloMarkerPitch,     kFlamMarkerPitch, kYellowTomMarkerPitch, kBlueTomMarkerPitch,
+    kGreenTomMarkerPitch, kSpMarkerPitch,   kFillMarkerPitch,
+};
+
+constexpr int lowest_marker_pitch() {
+    int lowest = kMarkerPitches[0];
+    for (int pitch : kMarkerPitches)
+        if (pitch < lowest) lowest = pitch;
+    return lowest;
+}
+// The note-off gate drops a note-off on any pitch that is not a marker. That
+// matches the gate it replaced (a note-off below the solo marker is dropped)
+// only while every non-marker pitch is below the solo marker.
+static_assert(lowest_marker_pitch() == kSoloMarkerPitch,
+              "a marker below the solo marker would change the note-off gate");
+constexpr int highest_pad_pitch() {
+    int highest = 0;
+    for (const auto& d : kDifficultyChartCodes)
+        if (d.kick_pitch + 4 > highest) highest = d.kick_pitch + 4;
+    return highest;
+}
+static_assert(highest_pad_pitch() < kSoloMarkerPitch,
+              "a pad pitch at or above the solo marker would change the note-off gate");
+
+}  // namespace
+
+bool is_midi_marker_pitch(int pitch) {
+    return std::find(std::begin(kMarkerPitches), std::end(kMarkerPitches), pitch) !=
+           std::end(kMarkerPitches);
+}
+
+namespace {
+
 // `base` is the difficulty's kick pitch and `kick2x` its 2x kick pitch, both
 // from difficulty_chart_codes. The five note pitches follow the kick, and the
-// 2x kick sits one below it. Every other pitch here is a marker shared by all
-// four difficulties. A pitch outside this set belongs to another difficulty
-// (or to another instrument) and is dropped, so Expert's 95 is never read
-// below Expert: Clone Hero reads each 2x kick only into its own difficulty
-// (D20; 0x2155050 at 0x21555CD).
+// 2x kick sits one below it. The rest are the shared markers
+// (is_midi_marker_pitch). A pitch outside this set belongs to another
+// difficulty (or to another instrument) and is dropped, so Expert's 95 is
+// never read below Expert: Clone Hero reads each 2x kick only into its own
+// difficulty (D20; 0x2155050 at 0x21555CD).
 bool is_handled_note(int note, int base, int kick2x) {
     if (note >= base && note <= base + 4) return true;
     if (note == kick2x) return true;
-    switch (note) {
-        case 103:
-        case 109: case 110: case 111: case 112:
-        case 116:
-        case 120:
-            return true;
-        default:
-            return false;
-    }
+    return is_midi_marker_pitch(note);
 }
 
 class MidiParser {
@@ -617,7 +768,9 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
         bool is_noteoff =
             (msg.type == MType::NoteOff || (msg.type == MType::NoteOn && velocity == 0));
 
-        if (is_noteoff && note < 103) return {};
+        // Only markers act on a note-off; a pad or 2x kick note-off is
+        // dropped (see the static_assert beside kMarkerPitches).
+        if (is_noteoff && !is_midi_marker_pitch(note)) return {};
 
         if (is_noteon) {
             // The difficulty's own five pitches come first: base is the kick,
@@ -640,17 +793,17 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
                 return {};
             }
             switch (note) {
-                case 120:
+                case kFillMarkerPitch:
                     return mop_tick(MPhase::PostDelayed, MAct::FillStart, tick);
-                case 116:
+                case kSpMarkerPitch:
                     return mop_tick(sp_start_tick_.has_value() ? MPhase::PreDelayed
                                                                : MPhase::Pre,
                                     MAct::SpStart, tick);
-                case 112: return mop_tom(NoteColor::Green, NoteCymbalType::Normal);
-                case 111: return mop_tom(NoteColor::Blue, NoteCymbalType::Normal);
-                case 110: return mop_tom(NoteColor::Yellow, NoteCymbalType::Normal);
-                case 109: return mop_flag(MAct::Flam, true);
-                case 103: return mop_flag(MAct::Solo, true);
+                case kGreenTomMarkerPitch: return mop_tom(NoteColor::Green, NoteCymbalType::Normal);
+                case kBlueTomMarkerPitch: return mop_tom(NoteColor::Blue, NoteCymbalType::Normal);
+                case kYellowTomMarkerPitch: return mop_tom(NoteColor::Yellow, NoteCymbalType::Normal);
+                case kFlamMarkerPitch: return mop_flag(MAct::Flam, true);
+                case kSoloMarkerPitch: return mop_flag(MAct::Solo, true);
                 default:
                     return {};
             }
@@ -658,17 +811,17 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
 
         if (is_noteoff) {
             switch (note) {
-                case 120:
+                case kFillMarkerPitch:
                     return mop_tick(MPhase::Pre, MAct::StoreFillEnd, tick);
-                case 116:
+                case kSpMarkerPitch:
                     return mop_tick(sp_start_tick_.has_value() ? MPhase::Pre
                                                                : MPhase::PreDelayed,
                                     MAct::SpEnd, tick);
-                case 112: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
-                case 111: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
-                case 110: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
-                case 109: return mop_flag(MAct::Flam, false);
-                case 103:
+                case kGreenTomMarkerPitch: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
+                case kBlueTomMarkerPitch: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
+                case kYellowTomMarkerPitch: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
+                case kFlamMarkerPitch: return mop_flag(MAct::Flam, false);
+                case kSoloMarkerPitch:
                     // A MIDI solo marker covers ticks up to its note-off, not
                     // including it: end the solo before this tick's notes.
                     // Pinned by ".mid: the note on the solo marker's note-off
@@ -787,7 +940,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
 
     // Pass 2: the drum track.
     for (const MidiTrack& track : mid.tracks) {
-        if (track.name != "PART DRUMS") continue;
+        if (track.name != kDrumsTrackName) continue;
         elapsed = 0;
         msg_buffer_.clear();
         flag_solo_ = false;
@@ -818,7 +971,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     // Pass 3: practice sections, which live on their own track(s) as bracketed
     // text metas, sorted once at the end.
     for (const MidiTrack& track : mid.tracks) {
-        if (track.name != "EVENTS") continue;
+        if (track.name != kEventsTrackName) continue;
         elapsed = 0;
         for (const Message& msg : track.messages) {
             elapsed += msg.time;
@@ -831,6 +984,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         }
     }
     sort_practice_sections(song.practice_sections);
+    song.solo_sections = find_solo_sections(song.sequence);
 
     song.check_activations(rules_);
     return song;
@@ -1347,6 +1501,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         }
         sort_practice_sections(song.practice_sections);
     }
+    song.solo_sections = find_solo_sections(song.sequence);
 
     // .chart ghosts and accents are explicit per-note flags (N 34-37 accent,
     // N 40-43 ghost), applied unconditionally, so a .chart has no opt-in
@@ -1374,58 +1529,48 @@ Song load_songbytes_chart(const std::vector<uint8_t>& data, bool pro,
 
 Song load_songpath_mid(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty, const core::Rules& rules) {
-    MidiFile mid = MidiFile::from_file(path);
-    return MidiParser(rules).parse(mid, pro, bass2x, difficulty);
+    return load_songbytes_mid(read_file_bytes(path), pro, bass2x, difficulty, rules);
 }
 
 Song load_songpath_chart(const std::string& path, bool pro, bool bass2x,
                          Difficulty difficulty, const core::Rules& rules) {
-    std::vector<uint8_t> data = read_file_bytes(path);
-    return ChartParser(rules).parse(data, pro, bass2x, difficulty);
+    return load_songbytes_chart(read_file_bytes(path), pro, bass2x, difficulty, rules);
 }
 
-Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
-                        Difficulty difficulty, const core::Rules& rules) {
-    // A notes.mid wins over a notes.chart; among .chart entries the last one
-    // listed wins (the order this loader has always used).
-    const std::vector<SngFileEntry> entries = sng_read_file_table(buf);
-    const SngFileEntry* notes = nullptr;
-    ChartFormat format = ChartFormat::None;
-    for (const SngFileEntry& e : entries) {
-        const ChartFormat f = notes_file_format(e.name);
-        if (f == ChartFormat::Mid) {
-            notes = &e;
-            format = f;
-            break;
-        }
-        if (f == ChartFormat::Chart) {
-            notes = &e;
-            format = f;
-        }
-    }
-    if (!notes) throw std::runtime_error("No chart files found in SNG file.");
+namespace {
 
-    std::optional<std::vector<uint8_t>> notebytes = sng_decode_file(buf, *notes);
-    if (!notebytes) throw std::runtime_error("Truncated SNG file.");
-    if (format == ChartFormat::Mid)
+// The one notes reader for each container kind, whether the bytes come from
+// disk in pieces or from a buffer in memory (the Preview reads the whole file
+// once and shares it; its notes are picked out the same way).
+Song load_container_sng(const ByteSource& src, bool pro, bool bass2x,
+                        Difficulty difficulty, const core::Rules& rules) {
+    // Which entry is the notes file is pick_notes_file's question.
+    const std::vector<uint8_t> head = sng_read_head(src);
+    const std::vector<SngFileEntry> entries = sng_read_file_table(head);
+    std::vector<std::string> names;
+    names.reserve(entries.size());
+    for (const SngFileEntry& e : entries) names.push_back(e.name);
+    const std::optional<NotesFilePick> pick = pick_notes_file(names);
+    // A file-level failure is a KindedError, not a ChartFileError: the
+    // per-note catches swallow ChartFileError.
+    if (!pick) throw KindedError(ErrorKind::ChartUnreadable, "No chart files found in SNG file.");
+
+    std::optional<std::vector<uint8_t>> notebytes = sng_read_file(src, head, entries[pick->index]);
+    if (!notebytes) throw KindedError(ErrorKind::ChartUnreadable, "Truncated SNG file.");
+    if (pick->format == ChartFormat::Mid)
         return load_songbytes_mid(*notebytes, pro, bass2x, difficulty, rules);
     return load_songbytes_chart(*notebytes, pro, bass2x, difficulty, rules);
 }
 
-Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+Song load_container_srb(const ByteSource& src, bool pro, bool bass2x,
                         Difficulty difficulty, const core::Rules& rules) {
-    if (buf.size() <= kSrbHeaderSize)
-        throw std::runtime_error("Truncated SRB file.");
-
     // Stream 1 (metadata) names the notes file; stream 2 is its bytes.
-    size_t notes_offset = 0;
-    std::vector<uint8_t> meta = srb_inflate_stream(
-        buf.data(), buf.size(), kSrbHeaderSize, kSrbMaxMetadata, &notes_offset);
-    SrbMetadata md;
-    srb_parse_metadata(meta, md);
+    // srb_read_metadata reads stream 1 and refuses a source too short for it.
+    const SrbMetadataRead read = srb_read_metadata(src);
+    const SrbMetadata& md = read.fields;
 
-    std::vector<uint8_t> notebytes = srb_inflate_stream(
-        buf.data(), buf.size(), notes_offset, kSrbMaxStream, nullptr);
+    std::vector<uint8_t> notebytes =
+        srb_inflate_stream_reading(src, read.notes_offset, kSrbMaxStream, nullptr);
 
     // The notes stream's format comes from its name, by the exact-name rule a
     // .sng entry and a loose folder use (notes_file_format). An .srb's notes
@@ -1444,44 +1589,66 @@ Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
     return load_songbytes_chart(notebytes, pro, bass2x, difficulty, rules);
 }
 
-// A container is read from disk once and parsed from those bytes, so the
-// Preview can hand the same buffer to its audio extractor (see
-// load_songpath_from_bytes).
+}  // namespace
+
+Song load_songbytes_sng(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+                        Difficulty difficulty, const core::Rules& rules) {
+    return load_container_sng(memory_byte_source(buf), pro, bass2x, difficulty, rules);
+}
+
+Song load_songbytes_srb(const std::vector<uint8_t>& buf, bool pro, bool bass2x,
+                        Difficulty difficulty, const core::Rules& rules) {
+    return load_container_srb(memory_byte_source(buf), pro, bass2x, difficulty, rules);
+}
+
+// A container on disk is read in pieces: its header, then only the notes. The
+// rest is audio and art (about 1 GB for the largest .sng in the library), which
+// the notes never need.
 Song load_songpath_sng(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty, const core::Rules& rules) {
-    return load_songbytes_sng(read_file_bytes(path), pro, bass2x, difficulty, rules);
+    return load_container_sng(file_byte_source(path), pro, bass2x, difficulty, rules);
 }
 
 Song load_songpath_srb(const std::string& path, bool pro, bool bass2x,
                        Difficulty difficulty, const core::Rules& rules) {
-    return load_songbytes_srb(read_file_bytes(path), pro, bass2x, difficulty, rules);
+    return load_container_srb(file_byte_source(path), pro, bass2x, difficulty, rules);
 }
 
 Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
                               bool pro, bool bass2x, Difficulty difficulty,
                               const core::Rules& rules) {
+    return load_songpath_reading(memory_byte_source(bytes), path, pro, bass2x, difficulty,
+                                 rules);
+}
+
+Song load_songpath_reading(const ByteSource& src, const std::string& path, bool pro,
+                           bool bass2x, Difficulty difficulty, const core::Rules& rules) {
     switch (chart_format_of(path)) {
-        case ChartFormat::Mid: return load_songbytes_mid(bytes, pro, bass2x, difficulty, rules);
-        case ChartFormat::Chart: return load_songbytes_chart(bytes, pro, bass2x, difficulty, rules);
-        case ChartFormat::Sng: return load_songbytes_sng(bytes, pro, bass2x, difficulty, rules);
-        case ChartFormat::Srb: return load_songbytes_srb(bytes, pro, bass2x, difficulty, rules);
+        case ChartFormat::Mid:
+            return load_songbytes_mid(read_all(src), pro, bass2x, difficulty, rules);
+        case ChartFormat::Chart:
+            return load_songbytes_chart(read_all(src), pro, bass2x, difficulty, rules);
+        case ChartFormat::Sng: return load_container_sng(src, pro, bass2x, difficulty, rules);
+        case ChartFormat::Srb: return load_container_srb(src, pro, bass2x, difficulty, rules);
         case ChartFormat::None: break;
     }
-    throw std::runtime_error("unexpected chart type: " + path);
+    throw KindedError(ErrorKind::ChartUnreadable, "unexpected chart type: " + path);
 }
 
 Song load_songpath(const std::string& path, bool pro, bool bass2x,
                    Difficulty difficulty, const core::Rules& rules) {
-    switch (chart_format_of(path)) {
-        case ChartFormat::Mid: return load_songpath_mid(path, pro, bass2x, difficulty, rules);
-        case ChartFormat::Chart: return load_songpath_chart(path, pro, bass2x, difficulty, rules);
-        case ChartFormat::Sng:
-        case ChartFormat::Srb:
-            return load_songpath_from_bytes(path, read_file_bytes(path), pro, bass2x,
-                                            difficulty, rules);
-        case ChartFormat::None: break;
-    }
-    throw std::runtime_error("unexpected chart type: " + path);
+    return load_songpath_reading(file_byte_source(path), path, pro, bass2x, difficulty, rules);
+}
+
+void require_notes(const Song& song, Difficulty difficulty, bool prodrums) {
+    if (song.is_empty()) throw NoNotesError(difficulty, prodrums);
+}
+
+Song load_songpath_with_notes(const std::string& path, bool pro, bool bass2x,
+                              Difficulty difficulty, const core::Rules& rules) {
+    Song song = load_songpath(path, pro, bass2x, difficulty, rules);
+    require_notes(song, difficulty, pro);
+    return song;
 }
 
 }  // namespace hydra

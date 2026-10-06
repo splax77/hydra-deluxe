@@ -1,17 +1,14 @@
-// Tests for render/preview_config: the struct defaults are Onyx's 3d-config.yml
-// values, the shipped JSON loads to the same values, and colours parse like
-// Onyx's stackColor.
+// Tests for render/preview_config: the shipped JSON loads to Onyx's
+// 3d-config.yml values, a key the file lacks (or holds with the wrong type) is
+// refused by name, and colours parse like Onyx's stackColor.
 
 #include "doctest.h"
 
 #include <string>
 
-#include "core/winstr.h"
+#include "json.hpp"
 #include "render/preview_config.h"
-
-#ifndef HYDRA_ASSET_DIR
-#error "HYDRA_ASSET_DIR must be defined (see CMakeLists.txt)"
-#endif
+#include "preview_config_util.h"
 
 using namespace hydra::render;
 
@@ -76,29 +73,52 @@ void check_is_onyx(const PreviewConfig& c) {
 
 }  // namespace
 
-TEST_CASE("PreviewConfig defaults are Onyx's 3d-config.yml values") {
-    PreviewConfig c;
-    check_is_onyx(c);
-    CHECK(c.hydra.msaa == 4);
-    check_color(c.hydra.sp_active_color, 0x6c / 255.0f, 0xf7 / 255.0f, 0xc6 / 255.0f);
-}
-
 TEST_CASE("the shipped 3d-config.json loads to the Onyx values") {
-    std::string text = hydra::read_file_text(std::string(HYDRA_ASSET_DIR) + "/3d-config.json");
+    std::string text = shipped_preview_config_text();
     REQUIRE(!text.empty());
     PreviewConfig c = load_preview_config(text);
     check_is_onyx(c);
     CHECK(c.hydra.msaa == 4);
+    check_color(c.hydra.sp_active_color, 0x6c / 255.0f, 0xf7 / 255.0f, 0xc6 / 255.0f);
     CHECK(c.hydra.sp_active_darken == doctest::Approx(0.2));
     CHECK(c.hydra.fill_offered_alpha == doctest::Approx(0.35));
+    // The SP end mark's look, as the user approved it (D81).
+    CHECK(c.hydra.sp_end_edge_depth == doctest::Approx(0.1));
+    CHECK(c.hydra.sp_end_marker_width == doctest::Approx(0.07));
+    CHECK(c.hydra.sp_end_marker_height == doctest::Approx(0.07));
 }
 
-TEST_CASE("load_preview_config keeps defaults for missing keys and overrides present ones") {
-    PreviewConfig c = load_preview_config(R"({"track": {"time": {"secs_future": 2.0}}, "hydra": {"msaa": 1}})");
-    CHECK(c.track.secs_future == doctest::Approx(2.0));
-    CHECK(c.track.z_future == doctest::Approx(-12));
-    CHECK(c.hydra.msaa == 1);
-    CHECK(c.view.camera_rotate == doctest::Approx(25));
+TEST_CASE("load_preview_config refuses a missing SP end mark key and names it") {
+    for (const char* key : {"sp_end_edge_depth", "sp_end_marker_width", "sp_end_marker_height"}) {
+        nlohmann::json j = nlohmann::json::parse(shipped_preview_config_text());
+        j["hydra"].erase(key);
+        const std::string expected = std::string("3d-config.json: missing key hydra.") + key;
+        CHECK_THROWS_WITH_AS(load_preview_config(j.dump()), doctest::Contains(expected.c_str()),
+                             std::runtime_error);
+    }
+}
+
+TEST_CASE("load_preview_config refuses a missing key and names it") {
+    const nlohmann::json shipped = nlohmann::json::parse(shipped_preview_config_text());
+
+    nlohmann::json no_secs = shipped;
+    no_secs["track"]["time"].erase("secs_future");
+    CHECK_THROWS_WITH_AS(load_preview_config(no_secs.dump()),
+                         doctest::Contains("3d-config.json: missing key track.time.secs_future"),
+                         std::runtime_error);
+
+    nlohmann::json no_msaa = shipped;
+    no_msaa["hydra"].erase("msaa");
+    CHECK_THROWS_WITH_AS(load_preview_config(no_msaa.dump()),
+                         doctest::Contains("3d-config.json: missing key hydra.msaa"),
+                         std::runtime_error);
+
+    // A key holding the wrong type is refused the same way.
+    nlohmann::json bad_rotate = shipped;
+    bad_rotate["view"]["camera"]["rotate"] = "25";
+    CHECK_THROWS_WITH_AS(load_preview_config(bad_rotate.dump()),
+                         doctest::Contains("3d-config.json: missing key view.camera.rotate"),
+                         std::runtime_error);
 }
 
 TEST_CASE("load_preview_config rejects malformed JSON") {
@@ -113,8 +133,10 @@ TEST_CASE("parse_hex_color follows Onyx stackColor") {
 }
 
 TEST_CASE("load_preview_config reads the time box size and margin") {
-    PreviewConfig c =
-        load_preview_config(R"({"text": {"time_box": {"font": "x.ttf", "size": 20, "margin": 12}}})");
+    nlohmann::json j = nlohmann::json::parse(shipped_preview_config_text());
+    j["text"]["time_box"]["size"] = 20;
+    j["text"]["time_box"]["margin"] = 12;
+    PreviewConfig c = load_preview_config(j.dump());
     CHECK(c.text.time_box_size == doctest::Approx(20));
     CHECK(c.text.time_box_margin == doctest::Approx(12));
 }

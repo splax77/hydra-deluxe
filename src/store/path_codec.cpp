@@ -350,7 +350,7 @@ Path decode_path_node(const std::vector<uint8_t>& payload) {
     BinaryReader r(payload);
     // Only a current path format is readable. An older node is reachable
     // only through an older structure, and the store never decodes one of
-    // those (structure_is_current in record_store.cpp).
+    // those (rank_row in record_store.cpp).
     if (!kPathFormatStamp.is_current(r.u32()))
         throw SerializeError("unsupported path node format version");
 
@@ -391,9 +391,8 @@ FlatRecord flatten_record(const HydraRecord& record) {
     std::unordered_map<std::string, size_t> seen;
 
     BinaryWriter w;
+    // The structure head, in the order path_codec.h's offsets name.
     w.u32(kPathFormatStamp.written);
-    // Right after the version, so the store can compare version and rules
-    // off a fixed 12-byte head in SQL (record_store.cpp row_ready_sql).
     w.u64(record.rules_fingerprint);
     w.opt_f64(record.ms_limit);
     w.opt_i32(record.sp_cap);
@@ -419,6 +418,15 @@ FlatRecord flatten_record(const HydraRecord& record) {
 
     flat.structure = std::move(w.bytes);
     return flat;
+}
+
+std::optional<StructureHead> read_structure_head(const std::vector<uint8_t>& bytes) {
+    if (bytes.size() < kStructureHeadBytes) return std::nullopt;
+    BinaryReader r(bytes);
+    StructureHead head;
+    head.path_format = r.u32();
+    head.rules_fingerprint = r.u64();
+    return head;
 }
 
 HydraRecord rebuild_record(const std::vector<uint8_t>& structure,

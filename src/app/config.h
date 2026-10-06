@@ -18,9 +18,14 @@
 
 namespace hydra::app {
 
-// Directory containing the running executable (UTF-8). User files live here,
-// mirroring hymisc.ROOTPATH's app-relative layout.
+// Directory containing the running executable (UTF-8): the exe path's
+// parent_folder, or "." in the impossible case of a path with no folder.
+// User files live here, mirroring hymisc.ROOTPATH's app-relative layout.
 std::string exe_dir();
+
+// The app's fonts and icons: the "resource" folder beside the exe (the build
+// copies resource/ there; see CMakeLists.txt).
+std::string resource_dir();
 
 // The user's database and settings file, next to the exe ("hydra.db" /
 // "hydra_settings.ini").
@@ -59,9 +64,9 @@ struct Settings {
     bool view_prodrums = true;
     bool view_bass2x = true;
 
-    int depth_value = 4;
+    int depth_value = kDefaultDepthValue;
     // 0 = scores, 1 = points. Stays an int: it is what the INI stores and what
-    // the details view's Combo binds to; to_analysis_settings maps it to
+    // the details view's Combo binds to; search_depth_mode() maps it to
     // search/engine.h's DepthMode.
     int depth_mode = 0;
 
@@ -78,9 +83,10 @@ struct Settings {
     // The per-side hit window in real ms; feeds the squeeze budgets, the
     // backend ratings, and the report tiers. Display-layer only: it never
     // reaches the search, so changing it never invalidates stored records.
-    int hit_window_ms = static_cast<int>(kDefaultHitWindowMs);
+    // A decimal typed in the file is kept (D51 call 15).
+    double hit_window_ms = kDefaultHitWindowMs;
 
-    // Preview playback volume, 0..100 %. A summed multi-stem mix at 100 % is
+    // Preview playback volume in percent. A summed multi-stem mix at 100 % is
     // loud and clips, so the default sits well below it.
     int preview_volume = 40;
 
@@ -96,8 +102,10 @@ struct Settings {
     // hydra_batch ignores it and takes --legacy-fills instead.
     bool legacy_fills = false;
 
-    // Open the HTML path report in the browser as soon as a batch run builds
-    // it; off by default (the finished modal offers an "Open report" button).
+    // Open a report in the browser as soon as Hydra builds it. It covers every
+    // report Hydra builds, the batch's path report and the leaderboard
+    // comparison alike (D51 call 23): ReportJob and DmReportJob both read it.
+    // Off by default (the finished modal offers an "Open report" button).
     bool auto_open_report = false;
 
     // The dmleaderboards user (Discord ID) last compared against, so the
@@ -119,10 +127,30 @@ struct Settings {
     static Settings load_file(const std::string& path);
     bool save_file(const std::string& path) const;
 
+    // A number setting pulled into its allowed range: the one the key table
+    // in config.cpp keeps, which its box reads too. A value outside the range
+    // lands on the nearest edge (D51 Q14). Name the setting by its field:
+    // clamp(&Settings::mslimit_value, 900) is 500. depth_mode lands on its
+    // default instead, because a switch has no edge to land on (anything but
+    // 1 means scores). load_file runs every whole-number setting through
+    // here, with one more rule for sp_cap: in the file, 0 and junk (and
+    // 1.8.4's "auto") read as the default 4, not as the floor 1. The hit
+    // window is a decimal, not a box: only load_file pulls it into range, by
+    // the same key table.
+    static int clamp(int Settings::* field, int value);
+
+    // depth_mode as the search's enum: 1 is points, anything else scores.
+    // Every reader of the mode as a search setting asks here.
+    DepthMode search_depth_mode() const;
+
+    // A Preview volume percent as a playback gain, clamped first like the
+    // preview_volume key in config.cpp. The one percent-to-gain rule.
+    static float volume_gain(int percent);
+
     // view_difficulty as the parsers' enum. The name matches in any case
     // ("hard" reads as Hard). An unrecognized string reads as
-    // Expert; load_file normalizes the stored string too, so a hand-edited INI
-    // can never put a junk word into chartmode_key().
+    // Expert. load_file normalizes the stored string too, and chartmode_key()
+    // names the difficulty through here, so a junk word never reaches a key.
     Difficulty difficulty() const;
 
     // Whether an analysis, the Preview and a record's key read 2x kicks: the
@@ -155,6 +183,15 @@ struct Settings {
     // from this one Settings, so they cannot disagree.
     BatchRun batch_run() const;
 };
+
+// The search settings a run uses, as the words a tool's header prints. The
+// one place they are spelled; hydra_batch's header lines are filled from them.
+struct SettingsText {
+    std::string depth;   // the unit word, then the number: "scores 4", "points 4"
+    std::string cap;     // the SP cap as a count of bars: "4 bars", "1 bar"
+    std::string timing;  // the ms limit: "10 ms", or "none" when it is off
+};
+SettingsText describe_settings(const AnalysisSettings& settings);
 
 }  // namespace hydra::app
 

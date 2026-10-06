@@ -1,13 +1,10 @@
 #include "app/user_messages.h"
 
-#include <initializer_list>
+#include <cstdio>
 #include <new>
+#include <optional>
 
-#include "app/rules_file.h"
-#include "core/model.h"
-#include "parse/midi.h"
-#include "parse/song.h"
-#include "store/serialize.h"
+#include "core/error_kind.h"
 
 namespace hydra::app {
 
@@ -19,6 +16,9 @@ constexpr const char* kDatabaseWrite =
 constexpr const char* kDatabaseOpen =
     "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
     "running and that the Hydra folder isn't read-only.";
+constexpr const char* kDatabaseRead =
+    "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
+    "running, then try again.";
 constexpr const char* kChartUnreadable =
     "Hydra couldn't read this chart file. It may be damaged or in a format Hydra doesn't "
     "support; try downloading the song again.";
@@ -59,110 +59,87 @@ constexpr const char* kPreviewAssets =
     "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.";
 constexpr const char* kStopped = "Stopped before it finished.";
 
-bool starts_with(std::string_view s, std::string_view prefix) {
-    return s.substr(0, prefix.size()) == prefix;
-}
-bool ends_with(std::string_view s, std::string_view suffix) {
-    return s.size() >= suffix.size() && s.substr(s.size() - suffix.size()) == suffix;
-}
-bool starts_with_any(std::string_view s, std::initializer_list<std::string_view> prefixes) {
-    for (std::string_view p : prefixes)
-        if (starts_with(s, p)) return true;
-    return false;
+// The two sentences built around a detail.
+std::string http_status_sentence(int code) {
+    return "dmleaderboards returned an error (HTTP " + std::to_string(code) + "). Try again later.";
 }
 
-// parse/song.cpp no_notes_message: "No <difficulty> [Pro ]Drums notes in this
-// chart." It is already written for the user.
-bool is_no_notes_message(std::string_view s) {
-    return starts_with(s, "No ") && ends_with(s, " notes in this chart.");
+std::string timing_refusal_sentence(std::string_view what) {
+    return "Hydra can't analyze this chart because " + std::string(what) +
+           ". Fix that line in the chart file or download the song again.";
+}
+
+// The one owner of "which plain sentence does this failure show": the
+// thrower named the kind, and each kind has one sentence. Empty when the
+// error can't be answered from its kind alone.
+std::optional<std::string> kind_sentence(const KindedError& e) {
+    switch (e.kind()) {
+        case ErrorKind::Cancelled: return kStopped;
+        case ErrorKind::DatabaseOpen: return kDatabaseOpen;
+        case ErrorKind::DatabaseWrite: return kDatabaseWrite;
+        case ErrorKind::DatabaseRead: return kDatabaseRead;
+        case ErrorKind::SongFileMissing: return kSongFileMissing;
+        case ErrorKind::HashFailed: return kHashFailed;
+        case ErrorKind::ChartUnreadable: return kChartUnreadable;
+        case ErrorKind::ChartTimingRefused: return timing_refusal_sentence(e.what());
+        case ErrorKind::AlreadyPlain: return std::string(e.what());
+        case ErrorKind::SearchBroken: return kSearchBroken;
+        case ErrorKind::NetUnreachable: return kNetUnreachable;
+        case ErrorKind::NetTimeout: return kNetTimeout;
+        case ErrorKind::NetHttpStatus:
+            if (const std::optional<int> code = e.http_status()) return http_status_sentence(*code);
+            return std::nullopt;  // no code to name
+        case ErrorKind::NetBadReply: return kNetBadReply;
+        case ErrorKind::NoScores: return kNoScores;
+        case ErrorKind::NoRecords: return kNoRecords;
+        case ErrorKind::ReportWrite: return kReportWrite;
+        case ErrorKind::RulesFile: return kRulesFile;
+        case ErrorKind::StoredResult: return kStoredResult;
+        case ErrorKind::AudioDecode: return kAudioDecode;
+        case ErrorKind::PreviewAssets: return kPreviewAssets;
+    }
+    return std::nullopt;
 }
 
 }  // namespace
 
-std::string plain_error_text(std::string_view what) {
-    // A cancel: net/dmbot_client.cpp and ui/job_base.h's JobCancelled.
-    if (what == "cancelled") return kStopped;
-
-    // net/dmbot_client.cpp: fail() appends " (error <GetLastError>)" to these.
-    // 12002 is ERROR_WINHTTP_TIMEOUT.
-    if (what.find("(error 12002)") != std::string_view::npos) return kNetTimeout;
-    if (starts_with_any(what, {"malformed leaderboard URL", "could not start the network session",
-                               "could not connect to the leaderboard", "could not build the request",
-                               "could not send the request", "no response from the leaderboard",
-                               "could not read the response"}))
-        return kNetUnreachable;
-    if (starts_with(what, "leaderboard returned HTTP ")) {
-        std::string_view code = what.substr(std::string_view("leaderboard returned HTTP ").size());
-        return "dmleaderboards returned an error (HTTP " + std::string(code) + "). Try again later.";
-    }
-    if (what == "the leaderboard sent a response Hydra couldn't read" ||
-        what == "unexpected user-list format")
-        return kNetBadReply;
-    // ui/dm_jobs.cpp and ui/library_jobs.cpp.
-    if (what == "this user has no scores to compare") return kNoScores;
-    if (what == "no records stored yet") return kNoRecords;
-    // app/report_files.cpp write_report_file.
-    if (starts_with(what, "cannot write ")) return kReportWrite;
-
-    // app/analysis.cpp stream_md5, core/winstr.cpp, parse/midi.cpp.
-    if (starts_with_any(what, {"cannot open file: ", "cannot open MIDI file: "}))
-        return kSongFileMissing;
-    if (what == "MD5 hashing failed" || starts_with(what, "BCryptOpenAlgorithmProvider(MD5)"))
-        return kHashFailed;
-
-    // store/record_store.cpp.
-    if (starts_with(what, "failed to open database ")) return kDatabaseOpen;
-    if (starts_with_any(what, {"add_song failed", "add_row ", "put_dynamics failed",
-                               "meta_set failed", "reindex failed",
-                               "rebuild_chart_library failed", "sqlite exec failed",
-                               "prepare failed"}))
-        return kDatabaseWrite;
-
-    // search/engine.cpp.
-    if (what == "search reached a broken state") return kSearchBroken;
-
-    // The chart readers: core/model.cpp, parse/song.cpp, parse/srb.cpp,
-    // parse/midi.cpp. The no-notes message is already plain.
-    if (is_no_notes_message(what)) return std::string(what);
-    // parse/song.cpp check_timing_maps and apply_timesig: timing that can't
-    // measure time. The raw text names the line, so the user sees it.
-    if (is_timing_refusal(what))
-        return "Hydra can't analyze this chart because " + std::string(what) +
-               ". Fix that line in the chart file or download the song again.";
-    if (what == "Duplicate note." || what == "expected a [section] header" ||
-        what == "No chart files found in SNG file." || what == "Truncated SNG file." ||
-        what == "Truncated SRB file." || what == "SMPTE time division is not supported" ||
-        starts_with_any(what, {"unexpected chart type: ", "SRB stream", "SRB inflate",
-                               "not a MIDI file", "Message length "}))
-        return kChartUnreadable;
-
-    // store/serialize.cpp and store/path_codec.cpp.
-    if (what == "truncated blob" ||
-        starts_with_any(what, {"path node ", "unsupported path node format",
-                               "unsupported path structure format"}))
-        return kStoredResult;
-
-    // audio/decode.cpp, audio/mixer.cpp, render/preview_renderer.cpp,
-    // render/preview_config.cpp.
-    if (starts_with_any(what, {"decode_audio:", "mix_stems:"})) return kAudioDecode;
-    if (starts_with_any(what, {"PreviewRenderer: missing", "3d-config.json:"}))
-        return kPreviewAssets;
-
+std::string plain_error(const std::exception& e) {
+    if (dynamic_cast<const std::bad_alloc*>(&e)) return kOutOfMemory;
+    // A kinded error is answered by kind_sentence alone; its words never
+    // pick the sentence.
+    if (const auto* kinded = dynamic_cast<const KindedError*>(&e))
+        if (std::optional<std::string> sentence = kind_sentence(*kinded)) return *sentence;
     return kSomethingWentWrong;
 }
 
-std::string plain_error(const std::exception& e) {
-    if (dynamic_cast<const std::bad_alloc*>(&e)) return kOutOfMemory;
-    if (dynamic_cast<const RulesFileError*>(&e)) return kRulesFile;
-    std::string text = plain_error_text(e.what());
-    if (text != kSomethingWentWrong) return text;
-    // Types whose every message means the same thing to the user.
-    if (dynamic_cast<const ChartFileError*>(&e) || dynamic_cast<const MidiError*>(&e))
-        return kChartUnreadable;
-    if (dynamic_cast<const store::SerializeError*>(&e)) return kStoredResult;
-    return text;
+std::string plain_error_detail(const std::exception& e) { return e.what(); }
+
+std::string plain_error_block(const std::exception& e) {
+    return plain_error(e) + "\n\n" + plain_error_detail(e);
 }
 
-std::string plain_error_detail(const std::exception& e) { return e.what(); }
+int tool_error(const std::exception& e, int exit_code) {
+    std::fprintf(stderr, "%s\n", plain_error_block(e).c_str());
+    return exit_code;
+}
+
+int run_tool(const std::function<int()>& body) {
+    try {
+        return body();
+    } catch (const std::exception& e) {
+        return tool_error(e, 1);
+    }
+}
+
+std::string stale_text(bool build, bool rules) {
+    std::string cause;
+    if (build == rules)  // both, or neither: name both
+        cause = "another Hydra version or from different rules in hydra_rules.ini";
+    else if (build)
+        cause = "another Hydra version";
+    else
+        cause = "different rules in hydra_rules.ini";
+    return "Out of date: this result came from " + cause + ". Re-analyze to refresh it.";
+}
 
 }  // namespace hydra::app

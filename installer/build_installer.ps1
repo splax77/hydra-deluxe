@@ -51,6 +51,14 @@ $m = [regex]::Match($cmakeLists, 'project\(Hydra VERSION (\d+\.\d+\.\d+)')
 if (-not $m.Success) { throw "could not parse the project version from CMakeLists.txt" }
 $version = $m.Groups[1].Value
 Write-Host "Hydra version: $version"
+# The name the app shows and its taskbar identity, from the same file.
+$m = [regex]::Match($cmakeLists, 'set\(HYDRA_APP_NAME "([^"]+)"\)')
+if (-not $m.Success) { throw "could not parse HYDRA_APP_NAME from CMakeLists.txt" }
+$appName = $m.Groups[1].Value
+$m = [regex]::Match($cmakeLists, 'set\(HYDRA_APP_USER_MODEL_ID "([^"]+)"\)')
+if (-not $m.Success) { throw "could not parse HYDRA_APP_USER_MODEL_ID from CMakeLists.txt" }
+$appUserModelId = $m.Groups[1].Value
+Write-Host "App name: $appName; AppUserModelID: $appUserModelId"
 
 # 3. Stage the ship list into a clean dir via the install() rules.
 $cmake = Find-CMake
@@ -87,7 +95,8 @@ if (-not (Test-Path $redist)) {
 $iscc = Find-ISCC
 Write-Host "Using ISCC: $iscc"
 $output = Join-Path (Get-PresetBuildDir $repo default) "installer"
-& $iscc "/DHYDRA_VERSION=$version" "/DHYDRA_STAGE=$stage" "/DHYDRA_REDIST=$redistDir" `
+& $iscc "/DHYDRA_VERSION=$version" "/DHYDRA_APP_NAME=$appName" `
+    "/DHYDRA_APP_USER_MODEL_ID=$appUserModelId" "/DHYDRA_STAGE=$stage" "/DHYDRA_REDIST=$redistDir" `
     "/DHYDRA_OUTPUT=$output" (Join-Path $root "hydra.iss")
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
 
