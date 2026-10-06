@@ -162,6 +162,13 @@ public:
     std::vector<LaneSpan> make_lane_bounds(const TrackWindow& win, double near_s,
                                            double far_s) const;
 
+    // The times inside `win` where active SP runs out: every instant whose
+    // sp_active field ends there (End, or Restart where one window ends as
+    // the next starts, so back-to-back windows give one end each). In time
+    // order. The window decides what is visible; the edges come from the
+    // activations' sp_window, through the sp_active intervals.
+    std::vector<double> sp_active_ends(const TrackWindow& win) const;
+
 private:
     friend TrackState build_track_state(const app::PreviewScene&, const TrackStateOptions&);
     friend void rebuild_overlay_fields(TrackState&, const app::PreviewScene&);

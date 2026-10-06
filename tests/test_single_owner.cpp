@@ -5011,7 +5011,7 @@ TEST_CASE("single-owner: the Clone Hero probe's facts each have one owner (J3-7,
 
 namespace {
 
-// How many code lines in a row count as a copy. The user's decision is D81
+// How many code lines in a row count as a copy. The user's decision is D82
 // item 1 in docs/audit/2026-10-03-fix-decisions.md; ADR 0025 says why.
 constexpr int kCloneWindowLines = 8;
 

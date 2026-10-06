@@ -608,3 +608,142 @@ TEST_CASE("build_highway_draws: a chord one tick after a phrase ends draws plain
     CHECK(energy == 1);      // the yellow on the phrase's last tick
     CHECK(plain_blue == 1);  // the blue one tick later
 }
+
+// D81: where an active SP window ends, a bright edge across the floor and a
+// notch on each railing, in the full (undarkened) SP colour.
+namespace {
+
+bool is_sp_end_mark(const DrawCommand& c, const PreviewConfig& cfg) {
+    const Color& sp = cfg.hydra.sp_active_color;
+    return c.material.kind == MaterialKind::Color && c.material.color.r == sp.r &&
+           c.material.color.g == sp.g && c.material.color.b == sp.b;
+}
+
+bool is_gem(const DrawCommand& c) {
+    return c.mesh == MeshId::Tom || c.mesh == MeshId::Cymbal || c.mesh == MeshId::Kick;
+}
+
+PreviewActivation activation_until(double ms, double sp_end_ms) {
+    PreviewActivation a;
+    a.tick = static_cast<int64_t>(ms);
+    a.ms = ms;
+    a.has_sp_end = true;
+    a.sp_end_tick = static_cast<int64_t>(sp_end_ms);
+    a.sp_end_ms = sp_end_ms;
+    return a;
+}
+
+// The Ministry of Lost Souls shape: SP runs out 26 ms after a kick + blue
+// cymbal, and the next chord is 57 ms later.
+PreviewScene sp_end_scene() {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1100.0, PreviewLane::Red),  note(1300.0, PreviewLane::Yellow, true),
+                   note(1974.0, PreviewLane::Kick), note(1974.0, PreviewLane::Blue, true),
+                   note(2031.0, PreviewLane::Kick), note(2031.0, PreviewLane::Green, true)};
+    scene.activations = {activation_until(1300.0, 2000.0)};
+    return scene;
+}
+
+}  // namespace
+
+TEST_CASE("sp_active_ends: each window's end inside the window, back-to-back ones apart") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red)};
+    scene.activations = {activation_until(1300.0, 2000.0), activation_until(2000.0, 2600.0)};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+    CHECK(st.sp_active_ends(st.window(1.0, 3.0)) == std::vector<double>{2.0, 2.6});
+    CHECK(st.sp_active_ends(st.window(2.1, 3.0)) == std::vector<double>{2.6});
+    // An end on either edge is outside the window, so it is not listed.
+    CHECK(st.sp_active_ends(st.window(2.0, 2.6)).empty());
+    CHECK(st.sp_active_ends(st.window(0.0, 1.9)).empty());
+    // Overlapping windows run SP on to the later end; only that one counts.
+    scene.activations = {activation_until(1300.0, 2000.0), activation_until(1800.0, 2600.0)};
+    TrackState overlap = build_track_state(scene, TrackStateOptions{});
+    CHECK(overlap.sp_active_ends(overlap.window(1.0, 3.0)) == std::vector<double>{2.6});
+}
+
+TEST_CASE("build_highway_draws: an SP end gets a floor edge and two rail notches, depth off") {
+    const PreviewConfig cfg = shipped_preview_config();
+    TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
+    const double now = 1.0;  // far edge at 2.35 s, so the 2.0 s end is in view
+    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
+    const float z_end = static_cast<float>(time_to_z(cfg, now, 2.0, 1.0));
+
+    std::vector<size_t> marks;
+    size_t last_floor = 0, first_gem = cmds.size();
+    for (size_t i = 0; i < cmds.size(); ++i) {
+        if (is_sp_end_mark(cmds[i], cfg)) marks.push_back(i);
+        if (cmds[i].mesh == MeshId::Flat && cmds[i].depth == DepthMode::Less) last_floor = i;
+        if (is_gem(cmds[i]) && first_gem == cmds.size()) first_gem = i;
+    }
+    REQUIRE(marks.size() == 3);
+    REQUIRE(first_gem < cmds.size());
+    int edges = 0, notches = 0;
+    float notch_x_sum = 0.0f;
+    for (size_t i : marks) {
+        const DrawCommand& c = cmds[i];
+        CHECK(i > last_floor);
+        CHECK(i < first_gem);
+        CHECK(c.depth == DepthMode::Always);
+        CHECK((c.lo[2] + c.hi[2]) * 0.5f == doctest::Approx(z_end));
+        if (c.mesh == MeshId::Flat) {
+            ++edges;
+            CHECK(c.lo[0] == doctest::Approx(-1.0f));  // the whole floor width
+            CHECK(c.hi[0] == doctest::Approx(1.0f));
+            CHECK(c.lo[1] == doctest::Approx(-1.0f));  // on the floor
+            CHECK(c.hi[1] == doctest::Approx(-1.0f));
+            CHECK(c.lo[2] - c.hi[2] == doctest::Approx(0.1f));  // sp_end_edge_depth
+        } else {
+            REQUIRE(c.mesh == MeshId::Box);
+            ++notches;
+            // Centred on a railing (x -1.045 or 1.045), 0.18 wide and deep,
+            // from the railing's bottom to 0.06 above its top.
+            const float cx = (c.lo[0] + c.hi[0]) * 0.5f;
+            notch_x_sum += cx;
+            CHECK(std::fabs(cx) == doctest::Approx(1.045f));
+            CHECK(std::fabs(c.hi[0] - c.lo[0]) == doctest::Approx(0.18f));
+            CHECK(std::fabs(c.hi[2] - c.lo[2]) == doctest::Approx(0.18f));
+            CHECK(std::fmin(c.lo[1], c.hi[1]) == doctest::Approx(-1.1f));
+            CHECK(std::fmax(c.lo[1], c.hi[1]) == doctest::Approx(-0.79f));
+        }
+    }
+    CHECK(edges == 1);
+    CHECK(notches == 2);
+    CHECK(notch_x_sum == doctest::Approx(0.0f));  // one on each railing
+}
+
+TEST_CASE("build_highway_draws: no SP end mark past the far edge or behind the near edge") {
+    const PreviewConfig cfg = shipped_preview_config();
+    TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
+    // now 0.5 s: the far edge is 1.85 s, short of the 2.0 s end, so the window
+    // is only clipped there. now 2.3 s: the near edge is 2.075 s, past it.
+    for (double now : {0.5, 2.3}) {
+        CAPTURE(now);
+        int marks = 0;
+        for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0))
+            if (is_sp_end_mark(c, cfg)) ++marks;
+        CHECK(marks == 0);
+    }
+}
+
+TEST_CASE("build_highway_draws: two back-to-back SP windows give two edges") {
+    const PreviewConfig cfg = shipped_preview_config();
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red), note(2000.0, PreviewLane::Yellow)};
+    scene.activations = {activation_until(1300.0, 2000.0), activation_until(2000.0, 2600.0)};
+    TrackState st = build_track_state(scene, TrackStateOptions{});
+    const double now = 1.5;  // the window runs from 1.275 s to 2.85 s
+    std::vector<float> edge_z;
+    int notches = 0;
+    for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0)) {
+        if (!is_sp_end_mark(c, cfg)) continue;
+        if (c.mesh == MeshId::Flat)
+            edge_z.push_back((c.lo[2] + c.hi[2]) * 0.5f);
+        else
+            ++notches;
+    }
+    REQUIRE(edge_z.size() == 2);
+    CHECK(edge_z[0] == doctest::Approx(time_to_z(cfg, now, 2.0, 1.0)));
+    CHECK(edge_z[1] == doctest::Approx(time_to_z(cfg, now, 2.6, 1.0)));
+    CHECK(notches == 4);
+}

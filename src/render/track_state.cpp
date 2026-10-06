@@ -253,7 +253,8 @@ void TrackState::set_overlay_intervals(const PreviewScene& scene) {
             fill_taken_.push_back(span_interval(scene, f.span));
     }
     for (const PreviewActivation& a : scene.activations) {
-        // The tinted floor: the activation's sp_window, its owner.
+        // The tinted floor and its end marks: the activation's sp_window, its
+        // owner.
         if (const std::optional<std::pair<double, double>> w = a.sp_window())
             sp_active_.push_back({s_of(w->first), s_of(w->second)});
         // The taken fill lights the activation note's lane. The scene
@@ -424,6 +425,14 @@ std::vector<ToggleSpan> TrackState::make_toggle_bounds(const TrackWindow& win,
                         spans.push_back({t1, t2, on});
                 });
     return spans;
+}
+
+std::vector<double> TrackState::sp_active_ends(const TrackWindow& win) const {
+    std::vector<double> ends;
+    for (const TrackInstant& inst : win)
+        if (inst.sp_active == Toggle::End || inst.sp_active == Toggle::Restart)
+            ends.push_back(inst.t);
+    return ends;
 }
 
 std::vector<LaneSpan> TrackState::make_lane_bounds(const TrackWindow& win, double near_s,

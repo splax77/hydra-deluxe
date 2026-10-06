@@ -99,7 +99,8 @@ struct PreviewActivation {
     // The stretch this activation's Star Power runs over, {ms, sp_end_ms}.
     // Empty without a stored end, or when the end is not after the start (a
     // window of no length is no window). The drain box, the score box and
-    // the highway's tinted floor all read it; the drain and score boxes test
+    // the highway's tinted floor and SP end marks (through the track state's
+    // sp_active intervals) all read it; the drain and score boxes test
     // the start edge with struck_at.
     std::optional<std::pair<double, double>> sp_window() const {
         if (!has_sp_end || !(sp_end_ms > ms)) return std::nullopt;

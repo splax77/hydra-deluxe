@@ -1298,7 +1298,7 @@ function Invoke-Check4 {
 # ---------------------------------------------------------------- range size
 
 # Is this range too big to review in one read? A reviewer reads the whole
-# range in one pass, and big ranges hide copies. The user's decision is D81
+# range in one pass, and big ranges hide copies. The user's decision is D82
 # item 2 in docs/audit/2026-10-03-fix-decisions.md, a starting value to be
 # tuned later. This is the one place it lives.
 $largeRangeLines = 400
