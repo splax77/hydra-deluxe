@@ -297,15 +297,18 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     std::vector<const SongTimestamp*> tied;
     for (const SongTimestamp* ts : cands)
         if (miss(ts) == miss(best)) tied.push_back(ts);
+    // The one way the refusals below name a chord in a list.
+    const auto chord_text = [&](const SongTimestamp* ts) {
+        char one[96];
+        std::snprintf(one, sizeof(one), "tick %lld (%.2f ms)", (long long)ts->timecode.ticks(),
+                      offset_from_sp_end(ts->timecode.ms(), d_ms));
+        return std::string(one);
+    };
     if (tied.size() > 1) {
         std::string named;
         for (size_t i = 0; i < tied.size(); ++i) {
-            char one[96];
-            std::snprintf(one, sizeof(one), "tick %lld (%.2f ms)",
-                          (long long)tied[i]->timecode.ticks(),
-                          offset_from_sp_end(tied[i]->timecode.ms(), d_ms));
             if (i > 0) named += i + 1 == tied.size() ? " and " : ", ";
-            named += one;
+            named += chord_text(tied[i]);
         }
         std::snprintf(buf, sizeof(buf),
                       "%s: the SqOut offset %.2f ms is equally close to the phrase chords at ",
@@ -349,10 +352,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     if (std::find(offered.begin(), offered.end(), best) == offered.end()) {
         std::string can;
         for (const SongTimestamp* c : offered) {
-            char one[96];
-            std::snprintf(one, sizeof(one), "%stick %lld (%.2f ms)", can.empty() ? "" : " or ",
-                          (long long)c->timecode.ticks(), offset_from_sp_end(c->timecode.ms(), d_ms));
-            can += one;
+            if (!can.empty()) can += " or ";
+            can += chord_text(c);
         }
         std::snprintf(
             buf, sizeof(buf),
