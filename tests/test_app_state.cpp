@@ -826,8 +826,39 @@ TEST_CASE("the confirm counts every library row, and rows with a result from the
     hydra::test::store_batch_result(*app.store, first.md5, Settings{}.sp_cap);
     app.open_batch_confirm();
 
-    CHECK(app.batch_scope_charts == app.library_shown_count());
-    CHECK(app.batch_scope_with_result == 2);  // both copies of chart 1
+    CHECK(app.batch_scope_charts() == app.library_shown_count());
+    CHECK(app.batch_scope_with_result() == 2);  // both copies of chart 1
+}
+
+// D78: the plan the confirm showed is the plan the batch runs. A result that
+// lands after the confirm opened changes nothing the batch does, because the
+// run reads no second list from the store.
+TEST_CASE("the batch runs the plan the confirm showed, with no second store read") {
+    ScratchPaths paths("appstate_confirmplan");
+    auto store = std::make_unique<RecordStore>(paths.db);
+    store->rebuild_chart_library({library_entry(1), library_entry(2)});
+    AppState app(Settings{}, std::move(store));
+    app.open_batch_confirm();
+    REQUIRE(app.batch_scope_with_result() == 0);
+    REQUIRE(app.batch_scope_charts() == 2);
+
+    // Stored after the confirm opened: a second read would now skip this chart.
+    hydra::test::store_batch_result(*app.store, library_entry(2).md5, Settings{}.sp_cap);
+    hydra::ui::set_app_batch_analyzer_for_test(
+        [](const std::string&, const hydra::app::AnalysisSettings&,
+           const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+            throw std::runtime_error("no chart file in this test");
+        },
+        1);
+    app.start_batch(false);
+    hydra::ui::set_app_batch_analyzer_for_test(nullptr, 1);
+    REQUIRE(app.batch_job != nullptr);
+    wait_batch_finished(app);
+
+    const hydra::ui::BatchJob::Snapshot s = app.batch_job->snapshot();
+    CHECK(s.total == 2);
+    CHECK(s.skipped == 0);
+    CHECK(s.failed == 2);
 }
 
 // D72 item 2: the startup constructor's store open reads "couldn't open"

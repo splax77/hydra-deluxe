@@ -420,18 +420,7 @@ Candidate rank_row(const std::string& hyversion, const std::vector<uint8_t>& str
     return c;
 }
 
-// "This build can read the row at all", spelled in SQL for write_row's first
-// purge, which deletes in the database the rows that fail it: this results
-// version and a path format this build reads. It leaves out the rules, so a
-// row made under other rules is kept (D51 call 8). Negate with "NOT ", never
-// by spelling the opposite, so the rule has one SQL spelling. Both columns
-// are NOT NULL, so NOT never meets a NULL.
-//
-// Built from the same StampRule lists is_current reads, so the two spellings
-// cannot drift: every accepted results version and every accepted path
-// format, the format where path_codec.h's head layout puts it.
-// bind_readable_params binds them in that order and returns the next free
-// index.
+// `n` comma-separated "?" placeholders.
 std::string placeholders(size_t n) {
     std::string out;
     for (size_t i = 0; i < n; ++i) out += i ? ", ?" : "?";
@@ -474,6 +463,18 @@ std::vector<uint8_t> rules_fp_bytes(uint64_t fingerprint) {
     return w.bytes;
 }
 
+// "This build can read the row at all", spelled in SQL for write_row's first
+// purge, which deletes in the database the rows that fail it: this results
+// version and a path format this build reads. It leaves out the rules, so a
+// row made under other rules is kept (D51 call 8). Negate with "NOT ", never
+// by spelling the opposite, so the rule has one SQL spelling. Both columns
+// are NOT NULL, so NOT never meets a NULL.
+//
+// Built from the same StampRule lists is_current reads, so the two spellings
+// cannot drift: every accepted results version and every accepted path
+// format, the format where path_codec.h's head layout puts it.
+// bind_readable_params binds them in that order and returns the next free
+// index.
 const std::string& row_readable_sql() {
     static const std::string sql =
         "(hyversion IN (" + placeholders(kResultsStamp.accepted.size()) + ") AND " +

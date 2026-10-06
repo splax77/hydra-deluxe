@@ -507,9 +507,6 @@ void AppState::open_batch_confirm() {
     }
     batch_plan = app::plan_batch(items, with_result);
     batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
-    // plan_batch puts every row in todo's rows or in skipped (BatchPlan, D76).
-    batch_scope_charts = static_cast<int64_t>(batch_plan.todo_rows()) + batch_plan.skipped;
-    batch_scope_with_result = batch_plan.skipped;
     batch_confirm_pending = true;
 }
 
@@ -517,8 +514,6 @@ void AppState::close_batch_confirm() {
     batch_confirm_pending = false;
     batch_plan = {};
     batch_redo_plan = {};
-    batch_scope_charts = 0;
-    batch_scope_with_result = 0;
 }
 
 void AppState::start_batch(bool redo) {

@@ -4418,6 +4418,22 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/analysis.cpp", "store.rebuild_chart_library(entries);",
            "save_scan_as_library, the owner"}},
          {}},
+        // D78 B2: every number the confirm shows is read off its plans. A
+        // field that holds a plan's count, or a subtraction of one count from
+        // another, is a second answer to "how many will run".
+        {"How many charts does the confirm's batch cover, run and skip?",
+         "BatchPlan::todo_rows and BatchPlan::skipped in src/app/analysis.cpp, read through "
+         "AppState's batch_scope_charts() and batch_scope_with_result()",
+         R"(\bint64_t\s+batch_scope_\w+\s*=|=\s*total\s*-\s*with\b)",
+         "",
+         {},
+         {},
+         "D78 item B2 (task COUNT-B)",
+         {"int64_t batch_scope_charts = 0;", "const int64_t without = total - with;"},
+         {"int64_t batch_scope_charts() const { return batch_redo_plan.todo_rows(); }",
+          "const int64_t to_run = app.batch_plan_for(app.batch_redo).todo_rows();"},
+         {},
+         {"src/ui/app_state.cpp", "src/ui/app_state.h", "src/ui/library_dialogs.cpp"}},
     };
     return r;
 }

@@ -280,19 +280,17 @@ void render_batch_confirm(AppState& app) {
 
     // Library rows, each copy of a chart counted, like the library's own
     // counts (D76). What runs is the plan the box picks (D78).
-    const int64_t total = app.batch_scope_charts;
-    const int64_t with = app.batch_scope_with_result;
-    const int64_t without = total - with;
+    const int64_t with = app.batch_scope_with_result();
     const int64_t to_run = app.batch_plan_for(app.batch_redo).todo_rows();
     std::string question;
     if (to_run == 0)
         question = "Every chart here already has a result.";
     else if (app.batch_redo && with > 0)
-        question = "Analyze " + counted(total, "chart", "charts") + ", re-analyzing " +
+        question = "Analyze " + counted(to_run, "chart", "charts") + ", re-analyzing " +
                    group_thousands(with) + " that already " + has_have(with) + " a result?";
     else
-        question = "Analyze " + counted(without, "chart", "charts") + " that " +
-                   has_have(without) + " no result yet?";
+        question = "Analyze " + counted(to_run, "chart", "charts") + " that " +
+                   has_have(to_run) + " no result yet?";
     ImGui::PushFont(nullptr, 20.0f);
     ImGui::TextWrapped("%s", question.c_str());
     ImGui::PopFont();

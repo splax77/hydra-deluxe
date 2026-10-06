@@ -397,15 +397,18 @@ public:
     // True while the "Analyze library" confirm shows. open_batch_confirm()
     // plans the batch over the rows it would analyze (the library, or the
     // search's matches) from one store read: one plan that skips the charts
-    // with a result and one that redoes them (app::plan_batch). The two
-    // counts are the first plan's, every copy of a chart counted like the
-    // library counts it (D76). start_batch() hands the batch the plan the
-    // redo box picks, so the run is the plan the confirm showed (D78).
+    // with a result and one that redoes them (app::plan_batch). Every number
+    // the confirm shows is read from those plans, every copy of a chart
+    // counted like the library counts it (D76). start_batch() hands the batch
+    // the plan the redo box picks, so the run is the plan the confirm showed
+    // (D78).
     bool batch_confirm_pending = false;
     app::BatchPlan batch_plan;
     app::BatchPlan batch_redo_plan;
-    int64_t batch_scope_charts = 0;
-    int64_t batch_scope_with_result = 0;
+    // The rows in scope: the redo plan runs every one of them.
+    int64_t batch_scope_charts() const { return batch_redo_plan.todo_rows(); }
+    // The rows in scope that already have a result: the skip plan's skipped.
+    int64_t batch_scope_with_result() const { return batch_plan.skipped; }
     void open_batch_confirm();
     // The plan a batch started now would run: the redo plan when `redo`.
     const app::BatchPlan& batch_plan_for(bool redo) const {
