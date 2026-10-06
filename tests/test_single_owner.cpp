@@ -1062,7 +1062,7 @@ const std::vector<OwnerRule>& rules() {
         // The charts table grouped by md5 to pick a copy, outside the one
         // query that does it.
         {"Which copy names a chart the scan found twice?",
-         "kNamingCopiesSql in src/store/record_store.cpp",
+         "kNamingCopiesSql in src/store/record_store.h",
          R"(MIN\(rowid\)|GROUP BY md5)",
          "",
          {},
@@ -1070,10 +1070,10 @@ const std::vector<OwnerRule>& rules() {
          "D51 call 10 and D63 (task ST2)",
          {"\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""},
          {"kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"},
-         {{"src/store/record_store.cpp",
+         {{"src/store/record_store.h",
            "\"(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts\"",
            "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.cpp", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
+          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
         // A stored row turned into a record outside decode_record, which
         // also sets the record's fill rule.
         {"Where does record_store.cpp turn a stored row into a record?",

@@ -817,9 +817,8 @@ void RecordStore::set_up_schema() {
     exec("DROP TABLE IF EXISTS songlength");
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
-    // Every save asks kNamingCopiesSql about one md5. Without this index that
-    // reads the whole library per save: 3.7 ms each, over a minute per
-    // whole-library batch on a 20,000-chart library.
+    // Every save runs naming_copy_of_one_sql. Without this index it reads the
+    // whole library table each time (D76).
     exec("CREATE INDEX IF NOT EXISTS charts_by_md5 ON charts (md5)");
     // Schema 2 = results keyed by the full settings, with shared paths. A
     // database from Hydra 1.6 or older still holds its old `records` table.
@@ -1117,15 +1116,6 @@ void RecordStore::write_song_length(const std::string& hyhash, std::optional<dou
     step_done(s, "saving the song's length");
 }
 
-// Which copy names an md5 (D51 call 10): the first copy the scan listed, the
-// charts row with the smallest rowid for that md5. One row per md5, with its
-// name, artist and charter (SQLite takes a bare column from the MIN(rowid)
-// row), plus `copies`, how many rows the scan listed for it. The rebuild's
-// rename and upsert_song both read names through it.
-constexpr const char* kNamingCopiesSql =
-    "(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts"
-    " GROUP BY md5)";
-
 void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_name,
                               const std::string& ref_artist, const std::string& ref_charter,
                               const std::vector<uint8_t>& tempomap) {
@@ -1140,9 +1130,7 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
     // write_song_length writes it.
     std::string name = ref_name, artist = ref_artist, charter = ref_charter;
     {
-        const std::string sql =
-            std::string("SELECT name, artist, charter FROM ") + kNamingCopiesSql +
-            " WHERE md5 = ? AND copies > 1";
+        const std::string sql = naming_copy_of_one_sql();
         Stmt copy = prepare_read(db_, sql.c_str());
         bind_text(copy, 1, hyhash);
         if (step_row(copy)) {
@@ -1545,6 +1533,15 @@ std::unordered_set<std::string> RecordStore::analyzed_hashes(const std::string& 
     bind_analyzed_filter(s, 1, chartmode, cap, lens, rules_fingerprint_);
     std::unordered_set<std::string> out;
     while (step_row(s)) out.insert(column_text(s, 0));
+    return out;
+}
+
+std::unordered_map<std::string, int> RecordStore::library_copies() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    const std::string sql = std::string("SELECT md5, copies FROM ") + kNamingCopiesSql;
+    Stmt s = prepare_read(db_, sql.c_str());
+    std::unordered_map<std::string, int> out;
+    while (step_row(s)) out.emplace(column_text(s, 0), sqlite3_column_int(s, 1));
     return out;
 }
 

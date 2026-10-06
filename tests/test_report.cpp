@@ -175,6 +175,34 @@ TEST_CASE("all_paths lists paths best first on every corpus chart") {
     CHECK(charts > 0);
 }
 
+TEST_CASE("report counts every library copy of a chart, and an unlisted chart once") {
+    // D76: chart h0 sits in two library folders, so it counts twice, like
+    // the library counts it. D77: chart h1 has a result but no library row,
+    // so it counts once.
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store, 4, 2) == 2);
+    store::ChartLibraryEntry first;
+    first.md5 = "h0";
+    first.title = "Title 0";
+    first.notespath = "C:\\songs\\a\\notes.chart";
+    first.rootfolder = "C:\\songs";
+    store::ChartLibraryEntry copy = first;
+    copy.notespath = "C:\\other\\a\\notes.chart";
+    copy.rootfolder = "C:\\other";
+    store.rebuild_chart_library({first, copy});
+    REQUIRE(store.library_copies() == std::unordered_map<std::string, int>{{"h0", 2}});
+
+    report::ReportOptions options;
+    options.cap = store::CapQuery::at(4);
+    const report::GeneratedReport out = report::generate_report(store, options);
+    CHECK(out.records == 3);
+    CHECK(out.songs == 3);
+    CHECK(out.html.find("3 records across 3 charts") != std::string::npos);
+    // The Charts tile adds up "k" once per chart.
+    CHECK(out.html.find("\"k\":2") != std::string::npos);
+    CHECK(out.html.find("\"k\":1") != std::string::npos);
+}
+
 TEST_CASE("report lists only the wanted cap and names it") {
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store, 4, 1) == 1);
@@ -1018,7 +1046,8 @@ TEST_CASE("path report counts charts by hash in the tile and the subtitle") {
     // Each chart gets a small id in order of first appearance.
     CHECK(occurrences(html, "\"c\":0") == 2);
     CHECK(occurrences(html, "\"c\":1") == 1);
-    CHECK(html.find("['Charts', fmt(new Set(rows.map(r => r.c)).size)]") != std::string::npos);
+    CHECK(html.find("['Charts', fmt([...new Map(rows.map(r => [r.c, r.k])).values()]"
+                    ".reduce((n, k) => n + k, 0))]") != std::string::npos);
     CHECK(html.find("r.song + r.artist))") == std::string::npos);
 }
 
