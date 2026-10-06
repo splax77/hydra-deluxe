@@ -940,7 +940,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
 
     // Pass 2: the drum track.
     for (const MidiTrack& track : mid.tracks) {
-        if (track.name != "PART DRUMS") continue;
+        if (track.name != kDrumsTrackName) continue;
         elapsed = 0;
         msg_buffer_.clear();
         flag_solo_ = false;
@@ -971,7 +971,7 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     // Pass 3: practice sections, which live on their own track(s) as bracketed
     // text metas, sorted once at the end.
     for (const MidiTrack& track : mid.tracks) {
-        if (track.name != "EVENTS") continue;
+        if (track.name != kEventsTrackName) continue;
         elapsed = 0;
         for (const Message& msg : track.messages) {
             elapsed += msg.time;
