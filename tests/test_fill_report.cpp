@@ -296,12 +296,13 @@ TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted char
     CHECK(result.html.find("{\"k\":2,") != std::string::npos);
 }
 
-// The page's chart tiles add up each row's "k" by status in JavaScript, and
-// tally_fill_rows adds up each row's copies by status in C++. The page has to
-// count per filtered view, so it can't print the C++ totals. This pins that
-// both count the same thing: every row carries its copies as "k", every
-// status the C++ counts has its own count in the page's stats(), the page
-// sums "k" and nothing else, and it counts no status the C++ doesn't know.
+// The page's chart tiles and the count beside its filters add up each row's
+// "k" in JavaScript, and tally_fill_rows adds up each row's copies by status
+// in C++. The page has to count per filtered view, so it can't print the C++
+// totals. This pins that all of them count the same thing: every row carries
+// its copies as "k", one page function sums "k", the counter and every chart
+// tile read that function, every status the C++ counts has its own count in
+// the page's stats(), and the page counts no status the C++ doesn't know.
 TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
     const std::vector<std::string> statuses = {"same",     "1.0 higher", "1.1 higher",
                                                "only 1.0", "only 1.1",   "in both"};
@@ -333,6 +334,15 @@ TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
           std::string::npos);
     CHECK(html.find("['Charts', fmt(charts(rows))],") != std::string::npos);
     CHECK(html.find("['Charts', fmt(rows.length)]") == std::string::npos);
+    // The one summing function, defined once, and the counter beside the
+    // filters reads it through the shared script's PAGE.count.
+    const size_t defined = html.find("const charts = ");
+    REQUIRE(defined != std::string::npos);
+    CHECK(html.find("const charts = ", defined + 1) == std::string::npos);
+    CHECK(html.find("  count: charts,\n") != std::string::npos);
+    CHECK(html.find("const countOf = PAGE.count || (rs => rs.length);") != std::string::npos);
+    CHECK(html.find("fmt(countOf(rows)) + ' of ' + fmt(countOf(ROWS)) + ' ' + PAGE.noun;") !=
+          std::string::npos);
     // No status counted on the page that the C++ never assigns.
     size_t counted = 0;
     for (const char* call : {"(n('", " n('"})

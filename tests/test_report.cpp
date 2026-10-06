@@ -266,6 +266,16 @@ TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up
     CHECK(occurrences(out.html, "{\"c\":2,") == 0);
     CHECK(out.html.find("['Charts', fmt([...new Map(rows.map(r => [r.c, r.k])).values()]"
                         ".reduce((n, k) => n + k, 0))]") != std::string::npos);
+
+    // The count beside the filters counts paths here, and scores on the
+    // leaderboard page: neither page gives its own PAGE.count, so the shared
+    // script counts one per row.
+    CHECK(out.html.find("noun: 'paths',") != std::string::npos);
+    CHECK(out.html.find("\n  count: ") == std::string::npos);
+    const std::string dm = dm_report::build_dm_html({}, "sub", "foot");
+    CHECK(dm.find("noun: 'scores',") != std::string::npos);
+    CHECK(dm.find("\n  count: ") == std::string::npos);
+    CHECK(dm.find("const countOf = PAGE.count || (rs => rs.length);") != std::string::npos);
 }
 
 TEST_CASE("report lists only the wanted cap and names it") {

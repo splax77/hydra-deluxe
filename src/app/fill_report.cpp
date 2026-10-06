@@ -79,9 +79,16 @@ function scoreText(r, s) {
   return s === null && r.status === 'in both' ? 'no paths' : fmt(s);
 }
 
+// How many charts a set of rows counts as: each row's library copies, "k", as
+// tally_fill_rows adds them up in fill_report.cpp. The count beside the
+// filters and every chart tile read this; the test "fill page: the tiles add
+// up the copies tally_fill_rows adds up" checks the two agree.
+const charts = rs => rs.reduce((a, r) => a + r.k, 0);
+
 const PAGE = {
   rows: DATA,
   noun: 'charts',
+  count: charts,
   sortKey: 'delta',
   sortDir: -1,
   cols: [
@@ -124,12 +131,9 @@ const PAGE = {
       ['chip ' + (STATUS_CLASS[r.status] || 's-only'), r.status, 'chip'],
     ];
   },
-  // The chart tiles add up each row's library copies, "k", by status, as
-  // tally_fill_rows does in fill_report.cpp; the test "fill page: the tiles
-  // add up the copies tally_fill_rows adds up" checks the two agree.
   stats(rows) {
-    const charts = rs => rs.reduce((a, r) => a + r.k, 0);
     const n = s => charts(rows.filter(r => r.status === s));
+    // The points tiles add each chart's delta once, not once per copy (D78).
     const gains = rows.filter(r => r.status === '1.1 higher').reduce((a, r) => a + r.delta, 0);
     const losses = rows.filter(r => r.status === '1.0 higher').reduce((a, r) => a - r.delta, 0);
     return [
