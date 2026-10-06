@@ -51,10 +51,11 @@ TEST_CASE("highway_span_at: passes through the projected railing corners") {
     PreviewConfig cfg = shipped_preview_config();
     const PreviewConfig::Track& T = cfg.track;
     const int w = 1200, h = 400;
-    // The railings' outer edges, from the highway's own railing_x.
-    float xl, xr, inner;
-    railing_x(cfg, false, xl, inner);
-    railing_x(cfg, true, inner, xr);
+    // The railings' outer edges, from the highway's own railing_outer_x.
+    const float xl = railing_outer_x(cfg, false);
+    const float xr = railing_outer_x(cfg, true);
+    CHECK(xl == doctest::Approx(-1.09f));
+    CHECK(xr == doctest::Approx(1.09f));
     // The strike line lies between the railing's two ends, so both edges run
     // through its corners at their rows (or outside them, the wider line winning).
     const ImagePoint r = project_to_image(cfg, w, h, {xr, T.railing_y_top, T.z_now});

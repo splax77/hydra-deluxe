@@ -106,6 +106,12 @@ void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2) {
     x2 = right ? T.x_right + T.railing_x_width : T.x_left;
 }
 
+float railing_outer_x(const PreviewConfig& cfg, bool right) {
+    float x1, x2;
+    railing_x(cfg, right, x1, x2);
+    return right ? x2 : x1;
+}
+
 XMMATRIX stretch_matrix(const DrawCommand& cmd) {
     float sx = std::fabs(cmd.hi[0] - cmd.lo[0]);
     float sy = std::fabs(cmd.hi[1] - cmd.lo[1]);
@@ -372,9 +378,7 @@ std::vector<DrawCommand> build_highway_draws(const TrackState& state, const Prev
             edge.light = LightKind::Unlit;
             out.push_back(edge);
             for (bool right : {false, true}) {
-                float x1, x2;
-                railing_x(cfg, right, x1, x2);
-                const float outer = right ? x2 : x1;
+                const float outer = railing_outer_x(cfg, right);
                 DrawCommand n;
                 n.mesh = right ? MeshId::TriangleRight : MeshId::TriangleLeft;
                 n.lo[0] = right ? outer : outer - marker_w;
