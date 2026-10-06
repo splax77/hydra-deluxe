@@ -237,6 +237,12 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
     return is_sqin ? offset_ms : (-offset_ms + 0.0);
 }
 
+// Is one timing (a squeeze's or an early fill's difficulty, in ms) inside a
+// ms limit? The one comparison every limit check makes: the user's Path limit
+// in the search, and the all-0 pass's 0 ms limit (D85). SPSqueeze::within_limit
+// and fill_within_limit ask it.
+inline bool timing_within_limit(double ms, double limit_ms) { return ms <= limit_ms; }
+
 // ---- the early-fill window ----------------------------------------------
 // Clone Hero's early-fill rule and the E0, stated once around
 // kEarlyFillWindowMs. A fill spawns only when SP was ready by the fill's
@@ -261,6 +267,13 @@ inline double early_fill_difficulty(double e_offset) { return -e_offset + 0.0; }
 // the activation. Zero slack counts, like a squeeze-out on the SP end (D51
 // call 4, D13). Activation::hardest and the engine's limit check ask it.
 inline bool early_fill_needs_timing(double e_offset) { return early_fill_difficulty(e_offset) >= 0.0; }
+
+// Is an activation's early fill inside a ms limit? An optional fill is never
+// a limit's business, as in Activation::difficulty. The engine's limit checks
+// and Activation::within_ms_limit ask it.
+inline bool fill_within_limit(double e_offset, int skips, double limit_ms) {
+    return !is_e0(e_offset, skips) || timing_within_limit(early_fill_difficulty(e_offset), limit_ms);
+}
 
 // How frontend (activation-hit) timing error transfers to the SP end. SP
 // length is measure-based, so hitting the frontend d ms off moves the SP end
@@ -292,6 +305,10 @@ struct SPSqueeze {
         return kind == SqueezeKind::SqIn ? "+" : "-";
     }
     bool is_difficult() const { return past_difficult_floor(difficulty()); }
+    // Is this squeeze inside a ms limit (timing_within_limit)? A free squeeze
+    // is asked too, by its own figure. The engine's limit checks and
+    // Activation::within_ms_limit ask it.
+    bool within_limit(double limit_ms) const { return timing_within_limit(difficulty(), limit_ms); }
     // Whether the squeeze is already done with no frontend timing: the one
     // answer the rating and the sentence both read. The SP walk pays a note
     // on the SP end (core::paid_by_sp_walk), so a SqIn there is already in
@@ -575,6 +592,11 @@ struct Activation {
     // read Path::difficulty(), which rests on hardest() (D51 call 4, D13). The
     // row badge alone also shows a free squeeze (badge_timing, D80).
     bool needs_timing() const;
+    // Is every timing of this activation inside `limit_ms`? Each squeeze
+    // answers through SPSqueeze::within_limit and the early fill through
+    // fill_within_limit, the same pieces the search's Engine::act_within_limit
+    // asks. The per-activation half of Path::within_ms_limit.
+    bool within_ms_limit(double limit_ms) const;
     bool is_difficult() const;
 
     // Is this backend the note squeezed out of SP? Compares against the
@@ -710,6 +732,10 @@ struct Path {
     // Does any activation on this path need timing (Activation::needs_timing)?
     // False for a path with no activations.
     bool needs_timing() const;
+    // Is every timing on this path at or below `limit_ms`
+    // (Activation::within_ms_limit)? True for a path with no activations.
+    // The all-0 pass's shortcut asks it at its 0 ms limit (search/pather.cpp).
+    bool within_ms_limit(double limit_ms) const;
     // True when the hardest squeeze or E0 fill is past kDifficultMs: the
     // warning color's rule, asked of the path instead of re-derived by callers.
     bool is_difficult() const;
@@ -771,8 +797,9 @@ struct HydraRecord {
     std::vector<MultSqueeze> multsqueezes;
 
     // The best all-0 path: the highest-scoring path whose activations all
-    // record skips == 0, found under a 0 ms timing limit, plus the tied
-    // variations a early fill or a squeeze in/out produces. The main
+    // record skips == 0, found under the all-0 pass's 0 ms limit
+    // (search/pather.cpp, allzero_options), plus the tied variations an
+    // early fill or a squeeze in/out produces. The main
     // search keeps paths by score band, not by shape, so this path is usually
     // below the band and absent from `paths`. Empty when the search did not run
     // or found nothing. Deliberately NOT part of all_paths(): the reports and

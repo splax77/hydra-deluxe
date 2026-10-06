@@ -56,18 +56,18 @@ constexpr int kKeepEveryPathBand = 1'000'000'000;
 int graph_build_cap(int sp_cap, int sp_phrase_count);
 
 // The best all-0 path over an already-built graph: the highest-scoring path
-// that is all-0 (Path::is_allzero) and needs no timing (Path::needs_timing,
-// applied in the engine through EngineOptions::no_timing), with its tied
-// variations as variants. Empty when the chart offers no such
-// path. This is a second, constrained search because the main search keeps
-// paths by score band and drops the all-0 path when it scores below the band.
-// It has no activation branching, so it is far cheaper than the main search.
+// that is all-0 (Path::is_allzero) and inside the 0 ms limit allzero_options
+// sets, with its tied variations as variants. Empty when the chart offers no
+// such path. This is a second, constrained search because the main search
+// keeps paths by score band and drops the all-0 path when it scores below the
+// band. It has no activation branching, so it is far cheaper than the main
+// search.
 std::vector<Path> search_allzero(const ScoreGraph& graph,
                                  const std::function<void(float)>& on_progress = {});
 
-// The engine options search_allzero runs with: no skips and no timing, every
-// other knob at EngineOptions' default (score depth 0: the top score and its
-// ties).
+// The engine options search_allzero runs with: no skips and a hard 0 ms
+// limit that ignores the user's Path limit, every other knob at
+// EngineOptions' default (score depth 0: the top score and its ties).
 EngineOptions allzero_options();
 
 // The engine's own pricing of one specific path: activate at exactly

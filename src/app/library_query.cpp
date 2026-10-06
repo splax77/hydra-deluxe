@@ -11,6 +11,7 @@
 #include <string>
 #include <system_error>
 
+#include "core/model.h"    // timing_within_limit
 #include "core/stars.h"    // kMaxStars
 #include "core/strutil.h"  // lower_ascii, is_ascii_space, equals_ci, starts_with_ci
 #include "core/winstr.h"   // wide_to_utf8
@@ -373,7 +374,8 @@ bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFac
         if (!facts.stars) return false;  // a row with no facts matches no filter (facts_of)
         if (q.stars && *facts.stars != *q.stars) return false;
         // A path that needs no timing (Path::needs_timing) passes any limit.
-        if (q.squeeze_max_ms && facts.hardest_ms && *facts.hardest_ms > *q.squeeze_max_ms)
+        if (q.squeeze_max_ms && facts.hardest_ms &&
+            !timing_within_limit(*facts.hardest_ms, *q.squeeze_max_ms))
             return false;
     }
     for (const QueryTerm& term : q.terms)

@@ -103,7 +103,7 @@ The panel has four tabs: **Paths**, **Preview**, **Dynamics** and **Stars**.
 
 ## Paths tab
 
-The left side lists the paths the analysis kept, grouped by score. **Optimal** comes first. When several paths tie for the top score, all of them are optimal, because playing any of them earns the same score. Then come the extra paths under a heading like **Within 2 scores**. Last is **Best all-0 path**: the best path that activates at the first chance every time, with no skips, and needs no timing. It also shows how far it falls below optimal. Click a path to show it on the right.
+The left side lists the paths the analysis kept, grouped by score. **Optimal** comes first. When several paths tie for the top score, all of them are optimal, because playing any of them earns the same score. Then come the extra paths under a heading like **Within 2 scores**. Last is **Best all-0 path**: the best path that activates at the first chance every time, with no skips. Every squeeze and early fill on it is 0 ms or easier. It also shows how far it falls below optimal. Click a path to show it on the right.
 
 Each path shows its own hardest timing right after it, like `378,315 · 3- 1 2   163.0 ms`: the hardest squeeze or required early fill that path needs. It turns orange past the difficult limit. A path that needs no timing shows nothing there.
 
