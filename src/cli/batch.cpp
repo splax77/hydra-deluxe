@@ -278,7 +278,7 @@ int batch_main() {
         const int shown = std::min(last.failed, kFailuresShown);
         for (int i = 0; i < shown; ++i) std::printf("  %s\n", failures[i].c_str());
         if (last.failed > shown)
-            std::printf("  ...and %d more.\n", last.failed - shown);
+            std::printf("  ...and %s more.\n", hydra::group_thousands(last.failed - shown).c_str());
     }
 
     return 0;

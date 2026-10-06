@@ -4402,6 +4402,22 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/report.cpp", "if (store.counts().second == 0) {",
            "generate_report asks only whether the store is empty"}},
          {}},
+        // D78 B4: Scan library, hydra_batch and the bench tool each saved a
+        // scan their own way. One function saves it, so every one leaves the
+        // same library behind.
+        {"How does a finished scan become the library?",
+         "save_scan_as_library in src/app/analysis.cpp",
+         R"(\brebuild_chart_library\s*\()",
+         "",
+         {"src/store/record_store.h", "src/store/record_store.cpp"},
+         {},
+         "D78 item 1 (task COUNT-B)",
+         {"store_.rebuild_chart_library(entries);", "store->rebuild_chart_library(entries);"},
+         {"if (const std::optional<std::string> problem = app::save_scan_as_library(*store, items))",
+          "step_done(s, \"rebuild_chart_library\");"},
+         {{"src/app/analysis.cpp", "store.rebuild_chart_library(entries);",
+           "save_scan_as_library, the owner"}},
+         {}},
     };
     return r;
 }
