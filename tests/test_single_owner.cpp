@@ -2699,6 +2699,21 @@ const std::vector<OwnerRule>& rules() {
           {"src/render/obj_loader.cpp", "mesh.vertices.push_back(corners[i + 1]);",
            "push_fan, the owner"}},
          {"src/render/obj_loader.cpp"}},
+        // Which end of a railing's X extent is its outer edge. railing_x owns
+        // the extent; railing_outer_x picks the outer end, and the SP end
+        // markers and highway_span_at ask it. A railing_x call with a literal
+        // side is how a caller picked an end by hand.
+        {"Which X edge of a railing faces away from the lanes?",
+         "railing_outer_x in src/render/highway_draw.cpp",
+         R"(\bright\s*\?\s*x2\s*:\s*x1\b|railing_x\(\s*cfg\s*,\s*(?:true|false)\s*,)",
+         "",
+         {},
+         {},
+         "SPTRI derive-once review, finding 1 (D81)",
+         {"const float outer = right ? x2 : x1;", "railing_x(cfg, false, xl, inner);"},
+         {"railing_x(cfg, right, rail.lo[0], rail.hi[0]);",
+          "const float outer = railing_outer_x(cfg, right);"},
+         {{"src/render/highway_draw.cpp", "return right ? x2 : x1;", "railing_outer_x, the owner"}}},
         // Where a Preview text box's line may break: wrap_words walks the
         // spaces, and widest_word takes the widest line it makes at width 0.
         {"Where may a line break fall in a Preview text box?",

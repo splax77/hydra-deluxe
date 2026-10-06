@@ -36,10 +36,9 @@ HighwaySpan highway_span_at(const PreviewConfig& cfg, int width, int height, flo
         const float row = std::max(y, b.y);  // above the far end: the far end's edge
         return a.x + (row - a.y) * (b.x - a.x) / (b.y - a.y);
     };
-    // The railings' outer edges: the left one's x1, the right one's x2.
-    float xl, xr, inner;
-    railing_x(cfg, false, xl, inner);
-    railing_x(cfg, true, inner, xr);
+    // The railings' outer edges.
+    const float xl = railing_outer_x(cfg, false);
+    const float xr = railing_outer_x(cfg, true);
     HighwaySpan s;
     s.left = std::min(x_at(xl, T.railing_y_top), x_at(xl, T.railing_y_bottom));
     s.right = std::max(x_at(xr, T.railing_y_top), x_at(xr, T.railing_y_bottom));

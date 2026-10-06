@@ -8,6 +8,8 @@
 
 #include "app/preview_view.h"
 #include "render/highway_draw.h"
+#include "render/obj_loader.h"
+#include "render/overlay_layout.h"
 #include "render/track_state.h"
 #include "preview_config_util.h"
 
@@ -148,6 +150,19 @@ TEST_CASE("stretch_matrix and light_for") {
     CHECK(l.position.z == doctest::Approx(0.0f + 0.2f));
     c.light = LightKind::Global;
     CHECK(light_for(cfg, c).position.y == doctest::Approx(-0.5f));
+    // Unlit: full ambient, nothing else, so the shader returns the colour.
+    c.light = LightKind::Unlit;
+    const LightConfig u = light_for(cfg, c);
+    CHECK(u.ambient.r == 1.0f);
+    CHECK(u.ambient.g == 1.0f);
+    CHECK(u.ambient.b == 1.0f);
+    CHECK(u.ambient.a == 1.0f);
+    for (const Color& off : {u.diffuse, u.specular}) {
+        CHECK(off.r == 0.0f);
+        CHECK(off.g == 0.0f);
+        CHECK(off.b == 0.0f);
+        CHECK(off.a == 0.0f);
+    }
 
     // A Flat keeps Y scale 1.
     DrawCommand f;
@@ -610,7 +625,7 @@ TEST_CASE("build_highway_draws: a chord one tick after a phrase ends draws plain
 }
 
 // D81: where an active SP window ends, a bright edge across the floor and a
-// notch on each railing, in the full (undarkened) SP colour.
+// triangle beside each railing, in the full (undarkened) SP colour.
 namespace {
 
 bool is_sp_end_mark(const DrawCommand& c, const PreviewConfig& cfg) {
@@ -662,7 +677,7 @@ TEST_CASE("sp_active_ends: each window's end inside the window, back-to-back one
     CHECK(overlap.sp_active_ends(overlap.window(1.0, 3.0)) == std::vector<double>{2.6});
 }
 
-TEST_CASE("build_highway_draws: an SP end gets a floor edge and two rail notches, depth off") {
+TEST_CASE("build_highway_draws: an SP end gets a floor edge and two rail triangles, depth off") {
     const PreviewConfig cfg = shipped_preview_config();
     TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
     const double now = 1.0;  // far edge at 2.35 s, so the 2.0 s end is in view
@@ -678,14 +693,15 @@ TEST_CASE("build_highway_draws: an SP end gets a floor edge and two rail notches
     }
     REQUIRE(marks.size() == 3);
     REQUIRE(first_gem < cmds.size());
-    int edges = 0, notches = 0;
-    float notch_x_sum = 0.0f;
+    int edges = 0, lefts = 0, rights = 0;
     for (size_t i : marks) {
         const DrawCommand& c = cmds[i];
         CHECK(i > last_floor);
         CHECK(i < first_gem);
         CHECK(c.depth == DepthMode::Always);
         CHECK((c.lo[2] + c.hi[2]) * 0.5f == doctest::Approx(z_end));
+        // Unlit, so the edge and the triangles show the same SP colour.
+        CHECK(c.light == LightKind::Unlit);
         if (c.mesh == MeshId::Flat) {
             ++edges;
             CHECK(c.lo[0] == doctest::Approx(-1.0f));  // the whole floor width
@@ -694,22 +710,70 @@ TEST_CASE("build_highway_draws: an SP end gets a floor edge and two rail notches
             CHECK(c.hi[1] == doctest::Approx(-1.0f));
             CHECK(c.lo[2] - c.hi[2] == doctest::Approx(0.1f));  // sp_end_edge_depth
         } else {
-            REQUIRE(c.mesh == MeshId::Box);
-            ++notches;
-            // Centred on a railing (x -1.045 or 1.045), 0.18 wide and deep,
-            // from the railing's bottom to 0.06 above its top.
-            const float cx = (c.lo[0] + c.hi[0]) * 0.5f;
-            notch_x_sum += cx;
-            CHECK(std::fabs(cx) == doctest::Approx(1.045f));
-            CHECK(std::fabs(c.hi[0] - c.lo[0]) == doctest::Approx(0.18f));
-            CHECK(std::fabs(c.hi[2] - c.lo[2]) == doctest::Approx(0.18f));
-            CHECK(std::fmin(c.lo[1], c.hi[1]) == doctest::Approx(-1.1f));
-            CHECK(std::fmax(c.lo[1], c.hi[1]) == doctest::Approx(-0.79f));
+            // Its base rests on the railing's outer edge (x -1.09 or 1.09)
+            // and it reaches 0.07 further out, 0.07 tall and centred on the
+            // floor's height.
+            CHECK(std::fmin(c.lo[1], c.hi[1]) == doctest::Approx(-1.035f));
+            CHECK(std::fmax(c.lo[1], c.hi[1]) == doctest::Approx(-0.965f));
+            if (c.mesh == MeshId::TriangleLeft) {
+                ++lefts;
+                CHECK(c.lo[0] == doctest::Approx(-1.16f));
+                CHECK(c.hi[0] == doctest::Approx(-1.09f));
+            } else {
+                REQUIRE(c.mesh == MeshId::TriangleRight);
+                ++rights;
+                CHECK(c.lo[0] == doctest::Approx(1.09f));
+                CHECK(c.hi[0] == doctest::Approx(1.16f));
+            }
         }
     }
     CHECK(edges == 1);
-    CHECK(notches == 2);
-    CHECK(notch_x_sum == doctest::Approx(0.0f));  // one on each railing
+    CHECK(lefts == 1);
+    CHECK(rights == 1);
+}
+
+// The triangles stand facing the camera with their front side, so back-face
+// culling keeps them, and on screen each apex points away from the lanes.
+TEST_CASE("build_highway_draws: the SP end triangles face the camera and point outward") {
+    const PreviewConfig cfg = shipped_preview_config();
+    TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
+    const double now = 1.0;
+    const int w = 1200, h = 400;
+    int seen = 0;
+    for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0)) {
+        if (c.mesh != MeshId::TriangleLeft && c.mesh != MeshId::TriangleRight) continue;
+        ++seen;
+        const bool right = c.mesh == MeshId::TriangleRight;
+        const ObjMesh mesh = make_triangle(right);
+        REQUIRE(mesh.triangle_count() == 1);
+        float sx[3], sy[3];
+        for (int k = 0; k < 3; ++k) {
+            const ObjVertex& v = mesh.vertices[k];
+            const XMVECTOR wp = XMVector3TransformCoord(
+                XMVectorSet(v.pos[0], v.pos[1], v.pos[2], 1.0f), stretch_matrix(c));
+            const ImagePoint p = project_to_image(
+                cfg, w, h, Vec3{XMVectorGetX(wp), XMVectorGetY(wp), XMVectorGetZ(wp)});
+            sx[k] = p.x;
+            sy[k] = p.y;
+        }
+        // Image pixels run y down, so a negative signed area here is
+        // counter-clockwise as the viewer sees it: the front face the
+        // renderer keeps.
+        const float area2 = (sx[1] - sx[0]) * (sy[2] - sy[0]) - (sx[2] - sx[0]) * (sy[1] - sy[0]);
+        CHECK(area2 < 0.0f);
+        // The apex is the vertex at the side away from the base.
+        size_t apex = 0;
+        for (size_t k = 0; k < 3; ++k)
+            if (mesh.vertices[k].pos[1] == 0.0f) apex = k;
+        for (size_t k = 0; k < 3; ++k) {
+            if (k == apex) continue;
+            if (right)
+                CHECK(sx[apex] > sx[k]);
+            else
+                CHECK(sx[apex] < sx[k]);
+        }
+    }
+    CHECK(seen == 2);
 }
 
 TEST_CASE("build_highway_draws: no SP end mark past the far edge or behind the near edge") {
@@ -734,16 +798,16 @@ TEST_CASE("build_highway_draws: two back-to-back SP windows give two edges") {
     TrackState st = build_track_state(scene, TrackStateOptions{});
     const double now = 1.5;  // the window runs from 1.275 s to 2.85 s
     std::vector<float> edge_z;
-    int notches = 0;
+    int triangles = 0;
     for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0)) {
         if (!is_sp_end_mark(c, cfg)) continue;
         if (c.mesh == MeshId::Flat)
             edge_z.push_back((c.lo[2] + c.hi[2]) * 0.5f);
         else
-            ++notches;
+            ++triangles;
     }
     REQUIRE(edge_z.size() == 2);
     CHECK(edge_z[0] == doctest::Approx(time_to_z(cfg, now, 2.0, 1.0)));
     CHECK(edge_z[1] == doctest::Approx(time_to_z(cfg, now, 2.6, 1.0)));
-    CHECK(notches == 4);
+    CHECK(triangles == 4);
 }

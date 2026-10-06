@@ -23,7 +23,8 @@
 
 namespace hydra::render {
 
-enum class MeshId { Tom, Cymbal, Kick, Flat, Box };
+// TriangleLeft / TriangleRight: make_triangle with its apex toward -X / +X.
+enum class MeshId { Tom, Cymbal, Kick, Flat, Box, TriangleLeft, TriangleRight, Count };
 
 enum class TextureId {
     None,
@@ -50,9 +51,10 @@ struct Material {
     TextureId overlay = TextureId::None;  // TextureOverlay second layer
 };
 
-// Which light a draw uses: the highway's fixed light, or the per-gem light
-// offset from the gem's top centre (Onyx LightOffset).
-enum class LightKind { Global, GemOffset };
+// Which light a draw uses: the highway's fixed light, the per-gem light
+// offset from the gem's top centre (Onyx LightOffset), or none, so the
+// material's colour shows exactly as given (Hydra's SP end marks, D81).
+enum class LightKind { Global, GemOffset, Unlit };
 
 enum class DepthMode { Less, Always };
 
@@ -108,15 +110,20 @@ double z_to_time(const PreviewConfig& cfg, double now_s, double z, double speed)
 void pad_x(const PreviewConfig& cfg, Pad pad, float& x1, float& x2);
 
 // The X extent of the left (right = false) or right railing. The railings,
-// their SP end notches and the overlay's highway_span_at all place
+// their SP end markers and the overlay's highway_span_at all place
 // themselves by it.
 void railing_x(const PreviewConfig& cfg, bool right, float& x1, float& x2);
+
+// The X of a railing's outer edge, the one away from the lanes. The SP end
+// markers and the overlay's highway_span_at ask it.
+float railing_outer_x(const PreviewConfig& cfg, bool right);
 
 // The model matrix for a DrawCommand's box (row-major, DirectXMath row vectors).
 DirectX::XMMATRIX stretch_matrix(const DrawCommand& cmd);
 
-// The per-draw light: the highway light, or the gem light offset from the
-// box's top centre.
+// The per-draw light: the highway light, the gem light offset from the
+// box's top centre, or for Unlit a full ambient with no diffuse or specular,
+// which the object shader turns into the material colour unchanged.
 LightConfig light_for(const PreviewConfig& cfg, const DrawCommand& cmd);
 
 // One frame's draw list in Onyx's order: floor spans, railings, beat lines,
