@@ -82,7 +82,8 @@ struct SqOutNote {
 // w.sqin_ticks, D34; D36); a typed window may mean either. When the nearest
 // one is any other chord this refuses (plan decision 20 of 2026-09-24). Throws
 // std::runtime_error, with a message naming both chords, in that case; also
-// when there is no candidate, or when w has no offset.
+// when no single chord is nearest (D83), when there is no candidate, or when
+// w has no offset.
 SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w);
 
 // The six score categories a Path stores, in the same order.

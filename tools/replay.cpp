@@ -348,9 +348,9 @@ int cmd_score(const Args& a, const app::Settings& s) {
                        : windows_from_file(a.path, a.index);
     // A typed offset (or a dump from before sqout_tick existed) names a chord
     // only approximately. Resolve it and say which chord was used, so a typo
-    // cannot quietly price a different squeeze-out. resolve_sqout_note throws
-    // for a chord the engine never squeezes out; main prints "error: ..." and
-    // exits 1, so nothing is priced.
+    // cannot quietly price a different squeeze-out. When resolve_sqout_note
+    // refuses (its header lists when), main prints "error: ..." and exits 1,
+    // so nothing is priced.
     for (ReplayWindow& w : windows) {
         if (!w.sqout_offset_ms || w.sqout_tick) continue;
         const SqOutNote n = resolve_sqout_note(song, w);
