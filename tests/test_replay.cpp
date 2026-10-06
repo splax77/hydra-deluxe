@@ -907,6 +907,22 @@ TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refus
     CHECK(n.offset_ms == doctest::Approx(-93.75));
 }
 
+// A typed offset exactly halfway between two phrase chords the engine could
+// both squeeze out still names one of them.
+TEST_CASE("a typed squeeze-out offset halfway between two phrase chords picks one") {
+    // Phrase chords 93.75 ms before (tick 3036) and after (tick 3108) D = 3072.
+    const Song song = song_with({{0, false}, {768, false}, {3036, true},
+                                 {3072, false}, {3108, true}});
+    ReplayWindow w;
+    w.act_tick = 0;
+    w.deact_tick = 3072;
+    w.sqout_offset_ms = 0.0;
+    // Tie rule owner: the nearest-candidate loop in resolve_sqout_note.
+    const SqOutNote n = resolve_sqout_note(song, w);
+    CHECK(n.tick == 3036);
+    CHECK(n.offset_ms == doctest::Approx(-93.75));
+}
+
 // A phrase chord at or before the activation was banked before Star Power
 // started, so that window cannot squeeze it out, even when it sits inside the
 // 500 ms window around the SP end. The replay refuses the typed offset and
