@@ -76,7 +76,7 @@ std::string backend_table_id(int number, int w_timing, int w_chord, int w_points
 
 namespace {
 
-// The badge's word for each part Activation::hardest() can name.
+// The badge's word for each part Activation::badge_timing() can name.
 struct BadgeWord {
     TimingPart part;
     const char* word;
@@ -96,27 +96,28 @@ std::string badge_word(TimingPart part) {
 }  // namespace
 
 std::string activation_badge(const Activation& act) {
-    // The activation says which part is hardest and how hard (a tie names the
-    // squeeze, and an E activation's optional early fill counts when nothing
-    // else does); the badge only words it.
-    const std::optional<HardestTiming> hardest = act.hardest();
-    if (!hardest) return {};
-    return badge_word(hardest->part) + " " + format_ms_whole(hardest->ms);
+    // The activation says which part the badge names and how hard (a tie
+    // names the squeeze, an E activation's optional early fill counts when
+    // nothing else does, and a free squeeze counts when nothing needs timing,
+    // D80); the badge only words it.
+    const std::optional<HardestTiming> shown = act.badge_timing();
+    if (!shown) return {};
+    return badge_word(shown->part) + " " + format_ms_whole(shown->ms);
 }
 
 std::string longest_activation_badge() {
-    // Why the squeeze window bounds every figure a badge shows: hardest()
-    // skips a free squeeze (SPSqueeze::is_free), so a squeeze it names has a
-    // difficulty of 0 or more, and its offset is one the engine kept inside
-    // within_squeeze_window. It names an early fill only when
+    // Why the squeeze window bounds every figure a badge shows: every squeeze
+    // offset is one the engine kept inside within_squeeze_window, so a
+    // squeeze's figure lies strictly between -kSqueezeWindowMs and
+    // +kSqueezeWindowMs. An early fill is named only when
     // early_fill_needs_timing holds, and that figure is at most
-    // kEarlyFillWindowMs, inside the window too. None is negative, so no badge
-    // carries a minus sign.
+    // kEarlyFillWindowMs, inside the window too. A free squeeze's figure is 0
+    // or less (D80), so the widest figure is the window's, minus sign included.
     size_t longest = 0;
     for (size_t i = 1; i < std::size(kBadgeWords); ++i)
         if (std::strlen(kBadgeWords[i].word) > std::strlen(kBadgeWords[longest].word))
             longest = i;
-    return std::string(kBadgeWords[longest].word) + " " + format_ms_whole(kSqueezeWindowMs);
+    return std::string(kBadgeWords[longest].word) + " " + format_ms_whole(-kSqueezeWindowMs);
 }
 
 std::vector<TextLine> squeeze_sentences(const Activation& act,

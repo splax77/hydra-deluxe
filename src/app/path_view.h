@@ -137,12 +137,14 @@ ActivationsView build_activations(const Path& path, const HydraRecord& record,
                                   std::optional<double> song_length_ms = std::nullopt,
                                   bool pro_drums = true);
 
-// The badge on an activation row: Activation::hardest() worded, with its ms
-// whole and rounded to nearest (format_ms_whole): "squeeze out 163 ms",
+// The badge on an activation row: Activation::badge_timing() worded, with its
+// ms whole and rounded to nearest (format_ms_whole): "squeeze out 163 ms",
 // "squeeze in 13 ms" for 12.6, "early fill 30 ms". A squeeze tied with a
 // fill is named. An optional early fill (an E activation that skips fills)
 // gets one too when nothing else does; is_difficult() ignores it, so it is
-// never warn-coloured. Empty when hardest() has nothing.
+// never warn-coloured. A free squeeze gets one when nothing needs timing,
+// with its figure 0 or less ("squeeze in -316 ms", D80), never
+// warn-coloured either. Empty when badge_timing() has nothing.
 std::string activation_badge(const Activation& act);
 
 // The longest text activation_badge can return, for laying out a row that

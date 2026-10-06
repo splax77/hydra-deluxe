@@ -466,16 +466,17 @@ std::optional<double> Activation::e_difficulty(bool verbose) const {
     return std::nullopt;
 }
 
-std::optional<HardestTiming> Activation::hardest() const {
-    // Only timings that need hitting take part (D51 call 4, D13): a free
-    // squeeze (SPSqueeze::is_free) and an early fill with time to spare
-    // (early_fill_needs_timing) never name the hardest part.
+namespace {
+
+// hardest() and badge_timing() in one place; they differ only in whether a
+// free squeeze takes part.
+std::optional<HardestTiming> hardest_part(const Activation& act, bool free_squeezes) {
     std::optional<HardestTiming> best;
     // Squeezes first, in list order, and only a strictly larger value takes
     // over: so a tie keeps the first squeeze, and the fill below must beat
     // every squeeze to be named.
-    for (const SPSqueeze& sq : sqinouts) {
-        if (sq.is_free()) continue;
+    for (const SPSqueeze& sq : act.sqinouts) {
+        if (!free_squeezes && sq.is_free()) continue;
         const double d = sq.difficulty();
         if (!best || d > best->ms)
             best = HardestTiming{sq.kind == SqueezeKind::SqIn ? TimingPart::SqueezeIn
@@ -483,14 +484,31 @@ std::optional<HardestTiming> Activation::hardest() const {
                                  d};
     }
     // Either early fill below counts only when it needs timing.
-    const bool fill_needs_timing = early_fill_needs_timing(e_offset);
-    if (const std::optional<double> e = e_difficulty(); e && fill_needs_timing) {
+    const bool fill_needs_timing = early_fill_needs_timing(act.e_offset);
+    if (const std::optional<double> e = act.e_difficulty(); e && fill_needs_timing) {
         if (!best || *e > best->ms) best = HardestTiming{TimingPart::EarlyFill, *e};
     }
     // The optional early fill of an E activation that skipped fills (D48 Q10).
-    if (!best && fill_needs_timing && is_e_critical())
-        best = HardestTiming{TimingPart::EarlyFill, *e_difficulty(/*verbose=*/true)};
+    if (!best && fill_needs_timing && act.is_e_critical())
+        best = HardestTiming{TimingPart::EarlyFill, *act.e_difficulty(/*verbose=*/true)};
     return best;
+}
+
+}  // namespace
+
+std::optional<HardestTiming> Activation::hardest() const {
+    // Only timings that need hitting take part (D51 call 4, D13): a free
+    // squeeze (SPSqueeze::is_free) and an early fill with time to spare
+    // (early_fill_needs_timing) never name the hardest part.
+    return hardest_part(*this, /*free_squeezes=*/false);
+}
+
+std::optional<HardestTiming> Activation::badge_timing() const {
+    // A timing that needs hitting always names the badge. Only when there is
+    // none does a free squeeze get it (D80); fills still follow hardest()'s
+    // rules, so this fallback only ever finds a free squeeze.
+    if (std::optional<HardestTiming> h = hardest()) return h;
+    return hardest_part(*this, /*free_squeezes=*/true);
 }
 
 std::optional<double> Activation::difficulty() const {

@@ -891,11 +891,21 @@ TEST_CASE("activation badge: shown for a squeeze or an early fill") {
     sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -163.0});
     CHECK(activation_badge(sqout) == "squeeze out 163 ms");
 
-    // A free squeeze-in (already inside SP) has nothing to time: no badge.
+    // A free squeeze-in (already inside SP) has nothing to time, but the row
+    // badge still shows it with its figure, as 2.0 did (D80). The activation
+    // still needs no timing, so the path button and filter are unchanged.
     Activation free_in = none;
-    free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -163.0});
-    CHECK(activation_badge(free_in).empty());
-    // Nor does a required fill with 10 ms to spare.
+    free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -315.8});
+    CHECK(activation_badge(free_in) == "squeeze in -316 ms");
+    CHECK_FALSE(free_in.needs_timing());
+    // A free squeeze-out (already past the SP end) reads the same way.
+    Activation free_out = none;
+    free_out.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 40.0});
+    CHECK(activation_badge(free_out) == "squeeze out -40 ms");
+    // A squeeze that needs timing outranks a free one, whatever the list order.
+    free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 1.0});
+    CHECK(activation_badge(free_in) == "squeeze in 1 ms");
+    // A required fill with 10 ms to spare gets no badge (D51 call 4).
     Activation slack = none;
     slack.e_offset = 10.0;
     REQUIRE(slack.is_E0());
@@ -964,8 +974,8 @@ TEST_CASE("backend_table_id: the activation number and the three widths") {
 
 TEST_CASE("longest_activation_badge: the widest wording with the window's figure") {
     const std::string longest = longest_activation_badge();
-    CHECK(longest == "squeeze out 500 ms");
-    CHECK(longest.size() == 18);
+    CHECK(longest == "squeeze out -500 ms");
+    CHECK(longest.size() == 19);
     // The SqOut fixture of "activation badge: shown for a squeeze or an early fill".
     Activation sqout;
     test::set_skips(sqout, 0);

@@ -559,16 +559,21 @@ struct Activation {
     // decides whether the first fill shows up at all, which is what the skip
     // count counts. Only timings that need hitting take part (D51 call 4,
     // D13): a free squeeze or a fill with time to spare never names it.
-    // Empty means nothing to time, so no badge.
+    // Empty means nothing to time.
     std::optional<HardestTiming> hardest() const;
+    // What the Paths tab's row badge names: hardest() when it has an answer,
+    // else the hardest free squeeze, as 2.0 showed (D80). A free squeeze's
+    // figure is 0 or less ("squeeze in -316 ms": the note already lands
+    // 316 ms inside SP). Empty means no badge.
+    std::optional<HardestTiming> badge_timing() const;
     // hardest()'s ms when it is a squeeze or a required fill; empty for an
     // optional early fill, so the search, filter and warning colors never
     // count one. Empty, too, for an activation with nothing to time.
     std::optional<double> difficulty() const;
     // Does this activation need any timing at all? The per-activation half of
-    // Path::needs_timing. The Paths tab's badge reads hardest(), and its path
-    // button and the stored summary read Path::difficulty(); all of them rest
-    // on hardest() (D51 call 4, D13).
+    // Path::needs_timing. The Paths tab's path button and the stored summary
+    // read Path::difficulty(), which rests on hardest() (D51 call 4, D13). The
+    // row badge alone also shows a free squeeze (badge_timing, D80).
     bool needs_timing() const;
     bool is_difficult() const;
 
