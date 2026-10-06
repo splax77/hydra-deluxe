@@ -131,8 +131,9 @@ that note (Clone Hero's rule, docs/adr/0023).
 _Avoid_: star power section
 
 **All-0 path**:
-The best path whose activations all record zero skips and that needs no
-timing (`Path::needs_timing`; D51 call 4, D13).
+The best path whose activations all record zero skips and whose every
+squeeze and early fill is 0 ms or easier (`allzero_options` in
+src/search/pather.cpp; D85).
 
 ### Squeezes
 
