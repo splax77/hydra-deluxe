@@ -449,6 +449,14 @@ public:
     // doesn't list is absent.
     std::unordered_map<std::string, int> library_copies();
 
+    // How many library rows a chart on a page counts as, read from a
+    // library_copies map keyed the way `md5` is. A page lists only charts it
+    // holds a result for, so one the library doesn't list (a hydra_batch-only
+    // database, a chart removed since the scan) still counts once (D77). This
+    // is the one place that rule lives; every page's chart count reads it.
+    static int copies_of(const std::unordered_map<std::string, int>& copies,
+                         const std::string& md5);
+
     // One record's song identity, as yielded by for_each_blob: the song's
     // metadata row, plus the row's
     // hyversion and the status it implies (the C++ HydraRecord doesn't carry

@@ -79,9 +79,16 @@ function scoreText(r, s) {
   return s === null && r.status === 'in both' ? 'no paths' : fmt(s);
 }
 
+// How many charts a set of rows counts as: each row's library copies, "k", as
+// tally_fill_rows adds them up in fill_report.cpp. The count beside the
+// filters and every chart tile read this; the test "fill page: the tiles add
+// up the copies tally_fill_rows adds up" checks the two agree.
+const charts = rs => rs.reduce((a, r) => a + r.k, 0);
+
 const PAGE = {
   rows: DATA,
   noun: 'charts',
+  count: charts,
   sortKey: 'delta',
   sortDir: -1,
   cols: [
@@ -125,11 +132,12 @@ const PAGE = {
     ];
   },
   stats(rows) {
-    const n = s => rows.filter(r => r.status === s).length;
+    const n = s => charts(rows.filter(r => r.status === s));
+    // The points tiles add each chart's delta once, not once per copy (D78).
     const gains = rows.filter(r => r.status === '1.1 higher').reduce((a, r) => a + r.delta, 0);
     const losses = rows.filter(r => r.status === '1.0 higher').reduce((a, r) => a - r.delta, 0);
     return [
-      ['Charts', fmt(rows.length)],
+      ['Charts', fmt(charts(rows))],
       ['1.1 higher', fmt(n('1.1 higher'))],
       ['1.0 higher', fmt(n('1.0 higher'))],
       ['Same', fmt(n('same'))],
@@ -170,6 +178,9 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
         report::records_by_hash(old_store, chartmode, cap, old_lens);
     const std::unordered_map<std::string, store::RecordListing> new_by_hash =
         report::records_by_hash(new_store, chartmode, cap, new_lens);
+    // Copies come from the 1.1 database's library (D78 item 3).
+    const std::unordered_map<std::string, int> library =
+        report::library_copies_by_hash(new_store);
 
     // Walk the union of both key sets so a chart in only one database still
     // gets a row. Ordered so the page's rows come out deterministically.
@@ -186,6 +197,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 
         FillCompareRow row;
         row.hyhash = hash;
+        row.copies = store::RecordStore::copies_of(library, hash);
 
         // Identity prefers the 1.1 side; either side names the same chart.
         const store::RecordListing* id = new_rec ? new_rec : old_rec;
@@ -230,15 +242,18 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
 }
 
 FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows) {
+    // The page's stats() adds up the same "k" by the same statuses; the test
+    // "fill page: the tiles add up the copies tally_fill_rows adds up" pins
+    // the two together.
     FillCompareStats stats;
-    stats.total = static_cast<int>(rows.size());
     for (const FillCompareRow& r : rows) {
-        if (r.status == "same") ++stats.same;
-        else if (r.status == "1.0 higher") ++stats.ch10_higher;
-        else if (r.status == "1.1 higher") ++stats.ch11_higher;
-        else if (r.status == "only 1.0") ++stats.only_old;
-        else if (r.status == "only 1.1") ++stats.only_new;
-        else if (r.status == "in both") ++stats.in_both;
+        stats.total += r.copies;
+        if (r.status == "same") stats.same += r.copies;
+        else if (r.status == "1.0 higher") stats.ch10_higher += r.copies;
+        else if (r.status == "1.1 higher") stats.ch11_higher += r.copies;
+        else if (r.status == "only 1.0") stats.only_old += r.copies;
+        else if (r.status == "only 1.1") stats.only_new += r.copies;
+        else if (r.status == "in both") stats.in_both += r.copies;
     }
     return stats;
 }
@@ -258,7 +273,9 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
         if (!first) data.push_back(',');
         first = false;
 
-        data += "{\"song\":";
+        // "k" is the chart's library copies, what the chart tiles add up.
+        data += "{\"k\":" + std::to_string(r.copies);
+        data += ",\"song\":";
         json_escape_into(data, r.song);
         data += ",\"artist\":";
         json_escape_into(data, r.artist);

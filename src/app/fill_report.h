@@ -38,6 +38,10 @@ struct FillCompareRow {
     // "in both" (a record on each side, a score on one only).
     // Exact literals: tally_fill_rows and the page's chip colors compare them.
     std::string status;
+    // How many library rows the chart counts as, from the 1.1 database's
+    // library (D78 item 3): what tally_fill_rows and the page's tiles add up.
+    // collect_fill_rows sets it from store::RecordStore::copies_of.
+    int copies = 0;
 };
 
 // Joins the two stores' records for identical settings but the fill rule
@@ -46,13 +50,15 @@ struct FillCompareRow {
 // hyhash, over the union of both key sets — a chart stored on one side only
 // still gets a row, labelled by the side that holds its record. Song, artist
 // and charter prefer the 1.1 (new) side; the song reads display_title, and
-// the artist and charter have their Clone Hero rich-text tags stripped.
+// the artist and charter have their Clone Hero rich-text tags stripped. Each
+// row's copies come from new_store's library.
 std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& old_store,
                                               store::RecordStore& new_store,
                                               const std::string& chartmode,
                                               const store::CapQuery& cap,
                                               const store::Lens& lens);
 
+// Every field counts library rows: each chart adds its copies (D78 item 3).
 struct FillCompareStats {
     int total = 0;
     int same = 0;

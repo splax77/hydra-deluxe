@@ -326,6 +326,9 @@ const char* const kReportJs = R"js(
 // and which stats sit above the table.
 const ROWS = PAGE.rows;
 const COLS = PAGE.cols;
+// How many a set of rows counts as, for the count beside the filters: the
+// page's own PAGE.count when it gives one, else one per row.
+const countOf = PAGE.count || (rs => rs.length);
 let sortKey = PAGE.sortKey, sortDir = PAGE.sortDir;
 
 // The search box matches words, and nothing more (D56 item 1). The typed text
@@ -406,7 +409,7 @@ function render() {
   empty.textContent = 'Nothing matches those filters.';
   empty.hidden = rows.length > 0;
   document.getElementById('count').textContent =
-    fmt(rows.length) + ' of ' + fmt(ROWS.length) + ' ' + PAGE.noun;
+    fmt(countOf(rows)) + ' of ' + fmt(countOf(ROWS)) + ' ' + PAGE.noun;
 
   const el = document.getElementById('stats');
   el.textContent = '';
