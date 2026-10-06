@@ -154,8 +154,8 @@ The report gives the score (killed out of the edits that compiled) and each
 survivor's line and edit, so a person can write a test for it. The script
 edits source, so it refuses the main checkout; run it in a task worktree
 made with `tools\new_worktree.ps1`. It holds one machine build slot for the
-whole run. Each edit costs a warm rebuild, so twenty edits take several
-minutes. The script's header lists its options and the kinds of edit it
+whole run. Each edit costs a warm rebuild and a test run, so twenty edits
+take a few minutes. The script's header lists its options and the kinds of edit it
 makes; `tools\test_mutation_probe.ps1` is its self-test.
 
 Run it before a release, on the scoring and path code. It is not meant for

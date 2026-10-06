@@ -121,8 +121,8 @@ function Write-Text([string]$Path, [string]$Text) {
     [System.IO.File]::WriteAllText($Path, $Text.Replace("`r`n", "`n"))
 }
 # One probe run in its own pwsh: its exit code and its output lines.
-function Invoke-Probe([string]$In, [string]$Exe) {
-    $out = @(& pwsh -NoProfile -File $probe -Repo $In -Source src/sample.cpp -Filter 'sf=*sample*' -Max 6 -TestExe $Exe -SlotDir $slots 2>&1 | ForEach-Object { "$_" })
+function Invoke-Probe([string]$In, [string]$Exe, [string[]]$Pick = @('-Max', '6')) {
+    $out = @(& pwsh -NoProfile -File $probe -Repo $In -Source src/sample.cpp -Filter 'sf=*sample*' @Pick -TestExe $Exe -SlotDir $slots 2>&1 | ForEach-Object { "$_" })
     [pscustomobject]@{ Code = $LASTEXITCODE; Lines = $out; Text = ($out -join "`n") }
 }
 
@@ -198,6 +198,12 @@ if ($fail) { '[doctest] test cases: 3 | 2 passed | 1 failed'; exit 1 }
     Check ($r.Text -match '1 more edit\(s\) did not compile') "normal run: the no-build edit is not reported:`n$($r.Text)"
     Check ($r.Text -match '(?m)^  line 7: `return true` became `return false`$' -and $r.Text -match '(?m)^  line 8: `return false` became `return true`$') "normal run: the two survivors are not listed:`n$($r.Text)"
     & $restored 'normal run'
+
+    # -Only through pwsh -File, which hands "1,5" over as one string.
+    $r = Invoke-Probe $wt $runner @('-Only', '1,5')
+    $got = @(foreach ($l in $r.Lines) { if ($l -match '^\s+(#\d+)\s+line\s+\d+\s+.*: (killed|survived|no build|timed out)$') { "$($Matches[1])=$($Matches[2])" } }) -join ' '
+    Check ($r.Code -eq 0 -and $got -eq '#1=killed #5=survived') "-Only 1,5: expected '#1=killed #5=survived', got exit $($r.Code) and '$got':`n$($r.Text)"
+    & $restored '-Only run'
 
     # A run that breaks part way: the second build deletes the test program.
     $runner2 = Join-Path $fixture 'fake_tests_2.ps1'

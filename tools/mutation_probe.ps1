@@ -55,7 +55,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Source,
     [string]$Filter = '',
     [int]$Max = 0,
-    [int[]]$Only = @(),
+    # Candidate numbers. A string, split here: pwsh -File would read "4,9" as the number 49.
+    [string[]]$Only = @(),
     [switch]$List,
     # The worktree to run in; default: the checkout holding this script.
     [string]$Repo = '',
@@ -257,7 +258,9 @@ if (-not $TestExe) { $TestExe = Join-Path $Repo 'build-cpp\Release\hydra_tests.e
 $buildScript = Join-Path $Repo 'build_cpp.ps1'
 if (-not (Test-Path -LiteralPath $buildScript)) { Fail "no build_cpp.ps1 in $Repo" }
 
-$numbers = if ($Only.Count) { $Only } else { Select-Spread $candidates.Count $Max }
+$Only = @($Only -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+foreach ($k in $Only) { if ($k -notmatch '^\d+$') { Fail "-Only takes candidate numbers, got '$k'" } }
+$numbers = if ($Only.Count) { @($Only | ForEach-Object { [int]$_ }) } else { Select-Spread $candidates.Count $Max }
 foreach ($k in $numbers) { if ($k -lt 1 -or $k -gt $candidates.Count) { Fail "no candidate #$k; -List shows 1 to $($candidates.Count)" } }
 $chosen = @($numbers | ForEach-Object { $candidates[$_ - 1] })
 if (-not $chosen.Count) { Fail "no candidates in $rel" }
