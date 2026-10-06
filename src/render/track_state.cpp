@@ -426,6 +426,14 @@ std::vector<ToggleSpan> TrackState::make_toggle_bounds(const TrackWindow& win,
     return spans;
 }
 
+std::vector<double> TrackState::sp_active_ends(const TrackWindow& win) const {
+    std::vector<double> ends;
+    for (const TrackInstant& inst : win)
+        if (inst.sp_active == Toggle::End || inst.sp_active == Toggle::Restart)
+            ends.push_back(inst.t);
+    return ends;
+}
+
 std::vector<LaneSpan> TrackState::make_lane_bounds(const TrackWindow& win, double near_s,
                                                    double far_s) const {
     std::vector<LaneSpan> spans;

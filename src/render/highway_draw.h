@@ -115,7 +115,8 @@ DirectX::XMMATRIX stretch_matrix(const DrawCommand& cmd);
 LightConfig light_for(const PreviewConfig& cfg, const DrawCommand& cmd);
 
 // One frame's draw list in Onyx's order: floor spans, railings, beat lines,
-// lane strips, strike-line targets and their glows, then gems (far first).
+// lane strips, strike-line targets and their glows, Hydra's SP end marks
+// (D81), then gems (far first).
 std::vector<DrawCommand> build_highway_draws(const TrackState& state,
                                              const PreviewConfig& cfg,
                                              double now_s, double speed);
