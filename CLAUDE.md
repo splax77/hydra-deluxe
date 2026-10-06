@@ -1,36 +1,4 @@
-Ask questions if something is unclear.
-
-## How to explain things
-
-- Lead with the plain-English version. One idea per sentence.
-- No jargon without a one-line gloss right after it.
-- Cut throat-clearing ("It's worth noting", "In order to", "It's important to note"). Say the thing.
-- Prefer short sentences. Avoid comma-spliced 40-word run-ons.
-- When I ask "why", give the reason, not a feature tour.
-- If a concept is genuinely hard, use a concrete analogy before the precise definition.
-- This applies to plans and design docs too — no dense nested-bullet walls; explain each step in one plain line.
-
-**Before showing any plan, design doc, or long answer: stop and check if it looks like the BAD example below. If it does, rewrite it as the GOOD example before showing it to me.**
-
-BAD (what I keep doing — a research-note dump, not a deliverable):
-```
-- Fix squeeze scaling
-  - src/core/squeeze_rating.cpp:142 — anchor recalculated on wrong node
-  - src/core/squeeze_rating.h:30 — add `deact_index` field
-  - src/app/report.cpp:210 — update caller to pass new field
-  - tests/test_squeeze_rating.cpp — add regression test
-```
-
-GOOD (what I actually want — same information, said like I'm explaining it out loud):
-```
-The anchor is being recalculated on the wrong node, which throws off the
-scaling. The fix is in squeeze_rating.cpp: track the deactivation node instead
-(squeeze_rating.h needs a new field for that), then update the one caller in
-report.cpp that uses it. I'll add a regression test so this doesn't regress
-again.
-```
-
-Same content, no bullet wall, no isolated file:line list with no sentences around it. If you're about to write something that looks like the BAD example, that's the signal to rewrite — not a feeling, an actual pattern check.
+Ask questions if something is unclear. How to explain things lives in the user's global `~/.claude/CLAUDE.md`.
 
 ## Agent skills
 
@@ -53,3 +21,15 @@ To verify anything in the GUI, run `hydra_uitest` (headless, drives the real UI 
 ### Derive-once review
 
 Merges and commits on `main` that touch code need a review from a fresh agent first. A hook enforces it. Dispatch the reviewer with `docs/agents/derive-once-review.md`, the key and the range the hook's message gives. Only the user can skip a review, by typing `waive derive-once <key>` in chat. Never ask the user to waive one to save time.
+
+## Agent rules
+
+These hold for the main session and every agent it sends out. Hooks enforce most of them; the details live in `docs/agents/brief-preamble.md` (what every agent reads first) and the model-postures file (what the main session gets each prompt).
+
+1. Agents never run the full test suite. They run only the tests for their own change. The main session runs the full suite once, when it merges.
+2. Planning agents run on Fable. Code executors run on Opus. Code reviewers run on Sonnet.
+3. Anything that changes a display in the app or a stored record goes to the user first. A change that only touches code proceeds on your recommendation, and you report it after.
+4. Agents never stall or go quiet for long. When they hit a problem, they fail loudly: stop and say what broke.
+5. A reviewer agent must clear the derive-once audit before a change merges (see above). One round of review at most: the reviewer reports, the author fixes once, the reviewer fixes anything left and signs off.
+6. Agents run in parallel, in workflows, while the main session merges. Waves of parallel agents are fine. Never queue independent tasks one after another.
+7. Agents write a status line every 10 tool calls and every 5 minutes. At 100 tool calls an agent starts wrapping up: it commits what it has and hands the rest to a fresh agent. 150 tool calls is a hard stop.
