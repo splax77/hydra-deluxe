@@ -4341,6 +4341,49 @@ const std::vector<OwnerRule>& rules() {
            "return plain_error(e) + \"\\n\\n\" + plain_error_detail(e);",
            "plain_error_block, the owner"}},
          {"src"}},
+        // A chart on a page that the library doesn't list still counts. One
+        // function says how much; a page that looks a chart up in the copies
+        // map itself, or starts its count at a default, is a second answer.
+        {"How many library rows does a chart on a page count as when the library doesn't list it?",
+         "RecordStore::copies_of in src/store/record_store.cpp",
+         R"(\bcopies\s*=\s*1\s*;|\bcopies\w*\.(find|end)\()",
+         "",
+         {},
+         {},
+         "D77 item 2, D78 item 3 (task COUNT-P)",
+         {"int copies = 1;",
+          "const auto listed = copies.find(meta.hyhash);",
+          "if (listed != copies.end()) row.copies = listed->second;"},
+         {"row.copies = store::RecordStore::copies_of(library, hash);",
+          "int copies = 0;",
+          "for (const auto& [md5, n] : store.library_copies()) by_hash[normalize_chart_hash(md5)] += n;"},
+         {{"src/store/record_store.cpp", "const auto listed = copies.find(md5);",
+           "copies_of, the owner"},
+          {"src/store/record_store.cpp", "return listed == copies.end() ? 1 : listed->second;",
+           "copies_of, the owner"}}},
+        // The path report and the fill comparison count charts by adding up
+        // each row's copies, in C++ and in the page script alike. Counting
+        // rows instead drops every extra copy. The leaderboard page counts
+        // posted scores, not charts (D78), so it is not scanned.
+        {"How many charts does a page or its tool count?",
+         "each row's copies from RecordStore::copies_of, added up by generate_report, "
+         "tally_fill_rows and the pages' stats() through the payload's \"k\"",
+         R"(\['Charts',\s*fmt\(rows\.length\)|rows\.filter\(r\s*=>\s*r\.status\s*===\s*s\)\.length|\+\+stats\.|stats\.total\s*=\s*static_cast<int>\(rows\.size\(\)\))",
+         "",
+         {},
+         {},
+         "D78 item 3 (task COUNT-P)",
+         {"['Charts', fmt(rows.length)],",
+          "const n = s => rows.filter(r => r.status === s).length;",
+          "if (r.status == \"same\") ++stats.same;",
+          "stats.total = static_cast<int>(rows.size());"},
+         {"['Charts', fmt(charts(rows))],",
+          "const n = s => charts(rows.filter(r => r.status === s));",
+          "if (r.status == \"same\") stats.same += r.copies;",
+          "const beyond = rows.filter(r => r.tier === 'Beyond').length;"},
+         {},
+         {"src/app/report.cpp", "src/app/fill_report.cpp", "src/cli/report.cpp",
+          "src/cli/fillcompare.cpp"}},
     };
     return r;
 }
