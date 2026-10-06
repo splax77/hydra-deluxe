@@ -1,0 +1,51 @@
+# Continuous integration: build Hydra and run its tests on every push to main
+# and every pull request into main. The local hooks are the first gate; this
+# is the backstop for a commit made outside them. See "Continuous integration"
+# in docs/development.md.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same branch or pull request cancels the run it replaces.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: Build and test (Windows, Release)
+    # The default CMake preset uses the Visual Studio 2026 generator, so the
+    # job asks for the image that ships VS 2026 by name.
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      # The same script and preset developers use; warnings fail the build.
+      - name: Build hydra_tests
+        run: .\build_cpp.ps1 -Target hydra_tests
+
+      # The one excluded case opens the default sound output, and hosted
+      # runners have no audio device. See tests/test_audio_device.cpp.
+      - name: Run hydra_tests
+        run: .\build-cpp\Release\hydra_tests.exe "-tce=PreviewAudioDevice opens and starts the default output device"
+
+      - name: Build hydra_uitest
+        run: .\build_cpp.ps1 -Target hydra_uitest
+
+      # The GUI tests draw offscreen on the software GPU and never touch sound
+      # or the network (docs/agents/ui-testing.md).
+      - name: Run hydra_uitest
+        run: .\build-cpp\Release\hydra_uitest.exe --all --jobs 4
