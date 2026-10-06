@@ -20,6 +20,10 @@ A hook warns you when a line is due. Write the line then; an overdue line gets y
 
 Read files with the Read tool, using `offset` and `limit` for a range. Never use `sed`, `head`, `tail` or `cat` to read part of a file; the hook blocks them. Use Grep to find the lines first, then Read just those lines.
 
+## Shells on Windows
+
+Run commands with the PowerShell tool. Keep the Bash tool for POSIX scripts. In Bash, write paths with forward slashes (`C:/Users/...`): Bash strips the backslashes from an unquoted `C:\Users\...`, and a hook denies it. Never wrap PowerShell code in a Bash call (`powershell -Command "..."`); run it with the PowerShell tool instead. Build with `build_cpp.ps1`, because `cmake` is not on PowerShell's PATH.
+
 ## Editing files
 
 Edit source with the Edit tool. Never write source through a patch script, `sed -i` or a here-string. To replace most of a file, Write `<file>.new` and move it over the old one, because the shrink guard blocks large deletions made through Edit. A "file modified on disk" notice after your own edit is expected.
