@@ -942,10 +942,13 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
     auto box_on_screen = [&] {
         return visible_text(h).find("Analyzing chart") != std::string::npos;
     };
-    // Seconds from t0 to the first frame that shows the box, or -1 if it
-    // never shows. t0 is taken before the request, so this can only
-    // overstate the wait.
-    auto first_box_since = [&](clock::time_point t0) {
+    // Request library row `row` the way a row click does, then return the
+    // seconds to the first frame that shows the box, or -1 if it never
+    // shows. It watches from the first frame after the request, and t0 is
+    // taken before the request, so this can only overstate the wait.
+    auto click_and_time_box = [&](size_t row) {
+        const clock::time_point t0 = clock::now();
+        h.app->select(h.app->view_row(row));
         double first_box = -1.0;
         wait_until(ctx, [&] {
             if (box_on_screen() && first_box < 0.0)
@@ -956,12 +959,10 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
     };
 
     // ---- A held click: no box before the delay, then the box ----
+    ctx->SetRef("//Hydra");
     {
         ViewGate gate;
-        const clock::time_point t0 = clock::now();  // before the click
-        open_details(ctx, 0);
-        if (ctx->IsError()) return;
-        IM_CHECK_GE(first_box_since(t0), delay);
+        IM_CHECK_GE(click_and_time_box(0), delay);
         IM_CHECK(ctx->ItemExists("**/Cancel"));
     }
     wait_song_analyzed(ctx);
@@ -974,9 +975,7 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
     ctx->Yield(3);
     {
         ViewGate gate;
-        const clock::time_point t0 = clock::now();  // before the request
-        h.app->select(h.app->view_row(1));
-        IM_CHECK_GE(first_box_since(t0), delay);
+        IM_CHECK_GE(click_and_time_box(1), delay);
     }
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
