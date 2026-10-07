@@ -44,7 +44,11 @@ while ($true) {
 }
 try {
     # Wait (bounded) for compilers to finish so timings are not skewed.
-    $busyNames = 'cl', 'link', 'MSBuild', 'clang-cl', 'lld-link', 'hydra_batch', 'hydra_bench', 'hydra_tests'
+    # MSBuild is not on the list: it leaves idle reuse nodes running after
+    # every build, from any route (this repo's scripts, cmake --build, the
+    # IDE), and they made every run wait the full quiet limit. A build that is
+    # really working always shows cl or link.
+    $busyNames = 'cl', 'link', 'clang-cl', 'lld-link', 'hydra_batch', 'hydra_bench', 'hydra_tests'
     $q0 = Get-Date
     while ((Get-Process -Name $busyNames -ErrorAction SilentlyContinue) -and ((Get-Date) - $q0).TotalSeconds -lt $QuietWaitSeconds) {
         Start-Sleep -Seconds 5
