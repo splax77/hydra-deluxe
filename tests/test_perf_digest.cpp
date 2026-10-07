@@ -21,7 +21,6 @@
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "parse/song.h"
-#include "search/pather.h"
 #include "song_digest.h"
 #include "store/record_store.h"
 
@@ -70,11 +69,8 @@ uint64_t engine_digest(const app::Settings& st) {
     uint64_t all = digest::kSeed;
     for (const app::ScanItem& it : corpus_charts()) {
         try {
-            const Song song = load_songpath_with_notes(it.notespath, settings.prodrums,
-                                                       settings.bass2x, settings.difficulty,
-                                                       settings.rules);
-            const HydraRecord rec = analyze_chart(song, settings);
-            const store::PreparedRow row = store::prepare_row(st.record_key(it.md5), rec);
+            const app::AnalysisResult res = app::analyze_chart_file(it.notespath, settings);
+            const store::PreparedRow row = store::prepare_row(st.record_key(it.md5), res.record);
             all = digest::fold(all, digest::row_hash(row));
         } catch (const std::exception&) {
         }
