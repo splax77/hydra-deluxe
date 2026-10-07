@@ -74,6 +74,41 @@ Stmt prepare_as(sqlite3* db, const char* sql, bool read) {
 Stmt prepare_read(sqlite3* db, const char* sql) { return prepare_as(db, sql, true); }
 Stmt prepare_write(sqlite3* db, const char* sql) { return prepare_as(db, sql, false); }
 
+// A statement borrowed from the store's cache (RecordStore::stmt_cache_). At
+// scope end it is reset and its bindings cleared, so no cursor stays open and
+// no value carries into its next use; the cache keeps it compiled.
+struct CachedStmt {
+    sqlite3_stmt* p = nullptr;
+    explicit CachedStmt(sqlite3_stmt* p_) : p(p_) {}
+    CachedStmt(const CachedStmt&) = delete;
+    CachedStmt& operator=(const CachedStmt&) = delete;
+    ~CachedStmt() {
+        sqlite3_reset(p);
+        sqlite3_clear_bindings(p);
+    }
+    operator sqlite3_stmt*() const { return p; }
+};
+
+// The cached statement for `sql`, compiled through prepare_as the first time
+// this connection runs it. use_read and use_write say which kind it is, as
+// prepare_read and prepare_write do.
+using StmtCache = std::unordered_map<std::string, sqlite3_stmt*>;
+CachedStmt use_stmt(sqlite3* db, StmtCache& cache, const std::string& sql, bool read) {
+    auto it = cache.find(sql);
+    if (it == cache.end()) {
+        Stmt s = prepare_as(db, sql.c_str(), read);
+        it = cache.emplace(sql, s.p).first;
+        s.p = nullptr;
+    }
+    return CachedStmt(it->second);
+}
+CachedStmt use_read(sqlite3* db, StmtCache& cache, const std::string& sql) {
+    return use_stmt(db, cache, sql, true);
+}
+CachedStmt use_write(sqlite3* db, StmtCache& cache, const std::string& sql) {
+    return use_stmt(db, cache, sql, false);
+}
+
 // Steps a read. True: a row is ready. False: the query has finished. Any
 // other answer throws, so a failed read never passes for an empty one (D73).
 bool step_row(sqlite3_stmt* s) {
@@ -552,11 +587,21 @@ int bind_candidate_filter(sqlite3_stmt* s, int idx, const CapQuery& cap, const L
     return bind_cap(s, idx, cap);
 }
 
-// Rolls back the open transaction, if there still is one. Some failures (a
-// full disk, an I/O error) make sqlite roll back by itself, and a second
-// ROLLBACK would then throw over the error that caused it.
+// Whether a transaction is still open on this connection. Some failures (a
+// full disk, an I/O error) make sqlite roll the transaction back by itself,
+// so after a failure this is the one way to ask whether it still stands.
+bool transaction_open(sqlite3* db) { return !sqlite3_get_autocommit(db); }
+
+// Rolls back the open transaction, if there still is one. A second ROLLBACK
+// after sqlite rolled back by itself (see transaction_open) would throw over
+// the error that caused it.
 void rollback_if_open(sqlite3* db) {
-    if (!sqlite3_get_autocommit(db)) sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+    if (transaction_open(db)) sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+}
+
+// The failure every save in a lost group reports, and its COMMIT too.
+KindedError group_lost_error() {
+    return KindedError(ErrorKind::DatabaseWrite, "the save group's transaction was rolled back");
 }
 
 // The one way a stored row becomes a record: its structure blob, the path
@@ -838,6 +883,9 @@ void RecordStore::upgrade_results_key() {
 RecordStore::~RecordStore() { close(); }
 
 void RecordStore::close() {
+    // A statement still compiled keeps the connection from closing.
+    for (auto& [sql, p] : stmt_cache_) sqlite3_finalize(p);
+    stmt_cache_.clear();
     if (db_) {
         sqlite3_close(db_);
         db_ = nullptr;
@@ -851,6 +899,68 @@ void RecordStore::exec(const char* sql) {
         sqlite3_free(errmsg);
         throw KindedError(ErrorKind::DatabaseWrite, "sqlite exec failed: " + msg);
     }
+}
+
+void RecordStore::ctl(const char* sql) {
+    // sqlite3_stmt_readonly calls transaction control read-only, so it is
+    // compiled as a read; a failed step is a failed write, worded as exec's.
+    CachedStmt s = use_read(db_, stmt_cache_, sql);
+    step_done(s, "sqlite exec");
+}
+
+void RecordStore::begin_save_group() {
+    mutex_.lock();
+    try {
+        ctl("BEGIN");
+    } catch (...) {
+        mutex_.unlock();
+        throw;
+    }
+    group_open_ = true;
+    group_lost_ = false;
+}
+
+void RecordStore::commit_save_group() {
+    if (!group_open_) return;
+    group_open_ = false;
+    try {
+        if (group_lost_) throw group_lost_error();
+        if (fail_next_group_commit_) {
+            fail_next_group_commit_ = false;
+            throw KindedError(ErrorKind::DatabaseWrite,
+                              "sqlite exec failed: the test seam failed this COMMIT");
+        }
+        ctl("COMMIT");
+    } catch (...) {
+        group_lost_ = false;
+        rollback_if_open(db_);
+        mutex_.unlock();
+        throw;
+    }
+    mutex_.unlock();
+}
+
+RecordStore::BatchWrites::BatchWrites(RecordStore& store) : store_(store) {
+    std::lock_guard<std::recursive_mutex> lock(store_.mutex_);
+    store_.exec(("PRAGMA wal_autocheckpoint=" + std::to_string(kBatchWalAutocheckpointPages))
+                    .c_str());
+}
+
+RecordStore::BatchWrites::~BatchWrites() {
+    // Every result is already committed, so a checkpoint that cannot finish
+    // (another connection still reading) loses nothing: SQLite folds the rest
+    // of the log in at a later checkpoint. Nothing here throws out of a
+    // destructor.
+    std::lock_guard<std::recursive_mutex> lock(store_.mutex_);
+    sqlite3_exec(store_.db_, "PRAGMA wal_checkpoint(TRUNCATE)", nullptr, nullptr, nullptr);
+    // SQLite's own default threshold (D86 item 3).
+    sqlite3_exec(store_.db_, "PRAGMA wal_autocheckpoint=1000", nullptr, nullptr, nullptr);
+}
+
+int RecordStore::wal_autocheckpoint_for_test() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    Stmt s = prepare_read(db_, "PRAGMA wal_autocheckpoint");
+    return step_row(s) ? sqlite3_column_int(s, 0) : -1;
 }
 
 bool RecordStore::has_column(const char* table, const char* column) {
@@ -912,7 +1022,7 @@ void RecordStore::put_dynamics(const DynamicsKey& key, const std::vector<uint8_t
 
 void RecordStore::insert_dynamics(const DynamicsKey& key, const std::vector<uint8_t>& blob,
                                   int count_version) {
-    Stmt s = prepare_write(db_,
+    CachedStmt s = use_write(db_, stmt_cache_,
         "INSERT OR REPLACE INTO dynamics (md5, difficulty, pro, blob, count_version)"
         " VALUES (?,?,?,?,?)");
     bind_text(s, 1, key.md5);
@@ -930,7 +1040,15 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
                                 const SongLength& length) {
     const std::vector<uint8_t> tempomap = encode_tempomap(song);  // not a sqlite call
     std::lock_guard<std::recursive_mutex> lock(mutex_);
-    exec("BEGIN");
+    // Inside a save group this chart is one SAVEPOINT of the group's
+    // transaction; otherwise it is a transaction of its own.
+    const bool grouped = group_open_;
+    if (grouped) {
+        if (group_lost_) throw group_lost_error();
+        ctl("SAVEPOINT chart");
+    } else {
+        ctl("BEGIN");
+    }
     try {
         upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap);
         // The length belongs to the song, so an analysis of any difficulty
@@ -940,18 +1058,27 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
         if (dynamics) {
             // Best effort, inside the same transaction: a failed count write
             // is undone on its own and never costs the result.
-            exec("SAVEPOINT dynamics");
+            ctl("SAVEPOINT dynamics");
             try {
                 insert_dynamics(dynamics->key, dynamics->blob, dynamics->count_version);
-                exec("RELEASE dynamics");
+                ctl("RELEASE dynamics");
             } catch (const std::exception&) {
-                exec("ROLLBACK TO dynamics");
-                exec("RELEASE dynamics");
+                ctl("ROLLBACK TO dynamics");
+                ctl("RELEASE dynamics");
             }
         }
-        exec("COMMIT");
+        ctl(grouped ? "RELEASE chart" : "COMMIT");
     } catch (...) {
-        rollback_if_open(db_);
+        if (!grouped) {
+            rollback_if_open(db_);
+        } else if (transaction_open(db_)) {
+            sqlite3_exec(db_, "ROLLBACK TO chart", nullptr, nullptr, nullptr);
+            sqlite3_exec(db_, "RELEASE chart", nullptr, nullptr, nullptr);
+        } else {
+            // SQLite rolled the whole group back itself: the group is lost,
+            // not just this chart.
+            group_lost_ = true;
+        }
         throw;
     }
 }
@@ -1071,7 +1198,7 @@ void RecordStore::fill_song_length(const std::string& hyhash, std::optional<doub
 
 void RecordStore::write_song_length(const std::string& hyhash, std::optional<double> length_ms,
                                     std::optional<int> only_from_stamp) {
-    Stmt s = prepare_write(db_, only_from_stamp
+    CachedStmt s = use_write(db_, stmt_cache_, only_from_stamp
         ? "UPDATE songmeta SET length_ms = ?1, length_version = ?2"
           " WHERE hyhash = ?3 AND length_version = ?4"
         : "UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3");
@@ -1096,8 +1223,8 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
     // write_song_length writes it.
     std::string name = ref_name, artist = ref_artist, charter = ref_charter;
     {
-        const std::string sql = naming_copy_of_one_sql();
-        Stmt copy = prepare_read(db_, sql.c_str());
+        static const std::string sql = naming_copy_of_one_sql();
+        CachedStmt copy = use_read(db_, stmt_cache_, sql);
         bind_text(copy, 1, hyhash);
         if (step_row(copy)) {
             name = column_text(copy, 0);
@@ -1105,7 +1232,7 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
             charter = column_text(copy, 2);
         }
     }
-    Stmt s = prepare_write(db_,
+    CachedStmt s = use_write(db_, stmt_cache_,
         "INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap) "
         "VALUES (?,?,?,?,?) "
         "ON CONFLICT(hyhash) DO UPDATE SET ref_name = excluded.ref_name, "
@@ -1140,19 +1267,21 @@ void RecordStore::write_row(const PreparedRow& row) {
     // what keep its paths alive, and the final sweep collects whatever they
     // stopped pointing at. The caller holds the lock and an open transaction,
     // so a failure anywhere leaves the store exactly as it was.
-    auto run = [](Stmt& s, const char* what) { step_done(s, std::string("add_row ") + what); };
+    auto run = [](sqlite3_stmt* s, const char* what) {
+        step_done(s, std::string("add_row ") + what);
+    };
     // Deletes the results a subquery names, and their refs. `where` is a
     // fragment over `results`, bound by `bind`.
     auto purge = [&](const std::string& where,
                      const std::function<void(sqlite3_stmt*)>& bind, const char* what) {
         std::string refs = "DELETE FROM path_refs WHERE result_id IN"
                            " (SELECT result_id FROM results WHERE " + where + ")";
-        Stmt r = prepare_write(db_, refs.c_str());
+        CachedStmt r = use_write(db_, stmt_cache_, refs);
         bind(r);
         run(r, what);
 
         std::string rows = "DELETE FROM results WHERE " + where;
-        Stmt d = prepare_write(db_, rows.c_str());
+        CachedStmt d = use_write(db_, stmt_cache_, rows);
         bind(d);
         run(d, what);
     };
@@ -1200,12 +1329,11 @@ void RecordStore::write_row(const PreparedRow& row) {
             " depth_value, legacy_fills, bestpath, structure";
         static constexpr int kRowColumnCount = count_list_names(kRowColumns);
         const std::string structure_param = "?" + std::to_string(kRowColumnCount);
-        Stmt s = prepare_write(db_,
-            (std::string("INSERT INTO results (") + kRowColumns + ", " + kSummaryColumnList +
+        CachedStmt s = use_write(db_, stmt_cache_,
+            std::string("INSERT INTO results (") + kRowColumns + ", " + kSummaryColumnList +
              ", rules_fp) VALUES (" + placeholders(kRowColumnCount) + ", " +
              placeholders(kSummaryColumnCount) + ", " + rules_fp_of(structure_param.c_str()) +
-             ")")
-                .c_str());
+             ")");
         bind_text(s, 1, row.hyhash);
         bind_text(s, 2, row.chartmode);
         bind_text(s, 3, row.hyversion);
@@ -1219,13 +1347,13 @@ void RecordStore::write_row(const PreparedRow& row) {
     const int64_t result_id = sqlite3_last_insert_rowid(db_);
 
     {
-        // Compiled once per row, not once per node, and bound once with what
-        // every node shares. Bindings survive a reset, so each node only
-        // rebinds its own hash and payload.
-        Stmt path_insert = prepare_write(db_,
+        // Taken from the statement cache once per row, not once per node, and
+        // bound once with what every node shares. Bindings survive a reset, so
+        // each node only rebinds its own hash and payload.
+        CachedStmt path_insert = use_write(db_, stmt_cache_,
             "INSERT OR IGNORE INTO paths (hyhash, chartmode, phash, payload)"
             " VALUES (?,?,?,?)");
-        Stmt ref_insert = prepare_write(db_,
+        CachedStmt ref_insert = use_write(db_, stmt_cache_,
             "INSERT OR IGNORE INTO path_refs (result_id, hyhash, chartmode, phash)"
             " VALUES (?,?,?,?)");
         bind_text(path_insert, 1, row.hyhash);
@@ -1250,7 +1378,7 @@ void RecordStore::write_row(const PreparedRow& row) {
 
 void RecordStore::collect_orphan_paths(const std::string& hyhash,
                                        const std::string& chartmode, const char* caller) {
-    Stmt s = prepare_write(db_,
+    CachedStmt s = use_write(db_, stmt_cache_,
         "DELETE FROM paths WHERE hyhash=? AND chartmode=? AND phash NOT IN"
         " (SELECT phash FROM path_refs WHERE hyhash=? AND chartmode=?)");
     bind_text(s, 1, hyhash);

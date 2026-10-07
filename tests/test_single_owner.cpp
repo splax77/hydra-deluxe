@@ -4807,6 +4807,55 @@ const std::vector<OwnerRule>& rules() {
           R"(#include "song_digest.h")"},
          {},
          {"tests"}},
+        // D86 item 3: the checkpoint threshold changes only while a batch
+        // runs, and the log is emptied only when it ends. A second place that
+        // sets either one is a second answer.
+        {"When does the WAL checkpoint threshold change, and when is the log emptied?",
+         "RecordStore::BatchWrites in src/store/record_store.cpp",
+         R"(wal_(auto)?checkpoint)",
+         "",
+         {"src/store/record_store.h", "src/store/record_store.cpp"},
+         {},
+         "D86 item 3 (task W1)",
+         {"exec(\"PRAGMA wal_autocheckpoint=10000\");",
+          "sqlite3_exec(db, \"PRAGMA wal_checkpoint(TRUNCATE)\", nullptr, nullptr, nullptr);",
+          "sqlite3_wal_checkpoint_v2(db, nullptr, SQLITE_CHECKPOINT_TRUNCATE, nullptr, nullptr);"},
+         {"const store::RecordStore::BatchWrites batch_writes(store);",
+          "exec(\"PRAGMA journal_mode=WAL\");"},
+         {},
+         {}},
+        // D86 items 1 and 2: the batch's writer is the one caller that saves
+        // charts in groups, and the one that retries a lost group's charts
+        // alone. Another caller opening a group would hold the store lock
+        // without that retry.
+        {"Which code saves charts in groups?",
+         "run_batch in src/app/analysis.cpp",
+         R"(\b(begin|commit)_save_group\s*\()",
+         "",
+         {"src/store/record_store.h", "src/store/record_store.cpp", "src/app/analysis.cpp"},
+         {},
+         "D86 items 1 and 2 (task W1)",
+         {"store.begin_save_group();", "store_->commit_save_group();"},
+         {"if (!store.save_group_open()) {", "bool save_group_open() const { return group_open_; }"},
+         {},
+         {}},
+        // After a failure, rollback_if_open and a grouped save_analysis both
+        // need to know whether sqlite already rolled the transaction back.
+        // Only the helper asks sqlite; record_store.cpp is not exempt as a
+        // file, so a second ask there fails like one anywhere else.
+        {"Is a transaction still open, or has sqlite already rolled it back?",
+         "transaction_open in src/store/record_store.cpp",
+         R"(sqlite3_get_autocommit\s*\()",
+         "",
+         {},
+         {},
+         "derive-once review of task W1 (finding 1)",
+         {"if (!sqlite3_get_autocommit(db)) sqlite3_exec(db, \"ROLLBACK\", nullptr, nullptr, nullptr);",
+          "} else if (sqlite3_get_autocommit(db_)) {"},
+         {"if (transaction_open(db_)) {", "} else if (transaction_open(db_)) {"},
+         {{"src/store/record_store.cpp",
+           "bool transaction_open(sqlite3* db) { return !sqlite3_get_autocommit(db); }",
+           "transaction_open, the owner: rollback_if_open and save_analysis call it"}}},
     };
     return r;
 }
