@@ -35,6 +35,11 @@ struct DynamicsCounts {
         normal += o.normal;
         return *this;
     }
+    // Spelled out rather than defaulted: this project builds as C++17.
+    bool operator==(const DynamicsCounts& o) const {
+        return ghost == o.ghost && accent == o.accent && normal == o.normal;
+    }
+    bool operator!=(const DynamicsCounts& o) const { return !(*this == o); }
 };
 
 enum class DynamicsRow {
@@ -77,10 +82,18 @@ struct DynamicsBreakdown {
     bool dynamics_enabled = false;
     // A late .mid dynamics tag (finding 64): its time in chart ms, and how
     // many marked notes came before it. nullopt and 0 when the tag came first
-    // or there is none. The time is stored because the Dynamics tab draws
-    // from the stored blob and has no tempo map to turn a tick into m:ss.
+    // or there is none. The time is kept in ms so the Dynamics tab can show
+    // it as m:ss without a tempo map.
     std::optional<uint32_t> late_tag_ms;
     int marks_before_tag = 0;
+
+    // Every field. Spelled out rather than defaulted: this project builds as
+    // C++17.
+    bool operator==(const DynamicsBreakdown& o) const {
+        return rows == o.rows && dynamics_enabled == o.dynamics_enabled &&
+               late_tag_ms == o.late_tag_ms && marks_before_tag == o.marks_before_tag;
+    }
+    bool operator!=(const DynamicsBreakdown& o) const { return !(*this == o); }
 
     const DynamicsCounts& row(DynamicsRow r) const;
     DynamicsCounts pads_total() const;
@@ -109,17 +122,7 @@ std::string dynamics_share(int part, int total);
 
 DynamicsBreakdown count_dynamics(const Song& song);
 
-// Versioned binary encoding for storage in the dynamics table (record_store.h).
-// Version byte, then dynamics_enabled (1 byte), then the nine rows in
-// DynamicsRow order, each as ghost/accent/normal, then the late tag's ms
-// (0xFFFFFFFF when none) and the count of markings before it. Every number is
-// a little-endian uint32.
-std::vector<uint8_t> encode_dynamics(const DynamicsBreakdown& b);
-
-// Returns nullopt on an unknown version or data too short.
-std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blob);
-
-// ---- the cache rules, in one place ----------------------------------------
+// ---- the count's parse, in one place --------------------------------------
 
 // The Dynamics tab's background count always parses with 2x kicks kept, so
 // the "2x kick" row is known even while the "2x Bass" box is off. The parser
@@ -137,31 +140,6 @@ Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty diffi
 // count can reuse it. The rules never change the count (pinned in
 // test_dynamics_breakdown), so only the 2x kicks decide.
 bool analysis_parse_counts_dynamics(bool bass2x);
-
-// Stored counts carry store::kDynamicsCountStamp and their blobs start with
-// store::kDynamicsBlobStamp (store/stored_versions.h says when to bump each).
-
-// The stored count for this key, or nullopt when there is none, its stamp
-// isn't current, or it fails to decode. The caller then recounts.
-std::optional<DynamicsBreakdown> load_stored_dynamics(store::RecordStore& store,
-                                                      const store::DynamicsKey& key);
-
-// Saves a count under this key, stamped kDynamicsCountStamp.written. Throws on a
-// store failure.
-void save_dynamics(store::RecordStore& store, const store::DynamicsKey& key,
-                   const DynamicsBreakdown& breakdown);
-
-// The key of one count, for its stored row and for the Dynamics tab's copy in
-// memory alike.
-store::DynamicsKey dynamics_store_key(const std::string& md5, Difficulty difficulty, bool pro);
-
-// After an analysis, its dynamics count as a free by-product (the chart is
-// already parsed), ready for RecordStore::save_analysis. nullopt when the
-// analysis parsed with bass2x off (the parse dropped the 2x kicks and the
-// counts would be incomplete) or the count fails: best effort, never a reason
-// to lose the analysis record.
-std::optional<store::DynamicsEntry> dynamics_entry_from_analysis(
-    const std::string& md5, const Song& song, bool bass2x, Difficulty difficulty, bool pro);
 
 }  // namespace app
 }  // namespace hydra

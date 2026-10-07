@@ -230,7 +230,6 @@ add_library(hydra_core STATIC
     src/search/engine.cpp
     src/search/pather.cpp
     src/store/serialize.cpp
-    src/store/path_codec.cpp
     src/store/record_store.cpp
     src/app/analysis.cpp
     src/app/config.cpp
@@ -465,7 +464,6 @@ add_executable(hydra_tests
     tests/test_image_decode.cpp
     tests/test_preview_renderer.cpp
     tests/test_dynamics_breakdown.cpp
-    tests/test_dynamics_store.cpp
     tests/test_song.cpp
     tests/test_sng.cpp
     tests/test_srb.cpp
@@ -473,7 +471,6 @@ add_executable(hydra_tests
     tests/test_fast_tempo.cpp
     tests/test_replay.cpp
     tests/test_store.cpp
-    tests/test_path_codec.cpp
     tests/test_analysis.cpp
     tests/test_report.cpp
     tests/test_config.cpp
@@ -504,7 +501,6 @@ add_executable(hydra_tests
     tests/test_s2_dynamics_tag.cpp
     tests/test_s2_parser_owners.cpp
     tests/test_s2_offspeed.cpp
-    tests/test_s2_stamps.cpp
     tests/test_s2_deact_extension.cpp
     tests/test_perf_digest.cpp
 )

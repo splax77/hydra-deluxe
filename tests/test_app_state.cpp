@@ -505,9 +505,9 @@ TEST_CASE("the click's Dynamics count keeps the 2x kicks with 2x Bass off") {
         REQUIRE(app->viewed.dynamics.has_value());
         CHECK(app->viewed.dynamics->row(hydra::app::DynamicsRow::Kick2x).normal == 37);
         const hydra::app::AnalysisSettings as = app->settings.to_analysis_settings();
-        CHECK(hydra::app::encode_dynamics(*app->viewed.dynamics) ==
-              hydra::app::encode_dynamics(hydra::app::count_dynamics(
-                  hydra::app::load_dynamics_song(song.notespath, as.prodrums, as.difficulty))));
+        CHECK(*app->viewed.dynamics ==
+              hydra::app::count_dynamics(
+                  hydra::app::load_dynamics_song(song.notespath, as.prodrums, as.difficulty)));
     }
 }
 

@@ -93,7 +93,6 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
         double search_s = secs_since(t);
 
         t = clk::now();
-        store.add_song(it.md5, it.title, it.artist, it.charter, song);
         store.add_record(gui.record_key(it.md5), rec);
         double store_s = secs_since(t);
 
@@ -299,7 +298,7 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
         t = clk::now();
         store::PreparedRow row = store::prepare_row(st.record_key(it.md5), *rec);
         t_prep += secs_since(t);
-        const uint64_t h = digest::row_hash(row);
+        const uint64_t h = digest::row_hash(row, *rec);
         all = digest::fold(all, h);
         if (out) *out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
         ++n;
@@ -354,12 +353,11 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
                     h = digest::song_digest(song);
                     if (dyn) {
                         auto t2 = clk::now();
-                        const std::optional<store::DynamicsEntry> e =
-                            app::dynamics_entry_from_analysis("md5", song, settings.bass2x,
-                                                              settings.difficulty,
-                                                              settings.prodrums);
+                        if (app::analysis_parse_counts_dynamics(settings.bass2x)) {
+                            const app::DynamicsBreakdown bd = app::count_dynamics(song);
+                            h = digest::with_dynamics(h, bd);
+                        }
                         t_dyn += secs_since(t2);
-                        h = digest::with_dynamics(h, e);
                     }
                 }
             } catch (const std::exception& e) {

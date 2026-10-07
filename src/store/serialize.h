@@ -1,9 +1,7 @@
-// Small binary primitives for the store's own formats -- the path codec
-// (store/path_codec.h) and the songmeta tempo-map blob (record_store.cpp) --
-// plus restore_timecodes. A decoded record's Activation/BackendSqueeze
-// timecodes carry only raw ticks (Timecode::raw), because a stored path has
-// no tempo map of its own. restore_timecodes() with the song's SongTiming
-// (from songmeta) resolves them into full Timecodes.
+// Small binary primitives for the store's own formats (the rules_fp column,
+// record_store.cpp), plus restore_timecodes. A record whose
+// Activation/BackendSqueeze timecodes carry only raw ticks (Timecode::raw)
+// gets full Timecodes from restore_timecodes() with the song's SongTiming.
 
 #ifndef HYDRA_STORE_SERIALIZE_H
 #define HYDRA_STORE_SERIALIZE_H
@@ -26,8 +24,8 @@ public:
     explicit SerializeError(const std::string& what) : KindedError(ErrorKind::StoredResult, what) {}
 };
 
-// Small little-endian binary primitives, shared by the record blob and the
-// songmeta tempomap blob (record_store.cpp). Not a general-purpose format —
+// Small little-endian binary primitives (record_store.cpp's rules_fp
+// column). Not a general-purpose format —
 // just enough structure for this store's own writers/readers to agree.
 class BinaryWriter {
 public:
@@ -74,8 +72,8 @@ private:
 };
 
 // Rebuilds every Timecode in the record (activations and their backends) from
-// raw ticks into full Timecodes derived from `timing`. Call once after
-// decoding, using the timing built from the record's song (songmeta).
+// raw ticks into full Timecodes derived from `timing`, the timing built from
+// the record's song.
 void restore_timecodes(HydraRecord& record, const SongTiming& timing);
 
 }  // namespace hydra::store

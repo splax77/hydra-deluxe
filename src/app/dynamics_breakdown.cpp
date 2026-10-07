@@ -5,7 +5,6 @@
 #include "app/display_format.h"
 #include "core/model.h"
 #include "parse/song.h"
-#include "store/serialize.h"  // BinaryWriter, BinaryReader
 
 namespace hydra {
 namespace app {
@@ -128,92 +127,13 @@ DynamicsBreakdown count_dynamics(const Song& song) {
     return bd;
 }
 
-// ---- encode / decode --------------------------------------------------------
-
-namespace {
-
-constexpr size_t kRowCount = static_cast<size_t>(DynamicsRow::Count);  // 9
-// version(1) + dynamics_enabled(1) + 9 rows * 3 fields * 4 bytes
-// + late tag ms(4) + marks before it(4) = 118. The old layout was 110 bytes;
-// decode reads it as missing, so the tab recounts.
-constexpr size_t kDynamicsBlobSize = 1 + 1 + kRowCount * 3 * 4 + 4 + 4;
-constexpr uint32_t kNoLateTag = 0xFFFFFFFF;
-
-}  // namespace
-
-// The numbers go through the store's own codec (store/serialize.h), so the
-// byte order of a stored number is written in one place.
-std::vector<uint8_t> encode_dynamics(const DynamicsBreakdown& b) {
-    store::BinaryWriter w;
-    w.bytes.reserve(kDynamicsBlobSize);
-    w.u8(store::kDynamicsBlobStamp.written);
-    w.boolean(b.dynamics_enabled);
-    for (size_t i = 0; i < kRowCount; ++i) {
-        w.u32(static_cast<uint32_t>(b.rows[i].ghost));
-        w.u32(static_cast<uint32_t>(b.rows[i].accent));
-        w.u32(static_cast<uint32_t>(b.rows[i].normal));
-    }
-    w.u32(b.late_tag_ms.value_or(kNoLateTag));
-    w.u32(static_cast<uint32_t>(b.marks_before_tag));
-    return std::move(w.bytes);
-}
-
-std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blob) {
-    if (blob.size() < kDynamicsBlobSize) return std::nullopt;
-    if (!store::kDynamicsBlobStamp.is_current(blob[0])) return std::nullopt;
-
-    // The size check above means every read below is in range.
-    store::BinaryReader r(blob);
-    r.u8();  // the stamp, checked above
-    DynamicsBreakdown b;
-    b.dynamics_enabled = r.boolean();
-    for (size_t i = 0; i < kRowCount; ++i) {
-        b.rows[i].ghost = static_cast<int>(r.u32());
-        b.rows[i].accent = static_cast<int>(r.u32());
-        b.rows[i].normal = static_cast<int>(r.u32());
-    }
-    const uint32_t tag_ms = r.u32();
-    if (tag_ms != kNoLateTag) b.late_tag_ms = tag_ms;
-    b.marks_before_tag = static_cast<int>(r.u32());
-    return b;
-}
-
-// ---- the cache rules --------------------------------------------------------
-
-store::DynamicsKey dynamics_store_key(const std::string& md5, Difficulty difficulty, bool pro) {
-    return store::DynamicsKey{md5, difficulty_name(difficulty), pro};
-}
-
-std::optional<DynamicsBreakdown> load_stored_dynamics(store::RecordStore& store,
-                                                      const store::DynamicsKey& key) {
-    auto blob = store.get_dynamics(key);
-    if (!blob) return std::nullopt;
-    return decode_dynamics(*blob);
-}
-
-void save_dynamics(store::RecordStore& store, const store::DynamicsKey& key,
-                   const DynamicsBreakdown& breakdown) {
-    store.put_dynamics(key, encode_dynamics(breakdown), store::kDynamicsCountStamp.written);
-}
+// ---- the count's parse ------------------------------------------------------
 
 Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty) {
     return load_songpath(notespath, pro, kDynamicsParseBass2x, difficulty);
 }
 
 bool analysis_parse_counts_dynamics(bool bass2x) { return bass2x == kDynamicsParseBass2x; }
-
-std::optional<store::DynamicsEntry> dynamics_entry_from_analysis(
-    const std::string& md5, const Song& song, bool bass2x, Difficulty difficulty, bool pro) {
-    if (!analysis_parse_counts_dynamics(bass2x)) return std::nullopt;
-    try {
-        return store::DynamicsEntry{dynamics_store_key(md5, difficulty, pro),
-                                    encode_dynamics(count_dynamics(song)),
-                                    store::kDynamicsCountStamp.written};
-    } catch (...) {
-        // Best effort: never block the analysis record.
-        return std::nullopt;
-    }
-}
 
 }  // namespace app
 }  // namespace hydra

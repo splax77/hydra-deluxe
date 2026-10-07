@@ -1138,20 +1138,6 @@ const std::vector<OwnerRule>& rules() {
           "files.emplace(normalize_chart_hash(md5), std::move(path));"},
          {},
          {"src"}},
-        // A stored row turned into a record outside decode_record, which
-        // also sets the record's fill rule.
-        {"Where does record_store.cpp turn a stored row into a record?",
-         "decode_record in src/store/record_store.cpp",
-         R"(\brebuild_record\()",
-         "",
-         {},
-         {},
-         "ST1 (audit findings 116 and 132); a row since the M7-2b review, finding 4",
-         {"HydraRecord r = rebuild_record(flat);"},
-         {"HydraRecord record = decode_record(structure, nodes, key.lens.legacy_fills == 1);"},
-         {{"src/store/record_store.cpp", "HydraRecord record = rebuild_record(",
-           "decode_record, the owner"}},
-         {"src/store/record_store.cpp"}},
         // ---- one cleaned song title (phase 3 task O3a) ----
         // Clone Hero's rich-text tags spelled as text: a tag in angle
         // brackets at the start of a string, a tag name kept in a named
@@ -3443,10 +3429,11 @@ const std::vector<OwnerRule>& rules() {
          {"src"}},
         // ---- phase 6 task J3-6: store rows and bytes ----
         // A structure blob's head offset typed as a digit in SQL, or read by
-        // hand in C++. The store spells both from path_codec.h's names.
+        // hand in C++. Only an older file still has the blob (D87); the
+        // upgrade reads its fingerprint through the named offsets.
         {"Where do the format and fingerprint sit in a structure blob?",
-         "kPathFormatOffset, kRulesFingerprintOffset, kStructureHeadBytes and "
-         "read_structure_head in src/store/path_codec.h",
+         "kOldRulesFingerprintOffset, kOldRulesFingerprintBytes and rules_fp_of in "
+         "src/store/record_store.cpp",
          R"(substr\(\s*(\w+\.)?structure\s*,\s*\d|read_le\(structure_head)",
          "",
          {},
@@ -3511,16 +3498,7 @@ const std::vector<OwnerRule>& rules() {
            "read_le, the owner of reading"},
           {"src/core/little_endian.h",
            "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));",
-           "append_le, the owner of writing"},
-          {"src/store/path_codec.cpp",
-           "for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(p[i]) << (8 * i);",
-           "getblock64, the hash's block read; it reads hash input, not a stored number"},
-          {"src/store/path_codec.cpp",
-           "for (int i = 0; i < 8; ++i) out[i] = static_cast<uint8_t>(h1 >> (8 * i));",
-           "murmur3_x64_128's output; it writes a hash, not a stored number"},
-          {"src/store/path_codec.cpp",
-           "for (int i = 0; i < 8; ++i) out[8 + i] = static_cast<uint8_t>(h2 >> (8 * i));",
-           "murmur3_x64_128's output; it writes a hash, not a stored number"}},
+           "append_le, the owner of writing"}},
          {"src", "tests"}},
         // A second read of a row's head to say why it is Stale.
         {"Why is a stored row Stale?",
@@ -3614,10 +3592,7 @@ const std::vector<OwnerRule>& rules() {
           "const double stored_ms = *act.sqout_row()->offset_ms;"},
          {"const double o = bsq.offset();", "*w.sqout_offset_ms);",
           "const double t = scale * offset_ms;"},
-         {{"src/core/model.cpp", "return *offset_ms;", "BackendSqueeze::offset, the owner"},
-          {"src/store/path_codec.cpp",
-           "if (!sqout || !sqout->offset_ms || *sqout->offset_ms != sq.offset_ms)",
-           "the codec's round-trip compare, which asks whether the offset is set first"}},
+         {{"src/core/model.cpp", "return *offset_ms;", "BackendSqueeze::offset, the owner"}},
          {}},
         // ---- phase 6 tasks J3-3, J3-4 and J3-5 ----
         // A line that asks sqout_position for the position, as
@@ -3905,28 +3880,6 @@ const std::vector<OwnerRule>& rules() {
            "playhead_ ? audio_end_chart_ms(*playhead_, audio_offset_ms_) : std::nullopt;",
            "PreviewTransport::load's playback range (D48), not a song length"}},
          {"src"}},
-        // ---- the stored length is the song's one length (D69, task AL2; D75) ----
-        // A songmeta length written anywhere but the one write an analysis and
-        // the open-song backfill share, so no length skips its stamp.
-        {"How long is this song? (the stored length)",
-         "RecordStore::write_song_length in src/store/record_store.cpp, called by save_analysis "
-         "and fill_song_length",
-         R"(\bSET\s+length_ms\b|\blength_ms\s*=\s*(\?|excluded\b|COALESCE)|INTO\s+songmeta\s*\([^)]*\blength_ms\b)",
-         "",
-         {},
-         {},
-         "D69 item 2 (one length per song, saved with its stamp); phase 7 task AL2",
-         {"\"UPDATE songmeta SET length_ms = ? WHERE hyhash = ? AND length_ms IS NULL\");",
-          "\"length_ms = COALESCE(excluded.length_ms, songmeta.length_ms)\");",
-          "\"INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap, length_ms) \""},
-         {"\"SELECT tempomap, length_ms, length_version FROM songmeta WHERE hyhash=?\");",
-          "out.song_length_ms = songmeta->length_ms;"},
-         {{"src/store/record_store.cpp",
-           "? \"UPDATE songmeta SET length_ms = ?1, length_version = ?2\"",
-           "write_song_length, the owner"},
-          {"src/store/record_store.cpp",
-           ": \"UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3\");",
-           "write_song_length, the owner"}}},
         // The owner's answer turned into a stored length anywhere but the one
         // helper an analysis saves through, so no third try/catch decides
         // what a failed read leaves.
@@ -4176,17 +4129,6 @@ const std::vector<OwnerRule>& rules() {
           "if (!ImGui::BeginTable(\"##librarytable\", kLibraryColumnCount, flags, size)) return used;"},
          {},
          {"src", "tests"}},
-        {"Which identity are the Dynamics counts filed under?",
-         "dynamics_store_key in src/app/dynamics_breakdown.cpp",
-         R"(dynamics_cache_key\()",
-         "",
-         {},
-         {},
-         "audit finding 262; phase 6 task J4-3 (D53, D54)",
-         {"key_ = app::dynamics_cache_key(entry_.notespath, pro_, difficulty_);"},
-         {"key_(app::dynamics_store_key(entry_.md5, difficulty_, pro_)) {}"},
-         {},
-         {"src", "tools", "tests"}},
         // A struct default, not a test input: the leading int keeps lines that
         // set a depth on a built options struct out.
         {"What is the default search depth?",
@@ -4266,22 +4208,38 @@ const std::vector<OwnerRule>& rules() {
           "const store::RecordKey key = settings.record_key(it.md5);"},
          {},
          {"tests", "tools"}},
-        // The owner appends payloads; it never compares one, so it lists no
-        // owner line.
-        {"Do two records store the same bytes? (tests)",
-         "record_bytes in tests/record_bytes.h",
-         R"(\bnodes\[\w+\]\.payload\s*==)",
+        // hydra.db stores no path details (D87), so no serializer is left to
+        // compare records through; a test that brings one back is a second
+        // answer to the hasher's question (R16).
+        {"Are two engine results the same answer? (tests)",
+         "digest::record_hash in tests/song_digest.h",
+         R"(\b(record_bytes|flatten_record|encode_path_node)\s*\()",
          "",
          {},
-         {{"tests/test_path_codec.cpp",
-           "the multiplier-squeeze case checks the node payloads stay equal while the "
-           "structure grows, which one byte run cannot say"}},
-         "audit finding 301; phase 6 task J4-1 (D53, D54)",
-         {"same = a.nodes[i].payload == b.nodes[i].payload;"},
-         {"out.insert(out.end(), n.payload.begin(), n.payload.end());",
-          "CHECK_MESSAGE(record_bytes(tall) == record_bytes(built), \"a song with \""},
+         {},
+         "audit finding 301; phase 6 task J4-1 (D53, D54); storage-T5 (R16)",
+         {"CHECK_MESSAGE(record_bytes(tall) == record_bytes(built), \"a song with \"",
+          "const HydraRecord back = store::rebuild_record(store::flatten_record(rec));"},
+         {"CHECK_MESSAGE(digest::record_hash(tall) == digest::record_hash(built),"},
          {},
          {"tests"}},
+        // A page that decides "no chart library" itself could stop where the
+        // path report does not, or say it in other words (D89 item 2, D92).
+        {"Does this database have a chart library to report on?",
+         "report::lacks_chart_library in src/app/report.cpp",
+         R"(chart_library_count\(\)\s*==\s*0)",
+         "",
+         {},
+         {},
+         "D89 item 2, D92 (task storage-T5)",
+         {"} else if (store.chart_library_count() == 0) {",
+          "if (old_store.chart_library_count() == 0 || new_store.chart_library_count() == 0)"},
+         {"} else if (lacks_chart_library(store)) {",
+          "if (report::lacks_chart_library(store))"},
+         {{"src/app/report.cpp",
+           "return store.counts().second > 0 && store.chart_library_count() == 0;",
+           "lacks_chart_library, the owner"}},
+         {"src"}},
         // The GUI harness writes its ini from scratch_settings(), and the
         // Burnout reference cases run through its to_analysis_settings. Other
         // depths in these files are a case's own input.
@@ -4358,9 +4316,9 @@ const std::vector<OwnerRule>& rules() {
          {{"src/store/record_store.cpp", "return std::string(a) + \"sp_cap=?\";",
            "cap_match, the owner"},
           {"src/store/record_store.cpp",
-           "purge(\"hyhash=? AND chartmode=? AND sp_cap=? AND \" + lens_match(\"\") +",
+           "purge(\"hyhash=? AND chartmode=? AND sp_cap=? AND \" + lens_match(\"\") + \" AND rules_fp = ?\",",
            "write_row's purge: the row's own unique key, not a lookup"}}},
-        // The INSERT, reindex's UPDATE and list_records build their summary
+        // The INSERT and list_records build their summary
         // slots from the list and its count, so a typed run of the ten
         // placeholders is a second spelling of the list.
         {"Which columns hold a path summary, and how many?",
@@ -4534,8 +4492,9 @@ const std::vector<OwnerRule>& rules() {
           R"x(purge("hyhash=? AND chartmode=? AND NOT " + row_readable_sql(),)x",
           "if (found[i].status == RecordStatus::Ready) out.insert(candidates[i]);"},
          {{"src/store/record_store.cpp",
-           "const bool same_rules = layout_current && head->rules_fingerprint == rules.fixed;",
-           "rank_row, the owner's rules part"}},
+           "return rules_fp_bytes(stamp.fixed);",
+           "ready_rules_fp: this process's fingerprint as rank_row takes it; rank_row alone "
+           "compares it"}},
          {"src"}},
         // D79 B3: every batch number is BatchProgress's. A count of the
         // failure lines, or a counter of its own, is a second count.
@@ -4575,7 +4534,10 @@ const std::vector<OwnerRule>& rules() {
          {"auto [songs, records] = store.counts();", "const auto n = app.store->counts().first;"},
          {"CHECK(m.counts().all == 6);", "const ChipCounts& counts = app.library.counts();"},
          {{"src/app/report.cpp", "if (store.counts().second == 0) {",
-           "generate_report asks only whether the store is empty"}},
+           "generate_report asks only whether the store is empty"},
+          {"src/app/report.cpp",
+           "return store.counts().second > 0 && store.chart_library_count() == 0;",
+           "lacks_chart_library asks only whether the store is empty"}},
          {}},
         // D79 B4: Scan library, hydra_batch and the bench tool each saved a
         // scan their own way. One function saves it, so every one leaves the
@@ -4629,24 +4591,8 @@ const std::vector<OwnerRule>& rules() {
            "copies_of, the owner"},
           {"src/store/record_store.cpp", "return listed == copies.end() ? 1 : listed->second;",
            "copies_of, the owner"}}},
-        // write_row's purge and the Auto cleanup each spelled the refs-then-
-        // results delete; a third spelling could delete in the wrong order
-        // and leave path nodes no sweep finds (task storage-T1 review).
-        {"In what order does a result get deleted?",
-         "RecordStore::delete_results_where in src/store/record_store.cpp",
-         R"(DELETE FROM path_refs)",
-         "",
-         {},
-         {},
-         "D87 items 3 and 4 (task storage-T1 review finding 1)",
-         {"\"DELETE FROM path_refs WHERE result_id IN\"",
-          "std::string refs = \"DELETE FROM path_refs WHERE result_id IN\""},
-         {"\"DELETE FROM paths WHERE hyhash=? AND chartmode=? AND phash NOT IN\"",
-          "delete_results_where(results_gone, [](sqlite3_stmt*) {}, what);"},
-         {{"src/store/record_store.cpp", "\"DELETE FROM path_refs WHERE result_id IN\"",
-           "delete_results_where, the owner"}}},
-        // The scan's purge asks this of results, songmeta and dynamics alike;
-        // a second SQL spelling could keep one table's rows the others drop.
+        // The scan's purge and reidentify_chart both ask this of results; a
+        // second SQL spelling could keep rows the other drops.
         {"Which stored rows belong to a chart no library row lists?",
          "not_in_library in src/store/record_store.cpp",
          R"(charts\.md5 = )",
@@ -5237,7 +5183,7 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
 // the row scan skips, so this case reads it: the block between the "Results"
 // banner and the kResultsStamp line in src/store/stored_versions.h must name
 // src/parse next to src/search and src/core. Moved here from
-// test_s2_stamps.cpp; the repo root comes from tests/source_tree.h.
+// a stamps test; the repo root comes from tests/source_tree.h.
 TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (D23)") {
     std::ifstream in(sourcetree::root() / "src" / "store" / "stored_versions.h");
     REQUIRE(in.good());
@@ -5717,9 +5663,7 @@ const std::vector<KnownClone>& known_clones() {
         {"tests/test_preview_controller.cpp", "tests/test_preview_controller.cpp", 11, R"x(using namespace hydra;)x"},
         {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(int charts = 0, paths = 0, mismatches = 0;)x"},
         {"tests/test_replay.cpp", "tests/test_replay.cpp", 10, R"x(Song song(192);)x"},
-        {"tests/test_search.cpp", "tests/test_search.cpp", 13, R"x(Song song = build_tail_song({{0, true, false},)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 17, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},
-        {"tests/test_search.cpp", "tests/test_search.cpp", 10, R"x(Song song = build_tail_song({{0, true, false},)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 10, R"x(Song song = build_tail_song({{0, true, false},)x"},
         {"tests/test_search.cpp", "tests/test_search.cpp", 9, R"x({768, true, false},)x"},
         {"tests/test_store.cpp", "tests/test_store.cpp", 8, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},

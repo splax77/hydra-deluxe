@@ -30,13 +30,11 @@
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
 #include "parse/song.h"
-#include "record_bytes.h"
 #include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
-#include "store/path_codec.h"
-#include "store/serialize.h"
+#include "song_digest.h"  // record_hash
 
 using namespace hydra;
 
@@ -667,50 +665,6 @@ TEST_CASE("SP past the last note: a mid-activation phrase extends the end") {
     CHECK(song.timing().plusmeasure(act.timecode, 4).ticks() == plain_tick);
 }
 
-TEST_CASE("SP past the last note: synthesized rows survive a store round-trip") {
-    Song song = build_tail_song({{0, true, false},
-                                 {768, true, false},
-                                 {1536},
-                                 {2304, false, true},
-                                 {3072},
-                                 {3840},
-                                 {4608},
-                                 {5136},
-                                 {5280}});
-
-    ScoreGraph graph(song, 4);
-    std::vector<Path> paths =
-        run_search(graph, EngineOptions{});
-    const Activation& act = last_act(paths);
-    REQUIRE(!act.backends.empty());
-
-    // Decoded timecodes are ticks-only until restore_timecodes resolves them
-    // against the song's tempo map -- the same two steps a store load takes.
-    HydraRecord back;
-    back.paths.push_back(
-        store::decode_path_node(store::encode_path_node(paths.front())));
-    store::restore_timecodes(back, song.timing());
-    REQUIRE(back.paths.front().activations.size() ==
-            paths.front().activations.size());
-    const Activation& ract = back.paths.front().activations.back();
-
-    // The writer stores display_backends(), so what survives is the rows
-    // inside the +/-500 ms display window -- the same trim a deactivating
-    // activation's rows get. Here that is the last note, at -250 ms.
-    std::vector<BackendSqueeze> want = act.display_backends();
-    REQUIRE(!want.empty());
-    REQUIRE(ract.backends.size() == want.size());
-    for (size_t i = 0; i < want.size(); ++i) CHECK(ract.backends[i] == want[i]);
-
-    CHECK(activation_deact_tick(ract) == activation_deact_tick(act));
-
-    // deact_tick itself is stored data (blob v4), not something the reader
-    // rederives -- so the round trip has to hand back the exact tick the
-    // engine stamped, not just an equivalent one.
-    REQUIRE(act.deact_tick().has_value());
-    CHECK(ract.deact_tick() == act.deact_tick());
-}
-
 // D5: a tail row is kept on the same window as every other row, measured
 // from this activation's own SP end. The graph keeps 5136 (375 ms before the
 // last note), but it sits 625 ms before the SP end at 5376, so the engine
@@ -898,8 +852,8 @@ TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every fiel
 // graph built a flat 4 bars tall. Every other fixed cap builds the graph only
 // as tall as the song has phrases (graph_build_cap). Both give the same
 // answer: a song with p phrases never holds more than p bars, so a p-bar
-// ceiling clamps nothing a 4-bar ceiling would not. This pins it byte for
-// byte through the store's own writer before the branches fold into one.
+// ceiling clamps nothing a 4-bar ceiling would not. This pins it field by
+// field (digest::record_hash) before the branches fold into one.
 TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths") {
     std::vector<Song> songs;
     // Hand-built, three phrases, one of them collected mid-SP.
@@ -937,7 +891,8 @@ TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths"
         tall.allzero_paths = search_allzero(g_tall);
         built.allzero_paths = search_allzero(g_built);
 
-        CHECK_MESSAGE(record_bytes(tall) == record_bytes(built), "a song with " << song.sp_phrase_count() << " phrases");
+        CHECK_MESSAGE(digest::record_hash(tall) == digest::record_hash(built),
+                      "a song with " << song.sp_phrase_count() << " phrases");
         ++compared;
     }
     MESSAGE("compared " << compared << " songs with fewer than 4 phrases");
@@ -1545,53 +1500,6 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
     CHECK(acts > 1000);  // a floor the user approved (D43)
 }
 
-TEST_CASE("path codec: encode/decode a path node keeps clamp_tick()") {
-    // A plain node round trip has to carry the clamp, which the history holds.
-    Activation act;
-    act.timecode = Timecode::raw(2304);
-    test::set_clamped_window(act, 3072, 6144);
-
-    Path path;
-    path.activations.push_back(act);
-
-    Path decoded = store::decode_path_node(store::encode_path_node(path));
-    REQUIRE(decoded.activations.size() == 1);
-    CHECK(decoded.activations.front().clamp_tick() == std::optional<int64_t>(3072));
-}
-
-TEST_CASE("path codec: each SqIn keeps its own scale; a SqOut stores none") {
-    Activation act;
-    act.timecode = Timecode::raw(2304);
-    act.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -50.0}, SPSqueeze{SqueezeKind::SqIn, 20.0}};
-    test::set_sqin_transfers(act, {TransferScale{0.97, 1.5}, TransferScale{0.95, 2.5}},
-                             TransferScale{1.25, 0.8});
-    // The squeeze-out goes in through its one writer, from its row.
-    BackendSqueeze sqout_row;
-    sqout_row.timecode = Timecode::raw(6000);
-    sqout_row.offset_ms = -30.0;
-    act.backends.push_back(sqout_row);
-    act.set_sqout(6000);
-    // A SqOut's own field is never written, so a value left on it is dropped.
-    act.sqinouts[2].transfer = TransferScale{9.0, 9.0};
-
-    Path path;
-    path.activations.push_back(act);
-    Path decoded = store::decode_path_node(store::encode_path_node(path));
-    REQUIRE(decoded.activations.size() == 1);
-    const Activation& got = decoded.activations.front();
-    REQUIRE(got.sqinouts.size() == 3);
-    REQUIRE(got.sqinouts[0].transfer.has_value());
-    REQUIRE(got.sqinouts[1].transfer.has_value());
-    CHECK(got.sqinouts[0].transfer->early == 0.97);
-    CHECK(got.sqinouts[0].transfer->late == 1.5);
-    CHECK(got.sqinouts[1].transfer->early == 0.95);
-    CHECK(got.sqinouts[1].transfer->late == 2.5);
-    CHECK_FALSE(got.sqinouts[2].transfer.has_value());
-    REQUIRE(got.transfer_post.has_value());
-    CHECK(got.transfer_post->early == 1.25);
-    CHECK(got.transfer_post->late == 0.8);
-}
-
 TEST_CASE("graph_build_cap: never taller than the song's phrases, never below one") {
     CHECK(graph_build_cap(4, 10) == 4);   // the cap binds
     CHECK(graph_build_cap(32, 3) == 3);   // the song's phrases bind
@@ -2068,11 +1976,6 @@ TEST_CASE("tied variants: a variant that finished the song keeps its own bank") 
     for (const Path* p : all) variants += p->var_point.has_value() ? 1 : 0;
     REQUIRE(variants == 1);  // the two ties are one root and its variant
     check_banks(all);
-
-    HydraRecord rec;
-    rec.paths = roots;
-    const HydraRecord back = store::rebuild_record(store::flatten_record(rec));
-    check_banks(back.all_paths());
 }
 
 TEST_CASE("tied variants: a variant folded between windows keeps its own banked bars") {

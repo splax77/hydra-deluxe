@@ -39,9 +39,8 @@ store::RecordKey key_for(const std::string& hash, bool legacy_fills) {
 }
 
 // One analyzed corpus chart, kept alive for the whole file: it supplies a real
-// Song (songmeta rows, which list_records joins against) and a real record to
-// build PreparedRows from. The scores themselves are overridden per row, so
-// which chart it is doesn't matter.
+// record to build PreparedRows from. The scores themselves are overridden per
+// row, so which chart it is doesn't matter.
 const app::AnalysisResult& sample_chart() {
     static const app::AnalysisResult result = [] {
         app::AnalysisSettings settings;
@@ -51,15 +50,20 @@ const app::AnalysisResult& sample_chart() {
     return result;
 }
 
-// Registers `hash` in `store` and files a result for it under the given fill
-// rule with exactly the summary given. The structure/nodes come from a real
-// record so the row is well-formed; only the numbers the report reads are
-// overridden.
+// Lists `hash` in `store`'s library as "Song <first four>", unless the
+// library already lists it (a test that set up its own copies keeps them).
+void name(store::RecordStore& store, const std::string& hash) {
+    if (store.library_copies().count(hash)) return;
+    test::name_chart(store, hash, "Song " + hash.substr(0, 4), "Test Artist", "Test Charter");
+}
+
+// Lists `hash` in `store`'s library and files a result for it under the given
+// fill rule with exactly the summary given. The row comes from a real record
+// so it is well-formed; only the numbers the report reads are overridden.
 void put(store::RecordStore& store, bool legacy_fills, const std::string& hash,
          int64_t score, int acts, const std::string& bestpath) {
     const app::AnalysisResult& sample = sample_chart();
-    store.add_song(hash, "Song " + hash.substr(0, 4), "Test Artist",
-                   "Test Charter", sample.song);
+    name(store, hash);
 
     HydraRecord record = sample.record;
     record.legacy_fills = legacy_fills;
@@ -182,8 +186,7 @@ TEST_CASE("collect_fill_rows: an old record with no score and no new record") {
     // The 1.0 database holds a Ready record with no paths, so its summary has
     // no score, and the 1.1 database holds nothing for the chart. The record
     // is filed under the 1.0 key: the 1.0 side never reads a 1.1 result.
-    old_store.add_song(kOldOnly, "Song bb22", "Test Artist", "Test Charter",
-                       sample_chart().song);
+    name(old_store, kOldOnly);
     test::store_batch_result(old_store, key_for(kOldOnly, true));
 
     std::vector<FillCompareRow> rows = compare(old_store, new_store);
@@ -247,8 +250,8 @@ TEST_CASE("tally_fill_rows counts every status") {
 TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted chart counts once") {
     // D79 item 3. The 1.1 database's library lists kBoth in two folders. The
     // 1.0 database's library lists kOldOnly three times, which the page never
-    // reads. kOldOnly and kNewOnly are not in the 1.1 library, so each counts
-    // once (store::RecordStore::copies_of).
+    // reads. kOldOnly is not in the 1.1 library, so it counts once
+    // (store::RecordStore::copies_of); put() lists kNewOnly there once.
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
 
@@ -475,27 +478,25 @@ TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
 
-    // A blank songmeta name from before the fallback. add_song keeps the latest
-    // name it sees, so the blank name goes in after put()'s own "Song aa11".
+    // A blank library name. The rename goes in after put()'s own "Song aa11".
     put_ch10(old_store,kBoth, 1000000, 3, "old-path");
     put_ch11(new_store,kBoth, 1000000, 3, "new-path");
-    old_store.add_song(kBoth, "", "Test Artist", "Test Charter", sample_chart().song);
-    new_store.add_song(kBoth, "", "Test Artist", "Test Charter", sample_chart().song);
+    test::name_chart(old_store, kBoth, "", "Test Artist", "Test Charter");
+    test::name_chart(new_store, kBoth, "", "Test Artist", "Test Charter");
 
     std::vector<FillCompareRow> rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == kUnknownTitle);
 
     // A title made only of tags reads the same fallback.
-    new_store.add_song(kBoth, test::kTagOnlyTitle, "Test Artist", "Test Charter",
-                       sample_chart().song);
+    test::name_chart(new_store, kBoth, test::kTagOnlyTitle, "Test Artist", "Test Charter");
     rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == kUnknownTitle);
 
     // A bold title, artist and charter read without their tags.
-    new_store.add_song(kBoth, "<b>Bold Title</b>", "<i>Tagged Artist</i>",
-                       "<color=#FF8000>Tagged Charter</color>", sample_chart().song);
+    test::name_chart(new_store, kBoth, "<b>Bold Title</b>", "<i>Tagged Artist</i>",
+                     "<color=#FF8000>Tagged Charter</color>");
     rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].song == "Bold Title");
@@ -504,8 +505,7 @@ TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
 
     // An artist made only of tags reads "(unknown)" by the title's rule
     // (D50 item 5); a charter made only of tags keeps today's blank.
-    new_store.add_song(kBoth, "Song", test::kTagOnlyTitle, test::kTagOnlyTitle,
-                       sample_chart().song);
+    test::name_chart(new_store, kBoth, "Song", test::kTagOnlyTitle, test::kTagOnlyTitle);
     rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].artist == kUnknownTitle);
@@ -514,7 +514,7 @@ TEST_CASE("collect_fill_rows: a blank stored song name reads (unknown)") {
     // An empty artist and the scan's placeholder read "(unknown)" too (D56
     // item 2); a charter loses the spaces at its ends (display_charter).
     for (const char* artist : {"", kUnknownArtist}) {
-        new_store.add_song(kBoth, "Song", artist, " <b>Bob</b> ", sample_chart().song);
+        test::name_chart(new_store, kBoth, "Song", artist, " <b>Bob</b> ");
         rows = compare(old_store, new_store);
         REQUIRE(rows.size() == 1);
         CHECK(rows[0].artist == kUnknownTitle);
@@ -541,8 +541,7 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     // listed under "in both", not under "only 1.1".
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
-    old_store.add_song(kBoth, "Song aa11", "Test Artist", "Test Charter",
-                       sample_chart().song);
+    name(old_store, kBoth);
     test::store_batch_result(old_store, key_for(kBoth, true));
     put_ch11(new_store, kBoth, 1050000, 4, "new-path-F");
 
@@ -557,7 +556,7 @@ TEST_CASE("collect_fill_rows: a record on both sides with a score on one is in b
     store::RecordStore old2(":memory:");
     store::RecordStore new2(":memory:");
     put_ch10(old2, kBoth, 1000000, 3, "old-path-F");
-    new2.add_song(kBoth, "Song aa11", "Test Artist", "Test Charter", sample_chart().song);
+    name(new2, kBoth);
     test::store_batch_result(new2, key_for(kBoth, false));
     rows = compare(old2, new2);
     REQUIRE(rows.size() == 1);
@@ -583,8 +582,7 @@ TEST_CASE("generate_fill_report: a score on one side only is counted, and the pa
     put_ch10(old_store, kOldOnly, 900000, 2, "only-old");   // only 1.0
     put_ch11(new_store, kNewOnly, 800000, 5, "only-new");   // only 1.1
     // A record on both sides, but the 1.0 one has no paths and so no score.
-    old_store.add_song(kOneSided, "Song dd44", "Test Artist", "Test Charter",
-                       sample_chart().song);
+    name(old_store, kOneSided);
     test::store_batch_result(old_store, key_for(kOneSided, true));
     put_ch11(new_store, kOneSided, 700000, 2, "one-sided");
 
@@ -608,4 +606,48 @@ TEST_CASE("generate_fill_report: a score on one side only is counted, and the pa
     CHECK(result.html.find("['Only one side', fmt(n('only 1.0') + n('only 1.1'))],\n"
                            "      ['Score on one side only', fmt(n('in both'))],") !=
           std::string::npos);
+}
+
+// ---- results the library doesn't list (D92) ---------------------------------
+
+TEST_CASE("generate_fill_report: a database with no chart library stops with the path "
+          "report's sentence") {
+    // Results on both sides, as hydra_batch with folder arguments leaves
+    // them, and a library on one side only: either side without one stops.
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+    test::store_batch_result(old_store, key_for(kBoth, true));
+    put_ch11(new_store, kBoth, 1050000, 4, "new-path-L");
+    const std::string sentence =
+        "This database has no chart library. Run hydra_batch without folder arguments, or "
+        "scan in Hydra, to build one.";
+    const app::fill_report::GeneratedFillReport result =
+        app::fill_report::generate_fill_report(old_store, new_store, kMode,
+                                               store::CapQuery::at(kCloneHeroSpCap),
+                                               store::Lens{});
+    CHECK(result.html.empty());
+    CHECK(result.reason == sentence);
+    // The other way round too.
+    const app::fill_report::GeneratedFillReport flipped =
+        app::fill_report::generate_fill_report(new_store, old_store, kMode,
+                                               store::CapQuery::at(kCloneHeroSpCap),
+                                               store::Lens{});
+    CHECK(flipped.html.empty());
+    CHECK(flipped.reason == sentence);
+}
+
+TEST_CASE("collect_fill_rows: a result whose chart the library doesn't list is left out") {
+    store::RecordStore old_store(":memory:");
+    store::RecordStore new_store(":memory:");
+    put_ch10(old_store, kBoth, 1000000, 3, "old-path-M");
+    put_ch11(new_store, kBoth, 1050000, 4, "new-path-M");
+    // A result on each side for charts neither library lists.
+    test::store_batch_result(old_store, key_for(kOldOnly, true));
+    test::store_batch_result(new_store, key_for(kNewOnly, false));
+
+    const std::vector<FillCompareRow> rows = compare(old_store, new_store);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].hyhash == kBoth);
+    CHECK(find(rows, kOldOnly) == nullptr);
+    CHECK(find(rows, kNewOnly) == nullptr);
 }

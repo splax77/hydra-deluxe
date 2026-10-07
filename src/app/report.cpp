@@ -239,12 +239,10 @@ std::unordered_map<std::string, PageChart> page_charts(const std::vector<ReportR
 }
 
 // Puts one chart's rows on the page: the first max_paths of `rows`
-// (chart_rows' order), named from `meta` and labeled with their tier. `meta`
-// is a list_records listing or a for_each_blob row; both carry the chart's
-// hash, names and mode under the same field names.
-template <typename ChartMeta>
+// (chart_rows' order), named from `meta`, a list_records listing, and labeled
+// with their tier.
 void place_rows(std::vector<ReportRow>& out, const std::vector<ReportRow>& rows,
-                int64_t max_paths, const ChartMeta& meta, int copies,
+                int64_t max_paths, const store::RecordListing& meta, int copies,
                 const std::vector<TimingTier>& tiers) {
     const size_t shown =
         static_cast<size_t>(std::min<int64_t>(max_paths, static_cast<int64_t>(rows.size())));
@@ -357,12 +355,22 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 std::unordered_map<std::string, store::RecordListing> records_by_hash(
     store::RecordStore& store, const std::string& chartmode, const store::CapQuery& cap,
     const store::Lens& lens) {
+    const std::unordered_map<std::string, int> library = library_copies_by_hash(store);
     std::unordered_map<std::string, store::RecordListing> by_hash;
     for (store::RecordListing& r : store.list_records(chartmode, cap, lens,
                                                        store::SortColumn::Score,
-                                                       /*descending=*/true))
-        by_hash.emplace(normalize_chart_hash(r.hyhash), std::move(r));
+                                                       /*descending=*/true)) {
+        std::string hash = normalize_chart_hash(r.hyhash);
+        // A result whose chart the library doesn't list is not on the page
+        // (D92), as in collect_rows.
+        if (library.find(hash) == library.end()) continue;
+        by_hash.emplace(std::move(hash), std::move(r));
+    }
     return by_hash;
+}
+
+bool lacks_chart_library(store::RecordStore& store) {
+    return store.counts().second > 0 && store.chart_library_count() == 0;
 }
 
 std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store) {
@@ -482,25 +490,6 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
                    tiers);
     }
     return out;
-}
-
-std::vector<ReportRow> collect_stored_rows(store::RecordStore& store, int64_t max_paths,
-                                           const store::CapQuery& cap,
-                                           const store::Lens& lens, double hit_window_ms,
-                                           const std::atomic<bool>* cancel) {
-    std::vector<ReportRow> rows;
-    const std::vector<TimingTier> tiers = timing_tiers(hit_window_ms);
-    const std::unordered_map<std::string, int> library = library_copies_by_hash(store);
-    store.for_each_blob(std::nullopt, cap, lens,
-                        [&](const store::RecordStore::BlobRow& meta,
-                            const HydraRecord* record) {
-        // Only rows the store calls Ready have a decoded record.
-        if (!record) return;
-        place_rows(rows, chart_rows(*record, max_paths), max_paths, meta,
-                   store::RecordStore::copies_of(library, normalize_chart_hash(meta.hyhash)),
-                   tiers);
-    }, cancel);
-    return rows;
 }
 
 std::string left_out_line(const std::vector<ReportFailure>& failures) {
@@ -625,7 +614,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         // needs to hear which (finding 105).
         if (store.counts().second == 0) {
             out.empty_reason = EmptyReason::NothingStored;
-        } else if (store.chart_library_count() == 0) {
+        } else if (lacks_chart_library(store)) {
             // The report covers library charts only (D87 item 4).
             out.empty_reason = EmptyReason::NoLibrary;
             out.why_empty = kNoChartLibrary;
