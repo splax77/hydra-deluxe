@@ -123,8 +123,9 @@ std::vector<store::ChartLibraryEntry> AppState::library_matches() const {
         const auto it = place.find(row_key(e));
         if (it != place.end()) found[it->second] = std::move(e);
     }
-    // A row the store no longer lists (a scan replaced the table since the
-    // rows were read) is left out; the reload that follows drops its row.
+    // A row the store no longer lists is left out. The confirm reloads after
+    // a scan first (reload_after_scan), so that happens only when that reload
+    // failed and said so.
     std::vector<store::ChartLibraryEntry> out;
     out.reserve(matched.size());
     for (std::optional<store::ChartLibraryEntry>& e : found)
@@ -132,12 +133,15 @@ std::vector<store::ChartLibraryEntry> AppState::library_matches() const {
     return out;
 }
 
+bool AppState::reload_after_scan() {
+    if (!scan_job || scan_reloaded_ || !scan_job->snapshot().finished) return false;
+    scan_reloaded_ = true;
+    reload_library();
+    return true;
+}
+
 void AppState::tick_library(double now) {
-    // A finished scan replaced the chart table: read it once.
-    if (scan_job && !scan_reloaded_ && scan_job->snapshot().finished) {
-        scan_reloaded_ = true;
-        reload_library();
-    }
+    reload_after_scan();
     // A batch stores results on its own threads. Re-read the summaries at
     // most once per kBatchRefreshSeconds, only when it stored something since
     // the last read,
@@ -182,6 +186,7 @@ std::optional<size_t> AppState::relative_row(int delta) const {
 bool AppState::can_select_relative(int delta) const { return relative_row(delta).has_value(); }
 
 void AppState::select_relative(int delta) {
+    reload_after_scan();  // the neighbour in the rows the store holds now
     if (std::optional<size_t> i = relative_row(delta)) select(view_row(*i));
 }
 
@@ -195,16 +200,32 @@ void AppState::select(const store::ChartLibraryEntry& entry) {
 }
 
 void AppState::select(const LibraryChart& row) {
+    // Kept by value: a reload replaces the rows `row` may live in.
+    const std::string key = row_key(row);
+    std::string md5 = row.md5;
+    if (reload_after_scan()) {
+        // The clicked row as the new scan wrote it, which may be under a new
+        // hash. None: the scan removed it, and the click opens nothing.
+        const LibraryChart* now = nullptr;
+        for (const LibraryRow& r : library.rows()) {
+            if (row_key(r.entry) == key) {
+                now = &r.entry;
+                break;
+            }
+        }
+        if (!now) return;
+        md5 = now->md5;
+    }
     std::vector<store::ChartLibraryEntry> copies;
-    if (!read_store([&] { copies = store->list_chart_library_copies(row.md5); })) return;
+    if (!read_store([&] { copies = store->list_chart_library_copies(md5); })) return;
     for (const store::ChartLibraryEntry& copy : copies) {
-        if (row_key(copy) == row_key(row)) {
+        if (row_key(copy) == key) {
             select(copy);
             return;
         }
     }
-    // None: a scan replaced the table since the rows were read, and the
-    // reload that follows redraws the table.
+    // None: the rows are older than the store only when the reload after a
+    // scan failed, and that read said so.
 }
 
 void AppState::close_details() {
@@ -433,7 +454,9 @@ void AppState::start_scan() {
 void AppState::open_batch_confirm() {
     // Exactly the rows the library's search matches. The plans made here are
     // the ones the batch runs (D79), so the confirm, the strip and the
-    // finished counts come from one plan.
+    // finished counts come from one plan. Rows older than the store would
+    // count fewer charts than the button's N.
+    reload_after_scan();
     std::vector<app::ScanItem> items;
     const app::BatchRun run = settings.batch_run();
     std::unordered_set<std::string> with_result;
