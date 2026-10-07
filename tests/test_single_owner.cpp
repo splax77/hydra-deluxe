@@ -1116,11 +1116,9 @@ const std::vector<OwnerRule>& rules() {
          {"\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""},
          {"kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"},
          {{"src/store/record_store.h",
-           "\"(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts\"",
+           "\"(SELECT md5, name, artist, charter, MIN(rowid) AS naming_rowid, COUNT(*) AS copies\"",
            "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.cpp", "\" AS c JOIN charts AS p ON p.rowid = c.\\\"MIN(rowid)\\\"\";",
-           "naming_copy_paths joins kNamingCopiesSql's own pick back to its row"}}},
+          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
         // A pass over the library that picks a chart's file from its own
         // listing, instead of the naming copy, can open another copy's file
         // than the batch did (storage-T3 review, finding 1).
