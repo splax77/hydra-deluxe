@@ -4540,6 +4540,21 @@ const std::vector<OwnerRule>& rules() {
          {},
          {"src/app/report.cpp", "src/app/fill_report.cpp", "src/cli/report.cpp",
           "src/cli/fillcompare.cpp"}},
+        // S1: a fresh zero-filled megabyte per hashed file cost the library
+        // scan measurable time, so each hashing thread keeps one buffer.
+        {"What buffer does a chart file's MD5 read through?",
+         "stream_md5's one thread_local buffer in src/app/analysis.cpp",
+         R"(std::vector<uint8_t>\s+\w+\s*\(\s*1\s*<<\s*20\s*\))",
+         "",
+         {},
+         {},
+         "D86 speedups plan, task S1",
+         {"std::vector<uint8_t> buf(1 << 20);", "std::vector<uint8_t> fresh(1<<20);"},
+         {"constexpr size_t kSngHeadCapture = 1 << 20;", "std::vector<uint8_t> head;",
+          "constexpr size_t kSrbMaxMetadata = 1 << 20;"},
+         {{"src/app/analysis.cpp", "thread_local std::vector<uint8_t> buf(1 << 20);",
+           "stream_md5, the owner"}},
+         {"src/app/analysis.cpp"}},
     };
     return r;
 }
