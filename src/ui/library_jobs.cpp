@@ -4,6 +4,7 @@
 #include <chrono>
 #include <filesystem>
 #include <stdexcept>
+#include <utility>
 
 #include "app/config.h"
 #include "app/report.h"
@@ -421,8 +422,13 @@ void ReportJob::run() {
         // library to be analyzed before it can shut down.
         options.cancel = &cancel_;
         options.run = run_;
-        app::report::GeneratedReport report =
-            app::report::generate_report(store_, options, seed_);
+        // The seed's rows are read by this pass alone, so they go when it
+        // ends, however it ends, not with the job (memory audit fix 4).
+        app::report::GeneratedReport report;
+        {
+            const app::report::ReportSeed seed = std::exchange(seed_, {});
+            report = app::report::generate_report(store_, options, seed);
+        }
         // Checked before the "no records" throw and before any file is
         // written: a cancelled run has no rows because it stopped, not
         // because the store is empty, and it must leave the last report on

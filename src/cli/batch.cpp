@@ -190,33 +190,38 @@ int batch_main() {
     std::printf("Folders    : %zu\n", folders.size());
     for (const std::string& f : folders) std::printf("    %s\n", f.c_str());
 
-    std::printf("\nDiscovering charts...\n");
-    // The last library scan, if this database has one. A chart whose files
-    // are unchanged (sig_unchanged) reuses its hash and song fields instead
-    // of being read again. A run over the app's own folders saves its scan
-    // as the library afterwards, as Scan library does (D79); a run over
-    // folder arguments leaves the library alone.
-    hydra::store::ChartLibraryCache cache;
-    try {
-        cache = store.chart_library_cache();
-    } catch (const std::exception&) {
-        // No cache is only a slower scan.
-    }
-    auto [scanitems, folder_errors] = hydra::app::discover_charts(
-        folders, hydra::app::ScanCallbacks{}, cache.empty() ? nullptr : &cache);
-    if (folder_args.empty()) {
-        if (const std::optional<std::string> problem =
-                hydra::app::save_scan_as_library(store, scanitems))
-            std::printf("  ! %s\n", problem->c_str());
-    }
-    for (const std::string& err : folder_errors) std::printf("  ! %s\n", err.c_str());
-    std::printf("Found %s.\n\n",
-                hydra::counted(static_cast<int64_t>(scanitems.size()), "chart", "charts").c_str());
+    // The scan and the plan it makes. The rescan cache and the scan's list are
+    // read only here, so they go when this returns, before the first chart is
+    // analyzed (memory audit fix 4); the plan keeps its own copy of each item.
+    const hydra::app::BatchPlan plan = [&] {
+        std::printf("\nDiscovering charts...\n");
+        // The last library scan, if this database has one. A chart whose files
+        // are unchanged (sig_unchanged) reuses its hash and song fields instead
+        // of being read again. A run over the app's own folders saves its scan
+        // as the library afterwards, as Scan library does (D79); a run over
+        // folder arguments leaves the library alone.
+        hydra::store::ChartLibraryCache cache;
+        try {
+            cache = store.chart_library_cache();
+        } catch (const std::exception&) {
+            // No cache is only a slower scan.
+        }
+        auto [scanitems, folder_errors] = hydra::app::discover_charts(
+            folders, hydra::app::ScanCallbacks{}, cache.empty() ? nullptr : &cache);
+        if (folder_args.empty()) {
+            if (const std::optional<std::string> problem =
+                    hydra::app::save_scan_as_library(store, scanitems))
+                std::printf("  ! %s\n", problem->c_str());
+        }
+        for (const std::string& err : folder_errors) std::printf("  ! %s\n", err.c_str());
+        std::printf(
+            "Found %s.\n\n",
+            hydra::counted(static_cast<int64_t>(scanitems.size()), "chart", "charts").c_str());
 
-    // The one plan for this run (D79). A run that fails as a whole (this
-    // store read) ends through run_tool.
-    const hydra::app::BatchPlan plan =
-        hydra::app::plan_batch(scanitems, hydra::app::charts_with_result(store, run, redo));
+        // The one plan for this run (D79). A run that fails as a whole (this
+        // store read) ends through run_tool.
+        return hydra::app::plan_batch(scanitems, hydra::app::charts_with_result(store, run, redo));
+    }();
 
     auto started = std::chrono::steady_clock::now();
 
