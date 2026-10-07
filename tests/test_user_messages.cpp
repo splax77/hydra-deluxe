@@ -153,7 +153,7 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
         {ErrorKind::NetBadReply, "dmleaderboards sent a reply Hydra couldn't read. Try again later."},
         {ErrorKind::NoScores, "This player has no drum scores on dmleaderboards to compare."},
         {ErrorKind::NoRecords,
-         "There are no analyzed songs to put in a report yet. Analyze some songs first."},
+         "None of the songs in this run could be analyzed, so there is no report to show."},
         {ErrorKind::ReportWrite,
          "Hydra couldn't save the report file. Check that the disk isn't full and the "
          "report folder isn't read-only."},

@@ -428,11 +428,12 @@ void ReportJob::run() {
         // because the store is empty, and it must leave the last report on
         // disk alone.
         if (is_cancelled()) return false;
-        // generate_report says why the page is empty. Results stored under
-        // other settings throw the sentence that names them, which the strip
-        // shows as it is; an empty database keeps the app's own sentence.
+        // generate_report says why the page is empty (GeneratedReport::
+        // why_empty). When it gives a sentence, the strip shows that sentence
+        // as it is, the same one hydra_report prints. When it gives none, the
+        // database holds no results, and the app's own sentence says so (D97).
         if (report.rows == 0) {
-            if (report.empty_reason == app::report::EmptyReason::NothingUnderSettings)
+            if (!report.why_empty.empty())
                 throw KindedError(ErrorKind::AlreadyPlain, report.why_empty);
             throw KindedError(ErrorKind::NoRecords, "no records stored yet");
         }
