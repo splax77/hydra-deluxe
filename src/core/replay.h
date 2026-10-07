@@ -52,8 +52,8 @@ struct ReplayWindow {
     std::optional<int64_t> sqout_tick;
 
     // The same squeeze-out as an ms offset from D, for display, and as typed
-    // by hand in `--acts`. replay_path reads only the tick; a window with an
-    // offset and no tick must go through resolve_sqout_note first.
+    // by hand in `--acts`. replay_path reads only the tick; see
+    // sqout_needs_resolving and resolve_window_sqout below.
     std::optional<double> sqout_offset_ms;
 
     // The phrase chords this window squeezed in, when known: a stored path's
@@ -87,6 +87,19 @@ struct SqOutNote {
 // when no single chord is nearest (D83), when there is no candidate, or when
 // w has no offset.
 SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w);
+
+// Whether `w` names its squeeze-out by an offset alone, so replay_path
+// cannot read it until resolve_window_sqout has run. The one statement of
+// that rule: replay_path's refusal and resolve_window_sqout both ask it.
+bool sqout_needs_resolving(const ReplayWindow& w);
+
+// Resolve `w` in place when sqout_needs_resolving says so: set its
+// sqout_tick to resolve_sqout_note's chord and return that note, so a
+// caller can say which chord it used. Returns nothing, and leaves `w` as it
+// is, for any other window. Throws what resolve_sqout_note throws. Every
+// reader of a typed or dumped window list goes through this (hydra_replay
+// score, and pinned_windows for target).
+std::optional<SqOutNote> resolve_window_sqout(const Song& song, ReplayWindow& w);
 
 // The six score categories a Path stores, in the same order.
 struct ReplayScore {
@@ -205,7 +218,7 @@ struct ReplayOptions {
 
 // Score `song` under `windows` (any order; they are sorted here). An empty
 // list scores the chart with no Star Power anywhere. Throws
-// std::invalid_argument for a window with a SqOut offset but no SqOut tick.
+// std::invalid_argument for a window sqout_needs_resolving names.
 //
 // One pass over the chords. Only the windows that can still pay the current
 // chord are checked (replay.cpp explains why a window that leaves can never
