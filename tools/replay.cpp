@@ -16,15 +16,19 @@
 //   target    Hand the engine an activation set -- "activate at exactly these
 //             fill ticks and nowhere else" -- and get that path back priced the
 //             engine's own way, with deactivation nodes, SP meters and squeeze
-//             variants stamped as usual. What `dump` gives you for the paths a
-//             search happened to keep, this gives you for the path you name.
+//             variants stamped as usual. Given whole windows (--path or --acts,
+//             as score takes them) it pins each window's end too and returns
+//             just that path. What `dump` gives you for the paths a search
+//             happened to keep, this gives you for the path you name.
 //   selfcheck Re-analyze the test corpus, replay every path the engine found,
 //             and prove the replay's six score categories match the engine's
-//             own. This is what keeps `score` honest.
+//             own. This is what keeps `score` honest. It also hands each path
+//             back to target as a full pin, which must return it unchanged.
 //
 // The scoring itself lives in core/replay.h so this tool and tests/test_replay
 // share one implementation.
 
+#include <algorithm>
 #include <cctype>
 #include <cerrno>
 #include <cstdio>
@@ -93,7 +97,9 @@ void usage() {
         "  hydra_replay dump  --chart <file> [--cap N]\n"
         "                     [--ms N|off] [--depth-mode scores|points] [--depth N]\n"
         "                     [--out <json>] [--pretty] [--legacy-fills]\n"
-        "  hydra_replay target --chart <file> --ticks \"t1,t2,...\" [--cap N]\n"
+        "  hydra_replay target --chart <file> [--ticks \"t1,t2,...\"]\n"
+        "                     [--acts \"actTick:deactTick[:sqoutMs],...\"]\n"
+        "                     [--path <dump-or-target.json>] [--index N] [--cap N]\n"
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy] [--legacy-fills]\n"
         "  hydra_replay selfcheck [--chart <file>] [--verbose]\n\n"
@@ -112,11 +118,19 @@ void usage() {
         "each with tick, ms, and name.\n"
         "dump analyzes the chart every time and reads no database; its JSON\n"
         "field \"source\" is always \"analyzed\".\n"
-        "target asks the engine to price one specific path: activate at exactly\n"
-        "the --ticks fills and nowhere else. Its JSON carries dump's \"paths\"\n"
-        "shape plus \"realized\"; when that is false, \"failed_tick\" names the\n"
-        "activation the engine could not make and \"realized_prefix\" how many of\n"
-        "the leading ticks it did manage.\n"
+        "target asks the engine to price one specific path. With --ticks it\n"
+        "activates at exactly those fills and nowhere else, and every way of\n"
+        "ending each activation comes back; on a long chart that can run for a\n"
+        "very long time. With --path or --acts, read the way score reads them,\n"
+        "each window's end is pinned too (and its squeeze-out, when the window\n"
+        "names one), so exactly that path comes back, fast. Give one of the three.\n"
+        "A typed SqOut offset is matched to its chord as score matches it, and\n"
+        "\"pins\" in the JSON lists what each window was pinned to.\n"
+        "Its JSON carries dump's \"paths\" shape plus \"realized\"; when that is\n"
+        "false, \"failed_tick\" names the activation of the first window no path\n"
+        "realizes, \"realized_prefix\" how many of the leading windows one does,\n"
+        "and \"failed_reason\" what broke: \"activation\", \"window_end\" or\n"
+        "\"sqout\" (see TargetResult in search/pather.h).\n"
         "--legacy-fills prices the chart under Clone Hero 1.0's fill deadline,\n"
         "which is what a 1.0 run was played under, the same as the app's\n"
         "\"1.0 fills\" setting.\n"
@@ -486,6 +500,9 @@ std::vector<int64_t> parse_ticks(const std::string& spec) {
 // `s` is settings_from(a), built once in main.
 int cmd_target(const Args& a, const app::Settings& s) {
     if (a.chart.empty()) { usage(); return 2; }
+    if ((!a.ticks.empty()) + (!a.path.empty()) + (!a.acts.empty()) > 1)
+        throw std::runtime_error(
+            "--ticks, --path and --acts each name the path to find; give one of them");
 
     const std::string hyhash = app::hash_chart_file(a.chart);
     const std::vector<int64_t> ticks = parse_ticks(a.ticks);
@@ -497,41 +514,57 @@ int cmd_target(const Args& a, const app::Settings& s) {
         return 1;
     }
 
+    // --ticks pins activations only; --path and --acts pin whole windows,
+    // read exactly as score reads them.
+    std::vector<PinnedWindow> windows;
+    if (a.path.empty() && a.acts.empty()) {
+        std::vector<int64_t> sorted = ticks;
+        std::sort(sorted.begin(), sorted.end());
+        sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+        for (const int64_t t : sorted) windows.push_back(PinnedWindow{t});
+    } else {
+        // A typed offset names its chord only approximately; pinned_windows
+        // matches it, and "pins" in the JSON shows the chord used.
+        windows = pinned_windows(
+            song, a.path.empty() ? parse_acts(a.acts) : windows_from_file(a.path, a.index));
+    }
+
     // With --legacy-fills, s prices under Clone Hero 1.0's fill deadline.
     // target only ever prints; nothing is stored.
     const SearchSettings cfg = s.to_analysis_settings();
+    TargetResult found = search_target(song, cfg, windows);
     HydraRecord rec;
-    rec.paths = search_target(song, cfg, ticks);
+    rec.paths = std::move(found.paths);
 
-    // When the set is unrealizable, walk the prefixes to name the activation
-    // that broke it. Each run is milliseconds, so this costs nothing worth
-    // saving and turns "it failed" into "it failed here". A prefix comes back
-    // empty only when no path takes all of its activations (D45 drops just
-    // the paths that miss one), so the first empty prefix ends on the
-    // activation no path can take.
+    // When the windows are unrealizable, search_target has already named the
+    // one that broke and why. Its cost is one graph build plus one search per
+    // run, a binary search's worth of runs; a run with every window's end
+    // pinned walks the graph once.
     const bool realized = !rec.paths.empty();
-    int64_t failed_tick = -1;
-    size_t realized_prefix = ticks.size();
-    if (!realized) {
-        realized_prefix = 0;
-        for (size_t k = 1; k <= ticks.size(); ++k) {
-            const std::vector<int64_t> prefix(ticks.begin(), ticks.begin() + k);
-            if (search_target(song, cfg, prefix).empty()) break;
-            realized_prefix = k;
-        }
-        failed_tick = realized_prefix < ticks.size() ? ticks[realized_prefix] : -1;
+    std::vector<int64_t> act_ticks;
+    // What each window was pinned to; -1 for a value not pinned, as dump
+    // writes a missing one.
+    json pins = json::array();
+    for (const PinnedWindow& w : windows) {
+        act_ticks.push_back(w.act_tick);
+        pins.push_back(json{{"act_tick", w.act_tick},
+                            {"deact_tick", w.deact_tick.value_or(-1)},
+                            {"check_sqout", w.check_sqout},
+                            {"sqout_tick", w.squeezed_out.value_or(-1)}});
     }
 
     emit(json{{"hyhash", hyhash},
               {"chartmode", s.chartmode_key()},
               {"source", "target"},
               {"sp_cap", cfg.sp_cap},
-              {"ticks", ticks},
+              {"ticks", a.ticks.empty() ? act_ticks : ticks},
+              {"pins", pins},
               {"result", result_json(rec)},
               {"paths", paths_json(rec.all_paths(), song.timing())},
               {"realized", realized},
-              {"failed_tick", failed_tick},
-              {"realized_prefix", realized_prefix}},
+              {"failed_tick", found.failed_tick.value_or(-1)},
+              {"failed_reason", found.failed_reason},
+              {"realized_prefix", found.realized_prefix}},
          a.out, a.pretty);
     return 0;
 }
@@ -544,6 +577,10 @@ struct Tally {
     int pass = 0;
     int fail = 0;
     int skipped = 0;
+    // The second check: each path handed back to target as a full pin
+    // (full_pin_mismatch).
+    int pinned_pass = 0;
+    int pinned_fail = 0;
 };
 
 bool g_verbose = false;
@@ -577,10 +614,27 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
     }
     ++tally->charts;
 
-    int index = 0, chart_fail = 0;
+    int index = 0, chart_fail = 0, chart_pinned_fail = 0;
     for (const Path* p : rec.all_paths()) {
         const int i = index++;
         ++tally->paths;
+
+        // target must hand this path back, alone and the same, from a full
+        // pin of its windows.
+        std::string pin_diff;
+        try {
+            pin_diff = full_pin_mismatch(song, cfg, *p);
+        } catch (const std::exception& e) {
+            pin_diff = std::string("target threw: ") + e.what();
+        }
+        if (pin_diff.empty()) {
+            ++tally->pinned_pass;
+        } else {
+            ++tally->pinned_fail;
+            if (++chart_pinned_fail <= 5)
+                std::printf("FAIL target %s\n     path %d [%s]: %s\n", path.c_str(), i,
+                            p->pathstring().c_str(), pin_diff.c_str());
+        }
 
         const PathReplay pr = replay_stored_path(song, *p, rules);
         const std::vector<ReplayWindow>& windows = pr.windows;
@@ -641,6 +695,9 @@ void check_chart(const std::string& path, const core::Rules& rules, Tally* tally
     if (chart_fail > 5)
         std::printf("     ...and %d more failing paths in this chart\n",
                     chart_fail - 5);
+    if (chart_pinned_fail > 5)
+        std::printf("     ...and %d more paths target failed on in this chart\n",
+                    chart_pinned_fail - 5);
     std::fflush(stdout);
 }
 
@@ -655,7 +712,9 @@ int cmd_selfcheck(const Args& a) {
         "\nselfcheck: %d chart(s), %d path(s) — PASS %d, FAIL %d (%d chart(s) "
         "skipped)\n",
         tally.charts, tally.paths, tally.pass, tally.fail, tally.skipped);
-    return tally.fail == 0 ? 0 : 1;
+    std::printf("target: %d path(s) pinned, PASS %d, FAIL %d\n",
+                tally.pinned_pass + tally.pinned_fail, tally.pinned_pass, tally.pinned_fail);
+    return tally.fail == 0 && tally.pinned_fail == 0 ? 0 : 1;
 }
 
 }  // namespace

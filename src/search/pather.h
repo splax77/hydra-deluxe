@@ -5,12 +5,15 @@
 #ifndef HYDRA_SEARCH_PATHER_H
 #define HYDRA_SEARCH_PATHER_H
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "core/model.h"
+#include "core/replay.h"
 #include "core/rules.h"
 #include "parse/song.h"
 #include "search/engine.h"
@@ -86,6 +89,71 @@ EngineOptions allzero_options();
 std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
                                 const std::vector<int64_t>& act_ticks,
                                 std::vector<bool>* promoted = nullptr);
+
+// One activation a target names. With only `act_tick` it is the activation
+// pin above: every squeeze variant of the window comes back. With
+// `deact_tick` too it pins the whole window: the engine keeps only the path
+// whose Star Power ends on that node (Activation::deact_tick,
+// EngineOptions::target_deact_ticks), so every squeeze choice is answered
+// and the search walks the graph once.
+struct PinnedWindow {
+    int64_t act_tick = 0;
+    std::optional<int64_t> deact_tick;
+    // Whether the pin says how the window ended. When set, the returned
+    // window's squeezed-out chord (Activation::sqout_tick) must be on
+    // `squeezed_out`, and none when that is empty (a plain end). The engine
+    // picks the chord itself; this only checks its answer afterwards.
+    bool check_sqout = false;
+    std::optional<int64_t> squeezed_out;
+};
+
+// Replay windows as full pins. A window says how it ended when it came off a
+// record or names its squeeze-out (ReplayWindow::from_record, ::sqout_tick,
+// or a typed ::sqout_offset_ms, matched to its chord by resolve_sqout_note,
+// which throws when it refuses); a typed window with none of them leaves the
+// squeeze-out to the engine.
+std::vector<PinnedWindow> pinned_windows(const Song& song,
+                                         const std::vector<ReplayWindow>& windows);
+
+// A stored path as a full pin: its windows (windows_for_path) as above.
+// Throws std::invalid_argument when an activation yields no window (a
+// hand-built one, with no SP-end history).
+std::vector<PinnedWindow> pinned_windows(const Path& path);
+
+// What a target search found. When `paths` is empty, `realized_prefix`
+// counts the leading windows some path does realize, `failed_tick` is the
+// activation tick of the first window none does, and `failed_reason` says
+// which part of that window broke: "activation" (the engine cannot activate
+// there), "window_end" (it activates, but its Star Power cannot end on the
+// pinned node) or "sqout" (it ends there, on a different squeeze-out). When
+// paths come back, `realized_prefix` is the window count.
+struct TargetResult {
+    std::vector<Path> paths;
+    // One entry per path, as search_target's `promoted` above.
+    std::vector<bool> promoted;
+    size_t realized_prefix = 0;
+    std::optional<int64_t> failed_tick;
+    std::string failed_reason;
+};
+
+// search_target for windows, any of them pinned in full. The windows are
+// taken in act_tick order, and the pinned ones must come first: a window with
+// a deact_tick never follows one without. No two may share an act tick, a
+// squeeze-out check needs a deact_tick, and no deact_tick may come before its
+// act_tick (std::invalid_argument for each). The graph is built once. When no
+// path realizes the windows, the failing one is found by a binary search over
+// the prefix length on that graph (realizing k + 1 windows realizes the first
+// k), then named by at most two more runs.
+TargetResult search_target(const Song& song, const SearchSettings& settings,
+                           std::vector<PinnedWindow> windows);
+
+// Whether `path`, handed back to search_target as a full pin, comes back
+// alone and the same: one path, no tied variant, with its path string, total
+// and windows (pinned_windows above, each window's SP meter and skips too).
+// "" when it does, else what differed. hydra_replay selfcheck and the corpus
+// test both ask it.
+std::string full_pin_mismatch(const Song& song, const SearchSettings& settings,
+                              const Path& path);
 
 // search_target's filter over the engine's paths (D45 and its addendum):
 // keeps only the paths, tied variants included, whose activations are

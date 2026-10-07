@@ -419,7 +419,9 @@ public:
           no_skips_(options.no_skips),
           hard_ms_filter_(options.hard_ms_filter),
           target_act_ticks_(options.target_act_ticks ? &*options.target_act_ticks
-                                                     : nullptr) {
+                                                     : nullptr),
+          target_deact_ticks_(options.target_act_ticks ? &options.target_deact_ticks
+                                                       : nullptr) {
         index_fills();
     }
 
@@ -543,6 +545,20 @@ private:
     int32_t act_count(const Path& p) const {
         return p.act_tail < 0 ? 0 : acts_[(size_t)p.act_tail].depth;
     }
+    // The deactivation node the running window is pinned to end on
+    // (EngineOptions::target_deact_ticks), looked up by its activation's
+    // tick; nullopt when it is not pinned or no target was given.
+    std::optional<int64_t> pinned_end(const Path& p) const {
+        if (!target_deact_ticks_ || target_deact_ticks_->empty() || p.act_tail < 0)
+            return std::nullopt;
+        const int64_t act_tick = node(acts_[(size_t)p.act_tail].act_node).tick;
+        const auto it =
+            std::lower_bound(target_act_ticks_->begin(), target_act_ticks_->end(), act_tick);
+        const size_t i = (size_t)(it - target_act_ticks_->begin());
+        if (it == target_act_ticks_->end() || *it != act_tick || i >= target_deact_ticks_->size())
+            return std::nullopt;
+        return (*target_deact_ticks_)[i];
+    }
     int32_t sq_count(int32_t sq_tail) const {
         int32_t n = 0;
         for (int32_t s = sq_tail; s >= 0; s = sqs_[(size_t)s].prev) ++n;
@@ -660,6 +676,9 @@ private:
     // When set, the exact node ticks the search must activate at, ascending.
     // Every other fill is declined. Owned by the caller for the run's duration.
     const std::vector<int64_t>* target_act_ticks_ = nullptr;
+    // EngineOptions::target_deact_ticks, read only with target_act_ticks_.
+    // Owned by the caller for the run's duration.
+    const std::vector<int64_t>* target_deact_ticks_ = nullptr;
 
     std::vector<Act> acts_;
     std::vector<SqNode> sqs_;
@@ -1759,8 +1778,31 @@ bool Engine::run() {
             Path child;
             bool has_child = false;
             if (node(p.node).is_sp) {
-                const bool can_extend = branch_deactivate(p, &child, &has_child);
+                // Read the end this node offers before branching, as the
+                // fill's tick is read below.
+                const int32_t end_edge = node(p.node).branch_edge;
+                bool can_extend = branch_deactivate(p, &child, &has_child);
                 if (p.node == NODE_BROKEN) return false;
+                if (end_edge >= 0) {
+                    if (const std::optional<int64_t> pinned = pinned_end(p)) {
+                        // A window pinned in full (EngineOptions::
+                        // target_deact_ticks) answers this node's choice.
+                        // Before its end the path keeps going; on it, it
+                        // ends here when this node offers an end, and keeps
+                        // going otherwise (two SP nodes can end on one tick,
+                        // deactivation_type); past it the path has left the
+                        // pinned window and dies.
+                        const int64_t here = node(edge(end_edge).dest).tick;
+                        if (here < *pinned) {
+                            has_child = false;
+                        } else if (here == *pinned) {
+                            if (has_child) can_extend = false;
+                        } else {
+                            can_extend = false;
+                            has_child = false;
+                        }
+                    }
+                }
                 if (can_extend) next_.push_back(p);
             } else {
                 // Read the fill's tick before branching: a refused activation
