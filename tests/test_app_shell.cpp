@@ -1,7 +1,8 @@
 // Unit tests for the window-placement and DPI half of ui/app_shell: which
 // saved rectangles are safe to reopen at, the hydra_ui.ini text, the UI
-// scale, and how the fonts are loaded. A test can't move a real window between monitors, so the Win32
-// side in main.cpp stays thin and everything it decides is tested here.
+// scale, and how the fonts are loaded. A test can't move a real window
+// between monitors, so the Win32 side in main.cpp stays thin and everything
+// it decides is tested here.
 
 #include "doctest.h"
 
@@ -214,12 +215,10 @@ TEST_CASE("app_shell: the atlas reads every UI font from a file map it does not 
     hydra::ui::setup_imgui(test_options("-"));
     const ImFontAtlas* atlas = ImGui::GetIO().Fonts;
     REQUIRE(atlas->Sources.Size >= 2);
-    // Named after the file, as ImGui's own file loader names them.
-    CHECK(std::string(atlas->Sources[0].Name) == "ShipporiAntiqueB1-Regular.ttf");
-    CHECK(std::string(atlas->Sources[1].Name) == "CourierPrime-Regular.ttf");
     // Every source, the merged Japanese fallback too when this machine has one.
-    for (const ImFontConfig& source : atlas->Sources) {
-        CAPTURE(source.Name);
+    for (int i = 0; i < atlas->Sources.Size; ++i) {
+        const ImFontConfig& source = atlas->Sources[i];
+        CAPTURE(i);
         CHECK_FALSE(source.FontDataOwnedByAtlas);
         MEMORY_BASIC_INFORMATION info{};
         REQUIRE(VirtualQuery(source.FontData, &info, sizeof(info)) == sizeof(info));

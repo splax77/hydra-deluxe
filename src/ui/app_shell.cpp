@@ -15,7 +15,7 @@
 #include <memory>
 
 #include "imgui.h"
-#include "imgui_internal.h"  // g.LogBuffer for FrameText; ImGuiSettingsHandler; ImFormatString
+#include "imgui_internal.h"  // g.LogBuffer for FrameText; ImGuiSettingsHandler
 
 #include "app/config.h"
 #include "audio/mapped_file.h"
@@ -66,12 +66,6 @@ ImFont* add_font_file(const std::string& path, float size, const ImFontConfig* c
 
     ImFontConfig mapped = config ? *config : ImFontConfig();
     mapped.FontDataOwnedByAtlas = false;
-    if (mapped.Name[0] == '\0') {
-        // Named after the file, as AddFontFromFileTTF names it.
-        const size_t slash = path.find_last_of("/\\");
-        const char* name = path.c_str() + (slash == std::string::npos ? 0 : slash + 1);
-        ImFormatString(mapped.Name, IM_COUNTOF(mapped.Name), "%s", name);
-    }
     // ImGui only reads font data; its signature just isn't const.
     ImFont* font = atlas->AddFontFromMemoryTTF(const_cast<uint8_t*>(file->data()),
                                                static_cast<int>(file->size()), size, &mapped);
