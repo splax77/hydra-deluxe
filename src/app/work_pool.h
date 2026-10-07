@@ -53,9 +53,18 @@ constexpr size_t kWorkPoolWaitingPerWorker = 2;
 // worker_count must be at least 1; batch_worker_count (app/analysis.h) owns
 // that floor. A smaller count throws std::invalid_argument naming it, since
 // with no cooks nothing would ever reach the pass.
-template <typename Result, typename Work, typename Consume>
+//
+// idle() runs on the calling thread whenever the runner finds the pass empty,
+// just before it waits, and once more after the last plate. A consumer that
+// holds work back (the batch's save groups) finishes it there, so nothing it
+// holds waits on the next plate. Most callers leave it out.
+struct NoIdle {
+    void operator()() const {}
+};
+
+template <typename Result, typename Work, typename Consume, typename Idle = NoIdle>
 void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* cancel,
-                   Work&& work, Consume&& consume) {
+                   Work&& work, Consume&& consume, Idle&& idle = Idle{}) {
     if (worker_count < 1)
         throw std::invalid_argument("run_work_pool: worker count " +
                                     std::to_string(worker_count) + " is below 1");
@@ -97,6 +106,12 @@ void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* canc
 
     try {
         for (;;) {
+            bool empty;
+            {
+                std::lock_guard<std::mutex> lock(mu);
+                empty = finished.empty();
+            }
+            if (empty) idle();
             Result r;
             {
                 std::unique_lock<std::mutex> lock(mu);
@@ -108,6 +123,7 @@ void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* canc
             room.notify_one();
             consume(std::move(r));
         }
+        idle();
     } catch (...) {
         {
             std::lock_guard<std::mutex> lock(mu);

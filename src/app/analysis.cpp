@@ -619,6 +619,21 @@ void record_failure(WorkResult& wr, const std::exception& e) {
     wr.error = e.what();
 }
 
+// Saves one analyzed chart: inside the store's open save group when there is
+// one, alone otherwise. A save that fails makes this chart a failure, and the
+// batch goes on with the next one (D71, ER2 open question 5). The exception
+// is a failure that lost the whole group (RecordStore::save_group_lost): it
+// says nothing about this chart yet, so the chart stays unfailed and is saved
+// again alone with the rest of its group (D86 item 1).
+void save_result(store::RecordStore& store, WorkResult& wr) {
+    try {
+        store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist, wr.item.charter,
+                            wr.analysis->song, *wr.row, wr.dynamics, wr.length);
+    } catch (const std::exception& e) {
+        if (!store.save_group_lost()) record_failure(wr, e);
+    }
+}
+
 }  // namespace
 
 std::unordered_set<std::string> charts_with_result(store::RecordStore& store,
@@ -691,64 +706,121 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
     const ChartAnalyzer analyze =
         callbacks.analyze ? callbacks.analyze : ChartAnalyzer(analyze_chart_file);
 
-    run_work_pool<WorkResult>(
-        todo.size(), worker_count, cancel,
-        [&](size_t i) {
-            const ScanItem& item = todo[i];
-            WorkResult wr;
-            wr.item = item;
-            wr.rows = plan.rows[i];
-            try {
-                AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
-                wr.row = store::prepare_row(
-                    store::RecordKey{item.md5, run.chartmode, cap, run.lens}, ar.record);
-                wr.dynamics = dynamics_entry_from_analysis(
-                    item.md5, ar.song, settings.bass2x, settings.difficulty,
-                    settings.prodrums);
-                wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);
-                wr.analysis = std::move(ar);
-            } catch (const AnalysisCancelled&) {
-                wr.cancelled = true;
-            } catch (const std::exception& e) {
-                record_failure(wr, e);
-            }
-            return wr;
-        },
-        [&](WorkResult&& wr) {
-            // Once cancel is seen nothing more is written or reported, as
-            // before. A search stopped part-way is not a failure, and a result
-            // that finished alongside the cancel is dropped.
-            if (wr.cancelled || (cancel && cancel->load())) return;
+    // The batch's checkpoint setting, put back when run_batch leaves by any
+    // way, an exception included (D86 item 3).
+    const store::RecordStore::BatchWrites batch_writes(store);
 
-            if (!wr.failed) {
-                // A save that fails makes this chart a failure, and the batch
-                // goes on with the next one (D71, ER2 open question 5).
+    // Each of the chart's rows is counted and reported, under the first
+    // copy's name (D76, D51 call 10), so a list of failures is as long as its
+    // count. The progress that counts a row goes out before that row's own
+    // callback, so a caller numbering its lines reads the number from the
+    // progress (D79).
+    const auto report = [&](const WorkResult& wr) {
+        for (int r = 0; r < wr.rows; ++r) {
+            if (wr.failed) ++progress.failed;
+            else ++progress.analyzed;
+            progress.completed = progress.analyzed + progress.failed;
+            progress.current_title = wr.item.title;
+            if (callbacks.on_progress) callbacks.on_progress(progress);
+            if (wr.failed) {
+                if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
+            } else {
+                if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
+            }
+        }
+    };
+
+    // Charts are saved in groups of up to kSaveGroupSize, one transaction
+    // each (D86 item 2). A group's charts wait here, in order, and are
+    // reported only once their group is committed, so a reported chart is
+    // always on disk. A group closes when it is full, when a save lost it,
+    // and whenever the workers have nothing waiting, so the store lock is
+    // never held while this thread waits for a chart.
+    std::vector<WorkResult> deferred;
+    const auto flush_group = [&] {
+        if (!store.save_group_open()) return;
+        try {
+            store.commit_save_group();
+        } catch (const std::exception&) {
+            // Nothing in the group was kept. Each chart that had saved is
+            // saved again in a transaction of its own, so only a chart whose
+            // own save fails is failed (D86 item 1).
+            for (WorkResult& wr : deferred)
+                if (!wr.failed) save_result(store, wr);
+        }
+        const std::vector<WorkResult> done = std::move(deferred);
+        deferred.clear();
+        for (const WorkResult& wr : done) report(wr);
+    };
+
+    try {
+        run_work_pool<WorkResult>(
+            todo.size(), worker_count, cancel,
+            [&](size_t i) {
+                const ScanItem& item = todo[i];
+                WorkResult wr;
+                wr.item = item;
+                wr.rows = plan.rows[i];
                 try {
-                    store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
-                                        wr.item.charter, wr.analysis->song, *wr.row,
-                                        wr.dynamics, wr.length);
+                    AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
+                    wr.row = store::prepare_row(
+                        store::RecordKey{item.md5, run.chartmode, cap, run.lens}, ar.record);
+                    wr.dynamics = dynamics_entry_from_analysis(
+                        item.md5, ar.song, settings.bass2x, settings.difficulty,
+                        settings.prodrums);
+                    wr.length =
+                        analysis_song_length(item.timing, item.notespath, ar.song, settings);
+                    wr.analysis = std::move(ar);
+                } catch (const AnalysisCancelled&) {
+                    wr.cancelled = true;
                 } catch (const std::exception& e) {
                     record_failure(wr, e);
                 }
-            }
-            // Each of the chart's rows is counted and reported, under the
-            // first copy's name (D76, D51 call 10), so a list of failures is
-            // as long as its count. The progress that counts a row goes out
-            // before that row's own callback, so a caller numbering its lines
-            // reads the number from the progress (D79).
-            for (int r = 0; r < wr.rows; ++r) {
-                if (wr.failed) ++progress.failed;
-                else ++progress.analyzed;
-                progress.completed = progress.analyzed + progress.failed;
-                progress.current_title = wr.item.title;
-                if (callbacks.on_progress) callbacks.on_progress(progress);
-                if (wr.failed) {
-                    if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
-                } else {
-                    if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
+                return wr;
+            },
+            [&](WorkResult&& wr) {
+                // Once cancel is seen nothing more is written or reported, as
+                // before. A search stopped part-way is not a failure, and a
+                // result that finished alongside the cancel is dropped. The
+                // group already open is still committed and reported, by the
+                // pool's last idle call.
+                if (wr.cancelled || (cancel && cancel->load())) return;
+
+                if (!wr.failed) {
+                    if (!store.save_group_open()) {
+                        // A group that cannot begin leaves this chart to save
+                        // alone, where the same failure is this chart's own.
+                        try {
+                            store.begin_save_group();
+                        } catch (const std::exception&) {
+                        }
+                    }
+                    save_result(store, wr);
                 }
+                if (!store.save_group_open()) {
+                    report(wr);
+                    return;
+                }
+                // A failed chart joins the group too, so the reports keep the
+                // order the charts came in.
+                deferred.push_back(std::move(wr));
+                if (store.save_group_lost() ||
+                    deferred.size() >= static_cast<size_t>(store::kSaveGroupSize))
+                    flush_group();
+            },
+            flush_group);
+    } catch (...) {
+        // A caller's callback threw. The charts the open group saved are
+        // kept, as each chart's own commit kept them before groups, and none
+        // of them is reported.
+        if (store.save_group_open()) {
+            try {
+                store.commit_save_group();
+            } catch (...) {
             }
-        });
+        }
+        throw;
+    }
 }
 
 }  // namespace hydra::app

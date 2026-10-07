@@ -2489,3 +2489,29 @@ TEST_CASE("summarize_record counts every kept path once") {
     // One root with a tied variant, plus a second root: three paths.
     CHECK(summarize_record(test::tied_variant_record()).pathcount == 3);
 }
+
+// ---- the batch writer (D86 item 3, task W1) --------------------------------
+
+TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log at the end") {
+    // The threshold is per connection, so only the store's own getter can
+    // read it. 1,000 is SQLite's own default, read off one run.
+    const std::string path = testtemp::temp_path("batch_guard", ".db");
+    std::remove(path.c_str());
+    const std::filesystem::path wal = std::filesystem::u8path(path + "-wal");
+    {
+        RecordStore store(path);
+        CHECK(store.wal_autocheckpoint_for_test() == 1000);
+        {
+            const RecordStore::BatchWrites batch(store);
+            CHECK(store.wal_autocheckpoint_for_test() == kBatchWalAutocheckpointPages);
+            const RecordKey key{"h", "mode", CapQuery::at(4)};
+            store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
+                                prepare_row(key, at_cap(4)), std::nullopt);
+            CHECK(std::filesystem::file_size(wal) > 0);
+        }
+        CHECK(std::filesystem::file_size(wal) == 0);
+        CHECK(store.wal_autocheckpoint_for_test() == 1000);
+        CHECK(store.counts().second == 1);
+    }
+    std::remove(path.c_str());
+}

@@ -859,3 +859,129 @@ TEST_CASE("analyze_chart_file reads a drum track whose first name is unrecognize
     const AnalysisResult result = analyze_chart_file(dir + "\\notes.mid", settings);
     CHECK_FALSE(result.song.is_empty());
 }
+
+// ---- the batch writer's save groups (D86 items 1 to 3, task W1) ------------
+
+namespace {
+
+// Callbacks whose analyzer hands back one real chart's result for every
+// item, so a batch of fake items saves real rows.
+BatchCallbacks real_result_callbacks(const AnalysisResult& real) {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) { return real; };
+    return callbacks;
+}
+
+}  // namespace
+
+TEST_CASE("run_batch: a group commits before any of its charts is reported") {
+    // A second connection only sees what the batch's connection committed, so
+    // a chart it cannot see yet was reported before its group reached disk.
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks = real_result_callbacks(real);
+    BatchRun run;
+    run.chartmode = "group-commit-test";
+    const std::string path = testtemp::temp_path("batch_group_commit", ".db");
+    std::remove(path.c_str());
+    int reported = 0, visible = 0;
+    callbacks.on_result = [&](const ScanItem& item, const hydra::store::PreparedRow&) {
+        ++reported;
+        hydra::store::RecordStore reader(path);
+        if (reader.get_summary({item.md5, run.chartmode, run.cap_query(), run.lens}).status ==
+            hydra::store::RecordStatus::Ready)
+            ++visible;
+    };
+    {
+        hydra::store::RecordStore store(path);
+        run_planned(fake_items(40), run, store, /*redo=*/false, 4, callbacks);
+        CHECK(store.counts().second == 40);
+    }
+    CHECK(reported == 40);
+    CHECK(visible == 40);
+    std::remove(path.c_str());
+}
+
+TEST_CASE("run_batch: cancel during a group writes nothing more and leaves no transaction open") {
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks = real_result_callbacks(real);
+    std::atomic<bool> cancel{false};
+    callbacks.cancel = &cancel;
+    int results = 0;
+    // Cancel is pressed once the consumer has reported a few charts, while
+    // the workers are still handing it more.
+    callbacks.on_result = [&](const ScanItem&, const hydra::store::PreparedRow&) {
+        if (++results == 5) cancel = true;
+    };
+
+    BatchRun run;
+    run.chartmode = "group-cancel-test";
+    hydra::store::RecordStore store(":memory:");
+    run_planned(fake_items(200), run, store, /*redo=*/false, 4, callbacks);
+
+    CHECK(results >= 5);
+    CHECK(results < 200);
+    // Every stored chart was reported, and nothing was stored unreported.
+    CHECK(store.counts().second == results);
+    // No group was left open: a plain save still runs its own transaction.
+    const hydra::store::RecordKey key{"after", run.chartmode, run.cap_query(), run.lens};
+    store.save_analysis("after", "After", "", "", real.song,
+                        hydra::store::prepare_row(key, real.record), std::nullopt);
+    CHECK(store.counts().second == results + 1);
+}
+
+TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a chart whose own "
+          "save fails is failed") {
+    // D86.1. The store's test seam fails the batch's first group COMMIT the
+    // way a real one does; a trigger refuses chart boom's result.
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks = real_result_callbacks(real);
+    std::vector<std::string> errors;
+    callbacks.on_error = [&errors](const std::string& title, const std::string& sentence,
+                                   const std::string& error) {
+        errors.push_back(title + "|" + sentence + "|" + error);
+    };
+    BatchProgress last;
+    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+
+    std::vector<ScanItem> items = fake_items(3);
+    items[1].md5 = "boom";
+    items[1].title = "boom";
+
+    const std::string path = testtemp::temp_path("batch_group_fail", ".db");
+    std::remove(path.c_str());
+    { hydra::store::RecordStore store(path); }
+    {
+        sqlite3* db = nullptr;
+        REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+        REQUIRE(sqlite3_exec(db,
+                             "CREATE TRIGGER refuse_boom BEFORE INSERT ON results"
+                             " WHEN NEW.hyhash = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END;",
+                             nullptr, nullptr, nullptr) == SQLITE_OK);
+        sqlite3_close(db);
+    }
+    BatchRun run;
+    run.chartmode = "group-fail-test";
+    {
+        hydra::store::RecordStore store(path);
+        store.fail_next_group_commit_for_test();
+        run_planned(items, run, store, /*redo=*/false, 1, callbacks);
+
+        CHECK(last.analyzed == 2);
+        CHECK(last.failed == 1);
+        REQUIRE(errors.size() == 1);
+        CHECK(errors[0].rfind("boom|Hydra couldn't save to its database (hydra.db). Check that "
+                              "the disk isn't full and that no other copy of Hydra is running, "
+                              "then try again.|add_row",
+                              0) == 0);
+        CHECK(errors[0].find("boom", 5) != std::string::npos);
+        CHECK(store.counts().second == 2);
+        const std::unordered_set<std::string> stored = charts_with_result(store, run, false);
+        CHECK(stored.count("fake0") == 1);
+        CHECK(stored.count("fake2") == 1);
+        // The batch spent the armed failure: a group committed now succeeds.
+        store.begin_save_group();
+        CHECK_NOTHROW(store.commit_save_group());
+    }
+    std::remove(path.c_str());
+}

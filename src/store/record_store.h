@@ -353,6 +353,13 @@ inline std::string naming_copy_of_one_sql() {
            " WHERE md5 = ?1 AND copies > 1";
 }
 
+// The most charts one save group holds (D86 item 2). A group also closes
+// whenever the batch's writer catches up with its workers, so most hold fewer.
+inline constexpr int kSaveGroupSize = 16;
+// The WAL checkpoint threshold, in pages, while a batch runs (D86 item 3).
+// RecordStore::BatchWrites sets it and puts SQLite's own back at the end.
+inline constexpr int kBatchWalAutocheckpointPages = 10000;
+
 class RecordStore {
 public:
     // dbpath may be ":memory:" for an ephemeral store (used by tests). A db
@@ -399,6 +406,43 @@ public:
                        const Song& song, const PreparedRow& row,
                        const std::optional<DynamicsEntry>& dynamics,
                        const SongLength& length = {});
+
+    // A save group (D86 items 1 and 2): one transaction around several
+    // save_analysis calls, which the batch's writer opens so it commits once
+    // per group instead of once per chart. begin_save_group takes the store
+    // lock and keeps it until commit_save_group, so other users of the store
+    // wait at most one group. Inside a group each save_analysis is its own
+    // SAVEPOINT, so a save that fails still undoes only its own chart.
+    // commit_save_group drops the lock whether or not it throws; when it
+    // throws, the whole group was rolled back and none of it was kept.
+    void begin_save_group();
+    void commit_save_group();
+    bool save_group_open() const { return group_open_; }
+    // True once a save inside the open group failed in a way that made SQLite
+    // roll back the whole transaction (a full disk, an I/O error, no memory).
+    // Every later save in the group then throws, and so does its commit.
+    bool save_group_lost() const { return group_lost_; }
+    // Test seam: the next commit_save_group throws as a failed COMMIT does,
+    // after rolling the group back.
+    void fail_next_group_commit_for_test() { fail_next_group_commit_ = true; }
+
+    // A batch's checkpoint setting, held for as long as the guard lives
+    // (D86 item 3). While it lives the WAL log may grow to
+    // kBatchWalAutocheckpointPages before SQLite folds it into the file. When
+    // it ends, one checkpoint writes every result into the file and empties
+    // the log, and SQLite's own threshold comes back.
+    class BatchWrites {
+    public:
+        explicit BatchWrites(RecordStore& store);
+        ~BatchWrites();
+        BatchWrites(const BatchWrites&) = delete;
+        BatchWrites& operator=(const BatchWrites&) = delete;
+
+    private:
+        RecordStore& store_;
+    };
+    // The connection's checkpoint threshold in pages, for the tests.
+    int wal_autocheckpoint_for_test();
 
     // Stores a dynamics-breakdown blob (INSERT OR REPLACE) under the caller's
     // count stamp (kDynamicsCountStamp.written; go through app::save_dynamics).
@@ -568,6 +612,18 @@ private:
     // lock later; for_each_blob is the one place that does this, reusing two
     // statements across the walk instead of recompiling them per row.
     std::recursive_mutex mutex_;
+    // Compiled statements kept for reuse, keyed by their SQL, so the save
+    // path compiles each statement once per connection. Used and reset under
+    // the lock; close() finalizes them before the connection closes.
+    std::unordered_map<std::string, sqlite3_stmt*> stmt_cache_;
+    // The save group's state (begin_save_group). Written only by the thread
+    // that holds the group, which also holds the lock.
+    bool group_open_ = false;
+    bool group_lost_ = false;
+    bool fail_next_group_commit_ = false;
+    // Runs a transaction-control statement (BEGIN, COMMIT, SAVEPOINT ...)
+    // through the statement cache. The caller holds the lock.
+    void ctl(const char* sql);
 
     // The constructor's work after the file opens: the journal mode, the
     // tables, and every upgrade and backfill an older file needs. The
