@@ -1460,36 +1460,34 @@ COp ChartParser::optype(const ChartLine& e, int64_t tick) {
 
 // An N line's op, by its note number.
 COp ChartParser::note_optype(int value) const {
-    {
-        constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
-        switch (value) {
-            case 0: return cop_color(N, CAct::Note, NoteColor::Kick);
-            case 1: return cop_color(N, CAct::Note, NoteColor::Red);
-            case 2: return cop_color(N, CAct::Note, NoteColor::Yellow);
-            case 3: return cop_color(N, CAct::Note, NoteColor::Blue);
-            case 4: return cop_color(N, CAct::Note, NoteColor::Green);
-            case 32:
-                if (mode_bass2x_) return cop(N, CAct::TwoX);
-                return {};
-            case 34: return cop_color(M, CAct::Accent, NoteColor::Red);
-            case 35: return cop_color(M, CAct::Accent, NoteColor::Yellow);
-            case 36: return cop_color(M, CAct::Accent, NoteColor::Blue);
-            case 37: return cop_color(M, CAct::Accent, NoteColor::Green);
-            case 40: return cop_color(M, CAct::Ghost, NoteColor::Red);
-            case 41: return cop_color(M, CAct::Ghost, NoteColor::Yellow);
-            case 42: return cop_color(M, CAct::Ghost, NoteColor::Blue);
-            case 43: return cop_color(M, CAct::Ghost, NoteColor::Green);
-            case 66:
-                if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Yellow);
-                return {};
-            case 67:
-                if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Blue);
-                return {};
-            case 68:
-                if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Green);
-                return {};
-            default: return {};
-        }
+    constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
+    switch (value) {
+        case 0: return cop_color(N, CAct::Note, NoteColor::Kick);
+        case 1: return cop_color(N, CAct::Note, NoteColor::Red);
+        case 2: return cop_color(N, CAct::Note, NoteColor::Yellow);
+        case 3: return cop_color(N, CAct::Note, NoteColor::Blue);
+        case 4: return cop_color(N, CAct::Note, NoteColor::Green);
+        case 32:
+            if (mode_bass2x_) return cop(N, CAct::TwoX);
+            return {};
+        case 34: return cop_color(M, CAct::Accent, NoteColor::Red);
+        case 35: return cop_color(M, CAct::Accent, NoteColor::Yellow);
+        case 36: return cop_color(M, CAct::Accent, NoteColor::Blue);
+        case 37: return cop_color(M, CAct::Accent, NoteColor::Green);
+        case 40: return cop_color(M, CAct::Ghost, NoteColor::Red);
+        case 41: return cop_color(M, CAct::Ghost, NoteColor::Yellow);
+        case 42: return cop_color(M, CAct::Ghost, NoteColor::Blue);
+        case 43: return cop_color(M, CAct::Ghost, NoteColor::Green);
+        case 66:
+            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Yellow);
+            return {};
+        case 67:
+            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Blue);
+            return {};
+        case 68:
+            if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Green);
+            return {};
+        default: return {};
     }
 }
 
