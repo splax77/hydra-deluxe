@@ -272,7 +272,14 @@ private:
     int generation_;
     std::atomic<float> progress_{-1.0f};
     ViewOutcome out_;
+    app::ChartAnalyzer analyze_;  // the test seam's, copied at construction
 };
+
+// Test seam: when set, every click's job built from now on runs this analyzer
+// in place of app::analyze_chart_file, so a test can hold a click's job open
+// (Cancel, the progress box's delay, a burst of setting changes) instead of
+// racing a fast chart. An empty analyzer clears it. Only tests set it.
+void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 
 // ---- ReportJob --------------------------------------------------------
 

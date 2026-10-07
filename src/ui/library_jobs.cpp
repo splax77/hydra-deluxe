@@ -306,13 +306,22 @@ void BatchJob::run() {
 
 // ---- ViewJob ----------------------------------------------------------
 
+namespace {
+app::ChartAnalyzer g_view_analyzer;
+}  // namespace
+
+void set_view_analyzer_for_test(app::ChartAnalyzer analyze) {
+    g_view_analyzer = std::move(analyze);
+}
+
 ViewJob::ViewJob(store::ChartLibraryEntry song, store::RecordKey key,
                  app::AnalysisSettings settings, bool analysis_off, int generation)
     : song_(std::move(song)),
       key_(std::move(key)),
       settings_(std::move(settings)),
       analysis_off_(analysis_off),
-      generation_(generation) {}
+      generation_(generation),
+      analyze_(g_view_analyzer ? g_view_analyzer : app::ChartAnalyzer(app::analyze_chart_file)) {}
 
 void ViewJob::start() {
     // The thread constructor itself can throw (std::system_error when the OS
@@ -341,7 +350,7 @@ void ViewJob::run() {
             throw_if_cancelled();
             if (!analysis_off_) {
                 try {
-                    out_.analysis = app::analyze_chart_file(path, settings_, [this](float f) {
+                    out_.analysis = analyze_(path, settings_, [this](float f) {
                         if (cancel_.load(std::memory_order_relaxed))
                             throw app::AnalysisCancelled{};
                         progress_.store(f, std::memory_order_relaxed);

@@ -11,6 +11,7 @@
 #endif
 #include <windows.h>
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -221,6 +222,37 @@ const hydra::ui::LibraryRow& row_of(const AppState& app, const std::string& md5)
     FAIL("no library row for " << md5);
     throw std::logic_error("unreachable");
 }
+
+// Holds every click's job started from now on inside its analysis until
+// release(), the way a slow parse would: the job ignores Cancel while held,
+// then stops at its first progress tick if it was cancelled. `entered` counts
+// the jobs that reached it. Declare it AFTER the AppState: its destructor lets
+// every held job through, and the app's destructor joins them.
+struct ViewLatch {
+    std::shared_ptr<std::atomic<bool>> open = std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<std::atomic<int>> entered = std::make_shared<std::atomic<int>>(0);
+    ViewLatch() {
+        hydra::ui::set_view_analyzer_for_test(
+            [open = open, entered = entered](const std::string& path,
+                                             const hydra::app::AnalysisSettings& settings,
+                                             const std::function<void(float)>& on_progress) {
+                ++*entered;
+                while (!open->load()) Sleep(1);
+                on_progress(0.0f);  // throws when the job was cancelled
+                return hydra::app::analyze_chart_file(path, settings, on_progress);
+            });
+    }
+    ~ViewLatch() {
+        release();
+        hydra::ui::set_view_analyzer_for_test(nullptr);
+    }
+    void release() { open->store(true); }
+    // Waits until `n` jobs have reached the latch.
+    void wait_entered(int n) {
+        for (int i = 0; i < 12000 && entered->load() < n; ++i) Sleep(1);
+        REQUIRE(entered->load() >= n);
+    }
+};
 
 int64_t results_rows(const ScratchPaths& paths) {
     return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results");
@@ -607,9 +639,10 @@ TEST_CASE("commit_settings with a non-identity change analyzes nothing again") {
     CHECK(Settings::load_file(paths.ini).hit_window_ms == app->settings.hit_window_ms);
 }
 
-// Ruling 12: a burst of setting changes (a held +/- box) runs at most one
-// job at a time and ends with one analysis of the final settings. The
-// settings in between are never saved.
+// Ruling 12: a burst of setting changes (a held +/- box) runs one job at a
+// time and ends with one analysis of the final settings. The settings in
+// between are never saved. The first step's job is held at a latch, as a
+// slow parse would hold it, so the test doesn't depend on the machine's speed.
 TEST_CASE("a burst of setting changes ends with one analysis of the final settings") {
     ScratchPaths paths("appstate_burst");
     const ChartLibraryEntry song = corpus_chart("click_burst");
@@ -617,18 +650,26 @@ TEST_CASE("a burst of setting changes ends with one analysis of the final settin
     click(*app, song);
     REQUIRE(app->viewed.ready());
 
+    ViewLatch latch;  // after the app: see ViewLatch
     const int first_cap = app->settings.sp_cap + 1;
     const int last_cap = first_cap + 4;
     app->settings.sp_cap = first_cap;
     app->edit_settings();
     REQUIRE(app->view_job != nullptr);
     const int first_generation = app->view_job->generation();
+    latch.wait_entered(1);  // the first job is inside its analysis now
     for (int cap = first_cap + 1; cap <= last_cap; ++cap) {
         app->settings.sp_cap = cap;
         app->edit_settings();
-        REQUIRE(app->view_job != nullptr);  // the one slot
+        // The one slot still holds the first job; the latest request waits.
+        REQUIRE(app->view_job != nullptr);
+        CHECK(app->view_job->generation() == first_generation);
+        CHECK(app->view_pending);
+        app->tick(0.0);  // a frame: the held job hasn't ended, so nothing starts
+        CHECK(app->view_job->generation() == first_generation);
     }
     const int final_generation = app->view_generation.n;
+    latch.release();
 
     std::set<int> started{first_generation};
     for (int i = 0; i < 12000 && (app->view_job || app->view_pending); ++i) {
@@ -639,9 +680,8 @@ TEST_CASE("a burst of setting changes ends with one analysis of the final settin
         Sleep(5);
     }
     REQUIRE_FALSE(app->view_job);
-    CHECK(started.size() <= 2);
-    CHECK(started.count(final_generation) == 1);
-    CHECK(started.count(first_generation) == 1);
+    CHECK(started == std::set<int>{first_generation, final_generation});
+    CHECK(latch.entered->load() == 2);
 
     CHECK(app->viewed.ready());
     Settings at = app->settings;

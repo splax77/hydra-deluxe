@@ -355,7 +355,7 @@ public:
     // running. start_scan enforces it; the toolbar button reads it.
     bool can_scan() const;
     // Whether any background job is still working: scan, batch, the click's
-    // job (parked ones included), path report, the two leaderboard jobs, and
+    // job (a waiting request included), path report, the two leaderboard jobs, and
     // the Preview's jobs. A finished job waiting to be collected counts as
     // done. The parked leaderboard jobs are left out: they were cancelled,
     // and nothing on screen waits on them. The GUI tests' wait-idle waits on
