@@ -48,7 +48,7 @@ The order:
 1. **Before dispatch (main session).** Commit this plan, D87 and the storage-audit handoff folder, because worktrees only see committed files.
 2. **T0, measure first.** Two numbers the user asked to see before building: the report's extra time and the upgrade's one-time wait.
 3. **Wave 1, three tasks in parallel.** T1 cleans up gone charts and adds a re-identify for one chart. T3 builds the path report from the engine. T4 stops the tools reading stored details.
-4. **Wave 2.** T2, analyze on click, forks from T1's tip as soon as T1's code exists, because it calls T1's re-identify.
+4. **Wave 2.** T2, analyze on click, forks once T1 and T3 are merged. It calls T1's re-identify and shares two GUI files with T3.
 5. **Wave 3.** T5 stores summaries only, forked once T2, T3 and T4 are merged. T6 writes the ADR and docs in parallel with T5.
 6. **The join (main session).** Full suite once, one library check, the upgrade on a copy of the real database, one timing run.
 7. **Track R** (hydra_replay) starts with wave 1 and merges on its own.
@@ -83,7 +83,7 @@ How. For the report, run `hydra_bench --engine "C:\Clone Hero"` (single-threaded
 
 **Files:**
 - Modify: `src/store/record_store.h`, `src/store/record_store.cpp`. Add two public functions. `delete_results_without_chart()` deletes every `results` row whose `hyhash` has no `charts` row. While they still exist, it also deletes that chart's `songmeta` and `dynamics` rows and its `path_refs`, and garbage-collects nodes the way `write_row` does today. `reidentify_chart(notespath, new_md5, new_sig)` updates that path's `charts` row and calls `delete_results_without_chart()` in the same transaction. `rebuild_chart_library` calls `delete_results_without_chart()` inside its own transaction, after reinserting the scan.
-- Modify: `src/store/record_store.cpp`, `copies_of`. A result whose chart has no library row can no longer reach a report, so the D77 "counts once" fallback becomes a `std::logic_error` naming the md5.
+- Leave `copies_of` and its D77 "counts once" fallback alone. The fill comparison (D79 item 3) still needs it for databases that `hydra_batch` built with folder arguments, which have no library rows.
 - Test: `tests/test_store.cpp`
 
 **Acceptance Criteria:**
@@ -91,7 +91,6 @@ How. For the report, run `hydra_bench --engine "C:\Clone Hero"` (single-threaded
 - [ ] A chart with two library copies keeps its rows when one copy leaves.
 - [ ] A library chart keeps its rows for other chart modes, including Stale ones.
 - [ ] `reidentify_chart` moves the library row to the new md5. It deletes the old md5's rows only when no other library row still has that md5.
-- [ ] `copies_of` on an md5 with no library row throws.
 
 **Verify:** `.\build_cpp.ps1 -Target hydra_tests` then `build-cpp\Release\hydra_tests.exe -sf=*test_store*` → all pass.
 
@@ -109,7 +108,7 @@ How. For the report, run `hydra_bench --engine "C:\Clone Hero"` (single-threaded
 
 **Goal:** Clicking a song runs the engine on a worker thread and shows its paths. The click saves the summary when needed and re-identifies an edited chart. The Analyze button goes. This is D87 items 1, 2, 3, 6, 9, 10 and 11.
 
-**Forks from:** T1's branch tip, as soon as T1's code exists (memory `parallel-by-default.md`).
+**Forks from:** main once T1 and T3 are merged. It calls T1's `reidentify_chart`, and it shares `library_jobs.cpp` and `app_state.cpp` with T3, so the two never write those files at once.
 
 What happens on a click, in order. These are the behaviours the tests pin.
 
@@ -185,7 +184,7 @@ The click must load the Song with exactly the options `DynamicsLoadJob` and `Son
 
 **Files:**
 - Modify: `tools/replay.cpp` (`cmd_dump`, about :514-601). Drop the database snapshot, `--db`, `--no-analyze` and the `get_record` branch. Keep the JSON's `source` field, always `"analyzed"`, so scripts that read it don't break. Update the usage text (about :99).
-- Modify: `src/cli/batch.cpp` (drop `--reindex`, about :98-102 and :154-155) and `src/store/record_store.{h,cpp}` (delete `reindex()`).
+- Modify: `src/cli/batch.cpp` (drop `--reindex`, about :98-102 and :154-155). Don't touch `src/store/`: T1 owns it in this wave, and T5 deletes `RecordStore::reindex()`.
 - Test: the replay tests (`build-cpp\Release\hydra_tests.exe -sf=*replay*`) and the batch-argument tests, if any. Grep `tests/` for `reindex` and `no-analyze` and update each hit.
 
 This task changes `cmd_dump` only. Track R changes `cmd_score`, `cmd_target` and `check_chart` in the same file, so the two merge cleanly as long as neither reformats the other's functions.
@@ -193,7 +192,7 @@ This task changes `cmd_dump` only. Track R changes `cmd_score`, `cmd_target` and
 **Acceptance Criteria:**
 - [ ] `hydra_replay dump <chart>` prints `"source":"analyzed"` and the same paths as before for a testdata chart.
 - [ ] `hydra_replay dump --no-analyze` and `hydra_batch --reindex` exit non-zero with "unknown option" (the tools' existing message for an unknown flag).
-- [ ] A grep for `reindex(` and `no-analyze` in `src`, `tools` and `tests` finds nothing.
+- [ ] A grep for `no-analyze` and `--reindex` in `src`, `tools` and `tests` finds nothing. (`RecordStore::reindex()` itself stays until T5.)
 - [ ] Every doc that mentions either flag is listed for T6 (`docs/`, the User Guide, the FC video workflow notes).
 
 **Verify:** `.\build_cpp.ps1 -Target hydra_replay`, `-Target hydra_batch`, `-Target hydra_tests`; then `build-cpp\Release\hydra_tests.exe -sf=*replay*` → pass.
@@ -218,7 +217,7 @@ Any failure throws the DatabaseOpen sentence (D72 item 2).
 The Ready rule moves from the blob head to the columns. `rank_row` reads `hyversion` and the `rules_fp` column; `kPathFormatStamp` goes. Every current row has path format 7, because format 7 came before the "2.1.0+allzero" stamp, so no row changes state. The upgrade test proves it.
 
 **Files:**
-- Modify: `src/store/record_store.{h,cpp}`. Delete `get_record`, `get_timing`, `for_each_blob`, `load_nodes`, `reload_row`, `collect_orphan_paths`, `upsert_song`, `encode/decode_tempomap`, `write_song_length`, `fill_song_length`, `insert_dynamics`, `put_dynamics`, `get_dynamics` and `fill_missing_stars`. Trim `PreparedRow` (no `structure`, no `nodes`) and `save_analysis` (no tempomap, dynamics or length arguments). Delete `RecordLookup`. Remove the songmeta join from `list_records`, which now names charts through `kNamingCopiesSql`. Add the upgrade and the pragma.
+- Modify: `src/store/record_store.{h,cpp}`. Delete `get_record`, `get_timing`, `for_each_blob`, `load_nodes`, `reload_row`, `collect_orphan_paths`, `upsert_song`, `encode/decode_tempomap`, `write_song_length`, `fill_song_length`, `insert_dynamics`, `put_dynamics`, `get_dynamics`, `fill_missing_stars` and `reindex`. Trim `PreparedRow` (no `structure`, no `nodes`) and `save_analysis` (no tempomap, dynamics or length arguments). Delete `RecordLookup`. Remove the songmeta join from `list_records`, which now names charts through `kNamingCopiesSql`. Add the upgrade and the pragma.
 - Delete: `src/store/path_codec.{h,cpp}`, `tests/test_path_codec.cpp`, `tests/test_dynamics_store.cpp`, `tests/record_bytes.h`, and T3's stored-versus-engine equivalence test in `tests/test_report.cpp`, which needs `for_each_blob`.
 - Modify: `src/store/stored_versions.h`. Remove `kPathFormatStamp`, `kDynamicsCountStamp`, `kDynamicsBlobStamp` and `kSongLengthStamp`, with their comments. `kResultsStamp` and `kChartMetaStamp` stay unchanged.
 - Modify: `src/app/dynamics_breakdown.{h,cpp}` (delete `encode/decode_dynamics`, `save_dynamics`, `load_stored_dynamics`; keep `count_dynamics`), `src/app/analysis.cpp` (`run_batch` no longer counts dynamics or builds a tempo map; `prepare_row` makes a summary only), `src/ui/app_state.cpp` (the click's `save_analysis` call).
@@ -230,7 +229,7 @@ The Ready rule moves from the blob head to the columns. `rank_row` reads `hyvers
 - [ ] Upgrade test: a store seeded in the old layout with Ready, Stale-version, Stale-rules, NULL-stars and other-chart-mode rows comes out with no detail tables and no `structure` column. Ready rows are still Ready, Stale rows are still Stale, and NULL-stars rows are gone.
 - [ ] Opening an upgraded store a second time does nothing (it's idempotent).
 - [ ] `PRAGMA journal_size_limit` reads 4194304 after open.
-- [ ] A grep for `path_codec`, `tempomap`, `songmeta`, `get_record`, `for_each_blob` and `kPathFormatStamp` in `src` and `tools` finds nothing.
+- [ ] A grep for `path_codec`, `tempomap`, `songmeta`, `get_record`, `for_each_blob`, `reindex` and `kPathFormatStamp` in the C++ files (`*.cpp`, `*.h`) of `src` and `tools` finds nothing. `compare_db.py` may still name the dropped tables, because it has to skip them.
 - [ ] `py tools\test_compare_db.py` passes.
 - [ ] The batch saves rows that `compare_db.py --summary-only` matches against a baseline database on the testdata library.
 
