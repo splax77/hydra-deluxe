@@ -251,10 +251,6 @@ TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted char
     // once (store::RecordStore::copies_of).
     store::RecordStore old_store(":memory:");
     store::RecordStore new_store(":memory:");
-    put_ch10(old_store, kBoth, 1000000, 3, "old-path-K");
-    put_ch11(new_store, kBoth, 1050000, 4, "new-path-K");  // 1.1 higher
-    put_ch10(old_store, kOldOnly, 900000, 2, "only-old");  // only 1.0
-    put_ch11(new_store, kNewOnly, 800000, 5, "only-new");  // only 1.1
 
     auto library = [](const std::string& md5, int copies) {
         std::vector<store::ChartLibraryEntry> out;
@@ -268,8 +264,15 @@ TEST_CASE("collect_fill_rows: copies come from the 1.1 library, an unlisted char
         }
         return out;
     };
+    // The libraries first: a scan deletes what its library doesn't list
+    // (D87 item 4), and hydra_batch with folder arguments saves the rest
+    // without touching the library.
     new_store.rebuild_chart_library(library(kBoth, 2));
     old_store.rebuild_chart_library(library(kOldOnly, 3));
+    put_ch10(old_store, kBoth, 1000000, 3, "old-path-K");
+    put_ch11(new_store, kBoth, 1050000, 4, "new-path-K");  // 1.1 higher
+    put_ch10(old_store, kOldOnly, 900000, 2, "only-old");  // only 1.0
+    put_ch11(new_store, kNewOnly, 800000, 5, "only-new");  // only 1.1
 
     const std::vector<FillCompareRow> rows = compare(old_store, new_store);
     REQUIRE(rows.size() == 3);
