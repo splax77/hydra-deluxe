@@ -319,18 +319,18 @@ result under rules A deleted the chart's rules-B row (audit finding 65). The
 promise now holds, and its two sentences stay as they are.
 
 The results table's unique key gains the rules fingerprint, as a `rules_fp`
-column. It is filled from the structure blob's head by `rules_fp_of`, the one
+column. It is filled from the structure blob's head by rules_fp_of, the one
 SQL spelling of "which rules was this row analyzed under". Schema 4 rebuilds
-the table once, in `upgrade_results_key`, and keeps every row, result id and
+the table once, in upgrade_results_key, and keeps every row, result id and
 blob, so nothing is analyzed again. A rules-A row and a rules-B row for the
 same chart, mode, cap and lens now sit side by side.
 
 The SQL Ready check stopped being one undivided check here. It became
-`row_readable_sql()` (this build can read the row: its results version and
+row_readable_sql() (this build can read the row: its results version and
 path format) plus the rules part (the row's fingerprint is this process's).
 D79 later removed the rules part from SQL; only `rank_row` reads it now.
 A write under rules A has two purges: the first removes the rows that fail
-`row_readable_sql()` (unreadable by this build), and the second replaces the
+row_readable_sql() (unreadable by this build), and the second replaces the
 row with the same key under the same rules. Neither touches the rules-B row,
 so it is kept.
 

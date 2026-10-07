@@ -71,9 +71,10 @@ through `app::analyze_chart_file`). Nothing is worked out a second way:
 A row is Ready when its results stamp is current (`kResultsStamp`) and its
 `rules_fp` column matches the rules in force. `rank_row` reads both columns.
 Until storage-T5 it read them from the head of the row's stored path blob,
-together with a path format stamp. Every row stored today has path format 7,
-because format 7 came before the current results stamp. So no row changes
-state when the check moves to the columns.
+together with a path format stamp. Every row that carries the current results
+stamp has path format 7, because format 7 came before that stamp. The older
+rows, in older formats, are already Stale by their results stamp and stay
+Stale. So no row changes state when the check moves to the columns.
 
 Two smaller rules come with this. Rows of charts that left the library are
 deleted at each scan (D87 item 4, `delete_results_without_chart`). A chart

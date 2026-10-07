@@ -35,9 +35,10 @@ hydra_fillcompare ... --no-open
 
 All three read the app's settings file, so they work at the same SP cap,
 timing limit and score range the app is set to. `hydra_batch` and
-`hydra_fillcompare` also use the app's chart mode. `hydra_report` lists every
-chart mode stored at those settings, top N paths per chart and mode. The fill
-rule is the exception, below. All three read the scoring rules from
+`hydra_fillcompare` also use the app's chart mode. `hydra_report` covers every
+chart mode at those settings, top N paths per chart and mode, and it picks its
+charts from the chart library; `collect_rows` in src/app/report.h owns which
+charts those are (D87 item 5). The fill rule is the exception, below. All three read the scoring rules from
 `hydra_rules.ini` next to Hydra.exe, or from the file `--rules` names. If that
 file has an error, they print it and stop with exit code 2.
 
@@ -50,10 +51,11 @@ the app's 1.0 fills setting and goes by the flag alone. It still refuses to
 write into the app's own `hydra.db`, so give it its own `--db`. Each database it
 fills is stamped with the rule, and hydra_batch refuses (exit code 2) a run
 whose rule disagrees with the stamp.
-`hydra_report` on a database stamped 1.0 reports its 1.0 results. When it
-finds nothing under the current settings but the database holds other
-results, it names the settings it looked under instead of saying the
-database is empty.
+`hydra_report` on a database stamped 1.0 reports its 1.0 results. When it has
+nothing to show, it says why rather than calling the database empty: other
+settings hold results, or the database has no chart library, as one built by
+`hydra_batch` with folder arguments has (D89 item 2). `generate_report` in
+src/app/report.h owns those cases and their sentences.
 
 To see what the rule change did, compare the two. `hydra_fillcompare` reads
 the 1.0 results from `--old` and the 1.1 results from `--new`. Each chart's

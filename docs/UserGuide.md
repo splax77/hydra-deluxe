@@ -175,7 +175,7 @@ The **Pads** table shows, for each pad (and each cymbal separately under Pro Dru
 
 The **Chart** box says whether the chart has dynamics turned on. A MIDI chart has to opt in with a tag. Without that tag Clone Hero ignores the velocity markings and plays every note as a normal hit. Hydra Deluxe reads the chart the same way, so the tab shows no ghost or accent counts. It says `This chart has no ghost or accent notes.`, and the Chart box says `Dynamics enabled: no (markings ignored by Clone Hero)`. When the tag only comes partway through the chart, the markings before it are ignored too, and the Chart box says how many there were.
 
-Counts are worked out the first time you open the tab and saved, so it opens instantly after that. Analyzing a song with 2x Bass on also saves them.
+Counts are worked out when you open the song, together with its paths. Nothing is saved, so they always match the chart file as it is now.
 
 ## Stars tab
 

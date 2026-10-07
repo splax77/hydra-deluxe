@@ -49,3 +49,7 @@ Three backticked names in ADR 0014's D51 call 8 amendment may not survive T5: `r
 The ADR and the docs describe T2's and T5's final state. On today's main the ADR's upgrade and Ready-check sentences are ahead of the code, as the brief asked.
 
 CONTEXT.md gains a "Summary row" term. That is a new glossary entry, not new app text.
+
+## Fix round (derive-once review by a82d1275c5d1f95db)
+
+I fixed all five findings. README's getting-started list drops the "Analyze this song" step, so step 5 ends with the song being analyzed. The User Guide's Dynamics tab says the counts are worked out with the paths when the song opens, and nothing is saved. ADR 0026 no longer claims every stored row has path format 7: rows with the current results stamp have it, and older-format rows are already Stale by their stamp and stay so. development.md says hydra_report picks its charts from the chart library (owner `collect_rows`, D87 item 5), and that an empty report names its cause, a database with no chart library included (owner `generate_report`, D89 item 2). ADR 0014 drops the backticks from rules_fp_of, upgrade_results_key and row_readable_sql, which settles the concern above. The docs test passes again (5 test cases, 88 assertions), and the scan against T2's tree finds only the test's own allow-list.
