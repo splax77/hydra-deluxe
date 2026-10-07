@@ -59,6 +59,11 @@ const char* status_label(store::RecordStatus status);
 // word. All filters to no one status, so it has none.
 std::optional<store::RecordStatus> status_of(StatusChip chip);
 
+// A filter chip's button label: its word, its count, and the id after "##"
+// that keeps the label's identity when the count changes. render_chips draws
+// it and the GUI tests look the button up by it.
+std::string chip_label(StatusChip chip, size_t count);
+
 // The Best path cell: "Not analyzed", "Stale", or "<score>  <path>" such as
 // "378,315  3- 1 2". The score is the stored summary's, never recomputed.
 std::string best_path_label(store::RecordStatus status, const std::string& bestpath,

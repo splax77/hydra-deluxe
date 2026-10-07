@@ -1364,6 +1364,29 @@ const std::vector<OwnerRule>& rules() {
           {"src/ui/library_model.cpp", "case store::RecordStatus::Stale: return \"Stale\";",
            "status_label, the owner"},
           {"src/ui/library_model.cpp", "return \"Not analyzed\";", "status_label, the owner"}}},
+        // A filter chip's button id typed as text. chip_label builds the whole
+        // label (word, count, id), and render_chips and the GUI tests ask it.
+        // src only: the GUI tests also pin whole labels as literals, which a
+        // text search cannot tell from a label built by hand, so the test that
+        // looks chips up by a computed label is reviewed, not scanned.
+        {"What does a status chip's button label read?",
+         "chip_label in src/ui/library_model.cpp",
+         R"re("chip(all|new|stale|done)")re",
+         "",
+         {},
+         {},
+         "storage-T2 sign-off (library-layout chip refs)",
+         {"{StatusChip::All, \"chipall\"},", "{StatusChip::Analyzed, \"chipdone\"},"},
+         {"const std::string label = chip_label(chip, n);",
+          "if (chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());"},
+         {{"src/ui/library_model.cpp", "const char* id = \"chipall\";", "chip_label, the owner"},
+          {"src/ui/library_model.cpp", "case StatusChip::NotAnalyzed: id = \"chipnew\"; break;",
+           "chip_label, the owner"},
+          {"src/ui/library_model.cpp", "case StatusChip::Stale: id = \"chipstale\"; break;",
+           "chip_label, the owner"},
+          {"src/ui/library_model.cpp", "case StatusChip::Analyzed: id = \"chipdone\"; break;",
+           "chip_label, the owner"}},
+         {"src"}},
         // Two paths compared by score and notation, or keyed by notation and
         // score glued together, instead of by path_identity.
         {"Is this the same path as that one?",

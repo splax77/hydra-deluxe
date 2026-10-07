@@ -83,6 +83,19 @@ std::optional<store::RecordStatus> status_of(StatusChip chip) {
     return std::nullopt;
 }
 
+std::string chip_label(StatusChip chip, size_t count) {
+    const std::optional<store::RecordStatus> status = status_of(chip);
+    const char* name = status ? status_label(*status) : "All";
+    const char* id = "chipall";
+    switch (chip) {
+        case StatusChip::All: break;
+        case StatusChip::NotAnalyzed: id = "chipnew"; break;
+        case StatusChip::Stale: id = "chipstale"; break;
+        case StatusChip::Analyzed: id = "chipdone"; break;
+    }
+    return std::string(name) + " (" + group_thousands(static_cast<int64_t>(count)) + ")##" + id;
+}
+
 std::string best_path_label(store::RecordStatus status, const std::string& bestpath,
                             const store::PathSummary& summary) {
     // A row with no current result shows its status word.
