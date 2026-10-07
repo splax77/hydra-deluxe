@@ -1,0 +1,472 @@
+diff --git a/src/app/long_paths.manifest b/src/app/long_paths.manifest
+index 894b412..b7f04a3 100644
+--- a/src/app/long_paths.manifest
++++ b/src/app/long_paths.manifest
+@@ -9,5 +9,8 @@
+     <windowsSettings xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
+       <ws2:longPathAware>true</ws2:longPathAware>
+     </windowsSettings>
++    <windowsSettings xmlns:ws3="http://schemas.microsoft.com/SMI/2020/WindowsSettings">
++      <ws3:heapType>SegmentHeap</ws3:heapType>
++    </windowsSettings>
+   </application>
+ </assembly>
+diff --git a/src/core/scoring.cpp b/src/core/scoring.cpp
+index 5a6f78f..44dbcda 100644
+--- a/src/core/scoring.cpp
++++ b/src/core/scoring.cpp
+@@ -1,5 +1,7 @@
+ #include "core/scoring.h"
+ 
++#include <array>
++#include <optional>
+ #include <vector>
+ 
+ #include "core/timing.h"  // to_multiplier, kStarPowerMultiplier
+@@ -21,6 +23,35 @@ NoteValue note_value(const ChordNote& note, int multiplier) {
+     return {at_1x, at_1x * multiplier};
+ }
+ 
++// PERF 6b: Chord::notes(true)'s order without touching the heap. The notes
++// in lane order, then a stable insertion sort on basescore: a stable sort's
++// output is fully determined, so this is the same order.
++struct NoteList {
++    std::array<ChordNote, 5> n;
++    size_t count = 0;
++    size_t size() const { return count; }
++    const ChordNote& operator[](size_t i) const { return n[i]; }
++};
++
++NoteList sorted_notes(const Chord& chord) {
++    NoteList out;
++    for (int c = static_cast<int>(NoteColor::Kick); c <= static_cast<int>(NoteColor::Green); ++c) {
++        const std::optional<ChordNote>& slot = chord.at(static_cast<NoteColor>(c));
++        if (slot) out.n[out.count++] = *slot;
++    }
++    for (size_t i = 1; i < out.count; ++i) {
++        const ChordNote x = out.n[i];
++        const int bx = x.basescore();
++        size_t j = i;
++        while (j > 0 && bx < out.n[j - 1].basescore()) {
++            out.n[j] = out.n[j - 1];
++            --j;
++        }
++        out.n[j] = x;
++    }
++    return out;
++}
++
+ }  // namespace
+ 
+ CategoryScores category_scores(const Chord& chord, int combo,
+@@ -30,7 +61,7 @@ CategoryScores category_scores(const Chord& chord, int combo,
+     out.multiplier = to_multiplier(combo);
+     out.multiplier_after = out.multiplier;
+ 
+-    const std::vector<ChordNote> ordering = chord.notes(true);
++    const NoteList ordering = sorted_notes(chord);
+     if (per_note) {
+         per_note->clear();
+         per_note->reserve(ordering.size());
+diff --git a/src/search/engine.cpp b/src/search/engine.cpp
+index a0fa04d..f0acb42 100644
+--- a/src/search/engine.cpp
++++ b/src/search/engine.cpp
+@@ -90,10 +90,13 @@ struct Enum {
+     // Every deactivation edge's squeeze choices, back to back.
+     std::vector<ChoiceView> choices;
+     int32_t start = -1;
++    // PERF 6c: the graph's rows, which deactivation edges index.
++    const std::vector<BackendSqueeze>* all_backends = nullptr;
+ };
+ 
+ Enum enumerate(const ScoreGraph& graph) {
+     Enum en;
++    en.all_backends = &graph.all_backends();
+     std::unordered_map<const ScoreGraphNode*, int32_t> node_idx;
+     std::unordered_map<const ScoreGraphEdge*, int32_t> edge_idx;
+     std::vector<const ScoreGraphNode*> pend_nodes;
+@@ -1021,8 +1024,12 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
+     const std::optional<int64_t> sqout_phrase =
+         sq ? std::optional<int64_t>(sq->chord) : std::nullopt;
+     int32_t sp_delta = 0;
+-    for (const BackendSqueeze& beo : eo->backends) {
+-        const double be_offset = beo.offset();
++    // PERF 6c: the edge's rows are a range of the graph's rows, measured
++    // against its dest the way the edge's copies used to be.
++    const double deact_end_ms = eo->dest->timecode.ms();
++    for (int32_t bi = eo->backend_begin; bi < eo->backend_end; ++bi) {
++        const BackendSqueeze& beo = (*en_.all_backends)[(size_t)bi];
++        const double be_offset = offset_from_sp_end(beo.timecode.ms(), deact_end_ms);
+         const core::SqOutPosition pos =
+             core::sqout_position(beo.timecode.ticks(), sqout_phrase);
+         const int32_t already_paid =
+@@ -1821,7 +1828,8 @@ struct BuildNode {
+     std::vector<int> children;
+ };
+ 
+-std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths,
++std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
++                           const std::vector<OutPath>& out_paths,
+                            const std::vector<OutAct>& out_acts,
+                            const std::vector<OutSq>& out_sqs,
+                            const std::vector<SpEndStep>& out_ends,
+@@ -1865,7 +1873,7 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
+             act.frontend_points = node->branch_edge->frontend_points;
+             act.e_offset = oa.e_offset;
+             if (oa.deact_edge >= 0) {
+-                act.backends = en.edges[(size_t)oa.deact_edge]->backends;
++                act.backends = graph.edge_backends(*en.edges[(size_t)oa.deact_edge]);
+             } else if (oa.final_sp_end != NO_TIME) {
+                 // SP outlasted the chart, so no deact edge was ever built and
+                 // no edge holds these notes. Measure the song's trailing notes
+@@ -2014,7 +2022,7 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
+     if (!engine.run())
+         throw KindedError(ErrorKind::SearchBroken, "search reached a broken state");
+ 
+-    return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
++    return rebuild(graph, en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
+                    engine.out_ends(), engine.out_ticks(), graph.tail_backends(),
+                    graph.timing(), graph.note_count());
+ }
+diff --git a/src/search/graph.cpp b/src/search/graph.cpp
+index a6ec95e..7e6f639 100644
+--- a/src/search/graph.cpp
++++ b/src/search/graph.cpp
+@@ -217,6 +217,34 @@ void ScoreGraph::build() {
+ 
+     const SongTimestamp& last = song_.sequence.back();
+     advance_tracks(last.timecode, last.chord);
++
++    // PERF 6c: edges still in the window took every row to the end.
++    for (ScoreGraphEdge* e : recent_deact_edges_)
++        e->backend_end = static_cast<int32_t>(all_backends_.size());
++    tail_backends_.assign(all_backends_.begin() + static_cast<std::ptrdiff_t>(recent_lo_),
++                          all_backends_.end());
++#ifdef PERF_VERIFY_6C
++    auto same = [](const BackendSqueeze& a, const BackendSqueeze& b) {
++        return a.timecode.ticks() == b.timecode.ticks() && a.timecode.ms() == b.timecode.ms() &&
++               a.chord == b.chord && a.points == b.points && a.sqout_points == b.sqout_points &&
++               a.offset_ms.has_value() == b.offset_ms.has_value() &&
++               (!a.offset_ms || *a.offset_ms == *b.offset_ms);
++    };
++    if (tail_backends_.size() != recent_check_.size())
++        throw std::logic_error("PERF_VERIFY_6C: tail size");
++    for (size_t i = 0; i < tail_backends_.size(); ++i)
++        if (!same(tail_backends_[i], recent_check_[i]))
++            throw std::logic_error("PERF_VERIFY_6C: tail row");
++    for (const ScoreGraphEdge& e : edge_pool_) {
++        if (e.backend_end == 0 && e.backends_check.empty()) continue;
++        const std::vector<BackendSqueeze> got = edge_backends(e);
++        if (got.size() != e.backends_check.size())
++            throw std::logic_error("PERF_VERIFY_6C: edge row count");
++        for (size_t i = 0; i < got.size(); ++i)
++            if (!same(got[i], e.backends_check[i]))
++                throw std::logic_error("PERF_VERIFY_6C: edge row");
++    }
++#endif
+ }
+ 
+ void ScoreGraph::store_soloscore(int64_t points) {
+@@ -254,17 +282,29 @@ void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
+     backend.points = sp_points;
+     backend.sqout_points = sqout_points;
+ 
+-    recent_backends_.push_back(backend);
+-
+-    // Copy this row onto every deactivation edge still inside its window.
+-    // Which phrase chord an edge squeezes out is decided once, in
+-    // add_deact_edge (core/sqout_chord.h), not here.
++    // PERF 6c: every deactivation edge still inside its window gets this row
++    // by its range staying open (set_head_time closes it); nothing is copied.
++#ifdef PERF_VERIFY_6C
+     for (ScoreGraphEdge* recent_edge : recent_deact_edges_) {
+         BackendSqueeze copy = backend;
+         copy.offset_ms =
+             offset_from_sp_end(ts.timecode.ms(), recent_edge->dest->timecode.ms());
+-        recent_edge->backends.push_back(copy);
++        recent_edge->backends_check.push_back(copy);
+     }
++    recent_check_.push_back(backend);
++#endif
++    all_backends_.push_back(backend);
++}
++
++std::vector<BackendSqueeze> ScoreGraph::edge_backends(const ScoreGraphEdge& e) const {
++    std::vector<BackendSqueeze> out;
++    out.reserve(static_cast<size_t>(e.backend_end - e.backend_begin));
++    const double end_ms = e.dest->timecode.ms();
++    for (int32_t i = e.backend_begin; i < e.backend_end; ++i) {
++        out.push_back(all_backends_[static_cast<size_t>(i)]);
++        out.back().offset_ms = offset_from_sp_end(out.back().timecode.ms(), end_ms);
++    }
++    return out;
+ }
+ 
+ int max_sp_bars(std::optional<int> sp_meter_cap, int sp_phrase_count) {
+@@ -310,16 +350,35 @@ bool ScoreGraph::is_recent_to_head(const Timecode& tc) const {
+ void ScoreGraph::set_head_time(const Timecode& tc) {
+     head_time_ = tc;
+ 
+-    std::vector<ScoreGraphEdge*> keep_edges;
+-    for (ScoreGraphEdge* edge : recent_deact_edges_)
+-        if (is_recent_to_head(edge->dest->timecode))
+-            keep_edges.push_back(edge);
+-    recent_deact_edges_ = std::move(keep_edges);
+-
+-    std::vector<BackendSqueeze> keep_be;
+-    for (const BackendSqueeze& be : recent_backends_)
+-        if (is_recent_to_head(be.timecode)) keep_be.push_back(be);
+-    recent_backends_ = std::move(keep_be);
++    // PERF 6c: an edge leaving the window stops collecting rows here.
++    const int32_t now = static_cast<int32_t>(all_backends_.size());
++    recent_deact_edges_.erase(
++        std::remove_if(recent_deact_edges_.begin(), recent_deact_edges_.end(),
++                       [this, now](ScoreGraphEdge* edge) {
++                           if (is_recent_to_head(edge->dest->timecode)) return false;
++                           edge->backend_end = now;
++                           return true;
++                       }),
++        recent_deact_edges_.end());
++
++    // The head only moves forward, so rows leave the window oldest first:
++    // the survivors are always a suffix.
++    while (recent_lo_ < all_backends_.size() &&
++           !is_recent_to_head(all_backends_[recent_lo_].timecode))
++        ++recent_lo_;
++#ifdef PERF_VERIFY_6C
++    {
++        std::vector<BackendSqueeze> keep_be;
++        for (const BackendSqueeze& be : recent_check_)
++            if (is_recent_to_head(be.timecode)) keep_be.push_back(be);
++        recent_check_ = std::move(keep_be);
++        if (recent_check_.size() != all_backends_.size() - recent_lo_)
++            throw std::logic_error("PERF_VERIFY_6C: recent rows are not a suffix");
++        for (size_t i = 0; i < recent_check_.size(); ++i)
++            if (recent_check_[i].timecode.ticks() != all_backends_[recent_lo_ + i].timecode.ticks())
++                throw std::logic_error("PERF_VERIFY_6C: recent rows differ");
++    }
++#endif
+ }
+ 
+ void ScoreGraph::handle_deact(const Timecode& deact_tc,
+@@ -387,11 +446,16 @@ void ScoreGraph::add_deact_edge() {
+     deact_edge->dest = base_track_head_;
+     const Timecode& end = deact_edge->dest->timecode;
+ 
+-    for (const BackendSqueeze& recent_backend : recent_backends_) {
++    // PERF 6c: the rows still in the window open this edge's range.
++    deact_edge->backend_begin = static_cast<int32_t>(recent_lo_);
++    deact_edge->backend_end = -1;  // open until set_head_time or build's end closes it
++#ifdef PERF_VERIFY_6C
++    for (const BackendSqueeze& recent_backend : recent_check_) {
+         BackendSqueeze copy = recent_backend;
+         copy.offset_ms = offset_from_sp_end(recent_backend.timecode.ms(), end.ms());
+-        deact_edge->backends.push_back(copy);
++        deact_edge->backends_check.push_back(copy);
+     }
++#endif
+ 
+     // The phrase chords this SP end can squeeze, in chart order
+     // (core/sqout_chord.h). The engine offers a path at most one of them
+diff --git a/src/search/graph.h b/src/search/graph.h
+index 8a7fc5b..3c94f8d 100644
+--- a/src/search/graph.h
++++ b/src/search/graph.h
+@@ -156,7 +156,14 @@ struct ScoreGraphEdge {
+ 
+     // The frontend chord's SP points: set only on activation edges, 0 elsewhere.
+     int frontend_points = 0;
+-    std::vector<BackendSqueeze> backends;
++    // PERF 6c: a deactivation edge's backend rows are the graph's
++    // all_backends()[backend_begin, backend_end), each measured against this
++    // edge's dest (ScoreGraph::edge_backends materializes them).
++    int32_t backend_begin = 0;
++    int32_t backend_end = 0;
++#ifdef PERF_VERIFY_6C
++    std::vector<BackendSqueeze> backends_check;
++#endif
+ 
+     // Set only on activation edges; absent (nullopt / empty) otherwise.
+     std::optional<double> activation_fill_deadline_ms;
+@@ -204,9 +211,14 @@ public:
+     // window around each activation's own SP end (within_squeeze_window)
+     // when it copies the rows in.
+     const std::vector<BackendSqueeze>& tail_backends() const {
+-        return recent_backends_;
++        return tail_backends_;
+     }
+ 
++    // PERF 6c: one row per chart timestamp, offset_ms unset.
++    const std::vector<BackendSqueeze>& all_backends() const { return all_backends_; }
++    // A deactivation edge's rows with their offsets, as the edge used to hold them.
++    std::vector<BackendSqueeze> edge_backends(const ScoreGraphEdge& e) const;
++
+ private:
+     // Graph construction.
+     void build();
+@@ -270,7 +282,13 @@ private:
+     std::unordered_map<int64_t, Timecode> pending_deacts_;  // ticks -> Timecode
+     std::vector<Timecode> deact_heap_;                      // min-heap on ticks
+     std::vector<ScoreGraphEdge*> recent_deact_edges_;
+-    std::vector<BackendSqueeze> recent_backends_;
++    // PERF 6c: the recent rows are all_backends_[recent_lo_, end).
++    std::vector<BackendSqueeze> all_backends_;
++    size_t recent_lo_ = 0;
++    std::vector<BackendSqueeze> tail_backends_;
++#ifdef PERF_VERIFY_6C
++    std::vector<BackendSqueeze> recent_check_;
++#endif
+     ScoreGraphEdge* proto_base_edge_ = nullptr;
+     ScoreGraphEdge* proto_sp_edge_ = nullptr;
+ 
+diff --git a/tools/bench.cpp b/tools/bench.cpp
+index 774cb51..444a188 100644
+--- a/tools/bench.cpp
++++ b/tools/bench.cpp
+@@ -20,9 +20,11 @@
+ #include <memory>
+ #include <optional>
+ #include <string>
++#include <unordered_set>
+ #include <vector>
+ 
+ #include "json.hpp"
++#include "search/graph.h"
+ 
+ #include "app/analysis.h"
+ #include "app/config.h"
+@@ -221,6 +223,115 @@ static void corpus_bench() {
+     bench(kCloneHeroSpCap, 4);
+ }
+ 
++// PERF EXPERIMENT (scratch only): single-thread engine timing over a folder.
++//   hydra_bench --engine <folder> [--cache <db>] [--reps N] [--out <file>]
++// Settings come from the exe-side ini, as hydra_batch reads them. Per chart:
++// parse, a throwaway ScoreGraph build, analyze_chart (N reps), prepare_row.
++// Prints the sums and an FNV hash of every prepared row, so two builds can be
++// compared for identical output.
++static uint64_t fnv(uint64_t h, const void* p, size_t n) {
++    const unsigned char* b = static_cast<const unsigned char*>(p);
++    for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; }
++    return h;
++}
++static uint64_t fnv_str(uint64_t h, const std::string& s) {
++    uint64_t n = s.size();
++    h = fnv(h, &n, sizeof n);
++    return fnv(h, s.data(), s.size());
++}
++template <class T>
++static uint64_t fnv_opt(uint64_t h, const std::optional<T>& o) {
++    unsigned char has = o.has_value();
++    h = fnv(h, &has, 1);
++    if (o) h = fnv(h, &*o, sizeof(T));
++    return h;
++}
++static uint64_t row_hash(const store::PreparedRow& r) {
++    uint64_t h = 1469598103934665603ULL;
++    h = fnv_str(h, r.bestpath);
++    uint64_t n = r.structure.size();
++    h = fnv(h, &n, sizeof n);
++    h = fnv(h, r.structure.data(), r.structure.size());
++    for (const auto& node : r.nodes) {
++        h = fnv_str(h, node.hash);
++        n = node.payload.size();
++        h = fnv(h, &n, sizeof n);
++        h = fnv(h, node.payload.data(), node.payload.size());
++    }
++    const store::PathSummary& s = r.summary;
++    h = fnv_opt(h, s.score); h = fnv_opt(h, s.actcount); h = fnv_opt(h, s.maxskip);
++    h = fnv_opt(h, s.hardest_ms); h = fnv_opt(h, s.avgmult); h = fnv_opt(h, s.notecount);
++    h = fnv_opt(h, s.sqin_count); h = fnv_opt(h, s.sqout_count); h = fnv_opt(h, s.pathcount);
++    h = fnv_opt(h, s.stars);
++    return h;
++}
++
++static void engine_mode(const std::string& folder, const std::string& cachedb, int reps,
++                        const std::string& outpath) {
++    store::ChartLibraryCache cache;
++    std::unique_ptr<store::RecordStore> cstore;
++    if (!cachedb.empty()) {
++        cstore = std::make_unique<store::RecordStore>(cachedb, core::RulesStamp::of(g_rules));
++        cache = cstore->chart_library_cache();
++    }
++    auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{},
++                                                cache.empty() ? nullptr : &cache);
++    app::Settings st = app::Settings::load();
++    st.rules = g_rules;
++    app::BatchRun run = st.batch_run();
++    const app::AnalysisSettings& settings = run.settings;
++    std::unordered_set<std::string> seen;
++    double t_parse = 0, t_graph = 0, t_an = 0, t_prep = 0, t_gdel = 0;
++    int n = 0, failed = 0;
++    uint64_t all = 1469598103934665603ULL;
++    std::ofstream out;
++    if (!outpath.empty()) out.open(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
++    for (const app::ScanItem& it : items) {
++        if (!seen.insert(it.md5).second) continue;
++        auto t = clk::now();
++        std::optional<Song> song;
++        try {
++            song.emplace(load_songpath_with_notes(it.notespath, settings.prodrums, settings.bass2x,
++                                                  settings.difficulty, settings.rules));
++        } catch (const std::exception&) {
++            ++failed;
++            continue;
++        }
++        t_parse += secs_since(t);
++        t = clk::now();
++        {
++            ScoreGraph g(*song,
++                         std::optional<int>(graph_build_cap(settings.sp_cap, song->sp_phrase_count())),
++                         fill_rule_for(settings.legacy_fill_deadline), settings.rules);
++            t_graph += secs_since(t);
++            t = clk::now();
++        }
++        t_gdel += secs_since(t);
++        std::optional<HydraRecord> rec;
++        t = clk::now();
++        try {
++            for (int r = 0; r < reps; ++r) rec = analyze_chart(*song, settings);
++        } catch (const std::exception&) {
++            ++failed;
++            continue;
++        }
++        t_an += secs_since(t);
++        t = clk::now();
++        store::PreparedRow row = store::prepare_row(
++            store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, *rec);
++        t_prep += secs_since(t);
++        const uint64_t h = row_hash(row);
++        all = fnv(all, &h, sizeof h);
++        if (out) out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
++        ++n;
++    }
++    std::printf("charts %d failed %d | parse %.3fs | graph %.3fs | analyze x%d %.3fs | "
++                "prepare %.3fs | hash %016llx\n",
++                n, failed, t_parse, t_graph, reps, t_an, t_prep,
++                static_cast<unsigned long long>(all));
++    std::printf("graph destroy %.3fs\n", t_gdel);
++}
++
+ // Dump a store's charts table as the same JSON --dump writes (row_json, with
+ // the same --dump-rel root), so two scans' results can be diffed even when one
+ // came from another build.
+@@ -272,6 +383,17 @@ static int bench_main() {
+         dump_db(argv[2], argv[3], dumprel);
+         return 0;
+     }
++    if (argc > 2 && argv[1] == "--engine") {
++        std::string cachedb, outp;
++        int reps = 1;
++        for (int i = 3; i < argc; ++i) {
++            if (argv[i] == "--cache" && i + 1 < argc) cachedb = argv[++i];
++            else if (argv[i] == "--reps" && i + 1 < argc) reps = std::stoi(argv[++i]);
++            else if (argv[i] == "--out" && i + 1 < argc) outp = argv[++i];
++        }
++        engine_mode(argv[2], cachedb, reps, outp);
++        return 0;
++    }
+     if (argc > 2 && argv[1] == "--scan") {
+         std::string folder = argv[2], db, dump, dumprel;
+         for (int i = 3; i < argc; ++i) {

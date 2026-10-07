@@ -1,0 +1,733 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 69a7715..1828134 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -36,6 +36,9 @@ endif()
+ 
+ # Parallel compilation within each target.
+ add_compile_options(/MP)
++# PERF EXPERIMENT ONLY (perf-prof): symbols for the sampling profiler.
++add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/Zi>)
++add_link_options(/DEBUG /OPT:REF /OPT:ICF)
+ 
+ # __FILE__ names the source relative to the repo, not by its absolute path.
+ # Opus's safety checks (OPUS_HARDENING) store __FILE__ for their error message,
+@@ -168,6 +171,7 @@ add_library(hydra_core STATIC
+     src/core/stars.cpp
+     src/core/replay.cpp
+     src/core/strutil.cpp
++    src/core/phase_prof.cpp
+     src/core/winstr.cpp
+     src/core/audio_sniff.cpp
+     src/parse/midi.cpp
+diff --git a/src/app/analysis.cpp b/src/app/analysis.cpp
+index 8299d57..ed56013 100644
+--- a/src/app/analysis.cpp
++++ b/src/app/analysis.cpp
+@@ -9,6 +9,7 @@
+ #include <algorithm>
+ #include <condition_variable>
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <deque>
+ #include <mutex>
+@@ -25,6 +26,7 @@
+ #include "app/user_messages.h"  // plain_error
+ #include "app/work_pool.h"
+ #include "core/error_kind.h"
++#include "core/phase_prof.h"
+ #include "core/strutil.h"
+ #include "core/winstr.h"
+ #include "parse/srb.h"
+@@ -88,7 +90,9 @@ struct HashedFile {
+ 
+ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
+                       size_t head_capture) {
++    int64_t pt0 = prof::now();
+     FILE* f = fopen_utf8(path, L"rb");
++    prof::add(prof::ScanOpen, prof::now() - pt0);
+     if (f == nullptr) throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + path);
+ 
+     BCRYPT_HASH_HANDLE hash = nullptr;
+@@ -100,8 +104,14 @@ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
+     HashedFile out;
+     std::vector<uint8_t> buf(1 << 20);
+     size_t got;
+-    while ((got = std::fread(buf.data(), 1, buf.size(), f)) > 0) {
++    for (;;) {
++        pt0 = prof::now();
++        got = std::fread(buf.data(), 1, buf.size(), f);
++        int64_t pt1 = prof::now();
++        prof::add(prof::ScanRead, pt1 - pt0);
++        if (got == 0) break;
+         BCryptHashData(hash, buf.data(), static_cast<ULONG>(got), 0);
++        prof::add(prof::ScanMd5, prof::now() - pt1);
+         if (out.head.size() < head_capture) {
+             size_t want = std::min(head_capture - out.head.size(), got);
+             out.head.insert(out.head.end(), buf.data(), buf.data() + want);
+@@ -402,6 +412,8 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+     const std::atomic<bool>* cancel = callbacks.cancel;
+ 
+     // ---- stage 1: enumerate ------------------------------------------------
++    std::optional<prof::Scope> walk_scope;
++    walk_scope.emplace(prof::ScanWalk);
+     std::vector<PendingChart> pending;
+     std::vector<std::pair<std::string, std::string>> unexplored;
+     std::set<std::string> visited;
+@@ -416,7 +428,9 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+         unexplored.pop_back();
+ 
+         try {
++            int64_t lt0 = prof::now();
+             std::vector<DirEntry> entries = list_dir(dir);
++            prof::add(prof::ScanListDir, prof::now() - lt0);
+ 
+             // The folder's files, by name and entry in the same order, so the
+             // notes-file pick's index leads back to the entry (pending_chart_of
+@@ -459,7 +473,10 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+         }
+     }
+ 
++    walk_scope.reset();
+     // ---- stage 2: read (hash + metadata), parallel -------------------------
++    prof::Scope read_stage_scope(prof::ScanReadStage);
++    prof::g_pool_kind.store(0);
+     int total = static_cast<int>(pending.size());
+     if (callbacks.on_charts) callbacks.on_charts(0, total, 0);
+ 
+@@ -478,10 +495,12 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+                 // so an all-cache-hits rescan never touches CNG at all.
+                 thread_local std::optional<Md5Provider> md5;
+ 
++                prof::Scope worker_scope(prof::ScanWorkerTotal);
+                 const PendingChart& pc = pending[i];
+                 ReadNote note;
+                 try {
+                     if (cache) {
++                        prof::Scope cache_scope(prof::ScanCacheHit);
+                         auto it = cache->find(pc.notes_path);
+                         if (it != cache->end() && sig_unchanged(it->second.sig, pc.sig)) {
+                             // Field by field, like to_library_entry: seven
+@@ -507,12 +526,14 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+                             HashedFile hf =
+                                 stream_md5(md5->handle(), pc.notes_path, kSngHeadCapture);
+                             item.md5 = std::move(hf.md5);
++                            prof::Scope ms(prof::ScanArchiveMeta);
+                             meta = pc.kind == ChartKind::Sng
+                                        ? parse_sng_metadata(hf.head)
+                                        : parse_srb_metadata(memory_byte_source(hf.head));
+                         } else {
+                             HashedFile hf = stream_md5(md5->handle(), pc.notes_path, 0);
+                             item.md5 = std::move(hf.md5);
++                            prof::Scope ms(prof::ScanIni);
+                             meta = read_metadata_ini(pc.ini_path);
+                         }
+                         item.title = std::move(meta.title);
+@@ -532,6 +553,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+             // Progress and error callbacks fire here, on the calling thread
+             // only, as they do for run_batch.
+             [&](ReadNote&& note) {
++                prof::Scope consume_scope(prof::ScanConsume);
+                 ++done;
+                 if (note.cached) ++cached_count;
+                 if (!note.error.empty()) errors.push_back(std::move(note.error));
+@@ -571,8 +593,10 @@ AnalysisResult analyze_chart_file(const std::string& filepath,
+                                   const std::function<void(float)>& on_progress) {
+     // A chart with no charting at the asked difficulty (no Hard charting is
+     // the common case) throws NoNotesError, which names that difficulty.
++    int64_t pt0 = prof::now();
+     Song song = load_songpath_with_notes(filepath, settings.prodrums, settings.bass2x,
+                                          settings.difficulty, settings.rules);
++    prof::add(prof::Parse, prof::now() - pt0);
+     HydraRecord record = analyze_chart(song, settings, on_progress);
+     return AnalysisResult{std::move(record), std::move(song)};
+ }
+@@ -610,6 +634,7 @@ struct WorkResult {
+     std::string error;
+     // The search stopped at a cancel: neither a result nor a failure.
+     bool cancelled = false;
++    prof::ChartRow prof_row;
+ };
+ 
+ // The one way a chart becomes a failure, from its analysis or its save.
+@@ -691,30 +716,54 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
+     const ChartAnalyzer analyze =
+         callbacks.analyze ? callbacks.analyze : ChartAnalyzer(analyze_chart_file);
+ 
++    prof::g_pool_kind.store(1);
+     run_work_pool<WorkResult>(
+         todo.size(), worker_count, cancel,
+         [&](size_t i) {
++            prof::reset_chart_ticks();
++            const int64_t wt0 = prof::now();
+             const ScanItem& item = todo[i];
+             WorkResult wr;
+             wr.item = item;
+             wr.rows = plan.rows[i];
+             try {
+                 AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
+-                wr.row = store::prepare_row(
+-                    store::RecordKey{item.md5, run.chartmode, cap, run.lens}, ar.record);
+-                wr.dynamics = dynamics_entry_from_analysis(
+-                    item.md5, ar.song, settings.bass2x, settings.difficulty,
+-                    settings.prodrums);
+-                wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);
++                {
++                    prof::Scope ps(prof::PrepareRow);
++                    wr.row = store::prepare_row(
++                        store::RecordKey{item.md5, run.chartmode, cap, run.lens}, ar.record);
++                }
++                {
++                    prof::Scope ps(prof::Dynamics);
++                    wr.dynamics = dynamics_entry_from_analysis(
++                        item.md5, ar.song, settings.bass2x, settings.difficulty,
++                        settings.prodrums);
++                }
++                {
++                    prof::Scope ps(prof::SongLength);
++                    wr.length =
++                        analysis_song_length(item.timing, item.notespath, ar.song, settings);
++                }
++                wr.prof_row.notes = static_cast<int64_t>(ar.song.note_count());
+                 wr.analysis = std::move(ar);
+             } catch (const AnalysisCancelled&) {
+                 wr.cancelled = true;
+             } catch (const std::exception& e) {
+                 record_failure(wr, e);
+             }
++            const int64_t wt1 = prof::now();
++            prof::add(prof::WorkerTotal, wt1 - wt0);
++            wr.prof_row.path = item.notespath;
++            wr.prof_row.file_size = std::atoll(item.sig.c_str());
++            wr.prof_row.worker = prof::worker_index();
++            wr.prof_row.start = wt0;
++            wr.prof_row.end = wt1;
++            wr.prof_row.failed = wr.failed;
++            wr.prof_row.ticks = prof::chart_ticks();
+             return wr;
+         },
+         [&](WorkResult&& wr) {
++            prof::reset_chart_ticks();
+             // Once cancel is seen nothing more is written or reported, as
+             // before. A search stopped part-way is not a failure, and a result
+             // that finished alongside the cancel is dropped.
+@@ -724,6 +773,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
+                 // A save that fails makes this chart a failure, and the batch
+                 // goes on with the next one (D71, ER2 open question 5).
+                 try {
++                    prof::Scope ps(prof::SaveTotal);
+                     store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
+                                         wr.item.charter, wr.analysis->song, *wr.row,
+                                         wr.dynamics, wr.length);
+@@ -731,6 +781,14 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
+                     record_failure(wr, e);
+                 }
+             }
++            {
++                // Merge the consumer's save phases into the chart's row.
++                const prof::ChartTicks& ct = prof::chart_ticks();
++                for (int p = 0; p < prof::kCount; ++p)
++                    if (p != prof::BatchConsumerIdle) wr.prof_row.ticks[p] += ct[p];
++                prof::record_chart(wr.prof_row);
++            }
++            prof::Scope cb_scope(prof::ConsumerCallbacks);
+             // Each of the chart's rows is counted and reported, under the
+             // first copy's name (D76, D51 call 10), so a list of failures is
+             // as long as its count. The progress that counts a row goes out
+diff --git a/src/app/work_pool.h b/src/app/work_pool.h
+index 9522d96..7dfae39 100644
+--- a/src/app/work_pool.h
++++ b/src/app/work_pool.h
+@@ -24,6 +24,8 @@
+ #include <utility>
+ #include <vector>
+ 
++#include "core/phase_prof.h"
++
+ namespace hydra::app {
+ 
+ constexpr size_t kWorkPoolWaitingPerWorker = 2;
+@@ -84,7 +86,11 @@ void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* canc
+                 {
+                     std::unique_lock<std::mutex> lock(mu);
+                     // stop is set under mu, so its wake-up can't slip past here.
+-                    room.wait(lock, [&] { return finished.size() < max_waiting || stop.load(); });
++                    {
++                        prof::Scope ps(prof::g_pool_kind.load() == 1 ? prof::BatchQueueWait
++                                                                     : prof::ScanQueueWait);
++                        room.wait(lock, [&] { return finished.size() < max_waiting || stop.load(); });
++                    }
+                     if (stop.load()) break;  // consume threw: nobody takes r
+                     finished.push_back(std::move(r));
+                 }
+@@ -100,7 +106,11 @@ void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* canc
+             Result r;
+             {
+                 std::unique_lock<std::mutex> lock(mu);
+-                cv.wait(lock, [&] { return !finished.empty() || live == 0; });
++                {
++                    prof::Scope ps(prof::g_pool_kind.load() == 1 ? prof::BatchConsumerIdle
++                                                                 : prof::ScanConsumerIdle);
++                    cv.wait(lock, [&] { return !finished.empty() || live == 0; });
++                }
+                 if (finished.empty()) break;  // every worker has left
+                 r = std::move(finished.front());
+                 finished.pop_front();
+diff --git a/src/cli/batch.cpp b/src/cli/batch.cpp
+index 05a216d..4d9e968 100644
+--- a/src/cli/batch.cpp
++++ b/src/cli/batch.cpp
+@@ -45,6 +45,7 @@
+ #include "app/rules_file.h"
+ #include "app/user_messages.h"
+ #include "core/model.h"
++#include "core/phase_prof.h"
+ #include "core/strutil.h"
+ #include "core/winstr.h"
+ #include "parse/song.h"
+@@ -142,6 +143,7 @@ int batch_main() {
+     // A database that won't open is a run that can't start (D72 item 5).
+     std::unique_ptr<hydra::store::RecordStore> store_ptr;
+     try {
++        hydra::prof::Scope ps(hydra::prof::OpenStore);
+         store_ptr = hydra::app::open_store(db, hydra::core::RulesStamp::of(settings.rules));
+     } catch (const std::exception& e) {
+         return hydra::app::tool_error(e, 2);
+@@ -212,13 +214,17 @@ int batch_main() {
+     // folder arguments leaves the library alone.
+     hydra::store::ChartLibraryCache cache;
+     try {
++        hydra::prof::Scope ps(hydra::prof::CacheLoad);
+         cache = store.chart_library_cache();
+     } catch (const std::exception&) {
+         // No cache is only a slower scan.
+     }
++    const int64_t scan_t0 = hydra::prof::now();
+     auto [scanitems, folder_errors] = hydra::app::discover_charts(
+         folders, hydra::app::ScanCallbacks{}, cache.empty() ? nullptr : &cache);
++    hydra::prof::add(hydra::prof::ScanTotal, hydra::prof::now() - scan_t0);
+     if (folder_args.empty()) {
++        hydra::prof::Scope ps(hydra::prof::LibrarySave);
+         if (const std::optional<std::string> problem =
+                 hydra::app::save_scan_as_library(store, scanitems))
+             std::printf("  ! %s\n", problem->c_str());
+@@ -229,8 +235,10 @@ int batch_main() {
+ 
+     // The one plan for this run (D79). A run that fails as a whole (this
+     // store read) ends through run_tool.
++    const int64_t plan_t0 = hydra::prof::now();
+     const hydra::app::BatchPlan plan =
+         hydra::app::plan_batch(scanitems, hydra::app::charts_with_result(store, run, redo));
++    hydra::prof::add(hydra::prof::Plan, hydra::prof::now() - plan_t0);
+ 
+     auto started = std::chrono::steady_clock::now();
+ 
+@@ -260,7 +268,10 @@ int batch_main() {
+                     clip_utf8(label, 52).c_str(), clip_utf8(row.bestpath, 36).c_str());
+         std::fflush(stdout);
+     };
+-    hydra::app::run_batch(plan, run, store, hydra::app::batch_worker_count(), callbacks);
++    {
++        hydra::prof::Scope ps(hydra::prof::BatchRun);
++        hydra::app::run_batch(plan, run, store, hydra::app::batch_worker_count(), callbacks);
++    }
+ 
+     double elapsed =
+         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+@@ -281,6 +292,7 @@ int batch_main() {
+             std::printf("  ...and %s more.\n", hydra::group_thousands(last.failed - shown).c_str());
+     }
+ 
++    hydra::prof::report();
+     return 0;
+ }
+ 
+diff --git a/src/core/phase_prof.cpp b/src/core/phase_prof.cpp
+new file mode 100644
+index 0000000..edb3c07
+--- /dev/null
++++ b/src/core/phase_prof.cpp
+@@ -0,0 +1,114 @@
++// PERF EXPERIMENT ONLY (perf-prof). See phase_prof.h.
++#define _CRT_SECURE_NO_WARNINGS
++#include "core/phase_prof.h"
++
++#ifndef NOMINMAX
++#define NOMINMAX
++#endif
++#include <windows.h>
++
++#include <cstdio>
++#include <cstdlib>
++#include <mutex>
++#include <vector>
++
++namespace hydra::prof {
++
++namespace {
++std::array<std::atomic<int64_t>, kCount> g_ticks{};
++std::array<std::atomic<int64_t>, kCount> g_calls{};
++std::vector<ChartRow> g_rows;
++std::atomic<int> g_next_worker{0};
++int64_t g_t0 = now();
++
++int64_t freq() {
++    static const int64_t f = [] {
++        LARGE_INTEGER li;
++        QueryPerformanceFrequency(&li);
++        return static_cast<int64_t>(li.QuadPart);
++    }();
++    return f;
++}
++
++const char* kNames[kCount] = {
++    "OpenStore", "CacheLoad", "ScanTotal", "ScanWalk", "ScanListDir", "ScanReadStage",
++    "LibrarySave", "Plan", "BatchRun",
++    "ScanCacheHit", "ScanOpen", "ScanRead", "ScanMd5", "ScanIni", "ScanArchiveMeta",
++    "ScanWorkerTotal", "ScanQueueWait", "ScanConsumerIdle", "ScanConsume",
++    "Parse", "GraphBuild", "MainEnumerate", "MainEngine", "MainRebuild", "AzEnumerate",
++    "AzEngine", "AzRebuild", "OtherSearch", "PrepareRow", "Dynamics", "SongLength",
++    "WorkerTotal", "BatchQueueWait",
++    "BatchConsumerIdle", "SaveTempomap", "SaveBegin", "SaveNaming", "SaveUpsertSong",
++    "SaveLength", "SaveUnreadablePurge", "SaveReplacePurge", "SaveInsertResult",
++    "SavePathNodes", "SaveOrphanGc", "SaveDynamics", "SaveCommit", "SaveTotal",
++    "ConsumerCallbacks",
++};
++}  // namespace
++
++std::atomic<int> g_pool_kind{0};
++
++const char* phase_name(int p) { return kNames[p]; }
++
++int64_t now() {
++    LARGE_INTEGER li;
++    QueryPerformanceCounter(&li);
++    return static_cast<int64_t>(li.QuadPart);
++}
++
++double ticks_to_ms(int64_t t) { return 1000.0 * static_cast<double>(t) / static_cast<double>(freq()); }
++
++ChartTicks& chart_ticks() {
++    thread_local ChartTicks t{};
++    return t;
++}
++void reset_chart_ticks() { chart_ticks().fill(0); }
++
++void add(int p, int64_t ticks) {
++    g_ticks[p].fetch_add(ticks, std::memory_order_relaxed);
++    g_calls[p].fetch_add(1, std::memory_order_relaxed);
++    chart_ticks()[p] += ticks;
++}
++
++int& search_ctx() {
++    thread_local int c = 0;
++    return c;
++}
++
++int worker_index() {
++    thread_local int w = g_next_worker.fetch_add(1);
++    return w;
++}
++
++void record_chart(ChartRow row) { g_rows.push_back(std::move(row)); }
++
++void report() {
++    std::printf("\n==== PHASE PROFILE (ms; calls) ====\n");
++    for (int p = 0; p < kCount; ++p)
++        std::printf("PROF %-20s %12.1f ms %9lld calls\n", kNames[p], ticks_to_ms(g_ticks[p].load()),
++                    static_cast<long long>(g_calls[p].load()));
++    const char* csv = std::getenv("HYDRA_PROF_CSV");
++    if (!csv || !*csv) return;
++    FILE* f = std::fopen(csv, "wb");
++    if (!f) {
++        std::printf("PROF cannot write %s\n", csv);
++        return;
++    }
++    std::fprintf(f, "path,file_size,notes,worker,start_ms,end_ms,failed");
++    for (int p = 0; p < kCount; ++p) std::fprintf(f, ",%s", kNames[p]);
++    std::fprintf(f, "\n");
++    for (const ChartRow& r : g_rows) {
++        std::string q = r.path;
++        for (char& c : q)
++            if (c == '"') c = '\'';
++        std::fprintf(f, "\"%s\",%lld,%lld,%d,%.3f,%.3f,%d", q.c_str(),
++                     static_cast<long long>(r.file_size), static_cast<long long>(r.notes),
++                     r.worker, ticks_to_ms(r.start - g_t0), ticks_to_ms(r.end - g_t0),
++                     r.failed ? 1 : 0);
++        for (int p = 0; p < kCount; ++p) std::fprintf(f, ",%.3f", ticks_to_ms(r.ticks[p]));
++        std::fprintf(f, "\n");
++    }
++    std::fclose(f);
++    std::printf("PROF wrote %zu chart rows to %s\n", g_rows.size(), csv);
++}
++
++}  // namespace hydra::prof
+diff --git a/src/core/phase_prof.h b/src/core/phase_prof.h
+new file mode 100644
+index 0000000..4a778de
+--- /dev/null
++++ b/src/core/phase_prof.h
+@@ -0,0 +1,74 @@
++// PERF EXPERIMENT ONLY (perf-prof): cheap phase timers for a whole-library
++// hydra_batch run. Global relaxed atomics, QueryPerformanceCounter ticks.
++#ifndef HYDRA_CORE_PHASE_PROF_H
++#define HYDRA_CORE_PHASE_PROF_H
++
++#include <array>
++#include <atomic>
++#include <cstdint>
++#include <string>
++
++namespace hydra::prof {
++
++enum Phase : int {
++    // top level (calling thread)
++    OpenStore, CacheLoad, ScanTotal, ScanWalk, ScanListDir, ScanReadStage, LibrarySave, Plan,
++    BatchRun,
++    // scan read workers
++    ScanCacheHit, ScanOpen, ScanRead, ScanMd5, ScanIni, ScanArchiveMeta, ScanWorkerTotal,
++    ScanQueueWait, ScanConsumerIdle, ScanConsume,
++    // analysis workers
++    Parse, GraphBuild, MainEnumerate, MainEngine, MainRebuild, AzEnumerate, AzEngine,
++    AzRebuild, OtherSearch, PrepareRow, Dynamics, SongLength, WorkerTotal,
++    BatchQueueWait,
++    // consumer
++    BatchConsumerIdle, SaveTempomap, SaveBegin, SaveNaming, SaveUpsertSong, SaveLength,
++    SaveUnreadablePurge, SaveReplacePurge, SaveInsertResult, SavePathNodes, SaveOrphanGc,
++    SaveDynamics, SaveCommit, SaveTotal, ConsumerCallbacks,
++    kCount
++};
++
++const char* phase_name(int p);
++
++int64_t now();             // QPC ticks
++double ticks_to_ms(int64_t t);
++
++void add(int p, int64_t ticks);
++
++// Per-chart accumulator on the current thread (analysis workers / consumer).
++using ChartTicks = std::array<int64_t, kCount>;
++ChartTicks& chart_ticks();
++void reset_chart_ticks();
++
++// Which pool is running (0 scan, 1 batch): picks the queue-wait phase.
++extern std::atomic<int> g_pool_kind;
++// Which search a run_search belongs to on this thread (0 other, 1 main, 2 all-0).
++int& search_ctx();
++
++struct Scope {
++    int p;
++    int64_t t0;
++    explicit Scope(int phase) : p(phase), t0(now()) {}
++    ~Scope() { add(p, now() - t0); }
++    Scope(const Scope&) = delete;
++    Scope& operator=(const Scope&) = delete;
++};
++
++// One analyzed chart's row for the CSV.
++struct ChartRow {
++    std::string path;
++    int64_t file_size = 0;
++    int64_t notes = -1;
++    int worker = -1;
++    int64_t start = 0, end = 0;  // QPC ticks
++    ChartTicks ticks{};
++    bool failed = false;
++};
++void record_chart(ChartRow row);  // consumer thread only
++int worker_index();                // stable small index per thread
++
++void report();  // prints totals; writes CSV to %HYDRA_PROF_CSV% if set
++
++}  // namespace hydra::prof
++
++#endif
+diff --git a/src/search/engine.cpp b/src/search/engine.cpp
+index a0fa04d..8c035e9 100644
+--- a/src/search/engine.cpp
++++ b/src/search/engine.cpp
+@@ -14,6 +14,7 @@
+ #include <vector>
+ 
+ #include "core/backend_value.h"
++#include "core/phase_prof.h"
+ #include "core/sqout_chord.h"
+ #include "core/squeeze_rating.h"
+ 
+@@ -2002,7 +2003,13 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
+ 
+ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& options,
+                               const std::function<void(float)>& on_progress) {
++    const int ctx = prof::search_ctx();
++    const int ph_enum = ctx == 1 ? prof::MainEnumerate : ctx == 2 ? prof::AzEnumerate : prof::OtherSearch;
++    const int ph_eng = ctx == 1 ? prof::MainEngine : ctx == 2 ? prof::AzEngine : prof::OtherSearch;
++    const int ph_reb = ctx == 1 ? prof::MainRebuild : ctx == 2 ? prof::AzRebuild : prof::OtherSearch;
++    int64_t pt0 = prof::now();
+     Enum en = enumerate(graph);
++    prof::add(ph_enum, prof::now() - pt0);
+ 
+     const bool has_cap = graph.sp_meter_cap().has_value();
+     const int32_t cap = static_cast<int32_t>(graph.sp_meter_cap().value_or(0));
+@@ -2011,9 +2018,13 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
+                   static_cast<int32_t>(graph.rules().max_tied_paths));
+     if (on_progress) engine.set_progress_cb(on_progress);
+ 
+-    if (!engine.run())
++    pt0 = prof::now();
++    const bool ran = engine.run();
++    prof::add(ph_eng, prof::now() - pt0);
++    if (!ran)
+         throw KindedError(ErrorKind::SearchBroken, "search reached a broken state");
+ 
++    prof::Scope reb_scope(ph_reb);
+     return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
+                    engine.out_ends(), engine.out_ticks(), graph.tail_backends(),
+                    graph.timing(), graph.note_count());
+diff --git a/src/search/pather.cpp b/src/search/pather.cpp
+index fb8f462..07d198e 100644
+--- a/src/search/pather.cpp
++++ b/src/search/pather.cpp
+@@ -4,6 +4,7 @@
+ #include <sstream>
+ #include <stdexcept>
+ 
++#include "core/phase_prof.h"
+ #include "search/engine.h"
+ #include "search/graph.h"
+ 
+@@ -21,7 +22,9 @@ HydraRecord read(const ScoreGraph& graph, DepthMode depth_mode, int depth_value,
+     options.depth_mode = depth_mode;
+     options.depth_value = depth_value;
+     options.ms_filter = ms_filter;
++    prof::search_ctx() = 1;
+     record.paths = run_search(graph, options, on_progress);
++    prof::search_ctx() = 0;
+     return record;
+ }
+ 
+@@ -51,8 +54,11 @@ void attach_allzero(const ScoreGraph& graph, HydraRecord& record,
+         if (best.is_allzero() && best.within_ms_limit(*allzero_options().ms_filter)) return;
+     }
+     try {
++        prof::search_ctx() = 2;
+         record.allzero_paths = search_allzero(graph, on_progress);
++        prof::search_ctx() = 0;
+     } catch (const std::exception&) {
++        prof::search_ctx() = 0;
+         // A broken search state is worth losing the section over, not the whole
+         // analysis. Cancel unwinds through AnalysisCancelled, which does not
+         // derive from std::exception, so it still propagates.
+@@ -268,7 +274,9 @@ HydraRecord analyze_at_cap(const Song& song, int sp_cap, DepthMode depth_mode,
+                            const std::function<void(float)>& on_progress = {}) {
+     std::optional<int> cap = build_cap.has_value() ? build_cap
+                                                    : std::optional<int>(sp_cap);
++    int64_t gt0 = prof::now();
+     ScoreGraph graph(song, cap, fill_rule_for(legacy_fills), rules);
++    prof::add(prof::GraphBuild, prof::now() - gt0);
+     const bool split = want_allzero && static_cast<bool>(on_progress);
+     HydraRecord record = read(
+         graph, depth_mode, depth_value, ms_filter,
+diff --git a/src/store/record_store.cpp b/src/store/record_store.cpp
+index 41b7c3b..0988f23 100644
+--- a/src/store/record_store.cpp
++++ b/src/store/record_store.cpp
+@@ -10,6 +10,7 @@
+ #include <string_view>
+ 
+ #include "core/error_kind.h"
++#include "core/phase_prof.h"
+ #include "core/stars.h"
+ #include "core/winstr.h"
+ #include "store/serialize.h"
+@@ -928,15 +929,24 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
+                                 const Song& song, const PreparedRow& row,
+                                 const std::optional<DynamicsEntry>& dynamics,
+                                 const SongLength& length) {
++    int64_t pt0 = prof::now();
+     const std::vector<uint8_t> tempomap = encode_tempomap(song);  // not a sqlite call
++    prof::add(prof::SaveTempomap, prof::now() - pt0);
+     std::lock_guard<std::recursive_mutex> lock(mutex_);
++    pt0 = prof::now();
+     exec("BEGIN");
++    prof::add(prof::SaveBegin, prof::now() - pt0);
+     try {
++        pt0 = prof::now();
+         upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap);
++        prof::add(prof::SaveUpsertSong, prof::now() - pt0);
+         // The length belongs to the song, so an analysis of any difficulty
+         // saves its one length (D75). With no read, it stays as it was.
++        pt0 = prof::now();
+         if (length.read) write_song_length(hyhash, length.ms);
++        prof::add(prof::SaveLength, prof::now() - pt0);
+         write_row(row);
++        pt0 = prof::now();
+         if (dynamics) {
+             // Best effort, inside the same transaction: a failed count write
+             // is undone on its own and never costs the result.
+@@ -949,7 +959,10 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
+                 exec("RELEASE dynamics");
+             }
+         }
++        prof::add(prof::SaveDynamics, prof::now() - pt0);
++        pt0 = prof::now();
+         exec("COMMIT");
++        prof::add(prof::SaveCommit, prof::now() - pt0);
+     } catch (...) {
+         rollback_if_open(db_);
+         throw;
+@@ -1096,6 +1109,7 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
+     // write_song_length writes it.
+     std::string name = ref_name, artist = ref_artist, charter = ref_charter;
+     {
++        prof::Scope naming_scope(prof::SaveNaming);
+         const std::string sql = naming_copy_of_one_sql();
+         Stmt copy = prepare_read(db_, sql.c_str());
+         bind_text(copy, 1, hyhash);
+@@ -1165,6 +1179,7 @@ void RecordStore::write_row(const PreparedRow& row) {
+     //     is current, not against this row: a test writing a deliberately
+     //     old-stamped row must not take the real rows with it, and this runs
+     //     before the insert so the new row is untouched.
++    int64_t pt0 = prof::now();
+     purge("hyhash=? AND chartmode=? AND NOT " + row_readable_sql(),
+           [&](sqlite3_stmt* s) {
+               bind_text(s, 1, row.hyhash);
+@@ -1172,6 +1187,8 @@ void RecordStore::write_row(const PreparedRow& row) {
+               bind_readable_params(s, 3);
+           },
+           "unreadable purge");
++    prof::add(prof::SaveUnreadablePurge, prof::now() - pt0);
++    pt0 = prof::now();
+ 
+     // (2) The row this one replaces: the same key under the same rules, the
+     //     row the UNIQUE key would refuse a second copy of. Deleted
+@@ -1189,6 +1206,8 @@ void RecordStore::write_row(const PreparedRow& row) {
+               bind_blob(s, next, row.structure);
+           },
+           "replace purge");
++    prof::add(prof::SaveReplacePurge, prof::now() - pt0);
++    pt0 = prof::now();
+ 
+     // (3) The result, then its paths (shared, so first writer wins) and the
+     //     refs that tie the two together. rules_fp is read out of the
+@@ -1217,6 +1236,8 @@ void RecordStore::write_row(const PreparedRow& row) {
+         run(s, "insert");
+     }
+     const int64_t result_id = sqlite3_last_insert_rowid(db_);
++    prof::add(prof::SaveInsertResult, prof::now() - pt0);
++    pt0 = prof::now();
+ 
+     {
+         // Compiled once per row, not once per node, and bound once with what
+@@ -1244,8 +1265,11 @@ void RecordStore::write_row(const PreparedRow& row) {
+         }
+     }
+ 
++    prof::add(prof::SavePathNodes, prof::now() - pt0);
++    pt0 = prof::now();
+     // (4) Whatever the replaced row was the last owner of.
+     collect_orphan_paths(row.hyhash, row.chartmode, "add_row");
++    prof::add(prof::SaveOrphanGc, prof::now() - pt0);
+ }
+ 
+ void RecordStore::collect_orphan_paths(const std::string& hyhash,

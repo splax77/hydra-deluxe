@@ -1,0 +1,288 @@
+diff --git a/src/search/engine.cpp b/src/search/engine.cpp
+index a0fa04d..b5183c0 100644
+--- a/src/search/engine.cpp
++++ b/src/search/engine.cpp
+@@ -2002,7 +2002,9 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
+ 
+ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& options,
+                               const std::function<void(float)>& on_progress) {
++    long long t = PerfScope::now();
+     Enum en = enumerate(graph);
++    g_perf[10] += (PerfScope::now() - t) * 1e-9; t = PerfScope::now();
+ 
+     const bool has_cap = graph.sp_meter_cap().has_value();
+     const int32_t cap = static_cast<int32_t>(graph.sp_meter_cap().value_or(0));
+@@ -2013,6 +2015,8 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
+ 
+     if (!engine.run())
+         throw KindedError(ErrorKind::SearchBroken, "search reached a broken state");
++    g_perf[11] += (PerfScope::now() - t) * 1e-9;
++    PerfScope ps12(12);
+ 
+     return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
+                    engine.out_ends(), engine.out_ticks(), graph.tail_backends(),
+diff --git a/src/search/graph.cpp b/src/search/graph.cpp
+index a6ec95e..7c86de5 100644
+--- a/src/search/graph.cpp
++++ b/src/search/graph.cpp
+@@ -9,8 +9,16 @@
+ #include "core/scoring.h"
+ #include "core/sqout_chord.h"
+ 
++#include <chrono>
++
+ namespace hydra {
+ 
++double g_perf[16] = {};
++long long PerfScope::now() {
++    return std::chrono::steady_clock::now().time_since_epoch().count();
++}
++PerfScope::~PerfScope() { g_perf[slot] += (now() - t0) * 1e-9; }
++
+ // kSqueezeWindowMs (core/model.h) is how far apart (ms) a note and a
+ // deactivation can be and still be a SqIn/SqOut, and how far back
+ // edge.backends must stay complete.
+@@ -104,9 +112,11 @@ ScoreGraph::ScoreGraph(const Song& song, std::optional<int> sp_meter_cap,
+ 
+ void ScoreGraph::build() {
+     TickGreater cmp;
++    PerfScope ps_all(0);
+ 
+     for (const SongTimestamp& timestamp : song_.sequence) {
+         // SP can fall off between timestamps: handle deacts due before this one.
++        { PerfScope ps1(1);
+         while (!deact_heap_.empty() &&
+                deact_heap_.front().ticks() < timestamp.timecode.ticks()) {
+             std::pop_heap(deact_heap_.begin(), deact_heap_.end(), cmp);
+@@ -118,9 +128,13 @@ void ScoreGraph::build() {
+             set_head_time(pending_deact);
+             handle_deact(pending_deact, std::nullopt);
+         }
++        }
+ 
++        { PerfScope ps2(2);
+         set_head_time(timestamp.timecode);
++        }
+ 
++        const long long t3 = PerfScope::now();
+         store_soloscore(solo_bonus(timestamp.chord, timestamp.flag_solo));
+ 
+         CategoryScores sg = category_scores(timestamp.chord, combo_, nullptr, rules_.sqout_rule);
+@@ -135,9 +149,13 @@ void ScoreGraph::build() {
+         store_ghostscore(sg.ghost);
+ 
+         combo_ = sg.combo_after;
++        g_perf[3] += (PerfScope::now() - t3) * 1e-9;
+ 
++        { PerfScope ps4(4);
+         store_new_backend(timestamp, sg.sp, sg.sqout_sp());
++        }
+ 
++        { PerfScope ps5(5);
+         if (timestamp.flag_sp) {
+             // Deacts within the squeeze window keep a non-extended copy (SqOut).
+             // The one statement of "this end can give this phrase back": each
+@@ -194,7 +212,9 @@ void ScoreGraph::build() {
+             proto_base_edge_->sp_times.push_back({timestamp.timecode, {}});
+             proto_sp_edge_->sp_times.push_back({timestamp.timecode, std::move(ext_map)});
+         }
++        }
+ 
++        PerfScope ps6(6);
+         if (timestamp.has_activation()) {
+             advance_tracks(timestamp.timecode, timestamp.chord);
+             ScoreGraphEdge* act_edge = add_act_edge(sg.sp, *timestamp.activation_length);
+@@ -383,6 +403,7 @@ ScoreGraphEdge* ScoreGraph::add_act_edge(int frontend_points, int64_t fill_lengt
+ }
+ 
+ void ScoreGraph::add_deact_edge() {
++    PerfScope ps8(8);
+     ScoreGraphEdge* deact_edge = new_edge();
+     deact_edge->dest = base_track_head_;
+     const Timecode& end = deact_edge->dest->timecode;
+diff --git a/src/search/graph.h b/src/search/graph.h
+index 8a7fc5b..167f86e 100644
+--- a/src/search/graph.h
++++ b/src/search/graph.h
+@@ -277,6 +277,16 @@ private:
+     std::map<std::pair<int64_t, int64_t>, Timecode> plusmeasure_cache_;
+ };
+ 
++// PERF PROBE (temporary): accumulated seconds per section.
++extern double g_perf[16];
++struct PerfScope {
++    int slot;
++    long long t0;
++    static long long now();
++    explicit PerfScope(int s) : slot(s), t0(now()) {}
++    ~PerfScope();
++};
++
+ }  // namespace hydra
+ 
+ #endif  // HYDRA_SEARCH_GRAPH_H
+diff --git a/src/search/pather.cpp b/src/search/pather.cpp
+index fb8f462..f611e68 100644
+--- a/src/search/pather.cpp
++++ b/src/search/pather.cpp
+@@ -51,6 +51,7 @@ void attach_allzero(const ScoreGraph& graph, HydraRecord& record,
+         if (best.is_allzero() && best.within_ms_limit(*allzero_options().ms_filter)) return;
+     }
+     try {
++        PerfScope ps13(13);
+         record.allzero_paths = search_allzero(graph, on_progress);
+     } catch (const std::exception&) {
+         // A broken search state is worth losing the section over, not the whole
+diff --git a/tools/bench.cpp b/tools/bench.cpp
+index 774cb51..5f7e565 100644
+--- a/tools/bench.cpp
++++ b/tools/bench.cpp
+@@ -20,9 +20,11 @@
+ #include <memory>
+ #include <optional>
+ #include <string>
++#include <unordered_set>
+ #include <vector>
+ 
+ #include "json.hpp"
++#include "search/graph.h"
+ 
+ #include "app/analysis.h"
+ #include "app/config.h"
+@@ -221,6 +223,118 @@ static void corpus_bench() {
+     bench(kCloneHeroSpCap, 4);
+ }
+ 
++// PERF EXPERIMENT (scratch only): single-thread engine timing over a folder.
++//   hydra_bench --engine <folder> [--cache <db>] [--reps N] [--out <file>]
++// Settings come from the exe-side ini, as hydra_batch reads them. Per chart:
++// parse, a throwaway ScoreGraph build, analyze_chart (N reps), prepare_row.
++// Prints the sums and an FNV hash of every prepared row, so two builds can be
++// compared for identical output.
++static uint64_t fnv(uint64_t h, const void* p, size_t n) {
++    const unsigned char* b = static_cast<const unsigned char*>(p);
++    for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; }
++    return h;
++}
++static uint64_t fnv_str(uint64_t h, const std::string& s) {
++    uint64_t n = s.size();
++    h = fnv(h, &n, sizeof n);
++    return fnv(h, s.data(), s.size());
++}
++template <class T>
++static uint64_t fnv_opt(uint64_t h, const std::optional<T>& o) {
++    unsigned char has = o.has_value();
++    h = fnv(h, &has, 1);
++    if (o) h = fnv(h, &*o, sizeof(T));
++    return h;
++}
++static uint64_t row_hash(const store::PreparedRow& r) {
++    uint64_t h = 1469598103934665603ULL;
++    h = fnv_str(h, r.bestpath);
++    uint64_t n = r.structure.size();
++    h = fnv(h, &n, sizeof n);
++    h = fnv(h, r.structure.data(), r.structure.size());
++    for (const auto& node : r.nodes) {
++        h = fnv_str(h, node.hash);
++        n = node.payload.size();
++        h = fnv(h, &n, sizeof n);
++        h = fnv(h, node.payload.data(), node.payload.size());
++    }
++    const store::PathSummary& s = r.summary;
++    h = fnv_opt(h, s.score); h = fnv_opt(h, s.actcount); h = fnv_opt(h, s.maxskip);
++    h = fnv_opt(h, s.hardest_ms); h = fnv_opt(h, s.avgmult); h = fnv_opt(h, s.notecount);
++    h = fnv_opt(h, s.sqin_count); h = fnv_opt(h, s.sqout_count); h = fnv_opt(h, s.pathcount);
++    h = fnv_opt(h, s.stars);
++    return h;
++}
++
++static void engine_mode(const std::string& folder, const std::string& cachedb, int reps,
++                        const std::string& outpath) {
++    store::ChartLibraryCache cache;
++    std::unique_ptr<store::RecordStore> cstore;
++    if (!cachedb.empty()) {
++        cstore = std::make_unique<store::RecordStore>(cachedb, core::RulesStamp::of(g_rules));
++        cache = cstore->chart_library_cache();
++    }
++    auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{},
++                                                cache.empty() ? nullptr : &cache);
++    app::Settings st = app::Settings::load();
++    st.rules = g_rules;
++    app::BatchRun run = st.batch_run();
++    const app::AnalysisSettings& settings = run.settings;
++    std::unordered_set<std::string> seen;
++    double t_parse = 0, t_graph = 0, t_an = 0, t_prep = 0, t_gdel = 0;
++    for (double& d : g_perf) d = 0;
++    int n = 0, failed = 0;
++    uint64_t all = 1469598103934665603ULL;
++    std::ofstream out;
++    if (!outpath.empty()) out.open(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
++    for (const app::ScanItem& it : items) {
++        if (!seen.insert(it.md5).second) continue;
++        auto t = clk::now();
++        std::optional<Song> song;
++        try {
++            song.emplace(load_songpath_with_notes(it.notespath, settings.prodrums, settings.bass2x,
++                                                  settings.difficulty, settings.rules));
++        } catch (const std::exception&) {
++            ++failed;
++            continue;
++        }
++        t_parse += secs_since(t);
++        t = clk::now();
++        {
++            ScoreGraph g(*song,
++                         std::optional<int>(graph_build_cap(settings.sp_cap, song->sp_phrase_count())),
++                         fill_rule_for(settings.legacy_fill_deadline), settings.rules);
++            t_graph += secs_since(t);
++            t = clk::now();
++        }
++        t_gdel += secs_since(t);
++        std::optional<HydraRecord> rec;
++        t = clk::now();
++        try {
++            for (int r = 0; r < reps; ++r) rec = analyze_chart(*song, settings);
++        } catch (const std::exception&) {
++            ++failed;
++            continue;
++        }
++        t_an += secs_since(t);
++        t = clk::now();
++        store::PreparedRow row = store::prepare_row(
++            store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, *rec);
++        t_prep += secs_since(t);
++        const uint64_t h = row_hash(row);
++        all = fnv(all, &h, sizeof h);
++        if (out) out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
++        ++n;
++    }
++    std::printf("charts %d failed %d | parse %.3fs | graph %.3fs | analyze x%d %.3fs | "
++                "prepare %.3fs | hash %016llx\n",
++                n, failed, t_parse, t_graph, reps, t_an, t_prep,
++                static_cast<unsigned long long>(all));
++    std::printf("graph destroy %.3fs | probes:", t_gdel);
++    for (int i = 0; i < 16; ++i) std::printf(" [%d]%.3f", i, g_perf[i]);
++    std::printf("\n");
++}
++
+ // Dump a store's charts table as the same JSON --dump writes (row_json, with
+ // the same --dump-rel root), so two scans' results can be diffed even when one
+ // came from another build.
+@@ -272,6 +386,17 @@ static int bench_main() {
+         dump_db(argv[2], argv[3], dumprel);
+         return 0;
+     }
++    if (argc > 2 && argv[1] == "--engine") {
++        std::string cachedb, outp;
++        int reps = 1;
++        for (int i = 3; i < argc; ++i) {
++            if (argv[i] == "--cache" && i + 1 < argc) cachedb = argv[++i];
++            else if (argv[i] == "--reps" && i + 1 < argc) reps = std::stoi(argv[++i]);
++            else if (argv[i] == "--out" && i + 1 < argc) outp = argv[++i];
++        }
++        engine_mode(argv[2], cachedb, reps, outp);
++        return 0;
++    }
+     if (argc > 2 && argv[1] == "--scan") {
+         std::string folder = argv[2], db, dump, dumprel;
+         for (int i = 3; i < argc; ++i) {

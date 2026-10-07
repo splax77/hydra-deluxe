@@ -1,0 +1,946 @@
+diff --git a/src/app/dynamics_breakdown.cpp b/src/app/dynamics_breakdown.cpp
+index bc6e412..52a20f2 100644
+--- a/src/app/dynamics_breakdown.cpp
++++ b/src/app/dynamics_breakdown.cpp
+@@ -8,6 +8,7 @@
+ #include "store/serialize.h"  // BinaryWriter, BinaryReader
+ 
+ namespace hydra {
++bool perf_exp_on(const char* name);  // PERF EXPERIMENT switch, in parse/song.cpp
+ namespace app {
+ 
+ // ---- DynamicsBreakdown --------------------------------------------------
+@@ -115,16 +116,26 @@ DynamicsBreakdown count_dynamics(const Song& song) {
+         bd.late_tag_ms = static_cast<uint32_t>(song.timecode(*song.dynamics_late_tag_tick).ms());
+     bd.marks_before_tag = song.dynamics_marks_before_tag;
+ 
+-    for (const SongTimestamp& ts : song.sequence) {
+-        for (const ChordNote& note : ts.chord.notes()) {
+-            DynamicsCounts& c = bd.rows[static_cast<size_t>(dynamics_row_for(note))];
+-            switch (note.dynamictype) {
+-                case NoteDynamicType::Ghost:  ++c.ghost;  break;
+-                case NoteDynamicType::Accent: ++c.accent; break;
+-                case NoteDynamicType::Normal: ++c.normal; break;
+-            }
++    auto count_note = [&bd](const ChordNote& note) {
++        DynamicsCounts& c = bd.rows[static_cast<size_t>(dynamics_row_for(note))];
++        switch (note.dynamictype) {
++            case NoteDynamicType::Ghost:  ++c.ghost;  break;
++            case NoteDynamicType::Accent: ++c.accent; break;
++            case NoteDynamicType::Normal: ++c.normal; break;
+         }
++    };
++    if (!perf_exp_on("dyn")) {
++        for (const SongTimestamp& ts : song.sequence)
++            for (const ChordNote& note : ts.chord.notes()) count_note(note);
++        return bd;
+     }
++    // PERF EXPERIMENT: read the chord's lanes in place (KRYBG, the order
++    // notes() returns), so no vector is built per timestamp.
++    constexpr NoteColor kLanes[] = {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow,
++                                    NoteColor::Blue, NoteColor::Green};
++    for (const SongTimestamp& ts : song.sequence)
++        for (NoteColor lane : kLanes)
++            if (const std::optional<ChordNote>& note = ts.chord.at(lane)) count_note(*note);
+     return bd;
+ }
+ 
+diff --git a/src/parse/midi.cpp b/src/parse/midi.cpp
+index f7c29d2..c94688c 100644
+--- a/src/parse/midi.cpp
++++ b/src/parse/midi.cpp
+@@ -217,6 +217,159 @@ void MidiFile::parse(const uint8_t* data, size_t size) {
+     }
+ }
+ 
++namespace {
++
++// PERF EXPERIMENT: parse_track's walk, with what to keep left to callbacks.
++// on_meta(meta_type, payload, plen, pending) and on_note(high, d1, d2,
++// pending) return true when they emitted a message; the walk then starts a
++// fresh delta, exactly as parse_track does when it pushes one.
++template <class OnMeta, class OnNote>
++void walk_track(const uint8_t* data, size_t pos, size_t end, OnMeta&& on_meta,
++                OnNote&& on_note) {
++    int64_t pending = 0;
++    int running = 0;
++    while (pos < end) {
++        pending += static_cast<int64_t>(read_varlen(data, pos, end));
++        if (pos >= end) break;
++        uint8_t b = data[pos];
++        int status;
++        if (b & 0x80) {
++            status = b;
++            ++pos;
++            if (b != 0xFF) running = b;
++        } else if (running) {
++            status = running;
++        } else {
++            break;
++        }
++        if (status == 0xFF) {
++            if (pos >= end) break;
++            int meta_type = data[pos++];
++            const uint64_t length = read_message_length(data, pos, end);
++            const uint8_t* payload = data + pos;
++            size_t avail = end - pos;
++            size_t plen = std::min<size_t>(length, avail);
++            pos += length;
++            if (on_meta(meta_type, payload, plen, pending)) pending = 0;
++            continue;
++        }
++        if (status == 0xF0 || status == 0xF7) {
++            const uint64_t length = read_message_length(data, pos, end);
++            pos += length;
++            continue;
++        }
++        int high = status & 0xF0;
++        int nbytes = channel_data_len(high);
++        if (nbytes < 0) break;
++        if (pos + static_cast<size_t>(nbytes) > end) break;
++        uint8_t d1 = data[pos];
++        uint8_t d2 = nbytes > 1 ? data[pos + 1] : 0;
++        pos += nbytes;
++        if (high == 0x90 || high == 0x80) {
++            if (on_note(high, d1, d2, pending)) pending = 0;
++        }
++    }
++}
++
++// The name parse_track would give this track (D78), from a walk that keeps
++// nothing. Throws where parse_track throws.
++std::string track_name_of(const uint8_t* data, size_t pos, size_t end) {
++    std::string name;
++    bool named = false, name_recognized = false;
++    walk_track(
++        data, pos, end,
++        [&](int meta_type, const uint8_t* payload, size_t plen, int64_t) {
++            if (meta_type == 0x03 && !name_recognized) {
++                std::string s = decode_latin1(payload, plen);
++                const bool recognized = recognized_track_name(s);
++                if (recognized || !named) {
++                    name = std::move(s);
++                    named = true;
++                    name_recognized = recognized;
++                }
++            }
++            return false;
++        },
++        [](int, uint8_t, uint8_t, int64_t) { return false; });
++    return name;
++}
++
++}  // namespace
++
++MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& filter) {
++    MidiFile mf;
++    if (size < 14 || data[0] != 'M' || data[1] != 'T' || data[2] != 'h' || data[3] != 'd') {
++        throw MidiError("not a MIDI file: missing MThd header");
++    }
++    uint32_t header_len = be32(data, 4);
++    mf.format = be16(data, 8);
++    int16_t division = be16(data, 12);
++    if (division < 0) throw MidiError("SMPTE time division is not supported");
++    mf.ticks_per_beat = division;
++
++    // The same chunk walk as parse(), first collecting each track's bytes and
++    // name (every track is walked, so a bad length throws as before).
++    std::vector<std::pair<size_t, size_t>> ranges;
++    size_t pos = 8 + header_len;
++    while (pos < size) {
++        if (pos + 4 > size || data[pos] != 'M' || data[pos + 1] != 'T' ||
++            data[pos + 2] != 'r' || data[pos + 3] != 'k') {
++            if (pos + 8 > size) break;
++            pos += 8 + be32(data, pos + 4);
++            continue;
++        }
++        uint32_t chunk_len = be32(data, pos + 4);
++        size_t start = pos + 8;
++        size_t end = std::min(start + chunk_len, size);
++        ranges.emplace_back(start, end);
++        MidiTrack t;
++        t.name = track_name_of(data, start, end);
++        mf.tracks.push_back(std::move(t));
++        pos = start + chunk_len;
++    }
++
++    // Then each track keeps only what its role reads: the first track its
++    // tempo and meter, the first drum track the notes the filter names and its
++    // text metas, every EVENTS track its text metas. Dropped messages hand
++    // their delta on, so absolute ticks are unchanged.
++    bool drums_seen = false;
++    for (size_t i = 0; i < mf.tracks.size(); ++i) {
++        MidiTrack& track = mf.tracks[i];
++        const bool tempo = i == 0;
++        const bool drums = !drums_seen && track.name == kDrumsTrackName;
++        if (drums) drums_seen = true;
++        const bool events = track.name == kEventsTrackName;
++        const bool texts = drums || events;
++        if (!tempo && !texts) continue;
++        walk_track(
++            data, ranges[i].first, ranges[i].second,
++            [&](int meta_type, const uint8_t* payload, size_t plen, int64_t pending) {
++                const bool keep = (tempo && (meta_type == 0x51 || meta_type == 0x58)) ||
++                                  (texts && meta_type >= 0x01 && meta_type <= 0x07 &&
++                                   meta_type != 0x03 && meta_type != 0x04);
++                if (!keep) return false;
++                Message msg;
++                if (!meta_message(meta_type, payload, plen, pending, &msg)) return false;
++                track.messages.push_back(std::move(msg));
++                return true;
++            },
++            [&](int high, uint8_t d1, uint8_t d2, int64_t pending) {
++                if (!drums) return false;
++                const uint8_t note = d1 < 128 ? d1 : uint8_t{127};
++                const uint8_t vel = d2 < 128 ? d2 : uint8_t{127};
++                const bool on = high == 0x90 && vel > 0;
++                if (!(on ? filter.note_on[note] : filter.note_off[note])) return false;
++                Message& msg = track.messages.emplace_back();
++                msg.type = (high == 0x90) ? MType::NoteOn : MType::NoteOff;
++                msg.note = note;
++                msg.velocity = vel;
++                msg.time = pending;
++                return true;
++            });
++    }
++    return mf;
++}
++
+ MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
+     MidiTrack track;
+     // A channel event with running status is three bytes (delta, two data
+diff --git a/src/parse/midi.h b/src/parse/midi.h
+index 9bad412..bcb9311 100644
+--- a/src/parse/midi.h
++++ b/src/parse/midi.h
+@@ -87,8 +87,22 @@ public:
+     std::vector<Message> messages;
+ };
+ 
++// PERF EXPERIMENT: which drum-track note messages MidiFile::lean keeps. A
++// note-on with velocity above 0 is kept when note_on[pitch] is set; a
++// note-off (or a note-on with velocity 0) when note_off[pitch] is set.
++struct MidiLeanFilter {
++    bool note_on[128] = {};
++    bool note_off[128] = {};
++};
++
+ class MidiFile {
+ public:
++    // PERF EXPERIMENT: the file as the song parser reads it, holding only
++    // what it reads: track 0's tempo and meter, the first PART DRUMS track's
++    // text metas and the notes `filter` keeps, every EVENTS track's text
++    // metas. Every track keeps its name. Throws exactly as the full reader.
++    static MidiFile lean(const uint8_t* data, size_t size, const MidiLeanFilter& filter);
++
+     // Parse from raw file bytes. Throws MidiError on invalid input.
+     explicit MidiFile(const std::vector<uint8_t>& data);
+     MidiFile(const uint8_t* data, size_t size);
+@@ -102,6 +116,7 @@ public:
+     std::vector<MidiTrack> tracks;
+ 
+ private:
++    MidiFile() = default;
+     void parse(const uint8_t* data, size_t size);
+     MidiTrack parse_track(const uint8_t* data, size_t pos, size_t end);
+ };
+diff --git a/src/parse/song.cpp b/src/parse/song.cpp
+index 573d50e..1c0cfe3 100644
+--- a/src/parse/song.cpp
++++ b/src/parse/song.cpp
+@@ -19,8 +19,27 @@
+ #include "parse/srb.h"
+ #include "parse/timesig.h"
+ 
++#include <cstdlib>
++
+ namespace hydra {
+ 
++// PERF EXPERIMENT switch (scratch only): each experiment is on unless the
++// environment variable HYDRA_PERF_OFF names it ("dyn", "midi", "chart") or
++// says "all", so one build can run every variant for A/B timing.
++bool perf_exp_on(const char* name) {
++    static const std::string off = [] {
++        char* v = nullptr;
++        size_t len = 0;
++        std::string s;
++        if (_dupenv_s(&v, &len, "HYDRA_PERF_OFF") == 0 && v) s = v;
++        std::free(v);
++        return s;
++    }();
++    if (off.empty()) return true;
++    if (off.find("all") != std::string::npos) return false;
++    return off.find(name) == std::string::npos;
++}
++
+ // The timing maps Hydra can measure time with: a positive resolution, every
+ // measure at least one tick long, every tempo a positive, finite BPM. Both
+ // parsers reach this through Song::build_timing, so no chart with a zero,
+@@ -1115,6 +1134,124 @@ ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuest
+     }
+ }
+ 
++// ---- PERF EXPERIMENT: a lean .chart line reader ---------------------------
++// The same answers and the same exceptions as ChartDataEntry, with no string
++// built for a well-formed number. Anything unusual goes to the original
++// function, so its exact acceptance rules still decide.
++
++// The leading [-]digits of w when there are 1..max_digits of them, read as
++// strtol/strtoll would; false sends the caller to the original function.
++bool fast_leading_int(std::string_view w, size_t max_digits, int64_t& out) {
++    size_t i = 0;
++    const bool neg = !w.empty() && w[0] == '-';
++    if (neg) i = 1;
++    const size_t d0 = i;
++    int64_t v = 0;
++    while (i < w.size() && w[i] >= '0' && w[i] <= '9') {
++        if (i - d0 >= max_digits) return false;
++        v = v * 10 + (w[i] - '0');
++        ++i;
++    }
++    if (i == d0) return false;
++    out = neg ? -v : v;
++    return true;
++}
++
++int lean_stoi(std::string_view w) {
++    int64_t v;
++    if (fast_leading_int(w, 9, v)) return static_cast<int>(v);
++    return word_stoi(w);
++}
++
++long long lean_stoll(std::string_view w) {
++    int64_t v;
++    if (fast_leading_int(w, 18, v)) return v;
++    return word_stoll(w);
++}
++
++bool lean_try_parse_int(std::string_view s, int64_t& out) {
++    if (s.empty()) return false;
++    const char c = s[0];
++    // strtoll converts nothing from a letter, so the original says no.
++    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) return false;
++    size_t i = c == '-' ? 1 : 0;
++    const size_t d0 = i;
++    while (i < s.size() && s[i] >= '0' && s[i] <= '9') ++i;
++    if (i == s.size() && i > d0 && i - d0 <= 18) {
++        int64_t v;
++        fast_leading_int(s, 18, v);
++        out = v;
++        return true;
++    }
++    return try_parse_int(std::string(s), out);
++}
++
++enum class LineKind : uint8_t {
++    Prop, None, TimeSig, Tempo, SoloStart, SoloEnd, DiscoOff, DiscoOn, Event, Note, Phrase,
++};
++
++struct ChartLine {
++    int64_t tick = 0;
++    LineKind kind = LineKind::None;
++    int value = 0;        // Note / Phrase value, TS numerator
++    int den = 0;          // TS denominator
++    int64_t length = 0;   // Note / Phrase length
++    double bpm = 0;       // Tempo
++};
++
++// ChartDataEntry's constructor, as one classification. `event` gets the
++// generic text event's payload when the line is one.
++ChartLine classify_chart_line(std::string_view keystr, std::string_view valuestr, char mix_digit,
++                              std::string_view* event) {
++    ChartLine out;
++    int64_t k;
++    if (!lean_try_parse_int(keystr, k)) {
++        out.kind = LineKind::Prop;
++        return out;
++    }
++    out.tick = k;
++    const ChartWords t = split_ws_view(valuestr);
++    if (t.count == 0) return out;
++    const std::string_view t0 = t.w[0];
++    if (t0 == "TS" && t.count == 2) {
++        out.kind = LineKind::TimeSig;
++        out.value = lean_stoi(t.w[1]);
++        out.den = timesig_denominator(kChartTsMissingExponent);
++    } else if (t0 == "TS" && t.count == 3) {
++        out.kind = LineKind::TimeSig;
++        out.value = lean_stoi(t.w[1]);
++        out.den = timesig_denominator(lean_stoi(t.w[2]));
++    } else if (t0 == "B" && t.count == 2) {
++        out.kind = LineKind::Tempo;
++        out.bpm = static_cast<double>(lean_stoll(t.w[1])) / 1000.0;
++    } else if (t0 == "E" && t.count == 2 && t.w[1] == "solo") {
++        out.kind = LineKind::SoloStart;
++    } else if (t0 == "E" && t.count == 2 && t.w[1] == "soloend") {
++        out.kind = LineKind::SoloEnd;
++    } else if (t0 == "E" && t.count == 2 && is_disco_off_marker(t.w[1], mix_digit)) {
++        out.kind = LineKind::DiscoOff;
++    } else if (t0 == "E" && t.count == 2 && is_disco_on_marker(t.w[1], mix_digit)) {
++        out.kind = LineKind::DiscoOn;
++    } else if (t0 == "E") {
++        out.kind = LineKind::Event;
++        if (event) {
++            std::string_view rest = trim_view(valuestr.substr(1));
++            if (rest.size() >= 2 && rest.front() == '"' && rest.back() == '"')
++                rest = rest.substr(1, rest.size() - 2);
++            *event = rest;
++        }
++    } else if (t0 == "N" && t.count == 3) {
++        out.kind = LineKind::Note;
++        out.value = lean_stoi(t.w[1]);
++        out.length = lean_stoll(t.w[2]);
++    } else if (t0 == "S" && t.count == 3) {
++        out.kind = LineKind::Phrase;
++        out.value = lean_stoi(t.w[1]);
++        out.length = lean_stoll(t.w[2]);
++    }
++    return out;
++}
++
+ struct ChartSection {
+     std::string name;
+     std::vector<int64_t> tick_order;
+@@ -1193,9 +1330,22 @@ private:
+     const core::Rules& rules_;
+ 
+     void load_sections(const std::vector<uint8_t>& data, char mix_digit);
++    // PERF EXPERIMENT: full entries only for [Song] and [SyncTrack]; the
++    // drum section as flat lines, [Events] as its practice sections, and
++    // every other section only checked (it throws where the full read would).
++    void load_sections_lean(const std::vector<uint8_t>& data, char mix_digit,
++                            const std::string& drum_section);
+     COp optype(const ChartDataEntry& e, int64_t tick);
++    COp optype(const ChartLine& e, int64_t tick);
+     void run(const COp& op);
+-    void push_timestamp(int64_t tick, const std::vector<ChartDataEntry>& entries);
++    template <class Entry>
++    void push_timestamp(int64_t tick, const Entry* first, const Entry* last);
++
++    bool lean_ = false;
++    bool have_drum_lines_ = false;
++    std::vector<ChartLine> drum_lines_;
++    bool have_event_sections_ = false;
++    std::vector<SongSection> event_sections_;
+ 
+     void op_disco(bool on) { flag_disco_ = on; }
+     void op_tempo(int64_t tick, double bpm) { song_->bpm_changes[tick] = bpm; }
+@@ -1300,6 +1450,140 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
+     }
+ }
+ 
++void ChartParser::load_sections_lean(const std::vector<uint8_t>& data, char mix_digit,
++                                     const std::string& drum_section) {
++    const std::string_view text(reinterpret_cast<const char*>(data.data()), data.size());
++    enum class Mode { Out, Full, Drums, Events, Skip };
++    Mode mode = Mode::Out;
++    std::optional<ChartSection> wip;
++    std::vector<ChartLine> drums;
++    std::vector<SongSection> events;
++    size_t pos = 0;
++    while (pos < text.size()) {
++        const size_t nl = text.find('\n', pos);
++        const size_t stop = nl == std::string_view::npos ? text.size() : nl;
++        const std::string_view line = trim_view(text.substr(pos, stop - pos));
++        pos = nl == std::string_view::npos ? text.size() : nl + 1;
++
++        if (mode != Mode::Out) {
++            if (line == "{") continue;
++            if (line == "}") {
++                // A later section of the same name replaces the earlier one,
++                // as the map assignment in load_sections does.
++                switch (mode) {
++                    case Mode::Full: sections_[wip->name] = std::move(*wip); wip.reset(); break;
++                    case Mode::Drums:
++                        drum_lines_ = std::move(drums);
++                        drums.clear();
++                        have_drum_lines_ = true;
++                        break;
++                    case Mode::Events:
++                        event_sections_ = std::move(events);
++                        events.clear();
++                        have_event_sections_ = true;
++                        break;
++                    default: break;
++                }
++                mode = Mode::Out;
++                continue;
++            }
++            const size_t eq = line.find('=');
++            std::string_view lhs = line.substr(0, eq), rhs;
++            if (eq != std::string_view::npos) {
++                const size_t eq2 = line.find('=', eq + 1);
++                rhs = line.substr(eq + 1, eq2 == std::string_view::npos ? std::string_view::npos
++                                                                         : eq2 - eq - 1);
++            }
++            lhs = trim_view(lhs);
++            rhs = trim_view(rhs);
++            if (mode == Mode::Full) {
++                wip->add(ChartDataEntry(lhs, rhs, mix_digit));
++            } else if (mode == Mode::Drums) {
++                const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);
++                if (l.kind != LineKind::Prop) drums.push_back(l);
++            } else if (mode == Mode::Events) {
++                std::string_view ev;
++                const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, &ev);
++                if (l.kind == LineKind::Event) {
++                    std::string name;
++                    if (section_name_of(std::string(ev), &name))
++                        events.push_back({l.tick, std::move(name)});
++                }
++            } else {
++                classify_chart_line(lhs, rhs, mix_digit, nullptr);
++            }
++        } else {
++            std::string_view bracket;
++            if (!find_section_header(line, &bracket))
++                throw ChartFileError("expected a [section] header");
++            const std::string_view name = bracket.substr(1, bracket.size() - 2);
++            if (name == "Song" || name == "SyncTrack") {
++                ChartSection s;
++                s.name = std::string(name);
++                wip = std::move(s);
++                mode = Mode::Full;
++            } else if (name == drum_section) {
++                drums.clear();
++                mode = Mode::Drums;
++            } else if (name == "Events") {
++                events.clear();
++                mode = Mode::Events;
++            } else {
++                mode = Mode::Skip;
++            }
++        }
++    }
++}
++
++COp ChartParser::optype(const ChartLine& e, int64_t tick) {
++    // ChartParser::optype's answers for the lines a drum section can hold.
++    // Tempo and time signature lines are Time ops there, which
++    // push_timestamp never runs, so they are dropped here.
++    switch (e.kind) {
++        case LineKind::DiscoOn: return cop_flag(CPhase::Pre, CAct::Disco, true);
++        case LineKind::DiscoOff: return cop_flag(CPhase::Pre, CAct::Disco, false);
++        case LineKind::SoloStart: return cop_flag(CPhase::Pre, CAct::Solo, true);
++        case LineKind::SoloEnd: return cop_flag(CPhase::Post, CAct::Solo, false);
++        case LineKind::Note: {
++            constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
++            switch (e.value) {
++                case 0: return cop_color(N, CAct::Note, NoteColor::Kick);
++                case 1: return cop_color(N, CAct::Note, NoteColor::Red);
++                case 2: return cop_color(N, CAct::Note, NoteColor::Yellow);
++                case 3: return cop_color(N, CAct::Note, NoteColor::Blue);
++                case 4: return cop_color(N, CAct::Note, NoteColor::Green);
++                case 32:
++                    if (mode_bass2x_) return cop(N, CAct::TwoX);
++                    return {};
++                case 34: return cop_color(M, CAct::Accent, NoteColor::Red);
++                case 35: return cop_color(M, CAct::Accent, NoteColor::Yellow);
++                case 36: return cop_color(M, CAct::Accent, NoteColor::Blue);
++                case 37: return cop_color(M, CAct::Accent, NoteColor::Green);
++                case 40: return cop_color(M, CAct::Ghost, NoteColor::Red);
++                case 41: return cop_color(M, CAct::Ghost, NoteColor::Yellow);
++                case 42: return cop_color(M, CAct::Ghost, NoteColor::Blue);
++                case 43: return cop_color(M, CAct::Ghost, NoteColor::Green);
++                case 66:
++                    if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Yellow);
++                    return {};
++                case 67:
++                    if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Blue);
++                    return {};
++                case 68:
++                    if (mode_pro_) return cop_color(M, CAct::Cymbal, NoteColor::Green);
++                    return {};
++                default: return {};
++            }
++        }
++        case LineKind::Phrase:
++            if (e.value == 2) return cop_span(CPhase::Pre, CAct::SpStart, tick, tick + e.length);
++            if (e.value == 64)
++                return cop_span(CPhase::PostDelayed, CAct::FillStart, tick, tick + e.length);
++            return {};
++        default: return {};
++    }
++}
++
+ COp ChartParser::optype(const ChartDataEntry& e, int64_t tick) {
+     if (e.discoflip_enable) return cop_flag(CPhase::Pre, CAct::Disco, true);
+     if (e.discoflip_disable) return cop_flag(CPhase::Pre, CAct::Disco, false);
+@@ -1380,14 +1664,14 @@ void ChartParser::run(const COp& op) {
+     }
+ }
+ 
+-void ChartParser::push_timestamp(int64_t tick,
+-                                 const std::vector<ChartDataEntry>& entries) {
++template <class Entry>
++void ChartParser::push_timestamp(int64_t tick, const Entry* first, const Entry* last) {
+     chord_ = Chord();
+ 
+     std::vector<COp>& ops = ops_;
+     ops.clear();
+-    for (const ChartDataEntry& e : entries) {
+-        COp op = optype(e, tick);
++    for (const Entry* e = first; e != last; ++e) {
++        COp op = optype(*e, tick);
+         if (op.runs()) ops.push_back(op);
+     }
+ 
+@@ -1424,7 +1708,12 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
+                         bool bass2x, Difficulty difficulty) {
+     // A disco marker counts only in the difficulty it names, so the reader
+     // needs this difficulty's digit before it classifies any line.
+-    load_sections(data, difficulty_chart_codes(difficulty).mix_digit);
++    lean_ = perf_exp_on("chart");
++    if (lean_)
++        load_sections_lean(data, difficulty_chart_codes(difficulty).mix_digit,
++                           difficulty_chart_codes(difficulty).chart_section());
++    else
++        load_sections(data, difficulty_chart_codes(difficulty).mix_digit);
+     mode_pro_ = pro;
+     mode_bass2x_ = bass2x;
+ 
+@@ -1465,6 +1754,37 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
+     // Each difficulty is its own section ("ExpertDrums", "HardDrums", ...);
+     // everything inside one — notes, dynamics, cymbals, SP, fills, solos —
+     // follows for free. A chart missing the section parses as an empty song.
++    if (lean_) {
++        if (have_drum_lines_) {
++            // The same order as the sorted tick_order below: ticks ascending,
++            // the lines at one tick in file order.
++            std::vector<ChartLine>& lines = drum_lines_;
++            const auto by_tick = [](const ChartLine& a, const ChartLine& b) {
++                return a.tick < b.tick;
++            };
++            if (!std::is_sorted(lines.begin(), lines.end(), by_tick))
++                std::stable_sort(lines.begin(), lines.end(), by_tick);
++            const ChartLine* p = lines.data();
++            const ChartLine* end = p + lines.size();
++            while (p != end) {
++                const ChartLine* q = p + 1;
++                while (q != end && q->tick == p->tick) ++q;
++                push_timestamp(p->tick, p, q);
++                p = q;
++            }
++            if (sp_end_tick_.has_value())
++                op_sp_end(sp_start_tick_.value_or(0), *sp_end_tick_);
++            place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
++        }
++        if (have_event_sections_) {
++            song.practice_sections = std::move(event_sections_);
++            sort_practice_sections(song.practice_sections);
++        }
++        song.solo_sections = find_solo_sections(song.sequence);
++        song.dynamics_enabled = true;
++        song.check_activations(rules_);
++        return song;
++    }
+     auto ed_it = sections_.find(difficulty_chart_codes(difficulty).chart_section());
+     if (ed_it != sections_.end()) {
+         const ChartSection& ed = ed_it->second;
+@@ -1476,8 +1796,10 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
+         // the file's order.
+         std::vector<int64_t> ticks = ed.tick_order;
+         std::sort(ticks.begin(), ticks.end());
+-        for (int64_t tk : ticks)
+-            push_timestamp(tk, ed.tick_data.at(tk));
++        for (int64_t tk : ticks) {
++            const std::vector<ChartDataEntry>& v = ed.tick_data.at(tk);
++            push_timestamp(tk, v.data(), v.data() + v.size());
++        }
+         // A phrase still open after the last tick runs past the last note.
+         // Close it now, so that note awards it, as the 116 note-off does in
+         // a .mid.
+@@ -1518,6 +1840,21 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
+ 
+ Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
+                         bool bass2x, Difficulty difficulty, const core::Rules& rules) {
++    if (perf_exp_on("midi")) {
++        // PERF EXPERIMENT: decode only what MidiParser reads. A drum note is
++        // kept when MidiParser::optype could give it an op that runs in
++        // push_timestamp; everything else there is a no-op.
++        const int base = difficulty_base_pitch(difficulty);
++        const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
++        MidiLeanFilter f;
++        for (int n = 0; n < 128; ++n) {
++            const bool marker = is_midi_marker_pitch(n);
++            f.note_on[n] = (n >= base && n <= base + 4) || (n == kick2x && bass2x) || marker;
++            f.note_off[n] = marker;
++        }
++        MidiFile mid = MidiFile::lean(data.data(), data.size(), f);
++        return MidiParser(rules).parse(mid, pro, bass2x, difficulty);
++    }
+     MidiFile mid(data);
+     return MidiParser(rules).parse(mid, pro, bass2x, difficulty);
+ }
+diff --git a/tools/bench.cpp b/tools/bench.cpp
+index 774cb51..046118d 100644
+--- a/tools/bench.cpp
++++ b/tools/bench.cpp
+@@ -20,12 +20,16 @@
+ #include <memory>
+ #include <optional>
+ #include <string>
++#include <unordered_set>
+ #include <vector>
+ 
+ #include "json.hpp"
++#include "search/graph.h"
+ 
+ #include "app/analysis.h"
+ #include "app/config.h"
++#include "app/dynamics_breakdown.h"
++#include <typeinfo>
+ #include "app/rules_file.h"
+ #include "app/user_messages.h"
+ #include "core/model.h"
+@@ -221,6 +225,220 @@ static void corpus_bench() {
+     bench(kCloneHeroSpCap, 4);
+ }
+ 
++// PERF EXPERIMENT (scratch only): single-thread engine timing over a folder.
++//   hydra_bench --engine <folder> [--cache <db>] [--reps N] [--out <file>]
++// Settings come from the exe-side ini, as hydra_batch reads them. Per chart:
++// parse, a throwaway ScoreGraph build, analyze_chart (N reps), prepare_row.
++// Prints the sums and an FNV hash of every prepared row, so two builds can be
++// compared for identical output.
++static uint64_t fnv(uint64_t h, const void* p, size_t n) {
++    const unsigned char* b = static_cast<const unsigned char*>(p);
++    for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ULL; }
++    return h;
++}
++static uint64_t fnv_str(uint64_t h, const std::string& s) {
++    uint64_t n = s.size();
++    h = fnv(h, &n, sizeof n);
++    return fnv(h, s.data(), s.size());
++}
++template <class T>
++static uint64_t fnv_opt(uint64_t h, const std::optional<T>& o) {
++    unsigned char has = o.has_value();
++    h = fnv(h, &has, 1);
++    if (o) h = fnv(h, &*o, sizeof(T));
++    return h;
++}
++static uint64_t row_hash(const store::PreparedRow& r) {
++    uint64_t h = 1469598103934665603ULL;
++    h = fnv_str(h, r.bestpath);
++    uint64_t n = r.structure.size();
++    h = fnv(h, &n, sizeof n);
++    h = fnv(h, r.structure.data(), r.structure.size());
++    for (const auto& node : r.nodes) {
++        h = fnv_str(h, node.hash);
++        n = node.payload.size();
++        h = fnv(h, &n, sizeof n);
++        h = fnv(h, node.payload.data(), node.payload.size());
++    }
++    const store::PathSummary& s = r.summary;
++    h = fnv_opt(h, s.score); h = fnv_opt(h, s.actcount); h = fnv_opt(h, s.maxskip);
++    h = fnv_opt(h, s.hardest_ms); h = fnv_opt(h, s.avgmult); h = fnv_opt(h, s.notecount);
++    h = fnv_opt(h, s.sqin_count); h = fnv_opt(h, s.sqout_count); h = fnv_opt(h, s.pathcount);
++    h = fnv_opt(h, s.stars);
++    return h;
++}
++
++static void engine_mode(const std::string& folder, const std::string& cachedb, int reps,
++                        const std::string& outpath) {
++    store::ChartLibraryCache cache;
++    std::unique_ptr<store::RecordStore> cstore;
++    if (!cachedb.empty()) {
++        cstore = std::make_unique<store::RecordStore>(cachedb, core::RulesStamp::of(g_rules));
++        cache = cstore->chart_library_cache();
++    }
++    auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{},
++                                                cache.empty() ? nullptr : &cache);
++    app::Settings st = app::Settings::load();
++    st.rules = g_rules;
++    app::BatchRun run = st.batch_run();
++    const app::AnalysisSettings& settings = run.settings;
++    std::unordered_set<std::string> seen;
++    double t_parse = 0, t_graph = 0, t_an = 0, t_prep = 0, t_gdel = 0;
++    int n = 0, failed = 0;
++    uint64_t all = 1469598103934665603ULL;
++    std::ofstream out;
++    if (!outpath.empty()) out.open(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
++    for (const app::ScanItem& it : items) {
++        if (!seen.insert(it.md5).second) continue;
++        auto t = clk::now();
++        std::optional<Song> song;
++        try {
++            song.emplace(load_songpath_with_notes(it.notespath, settings.prodrums, settings.bass2x,
++                                                  settings.difficulty, settings.rules));
++        } catch (const std::exception&) {
++            ++failed;
++            continue;
++        }
++        t_parse += secs_since(t);
++        t = clk::now();
++        {
++            ScoreGraph g(*song,
++                         std::optional<int>(graph_build_cap(settings.sp_cap, song->sp_phrase_count())),
++                         fill_rule_for(settings.legacy_fill_deadline), settings.rules);
++            t_graph += secs_since(t);
++            t = clk::now();
++        }
++        t_gdel += secs_since(t);
++        std::optional<HydraRecord> rec;
++        t = clk::now();
++        try {
++            for (int r = 0; r < reps; ++r) rec = analyze_chart(*song, settings);
++        } catch (const std::exception&) {
++            ++failed;
++            continue;
++        }
++        t_an += secs_since(t);
++        t = clk::now();
++        store::PreparedRow row = store::prepare_row(
++            store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, *rec);
++        t_prep += secs_since(t);
++        const uint64_t h = row_hash(row);
++        all = fnv(all, &h, sizeof h);
++        if (out) out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
++        ++n;
++    }
++    std::printf("charts %d failed %d | parse %.3fs | graph %.3fs | analyze x%d %.3fs | "
++                "prepare %.3fs | hash %016llx\n",
++                n, failed, t_parse, t_graph, reps, t_an, t_prep,
++                static_cast<unsigned long long>(all));
++    std::printf("graph destroy %.3fs\n", t_gdel);
++}
++
++// PERF EXPERIMENT (scratch only): parse-only timing and a digest of every
++// parsed Song (sequence, maps, display fields) and its stored dynamics blob.
++//   hydra_bench --parse <folder | list.txt> [--reps N] [--out <file>] [--nodyn]
++// A .txt argument lists notes paths, one per line. Failures hash their what().
++static uint64_t song_digest(const Song& s) {
++    uint64_t h = 1469598103934665603ULL;
++    auto v = [&](const auto& x) { h = fnv(h, &x, sizeof x); };
++    v(s.tick_resolution());
++    for (const auto& [k, x] : s.tpm_changes) { v(k); v(x); }
++    for (const auto& [k, x] : s.bpm_changes) { v(k); v(x); }
++    for (const auto& [k, x] : s.timesig_changes) { v(k); v(x.first); v(x.second); }
++    uint64_t n = s.sequence.size();
++    v(n);
++    for (const SongTimestamp& ts : s.sequence) {
++        v(ts.timecode.ticks());
++        double ms = ts.timecode.ms(), md = ts.timecode.measures_decimal();
++        v(ms); v(md);
++        for (int i = 0; i < 3; ++i) v(ts.timecode.measure_beats_ticks()[i]);
++        for (int c = 1; c <= 5; ++c) {
++            const auto& o = ts.chord.at(static_cast<NoteColor>(c));
++            unsigned char has = o.has_value();
++            v(has);
++            if (o) { v(o->colortype); v(o->dynamictype); v(o->cymbaltype); v(o->is2x); }
++        }
++        v(ts.flag_solo); v(ts.flag_sp);
++        h = fnv_opt(h, ts.activation_length);
++        h = fnv_opt(h, ts.sp_phrase_start);
++    }
++    for (const auto& f : s.features) h = fnv_str(h, f);
++    v(s.dynamics_enabled);
++    h = fnv_opt(h, s.dynamics_late_tag_tick);
++    v(s.dynamics_marks_before_tag);
++    h = fnv_opt(h, s.chart_offset_s);
++    for (const auto& p : s.practice_sections) { v(p.tick); h = fnv_str(h, p.name); }
++    for (const auto& p : s.solo_sections) { v(p.first); v(p.last); }
++    return h;
++}
++
++static void parse_mode(const std::string& arg, int reps, const std::string& outpath, bool dyn) {
++    std::vector<std::string> paths;
++    if (arg.size() > 4 && arg.substr(arg.size() - 4) == ".txt") {
++        std::ifstream in(hydra::os_path(arg));
++        std::string line;
++        while (std::getline(in, line)) {
++            if (!line.empty() && line.back() == '\r') line.pop_back();
++            if (!line.empty()) paths.push_back(line);
++        }
++    } else {
++        auto [items, errors] = app::discover_charts({arg}, app::ScanCallbacks{}, nullptr);
++        std::unordered_set<std::string> seen;
++        for (const app::ScanItem& it : items)
++            if (seen.insert(it.md5).second) paths.push_back(it.notespath);
++    }
++    app::Settings st = app::Settings::load();
++    st.rules = g_rules;
++    app::BatchRun run = st.batch_run();
++    const app::AnalysisSettings& settings = run.settings;
++    double t_parse = 0, t_dyn = 0;
++    int n = 0, failed = 0;
++    uint64_t all = 1469598103934665603ULL;
++    std::ofstream out;
++    if (!outpath.empty()) out.open(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
++    for (const std::string& p : paths) {
++        uint64_t h = 0;
++        double best = 1e30;
++        std::string fail;
++        for (int r = 0; r < reps; ++r) {
++            auto t = clk::now();
++            try {
++                Song song = load_songpath_with_notes(p, settings.prodrums, settings.bass2x,
++                                                     settings.difficulty, settings.rules);
++                const double dt = secs_since(t);
++                best = std::min(best, dt);
++                if (r == 0) {
++                    h = song_digest(song);
++                    if (dyn) {
++                        auto t2 = clk::now();
++                        auto e = app::dynamics_entry_from_analysis("md5", song, settings.bass2x,
++                                                                   settings.difficulty,
++                                                                   settings.prodrums);
++                        t_dyn += secs_since(t2);
++                        if (e) h = fnv(h, e->blob.data(), e->blob.size());
++                    }
++                }
++            } catch (const std::exception& e) {
++                best = std::min(best, secs_since(t));
++                fail = std::string(typeid(e).name()) + ": " + e.what();
++                h = fnv_str(1469598103934665603ULL, fail);
++            }
++        }
++        t_parse += best;
++        if (!fail.empty()) ++failed;
++        all = fnv(all, &h, sizeof h);
++        if (out) {
++            out << p << '\t' << static_cast<long long>(best * 1e6) << '\t' << std::hex << h
++                << std::dec;
++            if (!fail.empty()) out << "\tFAIL " << fail;
++            out << '\n';
++        }
++        ++n;
++    }
++    std::printf("charts %d failed %d | parse(best of %d) %.3fs | dyn %.3fs | hash %016llx\n", n,
++                failed, reps, t_parse, t_dyn, static_cast<unsigned long long>(all));
++}
++
+ // Dump a store's charts table as the same JSON --dump writes (row_json, with
+ // the same --dump-rel root), so two scans' results can be diffed even when one
+ // came from another build.
+@@ -272,6 +490,29 @@ static int bench_main() {
+         dump_db(argv[2], argv[3], dumprel);
+         return 0;
+     }
++    if (argc > 2 && argv[1] == "--engine") {
++        std::string cachedb, outp;
++        int reps = 1;
++        for (int i = 3; i < argc; ++i) {
++            if (argv[i] == "--cache" && i + 1 < argc) cachedb = argv[++i];
++            else if (argv[i] == "--reps" && i + 1 < argc) reps = std::stoi(argv[++i]);
++            else if (argv[i] == "--out" && i + 1 < argc) outp = argv[++i];
++        }
++        engine_mode(argv[2], cachedb, reps, outp);
++        return 0;
++    }
++    if (argc > 2 && argv[1] == "--parse") {
++        std::string outp;
++        int reps = 1;
++        bool dyn = true;
++        for (int i = 3; i < argc; ++i) {
++            if (argv[i] == "--reps" && i + 1 < argc) reps = std::stoi(argv[++i]);
++            else if (argv[i] == "--out" && i + 1 < argc) outp = argv[++i];
++            else if (argv[i] == "--nodyn") dyn = false;
++        }
++        parse_mode(argv[2], reps, outp, dyn);
++        return 0;
++    }
+     if (argc > 2 && argv[1] == "--scan") {
+         std::string folder = argv[2], db, dump, dumprel;
+         for (int i = 3; i < argc; ++i) {

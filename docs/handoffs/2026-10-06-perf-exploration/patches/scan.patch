@@ -1,0 +1,396 @@
+diff --git a/src/app/analysis.cpp b/src/app/analysis.cpp
+index 8299d57..b8406a8 100644
+--- a/src/app/analysis.cpp
++++ b/src/app/analysis.cpp
+@@ -9,6 +9,7 @@
+ #include <algorithm>
+ #include <condition_variable>
+ #include <cstdio>
++#include <cstdlib>
+ #include <cstring>
+ #include <deque>
+ #include <mutex>
+@@ -86,8 +87,69 @@ struct HashedFile {
+     std::vector<uint8_t> head;  // first `head_capture` bytes, for .sng metadata
+ };
+ 
++// ---- PERF EXPERIMENT (scan): switches read once from the environment ----
++int env_int(const char* name, int fallback) {
++    char v[32] = {};
++    const DWORD n = GetEnvironmentVariableA(name, v, sizeof(v));
++    if (n == 0 || n >= sizeof(v)) return fallback;
++    return std::atoi(v);
++}
++
++std::string hex_digest(const UCHAR (&digest)[16]) {
++    static const char* kHexDigits = "0123456789abcdef";
++    std::string s(32, '0');
++    for (int i = 0; i < 16; ++i) {
++        s[static_cast<size_t>(2 * i)] = kHexDigits[digest[i] >> 4];
++        s[static_cast<size_t>(2 * i + 1)] = kHexDigits[digest[i] & 0xF];
++    }
++    return s;
++}
++
++// HYDRA_SCAN_HASHIO=1: CreateFileW + ReadFile with FILE_FLAG_SEQUENTIAL_SCAN,
++// a per-thread reused buffer of HYDRA_SCAN_HASHBUF_KB (default 1024) KB.
++// A read error ends the loop, as fread's 0 does in the stock path.
++HashedFile stream_md5_win32(BCRYPT_ALG_HANDLE alg, const std::string& path,
++                            size_t head_capture, size_t bufsize) {
++    HANDLE h = CreateFileW(win32_path(path).c_str(), GENERIC_READ,
++                           FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING,
++                           FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
++    if (h == INVALID_HANDLE_VALUE)
++        throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + path);
++    BCRYPT_HASH_HANDLE hash = nullptr;
++    if (!BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0))) {
++        CloseHandle(h);
++        throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
++    }
++    thread_local std::vector<uint8_t> buf;
++    if (buf.size() != bufsize) buf.resize(bufsize);
++    HashedFile out;
++    DWORD got = 0;
++    while (ReadFile(h, buf.data(), static_cast<DWORD>(buf.size()), &got, nullptr) && got > 0) {
++        BCryptHashData(hash, buf.data(), got, 0);
++        if (out.head.size() < head_capture) {
++            size_t want = std::min(head_capture - out.head.size(), static_cast<size_t>(got));
++            out.head.insert(out.head.end(), buf.data(), buf.data() + want);
++        }
++    }
++    CloseHandle(h);
++    UCHAR digest[16];
++    bool ok = BCRYPT_SUCCESS(BCryptFinishHash(hash, digest, sizeof(digest), 0));
++    BCryptDestroyHash(hash);
++    if (!ok) throw KindedError(ErrorKind::HashFailed, "MD5 hashing failed");
++    out.md5 = hex_digest(digest);
++    return out;
++}
++
+ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
+                       size_t head_capture) {
++    static const bool kHashIo = env_int("HYDRA_SCAN_HASHIO", 0) == 1;
++    static const size_t kHashBuf =
++        static_cast<size_t>(std::max(4, env_int("HYDRA_SCAN_HASHBUF_KB", 1024))) * 1024;
++    // HYDRA_SCAN_REUSEBUF=1: the stock fread path, but one reused 1 MB buffer
++    // per thread instead of a fresh zero-filled one per file.
++    static const bool kReuseBuf = env_int("HYDRA_SCAN_REUSEBUF", 0) == 1;
++    if (kHashIo) return stream_md5_win32(alg, path, head_capture, kHashBuf);
++
+     FILE* f = fopen_utf8(path, L"rb");
+     if (f == nullptr) throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + path);
+ 
+@@ -98,7 +160,14 @@ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
+     }
+ 
+     HashedFile out;
+-    std::vector<uint8_t> buf(1 << 20);
++    thread_local std::vector<uint8_t> reused;
++    std::vector<uint8_t> fresh;
++    if (kReuseBuf) {
++        if (reused.size() != (1u << 20)) reused.resize(1 << 20);
++    } else {
++        fresh.resize(1 << 20);
++    }
++    std::vector<uint8_t>& buf = kReuseBuf ? reused : fresh;
+     size_t got;
+     while ((got = std::fread(buf.data(), 1, buf.size(), f)) > 0) {
+         BCryptHashData(hash, buf.data(), static_cast<ULONG>(got), 0);
+@@ -228,6 +297,7 @@ struct PendingChart {
+     std::string ini_path;    // empty for archives
+     std::string rootfolder;
+     std::string sig;
++    uint64_t size = 0;  // PERF EXPERIMENT (scan): the hashed file's listed size
+ };
+ 
+ // The rescan cache's key: sizes and mtimes, so an unchanged file is not read
+@@ -274,6 +344,7 @@ std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEn
+         pc.ini_path = join_folder(dir, ini->name);
+     }
+     pc.sig = sig_of(chart, ini);
++    pc.size = chart.size;
+     return pc;
+ }
+ 
+@@ -395,6 +466,127 @@ store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingM
+     return scanned ? *scanned : read_chart_timing_meta(notespath);
+ }
+ 
++namespace {
++
++// PERF EXPERIMENT (scan): one folder's share of the walk, the serial walk's
++// loop body: the charts it holds, in walk order, and its subfolders' paths in
++// listing order.
++void scan_folder(const std::string& dir, const std::string& origin,
++                 const std::vector<DirEntry>& entries, std::vector<PendingChart>& charts,
++                 std::vector<std::string>& subpaths) {
++    // The folder's files, by name and entry in the same order, so the
++    // notes-file pick's index leads back to the entry (pending_chart_of
++    // fingerprints it).
++    std::vector<std::string> file_names;
++    std::vector<const DirEntry*> files;
++    std::vector<const DirEntry*> found_archives;
++    for (const DirEntry& e : entries) {
++        if (e.is_dir) {
++            subpaths.push_back(join_folder(dir, e.name));
++            continue;
++        }
++        file_names.push_back(e.name);
++        files.push_back(&e);
++        if (chart_kind_of(e.name) != ChartKind::Folder) found_archives.push_back(&e);
++    }
++
++    std::string rootfolder = relpath(parent_folder(dir), origin);
++    const auto add_chart = [&](const DirEntry& chart) {
++        std::optional<PendingChart> pc = pending_chart_of(dir, chart, entries);
++        if (!pc) return;
++        pc->rootfolder = rootfolder;
++        charts.push_back(std::move(*pc));
++    };
++    const std::optional<NotesFilePick> pick = pick_notes_file(file_names);
++    if (pick) add_chart(*files[pick->index]);
++    for (const DirEntry* archive : found_archives) add_chart(*archive);
++}
++
++struct WalkNode {
++    std::string dir;
++    std::string origin;
++    std::vector<PendingChart> charts;
++    std::vector<size_t> children;  // in listing order
++    std::string error;
++};
++
++// PERF EXPERIMENT (scan): HYDRA_SCAN_PWALK=N lists folders on N threads, then
++// replays the serial walk's stack order over the finished tree, so `pending`
++// and `errors` come out exactly as the serial walk leaves them.
++void parallel_walk(const std::vector<std::string>& rootfolders, int nthreads,
++                   const std::atomic<bool>* cancel, std::vector<PendingChart>& pending,
++                   std::vector<std::string>& errors, int& folders_seen) {
++    std::deque<WalkNode> nodes;  // references stay valid across push_back
++    std::vector<size_t> roots;
++    std::unordered_set<std::string> visited;
++    for (const std::string& root : rootfolders) {
++        if (is_directory_utf8(root)) {
++            nodes.push_back(WalkNode{root, root, {}, {}, {}});
++            roots.push_back(nodes.size() - 1);
++        }
++        visited.insert(root);
++    }
++
++    std::mutex mu;
++    std::condition_variable cv;
++    std::vector<size_t> queue(roots.begin(), roots.end());
++    size_t in_flight = 0;
++    const auto worker = [&] {
++        std::unique_lock<std::mutex> lk(mu);
++        for (;;) {
++            cv.wait(lk, [&] { return !queue.empty() || in_flight == 0; });
++            if (queue.empty()) return;  // nothing queued and nobody listing
++            const size_t idx = queue.back();
++            queue.pop_back();
++            ++in_flight;
++            const std::string dir = nodes[idx].dir;
++            const std::string origin = nodes[idx].origin;
++            lk.unlock();
++
++            std::vector<PendingChart> charts;
++            std::vector<std::string> subs;
++            std::string err;
++            if (!(cancel && cancel->load())) {
++                try {
++                    const std::vector<DirEntry> entries = list_dir(dir);
++                    scan_folder(dir, origin, entries, charts, subs);
++                } catch (const std::exception& e) {
++                    err = e.what();
++                }
++            }
++
++            lk.lock();
++            nodes[idx].charts = std::move(charts);
++            nodes[idx].error = std::move(err);
++            for (std::string& s : subs) {
++                if (!visited.insert(s).second) continue;
++                nodes.push_back(WalkNode{std::move(s), origin, {}, {}, {}});
++                nodes[idx].children.push_back(nodes.size() - 1);
++                queue.push_back(nodes.size() - 1);
++            }
++            --in_flight;
++            cv.notify_all();
++        }
++    };
++    std::vector<std::thread> threads;
++    for (int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
++    for (std::thread& t : threads) t.join();
++
++    // The serial walk's order: a stack seeded with the roots, each popped
++    // folder's charts, then its subfolders pushed in listing order.
++    std::vector<size_t> stack(roots.begin(), roots.end());
++    while (!stack.empty()) {
++        WalkNode& n = nodes[stack.back()];
++        stack.pop_back();
++        if (!n.error.empty()) errors.push_back(std::move(n.error));
++        for (PendingChart& pc : n.charts) pending.push_back(std::move(pc));
++        for (size_t c : n.children) stack.push_back(c);
++    }
++    folders_seen = static_cast<int>(visited.size());
++}
++
++}  // namespace
++
+ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+     const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
+     const store::ChartLibraryCache* cache) {
+@@ -403,6 +595,12 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+ 
+     // ---- stage 1: enumerate ------------------------------------------------
+     std::vector<PendingChart> pending;
++    const int pwalk = env_int("HYDRA_SCAN_PWALK", 0);
++    if (pwalk > 0) {
++        int folders_seen = 0;
++        parallel_walk(rootfolders, pwalk, cancel, pending, errors, folders_seen);
++        if (callbacks.on_folders) callbacks.on_folders(folders_seen);
++    } else {
+     std::vector<std::pair<std::string, std::string>> unexplored;
+     std::set<std::string> visited;
+     for (const std::string& root : rootfolders) {
+@@ -410,54 +608,52 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+         visited.insert(root);
+     }
+ 
++    // PERF EXPERIMENT (scan): HYDRA_SCAN_LEAFSIM=1 estimates the "skip a song
++    // folder whose own mtime is unchanged" idea: a folder holding cached
++    // charts is not listed at all; its cached charts are replayed and it is
++    // treated as a leaf. Estimate only (no folder mtime is checked).
++    const bool leafsim = env_int("HYDRA_SCAN_LEAFSIM", 0) == 1 && cache;
++    std::unordered_map<std::string, std::vector<const std::string*>> cached_by_folder;
++    if (leafsim)
++        for (const auto& kv : *cache) cached_by_folder[parent_folder(kv.first)].push_back(&kv.first);
++
+     while (!unexplored.empty()) {
+         if (cancel && cancel->load()) break;
+         auto [dir, origin] = unexplored.back();
+         unexplored.pop_back();
+ 
+-        try {
+-            std::vector<DirEntry> entries = list_dir(dir);
+-
+-            // The folder's files, by name and entry in the same order, so the
+-            // notes-file pick's index leads back to the entry (pending_chart_of
+-            // fingerprints it).
+-            std::vector<std::string> file_names;
+-            std::vector<const DirEntry*> files;
+-            std::vector<const DirEntry*> found_archives;
+-            std::vector<const DirEntry*> subdirs;
+-            for (const DirEntry& e : entries) {
+-                if (e.is_dir) {
+-                    subdirs.push_back(&e);
+-                    continue;
++        if (leafsim) {
++            const auto it = cached_by_folder.find(dir);
++            if (it != cached_by_folder.end()) {
++                const std::string rootfolder = relpath(parent_folder(dir), origin);
++                for (const std::string* notes : it->second) {
++                    PendingChart pc;
++                    pc.kind = chart_kind_of(*notes);
++                    pc.notes_path = *notes;
++                    pc.rootfolder = rootfolder;
++                    pc.sig = cache->at(*notes).sig;
++                    pending.push_back(std::move(pc));
+                 }
+-                file_names.push_back(e.name);
+-                files.push_back(&e);
+-                if (chart_kind_of(e.name) != ChartKind::Folder) found_archives.push_back(&e);
++                continue;
+             }
++        }
+ 
+-            std::string rootfolder = relpath(parent_folder(dir), origin);
+-            const auto add_chart = [&](const DirEntry& chart) {
+-                std::optional<PendingChart> pc = pending_chart_of(dir, chart, entries);
+-                if (!pc) return;
+-                pc->rootfolder = rootfolder;
+-                pending.push_back(std::move(*pc));
+-            };
+-            const std::optional<NotesFilePick> pick = pick_notes_file(file_names);
+-            if (pick) add_chart(*files[pick->index]);
+-            for (const DirEntry* archive : found_archives) add_chart(*archive);
+-
+-            for (const DirEntry* sub : subdirs) {
+-                std::string subpath = join_folder(dir, sub->name);
++        try {
++            std::vector<DirEntry> entries = list_dir(dir);
++            std::vector<std::string> subpaths;
++            scan_folder(dir, origin, entries, pending, subpaths);
++            for (std::string& subpath : subpaths) {
+                 if (visited.insert(subpath).second) {
+                     if (callbacks.on_folders)
+                         callbacks.on_folders(static_cast<int>(visited.size()));
+-                    unexplored.push_back({subpath, origin});
++                    unexplored.push_back({std::move(subpath), origin});
+                 }
+             }
+         } catch (const std::exception& e) {
+             errors.push_back(e.what());
+         }
+     }
++    }
+ 
+     // ---- stage 2: read (hash + metadata), parallel -------------------------
+     int total = static_cast<int>(pending.size());
+@@ -470,9 +666,23 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
+             std::string error;
+         };
+         int done = 0, cached_count = 0;
++        // PERF EXPERIMENT (scan): HYDRA_SCAN_WORKERS=N overrides the read pool.
++        const int scan_workers = env_int("HYDRA_SCAN_WORKERS", 0) > 0
++                                     ? env_int("HYDRA_SCAN_WORKERS", 0)
++                                     : batch_worker_count();
++        // PERF EXPERIMENT (scan): HYDRA_SCAN_BIGFIRST=1 starts the biggest
++        // files first, so a 1 GB archive found last does not hash alone at
++        // the end. Results still land in walk order (results[i]).
++        std::vector<size_t> order(pending.size());
++        std::iota(order.begin(), order.end(), size_t{0});
++        if (env_int("HYDRA_SCAN_BIGFIRST", 0) == 1)
++            std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
++                return pending[a].size > pending[b].size;
++            });
+         run_work_pool<ReadNote>(
+-            pending.size(), batch_worker_count(), cancel,
+-            [&](size_t i) {
++            pending.size(), scan_workers, cancel,
++            [&](size_t k) {
++                const size_t i = order[k];
+                 // One CNG provider per worker thread, reused across every file
+                 // it hashes and closed when the worker exits. Created lazily
+                 // so an all-cache-hits rescan never touches CNG at all.
+diff --git a/src/core/winstr.cpp b/src/core/winstr.cpp
+index 0e06e4e..fbedd43 100644
+--- a/src/core/winstr.cpp
++++ b/src/core/winstr.cpp
+@@ -12,6 +12,7 @@
+ 
+ #include <algorithm>
+ #include <cstdint>
++#include <cstdlib>
+ #include <limits>
+ #include <memory>
+ #include <stdexcept>
+@@ -160,7 +161,17 @@ std::vector<DirEntry> list_dir(const std::string& dir_utf8) {
+     // length, "\*" included.
+     const std::wstring pattern = win32_path(utf8_to_wide(dir_utf8) + L"\\*");
+     WIN32_FIND_DATAW fd;
+-    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
++    // PERF EXPERIMENT (scan): HYDRA_SCAN_FINDEX=1 uses the basic-info,
++    // large-fetch listing call instead.
++    static const bool kFindEx = [] {
++        char v[8] = {};
++        const DWORD n = GetEnvironmentVariableA("HYDRA_SCAN_FINDEX", v, sizeof(v));
++        return n > 0 && n < sizeof(v) && v[0] == '1';
++    }();
++    HANDLE h = kFindEx ? FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &fd,
++                                          FindExSearchNameMatch, nullptr,
++                                          FIND_FIRST_EX_LARGE_FETCH)
++                       : FindFirstFileW(pattern.c_str(), &fd);
+     if (h == INVALID_HANDLE_VALUE) return out;
+     do {
+         const std::wstring name = fd.cFileName;

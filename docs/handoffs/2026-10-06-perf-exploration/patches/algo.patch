@@ -1,0 +1,503 @@
+diff --git a/src/search/engine.cpp b/src/search/engine.cpp
+index a0fa04d..6fdefa2 100644
+--- a/src/search/engine.cpp
++++ b/src/search/engine.cpp
+@@ -1,6 +1,10 @@
+ #include "search/engine.h"
+ 
+ #include <algorithm>
++#include <chrono>
++#include <cstdio>
++#include <cstdlib>
++#include <mutex>
+ #include <cmath>
+ #include <cstdint>
+ #include <cstring>
+@@ -432,7 +436,38 @@ public:
+     const std::vector<SpEndStep>& out_ends() const { return out_ends_; }
+     const std::vector<int64_t>& out_ticks() const { return out_ticks_; }
+ 
++    // ---- PERF EXPERIMENT (algo) -------------------------------------------
++    struct Exp {
++        int xdom = 0;             // cross-group dominance: 0 off, 1 count, 2 drop
++        bool bound_oracle = false;  // drop paths whose upper bound < bound_floor
++        int64_t bound_floor = 0;
++        bool bound_live = false;  // drop paths whose upper bound < a live floor
++        bool trace = false;       // record each dominance drop
++    };
++    const std::string& trace() const { return trace_; }
++    std::string trace_;
++    struct Stats {
++        int64_t frontier_sum = 0, max_frontier = 0, iters = 0;
++        int64_t xdom_hits = 0, bound_hits = 0, quiet_steps = 0, base_steps = 0;
++    };
++    void set_exp(const Exp& x) {
++        exp_ = x;
++        if (x.bound_oracle || x.bound_live) build_bounds();
++    }
++    const Stats& stats() const { return stats_; }
++    size_t fill_count() const { return fill_tick_.size(); }
++
+ private:
++    Exp exp_;
++    Stats stats_;
++    std::vector<int64_t> ub_;    // per node: best points still ahead, ignoring rules
++    std::vector<int64_t> lb_;    // per base node: points ahead never activating again
++    void build_bounds();
++    void exp_after_reduce();
++    bool exp_eligible(const Path& p) const {
++        return !has_ms_filter_ || passes_ms_filter(p);
++    }
++
+     const NodeView& node(int32_t i) const { return en_.node_views[(size_t)i]; }
+     const EdgeView& edge(int32_t i) const { return en_.edge_views[(size_t)i]; }
+     const ScoreGraphEdge* eobj(int32_t i) const { return en_.edges[(size_t)i]; }
+@@ -1415,6 +1450,209 @@ void Engine::reduce_iteration_paths() {
+     cur_.resize((size_t)w);
+ }
+ 
++// --- PERF EXPERIMENT (algo) ----------------------------------------------
++// ub_[n]: the most points any path standing on node n could still add, with
++// every branch free and every backend row at its best. lb_[n] (base nodes):
++// the points a path adds if it never activates again.
++void Engine::build_bounds() {
++    const size_t nn = en_.node_views.size();
++    ub_.assign(nn, 0);
++    lb_.assign(nn, 0);
++    std::vector<int32_t> order(nn);
++    for (size_t i = 0; i < nn; ++i) order[i] = (int32_t)i;
++    std::sort(order.begin(), order.end(), [this](int32_t a, int32_t b) {
++        return node(a).tick > node(b).tick;
++    });
++    auto adv_w = [this](int32_t ei) -> int64_t {
++        const EdgeView& e = edge(ei);
++        return (int64_t)e.basescore + e.comboscore + e.spscore + e.soloscore + e.accentscore +
++               e.ghostscore;
++    };
++    auto branch_w = [this](int32_t from) -> int64_t {
++        const NodeView& n = node(from);
++        const EdgeView& e = edge(n.branch_edge);
++        if (!n.is_sp) return e.frontend_points;
++        int64_t sum = 0;
++        for (const BackendSqueeze& b : eobj(n.branch_edge)->backends) {
++            const int32_t paid = core::paid_by_sp_walk(b.offset()) ? b.points : 0;
++            int64_t best = std::numeric_limits<int64_t>::min();
++            for (core::SqOutPosition pos :
++                 {core::SqOutPosition::NoSqOut, core::SqOutPosition::Before,
++                  core::SqOutPosition::Exact, core::SqOutPosition::After})
++                best = std::max<int64_t>(best, core::backend_row_value(b.offset(), b.points,
++                                                                       b.sqout_points, pos,
++                                                                       backend_leeway_ms_) -
++                                                   paid);
++            sum += best;
++        }
++        return sum;
++    };
++    // Process in descending tick: an advance edge always goes to a later tick,
++    // and a branch edge stays on its tick, so everything read is done.
++    for (int32_t ni : order) {
++        const NodeView& n = node(ni);
++        if (n.adv_edge < 0) continue;
++        const int32_t d = edge(n.adv_edge).dest;
++        int64_t after = ub_[(size_t)d];
++        const NodeView& dn = node(d);
++        if (dn.branch_edge >= 0)
++            after = std::max(after, branch_w(d) + ub_[(size_t)edge(dn.branch_edge).dest]);
++        ub_[(size_t)ni] = adv_w(n.adv_edge) + after;
++        if (!n.is_sp) lb_[(size_t)ni] = adv_w(n.adv_edge) + lb_[(size_t)d];
++    }
++}
++
++void Engine::exp_after_reduce() {
++    const int64_t n = (int64_t)cur_.size();
++    bool any_drop = false;
++    std::vector<uint8_t> drop;
++    const bool score_mode = depth_mode_ == DepthMode::Scores;
++    const bool huge = depth_value_ > 100000;
++
++    if (exp_.xdom && !huge) {
++        drop.assign((size_t)n, 0);
++        struct E {
++            uint64_t rc;
++            int32_t sp;
++            int64_t score;
++            int32_t idx;
++            bool elig;
++        };
++        std::vector<E> v;
++        for (int32_t i = 0; i < (int32_t)n; ++i) {
++            const Path& p = cur_[(size_t)i];
++            if (p.node < 0 || node(p.node).is_sp || p.spent || p.banked_ahead) continue;
++            v.push_back(E{ready_class(p), p.sp, p.score, i, exp_eligible(p)});
++        }
++        std::sort(v.begin(), v.end(), [](const E& a, const E& b) {
++            if (a.rc != b.rc) return a.rc < b.rc;
++            return a.sp > b.sp;
++        });
++        const size_t K = (size_t)depth_value_ + 1;
++        std::vector<int64_t> top;  // distinct eligible scores, descending, at most K
++        size_t i = 0;
++        while (i < v.size()) {
++            size_t j = i;
++            if (i == 0 || v[i].rc != v[i - 1].rc) top.clear();
++            while (j < v.size() && v[j].rc == v[i].rc && v[j].sp == v[i].sp) ++j;
++            for (size_t k = i; k < j; ++k) {
++                if (!v[k].elig) continue;
++                const int64_t s = v[k].score;
++                if (std::find(top.begin(), top.end(), s) != top.end()) continue;
++                top.insert(std::upper_bound(top.begin(), top.end(), s, std::greater<int64_t>()), s);
++                if (score_mode && top.size() > K) top.pop_back();
++            }
++            for (size_t k = i; k < j; ++k) {
++                if (top.empty()) continue;
++                const int64_t s = v[k].score;
++                bool out;
++                if (score_mode) {
++                    out = top.size() >= K && top[K - 1] > s;
++                } else {
++                    out = s + depth_value_ < top.front();
++                }
++                if (out && exp_.trace) {
++                    // The highest-scoring path with at least this meter.
++                    int32_t a = -1;
++                    for (size_t q = 0; q < j; ++q) {
++                        if (v[q].rc != v[k].rc || !v[q].elig) continue;
++                        if (a < 0 || v[q].score > cur_[(size_t)a].score) a = v[q].idx;
++                    }
++                    auto desc = [this](const Path& p) {
++                        char b[160];
++                        std::string r;
++                        std::snprintf(b, sizeof b, "score=%lld sp=%d skips=%d acts:",
++                                      (long long)p.score, p.sp, p.currentskips);
++                        r += b;
++                        std::vector<int32_t> chain;
++                        for (int32_t t = p.act_tail; t >= 0; t = acts_[(size_t)t].parent)
++                            chain.push_back(t);
++                        for (size_t c = chain.size(); c-- > 0;) {
++                            const Act& ac = acts_[(size_t)chain[c]];
++                            std::snprintf(b, sizeof b, " @%lld(sq%d)",
++                                          (long long)node(ac.act_node).tick, sq_count(ac.sq_tail));
++                            r += b;
++                        }
++                        return r;
++                    };
++                    char b[96];
++                    std::snprintf(b, sizeof b, "\n   drop at tick %lld: B ",
++                                  (long long)node(cur_[(size_t)v[k].idx].node).tick);
++                    trace_ += b;
++                    trace_ += desc(cur_[(size_t)v[k].idx]);
++                    trace_ += "\n                       A ";
++                    if (a >= 0) trace_ += desc(cur_[(size_t)a]);
++                }
++                if (out) {
++                    ++stats_.xdom_hits;
++                    if (exp_.xdom == 2) drop[(size_t)v[k].idx] = 1, any_drop = true;
++                }
++            }
++            i = j;
++        }
++    }
++
++    if (exp_.bound_oracle || exp_.bound_live) {
++        if (drop.empty()) drop.assign((size_t)n, 0);
++        int64_t floor = exp_.bound_floor;
++        bool have_floor = exp_.bound_oracle;
++        if (exp_.bound_live && !no_skips_ && !target_act_ticks_ && !huge) {
++            // Guaranteed finishes: a waiting path that never activates again.
++            std::vector<int64_t> lbs;
++            for (const Path& p : cur_) {
++                if (!exp_eligible(p)) continue;
++                if (p.node < 0) lbs.push_back(p.score);
++                else if (!node(p.node).is_sp) lbs.push_back(p.score + lb_[(size_t)p.node]);
++            }
++            std::sort(lbs.begin(), lbs.end(), std::greater<int64_t>());
++            lbs.erase(std::unique(lbs.begin(), lbs.end()), lbs.end());
++            int64_t live = 0;
++            bool have_live = false;
++            if (score_mode) {
++                if (lbs.size() > (size_t)depth_value_) {
++                    live = lbs[(size_t)depth_value_];
++                    have_live = true;
++                }
++            } else if (!lbs.empty()) {
++                live = lbs.front() - depth_value_;
++                have_live = true;
++            }
++            if (have_live && (!have_floor || live > floor)) floor = live, have_floor = true;
++        }
++        if (have_floor) {
++            for (int64_t i = 0; i < n; ++i) {
++                const Path& p = cur_[(size_t)i];
++                const int64_t ub = p.score + (p.node < 0 ? 0 : ub_[(size_t)p.node]);
++                if (ub < floor) {
++                    ++stats_.bound_hits;
++                    drop[(size_t)i] = 1;
++                    any_drop = true;
++                }
++            }
++        }
++    }
++
++    if (any_drop) {
++        int32_t w = 0;
++        for (int64_t i = 0; i < n; ++i)
++            if (!drop[(size_t)i]) {
++                if (w != i) cur_[(size_t)w] = cur_[(size_t)i];
++                ++w;
++            }
++        cur_.resize((size_t)w);
++    }
++
++    const int64_t m = (int64_t)cur_.size();
++    stats_.frontier_sum += m;
++    stats_.max_frontier = std::max(stats_.max_frontier, m);
++    ++stats_.iters;
++    for (const Path& p : cur_) {
++        if (p.node < 0) continue;
++        if (!node(p.node).is_sp) ++stats_.base_steps;
++        if (node(p.node).branch_edge < 0) ++stats_.quiet_steps;
++    }
++}
++
+ // --- output --------------------------------------------------------------
+ void Engine::emit_acts(int32_t act_tail, int64_t sp_end_time, int32_t end_tail,
+                        int32_t* begin, int32_t* end) {
+@@ -1795,6 +2033,7 @@ bool Engine::run() {
+ 
+         cur_.swap(next_);
+         reduce_iteration_paths();
++        exp_after_reduce();
+ 
+         if (cur_.empty()) return false;
+     }
+@@ -2000,18 +2239,229 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
+ 
+ }  // namespace
+ 
++// ---- PERF EXPERIMENT (algo) ----------------------------------------------
++namespace {
++
++struct ExpEnv {
++    std::string log;   // HYDRA_EXP_LOG: run the shadow passes, append a line per search
++    int xdom_real = 0; // HYDRA_XDOM=2: the returned result uses dominance pruning
++    bool dump = false; // HYDRA_EXP_DUMP: list both runs' paths when a pass differs
++};
++const ExpEnv& exp_env() {
++    static const ExpEnv env = [] {
++        ExpEnv e;
++        char* s = nullptr;
++        size_t len = 0;
++        if (_dupenv_s(&s, &len, "HYDRA_EXP_LOG") == 0 && s) e.log = s;
++        std::free(s);
++        s = nullptr;
++        if (_dupenv_s(&s, &len, "HYDRA_XDOM") == 0 && s) e.xdom_real = std::atoi(s);
++        std::free(s);
++        s = nullptr;
++        if (_dupenv_s(&s, &len, "HYDRA_EXP_DUMP") == 0 && s) e.dump = true;
++        std::free(s);
++        return e;
++    }();
++    return env;
++}
++std::mutex& exp_mutex() {
++    static std::mutex m;
++    return m;
++}
++
++template <class T>
++void put(std::string& s, const T& v) {
++    s.append(reinterpret_cast<const char*>(&v), sizeof(v));
++}
++// Every output field of a finished search, so two runs compare byte for byte.
++std::string signature(const Engine& e) {
++    std::string s;
++    for (const OutPath& p : e.out_paths()) {
++        put(s, p.score_base); put(s, p.score_combo); put(s, p.score_sp);
++        put(s, p.score_solo); put(s, p.score_accents); put(s, p.score_ghosts);
++        put(s, p.var_point); put(s, p.depth); put(s, p.act_begin); put(s, p.act_end);
++        put(s, p.bank_begin); put(s, p.bank_end); put(s, p.tied_count);
++    }
++    s += '|';
++    for (const OutAct& a : e.out_acts()) {
++        put(s, a.act_node); put(s, a.deact_edge); put(s, a.sq_begin); put(s, a.sq_end);
++        put(s, a.e_offset); put(s, a.final_sp_end); put(s, a.end_begin); put(s, a.end_end);
++        put(s, a.bank_begin); put(s, a.bank_end); put(s, a.skip_begin); put(s, a.skip_end);
++        put(s, a.sqout_phrase);
++    }
++    s += '|';
++    for (const OutSq& q : e.out_sqs()) { put(s, q.kind); put(s, q.offset); }
++    s += '|';
++    for (const SpEndStep& q : e.out_ends()) { put(s, q.tick); put(s, q.end_tick); put(s, q.kind); }
++    s += '|';
++    for (int64_t t : e.out_ticks()) put(s, t);
++    return s;
++}
++// A readable listing of a finished search's paths, for a differing chart.
++std::string describe(const Engine& e, const Enum& en) {
++    std::string s;
++    char buf[256];
++    for (const OutPath& p : e.out_paths()) {
++        const int64_t sc = (int64_t)p.score_base + p.score_combo + p.score_sp + p.score_solo +
++                           p.score_accents + p.score_ghosts;
++        std::snprintf(buf, sizeof buf, "\n    depth=%d score=%lld sp=%d tied=%d varpt=%d acts:",
++                      p.depth, (long long)sc, p.score_sp, p.tied_count, p.var_point);
++        s += buf;
++        for (int32_t k = p.act_begin; k < p.act_end; ++k) {
++            const OutAct& a = e.out_acts()[(size_t)k];
++            const int64_t tick = en.node_views[(size_t)a.act_node].tick;
++            const int64_t dtick = a.deact_edge >= 0
++                                      ? en.node_views[(size_t)en.edge_views[(size_t)a.deact_edge].dest].tick
++                                      : -1;
++            std::snprintf(buf, sizeof buf, " [act@%lld bars=%d skips=%d e=%.1f end@%lld sq=",
++                          (long long)tick, a.bank_end - a.bank_begin, a.skip_end - a.skip_begin,
++                          a.e_offset, (long long)dtick);
++            s += buf;
++            for (int32_t q = a.sq_begin; q < a.sq_end; ++q) {
++                std::snprintf(buf, sizeof buf, "%s%.1f,", e.out_sqs()[(size_t)q].kind ? "out" : "in",
++                              e.out_sqs()[(size_t)q].offset);
++                s += buf;
++            }
++            s += "]";
++        }
++    }
++    return s;
++}
++
++int64_t root_score(const OutPath& p) {
++    return (int64_t)p.score_base + p.score_combo + p.score_sp + p.score_solo +
++           p.score_accents + p.score_ghosts;
++}
++
++}  // namespace
++
+ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& options,
+                               const std::function<void(float)>& on_progress) {
+     Enum en = enumerate(graph);
+ 
+     const bool has_cap = graph.sp_meter_cap().has_value();
+     const int32_t cap = static_cast<int32_t>(graph.sp_meter_cap().value_or(0));
++    const ExpEnv& env = exp_env();
++    const bool logging = !env.log.empty();
+ 
+     Engine engine(en, has_cap, cap, options, graph.rules().backend_leeway_ms,
+                   static_cast<int32_t>(graph.rules().max_tied_paths));
+     if (on_progress) engine.set_progress_cb(on_progress);
++    {
++        Engine::Exp x;
++        x.xdom = env.xdom_real == 2 ? 2 : (logging ? 1 : 0);
++        engine.set_exp(x);
++    }
++
++    const auto t0 = std::chrono::steady_clock::now();
++    const bool ok = engine.run();
++    const double ms0 =
++        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
++    if (logging) {
++        const char* kind = options.target_act_ticks ? "target"
++                           : options.no_skips       ? "allzero"
++                                                    : "main";
++        std::string line;
++        char buf[512];
++        int64_t nsp = 0, ndeact = 0;
++        for (const NodeView& nv : en.node_views)
++            if (nv.is_sp && nv.branch_edge >= 0) ++ndeact;
++        for (size_t i = 0; i < en.node_views.size(); ++i) {
++            const NodeView& nv = en.node_views[i];
++            if (!nv.is_sp && nv.adv_edge >= 0 && !en.edges[(size_t)nv.adv_edge]->sp_times.empty())
++                ++nsp;
++        }
++        const Engine::Stats& s0 = engine.stats();
++        std::snprintf(buf, sizeof buf,
++                      "kind=%s notes=%d nodes=%zu fills=%zu spgain=%lld deacts=%lld mode=%d "
++                      "depth=%d msf=%d ok=%d ms=%.2f iters=%lld fsum=%lld fmax=%lld "
++                      "quiet=%lld base=%lld xdom_one_step=%lld",
++                      kind, graph.note_count(), en.node_views.size(), engine.fill_count(),
++                      (long long)nsp, (long long)ndeact, (int)options.depth_mode,
++                      options.depth_value, options.ms_filter ? 1 : 0, ok ? 1 : 0, ms0,
++                      (long long)s0.iters, (long long)s0.frontier_sum,
++                      (long long)s0.max_frontier, (long long)s0.quiet_steps,
++                      (long long)s0.base_steps, (long long)s0.xdom_hits);
++        line += buf;
++        const std::string sig0 = ok ? signature(engine) : std::string();
++        int64_t floor = 0;
++        int64_t best = 0;
++        size_t roots = 0;
++        if (ok) {
++            bool first = true;
++            for (const OutPath& p : engine.out_paths()) {
++                if (p.depth != 0) continue;
++                ++roots;
++                const int64_t sc = root_score(p);
++                if (first || sc < floor) floor = sc;
++                if (first || sc > best) best = sc;
++                first = false;
++            }
++        }
++        std::snprintf(buf, sizeof buf, " best=%lld floor=%lld roots=%zu", (long long)best,
++                      (long long)floor, roots);
++        line += buf;
++        // Shadow passes: each compared byte for byte with the plain run.
++        auto pass = [&](const char* name, const EngineOptions& opt, const Engine::Exp& x,
++                        bool compare) {
++            Engine e(en, has_cap, cap, opt, graph.rules().backend_leeway_ms,
++                     static_cast<int32_t>(graph.rules().max_tied_paths));
++            e.set_exp(x);
++            const auto t = std::chrono::steady_clock::now();
++            bool eok = false;
++            try {
++                eok = e.run();
++            } catch (const std::exception&) {
++                eok = false;
++            }
++            const double ms = std::chrono::duration<double, std::milli>(
++                                  std::chrono::steady_clock::now() - t)
++                                  .count();
++            const Engine::Stats& st = e.stats();
++            const char* same = "-";
++            if (compare) same = (eok == ok && (!eok || signature(e) == sig0)) ? "same" : "DIFF";
++            std::snprintf(buf, sizeof buf, " %s:%s,fsum=%lld,fmax=%lld,hits=%lld,ms=%.2f", name,
++                          same, (long long)st.frontier_sum, (long long)st.max_frontier,
++                          (long long)(st.xdom_hits + st.bound_hits), ms);
++            line += buf;
++            if (compare && same[0] == 'D' && eok && ok && env.dump) {
++                line += "\n  PLAIN:" + describe(engine, en) + "\n  " + name + ":" +
++                        describe(e, en) + "\n  drops:" + e.trace() + "\n";
++            }
++        };
++        if (env.xdom_real != 2) {
++            Engine::Exp x;
++            x.xdom = 2;
++            x.trace = env.dump;
++            pass("xdom", options, x, true);
++        }
++        if (ok) {
++            Engine::Exp x;
++            x.bound_oracle = true;
++            x.bound_floor = floor;
++            pass("oracle", options, x, true);
++        }
++        {
++            Engine::Exp x;
++            x.bound_live = true;
++            pass("live", options, x, true);
++        }
++        if (!(options.depth_mode == DepthMode::Scores && options.depth_value == 0)) {
++            EngineOptions d0 = options;
++            d0.depth_mode = DepthMode::Scores;
++            d0.depth_value = 0;
++            pass("depth0", d0, Engine::Exp{}, false);
++        }
++        line += '\n';
++        std::lock_guard<std::mutex> lock(exp_mutex());
++        FILE* f = nullptr;
++        if (fopen_s(&f, env.log.c_str(), "ab") == 0 && f) {
++            std::fwrite(line.data(), 1, line.size(), f);
++            std::fclose(f);
++        }
++    }
+ 
+-    if (!engine.run())
++    if (!ok)
+         throw KindedError(ErrorKind::SearchBroken, "search reached a broken state");
+ 
+     return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),

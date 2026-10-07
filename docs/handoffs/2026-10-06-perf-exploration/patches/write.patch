@@ -1,0 +1,815 @@
+diff --git a/src/app/analysis.cpp b/src/app/analysis.cpp
+index 8299d57..66305d0 100644
+--- a/src/app/analysis.cpp
++++ b/src/app/analysis.cpp
+@@ -7,6 +7,8 @@
+ #include <bcrypt.h>
+ 
+ #include <algorithm>
++#include <chrono>
++#include <cstdlib>
+ #include <condition_variable>
+ #include <cstdio>
+ #include <cstring>
+@@ -598,6 +600,9 @@ struct WorkResult {
+     int rows = 1;
+     std::optional<store::PreparedRow> row;
+     std::optional<AnalysisResult> analysis;
++    // PERF EXPERIMENT (write): HYDRA_LEAN encodes the tempo map here and
++    // frees the analysis on the worker.
++    std::vector<uint8_t> tempomap;
+     // Counted on the worker, so the consumer only writes.
+     std::optional<store::DynamicsEntry> dynamics;
+     // The song's length, worked out on the worker (analysis_song_length).
+@@ -612,6 +617,17 @@ struct WorkResult {
+     bool cancelled = false;
+ };
+ 
++// PERF EXPERIMENT (write): switches read from the environment.
++std::string perf_env_str(const char* name) {
++    char buf[1024];
++    const DWORD n = GetEnvironmentVariableA(name, buf, sizeof buf);
++    return (n > 0 && n < sizeof buf) ? std::string(buf, n) : std::string();
++}
++int perf_env_int(const char* name, int fallback) {
++    const std::string v = perf_env_str(name);
++    return v.empty() ? fallback : std::atoi(v.c_str());
++}
++
+ // The one way a chart becomes a failure, from its analysis or its save.
+ void record_failure(WorkResult& wr, const std::exception& e) {
+     wr.failed = true;
+@@ -691,13 +707,127 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
+     const ChartAnalyzer analyze =
+         callbacks.analyze ? callbacks.analyze : ChartAnalyzer(analyze_chart_file);
+ 
+-    run_work_pool<WorkResult>(
++    // ---- PERF EXPERIMENT (write) switches ----
++    const int group_size = perf_env_int("HYDRA_TXN_GROUP", 0);
++    const bool lean = perf_env_int("HYDRA_LEAN", 0) != 0;
++    if (perf_env_int("HYDRA_STMT_CACHE", 0)) store.set_statement_cache(true);
++    if (const std::string v = perf_env_str("HYDRA_WAL_CKPT"); !v.empty())
++        store.perf_exec(("PRAGMA wal_autocheckpoint=" + v).c_str());
++    if (const std::string v = perf_env_str("HYDRA_SYNC"); !v.empty())
++        store.perf_exec(("PRAGMA synchronous=" + v).c_str());
++    if (const std::string v = perf_env_str("HYDRA_CACHE_KB"); !v.empty())
++        store.perf_exec(("PRAGMA cache_size=-" + v).c_str());
++    std::vector<size_t> order(todo.size());
++    std::iota(order.begin(), order.end(), size_t{0});
++    {
++        const std::string how = perf_env_str("HYDRA_ORDER");
++        std::vector<double> cost(todo.size(), 0.0);
++        bool sort = false;
++        if (how == "size") {
++            sort = true;
++            for (size_t i = 0; i < todo.size(); ++i) {
++                WIN32_FILE_ATTRIBUTE_DATA fa{};
++                if (GetFileAttributesExW(win32_path(todo[i].notespath).c_str(),
++                                         GetFileExInfoStandard, &fa))
++                    cost[i] = static_cast<double>(
++                        (static_cast<uint64_t>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow);
++            }
++        } else if (how.rfind("file:", 0) == 0) {
++            // A CSV of md5,cost lines; missing charts cost 0 (run last).
++            sort = true;
++            std::unordered_map<std::string, double> by_md5;
++            if (FILE* f = fopen_utf8(how.substr(5), L"rb")) {
++                char line[512];
++                while (std::fgets(line, sizeof line, f)) {
++                    char* comma = std::strchr(line, ',');
++                    if (!comma) continue;
++                    *comma = 0;
++                    by_md5[line] = std::atof(comma + 1);
++                }
++                std::fclose(f);
++            }
++            for (size_t i = 0; i < todo.size(); ++i) {
++                auto it = by_md5.find(todo[i].md5);
++                if (it != by_md5.end()) cost[i] = it->second;
++            }
++        }
++        if (sort)
++            std::stable_sort(order.begin(), order.end(),
++                             [&](size_t a, size_t b) { return cost[a] > cost[b]; });
++    }
++    using Clock = std::chrono::steady_clock;
++    const Clock::time_point t0 = Clock::now();
++    struct ChartTime {
++        double start_ms = 0, end_ms = 0;
++    };
++    std::vector<ChartTime> chart_times(todo.size());
++    double consume_ms = 0, save_ms = 0, commit_ms = 0;
++    int commits = 0;
++    const auto ms_since = [&](Clock::time_point a) {
++        return std::chrono::duration<double, std::milli>(Clock::now() - a).count();
++    };
++
++    // What a grouped save holds back until its group commits.
++    struct Deferred {
++        ScanItem item;
++        int rows = 1;
++        std::optional<store::PreparedRow> row;
++        bool failed = false;
++        std::string sentence, error;
++    };
++    std::vector<Deferred> deferred;
++    const auto report = [&](const ScanItem& item, int rows, bool failed,
++                            const std::string& sentence, const std::string& error,
++                            const std::optional<store::PreparedRow>& row) {
++        for (int r = 0; r < rows; ++r) {
++            if (failed) ++progress.failed;
++            else ++progress.analyzed;
++            progress.completed = progress.analyzed + progress.failed;
++            progress.current_title = item.title;
++            if (callbacks.on_progress) callbacks.on_progress(progress);
++            if (failed) {
++                if (callbacks.on_error) callbacks.on_error(item.title, sentence, error);
++            } else {
++                if (callbacks.on_result) callbacks.on_result(item, *row);
++            }
++        }
++    };
++    const auto flush_group = [&] {
++        if (!store.save_group_open()) return;
++        const Clock::time_point c0 = Clock::now();
++        try {
++            store.commit_save_group();
++        } catch (const std::exception& e) {
++            // Nothing in the group was kept: every chart in it failed.
++            for (Deferred& d : deferred)
++                if (!d.failed) {
++                    d.failed = true;
++                    d.sentence = plain_error(e);
++                    d.error = e.what();
++                }
++        }
++        commit_ms += ms_since(c0);
++        ++commits;
++        for (const Deferred& d : deferred)
++            report(d.item, d.rows, d.failed, d.sentence, d.error, d.row);
++        deferred.clear();
++    };
++
++    try {
++    run_work_pool_idle<WorkResult>(
+         todo.size(), worker_count, cancel,
+-        [&](size_t i) {
++        [&](size_t k) {
++            const size_t i = order[k];
++            chart_times[i].start_ms = ms_since(t0);
+             const ScanItem& item = todo[i];
+             WorkResult wr;
+             wr.item = item;
+             wr.rows = plan.rows[i];
++            struct EndStamp {
++                ChartTime& t;
++                const std::function<double()> now;
++                ~EndStamp() { t.end_ms = now(); }
++            } end_stamp{chart_times[i], [&] { return ms_since(t0); }};
+             try {
+                 AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
+                 wr.row = store::prepare_row(
+@@ -706,7 +836,8 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
+                     item.md5, ar.song, settings.bass2x, settings.difficulty,
+                     settings.prodrums);
+                 wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);
+-                wr.analysis = std::move(ar);
++                if (lean) wr.tempomap = store::perf_encode_tempomap(ar.song);
++                else wr.analysis = std::move(ar);
+             } catch (const AnalysisCancelled&) {
+                 wr.cancelled = true;
+             } catch (const std::exception& e) {
+@@ -715,40 +846,110 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
+             return wr;
+         },
+         [&](WorkResult&& wr) {
++            const Clock::time_point c0 = Clock::now();
++            struct AddOnExit {
++                double& total;
++                Clock::time_point c0;
++                ~AddOnExit() {
++                    total += std::chrono::duration<double, std::milli>(Clock::now() - c0).count();
++                }
++            } add_on_exit{consume_ms, c0};
+             // Once cancel is seen nothing more is written or reported, as
+             // before. A search stopped part-way is not a failure, and a result
+             // that finished alongside the cancel is dropped.
+             if (wr.cancelled || (cancel && cancel->load())) return;
+ 
++            if (group_size > 1 && !wr.failed && !store.save_group_open())
++                store.begin_save_group();
+             if (!wr.failed) {
+                 // A save that fails makes this chart a failure, and the batch
+                 // goes on with the next one (D71, ER2 open question 5).
++                const Clock::time_point s0 = Clock::now();
+                 try {
+-                    store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
+-                                        wr.item.charter, wr.analysis->song, *wr.row,
+-                                        wr.dynamics, wr.length);
++                    if (lean)
++                        store.save_analysis_encoded(wr.item.md5, wr.item.title, wr.item.artist,
++                                                    wr.item.charter, wr.tempomap, *wr.row,
++                                                    wr.dynamics, wr.length);
++                    else
++                        store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist,
++                                            wr.item.charter, wr.analysis->song, *wr.row,
++                                            wr.dynamics, wr.length);
+                 } catch (const std::exception& e) {
+                     record_failure(wr, e);
+                 }
++                save_ms += ms_since(s0);
++            }
++            if (store.save_group_open()) {
++                Deferred d;
++                d.item = std::move(wr.item);
++                d.rows = wr.rows;
++                d.row = std::move(wr.row);
++                d.failed = wr.failed;
++                d.sentence = std::move(wr.sentence);
++                d.error = std::move(wr.error);
++                deferred.push_back(std::move(d));
++                if (static_cast<int>(deferred.size()) >= group_size) flush_group();
++                return;
+             }
+             // Each of the chart's rows is counted and reported, under the
+             // first copy's name (D76, D51 call 10), so a list of failures is
+             // as long as its count. The progress that counts a row goes out
+             // before that row's own callback, so a caller numbering its lines
+             // reads the number from the progress (D79).
+-            for (int r = 0; r < wr.rows; ++r) {
+-                if (wr.failed) ++progress.failed;
+-                else ++progress.analyzed;
+-                progress.completed = progress.analyzed + progress.failed;
+-                progress.current_title = wr.item.title;
+-                if (callbacks.on_progress) callbacks.on_progress(progress);
+-                if (wr.failed) {
+-                    if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
+-                } else {
+-                    if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
+-                }
+-            }
++            report(wr.item, wr.rows, wr.failed, wr.sentence, wr.error, wr.row);
++        },
++        [&] {
++            const Clock::time_point c0 = Clock::now();
++            flush_group();
++            consume_ms += ms_since(c0);
+         });
++    } catch (...) {
++        try {
++            flush_group();
++        } catch (...) {
++        }
++        throw;
++    }
++
++    // ---- PERF EXPERIMENT (write): timing summary ----
++    const double wall_ms = ms_since(t0);
++    if (perf_env_int("HYDRA_PERF_REPORT", 0)) {
++        double busy = 0, last_start = 0, first_idle_end = 0;
++        std::vector<double> ends;
++        for (const ChartTime& t : chart_times) {
++            if (t.end_ms <= 0) continue;
++            busy += t.end_ms - t.start_ms;
++            last_start = std::max(last_start, t.start_ms);
++            ends.push_back(t.end_ms);
++        }
++        std::sort(ends.begin(), ends.end());
++        // When the last worker's final chart started, every other worker was
++        // about to run out of work: the time after that is the tail.
++        if (ends.size() > static_cast<size_t>(worker_count))
++            first_idle_end = ends[ends.size() - static_cast<size_t>(worker_count)];
++        std::fprintf(stderr,
++                     "PERF wall_ms=%.0f workers=%d charts=%zu worker_busy_ms=%.0f "
++                     "util=%.3f consume_ms=%.0f save_ms=%.0f commit_ms=%.0f commits=%d "
++                     "save_per_chart_ms=%.3f consume_per_chart_ms=%.3f last_start_ms=%.0f "
++                     "nth_last_end_ms=%.0f group=%d cache=%d order=%s\n",
++                     wall_ms, worker_count, ends.size(), busy,
++                     busy / (wall_ms * worker_count), consume_ms, save_ms, commit_ms, commits,
++                     ends.empty() ? 0.0 : (save_ms + commit_ms) / ends.size(),
++                     ends.empty() ? 0.0 : consume_ms / ends.size(), last_start, first_idle_end,
++                     group_size, perf_env_int("HYDRA_STMT_CACHE", 0),
++                     perf_env_str("HYDRA_ORDER").c_str());
++        std::fprintf(stderr, "PERFSAVE %s\n", store::perf_save_parts().c_str());
++        const std::string dump = perf_env_str("HYDRA_PERF_DUMP");
++        if (!dump.empty())
++            if (FILE* f = fopen_utf8(dump, L"wb")) {
++                std::fprintf(f, "md5,start_ms,end_ms,notespath\n");
++                for (size_t i = 0; i < todo.size(); ++i)
++                    std::fprintf(f, "%s,%.1f,%.1f,\"%s\"\n", todo[i].md5.c_str(),
++                                 chart_times[i].start_ms, chart_times[i].end_ms,
++                                 todo[i].notespath.c_str());
++                std::fclose(f);
++            }
++    }
+ }
+ 
+ }  // namespace hydra::app
+diff --git a/src/app/work_pool.h b/src/app/work_pool.h
+index 9522d96..e910d5f 100644
+--- a/src/app/work_pool.h
++++ b/src/app/work_pool.h
+@@ -53,9 +53,23 @@ constexpr size_t kWorkPoolWaitingPerWorker = 2;
+ // worker_count must be at least 1; batch_worker_count (app/analysis.h) owns
+ // that floor. A smaller count throws std::invalid_argument naming it, since
+ // with no cooks nothing would ever reach the pass.
++// PERF EXPERIMENT (write): idle() runs on the calling thread whenever the
++// line is found empty before a wait, and once at the end, so a consumer that
++// groups writes can close its group before it would sit idle.
++template <typename Result, typename Work, typename Consume, typename Idle>
++void run_work_pool_idle(size_t count, int worker_count, const std::atomic<bool>* cancel,
++                        Work&& work, Consume&& consume, Idle&& idle);
++
+ template <typename Result, typename Work, typename Consume>
+ void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* cancel,
+                    Work&& work, Consume&& consume) {
++    run_work_pool_idle<Result>(count, worker_count, cancel, std::forward<Work>(work),
++                               std::forward<Consume>(consume), [] {});
++}
++
++template <typename Result, typename Work, typename Consume, typename Idle>
++void run_work_pool_idle(size_t count, int worker_count, const std::atomic<bool>* cancel,
++                        Work&& work, Consume&& consume, Idle&& idle) {
+     if (worker_count < 1)
+         throw std::invalid_argument("run_work_pool: worker count " +
+                                     std::to_string(worker_count) + " is below 1");
+@@ -97,6 +111,12 @@ void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* canc
+ 
+     try {
+         for (;;) {
++            bool empty;
++            {
++                std::lock_guard<std::mutex> lock(mu);
++                empty = finished.empty();
++            }
++            if (empty) idle();
+             Result r;
+             {
+                 std::unique_lock<std::mutex> lock(mu);
+@@ -108,6 +128,7 @@ void run_work_pool(size_t count, int worker_count, const std::atomic<bool>* canc
+             room.notify_one();
+             consume(std::move(r));
+         }
++        idle();
+     } catch (...) {
+         {
+             std::lock_guard<std::mutex> lock(mu);
+diff --git a/src/cli/batch.cpp b/src/cli/batch.cpp
+index 05a216d..1076e35 100644
+--- a/src/cli/batch.cpp
++++ b/src/cli/batch.cpp
+@@ -260,7 +260,14 @@ int batch_main() {
+                     clip_utf8(label, 52).c_str(), clip_utf8(row.bestpath, 36).c_str());
+         std::fflush(stdout);
+     };
+-    hydra::app::run_batch(plan, run, store, hydra::app::batch_worker_count(), callbacks);
++    // PERF EXPERIMENT (write): HYDRA_WORKERS overrides the worker count.
++    int workers = hydra::app::batch_worker_count();
++    {
++        char w[32];
++        const DWORD n = GetEnvironmentVariableA("HYDRA_WORKERS", w, sizeof w);
++        if (n > 0 && n < sizeof w && std::atoi(w) > 0) workers = std::atoi(w);
++    }
++    hydra::app::run_batch(plan, run, store, workers, callbacks);
+ 
+     double elapsed =
+         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+diff --git a/src/store/record_store.cpp b/src/store/record_store.cpp
+index 41b7c3b..28aacfe 100644
+--- a/src/store/record_store.cpp
++++ b/src/store/record_store.cpp
+@@ -3,6 +3,7 @@
+ #include <sqlite3.h>
+ 
+ #include <algorithm>
++#include <chrono>
+ #include <cstdlib>
+ #include <map>
+ #include <new>
+@@ -74,6 +75,76 @@ Stmt prepare_as(sqlite3* db, const char* sql, bool read) {
+ Stmt prepare_read(sqlite3* db, const char* sql) { return prepare_as(db, sql, true); }
+ Stmt prepare_write(sqlite3* db, const char* sql) { return prepare_as(db, sql, false); }
+ 
++// PERF EXPERIMENT (write): where the save path's time goes, summed over the
++// run (consumer thread only, so no locking).
++enum PerfPart {
++    kPartTempomap, kPartBegin, kPartUpsert, kPartLength, kPartPurge1, kPartPurge2,
++    kPartInsert, kPartNodes, kPartGc, kPartDynamics, kPartCommit, kPartCount
++};
++double g_perf_parts[kPartCount] = {};
++struct PerfLap {
++    std::chrono::steady_clock::time_point t = std::chrono::steady_clock::now();
++    void mark(PerfPart p) {
++        const auto now = std::chrono::steady_clock::now();
++        g_perf_parts[p] += std::chrono::duration<double, std::milli>(now - t).count();
++        t = now;
++    }
++    void reset() { t = std::chrono::steady_clock::now(); }
++};
++
++}  // namespace
++
++std::string perf_save_parts() {
++    static const char* names[kPartCount] = {"tempomap", "begin", "upsert", "length", "purge1",
++                                            "purge2",   "insert", "nodes", "gc", "dynamics",
++                                            "commit"};
++    std::string out;
++    for (int i = 0; i < kPartCount; ++i)
++        out += std::string(names[i]) + "=" + std::to_string(static_cast<int>(g_perf_parts[i])) + " ";
++    return out;
++}
++
++namespace {
++
++// PERF EXPERIMENT (write): a statement either owned (finalized at scope end,
++// as Stmt) or borrowed from the cache (reset and unbound at scope end).
++struct UseStmt {
++    sqlite3_stmt* p = nullptr;
++    bool owned = true;
++    UseStmt(sqlite3_stmt* p_, bool owned_) : p(p_), owned(owned_) {}
++    UseStmt(UseStmt&& o) noexcept : p(o.p), owned(o.owned) { o.p = nullptr; }
++    UseStmt(const UseStmt&) = delete;
++    UseStmt& operator=(const UseStmt&) = delete;
++    UseStmt& operator=(UseStmt&&) = delete;
++    ~UseStmt() {
++        if (!p) return;
++        if (owned) {
++            sqlite3_finalize(p);
++        } else {
++            sqlite3_reset(p);
++            sqlite3_clear_bindings(p);
++        }
++    }
++    operator sqlite3_stmt*() const { return p; }
++};
++
++UseStmt use_stmt(sqlite3* db, std::unordered_map<std::string, sqlite3_stmt*>& cache, bool on,
++                 const std::string& sql, bool read) {
++    if (!on) {
++        Stmt s = prepare_as(db, sql.c_str(), read);
++        sqlite3_stmt* p = s.p;
++        s.p = nullptr;
++        return UseStmt(p, true);
++    }
++    auto it = cache.find(sql);
++    if (it == cache.end()) {
++        Stmt s = prepare_as(db, sql.c_str(), read);
++        it = cache.emplace(sql, s.p).first;
++        s.p = nullptr;
++    }
++    return UseStmt(it->second, false);
++}
++
+ // Steps a read. True: a row is ready. False: the query has finished. Any
+ // other answer throws, so a failed read never passes for an empty one (D73).
+ bool step_row(sqlite3_stmt* s) {
+@@ -838,6 +909,8 @@ void RecordStore::upgrade_results_key() {
+ RecordStore::~RecordStore() { close(); }
+ 
+ void RecordStore::close() {
++    for (auto& [sql, p] : stmt_cache_) sqlite3_finalize(p);
++    stmt_cache_.clear();
+     if (db_) {
+         sqlite3_close(db_);
+         db_ = nullptr;
+@@ -853,6 +926,47 @@ void RecordStore::exec(const char* sql) {
+     }
+ }
+ 
++void RecordStore::ctl(const char* sql) {
++    if (!stmt_cache_on_) {
++        exec(sql);
++        return;
++    }
++    // Transaction control reads as read-only to sqlite3_stmt_readonly.
++    UseStmt s = use_stmt(db_, stmt_cache_, true, sql, true);
++    if (sqlite3_step(s) != SQLITE_DONE)
++        throw KindedError(ErrorKind::DatabaseWrite,
++                          std::string("sqlite exec failed: ") + sqlite3_errmsg(db_));
++}
++
++void RecordStore::begin_save_group() {
++    mutex_.lock();
++    try {
++        ctl("BEGIN");
++    } catch (...) {
++        mutex_.unlock();
++        throw;
++    }
++    group_open_ = true;
++    group_lost_ = false;
++}
++
++void RecordStore::commit_save_group() {
++    if (!group_open_) return;
++    group_open_ = false;
++    try {
++        if (group_lost_)
++            throw KindedError(ErrorKind::DatabaseWrite,
++                              "the save group's transaction was rolled back");
++        ctl("COMMIT");
++    } catch (...) {
++        group_lost_ = false;
++        rollback_if_open(db_);
++        mutex_.unlock();
++        throw;
++    }
++    mutex_.unlock();
++}
++
+ bool RecordStore::has_column(const char* table, const char* column) {
+     std::string sql = std::string("PRAGMA table_info(") + table + ")";
+     Stmt info = prepare_read(db_, sql.c_str());
+@@ -912,9 +1026,9 @@ void RecordStore::put_dynamics(const DynamicsKey& key, const std::vector<uint8_t
+ 
+ void RecordStore::insert_dynamics(const DynamicsKey& key, const std::vector<uint8_t>& blob,
+                                   int count_version) {
+-    Stmt s = prepare_write(db_,
++    UseStmt s = use_stmt(db_, stmt_cache_, stmt_cache_on_,
+         "INSERT OR REPLACE INTO dynamics (md5, difficulty, pro, blob, count_version)"
+-        " VALUES (?,?,?,?,?)");
++        " VALUES (?,?,?,?,?)", false);
+     bind_text(s, 1, key.md5);
+     bind_text(s, 2, key.difficulty);
+     sqlite3_bind_int(s, 3, key.pro ? 1 : 0);
+@@ -928,30 +1042,70 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
+                                 const Song& song, const PreparedRow& row,
+                                 const std::optional<DynamicsEntry>& dynamics,
+                                 const SongLength& length) {
++    PerfLap lap;
+     const std::vector<uint8_t> tempomap = encode_tempomap(song);  // not a sqlite call
++    lap.mark(kPartTempomap);
++    save_analysis_encoded(hyhash, ref_name, ref_artist, ref_charter, tempomap, row, dynamics,
++                          length);
++}
++
++std::vector<uint8_t> perf_encode_tempomap(const Song& song) { return encode_tempomap(song); }
++
++void RecordStore::save_analysis_encoded(const std::string& hyhash, const std::string& ref_name,
++                                        const std::string& ref_artist,
++                                        const std::string& ref_charter,
++                                        const std::vector<uint8_t>& tempomap,
++                                        const PreparedRow& row,
++                                        const std::optional<DynamicsEntry>& dynamics,
++                                        const SongLength& length) {
++    PerfLap lap;
+     std::lock_guard<std::recursive_mutex> lock(mutex_);
+-    exec("BEGIN");
++    // PERF EXPERIMENT (write): inside a save group, this chart is a savepoint.
++    const bool grouped = group_open_;
++    if (grouped) {
++        if (group_lost_)
++            throw KindedError(ErrorKind::DatabaseWrite,
++                              "the save group's transaction was rolled back");
++        ctl("SAVEPOINT chart");
++    } else {
++        ctl("BEGIN");
++    }
++    lap.mark(kPartBegin);
+     try {
+         upsert_song(hyhash, ref_name, ref_artist, ref_charter, tempomap);
++        lap.mark(kPartUpsert);
+         // The length belongs to the song, so an analysis of any difficulty
+         // saves its one length (D75). With no read, it stays as it was.
+         if (length.read) write_song_length(hyhash, length.ms);
++        lap.mark(kPartLength);
+         write_row(row);
++        lap.reset();
+         if (dynamics) {
+             // Best effort, inside the same transaction: a failed count write
+             // is undone on its own and never costs the result.
+-            exec("SAVEPOINT dynamics");
++            ctl("SAVEPOINT dynamics");
+             try {
+                 insert_dynamics(dynamics->key, dynamics->blob, dynamics->count_version);
+-                exec("RELEASE dynamics");
++                ctl("RELEASE dynamics");
+             } catch (const std::exception&) {
+-                exec("ROLLBACK TO dynamics");
+-                exec("RELEASE dynamics");
++                ctl("ROLLBACK TO dynamics");
++                ctl("RELEASE dynamics");
+             }
+         }
+-        exec("COMMIT");
++        lap.mark(kPartDynamics);
++        ctl(grouped ? "RELEASE chart" : "COMMIT");
++        lap.mark(kPartCommit);
+     } catch (...) {
+-        rollback_if_open(db_);
++        if (grouped) {
++            if (sqlite3_get_autocommit(db_)) {
++                group_lost_ = true;  // sqlite rolled back the whole group itself
++            } else {
++                sqlite3_exec(db_, "ROLLBACK TO chart", nullptr, nullptr, nullptr);
++                sqlite3_exec(db_, "RELEASE chart", nullptr, nullptr, nullptr);
++            }
++        } else {
++            rollback_if_open(db_);
++        }
+         throw;
+     }
+ }
+@@ -1071,10 +1225,10 @@ void RecordStore::fill_song_length(const std::string& hyhash, std::optional<doub
+ 
+ void RecordStore::write_song_length(const std::string& hyhash, std::optional<double> length_ms,
+                                     std::optional<int> only_from_stamp) {
+-    Stmt s = prepare_write(db_, only_from_stamp
++    UseStmt s = use_stmt(db_, stmt_cache_, stmt_cache_on_, only_from_stamp
+         ? "UPDATE songmeta SET length_ms = ?1, length_version = ?2"
+           " WHERE hyhash = ?3 AND length_version = ?4"
+-        : "UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3");
++        : "UPDATE songmeta SET length_ms = ?1, length_version = ?2 WHERE hyhash = ?3", false);
+     bind_opt_f64(s, 1, length_ms);
+     sqlite3_bind_int(s, 2, kSongLengthStamp.written);
+     bind_text(s, 3, hyhash);
+@@ -1096,8 +1250,8 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
+     // write_song_length writes it.
+     std::string name = ref_name, artist = ref_artist, charter = ref_charter;
+     {
+-        const std::string sql = naming_copy_of_one_sql();
+-        Stmt copy = prepare_read(db_, sql.c_str());
++        static const std::string sql = naming_copy_of_one_sql();
++        UseStmt copy = use_stmt(db_, stmt_cache_, stmt_cache_on_, sql, true);
+         bind_text(copy, 1, hyhash);
+         if (step_row(copy)) {
+             name = column_text(copy, 0);
+@@ -1105,12 +1259,12 @@ void RecordStore::upsert_song(const std::string& hyhash, const std::string& ref_
+             charter = column_text(copy, 2);
+         }
+     }
+-    Stmt s = prepare_write(db_,
++    UseStmt s = use_stmt(db_, stmt_cache_, stmt_cache_on_,
+         "INSERT INTO songmeta (hyhash, ref_name, ref_artist, ref_charter, tempomap) "
+         "VALUES (?,?,?,?,?) "
+         "ON CONFLICT(hyhash) DO UPDATE SET ref_name = excluded.ref_name, "
+         "ref_artist = excluded.ref_artist, ref_charter = excluded.ref_charter, "
+-        "tempomap = excluded.tempomap");
++        "tempomap = excluded.tempomap", false);
+     bind_text(s, 1, hyhash);
+     bind_text(s, 2, name);
+     bind_text(s, 3, artist);
+@@ -1140,19 +1294,19 @@ void RecordStore::write_row(const PreparedRow& row) {
+     // what keep its paths alive, and the final sweep collects whatever they
+     // stopped pointing at. The caller holds the lock and an open transaction,
+     // so a failure anywhere leaves the store exactly as it was.
+-    auto run = [](Stmt& s, const char* what) { step_done(s, std::string("add_row ") + what); };
++    auto run = [](sqlite3_stmt* s, const char* what) { step_done(s, std::string("add_row ") + what); };
+     // Deletes the results a subquery names, and their refs. `where` is a
+     // fragment over `results`, bound by `bind`.
+     auto purge = [&](const std::string& where,
+                      const std::function<void(sqlite3_stmt*)>& bind, const char* what) {
+         std::string refs = "DELETE FROM path_refs WHERE result_id IN"
+                            " (SELECT result_id FROM results WHERE " + where + ")";
+-        Stmt r = prepare_write(db_, refs.c_str());
++        UseStmt r = use_stmt(db_, stmt_cache_, stmt_cache_on_, refs, false);
+         bind(r);
+         run(r, what);
+ 
+         std::string rows = "DELETE FROM results WHERE " + where;
+-        Stmt d = prepare_write(db_, rows.c_str());
++        UseStmt d = use_stmt(db_, stmt_cache_, stmt_cache_on_, rows, false);
+         bind(d);
+         run(d, what);
+     };
+@@ -1165,6 +1319,7 @@ void RecordStore::write_row(const PreparedRow& row) {
+     //     is current, not against this row: a test writing a deliberately
+     //     old-stamped row must not take the real rows with it, and this runs
+     //     before the insert so the new row is untouched.
++    PerfLap lap;
+     purge("hyhash=? AND chartmode=? AND NOT " + row_readable_sql(),
+           [&](sqlite3_stmt* s) {
+               bind_text(s, 1, row.hyhash);
+@@ -1172,6 +1327,7 @@ void RecordStore::write_row(const PreparedRow& row) {
+               bind_readable_params(s, 3);
+           },
+           "unreadable purge");
++    lap.mark(kPartPurge1);
+ 
+     // (2) The row this one replaces: the same key under the same rules, the
+     //     row the UNIQUE key would refuse a second copy of. Deleted
+@@ -1189,6 +1345,7 @@ void RecordStore::write_row(const PreparedRow& row) {
+               bind_blob(s, next, row.structure);
+           },
+           "replace purge");
++    lap.mark(kPartPurge2);
+ 
+     // (3) The result, then its paths (shared, so first writer wins) and the
+     //     refs that tie the two together. rules_fp is read out of the
+@@ -1200,12 +1357,11 @@ void RecordStore::write_row(const PreparedRow& row) {
+             " depth_value, legacy_fills, bestpath, structure";
+         static constexpr int kRowColumnCount = count_list_names(kRowColumns);
+         const std::string structure_param = "?" + std::to_string(kRowColumnCount);
+-        Stmt s = prepare_write(db_,
++        UseStmt s = use_stmt(db_, stmt_cache_, stmt_cache_on_,
+             (std::string("INSERT INTO results (") + kRowColumns + ", " + kSummaryColumnList +
+              ", rules_fp) VALUES (" + placeholders(kRowColumnCount) + ", " +
+              placeholders(kSummaryColumnCount) + ", " + rules_fp_of(structure_param.c_str()) +
+-             ")")
+-                .c_str());
++             ")"), false);
+         bind_text(s, 1, row.hyhash);
+         bind_text(s, 2, row.chartmode);
+         bind_text(s, 3, row.hyversion);
+@@ -1217,17 +1373,18 @@ void RecordStore::write_row(const PreparedRow& row) {
+         run(s, "insert");
+     }
+     const int64_t result_id = sqlite3_last_insert_rowid(db_);
++    lap.mark(kPartInsert);
+ 
+     {
+         // Compiled once per row, not once per node, and bound once with what
+         // every node shares. Bindings survive a reset, so each node only
+         // rebinds its own hash and payload.
+-        Stmt path_insert = prepare_write(db_,
++        UseStmt path_insert = use_stmt(db_, stmt_cache_, stmt_cache_on_,
+             "INSERT OR IGNORE INTO paths (hyhash, chartmode, phash, payload)"
+-            " VALUES (?,?,?,?)");
+-        Stmt ref_insert = prepare_write(db_,
++            " VALUES (?,?,?,?)", false);
++        UseStmt ref_insert = use_stmt(db_, stmt_cache_, stmt_cache_on_,
+             "INSERT OR IGNORE INTO path_refs (result_id, hyhash, chartmode, phash)"
+-            " VALUES (?,?,?,?)");
++            " VALUES (?,?,?,?)", false);
+         bind_text(path_insert, 1, row.hyhash);
+         bind_text(path_insert, 2, row.chartmode);
+         sqlite3_bind_int64(ref_insert, 1, result_id);
+@@ -1244,15 +1401,17 @@ void RecordStore::write_row(const PreparedRow& row) {
+         }
+     }
+ 
++    lap.mark(kPartNodes);
+     // (4) Whatever the replaced row was the last owner of.
+     collect_orphan_paths(row.hyhash, row.chartmode, "add_row");
++    lap.mark(kPartGc);
+ }
+ 
+ void RecordStore::collect_orphan_paths(const std::string& hyhash,
+                                        const std::string& chartmode, const char* caller) {
+-    Stmt s = prepare_write(db_,
++    UseStmt s = use_stmt(db_, stmt_cache_, stmt_cache_on_,
+         "DELETE FROM paths WHERE hyhash=? AND chartmode=? AND phash NOT IN"
+-        " (SELECT phash FROM path_refs WHERE hyhash=? AND chartmode=?)");
++        " (SELECT phash FROM path_refs WHERE hyhash=? AND chartmode=?)", false);
+     bind_text(s, 1, hyhash);
+     bind_text(s, 2, chartmode);
+     bind_text(s, 3, hyhash);
+diff --git a/src/store/record_store.h b/src/store/record_store.h
+index 7032f88..a1846bc 100644
+--- a/src/store/record_store.h
++++ b/src/store/record_store.h
+@@ -353,6 +353,10 @@ inline std::string naming_copy_of_one_sql() {
+            " WHERE md5 = ?1 AND copies > 1";
+ }
+ 
++// PERF EXPERIMENT (write): the save path's summed step times, as text.
++std::string perf_save_parts();
++std::vector<uint8_t> perf_encode_tempomap(const Song& song);
++
+ class RecordStore {
+ public:
+     // dbpath may be ":memory:" for an ephemeral store (used by tests). A db
+@@ -400,6 +404,28 @@ public:
+                        const std::optional<DynamicsEntry>& dynamics,
+                        const SongLength& length = {});
+ 
++    // PERF EXPERIMENT (write). A save group: begin takes the store lock and
++    // opens one transaction; every save_analysis until commit runs inside it
++    // as its own SAVEPOINT, so a failed save still fails only that chart.
++    // commit closes it and drops the lock; if it throws, nothing in the group
++    // was kept.
++    void begin_save_group();
++    void commit_save_group();
++    bool save_group_open() const { return group_open_; }
++    // PERF EXPERIMENT (write): reuse compiled statements on the save path.
++    void set_statement_cache(bool on) { stmt_cache_on_ = on; }
++    // PERF EXPERIMENT (write): save_analysis with the tempo map already
++    // encoded on the worker, so the consumer never touches the Song.
++    void save_analysis_encoded(const std::string& hyhash, const std::string& ref_name,
++                               const std::string& ref_artist, const std::string& ref_charter,
++                               const std::vector<uint8_t>& tempomap, const PreparedRow& row,
++                               const std::optional<DynamicsEntry>& dynamics,
++                               const SongLength& length);
++    void perf_exec(const char* sql) {
++        std::lock_guard<std::recursive_mutex> lock(mutex_);
++        exec(sql);
++    }
++
+     // Stores a dynamics-breakdown blob (INSERT OR REPLACE) under the caller's
+     // count stamp (kDynamicsCountStamp.written; go through app::save_dynamics).
+     void put_dynamics(const DynamicsKey& key, const std::vector<uint8_t>& blob,
+@@ -568,6 +594,14 @@ private:
+     // lock later; for_each_blob is the one place that does this, reusing two
+     // statements across the walk instead of recompiling them per row.
+     std::recursive_mutex mutex_;
++    // PERF EXPERIMENT (write).
++    bool stmt_cache_on_ = false;
++    std::unordered_map<std::string, sqlite3_stmt*> stmt_cache_;
++    bool group_open_ = false;
++    bool group_lost_ = false;
++    // Runs a transaction-control statement (BEGIN, COMMIT, SAVEPOINT...),
++    // through the statement cache when it is on.
++    void ctl(const char* sql);
+ 
+     // The constructor's work after the file opens: the journal mode, the
+     // tables, and every upgrade and backfill an older file needs. The
