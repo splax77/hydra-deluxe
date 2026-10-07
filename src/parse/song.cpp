@@ -1164,8 +1164,8 @@ ChartLine classify_chart_line(std::string_view keystr, std::string_view valuestr
     return out;
 }
 
-// A line of [Song] or [SyncTrack], the two sections kept whole: the line as
-// classify_chart_line reads it, and for a named property its key and raw
+// A line of a section kept whole (ChartParser::load_sections says which): the
+// line as classify_chart_line reads it, and for a named property its key and raw
 // (trimmed) value. Each reader of a property applies its own one number rule
 // (Resolution, Offset).
 struct ChartDataEntry {
@@ -1184,8 +1184,8 @@ struct ChartDataEntry {
     bool is_tick_data() const { return line.kind != LineKind::Prop; }
 };
 
-// [Song] or [SyncTrack], kept whole. The drum section and [Events] are read
-// into lighter forms (ChartParser::load_sections).
+// A section kept whole. ChartParser::load_sections says which sections are
+// kept this way and which are read into lighter forms.
 struct ChartSection {
     std::string name;
     std::vector<int64_t> tick_order;
@@ -1254,6 +1254,13 @@ COp cop_span(CPhase phase, CAct act, int64_t a, int64_t b) {
     return op;
 }
 
+// The .chart sections read by name, besides the difficulty's drum section
+// (chart_section in DifficultyChartCodes). ChartParser::load_sections keeps
+// them and ChartParser::parse reads them back.
+constexpr std::string_view kSongSection = "Song";
+constexpr std::string_view kSyncTrackSection = "SyncTrack";
+constexpr std::string_view kEventsSection = "Events";
+
 class ChartParser {
 public:
     explicit ChartParser(const core::Rules& rules) : rules_(rules) {}
@@ -1297,11 +1304,11 @@ private:
     bool mode_pro_ = false;
     bool mode_bass2x_ = false;
 
-    // [Song] and [SyncTrack], by name.
+    // The sections load_sections keeps whole, by name.
     std::unordered_map<std::string, ChartSection> sections_;
     // The parsed difficulty's drum section as its tick lines in file order,
-    // and [Events] as its practice sections in file order; each is unset when
-    // the file has no closed section of that name.
+    // and the events section as its practice sections in file order; each is
+    // unset when the file has no closed section of that name.
     std::optional<std::vector<ChartLine>> drum_lines_;
     std::optional<std::vector<SongSection>> event_sections_;
 
@@ -1407,14 +1414,14 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                 throw ChartFileError("expected a [section] header");
             const std::string_view name = bracket.substr(1, bracket.size() - 2);
             in_section = true;
-            if (name == "Song" || name == "SyncTrack") {
+            if (name == kSongSection || name == kSyncTrackSection) {
                 keep = Keep::Whole;
                 whole.emplace();
                 whole->name = std::string(name);
             } else if (name == drum_section) {
                 keep = Keep::Drums;
                 drums.clear();
-            } else if (name == "Events") {
+            } else if (name == kEventsSection) {
                 keep = Keep::Events;
                 events.clear();
             } else {
@@ -1556,7 +1563,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
 
-    const ChartSection& song_sec = sections_.at("Song");
+    const ChartSection& song_sec = sections_.at(std::string(kSongSection));
     const ChartDataEntry& res_entry = song_sec.prop_data.at("Resolution").at(0);
     // One number rule for Resolution: std::stoll on the raw text (leading
     // digits read, trailing junk ignored, no digits refuses the chart).
@@ -1574,7 +1581,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     }
 
     // Map tempo and time signatures from the sync track.
-    auto sync_it = sections_.find("SyncTrack");
+    auto sync_it = sections_.find(std::string(kSyncTrackSection));
     if (sync_it != sections_.end()) {
         const ChartSection& sync = sync_it->second;
         for (int64_t tk : sync.tick_order) {

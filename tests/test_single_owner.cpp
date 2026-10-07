@@ -4718,6 +4718,29 @@ const std::vector<OwnerRule>& rules() {
           "inline constexpr int kMidiDataValues = 128;"},
          {},
          {"src/parse/midi.h", "src/parse/midi.cpp", "src/parse/song.cpp"}},
+        // The .chart sections the reader keeps by name are named once, so
+        // the code that keeps them and the code that reads them back cannot
+        // spell them apart. Scoped to song.cpp, where the .chart reader
+        // lives; "Song" means a title elsewhere.
+        {"Which .chart sections does the reader keep by name?",
+         "kSongSection, kSyncTrackSection and kEventsSection in src/parse/song.cpp",
+         R"re("(Song|SyncTrack|Events)")re",
+         "",
+         {},
+         {},
+         "the speedups plan, task P1 (D86); derive-once review of P1",
+         {R"(if (name == "Song" || name == "SyncTrack") {)",
+          R"(const ChartSection& song_sec = sections_.at("Song");)",
+          R"(} else if (name == "Events") {)"},
+         {"if (name == kSongSection || name == kSyncTrackSection) {",
+          "auto sync_it = sections_.find(std::string(kSyncTrackSection));"},
+         {{"src/parse/song.cpp", R"(constexpr std::string_view kSongSection = "Song";)",
+           "the name itself"},
+          {"src/parse/song.cpp", R"(constexpr std::string_view kSyncTrackSection = "SyncTrack";)",
+           "the name itself"},
+          {"src/parse/song.cpp", R"(constexpr std::string_view kEventsSection = "Events";)",
+           "the name itself"}},
+         {"src/parse/song.cpp"}},
     };
     return r;
 }
