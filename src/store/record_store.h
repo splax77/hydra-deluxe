@@ -470,10 +470,12 @@ public:
     void delete_results_without_chart();
 
     // One chart's files changed since the scan (D87 item 3): the library row
-    // at `notespath` takes the hash and fingerprint the edited files now
-    // give, and whatever the old hash leaves unlisted is deleted, as
+    // at `notespath` takes the hash and fingerprint the files now give, and
+    // whatever the old hash leaves unlisted is deleted, as
     // delete_results_without_chart does, in the same transaction. A path the
-    // library doesn't list changes nothing.
+    // library doesn't list changes nothing. The hash can be the row's own,
+    // for files only saved again (D96); ui::ViewJob::run decides when a
+    // click calls this.
     void reidentify_chart(const std::string& notespath, const std::string& new_md5,
                           const std::string& new_sig);
 
