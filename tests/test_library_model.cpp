@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -161,15 +162,53 @@ TEST_CASE("library model: every chart shows, sorted by title, with its Best path
     const LibraryModel m = sample();
     CHECK(titles(m) == std::vector<std::string>{"Acid Romance", "Burnout", "Chair", "Halo",
                                                 "Other", "YYZ"});
-    CHECK(m.rows()[0].best_label == "378,315  3- 1 2");
-    CHECK(m.rows()[2].best_label == "Stale");
-    CHECK(m.rows()[1].best_label == "Not analyzed");
+    CHECK(m.rows()[0].best_label() == "378,315  3- 1 2");
+    CHECK(m.rows()[2].best_label() == "Stale");
+    CHECK(m.rows()[1].best_label() == "Not analyzed");
     // Colour tags never reach the screen.
     CHECK(m.rows()[3].charter == "Bloodline");
     CHECK(m.counts().all == 6);
     CHECK(m.counts().not_analyzed == 4);
     CHECK(m.counts().stale == 1);
     CHECK(m.counts().analyzed == 1);
+}
+
+TEST_CASE("library model: a row keeps its chart's hash, file and folder, and a click reads the rest") {
+    // One chart in two folders, under two names, plus another chart.
+    ChartLibraryEntry first = chart("same", "First Name", "A", "C", "one");
+    first.sig = "1:2:3:4";
+    first.timing = hydra::store::ChartTimingMeta{180000.0, 50.0};
+    ChartLibraryEntry second = chart("same", "Second Name", "B", "D", "two");
+    second.sig = "5:6:7:8";
+    second.timing = hydra::store::ChartTimingMeta{std::nullopt, std::nullopt};
+    hydra::store::RecordStore store(":memory:");
+    store.rebuild_chart_library({first, second, chart("other", "Other", "E", "F", "one")});
+
+    LibraryModel m;
+    m.set_charts(store.list_chart_library(0, -1));
+    REQUIRE(m.rows().size() == 3);
+    for (const hydra::ui::LibraryRow& row : m.rows()) {
+        if (row.entry.md5 != "same") continue;
+        const ChartLibraryEntry& scanned =
+            row.entry.notespath == first.notespath ? first : second;
+        CHECK(row.entry.rootfolder == scanned.rootfolder);
+        CHECK(row.title == scanned.title);
+    }
+
+    // The click's read: every copy of the one chart, as the scan wrote it.
+    const std::vector<ChartLibraryEntry> copies = store.list_chart_library_copies("same");
+    REQUIRE(copies.size() == 2);
+    for (const ChartLibraryEntry& copy : copies) {
+        const ChartLibraryEntry& scanned = copy.notespath == first.notespath ? first : second;
+        CHECK(copy.md5 == "same");
+        CHECK(copy.title == scanned.title);
+        CHECK(copy.artist == scanned.artist);
+        CHECK(copy.charter == scanned.charter);
+        CHECK(copy.rootfolder == scanned.rootfolder);
+        CHECK(copy.sig == scanned.sig);
+        CHECK(copy.timing == scanned.timing);
+    }
+    CHECK(store.list_chart_library_copies("missing").empty());
 }
 
 TEST_CASE("library model: a title made only of tags reads (unknown)") {

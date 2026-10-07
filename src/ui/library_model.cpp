@@ -59,7 +59,6 @@ bool apply_summary(LibraryRow& row, const store::SummaryLookup& lookup) {
     row.stale_rules = lookup.stale_rules;
     row.bestpath = lookup.bestpath;
     row.summary = lookup.summary;
-    row.best_label = best_path_label(row.status, row.bestpath, row.summary);
     return true;
 }
 
@@ -106,6 +105,8 @@ std::string best_path_label(store::RecordStatus status, const std::string& bestp
     return group_thousands(*summary.score) + "  " + bestpath;
 }
 
+std::string LibraryRow::best_label() const { return best_path_label(status, bestpath, summary); }
+
 size_t ChipCounts::of(StatusChip chip) const {
     switch (chip) {
         case StatusChip::NotAnalyzed: return not_analyzed;
@@ -126,8 +127,10 @@ void LibraryModel::set_charts(std::vector<store::ChartLibraryEntry> charts) {
         row.charter = display_charter(entry.charter);
         row.searchable =
             app::make_searchable(entry.title, entry.artist, entry.charter, entry.rootfolder);
-        row.entry = std::move(entry);
-        row.best_label = best_path_label(row.status, row.bestpath, row.summary);
+        row.entry.md5 = std::move(entry.md5);
+        row.entry.notespath = std::move(entry.notespath);
+        row.entry.rootfolder = std::move(entry.rootfolder);
+        entry = {};  // the rest of the scan's row goes now, not when the load ends
         rows_.push_back(std::move(row));
     }
     resort();

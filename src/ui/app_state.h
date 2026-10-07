@@ -218,15 +218,22 @@ public:
     // "Analyze search (N)...".
     size_t library_match_count() const { return library.counts().all; }
     // Those charts, in table order: what "Analyze search (N)..." analyzes.
+    // The rows keep only part of each chart (LibraryChart), so the entries
+    // are read from the store; throws when that read fails.
     std::vector<store::ChartLibraryEntry> library_matches() const;
 
     // Selection / details modal.
     std::optional<store::ChartLibraryEntry> selected;
     bool show_details = false;
     void select(const store::ChartLibraryEntry& entry);
-    // Whether this library row is the selected one. By notespath, not md5:
-    // the same chart can sit in two folders, and only the clicked copy is it.
-    bool is_selected_row(const store::ChartLibraryEntry& row) const;
+    // A library row's click: reads the row's whole entry from the store and
+    // selects it. A failed read says so (set_problem) and selects nothing.
+    void select(const LibraryChart& row);
+    // Whether this library row (a LibraryChart or a store entry) is the
+    // selected one. By notespath, not md5: the same chart can sit in two
+    // folders, and only the clicked copy is it.
+    template <class Row>
+    bool is_selected_row(const Row& row) const;
 
     // Whether the song panel is showing. Code outside the panel reads this,
     // not show_details (which the X, Escape and the tests write).
@@ -236,7 +243,7 @@ public:
     // the GUI tests walk these. (T12 re-implements the three over its
     // in-memory model and library_view_order(); callers don't change.)
     size_t view_row_count() const;
-    const store::ChartLibraryEntry& view_row(size_t i) const;
+    const LibraryChart& view_row(size_t i) const;
     store::RecordStatus view_row_status(size_t i) const;
 
     // Opens the next (delta 1) or previous (delta -1) row of the current

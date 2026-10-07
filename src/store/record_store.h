@@ -487,6 +487,10 @@ public:
     // wrote; rows an older scan wrote carry none.
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit);
+    // The library's rows for one chart, one per copy the scan listed, read
+    // the way list_chart_library reads them. A click on a library row picks
+    // its copy from these (ui::AppState::select).
+    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5);
 
 private:
     sqlite3* db_ = nullptr;
