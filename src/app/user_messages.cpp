@@ -48,8 +48,6 @@ constexpr const char* kReportWrite =
 constexpr const char* kRulesFile =
     "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then restart "
     "Hydra.";
-constexpr const char* kStoredResult =
-    "A saved result couldn't be read. Re-analyze this song to replace it.";
 constexpr const char* kOutOfMemory =
     "Hydra ran out of memory on this chart. Close other programs and try again.";
 constexpr const char* kAudioDecode =
@@ -94,7 +92,6 @@ std::optional<std::string> kind_sentence(const KindedError& e) {
         case ErrorKind::NoRecords: return kNoRecords;
         case ErrorKind::ReportWrite: return kReportWrite;
         case ErrorKind::RulesFile: return kRulesFile;
-        case ErrorKind::StoredResult: return kStoredResult;
         case ErrorKind::AudioDecode: return kAudioDecode;
         case ErrorKind::PreviewAssets: return kPreviewAssets;
     }

@@ -99,11 +99,8 @@ public:
     Timecode(int64_t ticks, int64_t tick_r,
              const MeasureIndex& mbt, const MsIndex& ms);
 
-    // Raw ticks only, mbt/ms left at their defaults. This is the state a
-    // decoded Activation's timecode is in until restore_timecodes
-    // (store/serialize.h) resolves it against the song's tempo map — a stored
-    // record is deserialized without a SongTiming at hand, so ticks are all
-    // that's known until the caller restores them (see restore_timecodes).
+    // Raw ticks only, mbt/ms left at their defaults: for a caller with no
+    // SongTiming at hand, which needs only the ticks.
     static Timecode raw(int64_t ticks) {
         Timecode tc;
         tc.ticks_ = ticks;

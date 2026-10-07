@@ -878,7 +878,7 @@ TEST_CASE("set_search narrows the library and the match count") {
 }
 
 // "stars:9" is not a filter Hydra understands, so the search narrows nothing:
-// the Analyze button keeps reading "Analyze library..." (D48, Q15).
+// the toolbar's batch button keeps reading "Analyze library..." (D48, Q15).
 TEST_CASE("set_search: a filter that does not parse leaves the query empty") {
     ScratchPaths paths("appstate_badfilter");
     std::unique_ptr<AppState> app = app_on(paths);
