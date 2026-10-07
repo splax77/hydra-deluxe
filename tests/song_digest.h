@@ -1,7 +1,8 @@
 // The digests that prove a change left Hydra's output identical. One owner,
 // shared by hydra_bench's --engine and --parse modes (tools/bench.cpp) and the
-// test that pins the corpus's digests (tests/test_perf_digest.cpp), so the
-// tool and the test can never hash differently.
+// tests that pin digests (tests/test_perf_digest.cpp, and the crafted edge
+// files in tests/test_song.cpp), so the tool and the tests can never hash
+// differently.
 //
 // row_hash covers what one chart stores in its results row: the best path,
 // the path tree and its nodes, and the summary columns. song_digest covers a
@@ -21,6 +22,9 @@
 #include <string>
 #include <typeinfo>
 
+#include "app/analysis.h"
+#include "app/config.h"
+#include "app/dynamics_breakdown.h"
 #include "parse/song.h"
 #include "store/record_store.h"
 
@@ -163,6 +167,37 @@ inline std::string failure_text(const std::exception& e) {
     return std::string(typeid(e).name()) + ": " + e.what();
 }
 inline uint64_t failure_hash(const std::string& text) { return fnv_str(kSeed, text); }
+
+// One chart's parse digest, the per-chart hash hydra_bench --parse folds: the
+// parsed song with its stored dynamics blob, or its failure's hash. `fail`,
+// when given, gets the failure text, and stays as it was when the chart
+// parses. The tests call this; tools/bench.cpp keeps its own loop because it
+// times the parse and the dynamics pass apart.
+inline uint64_t chart_parse_hash(const std::string& notespath, const app::AnalysisSettings& st,
+                                 std::string* fail = nullptr) {
+    try {
+        const Song song = load_songpath_with_notes(notespath, st.prodrums, st.bass2x,
+                                                   st.difficulty, st.rules);
+        return with_dynamics(song_digest(song),
+                             app::dynamics_entry_from_analysis("md5", song, st.bass2x,
+                                                               st.difficulty, st.prodrums));
+    } catch (const std::exception& e) {
+        const std::string text = failure_text(e);
+        if (fail) *fail = text;
+        return failure_hash(text);
+    }
+}
+
+// The settings a digest is pinned under, built the way the app builds them
+// from an ini that sets only these three things. A test that pins more
+// fields sets them on the result before it calls batch_run.
+inline app::Settings digest_settings(const char* difficulty, bool pro, bool bass2x) {
+    app::Settings s;
+    s.view_difficulty = difficulty;
+    s.view_prodrums = pro;
+    s.view_bass2x = bass2x;
+    return s;
+}
 
 }  // namespace hydra::digest
 

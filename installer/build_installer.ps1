@@ -71,6 +71,11 @@ if ($LASTEXITCODE -ne 0) { throw "cmake --install failed" }
 $leaked = Get-ChildItem $stage -Recurse -Include *.db, *_settings.ini, *_ui.ini
 if ($leaked) { throw "user data leaked into the staging dir: $($leaked.FullName -join ', ')" }
 
+# Guard: no symbol file ships. Release builds write a .pdb beside each exe
+# (CMakeLists.txt); the install() rules must keep leaving them out.
+$symbols = Get-ChildItem $stage -Recurse -Include *.pdb
+if ($symbols) { throw "symbol files leaked into the staging dir: $($symbols.FullName -join ', ')" }
+
 # Guard the other invariant: the shipped exe holds no repo path at all, in
 # either slash style. The attached GUI tests (left out by the ship preset)
 # and __FILE__ (trimmed by /d1trimfile in CMakeLists.txt) were the sources.

@@ -97,6 +97,40 @@ attached GUI tests), stages the ship list via `cmake --install` (so stray user
 data in the build tree can never leak into a release), downloads and caches
 the VC++ redistributable, and compiles `installer\hydra.iss`.
 
+### What a Release build does
+
+A Release build is tuned for speed in ways that never change a stored result.
+The settings live in `CMakeLists.txt` and `build_cpp.ps1`; this says why.
+
+`build_cpp.ps1` asks MSBuild to build independent projects at the same time
+(`--parallel`, uncapped, decision D86 item 5). Each project also compiles its
+own files in parallel, as before.
+
+Link-time optimization is on for Release when CMake's check says the compiler
+supports it, and configure prints which. (Link-time optimization means the
+linker sees the whole program at once, so it can inline across source files.)
+It makes every link slower, several seconds for `Hydra.exe` after a one-file
+change, and the program a little faster. It shipped only after a whole-library
+run stored byte-identical results with it (see "Proving identical results").
+
+Each Release exe gets a symbol file (`.pdb`) beside it, for profilers and
+crash dumps. The exe records only the symbol file's name, never the build
+folder's path. No symbol file ships: the install rules name only the exes, and
+the installer refuses a staging folder that holds one.
+
+The vendored SQLite is built without its memory-use counters and without
+shared cache. Hydra uses neither, and leaving them out trims a little of
+SQLite's own work; `tests/test_store.cpp` checks both. SQLite's default sync
+level for WAL mode is not set at build time, because the store sets it itself
+on every open (`record_store.cpp`).
+
+Four speed flags stay out on purpose. `/fp:fast` and `/fp:contract` let the
+compiler reorder or fuse floating-point math, which can move a computed timing
+or score in its last bit, and every stored result must stay byte-identical.
+`/arch:AVX2` would stop Hydra from starting on a processor without AVX2.
+Turning off `/GS`, the compiler's stack-overrun check, gives up a safety check
+for a gain too small to measure.
+
 The tests run against the checked-in chart corpus under `testdata/input/`;
 nothing else is needed. `hydra_tests` asserts structural invariants and
 lossless round-trips over that corpus. GUI changes are checked headlessly with

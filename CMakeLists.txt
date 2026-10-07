@@ -37,6 +37,28 @@ endif()
 # Parallel compilation within each target.
 add_compile_options(/MP)
 
+# Release builds: link-time optimization where the toolchain supports it, and
+# a symbol file (.pdb) beside each exe for profiling and crash dumps. The
+# install() rules below name only the exes, so no .pdb ships; the installer
+# checks that. docs/development.md says why the riskier speed flags stay out.
+include(CheckIPOSupported)
+check_ipo_supported(RESULT HYDRA_IPO_SUPPORTED OUTPUT HYDRA_IPO_OUTPUT LANGUAGES C CXX)
+if(HYDRA_IPO_SUPPORTED)
+    message(STATUS "Link-time optimization (IPO): supported, on for Release")
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+else()
+    message(STATUS "Link-time optimization (IPO): not supported, off: ${HYDRA_IPO_OUTPUT}")
+endif()
+add_compile_options($<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/Zi>)
+# /DEBUG turns off /OPT:REF and /OPT:ICF unless they are named, so they are
+# named to keep the exes as lean as before. /PDBALTPATH stores only the .pdb's
+# file name in the exe, not the build folder's path, which the installer's
+# "no repo path" check would refuse.
+add_link_options($<$<CONFIG:Release>:/DEBUG>
+                 $<$<CONFIG:Release>:/OPT:REF>
+                 $<$<CONFIG:Release>:/OPT:ICF>
+                 $<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>)
+
 # __FILE__ names the source relative to the repo, not by its absolute path.
 # Opus's safety checks (OPUS_HARDENING) store __FILE__ for their error message,
 # which put the builder's folder path into the shipped Hydra.exe 28 times.
@@ -94,6 +116,11 @@ target_compile_options(imgui_test_engine PRIVATE /W1 /EHsc)
 add_library(sqlite3 STATIC third_party/sqlite/sqlite3.c)
 target_include_directories(sqlite3 PUBLIC third_party/sqlite)
 target_compile_options(sqlite3 PRIVATE /W1)
+# Two options from SQLite's compile-time list that trim its own CPU: no
+# memory-use counters (Hydra never reads them) and no shared cache (Hydra
+# opens its own connections). tests/test_store.cpp checks both are built in.
+# The WAL sync default is left alone: record_store.cpp sets it on every open.
+target_compile_definitions(sqlite3 PRIVATE SQLITE_DEFAULT_MEMSTATUS=0 SQLITE_OMIT_SHARED_CACHE)
 
 # ---- third_party: miniz (raw deflate, for Clone Hero .srb bundles) -------
 add_library(miniz STATIC third_party/miniz/miniz.c)

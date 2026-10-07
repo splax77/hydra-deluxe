@@ -33,6 +33,10 @@ public:
     explicit MidiError(const std::string& what) : KindedError(ErrorKind::ChartUnreadable, what) {}
 };
 
+// How many values a MIDI data byte holds: the MIDI file format keeps its top
+// bit clear.
+inline constexpr int kMidiDataValues = 128;
+
 // One event. A single struct covers channel and meta messages, matching the
 // dynamic shape hymidi produces; only the fields relevant to `type` are set.
 struct Message {
@@ -55,8 +59,8 @@ struct Message {
     Type type = Type::NoteOn;
     StrAttr str_attr = StrAttr::None;
 
-    uint8_t note = 0;          // note_on / note_off (0..127, clipped as mido)
-    uint8_t velocity = 0;      // note_on / note_off (0..127, clipped as mido)
+    uint8_t note = 0;          // note_on / note_off (clipped as mido, clip_data_byte)
+    uint8_t velocity = 0;      // note_on / note_off (clipped as mido, clip_data_byte)
 
     uint32_t tempo = 0;        // set_tempo (microseconds per quarter note)
 
@@ -67,14 +71,19 @@ struct Message {
     // Text/name payload, UTF-8 (latin-1 decoded). Only text and name metas
     // fill it; every other message leaves it empty, so it never allocates.
     std::string str;
+
+    // Whether this note message starts a note. Any other note message ends
+    // one, as in mido and Clone Hero.
+    bool is_note_on() const { return type == Type::NoteOn && velocity > 0; }
 };
 
 // mido's name for a message type ("note_on", "set_tempo", "track_name", ...).
 const char* message_type_name(Message::Type type);
 
-// The track names the song parser looks tracks up by (parse/song.cpp). They
-// are also the only names the reader recognizes when it picks a track's name
-// (MidiFile::parse_track, D78), so the lookups and that choice share one list.
+// The track names the song parser finds its tracks by (MidiFile::drums_track
+// and MidiTrack::is_events). They are also the only names the reader
+// recognizes when it picks a track's name (TrackNamePick in midi.cpp, D78), so
+// the lookups and that choice share one list.
 inline constexpr std::string_view kDrumsTrackName = "PART DRUMS";
 inline constexpr std::string_view kEventsTrackName = "EVENTS";
 inline constexpr std::string_view kRecognizedTrackNames[] = {kDrumsTrackName,
@@ -85,6 +94,21 @@ public:
     // Chosen by MidiFile::parse_track (D78).
     std::string name;
     std::vector<Message> messages;
+
+    // Whether the song parser reads practice sections from this track.
+    bool is_events() const { return name == kEventsTrackName; }
+};
+
+// Which drum-track note messages MidiFile::lean keeps, one table by pitch for
+// the messages Message::is_note_on accepts and one for the rest. The song
+// parser fills it (load_songbytes_mid in parse/song.cpp).
+struct MidiLeanFilter {
+    bool note_on[kMidiDataValues] = {};
+    bool note_off[kMidiDataValues] = {};
+
+    bool keeps(const Message& msg) const {
+        return (msg.is_note_on() ? note_on : note_off)[msg.note];
+    }
 };
 
 class MidiFile {
@@ -92,6 +116,22 @@ public:
     // Parse from raw file bytes. Throws MidiError on invalid input.
     explicit MidiFile(const std::vector<uint8_t>& data);
     MidiFile(const uint8_t* data, size_t size);
+
+    // The file as the song parser reads it, holding only what it reads from
+    // each track's role: the timing track (kTimingTrack) keeps its tempo and
+    // meter, the drum track (drums_track) its text metas and the notes
+    // `filter` keeps, and an events track (MidiTrack::is_events) its text
+    // metas. Every track keeps its name. A dropped message hands its delta
+    // on, so every kept message sits at the tick it has in the full read, and
+    // the file throws exactly where the full read throws.
+    static MidiFile lean(const uint8_t* data, size_t size, const MidiLeanFilter& filter);
+
+    // The track the song parser reads tempo and meter from.
+    static constexpr size_t kTimingTrack = 0;
+
+    // The track the song parser reads the drum chart from, or nullptr when
+    // the file has none. MidiParser::parse and MidiFile::lean both ask here.
+    const MidiTrack* drums_track() const;
 
     // Read and parse a file from disk. A file that cannot be read throws
     // read_file_bytes' error; one that is not a MIDI file throws MidiError.
@@ -102,6 +142,7 @@ public:
     std::vector<MidiTrack> tracks;
 
 private:
+    MidiFile() = default;
     void parse(const uint8_t* data, size_t size);
     MidiTrack parse_track(const uint8_t* data, size_t pos, size_t end);
 };

@@ -349,3 +349,35 @@ TEST_CASE("dynamics_breakdown: dynamic() counts ghosts and accents and not norma
     CHECK(zero.dynamic() == 0);
     CHECK_FALSE(zero.has_dynamics());
 }
+
+// Every row's three counts on one corpus chart, pinned from a run on c251abd
+// (before count_dynamics read Chord::note_list). This chart is the corpus's
+// best cover: every row has notes, and it has the most nonzero counts. No
+// corpus chart has ghost kicks as well; the Won't Get Fooled Again fixture in
+// test_song.cpp has those but no 2x kicks.
+TEST_CASE("dynamics_breakdown: every row's counts on The Decade Of Statues, pinned") {
+    const std::string path =
+        std::string(HYDRA_TESTDATA_DIR) +
+        "/input/common/Summer Blast _25 Setlist/Tier 6/"
+        "Between the Buried and Me - (B) The Decade Of Statues/notes.mid";
+    const Song song = load_songpath_mid(path, /*pro=*/true, /*bass2x=*/true);
+    const DynamicsBreakdown bd = count_dynamics(song);
+
+    struct Expect {
+        DynamicsRow row;
+        int ghost, accent, normal;
+    };
+    const Expect expect[] = {
+        {DynamicsRow::RedSnare, 92, 231, 439},  {DynamicsRow::YellowCymbal, 12, 46, 278},
+        {DynamicsRow::YellowTom, 0, 34, 50},    {DynamicsRow::BlueCymbal, 0, 255, 80},
+        {DynamicsRow::BlueTom, 0, 25, 46},      {DynamicsRow::GreenCymbal, 12, 59, 333},
+        {DynamicsRow::GreenTom, 14, 5, 42},     {DynamicsRow::Kick, 0, 0, 720},
+        {DynamicsRow::Kick2x, 0, 0, 236},
+    };
+    for (const Expect& e : expect) {
+        CAPTURE(static_cast<int>(e.row));
+        CHECK(bd.row(e.row).ghost == e.ghost);
+        CHECK(bd.row(e.row).accent == e.accent);
+        CHECK(bd.row(e.row).normal == e.normal);
+    }
+}

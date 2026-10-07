@@ -2211,3 +2211,29 @@ TEST_CASE("tied variants: Don Broco - Actors at depth 40 shows each tied path's 
     }
     CHECK(seen == 2);
 }
+
+// A deactivation edge keeps no rows of its own: its rows are a range of the
+// graph's one row list, read through ScoreGraph::edge_backends. The three
+// numbers were pinned from one run on c251abd, before the change: one row per
+// chart timestamp, the SP track's deactivation edges, and the rows those
+// edges held as their own copies then.
+TEST_CASE("graph: a deactivation edge's rows are a range of the graph's rows") {
+    const Song& song = corpus::song(corpus::first_chart_with_notes(), true, true);
+    const ScoreGraph graph(song, 4);
+    const size_t all = graph.all_backends().size();
+    CHECK(all == 622);
+
+    std::set<const ScoreGraphEdge*> seen;
+    size_t rows = 0;
+    for (const ScoreGraphNode* sp = test::sp_track_start(graph); sp;
+         sp = sp->adv_edge ? sp->adv_edge->dest : nullptr) {
+        const ScoreGraphEdge* e = sp->branch_edge;
+        if (!e || !seen.insert(e).second) continue;
+        CAPTURE(e->dest->timecode.ticks());
+        CHECK(e->backend_begin <= e->backend_end);
+        CHECK(e->backend_end <= static_cast<int32_t>(all));
+        rows += graph.edge_backends(*e).size();
+    }
+    CHECK(seen.size() == 28);
+    CHECK(rows == 134);
+}

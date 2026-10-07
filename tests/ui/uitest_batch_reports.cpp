@@ -622,6 +622,31 @@ void test_dialog_keys(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->library.rows().empty());
 }
 
+// After a whole-library batch, the finished strip's analyzed count and the
+// library's Analyzed chip are one number. The batch saves charts in groups
+// and counts a chart only once its group is on disk (D86), so no chart the
+// strip counted can be missing from the library.
+void test_batch_chip_count(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->SetRef("//Analyze library");
+    ctx->ItemClick("Start analyzing");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->batch_job && h.app->batch_job->snapshot().finished;
+    }, 300));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->report_job && h.app->report_job->finished(); }, 60));
+    const hydra::ui::BatchJob::Snapshot done = h.app->batch_job->snapshot();
+    IM_CHECK_GT(done.analyzed, 0);
+    ctx->SetRef("//Hydra");
+    const std::string chip = "**/Analyzed (" + std::to_string(done.analyzed) + ")##chipdone";
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(chip.c_str()); }, 10));
+    dismiss_done(ctx);
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& batch_report_tests() {
@@ -639,6 +664,7 @@ const std::vector<TestEntry>& batch_report_tests() {
         {"analyze-db-fails", test_analyze_db_fails},
         {"compare-disabled", test_compare_disabled},
         {"dialog-keys", test_dialog_keys},
+        {"batch-chip-count", test_batch_chip_count},
     };
     return entries;
 }

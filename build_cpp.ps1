@@ -42,7 +42,9 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "configure failed" }
     }
 
-    $buildArgs = @("--build", "--preset", $Preset, "--config", $Config)
+    # --parallel with no count lets MSBuild build independent projects at
+    # once, uncapped (decision D86.5).
+    $buildArgs = @("--build", "--preset", $Preset, "--config", $Config, "--parallel")
     if ($Target -ne "") {
         $buildArgs += @("--target", $Target)
     } else {

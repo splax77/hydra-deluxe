@@ -105,8 +105,8 @@ bool lane_flag(const ChordNote& note) {
 }
 
 std::string Chord::code() const {
-    std::string out(5, '.');
-    for (int i = 0; i < 5; ++i) {
+    std::string out(kLanes, '.');
+    for (size_t i = 0; i < kLanes; ++i) {
         if (!notemap_[i].has_value()) continue;
         const ChordNote& note = *notemap_[i];
         // A flag this lane cannot carry (a red cymbal, a 2x pad, a kick
@@ -134,10 +134,10 @@ std::string Chord::code() const {
 }
 
 Chord Chord::from_code(const std::string& code) {
-    if (code.size() != 5) throw std::out_of_range("unknown chord code: " + code);
+    if (code.size() != kLanes) throw std::out_of_range("unknown chord code: " + code);
 
     Chord chord;
-    for (int i = 0; i < 5; ++i) {
+    for (size_t i = 0; i < kLanes; ++i) {
         const char ch = code[i];
         if (ch == '.') continue;
         const NoteColor color = static_cast<NoteColor>(i + 1);
@@ -164,7 +164,7 @@ Chord Chord::from_code(const std::string& code) {
 // ---- Chord: rest --------------------------------------------------------
 
 bool Chord::operator==(const Chord& o) const {
-    for (int i = 0; i < 5; ++i) {
+    for (size_t i = 0; i < kLanes; ++i) {
         if (notemap_[i].has_value() != o.notemap_[i].has_value()) return false;
         if (notemap_[i].has_value() && !(*notemap_[i] == *o.notemap_[i]))
             return false;
@@ -180,17 +180,29 @@ const std::optional<ChordNote>& Chord::at(NoteColor c) const {
     return notemap_[static_cast<int>(c) - 1];
 }
 
-std::vector<ChordNote> Chord::notes(bool basesorted) const {
-    std::vector<ChordNote> out;
+Chord::NoteList Chord::note_list(bool basesorted) const {
+    NoteList out;
     for (const auto& slot : notemap_)
-        if (slot.has_value()) out.push_back(*slot);
-    if (basesorted) {
-        std::stable_sort(out.begin(), out.end(),
-                         [](const ChordNote& a, const ChordNote& b) {
-                             return a.basescore() < b.basescore();
-                         });
+        if (slot.has_value()) out.notes_[out.count_++] = *slot;
+    if (!basesorted) return out;
+    // An insertion sort moves a note only past higher scores, so ties keep
+    // lane order: the stable sort the header promises, with no heap.
+    for (size_t i = 1; i < out.count_; ++i) {
+        const ChordNote x = out.notes_[i];
+        const int bx = x.basescore();
+        size_t j = i;
+        while (j > 0 && bx < out.notes_[j - 1].basescore()) {
+            out.notes_[j] = out.notes_[j - 1];
+            --j;
+        }
+        out.notes_[j] = x;
     }
     return out;
+}
+
+std::vector<ChordNote> Chord::notes(bool basesorted) const {
+    const NoteList list = note_list(basesorted);
+    return std::vector<ChordNote>(list.begin(), list.end());
 }
 
 int Chord::count() const {
@@ -216,7 +228,7 @@ std::string Chord::rowstr(bool pro) const {
 
 std::string Chord::notationstr() const {
     std::string krybg = "[";
-    const NoteColor order[5] = {NoteColor::Kick, NoteColor::Red,
+    const NoteColor order[kLanes] = {NoteColor::Kick, NoteColor::Red,
                                 NoteColor::Yellow, NoteColor::Blue,
                                 NoteColor::Green};
     for (NoteColor c : order)
@@ -287,7 +299,7 @@ void Chord::apply_accent(NoteColor color) {
 }
 
 const ChordNote& Chord::activation_note() const {
-    const NoteColor order[5] = {NoteColor::Green, NoteColor::Blue,
+    const NoteColor order[kLanes] = {NoteColor::Green, NoteColor::Blue,
                                 NoteColor::Yellow, NoteColor::Red,
                                 NoteColor::Kick};
     for (NoteColor c : order) {

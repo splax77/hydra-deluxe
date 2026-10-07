@@ -27,8 +27,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <sqlite3.h>
-
 #include "app/analysis.h"
 #include "app/work_pool.h"
 #include "core/error_kind.h"
@@ -36,6 +34,7 @@
 #include "core/strutil.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // exec_on_file
 #include "midi_util.h"
 #include "parse/song.h"
 #include "sng_util.h"
@@ -595,43 +594,61 @@ TEST_CASE("run_batch reports a failed chart once per copy, under its first copy'
     CHECK(std::count(titles.begin(), titles.end(), items[2].title) == 0);
 }
 
+namespace {
+
+// Callbacks whose analyzer hands back one real chart's result for every
+// item, so a batch of fake items saves real rows.
+BatchCallbacks real_result_callbacks(const AnalysisResult& real) {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) { return real; };
+    return callbacks;
+}
+
+// A batch whose fake items each save one real chart's result, keeping every
+// on_error call as "title|sentence|error" and the last progress it was sent.
+struct RecordedBatch {
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks = real_result_callbacks(real);
+    std::vector<std::string> errors;
+    BatchProgress last;
+
+    RecordedBatch() {
+        callbacks.on_error = [this](const std::string& title, const std::string& sentence,
+                                    const std::string& error) {
+            errors.push_back(title + "|" + sentence + "|" + error);
+        };
+        callbacks.on_progress = [this](const BatchProgress& p) { last = p; };
+    }
+    // The callbacks point into this object, so it never moves.
+    RecordedBatch(const RecordedBatch&) = delete;
+    RecordedBatch& operator=(const RecordedBatch&) = delete;
+};
+
+}  // namespace
+
 // Finding 193 (D71, open question 5): a save that fails during a batch used
 // to leave run_batch and close Hydra. Now that chart is a failure like any
 // other, and the batch goes on.
 TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
     const std::vector<ScanItem> items = fake_items(2);
-    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
-    BatchCallbacks callbacks;
-    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
-                                const std::function<void(float)>&) -> AnalysisResult {
-        return real;
-    };
-    std::vector<std::string> errors;
-    callbacks.on_error = [&errors](const std::string& title, const std::string& sentence,
-                                   const std::string& error) {
-        errors.push_back(title + "|" + sentence + "|" + error);
-    };
-    BatchProgress last;
-    callbacks.on_progress = [&last](const BatchProgress& p) { last = p; };
+    RecordedBatch batch;
 
     const std::string path = testtemp::temp_path("batch_save_fail", ".db");
     std::remove(path.c_str());
     { hydra::store::RecordStore store(path); }
-    {  // A trigger refuses chart fake1's result, so its save throws.
-        sqlite3* db = nullptr;
-        REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
-        REQUIRE(sqlite3_exec(db,
-                             "CREATE TRIGGER refuse_fake1 BEFORE INSERT ON results"
-                             " WHEN NEW.hyhash = 'fake1' BEGIN SELECT RAISE(ABORT, 'boom'); END;",
-                             nullptr, nullptr, nullptr) == SQLITE_OK);
-        sqlite3_close(db);
-    }
+    // A trigger refuses chart fake1's result, so its save throws.
+    hydra::test::exec_on_file(path,
+                              "CREATE TRIGGER refuse_fake1 BEFORE INSERT ON results"
+                              " WHEN NEW.hyhash = 'fake1' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     BatchRun run;
     run.chartmode = "save-fail-test";
     {
         hydra::store::RecordStore store(path);
-        run_planned(items, run, store, /*redo=*/false, 1, callbacks);
+        run_planned(items, run, store, /*redo=*/false, 1, batch.callbacks);
 
+        const std::vector<std::string>& errors = batch.errors;
+        const BatchProgress& last = batch.last;
         REQUIRE(errors.size() == 1);
         CHECK(errors[0].rfind("fake 1|Hydra couldn't save to its database (hydra.db). Check that "
                               "the disk isn't full and that no other copy of Hydra is running, "
@@ -702,9 +719,7 @@ TEST_CASE("run_batch saves the song's length from its metadata (D75)") {
     // A chart whose metadata cannot be read keeps its length unread: here a
     // .sng that is gone, on a row an older scan wrote.
     const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
-    BatchCallbacks callbacks;
-    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
-                                const std::function<void(float)>&) { return real; };
+    const BatchCallbacks callbacks = real_result_callbacks(real);
     ScanItem gone;
     gone.md5 = "gone";
     gone.title = "gone";
@@ -858,4 +873,195 @@ TEST_CASE("analyze_chart_file reads a drum track whose first name is unrecognize
     settings.prodrums = true;
     const AnalysisResult result = analyze_chart_file(dir + "\\notes.mid", settings);
     CHECK_FALSE(result.song.is_empty());
+}
+
+// ---- the batch writer's save groups (D86 items 1 to 3, task W1) ------------
+
+TEST_CASE("run_batch: a group commits before any of its charts is reported") {
+    // A second connection only sees what the batch's connection committed, so
+    // a chart it cannot see yet was reported before its group reached disk.
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks = real_result_callbacks(real);
+    BatchRun run;
+    run.chartmode = "group-commit-test";
+    const std::string path = testtemp::temp_path("batch_group_commit", ".db");
+    std::remove(path.c_str());
+    int reported = 0, visible = 0;
+    callbacks.on_result = [&](const ScanItem& item, const hydra::store::PreparedRow&) {
+        ++reported;
+        hydra::store::RecordStore reader(path);
+        if (reader.get_summary({item.md5, run.chartmode, run.cap_query(), run.lens}).status ==
+            hydra::store::RecordStatus::Ready)
+            ++visible;
+    };
+    {
+        hydra::store::RecordStore store(path);
+        run_planned(fake_items(40), run, store, /*redo=*/false, 4, callbacks);
+        CHECK(store.counts().second == 40);
+    }
+    CHECK(reported == 40);
+    CHECK(visible == 40);
+    std::remove(path.c_str());
+}
+
+TEST_CASE("run_batch: cancel during a group writes nothing more and leaves no transaction open") {
+    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
+    BatchCallbacks callbacks = real_result_callbacks(real);
+    std::atomic<bool> cancel{false};
+    callbacks.cancel = &cancel;
+    int results = 0;
+    // Cancel is pressed once the consumer has reported a few charts, while
+    // the workers are still handing it more.
+    callbacks.on_result = [&](const ScanItem&, const hydra::store::PreparedRow&) {
+        if (++results == 5) cancel = true;
+    };
+
+    BatchRun run;
+    run.chartmode = "group-cancel-test";
+    hydra::store::RecordStore store(":memory:");
+    run_planned(fake_items(200), run, store, /*redo=*/false, 4, callbacks);
+
+    CHECK(results >= 5);
+    CHECK(results < 200);
+    // Every stored chart was reported, and nothing was stored unreported.
+    CHECK(store.counts().second == results);
+    // No group was left open: a plain save still runs its own transaction.
+    const hydra::store::RecordKey key{"after", run.chartmode, run.cap_query(), run.lens};
+    store.save_analysis("after", "After", "", "", real.song,
+                        hydra::store::prepare_row(key, real.record), std::nullopt);
+    CHECK(store.counts().second == results + 1);
+}
+
+TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a chart whose own "
+          "save fails is failed") {
+    // D86.1. The store's test seam fails the batch's first group COMMIT the
+    // way a real one does; a trigger refuses chart boom's result.
+    RecordedBatch batch;
+    std::vector<ScanItem> items = fake_items(3);
+    items[1].md5 = "boom";
+    items[1].title = "boom";
+
+    const std::string path = testtemp::temp_path("batch_group_fail", ".db");
+    std::remove(path.c_str());
+    { hydra::store::RecordStore store(path); }
+    hydra::test::exec_on_file(path,
+                              "CREATE TRIGGER refuse_boom BEFORE INSERT ON results"
+                              " WHEN NEW.hyhash = 'boom' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    BatchRun run;
+    run.chartmode = "group-fail-test";
+    {
+        hydra::store::RecordStore store(path);
+        store.fail_next_group_commit_for_test();
+        run_planned(items, run, store, /*redo=*/false, 1, batch.callbacks);
+
+        CHECK(batch.last.analyzed == 2);
+        CHECK(batch.last.failed == 1);
+        const std::vector<std::string>& errors = batch.errors;
+        REQUIRE(errors.size() == 1);
+        CHECK(errors[0].rfind("boom|Hydra couldn't save to its database (hydra.db). Check that "
+                              "the disk isn't full and that no other copy of Hydra is running, "
+                              "then try again.|add_row",
+                              0) == 0);
+        CHECK(errors[0].find("boom", 5) != std::string::npos);
+        CHECK(store.counts().second == 2);
+        const std::unordered_set<std::string> stored = charts_with_result(store, run, false);
+        CHECK(stored.count("fake0") == 1);
+        CHECK(stored.count("fake2") == 1);
+        // The batch spent the armed failure: a group committed now succeeds.
+        store.begin_save_group();
+        CHECK_NOTHROW(store.commit_save_group());
+    }
+    std::remove(path.c_str());
+}
+
+// S1: the folder walk runs on several threads, but the folder count still
+// reaches on_folders from the thread that called discover_charts (the
+// ScanCallbacks promise), it only grows, and it ends at the walk's total.
+TEST_CASE("the scan's folder count is reported while the walk runs, from the calling thread") {
+    const std::thread::id caller = std::this_thread::get_id();
+    std::mutex mu;  // only matters if a report wrongly comes from a worker
+    std::vector<int> seen;
+    bool all_on_caller = true;
+    ScanCallbacks callbacks;
+    callbacks.on_folders = [&](int n) {
+        std::lock_guard<std::mutex> lock(mu);
+        if (std::this_thread::get_id() != caller) all_on_caller = false;
+        seen.push_back(n);
+    };
+    auto [items, errors] = discover_charts({std::string(HYDRA_INPUT_DIR)}, callbacks, nullptr);
+    CHECK(errors.empty());
+    CHECK(all_on_caller);
+    REQUIRE(seen.size() > 1);
+    CHECK(std::is_sorted(seen.begin(), seen.end()));
+    // testdata/input and its 119 subfolders, counted on 2026-10-06.
+    CHECK(seen.back() == 120);
+}
+
+// S1: the read stage hashes the biggest files first, yet the items keep the
+// walk's order. The walk visits the last-listed subfolder first, so "a_big"
+// (listed first) is walked last while its 4 MB notes file is hashed first.
+// The 4 MB file also spans several reads of the hashing buffer.
+TEST_CASE("the scan's items come out in walk order whatever order they were hashed in") {
+    namespace fs = std::filesystem;
+    const std::string root = scan_fixture_dir("big_first");
+    fs::remove_all(hydra::os_path(root));
+    const auto plant = [&](const std::string& name, const std::vector<uint8_t>& notes) {
+        const std::string dir = root + "\\" + name;
+        fs::create_directories(hydra::os_path(dir));
+        write_bytes(dir + "\\notes.chart", notes);
+        const std::string ini = "[song]\r\nname = " + name + "\r\n";
+        write_bytes(dir + "\\song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
+    };
+    std::vector<uint8_t> big(size_t{4} << 20);
+    for (size_t i = 0; i < big.size(); ++i) big[i] = static_cast<uint8_t>(i % 251);
+    plant("a_big", big);
+    for (int i = 0; i < 12; ++i) {
+        char name[8];
+        std::snprintf(name, sizeof name, "f%02d", i);
+        plant(name, {static_cast<uint8_t>(i)});
+    }
+
+    auto [items, errors] = discover_charts({root});
+    fs::remove_all(hydra::os_path(root));
+    CHECK(errors.empty());
+    std::vector<std::string> titles;
+    for (const ScanItem& it : items) titles.push_back(it.title);
+    const std::vector<std::string> walk_order = {"f11", "f10", "f09", "f08", "f07",
+                                                 "f06", "f05", "f04", "f03", "f02",
+                                                 "f01", "f00", "a_big"};
+    CHECK(titles == walk_order);
+    REQUIRE(!items.empty());
+    // The MD5 of the 4 MB pattern, from Python's hashlib on 2026-10-06.
+    CHECK(items.back().md5 == "aad8b8e4d120d0df7a7fda991d5dab03");
+}
+
+// S1 review: two roots spelled differently can reach one folder, here
+// R\sub\x through R and through "R\sub\". The walk lists x once; its
+// rootfolder must come from the root the serial walk reaches it by, whichever
+// thread listed it. The serial walk pops the last root first.
+TEST_CASE("a folder two roots reach takes its rootfolder from the root the walk reaches it by") {
+    namespace fs = std::filesystem;
+    const std::string root = scan_fixture_dir("two_roots_one_folder");
+    fs::remove_all(hydra::os_path(root));
+    const std::string dir = root + "\\sub\\x";
+    fs::create_directories(hydra::os_path(dir));
+    write_bytes(dir + "\\notes.chart", {0});
+    const std::string ini = "[song]\r\nname = x\r\n";
+    write_bytes(dir + "\\song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
+    const std::string sub_root = root + "\\sub\\";
+
+    // R last: R is walked first, so x is reached through R\sub.
+    auto [via_r, errors_r] = discover_charts({sub_root, root});
+    // "R\sub\" last: it is walked first and reaches x directly.
+    auto [via_sub, errors_sub] = discover_charts({root, sub_root});
+    fs::remove_all(hydra::os_path(root));
+
+    CHECK(errors_r.empty());
+    CHECK(errors_sub.empty());
+    REQUIRE(via_r.size() == 1);
+    REQUIRE(via_sub.size() == 1);
+    CHECK(via_r[0].notespath == dir + "\\notes.chart");
+    CHECK(via_sub[0].notespath == dir + "\\notes.chart");
+    CHECK(via_r[0].rootfolder == "sub");
+    CHECK(via_sub[0].rootfolder == ".");
 }
