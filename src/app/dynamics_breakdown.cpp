@@ -116,7 +116,7 @@ DynamicsBreakdown count_dynamics(const Song& song) {
     bd.marks_before_tag = song.dynamics_marks_before_tag;
 
     for (const SongTimestamp& ts : song.sequence) {
-        for (const ChordNote& note : ts.chord.notes()) {
+        for (const ChordNote& note : ts.chord.note_list(false)) {
             DynamicsCounts& c = bd.rows[static_cast<size_t>(dynamics_row_for(note))];
             switch (note.dynamictype) {
                 case NoteDynamicType::Ghost:  ++c.ghost;  break;

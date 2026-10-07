@@ -1,6 +1,7 @@
 #include "search/graph.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <set>
 #include <stdexcept>
@@ -12,8 +13,8 @@
 namespace hydra {
 
 // kSqueezeWindowMs (core/model.h) is how far apart (ms) a note and a
-// deactivation can be and still be a SqIn/SqOut, and how far back
-// edge.backends must stay complete.
+// deactivation can be and still be a SqIn/SqOut, and how far back a
+// deactivation edge's rows (ScoreGraph::edge_backends) must stay complete.
 namespace {
 // Min-heap comparator on ticks (std::*_heap build a max-heap by default, so
 // `greater` yields a min-heap whose front() is the earliest tick).
@@ -217,6 +218,12 @@ void ScoreGraph::build() {
 
     const SongTimestamp& last = song_.sequence.back();
     advance_tracks(last.timecode, last.chord);
+
+    // An edge still near the head took every row to the end of the chart.
+    for (ScoreGraphEdge* e : recent_deact_edges_)
+        e->backend_end = static_cast<int32_t>(all_backends_.size());
+    tail_backends_.assign(all_backends_.begin() + static_cast<std::ptrdiff_t>(recent_lo_),
+                          all_backends_.end());
 }
 
 void ScoreGraph::store_soloscore(int64_t points) {
@@ -254,17 +261,21 @@ void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
     backend.points = sp_points;
     backend.sqout_points = sqout_points;
 
-    recent_backends_.push_back(backend);
+    // Every deactivation edge still inside its window takes this row by its
+    // range staying open (set_head_time closes it); nothing is copied. Which
+    // phrase chord an edge squeezes out is decided once, in add_deact_edge
+    // (core/sqout_chord.h), not here.
+    all_backends_.push_back(backend);
+}
 
-    // Copy this row onto every deactivation edge still inside its window.
-    // Which phrase chord an edge squeezes out is decided once, in
-    // add_deact_edge (core/sqout_chord.h), not here.
-    for (ScoreGraphEdge* recent_edge : recent_deact_edges_) {
-        BackendSqueeze copy = backend;
-        copy.offset_ms =
-            offset_from_sp_end(ts.timecode.ms(), recent_edge->dest->timecode.ms());
-        recent_edge->backends.push_back(copy);
+std::vector<BackendSqueeze> ScoreGraph::edge_backends(const ScoreGraphEdge& e) const {
+    std::vector<BackendSqueeze> out;
+    out.reserve(static_cast<size_t>(e.backend_end - e.backend_begin));
+    for (int32_t i = e.backend_begin; i < e.backend_end; ++i) {
+        out.push_back(all_backends_[static_cast<size_t>(i)]);
+        out.back().offset_ms = edge_row_offset(e, out.back());
     }
+    return out;
 }
 
 int max_sp_bars(std::optional<int> sp_meter_cap, int sp_phrase_count) {
@@ -310,16 +321,22 @@ bool ScoreGraph::is_recent_to_head(const Timecode& tc) const {
 void ScoreGraph::set_head_time(const Timecode& tc) {
     head_time_ = tc;
 
-    std::vector<ScoreGraphEdge*> keep_edges;
-    for (ScoreGraphEdge* edge : recent_deact_edges_)
-        if (is_recent_to_head(edge->dest->timecode))
-            keep_edges.push_back(edge);
-    recent_deact_edges_ = std::move(keep_edges);
+    // An edge leaving the window stops taking rows here.
+    const int32_t now = static_cast<int32_t>(all_backends_.size());
+    recent_deact_edges_.erase(
+        std::remove_if(recent_deact_edges_.begin(), recent_deact_edges_.end(),
+                       [this, now](ScoreGraphEdge* edge) {
+                           if (is_recent_to_head(edge->dest->timecode)) return false;
+                           edge->backend_end = now;
+                           return true;
+                       }),
+        recent_deact_edges_.end());
 
-    std::vector<BackendSqueeze> keep_be;
-    for (const BackendSqueeze& be : recent_backends_)
-        if (is_recent_to_head(be.timecode)) keep_be.push_back(be);
-    recent_backends_ = std::move(keep_be);
+    // The head only moves forward, so rows leave the window oldest first and
+    // the rows left are always a suffix.
+    while (recent_lo_ < all_backends_.size() &&
+           !is_recent_to_head(all_backends_[recent_lo_].timecode))
+        ++recent_lo_;
 }
 
 void ScoreGraph::handle_deact(const Timecode& deact_tc,
@@ -387,11 +404,10 @@ void ScoreGraph::add_deact_edge() {
     deact_edge->dest = base_track_head_;
     const Timecode& end = deact_edge->dest->timecode;
 
-    for (const BackendSqueeze& recent_backend : recent_backends_) {
-        BackendSqueeze copy = recent_backend;
-        copy.offset_ms = offset_from_sp_end(recent_backend.timecode.ms(), end.ms());
-        deact_edge->backends.push_back(copy);
-    }
+    // The rows still in the window open this edge's range; it stays open
+    // until set_head_time or the end of build closes it.
+    deact_edge->backend_begin = static_cast<int32_t>(recent_lo_);
+    deact_edge->backend_end = -1;
 
     // The phrase chords this SP end can squeeze, in chart order
     // (core/sqout_chord.h). The engine offers a path at most one of them

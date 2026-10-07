@@ -156,7 +156,11 @@ struct ScoreGraphEdge {
 
     // The frontend chord's SP points: set only on activation edges, 0 elsewhere.
     int frontend_points = 0;
-    std::vector<BackendSqueeze> backends;
+    // Deactivation edges only: this SP end's backend rows are the graph's
+    // all_backends()[backend_begin, backend_end), each measured against this
+    // edge's dest. ScoreGraph::edge_backends lists them with their offsets.
+    int32_t backend_begin = 0;
+    int32_t backend_end = 0;
 
     // Set only on activation edges; absent (nullopt / empty) otherwise.
     std::optional<double> activation_fill_deadline_ms;
@@ -174,6 +178,13 @@ struct ScoreGraphEdge {
     // (SqueezeChoice::sqin_time): under a cap it depends on the chord.
     std::vector<SqueezeChoice> squeeze_choices;
 };
+
+// How far one of a deactivation edge's rows sits from that edge's SP end:
+// the offset its row carries (ScoreGraph::edge_backends) and the one the
+// engine prices it by.
+inline double edge_row_offset(const ScoreGraphEdge& e, const BackendSqueeze& row) {
+    return offset_from_sp_end(row.timecode.ms(), e.dest->timecode.ms());
+}
 
 class ScoreGraph {
 public:
@@ -198,14 +209,21 @@ public:
 
     // The notes left in the squeeze window (kSqueezeWindowMs) before the song's
     // last timestamp, i.e. the trailing notes no deactivation edge ever got to
-    // claim. offset_ms is unset on these: offsets are only stamped on the copies
-    // an edge keeps, measured against that edge's own destination. This list
+    // claim. offset_ms is unset on these: offsets are only stamped on an
+    // edge's rows (edge_backends), measured against that edge's own
+    // destination. This list
     // is wider than any one activation needs: the engine narrows it to the
     // window around each activation's own SP end (within_squeeze_window)
     // when it copies the rows in.
     const std::vector<BackendSqueeze>& tail_backends() const {
-        return recent_backends_;
+        return tail_backends_;
     }
+
+    // One row per chart timestamp, in chart order, offset_ms unset. Every
+    // deactivation edge's rows are a range of this list.
+    const std::vector<BackendSqueeze>& all_backends() const { return all_backends_; }
+    // A deactivation edge's rows, each with its offset from the edge's SP end.
+    std::vector<BackendSqueeze> edge_backends(const ScoreGraphEdge& e) const;
 
 private:
     // Graph construction.
@@ -270,7 +288,12 @@ private:
     std::unordered_map<int64_t, Timecode> pending_deacts_;  // ticks -> Timecode
     std::vector<Timecode> deact_heap_;                      // min-heap on ticks
     std::vector<ScoreGraphEdge*> recent_deact_edges_;
-    std::vector<BackendSqueeze> recent_backends_;
+    // The rows still near the head are all_backends_[recent_lo_, end): the
+    // head only moves forward, so rows leave the window oldest first.
+    std::vector<BackendSqueeze> all_backends_;
+    size_t recent_lo_ = 0;
+    // The rows still near the head when the build ended (tail_backends).
+    std::vector<BackendSqueeze> tail_backends_;
     ScoreGraphEdge* proto_base_edge_ = nullptr;
     ScoreGraphEdge* proto_sp_edge_ = nullptr;
 
