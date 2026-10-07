@@ -145,6 +145,7 @@ Rules of thumb:
 - Wait on app state (`h.app->…`) with `wait_until`, never on frame counts. Jobs are real threads.
 - To look at a running batch, hold it open with `BatchGate` (see above); never hope it is still running.
 - To look at a click's running analysis (its progress box, Cancel, a setting changed under it), hold it with `ViewGate`. Make the gate after `reset_app`; every click's job then waits at it until `open()`, and `started()` counts the jobs that reached it.
+- Click a song-panel tab only once the click's analysis has settled or a closed `ViewGate` holds it (`wait_tabs_placed`). The headline above the tabs (`render_headline`) grows when the record lands and pushes them down, so a click whose mouse is still travelling misses. `open_details` and `wait_song_analyzed` already wait for it.
 - `wait_until` yields one extra frame after its condition holds, so `visible_text` reflects it.
 - `wait_until` returns false at once when the test has already failed (`ctx->IsError()`). A click that found no item no longer sits out the whole timeout.
 - An `IM_CHECK` inside a helper only returns from the helper. Check `ctx->IsError()` after calling one.

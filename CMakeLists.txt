@@ -229,7 +229,6 @@ add_library(hydra_core STATIC
     src/search/graph.cpp
     src/search/engine.cpp
     src/search/pather.cpp
-    src/store/serialize.cpp
     src/store/record_store.cpp
     src/app/analysis.cpp
     src/app/config.cpp

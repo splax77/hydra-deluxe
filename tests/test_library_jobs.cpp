@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/report.h"  // kNoChartLibrary
 #include "app/report_files.h"
 #include "app/user_messages.h"  // plain_error
 #include "core/error_kind.h"
@@ -289,6 +290,31 @@ TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
     CHECK(job.cap() == cap);
     CHECK(job.lens() == lens);
     CHECK(job.hit_window_ms() == 85.5);  // the decimal is kept (D51 call 15)
+}
+
+// D97: an empty report shows generate_report's own reason when it gives one,
+// as hydra_report does. Results with no chart library name the missing
+// library; a database with no results gets the app's own sentence.
+TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's own") {
+    const BatchRun run = test_run();
+
+    RecordStore no_library(":memory:");
+    hydra::test::store_batch_result(no_library, "orphan", run.cap_query().exact);
+    hydra::ui::ReportJob orphaned(no_library, run.cap_query(), run.lens,
+                                  /*open_when_done=*/false, hydra::kDefaultHitWindowMs, run);
+    orphaned.start();
+    REQUIRE(wait_until([&] { return orphaned.finished(); }));
+    CHECK_FALSE(orphaned.ok());
+    CHECK(orphaned.message() == std::string(hydra::app::report::kNoChartLibrary));
+
+    RecordStore empty(":memory:");
+    hydra::ui::ReportJob nothing(empty, run.cap_query(), run.lens,
+                                 /*open_when_done=*/false, hydra::kDefaultHitWindowMs, run);
+    nothing.start();
+    REQUIRE(wait_until([&] { return nothing.finished(); }));
+    CHECK_FALSE(nothing.ok());
+    CHECK(nothing.message() ==
+          hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::NoRecords, "x")));
 }
 
 TEST_CASE("jobs: a report the browser refuses is saved, not failed") {

@@ -206,14 +206,21 @@ const std::vector<TestEntry>& batch_report_tests();  // uitest_batch_reports.cpp
 void scan_library(ImGuiTestContext* ctx);
 // Point the ref at the song panel child (//Hydra/##songpanel).
 void set_panel_ref(ImGuiTestContext* ctx);
+// Wait until the song panel's tab bar can't move under a click. The headline
+// above it (render_headline in details_panel.cpp) grows when the click's
+// record lands and pushes the tabs down, so a tab click whose mouse is still
+// on its way hovers empty space. Holds once the click has settled, or while a
+// closed ViewGate keeps it from landing.
+void wait_tabs_placed(ImGuiTestContext* ctx);
 // Click row `index` of the library view, wait for the song panel, point the
-// ref at it, and land on its Paths tab.
+// ref at it, and land on its Paths tab. Waits for wait_tabs_placed first, so
+// without a ViewGate the click's analysis has settled when it returns.
 void open_details(ImGuiTestContext* ctx, size_t index);
 // Type `search` into the library's search box, then open the row titled `title`.
 void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::string& title);
 // Wait for the open song's analysis (the click, or a setting changed with the
-// song open, starts it: D87 item 1, D90 item 1) and check it is Ready. Lands
-// the panel on its Paths tab first.
+// song open, starts it: D87 item 1, D90 item 1) and check it is Ready. Then
+// lands the panel on its Paths tab.
 void wait_song_analyzed(ImGuiTestContext* ctx);
 // Fresh app, scan, open chart 0's Preview and wait for the load. False on error.
 bool open_preview(ImGuiTestContext* ctx);

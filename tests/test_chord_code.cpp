@@ -1,6 +1,6 @@
-// Chord::code spells a chord one character per lane and Chord::from_code
-// reads it back. Every chord a chart can express must survive the trip,
-// because stored paths carry chords as these codes.
+// Chord::code spells a chord one character per lane. Every chord a chart can
+// express must get a code of its own, because the replay's rows name chords
+// by these codes.
 
 #include "doctest.h"
 
@@ -40,7 +40,7 @@ std::vector<std::optional<ChordNote>> lane_shapes(NoteColor color) {
 
 }  // namespace
 
-TEST_CASE("every chord a chart can express round-trips through its code") {
+TEST_CASE("every chord a chart can express has a code of its own") {
     const auto kick = lane_shapes(NoteColor::Kick);
     const auto red = lane_shapes(NoteColor::Red);
     const auto yellow = lane_shapes(NoteColor::Yellow);
@@ -48,7 +48,6 @@ TEST_CASE("every chord a chart can express round-trips through its code") {
     const auto green = lane_shapes(NoteColor::Green);
 
     std::set<std::string> codes;
-    int wrong = 0;
     for (const auto& k : kick)
         for (const auto& r : red)
             for (const auto& y : yellow)
@@ -60,13 +59,9 @@ TEST_CASE("every chord a chart can express round-trips through its code") {
                         chord.at(NoteColor::Yellow) = y;
                         chord.at(NoteColor::Blue) = b;
                         chord.at(NoteColor::Green) = g;
-                        const std::string code = chord.code();
-                        codes.insert(code);
-                        if (Chord::from_code(code) != chord && ++wrong <= 5)
-                            CHECK_MESSAGE(false, "code '" << code << "' read back differently");
+                        codes.insert(chord.code());
                     }
-    CHECK(wrong == 0);
-    // Kick 7 shapes x red 4 x yellow, blue, green 7 each, the empty chord included.
+    // No two chords share a code. Kick 7 shapes x red 4 x yellow, blue, green 7 each, the empty chord included.
     CHECK(codes.size() == 7u * 4 * 7 * 7 * 7);
 }
 
@@ -94,9 +89,4 @@ TEST_CASE("a chord's code spells its lanes") {
         ChordNote{NoteColor::Blue, NoteDynamicType::Accent, NoteCymbalType::Cymbal};
     five.at(NoteColor::Green) = ChordNote{NoteColor::Green, NoteDynamicType::Ghost};
     CHECK(five.code() == "AgnAg");
-}
-
-TEST_CASE("a malformed code is rejected") {
-    for (const char* bad : {"", "n", "nnnnnn", "xnnnn", ".N...", "....?"})
-        CHECK_THROWS_AS(Chord::from_code(bad), std::out_of_range);
 }
