@@ -1367,7 +1367,7 @@ ChartLibraryCache RecordStore::chart_library_cache() {
                           " FROM charts");
     while (step_row(s)) {
         std::string sig = column_text(s, 1);
-        if (sig.empty()) continue;
+        if (!sig_can_show_unchanged(sig)) continue;
         cache[column_text(s, 0)] = {std::move(sig),      column_text(s, 2), column_text(s, 3),
                                     column_text(s, 4),   column_text(s, 5),
                                     {column_opt_f64(s, 6), column_opt_f64(s, 7)}};

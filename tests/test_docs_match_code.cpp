@@ -175,6 +175,9 @@ const std::vector<Allowed>& allowed() {
         // was deleted.
         {"docs/adr/0017", "write_record", "ADR 0017 records that it is gone"},
         {"docs/adr/0017", "read_record", "ADR 0017 records that it is gone"},
+        // ADR 0015's decision names it, and its dated line records that it
+        // was removed later (34137fb).
+        {"docs/adr/0015", "from_code", "ADR 0015 records that it is gone"},
     };
     return a;
 }

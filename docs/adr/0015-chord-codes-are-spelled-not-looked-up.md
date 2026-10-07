@@ -26,6 +26,10 @@ green) or a 2x kick. Red can be neither, so it is always lower case. Red
 with yellow and green cymbals is `.nN.N`. `Chord::from_code` reads it back
 and rejects anything malformed.
 
+2026-10-07: `Chord::from_code` was later removed (34137fb). Only tests called
+it: nothing reads a chord back from its code since hydra.db stopped storing
+paths (D87).
+
 There is no table, no generator script and no CPython tuple hash.
 `tools/gen_chord_tables.py` and `src/core/chord_tables.*` are gone.
 

@@ -287,7 +287,8 @@ void AppState::update_view_job() {
         // Changed chart files: the library row takes the hash and fingerprint
         // they give now, before anything is saved under them. An edited chart
         // gets a new hash (D87 item 3); one only saved again keeps its hash
-        // and takes the new fingerprint (D96). The library is read again
+        // and takes the new fingerprint (D96), when ViewJob::run finds that
+        // fingerprint worth saving. The library is read again
         // either way, because the next row click copies its row from there.
         if (out.files_changed) {
             const std::string& path = job->song().notespath;
