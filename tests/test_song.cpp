@@ -7,7 +7,6 @@
 
 #include <cctype>
 #include <cstdint>
-#include <exception>
 #include <fstream>
 #include <regex>
 #include <stdexcept>
@@ -16,7 +15,6 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/dynamics_breakdown.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "chart_text.h"
@@ -882,14 +880,9 @@ std::vector<EdgeExpect> read_edge_expect(const std::string& name) {
     return out;
 }
 
-// The settings an expected file was captured under, built the way the app
-// builds them from an ini that says only these three things.
+// The settings an expected file was captured under.
 app::BatchRun edge_run(const char* difficulty, bool pro, bool bass2x) {
-    app::Settings s;
-    s.view_difficulty = difficulty;
-    s.view_prodrums = pro;
-    s.view_bass2x = bass2x;
-    return s.batch_run();
+    return digest::digest_settings(difficulty, pro, bass2x).batch_run();
 }
 
 void check_edge_files(const std::string& expected_name, const app::BatchRun& run) {
@@ -906,23 +899,12 @@ void check_edge_files(const std::string& expected_name, const app::BatchRun& run
     }
     REQUIRE(listed.size() == expect.size());
 
-    const app::AnalysisSettings& st = run.settings;
     for (size_t i = 0; i < expect.size(); ++i) {
         const EdgeExpect& e = expect[i];
         CHECK_MESSAGE(e.file == listed[i], "line " << i + 1 << " of " << expected_name);
-        uint64_t got = 0;
         std::string fail;
-        try {
-            const Song song = load_songpath_with_notes(edge_dir() + e.file, st.prodrums,
-                                                       st.bass2x, st.difficulty, st.rules);
-            got = digest::with_dynamics(
-                digest::song_digest(song),
-                app::dynamics_entry_from_analysis("md5", song, st.bass2x, st.difficulty,
-                                                  st.prodrums));
-        } catch (const std::exception& ex) {
-            fail = "FAIL " + digest::failure_text(ex);
-            got = digest::failure_hash(digest::failure_text(ex));
-        }
+        const uint64_t got = digest::chart_parse_hash(edge_dir() + e.file, run.settings, &fail);
+        if (!fail.empty()) fail = "FAIL " + fail;
         CHECK_MESSAGE(fail == e.fail, e.file << " (" << expected_name << ") failed differently");
         CHECK_MESSAGE(got == e.hash, e.file << " (" << expected_name << ") parses differently");
     }

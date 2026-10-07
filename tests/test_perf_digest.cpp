@@ -19,7 +19,6 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
-#include "app/dynamics_breakdown.h"
 #include "parse/song.h"
 #include "search/pather.h"
 #include "song_digest.h"
@@ -38,10 +37,7 @@ namespace {
 // plan names set here so a change of app default cannot move the pin. The
 // rest (rules, fills) is the app's default, as in an exe folder with no ini.
 app::BatchRun pinned_run(const char* difficulty, bool pro, bool bass2x) {
-    app::Settings s;
-    s.view_difficulty = difficulty;
-    s.view_prodrums = pro;
-    s.view_bass2x = bass2x;
+    app::Settings s = digest::digest_settings(difficulty, pro, bass2x);
     s.sp_cap = kCloneHeroSpCap;
     s.depth_mode = 0;  // scores
     s.depth_value = 4;
@@ -86,23 +82,9 @@ uint64_t engine_digest(const app::BatchRun& run) {
 // What hydra_bench --parse prints as "hash": every chart's parsed song and
 // stored dynamics blob, or its failure.
 uint64_t parse_digest(const app::BatchRun& run) {
-    const app::AnalysisSettings& settings = run.settings;
     uint64_t all = digest::kSeed;
-    for (const app::ScanItem& it : corpus_charts()) {
-        uint64_t h = 0;
-        try {
-            const Song song = load_songpath_with_notes(it.notespath, settings.prodrums,
-                                                       settings.bass2x, settings.difficulty,
-                                                       settings.rules);
-            h = digest::with_dynamics(
-                digest::song_digest(song),
-                app::dynamics_entry_from_analysis("md5", song, settings.bass2x,
-                                                  settings.difficulty, settings.prodrums));
-        } catch (const std::exception& e) {
-            h = digest::failure_hash(digest::failure_text(e));
-        }
-        all = digest::fold(all, h);
-    }
+    for (const app::ScanItem& it : corpus_charts())
+        all = digest::fold(all, digest::chart_parse_hash(it.notespath, run.settings));
     return all;
 }
 

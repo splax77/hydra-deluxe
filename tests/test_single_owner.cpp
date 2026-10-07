@@ -4741,6 +4741,23 @@ const std::vector<OwnerRule>& rules() {
           {"src/parse/song.cpp", R"(constexpr std::string_view kEventsSection = "Events";)",
            "the name itself"}},
          {"src/parse/song.cpp"}},
+        // A test that hashes a chart's parse calls chart_parse_hash, so the
+        // tests cannot drift from each other when the digest gains a part.
+        // tools/bench.cpp keeps its own loop to time the parts apart, and is
+        // outside this row's scope.
+        {"How is one chart's parse digest worked out in a test?",
+         "digest::chart_parse_hash in tests/song_digest.h",
+         R"(\b(with_dynamics|failure_hash|song_digest)\s*\()",
+         "",
+         {"tests/song_digest.h"},
+         {},
+         "the speedups plan, task P1 (D86); derive-once review of P1",
+         {"got = digest::with_dynamics(", "h = digest::failure_hash(digest::failure_text(e));",
+          "digest::song_digest(song),"},
+         {"const uint64_t got = digest::chart_parse_hash(edge_dir() + e.file, run.settings, &fail);",
+          R"(#include "song_digest.h")"},
+         {},
+         {"tests"}},
     };
     return r;
 }
