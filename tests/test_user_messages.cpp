@@ -16,7 +16,6 @@
 #include "core/model.h"
 #include "parse/midi.h"
 #include "parse/song.h"
-#include "store/serialize.h"
 
 using hydra::app::plain_error;
 using hydra::app::plain_error_detail;
@@ -91,12 +90,10 @@ TEST_CASE("user_messages: the no-notes message is already plain and passes throu
           "No Hard Drums notes in this chart.");
 }
 
-TEST_CASE("user_messages: report, rules, stored results, memory") {
+TEST_CASE("user_messages: report, rules, memory") {
     CHECK(plain_error(hydra::app::RulesFileError("hydra_rules.ini:3: unknown key \"x\"")) ==
           "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then "
           "restart Hydra.");
-    CHECK(plain_error(hydra::store::SerializeError("truncated blob")) ==
-          "A saved result couldn't be read. Re-analyze this song to replace it.");
     CHECK(plain_error(std::bad_alloc()) ==
           "Hydra ran out of memory on this chart. Close other programs and try again.");
 }
@@ -163,8 +160,6 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
         {ErrorKind::RulesFile,
          "hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then "
          "restart Hydra."},
-        {ErrorKind::StoredResult,
-         "A saved result couldn't be read. Re-analyze this song to replace it."},
         {ErrorKind::AudioDecode, kAudioDecode},
         {ErrorKind::PreviewAssets,
          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them."},
@@ -182,8 +177,6 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
     // The typed errors carry their kinds too.
     CHECK(plain_error(hydra::ChartFileError("x")) == kChartUnreadable);
     CHECK(plain_error(hydra::MidiError("x")) == kChartUnreadable);
-    CHECK(plain_error(hydra::store::SerializeError("x")) ==
-          "A saved result couldn't be read. Re-analyze this song to replace it.");
 }
 
 // D73 item 4: a tool's body that throws ends with exit code 1 (and its

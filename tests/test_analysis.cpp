@@ -669,7 +669,7 @@ TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
     BatchCallbacks callbacks;
     callbacks.analyze = [](const std::string&, const AnalysisSettings&,
                            const std::function<void(float)>&) -> AnalysisResult {
-        throw hydra::KindedError(hydra::ErrorKind::StoredResult, "x");
+        throw hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "x");
     };
     std::vector<std::string> sentences;
     callbacks.on_error = [&sentences](const std::string&, const std::string& sentence,
@@ -680,7 +680,9 @@ TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
     run_planned(fake_items(1), run, store, /*redo=*/false, 1, callbacks);
 
     REQUIRE(sentences.size() == 1);
-    CHECK(sentences[0] == "A saved result couldn't be read. Re-analyze this song to replace it.");
+    CHECK(sentences[0] ==
+          "Hydra couldn't read this chart file. It may be damaged or in a format Hydra doesn't "
+          "support; try downloading the song again.");
 }
 
 TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {

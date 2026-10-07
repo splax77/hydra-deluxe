@@ -6,8 +6,8 @@
 // comma-grouped scores, whole ms rounded to nearest (format_ms_whole), the
 // exact +/- squeeze symbols and [KRYBG] slot layout.
 //
-// Records are stored in the binary format of store/serialize.h. Stored paths
-// carry each chord as its Chord::code, read back by Chord::from_code.
+// hydra.db stores no records, only summaries (D87); a record is rebuilt by
+// analyzing the chart.
 
 #ifndef HYDRA_CORE_MODEL_H
 #define HYDRA_CORE_MODEL_H

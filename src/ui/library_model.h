@@ -107,7 +107,8 @@ public:
     const app::LibraryQuery& query() const { return query_; }
     // Is the typed search narrowing the library? False for an empty box and
     // for a filter that does not parse (both leave the query empty). The
-    // toolbar's Analyze button and the table's footer both ask this.
+    // toolbar's batch button (library_toolbar.cpp) and the table's footer
+    // both ask this.
     bool searching() const { return !query_.empty(); }
     const ChipCounts& counts() const { return counts_; }
     StatusChip chip() const { return chip_; }

@@ -1194,7 +1194,6 @@ const std::vector<OwnerRule>& rules() {
           "\"from different rules in hydra_rules.ini. Re-analyze to refresh it.\");",
           "\"hydra_rules.ini. Re-analyze to refresh.\");"},
          {"} else if (status == store::RecordStatus::Stale) {",
-          "\"A saved result couldn't be read. Re-analyze this song to replace it.\";",
           "\"hydra_rules.ini has a line Hydra can't read. Fix or delete that line, then restart \""},
          {{"src/app/user_messages.cpp",
            "cause = \"another Hydra version or from different rules in hydra_rules.ini\";",
@@ -1240,6 +1239,24 @@ const std::vector<OwnerRule>& rules() {
           "\"Not analyzed yet. Click the song or run a batch to analyze it.\";"},
          {"ImGui::SetTooltip(\"%s\", app::kNotAnalyzedText);"},
          {}},
+        // The Preview's line for a chart file that changed after it was
+        // analyzed. It is typed once, in preview_tab.cpp; the User Guide
+        // quotes it. The owner line pins D94's words.
+        {"What does the Preview say when the chart changed since it was analyzed?",
+         "the changed-chart line in src/ui/preview_tab.cpp",
+         R"(This chart changed since|\bwas analyzed\.)",
+         "",
+         {},
+         {},
+         "D51 call 18; D94 (2026-10-07)",
+         {"\"This chart changed since it was analyzed. Analyze it again to see its path.\");",
+          "\"This chart changed since it \"",
+          "\"was analyzed. Click the song again to see its path.\");"},
+         {"// Has the chart changed since it was analyzed (finding 126)? First the",
+          "const bool changed = app::chart_changed_since(entry_.notespath, entry_.sig);"},
+         {{"src/ui/preview_tab.cpp",
+           "\"This chart changed since it was analyzed. Click the song again to see its path.\");",
+           "the owner (D94)"}}},
         // Cutting a label to end in "…": ImGui's own ellipsis renderer, its
         // ellipsis glyph, the "…" bytes typed out as escapes, or a "…" typed
         // straight into a string before any // comment. ellipsize is the one
@@ -2491,10 +2508,10 @@ const std::vector<OwnerRule>& rules() {
            "DynamicsCounts::dynamic, the owner"}},
          {"src", "tests"}},
         // A private byte-by-byte little-endian helper. The store's
-        // BinaryWriter and BinaryReader are the codec; the store's own
-        // read_le/write_le are task J3-6's and are not in this row.
+        // BinaryWriter is the codec; the store's own read_le/write_le are
+        // task J3-6's and are not in this row.
         {"How is a little-endian number written byte by byte?",
-         "BinaryWriter::u32 and BinaryReader::u32 in src/store/serialize.cpp",
+         "BinaryWriter::u32 in src/store/serialize.cpp",
          R"(\b(write|read)_u32_le\()",
          "",
          {"src/store/serialize.cpp"},
@@ -3065,7 +3082,7 @@ const std::vector<OwnerRule>& rules() {
          {R"(return h.app->viewed.status == hydra::store::RecordStatus::NotAnalyzed ? "**/Analyze this song")",
           R"(: "**/Re-analyze";)"},
          {R"(IM_CHECK(visible_text(h).find("Also re-analyze") != std::string::npos);)",
-          R"("A saved result couldn't be read. Re-analyze this song to replace it.";)",
+          R"("from different rules in hydra_rules.ini. Re-analyze to refresh it.");)",
           R"("Click the song or run a batch to refresh it.")"},
          {},
          {"src", "tests"}},
@@ -3459,8 +3476,8 @@ const std::vector<OwnerRule>& rules() {
         // big-endian read (MIDI) and the hash's XOR-ed tail bytes are other
         // questions and are not flagged.
         {"How is a little-endian number written byte by byte? (any width or name)",
-         "read_le and append_le in src/core/little_endian.h (BinaryReader/Writer call the "
-         "readers; BinaryWriter and testbytes::put_le call the writer)",
+         "read_le and append_le in src/core/little_endian.h (BinaryWriter and "
+         "testbytes::put_le call the writer)",
          R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*|\|\s*\(*\s*(static_cast<\w+>|u?int\d*_t)?\s*\(*\s*[\w.>-]+\[[^\]]*\]\s*\)*\s*<<\s*8\b)",
          "",
          {},
@@ -3480,7 +3497,7 @@ const std::vector<OwnerRule>& rules() {
           "skip_remaining = op.packet[10] | (static_cast<int>(op.packet[11]) << 8);",
           "const uint32_t first_four = uint32_t(structure[0]) | uint32_t(structure[1]) << 8 |",
           "for (int i = 0; i < bytes; ++i) out.push_back(static_cast<uint8_t>(v >> (8 * i)));"},
-         {"void BinaryWriter::u32(uint32_t v) {", "uint32_t BinaryReader::u32() {",
+         {"void BinaryWriter::u32(uint32_t v) {",
           "out.push_back(static_cast<uint8_t>(v >> 8));",
           "const uint32_t len = core::read_le_u32(meta.data() + pos);",
           "uint64_t blob_size = core::read_le_u64(buf.data() + cursor + 16);",

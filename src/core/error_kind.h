@@ -36,7 +36,6 @@ enum class ErrorKind {
     NoRecords,
     ReportWrite,
     RulesFile,
-    StoredResult,
     AudioDecode,
     PreviewAssets,
 };

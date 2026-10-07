@@ -321,11 +321,11 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     }
     // The chart file changed since its record was analyzed: the highway
     // draws the new notes with no path over them, and one line says why
-    // (D51 call 18).
+    // (D51 call 18; the words are D94's).
     if (pc->chart_changed()) {
         WarnColor warn;
         ImGui::TextWrapped(
-            "This chart changed since it was analyzed. Analyze it again to see its path.");
+            "This chart changed since it was analyzed. Click the song again to see its path.");
     }
 
     // "Show in Preview" on the Paths tab: once the overlay for the selected
