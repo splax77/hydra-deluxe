@@ -14,7 +14,6 @@
 #include "app/display_format.h"
 #include "app/path_view.h"
 #include "app/preview_view.h"  // path_overlay_key
-#include "app/user_messages.h"  // kNoPathsFound
 #include "corpus_util.h"
 #include "record_fixtures.h"
 #include "scratch_settings.h"
@@ -462,7 +461,7 @@ TEST_CASE("build_activations: overfill warning text") {
     REQUIRE(with_timing.acts.size() == 1);
     CHECK(with_timing.acts[0].overfill_warning == "SP overfilled at m2.2.0");
 
-    // Without a SongTiming (no songmeta row), there is no way to turn the
+    // Without a SongTiming, there is no way to turn the
     // clamped tick into a measure string, so the line drops the position.
     ActivationsView without_timing = build_activations(path, record, nullptr, 85.0);
     REQUIRE(without_timing.acts.size() == 1);

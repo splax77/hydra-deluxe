@@ -4129,17 +4129,6 @@ const std::vector<OwnerRule>& rules() {
           "if (!ImGui::BeginTable(\"##librarytable\", kLibraryColumnCount, flags, size)) return used;"},
          {},
          {"src", "tests"}},
-        {"Which identity are the Dynamics counts filed under?",
-         "dynamics_store_key in src/app/dynamics_breakdown.cpp",
-         R"(dynamics_cache_key\()",
-         "",
-         {},
-         {},
-         "audit finding 262; phase 6 task J4-3 (D53, D54)",
-         {"key_ = app::dynamics_cache_key(entry_.notespath, pro_, difficulty_);"},
-         {"key_(app::dynamics_store_key(entry_.md5, difficulty_, pro_)) {}"},
-         {},
-         {"src", "tools", "tests"}},
         // A struct default, not a test input: the leading int keeps lines that
         // set a depth on a built options struct out.
         {"What is the default search depth?",
@@ -4329,7 +4318,7 @@ const std::vector<OwnerRule>& rules() {
           {"src/store/record_store.cpp",
            "purge(\"hyhash=? AND chartmode=? AND sp_cap=? AND \" + lens_match(\"\") + \" AND rules_fp = ?\",",
            "write_row's purge: the row's own unique key, not a lookup"}}},
-        // The INSERT, reindex's UPDATE and list_records build their summary
+        // The INSERT and list_records build their summary
         // slots from the list and its count, so a typed run of the ten
         // placeholders is a second spelling of the list.
         {"Which columns hold a path summary, and how many?",

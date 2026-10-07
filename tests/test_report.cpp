@@ -406,7 +406,7 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
     // Library names written before the fallback existed, a title with a
     // bold tag, and H1's title made only of tags. Each pairs with the name
     // the report shows. The page names a chart by its library row (the
-    // naming copy, which rebuild_chart_library also writes to songmeta).
+    // naming copy, kNamingCopiesSql's pick).
     const std::vector<std::pair<std::string, std::string>> names = {
         {"", kUnknownTitle},
         {"<unknown title>", kUnknownTitle},

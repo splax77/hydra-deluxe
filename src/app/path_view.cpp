@@ -2,7 +2,6 @@
 #include "app/config.h"  // Settings::search_depth_mode
 #include "app/display_format.h"
 #include "app/preview_view.h"  // song_fraction, has_song_length
-#include "app/user_messages.h"  // kNoPathsFound
 
 #include <algorithm>
 #include <cmath>
