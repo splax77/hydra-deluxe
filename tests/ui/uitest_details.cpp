@@ -925,8 +925,13 @@ void test_no_analyze_button(ImGuiTestContext* ctx) {
 
 // The progress box shows only once the click has run
 // kViewProgressDelaySeconds, so a chart that finishes sooner shows its paths
-// with no box (D87 items 6 and 10). A held click shows the box, and never
-// before the delay.
+// with no box (D87 items 6 and 10). AppState::view_progress_shown owns that
+// rule, and its two legs are pinned apart here with held clicks, so no check
+// depends on how fast the machine is. The "no box before the delay" checks
+// cover the clock leg; the "no box once it finished" checks cover the
+// running leg. A fast chart's every frame falls under one or the other. The
+// second click comes long after the first one's delay has passed, so it pins
+// that each request restarts the clock.
 void test_view_progress_delay(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -937,8 +942,17 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
     auto box_on_screen = [&] {
         return visible_text(h).find("Analyzing chart") != std::string::npos;
     };
-    auto since = [](clock::time_point t0) {
-        return std::chrono::duration<double>(clock::now() - t0).count();
+    // Seconds from t0 to the first frame that shows the box, or -1 if it
+    // never shows. t0 is taken before the request, so this can only
+    // overstate the wait.
+    auto first_box_since = [&](clock::time_point t0) {
+        double first_box = -1.0;
+        wait_until(ctx, [&] {
+            if (box_on_screen() && first_box < 0.0)
+                first_box = std::chrono::duration<double>(clock::now() - t0).count();
+            return first_box >= 0.0;
+        }, 10);
+        return first_box;
     };
 
     // ---- A held click: no box before the delay, then the box ----
@@ -947,37 +961,26 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
         const clock::time_point t0 = clock::now();  // before the click
         open_details(ctx, 0);
         if (ctx->IsError()) return;
-        double first_box = -1.0;
-        IM_CHECK(wait_until(ctx, [&] {
-            if (box_on_screen() && first_box < 0.0) first_box = since(t0);
-            return first_box >= 0.0;
-        }, 10));
-        // t0 is before the request, so this can only overstate the wait.
-        IM_CHECK_GE(first_box, delay);
+        IM_CHECK_GE(first_box_since(t0), delay);
         IM_CHECK(ctx->ItemExists("**/Cancel"));
     }
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(!box_on_screen());
 
-    // ---- A fast chart: no box on any frame ----
+    // ---- A second held click: the clock starts again ----
     ctx->SetRef("//Hydra");
     ctx->ItemClick("**/X##closepanel");
     ctx->Yield(3);
-    const clock::time_point t0 = clock::now();
-    bool box_seen = false;
-    h.app->select(h.app->view_row(1));
-    IM_CHECK(wait_until(ctx, [&] {
-        box_seen = box_seen || box_on_screen();
-        return h.app->view_settled();
-    }, 60));
-    box_seen = box_seen || box_on_screen();
-    const double took = since(t0);
-    IM_CHECK(h.app->viewed.ready());
-    ctx->LogInfo("the fast click took %.3f s", took);
-    // Only a click that provably ended within the delay pins "no box"; a
-    // starved machine that took longer may rightly have shown it.
-    if (took < delay) IM_CHECK(!box_seen);
+    {
+        ViewGate gate;
+        const clock::time_point t0 = clock::now();  // before the request
+        h.app->select(h.app->view_row(1));
+        IM_CHECK_GE(first_box_since(t0), delay);
+    }
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(!box_on_screen());
 }
 
 // A burst of setting changes with the song open (a held +/- box) ends with
