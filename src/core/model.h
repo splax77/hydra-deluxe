@@ -188,6 +188,10 @@ public:
     bool operator==(const Chord& o) const;
     bool operator!=(const Chord& o) const { return !(*this == o); }
 
+    // How many lanes a chord has, so how many notes it can hold: one per
+    // NoteColor. Every array and loop over a chord's lanes is sized by it.
+    static constexpr size_t kLanes = 5;
+
     // notemap access (KRYBG order), mirroring __getitem__/__setitem__.
     std::optional<ChordNote>& at(NoteColor c);
     const std::optional<ChordNote>& at(NoteColor c) const;
@@ -203,7 +207,7 @@ public:
 
     private:
         friend class Chord;
-        std::array<ChordNote, 5> notes_{};
+        std::array<ChordNote, kLanes> notes_{};
         size_t count_ = 0;
     };
 
@@ -241,7 +245,7 @@ public:
 
 private:
     // Index = color value - 1 (Kick..Green), preserving KRYBG iteration order.
-    std::array<std::optional<ChordNote>, 5> notemap_{};
+    std::array<std::optional<ChordNote>, kLanes> notemap_{};
 };
 
 // ---- squeezes -----------------------------------------------------------

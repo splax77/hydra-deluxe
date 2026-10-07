@@ -105,8 +105,8 @@ bool lane_flag(const ChordNote& note) {
 }
 
 std::string Chord::code() const {
-    std::string out(5, '.');
-    for (int i = 0; i < 5; ++i) {
+    std::string out(kLanes, '.');
+    for (size_t i = 0; i < kLanes; ++i) {
         if (!notemap_[i].has_value()) continue;
         const ChordNote& note = *notemap_[i];
         // A flag this lane cannot carry (a red cymbal, a 2x pad, a kick
@@ -134,10 +134,10 @@ std::string Chord::code() const {
 }
 
 Chord Chord::from_code(const std::string& code) {
-    if (code.size() != 5) throw std::out_of_range("unknown chord code: " + code);
+    if (code.size() != kLanes) throw std::out_of_range("unknown chord code: " + code);
 
     Chord chord;
-    for (int i = 0; i < 5; ++i) {
+    for (size_t i = 0; i < kLanes; ++i) {
         const char ch = code[i];
         if (ch == '.') continue;
         const NoteColor color = static_cast<NoteColor>(i + 1);
@@ -164,7 +164,7 @@ Chord Chord::from_code(const std::string& code) {
 // ---- Chord: rest --------------------------------------------------------
 
 bool Chord::operator==(const Chord& o) const {
-    for (int i = 0; i < 5; ++i) {
+    for (size_t i = 0; i < kLanes; ++i) {
         if (notemap_[i].has_value() != o.notemap_[i].has_value()) return false;
         if (notemap_[i].has_value() && !(*notemap_[i] == *o.notemap_[i]))
             return false;
@@ -228,7 +228,7 @@ std::string Chord::rowstr(bool pro) const {
 
 std::string Chord::notationstr() const {
     std::string krybg = "[";
-    const NoteColor order[5] = {NoteColor::Kick, NoteColor::Red,
+    const NoteColor order[kLanes] = {NoteColor::Kick, NoteColor::Red,
                                 NoteColor::Yellow, NoteColor::Blue,
                                 NoteColor::Green};
     for (NoteColor c : order)
@@ -299,7 +299,7 @@ void Chord::apply_accent(NoteColor color) {
 }
 
 const ChordNote& Chord::activation_note() const {
-    const NoteColor order[5] = {NoteColor::Green, NoteColor::Blue,
+    const NoteColor order[kLanes] = {NoteColor::Green, NoteColor::Blue,
                                 NoteColor::Yellow, NoteColor::Red,
                                 NoteColor::Kick};
     for (NoteColor c : order) {
