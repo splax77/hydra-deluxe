@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "app/analysis.h"
@@ -31,6 +32,10 @@ std::string resource_dir();
 // "hydra_settings.ini").
 std::string db_path();
 std::string ini_path();
+
+// The command-line switch that runs a tool under Clone Hero 1.0's fill rule.
+// Every tool that takes it compares against this one spelling.
+inline constexpr std::string_view kLegacyFillsFlag = "--legacy-fills";
 
 // Opens the store at `db`. `rules` gates Ready: a row analyzed
 // under other rules reads Stale.
@@ -99,7 +104,8 @@ struct Settings {
     // Spawn fills by Clone Hero 1.0's deadline instead of 1.1's (search/graph.h
     // FillDeadlineRule). Off by default: 1.1 is the game people play now. Part
     // of a result's key, like the SP cap. INI line: legacy_fills=0.
-    // hydra_batch ignores it and takes --legacy-fills instead.
+    // A tool that takes its own kLegacyFillsFlag ignores it: see
+    // load_for_command_line. (hydra_report follows it, docs/adr/0010.)
     bool legacy_fills = false;
 
     // Open a report in the browser as soon as Hydra builds it. It covers every
@@ -118,6 +124,11 @@ struct Settings {
     core::Rules rules = core::default_rules();
 
     static Settings load();
+    // The settings a command-line run works under: load()'s, except the fill
+    // rule, which comes from the run's own kLegacyFillsFlag and never from
+    // the app's "1.0 fills" setting. So a run means the same thing whatever
+    // the app was left on. hydra_batch and hydra_bench both load through here.
+    static Settings load_for_command_line(bool legacy_fills_flag);
     // False when the INI can't be written (the GUI surfaces this; the CLIs
     // never call save()).
     bool save() const;

@@ -50,6 +50,9 @@ using clk = std::chrono::steady_clock;
 
 // hydra_rules.ini (or --rules <path>): the rule choices every mode runs under.
 static core::Rules g_rules;
+// app::kLegacyFillsFlag, given anywhere: --engine and --parse run under Clone
+// Hero 1.0's fill rule (app::Settings::load_for_command_line).
+static bool g_legacy_fills = false;
 
 static double secs_since(clk::time_point t0) {
     return std::chrono::duration<double>(clk::now() - t0).count();
@@ -230,13 +233,11 @@ static void corpus_bench() {
     bench(kCloneHeroSpCap, 4);
 }
 
-// The settings --engine and --parse run under: the ini beside the exe, read
-// through app::Settings::load, under this run's rules. hydra_batch reads the
-// same ini but takes legacy fills from its own flag (src/cli/batch.cpp); this
-// keeps the ini's. Pointing a run at other settings means a copy of the exe
-// beside another ini.
+// The settings --engine and --parse run under: hydra_batch's, read through
+// app::Settings::load_for_command_line, under this run's rules. Pointing a run
+// at other settings means a copy of the exe beside another ini.
 static app::Settings ini_settings() {
-    app::Settings st = app::Settings::load();
+    app::Settings st = app::Settings::load_for_command_line(g_legacy_fills);
     st.rules = g_rules;
     return st;
 }
@@ -404,14 +405,18 @@ static void dump_db(const std::string& dbpath, const std::string& outpath,
 }
 
 static int bench_main() {
-    // --rules <path> may sit anywhere; take it out so the positional mode
-    // checks below see the same argv they always did.
+    // --rules <path> and the legacy fills flag may sit anywhere; take them out
+    // so the positional mode checks below see the same argv they always did.
     const std::vector<std::string> all = utf8_argv();
     std::vector<std::string> argv;
     std::string rules_path;
     for (size_t i = 0; i < all.size(); ++i) {
         if (i > 0 && all[i] == "--rules" && i + 1 < all.size()) {
             rules_path = all[++i];
+            continue;
+        }
+        if (i > 0 && all[i] == app::kLegacyFillsFlag) {
+            g_legacy_fills = true;
             continue;
         }
         argv.push_back(all[i]);
