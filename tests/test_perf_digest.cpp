@@ -37,7 +37,7 @@ namespace {
 // (Settings::batch_run, through to_analysis_settings), with every field the
 // plan names set here so a change of app default cannot move the pin. The
 // rest (rules, fills) is the app's default, as in an exe folder with no ini.
-app::BatchRun pinned_run(const char* difficulty, bool pro, bool bass2x) {
+app::Settings pinned_settings(const char* difficulty, bool pro, bool bass2x) {
     app::Settings s;
     s.view_difficulty = difficulty;
     s.view_prodrums = pro;
@@ -47,7 +47,7 @@ app::BatchRun pinned_run(const char* difficulty, bool pro, bool bass2x) {
     s.depth_value = 4;
     s.mslimit_enabled = true;
     s.mslimit_value = 10;
-    return s.batch_run();
+    return s;
 }
 
 // The corpus as hydra_bench takes a folder: scanned, each chart once as its
@@ -65,8 +65,8 @@ std::string hex(uint64_t h) {
 
 // What hydra_bench --engine prints as "hash": every chart's prepared row,
 // a chart that fails left out.
-uint64_t engine_digest(const app::BatchRun& run) {
-    const app::AnalysisSettings& settings = run.settings;
+uint64_t engine_digest(const app::Settings& st) {
+    const app::AnalysisSettings settings = st.batch_run().settings;
     uint64_t all = digest::kSeed;
     for (const app::ScanItem& it : corpus_charts()) {
         try {
@@ -74,8 +74,7 @@ uint64_t engine_digest(const app::BatchRun& run) {
                                                        settings.bass2x, settings.difficulty,
                                                        settings.rules);
             const HydraRecord rec = analyze_chart(song, settings);
-            const store::PreparedRow row = store::prepare_row(
-                store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, rec);
+            const store::PreparedRow row = store::prepare_row(st.record_key(it.md5), rec);
             all = digest::fold(all, digest::row_hash(row));
         } catch (const std::exception&) {
         }
@@ -85,8 +84,8 @@ uint64_t engine_digest(const app::BatchRun& run) {
 
 // What hydra_bench --parse prints as "hash": every chart's parsed song and
 // stored dynamics blob, or its failure.
-uint64_t parse_digest(const app::BatchRun& run) {
-    const app::AnalysisSettings& settings = run.settings;
+uint64_t parse_digest(const app::Settings& st) {
+    const app::AnalysisSettings settings = st.batch_run().settings;
     uint64_t all = digest::kSeed;
     for (const app::ScanItem& it : corpus_charts()) {
         uint64_t h = 0;
@@ -109,16 +108,16 @@ uint64_t parse_digest(const app::BatchRun& run) {
 }  // namespace
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
-    const uint64_t got = engine_digest(pinned_run("Expert", true, true));
+    const uint64_t got = engine_digest(pinned_settings("Expert", true, true));
     CHECK_MESSAGE(got == 0xa604809679e78c75ULL, "engine digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {
-    const uint64_t got = parse_digest(pinned_run("Expert", true, true));
+    const uint64_t got = parse_digest(pinned_settings("Expert", true, true));
     CHECK_MESSAGE(got == 0x98ef0041c7c9675aULL, "parse digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass off") {
-    const uint64_t got = parse_digest(pinned_run("Hard", false, false));
+    const uint64_t got = parse_digest(pinned_settings("Hard", false, false));
     CHECK_MESSAGE(got == 0x1b8cb6f31677c12dULL, "parse digest is now " << hex(got));
 }

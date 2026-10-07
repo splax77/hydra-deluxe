@@ -233,10 +233,10 @@ static void corpus_bench() {
 // The settings --engine and --parse run under: the ini beside the exe, read
 // the way hydra_batch reads it, under this run's rules. Pointing a run at
 // other settings means a copy of the exe beside another ini.
-static app::BatchRun ini_batch_run() {
+static app::Settings ini_settings() {
     app::Settings st = app::Settings::load();
     st.rules = g_rules;
-    return st.batch_run();
+    return st;
 }
 
 // Engine mode, single-threaded:
@@ -257,13 +257,13 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
     }
     auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{},
                                                 cache.empty() ? nullptr : &cache);
-    const app::BatchRun run = ini_batch_run();
-    const app::AnalysisSettings& settings = run.settings;
+    const app::Settings st = ini_settings();
+    const app::AnalysisSettings settings = st.batch_run().settings;
     double t_parse = 0, t_graph = 0, t_an = 0, t_prep = 0, t_gdel = 0;
     int n = 0, failed = 0;
     uint64_t all = digest::kSeed;
-    std::ofstream out;
-    if (!outpath.empty()) out.open(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
+    std::optional<std::ofstream> out;
+    if (!outpath.empty()) out.emplace(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
     for (const app::ScanItem& it : app::plan_batch(items, {}).todo) {
         auto t = clk::now();
         std::optional<Song> song;
@@ -294,12 +294,11 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
         }
         t_an += secs_since(t);
         t = clk::now();
-        store::PreparedRow row = store::prepare_row(
-            store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, *rec);
+        store::PreparedRow row = store::prepare_row(st.record_key(it.md5), *rec);
         t_prep += secs_since(t);
         const uint64_t h = digest::row_hash(row);
         all = digest::fold(all, h);
-        if (out) out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
+        if (out) *out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
         ++n;
     }
     std::printf("charts %d failed %d | parse %.3fs | graph %.3fs | analyze x%d %.3fs | "
@@ -332,13 +331,12 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
         for (const app::ScanItem& it : app::plan_batch(items, {}).todo)
             paths.push_back(it.notespath);
     }
-    const app::BatchRun run = ini_batch_run();
-    const app::AnalysisSettings& settings = run.settings;
+    const app::AnalysisSettings settings = ini_settings().batch_run().settings;
     double t_parse = 0, t_dyn = 0;
     int n = 0, failed = 0;
     uint64_t all = digest::kSeed;
-    std::ofstream out;
-    if (!outpath.empty()) out.open(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
+    std::optional<std::ofstream> out;
+    if (!outpath.empty()) out.emplace(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
     for (const std::string& p : paths) {
         uint64_t h = 0;
         double best = 1e30;
@@ -371,10 +369,10 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
         if (!fail.empty()) ++failed;
         all = digest::fold(all, h);
         if (out) {
-            out << p << '\t' << static_cast<long long>(best * 1e6) << '\t' << std::hex << h
-                << std::dec;
-            if (!fail.empty()) out << "\tFAIL " << fail;
-            out << '\n';
+            *out << p << '\t' << static_cast<long long>(best * 1e6) << '\t' << std::hex << h
+                 << std::dec;
+            if (!fail.empty()) *out << "\tFAIL " << fail;
+            *out << '\n';
         }
         ++n;
     }
