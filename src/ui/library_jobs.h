@@ -217,7 +217,8 @@ void apply_app_batch_analyzer_for_test(BatchJob& job);
 // What one click's job found on its thread (D87 items 1 and 3).
 struct ViewOutcome {
     // Set when the chart's files changed since the scan: the hash and
-    // fingerprint they give now.
+    // fingerprint they give now. The hash is the row's own when the files
+    // were only saved again with the same content (D95).
     bool files_changed = false;
     std::string new_md5;
     std::string new_sig;

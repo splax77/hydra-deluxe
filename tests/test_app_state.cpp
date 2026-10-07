@@ -382,6 +382,60 @@ TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
 }
 
+// D95: a chart saved again with the same content has a new size-and-time
+// fingerprint but the same hash. The click saves that fingerprint, so the
+// next click finds the file unchanged and does not hash it again.
+TEST_CASE("clicking a chart touched since the scan saves its new fingerprint") {
+    ScratchPaths paths("appstate_click_touch");
+    const ChartLibraryEntry scanned = corpus_chart("click_touch");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    // The same bytes written again: the mtime moves, the hash does not.
+    Sleep(20);
+    write_corpus_chart("click_touch", /*extra_note=*/false);
+    REQUIRE(hydra::app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
+    REQUIRE(hydra::app::hash_chart_file(scanned.notespath) == scanned.md5);
+
+    click(*app, scanned);
+
+    REQUIRE(app->viewed.ready());
+    // The store's row, the library row and the selected row all hold the
+    // fingerprint the file gives now, under the unchanged hash.
+    const std::vector<ChartLibraryEntry> stored = app->store->list_chart_library(0, -1);
+    REQUIRE(stored.size() == 1);
+    CHECK(stored[0].md5 == scanned.md5);
+    CHECK_FALSE(hydra::app::chart_changed_since(scanned.notespath, stored[0].sig).has_value());
+    CHECK_FALSE(hydra::app::chart_changed_since(scanned.notespath,
+                                                row_of(*app, scanned.md5).entry.sig)
+                    .has_value());
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == scanned.md5);
+    CHECK_FALSE(hydra::app::chart_changed_since(scanned.notespath, app->selected->sig).has_value());
+    // The click's result is saved under the unchanged hash.
+    CHECK(row_of(*app, scanned.md5).status == RecordStatus::Ready);
+}
+
+// D95 keeps ruling 15 for a touched chart: when the fingerprint cannot be
+// saved, the click fails loudly and saves nothing.
+TEST_CASE("a touched chart whose fingerprint save fails shows the error and saves nothing") {
+    ScratchPaths paths("appstate_click_touchfail");
+    const ChartLibraryEntry scanned = corpus_chart("click_touchfail");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    Sleep(20);
+    write_corpus_chart("click_touchfail", /*extra_note=*/false);
+    REQUIRE(hydra::app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
+                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+
+    click(*app, scanned);
+
+    CHECK(app->viewed.state == hydra::ui::ViewedSong::State::Failed);
+    CHECK_FALSE(app->viewed.message.empty());
+    CHECK_FALSE(app->viewed.record.has_value());
+    CHECK(app->selected->sig == scanned.sig);
+    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
+}
+
 TEST_CASE("clicking A then B in one frame shows B, and A is never shown or saved") {
     ScratchPaths paths("appstate_click_ab");
     const ChartLibraryEntry a = corpus_chart("click_a");

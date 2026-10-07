@@ -340,16 +340,16 @@ void ViewJob::run() {
             // An edited chart is hashed again before anything reads it, with
             // the rescan's own unchanged test (D87 item 3).
             // chart_changed_since is the one answer, shared with the preview
-            // load; a touched file with the same content is no change.
+            // load. A file saved again with the same content keeps its hash
+            // but still hands back its new fingerprint, so the row stops
+            // asking for a hash on every click (D95).
             if (const std::optional<app::ChartNow> now =
                     app::chart_changed_since(song_.notespath, song_.sig)) {
                 if (now->md5.empty())
                     throw std::runtime_error("could not read " + song_.notespath);
-                if (now->md5 != song_.md5) {
-                    out_.new_md5 = now->md5;
-                    out_.new_sig = now->sig;
-                    out_.files_changed = true;
-                }
+                out_.new_md5 = now->md5;
+                out_.new_sig = now->sig;
+                out_.files_changed = true;
             }
             const std::string& path = song_.notespath;
             throw_if_cancelled();
