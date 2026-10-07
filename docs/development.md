@@ -139,6 +139,34 @@ every corpus chart, replays every path the engine found, and fails if the
 replay's six score categories disagree with the engine's own by a single
 point.
 
+## Proving identical results
+
+Some changes, such as speedups, must leave every stored result exactly as it
+was. Three tools prove that, by comparing a run of the old build (A) with a
+run of the new one (B) over the same charts.
+
+`tools\compare_db.py A.db B.db` compares two databases table by table. It
+prints one line per table, "N rows compared, M differ", lists the first few
+keys that differ, and exits 1 if any table differs. It leaves out
+`result_id`, which only records the order worker threads finished in.
+
+`hydra_bench --engine <folder>` and `hydra_bench --parse <folder>` print one
+digest over a whole folder: the first over every chart's stored result row,
+the second over every parsed chart and its dynamics counts. They read the
+same settings file `hydra_batch` reads, the one beside the exe.
+`--out <file>` writes one line per chart, so two runs can be diffed to find
+the chart that moved. The digests are defined in `tests\song_digest.h`, and
+`tests\test_perf_digest.cpp` pins the corpus's values, so a change that moves
+a result fails that test.
+
+`tools\bench_run.ps1` runs a timing script under a machine-wide lock, so two
+whole-library runs never share the machine. A caller that finds the lock
+busy for too long gets exit code 3 and should retry later.
+
+The full recipe, with the commands for a whole-library run, is the
+"Proving identical results" section of
+`docs\superpowers\plans\2026-10-06-perf-speedups.md`.
+
 ## Mutation probe
 
 A passing test only helps if it would fail when the code breaks. The
