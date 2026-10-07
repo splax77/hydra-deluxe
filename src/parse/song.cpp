@@ -96,11 +96,54 @@ std::vector<SoloSection> find_solo_sections(const std::vector<SongTimestamp>& se
     return sections;
 }
 
-bool try_parse_int(const std::string& s, int64_t& out) {
+// The chart readers' one integer fast path, for the common case of a plain
+// number: reads the leading [-]digits of w, as std::strtol and std::strtoll
+// read them, when there are 1 to max_digits of them, and says how many bytes
+// it read. Returns false for anything else (a sign of '+', no digits, too
+// many digits), and the caller then asks the std function, so that
+// function's exact rules still decide every unusual spelling. max_digits
+// keeps the value inside the caller's type: 9 digits always fit an int, 18 a
+// long long.
+bool fast_leading_int(std::string_view w, size_t max_digits, int64_t& out, size_t& used) {
+    size_t i = 0;
+    const bool neg = !w.empty() && w[0] == '-';
+    if (neg) i = 1;
+    const size_t first_digit = i;
+    int64_t v = 0;
+    while (i < w.size() && w[i] >= '0' && w[i] <= '9') {
+        if (i - first_digit >= max_digits) return false;
+        v = v * 10 + (w[i] - '0');
+        ++i;
+    }
+    if (i == first_digit) return false;
+    out = neg ? -v : v;
+    used = i;
+    return true;
+}
+
+// The digit counts above which fast_leading_int hands over to std::stoi and
+// std::stoll: the most digits that cannot overflow an int and a long long.
+constexpr size_t kFastIntDigits = 9;
+constexpr size_t kFastLongLongDigits = 18;
+
+// Whether all of s reads as one std::stoll number, and its value.
+bool try_parse_int(std::string_view s, int64_t& out) {
     if (s.empty()) return false;
+    int64_t fast = 0;
+    size_t used = 0;
+    if (fast_leading_int(s, kFastLongLongDigits, fast, used)) {
+        // std::stoll stops where the digits stop too, so the number is whole
+        // only when they run to the end.
+        if (used != s.size()) return false;
+        out = fast;
+        return true;
+    }
+    // std::stoll reads nothing from a letter and throws; say no without the
+    // throw. Property names ("Resolution", "Name") all land here.
+    if (std::isalpha(static_cast<unsigned char>(s[0]))) return false;
     try {
         size_t idx = 0;
-        long long v = std::stoll(s, &idx);
+        long long v = std::stoll(std::string(s), &idx);
         if (idx == s.size()) {
             out = static_cast<int64_t>(v);
             return true;
@@ -996,38 +1039,23 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
 
 namespace {
 
-struct ChartDataEntry {
-    std::optional<int64_t> key_tick;
-    std::optional<std::string> key_name;
+// What one `key = value` line of a .chart says. Prop is a named property
+// (its key is not a tick); None is a tick line that says nothing the readers
+// use (an empty value, a word they don't know, or a known word with the wrong
+// number of words). Every other kind is one event form.
+enum class LineKind : uint8_t {
+    Prop, None, TimeSig, Tempo, SoloStart, SoloEnd, DiscoOff, DiscoOn, Event, Note, Phrase,
+};
 
-    // A named property's value: the raw (trimmed) text. Each reader applies
-    // its own one number rule (Resolution, Offset).
-    std::optional<std::string> property_str;
-
-    std::optional<int> ts_numerator;
-    std::optional<int> ts_denominator;
-    std::optional<double> tempo_bpm;
-
-    bool solo_start = false;
-    bool solo_end = false;
-    bool discoflip_enable = false;
-    bool discoflip_disable = false;
-
-    // A generic text event's payload: the value with its leading "E" and any
-    // surrounding quotes taken off. Only the [Events] walk reads it.
-    std::optional<std::string> event_text;
-
-    std::optional<int> notevalue;
-    std::optional<int64_t> notelength;
-    std::optional<int> phrasevalue;
-    std::optional<int64_t> phraselength;
-
-    // Both sides arrive already trimmed. `mix_digit` is the parsed
-    // difficulty's disco digit: a disco marker naming another difficulty is
-    // read as a plain text event, which no drum section uses.
-    ChartDataEntry(std::string_view keystr, std::string_view valuestr, char mix_digit);
-
-    bool is_tick_data() const { return key_tick.has_value(); }
+// One classified line, as classify_chart_line reads it: a flat value, so the
+// drum section is held as one vector of these.
+struct ChartLine {
+    int64_t tick = 0;
+    LineKind kind = LineKind::None;
+    int value = 0;       // Note, Phrase: the N or S number; TimeSig: numerator
+    int den = 0;         // TimeSig: denominator
+    int64_t length = 0;  // Note, Phrase
+    double bpm = 0;      // Tempo
 };
 
 // The whitespace-separated words of an event value, as views into it. Only
@@ -1062,59 +1090,103 @@ ChartWords split_ws_view(std::string_view s) {
 constexpr int kChartTsMissingExponent = 2;
 
 // std::stoi / std::stoll on one word, with their exact acceptance rules
-// (leading digits read, trailing junk ignored, throws on no digits).
-int word_stoi(std::string_view w) { return std::stoi(std::string(w)); }
-long long word_stoll(std::string_view w) { return std::stoll(std::string(w)); }
+// (leading digits read, trailing junk ignored, throws on no digits). A plain
+// number takes the fast path; everything else is the std call itself.
+int word_stoi(std::string_view w) {
+    int64_t v = 0;
+    size_t used = 0;
+    if (fast_leading_int(w, kFastIntDigits, v, used)) return static_cast<int>(v);
+    return std::stoi(std::string(w));
+}
+long long word_stoll(std::string_view w) {
+    int64_t v = 0;
+    size_t used = 0;
+    if (fast_leading_int(w, kFastLongLongDigits, v, used)) return v;
+    return std::stoll(std::string(w));
+}
 
-ChartDataEntry::ChartDataEntry(std::string_view keystr, std::string_view valuestr,
-                               char mix_digit) {
-    int64_t k;
-    if (try_parse_int(std::string(keystr), k))
-        key_tick = k;
-    else
-        key_name = std::string(keystr);
-
-    if (!key_tick.has_value()) {
-        property_str = std::string(valuestr);
-        return;
+// The one rule for what a .chart line says. Both sides arrive already
+// trimmed. `mix_digit` is the parsed difficulty's disco digit: a disco marker
+// naming another difficulty is read as a plain text event, which no drum
+// section uses. A number that std::stoi or std::stoll refuses throws their
+// exception here, whichever section the line sits in. When `event` is given
+// and the line is a generic text event, it gets the event's payload: the
+// value with its leading "E" and any surrounding quotes taken off.
+ChartLine classify_chart_line(std::string_view keystr, std::string_view valuestr,
+                              char mix_digit, std::string_view* event) {
+    ChartLine out;
+    if (!try_parse_int(keystr, out.tick)) {
+        out.kind = LineKind::Prop;
+        return out;
     }
 
     const ChartWords t = split_ws_view(valuestr);
-    if (t.count == 0) return;
+    if (t.count == 0) return out;
     const std::string_view t0 = t.w[0];
 
     if (t0 == "TS" && t.count == 2) {
-        ts_numerator = word_stoi(t.w[1]);
-        ts_denominator = timesig_denominator(kChartTsMissingExponent);
+        out.kind = LineKind::TimeSig;
+        out.value = word_stoi(t.w[1]);
+        out.den = timesig_denominator(kChartTsMissingExponent);
     } else if (t0 == "TS" && t.count == 3) {
-        ts_numerator = word_stoi(t.w[1]);
-        ts_denominator = timesig_denominator(word_stoi(t.w[2]));
+        out.kind = LineKind::TimeSig;
+        out.value = word_stoi(t.w[1]);
+        out.den = timesig_denominator(word_stoi(t.w[2]));
     } else if (t0 == "B" && t.count == 2) {
-        tempo_bpm = static_cast<double>(word_stoll(t.w[1])) / 1000.0;
+        out.kind = LineKind::Tempo;
+        out.bpm = static_cast<double>(word_stoll(t.w[1])) / 1000.0;
     } else if (t0 == "E" && t.count == 2 && t.w[1] == "solo") {
-        solo_start = true;
+        out.kind = LineKind::SoloStart;
     } else if (t0 == "E" && t.count == 2 && t.w[1] == "soloend") {
-        solo_end = true;
+        out.kind = LineKind::SoloEnd;
     } else if (t0 == "E" && t.count == 2 && is_disco_off_marker(t.w[1], mix_digit)) {
-        discoflip_disable = true;
+        out.kind = LineKind::DiscoOff;
     } else if (t0 == "E" && t.count == 2 && is_disco_on_marker(t.w[1], mix_digit)) {
-        discoflip_enable = true;
+        out.kind = LineKind::DiscoOn;
     } else if (t0 == "E") {
         // Generic text event: no gameplay effect, but [Events] carries the
         // practice-section markers here.
-        std::string_view rest = trim_view(valuestr.substr(1));
-        if (rest.size() >= 2 && rest.front() == '"' && rest.back() == '"')
-            rest = rest.substr(1, rest.size() - 2);
-        event_text = std::string(rest);
+        out.kind = LineKind::Event;
+        if (event) {
+            std::string_view rest = trim_view(valuestr.substr(1));
+            if (rest.size() >= 2 && rest.front() == '"' && rest.back() == '"')
+                rest = rest.substr(1, rest.size() - 2);
+            *event = rest;
+        }
     } else if (t0 == "N" && t.count == 3) {
-        notevalue = word_stoi(t.w[1]);
-        notelength = word_stoll(t.w[2]);
+        out.kind = LineKind::Note;
+        out.value = word_stoi(t.w[1]);
+        out.length = word_stoll(t.w[2]);
     } else if (t0 == "S" && t.count == 3) {
-        phrasevalue = word_stoi(t.w[1]);
-        phraselength = word_stoll(t.w[2]);
+        out.kind = LineKind::Phrase;
+        out.value = word_stoi(t.w[1]);
+        out.length = word_stoll(t.w[2]);
     }
+    return out;
 }
 
+// A line of [Song] or [SyncTrack], the two sections kept whole: the line as
+// classify_chart_line reads it, and for a named property its key and raw
+// (trimmed) value. Each reader of a property applies its own one number rule
+// (Resolution, Offset).
+struct ChartDataEntry {
+    ChartLine line;
+    std::string key_name;
+    std::string property_str;
+
+    ChartDataEntry(std::string_view keystr, std::string_view valuestr, char mix_digit)
+        : line(classify_chart_line(keystr, valuestr, mix_digit, nullptr)) {
+        if (line.kind == LineKind::Prop) {
+            key_name = std::string(keystr);
+            property_str = std::string(valuestr);
+        }
+    }
+
+    bool is_tick_data() const { return line.kind != LineKind::Prop; }
+};
+
+// [Song] or [SyncTrack], kept whole. The drum section and [Events] are read
+// into lighter forms (ChartParser::load_sections).
 struct ChartSection {
     std::string name;
     std::vector<int64_t> tick_order;
@@ -1124,12 +1196,12 @@ struct ChartSection {
     // Takes the entry by value and moves it into place: no copy per entry.
     void add(ChartDataEntry e) {
         if (e.is_tick_data()) {
-            const int64_t key = *e.key_tick;
+            const int64_t key = e.line.tick;
             auto [it, inserted] = tick_data.try_emplace(key);
             if (inserted) tick_order.push_back(key);
             it->second.push_back(std::move(e));
         } else {
-            std::vector<ChartDataEntry>& v = prop_data[*e.key_name];
+            std::vector<ChartDataEntry>& v = prop_data[e.key_name];
             v.push_back(std::move(e));
         }
     }
@@ -1192,10 +1264,12 @@ public:
 private:
     const core::Rules& rules_;
 
-    void load_sections(const std::vector<uint8_t>& data, char mix_digit);
-    COp optype(const ChartDataEntry& e, int64_t tick);
+    void load_sections(const std::vector<uint8_t>& data, char mix_digit,
+                       std::string_view drum_section);
+    COp optype(const ChartLine& e, int64_t tick);
+    COp note_optype(int value) const;  // optype's answer for an N line
     void run(const COp& op);
-    void push_timestamp(int64_t tick, const std::vector<ChartDataEntry>& entries);
+    void push_timestamp(int64_t tick, const ChartLine* first, const ChartLine* last);
 
     void op_disco(bool on) { flag_disco_ = on; }
     void op_tempo(int64_t tick, double bpm) { song_->bpm_changes[tick] = bpm; }
@@ -1224,7 +1298,13 @@ private:
     bool mode_pro_ = false;
     bool mode_bass2x_ = false;
 
+    // [Song] and [SyncTrack], by name.
     std::unordered_map<std::string, ChartSection> sections_;
+    // The parsed difficulty's drum section as its tick lines in file order,
+    // and [Events] as its practice sections in file order; each is unset when
+    // the file has no closed section of that name.
+    std::optional<std::vector<ChartLine>> drum_lines_;
+    std::optional<std::vector<SongSection>> event_sections_;
 
     Chord chord_;
     std::vector<COp> ops_;  // one tick's handlers, reused tick to tick
@@ -1256,13 +1336,25 @@ bool find_section_header(std::string_view line, std::string_view* bracket) {
     return false;
 }
 
-void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit) {
+void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit,
+                                std::string_view drum_section) {
     // Walk the file in place, one line per '\n' (a trailing '\r' is removed by
     // the trim). Every line ended by a '\n' counts, empty or not; the last
     // unterminated piece counts only when it is non-empty.
     const std::string_view text(reinterpret_cast<const char*>(data.data()), data.size());
 
-    std::optional<ChartSection> wip;
+    // Every line of every section is classified, so a number the reader
+    // refuses throws wherever it sits. What is kept depends on the section:
+    // [Song] and [SyncTrack] whole, the drum section as its tick lines,
+    // [Events] as its practice sections, any other section nothing. A section
+    // counts once its '}' is read, and a later section of the same name
+    // replaces an earlier one.
+    enum class Keep { Whole, Drums, Events, Nothing };
+    bool in_section = false;
+    Keep keep = Keep::Nothing;
+    std::optional<ChartSection> whole;
+    std::vector<ChartLine> drums;
+    std::vector<SongSection> events;
     size_t pos = 0;
     while (pos < text.size()) {
         const size_t nl = text.find('\n', pos);
@@ -1270,12 +1362,20 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
         const std::string_view line = trim_view(text.substr(pos, stop - pos));
         pos = nl == std::string_view::npos ? text.size() : nl + 1;
 
-        if (wip.has_value()) {
+        if (in_section) {
             if (line == "{") {
                 // block open
             } else if (line == "}") {
-                sections_[wip->name] = std::move(*wip);
-                wip.reset();
+                switch (keep) {
+                    case Keep::Whole:
+                        sections_[whole->name] = std::move(*whole);
+                        whole.reset();
+                        break;
+                    case Keep::Drums: drum_lines_ = std::move(drums); break;
+                    case Keep::Events: event_sections_ = std::move(events); break;
+                    case Keep::Nothing: break;
+                }
+                in_section = false;
             } else {
                 // The key is what precedes the first '='; the value is what
                 // lies between the first '=' and the next one (or line end).
@@ -1287,42 +1387,82 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
                                                   ? std::string_view::npos
                                                   : eq2 - eq - 1);
                 }
-                wip->add(ChartDataEntry(trim_view(lhs), trim_view(rhs), mix_digit));
+                lhs = trim_view(lhs);
+                rhs = trim_view(rhs);
+                if (keep == Keep::Whole) {
+                    whole->add(ChartDataEntry(lhs, rhs, mix_digit));
+                } else if (keep == Keep::Events) {
+                    std::string_view event;
+                    const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, &event);
+                    std::string name;
+                    if (l.kind == LineKind::Event && section_name_of(std::string(event), &name))
+                        events.push_back({l.tick, std::move(name)});
+                } else {
+                    const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);
+                    if (keep == Keep::Drums && l.kind != LineKind::Prop) drums.push_back(l);
+                }
             }
         } else {
             std::string_view bracket;
             if (!find_section_header(line, &bracket))
                 throw ChartFileError("expected a [section] header");
-            ChartSection s;
-            s.name = std::string(bracket.substr(1, bracket.size() - 2));
-            wip = std::move(s);
+            const std::string_view name = bracket.substr(1, bracket.size() - 2);
+            in_section = true;
+            if (name == "Song" || name == "SyncTrack") {
+                keep = Keep::Whole;
+                whole.emplace();
+                whole->name = std::string(name);
+            } else if (name == drum_section) {
+                keep = Keep::Drums;
+                drums.clear();
+            } else if (name == "Events") {
+                keep = Keep::Events;
+                events.clear();
+            } else {
+                keep = Keep::Nothing;
+            }
         }
     }
 }
 
-COp ChartParser::optype(const ChartDataEntry& e, int64_t tick) {
-    if (e.discoflip_enable) return cop_flag(CPhase::Pre, CAct::Disco, true);
-    if (e.discoflip_disable) return cop_flag(CPhase::Pre, CAct::Disco, false);
-    if (e.tempo_bpm.has_value()) {
-        COp op = cop_span(CPhase::Time, CAct::Tempo, tick, 0);
-        op.bpm = *e.tempo_bpm;
-        return op;
+COp ChartParser::optype(const ChartLine& e, int64_t tick) {
+    switch (e.kind) {
+        case LineKind::DiscoOn: return cop_flag(CPhase::Pre, CAct::Disco, true);
+        case LineKind::DiscoOff: return cop_flag(CPhase::Pre, CAct::Disco, false);
+        case LineKind::Tempo: {
+            COp op = cop_span(CPhase::Time, CAct::Tempo, tick, 0);
+            op.bpm = e.bpm;
+            return op;
+        }
+        case LineKind::TimeSig: {
+            COp op = cop_span(CPhase::Time, CAct::TimeSig, tick, 0);
+            op.num = e.value;
+            op.den = e.den;
+            return op;
+        }
+        case LineKind::SoloStart: return cop_flag(CPhase::Pre, CAct::Solo, true);
+        // A .chart `E soloend` sits on the solo's last note: end the solo
+        // after this tick's notes. Pinned by ".chart: the note on the solo
+        // end tick is in the solo".
+        case LineKind::SoloEnd: return cop_flag(CPhase::Post, CAct::Solo, false);
+        case LineKind::Note: return note_optype(e.value);
+        case LineKind::Phrase:
+            if (e.value == 2) return cop_span(CPhase::Pre, CAct::SpStart, tick, tick + e.length);
+            if (e.value == 64)
+                return cop_span(CPhase::PostDelayed, CAct::FillStart, tick, tick + e.length);
+            return {};
+        case LineKind::Prop:
+        case LineKind::None:
+        case LineKind::Event: return {};
     }
-    if (e.ts_numerator.has_value()) {
-        COp op = cop_span(CPhase::Time, CAct::TimeSig, tick, 0);
-        op.num = *e.ts_numerator;
-        op.den = *e.ts_denominator;
-        return op;
-    }
-    if (e.solo_start) return cop_flag(CPhase::Pre, CAct::Solo, true);
-    // A .chart `E soloend` sits on the solo's last note: end the solo after
-    // this tick's notes. Pinned by ".chart: the note on the solo end tick is
-    // in the solo".
-    if (e.solo_end) return cop_flag(CPhase::Post, CAct::Solo, false);
+    return {};
+}
 
-    if (e.notevalue.has_value()) {
+// An N line's op, by its note number.
+COp ChartParser::note_optype(int value) const {
+    {
         constexpr CPhase N = CPhase::Notes, M = CPhase::NoteMods;
-        switch (*e.notevalue) {
+        switch (value) {
             case 0: return cop_color(N, CAct::Note, NoteColor::Kick);
             case 1: return cop_color(N, CAct::Note, NoteColor::Red);
             case 2: return cop_color(N, CAct::Note, NoteColor::Yellow);
@@ -1351,15 +1491,6 @@ COp ChartParser::optype(const ChartDataEntry& e, int64_t tick) {
             default: return {};
         }
     }
-
-    if (e.phrasevalue.has_value()) {
-        if (*e.phrasevalue == 2)
-            return cop_span(CPhase::Pre, CAct::SpStart, tick, tick + *e.phraselength);
-        if (*e.phrasevalue == 64)
-            return cop_span(CPhase::PostDelayed, CAct::FillStart, tick,
-                            tick + *e.phraselength);
-    }
-    return {};
 }
 
 void ChartParser::run(const COp& op) {
@@ -1380,14 +1511,13 @@ void ChartParser::run(const COp& op) {
     }
 }
 
-void ChartParser::push_timestamp(int64_t tick,
-                                 const std::vector<ChartDataEntry>& entries) {
+void ChartParser::push_timestamp(int64_t tick, const ChartLine* first, const ChartLine* last) {
     chord_ = Chord();
 
     std::vector<COp>& ops = ops_;
     ops.clear();
-    for (const ChartDataEntry& e : entries) {
-        COp op = optype(e, tick);
+    for (const ChartLine* e = first; e != last; ++e) {
+        COp op = optype(*e, tick);
         if (op.runs()) ops.push_back(op);
     }
 
@@ -1424,7 +1554,8 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
                         bool bass2x, Difficulty difficulty) {
     // A disco marker counts only in the difficulty it names, so the reader
     // needs this difficulty's digit before it classifies any line.
-    load_sections(data, difficulty_chart_codes(difficulty).mix_digit);
+    load_sections(data, difficulty_chart_codes(difficulty).mix_digit,
+                  difficulty_chart_codes(difficulty).chart_section());
     mode_pro_ = pro;
     mode_bass2x_ = bass2x;
 
@@ -1432,7 +1563,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     const ChartDataEntry& res_entry = song_sec.prop_data.at("Resolution").at(0);
     // One number rule for Resolution: std::stoll on the raw text (leading
     // digits read, trailing junk ignored, no digits refuses the chart).
-    const int64_t tick_resolution = std::stoll(*res_entry.property_str);
+    const int64_t tick_resolution = std::stoll(res_entry.property_str);
 
     Song song(tick_resolution);
     song_ = &song;
@@ -1442,8 +1573,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     // "nan" counts as absent, like Clone Hero's default 0.
     if (auto it = song_sec.prop_data.find("Offset");
         it != song_sec.prop_data.end() && !it->second.empty()) {
-        const ChartDataEntry& e = it->second.at(0);
-        if (e.property_str) song.chart_offset_s = parse_finite_number(*e.property_str);
+        song.chart_offset_s = parse_finite_number(it->second.at(0).property_str);
     }
 
     // Map tempo and time signatures from the sync track.
@@ -1452,7 +1582,7 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         const ChartSection& sync = sync_it->second;
         for (int64_t tk : sync.tick_order) {
             for (const ChartDataEntry& e : sync.tick_data.at(tk)) {
-                COp op = optype(e, tk);
+                COp op = optype(e.line, tk);
                 if (op.phase == CPhase::Time && op.runs()) run(op);
             }
         }
@@ -1465,19 +1595,24 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
     // Each difficulty is its own section ("ExpertDrums", "HardDrums", ...);
     // everything inside one — notes, dynamics, cymbals, SP, fills, solos —
     // follows for free. A chart missing the section parses as an empty song.
-    auto ed_it = sections_.find(difficulty_chart_codes(difficulty).chart_section());
-    if (ed_it != sections_.end()) {
-        const ChartSection& ed = ed_it->second;
+    if (drum_lines_.has_value()) {
         // The one place chord order is settled for a .chart (D47): the drum
         // section is read in tick order, whatever order the file wrote its
         // ticks in, so the phrase rule (close_sp_phrase, D21) and the fill
         // rule (place_authored_fills, D30) see the same chords in the same
-        // order. tick_order holds each tick once; the lines at one tick keep
-        // the file's order.
-        std::vector<int64_t> ticks = ed.tick_order;
-        std::sort(ticks.begin(), ticks.end());
-        for (int64_t tk : ticks)
-            push_timestamp(tk, ed.tick_data.at(tk));
+        // order. The sort is stable, so the lines at one tick keep the file's
+        // order; a file already in order is not sorted again.
+        std::vector<ChartLine>& lines = *drum_lines_;
+        const auto by_tick = [](const ChartLine& a, const ChartLine& b) { return a.tick < b.tick; };
+        if (!std::is_sorted(lines.begin(), lines.end(), by_tick))
+            std::stable_sort(lines.begin(), lines.end(), by_tick);
+        const ChartLine* const end = lines.data() + lines.size();
+        for (const ChartLine* p = lines.data(); p != end;) {
+            const ChartLine* q = p + 1;
+            while (q != end && q->tick == p->tick) ++q;
+            push_timestamp(p->tick, p, q);
+            p = q;
+        }
         // A phrase still open after the last tick runs past the last note.
         // Close it now, so that note awards it, as the 116 note-off does in
         // a .mid.
@@ -1486,19 +1621,10 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
     }
 
-    // Practice sections. tick_order follows the file, which is not required to
-    // be sorted; sort_practice_sections orders them.
-    auto ev_it = sections_.find("Events");
-    if (ev_it != sections_.end()) {
-        const ChartSection& ev = ev_it->second;
-        for (int64_t tk : ev.tick_order) {
-            for (const ChartDataEntry& e : ev.tick_data.at(tk)) {
-                if (!e.event_text.has_value()) continue;
-                std::string name;
-                if (section_name_of(*e.event_text, &name))
-                    song.practice_sections.push_back({tk, name});
-            }
-        }
+    // Practice sections, in the file's order, which is not required to be
+    // sorted; sort_practice_sections orders them.
+    if (event_sections_.has_value()) {
+        song.practice_sections = std::move(*event_sections_);
         sort_practice_sections(song.practice_sections);
     }
     song.solo_sections = find_solo_sections(song.sequence);
@@ -1518,7 +1644,17 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
 
 Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
                         bool bass2x, Difficulty difficulty, const core::Rules& rules) {
-    MidiFile mid(data);
+    // Only what MidiParser reads is decoded: a drum note-on it can act on
+    // (is_handled_note) and a marker's note-off (the only note-offs it acts
+    // on). Every other note does nothing in MidiParser::optype.
+    const int base = difficulty_base_pitch(difficulty);
+    const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
+    MidiLeanFilter filter;
+    for (int pitch = 0; pitch < 128; ++pitch) {
+        filter.note_on[pitch] = is_handled_note(pitch, base, kick2x);
+        filter.note_off[pitch] = is_midi_marker_pitch(pitch);
+    }
+    const MidiFile mid = MidiFile::lean(data.data(), data.size(), filter);
     return MidiParser(rules).parse(mid, pro, bass2x, difficulty);
 }
 

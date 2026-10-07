@@ -87,11 +87,28 @@ public:
     std::vector<Message> messages;
 };
 
+// Which drum-track note messages MidiFile::lean keeps. A note-on with a
+// velocity above 0 is kept when note_on[pitch] is set; a note-off (or a
+// note-on with velocity 0) when note_off[pitch] is set. The song parser fills
+// it from its own pitch rules (load_songbytes_mid in parse/song.cpp).
+struct MidiLeanFilter {
+    bool note_on[128] = {};
+    bool note_off[128] = {};
+};
+
 class MidiFile {
 public:
     // Parse from raw file bytes. Throws MidiError on invalid input.
     explicit MidiFile(const std::vector<uint8_t>& data);
     MidiFile(const uint8_t* data, size_t size);
+
+    // The file as the song parser reads it, holding only what it reads: the
+    // first track's tempo and meter, the first PART DRUMS track's text metas
+    // and the notes `filter` keeps, and every EVENTS track's text metas. Every
+    // track keeps its name. A dropped message hands its delta on, so every
+    // kept message sits at the tick it has in the full read, and the file
+    // throws exactly where the full read throws.
+    static MidiFile lean(const uint8_t* data, size_t size, const MidiLeanFilter& filter);
 
     // Read and parse a file from disk. A file that cannot be read throws
     // read_file_bytes' error; one that is not a MIDI file throws MidiError.
@@ -102,6 +119,7 @@ public:
     std::vector<MidiTrack> tracks;
 
 private:
+    MidiFile() = default;
     void parse(const uint8_t* data, size_t size);
     MidiTrack parse_track(const uint8_t* data, size_t pos, size_t end);
 };

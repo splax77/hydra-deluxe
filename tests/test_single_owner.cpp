@@ -4540,6 +4540,93 @@ const std::vector<OwnerRule>& rules() {
          {},
          {"src/app/report.cpp", "src/app/fill_report.cpp", "src/cli/report.cpp",
           "src/cli/fillcompare.cpp"}},
+        // ---- speedups task P1: the lean chart and MIDI readers ----
+        // The lean MIDI read keeps a drum note only when the song parser can
+        // act on it. A filter entry set from anything but the parser's own
+        // pitch rules is a second list of pitches.
+        {"Which drum-track notes does the lean MIDI read keep?",
+         "load_songbytes_mid in src/parse/song.cpp, from is_handled_note and is_midi_marker_pitch",
+         R"(\bnote_(on|off)\s*\[[^\]]*\]\s*=(?!=)\s*[^\s{])",
+         R"(\bis_handled_note\(|\bis_midi_marker_pitch\()",
+         {},
+         {},
+         "the speedups plan, task P1 (D86)",
+         {"f.note_on[n] = (n >= base && n <= base + 4) || (n == kick2x && bass2x) || marker;",
+          "f.note_off[n] = marker;"},
+         {"filter.note_on[pitch] = is_handled_note(pitch, base, kick2x);",
+          "if (!(on ? filter.note_on[pitch] : filter.note_off[pitch])) return false;"}},
+        // The integer fast path lives inside the three readers that answer
+        // with std::stoi and std::stoll's rules. A fourth caller, or a lean_
+        // twin beside them, is a second number rule.
+        {"How is a .chart number read?",
+         "word_stoi, word_stoll and try_parse_int in src/parse/song.cpp, through fast_leading_int",
+         R"(\bfast_leading_int\s*\(|\blean_(stoi|stoll|try_parse_int)\b)",
+         "",
+         {},
+         {},
+         "the speedups plan, task P1 (D86)",
+         {"int lean_stoi(std::string_view w) {", "if (fast_leading_int(w, 9, v)) return v;"},
+         {"return std::stoi(std::string(w));"},
+         {{"src/parse/song.cpp",
+           "bool fast_leading_int(std::string_view w, size_t max_digits, int64_t& out, size_t& used) {",
+           "fast_leading_int, the owner"},
+          {"src/parse/song.cpp", "if (fast_leading_int(s, kFastLongLongDigits, fast, used)) {",
+           "try_parse_int"},
+          {"src/parse/song.cpp",
+           "if (fast_leading_int(w, kFastIntDigits, v, used)) return static_cast<int>(v);",
+           "word_stoi"},
+          {"src/parse/song.cpp", "if (fast_leading_int(w, kFastLongLongDigits, v, used)) return v;",
+           "word_stoll"}}},
+        // What a .chart line says is decided once, for every section. Its
+        // words are split only there.
+        {"What does a .chart line say?",
+         "classify_chart_line in src/parse/song.cpp",
+         R"(\bsplit_ws_view\s*\()",
+         "",
+         {},
+         {},
+         "the speedups plan, task P1 (D86)",
+         {"const ChartWords t = split_ws_view(valuestr);"},
+         {"const ChartLine l = classify_chart_line(lhs, rhs, mix_digit, nullptr);"},
+         {{"src/parse/song.cpp", "ChartWords split_ws_view(std::string_view s) {",
+           "the splitter itself"},
+          {"src/parse/song.cpp", "const ChartWords t = split_ws_view(valuestr);",
+           "classify_chart_line, the owner"}}},
+        // A .chart line becomes an op in one place, whichever section it came
+        // from.
+        {"What does a .chart line do to the parser?",
+         "ChartParser::optype(const ChartLine&) in src/parse/song.cpp",
+         R"(\bCOp\s+(ChartParser::)?optype\s*\()",
+         "",
+         {},
+         {},
+         "the speedups plan, task P1 (D86)",
+         {"COp optype(const ChartDataEntry& e, int64_t tick);",
+          "COp ChartParser::optype(const ChartDataEntry& e, int64_t tick) {"},
+         {"COp op = optype(*e, tick);"},
+         {{"src/parse/song.cpp", "COp optype(const ChartLine& e, int64_t tick);", "the declaration"},
+          {"src/parse/song.cpp", "COp ChartParser::optype(const ChartLine& e, int64_t tick) {",
+           "the owner"}}},
+        // A MIDI track's bytes are walked once, by walk_track, which both the
+        // full and the lean read call. Reading a delta anywhere else is a
+        // second walker with its own length checks.
+        {"Which code walks a MIDI track's bytes?",
+         "walk_track in src/parse/midi.cpp",
+         R"(\bread_varlen\s*\()",
+         "",
+         {},
+         {},
+         "the speedups plan, task P1 (D86)",
+         {"pending += static_cast<int64_t>(read_varlen(data, pos, end));"},
+         {"const uint64_t length = read_message_length(data, pos, end);"},
+         {{"src/parse/midi.cpp",
+           "uint64_t read_varlen(const uint8_t* data, size_t& pos, size_t end) {",
+           "the reader itself"},
+          {"src/parse/midi.cpp", "const uint64_t length = read_varlen(data, pos, end);",
+           "read_message_length"},
+          {"src/parse/midi.cpp",
+           "pending += static_cast<int64_t>(read_varlen(data, pos, end));  // delta time",
+           "walk_track, the owner"}}},
     };
     return r;
 }
