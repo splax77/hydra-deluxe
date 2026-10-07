@@ -59,9 +59,9 @@ inline uint64_t fnv_opt(uint64_t h, const std::optional<T>& o) {
 inline uint64_t fold(uint64_t all, uint64_t chart) { return fnv(all, &chart, sizeof chart); }
 
 // One chart's stored result row: bestpath, the structure blob, every node's
-// hash and payload, and the summary columns. The key columns (hash,
-// chartmode, cap, lens) are left out: they come from the settings, not the
-// analysis.
+// hash and payload, and the summary columns. The row's identity and build
+// stamp fields (see store::PreparedRow) are left out: they come from the
+// settings and the build, not from the analysis.
 inline uint64_t row_hash(const store::PreparedRow& r) {
     uint64_t h = kSeed;
     h = fnv_str(h, r.bestpath);

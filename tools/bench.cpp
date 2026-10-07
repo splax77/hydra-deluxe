@@ -231,8 +231,10 @@ static void corpus_bench() {
 }
 
 // The settings --engine and --parse run under: the ini beside the exe, read
-// the way hydra_batch reads it, under this run's rules. Pointing a run at
-// other settings means a copy of the exe beside another ini.
+// through app::Settings::load, under this run's rules. hydra_batch reads the
+// same ini but takes legacy fills from its own flag (src/cli/batch.cpp); this
+// keeps the ini's. Pointing a run at other settings means a copy of the exe
+// beside another ini.
 static app::Settings ini_settings() {
     app::Settings st = app::Settings::load();
     st.rules = g_rules;
