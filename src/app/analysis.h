@@ -25,6 +25,10 @@
 
 namespace hydra::app {
 
+namespace report {
+struct ReportSeed;  // app/report.h
+}
+
 // One chart file found on disk, with enough metadata to register it in the
 // store. `sig` fingerprints the source files
 // (sizes + mtimes) so a later rescan can skip re-hashing unchanged charts;
@@ -157,8 +161,15 @@ AnalysisResult analyze_chart_file(const std::string& filepath,
 // Thrown out of a search's progress callback to stop a cancelled analysis.
 // It does not derive from std::exception, so no catch (const std::exception&)
 // on the way out (the all-0 pass in search/pather.cpp has one) swallows it.
-// The single-chart Analyze job and run_batch both stop searches with it.
+// The single-chart Analyze job, run_batch and the path report's pass all stop
+// searches with it.
 struct AnalysisCancelled {};
+
+// The progress callback a run hands each search so that setting *cancel stops
+// it at its next tick, by throwing AnalysisCancelled. Empty when `cancel` is
+// null: with nothing to check, the search gets no callback at all. run_batch
+// and the path report's pass both use it.
+std::function<void(float)> stop_on_cancel(const std::atomic<bool>* cancel);
 
 // Analyzes one chart file. analyze_chart_file is the real one; run_batch
 // takes another only from a test.
@@ -263,6 +274,13 @@ struct BatchCallbacks {
     // What analyzes one chart. Empty means analyze_chart_file. Its song's
     // length is saved too (analysis_song_length).
     ChartAnalyzer analyze;
+    // When set, each chart the run saved hands its path-report rows
+    // (report::chart_rows, built on the worker) to this seed, at the moment
+    // its on_result fires, so the report that follows the batch reuses them
+    // (D87 item 5). on_result itself keeps its signature: hydra_batch reads it.
+    // The seed must be for this run's chart mode, cap and lens
+    // (report::ReportSeed::for_run); run_batch throws otherwise.
+    report::ReportSeed* report_seed = nullptr;
 };
 
 // Runs the analysis + store::prepare_row for every chart in `plan` on a

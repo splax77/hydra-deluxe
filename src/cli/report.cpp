@@ -95,8 +95,11 @@ int report_main() {
     if (store->stamped_fill_rule() == hydra::FillDeadlineRule::Ch10)
         settings.legacy_fills = true;
     options.lens = settings.lens();
-    hydra::app::report::GeneratedReport report =
-        hydra::app::report::generate_report(*store, options);
+    // Every chart is analyzed afresh under these settings (D87 item 5): no
+    // batch ran first, so there is nothing to reuse.
+    options.run = settings.batch_run();
+    hydra::app::report::GeneratedReport report = hydra::app::report::generate_report(
+        *store, options, hydra::app::report::ReportSeed{});
     store->close();
 
     // No page: generate_report says why. An empty database keeps the tool's
@@ -110,7 +113,7 @@ int report_main() {
     }
 
     // Make the folder rather than throwing away the work: collecting the rows
-    // means inflating every stored record, which is the slow part.
+    // means analyzing every library chart, which is the slow part.
     std::filesystem::path outpath = std::filesystem::absolute(hydra::os_path(std::filesystem::u8path(out)));
     std::error_code ec;
     std::filesystem::create_directories(hydra::os_path(outpath.parent_path()), ec);

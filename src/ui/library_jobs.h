@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/report.h"
 #include "core/model.h"
 #include "store/record_store.h"
 #include "ui/job_base.h"
@@ -131,6 +132,10 @@ public:
     // The batch's settings: what its results are filed under, for the report
     // that follows it.
     const app::BatchRun& batch_run() const { return run_; }
+    // The report rows of every chart the run saved (D87 item 5), for the
+    // report that follows it. Read once the snapshot says finished; it moves
+    // the rows out.
+    app::report::ReportSeed take_report_seed() { return std::move(seed_); }
 
     struct Snapshot {
         bool preparing = true;  // BatchJob::run has not reached its first chart yet
@@ -185,6 +190,8 @@ private:
     store::RecordStore& store_;
     int workers_;
     app::ChartAnalyzer analyze_;  // empty = app::analyze_chart_file
+    // Filled by run_batch on the job's thread (BatchCallbacks::report_seed).
+    app::report::ReportSeed seed_;
 
     std::mutex pause_mu_;
     std::condition_variable pause_cv_;
@@ -246,20 +253,24 @@ private:
 
 // ---- ReportJob --------------------------------------------------------
 
-// Builds the sortable HTML path report from everything in the store — the
-// same page src/cli/report.cpp writes. Kicked off automatically when a
-// library batch analysis finishes; opens the browser only when `open_when_done`
-// (the user's "Open report automatically" setting). Collecting the rows
-// inflates every stored record, which can take seconds on a big library, so
-// it runs off the render thread like every other job. Where the page lands and
-// how it reaches the browser live in app/report_files.h.
+// Builds the sortable HTML path report for the library — the same page
+// src/cli/report.cpp writes (app::report::generate_report). Kicked off
+// automatically when a library batch analysis finishes; opens the browser only
+// when `open_when_done` (the user's "Open report automatically" setting).
+// Analyzing the library's charts can take seconds on a big library, so it runs
+// off the render thread like every other job. Where the page lands and how it
+// reaches the browser live in app/report_files.h.
 class ReportJob : public ResultJobBase {
 public:
     // hit_window_ms feeds the page's timing-tier bands (settings.hit_window_ms).
     // cap/lens: which records the page lists (the user's current SP cap, ms
-    // limit and score range).
+    // limit and score range). `run` is the batch's settings the charts are
+    // analyzed under (ReportOptions::run; the report fails without it), and
+    // `seed` the rows the batch already worked out.
     ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-              bool open_when_done, double hit_window_ms = kDefaultHitWindowMs);
+              bool open_when_done, double hit_window_ms = kDefaultHitWindowMs,
+              std::optional<app::BatchRun> run = std::nullopt,
+              app::report::ReportSeed seed = {});
     ~ReportJob() { shutdown(); }
 
     void start();
@@ -283,6 +294,8 @@ private:
     store::Lens lens_;
     bool open_when_done_;
     double hit_window_ms_;
+    std::optional<app::BatchRun> run_;
+    app::report::ReportSeed seed_;
     ReportOutcome outcome_;
 };
 

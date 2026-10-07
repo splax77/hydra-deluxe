@@ -21,6 +21,7 @@
 
 #include "app/dynamics_breakdown.h"
 #include "app/preview_source.h"  // ini_delay_ms, sng_metadata_delay_ms
+#include "app/report.h"        // ReportSeed, chart_rows
 #include "app/song_length.h"   // stated_length_ms, chart_song_length_ms
 #include "app/user_messages.h"  // plain_error
 #include "app/work_pool.h"
@@ -701,6 +702,13 @@ AnalysisResult analyze_chart_file(const std::string& filepath,
     return AnalysisResult{std::move(record), std::move(song)};
 }
 
+std::function<void(float)> stop_on_cancel(const std::atomic<bool>* cancel) {
+    if (!cancel) return {};
+    return [cancel](float) {
+        if (cancel->load(std::memory_order_relaxed)) throw AnalysisCancelled{};
+    };
+}
+
 // ---- batch runner -----------------------------------------------------
 
 // 8 = a memory/throughput choice: enough threads to keep a modern CPU busy
@@ -726,6 +734,9 @@ struct WorkResult {
     std::optional<store::DynamicsEntry> dynamics;
     // The song's length, worked out on the worker (analysis_song_length).
     store::SongLength length;
+    // The chart's path-report rows, built on the worker only when the run
+    // has a seed to hand them to (BatchCallbacks::report_seed).
+    std::vector<report::ReportRow> report_rows;
     // A failed chart, from its analysis or its save: record_failure fills
     // these in from the exception while its type is still known (the
     // sentence is plain_error's, the error is the raw text).
@@ -810,6 +821,11 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
     const std::atomic<bool>* cancel = callbacks.cancel;
     const store::CapQuery cap = run.cap_query();
     const std::vector<ScanItem>& todo = plan.todo;
+    report::ReportSeed* const seed = callbacks.report_seed;
+    // A seed filed under other settings would hand the report rows it must
+    // not show, so the run refuses it before its first chart.
+    if (seed && (seed->chartmode != run.chartmode || seed->cap != cap || seed->lens != run.lens))
+        throw std::invalid_argument("run_batch: the report seed is for other settings");
 
     BatchProgress progress;
     progress.total = plan.todo_rows();
@@ -817,16 +833,10 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
     if (callbacks.on_progress) callbacks.on_progress(progress);
     if (todo.empty()) return;
 
-    // A running search checks for cancel in its progress callback. Throwing
-    // AnalysisCancelled there unwinds it at the next tick (the engine reports
-    // every half percent of the chart), the way the single-chart Analyze
-    // button stops. With no cancel flag there is nothing to check, so the
-    // search gets no callback at all, exactly as before.
-    std::function<void(float)> check_cancel;
-    if (cancel)
-        check_cancel = [cancel](float) {
-            if (cancel->load(std::memory_order_relaxed)) throw AnalysisCancelled{};
-        };
+    // A running search checks for cancel in its progress callback, and stops
+    // at the next tick (the engine reports every half percent of the chart),
+    // the way the single-chart Analyze button stops.
+    const std::function<void(float)> check_cancel = stop_on_cancel(cancel);
     const ChartAnalyzer analyze =
         callbacks.analyze ? callbacks.analyze : ChartAnalyzer(analyze_chart_file);
 
@@ -840,6 +850,10 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
     // callback, so a caller numbering its lines reads the number from the
     // progress (D79).
     const auto report = [&](const WorkResult& wr) {
+        // The chart's report rows go to the seed once, with its first row's
+        // on_result: only a chart that was saved is handed over.
+        if (seed && !wr.failed)
+            seed->rows[normalize_chart_hash(wr.item.md5)] = wr.report_rows;
         for (int r = 0; r < wr.rows; ++r) {
             if (wr.failed) ++progress.failed;
             else ++progress.analyzed;
@@ -894,6 +908,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                         settings.prodrums);
                     wr.length =
                         analysis_song_length(item.timing, item.notespath, ar.song, settings);
+                    if (seed) wr.report_rows = report::chart_rows(ar.record, seed->max_paths);
                     wr.analysis = std::move(ar);
                 } catch (const AnalysisCancelled&) {
                     wr.cancelled = true;

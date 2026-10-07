@@ -548,12 +548,15 @@ void AppState::update_background_jobs() {
         if (!batch_job->is_cancelled() && !report_started) {
             report_started = true;
             // The report lists the records the batch filed: its cap and lens,
-            // not whatever the settings bar holds now. Opening the page and
-            // its timing bands only shape the page, so they stay live.
+            // not whatever the settings bar holds now, analyzed under the
+            // batch's settings, reusing the charts the batch just analyzed
+            // (D87 item 5). Opening the page and its timing bands only shape
+            // the page, so they stay live.
             const app::BatchRun& run = batch_job->batch_run();
             report_job = std::make_unique<ReportJob>(*store, run.cap_query(), run.lens,
                                                      settings.auto_open_report,
-                                                     settings.hit_window_ms);
+                                                     settings.hit_window_ms, run,
+                                                     batch_job->take_report_seed());
             report_job->start();
         }
     }
