@@ -1359,12 +1359,15 @@ std::string_view next_chart_line(std::string_view text, size_t& pos) {
     return line;
 }
 
-// How many lines a section has from `pos` up to the "}" that closes it in
+// The line that closes a section, for load_sections and the count below.
+constexpr std::string_view kSectionCloseLine = "}";
+
+// How many lines a section has from `pos` up to the line that closes it in
 // ChartParser::load_sections. It sizes the drum section's line list once; the
 // lines load_sections drops make it run high, never low.
 size_t lines_to_section_close(std::string_view text, size_t pos) {
     size_t n = 0;
-    while (pos < text.size() && next_chart_line(text, pos) != "}") ++n;
+    while (pos < text.size() && next_chart_line(text, pos) != kSectionCloseLine) ++n;
     return n;
 }
 
@@ -1394,7 +1397,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
         if (in_section) {
             if (line == "{") {
                 // block open
-            } else if (line == "}") {
+            } else if (line == kSectionCloseLine) {
                 switch (keep) {
                     case Keep::Whole:
                         sections_[whole->name] = std::move(*whole);
