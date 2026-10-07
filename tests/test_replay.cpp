@@ -1286,7 +1286,8 @@ TEST_CASE("replay names each note's dynamic") {
 }
 
 // The chord-score table on ten hand-built chords: seven Red singles, then a
-// Kick + Red + accent Yellow cymbal that crosses the 10-note step, a Kick +
+// Kick + Red + accent Yellow cymbal that crosses a step of to_multiplier
+// (core/timing.h), a Kick +
 // ghost Red, and a plain Red + Yellow inside a solo. Every value is a literal
 // pinned from one run.
 TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
@@ -1304,8 +1305,8 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
     REQUIRE(table.rows.size() == 10);
     REQUIRE(table.notes.size() == 14);
 
-    // The straddle: notes 8 and 9 at 1x, the accent cymbal (the dearest,
-    // so last) is the 10th note, at 2x.
+    // The straddle: its first two notes are paid below the step and the
+    // accent cymbal (the dearest, so last) above it.
     const ChordScoreRow& straddle = table.rows[7];
     CHECK(straddle.base == 180);
     CHECK(straddle.combo == 130);

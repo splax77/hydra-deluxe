@@ -134,7 +134,8 @@ struct ReplayNote {
     bool cymbal = false;
     int sp_points = 0;
     // The combo multiplier this note was paid at, as category_scores applied
-    // it. Notes of one chord differ when the chord straddles 10, 20 or 30.
+    // it. Notes of one chord can differ when the chord straddles a step of
+    // to_multiplier (core/timing.h).
     int multiplier = 1;
     // What this note's ghost or accent earned, multiplier included
     // (CategoryScores::dynamics_bonus); 0 for a plain note. A mis-hit dynamic

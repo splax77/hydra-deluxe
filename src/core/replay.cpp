@@ -119,18 +119,21 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.multiplier_after = sg.multiplier_after;
 
         if (!options.scores_only) {
+            // The table priced these same notes in this same order, so the
+            // counts always agree; a mismatch is a bug, said out loud.
             const std::vector<ChordNote> ordering = ts.chord.notes(true);
-            const size_t priced = sg.note_end - sg.note_begin;
+            if (sg.note_end - sg.note_begin != ordering.size())
+                throw std::logic_error("replay: the chord at tick " + std::to_string(row.tick) +
+                                       " has a different note count in the chord-score table");
             row.notes.reserve(ordering.size());
             for (size_t k = 0; k < ordering.size(); ++k) {
-                const CategoryScores* own =
-                    k < priced ? &table.notes[sg.note_begin + k] : nullptr;
+                const CategoryScores& own = table.notes[sg.note_begin + k];
                 ReplayNote note;
                 note.color = ordering[k].colortype;
                 note.cymbal = ordering[k].is_cymbal();
-                note.sp_points = own ? own->sp : 0;
-                note.multiplier = own ? own->multiplier : 1;
-                note.dynamics_bonus = own ? own->dynamics_bonus : 0;
+                note.sp_points = own.sp;
+                note.multiplier = own.multiplier;
+                note.dynamics_bonus = own.dynamics_bonus;
                 note.dynamic = ordering[k].dynamictype;
                 row.notes.push_back(note);
             }
