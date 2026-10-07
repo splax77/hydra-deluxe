@@ -109,12 +109,6 @@ std::string hash_chart_file(const std::string& path);
 // (RecordStore::reidentify_chart).
 std::string chart_files_sig(const std::string& notespath);
 
-// Whether a stored fingerprint could ever show a chart's files unchanged.
-// The rescan cache's "unchanged" test (sig_unchanged in analysis.cpp) asks
-// this first, so a fingerprint that fails it is not worth storing to skip a
-// later hash.
-bool sig_can_show_unchanged(const std::string& sig);
-
 // What a chart's files are now, when they are not what a library row stored.
 struct ChartNow {
     std::string md5;  // hash_chart_file now; empty when the file cannot be read

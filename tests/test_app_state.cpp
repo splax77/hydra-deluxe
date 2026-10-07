@@ -454,7 +454,7 @@ void remove_click_ini(const ChartLibraryEntry& chart) {
 
 // D96 follow-up: a folder chart whose song.ini was deleted after the scan
 // gives no fingerprint now, and that one could never show the files unchanged
-// on a later click (app::sig_can_show_unchanged). Saving it would buy nothing
+// on a later click (store::sig_can_show_unchanged). Saving it would buy nothing
 // and cost a database write and a library reload on every click.
 TEST_CASE("clicking a touched chart that lost its song.ini leaves its library row alone") {
     ScratchPaths paths("appstate_click_noini");
