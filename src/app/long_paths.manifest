@@ -3,11 +3,16 @@
      long-path aware, so on a machine with long paths enabled (the
      LongPathsEnabled policy) third-party code such as SQLite and the C++ file
      library also lifts the 260-character limit. Hydra's own file calls work at
-     any length either way, through core/winstr's win32_path. -->
+     any length either way, through core/winstr's win32_path.
+     It also puts every Hydra executable on Windows' segment heap, which
+     changes how memory is handed out, never what is computed (D86 item 4). -->
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings xmlns:ws2="http://schemas.microsoft.com/SMI/2016/WindowsSettings">
       <ws2:longPathAware>true</ws2:longPathAware>
+    </windowsSettings>
+    <windowsSettings xmlns:ws3="http://schemas.microsoft.com/SMI/2020/WindowsSettings">
+      <ws3:heapType>SegmentHeap</ws3:heapType>
     </windowsSettings>
   </application>
 </assembly>

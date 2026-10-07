@@ -90,10 +90,13 @@ struct Enum {
     // Every deactivation edge's squeeze choices, back to back.
     std::vector<ChoiceView> choices;
     int32_t start = -1;
+    // The graph's backend rows; each deactivation edge reads a range of them.
+    const std::vector<BackendSqueeze>* all_backends = nullptr;
 };
 
 Enum enumerate(const ScoreGraph& graph) {
     Enum en;
+    en.all_backends = &graph.all_backends();
     std::unordered_map<const ScoreGraphNode*, int32_t> node_idx;
     std::unordered_map<const ScoreGraphEdge*, int32_t> edge_idx;
     std::vector<const ScoreGraphNode*> pend_nodes;
@@ -1021,8 +1024,13 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     const std::optional<int64_t> sqout_phrase =
         sq ? std::optional<int64_t>(sq->chord) : std::nullopt;
     int32_t sp_delta = 0;
-    for (const BackendSqueeze& beo : eo->backends) {
-        const double be_offset = beo.offset();
+    // The edge's rows are a range of the graph's rows, each measured against
+    // the edge's dest, as ScoreGraph::edge_backends measures them, without
+    // copying a row.
+    const double deact_end_ms = eo->dest->timecode.ms();
+    for (int32_t bi = eo->backend_begin; bi < eo->backend_end; ++bi) {
+        const BackendSqueeze& beo = (*en_.all_backends)[(size_t)bi];
+        const double be_offset = offset_from_sp_end(beo.timecode.ms(), deact_end_ms);
         const core::SqOutPosition pos =
             core::sqout_position(beo.timecode.ticks(), sqout_phrase);
         const int32_t already_paid =
@@ -1821,7 +1829,8 @@ struct BuildNode {
     std::vector<int> children;
 };
 
-std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths,
+std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
+                           const std::vector<OutPath>& out_paths,
                            const std::vector<OutAct>& out_acts,
                            const std::vector<OutSq>& out_sqs,
                            const std::vector<SpEndStep>& out_ends,
@@ -1865,7 +1874,7 @@ std::vector<MPath> rebuild(const Enum& en, const std::vector<OutPath>& out_paths
             act.frontend_points = node->branch_edge->frontend_points;
             act.e_offset = oa.e_offset;
             if (oa.deact_edge >= 0) {
-                act.backends = en.edges[(size_t)oa.deact_edge]->backends;
+                act.backends = graph.edge_backends(*en.edges[(size_t)oa.deact_edge]);
             } else if (oa.final_sp_end != NO_TIME) {
                 // SP outlasted the chart, so no deact edge was ever built and
                 // no edge holds these notes. Measure the song's trailing notes
@@ -2014,7 +2023,7 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
     if (!engine.run())
         throw KindedError(ErrorKind::SearchBroken, "search reached a broken state");
 
-    return rebuild(en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
+    return rebuild(graph, en, engine.out_paths(), engine.out_acts(), engine.out_sqs(),
                    engine.out_ends(), engine.out_ticks(), graph.tail_backends(),
                    graph.timing(), graph.note_count());
 }

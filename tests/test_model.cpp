@@ -35,6 +35,36 @@ TEST_CASE("basescore matches ChordNote.basescore") {
               .basescore() == 130);
 }
 
+// The kick and the green tie at 50, so the sort must keep their lane order:
+// the order category_scores prices a chord's notes in. note_list owns it and
+// notes(true) copies it, so both give these lanes.
+TEST_CASE("note_list(true) orders a tied chord as notes(true) always has") {
+    Chord c;
+    c.at(NoteColor::Kick) = ChordNote{NoteColor::Kick};
+    c.at(NoteColor::Yellow) = ChordNote{NoteColor::Yellow, NoteDynamicType::Normal,
+                                        NoteCymbalType::Cymbal, false};
+    c.at(NoteColor::Blue) = ChordNote{NoteColor::Blue, NoteDynamicType::Accent};
+    c.at(NoteColor::Green) = ChordNote{NoteColor::Green};
+    const std::vector<NoteColor> sorted = {NoteColor::Kick, NoteColor::Green,
+                                           NoteColor::Yellow, NoteColor::Blue};
+
+    const auto listed = c.note_list(true);
+    REQUIRE(listed.size() == sorted.size());
+    for (size_t i = 0; i < sorted.size(); ++i) CHECK(listed[i].colortype == sorted[i]);
+
+    const std::vector<ChordNote> copied = c.notes(true);
+    REQUIRE(copied.size() == sorted.size());
+    for (size_t i = 0; i < sorted.size(); ++i) CHECK(copied[i].colortype == sorted[i]);
+
+    // Unsorted, the notes come in lane order.
+    const std::vector<NoteColor> lanes = {NoteColor::Kick, NoteColor::Yellow, NoteColor::Blue,
+                                          NoteColor::Green};
+    const auto unsorted = c.note_list(false);
+    REQUIRE(unsorted.size() == lanes.size());
+    size_t i = 0;
+    for (const ChordNote& note : unsorted) CHECK(note.colortype == lanes[i++]);
+}
+
 TEST_CASE("note value: one owner for base, cymbal and dynamic points") {
     CHECK(kNoteBasePoints == 50);
     CHECK(kCymbalBonusPoints == 15);

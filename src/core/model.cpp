@@ -180,17 +180,29 @@ const std::optional<ChordNote>& Chord::at(NoteColor c) const {
     return notemap_[static_cast<int>(c) - 1];
 }
 
-std::vector<ChordNote> Chord::notes(bool basesorted) const {
-    std::vector<ChordNote> out;
+Chord::NoteList Chord::note_list(bool basesorted) const {
+    NoteList out;
     for (const auto& slot : notemap_)
-        if (slot.has_value()) out.push_back(*slot);
-    if (basesorted) {
-        std::stable_sort(out.begin(), out.end(),
-                         [](const ChordNote& a, const ChordNote& b) {
-                             return a.basescore() < b.basescore();
-                         });
+        if (slot.has_value()) out.notes_[out.count_++] = *slot;
+    if (!basesorted) return out;
+    // An insertion sort moves a note only past higher scores, so ties keep
+    // lane order: the stable sort the header promises, with no heap.
+    for (size_t i = 1; i < out.count_; ++i) {
+        const ChordNote x = out.notes_[i];
+        const int bx = x.basescore();
+        size_t j = i;
+        while (j > 0 && bx < out.notes_[j - 1].basescore()) {
+            out.notes_[j] = out.notes_[j - 1];
+            --j;
+        }
+        out.notes_[j] = x;
     }
     return out;
+}
+
+std::vector<ChordNote> Chord::notes(bool basesorted) const {
+    const NoteList list = note_list(basesorted);
+    return std::vector<ChordNote>(list.begin(), list.end());
 }
 
 int Chord::count() const {

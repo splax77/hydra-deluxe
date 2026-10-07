@@ -192,8 +192,26 @@ public:
     std::optional<ChordNote>& at(NoteColor c);
     const std::optional<ChordNote>& at(NoteColor c) const;
 
-    // Non-empty notes. basesorted uses a *stable* sort on basescore (Python's
-    // list.sort is stable), which the scoring tie-break depends on.
+    // A chord's notes held in place, at most one per lane, so listing them
+    // never allocates. note_list fills it.
+    class NoteList {
+    public:
+        size_t size() const { return count_; }
+        const ChordNote& operator[](size_t i) const { return notes_[i]; }
+        const ChordNote* begin() const { return notes_.data(); }
+        const ChordNote* end() const { return notes_.data() + count_; }
+
+    private:
+        friend class Chord;
+        std::array<ChordNote, 5> notes_{};
+        size_t count_ = 0;
+    };
+
+    // Non-empty notes, in lane order (KRYBG). basesorted uses a *stable* sort
+    // on basescore (Python's list.sort is stable), which the scoring
+    // tie-break depends on. The one owner of a chord's note order.
+    NoteList note_list(bool basesorted = false) const;
+    // note_list copied into a vector.
     std::vector<ChordNote> notes(bool basesorted = false) const;
 
     int count() const;

@@ -30,7 +30,7 @@ CategoryScores category_scores(const Chord& chord, int combo,
     out.multiplier = to_multiplier(combo);
     out.multiplier_after = out.multiplier;
 
-    const std::vector<ChordNote> ordering = chord.notes(true);
+    const Chord::NoteList ordering = chord.note_list(true);
     if (per_note) {
         per_note->clear();
         per_note->reserve(ordering.size());
