@@ -405,3 +405,5 @@ On the 97 test charts, 68 have an all-0 path again, up from 61 on main, and ever
 **D90 (two details of analyze on click), 2026-10-07.** Building D87's click raised two display questions. The user took the recommended answer to both:
 1. **A setting change re-analyzes the open song.** With a song open, changing a setting (2x Bass, the Path limit, the SP cap and the rest) analyzes it again under the new settings, the same as clicking it. Its summary row for those settings is saved when missing or different (D87 item 2). Other songs are untouched until clicked or batched.
 2. **A click's analysis doesn't lock the settings bar.** The bar stays usable while a click analyzes. Changing a setting cancels that analysis and starts one under the new settings. The lock during a whole-library batch is unchanged.
+
+**D91 (the library's not-analyzed tooltip), 2026-10-07.** With the Analyze button gone (D87 item 6), the library's tooltip on a row with no result told the user to press a button that no longer exists. The user chose the recommended wording, which matches the Stale tooltip: "Not analyzed yet. Click the song or run a batch to analyze it."
