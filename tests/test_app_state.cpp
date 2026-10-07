@@ -1146,6 +1146,35 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     std::filesystem::remove(std::filesystem::path(hydra::app::report_html_path()), ec);
 }
 
+// Memory audit fix 4: a stopped batch builds no report, so nothing reads the
+// report rows its saved charts handed over. They go when the run ends, not
+// when the finished strip is dismissed.
+TEST_CASE("a stopped batch lets go of its report rows when it ends") {
+    ScratchPaths paths("appstate_stopseed");
+    std::unique_ptr<AppState> app = app_on(paths);
+    const hydra::app::AnalysisResult real =
+        corpus::first_analyzed_with_paths(app->settings.batch_run().settings);
+    std::atomic<int> calls{0};
+    // The first chart is saved; the second runs until Stop.
+    start_redo_batch(*app, [&](const std::string&, const hydra::app::AnalysisSettings&,
+                               const std::function<void(float)>& on_progress)
+                               -> hydra::app::AnalysisResult {
+        if (calls++ == 0) return real;
+        for (;;) {
+            on_progress(0.0f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    });
+    while (app->batch_job->snapshot().analyzed < 1)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    stop_batch(*app);
+    app->update_background_jobs();
+
+    CHECK(app->report_job == nullptr);
+    REQUIRE(app->batch_job != nullptr);  // the finished strip is still up
+    CHECK(app->batch_job->take_report_seed().rows.empty());
+}
+
 // The confirm counts library rows, every copy included, like the library
 // does (D76), and reads which have a result from the store, not from the
 // library's cached rows.

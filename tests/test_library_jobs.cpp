@@ -317,6 +317,23 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
           hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::NoRecords, "x")));
 }
 
+// Memory audit fix 4: the batch's rows are read by the report's one pass and
+// nothing after it, so the job lets them go then, not when the finished
+// strip is dismissed. An empty store ends the pass with no page, so no file
+// is written.
+TEST_CASE("jobs: a report job lets go of the batch's rows once its pass is done") {
+    RecordStore store(":memory:");
+    const BatchRun run = test_run();
+    hydra::app::report::ReportSeed seed = hydra::app::report::ReportSeed::for_run(run);
+    seed.rows["fake0"] = {};
+    hydra::ui::ReportJob job(store, run.cap_query(), run.lens, /*open_when_done=*/false, 85.5,
+                             run, std::move(seed));
+    REQUIRE(job.seed_charts_for_test() == 1);
+    job.start();
+    REQUIRE(wait_until([&] { return job.finished(); }));
+    CHECK(job.seed_charts_for_test() == 0);
+}
+
 TEST_CASE("jobs: a report the browser refuses is saved, not failed") {
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("jobs_report"));
     const std::filesystem::path page = dir / "report.html";

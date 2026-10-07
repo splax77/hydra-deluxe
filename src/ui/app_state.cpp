@@ -452,6 +452,10 @@ void AppState::start_batch(bool redo) {
 void AppState::update_background_jobs() {
     if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {
         batch_finish_seen_ = true;
+        // The report below is the seed's only reader. A run that builds none
+        // lets the rows go here rather than when its strip is dismissed
+        // (memory audit fix 4).
+        app::report::ReportSeed seed = batch_job->take_report_seed();
         // tick_library re-reads the summaries once the batch ends.
         // One path report per finished run. A stopped run keeps its results
         // but builds no report: a report of part of the library would read
@@ -467,7 +471,7 @@ void AppState::update_background_jobs() {
             report_job = std::make_unique<ReportJob>(*store, run.cap_query(), run.lens,
                                                      settings.auto_open_report,
                                                      settings.hit_window_ms, run,
-                                                     batch_job->take_report_seed());
+                                                     std::move(seed));
             report_job->start();
         }
     }
