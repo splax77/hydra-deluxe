@@ -129,8 +129,7 @@ void usage() {
         "Its JSON carries dump's \"paths\" shape plus \"realized\"; when that is\n"
         "false, \"failed_tick\" names the activation of the first window no path\n"
         "realizes, \"realized_prefix\" how many of the leading windows one does,\n"
-        "and \"failed_reason\" what broke: \"activation\", \"window_end\" or\n"
-        "\"sqout\" (see TargetResult in search/pather.h).\n"
+        "and \"failed_reason\" what broke (TargetResult in search/pather.h).\n"
         "--legacy-fills prices the chart under Clone Hero 1.0's fill deadline,\n"
         "which is what a 1.0 run was played under, the same as the app's\n"
         "\"1.0 fills\" setting.\n"
@@ -518,10 +517,7 @@ int cmd_target(const Args& a, const app::Settings& s) {
     // read exactly as score reads them.
     std::vector<PinnedWindow> windows;
     if (a.path.empty() && a.acts.empty()) {
-        std::vector<int64_t> sorted = ticks;
-        std::sort(sorted.begin(), sorted.end());
-        sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
-        for (const int64_t t : sorted) windows.push_back(PinnedWindow{t});
+        windows = activation_pins(ticks);
     } else {
         // A typed offset names its chord only approximately; pinned_windows
         // matches it, and "pins" in the JSON shows the chord used.

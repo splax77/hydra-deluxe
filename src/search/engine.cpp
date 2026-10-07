@@ -1786,17 +1786,15 @@ bool Engine::run() {
                 if (end_edge >= 0) {
                     if (const std::optional<int64_t> pinned = pinned_end(p)) {
                         // A window pinned in full (EngineOptions::
-                        // target_deact_ticks) answers this node's choice.
-                        // Before its end the path keeps going; on it, it
-                        // ends here when this node offers an end, and keeps
-                        // going otherwise (two SP nodes can end on one tick,
-                        // deactivation_type); past it the path has left the
-                        // pinned window and dies.
+                        // target_deact_ticks) answers this node's choice:
+                        // before its end only the path that keeps going
+                        // survives, on it only the one that ends here, and
+                        // past it neither.
                         const int64_t here = node(edge(end_edge).dest).tick;
                         if (here < *pinned) {
                             has_child = false;
                         } else if (here == *pinned) {
-                            if (has_child) can_extend = false;
+                            can_extend = false;
                         } else {
                             can_extend = false;
                             has_child = false;

@@ -608,7 +608,7 @@ TEST_CASE("keep_target_paths: every kept path and tied variant took exactly the 
     const std::vector<Path> in = {r1, r6, made(10, {300})};
 
     std::vector<bool> promoted;
-    const std::vector<Path> out = keep_target_paths(in, {100, 200}, &promoted);
+    const std::vector<Path> out = keep_target_paths(in, activation_pins({100, 200}), &promoted);
     REQUIRE(out.size() == 2);
     CHECK(promoted == std::vector<bool>{false, true});
 
@@ -729,6 +729,39 @@ TEST_CASE("search_target: activation pins return the tick search's paths and its
     CHECK(bad.realized_prefix == 1);
     CHECK(bad.failed_tick == std::optional<int64_t>(12865));
     CHECK(bad.failed_reason == "activation");
+}
+
+// The binary search over more than two windows, on corpus chart Mutemath
+// "Allies" (its first stored path, four windows). One window's end is moved
+// one tick past its activation, where no Star Power ends: the last window,
+// then a middle one. The answers are pinned as read from one run.
+TEST_CASE("search_target: the binary search names the last or a middle window that breaks") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("Mutemath - Allies") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    REQUIRE_FALSE(rec.all_paths().empty());
+    const std::vector<PinnedWindow> pins = pinned_windows(*rec.all_paths().front());
+    REQUIRE(pins.size() == 4);
+
+    std::vector<PinnedWindow> last = pins;
+    last[3].deact_tick = last[3].act_tick + 1;
+    const TargetResult at_last = search_target(song, cfg, last);
+    CHECK(at_last.paths.empty());
+    CHECK(at_last.realized_prefix == 3);
+    CHECK(at_last.failed_tick == std::optional<int64_t>(49920));
+    CHECK(at_last.failed_reason == "window_end");
+
+    std::vector<PinnedWindow> middle = pins;
+    middle[1].deact_tick = middle[1].act_tick + 1;
+    const TargetResult at_middle = search_target(song, cfg, middle);
+    CHECK(at_middle.paths.empty());
+    CHECK(at_middle.realized_prefix == 1);
+    CHECK(at_middle.failed_tick == std::optional<int64_t>(22272));
+    CHECK(at_middle.failed_reason == "window_end");
 }
 
 // The phrases still ahead when SP ends, pinned (s1-fix-merge). D34 lets one

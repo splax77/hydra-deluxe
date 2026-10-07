@@ -214,16 +214,40 @@ bool took_exactly(const Path& p, const std::vector<int64_t>& ticks) {
     return true;
 }
 
+// Whether the pinned windows of `p` ended as pinned: on their deactivation
+// node, and, when the pin says how, on its squeeze-out or plainly. The
+// path's own windows are read once, through pinned_windows.
+bool ended_as_pinned(const Path& p, const std::vector<PinnedWindow>& windows) {
+    if (windows.empty() || !windows.front().deact_tick) return true;
+    std::vector<PinnedWindow> got;
+    try {
+        got = pinned_windows(p);
+    } catch (const std::invalid_argument&) {
+        return false;  // a window with no end to compare
+    }
+    for (size_t i = 0; i < windows.size() && windows[i].deact_tick; ++i) {
+        if (i >= got.size() || got[i].deact_tick != windows[i].deact_tick) return false;
+        if (windows[i].check_sqout && got[i].squeezed_out != windows[i].squeezed_out)
+            return false;
+    }
+    return true;
+}
+
 }  // namespace
 
-std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<int64_t>& ticks,
+std::vector<Path> keep_target_paths(std::vector<Path> paths,
+                                    const std::vector<PinnedWindow>& windows,
                                     std::vector<bool>* promoted) {
     // A tick the search never met as an activation opportunity -- not a fill
     // node at all, or one the path was already under Star Power for -- does
     // not empty the frontier: that path just quietly comes back with fewer
     // activations than asked for.
+    std::vector<int64_t> ticks;
+    for (const PinnedWindow& w : windows) ticks.push_back(w.act_tick);
     return keep_paths_where(
-        std::move(paths), [&ticks](const Path& p) { return took_exactly(p, ticks); }, promoted);
+        std::move(paths),
+        [&](const Path& p) { return took_exactly(p, ticks) && ended_as_pinned(p, windows); },
+        promoted);
 }
 
 namespace {
@@ -236,25 +260,11 @@ ScoreGraph target_graph(const Song& song, const SearchSettings& settings) {
                       fill_rule_for(settings.legacy_fill_deadline), settings.rules);
 }
 
-// Whether the pinned windows of `p` ended as pinned: on their deactivation
-// node, and, when the pin says how, on its squeeze-out or plainly.
-bool ended_as_pinned(const Path& p, const std::vector<PinnedWindow>& windows) {
-    const ActivationWalk acts = p.walk_activations();
-    for (size_t i = 0; i < windows.size() && i < acts.size(); ++i) {
-        const PinnedWindow& w = windows[i];
-        if (!w.deact_tick) break;
-        if (acts[i].deact_tick() != w.deact_tick) return false;
-        if (w.check_sqout && acts[i].sqout_tick != w.squeezed_out) return false;
-    }
-    return true;
-}
-
 // The one target run both search_target entry points make, over a graph
 // already built: activate at exactly the windows' act ticks (sorted, pinned
 // ones first, as search_target over windows checks), each pinned window
-// ending on its deactivation node. Only the paths that took exactly those
-// activations and ended the pinned windows as pinned stay; none left means
-// the windows are not realizable.
+// ending on its deactivation node. keep_target_paths then keeps what it
+// keeps; none left means the windows are not realizable.
 std::vector<Path> run_target(const ScoreGraph& graph, const std::vector<PinnedWindow>& windows,
                              std::vector<bool>* promoted) {
     std::vector<int64_t> ticks;
@@ -278,10 +288,7 @@ std::vector<Path> run_target(const ScoreGraph& graph, const std::vector<PinnedWi
         if (promoted) promoted->clear();
         return {};
     }
-    return keep_paths_where(
-        std::move(paths),
-        [&](const Path& p) { return took_exactly(p, ticks) && ended_as_pinned(p, windows); },
-        promoted);
+    return keep_target_paths(std::move(paths), windows, promoted);
 }
 
 // The first `k` windows.
@@ -294,12 +301,15 @@ std::vector<PinnedWindow> prefix_of(const std::vector<PinnedWindow>& windows, si
 std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
                                 const std::vector<int64_t>& act_ticks,
                                 std::vector<bool>* promoted) {
-    std::vector<int64_t> ticks = act_ticks;
+    return run_target(target_graph(song, settings), activation_pins(act_ticks), promoted);
+}
+
+std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks) {
     std::sort(ticks.begin(), ticks.end());
     ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());
-    std::vector<PinnedWindow> windows;
-    for (const int64_t t : ticks) windows.push_back(PinnedWindow{t});
-    return run_target(target_graph(song, settings), windows, promoted);
+    std::vector<PinnedWindow> out;
+    for (const int64_t t : ticks) out.push_back(PinnedWindow{t});
+    return out;
 }
 
 TargetResult search_target(const Song& song, const SearchSettings& settings,
@@ -417,21 +427,12 @@ std::string full_pin_mismatch(const Song& song, const SearchSettings& settings,
         differ("path", "'" + got.pathstring() + "'", "'" + path.pathstring() + "'");
     if (got.totalscore() != path.totalscore())
         differ("total", std::to_string(got.totalscore()), std::to_string(path.totalscore()));
+    // The activations and ends already match: keep_target_paths kept only such
+    // paths.
     const ActivationWalk mine = path.walk_activations();
     const ActivationWalk theirs = got.walk_activations();
-    const std::vector<PinnedWindow> got_pins = pinned_windows(got);
-    for (size_t i = 0; i < pins.size() && i < got_pins.size(); ++i) {
+    for (size_t i = 0; i < mine.size() && i < theirs.size(); ++i) {
         const std::string at = "window " + std::to_string(pins[i].act_tick) + " ";
-        const auto tick = [](const std::optional<int64_t>& t) {
-            return std::to_string(t.value_or(-1));
-        };
-        if (got_pins[i].act_tick != pins[i].act_tick)
-            differ(at + "activation", std::to_string(got_pins[i].act_tick),
-                   std::to_string(pins[i].act_tick));
-        if (got_pins[i].deact_tick != pins[i].deact_tick)
-            differ(at + "end", tick(got_pins[i].deact_tick), tick(pins[i].deact_tick));
-        if (got_pins[i].squeezed_out != pins[i].squeezed_out)
-            differ(at + "squeeze-out", tick(got_pins[i].squeezed_out), tick(pins[i].squeezed_out));
         if (theirs[i].sp_meter() != mine[i].sp_meter())
             differ(at + "SP meter", std::to_string(theirs[i].sp_meter()),
                    std::to_string(mine[i].sp_meter()));
@@ -439,8 +440,6 @@ std::string full_pin_mismatch(const Song& song, const SearchSettings& settings,
             differ(at + "skips", std::to_string(theirs[i].skips()),
                    std::to_string(mine[i].skips()));
     }
-    if (got_pins.size() != pins.size())
-        differ("windows", std::to_string(got_pins.size()), std::to_string(pins.size()));
     return diffs;
 }
 

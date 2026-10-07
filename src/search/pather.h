@@ -120,6 +120,10 @@ std::vector<PinnedWindow> pinned_windows(const Song& song,
 // hand-built one, with no SP-end history).
 std::vector<PinnedWindow> pinned_windows(const Path& path);
 
+// An activation tick list as activation-only pins: sorted, each tick once.
+// search_target over ticks and hydra_replay target --ticks both read it.
+std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks);
+
 // What a target search found. When `paths` is empty, `realized_prefix`
 // counts the leading windows some path does realize, `failed_tick` is the
 // activation tick of the first window none does, and `failed_reason` says
@@ -148,23 +152,26 @@ TargetResult search_target(const Song& song, const SearchSettings& settings,
                            std::vector<PinnedWindow> windows);
 
 // Whether `path`, handed back to search_target as a full pin, comes back
-// alone and the same: one path, no tied variant, with its path string, total
-// and windows (pinned_windows above, each window's SP meter and skips too).
-// "" when it does, else what differed. hydra_replay selfcheck and the corpus
-// test both ask it.
+// alone and the same. The search already keeps only paths with the pinned
+// activations and ends (keep_target_paths); this checks the rest: one path,
+// no tied variant, the same path string and total, and each window's SP
+// meter and skips. "" when it does, else what differed. hydra_replay
+// selfcheck and the corpus test both ask it.
 std::string full_pin_mismatch(const Song& song, const SearchSettings& settings,
                               const Path& path);
 
 // search_target's filter over the engine's paths (D45 and its addendum):
 // keeps only the paths, tied variants included, whose activations are
-// exactly `ticks` (ascending, no repeats). A kept path's tied variant that
+// exactly the windows' act ticks (ascending, no repeats) and whose pinned
+// windows ended as pinned (PinnedWindow). A kept path's tied variant that
 // missed one is dropped; its own qualifying variants are rebuilt standalone
 // and stay tied under the kept path, sharing nothing with it. When a root is
 // dropped, its qualifying variants are rebuilt standalone: the first leads
 // and the rest are its tied variants, in the engine's order. `promoted`,
 // when given, gets one entry per returned path: true when that path is such
 // a rebuilt variant. The search folded it, so it is not an unfolded root.
-std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<int64_t>& ticks,
+std::vector<Path> keep_target_paths(std::vector<Path> paths,
+                                    const std::vector<PinnedWindow>& windows,
                                     std::vector<bool>* promoted = nullptr);
 
 // Full analysis for one chart: one pass at settings.sp_cap bars (4 is Clone
