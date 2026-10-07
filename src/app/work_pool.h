@@ -55,9 +55,8 @@ constexpr size_t kWorkPoolWaitingPerWorker = 2;
 // with no cooks nothing would ever reach the pass.
 //
 // idle() runs on the calling thread whenever the runner finds the pass empty,
-// just before it waits, and once more after the last plate. A consumer that
-// holds work back (the batch's save groups) finishes it there, so nothing it
-// holds waits on the next plate. Most callers leave it out.
+// just before it waits, and once more after the last plate. Most callers leave
+// it out; run_batch passes its flush_group (app/analysis.cpp).
 struct NoIdle {
     void operator()() const {}
 };

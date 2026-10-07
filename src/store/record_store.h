@@ -353,8 +353,8 @@ inline std::string naming_copy_of_one_sql() {
            " WHERE md5 = ?1 AND copies > 1";
 }
 
-// The most charts one save group holds (D86 item 2). A group also closes
-// whenever the batch's writer catches up with its workers, so most hold fewer.
+// The most charts one save group holds (D86 item 2). When a group closes
+// sooner: see run_batch's flush_group (app/analysis.cpp).
 inline constexpr int kSaveGroupSize = 16;
 // The WAL checkpoint threshold, in pages, while a batch runs (D86 item 3).
 // RecordStore::BatchWrites sets it and puts SQLite's own back at the end.
@@ -419,8 +419,9 @@ public:
     void commit_save_group();
     bool save_group_open() const { return group_open_; }
     // True once a save inside the open group failed in a way that made SQLite
-    // roll back the whole transaction (a full disk, an I/O error, no memory).
-    // Every later save in the group then throws, and so does its commit.
+    // roll back the whole transaction (which failures do: see transaction_open
+    // in record_store.cpp). Every later save in the group then throws, and so
+    // does its commit.
     bool save_group_lost() const { return group_lost_; }
     // Test seam: the next commit_save_group throws as a failed COMMIT does,
     // after rolling the group back.
