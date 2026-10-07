@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "app/library_query.h"
-#include "app/user_messages.h"  // stale_text
+#include "app/user_messages.h"  // stale_text, kNotAnalyzedText
 #include "core/model.h"         // group_thousands, counted
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiSelectableFlags_SpanAvailWidth
@@ -413,8 +413,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
                 if (row.status == store::RecordStatus::NotAnalyzed)
-                    ImGui::SetTooltip("Not analyzed yet. Open the song and press \"Analyze this "
-                                      "song\", or use \"Analyze library...\".");
+                    ImGui::SetTooltip("%s", app::kNotAnalyzedText);
                 else if (row.status == store::RecordStatus::Stale)
                     // This one row's real cause, from the store.
                     ImGui::SetTooltip(

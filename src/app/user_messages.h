@@ -50,6 +50,11 @@ int run_tool(const std::function<int()>& body);
 // both, so there is never an empty line.
 std::string stale_text(bool build, bool rules);
 
+// What a library row with no result says when hovered (D91). The click and the
+// batch are the two ways to analyze it.
+inline constexpr const char* kNotAnalyzedText =
+    "Not analyzed yet. Click the song or run a batch to analyze it.";
+
 // What a result with no paths says in place of them.
 inline constexpr const char* kNoPathsFound = "No paths found.";
 

@@ -104,20 +104,27 @@ TEST_CASE("user_messages: report, rules, stored results, memory") {
 TEST_CASE("user_messages: stale_text names the real cause") {
     using hydra::app::stale_text;
     CHECK(stale_text(/*build=*/true, /*rules=*/false) ==
-          "Out of date: this result came from another Hydra version. Re-analyze to refresh "
-          "it.");
+          "Out of date: this result came from another Hydra version. Click the song or run a "
+          "batch to refresh it.");
     CHECK(stale_text(/*build=*/false, /*rules=*/true) ==
-          "Out of date: this result came from different rules in hydra_rules.ini. Re-analyze "
-          "to refresh it.");
+          "Out of date: this result came from different rules in hydra_rules.ini. Click the "
+          "song or run a batch to refresh it.");
     // Both causes: the sentence the details panel shows today, unchanged.
     const std::string both =
         "Out of date: this result came from another Hydra version or from different rules "
-        "in hydra_rules.ini. Re-analyze to refresh it.";
+        "in hydra_rules.ini. Click the song or run a batch to refresh it.";
     CHECK(stale_text(/*build=*/true, /*rules=*/true) == both);
     // Neither (a caller asking for a row that is not stale): no cause to
     // name, so today's sentence, never an empty line.
     CHECK(stale_text(/*build=*/false, /*rules=*/false) == both);
     CHECK(std::string(hydra::app::kNoPathsFound) == "No paths found.");
+}
+
+// D91: the not-analyzed row's tooltip names the click and the batch, and no
+// button (there is none).
+TEST_CASE("user_messages: the not-analyzed tooltip is D91's sentence") {
+    CHECK(std::string(hydra::app::kNotAnalyzedText) ==
+          "Not analyzed yet. Click the song or run a batch to analyze it.");
 }
 
 // The thrower names the kind, so the words of the error don't matter: every

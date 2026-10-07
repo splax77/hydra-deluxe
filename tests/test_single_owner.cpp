@@ -1220,6 +1220,21 @@ const std::vector<OwnerRule>& rules() {
           {"src/app/user_messages.cpp",
            "\". Click the song or run a batch to refresh it.\";",
            "stale_text, the owner: the sentence's ending (D87 item 6)"}}},
+        // The not-analyzed row's tooltip. The old copy was split over two
+        // source lines, so a rule on the whole sentence missed it; this one
+        // matches the sentence's first words, which sit on one line however
+        // the rest is split. kNotAnalyzedText is the one place it is typed.
+        {"What does a library row with no result say when hovered?",
+         "kNotAnalyzedText in src/app/user_messages.h",
+         R"(Not analyzed yet)",
+         "",
+         {"src/app/user_messages.h"},
+         {},
+         "D91 (2026-10-07)",
+         {"ImGui::SetTooltip(\"Not analyzed yet. Open the song and press \\\"Analyze this \"",
+          "\"Not analyzed yet. Click the song or run a batch to analyze it.\";"},
+         {"ImGui::SetTooltip(\"%s\", app::kNotAnalyzedText);"},
+         {}},
         // Cutting a label to end in "…": ImGui's own ellipsis renderer, its
         // ellipsis glyph, the "…" bytes typed out as escapes, or a "…" typed
         // straight into a string before any // comment. ellipsize is the one
