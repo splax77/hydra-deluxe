@@ -81,17 +81,20 @@ void test_preview(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->preview->playing());
 }
 
-// An analysis started while the Preview tab is visible must still store its
-// record and reap the job: persistence must not depend on the Paths tab
-// drawing. Pre-fix, analyze_job sat "finished" forever and the record was
-// never stored (the preview-then-analyze 300 s hang).
+// A click's analysis that finishes while the Preview tab is visible must
+// still save its summary and reap the job: persistence must not depend on the
+// Paths tab drawing. Pre-fix, the job sat "finished" forever and the record
+// was never stored (the preview-then-analyze 300 s hang).
 void test_analyze_on_preview(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
+    ViewGate gate;  // the analysis finishes only once the Preview shows
     if (!open_preview(ctx)) return;
-    ctx->ItemClick(analyze_button_ref(h).c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->analyze_job == nullptr; }, 300));
-    IM_CHECK(h.app->viewed.record.has_value());
+    IM_CHECK(h.app->view_running());
+    gate.open();
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->view_job && !h.app->view_pending; }, 300));
+    IM_CHECK(h.app->viewed.ready());
     IM_CHECK(!h.app->viewed.record->paths.empty());
+    IM_CHECK(h.app->view_row_status(0) == hydra::store::RecordStatus::Ready);
     // Switching to Paths shows the stored result, no re-analyze.
     ctx->ItemClick("##DetailsTabs/Paths");
     std::string best = h.app->viewed.record->best_path().pathstring();
@@ -138,9 +141,8 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     open_details(ctx, 0);
     if (ctx->IsError()) return;
-    ctx->ItemClick(analyze_button_ref(h).c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->analyze_job == nullptr; }, 300));
-    IM_CHECK(h.app->viewed.record.has_value());
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
 
     // A second path to switch to. Path rows are labeled by pathstring, so the
     // one picked must differ from the first path's and be unique among every
@@ -217,18 +219,18 @@ void test_preview_path_overlay(ImGuiTestContext* ctx) {
 // through the panel's buttons and keys.
 void test_preview_controls(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    if (!open_preview(ctx)) return;  // chart 0, not analyzed yet
+    ViewGate gate;  // holds chart 0's analysis while the Preview loads
+    if (!open_preview(ctx)) return;  // chart 0, its analysis held
     auto& pc = *h.app->preview;
 
     // No analyzed path: no score box.
     IM_CHECK(!pc.score_box().shown);
 
-    // Analyze from the Preview tab, then visit Paths and come back so the
-    // overlay (and with it the score) is rebuilt from the new record's path.
-    ctx->ItemClick(analyze_button_ref(h).c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->analyze_job == nullptr; }, 300));
-    IM_CHECK(h.app->viewed.record.has_value());
-    ctx->ItemClick("##DetailsTabs/Paths");
+    // Let the analysis land, then visit Paths and come back so the overlay
+    // (and with it the score) is rebuilt from the new record's path.
+    gate.open();
+    wait_song_analyzed(ctx);  // lands on Paths
+    if (ctx->IsError()) return;
     ctx->Yield(2);
     ctx->ItemClick("##DetailsTabs/Preview");
     // Wait for the reload to finish and the score box to appear, rather than
@@ -283,15 +285,13 @@ void test_preview_controls(ImGuiTestContext* ctx) {
 // viewed path, and saves a frame of the active box to look at.
 void test_preview_drain_box(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    if (!open_preview(ctx)) return;  // chart 0, not analyzed yet
+    if (!open_preview(ctx)) return;  // chart 0; the click analyzes it
     auto& pc = *h.app->preview;
 
-    // Analyze, then visit Paths and come back so the overlay is rebuilt from
-    // the new record's path (as preview-controls does).
-    ctx->ItemClick(analyze_button_ref(h).c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->analyze_job == nullptr; }, 300));
-    IM_CHECK(h.app->viewed.record.has_value());
-    ctx->ItemClick("##DetailsTabs/Paths");
+    // Wait for the analysis, then visit Paths and come back so the overlay is
+    // rebuilt from the new record's path (as preview-controls does).
+    wait_song_analyzed(ctx);  // lands on Paths
+    if (ctx->IsError()) return;
     ctx->Yield(2);
     ctx->ItemClick("##DetailsTabs/Preview");
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 60));
@@ -491,7 +491,7 @@ bool open_burnout_preview(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return false;
     open_titled(ctx, "burnout", "Burnout");
     if (ctx->IsError()) return false;
-    analyze_open_song(ctx);
+    wait_song_analyzed(ctx);
     if (ctx->IsError()) return false;
     IM_CHECK_RETV(h.app->viewed.record->best_path().pathstring() == "3- 1 2", false);
     ctx->ItemClick("##DetailsTabs/Preview");

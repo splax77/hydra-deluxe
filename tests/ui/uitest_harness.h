@@ -148,6 +148,23 @@ public:
     int started() const;
 };
 
+// Holds a click's analysis open until the test lets it through. A test chart
+// analyzes in a few milliseconds, so a test that looks at the running click
+// (its progress box, Cancel, a setting changed under it) would race it. While
+// a gate lives, every click's job waits at the gate, ticking progress so
+// Cancel and a setting change still stop it, until open(). started() counts
+// the jobs that reached it. Make it after reset_app; its destructor opens it
+// and removes the seam. Only one gate can exist at a time.
+class ViewGate {
+public:
+    ViewGate();
+    ~ViewGate();
+    ViewGate(const ViewGate&) = delete;
+    ViewGate& operator=(const ViewGate&) = delete;
+    void open();
+    int started() const;
+};
+
 // All text ImGui drew last frame plus the status line, for substring checks.
 std::string visible_text(Harness& h);
 
@@ -194,11 +211,10 @@ void set_panel_ref(ImGuiTestContext* ctx);
 void open_details(ImGuiTestContext* ctx, size_t index);
 // Type `search` into the library's search box, then open the row titled `title`.
 void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::string& title);
-// The ref of the song panel's Analyze button: "**/" and the label
-// hydra::ui::analyze_button_label gives for the viewed record's status.
-std::string analyze_button_ref(Harness& h);
-// Analyze the open song from the panel and wait for a Ready record.
-void analyze_open_song(ImGuiTestContext* ctx);
+// Wait for the open song's analysis (the click, or a setting changed with the
+// song open, starts it: D87 item 1, D90 item 1) and check it is Ready. Lands
+// the panel on its Paths tab first.
+void wait_song_analyzed(ImGuiTestContext* ctx);
 // Fresh app, scan, open chart 0's Preview and wait for the load. False on error.
 bool open_preview(ImGuiTestContext* ctx);
 

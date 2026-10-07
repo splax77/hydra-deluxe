@@ -3004,20 +3004,22 @@ const std::vector<OwnerRule>& rules() {
          {"bool finished() const { return finished_.load(); }"},
          {},
          {"src"}},
-        // The Analyze button's two labels typed as text. The closing quote
-        // keeps the "Re-analyze to refresh it." sentences out.
-        {"What does the song panel's Analyze button say?",
-         "analyze_button_label in src/ui/details_panel.cpp",
+        // The removed Analyze button's two labels typed as text (D87 item 6:
+        // a click analyzes). Only the GUI test that checks the button is
+        // gone may name them. The closing quote keeps the "Re-analyze to
+        // refresh it." sentences out.
+        {"Where may the removed Analyze button's labels appear?",
+         "test_no_analyze_button in tests/ui/uitest_details.cpp, which checks they are gone",
          R"re((Analyze this song|Re-analyze)")re",
-         R"(\banalyze_button_label\()",
-         {"src/ui/details_panel.cpp"},
+         "",
+         {"tests/ui/uitest_details.cpp"},
          {},
-         "audit finding 289; phase 6 task J2-4 (D53)",
+         "audit finding 289; phase 6 task J2-4 (D53); D87 item 6",
          {R"(return h.app->viewed.status == hydra::store::RecordStatus::NotAnalyzed ? "**/Analyze this song")",
           R"(: "**/Re-analyze";)"},
          {R"(IM_CHECK(visible_text(h).find("Also re-analyze") != std::string::npos);)",
           R"("A saved result couldn't be read. Re-analyze this song to replace it.";)",
-          R"(CHECK(analyze_button_label(RecordStatus::Stale) == std::string("Re-analyze"));)"},
+          R"("Click the song or run a batch to refresh it.")"},
          {},
          {"src", "tests"}},
         // The batch button's search label typed as text.
@@ -5661,8 +5663,6 @@ const std::vector<KnownClone>& known_clones() {
         {"tests/test_search.cpp", "tests/test_search.cpp", 9, R"x({768, true, false},)x"},
         {"tests/test_store.cpp", "tests/test_store.cpp", 8, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},
         {"tests/ui/uitest_batch_reports.cpp", "tests/ui/uitest_batch_reports.cpp", 9, R"x(Harness& h = harness(ctx);)x"},
-        {"tests/ui/uitest_details.cpp", "tests/ui/uitest_details.cpp", 10, R"x(Harness& h = harness(ctx);)x"},
-        {"tests/ui/uitest_details.cpp", "tests/ui/uitest_library.cpp", 8, R"x(ctx->ItemClick(analyze_button_ref(h).c_str());)x"},
     };
     return k;
 }
