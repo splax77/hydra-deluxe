@@ -398,15 +398,13 @@ TEST_CASE("clicking a chart touched since the scan saves its new fingerprint") {
     click(*app, scanned);
 
     REQUIRE(app->viewed.ready());
-    // The store's row, the library row and the selected row all hold the
-    // fingerprint the file gives now, under the unchanged hash.
+    // The store's row and the selected row hold the fingerprint the file
+    // gives now, under the unchanged hash. The library row keeps no
+    // fingerprint (LibraryChart); the next click reads the store's.
     const std::vector<ChartLibraryEntry> stored = app->store->list_chart_library(0, -1);
     REQUIRE(stored.size() == 1);
     CHECK(stored[0].md5 == scanned.md5);
     CHECK_FALSE(hydra::app::chart_changed_since(scanned.notespath, stored[0].sig).has_value());
-    CHECK_FALSE(hydra::app::chart_changed_since(scanned.notespath,
-                                                row_of(*app, scanned.md5).entry.sig)
-                    .has_value());
     REQUIRE(app->selected.has_value());
     CHECK(app->selected->md5 == scanned.md5);
     CHECK_FALSE(hydra::app::chart_changed_since(scanned.notespath, app->selected->sig).has_value());
