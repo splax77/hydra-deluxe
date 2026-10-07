@@ -2505,14 +2505,14 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/dynamics_breakdown.h", "int dynamic() const { return ghost + accent; }",
            "DynamicsCounts::dynamic, the owner"}},
          {"src", "tests"}},
-        // A private byte-by-byte little-endian helper. The store's
-        // BinaryWriter is the codec; the store's own read_le/write_le are
-        // task J3-6's and are not in this row.
+        // A private byte-by-byte little-endian helper. src/core/little_endian.h
+        // is the codec; the store's own read_le/write_le are task J3-6's and
+        // are not in this row.
         {"How is a little-endian number written byte by byte?",
-         "BinaryWriter::u32 in src/store/serialize.cpp",
+         "append_le_u32 and read_le_u32 in src/core/little_endian.h",
          R"(\b(write|read)_u32_le\()",
          "",
-         {"src/store/serialize.cpp"},
+         {},
          {},
          "audit finding 195 (the Dynamics half); phase 6 task J2-5 (D53)",
          {"write_u32_le(out, static_cast<uint32_t>(b.rows[i].ghost));",
@@ -3474,7 +3474,7 @@ const std::vector<OwnerRule>& rules() {
         // big-endian read (MIDI) and the hash's XOR-ed tail bytes are other
         // questions and are not flagged.
         {"How is a little-endian number written byte by byte? (any width or name)",
-         "read_le and append_le in src/core/little_endian.h (BinaryWriter and "
+         "read_le and append_le in src/core/little_endian.h (rules_fp_bytes and "
          "testbytes::put_le call the writer)",
          R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*|\|\s*\(*\s*(static_cast<\w+>|u?int\d*_t)?\s*\(*\s*[\w.>-]+\[[^\]]*\]\s*\)*\s*<<\s*8\b)",
          "",

@@ -10,9 +10,9 @@
 #include <string_view>
 
 #include "core/error_kind.h"
+#include "core/little_endian.h"
 #include "core/stars.h"
 #include "core/winstr.h"
-#include "store/serialize.h"
 #include "store/stored_versions.h"
 
 namespace hydra::store {
@@ -351,9 +351,9 @@ int bind_cap(sqlite3_stmt* s, int idx, const CapQuery& cap) {
 
 // A rules fingerprint as the rules_fp column holds it.
 std::vector<uint8_t> rules_fp_bytes(uint64_t fingerprint) {
-    BinaryWriter w;
-    w.u64(fingerprint);
-    return w.bytes;
+    std::vector<uint8_t> bytes;
+    core::append_le_u64(bytes, fingerprint);
+    return bytes;
 }
 
 // The fingerprint a row must carry to be Ready in this process, as the
