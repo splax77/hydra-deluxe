@@ -361,16 +361,34 @@ std::unordered_map<std::string, store::RecordListing> records_by_hash(
                                                        store::SortColumn::Score,
                                                        /*descending=*/true)) {
         std::string hash = normalize_chart_hash(r.hyhash);
-        // A result whose chart the library doesn't list is not on the page
-        // (D92), as in collect_rows.
-        if (library.find(hash) == library.end()) continue;
+        // A result whose chart the library doesn't list is not on the page (D92).
+        if (!library_lists(library, hash)) continue;
         by_hash.emplace(std::move(hash), std::move(r));
     }
     return by_hash;
 }
 
+bool library_lists(const std::unordered_map<std::string, int>& library,
+                   const std::string& hash) {
+    return library.find(hash) != library.end();
+}
+
+namespace {
+
+// Whether the store holds a result at any setting. The one place report.cpp
+// reads RecordStore::counts().
+bool holds_results(store::RecordStore& store) { return store.counts().second > 0; }
+
+// lacks_chart_library's rule, for generate_report, which has already asked
+// holds_results and passes its answer on.
+bool lacks_chart_library(store::RecordStore& store, bool any_results) {
+    return any_results && store.chart_library_count() == 0;
+}
+
+}  // namespace
+
 bool lacks_chart_library(store::RecordStore& store) {
-    return store.counts().second > 0 && store.chart_library_count() == 0;
+    return lacks_chart_library(store, holds_results(store));
 }
 
 std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store) {
@@ -415,11 +433,11 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
          store.list_records(std::nullopt, options.cap, options.lens, store::SortColumn::Score,
                             /*descending=*/true)) {
         const std::string hash = normalize_chart_hash(listing.hyhash);
-        const auto file = files.find(hash);
         // A result whose chart left the library is not on the page (D87 item 4).
-        if (file == files.end()) continue;
+        if (!library_lists(copies, hash)) continue;
         Slot slot;
-        slot.file = &file->second;
+        // Both maps come from kNamingCopiesSql, so a listed chart has a file.
+        slot.file = &files.at(hash);
         if (listing.chartmode == seed.chartmode) {
             const auto seeded = seed.rows.find(hash);
             if (seeded != seed.rows.end()) slot.seeded = &seeded->second;
@@ -612,9 +630,10 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         // Nothing listed. Either the database is empty, or it holds results
         // under another cap or fill rule (or only stale ones), and the user
         // needs to hear which (finding 105).
-        if (store.counts().second == 0) {
+        const bool any_results = holds_results(store);
+        if (!any_results) {
             out.empty_reason = EmptyReason::NothingStored;
-        } else if (lacks_chart_library(store)) {
+        } else if (lacks_chart_library(store, any_results)) {
             // The report covers library charts only (D87 item 4).
             out.empty_reason = EmptyReason::NoLibrary;
             out.why_empty = kNoChartLibrary;

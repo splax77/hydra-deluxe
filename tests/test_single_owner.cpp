@@ -4251,10 +4251,27 @@ const std::vector<OwnerRule>& rules() {
           "if (old_store.chart_library_count() == 0 || new_store.chart_library_count() == 0)"},
          {"} else if (lacks_chart_library(store)) {",
           "if (report::lacks_chart_library(store))"},
-         {{"src/app/report.cpp",
-           "return store.counts().second > 0 && store.chart_library_count() == 0;",
+         {{"src/app/report.cpp", "return any_results && store.chart_library_count() == 0;",
            "lacks_chart_library, the owner"}},
          {"src"}},
+        // The path report and records_by_hash once each tested "is this chart
+        // in the library" against their own map (the naming-copy files and
+        // the copies). A page that looks a chart up in a library map itself
+        // can disagree with them about which charts the library lists.
+        {"Does the library list this chart?",
+         "report::library_lists in src/app/report.cpp",
+         R"(\blibrary\w*\.(find|end|count|contains)\(|\bfiles\.(find|end|count|contains)\()",
+         "",
+         {},
+         {},
+         "D87 item 4, D92 (task som-a)",
+         {"if (library.find(hash) == library.end()) continue;",
+          "const auto file = files.find(hash);",
+          "if (file == files.end()) continue;"},
+         {"if (!library_lists(library, hash)) continue;", "slot.file = &files.at(hash);",
+          "const auto listed = copies.find(md5);"},
+         {{"src/app/report.cpp", "return library.find(hash) != library.end();",
+           "library_lists, the owner"}}},
         // The GUI harness writes its ini from scratch_settings(), and the
         // Burnout reference cases run through its to_analysis_settings. Other
         // depths in these files are a case's own input.
@@ -4535,12 +4552,14 @@ const std::vector<OwnerRule>& rules() {
            "walks the failure lines; the heading reads s.failed"}},
          {"src/app/analysis.cpp", "src/cli/batch.cpp", "src/ui/library_jobs.cpp",
           "src/ui/library_dialogs.cpp", "src/ui/app_state.cpp"}},
-        // D79 B5: RecordStore::counts() is every stored row at every
-        // setting, so printing it next to the batch's counts read as a
-        // second chart count. It may only say whether the store is empty.
+        // D79 B5: RecordStore::counts() adds up every stored row at every
+        // setting, so a line that printed it next to the batch's counts read
+        // as a second chart count. This row flags every call to a store's
+        // counts() in src/ and tools/. The one call kept is holds_results in
+        // src/app/report.cpp, which asks only whether the store is empty.
         {"Does a line print the store's raw row count as a count of charts?",
-         "BatchProgress and the library table (D76, D79); RecordStore::counts() only tells an "
-         "empty store",
+         "BatchProgress and the library table count charts (D76, D79); holds_results in "
+         "src/app/report.cpp is the one reader of RecordStore::counts()",
          R"(\b\w*store\w*(\.|->)counts\(\))",
          "",
          {},
@@ -4548,11 +4567,9 @@ const std::vector<OwnerRule>& rules() {
          "D79 item 2 (task COUNT-B)",
          {"auto [songs, records] = store.counts();", "const auto n = app.store->counts().first;"},
          {"CHECK(m.counts().all == 6);", "const ChipCounts& counts = app.library.counts();"},
-         {{"src/app/report.cpp", "if (store.counts().second == 0) {",
-           "generate_report asks only whether the store is empty"},
-          {"src/app/report.cpp",
-           "return store.counts().second > 0 && store.chart_library_count() == 0;",
-           "lacks_chart_library asks only whether the store is empty"}},
+         {{"src/app/report.cpp",
+           "bool holds_results(store::RecordStore& store) { return store.counts().second > 0; }",
+           "holds_results, the owner: it asks only whether the store is empty"}},
          {}},
         // D79 B4: Scan library, hydra_batch and the bench tool each saved a
         // scan their own way. One function saves it, so every one leaves the
@@ -4968,8 +4985,12 @@ const std::vector<OwnerRule>& rules() {
 }
 
 const std::vector<KnownCopy>& known_copies() {
-    // Empty: every copy a rule once tolerated has been removed.
-    static const std::vector<KnownCopy> k = {};
+    static const std::vector<KnownCopy> k = {
+        {"Does the library list this chart?", "src/app/dm_report.cpp",
+         "row.status = library.count(s.identifier) ? \"not analyzed\" : \"not in library\";",
+         "a follow-up to task som-a: collect_dm_rows calls report::library_lists (dm_report.cpp "
+         "was outside som-a's files)"},
+    };
     return k;
 }
 
