@@ -657,8 +657,8 @@ int difficulty_base_pitch(Difficulty difficulty) {
 
 // The marker pitches every difficulty shares on the drum track, each named
 // once. kMarkerPitches is the one list of them: is_handled_note reads it, the
-// note-off gate in MidiParser::optype reads it, and both optype switches use
-// these names as their case labels.
+// note-off gate in midi_note_is_read reads it, and both of MidiParser::optype's
+// switches use these names as their case labels.
 constexpr int kSoloMarkerPitch = 103;
 constexpr int kFlamMarkerPitch = 109;
 constexpr int kYellowTomMarkerPitch = 110;
@@ -677,9 +677,9 @@ constexpr int lowest_marker_pitch() {
         if (pitch < lowest) lowest = pitch;
     return lowest;
 }
-// The note-off gate drops a note-off on any pitch that is not a marker. That
-// matches the gate it replaced (a note-off below the solo marker is dropped)
-// only while every non-marker pitch is below the solo marker.
+// The note-off gate (midi_note_is_read) matches the gate it replaced (a
+// note-off below the solo marker is dropped) only while every non-marker
+// pitch is below the solo marker.
 static_assert(lowest_marker_pitch() == kSoloMarkerPitch,
               "a marker below the solo marker would change the note-off gate");
 constexpr int highest_pad_pitch() {
@@ -711,6 +711,15 @@ bool is_handled_note(int note, int base, int kick2x) {
     if (note >= base && note <= base + 4) return true;
     if (note == kick2x) return true;
     return is_midi_marker_pitch(note);
+}
+
+// Whether the MIDI parser acts on a note message at this pitch. `on` is
+// Message::is_note_on. A note-on acts on any handled pitch, but only a marker
+// acts on a note-off: a pad or 2x kick note-off is dropped (see the
+// static_assert beside kMarkerPitches). MidiParser::optype and the lean read's
+// filter (load_songbytes_mid) both ask here.
+bool midi_note_is_read(int pitch, bool on, int base, int kick2x) {
+    return on ? is_handled_note(pitch, base, kick2x) : is_midi_marker_pitch(pitch);
 }
 
 class MidiParser {
@@ -803,19 +812,12 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
     const bool is_channel = (msg.type == MType::NoteOn || msg.type == MType::NoteOff);
 
     if (is_channel) {
-        int note = msg.note;
-        if (!is_handled_note(note, base_, kick2x_pitch_)) return {};
-
-        int velocity = msg.velocity;
-        bool is_noteon = (msg.type == MType::NoteOn && velocity > 0);
-        bool is_noteoff =
-            (msg.type == MType::NoteOff || (msg.type == MType::NoteOn && velocity == 0));
-
-        // Only markers act on a note-off; a pad or 2x kick note-off is
-        // dropped (see the static_assert beside kMarkerPitches).
-        if (is_noteoff && !is_midi_marker_pitch(note)) return {};
+        const int note = msg.note;
+        const bool is_noteon = msg.is_note_on();
+        if (!midi_note_is_read(note, is_noteon, base_, kick2x_pitch_)) return {};
 
         if (is_noteon) {
+            const int velocity = msg.velocity;
             // The difficulty's own five pitches come first: base is the kick,
             // the next four are Red/Yellow/Blue/Green.
             // Clone Hero reads the kick's velocity exactly as it reads a
@@ -852,29 +854,27 @@ MOp MidiParser::optype(const Message& msg, int64_t tick) {
             }
         }
 
-        if (is_noteoff) {
-            switch (note) {
-                case kFillMarkerPitch:
-                    return mop_tick(MPhase::Pre, MAct::StoreFillEnd, tick);
-                case kSpMarkerPitch:
-                    return mop_tick(sp_start_tick_.has_value() ? MPhase::Pre
-                                                               : MPhase::PreDelayed,
-                                    MAct::SpEnd, tick);
-                case kGreenTomMarkerPitch: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
-                case kBlueTomMarkerPitch: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
-                case kYellowTomMarkerPitch: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
-                case kFlamMarkerPitch: return mop_flag(MAct::Flam, false);
-                case kSoloMarkerPitch:
-                    // A MIDI solo marker covers ticks up to its note-off, not
-                    // including it: end the solo before this tick's notes.
-                    // Pinned by ".mid: the note on the solo marker's note-off
-                    // tick is outside the solo".
-                    return mop_flag(MAct::Solo, false);
-                default:
-                    return {};
-            }
+        // A note-off.
+        switch (note) {
+            case kFillMarkerPitch:
+                return mop_tick(MPhase::Pre, MAct::StoreFillEnd, tick);
+            case kSpMarkerPitch:
+                return mop_tick(sp_start_tick_.has_value() ? MPhase::Pre
+                                                           : MPhase::PreDelayed,
+                                MAct::SpEnd, tick);
+            case kGreenTomMarkerPitch: return mop_tom(NoteColor::Green, NoteCymbalType::Cymbal);
+            case kBlueTomMarkerPitch: return mop_tom(NoteColor::Blue, NoteCymbalType::Cymbal);
+            case kYellowTomMarkerPitch: return mop_tom(NoteColor::Yellow, NoteCymbalType::Cymbal);
+            case kFlamMarkerPitch: return mop_flag(MAct::Flam, false);
+            case kSoloMarkerPitch:
+                // A MIDI solo marker covers ticks up to its note-off, not
+                // including it: end the solo before this tick's notes.
+                // Pinned by ".mid: the note on the solo marker's note-off
+                // tick is outside the solo".
+                return mop_flag(MAct::Solo, false);
+            default:
+                return {};
         }
-        return {};
     }
 
     // Meta family. Text-attribute metas carry `str`; name-attribute metas do
@@ -1641,15 +1641,13 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
 
 Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
                         bool bass2x, Difficulty difficulty, const core::Rules& rules) {
-    // Only what MidiParser reads is decoded: a drum note-on it can act on
-    // (is_handled_note) and a marker's note-off (the only note-offs it acts
-    // on). Every other note does nothing in MidiParser::optype.
+    // Only the notes MidiParser acts on are decoded (midi_note_is_read).
     const int base = difficulty_base_pitch(difficulty);
     const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
     MidiLeanFilter filter;
     for (int pitch = 0; pitch < 128; ++pitch) {
-        filter.note_on[pitch] = is_handled_note(pitch, base, kick2x);
-        filter.note_off[pitch] = is_midi_marker_pitch(pitch);
+        filter.note_on[pitch] = midi_note_is_read(pitch, true, base, kick2x);
+        filter.note_off[pitch] = midi_note_is_read(pitch, false, base, kick2x);
     }
     const MidiFile mid = MidiFile::lean(data.data(), data.size(), filter);
     return MidiParser(rules).parse(mid, pro, bass2x, difficulty);

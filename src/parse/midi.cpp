@@ -394,10 +394,9 @@ MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& 
             },
             [&](int high, uint8_t d1, uint8_t d2, int64_t pending) {
                 if (!drums) return false;
-                const uint8_t pitch = clip_data_byte(d1);
-                const bool on = high == 0x90 && clip_data_byte(d2) > 0;
-                if (!(on ? filter.note_on[pitch] : filter.note_off[pitch])) return false;
-                track.messages.push_back(note_message(high, d1, d2, pending));
+                Message msg = note_message(high, d1, d2, pending);
+                if (!filter.keeps(msg)) return false;
+                track.messages.push_back(std::move(msg));
                 return true;
             });
     }
