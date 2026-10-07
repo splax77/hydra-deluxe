@@ -595,17 +595,26 @@ TEST_CASE("run_batch reports a failed chart once per copy, under its first copy'
     CHECK(std::count(titles.begin(), titles.end(), items[2].title) == 0);
 }
 
+namespace {
+
+// Callbacks whose analyzer hands back one real chart's result for every
+// item, so a batch of fake items saves real rows.
+BatchCallbacks real_result_callbacks(const AnalysisResult& real) {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
+                                const std::function<void(float)>&) { return real; };
+    return callbacks;
+}
+
+}  // namespace
+
 // Finding 193 (D71, open question 5): a save that fails during a batch used
 // to leave run_batch and close Hydra. Now that chart is a failure like any
 // other, and the batch goes on.
 TEST_CASE("run_batch counts a failed save as a failed chart and goes on") {
     const std::vector<ScanItem> items = fake_items(2);
     const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
-    BatchCallbacks callbacks;
-    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
-                                const std::function<void(float)>&) -> AnalysisResult {
-        return real;
-    };
+    BatchCallbacks callbacks = real_result_callbacks(real);
     std::vector<std::string> errors;
     callbacks.on_error = [&errors](const std::string& title, const std::string& sentence,
                                    const std::string& error) {
@@ -702,9 +711,7 @@ TEST_CASE("run_batch saves the song's length from its metadata (D75)") {
     // A chart whose metadata cannot be read keeps its length unread: here a
     // .sng that is gone, on a row an older scan wrote.
     const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
-    BatchCallbacks callbacks;
-    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
-                                const std::function<void(float)>&) { return real; };
+    const BatchCallbacks callbacks = real_result_callbacks(real);
     ScanItem gone;
     gone.md5 = "gone";
     gone.title = "gone";
@@ -861,19 +868,6 @@ TEST_CASE("analyze_chart_file reads a drum track whose first name is unrecognize
 }
 
 // ---- the batch writer's save groups (D86 items 1 to 3, task W1) ------------
-
-namespace {
-
-// Callbacks whose analyzer hands back one real chart's result for every
-// item, so a batch of fake items saves real rows.
-BatchCallbacks real_result_callbacks(const AnalysisResult& real) {
-    BatchCallbacks callbacks;
-    callbacks.analyze = [&real](const std::string&, const AnalysisSettings&,
-                                const std::function<void(float)>&) { return real; };
-    return callbacks;
-}
-
-}  // namespace
 
 TEST_CASE("run_batch: a group commits before any of its charts is reported") {
     // A second connection only sees what the batch's connection committed, so
