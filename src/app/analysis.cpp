@@ -98,7 +98,9 @@ HashedFile stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path,
     }
 
     HashedFile out;
-    std::vector<uint8_t> buf(1 << 20);
+    // One read buffer per thread, reused for every file that thread hashes:
+    // a fresh zero-filled megabyte per file cost the library scan real time.
+    thread_local std::vector<uint8_t> buf(1 << 20);
     size_t got;
     while ((got = std::fread(buf.data(), 1, buf.size(), f)) > 0) {
         BCryptHashData(hash, buf.data(), static_cast<ULONG>(got), 0);
@@ -210,8 +212,9 @@ ChartMeta parse_srb_metadata(const ByteSource& src) {
 
 // ---- discovery ----------------------------------------------------------
 //
-// Two stages. Enumerate: a serial single-pass walk (one directory listing
-// per folder, no file contents touched) collecting every chart-bearing
+// Two stages. Enumerate: walk_folders lists every folder once (no file
+// contents touched) on batch_worker_count() threads, then replays the
+// serial walk's order over what it found, collecting every chart-bearing
 // folder's pending work. Read: a batch_worker_count() thread pool hashes the
 // chart files and reads their metadata, short-circuiting through the rescan
 // cache when a chart's fingerprint is unchanged (sig_unchanged). Results keep the
@@ -228,6 +231,7 @@ struct PendingChart {
     std::string ini_path;    // empty for archives
     std::string rootfolder;
     std::string sig;
+    uint64_t size = 0;  // the hashed file's listed size: the read stage starts big files first
 };
 
 // The rescan cache's key: sizes and mtimes, so an unchanged file is not read
@@ -274,6 +278,7 @@ std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEn
         pc.ini_path = join_folder(dir, ini->name);
     }
     pc.sig = sig_of(chart, ini);
+    pc.size = chart.size;
     return pc;
 }
 
@@ -395,6 +400,166 @@ store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingM
     return scanned ? *scanned : read_chart_timing_meta(notespath);
 }
 
+namespace {
+
+// One folder's share of the walk: the charts it holds, in the order the walk
+// records them, and its subfolders' paths in listing order.
+void scan_folder(const std::string& dir, const std::string& origin,
+                 const std::vector<DirEntry>& entries, std::vector<PendingChart>& charts,
+                 std::vector<std::string>& subpaths) {
+    // The folder's files, by name and entry in the same order, so the
+    // notes-file pick's index leads back to the entry (pending_chart_of
+    // fingerprints it).
+    std::vector<std::string> file_names;
+    std::vector<const DirEntry*> files;
+    std::vector<const DirEntry*> found_archives;
+    std::vector<const DirEntry*> subdirs;
+    for (const DirEntry& e : entries) {
+        if (e.is_dir) {
+            subdirs.push_back(&e);
+            continue;
+        }
+        file_names.push_back(e.name);
+        files.push_back(&e);
+        if (chart_kind_of(e.name) != ChartKind::Folder) found_archives.push_back(&e);
+    }
+
+    std::string rootfolder = relpath(parent_folder(dir), origin);
+    const auto add_chart = [&](const DirEntry& chart) {
+        std::optional<PendingChart> pc = pending_chart_of(dir, chart, entries);
+        if (!pc) return;
+        pc->rootfolder = rootfolder;
+        charts.push_back(std::move(*pc));
+    };
+    const std::optional<NotesFilePick> pick = pick_notes_file(file_names);
+    if (pick) add_chart(*files[pick->index]);
+    for (const DirEntry* archive : found_archives) add_chart(*archive);
+
+    for (const DirEntry* sub : subdirs) subpaths.push_back(join_folder(dir, sub->name));
+}
+
+// One folder the walk listed, filled in by whichever thread listed it.
+struct WalkNode {
+    std::string dir;
+    std::string origin;  // the root folder it was found under
+    std::vector<PendingChart> charts;
+    std::vector<std::string> subpaths;  // in listing order
+    std::string error;
+};
+
+// discover_charts' first stage. batch_worker_count() threads list folders,
+// the calling thread among them, each folder exactly once. The calling
+// thread reports the folder count whenever it finishes a folder, so
+// on_folders still fires on the caller only. Once every folder is listed,
+// the serial walk runs over the listings in memory, so charts and errors come
+// out in its order: a stack seeded with the roots, each popped folder's
+// charts, then its unvisited subfolders pushed in listing order.
+void walk_folders(const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
+                  std::vector<PendingChart>& pending, std::vector<std::string>& errors) {
+    const std::atomic<bool>* cancel = callbacks.cancel;
+
+    std::deque<WalkNode> nodes;  // references stay valid across push_back
+    std::vector<size_t> roots;   // every root that is a folder, repeats included
+    std::unordered_map<std::string, size_t> node_of;  // a subfolder's path -> its node
+    std::unordered_set<std::string> visited;           // roots and listed subfolders
+    for (const std::string& root : rootfolders) {
+        if (is_directory_utf8(root)) {
+            nodes.push_back(WalkNode{root, root, {}, {}, {}});
+            roots.push_back(nodes.size() - 1);
+        }
+        visited.insert(root);
+    }
+
+    std::mutex mu;  // guards nodes, node_of, visited, unlisted, listing and stop
+    std::condition_variable cv;
+    std::vector<size_t> unlisted(roots);  // a stack, as the serial walk's was
+    size_t listing = 0;                   // folders being listed right now
+    bool stop = false;                    // the calling thread threw
+    int reported = 0;                     // the calling thread's last on_folders value
+    const auto walk = [&](bool reports) {
+        std::unique_lock<std::mutex> lock(mu);
+        for (;;) {
+            cv.wait(lock, [&] { return stop || !unlisted.empty() || listing == 0; });
+            if (stop || unlisted.empty() || (cancel && cancel->load())) return;
+            const size_t idx = unlisted.back();
+            unlisted.pop_back();
+            ++listing;
+            const std::string dir = nodes[idx].dir;
+            const std::string origin = nodes[idx].origin;
+            lock.unlock();
+
+            std::vector<PendingChart> charts;
+            std::vector<std::string> subpaths;
+            std::string error;
+            try {
+                scan_folder(dir, origin, list_dir(dir), charts, subpaths);
+            } catch (const std::exception& e) {
+                // The charts found so far stay; the folder's subfolders are
+                // not walked.
+                error = e.what();
+                subpaths.clear();
+            }
+
+            lock.lock();
+            WalkNode& node = nodes[idx];
+            node.charts = std::move(charts);
+            node.error = std::move(error);
+            node.subpaths = std::move(subpaths);
+            for (const std::string& sub : node.subpaths) {
+                if (!visited.insert(sub).second) continue;
+                nodes.push_back(WalkNode{sub, origin, {}, {}, {}});
+                node_of.emplace(sub, nodes.size() - 1);
+                unlisted.push_back(nodes.size() - 1);
+            }
+            --listing;
+            cv.notify_all();
+            const int seen = static_cast<int>(visited.size());
+            if (reports && callbacks.on_folders && seen > reported) {
+                reported = seen;
+                lock.unlock();
+                callbacks.on_folders(seen);
+                lock.lock();
+            }
+        }
+    };
+
+    std::vector<std::thread> helpers;
+    try {
+        for (int t = 1; t < batch_worker_count(); ++t) helpers.emplace_back(walk, false);
+        walk(true);
+    } catch (...) {
+        {
+            std::lock_guard<std::mutex> lock(mu);
+            stop = true;
+        }
+        cv.notify_all();
+        for (std::thread& t : helpers) t.join();
+        throw;
+    }
+    for (std::thread& t : helpers) t.join();
+    // A helper may have listed the last folders after the caller's last report.
+    const int total = static_cast<int>(visited.size());
+    if (callbacks.on_folders && total > reported) callbacks.on_folders(total);
+
+    // The serial walk, over the listings. Its own visited set decides which
+    // parent walks a folder, so even repeated roots replay exactly.
+    std::unordered_set<std::string> walked(rootfolders.begin(), rootfolders.end());
+    std::vector<size_t> stack(roots);
+    while (!stack.empty()) {
+        WalkNode& node = nodes[stack.back()];
+        stack.pop_back();
+        if (!node.error.empty()) errors.push_back(std::move(node.error));
+        for (PendingChart& pc : node.charts) pending.push_back(std::move(pc));
+        for (const std::string& sub : node.subpaths) {
+            if (!walked.insert(sub).second) continue;
+            const auto it = node_of.find(sub);
+            if (it != node_of.end()) stack.push_back(it->second);  // absent only after a cancel
+        }
+    }
+}
+
+}  // namespace
+
 std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::vector<std::string>& rootfolders, const ScanCallbacks& callbacks,
     const store::ChartLibraryCache* cache) {
@@ -403,61 +568,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 
     // ---- stage 1: enumerate ------------------------------------------------
     std::vector<PendingChart> pending;
-    std::vector<std::pair<std::string, std::string>> unexplored;
-    std::set<std::string> visited;
-    for (const std::string& root : rootfolders) {
-        if (is_directory_utf8(root)) unexplored.push_back({root, root});
-        visited.insert(root);
-    }
-
-    while (!unexplored.empty()) {
-        if (cancel && cancel->load()) break;
-        auto [dir, origin] = unexplored.back();
-        unexplored.pop_back();
-
-        try {
-            std::vector<DirEntry> entries = list_dir(dir);
-
-            // The folder's files, by name and entry in the same order, so the
-            // notes-file pick's index leads back to the entry (pending_chart_of
-            // fingerprints it).
-            std::vector<std::string> file_names;
-            std::vector<const DirEntry*> files;
-            std::vector<const DirEntry*> found_archives;
-            std::vector<const DirEntry*> subdirs;
-            for (const DirEntry& e : entries) {
-                if (e.is_dir) {
-                    subdirs.push_back(&e);
-                    continue;
-                }
-                file_names.push_back(e.name);
-                files.push_back(&e);
-                if (chart_kind_of(e.name) != ChartKind::Folder) found_archives.push_back(&e);
-            }
-
-            std::string rootfolder = relpath(parent_folder(dir), origin);
-            const auto add_chart = [&](const DirEntry& chart) {
-                std::optional<PendingChart> pc = pending_chart_of(dir, chart, entries);
-                if (!pc) return;
-                pc->rootfolder = rootfolder;
-                pending.push_back(std::move(*pc));
-            };
-            const std::optional<NotesFilePick> pick = pick_notes_file(file_names);
-            if (pick) add_chart(*files[pick->index]);
-            for (const DirEntry* archive : found_archives) add_chart(*archive);
-
-            for (const DirEntry* sub : subdirs) {
-                std::string subpath = join_folder(dir, sub->name);
-                if (visited.insert(subpath).second) {
-                    if (callbacks.on_folders)
-                        callbacks.on_folders(static_cast<int>(visited.size()));
-                    unexplored.push_back({subpath, origin});
-                }
-            }
-        } catch (const std::exception& e) {
-            errors.push_back(e.what());
-        }
-    }
+    walk_folders(rootfolders, callbacks, pending, errors);
 
     // ---- stage 2: read (hash + metadata), parallel -------------------------
     int total = static_cast<int>(pending.size());
@@ -470,9 +581,18 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
             std::string error;
         };
         int done = 0, cached_count = 0;
+        // The biggest files start first, so a huge archive the walk found
+        // last does not hash alone at the end. Each result still lands at its
+        // walk position (results[i]).
+        std::vector<size_t> order(pending.size());
+        std::iota(order.begin(), order.end(), size_t{0});
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            return pending[a].size > pending[b].size;
+        });
         run_work_pool<ReadNote>(
             pending.size(), batch_worker_count(), cancel,
-            [&](size_t i) {
+            [&](size_t k) {
+                const size_t i = order[k];
                 // One CNG provider per worker thread, reused across every file
                 // it hashes and closed when the worker exits. Created lazily
                 // so an all-cache-hits rescan never touches CNG at all.
