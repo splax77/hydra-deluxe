@@ -16,6 +16,7 @@
 
 #include <d3d11.h>
 
+#include <memory>
 #include <string>
 
 #include "app/preview_view.h"
@@ -61,7 +62,7 @@ public:
 
 private:
     struct Impl;
-    Impl* impl_;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace hydra::render

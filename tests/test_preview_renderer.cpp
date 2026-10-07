@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@
 #include "app/user_messages.h"
 #include "render/highway_draw.h"  // track_height
 #include "render/preview_renderer.h"
+#include "temp_util.h"
 #include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
 
@@ -261,4 +263,32 @@ TEST_CASE("PreviewRenderer: a missing asset dir is a clear error") {
         CHECK(hydra::app::plain_error(e) ==
               "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
     }
+}
+
+// The memory audit's one real leak (docs/handoffs/2026-10-07-memory-audit.md):
+// a constructor that throws after building shaders, buffers and meshes must
+// release them. Every D3D object it made holds a reference on the device, so
+// the device's reference count shows anything left behind.
+TEST_CASE("PreviewRenderer: setup that fails part-way releases what it made (WARP)") {
+    namespace fs = std::filesystem;
+    ComPtr<ID3D11Device> dev;
+    ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(warp::make_device(dev, ctx));
+
+    // A copy of the shipped assets with the textures gone: the constructor
+    // gets through everything else before the first texture throws.
+    const std::string dir_utf8 = testtemp::temp_dir("preview_no_textures");
+    const fs::path dir = hydra::os_path(dir_utf8);
+    fs::remove_all(dir);
+    fs::copy(fs::path(kAssets), dir, fs::copy_options::recursive);
+    fs::remove_all(dir / "textures");
+
+    auto device_refs = [&] {
+        dev->AddRef();
+        return dev->Release();
+    };
+    const ULONG before = device_refs();
+    CHECK_THROWS_AS(PreviewRenderer(dev.Get(), ctx.Get(), dir_utf8), std::runtime_error);
+    CHECK(device_refs() == before);
+    fs::remove_all(dir);
 }

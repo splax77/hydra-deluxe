@@ -37,6 +37,7 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
+#include "leak_check.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "search/graph.h"
@@ -738,22 +739,24 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
 }
 
 TEST_CASE("store: a new database carries 0 in user_version and reads its own rows") {
-    // D53 item 1: Hydra never writes the user_version slot. The column checks
-    // in the constructor are the one upgrade gate, so a new file keeps the 0
-    // SQLite gives a file nobody wrote it on.
-    const std::string path = testtemp::temp_path("user_version", ".db");
-    std::remove(path.c_str());
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
-    {
-        RecordStore store(path);
-        store.add_record(key, at_cap(4));
-    }
-    CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
-    {
-        RecordStore reopened(path);
-        CHECK(reopened.get_summary(key).status == RecordStatus::Ready);
-    }
-    std::remove(path.c_str());
+    hydra::test::leak_checked([&] {
+        // D53 item 1: Hydra never writes the user_version slot. The column checks
+        // in the constructor are the one upgrade gate, so a new file keeps the 0
+        // SQLite gives a file nobody wrote it on.
+        const std::string path = testtemp::temp_path("user_version", ".db");
+        std::remove(path.c_str());
+        const RecordKey key{"h", "mode", CapQuery::at(4)};
+        {
+            RecordStore store(path);
+            store.add_record(key, at_cap(4));
+        }
+        CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
+        {
+            RecordStore reopened(path);
+            CHECK(reopened.get_summary(key).status == RecordStatus::Ready);
+        }
+        std::remove(path.c_str());
+    });
 }
 
 TEST_CASE("store: list_records reads its summary columns from the one list") {
