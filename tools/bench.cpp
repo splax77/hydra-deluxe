@@ -315,8 +315,9 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
 // A folder is scanned and each chart taken once (plan_batch's first copy); a
 // .txt argument lists notes paths, one per line. Each chart is parsed N times
 // (the best time counts) and hashed once: digest::song_digest, with the
-// stored dynamics blob added unless --nodyn. A chart that fails is hashed by
-// its exception's type and message (digest::failure_text). Prints the sums
+// dynamics count added (digest::with_dynamics) unless --nodyn. A chart that
+// fails is hashed by its exception's type and message (digest::failure_text).
+// Prints the sums
 // and one digest over every chart; --out writes each path, its best parse
 // time in microseconds, its hash and any failure.
 static void parse_mode(const std::string& arg, int reps, const std::string& outpath, bool dyn) {

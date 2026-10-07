@@ -61,12 +61,11 @@ To see what the rule change did, compare the two. `hydra_fillcompare` reads
 the 1.0 results from `--old` and the 1.1 results from `--new`. Each chart's
 row is labelled by which database holds a result for it. Narrow columns name
 the rules CH 1.0 and CH 1.1. Like the path report, it compares library charts
-only (D92). A result whose chart the library doesn't list is left off the
-page. A database with results and no chart library, such as one built by
-`hydra_batch` with folder arguments, stops it with the same sentence as
-`hydra_report` (`report::kNoChartLibrary`, D89 item 2). The Compare with dmleaderboards page follows the
-same two rules. The two databases can be two files, or the app's own database
-twice:
+only. A database built by `hydra_batch` with folder arguments has no chart
+library, so it stops with the path report's sentence. D92 and
+`report::lacks_chart_library` own that rule, and ADR 0026 explains it. The
+Compare with dmleaderboards page follows it too. The two databases can be two
+files, or the app's own database twice:
 
 ```
 hydra_batch --legacy-fills --db ch10.db
