@@ -1283,6 +1283,88 @@ TEST_CASE("replay names each note's dynamic") {
     CHECK(dynamic_str(NoteDynamicType::Normal) == "none");
 }
 
+// The chord-score table on ten hand-built chords: seven Red singles, then a
+// Kick + Red + accent Yellow cymbal that crosses the 10-note step, a Kick +
+// ghost Red, and a plain Red + Yellow inside a solo. Every value is a literal
+// pinned from one run.
+TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
+    std::vector<std::vector<NoteColor>> chords(7, {NoteColor::Red});
+    chords.push_back({NoteColor::Kick, NoteColor::Red});
+    chords.push_back({NoteColor::Kick});
+    chords.push_back({NoteColor::Red, NoteColor::Yellow});
+    Song song = make_chord_song(chords);
+    add_dynamic_cymbal(song.sequence[7].chord, NoteDynamicType::Accent);
+    song.sequence[8].chord.add_note(NoteColor::Red).dynamictype = NoteDynamicType::Ghost;
+    song.sequence[9].flag_solo = true;
+
+    const ChordScoreTable table =
+        chord_score_table(song, core::SqOutRule::FirstNote, ChordScoreDetail::WithNotes);
+    REQUIRE(table.rows.size() == 10);
+    REQUIRE(table.notes.size() == 14);
+
+    // The straddle: notes 8 and 9 at 1x, the accent cymbal (the dearest,
+    // so last) is the 10th note, at 2x.
+    const ChordScoreRow& straddle = table.rows[7];
+    CHECK(straddle.base == 180);
+    CHECK(straddle.combo == 130);
+    CHECK(straddle.sp == 360);
+    CHECK(straddle.sqout_sp == 310);
+    CHECK(straddle.accent == 50);
+    CHECK(straddle.ghost == 0);
+    CHECK(straddle.solo == 0);
+    CHECK(straddle.multiplier == 1);
+    CHECK(straddle.multiplier_after == 2);
+    CHECK(straddle.combo_before == 7);
+    CHECK(straddle.combo_after == 10);
+    CHECK(straddle.note_begin == 7);
+    CHECK(straddle.note_end == 10);
+    CHECK(table.notes[7].multiplier == 1);
+    CHECK(table.notes[8].multiplier == 1);
+    CHECK(table.notes[9].multiplier == 2);
+    CHECK(table.notes[9].dynamics_bonus == 130);
+
+    const ChordScoreRow& ghost = table.rows[8];
+    CHECK(ghost.base == 100);
+    CHECK(ghost.combo == 150);
+    CHECK(ghost.sp == 300);
+    CHECK(ghost.sqout_sp == 200);
+    CHECK(ghost.accent == 0);
+    CHECK(ghost.ghost == 50);
+    CHECK(ghost.solo == 0);
+    CHECK(ghost.multiplier == 2);
+    CHECK(ghost.multiplier_after == 2);
+    CHECK(ghost.combo_before == 10);
+    CHECK(ghost.combo_after == 12);
+    CHECK(ghost.note_begin == 10);
+    CHECK(ghost.note_end == 12);
+
+    const ChordScoreRow& solo = table.rows[9];
+    CHECK(solo.base == 100);
+    CHECK(solo.combo == 100);
+    CHECK(solo.sp == 200);
+    CHECK(solo.sqout_sp == 100);
+    CHECK(solo.accent == 0);
+    CHECK(solo.ghost == 0);
+    CHECK(solo.solo == 200);
+    CHECK(solo.multiplier == 2);
+    CHECK(solo.multiplier_after == 2);
+    CHECK(solo.combo_before == 12);
+    CHECK(solo.combo_after == 14);
+    CHECK(solo.note_begin == 12);
+    CHECK(solo.note_end == 14);
+
+    // Without the notes, every chord row's points are the same and every
+    // note range is empty.
+    const ChordScoreTable bare = chord_score_table(song, core::SqOutRule::FirstNote);
+    REQUIRE(bare.rows.size() == 10);
+    CHECK(bare.notes.empty());
+    for (size_t i = 0; i < bare.rows.size(); ++i) {
+        CHECK(bare.rows[i].sp == table.rows[i].sp);
+        CHECK(bare.rows[i].combo_after == table.rows[i].combo_after);
+        CHECK(bare.rows[i].note_begin == bare.rows[i].note_end);
+    }
+}
+
 TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
     Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), true, true);
     REQUIRE_FALSE(song.is_empty());
