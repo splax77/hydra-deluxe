@@ -83,9 +83,9 @@ void test_difficulty(ImGuiTestContext* ctx) {
     // The settings bar, not the panel, names the difficulty now.
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
 
-    ctx->ItemClick(analyze_button_ref(h).c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->analyze_job == nullptr; }, 300));
-    IM_CHECK(h.app->viewed.record.has_value());
+    // The click analyzed it under Hard (D87 item 1).
+    wait_song_analyzed(ctx);
+    if (ctx->IsError()) return;
     IM_CHECK(!h.app->viewed.record->paths.empty());
     std::string best = h.app->viewed.record->best_path().pathstring();
     IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(best) != std::string::npos; }, 5));
@@ -103,7 +103,8 @@ void test_difficulty(ImGuiTestContext* ctx) {
 }
 
 // A bad hydra_rules.ini: the app still opens and scans, the error naming the
-// key stays on screen, and both Analyze buttons are disabled.
+// key stays on screen, Analyze library is disabled, and a click analyzes
+// nothing: the song's row stays Not analyzed (D87 item 9).
 void test_rules_error(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h, "max_tied_paths = 0\n");
@@ -120,10 +121,14 @@ void test_rules_error(ImGuiTestContext* ctx) {
 
     open_details(ctx, 0);
     if (ctx->IsError()) return;
-    IM_CHECK((ctx->ItemInfo(analyze_button_ref(h).c_str()).ItemFlags & ImGuiItemFlags_Disabled) != 0);
-    // The state refuses as well as the button.
-    h.app->start_analyze();
-    IM_CHECK(h.app->analyze_job == nullptr);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->viewed.state == hydra::ui::ViewedSong::State::RulesBroken;
+    }, 60));
+    IM_CHECK(!h.app->viewed.record.has_value());
+    IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::NotAnalyzed);
+    // The state refuses as well: a batch starts nothing.
+    h.app->start_batch(false);
+    IM_CHECK(h.app->batch_job == nullptr);
 }
 
 // The library view's own state (the search text, the dmleaderboards filter,
@@ -412,6 +417,9 @@ void test_library_layout(ImGuiTestContext* ctx) {
     // size (audit finding 112).
     h.app->settings.depth_value = 999999;
     ctx->Yield(2);
+    // The click analyzed (and saved) this song (D87), and the setting change
+    // re-analyzes it (D90): let that settle, so the chip counts below stand still.
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
     const std::string widest = hydra::ui::widest_digits(6);
     IM_CHECK_STR_EQ(widest.c_str(), "000000");
     IM_CHECK_GE(ctx->ItemInfo("##depthvalue").RectFull.GetWidth(),
@@ -426,11 +434,20 @@ void test_library_layout(ImGuiTestContext* ctx) {
     if (lib == nullptr) return;
     IM_CHECK_LE(lib->Size.x, hydra::ui::px(hydra::ui::kMinLibraryW) + 1.0f);
     ctx->SetRef("//Hydra");
-    const char* chips[] = {"**/All (97)##chipall", "**/Not analyzed (97)##chipnew",
-                           "**/Stale (0)##chipstale", "**/Analyzed (0)##chipdone"};
-    for (const char* chip : chips)
-        IM_CHECK_LE(ctx->ItemInfo(chip).RectFull.Max.x, lib->ContentRegionRect.Max.x + 0.5f);
-    IM_CHECK_GT(ctx->ItemInfo(chips[3]).RectFull.Min.y, ctx->ItemInfo(chips[0]).RectFull.Min.y);
+    // The labels carry the library's own counts (what the chips draw), which
+    // moved when the click analyzed the open song.
+    using hydra::ui::StatusChip;
+    const StatusChip chip_order[] = {StatusChip::All, StatusChip::NotAnalyzed, StatusChip::Stale,
+                                     StatusChip::Analyzed};
+    std::string chips[4];
+    for (size_t i = 0; i < 4; ++i)
+        chips[i] = "**/" + hydra::ui::chip_label(chip_order[i],
+                                                  h.app->library.counts().of(chip_order[i]));
+    for (const std::string& chip : chips)
+        IM_CHECK_LE(ctx->ItemInfo(chip.c_str()).RectFull.Max.x,
+                    lib->ContentRegionRect.Max.x + 0.5f);
+    IM_CHECK_GT(ctx->ItemInfo(chips[3].c_str()).RectFull.Min.y,
+                ctx->ItemInfo(chips[0].c_str()).RectFull.Min.y);
 
     // The long title ends inside its cell: nothing in the Title column lays
     // out past the column's edge, while the row stays one click target

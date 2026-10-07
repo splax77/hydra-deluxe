@@ -7,6 +7,7 @@
 
 #include <sqlite3.h>
 
+#include <cstdint>
 #include <fstream>
 #include <string>
 
@@ -28,6 +29,20 @@ inline void exec_on_file(const std::string& path, const char* sql) {
     sqlite3_close(db);
     INFO(msg);
     REQUIRE(rc == SQLITE_OK);
+}
+
+// The first column of the first row `sql` returns, read through a connection
+// of the test's own.
+inline int64_t scalar_on_file(const std::string& path, const std::string& sql) {
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    REQUIRE(sqlite3_prepare_v2(db, sql.c_str(), -1, &s, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_step(s) == SQLITE_ROW);
+    const int64_t v = sqlite3_column_int64(s, 0);
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    return v;
 }
 
 // Writes a file of junk bytes at `path`, where a database should be.

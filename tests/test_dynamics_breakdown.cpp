@@ -4,6 +4,8 @@
 
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"
+#include "core/rules.h"
+#include "corpus_util.h"
 #include "parse/song.h"
 
 #ifndef HYDRA_TESTDATA_DIR
@@ -380,4 +382,49 @@ TEST_CASE("dynamics_breakdown: every row's counts on The Decade Of Statues, pinn
         CHECK(bd.row(e.row).accent == e.accent);
         CHECK(bd.row(e.row).normal == e.normal);
     }
+}
+
+// The click reuses its analysis's Song for the Dynamics count
+// (analysis_parse_counts_dynamics) even though the analysis parses under
+// hydra_rules.ini and the count's own parse (load_dynamics_song) under the
+// default rules. That is sound only if the rules never change the count.
+// Every corpus chart is parsed under the defaults and under a rules set with
+// every parse-time field changed. The fills must move on some chart (else the
+// test proves nothing), and the whole stored count, every field of it, must
+// be the same on every chart.
+TEST_CASE("dynamics_breakdown: the rules never change a chart's Dynamics count") {
+    core::Rules other = core::default_rules();
+    other.fill_cooldown_measures = 1;
+    other.fill_max_distance_beats = 2.0;
+    other.fill_length_measures = 1.0;
+    other.fill_land_slop_beats = 0.5;
+
+    const Difficulty difficulties[] = {Difficulty::Expert, Difficulty::Hard};
+    int fills_moved = 0;
+    int counted = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        for (const bool pro : {true, false}) {
+            for (const Difficulty difficulty : difficulties) {
+                CAPTURE(path);
+                CAPTURE(pro);
+                CAPTURE(static_cast<int>(difficulty));
+                const Song base = load_songpath(path, pro, kDynamicsParseBass2x, difficulty,
+                                                core::default_rules());
+                const Song moved =
+                    load_songpath(path, pro, kDynamicsParseBass2x, difficulty, other);
+                REQUIRE(base.sequence.size() == moved.sequence.size());
+                for (size_t i = 0; i < base.sequence.size(); ++i)
+                    if (base.sequence[i].activation_length != moved.sequence[i].activation_length) {
+                        ++fills_moved;
+                        break;
+                    }
+                CHECK(encode_dynamics(count_dynamics(base)) ==
+                      encode_dynamics(count_dynamics(moved)));
+                ++counted;
+            }
+        }
+    }
+    CHECK(counted > 0);
+    CHECK(fills_moved > 0);
+    MESSAGE("charts parsed: " << counted << ", fills moved on: " << fills_moved);
 }

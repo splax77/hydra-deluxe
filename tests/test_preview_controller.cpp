@@ -30,7 +30,8 @@
 #include "render/track_state.h"
 #include "store/record_store.h"
 #include "temp_util.h"
-#include "ui/dynamics_load_job.h"
+#include "app/config.h"
+#include "ui/library_jobs.h"  // ViewJob
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
 
@@ -40,7 +41,7 @@
 
 using hydra::Difficulty;
 using hydra::store::ChartLibraryEntry;
-using hydra::ui::DynamicsLoadJob;
+using hydra::ui::ViewJob;
 using hydra::ui::PreviewController;
 using hydra::ui::PreviewLoadJob;
 
@@ -53,13 +54,12 @@ void wait_finished(const Job& job) {
     REQUIRE(job.finished());
 }
 
-// The entry the scan would make: its md5 is the file's own hash, so the
-// Preview takes the chart as unchanged and draws the path it is given.
+// The entry the scan would make (corpus::scanned_entry), without its
+// fingerprint: its md5 is the file's own hash, so the Preview hashes the file,
+// takes the chart as unchanged and draws the path it is given.
 ChartLibraryEntry entry_for(const std::string& notespath) {
-    ChartLibraryEntry e;
-    e.md5 = hydra::app::hash_chart_file(notespath);
-    e.title = "Preview controller test";
-    e.notespath = notespath;
+    ChartLibraryEntry e = corpus::scanned_entry(notespath);
+    e.sig.clear();
     return e;
 }
 
@@ -277,14 +277,19 @@ TEST_CASE("a cancelled Preview load stops before decoding") {
     CHECK(job.progress().step == PreviewLoadJob::Step::Reading);
 }
 
-TEST_CASE("a cancelled Dynamics load stops before counting") {
-    DynamicsLoadJob job(entry_for(corpus::first_chart_with_suffix(".chart")), true,
-                        Difficulty::Expert);
+// The click's job counts the Dynamics too (D87 item 1); a cancel before it
+// got going stops it before any parse.
+TEST_CASE("a cancelled click job stops before counting") {
+    const hydra::store::ChartLibraryEntry entry =
+        entry_for(corpus::first_chart_with_suffix(".chart"));
+    const hydra::app::Settings settings;
+    ViewJob job(entry, settings.record_key(entry.md5), settings.to_analysis_settings(),
+                /*analysis_off=*/false, /*generation=*/0);
     job.cancel();
     job.start();
     wait_finished(job);
     CHECK_FALSE(job.ok());
-    CHECK(job.error() == "cancelled");
+    CHECK(job.is_cancelled());
 }
 
 // No output device is a warning, not a failure: the chart loads, the clock
@@ -561,7 +566,7 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
 }
 
 // A 1 GB .sng costs seconds to hash, so the changed-chart check asks the
-// rescan's own shortcut first: files app::chart_files_unchanged calls
+// rescan's own shortcut first: files app::chart_changed_since finds
 // unchanged keep the scan's md5 and are not read again. The
 // entry's md5 here is deliberately wrong; only a re-hash could notice that.
 TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unchanged chart") {
@@ -577,8 +582,8 @@ TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unc
     auto [items, errors] = app::discover_charts({dir});
     REQUIRE(items.size() == 1);
     const ChartLibraryEntry scanned = app::to_library_entry(items[0]);
-    CHECK(app::chart_files_unchanged(scanned.notespath, scanned.sig));
-    CHECK_FALSE(app::chart_files_unchanged(scanned.notespath, ""));
+    CHECK_FALSE(app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
+    CHECK(app::chart_changed_since(scanned.notespath, "").has_value());
 
     // The library list hands the Preview the same fingerprint the scan stored.
     store::RecordStore db(":memory:");

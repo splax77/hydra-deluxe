@@ -243,13 +243,8 @@ void render_settings_bar(AppState& app) {
     // The lock message is a fifth block, right-aligned on whichever line it
     // lands on.
     if (locked) {
-        // A single analysis names its song, which may not be the one on
-        // screen (D48, Q17).
-        const std::string why =
-            lock == AppState::SettingsLock::Batch
-                ? "Stop the batch to change these."
-                : "Settings are locked while " + display_title(app.analyze_job->song().title) +
-                      " analyzes.";
+        // Only a batch locks the bar (D90 item 2).
+        const std::string why = "Stop the batch to change these.";
         const float w = ImGui::CalcTextSize(why.c_str()).x;
         if (fits_on_line(w, ImGui::GetStyle().ItemSpacing.x)) ImGui::SameLine();
         ImGui::AlignTextToFramePadding();

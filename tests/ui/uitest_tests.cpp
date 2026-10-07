@@ -25,7 +25,7 @@ void register_tests(Harness& h) {
         "analyze-on-preview", "preview-path-overlay", "preview-controls",
         "preview-drain-box", "preview-overlay-fit", "preview-buttons-keys",
         "scrub-hold", "layout-drift", "batch-strip-drift", "settings-and-reports",
-        "dynamics", "dynamics-stored", "stars", "rules-error",
+        "dynamics", "dynamics-reopen", "stars", "rules-error",
         "details-close-teardown", "library-state-per-app",
         "dm-compare-flow", "report-buttons", "view-settings",
     };

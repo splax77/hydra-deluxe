@@ -11,6 +11,7 @@
 #ifndef HYDRA_UI_APP_STATE_H
 #define HYDRA_UI_APP_STATE_H
 
+#include <chrono>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -27,8 +28,6 @@
 #include "core/rules.h"
 #include "store/record_store.h"
 #include "ui/dm_jobs.h"
-#include "ui/dynamics_load_job.h"
-#include "ui/song_length_job.h"
 #include "ui/generation.h"
 #include "ui/library_jobs.h"
 #include "ui/library_model.h"
@@ -58,16 +57,6 @@ struct DetailsViewState {
     GenerationWatcher record_watcher;
     // When "Copied!" last flashed after Copy path string; -1 = never.
     double copied_at = -1.0;
-    // Analyze-progress completion state, keyed on analyze_generation -- not on
-    // the AnalyzeJob's address: a freed job's block can be handed straight back
-    // to the next make_unique, and a pointer compare then carries
-    // `stored`/`done_at` over from the previous job -- the fresh result is
-    // never stored and the stale done_at dismisses the modal on its first
-    // finished frame.
-    GenerationWatcher analyze_watcher;
-    double done_at = -1.0;
-    bool stored = false;
-    std::string store_error;
     // The Paths tab's built views, kept between frames (app::PathsTabCache).
     app::PathsTabCache paths_tab;
     // The Preview overlay's key for selected_path (app::path_overlay_key),
@@ -137,6 +126,39 @@ struct LibraryViewState {
     float settings_block_w[4] = {};
 };
 
+// The open song as the engine analyzed it on the click (D87 item 1). Nothing
+// here is read from stored details: the record, its timing, the length and
+// the Dynamics count all come from the click's ViewJob.
+struct ViewedSong {
+    enum class State {
+        None,         // nothing selected, or an error was dismissed
+        Analyzing,    // the click's job is running
+        Ready,        // `record` holds the engine's result
+        Cancelled,    // the panel's Cancel stopped it ("Analysis cancelled.")
+        Failed,       // `message` and `error` say why
+        FileMissing,  // the chart file is gone; the panel's notice says so
+        RulesBroken,  // analysis is off; only the Dynamics count ran
+    };
+    State state = State::None;
+    std::optional<HydraRecord> record;     // set only when Ready
+    std::optional<SongTiming> timing;      // the analyzed song's, when Ready
+    // The song's length in chart time (app::analysis_song_length), when
+    // Ready; empty when the owner gave none.
+    std::optional<double> song_length_ms;
+    // The best path's summary row (stars), as the click saved or found it.
+    store::PathSummary summary;
+    // Failed: the plain sentence and the raw text.
+    std::string message;
+    std::string error;
+    // The Dynamics count, or why it failed. Set in every state the job
+    // finished in, RulesBroken included.
+    std::optional<app::DynamicsBreakdown> dynamics;
+    std::string dynamics_message;
+    std::string dynamics_error;
+
+    bool ready() const { return state == State::Ready && record.has_value(); }
+};
+
 // What the app reads before it opens the store: the settings, with
 // hydra_rules.ini already loaded, and the loader's error if the file was bad.
 struct StartupSettings {
@@ -156,9 +178,10 @@ public:
     Settings settings;
     std::unique_ptr<store::RecordStore> store;
     // Set at startup when hydra_rules.ini is bad (the loader's message, which
-    // names the key). While set, analysis is off: the Analyze buttons are
-    // disabled and start_batch/start_analyze do nothing. It clears only on a
-    // restart with a fixed file; there is no fallback to the default rules.
+    // names the key). While set, analysis is off: start_batch does nothing
+    // and a click counts only the Dynamics (ViewedSong::State::RulesBroken).
+    // It clears only on a restart with a fixed file; there is no fallback to
+    // the default rules.
     std::string rules_error;
     bool analysis_blocked() const { return !rules_error.empty(); }
 
@@ -221,16 +244,12 @@ public:
     void select_relative(int delta);
     bool can_select_relative(int delta) const;
 
-    // The best path's stored facts for the open song (stars, hardest squeeze),
-    // read with the record. Empty unless `viewed` is Ready.
-    store::PathSummary viewed_summary;
-
     // Everything that must stop when the song panel closes. It runs once, on
     // the panel's open-to-closed edge (tick() watches it), whatever closed
     // it: the X, Escape, the Rescan library button, or a new selection. The
-    // Preview stops and lets go of its audio device, a finished Dynamics count
-    // is kept and an unfinished one is cancelled. A running analysis is NOT
-    // cancelled: it finishes and is stored (tick()). Safe to call when closed.
+    // Preview stops and lets go of its audio device, and the click's job is
+    // cancelled: nothing is saved for a song whose analysis didn't finish
+    // (D87 item 11). Safe to call when closed.
     void close_details();
 
     // Whether the selected chart's file exists, as of the last look
@@ -254,8 +273,9 @@ public:
     // How long a neutral status line stays (set_status); a problem never
     // fades.
     static constexpr double kStatusFadeSeconds = 6.0;
-    // How long "Done!" stays after an analysis finishes.
-    static constexpr double kDoneFlashSeconds = 0.5;
+    // A click's progress box shows only once its job has run this long, so
+    // a fast chart shows its paths with no box (D87 item 6).
+    static constexpr double kViewProgressDelaySeconds = 0.15;
     // How long "Copied!" stays after the path is copied.
     static constexpr double kCopiedSeconds = 2.0;
     // Typing in the library search re-filters at most this often, so a burst
@@ -273,15 +293,42 @@ public:
     // (cached_file_check).
     bool report_file_shown(double now);
 
-    // The stored-record lookup for `selected` under the current chartmode,
-    // reloaded on selection and after a fresh analysis. It carries the status
-    // (not analyzed / stale / ready), the record when there is one, and that
-    // song's timing context — the store is DB+mutex, so the per-frame details
-    // view must never query it again. Reset to a default (NotAnalyzed) when
-    // nothing is selected.
-    store::RecordLookup viewed;
-    Generation record_generation;  // bumped by refresh_viewed_record(); invalidates UI selection caches
-    void refresh_viewed_record();
+    // The open song as the click's analysis found it (ViewedSong above).
+    ViewedSong viewed;
+    // Bumped whenever `viewed` changes; invalidates the UI's selection caches.
+    Generation record_generation;
+
+    // Asks for the click's analysis of `selected` under the current settings
+    // (D87 item 1): a click, a setting change with a song open (D90 item 1)
+    // and "Try again" all come here. It bumps view_generation, so an older
+    // request's late result is dropped. At most one job runs at a time: when
+    // one is still running, it is cancelled and this request waits in
+    // view_pending until that job has exited, and only the latest request
+    // then runs.
+    void start_view();
+    // The panel's Cancel: the job stops at its next progress tick, and the
+    // panel then shows "Analysis cancelled." (D87 item 11).
+    void cancel_view();
+    // The panel's Continue under an error: the panel goes back to empty.
+    void dismiss_view_error();
+    // The click's one job, and the generation of the latest request. A
+    // finished job whose generation is not the latest is dropped, never
+    // compared by address (memory: analyze-job pointer-reuse bug). The job is
+    // held until it exits, even once cancelled: joining it on the UI thread
+    // would freeze the window until its next progress tick.
+    std::unique_ptr<ViewJob> view_job;
+    Generation view_generation;
+    // A request that waits for the cancelled view_job to exit; tick() then
+    // starts it under the settings and song current at that moment.
+    bool view_pending = false;
+    // Whether the latest request is still working (its job runs, or it waits
+    // in view_pending), and whether its progress box shows yet: only once it
+    // has waited kViewProgressDelaySeconds since start_view.
+    bool view_running() const;
+    bool view_progress_shown() const;
+    // True once the click's job has been collected and nothing waits: the
+    // click has settled. The one spelling tests wait on.
+    bool view_settled() const { return !view_job && !view_pending; }
 
     // 3D Preview (Phase 5). The GUI's shared D3D11 device is injected once at
     // startup (set_render_device, mirroring load_icons); the controller is
@@ -291,76 +338,37 @@ public:
     PreviewController* preview_controller();
     std::unique_ptr<PreviewController> preview;
 
-    // Dynamics tab: a background job that re-parses the chart for per-pad
-    // ghost/accent/normal counts, plus its cached result (keyed by chart +
-    // pro + difficulty; invalidated when any of those change).
-    std::unique_ptr<DynamicsLoadJob> dynamics_job;
-    std::optional<app::DynamicsBreakdown> dynamics_result;
-    std::optional<store::DynamicsKey> dynamics_key;  // the key the cached result was built for
-    std::string dynamics_store_error;  // non-empty when put_dynamics failed
-
-    // Dynamics lifecycle: check the store for a cached breakdown, manage the
-    // background parse job, and persist new results. Called every frame from
-    // the details modal, before the Dynamics tab draws. Keeps store access
-    // on the UI thread and out of the render function.
-    void update_dynamics();
-
-    // Stores a finished Dynamics parse and drops its job. The details window
-    // calls it every frame, whichever tab shows; a parse that finished while
-    // another tab was up used to be thrown away at close.
-    void reap_dynamics();
-
-    // Works out the open song's length when its result was saved under an
-    // older length rule (kSongLengthStamp), so the Paths tab's timeline shows
-    // without a re-analysis: SongLengthJob asks the owner, then the length (or
-    // none) is saved for the song (RecordStore::fill_song_length) and put on
-    // every lookup of it. tick() runs it; a chart whose job fails is not
-    // retried this session.
-    std::unique_ptr<SongLengthJob> length_job;
-    void update_song_length();
-
     // Background jobs (at most one of each kind runs at a time).
     std::unique_ptr<ScanJob> scan_job;
     std::unique_ptr<BatchJob> batch_job;
-    std::unique_ptr<AnalyzeJob> analyze_job;
-    // Bumped by start_analyze(). The details modal keys its per-job completion
-    // state on this, NOT on the AnalyzeJob's address: the heap can hand a new
-    // job the previous job's block, and a pointer compare then leaves the
-    // "already stored" flag stale, silently discarding the finished analysis.
-    Generation analyze_generation;
     std::unique_ptr<ReportJob> report_job;
 
-    // True while a single-song analysis or a batch is running. While either
-    // runs, the settings bar is locked: a result is filed under the settings
-    // it ran with, so changing them mid-run used to hide the result it made.
-    bool analyze_running() const;
+    // True while a batch is running. The settings bar is locked then: a
+    // result is filed under the settings it ran with. A click's analysis
+    // does not lock it; a setting change restarts that one (D90 item 2).
     bool batch_running() const;
-    // Why the settings are locked: a batch (it wins when both run), one song's
-    // analysis, or nothing. A job finishes on its own thread, so two reads of
-    // batch_running() in one frame can disagree; a caller that needs both
-    // "locked?" and "by what?" reads this once. Under Analysis, analyze_job is
-    // set for the rest of the frame (only the UI thread drops it).
-    enum class SettingsLock { None, Batch, Analysis };
+    // Why the settings are locked: a batch, or nothing. A job finishes on its
+    // own thread, so two reads of batch_running() in one frame can disagree;
+    // a caller that needs both "locked?" and "by what?" reads this once.
+    enum class SettingsLock { None, Batch };
     SettingsLock settings_lock() const;
     bool settings_locked() const { return settings_lock() != SettingsLock::None; }
     // Whether a library scan may start now: there are song folders, no scan
     // job is held (its modal is still up until Continue), and no batch is
     // running. start_scan enforces it; the toolbar button reads it.
     bool can_scan() const;
-    // Whether any background job is still working: scan, batch, analyze,
-    // path report, the two leaderboard jobs, Dynamics, the song length read,
-    // and the Preview's jobs. A finished job waiting to be collected counts
-    // as done. The parked leaderboard jobs are left out: they were
-    // cancelled, and nothing on screen waits on them. The GUI tests'
-    // wait-idle waits on this.
+    // Whether any background job is still working: scan, batch, the click's
+    // job (a waiting request included), path report, the two leaderboard jobs, and
+    // the Preview's jobs. A finished job waiting to be collected counts as
+    // done. The parked leaderboard jobs are left out: they were cancelled,
+    // and nothing on screen waits on them. The GUI tests' wait-idle waits on
+    // this.
     bool any_job_running() const;
-    // True when the analyze job belongs to the song the open panel shows, so
-    // the panel is where its progress and errors appear.
-    bool analyze_job_shown() const;
 
     // Once per frame, before any view draws (run_frame). Owns the panel's
-    // closing edge, storing and reaping the analyze job, and storing a
-    // finished Dynamics count. `now` is ImGui::GetTime() in the app.
+    // closing edge and the click's job: saving its summary, re-identifying
+    // an edited chart, and showing its result. `now` is ImGui::GetTime() in
+    // the app.
     void tick(double now);
 
     // Whether this batch run has already kicked off its path report — one
@@ -381,13 +389,6 @@ public:
 
     void start_scan();
     void start_batch(bool redo);
-    void start_analyze();  // analyzes `selected` under the current chartmode
-
-    // Persists the finished analyze_job's result (song + record) and
-    // refreshes the views that cache it. Returns an error message on a failed
-    // save, empty on success. Lives here, not in the details modal's draw
-    // code: persistence is state work, the view only shows the outcome.
-    std::string store_finished_analysis();
     void start_dm_fetch();  // loads the dmleaderboards user list
     void start_dm_report(const std::string& discord_id, const std::string& username);
 
@@ -473,20 +474,29 @@ public:
 private:
     explicit AppState(StartupSettings start);
 
-    // The analyze job's lifecycle: store a finished result, reap the job.
-    // Moved out of the details view's draw code; tick() calls it every frame.
-    void update_analyze_job(double now);
+    // The click's job lifecycle on the UI thread: drop a late result, then
+    // re-identify an edited chart, save the summary when needed and show the
+    // result. tick() calls it every frame, whichever tab shows.
+    void update_view_job();
+    // Whether the click's job thread is still working, cancelled or not. The
+    // one spelling of that test.
+    bool view_thread_alive() const;
+    // Saves the click's summary when the library's row is missing, Stale or
+    // different (D87 item 2), and returns the summary the row now holds.
+    // Throws on a store failure.
+    store::PathSummary save_view_summary(const ViewJob& job, const store::RecordKey& key,
+                                         const app::AnalysisResult& result,
+                                         const store::SongLength& length);
+    // Starts view_job for the latest request. view_job must be empty.
+    void launch_view_job();
+    // When the latest request was made (start_view), for view_progress_shown.
+    std::chrono::steady_clock::time_point view_requested_at_{};
     // The row index select_relative would open, if there is one.
     std::optional<size_t> relative_row(int delta) const;
-    // Re-reads viewed_summary for the open song under the current settings.
-    void refresh_viewed_summary();
-    // The panel's empty state: no record, no summary, no key it answers.
-    void show_no_record();
     // Runs one store read on the UI thread. A read that throws puts its
     // sentence in the status line and returns false, and the caller keeps
     // what it showed (D73 item 3). Every read whose answer a screen shows
-    // goes through it; update_song_length's best-effort fill keeps its own
-    // silent catch.
+    // goes through it.
     bool read_store(const std::function<void()>& read);
     bool batch_finish_seen_ = false;  // update_background_jobs saw this run end
     ID3D11Device* render_device_ = nullptr;
@@ -508,24 +518,6 @@ private:
     bool scan_reloaded_ = true;
     int batch_seen_completed_ = 0;
     double batch_refreshed_at_ = -1.0;
-
-    // The number boxes step through settings one value at a time, and each
-    // step used to decode the chart's record again. `viewed_key_` is what
-    // `viewed` answers; lookups the boxes stepped away from are parked here
-    // and come back without asking the store. Cleared whenever a record may
-    // have changed under them: a new selection or a stored analysis.
-    std::optional<store::RecordKey> viewed_key_;
-    std::vector<std::pair<store::RecordKey, store::RecordLookup>> parked_lookups_;
-    static constexpr size_t kParkedLookups = 16;
-    // The chart (md5) update_song_length last tried, so a chart whose read
-    // fails is not read again every frame. One read serves every difficulty.
-    std::string length_tried_;
-    // Shows the lookup for the current settings: parked if seen, read otherwise.
-    void show_record_for_settings();
-    // A record was just stored: drops the parked lookups and reads the viewed
-    // one again. A finished single analysis and a batch that stored the open
-    // chart both run it.
-    void reread_viewed_record();
 };
 
 }  // namespace hydra::ui
