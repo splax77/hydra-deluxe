@@ -972,9 +972,9 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     Song song(mid.ticks_per_beat);
     song_ = &song;
 
-    // Pass 1: tempo/time-signature marks from the first track.
+    // Pass 1: tempo/time-signature marks from the timing track.
     int64_t elapsed = 0;
-    for (const Message& msg : mid.tracks[0].messages) {
+    for (const Message& msg : mid.tracks[MidiFile::kTimingTrack].messages) {
         elapsed += msg.time;
         MOp op = optype(msg, elapsed);
         if (op.phase == MPhase::Time && op.runs()) run(op);
@@ -982,8 +982,8 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
     song.build_timing();
 
     // Pass 2: the drum track.
-    for (const MidiTrack& track : mid.tracks) {
-        if (track.name != kDrumsTrackName) continue;
+    if (const MidiTrack* const drums = mid.drums_track()) {
+        const MidiTrack& track = *drums;
         elapsed = 0;
         msg_buffer_.clear();
         flag_solo_ = false;
@@ -1008,13 +1008,12 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         push_timestamp(elapsed);
         place_authored_fills(song, fills_, rules_.fill_land_slop_beats);
         song.dynamics_enabled = dynamics_enabled_;
-        break;
     }
 
     // Pass 3: practice sections, which live on their own track(s) as bracketed
     // text metas, sorted once at the end.
     for (const MidiTrack& track : mid.tracks) {
-        if (track.name != kEventsTrackName) continue;
+        if (!track.is_events()) continue;
         elapsed = 0;
         for (const Message& msg : track.messages) {
             elapsed += msg.time;

@@ -72,9 +72,10 @@ struct Message {
 // mido's name for a message type ("note_on", "set_tempo", "track_name", ...).
 const char* message_type_name(Message::Type type);
 
-// The track names the song parser looks tracks up by (parse/song.cpp). They
-// are also the only names the reader recognizes when it picks a track's name
-// (MidiFile::parse_track, D78), so the lookups and that choice share one list.
+// The track names the song parser finds its tracks by (MidiFile::drums_track
+// and MidiTrack::is_events). They are also the only names the reader
+// recognizes when it picks a track's name (TrackNamePick in midi.cpp, D78), so
+// the lookups and that choice share one list.
 inline constexpr std::string_view kDrumsTrackName = "PART DRUMS";
 inline constexpr std::string_view kEventsTrackName = "EVENTS";
 inline constexpr std::string_view kRecognizedTrackNames[] = {kDrumsTrackName,
@@ -85,6 +86,9 @@ public:
     // Chosen by MidiFile::parse_track (D78).
     std::string name;
     std::vector<Message> messages;
+
+    // Whether the song parser reads practice sections from this track.
+    bool is_events() const { return name == kEventsTrackName; }
 };
 
 // Which drum-track note messages MidiFile::lean keeps. A note-on with a
@@ -102,13 +106,21 @@ public:
     explicit MidiFile(const std::vector<uint8_t>& data);
     MidiFile(const uint8_t* data, size_t size);
 
-    // The file as the song parser reads it, holding only what it reads: the
-    // first track's tempo and meter, the first PART DRUMS track's text metas
-    // and the notes `filter` keeps, and every EVENTS track's text metas. Every
-    // track keeps its name. A dropped message hands its delta on, so every
-    // kept message sits at the tick it has in the full read, and the file
-    // throws exactly where the full read throws.
+    // The file as the song parser reads it, holding only what it reads from
+    // each track's role: the timing track (kTimingTrack) keeps its tempo and
+    // meter, the drum track (drums_track) its text metas and the notes
+    // `filter` keeps, and an events track (MidiTrack::is_events) its text
+    // metas. Every track keeps its name. A dropped message hands its delta
+    // on, so every kept message sits at the tick it has in the full read, and
+    // the file throws exactly where the full read throws.
     static MidiFile lean(const uint8_t* data, size_t size, const MidiLeanFilter& filter);
+
+    // The track the song parser reads tempo and meter from.
+    static constexpr size_t kTimingTrack = 0;
+
+    // The track the song parser reads the drum chart from, or nullptr when
+    // the file has none. MidiParser::parse and MidiFile::lean both ask here.
+    const MidiTrack* drums_track() const;
 
     // Read and parse a file from disk. A file that cannot be read throws
     // read_file_bytes' error; one that is not a MIDI file throws MidiError.

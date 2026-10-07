@@ -4627,6 +4627,37 @@ const std::vector<OwnerRule>& rules() {
           {"src/parse/midi.cpp",
            "pending += static_cast<int64_t>(read_varlen(data, pos, end));  // delta time",
            "walk_track, the owner"}}},
+        // The song parser and the lean read both pick the timing, drum and
+        // events tracks. A track name compared, or the first track indexed,
+        // anywhere but the owners is a second copy of that choice. The lean
+        // read's `i == kTimingTrack` has no text a search can tell apart from
+        // any other index check, so it names the constant instead.
+        {"Which MIDI track is the timing track, the drum track or an events track?",
+         "MidiFile::kTimingTrack, MidiFile::drums_track and MidiTrack::is_events in src/parse/midi.h",
+         R"(\bkDrumsTrackName\b|\bkEventsTrackName\b|\btracks\s*\[\s*0\s*\])",
+         "",
+         {},
+         {},
+         "the speedups plan, task P1 (D86); derive-once review of P1",
+         {"if (track.name != kDrumsTrackName) continue;",
+          "const bool drums = !drums_seen && track.name == kDrumsTrackName;",
+          "const bool texts = drums || track.name == kEventsTrackName;",
+          "for (const Message& msg : mid.tracks[0].messages) {"},
+         {"if (!track.is_events()) continue;",
+          "for (const Message& msg : mid.tracks[MidiFile::kTimingTrack].messages) {",
+          "if (const MidiTrack* const drums = mid.drums_track()) {"},
+         {{"src/parse/midi.h", R"(inline constexpr std::string_view kDrumsTrackName = "PART DRUMS";)",
+           "the name itself"},
+          {"src/parse/midi.h", R"(inline constexpr std::string_view kEventsTrackName = "EVENTS";)",
+           "the name itself"},
+          {"src/parse/midi.h",
+           "inline constexpr std::string_view kRecognizedTrackNames[] = {kDrumsTrackName,",
+           "the D78 name list"},
+          {"src/parse/midi.h", "kEventsTrackName};", "the D78 name list"},
+          {"src/parse/midi.h", "bool is_events() const { return name == kEventsTrackName; }",
+           "MidiTrack::is_events, the owner"},
+          {"src/parse/midi.cpp", "if (track.name == kDrumsTrackName) return &track;",
+           "MidiFile::drums_track, the owner"}}},
     };
     return r;
 }

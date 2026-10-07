@@ -372,13 +372,12 @@ MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& 
     });
 
     // Then each track keeps only what its role reads (see the header).
-    bool drums_seen = false;
+    const MidiTrack* const drums_track = mf.drums_track();
     for (size_t i = 0; i < mf.tracks.size(); ++i) {
         MidiTrack& track = mf.tracks[i];
-        const bool timing = i == 0;
-        const bool drums = !drums_seen && track.name == kDrumsTrackName;
-        if (drums) drums_seen = true;
-        const bool texts = drums || track.name == kEventsTrackName;
+        const bool timing = i == kTimingTrack;
+        const bool drums = &track == drums_track;
+        const bool texts = drums || track.is_events();
         if (!timing && !texts) continue;
         walk_track(
             data, ranges[i].first, ranges[i].second,
@@ -403,6 +402,12 @@ MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& 
             });
     }
     return mf;
+}
+
+const MidiTrack* MidiFile::drums_track() const {
+    for (const MidiTrack& track : tracks)
+        if (track.name == kDrumsTrackName) return &track;
+    return nullptr;
 }
 
 MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
