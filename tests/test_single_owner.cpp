@@ -1116,11 +1116,9 @@ const std::vector<OwnerRule>& rules() {
          {"\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""},
          {"kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"},
          {{"src/store/record_store.h",
-           "\"(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts\"",
+           "\"(SELECT md5, name, artist, charter, MIN(rowid) AS naming_rowid, COUNT(*) AS copies\"",
            "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.cpp", "\" AS c JOIN charts AS p ON p.rowid = c.\\\"MIN(rowid)\\\"\";",
-           "naming_copy_paths joins kNamingCopiesSql's own pick back to its row"}}},
+          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
         // A pass over the library that picks a chart's file from its own
         // listing, instead of the naming copy, can open another copy's file
         // than the batch did (storage-T3 review, finding 1).
@@ -2507,14 +2505,14 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/dynamics_breakdown.h", "int dynamic() const { return ghost + accent; }",
            "DynamicsCounts::dynamic, the owner"}},
          {"src", "tests"}},
-        // A private byte-by-byte little-endian helper. The store's
-        // BinaryWriter is the codec; the store's own read_le/write_le are
-        // task J3-6's and are not in this row.
+        // A private byte-by-byte little-endian helper. src/core/little_endian.h
+        // is the codec; the store's own read_le/write_le are task J3-6's and
+        // are not in this row.
         {"How is a little-endian number written byte by byte?",
-         "BinaryWriter::u32 in src/store/serialize.cpp",
+         "append_le_u32 and read_le_u32 in src/core/little_endian.h",
          R"(\b(write|read)_u32_le\()",
          "",
-         {"src/store/serialize.cpp"},
+         {},
          {},
          "audit finding 195 (the Dynamics half); phase 6 task J2-5 (D53)",
          {"write_u32_le(out, static_cast<uint32_t>(b.rows[i].ghost));",
@@ -3476,7 +3474,7 @@ const std::vector<OwnerRule>& rules() {
         // big-endian read (MIDI) and the hash's XOR-ed tail bytes are other
         // questions and are not flagged.
         {"How is a little-endian number written byte by byte? (any width or name)",
-         "read_le and append_le in src/core/little_endian.h (BinaryWriter and "
+         "read_le and append_le in src/core/little_endian.h (rules_fp_bytes and "
          "testbytes::put_le call the writer)",
          R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*|\|\s*\(*\s*(static_cast<\w+>|u?int\d*_t)?\s*\(*\s*[\w.>-]+\[[^\]]*\]\s*\)*\s*<<\s*8\b)",
          "",
@@ -4253,10 +4251,27 @@ const std::vector<OwnerRule>& rules() {
           "if (old_store.chart_library_count() == 0 || new_store.chart_library_count() == 0)"},
          {"} else if (lacks_chart_library(store)) {",
           "if (report::lacks_chart_library(store))"},
-         {{"src/app/report.cpp",
-           "return store.counts().second > 0 && store.chart_library_count() == 0;",
+         {{"src/app/report.cpp", "return any_results && store.chart_library_count() == 0;",
            "lacks_chart_library, the owner"}},
          {"src"}},
+        // The path report and records_by_hash once each tested "is this chart
+        // in the library" against their own map (the naming-copy files and
+        // the copies). A page that looks a chart up in a library map itself
+        // can disagree with them about which charts the library lists.
+        {"Does the library list this chart?",
+         "report::library_lists in src/app/report.cpp",
+         R"(\blibrary\w*\.(find|end|count|contains)\(|\bfiles\.(find|end|count|contains)\()",
+         "",
+         {},
+         {},
+         "D87 item 4, D92 (task som-a)",
+         {"if (library.find(hash) == library.end()) continue;",
+          "const auto file = files.find(hash);",
+          "if (file == files.end()) continue;"},
+         {"if (!library_lists(library, hash)) continue;", "slot.file = &files.at(hash);",
+          "const auto listed = copies.find(md5);"},
+         {{"src/app/report.cpp", "return library.find(hash) != library.end();",
+           "library_lists, the owner"}}},
         // The GUI harness writes its ini from scratch_settings(), and the
         // Burnout reference cases run through its to_analysis_settings. Other
         // depths in these files are a case's own input.
@@ -4537,12 +4552,14 @@ const std::vector<OwnerRule>& rules() {
            "walks the failure lines; the heading reads s.failed"}},
          {"src/app/analysis.cpp", "src/cli/batch.cpp", "src/ui/library_jobs.cpp",
           "src/ui/library_dialogs.cpp", "src/ui/app_state.cpp"}},
-        // D79 B5: RecordStore::counts() is every stored row at every
-        // setting, so printing it next to the batch's counts read as a
-        // second chart count. It may only say whether the store is empty.
+        // D79 B5: RecordStore::counts() adds up every stored row at every
+        // setting, so a line that printed it next to the batch's counts read
+        // as a second chart count. This row flags every call to a store's
+        // counts() in src/ and tools/. The one call kept is holds_results in
+        // src/app/report.cpp, which asks only whether the store is empty.
         {"Does a line print the store's raw row count as a count of charts?",
-         "BatchProgress and the library table (D76, D79); RecordStore::counts() only tells an "
-         "empty store",
+         "BatchProgress and the library table count charts (D76, D79); holds_results in "
+         "src/app/report.cpp is the one reader of RecordStore::counts()",
          R"(\b\w*store\w*(\.|->)counts\(\))",
          "",
          {},
@@ -4550,11 +4567,9 @@ const std::vector<OwnerRule>& rules() {
          "D79 item 2 (task COUNT-B)",
          {"auto [songs, records] = store.counts();", "const auto n = app.store->counts().first;"},
          {"CHECK(m.counts().all == 6);", "const ChipCounts& counts = app.library.counts();"},
-         {{"src/app/report.cpp", "if (store.counts().second == 0) {",
-           "generate_report asks only whether the store is empty"},
-          {"src/app/report.cpp",
-           "return store.counts().second > 0 && store.chart_library_count() == 0;",
-           "lacks_chart_library asks only whether the store is empty"}},
+         {{"src/app/report.cpp",
+           "bool holds_results(store::RecordStore& store) { return store.counts().second > 0; }",
+           "holds_results, the owner: it asks only whether the store is empty"}},
          {}},
         // D79 B4: Scan library, hydra_batch and the bench tool each saved a
         // scan their own way. One function saves it, so every one leaves the
@@ -5215,6 +5230,42 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
     CHECK(rule.find("src/search") != std::string::npos);
     CHECK(rule.find("src/core") != std::string::npos);
     CHECK(rule.find("src/parse") != std::string::npos);
+}
+
+// D94: the User Guide quotes the Preview's changed-chart line in backticks.
+// The sentence is read off the owner line of the row that guards it, and that
+// line is checked against src/ui/preview_tab.cpp, so the words are typed only
+// in the code and in that row.
+TEST_CASE("single-owner: the User Guide quotes the Preview's changed-chart line as the code has it") {
+    const OwnerLine* owner = nullptr;
+    for (const OwnerRule& r : rules())
+        if (r.question == "What does the Preview say when the chart changed since it was analyzed?")
+            for (const OwnerLine& o : r.owner_lines)
+                if (o.file == "src/ui/preview_tab.cpp") owner = &o;
+    REQUIRE(owner != nullptr);
+
+    const auto slurp = [](const fs::path& p) {
+        std::ifstream in(p);
+        REQUIRE(in.good());
+        std::stringstream ss;
+        ss << in.rdbuf();
+        return ss.str();
+    };
+    INFO("owner line: " << owner->line_text);
+    REQUIRE(slurp(sourcetree::root() / fs::u8path(owner->file)).find(owner->line_text) !=
+            std::string::npos);
+
+    // The C++ literal on that line, between its first and last double quote.
+    const size_t open = owner->line_text.find('"');
+    const size_t close = owner->line_text.rfind('"');
+    REQUIRE(open != std::string::npos);
+    REQUIRE(close > open);
+    const std::string sentence = owner->line_text.substr(open + 1, close - open - 1);
+    REQUIRE(sentence.find('\\') == std::string::npos);  // no escapes to undo
+
+    INFO("docs/UserGuide.md should quote `" << sentence << "`");
+    CHECK(slurp(sourcetree::root() / "docs" / "UserGuide.md").find("`" + sentence + "`") !=
+          std::string::npos);
 }
 
 // E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is

@@ -290,10 +290,12 @@ using ChartLibraryCache = std::unordered_map<std::string, ChartCacheEntry>;
 // Which copy names an md5 (D51 call 10): the first copy the scan listed, the
 // charts row with the smallest rowid for that md5. One row per md5, with its
 // name, artist and charter (SQLite takes a bare column from the MIN(rowid)
-// row), plus `copies`, how many rows the scan listed for it. list_records,
-// library_copies and naming_copy_paths all read through it.
+// row), plus `copies`, how many rows the scan listed for it, and
+// `naming_rowid`, the naming copy's own rowid. list_records, library_copies
+// and naming_copy_paths all read through it.
 inline constexpr const char* kNamingCopiesSql =
-    "(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts"
+    "(SELECT md5, name, artist, charter, MIN(rowid) AS naming_rowid, COUNT(*) AS copies"
+    " FROM charts"
     " GROUP BY md5)";
 
 // The most charts one save group holds (D86 item 2). When a group closes

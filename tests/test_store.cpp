@@ -570,6 +570,23 @@ TEST_CASE("prepare_row files the row under the record's own rules fingerprint") 
     CHECK(foreign.rules_fingerprint != fixture().record.rules_fingerprint);
 }
 
+TEST_CASE("the rules_fp column holds a fingerprint's bytes as one run wrote them") {
+    // Every stored row's key includes these bytes, so a change to how they
+    // are written would orphan every result a user has. The literal is from
+    // one run.
+    const std::string db = testtemp::temp_path("rules_fp_bytes", ".db");
+    HydraRecord rec = at_cap(4);
+    rec.rules_fingerprint = 0x0102030405060708ULL;
+    {
+        RecordStore store(db);
+        store.add_row(prepare_row(RecordKey{"h", "mode", CapQuery::at(4)}, rec));
+    }
+    CHECK(scalar_on_file(db, "SELECT COUNT(*) FROM results WHERE hex(rules_fp) = '0807060504030201'") ==
+          1);
+    std::error_code ec;
+    std::filesystem::remove(std::filesystem::u8path(db), ec);
+}
+
 TEST_CASE("RecordKey compares on every part of the identity") {
     const RecordKey key{"h", "mode", CapQuery::at(4), kLensA};
     CHECK(key == RecordKey{"h", "mode", CapQuery::at(4), kLensA});
