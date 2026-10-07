@@ -225,6 +225,10 @@ void Harness::frame() {
     context->OMSetRenderTargets(1, views, nullptr);
     context->ClearRenderTargetView(rtv.Get(), hydra::ui::kClearColor);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    // Nothing presents here, so nothing paces the software GPU: without a
+    // flush, a long wait queues frames faster than WARP draws them and their
+    // buffers pile up. The user's call is in D98 item 1.
+    context->Flush();
     ImGuiTestEngine_PostSwap(engine);
 }
 
