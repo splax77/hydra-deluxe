@@ -326,6 +326,9 @@ public:
     // has waited kViewProgressDelaySeconds since start_view.
     bool view_running() const;
     bool view_progress_shown() const;
+    // True once the click's job has been collected and nothing waits: the
+    // click has settled. The one spelling tests wait on.
+    bool view_settled() const { return !view_job && !view_pending; }
 
     // 3D Preview (Phase 5). The GUI's shared D3D11 device is injected once at
     // startup (set_render_device, mirroring load_icons); the controller is
@@ -475,6 +478,9 @@ private:
     // re-identify an edited chart, save the summary when needed and show the
     // result. tick() calls it every frame, whichever tab shows.
     void update_view_job();
+    // Whether the click's job thread is still working, cancelled or not. The
+    // one spelling of that test.
+    bool view_thread_alive() const;
     // Saves the click's summary when the library's row is missing, Stale or
     // different (D87 item 2), and returns the summary the row now holds.
     // Throws on a store failure.

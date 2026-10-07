@@ -54,13 +54,12 @@ void wait_finished(const Job& job) {
     REQUIRE(job.finished());
 }
 
-// The entry the scan would make: its md5 is the file's own hash, so the
-// Preview takes the chart as unchanged and draws the path it is given.
+// The entry the scan would make (corpus::scanned_entry), without its
+// fingerprint: its md5 is the file's own hash, so the Preview hashes the file,
+// takes the chart as unchanged and draws the path it is given.
 ChartLibraryEntry entry_for(const std::string& notespath) {
-    ChartLibraryEntry e;
-    e.md5 = hydra::app::hash_chart_file(notespath);
-    e.title = "Preview controller test";
-    e.notespath = notespath;
+    ChartLibraryEntry e = corpus::scanned_entry(notespath);
+    e.sig.clear();
     return e;
 }
 

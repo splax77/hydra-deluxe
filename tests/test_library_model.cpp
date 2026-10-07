@@ -116,7 +116,8 @@ TEST_CASE("library model: a row Stale from another Hydra version says so in its 
     CHECK(row.stale_build);
     CHECK_FALSE(row.stale_rules);
     CHECK(row_tooltip(row) ==
-          "Out of date: this result came from another Hydra version. Re-analyze to refresh it.");
+          "Out of date: this result came from another Hydra version. Click the song or run a "
+          "batch to refresh it.");
 }
 
 TEST_CASE("library model: a row Stale from other rules names hydra_rules.ini in its tooltip") {
@@ -127,8 +128,8 @@ TEST_CASE("library model: a row Stale from other rules names hydra_rules.ini in 
     CHECK_FALSE(row.stale_build);
     CHECK(row.stale_rules);
     CHECK(row_tooltip(row) ==
-          "Out of date: this result came from different rules in hydra_rules.ini. Re-analyze "
-          "to refresh it.");
+          "Out of date: this result came from different rules in hydra_rules.ini. Click the "
+          "song or run a batch to refresh it.");
 }
 
 TEST_CASE("library model: a row Stale from both causes names both in its tooltip") {
@@ -140,7 +141,7 @@ TEST_CASE("library model: a row Stale from both causes names both in its tooltip
     CHECK(row.stale_rules);
     CHECK(row_tooltip(row) ==
           "Out of date: this result came from another Hydra version or from different rules "
-          "in hydra_rules.ini. Re-analyze to refresh it.");
+          "in hydra_rules.ini. Click the song or run a batch to refresh it.");
 }
 
 TEST_CASE("library model: a Stale row whose cause changes takes the new cause") {

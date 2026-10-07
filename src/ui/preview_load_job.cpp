@@ -133,9 +133,9 @@ void PreviewLoadJob::run() {
         // the parse error speaks for that. The future waits for the hash if
         // this job throws.
         std::future<bool> changed_check = std::async(std::launch::async, [this] {
-            if (app::chart_files_unchanged(entry_.notespath, entry_.sig)) return false;
-            const std::string hash = app::hash_chart_file(entry_.notespath);
-            return !hash.empty() && hash != entry_.md5;
+            const std::optional<app::ChartNow> now =
+                app::chart_changed_since(entry_.notespath, entry_.sig);
+            return now && !now->md5.empty() && now->md5 != entry_.md5;
         });
 
         // Branch (b) on its own thread. If this branch throws, `stop` tells it

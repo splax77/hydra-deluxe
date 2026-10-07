@@ -148,20 +148,19 @@ std::unique_ptr<AppState> app_on(const ScratchPaths& paths) {
 
 // ---- real charts for the click ---------------------------------------------
 
-// The library row a scan would write for the chart file at `notespath`: its
-// hash and fingerprint come from the scan's own owners.
+// The library row a scan would write for the chart file at `notespath`
+// (corpus::scanned_entry); these tests need its fingerprint to exist, so the
+// chart's folder has a song.ini.
 ChartLibraryEntry entry_for(const std::string& notespath, const std::string& title) {
-    ChartLibraryEntry e;
-    e.notespath = notespath;
-    e.rootfolder = notespath.substr(0, notespath.rfind('\\'));
-    e.md5 = hydra::app::hash_chart_file(notespath);
-    e.sig = hydra::app::chart_files_sig(notespath);
-    e.title = title;
-    e.artist = "Artist";
-    e.charter = "Charter";
-    REQUIRE_FALSE(e.md5.empty());
+    ChartLibraryEntry e = corpus::scanned_entry(notespath, title);
     REQUIRE_FALSE(e.sig.empty());
     return e;
+}
+
+// The song.ini every click test writes beside its chart: a folder chart needs
+// one to be scanned.
+void write_click_ini(const std::string& dir) {
+    audiochart::write_text_file(dir + "\\song.ini", "[song]\nname = Click\n");
 }
 
 // Writes the corpus's first .chart into folder `tag` with a song.ini (a
@@ -181,7 +180,7 @@ std::string write_corpus_chart(const std::string& tag, bool extra_note) {
     }
     const std::string notes = dir + "\\notes.chart";
     audiochart::write_text_file(notes, text);
-    audiochart::write_text_file(dir + "\\song.ini", "[song]\nname = Click\n");
+    write_click_ini(dir);
     return notes;
 }
 
@@ -203,7 +202,7 @@ std::unique_ptr<AppState> app_with(const ScratchPaths& paths,
 void settle(AppState& app) {
     for (int i = 0; i < 12000; ++i) {
         app.tick(0.0);
-        if (!app.view_job && !app.view_pending) return;
+        if (app.view_settled()) return;
         Sleep(5);
     }
     FAIL("the click's job never ended");
@@ -359,6 +358,30 @@ TEST_CASE("clicking a chart edited since the scan re-identifies it and shows the
     CHECK(app->viewed.record->best_path().totalscore() == fresh.record.best_path().totalscore());
 }
 
+// Ruling 15: when the library row cannot take the new hash, the click fails
+// loudly and saves nothing, so no result sits under a hash no row has.
+TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
+    ScratchPaths paths("appstate_click_reidfail");
+    const ChartLibraryEntry scanned = corpus_chart("click_reidfail");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    Sleep(20);
+    write_corpus_chart("click_reidfail", /*extra_note=*/true);
+    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
+    REQUIRE(new_md5 != scanned.md5);
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
+                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+
+    click(*app, scanned);
+
+    CHECK(app->viewed.state == hydra::ui::ViewedSong::State::Failed);
+    CHECK_FALSE(app->viewed.message.empty());
+    CHECK_FALSE(app->viewed.record.has_value());
+    // The row keeps its old hash, and nothing was saved under either hash.
+    CHECK(app->selected->md5 == scanned.md5);
+    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
+}
+
 TEST_CASE("clicking A then B in one frame shows B, and A is never shown or saved") {
     ScratchPaths paths("appstate_click_ab");
     const ChartLibraryEntry a = corpus_chart("click_a");
@@ -469,7 +492,7 @@ TEST_CASE("the click's Dynamics count keeps the 2x kicks with 2x Bass off") {
     audiochart::copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) +
                                    "/input/common/IB24/T3/Alpha Wolf - Acid Romance/notes.mid",
                                dir + "\\notes.mid");
-    audiochart::write_text_file(dir + "\\song.ini", "[song]\nname = Click\n");
+    write_click_ini(dir);
     const ChartLibraryEntry song = entry_for(dir + "\\notes.mid", "Click dyn");
 
     for (const bool bass2x : {true, false}) {
@@ -771,7 +794,7 @@ TEST_CASE("a chart with no stated length and no audio reads its last note") {
     const std::string notes = audiochart::short_chart_with_long_audio("click_noaudio");
     const std::string folder = notes.substr(0, notes.rfind('\\'));
     REQUIRE(std::remove((folder + "\\song.ogg").c_str()) == 0);
-    audiochart::write_text_file(folder + "\\song.ini", "[song]\nname = Click\n");
+    write_click_ini(folder);
     const ChartLibraryEntry song = entry_for(notes, "Click no audio");
     std::unique_ptr<AppState> app = app_with(paths, {song});
 

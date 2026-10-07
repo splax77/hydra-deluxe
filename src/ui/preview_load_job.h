@@ -63,8 +63,8 @@ private:
     double published_ = -1.0;
 };
 
-// Prepares a chart for the 3D Preview off the render thread, mirroring
-// AnalyzeJob. Two branches run at once:
+// Prepares a chart for the 3D Preview off the render thread, on the same job
+// base as ViewJob. Two branches run at once:
 //   (a) parse the chart, build the PreviewScene, and build the highway
 //       timeline (render::TrackState) from it;
 //   (b) find every audio stem and open it (audio::open_song_stems). An

@@ -361,6 +361,14 @@ bool chart_files_unchanged(const std::string& notespath, const std::string& sig)
     return !now.empty() && sig_unchanged(sig, now);
 }
 
+std::optional<ChartNow> chart_changed_since(const std::string& notespath,
+                                            const std::string& stored_sig) {
+    // One listing, and the sig before the hash, as the scan reads them.
+    const std::string now = chart_files_sig(notespath);
+    if (!now.empty() && sig_unchanged(stored_sig, now)) return std::nullopt;
+    return ChartNow{hash_chart_file(notespath), now};
+}
+
 std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }
 
 store::ChartLibraryEntry to_library_entry(const ScanItem& item) {
@@ -840,7 +848,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
 
     // A running search checks for cancel in its progress callback, and stops
     // at the next tick (the engine reports every half percent of the chart),
-    // the way the single-chart Analyze button stops.
+    // the way ViewJob (the click's job) stops.
     const std::function<void(float)> check_cancel = stop_on_cancel(cancel);
     const ChartAnalyzer analyze =
         callbacks.analyze ? callbacks.analyze : ChartAnalyzer(analyze_chart_file);

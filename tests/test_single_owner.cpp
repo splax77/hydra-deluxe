@@ -1220,6 +1220,25 @@ const std::vector<OwnerRule>& rules() {
           {"src/app/user_messages.cpp",
            "\". Click the song or run a batch to refresh it.\";",
            "stale_text, the owner: the sentence's ending (D87 item 6)"}}},
+        // Whether a chart file changed since its library row was made. The
+        // Preview's load and the click's job both ask chart_changed_since, so
+        // the two never disagree; the fingerprint and the hash have no other
+        // caller in src or tools.
+        {"Has a chart file changed since its library row was made?",
+         "chart_changed_since in src/app/analysis.cpp",
+         R"(\b(hash_chart_file|chart_files_unchanged|chart_files_sig)\()",
+         "",
+         {"src/app/analysis.h", "src/app/analysis.cpp"},
+         {},
+         "storage-T2 review finding 2 (D87 item 3)",
+         {"if (app::chart_files_unchanged(entry_.notespath, entry_.sig)) return false;",
+          "const std::string hash = app::hash_chart_file(entry_.notespath);",
+          "out_.new_sig = app::chart_files_sig(song_.notespath);"},
+         {"app::chart_changed_since(entry_.notespath, entry_.sig);"},
+         {},
+         // src only: tools/replay.cpp hashes a chart to look it up by path,
+         // which is a different question.
+         {"src"}},
         // The not-analyzed row's tooltip. The old copy was split over two
         // source lines, so a rule on the whole sentence missed it; this one
         // matches the sentence's first words, which sit on one line however
@@ -2963,21 +2982,25 @@ const std::vector<OwnerRule>& rules() {
         // dump prints each job's state, a different question.
         {"Is a batch or an analysis running?",
          "batch_running in src/ui/app_state.cpp",
-         R"(\b(batch_job\s*&&\s*!\s*((a|app)\.)?batch_job->snapshot\(\)\.finished|analyze_job\s*&&\s*!\s*((a|app)\.)?analyze_job->finished\(\)))",
+         R"(\b(batch_job\s*&&\s*!\s*((a|app)\.)?batch_job->snapshot\(\)\.finished|view_job\s*&&\s*!\s*((a|app)\.)?view_job->finished\(\)))",
          "",
          {},
          {},
-         "audit finding 254; phase 6 task J2-4 (D53)",
+         "audit finding 254; phase 6 task J2-4 (D53); storage-T2 review finding 3 (the click's job)",
          {"if (batch_job && !batch_job->snapshot().finished) return;",
-          "if (analyze_job && !analyze_job->finished()) return;",
+          "if (view_job && !view_job->finished()) view_job->cancel();",
           "const bool batch_busy = app.batch_job && !app.batch_job->snapshot().finished;",
-          "if (a.analyze_job && !a.analyze_job->finished()) return true;"},
+          "if (a.view_job && !a.view_job->finished()) return true;"},
          {"if (scan_job && !scan_job->snapshot().finished) return;",
           R"(a.batch_job ? (a.batch_job->snapshot().finished ? "finished" : "running") : "-",)",
-          "if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {"},
+          "if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {",
+          "if (view_thread_alive()) view_job->cancel();"},
          {{"src/ui/app_state.cpp",
            "bool AppState::batch_running() const { return batch_job && !batch_job->snapshot().finished; }",
-           "batch_running, the owner"}},
+           "batch_running, the owner"},
+          {"src/ui/app_state.cpp",
+           "bool AppState::view_thread_alive() const { return view_job && !view_job->finished(); }",
+           "view_thread_alive, the owner"}},
          {"src", "tests"}},
         // A cached copy of the library's chart count. The model's own rows
         // are the count; the cache is gone, so no line may name it.

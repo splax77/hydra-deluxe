@@ -91,7 +91,7 @@ void test_analyze_on_preview(ImGuiTestContext* ctx) {
     if (!open_preview(ctx)) return;
     IM_CHECK(h.app->view_running());
     gate.open();
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->view_job && !h.app->view_pending; }, 300));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
     IM_CHECK(h.app->viewed.ready());
     IM_CHECK(!h.app->viewed.record->paths.empty());
     IM_CHECK(h.app->view_row_status(0) == hydra::store::RecordStatus::Ready);

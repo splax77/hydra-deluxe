@@ -822,7 +822,7 @@ void test_panel_close_cancels(ImGuiTestContext* ctx) {
     ctx->ItemClick("X##closepanel");
     ctx->Yield(2);
     IM_CHECK(!h.app->details_open());
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->view_job && !h.app->view_pending; }, 30));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 30));
     IM_CHECK(h.app->viewed.state == hydra::ui::ViewedSong::State::None);
     IM_CHECK(h.app->view_row_status(0) == hydra::store::RecordStatus::NotAnalyzed);
     IM_CHECK(h.app->store->counts().second == 0);
@@ -969,7 +969,7 @@ void test_view_progress_delay(ImGuiTestContext* ctx) {
     h.app->select(h.app->view_row(1));
     IM_CHECK(wait_until(ctx, [&] {
         box_seen = box_seen || box_on_screen();
-        return !h.app->view_job && !h.app->view_pending;
+        return h.app->view_settled();
     }, 60));
     box_seen = box_seen || box_on_screen();
     const double took = since(t0);

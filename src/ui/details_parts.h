@@ -20,7 +20,7 @@
 namespace hydra::ui::detail {
 
 // details_panel.cpp. The states a record-backed tab shows before its own
-// content (analyze progress, not analyzed, stale, no paths). True only when
+// content (the click's progress, cancelled, error, no paths). True only when
 // the record is ready to draw.
 bool render_record_state(AppState& app);
 

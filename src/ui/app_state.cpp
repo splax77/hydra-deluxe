@@ -237,8 +237,10 @@ void AppState::cancel_view() {
         record_generation.bump();
         return;
     }
-    if (view_job && !view_job->finished()) view_job->cancel();
+    if (view_thread_alive()) view_job->cancel();
 }
+
+bool AppState::view_thread_alive() const { return view_job && !view_job->finished(); }
 
 void AppState::dismiss_view_error() {
     if (viewed.state != ViewedSong::State::Failed) return;
@@ -247,8 +249,8 @@ void AppState::dismiss_view_error() {
 }
 
 bool AppState::view_running() const {
-    return view_pending || (view_job && !view_job->finished() &&
-                            view_job->generation() == view_generation.n);
+    return view_pending ||
+           (view_thread_alive() && view_job->generation() == view_generation.n);
 }
 
 bool AppState::view_progress_shown() const {
@@ -289,7 +291,15 @@ void AppState::update_view_job() {
             try {
                 store->reidentify_chart(path, out.new_md5, out.new_sig);
             } catch (const std::exception& e) {
-                set_problem(app::plain_error(e));
+                // Fail loudly and save nothing: a summary under a hash no
+                // library row has would be an orphan (ruling 15).
+                v = ViewedSong{};
+                v.state = ViewedSong::State::Failed;
+                v.message = app::plain_error(e);
+                v.error = e.what();
+                viewed = std::move(v);
+                record_generation.bump();
+                return;
             }
             key.hyhash = out.new_md5;
             if (is_selected_row(job->song())) {
@@ -364,7 +374,7 @@ bool AppState::any_job_running() const {
     // view_job counts while it runs even when cancelled: tick() still has to
     // collect it (and start a waiting request).
     return (scan_job && !scan_job->snapshot().finished) || batch_running() || view_pending ||
-           (view_job && !view_job->finished()) || (report_job && !report_job->finished()) ||
+           view_thread_alive() || (report_job && !report_job->finished()) ||
            (dm_fetch_job && !dm_fetch_job->finished()) ||
            (dm_report_job && !dm_report_job->finished()) || (preview && preview->busy());
 }

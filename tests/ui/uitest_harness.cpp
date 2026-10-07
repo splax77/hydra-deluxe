@@ -589,7 +589,7 @@ void wait_song_analyzed(ImGuiTestContext* ctx) {
     set_panel_ref(ctx);
     if (ctx->IsError()) return;
     ctx->ItemClick("##DetailsTabs/Paths");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->view_job && !h.app->view_pending; }, 300));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
     IM_CHECK(h.app->viewed.ready());
 }
 
