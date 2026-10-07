@@ -2489,3 +2489,11 @@ TEST_CASE("summarize_record counts every kept path once") {
     // One root with a tied variant, plus a second root: three paths.
     CHECK(summarize_record(test::tied_variant_record()).pathcount == 3);
 }
+
+// D86 (build settings): CMakeLists.txt builds the vendored SQLite without its
+// memory-use counters and without shared cache, two options that trim its own
+// CPU. A sibling of the FTS5 case above.
+TEST_CASE("the vendored SQLite is built without memory counters or shared cache") {
+    CHECK(sqlite3_compileoption_used("DEFAULT_MEMSTATUS=0") == 1);
+    CHECK(sqlite3_compileoption_used("OMIT_SHARED_CACHE") == 1);
+}
