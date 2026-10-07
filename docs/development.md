@@ -14,14 +14,13 @@ database: they read the same `hydra_settings.ini`, `hydra_rules.ini` and
 hydra_batch                    Analyze every chart folder from the app's settings
 hydra_batch <folder> [...]     ...or specific folders instead
 hydra_batch --redo             Re-analyze charts already stored
-hydra_batch --reindex          Only rebuild sort columns, no analysis
 hydra_batch --db <path>        Target a specific database
 hydra_batch --rules <path>     Take the rule choices from this file, not hydra_rules.ini
 hydra_batch --legacy-fills     Score fills by Clone Hero 1.0's rule (needs its own --db)
 
-hydra_report                   Sortable HTML report of stored paths (top 5 per chart and mode)
+hydra_report                   Sortable HTML report of analyzed charts' paths (top 5 per chart and mode)
 hydra_report --paths 20        Top 20 per chart and mode
-hydra_report --all-paths       Everything stored
+hydra_report --all-paths       Every path the analysis kept
 hydra_report --out report.html
 hydra_report --db <path>       Report on a specific database
 hydra_report --rules <path>    Judge records against the rules in this file
@@ -50,7 +49,7 @@ made it, so a song's 1.0 and 1.1 results sit side by side in `hydra.db`.
 the app's 1.0 fills setting and goes by the flag alone. It still refuses to
 write into the app's own `hydra.db`, so give it its own `--db`. Each database it
 fills is stamped with the rule, and hydra_batch refuses (exit code 2) a run
-whose rule disagrees with the stamp. `--reindex` never changes the stamp.
+whose rule disagrees with the stamp.
 `hydra_report` on a database stamped 1.0 reports its 1.0 results. When it
 finds nothing under the current settings but the database holds other
 results, it names the settings it looked under instead of saying the
@@ -164,8 +163,9 @@ change to the engine can be measured instead of guessed at.
 of activation windows in ticks. It walks the chart chord by chord. For each
 chord it prints the chord's own score, the running totals, and whether the
 chord fell under Star Power — all as JSON, so it can be diffed or graphed.
-`hydra_replay dump` reads the windows straight out of a stored record, so you
-can start from a path the app already found and change one activation.
+`hydra_replay dump` analyzes the chart and prints the windows of every path the
+engine found, so you can start from a path the app shows and change one
+activation. It reads no database (docs/adr/0026).
 `hydra_replay score --path <file>` prices a path straight out of the JSON
 `dump` or `target` wrote, so nothing has to be retyped and nothing is lost on
 the way — in particular the squeeze-out offsets, which a hand-typed window

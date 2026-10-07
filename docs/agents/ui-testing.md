@@ -45,10 +45,8 @@ state
 type **/##search | Burnout
 wait 0.2
 click **/Burnout
-click **/Analyze this song
 timeout 300
 wait-idle
-wait 0.5
 click **/##DetailsTabs/Stars
 wait 0.2
 text
@@ -75,13 +73,13 @@ screenshot stars.png
 
 Lines print as they run; a failing line prints `!! failed at line N`.
 
-`wait-idle` counts a finished analysis as idle, but the song panel shows `Done!` in place of the tabs until the app clears the job a moment later. So put a short `wait` after it before reading a tab. A tab click also needs a frame or two before its text shows.
+Clicking a song starts its analysis (D87 item 1), and `wait-idle` waits for it. There is no `Done!` flash, so the tabs show as soon as it finishes. A tab click still needs a frame or two before its text shows.
 
 ## Refs (how to name a widget)
 
 - A bare label is looked up in the current window: `Scan library`.
 - `//Window/Label` is absolute: `//Scanning charts/Continue`, `//Analyze library/Start analyzing`.
-- `**/Label` searches every child window too. Most of the screen now lives in child windows (the settings bar, the library, the song panel, the batch strips), so use it for anything below the toolbar: `**/##search`, `**/Analyze this song`, `**/Expand all`, `**/Pause`.
+- `**/Label` searches every child window too. Most of the screen now lives in child windows (the settings bar, the library, the song panel, the batch strips), so use it for anything below the toolbar: `**/##search`, `**/Try again`, `**/Expand all`, `**/Pause`.
 - `##id` labels work as written: `**/##spcap`, `**/##DetailsTabs/Preview`, `**/##scrub`.
 - `###` labels are addressed by the part after `###`: DM picker rows are `**/###<discord id>`.
 - Library rows: `**/<title>`; escape `/` and `#` in the title with a backslash.
@@ -95,9 +93,9 @@ These are the labels the merged app draws. Every GUI test finds widgets by them.
 |---|---|
 | Toolbar (window `Hydra`) | `Manage folders... (N)`, `Scan library`, `Analyze library...` or `Analyze search (N)...` while searching, `Compare with dmleaderboards...`, `Open path report` / `Building path report...` |
 | Status line | a problem stays until `X##dismissstatus` |
-| Settings bar, child `##settingsbar` | combo `##difficulty`, checkboxes `Pro Drums` and `2x Bass`, input `##spcap` with checkbox `1.0 fills` beside it, input `##depthvalue`, combo `##depthmode`, checkbox `Path limit##mslimit`, input `##mslimitvalue`. While locked it shows `Stop the batch to change these.` (batch) or `Settings are locked while this song analyzes.` (one song) |
+| Settings bar, child `##settingsbar` | combo `##difficulty`, checkboxes `Pro Drums` and `2x Bass`, input `##spcap` with checkbox `1.0 fills` beside it, input `##depthvalue`, combo `##depthmode`, checkbox `Path limit##mslimit`, input `##mslimitvalue`. Only a batch locks it, and it then shows `Stop the batch to change these.` (D90 item 2) |
 | Library, child `##library` | search input `##search`, clear button `X##clearsearch`, chips `All (N)##chipall`, `Not analyzed (N)##chipnew`, `Stale (N)##chipstale`, `Analyzed (N)##chipdone`, table `##librarytable` with columns `Title`, `Artist`, `Charter`, `Folder`, `Best path`. A Best path cell reads `Not analyzed`, `Stale`, or `<score>  <path>`. Under a search: `Clear search` |
-| Song panel, child `##songpanel` | `Hide library` / `Show library`, `<##prevsong`, `>##nextsong`, `X##closepanel` (Escape does the same), `Analyze this song` (not analyzed) or `Re-analyze` (analyzed or stale), tab bar `##DetailsTabs` with tabs `Paths`, `Preview`, `Dynamics`, `Stars` |
+| Song panel, child `##songpanel` | `Hide library` / `Show library`, `<##prevsong`, `>##nextsong`, `X##closepanel` (Escape does the same). A click's analysis shows `Analyzing chart...` with `Cancel` once it has run 0.15 s; a cancelled one shows `Analysis cancelled.` with `Try again`; a failed one shows its error with `Continue`. Tab bar `##DetailsTabs` with tabs `Paths`, `Preview`, `Dynamics`, `Stars` |
 | Paths tab | path buttons `##path<i>` (0-based), `Expand all` / `Collapse all`, activation rows `##act<i>` (1-based), links `Show in Preview >##showact<i>`, folds `Backend timings##act<i>`, `Multiplier squeeze##mult`, `Score breakdown##breakdown`, button `Copy path` (flashes `Copied!`), checkbox `Hide backend rows beyond##backendlimit`, input `##backendlimitvalue` |
 | Preview tab | text `Showing` beside the combo `##previewpath`, `< Act##prevact`, `Act >##nextact`, transport `-5s`, `< 5 Ticks`, `Play` / `Pause`, `5 Ticks >`, `+5s`, sliders `##volume` and `##scrub` |
 | Batch confirm, popup `Analyze library` | checkbox `Also re-analyze charts that already have a result##redo`, buttons `Start analyzing` and `Cancel` |
@@ -133,23 +131,24 @@ void test_thing(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;   // helpers only return from themselves
     open_details(ctx, 0);         // click row 0, wait for the song panel, land on Paths
     if (ctx->IsError()) return;
-    analyze_open_song(ctx);       // Analyze this song, wait for a Ready record
+    wait_song_analyzed(ctx);      // the click's analysis finishes and is Ready
     if (ctx->IsError()) return;
     ctx->ItemClick("##DetailsTabs/Stars");  // the ref points at the panel now
     IM_CHECK(visible_text(h).find("Base score") != std::string::npos);
 }
 ```
 
-The shared helpers live in `uitest_harness.{h,cpp}`. `open_titled(ctx, search, title)` searches and opens a song by title. `set_panel_ref(ctx)` points refs at the song panel. `analyze_button_ref(h)` gives `**/Analyze this song` or `**/Re-analyze`, whichever is showing. `open_preview(ctx)` opens row 0 on the Preview tab and waits for it to load.
+The shared helpers live in `uitest_harness.{h,cpp}`. `open_titled(ctx, search, title)` searches and opens a song by title. `set_panel_ref(ctx)` points refs at the song panel. `wait_song_analyzed(ctx)` waits for the open song's analysis, which a click or a setting change starts, and checks it is Ready. `open_preview(ctx)` opens row 0 on the Preview tab and waits for it to load.
 
 Rules of thumb:
 
 - Wait on app state (`h.app->…`) with `wait_until`, never on frame counts. Jobs are real threads.
 - To look at a running batch, hold it open with `BatchGate` (see above); never hope it is still running.
+- To look at a click's running analysis (its progress box, Cancel, a setting changed under it), hold it with `ViewGate`. Make the gate after `reset_app`; every click's job then waits at it until `open()`, and `started()` counts the jobs that reached it.
 - `wait_until` yields one extra frame after its condition holds, so `visible_text` reflects it.
 - `wait_until` returns false at once when the test has already failed (`ctx->IsError()`). A click that found no item no longer sits out the whole timeout.
 - An `IM_CHECK` inside a helper only returns from the helper. Check `ctx->IsError()` after calling one.
-- The Dynamics tab reads stored counts from the database first. A second open of the same chart shows them with no background job.
+- The Dynamics tab's counts come from the click's own analysis; nothing is read from the database. So wait for the click (`wait_song_analyzed`, or `wait-idle` in a script) before reading the tab.
 
 ## Layout
 
