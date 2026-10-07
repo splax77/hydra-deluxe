@@ -378,6 +378,35 @@ TEST_CASE("midi: the lean reader keeps only what each track's role reads, at the
     CHECK(event_view(mid) == expected);
 }
 
+TEST_CASE("midi: the lean reader sizes each track's messages once") {
+    // Each track holds exactly what it keeps, with no spare room from growing
+    // one message at a time. The kept counts (1, 7, 5) are ones a vector
+    // grown by push_back would overshoot.
+    using namespace testmidi;
+    std::vector<std::vector<uint8_t>> drums = {track_name("PART DRUMS"),
+                                               text_event("[mix 3 drums0d]")};
+    for (int i = 0; i < 6; ++i) {
+        drums.push_back(after(10, note_on(96, 100)));
+        drums.push_back(after(0, note_on(97, 100)));  // dropped by the filter
+    }
+    drums.push_back(end_of_track());
+    std::vector<std::vector<uint8_t>> events = {track_name("EVENTS")};
+    for (int i = 0; i < 5; ++i) events.push_back(after(3, text_event("[section A]")));
+    events.push_back(end_of_track());
+    const std::vector<uint8_t> file = smf_tracks({
+        concat({track_name("tempo"), set_tempo(400000), end_of_track()}),
+        concat(drums),
+        concat(events),
+    });
+    const hydra::MidiFile mid = hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter());
+    REQUIRE(mid.tracks.size() == 3);
+    CHECK(mid.tracks[0].messages.size() == 1);
+    CHECK(mid.tracks[1].messages.size() == 7);
+    CHECK(mid.tracks[2].messages.size() == 5);
+    for (const hydra::MidiTrack& t : mid.tracks)
+        CHECK_MESSAGE(t.messages.capacity() == t.messages.size(), t.name);
+}
+
 TEST_CASE("midi: the lean reader refuses a file where the full reader does") {
     using namespace testmidi;
     // An over-cap meta in a track the lean reader keeps nothing from still

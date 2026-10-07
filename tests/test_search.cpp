@@ -575,6 +575,21 @@ using test::collect_tied;
 
 }  // namespace
 
+TEST_CASE("score graph: the backend rows are sized once, one per chord") {
+    // The graph sizes its row list from the song before building, so it ends
+    // with one row per chord and no spare room from growing a row at a time.
+    int built = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        const ScoreGraph graph(song, 4);
+        ++built;
+        CHECK_MESSAGE(graph.all_backends().size() == song.sequence.size(), path);
+        CHECK_MESSAGE(graph.all_backends().capacity() == song.sequence.size(), path);
+    }
+    CHECK(built > 0);
+}
+
 TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
     // Two SP phrases, then an activation at tick 2304 with a 2-bar meter, so
     // SP ends 4 measures later at tick 5376. The chart stops at 5280.

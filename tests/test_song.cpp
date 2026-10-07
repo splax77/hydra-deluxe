@@ -80,6 +80,20 @@ TEST_CASE("song parse holds its invariants over the corpus") {
     MESSAGE("checked " << charts << " charts (" << nonempty << " non-empty)");
 }
 
+TEST_CASE("a parsed song keeps no spare room in its chord list") {
+    // Every loader ends at load_songbytes_mid or load_songbytes_chart, so the
+    // corpus covers .mid, .chart and the containers alike. Parsed fresh here,
+    // not through corpus::song's cache.
+    int nonempty = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song song = load_songpath(path, true, true);
+        if (song.is_empty()) continue;
+        ++nonempty;
+        CHECK_MESSAGE(song.sequence.capacity() == song.sequence.size(), path);
+    }
+    CHECK(nonempty > 0);
+}
+
 TEST_CASE("song parse holds its invariants at Hard too") {
     // Same sweep at Hard. Not every chart has Hard charting (an empty song is
     // the honest answer there), but plenty do, and whatever parses must hold

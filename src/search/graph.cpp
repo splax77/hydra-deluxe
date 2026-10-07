@@ -106,6 +106,10 @@ ScoreGraph::ScoreGraph(const Song& song, std::optional<int> sp_meter_cap,
 void ScoreGraph::build() {
     TickGreater cmp;
 
+    // The loop below stores one row per chord (store_new_backend), so the
+    // list is sized once instead of growing a row at a time.
+    all_backends_.reserve(song_.sequence.size());
+
     for (const SongTimestamp& timestamp : song_.sequence) {
         // SP can fall off between timestamps: handle deacts due before this one.
         while (!deact_heap_.empty() &&

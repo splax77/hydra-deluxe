@@ -998,6 +998,13 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         fill_start_tick_.reset();
         fills_.clear();
         marks_before_tag_ = 0;
+        // push_timestamp runs at each tick change and once at the end, and
+        // emits at most one chord each time, so that count sizes the sequence
+        // once.
+        size_t pushes = 1;
+        for (const Message& msg : track.messages)
+            if (msg.time != 0) ++pushes;
+        song.sequence.reserve(pushes);
         for (const Message& msg : track.messages) {
             if (msg.time != 0) {
                 push_timestamp(elapsed);
@@ -1342,6 +1349,25 @@ bool find_section_header(std::string_view line, std::string_view* bracket) {
     return false;
 }
 
+// The line of `text` that starts at `pos`, trimmed, with `pos` moved to the
+// start of the next one. ChartParser::load_sections says which lines count.
+std::string_view next_chart_line(std::string_view text, size_t& pos) {
+    const size_t nl = text.find('\n', pos);
+    const size_t stop = nl == std::string_view::npos ? text.size() : nl;
+    const std::string_view line = trim_view(text.substr(pos, stop - pos));
+    pos = nl == std::string_view::npos ? text.size() : nl + 1;
+    return line;
+}
+
+// How many lines a section has from `pos` up to the "}" that closes it in
+// ChartParser::load_sections. It sizes the drum section's line list once; the
+// lines load_sections drops make it run high, never low.
+size_t lines_to_section_close(std::string_view text, size_t pos) {
+    size_t n = 0;
+    while (pos < text.size() && next_chart_line(text, pos) != "}") ++n;
+    return n;
+}
+
 void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit,
                                 std::string_view drum_section) {
     // Walk the file in place, one line per '\n' (a trailing '\r' is removed by
@@ -1363,10 +1389,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
     std::vector<SongSection> events;
     size_t pos = 0;
     while (pos < text.size()) {
-        const size_t nl = text.find('\n', pos);
-        const size_t stop = nl == std::string_view::npos ? text.size() : nl;
-        const std::string_view line = trim_view(text.substr(pos, stop - pos));
-        pos = nl == std::string_view::npos ? text.size() : nl + 1;
+        const std::string_view line = next_chart_line(text, pos);
 
         if (in_section) {
             if (line == "{") {
@@ -1421,6 +1444,7 @@ void ChartParser::load_sections(const std::vector<uint8_t>& data, char mix_digit
             } else if (name == drum_section) {
                 keep = Keep::Drums;
                 drums.clear();
+                drums.reserve(lines_to_section_close(text, pos));
             } else if (name == kEventsSection) {
                 keep = Keep::Events;
                 events.clear();
@@ -1610,6 +1634,12 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
         const auto by_tick = [](const ChartLine& a, const ChartLine& b) { return a.tick < b.tick; };
         if (!std::is_sorted(lines.begin(), lines.end(), by_tick))
             std::stable_sort(lines.begin(), lines.end(), by_tick);
+        // push_timestamp runs once per tick and emits at most one chord, so
+        // the tick count sizes the sequence once.
+        size_t ticks = lines.empty() ? 0 : 1;
+        for (size_t i = 1; i < lines.size(); ++i)
+            if (lines[i].tick != lines[i - 1].tick) ++ticks;
+        song.sequence.reserve(ticks);
         const ChartLine* const end = lines.data() + lines.size();
         for (const ChartLine* p = lines.data(); p != end;) {
             const ChartLine* q = p + 1;
@@ -1646,8 +1676,18 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
 
 // ---- public loaders -----------------------------------------------------
 
-Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
-                        bool bass2x, Difficulty difficulty, const core::Rules& rules) {
+namespace {
+
+// The chord list outlives the parse (the engine and the Preview read it), and
+// each parser sizes it from a count that can run high. So its spare room goes
+// back once the parser's own buffers are freed. Every loader ends at
+// load_songbytes_mid or load_songbytes_chart, which call this.
+void trim_parsed_song(Song& song) {
+    song.sequence.shrink_to_fit();
+}
+
+Song parse_mid_lean(const std::vector<uint8_t>& data, bool pro, bool bass2x,
+                    Difficulty difficulty, const core::Rules& rules) {
     // Only the notes MidiParser acts on are decoded (midi_note_is_read).
     const int base = difficulty_base_pitch(difficulty);
     const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
@@ -1660,9 +1700,22 @@ Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
     return MidiParser(rules).parse(mid, pro, bass2x, difficulty);
 }
 
+}  // namespace
+
+Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
+                        bool bass2x, Difficulty difficulty, const core::Rules& rules) {
+    // The lean file is gone once parse_mid_lean returns.
+    Song song = parse_mid_lean(data, pro, bass2x, difficulty, rules);
+    trim_parsed_song(song);
+    return song;
+}
+
 Song load_songbytes_chart(const std::vector<uint8_t>& data, bool pro,
                           bool bass2x, Difficulty difficulty, const core::Rules& rules) {
-    return ChartParser(rules).parse(data, pro, bass2x, difficulty);
+    // The parser and its sections are gone by the end of this statement.
+    Song song = ChartParser(rules).parse(data, pro, bass2x, difficulty);
+    trim_parsed_song(song);
+    return song;
 }
 
 Song load_songpath_mid(const std::string& path, bool pro, bool bass2x,
