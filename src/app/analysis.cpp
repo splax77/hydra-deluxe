@@ -403,10 +403,11 @@ store::ChartTimingMeta chart_timing_meta(const std::optional<store::ChartTimingM
 namespace {
 
 // One folder's share of the walk: the charts it holds, in the order the walk
-// records them, and its subfolders' paths in listing order.
-void scan_folder(const std::string& dir, const std::string& origin,
-                 const std::vector<DirEntry>& entries, std::vector<PendingChart>& charts,
-                 std::vector<std::string>& subpaths) {
+// records them, and its subfolders' paths in listing order. Which root the
+// folder belongs to is the replay's to decide (walk_folders), so the charts
+// leave here without a rootfolder.
+void scan_folder(const std::string& dir, const std::vector<DirEntry>& entries,
+                 std::vector<PendingChart>& charts, std::vector<std::string>& subpaths) {
     // The folder's files, by name and entry in the same order, so the
     // notes-file pick's index leads back to the entry (pending_chart_of
     // fingerprints it).
@@ -424,12 +425,9 @@ void scan_folder(const std::string& dir, const std::string& origin,
         if (chart_kind_of(e.name) != ChartKind::Folder) found_archives.push_back(&e);
     }
 
-    std::string rootfolder = relpath(parent_folder(dir), origin);
     const auto add_chart = [&](const DirEntry& chart) {
         std::optional<PendingChart> pc = pending_chart_of(dir, chart, entries);
-        if (!pc) return;
-        pc->rootfolder = rootfolder;
-        charts.push_back(std::move(*pc));
+        if (pc) charts.push_back(std::move(*pc));
     };
     const std::optional<NotesFilePick> pick = pick_notes_file(file_names);
     if (pick) add_chart(*files[pick->index]);
@@ -441,7 +439,6 @@ void scan_folder(const std::string& dir, const std::string& origin,
 // One folder the walk listed, filled in by whichever thread listed it.
 struct WalkNode {
     std::string dir;
-    std::string origin;  // the root folder it was found under
     std::vector<PendingChart> charts;
     std::vector<std::string> subpaths;  // in listing order
     std::string error;
@@ -464,7 +461,7 @@ void walk_folders(const std::vector<std::string>& rootfolders, const ScanCallbac
     std::unordered_set<std::string> visited;           // roots and listed subfolders
     for (const std::string& root : rootfolders) {
         if (is_directory_utf8(root)) {
-            nodes.push_back(WalkNode{root, root, {}, {}, {}});
+            nodes.push_back(WalkNode{root, {}, {}, {}});
             roots.push_back(nodes.size() - 1);
         }
         visited.insert(root);
@@ -485,14 +482,13 @@ void walk_folders(const std::vector<std::string>& rootfolders, const ScanCallbac
             unlisted.pop_back();
             ++listing;
             const std::string dir = nodes[idx].dir;
-            const std::string origin = nodes[idx].origin;
             lock.unlock();
 
             std::vector<PendingChart> charts;
             std::vector<std::string> subpaths;
             std::string error;
             try {
-                scan_folder(dir, origin, list_dir(dir), charts, subpaths);
+                scan_folder(dir, list_dir(dir), charts, subpaths);
             } catch (const std::exception& e) {
                 // The charts found so far stay; the folder's subfolders are
                 // not walked.
@@ -507,7 +503,7 @@ void walk_folders(const std::vector<std::string>& rootfolders, const ScanCallbac
             node.subpaths = std::move(subpaths);
             for (const std::string& sub : node.subpaths) {
                 if (!visited.insert(sub).second) continue;
-                nodes.push_back(WalkNode{sub, origin, {}, {}, {}});
+                nodes.push_back(WalkNode{sub, {}, {}, {}});
                 node_of.emplace(sub, nodes.size() - 1);
                 unlisted.push_back(nodes.size() - 1);
             }
@@ -542,18 +538,26 @@ void walk_folders(const std::vector<std::string>& rootfolders, const ScanCallbac
     if (callbacks.on_folders && total > reported) callbacks.on_folders(total);
 
     // The serial walk, over the listings. Its own visited set decides which
-    // parent walks a folder, so even repeated roots replay exactly.
+    // parent walks a folder, and so which root the folder belongs to (its
+    // charts' rootfolder), so even roots that reach one folder twice replay
+    // exactly. Which thread listed the folder first plays no part.
     std::unordered_set<std::string> walked(rootfolders.begin(), rootfolders.end());
-    std::vector<size_t> stack(roots);
+    std::vector<std::pair<size_t, std::string>> stack;  // a node and the root it was reached from
+    for (const size_t idx : roots) stack.emplace_back(idx, nodes[idx].dir);
     while (!stack.empty()) {
-        WalkNode& node = nodes[stack.back()];
+        const auto [idx, origin] = std::move(stack.back());
         stack.pop_back();
+        WalkNode& node = nodes[idx];
         if (!node.error.empty()) errors.push_back(std::move(node.error));
-        for (PendingChart& pc : node.charts) pending.push_back(std::move(pc));
+        const std::string rootfolder = relpath(parent_folder(node.dir), origin);
+        for (PendingChart& pc : node.charts) {
+            pc.rootfolder = rootfolder;
+            pending.push_back(std::move(pc));
+        }
         for (const std::string& sub : node.subpaths) {
             if (!walked.insert(sub).second) continue;
             const auto it = node_of.find(sub);
-            if (it != node_of.end()) stack.push_back(it->second);  // absent only after a cancel
+            if (it != node_of.end()) stack.emplace_back(it->second, origin);  // absent only after a cancel
         }
     }
 }

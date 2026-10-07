@@ -920,3 +920,34 @@ TEST_CASE("the scan's items come out in walk order whatever order they were hash
     // The MD5 of the 4 MB pattern, from Python's hashlib on 2026-10-06.
     CHECK(items.back().md5 == "aad8b8e4d120d0df7a7fda991d5dab03");
 }
+
+// S1 review: two roots spelled differently can reach one folder, here
+// R\sub\x through R and through "R\sub\". The walk lists x once; its
+// rootfolder must come from the root the serial walk reaches it by, whichever
+// thread listed it. The serial walk pops the last root first.
+TEST_CASE("a folder two roots reach takes its rootfolder from the root the walk reaches it by") {
+    namespace fs = std::filesystem;
+    const std::string root = scan_fixture_dir("two_roots_one_folder");
+    fs::remove_all(hydra::os_path(root));
+    const std::string dir = root + "\\sub\\x";
+    fs::create_directories(hydra::os_path(dir));
+    write_bytes(dir + "\\notes.chart", {0});
+    const std::string ini = "[song]\r\nname = x\r\n";
+    write_bytes(dir + "\\song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
+    const std::string sub_root = root + "\\sub\\";
+
+    // R last: R is walked first, so x is reached through R\sub.
+    auto [via_r, errors_r] = discover_charts({sub_root, root});
+    // "R\sub\" last: it is walked first and reaches x directly.
+    auto [via_sub, errors_sub] = discover_charts({root, sub_root});
+    fs::remove_all(hydra::os_path(root));
+
+    CHECK(errors_r.empty());
+    CHECK(errors_sub.empty());
+    REQUIRE(via_r.size() == 1);
+    REQUIRE(via_sub.size() == 1);
+    CHECK(via_r[0].notespath == dir + "\\notes.chart");
+    CHECK(via_sub[0].notespath == dir + "\\notes.chart");
+    CHECK(via_r[0].rootfolder == "sub");
+    CHECK(via_sub[0].rootfolder == ".");
+}
