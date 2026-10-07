@@ -180,34 +180,6 @@ const char* const kBackendTimingsLead =
     "marked (uncounted) lands outside Star Power unless it is squeezed in, so this "
     "path's score leaves it out.";
 
-RecordStatusView build_record_status(const store::RecordLookup& lookup) {
-    RecordStatusView view;
-    view.state = lookup.status;
-    if (view.state != store::RecordStatus::Ready || !lookup.record) return view;
-
-    const HydraRecord& record = *lookup.record;
-    // A Ready record can legitimately hold nothing -- the chart was analyzed
-    // and no path survived. Say so instead of asking for a best path.
-    if (record.paths.empty()) {
-        view.lines.push_back(kNoPathsFound);
-        return view;
-    }
-    view.lines.push_back("Best score:  " +
-                         group_thousands(record.best_path().totalscore()));
-    view.lines.push_back("Paths kept:  " +
-                         std::to_string((int)record.all_paths().size()));
-    // The blob's cap and limit are the key's: the store's prepare_row (ST1)
-    // refuses a row whose blob disagrees with its key, either way.
-    if (record.ms_limit)
-        view.lines.push_back("Path limit:  " +
-                             std::to_string((int)*record.ms_limit) + " ms");
-    else
-        view.lines.push_back("Path limit:  off");
-    if (record.sp_cap)
-        view.lines.push_back("SP cap:  " + bars_text(*record.sp_cap));
-    return view;
-}
-
 namespace {
 
 // The squeeze rows, naming each note in the words of the Pro Drums setting
@@ -586,15 +558,6 @@ void PathsTabUi::click_row(size_t i) {
     act_open[i] = 1;
 }
 
-const RecordStatusView& PathsTabCache::status(const store::RecordLookup& lookup,
-                                               int record_generation) {
-    if (record_generation != status_generation_) {
-        status_ = build_record_status(lookup);
-        status_generation_ = record_generation;
-        ++status_builds_;
-    }
-    return status_;
-}
 
 const PathsTabCache::Details& PathsTabCache::details(
     const Path& path, const HydraRecord& record, int record_generation,

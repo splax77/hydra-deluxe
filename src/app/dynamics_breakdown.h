@@ -109,17 +109,7 @@ std::string dynamics_share(int part, int total);
 
 DynamicsBreakdown count_dynamics(const Song& song);
 
-// Versioned binary encoding for storage in the dynamics table (record_store.h).
-// Version byte, then dynamics_enabled (1 byte), then the nine rows in
-// DynamicsRow order, each as ghost/accent/normal, then the late tag's ms
-// (0xFFFFFFFF when none) and the count of markings before it. Every number is
-// a little-endian uint32.
-std::vector<uint8_t> encode_dynamics(const DynamicsBreakdown& b);
-
-// Returns nullopt on an unknown version or data too short.
-std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blob);
-
-// ---- the cache rules, in one place ----------------------------------------
+// ---- the count's parse, in one place --------------------------------------
 
 // The Dynamics tab's background count always parses with 2x kicks kept, so
 // the "2x kick" row is known even while the "2x Bass" box is off. The parser
@@ -137,31 +127,6 @@ Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty diffi
 // count can reuse it. The rules never change the count (pinned in
 // test_dynamics_breakdown), so only the 2x kicks decide.
 bool analysis_parse_counts_dynamics(bool bass2x);
-
-// Stored counts carry store::kDynamicsCountStamp and their blobs start with
-// store::kDynamicsBlobStamp (store/stored_versions.h says when to bump each).
-
-// The stored count for this key, or nullopt when there is none, its stamp
-// isn't current, or it fails to decode. The caller then recounts.
-std::optional<DynamicsBreakdown> load_stored_dynamics(store::RecordStore& store,
-                                                      const store::DynamicsKey& key);
-
-// Saves a count under this key, stamped kDynamicsCountStamp.written. Throws on a
-// store failure.
-void save_dynamics(store::RecordStore& store, const store::DynamicsKey& key,
-                   const DynamicsBreakdown& breakdown);
-
-// The key of one count, for its stored row and for the Dynamics tab's copy in
-// memory alike.
-store::DynamicsKey dynamics_store_key(const std::string& md5, Difficulty difficulty, bool pro);
-
-// After an analysis, its dynamics count as a free by-product (the chart is
-// already parsed), ready for RecordStore::save_analysis. nullopt when the
-// analysis parsed with bass2x off (the parse dropped the 2x kicks and the
-// counts would be incomplete) or the count fails: best effort, never a reason
-// to lose the analysis record.
-std::optional<store::DynamicsEntry> dynamics_entry_from_analysis(
-    const std::string& md5, const Song& song, bool bass2x, Difficulty difficulty, bool pro);
 
 }  // namespace app
 }  // namespace hydra

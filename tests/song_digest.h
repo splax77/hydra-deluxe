@@ -62,22 +62,12 @@ inline uint64_t fnv_opt(uint64_t h, const std::optional<T>& o) {
 // Adds one chart's hash to a running corpus digest (which starts at kSeed).
 inline uint64_t fold(uint64_t all, uint64_t chart) { return fnv(all, &chart, sizeof chart); }
 
-// One chart's stored result row: bestpath, the structure blob, every node's
-// hash and payload, and the summary columns. The row's identity and build
-// stamp fields (see store::PreparedRow) are left out: they come from the
-// settings and the build, not from the analysis.
+// One chart's stored result row: bestpath and the summary columns. The row's
+// identity, build stamp and rules fields (see store::PreparedRow) are left
+// out: they come from the settings and the build, not from the analysis.
 inline uint64_t row_hash(const store::PreparedRow& r) {
     uint64_t h = kSeed;
     h = fnv_str(h, r.bestpath);
-    uint64_t n = r.structure.size();
-    h = fnv(h, &n, sizeof n);
-    h = fnv(h, r.structure.data(), r.structure.size());
-    for (const auto& node : r.nodes) {
-        h = fnv_str(h, node.hash);
-        n = node.payload.size();
-        h = fnv(h, &n, sizeof n);
-        h = fnv(h, node.payload.data(), node.payload.size());
-    }
     const store::PathSummary& s = r.summary;
     h = fnv_opt(h, s.score);
     h = fnv_opt(h, s.actcount);
@@ -155,10 +145,20 @@ inline uint64_t song_digest(const Song& s) {
     return h;
 }
 
-// A parsed chart's digest with its stored dynamics blob added (none when the
-// chart stores no dynamics row).
-inline uint64_t with_dynamics(uint64_t song_hash, const std::optional<store::DynamicsEntry>& e) {
-    return e ? fnv(song_hash, e->blob.data(), e->blob.size()) : song_hash;
+// A parsed chart's digest with its dynamics count added (app::count_dynamics:
+// the enabled flag, every row's three counts, and the late tag's fields).
+inline uint64_t with_dynamics(uint64_t song_hash, const app::DynamicsBreakdown& b) {
+    uint64_t h = song_hash;
+    auto v = [&](const auto& x) { h = fnv(h, &x, sizeof x); };
+    v(b.dynamics_enabled);
+    for (const app::DynamicsCounts& c : b.rows) {
+        v(c.ghost);
+        v(c.accent);
+        v(c.normal);
+    }
+    h = fnv_opt(h, b.late_tag_ms);
+    v(b.marks_before_tag);
+    return h;
 }
 
 // A chart that fails to parse is hashed by its exception's type and message,
@@ -178,9 +178,11 @@ inline uint64_t chart_parse_hash(const std::string& notespath, const app::Analys
     try {
         const Song song = load_songpath_with_notes(notespath, st.prodrums, st.bass2x,
                                                    st.difficulty, st.rules);
-        return with_dynamics(song_digest(song),
-                             app::dynamics_entry_from_analysis("md5", song, st.bass2x,
-                                                               st.difficulty, st.prodrums));
+        const uint64_t h = song_digest(song);
+        // The count needs the 2x kicks kept (app::analysis_parse_counts_dynamics).
+        return app::analysis_parse_counts_dynamics(st.bass2x)
+                   ? with_dynamics(h, app::count_dynamics(song))
+                   : h;
     } catch (const std::exception& e) {
         const std::string text = failure_text(e);
         if (fail) *fail = text;

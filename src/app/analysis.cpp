@@ -736,12 +736,8 @@ struct WorkResult {
     ScanItem item;
     // The scan rows this chart settles: BatchPlan::rows (D76).
     int rows = 1;
+    // The chart's summary row, made on the worker, so the consumer only writes.
     std::optional<store::PreparedRow> row;
-    std::optional<AnalysisResult> analysis;
-    // Counted on the worker, so the consumer only writes.
-    std::optional<store::DynamicsEntry> dynamics;
-    // The song's length, worked out on the worker (analysis_song_length).
-    store::SongLength length;
     // The chart's path-report rows, built on the worker only when the run
     // has a seed to hand them to (BatchCallbacks::report_seed).
     std::vector<report::ReportRow> report_rows;
@@ -770,8 +766,7 @@ void record_failure(WorkResult& wr, const std::exception& e) {
 // again alone with the rest of its group (D86 item 1).
 void save_result(store::RecordStore& store, WorkResult& wr) {
     try {
-        store.save_analysis(wr.item.md5, wr.item.title, wr.item.artist, wr.item.charter,
-                            wr.analysis->song, *wr.row, wr.dynamics, wr.length);
+        store.save_analysis(*wr.row);
     } catch (const std::exception& e) {
         if (!store.save_group_lost()) record_failure(wr, e);
     }
@@ -911,13 +906,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
                     AnalysisResult ar = analyze(item.notespath, settings, check_cancel);
                     wr.row = store::prepare_row(
                         store::RecordKey{item.md5, run.chartmode, cap, run.lens}, ar.record);
-                    wr.dynamics = dynamics_entry_from_analysis(
-                        item.md5, ar.song, settings.bass2x, settings.difficulty,
-                        settings.prodrums);
-                    wr.length =
-                        analysis_song_length(item.timing, item.notespath, ar.song, settings);
                     if (seed) wr.report_rows = report::chart_rows(ar.record, seed->max_paths);
-                    wr.analysis = std::move(ar);
                 } catch (const AnalysisCancelled&) {
                     wr.cancelled = true;
                 } catch (const std::exception& e) {

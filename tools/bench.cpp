@@ -93,7 +93,6 @@ static void folder_breakdown(const std::string& folder, const core::Rules& rules
         double search_s = secs_since(t);
 
         t = clk::now();
-        store.add_song(it.md5, it.title, it.artist, it.charter, song);
         store.add_record(gui.record_key(it.md5), rec);
         double store_s = secs_since(t);
 
@@ -354,12 +353,11 @@ static void parse_mode(const std::string& arg, int reps, const std::string& outp
                     h = digest::song_digest(song);
                     if (dyn) {
                         auto t2 = clk::now();
-                        const std::optional<store::DynamicsEntry> e =
-                            app::dynamics_entry_from_analysis("md5", song, settings.bass2x,
-                                                              settings.difficulty,
-                                                              settings.prodrums);
+                        if (app::analysis_parse_counts_dynamics(settings.bass2x)) {
+                            const app::DynamicsBreakdown bd = app::count_dynamics(song);
+                            h = digest::with_dynamics(h, bd);
+                        }
                         t_dyn += secs_since(t2);
-                        h = digest::with_dynamics(h, e);
                     }
                 }
             } catch (const std::exception& e) {

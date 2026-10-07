@@ -239,12 +239,10 @@ std::unordered_map<std::string, PageChart> page_charts(const std::vector<ReportR
 }
 
 // Puts one chart's rows on the page: the first max_paths of `rows`
-// (chart_rows' order), named from `meta` and labeled with their tier. `meta`
-// is a list_records listing or a for_each_blob row; both carry the chart's
-// hash, names and mode under the same field names.
-template <typename ChartMeta>
+// (chart_rows' order), named from `meta`, a list_records listing, and labeled
+// with their tier.
 void place_rows(std::vector<ReportRow>& out, const std::vector<ReportRow>& rows,
-                int64_t max_paths, const ChartMeta& meta, int copies,
+                int64_t max_paths, const store::RecordListing& meta, int copies,
                 const std::vector<TimingTier>& tiers) {
     const size_t shown =
         static_cast<size_t>(std::min<int64_t>(max_paths, static_cast<int64_t>(rows.size())));
@@ -482,25 +480,6 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
                    tiers);
     }
     return out;
-}
-
-std::vector<ReportRow> collect_stored_rows(store::RecordStore& store, int64_t max_paths,
-                                           const store::CapQuery& cap,
-                                           const store::Lens& lens, double hit_window_ms,
-                                           const std::atomic<bool>* cancel) {
-    std::vector<ReportRow> rows;
-    const std::vector<TimingTier> tiers = timing_tiers(hit_window_ms);
-    const std::unordered_map<std::string, int> library = library_copies_by_hash(store);
-    store.for_each_blob(std::nullopt, cap, lens,
-                        [&](const store::RecordStore::BlobRow& meta,
-                            const HydraRecord* record) {
-        // Only rows the store calls Ready have a decoded record.
-        if (!record) return;
-        place_rows(rows, chart_rows(*record, max_paths), max_paths, meta,
-                   store::RecordStore::copies_of(library, normalize_chart_hash(meta.hyhash)),
-                   tiers);
-    }, cancel);
-    return rows;
 }
 
 std::string left_out_line(const std::vector<ReportFailure>& failures) {

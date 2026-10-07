@@ -172,15 +172,6 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
 // charts were left out (D89 item 1). Empty when none were.
 std::string left_out_line(const std::vector<ReportFailure>& failures);
 
-// The same rows read from the stored records (store::RecordStore::for_each_blob),
-// as the report read them before D87. Kept only for the test that pins the
-// two equal; T5 deletes both with for_each_blob.
-std::vector<ReportRow> collect_stored_rows(store::RecordStore& store, int64_t max_paths,
-                                           const store::CapQuery& cap,
-                                           const store::Lens& lens,
-                                           double hit_window_ms = kDefaultHitWindowMs,
-                                           const std::atomic<bool>* cancel = nullptr);
-
 // The self-contained page: the PAGE template with subtitle/footer escaped in
 // and a JSON payload {hit_window, tiers, rows} embedded, so the page's tier
 // dropdown and stats derive from the same window the rows were labeled with.

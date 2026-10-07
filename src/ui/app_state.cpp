@@ -316,7 +316,7 @@ void AppState::update_view_job() {
             v.error = std::move(out.analysis_error);
         } else {
             try {
-                v.summary = save_view_summary(*job, key, *out.analysis, out.length);
+                v.summary = save_view_summary(key, *out.analysis);
             } catch (const std::exception& e) {
                 set_problem("Analyzed, but saving failed. " + app::plain_error(e));
                 v.summary = store::summarize_record(out.analysis->record);
@@ -331,21 +331,15 @@ void AppState::update_view_job() {
     record_generation.bump();
 }
 
-store::PathSummary AppState::save_view_summary(const ViewJob& job, const store::RecordKey& key,
-                                               const app::AnalysisResult& result,
-                                               const store::SongLength& length) {
+store::PathSummary AppState::save_view_summary(const store::RecordKey& key,
+                                               const app::AnalysisResult& result) {
     const store::PreparedRow row = store::prepare_row(key, result.record);
     const std::vector<store::SummaryLookup> found =
         store->get_summaries({key.hyhash}, key.chartmode, key.cap, key.lens);
     const bool ready = !found.empty() && found.front().status == store::RecordStatus::Ready;
     if (ready && found.front().summary == row.summary && found.front().bestpath == row.bestpath)
         return row.summary;  // the row already says what the engine says
-    const store::ChartLibraryEntry& song = job.song();
-    const app::AnalysisSettings& as = job.settings();
-    store->save_analysis(key.hyhash, song.title, song.artist, song.charter, result.song, row,
-                         app::dynamics_entry_from_analysis(key.hyhash, result.song, as.bass2x,
-                                                           as.difficulty, as.prodrums),
-                         length);
+    store->save_analysis(row);
     refresh_library_row(key.hyhash);  // its row's Best path cell and chip
     return row.summary;
 }
