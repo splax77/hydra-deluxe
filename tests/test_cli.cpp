@@ -225,18 +225,16 @@ TEST_CASE("hydra_batch --legacy-fills refuses the tool's own hydra.db") {
     CHECK(!contains(r.output, "not tagged as legacy"));
 }
 
-TEST_CASE("hydra_batch --reindex keeps a legacy database's stamp") {
-    CliSandbox box("reindex");
-    const std::string legacy = box.db("ch10.db");
-    REQUIRE(run_exe(box.batch, {"--legacy-fills", "--db", legacy, box.folder()})
-                .exit_code == 0);
-
-    RunResult r = run_exe(box.batch, {"--reindex", "--db", legacy});
+// An option hydra_batch doesn't know (a removed one included, D87) stops the
+// run before it opens the database.
+TEST_CASE("hydra_batch refuses an unknown option") {
+    CliSandbox box("unknown_option");
+    const std::string db = box.db("untouched.db");
+    RunResult r = run_exe(box.batch, {"--no-such-option", "--db", db});
     INFO(r.output);
-    CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Reindexed 1 record."));
-    hydra::store::RecordStore store(legacy);
-    CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
+    CHECK(r.exit_code == 2);
+    CHECK(contains(r.output, "Unknown option: --no-such-option"));
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
 
 TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database") {
