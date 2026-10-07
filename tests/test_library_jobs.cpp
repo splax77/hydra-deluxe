@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "app/allocator.h"
 #include "app/analysis.h"
 #include "app/report.h"  // kNoChartLibrary
 #include "app/report_files.h"
@@ -280,6 +281,39 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
     CHECK(s.total == 3);
     CHECK(job.batch_run().lens == test_run().lens);
     CHECK(job.batch_run().chartmode == test_run().chartmode);
+}
+
+// D95 call 1: once a batch ends, the memory its charts freed goes back to
+// Windows at once, not after mimalloc's purge delay. As in a real batch, each
+// result is built on a worker and freed on the batch's own thread once
+// stored; here each one carries kChartBytes.
+TEST_CASE("jobs: a finished batch hands the memory its charts freed back to Windows") {
+    static constexpr size_t kBlock = 1024;  // small blocks, as a chart's are
+    static constexpr size_t kChartBytes = 128 * 1024 * 1024;
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    hydra::app::return_freed_memory();
+    const size_t before = hydra::app::committed_bytes();
+    {
+        RecordStore store(":memory:");
+        BatchJob job(plan_of(fake_charts(4)), test_run(), store);
+        job.set_analyzer_for_test(
+            [&real](const std::string&, const AnalysisSettings&,
+                    const std::function<void(float)>&) -> AnalysisResult {
+                AnalysisResult r = real;
+                // Filled, so committed.
+                r.song.features.assign(kChartBytes / kBlock, std::string(kBlock, 'x'));
+                return r;
+            },
+            /*workers=*/2);
+        job.start();
+        REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+    }  // joins the job's thread, which runs the hand-back after the batch
+    const size_t after = hydra::app::committed_bytes();
+    MESSAGE("committed before the batch " << before / (1024 * 1024) << " MB, after it "
+                                          << after / (1024 * 1024) << " MB");
+    // A test margin, not an app number: less than half of one chart's
+    // memory may still be committed.
+    CHECK(after < before + kChartBytes / 2);
 }
 
 TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
