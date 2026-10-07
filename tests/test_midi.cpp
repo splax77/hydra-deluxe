@@ -324,3 +324,85 @@ TEST_CASE("midi: a message longer than mido's 1,000,000-byte cap refuses the fil
     };
     CHECK_NOTHROW((hydra::MidiFile(smf(at_cap))));
 }
+
+// ---- MidiFile::lean (speedups task P1) ----
+
+namespace {
+
+// A filter that keeps note-ons of 96 and note-offs of 116 only.
+hydra::MidiLeanFilter lean_test_filter() {
+    hydra::MidiLeanFilter f;
+    f.note_on[96] = true;
+    f.note_off[116] = true;
+    return f;
+}
+
+std::vector<std::string> track_names(const hydra::MidiFile& mid) {
+    std::vector<std::string> names;
+    for (const auto& t : mid.tracks) names.push_back(t.name);
+    return names;
+}
+
+}  // namespace
+
+TEST_CASE("midi: the lean reader keeps only what each track's role reads, at the same ticks") {
+    using namespace testmidi;
+    const std::vector<uint8_t> file = smf_tracks({
+        // The first track: its tempo is kept; its text and note are not.
+        concat({track_name("tempo"), set_tempo(400000), text_event("t0 text"),
+                after(10, note_on(96, 100)), end_of_track()}),
+        // The first drum track: its text metas, and the notes the filter names.
+        concat({track_name("notes"), text_event("[mix 3 drums0d]"), after(5, note_on(97, 100)),
+                after(5, note_on(96, 100)), after(20, note_off(96)), after(30, note_off(116)),
+                after(0, track_name("PART DRUMS")), after(7, note_on(96, 1)), end_of_track()}),
+        // A second drum track and a guitar track: names only.
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
+        concat({track_name("PART GUITAR"), text_event("g"), end_of_track()}),
+        // EVENTS: its text metas only.
+        concat({track_name("EVENTS"), after(3, note_on(96, 100)), after(4, text_event("[section A]")),
+                end_of_track()}),
+    });
+    const hydra::MidiFile mid = hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter());
+    CHECK(track_names(mid) ==
+          std::vector<std::string>{"tempo", "PART DRUMS", "PART DRUMS", "PART GUITAR", "EVENTS"});
+    const json expected = json::array({
+        json::array({json::array({0, "set_tempo", 400000})}),
+        json::array({json::array({0, "text", "text", "[mix 3 drums0d]"}),
+                     json::array({10, "note_on", 96, 100}),
+                     json::array({60, "note_off", 116, 0}),
+                     json::array({67, "note_on", 96, 1})}),
+        json::array(),
+        json::array(),
+        json::array({json::array({7, "text", "text", "[section A]"})}),
+    });
+    CHECK(event_view(mid) == expected);
+}
+
+TEST_CASE("midi: the lean reader refuses a file where the full reader does") {
+    using namespace testmidi;
+    // An over-cap meta in a track the lean reader keeps nothing from still
+    // refuses the file, with the full reader's words.
+    const std::vector<uint8_t> oversize = {0x00, 0xFF, 0x01, 0xBD, 0x84, 0x41, 'x'};
+    const std::vector<uint8_t> file = smf_tracks({
+        concat({track_name("tempo"), set_tempo(), end_of_track()}),
+        concat({track_name("PART GUITAR"), oversize}),
+        concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
+    });
+    std::string full, lean;
+    try {
+        hydra::MidiFile m(file);
+    } catch (const hydra::MidiError& e) {
+        full = e.what();
+    }
+    try {
+        hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter());
+    } catch (const hydra::MidiError& e) {
+        lean = e.what();
+    }
+    CHECK(full == "Message length 1000001 exceeds maximum length 1000000");
+    CHECK(lean == full);
+
+    const std::vector<uint8_t> not_midi = {'R', 'I', 'F', 'F', 0, 0, 0, 6, 0, 0, 0, 1, 0, 96};
+    CHECK_THROWS_WITH_AS(hydra::MidiFile::lean(not_midi.data(), not_midi.size(), lean_test_filter()),
+                         "not a MIDI file: missing MThd header", hydra::MidiError);
+}

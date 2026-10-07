@@ -7,11 +7,14 @@
 
 #include <cctype>
 #include <cstdint>
+#include <fstream>
 #include <regex>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "app/analysis.h"
+#include "app/config.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "chart_text.h"
@@ -21,6 +24,7 @@
 #include "multidiff_chart.h"
 #include "parse/chart_files.h"
 #include "parse/song.h"
+#include "song_digest.h"
 
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
@@ -834,4 +838,85 @@ TEST_CASE("display_charter: tags go and the ends are trimmed, with no fallback")
     CHECK(display_charter("") == "");
     // The scan's charter placeholder keeps today's text.
     CHECK(display_charter("<unknown charter>") == "<unknown charter>");
+}
+
+// ---- the crafted edge files (testdata/parse_edge, speedups task P1) ----
+//
+// gen_edge.py writes 41 small charts, each one odd or broken in its own way,
+// and says what each one tests. The two expected files hold what the readers
+// made of them before P1 rewrote the readers, captured with the old readers'
+// hydra_bench --parse (one line per file: its name relative to the folder,
+// tests/song_digest.h's hash in hex, and for a file that failed "FAIL " and
+// its exception's type and message). This test reads every file again and
+// must get the same hash and the same failure text.
+
+namespace {
+
+std::string edge_dir() { return std::string(HYDRA_TESTDATA_DIR) + "/parse_edge/"; }
+
+// One expected line, split at its tabs. The middle field hydra_bench writes
+// (the parse time) was taken out when the file was captured.
+struct EdgeExpect {
+    std::string file;
+    uint64_t hash = 0;
+    std::string fail;  // empty when the file parsed
+};
+
+std::vector<EdgeExpect> read_edge_expect(const std::string& name) {
+    std::vector<EdgeExpect> out;
+    std::ifstream in(edge_dir() + name, std::ios::binary);
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        const size_t t1 = line.find('\t');
+        const size_t t2 = line.find('\t', t1 + 1);
+        EdgeExpect e;
+        e.file = line.substr(0, t1);
+        e.hash = std::stoull(line.substr(t1 + 1, t2 - t1 - 1), nullptr, 16);
+        if (t2 != std::string::npos) e.fail = line.substr(t2 + 1);
+        out.push_back(std::move(e));
+    }
+    return out;
+}
+
+// The settings an expected file was captured under.
+app::BatchRun edge_run(const char* difficulty, bool pro, bool bass2x) {
+    return digest::digest_settings(difficulty, pro, bass2x).batch_run();
+}
+
+void check_edge_files(const std::string& expected_name, const app::BatchRun& run) {
+    const std::vector<EdgeExpect> expect = read_edge_expect(expected_name);
+    // Every file the generator lists has its line, in the list's order.
+    std::vector<std::string> listed;
+    {
+        std::ifstream list(edge_dir() + "list.txt", std::ios::binary);
+        std::string name;
+        while (std::getline(list, name)) {
+            if (!name.empty() && name.back() == '\r') name.pop_back();
+            if (!name.empty()) listed.push_back(name);
+        }
+    }
+    REQUIRE(listed.size() == expect.size());
+
+    for (size_t i = 0; i < expect.size(); ++i) {
+        const EdgeExpect& e = expect[i];
+        CHECK_MESSAGE(e.file == listed[i], "line " << i + 1 << " of " << expected_name);
+        std::string fail;
+        const uint64_t got = digest::chart_parse_hash(edge_dir() + e.file, run.settings, &fail);
+        if (!fail.empty()) fail = "FAIL " + fail;
+        CHECK_MESSAGE(fail == e.fail, e.file << " (" << expected_name << ") failed differently");
+        CHECK_MESSAGE(got == e.hash, e.file << " (" << expected_name << ") parses differently");
+    }
+}
+
+}  // namespace
+
+TEST_CASE("the crafted edge files parse as the old readers did") {
+    SUBCASE("Expert, Pro Drums, 2x Bass") {
+        check_edge_files("expected_expert.tsv", edge_run("Expert", true, true));
+    }
+    SUBCASE("Hard, Pro Drums off, 2x Bass off") {
+        check_edge_files("expected_hard.tsv", edge_run("Hard", false, false));
+    }
 }

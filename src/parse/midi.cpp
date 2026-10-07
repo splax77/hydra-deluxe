@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <iterator>
+#include <utility>
 
 #include "core/winstr.h"  // read_file_bytes
 #include "parse/timesig.h"
@@ -10,6 +11,12 @@ namespace hydra {
 namespace {
 
 using MType = Message::Type;
+
+// The meta types the readers pick out by number: the track name (D78), and
+// the tempo and meter the first track carries.
+constexpr int kTrackNameMeta = 0x03;
+constexpr int kSetTempoMeta = 0x51;
+constexpr int kTimeSignatureMeta = 0x58;
 
 bool recognized_track_name(const std::string& name) {
     return std::find(std::begin(kRecognizedTrackNames), std::end(kRecognizedTrackNames),
@@ -34,7 +41,7 @@ bool text_meta(int meta_type, MType* type) {
 // spec for it, so it arrives as an unknown meta with neither attribute.
 bool name_meta(int meta_type, MType* type) {
     switch (meta_type) {
-        case 0x03: *type = MType::TrackName; return true;
+        case kTrackNameMeta: *type = MType::TrackName; return true;
         case 0x04: *type = MType::InstrumentName; return true;
         case 0x09: *type = MType::DeviceName; return true;
         default: return false;
@@ -106,10 +113,15 @@ uint64_t read_message_length(const uint8_t* data, size_t& pos, size_t end) {
     return length;
 }
 
+// A note's data byte as mido reads it with clip=True: clamped, not rejected.
+uint8_t clip_data_byte(uint8_t b) {
+    return b < kMidiDataValues ? b : uint8_t{kMidiDataValues - 1};
+}
+
 // Build the meta events hysong can act on; returns false to skip the rest.
 bool meta_message(int meta_type, const uint8_t* payload, size_t len,
                   int64_t time, Message* out) {
-    if (meta_type == 0x51 && len == 3) {
+    if (meta_type == kSetTempoMeta && len == 3) {
         out->type = MType::SetTempo;
         out->time = time;
         out->tempo = (uint32_t(payload[0]) << 16) |
@@ -117,7 +129,7 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
         return true;
     }
 
-    if (meta_type == 0x58 && len >= 2) {
+    if (meta_type == kTimeSignatureMeta && len >= 2) {
         out->type = MType::TimeSignature;
         out->time = time;
         out->numerator = payload[0];
@@ -144,6 +156,171 @@ bool meta_message(int meta_type, const uint8_t* payload, size_t len,
     }
 
     return false;
+}
+
+// The header checks and the chunk walk both readers share. Sets the file's
+// format and ticks per beat, then hands each MTrk chunk's byte range to
+// on_track in file order. Throws MidiError on a file that is not MIDI or
+// counts time in SMPTE frames.
+template <class OnTrack>
+void walk_chunks(const uint8_t* data, size_t size, int& format, int& ticks_per_beat,
+                 OnTrack&& on_track) {
+    if (size < 14 || data[0] != 'M' || data[1] != 'T' ||
+        data[2] != 'h' || data[3] != 'd') {
+        throw MidiError("not a MIDI file: missing MThd header");
+    }
+
+    uint32_t header_len = be32(data, 4);
+    format = be16(data, 8);
+    // ntracks = be16(data, 10);  // not needed: chunks are walked directly.
+    int16_t division = be16(data, 12);
+
+    if (division < 0) {
+        // SMPTE timing. Charts are all ticks-per-beat, and treating an SMPTE
+        // division as one would silently misplace every note.
+        throw MidiError("SMPTE time division is not supported");
+    }
+    ticks_per_beat = division;
+
+    size_t pos = 8 + header_len;
+    while (pos < size) {
+        if (pos + 4 > size ||
+            data[pos] != 'M' || data[pos + 1] != 'T' ||
+            data[pos + 2] != 'r' || data[pos + 3] != 'k') {
+            // Unknown chunk: the length field still tells us how to skip.
+            if (pos + 8 > size) break;
+            pos += 8 + be32(data, pos + 4);
+            continue;
+        }
+
+        uint32_t chunk_len = be32(data, pos + 4);
+        size_t start = pos + 8;
+        size_t end = std::min(start + chunk_len, size);
+        on_track(start, end);
+        pos = start + chunk_len;
+    }
+}
+
+// The one walk over a track's bytes: deltas, running status, metas, sysex and
+// channel events, with every length check and throw. What to keep is left to
+// the callbacks. on_meta(meta_type, payload, payload_len, pending) sees every
+// meta; on_note(high_nibble, data1, data2, pending) sees every note-on and
+// note-off. Each returns true when it kept the message; the walk then starts
+// a fresh delta, so a dropped message hands its delta to the next kept one
+// and absolute time is preserved.
+template <class OnMeta, class OnNote>
+void walk_track(const uint8_t* data, size_t pos, size_t end, OnMeta&& on_meta,
+                OnNote&& on_note) {
+    // Ticks accumulated since the last kept message.
+    int64_t pending = 0;
+    int running = 0;
+
+    while (pos < end) {
+        pending += static_cast<int64_t>(read_varlen(data, pos, end));  // delta time
+
+        if (pos >= end) break;
+
+        uint8_t b = data[pos];
+        int status;
+        if (b & 0x80) {
+            status = b;
+            ++pos;
+            // A meta event must not become the running status (mido excludes
+            // only 0xFF). Rock Band rips use running status for the channel
+            // event right after a meta event, so 0xFF must not clobber it.
+            if (b != 0xFF) running = b;
+        } else if (running) {
+            status = running;
+        } else {
+            // Running status with nothing to run from: malformed past here.
+            break;
+        }
+
+        if (status == 0xFF) {
+            if (pos >= end) break;
+            int meta_type = data[pos++];
+            const uint64_t length = read_message_length(data, pos, end);
+            const uint8_t* payload = data + pos;
+            size_t avail = end - pos;
+            size_t plen = std::min<size_t>(length, avail);
+            pos += length;
+            if (on_meta(meta_type, payload, plen, pending)) pending = 0;
+            continue;
+        }
+
+        if (status == 0xF0 || status == 0xF7) {
+            const uint64_t length = read_message_length(data, pos, end);
+            pos += length;
+            continue;
+        }
+
+        int high = status & 0xF0;
+        int nbytes = channel_data_len(high);
+        if (nbytes < 0) {
+            // System-common byte we do not model; no length to resync on.
+            break;
+        }
+
+        if (pos + static_cast<size_t>(nbytes) > end) break;
+        uint8_t d1 = data[pos];
+        uint8_t d2 = nbytes > 1 ? data[pos + 1] : 0;
+        pos += nbytes;
+
+        if (high == 0x90 || high == 0x80) {
+            if (on_note(high, d1, d2, pending)) pending = 0;
+        }
+    }
+}
+
+// D78: the first recognized name wins, else the first name. Charts carry
+// extra 0x03 metas ("notes" before "PART DRUMS", "Drums" after it).
+// YARG.Core's MidReader does the same with IsRecognizedTrackName, but only at
+// tick 0; Hydra looks at every tick because some drum tracks get their only
+// "PART DRUMS" name after tick 0.
+class TrackNamePick {
+public:
+    // True once a recognized name is chosen; no later name can displace it.
+    bool settled() const { return recognized_; }
+
+    void offer(const std::string& candidate, std::string& name) {
+        if (recognized_) return;
+        const bool recognized = recognized_track_name(candidate);
+        if (recognized || !named_) {
+            name = candidate;
+            named_ = true;
+            recognized_ = recognized;
+        }
+    }
+
+private:
+    bool named_ = false;
+    bool recognized_ = false;
+};
+
+// The name the full read gives this track, from a walk that keeps nothing.
+// Throws where the full read throws.
+std::string track_name_of(const uint8_t* data, size_t pos, size_t end) {
+    std::string name;
+    TrackNamePick pick;
+    walk_track(
+        data, pos, end,
+        [&](int meta_type, const uint8_t* payload, size_t plen, int64_t) {
+            if (meta_type == kTrackNameMeta && !pick.settled())
+                pick.offer(decode_latin1(payload, plen), name);
+            return false;
+        },
+        [](int, uint8_t, uint8_t, int64_t) { return false; });
+    return name;
+}
+
+// A note-on or note-off as the reader emits it.
+Message note_message(int high, uint8_t d1, uint8_t d2, int64_t time) {
+    Message msg;
+    msg.type = (high == 0x90) ? MType::NoteOn : MType::NoteOff;
+    msg.note = clip_data_byte(d1);
+    msg.velocity = clip_data_byte(d2);
+    msg.time = time;
+    return msg;
 }
 
 }  // namespace
@@ -181,40 +358,57 @@ MidiFile MidiFile::from_file(const std::string& path) {
 }
 
 void MidiFile::parse(const uint8_t* data, size_t size) {
-    if (size < 14 || data[0] != 'M' || data[1] != 'T' ||
-        data[2] != 'h' || data[3] != 'd') {
-        throw MidiError("not a MIDI file: missing MThd header");
-    }
-
-    uint32_t header_len = be32(data, 4);
-    format = be16(data, 8);
-    // ntracks = be16(data, 10);  // not needed: chunks are walked directly.
-    int16_t division = be16(data, 12);
-
-    if (division < 0) {
-        // SMPTE timing. Charts are all ticks-per-beat, and treating an SMPTE
-        // division as one would silently misplace every note.
-        throw MidiError("SMPTE time division is not supported");
-    }
-    ticks_per_beat = division;
-
-    size_t pos = 8 + header_len;
-    while (pos < size) {
-        if (pos + 4 > size ||
-            data[pos] != 'M' || data[pos + 1] != 'T' ||
-            data[pos + 2] != 'r' || data[pos + 3] != 'k') {
-            // Unknown chunk: the length field still tells us how to skip.
-            if (pos + 8 > size) break;
-            pos += 8 + be32(data, pos + 4);
-            continue;
-        }
-
-        uint32_t chunk_len = be32(data, pos + 4);
-        size_t start = pos + 8;
-        size_t end = std::min(start + chunk_len, size);
+    walk_chunks(data, size, format, ticks_per_beat, [&](size_t start, size_t end) {
         tracks.push_back(parse_track(data, start, end));
-        pos = start + chunk_len;
+    });
+}
+
+MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& filter) {
+    MidiFile mf;
+    // First every track's byte range and name: every track is walked, so a
+    // bad length anywhere throws as the full read does.
+    std::vector<std::pair<size_t, size_t>> ranges;
+    walk_chunks(data, size, mf.format, mf.ticks_per_beat, [&](size_t start, size_t end) {
+        ranges.emplace_back(start, end);
+        mf.tracks.emplace_back().name = track_name_of(data, start, end);
+    });
+
+    // Then each track keeps only what its role reads (see the header).
+    const MidiTrack* const drums_track = mf.drums_track();
+    for (size_t i = 0; i < mf.tracks.size(); ++i) {
+        MidiTrack& track = mf.tracks[i];
+        const bool timing = i == kTimingTrack;
+        const bool drums = &track == drums_track;
+        const bool texts = drums || track.is_events();
+        if (!timing && !texts) continue;
+        walk_track(
+            data, ranges[i].first, ranges[i].second,
+            [&](int meta_type, const uint8_t* payload, size_t plen, int64_t pending) {
+                MType text_type;
+                const bool keep =
+                    (timing && (meta_type == kSetTempoMeta || meta_type == kTimeSignatureMeta)) ||
+                    (texts && text_meta(meta_type, &text_type));
+                if (!keep) return false;
+                Message msg;
+                if (!meta_message(meta_type, payload, plen, pending, &msg)) return false;
+                track.messages.push_back(std::move(msg));
+                return true;
+            },
+            [&](int high, uint8_t d1, uint8_t d2, int64_t pending) {
+                if (!drums) return false;
+                Message msg = note_message(high, d1, d2, pending);
+                if (!filter.keeps(msg)) return false;
+                track.messages.push_back(std::move(msg));
+                return true;
+            });
     }
+    return mf;
+}
+
+const MidiTrack* MidiFile::drums_track() const {
+    for (const MidiTrack& track : tracks)
+        if (track.name == kDrumsTrackName) return &track;
+    return nullptr;
 }
 
 MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
@@ -224,94 +418,20 @@ MidiTrack MidiFile::parse_track(const uint8_t* data, size_t pos, size_t end) {
     // upper estimate that saves the vector's repeated regrowth on huge tracks.
     track.messages.reserve((end - pos) / 3);
 
-    // Ticks accumulated since the last emitted message. Skipped events hand
-    // their delta to whatever comes next, so absolute time is preserved.
-    int64_t pending = 0;
-    int running = 0;
-    bool named = false;
-    bool name_recognized = false;
-
-    while (pos < end) {
-        pending += static_cast<int64_t>(read_varlen(data, pos, end));  // delta time
-
-        if (pos >= end) break;
-
-        uint8_t b = data[pos];
-        int status;
-        if (b & 0x80) {
-            status = b;
-            ++pos;
-            // A meta event must not become the running status (mido excludes
-            // only 0xFF). Rock Band rips use running status for the channel
-            // event right after a meta event, so 0xFF must not clobber it.
-            if (b != 0xFF) running = b;
-        } else if (running) {
-            status = running;
-        } else {
-            // Running status with nothing to run from: malformed past here.
-            break;
-        }
-
-        if (status == 0xFF) {
-            if (pos >= end) break;
-            int meta_type = data[pos++];
-            const uint64_t length = read_message_length(data, pos, end);
-            const uint8_t* payload = data + pos;
-            size_t avail = end - pos;
-            size_t plen = std::min<size_t>(length, avail);
-            pos += length;
-
+    TrackNamePick pick;
+    walk_track(
+        data, pos, end,
+        [&](int meta_type, const uint8_t* payload, size_t plen, int64_t pending) {
             Message msg;
-            if (meta_message(meta_type, payload, plen, pending, &msg)) {
-                // D78: the first recognized name wins, else the first name.
-                // Charts carry extra 0x03 metas ("notes" before "PART DRUMS",
-                // "Drums" after it). YARG.Core's MidReader does the same with
-                // IsRecognizedTrackName, but only at tick 0; Hydra looks at
-                // every tick because some drum tracks get their only
-                // "PART DRUMS" name after tick 0.
-                if (meta_type == 0x03 && !name_recognized) {
-                    const bool recognized = recognized_track_name(msg.str);
-                    if (recognized || !named) {
-                        track.name = msg.str;
-                        named = true;
-                        name_recognized = recognized;
-                    }
-                }
-                track.messages.push_back(std::move(msg));
-                pending = 0;
-            }
-            continue;
-        }
-
-        if (status == 0xF0 || status == 0xF7) {
-            const uint64_t length = read_message_length(data, pos, end);
-            pos += length;
-            continue;
-        }
-
-        int high = status & 0xF0;
-        int nbytes = channel_data_len(high);
-        if (nbytes < 0) {
-            // System-common byte we do not model; no length to resync on.
-            break;
-        }
-
-        if (pos + static_cast<size_t>(nbytes) > end) break;
-        uint8_t d1 = data[pos];
-        uint8_t d2 = nbytes > 1 ? data[pos + 1] : 0;
-        pos += nbytes;
-
-        if (high == 0x90 || high == 0x80) {
-            // clip=True in mido: data bytes are clamped, not rejected.
-            Message& msg = track.messages.emplace_back();
-            msg.type = (high == 0x90) ? MType::NoteOn : MType::NoteOff;
-            msg.note = d1 < 128 ? d1 : uint8_t{127};
-            msg.velocity = d2 < 128 ? d2 : uint8_t{127};
-            msg.time = pending;
-            pending = 0;
-        }
-    }
-
+            if (!meta_message(meta_type, payload, plen, pending, &msg)) return false;
+            if (meta_type == kTrackNameMeta) pick.offer(msg.str, track.name);
+            track.messages.push_back(std::move(msg));
+            return true;
+        },
+        [&](int high, uint8_t d1, uint8_t d2, int64_t pending) {
+            track.messages.push_back(note_message(high, d1, d2, pending));
+            return true;
+        });
     return track;
 }
 
