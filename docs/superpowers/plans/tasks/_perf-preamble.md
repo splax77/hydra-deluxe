@@ -1,0 +1,33 @@
+# Speedups brief preamble (every perf task brief starts here)
+
+You are one agent in the speedups plan, `docs/superpowers/plans/2026-10-06-perf-speedups.md`. That plan is your spec. Your task brief (the file that sent you here) names your task id, your base commit, your branch and worktree, and anything the plan leaves open. The decisions are D86 in `docs/audit/2026-10-03-fix-decisions.md`. The experiment patches and notes you lift from are in `docs/handoffs/2026-10-06-perf-exploration/`. The main checkout is `C:\Users\Patrick\Downloads\Hydra\hydra-test`. Read the plan and the patches there by absolute path, but never edit the main checkout.
+
+Also read `C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md`, the shared preamble. Where the two differ, this file wins on paths and builds. Its "If you write code" self-check applies to you in full.
+
+Session id: `e26f30dd-44f6-44ea-9d1f-f8f7fa15066c`.
+
+## Hard rules
+
+- **Status lines.** Append one line to `C:\Users\Patrick\.claude\hooks\state\status\<your agent id>.md` every 10 tool calls or 5 minutes. Use the form `HH:MM done ... | next: ...`, written with `& "C:/Users/Patrick/.claude/hooks/status_append.ps1" <your agent id> "<line>"`. The progress hook's first reply tells you your agent id.
+- **Your worktree.** If your brief says to make it, make it first: `git -C C:\Users\Patrick\Downloads\Hydra\hydra-test worktree add C:\Users\Patrick\Downloads\Hydra\hydra-test\.claude\worktrees\perf-<task id lower case> -b claude/perf-<task id lower case> <base>`. If it already exists (a finisher or fix agent), work in it as it is. Work, build and commit only there. Never edit the main checkout or another worktree. Never delete, move or rewrite anything outside your owned files and your scratchpad.
+- **Owned files only.** `git diff --stat <base>..HEAD` must list only the files the plan's task section lists under "Files". If you need another file, stop and report which one and why.
+- **First build.** Run it through the shared slot helper, so at most three cold builds run at once: `pwsh -NoProfile -File <your worktree>\tools\build_slot.ps1 -Repo <your worktree> -Target hydra_tests`. It waits in the foreground for a free slot; let it wait. Later builds: `.\build_cpp.ps1 -Target <target>` from your worktree. `hydra_bench` is EXCLUDE_FROM_ALL, so build it by `-Target hydra_bench`.
+- **Tests.** Run only the tests the plan's "Verify" line for your task names. Use `-tc=` or `-sf=` filters on `build-cpp\Release\hydra_tests.exe`, and only the named `hydra_uitest --test` scripts. Never the full suite, never `hydra_uitest --all`.
+- **Test first.** For each new behaviour, write the failing test and run it red, then green. Keep the red run's output line for your report.
+- **Byte-identical, always.** No task in this plan changes a stored record, a score, a path or a displayed text. Never touch `src/store/stored_versions.h`. A difference in any comparison is a finding to report, never something to fix by loosening the comparison.
+- **The baseline.** The baseline exes and their outputs live in `C:\Users\Patrick\.claude\hooks\state\bench\baseline-<short hash>\`, built by a separate agent from your base commit. Its `README.md` lists every file and how it was made, and the file `READY` appears when it is complete. If you need it before `READY` exists, do your other work first; if nothing else is left, check for `READY` once a minute with a foreground `Start-Sleep 60` loop of at most 20 tries, then stop and report. Never build your own copy of the baseline.
+- **Whole-library runs go through the lock.** `pwsh -NoProfile -File <your worktree>\tools\bench_run.ps1 -Label "<task>-<what>" -Script <your .ps1 in scratch>`, with the PowerShell tool's timeout at 600000 ms; each script under five minutes. Exit code 3 means the lock stayed busy: do other work, then retry. Correctness runs compare your output with the baseline's saved output; timing runs interleave baseline and yours (A, B, A, B, ...) as the plan says.
+- **One whole-library check, at the join (the user's call, 2026-10-06).** Agents that start after 22:30 on 2026-10-06 (finishers, review fix rounds, reviewers, sign-off reviewers) run no whole-library run of any kind: no fresh-database run, no `--engine`, `--parse` or `--scan` over `C:\Clone Hero`, no `--redo`. Use the 97-chart corpus tests and the pinned digests instead. The join check (task JC) is the one whole-library correctness run, and T1 the one timing run. If a task's acceptance criterion asks for a library run its implementer has not made, say so in the report; do not run it.
+- **Real database.** Never open `C:\Program Files\Hydra\hydra.db` for writing. The baseline folder holds a pristine backup-API copy, `real.db`; copy it to your scratch for every `--redo` run.
+- **Edits.** Edit source with the Edit tool. Read with offset and limit, never `sed`, `head` or `tail`. Never write source through a patch script and never `git apply` a patch: read the hunk and write the code. To replace most of a file, Write `<file>.new` and `Move-Item` it over the old one. A "file modified on disk" notice after your own edit is expected.
+- **Commits.** Stage files by name. `git commit -m "<plain subject>" -m "<body>" --trailer "Task: <task id>" --trailer "Agent: <your agent id>" --trailer "Session: e26f30dd-44f6-44ea-9d1f-f8f7fa15066c" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"` (use your own model's name in the last trailer). Commit after each finished step and before your 100th tool call. Never amend, rebase, reset or move a branch. Never push.
+- **Budget.** At 100 tool calls, commit what passes and return with `complete: false` and a handoff that says exactly what is left; a finisher agent picks it up in your worktree. 150 is a hard stop.
+- **Foreground only.** Never use `run_in_background`, and never end your turn waiting for a job.
+- **No helper agents.** Workflow agents have no Agent tool. Do the mechanical work yourself and say so in your report.
+- **When blocked,** stop and report the exact command and error. Never wait on a prompt, never guess a way around a hook.
+- **Plain English** in comments, docs and your report.
+- **Questions for the user.** Anything that would change a display or a stored record beyond D86 stops the task. Report it in game terms in `questions`; do not pick.
+
+## Your final report
+
+You return structured output. `report` is plain English: what changed, each test case with its red line and green result, the exact test commands and pass counts, every comparison with its "N rows compared, 0 differ" lines and hashes, every timing with run count and compilers-busy count, and the `git diff --stat <base>..HEAD` file list.
