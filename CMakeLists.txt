@@ -231,6 +231,7 @@ add_library(hydra_core STATIC
     src/search/pather.cpp
     src/store/serialize.cpp
     src/store/record_store.cpp
+    src/app/allocator.cpp
     src/app/analysis.cpp
     src/app/config.cpp
     src/app/rules_file.cpp
@@ -262,6 +263,9 @@ target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
 # (AssocQueryStringW) to hand it a long page's short name directly.
 target_link_libraries(hydra_core PUBLIC sqlite3 miniz)
 target_link_libraries(hydra_core PRIVATE bcrypt shell32 shlwapi ole32 uuid hydra_warnings)
+# allocator.cpp calls mimalloc by name; this brings in mimalloc.h. Every exe
+# links mimalloc already (hydra_use_mimalloc).
+target_link_libraries(hydra_core PRIVATE mimalloc)
 
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the

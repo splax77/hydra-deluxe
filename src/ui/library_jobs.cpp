@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <stdexcept>
 
+#include "app/allocator.h"
 #include "app/config.h"
 #include "app/report.h"
 #include "app/report_files.h"
@@ -171,7 +172,12 @@ void BatchJob::start() {
         clock_.start(now);
         if (snap_.paused) clock_.pause(now);  // paused before it started
     }
-    spawn([this] { run(); });
+    // However the run ended (done, stopped or failed), the memory its charts
+    // freed then goes back to Windows (D95 call 1), on this job's thread.
+    spawn([this] {
+        run();
+        app::return_freed_memory();
+    });
 }
 
 void BatchJob::pause() {
