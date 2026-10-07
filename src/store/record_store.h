@@ -13,9 +13,9 @@
 //   * `charts` — the chart library, one row per scanned file. A result's
 //     names come from here (kNamingCopiesSql).
 //
-// An older file also held the path details (`paths`, `path_refs`, a
-// `structure` blob per result, `songmeta` and `dynamics`). The first open by
-// this build deletes them and shrinks the file (set_up_schema's last step).
+// An older file also held the path details, song rows and dynamics counts.
+// The first open by this build deletes them and shrinks the file
+// (drop_stored_details).
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the

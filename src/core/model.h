@@ -791,25 +791,21 @@ struct HydraRecord {
     std::optional<double> ms_limit;
     std::optional<int> sp_cap;
     // Always true since Auto went (2026-09-27): Auto was the only search that
-    // could stop before its score settled. Kept because the stored path
-    // structure carries it (store/path_codec.cpp); dropping it would change
-    // the record format.
+    // could stop before its score settled. The stored path details that
+    // carried it are gone (D87).
     bool sp_cap_converged = true;
-    // The fingerprint of the rules the search ran under (stored since path
-    // format 4): Rules::fingerprint(). Results Hydra 1.8.4's Auto saved
-    // carry Rules::retired_auto_fingerprint() and are deleted when the store
-    // opens (RecordStore::delete_auto_results). A record built in memory
-    // starts with the default rules' fixed-cap fingerprint, computed once
-    // (core::default_stamp), not once per record decoded; analyze_chart
-    // stamps the real one. A row stored in an older structure format is never
-    // decoded: rank_row (store/record_store.cpp) reads it Stale
-    // first, and the codec refuses such a structure if asked.
+    // The fingerprint of the rules the search ran under: Rules::fingerprint().
+    // A result's row stores it in its rules_fp column (store::prepare_row).
+    // Results Hydra 1.8.4's Auto saved carry Rules::retired_auto_fingerprint()
+    // and are deleted when the store opens (RecordStore::delete_auto_results).
+    // A record built in memory starts with the default rules' fixed-cap
+    // fingerprint, computed once (core::default_stamp); analyze_chart stamps
+    // the real one.
     uint64_t rules_fingerprint = core::default_stamp().fixed;
     // True when fills spawned by Clone Hero 1.0's deadline, not 1.1's.
-    // analyze_chart sets it. It is not in the stored bytes: the result's row
-    // carries the rule in its key (store::Lens::legacy_fills), prepare_row
-    // refuses a key that names the other rule, and get_record sets it back
-    // from the key that found the row.
+    // analyze_chart sets it. The result's row carries the rule in its key
+    // (store::Lens::legacy_fills), and prepare_row refuses a key that names
+    // the other rule.
     bool legacy_fills = false;
     std::vector<Path> paths;
 

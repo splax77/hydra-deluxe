@@ -57,7 +57,7 @@ std::string relpath(const std::string& target, const std::string& base) {
 
 // ---- MD5 (Windows CNG), mirroring hashlib.file_digest(f, "md5") ----------
 //
-// The digest of the full raw chart file is record identity (songmeta.hyhash),
+// The digest of the full raw chart file is record identity (results.hyhash),
 // so it must stay exactly MD5-of-all-bytes; only *how* the bytes reach the
 // hash changed: streamed in chunks (like Python's file_digest) instead of a
 // whole-file buffer, with the algorithm provider opened once per scan worker
@@ -332,7 +332,7 @@ std::map<std::string, std::string> read_song_ini_keys(const std::string& path) {
 
 // Hashes the whole chart file with MD5, the same way the library scan does.
 // So the result here always matches the hyhash already stored in the
-// songmeta/charts rows for that chart.
+// results/charts rows for that chart.
 std::string hash_chart_file(const std::string& path) {
     try {
         Md5Provider md5;
