@@ -437,18 +437,12 @@ void test_library_layout(ImGuiTestContext* ctx) {
     // The labels carry the library's own counts (what the chips draw), which
     // moved when the click analyzed the open song.
     using hydra::ui::StatusChip;
-    const std::pair<StatusChip, const char*> chip_ids[] = {{StatusChip::All, "chipall"},
-                                                          {StatusChip::NotAnalyzed, "chipnew"},
-                                                          {StatusChip::Stale, "chipstale"},
-                                                          {StatusChip::Analyzed, "chipdone"}};
+    const StatusChip chip_order[] = {StatusChip::All, StatusChip::NotAnalyzed, StatusChip::Stale,
+                                     StatusChip::Analyzed};
     std::string chips[4];
-    for (size_t i = 0; i < 4; ++i) {
-        const auto status = hydra::ui::status_of(chip_ids[i].first);
-        const char* name = status ? hydra::ui::status_label(*status) : "All";
-        chips[i] = std::string("**/") + name + " (" +
-                   hydra::group_thousands(static_cast<int64_t>(h.app->library.counts().of(chip_ids[i].first))) +
-                   ")##" + chip_ids[i].second;
-    }
+    for (size_t i = 0; i < 4; ++i)
+        chips[i] = "**/" + hydra::ui::chip_label(chip_order[i],
+                                                  h.app->library.counts().of(chip_order[i]));
     for (const std::string& chip : chips)
         IM_CHECK_LE(ctx->ItemInfo(chip.c_str()).RectFull.Max.x,
                     lib->ContentRegionRect.Max.x + 0.5f);
