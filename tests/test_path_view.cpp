@@ -14,7 +14,6 @@
 #include "app/display_format.h"
 #include "app/path_view.h"
 #include "app/preview_view.h"  // path_overlay_key
-#include "app/user_messages.h"  // kNoPathsFound
 #include "corpus_util.h"
 #include "record_fixtures.h"
 #include "scratch_settings.h"
@@ -54,61 +53,6 @@ const AnalysisResult& burnout() {
 const std::string kDot = " \xC2\xB7 ";
 
 }  // namespace
-
-TEST_CASE("build_record_status: the three states and their lines") {
-    // The store's status is what decides the panel; the view only formats it.
-    auto ready = [](const HydraRecord& record) {
-        store::RecordLookup lookup;
-        lookup.status = store::RecordStatus::Ready;
-        lookup.hyversion = store::current_record_version();
-        lookup.record = record;
-        return lookup;
-    };
-
-    CHECK(build_record_status(store::RecordLookup{}).state ==
-          store::RecordStatus::NotAnalyzed);
-
-    store::RecordLookup stale;
-    stale.status = store::RecordStatus::Stale;
-    stale.hyversion = "0.0.0";  // no record: a stale blob is never decoded
-    RecordStatusView stale_view = build_record_status(stale);
-    CHECK(stale_view.state == store::RecordStatus::Stale);
-    CHECK(stale_view.lines.empty());
-
-    const HydraRecord& rec = analyzed().record;
-    RecordStatusView view = build_record_status(ready(rec));
-    REQUIRE(view.state == store::RecordStatus::Ready);
-    REQUIRE(view.lines.size() == 4);
-    CHECK(view.lines[0] ==
-          "Best score:  " + group_thousands(rec.best_path().totalscore()));
-    CHECK(view.lines[1] ==
-          "Paths kept:  " + std::to_string((int)rec.all_paths().size()));
-    CHECK(view.lines[2] == "Path limit:  10 ms");
-    CHECK(view.lines[3] == "SP cap:  4 bars");
-
-    HydraRecord nolimit = rec;
-    nolimit.ms_limit.reset();
-    CHECK(build_record_status(ready(nolimit)).lines[2] == "Path limit:  off");
-
-    // The cap line always names the cap the record ran at.
-    HydraRecord whatif = rec;
-    whatif.sp_cap = 32;
-    CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  32 bars");
-    // The count and its noun agree (D48 Q12), and a big cap is comma-grouped.
-    whatif.sp_cap = 1;
-    CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  1 bar");
-    whatif.sp_cap = 1000;
-    CHECK(build_record_status(ready(whatif)).lines[3] == "SP cap:  1,000 bars");
-
-    // A Ready record that found nothing stays Ready and says so in one line.
-    HydraRecord nothing = rec;
-    nothing.paths.clear();
-    RecordStatusView none = build_record_status(ready(nothing));
-    CHECK(none.state == store::RecordStatus::Ready);
-    REQUIRE(none.lines.size() == 1);
-    CHECK(none.lines[0] == "No paths found.");
-    CHECK(none.lines[0] == kNoPathsFound);
-}
 
 TEST_CASE("build_score_breakdown: exact lines, rounded like the report") {
     Path p;
@@ -517,7 +461,7 @@ TEST_CASE("build_activations: overfill warning text") {
     REQUIRE(with_timing.acts.size() == 1);
     CHECK(with_timing.acts[0].overfill_warning == "SP overfilled at m2.2.0");
 
-    // Without a SongTiming (no songmeta row), there is no way to turn the
+    // Without a SongTiming, there is no way to turn the
     // clamped tick into a measure string, so the line drops the position.
     ActivationsView without_timing = build_activations(path, record, nullptr, 85.0);
     REQUIRE(without_timing.acts.size() == 1);
@@ -742,14 +686,6 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     CHECK(d.squeezes.size() == build_multsqueezes(rec).size());
     CHECK(d.activations.acts.size() ==
           build_activations(best, rec, &timing, 71.0, 30.0).acts.size());
-
-    // The stored-result lines: once per record generation.
-    store::RecordLookup lookup;
-    lookup.status = store::RecordStatus::Ready;
-    lookup.record = rec;
-    for (int frame = 0; frame < 5; ++frame) cache.status(lookup, 9);
-    CHECK(cache.status_builds() == 1);
-    CHECK(cache.status(lookup, 9).lines == build_record_status(lookup).lines);
 }
 
 TEST_CASE("PathsTabCache: 600 cached frames cost far less than 600 rebuilds") {

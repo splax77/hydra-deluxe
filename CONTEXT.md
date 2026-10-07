@@ -19,25 +19,29 @@ The pass that discovers charts in the configured folders and registers them in
 the library. Distinct from analysis.
 
 **Analyze**:
-The search that computes a chart's paths and stores the result as a record.
-Its progress bar moves in steps of at least half a percent of the chart
+The search that computes a chart's paths as a record and saves its summary.
+A click on a song analyzes it, and so does a batch; the record itself is never
+saved (docs/adr/0026). Its progress bar moves in steps of at least half a percent of the chart
 (src/search/engine.cpp), and the main search owns the first 90% of the bar,
 the all-0 pass the rest (src/search/pather.cpp; D48, Q33).
 
 **Record**:
-The stored result of one analysis: the kept paths, their scores, and the
-settings the analysis ran with. Its key is the chart and its analysis
-settings: the chart mode, the SP cap, the fill rule, the path limit and the
-score range. A chart
-keeps one record per settings combination; records share their stored paths,
-so a path found under several combinations is stored once. A record is stale
+The result of one analysis: the kept paths, their scores, and the settings the
+analysis ran with. The engine builds it each time a chart is analyzed, and it
+lives in memory only (docs/adr/0026).
+_Avoid_: stored record
+
+**Summary row**:
+What the database keeps of a record: the score, stars, counts, hardest timing
+and best path, one row per chart and analysis settings. Its key is the chart
+and its analysis settings: the chart mode, the SP cap, the fill rule, the path
+limit and the score range, plus the rules it ran under. A summary row is stale
 unless both hold: it carries a results stamp this build accepts (a stamp that
 changes only when analysis output changes, not with every release; see
-src/store/stored_versions.h), and its stored paths are in
-this build's path-structure format under the rules in force. A lookup reports
-it as one of three statuses: not
-analyzed, stale, or ready. A listing returns only ready records, so a stale
-record reads the same as no record at all.
+src/store/stored_versions.h), and it was made under the rules in force. A
+lookup reports a chart as one of three statuses: not analyzed, stale, or
+ready. A listing returns only ready rows, so a stale row reads the same as no
+row at all.
 
 **SP cap**:
 The Star Power meter ceiling an analysis runs under, in bars. 4 is Clone
@@ -50,10 +54,9 @@ The seven settings that make up a record's identity, shown together in the
 settings bar and applied to every song: difficulty, Pro Drums and 2x Bass
 (together the chart mode), the SP cap, 1.0 fills (the fill spawn deadline),
 the score range, and the path limit.
-Changing one shows the records made under the new combination; changing it
-back brings the old ones back without analyzing again; the app keeps the last
-16 lookups the number boxes stepped away from, so stepping back does not ask
-the store again (src/ui/app_state.h; D48, Q33). The backend limit is
+Changing one shows the library's summary rows under the new combination, and
+analyzes the open song again under it (D90 item 1). Changing it back brings
+the library's old rows back with no batch. The backend limit is
 not one of them: it only hides backend rows on screen and never re-analyzes.
 The path limit starts on<!-- default: Settings::mslimit_enabled -->
 at 10 ms<!-- default: Settings::mslimit_value -->. The backend limit ("Hide
@@ -70,8 +73,8 @@ What the user types to narrow the library. Every word must match the title,
 artist, charter or folder, in any order; `"quotes"` match a phrase, and
 `title:`, `artist:`, `charter:` and `folder:` limit a word or phrase to one
 field. `stars:N` (exactly N stars) and `squeeze<=N` (hardest squeeze or
-required early fill at most N ms; `squeeze<N` means the same) test the stored
-best path and only ever match ready records. Matching
+required early fill at most N ms; `squeeze<N` means the same) test the summary
+row's best path and only ever match ready rows. Matching
 folds case and accents away, so `beyonce` finds "Beyoncé", and ignores Clone
 Hero's rich-text tags.
 
@@ -84,8 +87,10 @@ docs/superpowers/specs/2026-09-27-ui-redesign-design.md ("The estimate appears
 once three charts have finished").
 
 **UI timings**:
-How long the app's short-lived messages and refreshes wait. The Analyze
-panel's "Done!" stays half a second, the "Copied!" flash after Copy path
+How long the app's short-lived messages and refreshes wait. A click's
+"Analyzing chart..." box shows only once its analysis has run 0.15 s, so a
+fast chart shows its paths with no box and no "Done!" (D87 items 6 and 10).
+The "Copied!" flash after Copy path
 lasts 2 seconds, the library search refilters at most every 0.15 s while
 typing, and a running batch refreshes the library at most once a second
 (src/ui/app_state.cpp, src/ui/paths_tab.cpp, src/ui/library_table.cpp;
@@ -189,7 +194,7 @@ included; that is not verified against Clone Hero (docs/adr/0023).
 The older rule: roughly one fill-length of lead time before the fill, clamped
 to 250..10000 ms. Short fills got stricter in 1.1 and long fills got looser.
 The "1.0 fills" analysis setting, or `hydra_batch --legacy-fills` into its own
-database. Part of a record's key, so 1.0 and 1.1 records sit side by side;
+database. Part of a summary row's key, so 1.0 and 1.1 rows sit side by side;
 `hydra_fillcompare` diffs the two. See docs/adr/0010.
 
 **Generated fill**:
@@ -328,7 +333,7 @@ fills as a player following the path would see them. A fill the path
 activates on is *taken* (all four lanes lit, the activation note's lane
 highlighted); a fill the path had enough SP for but passed over is *offered*
 (lanes lit dimly); every other candidate fill is hidden, because the game would
-not have shown it. Offered fills are the ones the engine stored on each
+not have shown it. Offered fills are the ones the engine marked on each
 activation as passed over; nothing guesses them from a count. A tied variant's
 activations carry its own passed-over fills and early-fill offset, the next one
 after a fold between windows included (D38), and a fill the path took always

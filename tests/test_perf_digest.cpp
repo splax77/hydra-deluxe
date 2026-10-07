@@ -1,6 +1,7 @@
 // Pins the 97-chart corpus's digests, the same ones hydra_bench's --engine
 // and --parse modes print, so a change meant to leave Hydra's output alone
-// (the speedups plan, D86) fails here if it moves a single stored byte.
+// (the speedups plan, D86) fails here if it moves a single field of the
+// engine's answer.
 //
 // Each literal comes from one run of hydra_bench on testdata/input with the
 // engine and parsers unchanged. The digests are tests/song_digest.h's, the
@@ -58,8 +59,8 @@ std::string hex(uint64_t h) {
     return buf;
 }
 
-// What hydra_bench --engine prints as "hash": every chart's prepared row,
-// a chart that fails left out.
+// What hydra_bench --engine prints as "hash": every chart's whole engine
+// result and prepared row (digest::row_hash), a chart that fails left out.
 uint64_t engine_digest(const app::Settings& st) {
     const app::AnalysisSettings settings = st.batch_run().settings;
     uint64_t all = digest::kSeed;
@@ -67,7 +68,7 @@ uint64_t engine_digest(const app::Settings& st) {
         try {
             const app::AnalysisResult res = app::analyze_chart_file(it.notespath, settings);
             const store::PreparedRow row = store::prepare_row(st.record_key(it.md5), res.record);
-            all = digest::fold(all, digest::row_hash(row));
+            all = digest::fold(all, digest::row_hash(row, res.record));
         } catch (const std::exception&) {
         }
     }
@@ -75,7 +76,7 @@ uint64_t engine_digest(const app::Settings& st) {
 }
 
 // What hydra_bench --parse prints as "hash": every chart's parsed song and
-// stored dynamics blob, or its failure.
+// dynamics count, or its failure.
 uint64_t parse_digest(const app::Settings& st) {
     const app::AnalysisSettings settings = st.batch_run().settings;
     uint64_t all = digest::kSeed;
@@ -88,12 +89,12 @@ uint64_t parse_digest(const app::Settings& st) {
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
     const uint64_t got = engine_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0xa604809679e78c75ULL, "engine digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0x1a0929fcb662ebaaULL, "engine digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {
     const uint64_t got = parse_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0x98ef0041c7c9675aULL, "parse digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0x40c54a484d033934ULL, "parse digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass off") {

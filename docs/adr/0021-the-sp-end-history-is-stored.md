@@ -1,5 +1,11 @@
 # The SP-end history is stored, and the displays read it
 
+> **Superseded in part by [ADR 0026](0026-the-store-keeps-summaries-the-engine-gives-details.md),
+> 2026-10-07.** The history and the transfer scales are no longer saved to
+> the database. The engine still stamps both on the record when it analyzes,
+> and the displays still read them from that record. The statements below
+> about the stored format and its presence bytes are history.
+
 Think of a Star Power window as a parking meter. The engine sees every coin
 go in: the activation, each phrase collected while SP runs, each time the cap
 pins the meter, each squeeze-in. Until 2.1.0 the record kept only the time the

@@ -418,8 +418,7 @@ TEST_CASE("dynamics_breakdown: the rules never change a chart's Dynamics count")
                         ++fills_moved;
                         break;
                     }
-                CHECK(encode_dynamics(count_dynamics(base)) ==
-                      encode_dynamics(count_dynamics(moved)));
+                CHECK(count_dynamics(base) == count_dynamics(moved));
                 ++counted;
             }
         }

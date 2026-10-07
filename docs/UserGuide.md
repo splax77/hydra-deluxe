@@ -30,9 +30,9 @@ Songs stay in the list until the next scan, even if you changed their files. Aft
 
 ## Analysis settings
 
-The settings bar holds every setting that shapes an analysis. Each one applies to every song, not just the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings. Change it back and the old results come back, with no re-analysis.
+The settings bar holds every setting that shapes an analysis. Each one applies to every song, not just the one you have open. A result is saved together with the settings it ran under. Change a setting and the library shows the results for the new settings. Change it back and the old results come back, with no batch to run. A song open in the panel is analyzed again under the new settings, the same as clicking it.
 
-While a batch runs, the bar is locked and says `Stop the batch to change these.` While one song analyzes, the bar is locked too, and it names the song that is analyzing, even after you move to another song.
+While a batch runs, the bar is locked and says `Stop the batch to change these.` Opening a song never locks it. Changing a setting while the song is still analyzing starts it again under the new settings.
 
 **Difficulty.** Which charted difficulty to analyze, path and preview: Expert, Hard, Medium or Easy.
 
@@ -40,7 +40,7 @@ While a batch runs, the bar is locked and says `Stop the batch to change these.`
 
 **2x Bass.** Include the chart's 2x kicks, like Clone Hero's Double Kick modifier. It works at every difficulty. Each difficulty has its own 2x kicks, though few charts have any below Expert.
 
-For example, say you analyzed a song with 2x Bass on and want to see it with 1x bass. Untick 2x Bass and analyze again. Tick it again and the 2x result comes back.
+For example, say you have a song open with 2x Bass on and want to see it with 1x bass. Untick 2x Bass and the song is analyzed again without its 2x kicks. Tick it again and the 2x result comes back.
 
 **SP cap.** The most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison only runs at 4 bars.
 
@@ -58,7 +58,7 @@ The **Best path** cell shows the song's state under the current analysis setting
 
 - `Not analyzed` means there is no result yet.
 - A score and a path, like `378,315  3- 1 2`, is the optimal path.
-- `Stale` means the result is out of date. Either another version of the app made it, or it was made under different rules in `hydra_rules.ini`. Re-analyze to refresh it. If the cause was a rules edit, switching the rules back brings the result back.
+- `Stale` means the result is out of date. Either another version of the app made it, or it was made under different rules in `hydra_rules.ini`. Click the song or run a batch to refresh it. If the cause was a rules edit, switching the rules back brings the result back.
 
 Hover the cell for the same explanation.
 
@@ -93,11 +93,13 @@ Click a song to open its panel beside the library. The top shows the title, the 
 
 **`Hide library`**, left of `<`, gives the song panel the whole window. It then reads `Show library`, which puts the library back at the width you left it. `<` and `>` still step through the list while it's hidden. Closing the panel always brings the library back. Hydra Deluxe remembers the choice, so the next song opens the same way, even after a restart.
 
-The button on the right analyzes the song. It reads `Analyze this song` when there is no result, and `Re-analyze` when there is one. A long analysis shows a progress bar and can be cancelled. Closing the panel does not stop it: the analysis finishes, is saved, and the library row updates.
+Opening a song analyzes it under the current settings. Most songs take a few milliseconds, so the paths simply appear. A song that takes longer than 0.15 seconds shows `Analyzing chart...` with a progress bar and a `Cancel` button. Cancelling shows `Analysis cancelled.` with a `Try again` button, and nothing is saved for that song. Closing the panel or clicking another song cancels it the same way.
 
-Under the button is the headline: the best score, its path, and one line like `Optimal path · 7 stars`. A Stale result names its cause: another Hydra version made it, or it was made under different rules in `hydra_rules.ini`. If a batch finishes the song while its panel is open, the panel shows the new result straight away.
+When the analysis finishes, the song's result is saved to the library if it was missing, Stale or different. So the library row and the panel always show the same numbers.
 
-If the song's file has moved or been deleted since the last scan, the panel says `Song file not found.` and offers a `Rescan library` button.
+Below the header is the headline: the best score, its path, and one line like `Optimal path · 7 stars`.
+
+If the song's file has moved or been deleted since the last scan, the panel says `Song file not found.` and offers a `Rescan library` button. Its library row and result stay. If the chart was edited since the last scan, opening it reads the edited file, and the library row follows.
 
 The panel has four tabs: **Paths**, **Preview**, **Dynamics** and **Stars**.
 
@@ -107,7 +109,7 @@ The left side lists the paths the analysis kept, grouped by score. **Optimal** c
 
 Each path shows its own hardest timing right after it, like `378,315 · 3- 1 2   163.0 ms`: the hardest squeeze or required early fill that path needs. It turns orange past the difficult limit. A path that needs no timing shows nothing there.
 
-The right side starts with a summary, like `Activations 3 · no SP left over`. Under it, a timeline runs from the first measure to the end of the song, with a mark for each activation. The song's length is the one the chart's own files state (the `song_length` line in song.ini, the same key in a .sng, or the length stored in a .srb). A chart that states none ends at its last Expert drum note. Hydra Deluxe never opens the audio to find it, so a chart with no audio still gets a timeline. A song with a long outro ends its last mark well before the right edge. A mark is outlined in orange only when its row's timing is orange too. A chart with no length at all, meaning no stated length and no Expert drum notes, shows no marks. For a result saved before this version, the timeline appears a moment after you open the song: Hydra Deluxe works out the song's length once and remembers it. Nothing is re-analyzed.
+The right side starts with a summary, like `Activations 3 · no SP left over`. Under it, a timeline runs from the first measure to the end of the song, with a mark for each activation. The song's length is the one the chart's own files state (the `song_length` line in song.ini, the same key in a .sng, or the length stored in a .srb). A chart that states none ends at its last Expert drum note. Hydra Deluxe never opens the audio to find it, so a chart with no audio still gets a timeline. A song with a long outro ends its last mark well before the right edge. A mark is outlined in orange only when its row's timing is orange too. A chart with no length at all, meaning no stated length and no Expert drum notes, shows no marks.
 
 Each activation is one row. It shows the activation's number, its notation, its measure (like `m32.1.0`), the bars of SP banked when you activate (like `1 bar` or `2 bars`), and a badge for its hardest timing, like `squeeze out 163 ms` or `early fill 20 ms`. An activation that skips fills keeps its early fill badge when its Star Power is ready no earlier than the fill's deadline, because that timing decides whether the first fill shows up. An early fill with time to spare has nothing to time, so it gets no badge. A squeeze that happens on its own still gets one when nothing else on the row needs timing, with a figure of 0 or below: `squeeze in -316 ms` means the phrase's last note already lands 316 ms before Star Power ends. Click a row to open it, or use `Expand all` and `Collapse all`.
 
@@ -173,7 +175,7 @@ The **Pads** table shows, for each pad (and each cymbal separately under Pro Dru
 
 The **Chart** box says whether the chart has dynamics turned on. A MIDI chart has to opt in with a tag. Without that tag Clone Hero ignores the velocity markings and plays every note as a normal hit. Hydra Deluxe reads the chart the same way, so the tab shows no ghost or accent counts. It says `This chart has no ghost or accent notes.`, and the Chart box says `Dynamics enabled: no (markings ignored by Clone Hero)`. When the tag only comes partway through the chart, the markings before it are ignored too, and the Chart box says how many there were.
 
-Counts are worked out the first time you open the tab and saved, so it opens instantly after that. Analyzing a song with 2x Bass on also saves them.
+Counts are worked out when you open the song, together with its paths. Nothing is saved, so they always match the chart file as it is now.
 
 ## Stars tab
 
@@ -191,7 +193,7 @@ A star counts once your score, without the solo bonus, reaches its cutoff.
 
 First a window titled **Analyze library** asks you to confirm. It says how many songs it will analyze and lists the settings it will use. To change those, cancel and edit the Analysis settings. Songs that already have a result are skipped, unless you tick `Also re-analyze charts that already have a result`. Click `Start analyzing` to begin, or `Cancel`.
 
-The batch runs in the background, using all but one of your CPU cores. You can keep browsing and open songs while it runs. A strip under the toolbar shows its progress: how many songs are done, the song being analyzed, the time so far and, after a few songs, an estimate of the time left, like `about 1:30 left`. A song panel open on a song the batch just finished shows the new result straight away.
+The batch runs in the background, using all but one of your CPU cores. You can keep browsing and open songs while it runs. A strip under the toolbar shows its progress: how many songs are done, the song being analyzed, the time so far and, after a few songs, an estimate of the time left, like `about 1:30 left`. An open song's panel already shows the engine's result, so the batch only updates its library row.
 
 - **`Pause`** holds the batch. **`Resume`** carries on.
 - **`Stop`** ends it. Every result finished so far is kept.
@@ -205,6 +207,8 @@ When it finishes, the strip changes to a summary: how many songs were analyzed, 
 ### The path report
 
 A finished batch builds the **path report**, `hydra_paths.html`. It is a sortable, searchable web page of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums and 2x Bass) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
+
+Hydra Deluxe keeps only each song's summary, so building the report analyzes those songs again, on all cores. Songs the batch just analyzed are reused. On a large library that adds a few seconds. A song whose file can't be read any more is left out. A line starting `Left out:` under the page's subtitle then says how many, with their file paths listed under it.
 
 Tiles at the top sum up the rows on show. The **Hardest ms** tile is the hardest squeeze or required early fill any of those paths needs. `Best path only` keeps just the optimal paths. When paths tie for the top score, it keeps every one of them, because each is optimal. The search box ignores case and accents. Every word you type must appear somewhere in the song, artist, charter or path the row shows, and the words can match different fields. Quotes and the Library's field prefixes, like `artist:`, are ordinary words here. Numbers read the same as in the app, with commas from 1,000 whatever language your browser uses, and `1 bar` at an SP cap of 1.
 
@@ -264,7 +268,7 @@ Older files may still have `auto_cap_ladder` or `auto_budget_s` lines. Hydra Del
 
 A value Hydra Deluxe can't read, or a key it doesn't know, is an error that names the key. The command line tools print the error and stop with exit code 2. The app still opens and shows the error, but analysis stays off until you fix the file and restart Hydra Deluxe. Hydra Deluxe never analyzes on the defaults behind your back.
 
-Every result remembers the rules it was made with. After you change the file, results made under the old rules show `Stale` until you re-analyze them. Switching the rules back brings those results back.
+Every result remembers the rules it was made with. After you change the file, results made under the old rules show `Stale` until you click the song or run a batch. Switching the rules back brings those results back.
 
 ## For power users: command line tools
 

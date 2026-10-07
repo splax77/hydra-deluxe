@@ -97,7 +97,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
     const std::function<void(int)>& cb_progress = nullptr);
 
 // The chart file's hyhash: the same MD5 the library scan writes to the
-// songmeta/charts rows, so a tool can look a chart up in the record store
+// charts rows, so a tool can look a chart up in the record store
 // by path alone. Returns an empty string if the file cannot be read.
 std::string hash_chart_file(const std::string& path);
 
@@ -162,10 +162,10 @@ struct AnalysisSettings : SearchSettings {
 };
 
 // Loads and analyzes one chart file (.mid/.chart/.sng/.srb), producing a record and
-// the song's timing (for the store's songmeta row).
+// the parsed song (its timing, for the Paths tab and the Preview).
 struct AnalysisResult {
     HydraRecord record;
-    Song song;  // carries tick_resolution/tpm_changes/bpm_changes for add_song
+    Song song;
 };
 // on_progress, if set, is called from the calling thread with a monotonic 0..1
 // fraction as the search sweeps the chart — for a single-chart progress bar.

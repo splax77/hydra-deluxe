@@ -1,7 +1,7 @@
 // How long a song is (D75): the one owner, song_length_ms, and the rule for
 // which stated lengths count. The Paths timeline, the Preview's scrub bar and
-// its SP meter all show this one length; analysis, hydra_batch and the
-// open-song backfill save it (RecordStore::save_analysis, fill_song_length).
+// its SP meter all show this one length. Nothing stores it: a click works it
+// out through app::analysis_song_length (D87).
 //
 // No audio is opened here. The length comes from the chart's own metadata,
 // read by the library scan with the names (store::ChartTimingMeta), or from

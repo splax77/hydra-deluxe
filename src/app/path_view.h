@@ -43,16 +43,6 @@ std::string measure_label(const Timecode& tc);
 // The first measure in format_measure's form, for a screen with no timing.
 std::string first_measure_label();
 
-// ---- stored-result panel --------------------------------------------------
-
-struct RecordStatusView {
-    store::RecordStatus state = store::RecordStatus::NotAnalyzed;
-    std::vector<std::string> lines;  // Ready only
-};
-// The store decides the status; this only turns it into display lines. A
-// Ready record with no paths is still a real result, shown as one line.
-RecordStatusView build_record_status(const store::RecordLookup& lookup);
-
 // ---- multiplier squeezes ---------------------------------------------------
 
 struct MultSqueezeView {
@@ -120,11 +110,11 @@ struct ActivationsView {
 // why the widths are in it). The GUI test finds the table by the same call.
 std::string backend_table_id(int number, int w_timing, int w_chord, int w_points);
 
-// `timing` may be null (no songmeta row): the stored transfer scales are used
+// `timing` may be null: the record's own transfer scales are used
 // (see rate_activation).
 // `backend_limit_ms` hides backend rows beyond +/- that many ms, squeezed-out
 // rows excepted; nullopt (the default) shows every stored row.
-// `song_length_ms` is the song's length (RecordLookup::song_length_ms);
+// `song_length_ms` is the song's length (app::analysis_song_length);
 // with it and a `timing`, every row gets its song_fraction and the view its
 // timeline_end. With none there is no timeline.
 // `pro_drums` is the Pro Drums setting the record was analyzed with; the
@@ -282,8 +272,6 @@ public:
         std::vector<std::string> breakdown;
     };
 
-    // The stored-result panel's lines for `lookup`.
-    const RecordStatusView& status(const store::RecordLookup& lookup, int record_generation);
     // The selected path's squeezes, activations and score breakdown. A new
     // path or record also resets ui() for it; a display setting does not.
     const Details& details(const Path& path, const HydraRecord& record, int record_generation,
@@ -299,15 +287,10 @@ public:
     const PathsTabUi& ui() const { return ui_; }
 
     // How many times each view was built; for tests.
-    int status_builds() const { return status_builds_; }
     int details_builds() const { return details_builds_; }
     int buttons_builds() const { return buttons_builds_; }
 
 private:
-    int status_generation_ = -1;
-    RecordStatusView status_;
-    int status_builds_ = 0;
-
     int details_generation_ = -1;
     const Path* details_path_ = nullptr;
     double details_hit_window_ms_ = 0.0;

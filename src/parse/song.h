@@ -97,7 +97,7 @@ inline constexpr const char* kUnknownTitle = "(unknown)";
 // The one fallback for a song's name. A blank name (an empty `name =`, a
 // missing name key, an empty .sng/.srb name) and the "<unknown title>" the
 // metadata readers wrote before this existed both become kUnknownTitle.
-// Library rows and songmeta rows from older scans still hold those, so every
+// Library rows from older scans still hold those, so every
 // place that shows a stored name reads it through this.
 std::string title_or_unknown(std::string title);
 

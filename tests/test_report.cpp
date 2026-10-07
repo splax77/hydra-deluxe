@@ -126,7 +126,6 @@ std::vector<std::string> fill_store(store::RecordStore& store,
          corpus::charts_with_paths(run.settings, static_cast<size_t>(want))) {
         const std::string hyhash = "h" + std::to_string(files.size());
         const std::string title = "Title " + std::to_string(files.size());
-        store.add_song(hyhash, title, "Artist", "Charter", c.result.song);
         store.add_record(fixture_settings(cap).record_key(hyhash), c.result.record);
         library.push_back(library_entry(hyhash, title, c.chart));
         files.push_back(c.chart);
@@ -184,46 +183,11 @@ void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>
     HydraRecord record = test::tied_variant_record();
     record.sp_cap = cap;
     record.legacy_fills = legacy_fills;
-    store.add_song(hyhash, "Tied " + hyhash, "Artist", "Charter", test::beat_song({}, {}, 13440));
     store::RecordKey key = fixture_settings(cap, legacy_fills).record_key(hyhash);
     if (chartmode) key.chartmode = *chartmode;
     store.add_record(key, record);
     library.push_back(library_entry(hyhash, "Tied " + hyhash, kTiedFile));
     store.rebuild_chart_library(library);
-}
-
-// Sorts report rows by chart, mode and rank, so two passes that list the
-// same rows in different orders compare row by row.
-void sort_rows(std::vector<report::ReportRow>& rows) {
-    std::sort(rows.begin(), rows.end(), [](const report::ReportRow& a, const report::ReportRow& b) {
-        return std::tie(a.hyhash, a.mode, a.rank) < std::tie(b.hyhash, b.mode, b.rank);
-    });
-}
-
-// Every field of two rows, each its own check, so a difference names its
-// field.
-void check_same_row(const report::ReportRow& engine, const report::ReportRow& stored) {
-    INFO(stored.hyhash << " " << stored.mode << " rank " << stored.rank);
-    CHECK(engine.song == stored.song);
-    CHECK(engine.artist == stored.artist);
-    CHECK(engine.charter == stored.charter);
-    CHECK(engine.mode == stored.mode);
-    CHECK(engine.rank == stored.rank);
-    CHECK(engine.optimal == stored.optimal);
-    CHECK(engine.path == stored.path);
-    CHECK(engine.score == stored.score);
-    CHECK(engine.acts == stored.acts);
-    CHECK(engine.skip == stored.skip);
-    CHECK(engine.ms == stored.ms);
-    CHECK(engine.tier == stored.tier);
-    CHECK(engine.tok == stored.tok);
-    CHECK(engine.efill == stored.efill);
-    CHECK(engine.mult == stored.mult);
-    CHECK(engine.sqin == stored.sqin);
-    CHECK(engine.sqout == stored.sqout);
-    CHECK(engine.notes == stored.notes);
-    CHECK(engine.hyhash == stored.hyhash);
-    CHECK(engine.copies == stored.copies);
 }
 
 // The same analyzer, counting the files it is asked for.
@@ -442,7 +406,7 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
     // Library names written before the fallback existed, a title with a
     // bold tag, and H1's title made only of tags. Each pairs with the name
     // the report shows. The page names a chart by its library row (the
-    // naming copy, which rebuild_chart_library also writes to songmeta).
+    // naming copy, kNamingCopiesSql's pick).
     const std::vector<std::pair<std::string, std::string>> names = {
         {"", kUnknownTitle},
         {"<unknown title>", kUnknownTitle},
@@ -780,46 +744,6 @@ TEST_CASE("generate_report hands back nothing when its cancel flag is set") {
     CHECK(result.empty_reason == report::EmptyReason::Cancelled);
 }
 
-// D87 item 5: the page's rows come from a fresh analysis. On every corpus
-// chart, in the run's chart mode and one other, they equal the rows the
-// stored records gave, field by field. T5 deletes this test with
-// collect_stored_rows.
-TEST_CASE("report rows from the engine equal the rows from the stored records") {
-    store::RecordStore store(":memory:");
-    auto [items, errors] = discover_charts({corpus::root()});
-    REQUIRE(errors.empty());
-    REQUIRE_FALSE(save_scan_as_library(store, items).has_value());
-    Settings expert = fixture_settings(4);
-    Settings hard = fixture_settings(4);
-    hard.view_difficulty = "Hard";
-    hard.view_prodrums = false;
-    hard.view_bass2x = false;
-    for (const Settings* s : {&expert, &hard}) {
-        const BatchRun run = s->batch_run();
-        run_batch(plan_batch(items, {}), run, store, batch_worker_count());
-    }
-
-    report::ReportOptions options = fixture_options(4);
-    options.max_paths = 100;
-    const report::CollectedRows engine_pass =
-        report::collect_rows(store, report::ReportSeed{}, options);
-    CHECK(engine_pass.failures.empty());
-    std::vector<report::ReportRow> engine = engine_pass.rows;
-    std::vector<report::ReportRow> stored = report::collect_stored_rows(
-        store, options.max_paths, options.cap, options.lens, options.hit_window_ms);
-    sort_rows(engine);
-    sort_rows(stored);
-    REQUIRE(engine.size() == stored.size());
-    const auto in_mode = [](const std::vector<report::ReportRow>& rows, const std::string& mode) {
-        return std::count_if(rows.begin(), rows.end(),
-                             [&](const report::ReportRow& r) { return r.mode == mode; });
-    };
-    CHECK(in_mode(stored, expert.chartmode_key()) > 0);
-    CHECK(in_mode(stored, hard.chartmode_key()) > 0);
-    MESSAGE(stored.size() << " rows compared");
-    for (size_t i = 0; i < stored.size(); ++i) check_same_row(engine[i], stored[i]);
-}
-
 TEST_CASE("the report reuses the charts a batch just analyzed (D87 item 5)") {
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
@@ -923,7 +847,6 @@ TEST_CASE("a report on results with no chart library says the library is missing
     // ever saved as the library. (A scan that lists nothing deletes the
     // results too, D87 item 4.)
     store::RecordStore store(":memory:");
-    store.add_song("t", "Tied t", "Artist", "Charter", test::beat_song({}, {}, 13440));
     HydraRecord record = test::tied_variant_record();
     record.sp_cap = 4;
     store.add_record(fixture_settings(4).record_key("t"), record);
@@ -1059,7 +982,7 @@ TEST_CASE("records_by_hash keys every listed record by its lower-case hash") {
     AnalysisSettings settings;
     settings.depth_value = 0;
     const AnalysisResult result = corpus::first_analyzed_with_paths(settings);
-    store.add_song("ABCDEF0123", "Title", "Artist", "Charter", result.song);
+    store.rebuild_chart_library({library_entry("ABCDEF0123", "Title", "C:\\songs\\t.chart")});
     store.add_record(store::RecordKey{"ABCDEF0123", "mode", store::CapQuery::at(4)},
                      result.record);
 

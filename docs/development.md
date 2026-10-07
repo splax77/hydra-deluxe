@@ -14,14 +14,13 @@ database: they read the same `hydra_settings.ini`, `hydra_rules.ini` and
 hydra_batch                    Analyze every chart folder from the app's settings
 hydra_batch <folder> [...]     ...or specific folders instead
 hydra_batch --redo             Re-analyze charts already stored
-hydra_batch --reindex          Only rebuild sort columns, no analysis
 hydra_batch --db <path>        Target a specific database
 hydra_batch --rules <path>     Take the rule choices from this file, not hydra_rules.ini
 hydra_batch --legacy-fills     Score fills by Clone Hero 1.0's rule (needs its own --db)
 
-hydra_report                   Sortable HTML report of stored paths (top 5 per chart and mode)
+hydra_report                   Sortable HTML report of analyzed charts' paths (top 5 per chart and mode)
 hydra_report --paths 20        Top 20 per chart and mode
-hydra_report --all-paths       Everything stored
+hydra_report --all-paths       Every path the analysis kept
 hydra_report --out report.html
 hydra_report --db <path>       Report on a specific database
 hydra_report --rules <path>    Judge records against the rules in this file
@@ -36,9 +35,10 @@ hydra_fillcompare ... --no-open
 
 All three read the app's settings file, so they work at the same SP cap,
 timing limit and score range the app is set to. `hydra_batch` and
-`hydra_fillcompare` also use the app's chart mode. `hydra_report` lists every
-chart mode stored at those settings, top N paths per chart and mode. The fill
-rule is the exception, below. All three read the scoring rules from
+`hydra_fillcompare` also use the app's chart mode. `hydra_report` covers every
+chart mode at those settings, top N paths per chart and mode, and it picks its
+charts from the chart library; `collect_rows` in src/app/report.h owns which
+charts those are (D87 item 5). The fill rule is the exception, below. All three read the scoring rules from
 `hydra_rules.ini` next to Hydra.exe, or from the file `--rules` names. If that
 file has an error, they print it and stop with exit code 2.
 
@@ -50,17 +50,22 @@ made it, so a song's 1.0 and 1.1 results sit side by side in `hydra.db`.
 the app's 1.0 fills setting and goes by the flag alone. It still refuses to
 write into the app's own `hydra.db`, so give it its own `--db`. Each database it
 fills is stamped with the rule, and hydra_batch refuses (exit code 2) a run
-whose rule disagrees with the stamp. `--reindex` never changes the stamp.
-`hydra_report` on a database stamped 1.0 reports its 1.0 results. When it
-finds nothing under the current settings but the database holds other
-results, it names the settings it looked under instead of saying the
-database is empty.
+whose rule disagrees with the stamp.
+`hydra_report` on a database stamped 1.0 reports its 1.0 results. When it has
+nothing to show, it says why rather than calling the database empty: other
+settings hold results, or the database has no chart library, as one built by
+`hydra_batch` with folder arguments has (D89 item 2). `generate_report` in
+src/app/report.h owns those cases and their sentences.
 
 To see what the rule change did, compare the two. `hydra_fillcompare` reads
 the 1.0 results from `--old` and the 1.1 results from `--new`. Each chart's
-row is labelled by which database holds a record for it, even when that
-record has no paths. Narrow columns name the rules CH 1.0 and CH 1.1. The two
-databases can be two files, or the app's own database twice:
+row is labelled by which database holds a result for it. Narrow columns name
+the rules CH 1.0 and CH 1.1. Like the path report, it compares library charts
+only. A database built by `hydra_batch` with folder arguments has no chart
+library, so it stops with the path report's sentence. D92 and
+`report::lacks_chart_library` own that rule, and ADR 0026 explains it. The
+Compare with dmleaderboards page follows it too. The two databases can be two
+files, or the app's own database twice:
 
 ```
 hydra_batch --legacy-fills --db ch10.db
@@ -124,7 +129,8 @@ The vendored SQLite is built without its memory-use counters and without
 shared cache. Hydra uses neither, and leaving them out trims a little of
 SQLite's own work; `tests/test_store.cpp` checks both. SQLite's default sync
 level for WAL mode is not set at build time, because the store sets it itself
-on every open (`record_store.cpp`).
+on every open (`record_store.cpp`). The store also caps the write-ahead log
+(`hydra.db-wal`) there, at `kJournalSizeLimitBytes` (D93; ADR 0026).
 
 Every exe runs on Microsoft's mimalloc memory allocator instead of the
 Windows heap, the tests and benchmarks included (decision D88). It cut Hydra's
@@ -164,8 +170,9 @@ change to the engine can be measured instead of guessed at.
 of activation windows in ticks. It walks the chart chord by chord. For each
 chord it prints the chord's own score, the running totals, and whether the
 chord fell under Star Power — all as JSON, so it can be diffed or graphed.
-`hydra_replay dump` reads the windows straight out of a stored record, so you
-can start from a path the app already found and change one activation.
+`hydra_replay dump` analyzes the chart and prints the windows of every path the
+engine found, so you can start from a path the app shows and change one
+activation. It reads no database (docs/adr/0026).
 `hydra_replay score --path <file>` prices a path straight out of the JSON
 `dump` or `target` wrote, so nothing has to be retyped and nothing is lost on
 the way — in particular the squeeze-out offsets, which a hand-typed window
@@ -194,6 +201,9 @@ run of the new one (B) over the same charts.
 prints one line per table, "N rows compared, M differ", lists the first few
 keys that differ, and exits 1 if any table differs. It leaves out
 `result_id`, which only records the order worker threads finished in.
+A baseline made before the store kept summaries only (ADR 0026) has tables a
+new file no longer has. Add `--summary-only` to compare just what the new
+store keeps; the script's own header says which tables and columns that is.
 
 `hydra_bench --engine <folder>` and `hydra_bench --parse <folder>` print one
 digest over a whole folder: the first over every chart's stored result row,

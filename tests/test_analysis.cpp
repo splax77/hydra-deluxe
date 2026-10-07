@@ -683,89 +683,6 @@ TEST_CASE("run_batch hands on_error the sentence its exception's kind names") {
     CHECK(sentences[0] == "A saved result couldn't be read. Re-analyze this song to replace it.");
 }
 
-namespace {
-
-// short_chart_with_long_audio's chart (last note at 100 ms, a 5 s song.ogg)
-// with `ini` as its song.ini, as the library scan lists it.
-ScanItem scanned_short_chart(const std::string& tag, const std::string& ini) {
-    const std::string notes = audiochart::short_chart_with_long_audio(tag);
-    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini", ini);
-    auto [items, errors] = discover_charts({hydra::parent_folder(notes)});
-    REQUIRE(errors.empty());
-    REQUIRE(items.size() == 1);
-    return items[0];
-}
-
-// What run_batch saved for `item` under `run`.
-hydra::store::RecordLookup batch_saved(const ScanItem& item, const BatchRun& run) {
-    hydra::store::RecordStore store(":memory:");
-    run_planned({item}, run, store, /*redo=*/false, 1, {});
-    hydra::store::RecordLookup got =
-        store.get_record({item.md5, run.chartmode, run.cap_query(), run.lens});
-    REQUIRE(got.status == hydra::store::RecordStatus::Ready);
-    return got;
-}
-
-}  // namespace
-
-TEST_CASE("run_batch saves the song's length from its metadata (D75)") {
-    BatchRun run;
-    run.chartmode = "length-test";
-    const hydra::store::RecordLookup read =
-        batch_saved(scanned_short_chart("batch_len", "[song]\nsong_length = 4321\n"), run);
-    CHECK(read.song_length_read);
-    CHECK(read.song_length_ms == 4321.0);
-
-    // A chart whose metadata cannot be read keeps its length unread: here a
-    // .sng that is gone, on a row an older scan wrote.
-    const AnalysisResult real = analyze_chart_file(corpus::first_chart_with_notes(), {});
-    const BatchCallbacks callbacks = real_result_callbacks(real);
-    ScanItem gone;
-    gone.md5 = "gone";
-    gone.title = "gone";
-    gone.notespath = testtemp::temp_dir("batch_len_gone") + "\\gone.sng";
-    hydra::store::RecordStore store(":memory:");
-    run_planned({gone}, run, store, /*redo=*/false, 1, callbacks);
-    const hydra::store::RecordLookup unread =
-        store.get_record({gone.md5, run.chartmode, run.cap_query(), run.lens});
-    REQUIRE(unread.status == hydra::store::RecordStatus::Ready);
-    CHECK_FALSE(unread.song_length_read);
-    CHECK_FALSE(unread.song_length_ms.has_value());
-}
-
-TEST_CASE("run_batch's length opens no audio: no audio file, or junk audio, still has one") {
-    // D75 item 5. The stated length needs no audio at all.
-    BatchRun run;
-    run.chartmode = "length-noaudio";
-    ScanItem no_audio = scanned_short_chart("batch_len_noaudio", "[song]\nsong_length = 4321\n");
-    REQUIRE(DeleteFileW(
-        hydra::utf8_to_wide(hydra::parent_folder(no_audio.notespath) + "\\song.ogg").c_str()));
-    hydra::store::RecordLookup got = batch_saved(no_audio, run);
-    CHECK(got.song_length_read);
-    CHECK(got.song_length_ms == 4321.0);
-
-    // No stated length and junk bytes under the audio's name: the last Expert
-    // note (100 ms) is the length.
-    const ScanItem junk = scanned_short_chart("batch_len_junk", "[song]\nname = Junk\n");
-    audiochart::write_text_file(hydra::parent_folder(junk.notespath) + "\\song.ogg",
-                                "not audio at all");
-    got = batch_saved(junk, run);
-    CHECK(got.song_length_read);
-    CHECK(got.song_length_ms == 100.0);
-}
-
-TEST_CASE("a song.ini delay longer than the stated length saves no length") {
-    // The stated length ends before chart time 0, so the owner
-    // (app::chart_song_length_ms) gives no length: the song is read, with
-    // none.
-    BatchRun run;
-    run.chartmode = "delay-test";
-    const hydra::store::RecordLookup got = batch_saved(
-        scanned_short_chart("long_delay", "[song]\nsong_length = 1000\ndelay = 60000\n"), run);
-    CHECK(got.song_length_read);
-    CHECK_FALSE(got.song_length_ms.has_value());
-}
-
 TEST_CASE("discover_charts: a song with no usable name reads (unknown)") {
     namespace fs = std::filesystem;
     const std::string chart = corpus::first_chart_with_suffix(".chart");
@@ -927,8 +844,7 @@ TEST_CASE("run_batch: cancel during a group writes nothing more and leaves no tr
     CHECK(store.counts().second == results);
     // No group was left open: a plain save still runs its own transaction.
     const hydra::store::RecordKey key{"after", run.chartmode, run.cap_query(), run.lens};
-    store.save_analysis("after", "After", "", "", real.song,
-                        hydra::store::prepare_row(key, real.record), std::nullopt);
+    store.save_analysis(hydra::store::prepare_row(key, real.record));
     CHECK(store.counts().second == results + 1);
 }
 

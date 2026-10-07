@@ -1,5 +1,10 @@
 # A tied variant's facts are its own
 
+> **Superseded in part by [ADR 0026](0026-the-store-keeps-summaries-the-engine-gives-details.md),
+> 2026-10-07.** Records are no longer stored, so the statements below about
+> the structure blob and the record format are history. A variant's facts are
+> still its own; the engine builds them that way on every analysis.
+
 A tied variant is a path that scores exactly what another path scores. The
 search keeps one of the two as the leader. It stores the other, the variant,
 as a branch of the leader. The variant stores its own activations up to the

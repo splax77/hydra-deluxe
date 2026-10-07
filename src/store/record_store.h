@@ -1,25 +1,21 @@
-// SQLite-backed storage for analysis records, in the binary blob format of
-// store/serialize.h. Old
-// Python-era .db files are not read; a fresh scan populates a new one.
-//
-// Three tables carry an analysis:
+// SQLite-backed storage for analysis summaries (D87). hydra.db keeps the
+// chart library, one summary row per chart and settings, and `meta`. Every
+// path detail comes from the engine's own analysis when a song is clicked or
+// a report is built; nothing here stores a path. Old Python-era .db files are
+// not read; a fresh scan populates a new one.
 //
 //   * `results` — one row per run, keyed by the FULL settings it ran under:
 //     the chart, the chart mode, the SP cap, the Lens (ms limit, score
 //     range and fill rule) and the hydra_rules.ini fingerprint (schema 4), so
-//     a result made under other rules is kept beside this build's. Summary
-//     columns are denormalized onto it so a sortable library
-//     listing never has to inflate anything. The row holds a *structure* blob
-//     (the path tree's shape) rather than the paths themselves.
-//   * `paths` — every distinct path node, content-addressed by its hash and
-//     shared across every result that references it (store/path_codec.h). A
-//     path is never stored twice.
-//   * `path_refs` — which nodes each result uses, so the store can garbage
-//     collect a node the moment nothing points at it.
+//     a result made under other rules is kept beside this build's. The row
+//     holds the run's summary columns, so a sortable library listing never
+//     has to analyze anything.
+//   * `charts` — the chart library, one row per scanned file. A result's
+//     names come from here (kNamingCopiesSql).
 //
-// `songmeta` holds one row per chart file, keyed by content hash: its names,
-// its tempo map, and the song's one length with that length's stamp.
-// RecordLookup::song_length_ms says where the length comes from.
+// An older file also held the path details, song rows and dynamics counts.
+// The first open by this build deletes them and shrinks the file
+// (drop_stored_details).
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -30,7 +26,6 @@
 #ifndef HYDRA_STORE_RECORD_STORE_H
 #define HYDRA_STORE_RECORD_STORE_H
 
-#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -46,7 +41,6 @@
 #include "core/timing.h"
 #include "parse/song.h"
 #include "search/graph.h"
-#include "store/path_codec.h"
 
 struct sqlite3;
 struct sqlite3_stmt;
@@ -73,8 +67,7 @@ struct PathSummary {
     std::optional<int> sqout_count;
     std::optional<int> pathcount;
     // The best path's star count by core/stars' path_stars (solo bonus left
-    // out, as Clone Hero counts it). Unset on a row written before the column
-    // existed until the store fills it (fill_missing_stars).
+    // out, as Clone Hero counts it).
     std::optional<int> stars;
 
     // Does this record have a scored best path? The one answer (D51 call 11):
@@ -166,9 +159,8 @@ struct RecordKey {
     bool operator!=(const RecordKey& other) const { return !(*this == other); }
 };
 
-// A result's row, fully computed and ready to insert — the expensive half of
-// a save (summarizing + flattening), kept free of any db connection so a
-// worker thread can build it off the main store.
+// A result's row, fully computed and ready to insert — the summary, kept free
+// of any db connection so a worker thread can build it off the main store.
 struct PreparedRow {
     std::string hyhash;
     std::string chartmode;
@@ -176,10 +168,9 @@ struct PreparedRow {
     int sp_cap = kCloneHeroSpCap;
     Lens lens;
     std::string bestpath;
-    // The path tree's shape (store/path_codec.h) and every distinct node it
-    // names, deduplicated.
-    std::vector<uint8_t> structure;
-    std::vector<StoredPathNode> nodes;
+    // The fingerprint of the rules the record was analyzed under
+    // (HydraRecord::rules_fingerprint), stored in the rules_fp column.
+    uint64_t rules_fp = 0;
     PathSummary summary;
 };
 
@@ -190,9 +181,9 @@ struct PreparedRow {
 // mismatch would file the result under settings it doesn't belong to.
 PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record);
 
-// Schema 2's results table: its columns in table order (what
-// upgrade_results_key copies into this build's table) and its CREATE TABLE
-// text (read only by the store test, to build a schema 2 file).
+// Schema 2's results table: the columns it shares with this build's table
+// (what upgrade_results_key copies across) and its CREATE TABLE text (read
+// only by the store test, to build a schema 2 file).
 extern const char* const kSchema2ResultsColumns;
 extern const char* const kSchema2ResultsTableSql;
 
@@ -202,52 +193,32 @@ extern const char* const kSchema2ResultsTableSql;
 // version stamps themselves; ask a lookup for its RecordStatus instead.
 std::string current_record_version();
 
-// What a stored-record lookup found. The store is the only place that decides
+// What a stored-row lookup found. The store is the only place that decides
 // whether a row is usable: NotAnalyzed (no row at all), Stale (a row another
-// Hydra version wrote, in an older path layout, or under other rules -- its
-// contents are not trusted and its blob is never decoded), or Ready (a real
-// result -- which may legitimately have zero paths).
+// Hydra version wrote, or one made under other rules -- its numbers are not
+// trusted), or Ready (a real result -- which may legitimately have zero
+// paths).
 enum class RecordStatus { NotAnalyzed, Stale, Ready };
 
-// The answer to get_record: the status, plus the payload when it is Ready.
-struct RecordLookup {
-    RecordStatus status = RecordStatus::NotAnalyzed;
-    std::string hyversion;              // the row's stamp; empty when NotAnalyzed
-    // Why a Stale row is Stale; both can be true, neither is when not Stale.
-    bool stale_build = false;  // another Hydra build or an older path layout
-    bool stale_rules = false;  // this path layout, analyzed under other rules
-    std::optional<HydraRecord> record;  // set only when Ready
-    std::optional<SongTiming> timing;   // set when Ready and the song is registered
-    // The song's length in chart time (app::song_length_ms, D75), one per
-    // song, saved by an analysis or the open-song backfill (save_analysis,
-    // fill_song_length) under kSongLengthStamp. Empty when the length was not
-    // worked out under the current stamp, or was and the owner gave none.
-    std::optional<double> song_length_ms;
-    // Whether the length was worked out under the current stamp, so the
-    // backfill knows whether to work it out. False for an unregistered song.
-    bool song_length_read = false;
-};
-
-// A song's length as app::song_length_ms found it, handed to save_analysis.
-// `read` says whether the length was worked out; an analysis that could not
-// work it out leaves it false and the stored length alone. A length the owner
-// gave none for has `read` set and no `ms`.
+// A song's length as app::analysis_song_length found it. `read` says whether
+// the length was worked out; a length the owner gave none for has `read` set
+// and no `ms`. Nothing stores it: the click shows it.
 struct SongLength {
     bool read = false;
     std::optional<double> ms;
     static SongLength found(std::optional<double> ms) { return SongLength{true, ms}; }
 };
-// The answer to get_summary: the same status, without touching the blob.
+// The answer to get_summary.
 struct SummaryLookup {
     RecordStatus status = RecordStatus::NotAnalyzed;
-    // Why a Stale row is Stale, as RecordLookup says it: both can be true,
-    // neither is when not Stale. The library's row tooltip names the cause.
-    bool stale_build = false;
-    bool stale_rules = false;
+    // Why a Stale row is Stale; both can be true, neither is when not Stale.
+    // The library's row tooltip names the cause.
+    bool stale_build = false;  // another Hydra build
+    bool stale_rules = false;  // analyzed under other rules
     std::string bestpath;  // meaningful only when status == Ready
     // The row's summary columns; filled only when status == Ready. A Stale
-    // row's numbers came from bytes this build doesn't trust, so they're not
-    // handed out.
+    // row's numbers came from a build or rules this one doesn't trust, so
+    // they're not handed out.
     PathSummary summary;
 };
 
@@ -316,42 +287,14 @@ struct ChartCacheEntry {
 };
 using ChartLibraryCache = std::unordered_map<std::string, ChartCacheEntry>;
 
-// Key for a dynamics-breakdown cache row: chart identity + difficulty + pro flag.
-struct DynamicsKey {
-    std::string md5;
-    std::string difficulty;  // difficulty_name(), e.g. "Expert"
-    bool pro = false;
-    bool operator==(const DynamicsKey& o) const {
-        return md5 == o.md5 && difficulty == o.difficulty && pro == o.pro;
-    }
-    bool operator!=(const DynamicsKey& o) const { return !(*this == o); }
-};
-
-// One dynamics count ready to store: its key, its encoded blob and its count
-// stamp (kDynamicsCountStamp.written). Built off the store by
-// app::dynamics_entry_from_analysis, saved by RecordStore::save_analysis.
-struct DynamicsEntry {
-    DynamicsKey key;
-    std::vector<uint8_t> blob;
-    int count_version = 0;
-};
-
 // Which copy names an md5 (D51 call 10): the first copy the scan listed, the
 // charts row with the smallest rowid for that md5. One row per md5, with its
 // name, artist and charter (SQLite takes a bare column from the MIN(rowid)
-// row), plus `copies`, how many rows the scan listed for it. The rebuild's
-// rename, upsert_song and library_copies all read through it.
+// row), plus `copies`, how many rows the scan listed for it. list_records,
+// library_copies and naming_copy_paths all read through it.
 inline constexpr const char* kNamingCopiesSql =
     "(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts"
     " GROUP BY md5)";
-
-// The naming copy of one md5 (bound as ?1), only when the library lists it
-// more than once: the query every save runs (upsert_song). The charts_by_md5
-// index lets it read that md5's rows alone (D76); a test pins its plan.
-inline std::string naming_copy_of_one_sql() {
-    return std::string("SELECT name, artist, charter FROM ") + kNamingCopiesSql +
-           " WHERE md5 = ?1 AND copies > 1";
-}
 
 // The most charts one save group holds (D86 item 2). When a group closes
 // sooner: see run_batch's flush_group (app/analysis.cpp).
@@ -359,6 +302,11 @@ inline constexpr int kSaveGroupSize = 16;
 // The WAL checkpoint threshold, in pages, while a batch runs (D86 item 3).
 // RecordStore::BatchWrites sets it and puts SQLite's own back at the end.
 inline constexpr int kBatchWalAutocheckpointPages = 10000;
+// The most bytes the WAL file keeps after a checkpoint resets it, set on every
+// open (D93): about SQLite's default 1,000-page checkpoint, so the log
+// never sits at its high-water size. Firefox ships the same default for the
+// same reason (Mozilla bug 1820478).
+inline constexpr int kJournalSizeLimitBytes = 4194304;
 
 class RecordStore {
 public:
@@ -380,32 +328,12 @@ public:
 
     // ---- writing ----------------------------------------------------------
 
-    // Registers a song so records can be stored against it. Registering it
-    // again updates its names and rewrites its tempo map.
-    void add_song(const std::string& hyhash, const std::string& ref_name,
-                 const std::string& ref_artist, const std::string& ref_charter,
-                 const Song& song);
-
-    // The open-song backfill's writer: saves the song's length (or none,
-    // when the owner gave none) with kSongLengthStamp, but only
-    // while the stored length is not current, so a slower backfill never
-    // overwrites an analysis. An unregistered song is left alone. Touches no
-    // result.
-    void fill_song_length(const std::string& hyhash, std::optional<double> length_ms);
-
     void add_record(const RecordKey& key, const HydraRecord& record);
     void add_row(const PreparedRow& row);
 
-    // One analyzed chart, saved in one transaction: the song's row (as
-    // add_song), the result (as add_row), the song's length when `length`
-    // was read, and, when given, its dynamics count (as put_dynamics). A
-    // failure in the first three rolls all of it back. A failed dynamics
-    // write is dropped on its own and never blocks the result.
-    void save_analysis(const std::string& hyhash, const std::string& ref_name,
-                       const std::string& ref_artist, const std::string& ref_charter,
-                       const Song& song, const PreparedRow& row,
-                       const std::optional<DynamicsEntry>& dynamics,
-                       const SongLength& length = {});
+    // One analyzed chart's summary row, saved as add_row does, but inside the
+    // open save group when there is one (as a SAVEPOINT of its own).
+    void save_analysis(const PreparedRow& row);
 
     // A save group (D86 items 1 and 2): one transaction around several
     // save_analysis calls, which the batch's writer opens so it commits once
@@ -444,19 +372,12 @@ public:
     };
     // The connection's checkpoint threshold in pages, for the tests.
     int wal_autocheckpoint_for_test();
-
-    // Stores a dynamics-breakdown blob (INSERT OR REPLACE) under the caller's
-    // count stamp (kDynamicsCountStamp.written; go through app::save_dynamics).
-    void put_dynamics(const DynamicsKey& key, const std::vector<uint8_t>& blob,
-                      int count_version);
-    // Returns the blob for this key, or nullopt when the row is missing or
-    // its count stamp isn't current (kDynamicsCountStamp; the caller then
-    // recounts it).
-    std::optional<std::vector<uint8_t>> get_dynamics(const DynamicsKey& key);
+    // The connection's journal_size_limit in bytes, for the tests.
+    int64_t journal_size_limit_for_test();
 
     // ---- reading ------------------------------------------------------
 
-    // The row's status and best-path string, without touching the blob.
+    // The row's status, best-path string and summary.
     // Always returns a value; bestpath is set only when status is Ready.
     SummaryLookup get_summary(const RecordKey& key);
 
@@ -467,17 +388,6 @@ public:
     std::vector<SummaryLookup> get_summaries(const std::vector<std::string>& hyhashes,
                                              const std::string& chartmode,
                                              const CapQuery& cap, const Lens& lens);
-
-    // The row's status and, when Ready, the full record -- inflated and with
-    // its timecodes restored against the song's tempo map, which comes back
-    // in `timing` so callers never have to re-decode it. Always returns a
-    // value; a Stale row's blob is not decoded at all.
-    RecordLookup get_record(const RecordKey& key);
-
-    // The song's timing context (tick resolution + tempo/meter maps), needed
-    // to restore a loaded record's timecodes. nullopt if the song isn't
-    // registered.
-    std::optional<SongTiming> get_timing(const std::string& hyhash);
 
     // True when get_summary reads this exact key as Ready: get_summaries is
     // the one owner of "this chart has a current result under these
@@ -510,59 +420,20 @@ public:
     static int copies_of(const std::unordered_map<std::string, int>& copies,
                          const std::string& md5);
 
-    // One record's song identity, as yielded by for_each_blob: the song's
-    // metadata row, plus the row's
-    // hyversion and the status it implies (the C++ HydraRecord doesn't carry
-    // a version).
-    struct BlobRow {
-        std::string hyhash;
-        std::string ref_name;
-        std::string ref_artist;
-        std::string ref_charter;
-        std::string chartmode;
-        std::string hyversion;
-        RecordStatus status = RecordStatus::Ready;
-        int sp_cap = kCloneHeroSpCap;
-    };
-
-    // Calls fn once per stored record (optionally filtered to one chartmode,
-    // always filtered to the wanted cap), in insertion order. Every row is
-    // yielded, stale ones included; the record pointer is null unless
-    // meta.status is Ready, so a stale row's blob is never decoded. Timecodes
-    // are NOT restored (the report only needs
-    // pathstrings and summaries, which never read them).
-    //
-    // The lock is taken and released once per record, never held across fn --
-    // this walk reads the whole library, and anything else touching the store
-    // (the UI thread) must not wait on it. A record that was rewritten after
-    // the walk listed it is left out of this walk rather than decoded against
-    // the new row's nodes; the next walk picks it up.
-    //
-    // `cancel`, when given, is read between records with no lock held: set it
-    // and the walk stops there. Nothing else is signalled -- the caller knows
-    // it asked to stop.
-    void for_each_blob(
-        const std::optional<std::string>& chartmode, const CapQuery& cap,
-        const Lens& lens,
-        const std::function<void(const BlobRow&, const HydraRecord*)>& fn,
-        const std::atomic<bool>* cancel = nullptr);
-
-    // ---- maintenance --------------------------------------------------
-
-    // Recomputes the summary columns and bestpath from stored paths. Returns
-    // rows touched.
-    int reindex();
+    // ---- listing ------------------------------------------------------
 
     // The library listing: one row per chart and mode -- the same row a lookup
     // for those settings would pick -- and only the Ready ones. A chart whose
     // best row is stale is left out entirely, so a report reads it the same as
-    // a chart nobody has analyzed. `limit` caps the rows returned after that
-    // filtering; a negative limit means no limit.
+    // a chart nobody has analyzed. Names come from the chart's naming copy
+    // (kNamingCopiesSql); a chart the library doesn't list has none. `limit`
+    // caps the rows returned after that filtering; a negative limit means no
+    // limit.
     std::vector<RecordListing> list_records(
         const std::optional<std::string>& chartmode, const CapQuery& cap, const Lens& lens,
         SortColumn order_by, bool descending, std::optional<int> limit = std::nullopt);
 
-    // {songs, results} row counts.
+    // {charts with a stored result, results} row counts.
     std::pair<int64_t, int64_t> counts();
 
     // The fill-spawn stamp hydra_batch last wrote this file with, as stored
@@ -584,20 +455,16 @@ public:
 
     // Replaces the whole library with `items`: a scan always fully
     // supersedes the previous one. All or nothing: a failure keeps the
-    // previous scan's rows. Songs that already have a row take the names
-    // this scan read (the first copy wins when a chart appears twice, and
-    // keeps winning when another copy is analyzed). Stamps the table with
-    // kChartMetaStamp. In the same transaction it deletes what the library
-    // no longer lists, as delete_results_without_chart does (D87 item 4).
+    // previous scan's rows. Stamps the table with kChartMetaStamp. In the
+    // same transaction it deletes what the library no longer lists, as
+    // delete_results_without_chart does (D87 item 4).
     void rebuild_chart_library(const std::vector<ChartLibraryEntry>& items);
 
-    // Deletes everything stored for a chart the library no longer lists: its
-    // results, song row, dynamics counts and path refs, then the path nodes
-    // only those results used (D87 item 4). Which charts the library lists:
-    // not_in_library in record_store.cpp. A listed chart keeps every row, in
-    // every chart mode, Stale ones included. One transaction. A database with
-    // no library rows loses every result, so only callers that own the
-    // library call this.
+    // Deletes the results of every chart the library no longer lists (D87
+    // item 4). Which charts the library lists: not_in_library in
+    // record_store.cpp. A listed chart keeps every row, in every chart mode,
+    // Stale ones included. One transaction. A database with no library rows
+    // loses every result, so only callers that own the library call this.
     void delete_results_without_chart();
 
     // One chart's files changed since the scan (D87 item 3): the library row
@@ -628,14 +495,9 @@ private:
     // stamped with anything but `fixed` reads Stale. Computed once, when the
     // store opens.
     core::RulesStamp rules_fingerprint_;
-    // The rule: this lock covers sqlite calls and nothing else -- decoding a
-    // blob and calling a caller's callback happen outside it. A prepared
+    // The rule: this lock covers sqlite calls and nothing else. A prepared
     // statement is compiled, stepped, reset and finalized with the lock held,
-    // because all four are sqlite calls. A statement's handle may outlive the
-    // locked block only if it is reset first, so no cursor is open while
-    // unlocked, and only if something guarantees the finalize happens under the
-    // lock later; for_each_blob is the one place that does this, reusing two
-    // statements across the walk instead of recompiling them per row.
+    // because all four are sqlite calls.
     std::recursive_mutex mutex_;
     // Compiled statements kept for reuse, keyed by their SQL, so the save
     // path compiles each statement once per connection. Used and reset under
@@ -650,96 +512,43 @@ private:
     // through the statement cache. The caller holds the lock.
     void ctl(const char* sql);
 
-    // The constructor's work after the file opens: the journal mode, the
-    // tables, and every upgrade and backfill an older file needs. The
-    // constructor turns any throw from it into a failed open.
+    // The constructor's work after the file opens: the journal settings, the
+    // tables, and every upgrade an older file needs. The constructor turns
+    // any throw from it into a failed open.
     void set_up_schema();
     void exec(const char* sql);
     bool has_column(const char* table, const char* column);
+    bool has_table(const char* table);
     void create_result_tables();
     // Brings an older results table's key up to schema 4. Schema 3 added
     // the fill rule (legacy_fills) to the key, and schema 4 the rules
     // fingerprint (rules_fp, read out of each row's structure blob). Both
     // sit in the UNIQUE constraint, which SQLite cannot alter, so the table
-    // is rebuilt once with every row, result_id and blob kept (path_refs
-    // point at the ids); nothing is analyzed again. A schema 2 file's rows go
-    // under the fill rule stamped_fill_rule names, or 1.1 when it names none.
+    // is rebuilt once with every row and result_id kept; nothing is analyzed
+    // again. A schema 2 file's rows go under the fill rule stamped_fill_rule
+    // names, or 1.1 when it names none.
     void upgrade_results_key();
-    // Fills the stars column of every Ready row that lacks it (rows written
-    // before the column existed). Runs on every open; with nothing to fill
-    // it reads only small columns. Returns rows filled.
-    int fill_missing_stars();
-    // The song's raw tempomap blob, its stored length and that length's
-    // stamp (kSongLengthStamp), read under the lock; the caller decodes the
-    // tempomap with no lock held. nullopt if the song isn't registered.
-    struct SongMetaRead {
-        std::vector<uint8_t> tempomap;
-        std::optional<double> length_ms;
-        int length_version = 0;
-    };
-    std::optional<SongMetaRead> read_tempomap(const std::string& hyhash);
-    // The one songmeta length write, for save_analysis and fill_song_length:
-    // the length (or none) with the current kSongLengthStamp. With
-    // `only_from_stamp`, only a row still holding that stamp is written. An
-    // unregistered song has no row and is left alone. The caller holds the
-    // lock.
-    void write_song_length(const std::string& hyhash, std::optional<double> length_ms,
-                           std::optional<int> only_from_stamp = std::nullopt);
-    // The bodies of add_song, add_row and put_dynamics. The caller holds the
-    // lock; write_row also needs an open transaction.
-    void upsert_song(const std::string& hyhash, const std::string& ref_name,
-                     const std::string& ref_artist, const std::string& ref_charter,
-                     const std::vector<uint8_t>& tempomap);
+    // The summary-only upgrade (D87 items 1 and 7): a file that still holds
+    // the path details loses them, then shrinks. Runs only when the `paths`
+    // table exists, so a second open does nothing.
+    void drop_stored_details();
+    // The body of add_row and save_analysis. The caller holds the lock and an
+    // open transaction.
     void write_row(const PreparedRow& row);
     // Deletes the results `where` names (an SQL fragment over `results`,
-    // bound by `bind`) and their path refs, in the one safe order. The caller
-    // holds the lock and an open transaction, and collects the orphaned
-    // nodes afterwards (collect_orphan_paths). `what` names the write in the
-    // error message.
+    // bound by `bind`). The caller holds the lock and an open transaction.
+    // `what` names the write in the error message.
     void delete_results_where(const std::string& where,
                               const std::function<void(sqlite3_stmt*)>& bind,
                               const std::string& what);
-    // Deletes this chart's path nodes that no result refers to any more:
-    // write_row's last step, and the Auto and library cleanups'. The caller holds the lock
-    // (or is the constructor) and an open transaction. `caller` names the
-    // operation in the error message.
-    void collect_orphan_paths(const std::string& hyhash, const std::string& chartmode,
-                              const char* caller);
     // Runs once per database file, when it opens: deletes every result
-    // Hydra 1.8.4's Auto saved (user decision 7, 2026-09-27), then the path
-    // nodes only they used, and marks it done in `meta`.
+    // Hydra 1.8.4's Auto saved (user decision 7, 2026-09-27), and marks it
+    // done in `meta`.
     void delete_auto_results();
     // The body of delete_results_without_chart, for the callers that already
     // hold the lock and an open transaction (rebuild_chart_library and
     // reidentify_chart). `caller` names the operation in the error message.
     void purge_charts_not_in_library(const char* caller);
-    void insert_dynamics(const DynamicsKey& key, const std::vector<uint8_t>& blob,
-                         int count_version);
-    // Every path node one result references, keyed by hash — what
-    // path_codec::rebuild_record's lookup closure reads. The `stmt` overload
-    // reads through a statement its caller compiled: for_each_blob prepares one
-    // per walk and reuses it for every row rather than compiling one each time.
-    // It resets that statement before returning, so the caller can drop the
-    // lock the moment it comes back. The plain overload compiles and finalizes
-    // its own statement, for callers that read one result.
-    std::unordered_map<std::string, std::vector<uint8_t>> load_nodes(sqlite3_stmt* stmt,
-                                                                    int64_t result_id);
-    std::unordered_map<std::string, std::vector<uint8_t>> load_nodes(int64_t result_id);
-    // Re-reads one result row for_each_blob listed earlier, under the lock the
-    // caller holds, through a statement the caller compiled once for the whole
-    // walk. Only runs when something was written on this connection after the
-    // walk listed its rows -- with no write, the listing's own blob is still
-    // this row's blob and re-reading it would only cost time. Resets that
-    // statement on every path out, including the two skip paths, so nothing is
-    // left mid-step when the caller unlocks. Fills
-    // `structure` and returns true when the row at `result_id` is still the
-    // record `meta` and the walk's `lens` describe. Returns false when the row
-    // is gone, or when its RecordKey or its version stamp differs -- result
-    // ids are reused after a delete, so a row rewritten since the walk started
-    // can land on the same id, and decoding it as the old record would attach
-    // one chart's paths to another chart's name.
-    bool reload_row(sqlite3_stmt* stmt, const BlobRow& meta, const Lens& lens,
-                    int64_t result_id, std::vector<uint8_t>& structure);
     std::optional<std::string> meta_get(const std::string& key);
     void meta_set(const std::string& key, const std::string& value);
     // Whether the charts table's rows were read by this build's readers: its

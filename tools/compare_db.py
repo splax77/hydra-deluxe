@@ -21,6 +21,15 @@ What it compares, and what it leaves out on purpose:
 
 The comparison runs inside SQLite (B is attached to A), so the whole library
 never has to fit in Python's memory.
+
+    py tools\\compare_db.py --summary-only baseline.db new.db
+
+--summary-only compares only what a summary-only store keeps (the
+summary-only storage plan, docs/superpowers/plans/2026-10-07-summary-only-storage.md),
+so a baseline from before that plan still compares against a newer file.
+results is compared on the columns both files share, less SUMMARY_LEFT_OUT,
+with rows matched by its unique key. The other tables in SUMMARY_TABLES are
+compared as above. It prints the tables and results columns it skipped.
 """
 
 import sqlite3
@@ -28,6 +37,9 @@ import sys
 from pathlib import Path
 
 TABLES = ["results", "paths", "path_refs", "songmeta", "dynamics", "charts", "meta"]
+SUMMARY_ONLY = "--summary-only"
+SUMMARY_TABLES = ["results", "charts", "meta"]  # what a summary-only store keeps
+SUMMARY_LEFT_OUT = ["result_id", "structure"]  # results columns never compared there
 SHOWN = 5  # differing keys listed per table
 RESULT_ID = "result_id"
 ROW_NO = "row_no"  # the positional key of a table with no primary key
@@ -150,7 +162,12 @@ def compare_table(con, table):
         print(f"  B: {', '.join(names_b)}")
         return False
 
-    plan = plan_for(con, table, names_a, pk_a)
+    return compare_rows(con, table, plan_for(con, table, names_a, pk_a))
+
+
+def compare_rows(con, table, plan):
+    """Prints the table's line (and its first differing keys) for rows read by
+    `plan` on each side; returns True when the table matches."""
     on = " AND ".join(f"x.{ident(k)} IS y.{ident(k)}" for k in plan.keys)
     changed = " OR ".join(f"x.{ident(v)} IS NOT y.{ident(v)}" for v in plan.values)
     where = "y.present_ IS NULL" + (f" OR {changed}" if changed else "")
@@ -183,22 +200,69 @@ def compare_table(con, table):
     return count == 0
 
 
+def table_names(con, schema):
+    rows = con.execute(
+        f"SELECT name FROM {schema}.sqlite_master"
+        " WHERE type = 'table' AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'"
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
+def compare_summary_results(con):
+    """The results table under --summary-only: the columns both files share,
+    less SUMMARY_LEFT_OUT, with rows matched by the unique key."""
+    table = "results"
+    if not (table_exists(con, "main", table) and table_exists(con, "b", table)):
+        return compare_table(con, table)  # reports the side it is missing from
+    keys_a, keys_b = unique_key(con, "main", table), unique_key(con, "b", table)
+    if keys_a is None or keys_a != keys_b:
+        print(f"{table}: 0 rows compared, 1 differ (unique keys differ)")
+        print(f"  A: {', '.join(keys_a or [])}")
+        print(f"  B: {', '.join(keys_b or [])}")
+        return False
+    names_a, _ = table_columns(con, "main", table)
+    names_b, _ = table_columns(con, "b", table)
+    shared = [c for c in names_a if c in names_b and c not in SUMMARY_LEFT_OUT]
+    skipped = sorted((set(names_a) | set(names_b)) - set(shared))
+    print(f"skipped {table} columns: {', '.join(skipped) or 'none'}")
+    values = [c for c in shared if c not in keys_a]
+    cols = ", ".join(ident(c) for c in keys_a + values)
+    plan = Plan(keys_a, values, lambda s: f"SELECT {cols}, 1 AS present_ FROM {s}.{ident(table)}")
+    return compare_rows(con, table, plan)
+
+
+def compare_summary(con):
+    """--summary-only: results, charts and meta; names every other table."""
+    others = (table_names(con, "main") | table_names(con, "b")) - set(SUMMARY_TABLES)
+    print(f"skipped tables: {', '.join(sorted(others)) or 'none'}")
+    all_match = compare_summary_results(con)
+    for table in SUMMARY_TABLES:
+        if table != "results" and not compare_table(con, table):
+            all_match = False
+    return all_match
+
+
 def main(argv):
-    if len(argv) != 3:
-        print("usage: py tools\\compare_db.py A.db B.db", file=sys.stderr)
+    flags = [a for a in argv[1:] if a.startswith("--")]
+    paths = [a for a in argv[1:] if not a.startswith("--")]
+    if len(paths) != 2 or any(f != SUMMARY_ONLY for f in flags):
+        print(f"usage: py tools\\compare_db.py [{SUMMARY_ONLY}] A.db B.db", file=sys.stderr)
         return 2
     # Read-only URIs, so a comparison can never write to either database.
-    a_uri, b_uri = (Path(p).resolve().as_uri() + "?mode=ro" for p in argv[1:3])
+    a_uri, b_uri = (Path(p).resolve().as_uri() + "?mode=ro" for p in paths)
     try:
         con = sqlite3.connect(a_uri, uri=True)
         con.execute("ATTACH DATABASE ? AS b", (b_uri,))
     except sqlite3.Error as e:
         print(f"cannot open the databases: {e}", file=sys.stderr)
         return 2
-    all_match = True
-    for table in TABLES:
-        if not compare_table(con, table):
-            all_match = False
+    if flags:
+        all_match = compare_summary(con)
+    else:
+        all_match = True
+        for table in TABLES:
+            if not compare_table(con, table):
+                all_match = False
     con.close()
     return 0 if all_match else 1
 

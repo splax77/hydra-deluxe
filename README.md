@@ -25,11 +25,10 @@ It reads `.mid`, `.chart`, `.sng` and `.srb` charts, on any difficulty, with or 
 2. Run Hydra Deluxe from the Start Menu.
 3. Click `Manage folders...`, then `Add folder...`, and pick your Clone Hero songs folder (or whichever folder contains the songs you want to add).
 4. Click `Scan library`.
-5. Once it's done, songs appear in a table. Type in the search box to find the song you want to get the path for, then click on the song. Its panel opens beside the library.
-6. Click the `Analyze this song` button.
-7. Once it's done, paths appear. The first path is optimal. There may be other paths tied for optimal, listed under the same score. Below that are some of the next-highest scores and their paths, which could come in handy if the optimal path is too annoying or difficult.
-8. Click a path on the left side of the panel to show its activations on the right side.
-9. Use `<` and `>` to step to the previous or next song, or close the panel with its `X` (or `Escape`) to go back to browsing.
+5. Once it's done, songs appear in a table. Type in the search box to find the song you want to get the path for, then click on the song. Its panel opens beside the library, and the song is analyzed.
+6. Once it's done, paths appear. The first path is optimal. There may be other paths tied for optimal, listed under the same score. Below that are some of the next-highest scores and their paths, which could come in handy if the optimal path is too annoying or difficult.
+7. Click a path on the left side of the panel to show its activations on the right side.
+8. Use `<` and `>` to step to the previous or next song, or close the panel with its `X` (or `Escape`) to go back to browsing.
 
 The [User Guide](docs/UserGuide.md) explains every button and tab, in the order you meet them.
 

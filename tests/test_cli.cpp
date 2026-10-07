@@ -296,7 +296,6 @@ TEST_CASE("hydra_batch treats an unstamped database with records as Clone Hero 1
         hydra::app::AnalysisResult ar =
             hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
         hydra::store::RecordStore store(db);
-        store.add_song(md5, "CLI Fixture", "Tester", "Nobody", ar.song);
         store.add_row(hydra::store::prepare_row(settings.record_key(md5), ar.record));
         REQUIRE(!store.engine_mode().has_value());
     }
@@ -426,6 +425,17 @@ TEST_CASE("hydra_fillcompare compares a 1.0 and a 1.1 database") {
     REQUIRE(run_exe(box.batch, {"--legacy-fills", "--db", ch10, box.folder()})
                 .exit_code == 0);
     REQUIRE(run_exe(box.batch, {"--db", ch11, box.folder()}).exit_code == 0);
+    // A library row for the chart in each file, as a scan leaves one: the
+    // comparison covers library charts only (D92), and a batch with folder
+    // arguments leaves the library alone.
+    {
+        const std::string md5 =
+            hydra::app::hash_chart_file((box.songs / "fixture" / "notes.chart").u8string());
+        for (const std::string& db : {ch10, ch11}) {
+            hydra::store::RecordStore store(db);
+            hydra::test::name_chart(store, md5, "CLI Fixture", "Tester", "Nobody");
+        }
+    }
 
     const fs::path page = box.dir / "compare.html";
     RunResult r = run_exe(box.fillcompare, {"--old", ch10, "--new", ch11, "--out",
@@ -462,12 +472,12 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
         const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
         const std::string md5 = hydra::app::hash_chart_file(chart);
         hydra::store::RecordStore store(db);
+        hydra::test::name_chart(store, md5, "CLI Fixture", "Tester", "Nobody");
         for (bool legacy : {false, true}) {
             hydra::app::Settings settings{};  // the defaults the sandboxed exe reads
             settings.legacy_fills = legacy;
             hydra::app::AnalysisResult ar =
                 hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
-            store.add_song(md5, "CLI Fixture", "Tester", "Nobody", ar.song);
             store.add_row(hydra::store::prepare_row(settings.record_key(md5), ar.record));
         }
         REQUIRE(store.counts().second == 2);
@@ -491,7 +501,7 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
         hydra::app::Settings settings{};
         hydra::app::AnalysisResult ar =
             hydra::app::analyze_chart_file(chart, settings.to_analysis_settings());
-        store.add_song(one_sided, "One Sided", "Tester", "Nobody", ar.song);
+        hydra::test::name_chart(store, one_sided, "One Sided", "Tester", "Nobody");
         store.add_row(hydra::store::prepare_row(settings.record_key(one_sided), ar.record));
         settings.legacy_fills = true;
         // A Ready record under 1.0: no paths, so no score.

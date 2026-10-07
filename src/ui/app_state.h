@@ -484,9 +484,8 @@ private:
     // Saves the click's summary when the library's row is missing, Stale or
     // different (D87 item 2), and returns the summary the row now holds.
     // Throws on a store failure.
-    store::PathSummary save_view_summary(const ViewJob& job, const store::RecordKey& key,
-                                         const app::AnalysisResult& result,
-                                         const store::SongLength& length);
+    store::PathSummary save_view_summary(const store::RecordKey& key,
+                                         const app::AnalysisResult& result);
     // Starts view_job for the latest request. view_job must be empty.
     void launch_view_job();
     // When the latest request was made (start_view), for view_progress_shown.
