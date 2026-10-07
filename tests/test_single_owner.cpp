@@ -781,6 +781,22 @@ const std::vector<OwnerRule>& rules() {
           {"tests/test_replay.cpp", "opts.target_act_ticks = std::vector<int64_t>{28800};",
            "drives the engine's target mode directly on a hand-built song, not search_target's filter"}},
          {"src", "tools", "tests"}},
+        // A tick list becomes activation-only pins in one place: sorted, each
+        // tick once. A pin built from a variable in a loop restates that.
+        // Literal-tick pins in tests do not match.
+        {"How does a list of activation ticks become pins?",
+         "activation_pins in src/search/pather.cpp",
+         R"(PinnedWindow\{\s*[a-z_]\w*\s*\})",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of track-r2, finding 2 (2026-10-07)",
+         {"for (const int64_t t : sorted) windows.push_back(PinnedWindow{t});",
+          "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});"},
+         {"search_target(song, cfg, {PinnedWindow{3168}, PinnedWindow{12864}});"},
+         {{"src/search/pather.cpp", "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});",
+           "activation_pins, the owner"}},
+         {"src", "tools", "tests"}},
         // A SqIn's transfer scale sits at its SqIn rank. Indexing the list
         // with a hand-kept counter restates that rank; index it with
         // sqin_rank, or compare whole lists (stored_transfer_scales pairs
