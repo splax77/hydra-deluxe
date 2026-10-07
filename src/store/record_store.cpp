@@ -1262,28 +1262,32 @@ void RecordStore::add_row(const PreparedRow& row) {
     }
 }
 
-void RecordStore::write_row(const PreparedRow& row) {
+void RecordStore::delete_results_where(const std::string& where,
+                                       const std::function<void(sqlite3_stmt*)>& bind,
+                                       const std::string& what) {
     // Deleting a result means deleting its refs first, always: the refs are
-    // what keep its paths alive, and the final sweep collects whatever they
-    // stopped pointing at. The caller holds the lock and an open transaction,
-    // so a failure anywhere leaves the store exactly as it was.
+    // what keep its paths alive, and the caller's sweep (collect_orphan_paths)
+    // collects whatever they stopped pointing at.
+    CachedStmt r = use_write(db_, stmt_cache_,
+                             "DELETE FROM path_refs WHERE result_id IN"
+                             " (SELECT result_id FROM results WHERE " + where + ")");
+    bind(r);
+    step_done(r, what);
+
+    CachedStmt d = use_write(db_, stmt_cache_, "DELETE FROM results WHERE " + where);
+    bind(d);
+    step_done(d, what);
+}
+
+void RecordStore::write_row(const PreparedRow& row) {
+    // The caller holds the lock and an open transaction, so a failure
+    // anywhere leaves the store exactly as it was.
     auto run = [](sqlite3_stmt* s, const char* what) {
         step_done(s, std::string("add_row ") + what);
     };
-    // Deletes the results a subquery names, and their refs. `where` is a
-    // fragment over `results`, bound by `bind`.
     auto purge = [&](const std::string& where,
                      const std::function<void(sqlite3_stmt*)>& bind, const char* what) {
-        std::string refs = "DELETE FROM path_refs WHERE result_id IN"
-                           " (SELECT result_id FROM results WHERE " + where + ")";
-        CachedStmt r = use_write(db_, stmt_cache_, refs);
-        bind(r);
-        run(r, what);
-
-        std::string rows = "DELETE FROM results WHERE " + where;
-        CachedStmt d = use_write(db_, stmt_cache_, rows);
-        bind(d);
-        run(d, what);
+        delete_results_where(where, bind, std::string("add_row ") + what);
     };
 
     // (1) Anything this chart+mode holds that this build can never read --
@@ -1392,7 +1396,68 @@ void RecordStore::collect_orphan_paths(const std::string& hyhash,
 namespace {
 // The meta key that marks the Auto results deleted for this file.
 constexpr const char* kAutoResultsDeletedKey = "auto_results_deleted";
+
+// "No library row lists this chart", spelled once in SQL for
+// purge_charts_not_in_library. `hash` is the column holding the chart's hash
+// in the table the statement reads.
+std::string not_in_library(const char* hash) {
+    return std::string("NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = ") + hash + ")";
+}
 }  // namespace
+
+void RecordStore::delete_results_without_chart() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    exec("BEGIN");
+    try {
+        purge_charts_not_in_library("delete_results_without_chart");
+        exec("COMMIT");
+    } catch (...) {
+        rollback_if_open(db_);
+        throw;
+    }
+}
+
+void RecordStore::reidentify_chart(const std::string& notespath, const std::string& new_md5,
+                                   const std::string& new_sig) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    exec("BEGIN");
+    try {
+        {
+            CachedStmt s =
+                use_write(db_, stmt_cache_, "UPDATE charts SET md5 = ?, sig = ? WHERE path = ?");
+            bind_text(s, 1, new_md5);
+            bind_text(s, 2, new_sig);
+            bind_text(s, 3, notespath);
+            step_done(s, "reidentify_chart");
+        }
+        purge_charts_not_in_library("reidentify_chart");
+        exec("COMMIT");
+    } catch (...) {
+        rollback_if_open(db_);
+        throw;
+    }
+}
+
+void RecordStore::purge_charts_not_in_library(const char* caller) {
+    const std::string results_gone = not_in_library("results.hyhash");
+    // The charts and modes losing a result, so their orphaned paths can be
+    // collected once the refs are gone.
+    std::vector<std::pair<std::string, std::string>> charts;
+    {
+        CachedStmt s = use_read(db_, stmt_cache_,
+                                "SELECT DISTINCT hyhash, chartmode FROM results WHERE " + results_gone);
+        while (step_row(s)) charts.emplace_back(column_text(s, 0), column_text(s, 1));
+    }
+    const std::string what = std::string(caller) + " purge";
+    delete_results_where(results_gone, [](sqlite3_stmt*) {}, what);
+    for (const std::string& sql :
+         {"DELETE FROM songmeta WHERE " + not_in_library("songmeta.hyhash"),
+          "DELETE FROM dynamics WHERE " + not_in_library("dynamics.md5")}) {
+        CachedStmt s = use_write(db_, stmt_cache_, sql);
+        step_done(s, what);
+    }
+    for (const auto& [hyhash, chartmode] : charts) collect_orphan_paths(hyhash, chartmode, caller);
+}
 
 void RecordStore::delete_auto_results() {
     // Under RulesStamp::none() (a bad hydra_rules.ini) there is no
@@ -1419,15 +1484,8 @@ void RecordStore::delete_auto_results() {
             while (step_row(s))
                 charts.emplace_back(column_text(s, 0), column_text(s, 1));
         }
-        // Refs first, always: they are what keep a result's paths alive.
-        for (const std::string& sql :
-             {"DELETE FROM path_refs WHERE result_id IN"
-              " (SELECT result_id FROM results WHERE " + is_auto + ")",
-              "DELETE FROM results WHERE " + is_auto}) {
-            Stmt s = prepare_write(db_, sql.c_str());
-            bind_blob(s, 1, auto_fp);
-            step_done(s, "deleting Auto results");
-        }
+        delete_results_where(
+            is_auto, [&](sqlite3_stmt* s) { bind_blob(s, 1, auto_fp); }, "deleting Auto results");
         for (const auto& [hyhash, chartmode] : charts)
             collect_orphan_paths(hyhash, chartmode, "Auto cleanup");
         meta_set(kAutoResultsDeletedKey, "1");
@@ -2036,6 +2094,9 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
             bind_opt_f64(s, 9, timing.delay_ms);
             step_done(s, "rebuild_chart_library");
         }
+        // What this scan no longer lists goes, in this transaction, so a
+        // scan that fails deletes nothing (D87 item 4).
+        purge_charts_not_in_library("rebuild_chart_library");
         // Song names follow song.ini (user decision 2026-09-26): a chart that
         // already has a song row takes the names this scan read. When the
         // scan found the same chart twice, the first copy it listed names it

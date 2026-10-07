@@ -46,3 +46,4 @@ __pycache__/
 /*.txt
 /*.log
 !/CMakeLists.txt
+!/THIRD_PARTY_NOTICES.txt

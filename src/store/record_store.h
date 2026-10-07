@@ -503,8 +503,9 @@ public:
 
     // How many library rows a chart on a page counts as, read from a
     // library_copies map keyed the way `md5` is. A page lists only charts it
-    // holds a result for, so one the library doesn't list (a hydra_batch-only
-    // database, a chart removed since the scan) still counts once (D77). This
+    // holds a result for, so one the library doesn't list (a result
+    // hydra_batch saved from folder arguments, which leave the library
+    // alone) still counts once (D77). This
     // is the one place that rule lives; every page's chart count reads it.
     static int copies_of(const std::unordered_map<std::string, int>& copies,
                          const std::string& md5);
@@ -586,8 +587,26 @@ public:
     // previous scan's rows. Songs that already have a row take the names
     // this scan read (the first copy wins when a chart appears twice, and
     // keeps winning when another copy is analyzed). Stamps the table with
-    // kChartMetaStamp.
+    // kChartMetaStamp. In the same transaction it deletes what the library
+    // no longer lists, as delete_results_without_chart does (D87 item 4).
     void rebuild_chart_library(const std::vector<ChartLibraryEntry>& items);
+
+    // Deletes everything stored for a chart the library no longer lists: its
+    // results, song row, dynamics counts and path refs, then the path nodes
+    // only those results used (D87 item 4). Which charts the library lists:
+    // not_in_library in record_store.cpp. A listed chart keeps every row, in
+    // every chart mode, Stale ones included. One transaction. A database with
+    // no library rows loses every result, so only callers that own the
+    // library call this.
+    void delete_results_without_chart();
+
+    // One chart's files changed since the scan (D87 item 3): the library row
+    // at `notespath` takes the hash and fingerprint the edited files now
+    // give, and whatever the old hash leaves unlisted is deleted, as
+    // delete_results_without_chart does, in the same transaction. A path the
+    // library doesn't list changes nothing.
+    void reidentify_chart(const std::string& notespath, const std::string& new_md5,
+                          const std::string& new_sig);
 
     // The previous scan's rows as a rescan cache (empty on a fresh db, or one
     // whose kChartMetaStamp is missing or not current). Read this BEFORE
@@ -672,8 +691,16 @@ private:
                      const std::string& ref_artist, const std::string& ref_charter,
                      const std::vector<uint8_t>& tempomap);
     void write_row(const PreparedRow& row);
+    // Deletes the results `where` names (an SQL fragment over `results`,
+    // bound by `bind`) and their path refs, in the one safe order. The caller
+    // holds the lock and an open transaction, and collects the orphaned
+    // nodes afterwards (collect_orphan_paths). `what` names the write in the
+    // error message.
+    void delete_results_where(const std::string& where,
+                              const std::function<void(sqlite3_stmt*)>& bind,
+                              const std::string& what);
     // Deletes this chart's path nodes that no result refers to any more:
-    // write_row's last step, and the Auto cleanup's. The caller holds the lock
+    // write_row's last step, and the Auto and library cleanups'. The caller holds the lock
     // (or is the constructor) and an open transaction. `caller` names the
     // operation in the error message.
     void collect_orphan_paths(const std::string& hyhash, const std::string& chartmode,
@@ -682,6 +709,10 @@ private:
     // Hydra 1.8.4's Auto saved (user decision 7, 2026-09-27), then the path
     // nodes only they used, and marks it done in `meta`.
     void delete_auto_results();
+    // The body of delete_results_without_chart, for the callers that already
+    // hold the lock and an open transaction (rebuild_chart_library and
+    // reidentify_chart). `caller` names the operation in the error message.
+    void purge_charts_not_in_library(const char* caller);
     void insert_dynamics(const DynamicsKey& key, const std::vector<uint8_t>& blob,
                          int count_version);
     // Every path node one result references, keyed by hash — what

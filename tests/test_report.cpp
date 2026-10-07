@@ -919,10 +919,14 @@ TEST_CASE("the report analyzes the copy that names a chart the scan found twice"
 }
 
 TEST_CASE("a report on results with no chart library says the library is missing (D89)") {
+    // What hydra_batch with folder arguments leaves: results, and no scan
+    // ever saved as the library. (A scan that lists nothing deletes the
+    // results too, D87 item 4.)
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    store_tied(store, library, "t", 4);
-    store.rebuild_chart_library({});
+    store.add_song("t", "Tied t", "Artist", "Charter", test::beat_song({}, {}, 13440));
+    HydraRecord record = test::tied_variant_record();
+    record.sp_cap = 4;
+    store.add_record(fixture_settings(4).record_key("t"), record);
 
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     CHECK(page.rows == 0);

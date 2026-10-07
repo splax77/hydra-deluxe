@@ -125,6 +125,12 @@ struct CliSandbox {
         batch = copy_tool(HYDRA_BATCH_EXE);
         report = copy_tool(HYDRA_REPORT_EXE);
         fillcompare = copy_tool(HYDRA_FILLCOMPARE_EXE);
+        // The tools start only with the DLLs built beside them (see
+        // hydra_use_mimalloc in CMakeLists.txt), so those travel with them.
+        const fs::path built_dir = fs::u8path(HYDRA_BATCH_EXE).make_preferred().parent_path();
+        for (const fs::directory_entry& e : fs::directory_iterator(built_dir))
+            if (e.path().extension() == ".dll")
+                fs::copy_file(e.path(), dir / e.path().filename());
 
         const std::string chart = small_chart();
         REQUIRE(!chart.empty());
@@ -219,18 +225,16 @@ TEST_CASE("hydra_batch --legacy-fills refuses the tool's own hydra.db") {
     CHECK(!contains(r.output, "not tagged as legacy"));
 }
 
-TEST_CASE("hydra_batch --reindex keeps a legacy database's stamp") {
-    CliSandbox box("reindex");
-    const std::string legacy = box.db("ch10.db");
-    REQUIRE(run_exe(box.batch, {"--legacy-fills", "--db", legacy, box.folder()})
-                .exit_code == 0);
-
-    RunResult r = run_exe(box.batch, {"--reindex", "--db", legacy});
+// An option hydra_batch doesn't know (a removed one included, D87) stops the
+// run before it opens the database.
+TEST_CASE("hydra_batch refuses an unknown option") {
+    CliSandbox box("unknown_option");
+    const std::string db = box.db("untouched.db");
+    RunResult r = run_exe(box.batch, {"--no-such-option", "--db", db});
     INFO(r.output);
-    CHECK(r.exit_code == 0);
-    CHECK(contains(r.output, "Reindexed 1 record."));
-    hydra::store::RecordStore store(legacy);
-    CHECK(store.engine_mode() == std::optional<std::string>(kCh10));
+    CHECK(r.exit_code == 2);
+    CHECK(contains(r.output, "Unknown option: --no-such-option"));
+    CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
 
 TEST_CASE("hydra_batch refuses a run whose fill rule disagrees with the database") {

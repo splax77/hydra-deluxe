@@ -2523,3 +2523,186 @@ TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log a
     }
     std::remove(path.c_str());
 }
+
+// ---- charts the library no longer lists (D87 items 3 and 4, task storage-T1) --
+
+namespace {
+
+// Every row one chart holds, table by table, read straight out of the file.
+struct ChartRows {
+    int64_t results = 0, songmeta = 0, dynamics = 0, path_refs = 0, paths = 0;
+    bool operator==(const ChartRows& o) const {
+        return results == o.results && songmeta == o.songmeta && dynamics == o.dynamics &&
+               path_refs == o.path_refs && paths == o.paths;
+    }
+};
+
+ChartRows rows_of(const std::string& path, const std::string& hash) {
+    auto count = [&](const char* table, const char* column) {
+        const std::string sql = std::string("SELECT COUNT(*) FROM ") + table + " WHERE " +
+                                column + " = '" + hash + "'";
+        return scalar(path, sql.c_str());
+    };
+    return ChartRows{count("results", "hyhash"), count("songmeta", "hyhash"),
+                     count("dynamics", "md5"), count("path_refs", "hyhash"),
+                     count("paths", "hyhash")};
+}
+
+// One analyzed chart as the click saves it: song, result and count.
+void save_chart(RecordStore& store, const std::string& hash, const std::string& mode = "mode") {
+    store.save_analysis(hash, "Song", "Artist", "Charter", fixture().song,
+                        prepare_row(RecordKey{hash, mode, CapQuery::at(4)}, at_cap(4)),
+                        DynamicsEntry{DynamicsKey{hash, "Expert", true}, {1, 2, 3},
+                                      kDynamicsCountStamp.written});
+}
+
+// chart_entry's row for another folder holding the same chart.
+ChartLibraryEntry second_copy(const char* md5) {
+    ChartLibraryEntry copy = chart_entry(md5, "Copy");
+    copy.notespath = std::string("C:\\other\\") + md5 + "\\notes.chart";
+    copy.rootfolder = "C:\\other";
+    return copy;
+}
+
+}  // namespace
+
+TEST_CASE("a scan that drops a chart deletes its stored rows") {
+    const std::string path = testtemp::temp_path("scan_drops_chart", ".db");
+    std::remove(path.c_str());
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({chart_entry("a", "A"), chart_entry("b", "B")});
+        save_chart(store, "a");
+        save_chart(store, "b");
+    }
+    const ChartRows kept = rows_of(path, "a");
+    REQUIRE(kept.results == 1);
+    REQUIRE(kept.songmeta == 1);
+    REQUIRE(kept.dynamics == 1);
+    REQUIRE(kept.path_refs > 0);
+    REQUIRE(kept.paths > 0);
+    REQUIRE(rows_of(path, "b") == kept);
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({chart_entry("a", "A")});
+    }
+    CHECK(rows_of(path, "b") == ChartRows{});
+    CHECK(rows_of(path, "a") == kept);
+    std::remove(path.c_str());
+}
+
+TEST_CASE("a chart with two library copies keeps its rows when one copy leaves") {
+    const std::string path = testtemp::temp_path("scan_drops_copy", ".db");
+    std::remove(path.c_str());
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({chart_entry("a", "A"), second_copy("a")});
+        save_chart(store, "a");
+    }
+    const ChartRows kept = rows_of(path, "a");
+    REQUIRE(kept.results == 1);
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({second_copy("a")});
+        CHECK(store.library_copies() == std::unordered_map<std::string, int>{{"a", 1}});
+    }
+    CHECK(rows_of(path, "a") == kept);
+    std::remove(path.c_str());
+}
+
+TEST_CASE("a library chart keeps its rows for other chart modes, including Stale ones") {
+    const std::string path = testtemp::temp_path("scan_keeps_modes", ".db");
+    std::remove(path.c_str());
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({chart_entry("a", "A"), chart_entry("b", "B")});
+        save_chart(store, "a", "mode");
+        save_chart(store, "a", "other mode");
+        test::add_stale_rows(store, at_cap(8), RecordKey{"a", "build", CapQuery::at(8)},
+                             RecordKey{"a", "rules", CapQuery::at(8)},
+                             RecordKey{"a", "both", CapQuery::at(8)});
+        save_chart(store, "b");
+        REQUIRE(store.get_summary(RecordKey{"a", "build", CapQuery::at(8)}).status ==
+                RecordStatus::Stale);
+    }
+    const ChartRows kept = rows_of(path, "a");
+    REQUIRE(kept.results == 5);
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({chart_entry("a", "A")});
+    }
+    CHECK(rows_of(path, "a") == kept);
+    CHECK(rows_of(path, "b") == ChartRows{});
+    std::remove(path.c_str());
+}
+
+TEST_CASE("reidentify_chart moves the library row to the new md5 and deletes the old md5's rows") {
+    const std::string path = testtemp::temp_path("reidentify_moves", ".db");
+    std::remove(path.c_str());
+    const ChartLibraryEntry a = chart_entry("a", "A");
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({a, chart_entry("b", "B")});
+        save_chart(store, "a");
+        save_chart(store, "b");
+    }
+    const ChartRows kept = rows_of(path, "b");
+    REQUIRE(rows_of(path, "a") == kept);
+    {
+        RecordStore store(path);
+        store.reidentify_chart(a.notespath, "a2", "sig-a2");
+        CHECK(store.library_copies() == std::unordered_map<std::string, int>{{"a2", 1}, {"b", 1}});
+        const ChartLibraryCache cache = store.chart_library_cache();
+        REQUIRE(cache.count(a.notespath) == 1);
+        CHECK(cache.at(a.notespath).md5 == "a2");
+        CHECK(cache.at(a.notespath).sig == "sig-a2");
+    }
+    CHECK(rows_of(path, "a") == ChartRows{});
+    CHECK(rows_of(path, "b") == kept);
+    std::remove(path.c_str());
+}
+
+TEST_CASE("reidentify_chart keeps the old md5's rows while another library row has it") {
+    const std::string path = testtemp::temp_path("reidentify_keeps", ".db");
+    std::remove(path.c_str());
+    const ChartLibraryEntry copy = second_copy("a");
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({chart_entry("a", "A"), copy});
+        save_chart(store, "a");
+    }
+    const ChartRows kept = rows_of(path, "a");
+    REQUIRE(kept.results == 1);
+    {
+        RecordStore store(path);
+        store.reidentify_chart(copy.notespath, "a2", "sig-a2");
+        CHECK(store.library_copies() == std::unordered_map<std::string, int>{{"a", 1}, {"a2", 1}});
+    }
+    CHECK(rows_of(path, "a") == kept);
+    std::remove(path.c_str());
+}
+
+TEST_CASE("a scan that fails partway through its deletes keeps the dropped chart's rows") {
+    // The deletes run inside the scan's own transaction. A trigger that
+    // refuses the dynamics delete fails it after the results are gone.
+    const std::string path = testtemp::temp_path("scan_delete_fails", ".db");
+    std::remove(path.c_str());
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({chart_entry("a", "A"), chart_entry("b", "B")});
+        save_chart(store, "a");
+        save_chart(store, "b");
+    }
+    const ChartRows kept = rows_of(path, "b");
+    REQUIRE(kept.results == 1);
+    exec_on_file(path,
+                 "CREATE TRIGGER refuse_count_delete BEFORE DELETE ON dynamics"
+                 " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    {
+        RecordStore store(path);
+        CHECK_THROWS(store.rebuild_chart_library({chart_entry("a", "A")}));
+        CHECK(store.chart_library_count() == 2);
+    }
+    CHECK(rows_of(path, "b") == kept);
+    std::remove(path.c_str());
+}
