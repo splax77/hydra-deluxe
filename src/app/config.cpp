@@ -55,6 +55,12 @@ std::string asset_dir() {
 
 Settings Settings::load() { return load_file(ini_path()); }
 
+Settings Settings::load_for_command_line(bool legacy_fills_flag) {
+    Settings s = load();
+    s.legacy_fills = legacy_fills_flag;
+    return s;
+}
+
 namespace {
 
 // ---- the key table: every hydra_settings.ini key, once ----------------------

@@ -97,7 +97,7 @@ int batch_main() {
         const std::string& arg = args[i];
         if (arg == "--redo") redo = true;
         else if (arg == "--reindex") reindex_only = true;
-        else if (arg == "--legacy-fills") legacy_fills = true;
+        else if (arg == hydra::app::kLegacyFillsFlag) legacy_fills = true;
         else if (arg == "--db" && i + 1 < argc) dbpath = args[++i];
         else if (arg == "--rules" && i + 1 < argc) rulespath = args[++i];
         else if (arg.rfind("--", 0) == 0) {
@@ -108,7 +108,7 @@ int batch_main() {
         }
     }
 
-    hydra::app::Settings settings = hydra::app::Settings::load();
+    hydra::app::Settings settings = hydra::app::Settings::load_for_command_line(legacy_fills);
     try {
         settings.rules = hydra::app::load_rules_file(
             rulespath ? std::filesystem::u8path(*rulespath) : hydra::app::default_rules_path());
@@ -116,9 +116,6 @@ int batch_main() {
         std::fprintf(stderr, "%s\n", e.what());
         return 2;
     }
-    // The fill rule comes from the flag, never from the app's own "1.0 fills"
-    // setting, so a run means the same thing whatever the app was left on.
-    settings.legacy_fills = legacy_fills;
     hydra::app::BatchRun run = settings.batch_run();
     const hydra::app::AnalysisSettings& analysis = run.settings;
     const std::string& chartmode = run.chartmode;

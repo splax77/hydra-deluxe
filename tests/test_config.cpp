@@ -127,6 +127,35 @@ TEST_CASE("the 1.0 fills setting reaches the search and the result's key togethe
     CHECK(run.lens.legacy_fills == 1);
 }
 
+TEST_CASE("command-line settings take the fill rule from the flag, the rest from the INI") {
+    // hydra_batch and hydra_bench both load through load_for_command_line, so
+    // a bench digest matches a batch run whatever the app's "1.0 fills" box
+    // was left on (perf follow-up B).
+    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
+    const std::string path = testtemp::temp_path("cmdline_fills", ".ini");
+    hydra::app::PathOverrides overrides = previous;
+    overrides.ini_path = path;
+    hydra::app::set_path_overrides(overrides);
+    auto write_ini = [&](const std::string& text) {
+        std::ofstream f(path, std::ios::trunc);
+        f << text;
+    };
+
+    write_ini("legacy_fills=1\nsp_cap=2\n");
+    const Settings off = Settings::load_for_command_line(false);
+    CHECK_FALSE(off.legacy_fills);
+    CHECK_FALSE(off.batch_run().settings.legacy_fill_deadline);
+    CHECK(off.sp_cap == 2);  // every other setting still comes from the INI
+
+    write_ini("legacy_fills=0\n");
+    const Settings on = Settings::load_for_command_line(true);
+    CHECK(on.legacy_fills);
+    CHECK(on.batch_run().lens.legacy_fills == 1);
+
+    hydra::app::set_path_overrides(previous);
+    std::remove(path.c_str());
+}
+
 TEST_CASE("a missing INI yields defaults") {
     Settings r = Settings::load_file(testtemp::temp_path("missing_never_written", ".ini"));
     Settings d;

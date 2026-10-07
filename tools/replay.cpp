@@ -842,7 +842,7 @@ int main() {
             else if (k == "--difficulty") a.difficulty = next();
             else if (k == "--pretty") a.pretty = true;
             else if (k == "--no-analyze") a.no_analyze = true;
-            else if (k == "--legacy-fills") a.legacy_fills = true;
+            else if (k == app::kLegacyFillsFlag) a.legacy_fills = true;
             else { std::fprintf(stderr, "unknown option %s\n", k.c_str()); usage(); return 2; }
         } catch (const std::exception& e) {
             std::fprintf(stderr, "%s\n", e.what());

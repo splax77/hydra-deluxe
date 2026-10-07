@@ -1050,6 +1050,27 @@ const std::vector<OwnerRule>& rules() {
            "return legacy_fills ? FillDeadlineRule::Ch10 : FillDeadlineRule::Ch11;",
            "fill_rule_for, the owner"}},
          {"src", "tools", "tests"}},
+        // A command-line tool that reads the app's INI by plain load() keeps
+        // the app's "1.0 fills" box, so its run (and a bench digest) changes
+        // with whatever the GUI was left on.
+        {"Which fill rule does a command-line run use?",
+         "Settings::load_for_command_line in src/app/config.cpp",
+         R"(\bSettings::load\(\))",
+         "",
+         {"src/app/config.cpp"},
+         {{"src/ui/app_state.cpp", "the GUI is where the 1.0 fills setting lives"},
+          {"src/cli/report.cpp",
+           "hydra_report follows the app's setting, or a database's 1.0 stamp, by design "
+           "(docs/adr/0010)"},
+          {"src/cli/fillcompare.cpp",
+           "hydra_fillcompare sets each side's fill rule itself (collect_fill_rows in "
+           "src/app/fill_report.cpp)"}},
+         "perf follow-up B (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md)",
+         {"hydra::app::Settings settings = hydra::app::Settings::load();",
+          "app::Settings st = app::Settings::load();"},
+         {"hydra::app::Settings settings = hydra::app::Settings::load_for_command_line(legacy_fills);",
+          "app::Settings st = app::Settings::load_for_command_line(g_legacy_fills);"},
+         {}},
         // A database's engine_mode stamp compared by hand: through the
         // store's accessor, or any line spelling a rule's stamp text, which
         // only engine_mode_stamp in search/graph.h may write.
