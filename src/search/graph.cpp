@@ -271,10 +271,9 @@ void ScoreGraph::store_new_backend(const SongTimestamp& ts, int sp_points,
 std::vector<BackendSqueeze> ScoreGraph::edge_backends(const ScoreGraphEdge& e) const {
     std::vector<BackendSqueeze> out;
     out.reserve(static_cast<size_t>(e.backend_end - e.backend_begin));
-    const double end_ms = e.dest->timecode.ms();
     for (int32_t i = e.backend_begin; i < e.backend_end; ++i) {
         out.push_back(all_backends_[static_cast<size_t>(i)]);
-        out.back().offset_ms = offset_from_sp_end(out.back().timecode.ms(), end_ms);
+        out.back().offset_ms = edge_row_offset(e, out.back());
     }
     return out;
 }

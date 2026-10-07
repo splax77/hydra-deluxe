@@ -179,6 +179,13 @@ struct ScoreGraphEdge {
     std::vector<SqueezeChoice> squeeze_choices;
 };
 
+// How far one of a deactivation edge's rows sits from that edge's SP end:
+// the offset its row carries (ScoreGraph::edge_backends) and the one the
+// engine prices it by.
+inline double edge_row_offset(const ScoreGraphEdge& e, const BackendSqueeze& row) {
+    return offset_from_sp_end(row.timecode.ms(), e.dest->timecode.ms());
+}
+
 class ScoreGraph {
 public:
     // sp_meter_cap: bars the meter holds, or nullopt for no ceiling.

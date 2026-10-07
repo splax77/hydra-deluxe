@@ -1024,13 +1024,11 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     const std::optional<int64_t> sqout_phrase =
         sq ? std::optional<int64_t>(sq->chord) : std::nullopt;
     int32_t sp_delta = 0;
-    // The edge's rows are a range of the graph's rows, each measured against
-    // the edge's dest, as ScoreGraph::edge_backends measures them, without
-    // copying a row.
-    const double deact_end_ms = eo->dest->timecode.ms();
+    // The edge's rows are a range of the graph's rows, read in place rather
+    // than copied (ScoreGraph::edge_backends copies them for the record).
     for (int32_t bi = eo->backend_begin; bi < eo->backend_end; ++bi) {
         const BackendSqueeze& beo = (*en_.all_backends)[(size_t)bi];
-        const double be_offset = offset_from_sp_end(beo.timecode.ms(), deact_end_ms);
+        const double be_offset = edge_row_offset(*eo, beo);
         const core::SqOutPosition pos =
             core::sqout_position(beo.timecode.ticks(), sqout_phrase);
         const int32_t already_paid =
