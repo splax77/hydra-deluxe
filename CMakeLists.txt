@@ -644,8 +644,8 @@ endforeach()
 # mimalloc came after d3d11.dll in Hydra.exe.
 # The DLL is built straight into the exes' output folder, where mimalloc's
 # own post-build step copies mimalloc-redirect.dll beside it, so every exe
-# starts from the build folder (tests/test_cli.cpp launches the CLI tools
-# from there).
+# starts from the build folder. tests/test_cli.cpp copies the CLI tools out of
+# that folder together with every DLL beside them.
 function(hydra_use_mimalloc)
     set_target_properties(mimalloc PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
