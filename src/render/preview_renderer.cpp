@@ -289,7 +289,7 @@ struct PreviewRenderer::Impl {
 
 PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* context,
                                  const std::string& asset_dir)
-    : impl_(new Impl) {
+    : impl_(std::make_unique<Impl>()) {
     Impl& d = *impl_;
     d.device = device;
     d.context = context;
@@ -393,7 +393,8 @@ PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* cont
         d.textures[static_cast<size_t>(i)] = d.load_texture(texture_file(static_cast<TextureId>(i)));
 }
 
-PreviewRenderer::~PreviewRenderer() { delete impl_; }
+// Defined here, where Impl is complete, for the unique_ptr's deleter.
+PreviewRenderer::~PreviewRenderer() = default;
 
 void PreviewRenderer::resize(int width, int height) {
     Impl& d = *impl_;
