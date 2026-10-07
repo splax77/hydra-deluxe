@@ -331,6 +331,27 @@ std::vector<ReplayWindow> windows_from_file(const std::string& file, int index) 
     }
 }
 
+// The windows --acts or --path names, read the one way score and target
+// both read them. The caller has already refused more than one of them.
+// A window that names its squeeze-out by an offset alone is resolved
+// (resolve_window_sqout), with a note on stderr saying which chord was used,
+// so a typo cannot quietly price or pin a different squeeze-out. When the
+// resolve refuses, main prints "error: ..." and exits 1.
+std::vector<ReplayWindow> windows_from_args(const Args& a, const Song& song) {
+    std::vector<ReplayWindow> windows =
+        a.path.empty() ? parse_acts(a.acts) : windows_from_file(a.path, a.index);
+    for (ReplayWindow& w : windows) {
+        const std::optional<SqOutNote> n = resolve_window_sqout(song, w);
+        if (!n) continue;
+        std::fprintf(stderr,
+                     "note: window %lld:%lld SqOut %.2f ms -> phrase chord at "
+                     "tick %lld (%.2f ms from the SP end)\n",
+                     (long long)w.act_tick, (long long)w.deact_tick,
+                     *w.sqout_offset_ms, (long long)n->tick, n->offset_ms);
+    }
+    return windows;
+}
+
 // `s` is settings_from(a), built once in main.
 int cmd_score(const Args& a, const app::Settings& s) {
     if (a.chart.empty()) { usage(); return 2; }
@@ -346,24 +367,7 @@ int cmd_score(const Args& a, const app::Settings& s) {
         return 1;
     }
 
-    std::vector<ReplayWindow> windows =
-        a.path.empty() ? parse_acts(a.acts)
-                       : windows_from_file(a.path, a.index);
-    // A typed offset (or a dump from before sqout_tick existed) names a chord
-    // only approximately. Resolve it and say which chord was used, so a typo
-    // cannot quietly price a different squeeze-out. When resolve_sqout_note
-    // refuses (its header lists when), main prints "error: ..." and exits 1,
-    // so nothing is priced.
-    for (ReplayWindow& w : windows) {
-        if (!w.sqout_offset_ms || w.sqout_tick) continue;
-        const SqOutNote n = resolve_sqout_note(song, w);
-        std::fprintf(stderr,
-                     "note: window %lld:%lld SqOut %.2f ms -> phrase chord at "
-                     "tick %lld (%.2f ms from the SP end)\n",
-                     (long long)w.act_tick, (long long)w.deact_tick,
-                     *w.sqout_offset_ms, (long long)n.tick, n.offset_ms);
-        w.sqout_tick = n.tick;
-    }
+    const std::vector<ReplayWindow> windows = windows_from_args(a, song);
     const ReplayResult r = replay_path(song, windows, s.rules);
 
     // Say so when a window could be hiding a squeeze-out. The score is left
@@ -519,10 +523,8 @@ int cmd_target(const Args& a, const app::Settings& s) {
     if (a.path.empty() && a.acts.empty()) {
         windows = activation_pins(ticks);
     } else {
-        // A typed offset names its chord only approximately; pinned_windows
-        // matches it, and "pins" in the JSON shows the chord used.
-        windows = pinned_windows(
-            song, a.path.empty() ? parse_acts(a.acts) : windows_from_file(a.path, a.index));
+        // "pins" in the JSON shows the squeeze-out chord each window used.
+        windows = pinned_windows(song, windows_from_args(a, song));
     }
 
     // With --legacy-fills, s prices under Clone Hero 1.0's fill deadline.

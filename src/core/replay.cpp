@@ -46,12 +46,12 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         win.act_tick = w.act_tick;
         win.deact_tick = w.deact_tick;
         win.deact_ms = timing.timecode(w.deact_tick).ms();
-        if (w.sqout_offset_ms && !w.sqout_tick)
+        if (sqout_needs_resolving(w))
             throw std::invalid_argument(
                 "window " + std::to_string(w.act_tick) + ":" +
                 std::to_string(w.deact_tick) +
                 " has a SqOut offset but no SqOut chord; resolve it with "
-                "resolve_sqout_note first");
+                "resolve_window_sqout first");
         win.sqout_tick = w.sqout_tick;
         wins.push_back(win);
     }
@@ -371,6 +371,17 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
         throw std::runtime_error(buf);
     }
     return typed;
+}
+
+bool sqout_needs_resolving(const ReplayWindow& w) {
+    return w.sqout_offset_ms && !w.sqout_tick;
+}
+
+std::optional<SqOutNote> resolve_window_sqout(const Song& song, ReplayWindow& w) {
+    if (!sqout_needs_resolving(w)) return std::nullopt;
+    const SqOutNote n = resolve_sqout_note(song, w);
+    w.sqout_tick = n.tick;
+    return n;
 }
 
 std::vector<std::string> ambiguous_window_warnings(

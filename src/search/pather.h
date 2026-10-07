@@ -109,7 +109,7 @@ struct PinnedWindow {
 
 // Replay windows as full pins. A window says how it ended when it came off a
 // record or names its squeeze-out (ReplayWindow::from_record, ::sqout_tick,
-// or a typed ::sqout_offset_ms, matched to its chord by resolve_sqout_note,
+// or a typed ::sqout_offset_ms, matched to its chord by resolve_window_sqout,
 // which throws when it refuses); a typed window with none of them leaves the
 // squeeze-out to the engine.
 std::vector<PinnedWindow> pinned_windows(const Song& song,

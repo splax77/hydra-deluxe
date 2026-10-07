@@ -369,8 +369,8 @@ const std::vector<OwnerRule>& rules() {
            "the replay's own window (ReplayWindow), not an Activation"},
           {"src/core/replay.cpp", "w.sqout_tick = row->timecode.ticks();",
            "the replay's own window (replay.cpp's Window), not an Activation"},
-          {"tools/replay.cpp", "w.sqout_tick = n.tick;",
-           "a window typed by hand for hydra_replay (ReplayWindow), not an Activation"},
+          {"src/core/replay.cpp", "w.sqout_tick = n.tick;",
+           "resolve_window_sqout, on a typed or dumped window (ReplayWindow), not an Activation"},
           {"tools/replay_json.cpp", "w.sqout_tick = act[\"sqout_tick\"].get<int64_t>();",
            "a window read from hydra_replay's JSON (ReplayWindow), not an Activation"}}},
         {"Is this SP-end step a clamp?",
@@ -796,6 +796,25 @@ const std::vector<OwnerRule>& rules() {
          {"search_target(song, cfg, {PinnedWindow{3168}, PinnedWindow{12864}});"},
          {{"src/search/pather.cpp", "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});",
            "activation_pins, the owner"}},
+         {"src", "tools", "tests"}},
+        // Whether a window's squeeze-out still needs its chord found is
+        // sqout_needs_resolving's answer; resolve_window_sqout acts on it.
+        // A window that is "settled" (ambiguous_window_warnings) or an
+        // offset read alone asks a different question and does not match.
+        {"Does a typed window still need its squeeze-out chord resolved?",
+         "sqout_needs_resolving in src/core/replay.cpp",
+         R"(sqout_offset_ms\s*&&\s*!|!\s*\w+\s*&&\s*[\w.>-]*sqout_offset_ms|!\s*[\w.>-]*sqout_offset_ms\s*\|\|)",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of track-r2, finding 4 (2026-10-07)",
+         {"if (!squeezed_out && w.sqout_offset_ms) squeezed_out = resolve_sqout_note(song, w).tick;",
+          "if (!w.sqout_offset_ms || w.sqout_tick) continue;",
+          "if (w.sqout_offset_ms && !w.sqout_tick)"},
+         {"std::optional<double> sqout_offset_ms;", "if (w.sqout_offset_ms || w.sqout_tick) continue;",
+          "if (!w.sqout_offset_ms)", "if (sqout_needs_resolving(w))"},
+         {{"src/core/replay.cpp", "return w.sqout_offset_ms && !w.sqout_tick;",
+           "sqout_needs_resolving, the owner"}},
          {"src", "tools", "tests"}},
         // A SqIn's transfer scale sits at its SqIn rank. Indexing the list
         // with a hand-kept counter restates that rank; index it with

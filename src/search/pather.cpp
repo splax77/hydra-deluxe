@@ -385,10 +385,9 @@ PinnedWindow full_pin(const ReplayWindow& w, std::optional<int64_t> squeezed_out
 std::vector<PinnedWindow> pinned_windows(const Song& song,
                                          const std::vector<ReplayWindow>& windows) {
     std::vector<PinnedWindow> out;
-    for (const ReplayWindow& w : windows) {
-        std::optional<int64_t> squeezed_out = w.sqout_tick;
-        if (!squeezed_out && w.sqout_offset_ms) squeezed_out = resolve_sqout_note(song, w).tick;
-        out.push_back(full_pin(w, squeezed_out));
+    for (ReplayWindow w : windows) {
+        resolve_window_sqout(song, w);
+        out.push_back(full_pin(w, w.sqout_tick));
     }
     return out;
 }
