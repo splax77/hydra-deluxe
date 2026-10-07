@@ -104,7 +104,8 @@ struct Settings {
     // Spawn fills by Clone Hero 1.0's deadline instead of 1.1's (search/graph.h
     // FillDeadlineRule). Off by default: 1.1 is the game people play now. Part
     // of a result's key, like the SP cap. INI line: legacy_fills=0.
-    // The command-line tools ignore it: see load_for_command_line.
+    // A tool that takes its own kLegacyFillsFlag ignores it: see
+    // load_for_command_line. (hydra_report follows it, docs/adr/0010.)
     bool legacy_fills = false;
 
     // Open a report in the browser as soon as Hydra builds it. It covers every
