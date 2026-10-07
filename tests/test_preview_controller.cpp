@@ -34,6 +34,7 @@
 #include "ui/library_jobs.h"  // ViewJob
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
+#include "warp_util.h"
 
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
@@ -372,6 +373,36 @@ void open_and_load(PreviewController& pc, const std::string& notes) {
 }
 
 }  // namespace
+
+// D95 call 4: closing the Preview frees its GPU render targets, and the next
+// open draws again.
+TEST_CASE("closing the Preview frees its render targets; reopening draws again (WARP)") {
+    Microsoft::WRL::ComPtr<ID3D11Device> dev;
+    Microsoft::WRL::ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(warp::make_device(dev, ctx));
+    const hydra::app::PathOverrides previous = hydra::app::path_overrides();
+    hydra::app::PathOverrides overrides = previous;
+    overrides.asset_dir = HYDRA_ASSET_DIR;
+    hydra::app::set_path_overrides(overrides);
+    {
+        const std::string notes = short_chart_with_long_audio("prevctl_release");
+        PreviewController pc(dev.Get(), ctx.Get());
+        open_and_load(pc, notes);
+        ID3D11ShaderResourceView* srv = pc.render(64, 64);
+        REQUIRE(srv != nullptr);
+
+        // Hold the shown texture: once freed, this is its only reference.
+        Microsoft::WRL::ComPtr<ID3D11Resource> shown;
+        srv->GetResource(&shown);
+        pc.close();
+        shown->AddRef();
+        CHECK(shown->Release() == 1);  // Release returns the count left
+
+        open_and_load(pc, notes);
+        CHECK(pc.render(64, 64) != nullptr);
+    }
+    hydra::app::set_path_overrides(previous);
+}
 
 // The scrubber ends at the song's length (D75), here the 3 s song.ini
 // states, not the audio's 5 s end. The slider's range is scrub_end_ms(), so a

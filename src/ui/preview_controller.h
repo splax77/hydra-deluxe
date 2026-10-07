@@ -86,7 +86,11 @@ public:
               Difficulty difficulty, const Path* path, const std::string& path_key,
               int sp_cap, const core::Rules& rules = core::default_rules());
     // Stop audio, drop the scene/transport, and join the load thread. Keeps the
-    // renderer for reuse. Safe to call when nothing is open.
+    // renderer for reuse but frees its size-dependent targets (D95 call 4);
+    // the next render() makes them again. Safe to call when nothing is open.
+    // ImGui holds only a raw pointer to the texture render() returned until
+    // the frame is drawn, so close() must not run between the Preview's
+    // ImGui::Image and the end of that frame.
     void close();
 
     bool active() const { return active_; }

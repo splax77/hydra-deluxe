@@ -133,6 +133,10 @@ void PreviewController::close() {
     job_path_key_.clear();
     scene_path_key_.clear();
     have_frame_ = false;
+    // The targets go (D95 call 4); zero sizes make the next render() resize.
+    if (renderer_) renderer_->release_targets();
+    rt_w_ = 0;
+    rt_h_ = 0;
     active_ = false;
     scrubbing_ = false;
     resume_after_scrub_ = false;

@@ -249,6 +249,43 @@ TEST_CASE("PreviewRenderer: resize and a tall target keep the track at the botto
     CHECK_FALSE(is_background(r.config(), warp::pixel(img, 100, 50, 292)));
 }
 
+// D95 call 4: the closed Preview frees its targets, and the next resize draws
+// exactly the pixels it drew before.
+TEST_CASE("PreviewRenderer: released targets are freed and come back drawing the same (WARP)") {
+    ComPtr<ID3D11Device> dev;
+    ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(warp::make_device(dev, ctx));
+
+    const int W = 160, H = 120;
+    PreviewRenderer r(dev.Get(), ctx.Get(), kAssets);
+    r.resize(W, H);
+    PreviewScene scene;
+    scene.has_notes = true;
+    scene.notes.push_back(note_at(1100.0, PreviewLane::Kick));
+    scene.notes.push_back(note_at(1300.0, PreviewLane::Yellow, true));
+    scene.song_length_ms = 1300.0;
+    r.set_scene(scene);
+    r.render(1000.0);
+    const std::vector<uint8_t> before =
+        warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), W, H);
+
+    // Hold the shown texture: once released, this is its only reference.
+    ComPtr<ID3D11Resource> shown;
+    r.texture_srv()->GetResource(&shown);
+    r.release_targets();
+    shown->AddRef();
+    CHECK(shown->Release() == 1);  // Release returns the count left
+    CHECK(r.texture_srv() == nullptr);
+    CHECK(r.width() == 0);
+    CHECK(r.height() == 0);
+    r.render(1000.0);  // nothing to draw into: a no-op, not a crash
+
+    r.resize(W, H);
+    r.render(1000.0);
+    REQUIRE(r.texture_srv() != nullptr);
+    CHECK(warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), W, H) == before);
+}
+
 TEST_CASE("PreviewRenderer: a missing asset dir is a clear error") {
     ComPtr<ID3D11Device> dev;
     ComPtr<ID3D11DeviceContext> ctx;
