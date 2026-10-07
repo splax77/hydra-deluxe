@@ -4154,6 +4154,22 @@ const std::vector<OwnerRule>& rules() {
           "<< rules.fingerprint();"},
          {},
          {"tests", "tools"}},
+        // A key put together from a BatchRun's fields. The owner is in src, so
+        // no line in scope is an owner line. run_batch's own key in
+        // src/app/analysis.cpp holds only a BatchRun and is out of scope.
+        {"Which RecordKey does a tool or test file a chart's result under?",
+         "Settings::record_key in src/app/config.cpp",
+         R"(RecordKey\{[^}]*run\.chartmode)",
+         "",
+         {},
+         {},
+         "audit finding 240; H1 derive-once review finding 1 (2026-10-06)",
+         {"store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, *rec);",
+          "store::RecordKey{it.md5, run.chartmode, run.cap_query(), run.lens}, rec);"},
+         {"store::PreparedRow row = store::prepare_row(st.record_key(it.md5), *rec);",
+          "const store::RecordKey key = settings.record_key(it.md5);"},
+         {},
+         {"tests", "tools"}},
         // The owner appends payloads; it never compares one, so it lists no
         // owner line.
         {"Do two records store the same bytes? (tests)",

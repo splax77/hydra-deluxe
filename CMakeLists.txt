@@ -457,6 +457,7 @@ add_executable(hydra_tests
     tests/test_s2_offspeed.cpp
     tests/test_s2_stamps.cpp
     tests/test_s2_deact_extension.cpp
+    tests/test_perf_digest.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.

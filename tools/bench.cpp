@@ -10,6 +10,11 @@
 //   hydra_bench.exe "C:\Clone Hero\songs\...\blink-182 - Discography"
 // With no argument it best-of-3 times the testdata corpus search at one
 // fixed config, labelled "cap4 d4 no-ms" (corpus_bench).
+//
+// --engine and --parse print one digest over a whole folder, so two builds
+// can be compared for identical output (engine_mode and parse_mode below say
+// what each covers). The digests themselves live in tests/song_digest.h,
+// which tests/test_perf_digest.cpp shares to pin the corpus's values.
 
 #include <algorithm>
 #include <chrono>
@@ -20,12 +25,14 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "json.hpp"
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dynamics_breakdown.h"
 #include "app/rules_file.h"
 #include "app/user_messages.h"
 #include "core/model.h"
@@ -33,7 +40,9 @@
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
+#include "search/graph.h"
 #include "search/pather.h"
+#include "song_digest.h"
 #include "store/record_store.h"
 
 using namespace hydra;
@@ -221,6 +230,158 @@ static void corpus_bench() {
     bench(kCloneHeroSpCap, 4);
 }
 
+// The settings --engine and --parse run under: the ini beside the exe, read
+// through app::Settings::load, under this run's rules. hydra_batch reads the
+// same ini but takes legacy fills from its own flag (src/cli/batch.cpp); this
+// keeps the ini's. Pointing a run at other settings means a copy of the exe
+// beside another ini.
+static app::Settings ini_settings() {
+    app::Settings st = app::Settings::load();
+    st.rules = g_rules;
+    return st;
+}
+
+// Engine mode, single-threaded:
+//   hydra_bench --engine <folder> [--cache <db>] [--reps N] [--out <file>]
+// Each chart once (plan_batch's first copy), in scan order: parse, a
+// throwaway ScoreGraph build (timed on its own), analyze_chart N times, then
+// prepare_row. Prints the phase sums and one digest over every prepared row
+// (digest::row_hash); --out writes each chart's md5 and row hash. --cache
+// takes a database's rescan cache, so the scan skips rehashing. A chart that
+// fails is counted and left out of the digest.
+static void engine_mode(const std::string& folder, const std::string& cachedb, int reps,
+                        const std::string& outpath) {
+    store::ChartLibraryCache cache;
+    std::unique_ptr<store::RecordStore> cstore;
+    if (!cachedb.empty()) {
+        cstore = std::make_unique<store::RecordStore>(cachedb, core::RulesStamp::of(g_rules));
+        cache = cstore->chart_library_cache();
+    }
+    auto [items, errors] = app::discover_charts({folder}, app::ScanCallbacks{},
+                                                cache.empty() ? nullptr : &cache);
+    const app::Settings st = ini_settings();
+    const app::AnalysisSettings settings = st.batch_run().settings;
+    double t_parse = 0, t_graph = 0, t_an = 0, t_prep = 0, t_gdel = 0;
+    int n = 0, failed = 0;
+    uint64_t all = digest::kSeed;
+    std::optional<std::ofstream> out;
+    if (!outpath.empty()) out.emplace(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
+    for (const app::ScanItem& it : app::plan_batch(items, {}).todo) {
+        auto t = clk::now();
+        std::optional<Song> song;
+        try {
+            song.emplace(load_songpath_with_notes(it.notespath, settings.prodrums, settings.bass2x,
+                                                  settings.difficulty, settings.rules));
+        } catch (const std::exception&) {
+            ++failed;
+            continue;
+        }
+        t_parse += secs_since(t);
+        t = clk::now();
+        {
+            ScoreGraph g(*song,
+                         std::optional<int>(graph_build_cap(settings.sp_cap, song->sp_phrase_count())),
+                         fill_rule_for(settings.legacy_fill_deadline), settings.rules);
+            t_graph += secs_since(t);
+            t = clk::now();
+        }
+        t_gdel += secs_since(t);
+        std::optional<HydraRecord> rec;
+        t = clk::now();
+        try {
+            for (int r = 0; r < reps; ++r) rec = analyze_chart(*song, settings);
+        } catch (const std::exception&) {
+            ++failed;
+            continue;
+        }
+        t_an += secs_since(t);
+        t = clk::now();
+        store::PreparedRow row = store::prepare_row(st.record_key(it.md5), *rec);
+        t_prep += secs_since(t);
+        const uint64_t h = digest::row_hash(row);
+        all = digest::fold(all, h);
+        if (out) *out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
+        ++n;
+    }
+    std::printf("charts %d failed %d | parse %.3fs | graph %.3fs | analyze x%d %.3fs | "
+                "prepare %.3fs | hash %016llx\n",
+                n, failed, t_parse, t_graph, reps, t_an, t_prep,
+                static_cast<unsigned long long>(all));
+    std::printf("graph destroy %.3fs\n", t_gdel);
+}
+
+// Parse mode, single-threaded:
+//   hydra_bench --parse <folder | list.txt> [--reps N] [--out <file>] [--nodyn]
+// A folder is scanned and each chart taken once (plan_batch's first copy); a
+// .txt argument lists notes paths, one per line. Each chart is parsed N times
+// (the best time counts) and hashed once: digest::song_digest, with the
+// stored dynamics blob added unless --nodyn. A chart that fails is hashed by
+// its exception's type and message (digest::failure_text). Prints the sums
+// and one digest over every chart; --out writes each path, its best parse
+// time in microseconds, its hash and any failure.
+static void parse_mode(const std::string& arg, int reps, const std::string& outpath, bool dyn) {
+    std::vector<std::string> paths;
+    if (arg.size() > 4 && arg.substr(arg.size() - 4) == ".txt") {
+        std::ifstream in(hydra::os_path(arg));
+        std::string line;
+        while (std::getline(in, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (!line.empty()) paths.push_back(line);
+        }
+    } else {
+        auto [items, errors] = app::discover_charts({arg}, app::ScanCallbacks{}, nullptr);
+        for (const app::ScanItem& it : app::plan_batch(items, {}).todo)
+            paths.push_back(it.notespath);
+    }
+    const app::AnalysisSettings settings = ini_settings().batch_run().settings;
+    double t_parse = 0, t_dyn = 0;
+    int n = 0, failed = 0;
+    uint64_t all = digest::kSeed;
+    std::optional<std::ofstream> out;
+    if (!outpath.empty()) out.emplace(hydra::os_path(outpath), std::ios::binary | std::ios::trunc);
+    for (const std::string& p : paths) {
+        uint64_t h = 0;
+        double best = 1e30;
+        std::string fail;
+        for (int r = 0; r < reps; ++r) {
+            auto t = clk::now();
+            try {
+                Song song = load_songpath_with_notes(p, settings.prodrums, settings.bass2x,
+                                                     settings.difficulty, settings.rules);
+                best = std::min(best, secs_since(t));
+                if (r == 0) {
+                    h = digest::song_digest(song);
+                    if (dyn) {
+                        auto t2 = clk::now();
+                        const std::optional<store::DynamicsEntry> e =
+                            app::dynamics_entry_from_analysis("md5", song, settings.bass2x,
+                                                              settings.difficulty,
+                                                              settings.prodrums);
+                        t_dyn += secs_since(t2);
+                        h = digest::with_dynamics(h, e);
+                    }
+                }
+            } catch (const std::exception& e) {
+                best = std::min(best, secs_since(t));
+                fail = digest::failure_text(e);
+                h = digest::failure_hash(fail);
+            }
+        }
+        t_parse += best;
+        if (!fail.empty()) ++failed;
+        all = digest::fold(all, h);
+        if (out) {
+            *out << p << '\t' << static_cast<long long>(best * 1e6) << '\t' << std::hex << h
+                 << std::dec;
+            if (!fail.empty()) *out << "\tFAIL " << fail;
+            *out << '\n';
+        }
+        ++n;
+    }
+    std::printf("charts %d failed %d | parse(best of %d) %.3fs | dyn %.3fs | hash %016llx\n", n,
+                failed, reps, t_parse, t_dyn, static_cast<unsigned long long>(all));
+}
+
 // Dump a store's charts table as the same JSON --dump writes (row_json, with
 // the same --dump-rel root), so two scans' results can be diffed even when one
 // came from another build.
@@ -270,6 +431,29 @@ static int bench_main() {
         for (int i = 4; i < argc; ++i)
             if (argv[i] == "--dump-rel" && i + 1 < argc) dumprel = argv[++i];
         dump_db(argv[2], argv[3], dumprel);
+        return 0;
+    }
+    if (argc > 2 && argv[1] == "--engine") {
+        std::string cachedb, outp;
+        int reps = 1;
+        for (int i = 3; i < argc; ++i) {
+            if (argv[i] == "--cache" && i + 1 < argc) cachedb = argv[++i];
+            else if (argv[i] == "--reps" && i + 1 < argc) reps = std::stoi(argv[++i]);
+            else if (argv[i] == "--out" && i + 1 < argc) outp = argv[++i];
+        }
+        engine_mode(argv[2], cachedb, reps, outp);
+        return 0;
+    }
+    if (argc > 2 && argv[1] == "--parse") {
+        std::string outp;
+        int reps = 1;
+        bool dyn = true;
+        for (int i = 3; i < argc; ++i) {
+            if (argv[i] == "--reps" && i + 1 < argc) reps = std::stoi(argv[++i]);
+            else if (argv[i] == "--out" && i + 1 < argc) outp = argv[++i];
+            else if (argv[i] == "--nodyn") dyn = false;
+        }
+        parse_mode(argv[2], reps, outp, dyn);
         return 0;
     }
     if (argc > 2 && argv[1] == "--scan") {
