@@ -797,7 +797,7 @@ private:
     // their storage is allocated once per parse, not once per tick.
     std::vector<MOp> pre_, pre_delayed_, notes_, post_delayed_;
     bool flag_solo_ = false;
-    std::array<NoteCymbalType, 5> flag_cymbals_{};
+    std::array<NoteCymbalType, Chord::kLanes> flag_cymbals_{};
     bool flag_flam_ = false;
     bool flag_disco_ = false;
     std::optional<int64_t> fill_start_tick_;

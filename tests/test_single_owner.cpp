@@ -4573,20 +4573,23 @@ const std::vector<OwnerRule>& rules() {
          {{"src/core/model.cpp", "while (j > 0 && bx < out.notes_[j - 1].basescore()) {",
            "Chord::note_list, the owner"}},
          {"src"}},
-        // A chord's note arrays must agree on its size: note_list copies every
-        // slot of notemap_ into NoteList, so a NoteList one lane short would
-        // be written past its end. Both read the one count.
+        // A chord's per-lane arrays must agree on its size: note_list copies
+        // every slot of notemap_ into NoteList, so a NoteList one lane short
+        // would be written past its end, and the MIDI parser's cymbal flags
+        // hold one slot per lane too. All read the one count.
         {"How many notes can a chord hold?",
          "Chord::kLanes in src/core/model.h",
-         R"(std::array<\s*(std::optional<\s*)?ChordNote\s*>?\s*,\s*\d+\s*>|\bkLanes\s*=\s*\d+)",
+         R"(std::array<\s*(std::optional<\s*)?(ChordNote|NoteCymbalType)\s*>?\s*,\s*\d+\s*>|\bkLanes\s*=\s*\d+)",
          "",
          {},
          {},
-         "the G1 derive-once review (finding 1)",
+         "the G1 derive-once review (finding 1), widened by the wave 1 join review",
          {"std::array<std::optional<ChordNote>, 5> notemap_{};",
-          "std::array<ChordNote, 5> notes_{};"},
+          "std::array<ChordNote, 5> notes_{};",
+          "std::array<NoteCymbalType, 5> flag_cymbals_{};"},
          {"std::array<ChordNote, kLanes> notes_{};",
-          "std::array<std::optional<ChordNote>, kLanes> notemap_{};"},
+          "std::array<std::optional<ChordNote>, kLanes> notemap_{};",
+          "std::array<NoteCymbalType, Chord::kLanes> flag_cymbals_{};"},
          {{"src/core/model.h", "static constexpr size_t kLanes = 5;", "Chord::kLanes, the owner"}},
          {"src"}},
         // ---- speedups task P1: the lean chart and MIDI readers ----
