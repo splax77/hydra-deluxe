@@ -37,7 +37,10 @@ if ($Config -eq "") { $Config = Get-PresetBuildConfig $root $Preset }
 # script's own checkout; otherwise a call from another worktree builds that one.
 Push-Location $root
 try {
-    if ($Configure -or -not (Test-Path (Join-Path $buildDir "CMakeCache.txt"))) {
+    # The installer's build always configures, so it always takes its preset's
+    # settings (link-time optimization on, GUI tests out), even in a build
+    # folder made before a preset changed. It is built rarely; this costs seconds.
+    if ($Configure -or $Preset -eq "ship" -or -not (Test-Path (Join-Path $buildDir "CMakeCache.txt"))) {
         & $cmake --preset $Preset
         if ($LASTEXITCODE -ne 0) { throw "configure failed" }
     }

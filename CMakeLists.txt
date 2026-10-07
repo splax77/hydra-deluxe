@@ -38,13 +38,18 @@ endif()
 # Parallel compilation within each target.
 add_compile_options(/MP)
 
-# Release builds: link-time optimization where the toolchain supports it, and
-# a symbol file (.pdb) beside each exe for profiling and crash dumps. The
-# install() rules below name no .pdb, so none ships; the installer
-# checks that. docs/development.md says why the riskier speed flags stay out.
-include(CheckIPOSupported)
-check_ipo_supported(RESULT HYDRA_IPO_SUPPORTED OUTPUT HYDRA_IPO_OUTPUT LANGUAGES C CXX)
-if(HYDRA_IPO_SUPPORTED)
+# Release builds: link-time optimization in the installer's build where the
+# toolchain supports it, and a symbol file (.pdb) beside each exe for
+# profiling and crash dumps. The install() rules below name no .pdb, so none
+# ships; the installer checks that. docs/development.md says why the riskier
+# speed flags stay out, and why the everyday build leaves link-time
+# optimization off.
+option(HYDRA_LTCG "Link-time optimization for Release (the ship preset turns it on)" OFF)
+if(HYDRA_LTCG)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT HYDRA_IPO_SUPPORTED OUTPUT HYDRA_IPO_OUTPUT LANGUAGES C CXX)
+endif()
+if(HYDRA_LTCG AND HYDRA_IPO_SUPPORTED)
     message(STATUS "Link-time optimization (IPO): supported, on for Release")
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
     # Plain /LTCG, never the incremental kind. The Visual Studio generator only
@@ -52,8 +57,10 @@ if(HYDRA_IPO_SUPPORTED)
     # /LTCG:incremental, whose cache files (.iobj, .ipdb) went stale and broke
     # links or tests (CMake issue 20484; docs/development.md).
     add_link_options($<$<CONFIG:Release>:/LTCG>)
-else()
+elseif(HYDRA_LTCG)
     message(STATUS "Link-time optimization (IPO): not supported, off: ${HYDRA_IPO_OUTPUT}")
+else()
+    message(STATUS "Link-time optimization (IPO): off (HYDRA_LTCG is OFF; the ship preset turns it on)")
 endif()
 add_compile_options($<$<AND:$<CONFIG:Release>,$<COMPILE_LANGUAGE:C,CXX>>:/Zi>)
 # /DEBUG turns off /OPT:REF and /OPT:ICF unless they are named, so they are

@@ -21,7 +21,10 @@
       "displayName": "Installer build (no attached GUI tests)",
       "inherits": "default",
       "binaryDir": "${sourceDir}/build-ship",
-      "cacheVariables": { "HYDRA_UITEST_ATTACHED": { "type": "BOOL", "value": "OFF" } }
+      "cacheVariables": {
+        "HYDRA_UITEST_ATTACHED": { "type": "BOOL", "value": "OFF" },
+        "HYDRA_LTCG": { "type": "BOOL", "value": "ON" }
+      }
     }
   ],
   "buildPresets": [

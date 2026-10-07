@@ -113,26 +113,38 @@ The settings live in `CMakeLists.txt` and `build_cpp.ps1`; this says why.
 (`--parallel`, uncapped, decision D86 item 5). Each project also compiles its
 own files in parallel, as before.
 
-Link-time optimization is on for Release when CMake's check says the compiler
-supports it, and configure prints which. (Link-time optimization means the
-linker sees the whole program at once, so it can inline across source files.)
-It makes every link slower, several seconds for `Hydra.exe` after a one-file
-change, and the program a little faster. It shipped only after a whole-library
-run stored byte-identical results with it (see "Proving identical results").
+Link-time optimization is on only in the installer's build, the `ship`
+preset in `build-ship\`. (Link-time optimization means the linker sees the whole
+program at once, so it can inline across source files.) It makes the program a
+little faster. It shipped only after a whole-library run stored byte-identical
+results with it (see "Proving identical results"). The everyday build in
+`build-cpp\` leaves it off, as every build did before 2026-10-06, and configure
+prints which. So a timing run that should match what ships uses the exes from
+`.\build_cpp.ps1 -Preset ship`, not from `build-cpp\`. The HYDRA_LTCG cache
+switch in `CMakeLists.txt` decides it, and `build_cpp.ps1` always configures the
+`ship` preset, so the installer's build can never miss that switch.
 
-The link uses plain `/LTCG`, which redoes the whole program's code on every
-link. `CMakeLists.txt` names it on purpose. Without it, CMake's Visual Studio
-generator leaves the choice to MSBuild, and MSBuild picks the incremental kind
-(`/LTCG:incremental`, CMake issue 20484). That kind keeps a cache beside each
-exe (`.iobj` and `.ipdb` files) and redoes only what it thinks changed. On
+The everyday build leaves it off because both ways of doing it there cost too
+much. The incremental kind (`/LTCG:incremental`) is what CMake's Visual Studio
+generator gets by default: CMake only switches link-time optimization on, and
+MSBuild picks that kind (CMake issue 20484). It keeps a cache beside each exe
+(`.iobj` and `.ipdb` files) and redoes only what it thinks changed. On
 2026-10-07, its first day on, that cache went stale about seven times: links
 failed with C1001 or LNK1000, or `hydra_tests` crashed right after a build that
 said it passed. Deleting the cache fixed it every time. The exact trigger was
-not pinned down; changing a shared header and then building one target and then
-all of them did not break it in three tries. Plain `/LTCG` never reads that
-cache. MSBuild still names the files, so they still appear, but a link with
-garbage in both of them succeeded and simply rewrote them. Nothing stale can
-reach the exe, and deleting them is no longer a fix for anything.
+not pinned down; changing a shared header, then building one target, then all
+of them, did not break it in three tries. A garbage `.ipdb` did break it, with
+C1301 ("invalid format, please delete and rebuild"). Plain `/LTCG` never reads
+the cache, but it redoes the whole program on every link. Timed after a
+one-file change in `src\core`, with no other compiler running: the incremental
+kind rebuilt every exe in 18.8 s and `hydra_tests` alone in 17.7 s; plain
+`/LTCG` took 90.5 s and 56.7 s; with link-time optimization off, 4.6 s and
+2.9 s.
+
+The installer's build uses plain `/LTCG`, which `CMakeLists.txt` names on
+purpose. MSBuild still names the cache files, so they still appear, but a plain
+link with garbage in both of them succeeded; it rewrote the `.iobj` and left
+the `.ipdb` alone. Nothing stale can reach a shipped exe.
 
 Each Release exe gets a symbol file (`.pdb`) beside it, for profilers and
 crash dumps. The exe records only the symbol file's name, never the build
