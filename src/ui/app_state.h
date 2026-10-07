@@ -230,8 +230,7 @@ public:
     // selects it. A failed read says so (set_problem) and selects nothing.
     void select(const LibraryChart& row);
     // Whether this library row (a LibraryChart or a store entry) is the
-    // selected one. By notespath, not md5: the same chart can sit in two
-    // folders, and only the clicked copy is it.
+    // selected one, by row_key (ui/library_model.h).
     template <class Row>
     bool is_selected_row(const Row& row) const;
 

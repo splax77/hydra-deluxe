@@ -683,8 +683,8 @@ void RecordStore::set_up_schema() {
     exec("DROP TABLE IF EXISTS songlength");
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
-    // The scan's purge and list_records find a chart's library rows by md5
-    // (D76).
+    // The scan's purge, list_records and list_chart_library_copies find a
+    // chart's library rows by md5 (D76).
     exec("CREATE INDEX IF NOT EXISTS charts_by_md5 ON charts (md5)");
     // Schema 2 = results keyed by the full settings. A database from Hydra
     // 1.6 or older still holds its old `records` table. Nothing reads it

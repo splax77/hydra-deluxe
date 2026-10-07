@@ -113,15 +113,14 @@ void AppState::set_search(std::string text) {
 
 std::vector<store::ChartLibraryEntry> AppState::library_matches() const {
     const std::vector<size_t> matched = library.matches();
-    // Each matched row's place in the answer, by its file: rows are told
-    // apart by notespath (is_selected_row says why).
+    // Each matched row's place in the answer, by row_key.
     std::unordered_map<std::string_view, size_t> place;
     place.reserve(matched.size());
     for (size_t k = 0; k < matched.size(); ++k)
-        place.emplace(library.rows()[matched[k]].entry.notespath, k);
+        place.emplace(row_key(library.rows()[matched[k]].entry), k);
     std::vector<std::optional<store::ChartLibraryEntry>> found(matched.size());
     for (store::ChartLibraryEntry& e : store->list_chart_library(0, -1)) {  // -1 = no limit
-        const auto it = place.find(e.notespath);
+        const auto it = place.find(row_key(e));
         if (it != place.end()) found[it->second] = std::move(e);
     }
     // A row the store no longer lists (a scan replaced the table since the
@@ -199,7 +198,7 @@ void AppState::select(const LibraryChart& row) {
     std::vector<store::ChartLibraryEntry> copies;
     if (!read_store([&] { copies = store->list_chart_library_copies(row.md5); })) return;
     for (const store::ChartLibraryEntry& copy : copies) {
-        if (copy.notespath == row.notespath) {
+        if (row_key(copy) == row_key(row)) {
             select(copy);
             return;
         }
@@ -387,7 +386,7 @@ AppState::SettingsLock AppState::settings_lock() const {
 
 template <class Row>
 bool AppState::is_selected_row(const Row& row) const {
-    return selected && row.notespath == selected->notespath;
+    return selected && row_key(row) == row_key(*selected);
 }
 template bool AppState::is_selected_row(const store::ChartLibraryEntry& row) const;
 template bool AppState::is_selected_row(const LibraryChart& row) const;

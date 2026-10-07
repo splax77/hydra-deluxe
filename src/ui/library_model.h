@@ -48,6 +48,13 @@ struct LibraryChart {
     std::string rootfolder;  // the Folder column
 };
 
+// What tells one library row from another, for a LibraryChart or a store
+// entry alike. Never the md5: the same chart can sit in two folders, and each
+// copy is its own row (audit finding 143). Which row is selected, a click's
+// copy and a batch's entries all compare this.
+inline const std::string& row_key(const LibraryChart& row) { return row.notespath; }
+inline const std::string& row_key(const store::ChartLibraryEntry& row) { return row.notespath; }
+
 // One scanned chart as the table shows it.
 struct LibraryRow {
     LibraryChart entry;

@@ -32,6 +32,58 @@ void test_scan(ImGuiTestContext* ctx) {
     IM_CHECK(ctx->ItemInfo("Scan library").ID != 0);
 }
 
+// One chart in two folders is two rows (row_key). A click on the second
+// copy's row selects that copy, not the first one the scan listed, and the
+// batch's entries come back in table order, leaving out a row the store no
+// longer lists.
+void test_library_twin_rows(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    auto entry = [](const char* title, const char* path) {
+        hydra::store::ChartLibraryEntry e;
+        e.md5 = "0123456789abcdef0123456789abcdef";
+        e.title = title;
+        e.notespath = path;
+        e.rootfolder = "twins";
+        return e;
+    };
+    const hydra::store::ChartLibraryEntry first = entry("Twin A", "C:\\twins\\a\\notes.chart");
+    const hydra::store::ChartLibraryEntry second = entry("Twin B", "C:\\twins\\b\\notes.chart");
+    hydra::store::ChartLibraryEntry other = entry("Zed", "C:\\twins\\z\\notes.chart");
+    other.md5 = "fedcba9876543210fedcba9876543210";
+    h.app->store->rebuild_chart_library({first, second, other});
+    h.app->reload_library();
+    IM_CHECK_EQ(h.app->library_shown_count(), size_t{3});
+
+    // Rows sort by title: Twin A, Twin B, Zed.
+    IM_CHECK(h.app->library_row_at(1).entry.notespath == second.notespath);
+    h.app->select(h.app->library_row_at(1).entry);
+    IM_CHECK(h.app->selected && h.app->selected->notespath == second.notespath);
+    IM_CHECK(h.app->selected && h.app->selected->title == "Twin B");
+    h.app->close_details();
+
+    // Table order, not the store's (which lists by name): titles descending.
+    // No frame runs between these calls, so the table's own sort can't step in.
+    h.app->library.set_sort(hydra::ui::LibrarySort::Title, false);
+    std::vector<hydra::store::ChartLibraryEntry> matches = h.app->library_matches();
+    IM_CHECK_EQ(matches.size(), size_t{3});
+    if (matches.size() == 3) {
+        IM_CHECK(matches[0].notespath == other.notespath);
+        IM_CHECK(matches[1].notespath == second.notespath);
+        IM_CHECK(matches[2].notespath == first.notespath);
+    }
+
+    // The store drops the first copy; the rows are not reloaded yet.
+    h.app->store->rebuild_chart_library({second, other});
+    matches = h.app->library_matches();
+    IM_CHECK_EQ(matches.size(), size_t{2});
+    if (matches.size() == 2) {
+        IM_CHECK(matches[0].notespath == other.notespath);
+        IM_CHECK(matches[1].notespath == second.notespath);
+    }
+    h.app->library.set_sort(hydra::ui::LibrarySort::Title, true);
+}
+
 // The settings bar's difficulty dropdown: it drives the chartmode everything
 // else is keyed by. 2x Bass stays live at every difficulty (D20) and is part
 // of the key there too.
@@ -529,6 +581,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-sort-scroll", test_library_sort_scroll},
         {"library-column-order", test_library_column_order},
         {"library-layout", test_library_layout},
+        {"library-twin-rows", test_library_twin_rows},
     };
     return entries;
 }
