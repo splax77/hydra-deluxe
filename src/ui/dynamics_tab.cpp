@@ -3,7 +3,7 @@
 #include "app/dynamics_breakdown.h"
 #include "core/model.h"  // group_thousands, counted
 #include "imgui.h"
-#include "ui/dynamics_load_job.h"
+#include "ui/app_state.h"  // ViewedSong
 #include "ui/fonts.h"
 #include "ui/library_parts.h"  // format_duration
 #include "ui/theme.h"
@@ -83,35 +83,25 @@ std::string dynamics_enabled_text(const app::DynamicsBreakdown& bd) {
 void render_dynamics_panel(AppState& app) {
     if (!app.selected) return;
 
-    // Lifecycle (store lookup, job start/reap, persistence) runs on AppState
-    // so it stays out of render code — same pattern as update_analyze_job.
-    app.update_dynamics();
-
-    // Loading state: job in flight but not finished yet.
-    if (app.dynamics_job && !app.dynamics_job->finished()) {
+    // The count comes from the click's job (AppState::viewed), which the
+    // song panel's tick() collects whichever tab shows.
+    const ViewedSong& viewed = app.viewed;
+    if (viewed.state == ViewedSong::State::Analyzing) {
         ImGui::TextUnformatted("Reading chart...");
         return;
     }
-    // Error state: job finished but failed (kept around for its message).
     // Wrapped: the message can carry a long file path.
-    if (app.dynamics_job && app.dynamics_job->finished() && !app.dynamics_job->ok()) {
-        ImGui::TextWrapped("Dynamics failed: %s", app.dynamics_job->message().c_str());
-        // The raw text, dimmed, as the song panel's Analyze error shows it.
+    if (!viewed.dynamics_error.empty()) {
+        ImGui::TextWrapped("Dynamics failed: %s", viewed.dynamics_message.c_str());
+        // The raw text, dimmed, as the song panel's error shows it.
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("%s", app.dynamics_job->error().c_str());
+        ImGui::TextWrapped("%s", viewed.dynamics_error.c_str());
         ImGui::PopStyleColor();
         return;
     }
-    if (!app.dynamics_result) return;
+    if (!viewed.dynamics) return;
 
-    // A put_dynamics failure is shown as a status line, not a blocker.
-    if (!app.dynamics_store_error.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
-        ImGui::TextWrapped("%s", app.dynamics_store_error.c_str());
-        ImGui::PopStyleColor();
-    }
-
-    const app::DynamicsBreakdown& bd = *app.dynamics_result;
+    const app::DynamicsBreakdown& bd = *viewed.dynamics;
     bool pro = app.settings.view_prodrums;
     bool bass2x = app.settings.effective_bass2x();
     const app::DynamicsCounts played = bd.played_total(bass2x);

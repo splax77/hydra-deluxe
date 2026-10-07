@@ -1,5 +1,5 @@
 // The library tab's four background jobs: scanning chart folders (ScanJob),
-// batch-analyzing many charts (BatchJob), analyzing one chart (AnalyzeJob),
+// batch-analyzing many charts (BatchJob), analyzing the clicked chart (ViewJob),
 // and building the HTML path report afterwards (ReportJob). AppState owns one
 // of each at most; the library files (library_toolbar.cpp, library_dialogs.cpp)
 // and details_panel.cpp poll them per frame.
@@ -11,6 +11,7 @@
 #define HYDRA_UI_LIBRARY_JOBS_H
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <exception>
 #include <filesystem>
@@ -22,6 +23,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/dynamics_breakdown.h"
 #include "app/report.h"
 #include "core/model.h"
 #include "store/record_store.h"
@@ -210,45 +212,69 @@ void set_app_batch_analyzer_for_test(app::ChartAnalyzer analyze, int workers);
 // Hands the seam to a batch about to start; does nothing when it is unset.
 void apply_app_batch_analyzer_for_test(BatchJob& job);
 
-// ---- AnalyzeJob -------------------------------------------------------
+// ---- ViewJob ----------------------------------------------------------
 
-// cancel() interrupts the search at its next progress tick (the same unwind
-// path the Auto cap time budget uses); the result is discarded. The stretch
-// before the first tick (parse + graph build) can't be interrupted.
-class AnalyzeJob : public ResultJobBase {
+// What one click's job found on its thread (D87 items 1 and 3).
+struct ViewOutcome {
+    // Set when the chart's files changed since the scan: the hash and
+    // fingerprint they give now.
+    bool files_changed = false;
+    std::string new_md5;
+    std::string new_sig;
+    // The engine's analysis. Unset when analysis is off (broken rules) or
+    // it failed; then analysis_message / analysis_error say why.
+    std::optional<app::AnalysisResult> analysis;
+    store::SongLength length;
+    std::string analysis_message;  // app::plain_error
+    std::string analysis_error;    // the raw text
+    // The Dynamics count, or why it failed.
+    std::optional<app::DynamicsBreakdown> dynamics;
+    std::string dynamics_message;
+    std::string dynamics_error;
+};
+
+// The song panel's job: re-identifies an edited chart, runs the engine's
+// normal analysis and counts the Dynamics, all for one click. cancel()
+// interrupts the search at its next progress tick; the stretch before the
+// first tick (parse + graph build) can't be interrupted. The UI thread drops
+// a result whose generation is not the current click's.
+class ViewJob : public ResultJobBase {
 public:
-    // The job snapshots the song and the record's RecordKey at start so the
-    // finished result is always stored against the song it was started for —
-    // storing against "whatever is selected when the job finishes" wrote
-    // records under the wrong song if the user closed the details modal
-    // mid-analysis and clicked another row.
-    AnalyzeJob(store::ChartLibraryEntry song, store::RecordKey key,
-               app::AnalysisSettings settings);
-    ~AnalyzeJob() { shutdown(); }
+    // The song, its RecordKey and the settings are snapshotted at start, so
+    // the result is saved against the song and settings it ran for.
+    // `analysis_off` (broken rules) skips the engine and keeps the count.
+    ViewJob(store::ChartLibraryEntry song, store::RecordKey key, app::AnalysisSettings settings,
+            bool analysis_off, int generation);
+    ~ViewJob() { shutdown(); }
 
     void start();
 
     const store::ChartLibraryEntry& song() const { return song_; }
     const store::RecordKey& key() const { return key_; }
     const app::AnalysisSettings& settings() const { return settings_; }
+    bool analysis_off() const { return analysis_off_; }
+    int generation() const { return generation_; }
+    // Seconds since start(), on the steady clock.
+    double elapsed_s() const;
 
     // Monotonic 0..1 search progress, or a negative value before the first
     // report (i.e. show an indeterminate spinner until then).
     float progress() const { return progress_.load(std::memory_order_relaxed); }
 
-    // Valid once finished() && ok(); moves the result out (call once).
-    app::AnalysisResult take_result();
-    // The song's length, worked out on the job's thread after the analysis
-    // (app::analysis_song_length, D75). Valid once finished() && ok().
-    const store::SongLength& song_length() const { return length_; }
+    // Valid once finished() && ok(); moves the outcome out (call once).
+    ViewOutcome take_outcome() { return std::move(out_); }
 
 private:
+    void run();
+
     store::ChartLibraryEntry song_;
     store::RecordKey key_;
     app::AnalysisSettings settings_;
+    bool analysis_off_;
+    int generation_;
+    std::chrono::steady_clock::time_point started_{};
     std::atomic<float> progress_{-1.0f};
-    std::optional<app::AnalysisResult> result_;
-    store::SongLength length_;
+    ViewOutcome out_;
 };
 
 // ---- ReportJob --------------------------------------------------------

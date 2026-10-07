@@ -109,6 +109,12 @@ std::string hash_chart_file(const std::string& path);
 // or a folder chart has lost its song.ini, so the caller hashes.
 bool chart_files_unchanged(const std::string& notespath, const std::string& sig);
 
+// The fingerprint a chart's files give now, as the scan would store it in
+// `sig`. Empty when the file is gone or a folder chart has no song.ini.
+// chart_files_unchanged compares against it; a click that finds an edited
+// chart stores it with the new hash (RecordStore::reidentify_chart).
+std::string chart_files_sig(const std::string& notespath);
+
 // A chart hash in the one spelling used for matching: its ASCII letters
 // lowered. The scan already writes lowercase hex (see hash_chart_file), so
 // this is for hashes from elsewhere, such as a leaderboard or an older row

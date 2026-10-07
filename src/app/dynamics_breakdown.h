@@ -127,6 +127,17 @@ std::optional<DynamicsBreakdown> decode_dynamics(const std::vector<uint8_t>& blo
 // row never holds Expert's.
 constexpr bool kDynamicsParseBass2x = true;
 
+// The Dynamics count's own parse of a chart at `difficulty` and `pro`: 2x
+// kicks kept, the parser's default rules, and no notes check, so a
+// difficulty with no charting counts as all zero.
+Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty);
+
+// Whether a song an analysis parsed with `bass2x`, at the count's own
+// difficulty and pro, counts exactly as load_dynamics_song's would, so the
+// count can reuse it. The rules never change the count (pinned in
+// test_dynamics_breakdown), so only the 2x kicks decide.
+bool analysis_parse_counts_dynamics(bool bass2x);
+
 // Stored counts carry store::kDynamicsCountStamp and their blobs start with
 // store::kDynamicsBlobStamp (store/stored_versions.h says when to bump each).
 

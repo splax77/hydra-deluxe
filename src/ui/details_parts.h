@@ -22,7 +22,7 @@ namespace hydra::ui::detail {
 // details_panel.cpp. The states a record-backed tab shows before its own
 // content (analyze progress, not analyzed, stale, no paths). True only when
 // the record is ready to draw.
-bool render_record_state(AppState& app, const char* not_analyzed_text);
+bool render_record_state(AppState& app);
 
 // paths_tab.cpp. The path list on the left and the selected path's details
 // on the right. A click in the list changes `selected_path`.

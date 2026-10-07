@@ -196,9 +196,15 @@ void save_dynamics(store::RecordStore& store, const store::DynamicsKey& key,
     store.put_dynamics(key, encode_dynamics(breakdown), store::kDynamicsCountStamp.written);
 }
 
+Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty) {
+    return load_songpath(notespath, pro, kDynamicsParseBass2x, difficulty);
+}
+
+bool analysis_parse_counts_dynamics(bool bass2x) { return bass2x == kDynamicsParseBass2x; }
+
 std::optional<store::DynamicsEntry> dynamics_entry_from_analysis(
     const std::string& md5, const Song& song, bool bass2x, Difficulty difficulty, bool pro) {
-    if (!bass2x) return std::nullopt;  // the 2x kicks were dropped; the counts would be incomplete
+    if (!analysis_parse_counts_dynamics(bass2x)) return std::nullopt;
     try {
         return store::DynamicsEntry{dynamics_store_key(md5, difficulty, pro),
                                     encode_dynamics(count_dynamics(song)),

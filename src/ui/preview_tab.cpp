@@ -128,8 +128,7 @@ float key_hints(float width, bool draw) {
 // selection both tabs read (DetailsViewState::selected_path). Drawn only when
 // the song has a Ready record with paths.
 void render_path_picker(AppState& app) {
-    if (app.viewed.status != store::RecordStatus::Ready || !app.viewed.record ||
-        app.viewed.record->paths.empty())
+    if (!app.viewed.ready() || app.viewed.record->paths.empty())
         return;
     const hydra::app::PathButtonsView& list = app.details_ui.paths_tab.buttons(
         *app.viewed.record, app.record_generation.n, app.settings.depth_mode,

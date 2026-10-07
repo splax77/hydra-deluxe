@@ -343,7 +343,7 @@ std::string hash_chart_file(const std::string& path) {
     }
 }
 
-bool chart_files_unchanged(const std::string& notespath, const std::string& sig) {
+std::string chart_files_sig(const std::string& notespath) {
     // The same listing the scan's walk reads, so the fingerprint comes from
     // the same find data the stored one was made from.
     const std::string dir = parent_folder(notespath);
@@ -351,9 +351,14 @@ bool chart_files_unchanged(const std::string& notespath, const std::string& sig)
     for (const DirEntry& e : entries)
         if (!e.is_dir && join_folder(dir, e.name) == notespath) {
             const std::optional<PendingChart> now = pending_chart_of(dir, e, entries);
-            return now && sig_unchanged(sig, now->sig);
+            return now ? now->sig : std::string();
         }
-    return false;
+    return {};
+}
+
+bool chart_files_unchanged(const std::string& notespath, const std::string& sig) {
+    const std::string now = chart_files_sig(notespath);
+    return !now.empty() && sig_unchanged(sig, now);
 }
 
 std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }

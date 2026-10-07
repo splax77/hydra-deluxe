@@ -304,44 +304,84 @@ void BatchJob::run() {
     finish_locked();
 }
 
-// ---- AnalyzeJob -------------------------------------------------------
+// ---- ViewJob ----------------------------------------------------------
 
-AnalyzeJob::AnalyzeJob(store::ChartLibraryEntry song, store::RecordKey key,
-                       app::AnalysisSettings settings)
+ViewJob::ViewJob(store::ChartLibraryEntry song, store::RecordKey key,
+                 app::AnalysisSettings settings, bool analysis_off, int generation)
     : song_(std::move(song)),
       key_(std::move(key)),
-      settings_(std::move(settings)) {}
+      settings_(std::move(settings)),
+      analysis_off_(analysis_off),
+      generation_(generation) {}
 
-void AnalyzeJob::start() {
+double ViewJob::elapsed_s() const {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - started_).count();
+}
+
+void ViewJob::start() {
+    started_ = std::chrono::steady_clock::now();
     // The thread constructor itself can throw (std::system_error when the OS
-    // refuses the thread); route that through the modal's error path instead
-    // of letting it escape start_analyze and terminate the app.
+    // refuses the thread); route that through the panel's error path instead
+    // of letting it escape and terminate the app.
     try {
-        spawn([this] {
-            run_guarded([this] {
-                try {
-                    result_ = app::analyze_chart_file(
-                        song_.notespath, settings_, [this](float f) {
-                            if (cancel_.load(std::memory_order_relaxed))
-                                throw app::AnalysisCancelled{};
-                            progress_.store(f, std::memory_order_relaxed);
-                        });
-                    // The song's length, worked out here so the save stays
-                    // quick.
-                    length_ = app::analysis_song_length(song_.timing, song_.notespath,
-                                                        result_->song, settings_);
-                    return true;
-                } catch (const app::AnalysisCancelled&) {
-                    return false;  // no error text: the UI discards a cancelled job
-                }
-            });
-        });
+        spawn([this] { run(); });
     } catch (const std::exception& e) {
         fail(e);
     }
 }
 
-app::AnalysisResult AnalyzeJob::take_result() { return std::move(*result_); }
+void ViewJob::run() {
+    run_guarded([this] {
+        try {
+            // An edited chart is hashed again before anything reads it, with
+            // the rescan's own unchanged test (D87 item 3).
+            if (!app::chart_files_unchanged(song_.notespath, song_.sig)) {
+                out_.new_md5 = app::hash_chart_file(song_.notespath);
+                if (out_.new_md5.empty())
+                    throw std::runtime_error("could not read " + song_.notespath);
+                out_.new_sig = app::chart_files_sig(song_.notespath);
+                out_.files_changed = true;
+            }
+            const std::string& path = song_.notespath;
+            throw_if_cancelled();
+            if (!analysis_off_) {
+                try {
+                    out_.analysis = app::analyze_chart_file(path, settings_, [this](float f) {
+                        if (cancel_.load(std::memory_order_relaxed))
+                            throw app::AnalysisCancelled{};
+                        progress_.store(f, std::memory_order_relaxed);
+                    });
+                    out_.length = app::analysis_song_length(song_.timing, path,
+                                                            out_.analysis->song, settings_);
+                } catch (const app::AnalysisCancelled&) {
+                    throw;
+                } catch (const std::exception& e) {
+                    out_.analysis.reset();
+                    out_.analysis_error = e.what();
+                    out_.analysis_message = app::plain_error(e);
+                }
+            }
+            throw_if_cancelled();
+            // The Dynamics count reuses the analysis's song only when that
+            // parse is the count's own; otherwise it parses as the count does.
+            try {
+                if (out_.analysis && app::analysis_parse_counts_dynamics(settings_.bass2x))
+                    out_.dynamics = app::count_dynamics(out_.analysis->song);
+                else
+                    out_.dynamics = app::count_dynamics(
+                        app::load_dynamics_song(path, settings_.prodrums, settings_.difficulty));
+            } catch (const std::exception& e) {
+                out_.dynamics_error = e.what();
+                out_.dynamics_message = app::plain_error(e);
+            }
+            return true;
+        } catch (const app::AnalysisCancelled&) {
+            return false;  // no error text: a cancel is the user's own click
+        } catch (const JobCancelled&) {
+            return false;
+        }
+    });
+}
 
 // ---- ReportJob --------------------------------------------------------
 
