@@ -40,7 +40,7 @@ add_compile_options(/MP)
 
 # Release builds: link-time optimization where the toolchain supports it, and
 # a symbol file (.pdb) beside each exe for profiling and crash dumps. The
-# install() rules below name only the exes, so no .pdb ships; the installer
+# install() rules below name no .pdb, so none ships; the installer
 # checks that. docs/development.md says why the riskier speed flags stay out.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT HYDRA_IPO_SUPPORTED OUTPUT HYDRA_IPO_OUTPUT LANGUAGES C CXX)
@@ -552,8 +552,7 @@ add_test(NAME hydra_uitest COMMAND hydra_uitest --all)
 
 # ---- packaging -----------------------------------------------------------
 # `cpack -G ZIP` (or build_cpp.ps1 -Package) produces Hydra-<ver>-win64.zip:
-# the GUI, the CLI tools, mimalloc's two DLLs, resource/, assets/, LICENSE,
-# the third-party notices and README, all in one folder.
+# everything the install() rules below stage, all in one folder.
 # User data (hydra*.db/.ini) is created next to the exe at runtime and never
 # lives in the package, so a rebuilt zip can't clobber anyone's records.
 install(TARGETS Hydra hydra_batch hydra_report hydra_fillcompare RUNTIME DESTINATION .)
