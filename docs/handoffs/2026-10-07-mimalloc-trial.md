@@ -13,7 +13,23 @@ mimalloc made Hydra no faster and used far more memory. Re-analysing the whole l
 
 Both runs went through the benchmark lock with 0 compiler processes running, one after the other, with the song files already in memory. The "without" run is the new-build run from the combined timing ([2026-10-07-perf-speedups-results.md](2026-10-07-perf-speedups-results.md)). Both builds come from the same commit, c2fdb43; only the allocator differs.
 
-Why no gain is a likely explanation, not a measured one. The wave 1 work already took most of the allocation out of the hot paths. The score graph keeps its rows as index ranges instead of many small vectors, the note sort no longer touches the heap, and the segment heap already handles what is left well. mimalloc's extra memory comes from it holding large blocks of memory per thread and keeping freed memory for reuse instead of handing it back.
+## Why it didn't help (measured after the first report)
+
+mimalloc did its job, but its job isn't what limits the run. A second pair of runs also recorded how much CPU time the process used:
+
+| `--redo`, 16 cores | Wall time | CPU time (user + kernel) | Peak working set |
+|---|---|---|---|
+| Without mimalloc | 10.4 s | 17.2 s + 9.6 s | 425 MB |
+| With mimalloc | 9.6 s | 15.5 s + 9.2 s | 745 MB |
+| With mimalloc, `MIMALLOC_PURGE_DELAY=0` | 13.1 s | 18.8 s + 14.9 s | 333 MB |
+
+mimalloc cut the program's own CPU work by about 10% (17.2 s to 15.5 s). That is a real allocator gain, and it shows the redirect was working. But the machine has 16 cores, so a 10-second run has 160 core-seconds to spend, and Hydra used only about 27 of them. On average fewer than 3 cores were busy. The run spends most of its time waiting on something else, not computing, so making the computing faster barely moves the clock. The 0.1 to 0.8 s differences between these pairs are within run-to-run noise.
+
+The third row tries mimalloc's main memory setting. `MIMALLOC_PURGE_DELAY=0` makes it hand freed memory back to Windows at once instead of keeping it for reuse. That brought the peak below the segment heap's (333 MB), but the run got slower (13.1 s), because handing memory back and asking for it again is kernel work. So mimalloc's extra memory and its small CPU gain come together. No setting gives both.
+
+The trial build had mimalloc's statistics option on (its release default). Turning it off would trim a little more CPU work. It can't change the wall time for the same reason, and trying it would need the source downloaded again.
+
+What the batch waits on is the real lever, and it was not measured here. The kernel time, about 9 s in every run, suggests file reads and database writes rather than computing, but that is a guess until someone times the stages.
 
 ## It changes nothing stored
 
