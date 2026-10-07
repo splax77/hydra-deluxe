@@ -152,6 +152,22 @@ struct CliSandbox {
     }
     std::string db(const char* name) const { return (dir / name).u8string(); }
     std::string folder() const { return songs.u8string(); }
+
+    // A database with a chart library, built the way a user builds one: the
+    // sandbox's hydra_settings.ini lists the songs folder as a chart folder and
+    // hydra_batch runs with no folder arguments (D79 item 1: folder arguments
+    // never save a library). `extra` holds any further flags, e.g. --legacy-fills.
+    std::string library_db(const char* name, std::vector<std::string> extra = {}) const {
+        hydra::app::Settings settings{};
+        settings.chartfolders = {folder()};
+        REQUIRE(settings.save_file((dir / "hydra_settings.ini").u8string()));
+        const std::string path = db(name);
+        extra.insert(extra.end(), {"--db", path});
+        const RunResult r = run_exe(batch, extra);
+        INFO(r.output);
+        REQUIRE(r.exit_code == 0);
+        return path;
+    }
 };
 
 }  // namespace
@@ -355,8 +371,7 @@ TEST_CASE("hydra_batch names the cap with the one count rule") {
 
 TEST_CASE("hydra_report writes a page for a filled database and says so for an empty one") {
     CliSandbox box("report");
-    const std::string db = box.db("report.db");
-    REQUIRE(run_exe(box.batch, {"--db", db, box.folder()}).exit_code == 0);
+    const std::string db = box.library_db("report.db");
 
     const fs::path page = box.dir / "out" / "paths.html";
     RunResult r =
@@ -376,6 +391,19 @@ TEST_CASE("hydra_report writes a page for a filled database and says so for an e
     INFO(empty.output);
     CHECK(empty.exit_code == 1);
     CHECK(contains(empty.output, "No records stored yet"));
+
+    // D89 item 2: a database filled by folder arguments holds results but no
+    // chart library, and the report covers library charts only.
+    const std::string folder_db = box.db("folder_args.db");
+    REQUIRE(run_exe(box.batch, {"--db", folder_db, box.folder()}).exit_code == 0);
+    RunResult no_library = run_exe(box.report, {"--db", folder_db, "--out",
+                                                (box.dir / "no_library.html").u8string(),
+                                                "--no-open"});
+    INFO(no_library.output);
+    CHECK(no_library.exit_code == 1);
+    CHECK(contains(no_library.output,
+                   "This database has no chart library. Run hydra_batch without folder "
+                   "arguments, or scan in Hydra, to build one."));
 
     CHECK(run_exe(box.report, {"--bogus"}).exit_code == 2);
 
@@ -482,8 +510,7 @@ TEST_CASE("hydra_report reports a --legacy-fills database under the 1.0 rule") {
     // The app's own setting is 1.1 (the sandbox's defaults), but a file that
     // hydra_batch --legacy-fills filled holds only 1.0 results.
     CliSandbox box("report_legacy");
-    const std::string db = box.db("ch10.db");
-    REQUIRE(run_exe(box.batch, {"--legacy-fills", "--db", db, box.folder()}).exit_code == 0);
+    const std::string db = box.library_db("ch10.db", {"--legacy-fills"});
 
     const fs::path page = box.dir / "legacy.html";
     RunResult r = run_exe(box.report, {"--db", db, "--out", page.u8string(), "--no-open"});
