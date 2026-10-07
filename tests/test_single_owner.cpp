@@ -1240,6 +1240,21 @@ const std::vector<OwnerRule>& rules() {
           "\"Not analyzed yet. Click the song or run a batch to analyze it.\";"},
          {"ImGui::SetTooltip(\"%s\", app::kNotAnalyzedText);"},
          {}},
+        // The Preview's line for a chart file that changed after it was
+        // analyzed. It is typed once, in preview_tab.cpp; the User Guide
+        // quotes it. The owner line pins D94's words.
+        {"What does the Preview say when the chart changed since it was analyzed?",
+         "the changed-chart line in src/ui/preview_tab.cpp",
+         R"(changed since it was analyzed\. )",
+         "",
+         {},
+         {},
+         "D51 call 18; D94 (2026-10-07)",
+         {"\"This chart changed since it was analyzed. Analyze it again to see its path.\");"},
+         {"// Has the chart changed since it was analyzed (finding 126)? First the"},
+         {{"src/ui/preview_tab.cpp",
+           "\"This chart changed since it was analyzed. Click the song again to see its path.\");",
+           "the owner (D94)"}}},
         // Cutting a label to end in "…": ImGui's own ellipsis renderer, its
         // ellipsis glyph, the "…" bytes typed out as escapes, or a "…" typed
         // straight into a string before any // comment. ellipsize is the one
