@@ -25,10 +25,6 @@
 
 namespace hydra::ui {
 
-const char* analyze_button_label(store::RecordStatus status) {
-    return status == store::RecordStatus::NotAnalyzed ? "Analyze this song" : "Re-analyze";
-}
-
 namespace {
 
 // Title, "artist · charted by charter", and hide library / previous / next /
@@ -81,25 +77,14 @@ void render_panel_header(AppState& app) {
     ImGui::PopStyleColor();
 }
 
-// The one line that stands in for a record's content when there is nothing to
-// draw: `not_analyzed_text` (dim-coloured when `dim`), the out-of-date warning
-// naming the store's real cause (stale_text), or kNoPathsFound. Returns true
-// only when the record is ready to draw. `wrap_x` > 0 wraps the warning at
-// that x (window coordinates); 0 leaves it on one line. The headline and
-// render_record_state both read it, so the states read the same everywhere.
-bool render_state_line(AppState& app, const char* not_analyzed_text, bool dim, float wrap_x) {
-    if (app.viewed.status == store::RecordStatus::NotAnalyzed) {
-        if (dim) ImGui::TextDisabled("%s", not_analyzed_text);
-        else ImGui::TextUnformatted(not_analyzed_text);
-        return false;
-    }
-    if (app.viewed.status == store::RecordStatus::Stale) {
-        if (wrap_x > 0.0f) ImGui::PushTextWrapPos(wrap_x);
-        ImGui::TextColored(kWarningColor, "%s",
-                           app::stale_text(app.viewed.stale_build, app.viewed.stale_rules).c_str());
-        if (wrap_x > 0.0f) ImGui::PopTextWrapPos();
-        return false;
-    }
+// The one line that stands in for a Ready record's content when it has no
+// paths: kNoPathsFound. Returns true only when the record is ready to draw.
+// Every other state draws nothing here: the progress box, the cancel line,
+// the error and the notices say why (render_record_state,
+// render_panel_notices). The headline and render_record_state both read it,
+// so the states read the same everywhere.
+bool render_state_line(AppState& app) {
+    if (!app.viewed.ready()) return false;
     if (app.viewed.record->paths.empty()) {
         ImGui::TextUnformatted(app::kNoPathsFound);
         return false;
@@ -107,35 +92,14 @@ bool render_state_line(AppState& app, const char* not_analyzed_text, bool dim, f
     return true;
 }
 
-// The optimal score and path in gold with one line of facts under it, and the
-// analyze button at the right. Before a Ready record, the same place says why
-// there is nothing to show. Stars are the stored summary's (T7), never worked
-// out again here.
+// The optimal score and path in gold with one line of facts under it. Stars
+// are the summary row's (T7), never worked out again here.
 void render_headline(AppState& app) {
-    const store::RecordStatus status = app.viewed.status;
-    const char* label = analyze_button_label(status);
-    const float button_w =  // the not-analyzed label, the wider one
-        button_slot_width(analyze_button_label(store::RecordStatus::NotAnalyzed));
     const float left_x = ImGui::GetCursorPosX();
-    const float top_y = ImGui::GetCursorPosY();
-    const float text_w =
-        ImGui::GetContentRegionAvail().x - button_w - ImGui::GetStyle().ItemSpacing.x;
+    const float text_w = ImGui::GetContentRegionAvail().x;
 
-    ImGui::SetCursorPosX(left_x + text_w + ImGui::GetStyle().ItemSpacing.x);
-    const bool file_ok = app.selected_file_ok(ImGui::GetTime());
-    const bool busy = app.analyze_running();
-    const bool off = app.analysis_blocked() || !file_ok || busy;
-    begin_disabled_button(off);
-    if (button_in_slot(label, button_w)) app.start_analyze();
-    end_disabled_button(off);
-    if (busy && !app.analyze_job_shown() &&
-        ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled))
-        ImGui::SetTooltip("Wait for %s to finish analyzing.",
-                          display_title(app.analyze_job->song().title).c_str());
-
-    ImGui::SetCursorPos(ImVec2(left_x, top_y));
     ImGui::BeginGroup();
-    if (render_state_line(app, "Not analyzed yet.", /*dim=*/true, left_x + text_w)) {
+    if (render_state_line(app)) {
         const Path& best = app.viewed.record->best_path();
         ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
         ImGui::PushFont(nullptr, 40.0f);
@@ -154,7 +118,7 @@ void render_headline(AppState& app) {
 
         // Each path's hardest timing sits beside it in the path list, so the
         // headline doesn't repeat the optimal one's.
-        const store::PathSummary& summary = app.viewed_summary;
+        const store::PathSummary& summary = app.viewed.summary;
         std::string facts = "Optimal path";
         if (summary.stars) facts += " \xC2\xB7 " + counted(*summary.stars, "star", "stars");
         ImGui::PushStyleColor(ImGuiCol_Text, kSubtleTextColor);
@@ -181,46 +145,29 @@ void render_panel_notices(AppState& app) {
                            "restarted.");
 }
 
-// Display only; AppState::tick() owns storing and reaping.
-void render_analyze_progress(AppState& app) {
-    AnalyzeJob* job = app.analyze_job.get();
-    if (!job) return;
-
+// The click's progress box, its cancel line and its error. Display only;
+// AppState::tick() owns the job. The box shows only once the job has run
+// kViewProgressDelaySeconds, and there's no "Done!" (D87 items 6 and 10).
+void render_view_progress(AppState& app) {
+    if (!app.view_progress_shown()) return;
+    // The latest request's own job; none while it waits for an older,
+    // cancelled one to exit (AppState::view_pending).
+    const ViewJob* job = app.view_pending ? nullptr : app.view_job.get();
     ImGui::BeginChild("analyzeprogress", ImVec2(0, px(140)), ImGuiChildFlags_Borders);
-
-    if (!job->finished()) {
-        if (job->is_cancelled()) {
-            ImGui::TextUnformatted("Cancelling...");
-        } else {
-            double t = ImGui::GetTime();
-            int dots = (int)(t * 2) % 4;
-            ImGui::Text("Analyzing chart%.*s", dots, "...");
-            // A real bar once the search starts reporting; until the first tick
-            // (parse + graph build) there's nothing to show, so leave it off.
-            float f = job->progress();
-            if (f >= 0.0f) progress_bar_percent(f);
-            // A long chart can take a while; the user needs an out that isn't
-            // killing the app.
-            if (ImGui::Button("Cancel")) job->cancel();
-        }
-    } else if (!job->ok()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
-        ImGui::TextWrapped("%s", job->message().c_str());
-        ImGui::PopStyleColor();
-        // Wrapped: the detail can carry a long file path.
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextWrapped("%s", job->error().c_str());
-        ImGui::PopStyleColor();
-        if (ImGui::Button("Continue")) app.analyze_job.reset();
-    } else if (!app.details_ui.store_error.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
-        ImGui::TextWrapped("%s", app.details_ui.store_error.c_str());
-        ImGui::PopStyleColor();
-        if (ImGui::Button("Continue")) app.analyze_job.reset();
+    if (job && job->is_cancelled()) {
+        ImGui::TextUnformatted("Cancelling...");
     } else {
-        ImGui::TextUnformatted("Done!");
+        double t = ImGui::GetTime();
+        int dots = (int)(t * 2) % 4;
+        ImGui::Text("Analyzing chart%.*s", dots, "...");
+        // A real bar once the search starts reporting; until the first tick
+        // (parse + graph build) there's nothing to show, so leave it off.
+        const float f = job ? job->progress() : -1.0f;
+        if (f >= 0.0f) progress_bar_percent(f);
+        // A long chart can take a while; the user needs an out that isn't
+        // killing the app.
+        if (ImGui::Button("Cancel")) app.cancel_view();
     }
-
     ImGui::EndChild();
 }
 
@@ -228,16 +175,33 @@ void render_analyze_progress(AppState& app) {
 
 namespace detail {
 
-// The states a record-backed tab shows before its own content: the analyze
-// progress, the not-analyzed prompt, the stale warning and "No paths found.".
-// Returns true only when the record is ready to draw. The Paths and Stars tabs
-// both call this, so the states read the same on each.
-bool render_record_state(AppState& app, const char* not_analyzed_text) {
-    if (app.analyze_job_shown()) {
-        render_analyze_progress(app);
-        return false;
+// The states a record-backed tab shows before its own content: the click's
+// progress, its cancel line, its error and "No paths found.". Returns true
+// only when the record is ready to draw. The Paths and Stars tabs both call
+// this, so the states read the same on each.
+bool render_record_state(AppState& app) {
+    switch (app.viewed.state) {
+        case ViewedSong::State::Analyzing:
+            render_view_progress(app);
+            return false;
+        case ViewedSong::State::Cancelled:
+            ImGui::TextUnformatted("Analysis cancelled.");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Try again")) app.start_view();
+            return false;
+        case ViewedSong::State::Failed:
+            ImGui::PushStyleColor(ImGuiCol_Text, kWarningColor);
+            ImGui::TextWrapped("%s", app.viewed.message.c_str());
+            ImGui::PopStyleColor();
+            // Wrapped: the detail can carry a long file path.
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextWrapped("%s", app.viewed.error.c_str());
+            ImGui::PopStyleColor();
+            if (ImGui::Button("Continue")) app.dismiss_view_error();
+            return false;
+        default:
+            return render_state_line(app);
     }
-    return render_state_line(app, not_analyzed_text, /*dim=*/false, /*wrap_x=*/0.0f);
 }
 
 }  // namespace detail
@@ -255,8 +219,7 @@ void render_song_panel(AppState& app) {
     // previous / next buttons swap the song in the middle of this frame.
     auto sync_selected_path = [&] {
         if (record_watcher.changed(app.record_generation)) {
-            selected_path = app.viewed.status == store::RecordStatus::Ready &&
-                                    !app.viewed.record->paths.empty()
+            selected_path = app.viewed.ready() && !app.viewed.record->paths.empty()
                                 ? &app.viewed.record->best_path()
                                 : nullptr;
         }
@@ -287,8 +250,7 @@ void render_song_panel(AppState& app) {
     // active one; leaving it pauses playback.
     if (ImGui::BeginTabBar("##DetailsTabs")) {
         if (ImGui::BeginTabItem("Paths")) {
-            if (detail::render_record_state(
-                    app, "After analyzing this song, paths will show up here."))
+            if (detail::render_record_state(app))
                 detail::render_path_panel(app, selected_path);
             ImGui::EndTabItem();
         }

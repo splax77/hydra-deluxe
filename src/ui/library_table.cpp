@@ -15,7 +15,7 @@
 #include <vector>
 
 #include "app/library_query.h"
-#include "app/user_messages.h"  // stale_text
+#include "app/user_messages.h"  // stale_text, kNotAnalyzedText
 #include "core/model.h"         // group_thousands, counted
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGuiSelectableFlags_SpanAvailWidth
@@ -138,34 +138,23 @@ bool chip_button(const char* label, bool on, bool disabled) {
 // search matches. A status chip shows status_label's word; All keeps its
 // own. A group with nothing in it can't be picked.
 void render_chips(AppState& app) {
-    struct Chip {
-        StatusChip chip;
-        const char* id;
-    };
-    static constexpr Chip kChips[] = {
-        {StatusChip::All, "chipall"},
-        {StatusChip::NotAnalyzed, "chipnew"},
-        {StatusChip::Stale, "chipstale"},
-        {StatusChip::Analyzed, "chipdone"},
-    };
+    static constexpr StatusChip kChips[] = {StatusChip::All, StatusChip::NotAnalyzed,
+                                            StatusChip::Stale, StatusChip::Analyzed};
     const ChipCounts& counts = app.library.counts();
     // A chip that doesn't fit after the last one starts a new line. A
     // button's width is known before it is drawn (button_slot_width).
     const ImGuiStyle& style = ImGui::GetStyle();
     for (size_t i = 0; i < std::size(kChips); ++i) {
-        const Chip& c = kChips[i];
-        const size_t n = counts.of(c.chip);
-        const std::optional<store::RecordStatus> status = status_of(c.chip);
-        const char* name = status ? status_label(*status) : "All";
-        const std::string label = std::string(name) + " (" +
-                                  group_thousands(static_cast<int64_t>(n)) + ")##" + c.id;
+        const StatusChip chip = kChips[i];
+        const size_t n = counts.of(chip);
+        const std::string label = chip_label(chip, n);
         if (i > 0 && fits_on_line(button_slot_width(label.c_str()), style.ItemSpacing.x))
             ImGui::SameLine();
-        const bool on = app.library.chip() == c.chip;
-        if (chip_button(label.c_str(), on, !on && n == 0)) app.library.set_chip(c.chip);
+        const bool on = app.library.chip() == chip;
+        if (chip_button(label.c_str(), on, !on && n == 0)) app.library.set_chip(chip);
         // The chip stands for many rows with either cause, so its hint names
         // both.
-        if (c.chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());
+        if (chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());
     }
 }
 
@@ -413,8 +402,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
                 if (row.status == store::RecordStatus::NotAnalyzed)
-                    ImGui::SetTooltip("Not analyzed yet. Open the song and press \"Analyze this "
-                                      "song\", or use \"Analyze library...\".");
+                    ImGui::SetTooltip("%s", app::kNotAnalyzedText);
                 else if (row.status == store::RecordStatus::Stale)
                     // This one row's real cause, from the store.
                     ImGui::SetTooltip(

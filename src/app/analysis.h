@@ -101,13 +101,29 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 // by path alone. Returns an empty string if the file cannot be read.
 std::string hash_chart_file(const std::string& path);
 
-// Whether a chart's files still give the fingerprint the scan stored in
+// The fingerprint a chart's files give now, as the scan would store it in
 // `sig` (ScanItem::sig, ChartLibraryEntry::sig); pending_chart_of in
-// analysis.cpp decides which files that covers. This is the
-// rescan's own shortcut: when it says yes, the stored md5 still holds and the
-// file need not be hashed again. False when `sig` is empty, the file is gone,
-// or a folder chart has lost its song.ini, so the caller hashes.
-bool chart_files_unchanged(const std::string& notespath, const std::string& sig);
+// analysis.cpp decides which files that covers. Empty when the file is gone or
+// a folder chart has no song.ini. chart_changed_since compares against it; a
+// click that finds an edited chart stores it with the new hash
+// (RecordStore::reidentify_chart).
+std::string chart_files_sig(const std::string& notespath);
+
+// What a chart's files are now, when they are not what a library row stored.
+struct ChartNow {
+    std::string md5;  // hash_chart_file now; empty when the file cannot be read
+    std::string sig;  // chart_files_sig, read once before the hash, as the scan does
+};
+
+// The one answer to "has this chart changed since its library row was made,
+// and what is it now?". This is the rescan's own shortcut: empty when the
+// files still give `stored_sig`, so the stored md5 holds and nothing is
+// hashed. A missing `stored_sig`, a gone file or a folder chart without its
+// song.ini all count as changed, so the file is hashed with the scan's own
+// rule and the caller compares ChartNow::md5 with the row's md5 (an empty md5
+// means the file is unreadable, which is no change).
+std::optional<ChartNow> chart_changed_since(const std::string& notespath,
+                                            const std::string& stored_sig);
 
 // A chart hash in the one spelling used for matching: its ASCII letters
 // lowered. The scan already writes lowercase hex (see hash_chart_file), so
@@ -161,7 +177,7 @@ AnalysisResult analyze_chart_file(const std::string& filepath,
 // Thrown out of a search's progress callback to stop a cancelled analysis.
 // It does not derive from std::exception, so no catch (const std::exception&)
 // on the way out (the all-0 pass in search/pather.cpp has one) swallows it.
-// The single-chart Analyze job, run_batch and the path report's pass all stop
+// ViewJob (the click's job), run_batch and the path report's pass all stop
 // searches with it.
 struct AnalysisCancelled {};
 
@@ -183,9 +199,8 @@ using ChartAnalyzer = std::function<AnalysisResult(
 // (chart_timing_meta over `scanned`). Read, with or without a length, unless
 // that throws: then not read, so a failed read costs only the length, which
 // stays as it was until opening the song reads it. No audio is opened.
-// run_batch and the single-chart Analyze job both save through here.
-// SongLengthJob calls the owner itself: its read is the whole job, and
-// AppState::update_song_length decides what a failed job leaves.
+// run_batch saves through here, and so does ViewJob (the click's job), which
+// calls the owner itself.
 store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
                                        const std::string& notespath, const Song& song,
                                        const AnalysisSettings& settings);

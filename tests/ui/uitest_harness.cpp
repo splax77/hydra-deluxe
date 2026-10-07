@@ -30,7 +30,6 @@
 #include "audio/device.h"
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
-#include "ui/details_view.h"  // analyze_button_label
 #include "ui/library_jobs.h"
 #include "ui/library_model.h"
 #include "ui/preview_controller.h"
@@ -371,6 +370,37 @@ void BatchGate::allow(int charts) { g_gate_allowed = charts; }
 
 int BatchGate::started() const { return g_gate_started.load(); }
 
+namespace {
+// Statics, like the batch gate's: a click's job keeps its copy of the
+// analyzer and can outlive the gate.
+std::atomic<bool> g_view_gate_open{true};
+std::atomic<int> g_view_gate_started{0};
+}  // namespace
+
+ViewGate::ViewGate() {
+    g_view_gate_open = false;
+    g_view_gate_started = 0;
+    hydra::ui::set_view_analyzer_for_test(
+        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
+           const std::function<void(float)>& on_progress) {
+            ++g_view_gate_started;
+            while (!g_view_gate_open.load()) {
+                on_progress(0.0f);  // throws once Cancel or a setting change stops it
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            return hydra::app::analyze_chart_file(path, settings, on_progress);
+        });
+}
+
+ViewGate::~ViewGate() {
+    g_view_gate_open = true;
+    hydra::ui::set_view_analyzer_for_test(nullptr);
+}
+
+void ViewGate::open() { g_view_gate_open = true; }
+
+int ViewGate::started() const { return g_view_gate_started.load(); }
+
 std::string visible_text(Harness& h) {
     std::string s = h.frame_text.text;
     if (h.app) {
@@ -442,10 +472,16 @@ void dump_state(Harness& h) {
                 a.settings.chartmode_key().c_str(), yes_no(a.settings.view_prodrums),
                 yes_no(a.settings.view_bass2x), a.settings.depth_value,
                 yes_no(a.settings.auto_open_report));
-    std::printf("  jobs: scan=%s batch=%s analyze=%s report=%s dm_fetch=%s dm_report=%s\n",
+    static const char* const kViewStates[] = {"none",      "analyzing",    "ready",
+                                               "cancelled", "failed",       "file-missing",
+                                               "rules-broken"};
+    std::printf("  viewed=%s view_job=%s view_pending=%s\n",
+                kViewStates[static_cast<int>(a.viewed.state)],
+                a.view_job ? (a.view_job->finished() ? "finished" : "running") : "-",
+                yes_no(a.view_pending));
+    std::printf("  jobs: scan=%s batch=%s report=%s dm_fetch=%s dm_report=%s\n",
                 a.scan_job ? (a.scan_job->snapshot().finished ? "finished" : "running") : "-",
                 a.batch_job ? (a.batch_job->snapshot().finished ? "finished" : "running") : "-",
-                a.analyze_job ? (a.analyze_job->finished() ? "finished" : "running") : "-",
                 a.report_job ? (a.report_job->finished() ? "finished" : "running") : "-",
                 a.dm_fetch_job ? (a.dm_fetch_job->finished() ? "finished" : "running") : "-",
                 a.dm_report_job ? (a.dm_report_job->finished() ? "finished" : "running") : "-");
@@ -547,20 +583,14 @@ void open_titled(ImGuiTestContext* ctx, const std::string& search, const std::st
     open_details(ctx, idx);
 }
 
-// The analyze button's ref for the open song: the panel's own label for it.
-std::string analyze_button_ref(Harness& h) {
-    return std::string("**/") + hydra::ui::analyze_button_label(h.app->viewed.status);
-}
-
-// Analyze the open song and wait for a Ready record.
-void analyze_open_song(ImGuiTestContext* ctx) {
+// Wait for the open song's analysis and a Ready record.
+void wait_song_analyzed(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     set_panel_ref(ctx);
     if (ctx->IsError()) return;
     ctx->ItemClick("##DetailsTabs/Paths");
-    ctx->ItemClick(analyze_button_ref(h).c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->analyze_job == nullptr; }, 300));
-    IM_CHECK(h.app->viewed.status == hydra::store::RecordStatus::Ready);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
+    IM_CHECK(h.app->viewed.ready());
 }
 
 // Shared: open chart 0's Preview and wait for the load. Returns false on error.

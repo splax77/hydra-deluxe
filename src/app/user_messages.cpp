@@ -139,7 +139,8 @@ std::string stale_text(bool build, bool rules) {
         cause = "another Hydra version";
     else
         cause = "different rules in hydra_rules.ini";
-    return "Out of date: this result came from " + cause + ". Re-analyze to refresh it.";
+    return "Out of date: this result came from " + cause +
+           ". Click the song or run a batch to refresh it.";
 }
 
 }  // namespace hydra::app

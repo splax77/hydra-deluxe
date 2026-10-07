@@ -247,7 +247,7 @@ std::string sig_of(const DirEntry& notes, const DirEntry* ini) {
 
 // The rescan cache's one "unchanged" test: a fingerprint was stored and the
 // files on disk still give the same one. The scan's cache lookup and
-// chart_files_unchanged both ask it.
+// chart_changed_since both ask it.
 bool sig_unchanged(const std::string& stored, const std::string& now) {
     return !stored.empty() && stored == now;
 }
@@ -265,7 +265,7 @@ ChartKind chart_kind_of(const std::string& name) {
 // One chart file in its folder's listing, as the scan records it: its kind,
 // its path, the song.ini that goes with a folder chart, and the fingerprint
 // of the files that make it up. Nothing when a folder chart has no song.ini.
-// The walk and chart_files_unchanged both ask this, so which files go into a
+// The walk and chart_files_sig both ask this, so which files go into a
 // fingerprint is decided here once. The rootfolder is the caller's to fill.
 std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEntry& chart,
                                              const std::vector<DirEntry>& listing) {
@@ -343,7 +343,7 @@ std::string hash_chart_file(const std::string& path) {
     }
 }
 
-bool chart_files_unchanged(const std::string& notespath, const std::string& sig) {
+std::string chart_files_sig(const std::string& notespath) {
     // The same listing the scan's walk reads, so the fingerprint comes from
     // the same find data the stored one was made from.
     const std::string dir = parent_folder(notespath);
@@ -351,9 +351,17 @@ bool chart_files_unchanged(const std::string& notespath, const std::string& sig)
     for (const DirEntry& e : entries)
         if (!e.is_dir && join_folder(dir, e.name) == notespath) {
             const std::optional<PendingChart> now = pending_chart_of(dir, e, entries);
-            return now && sig_unchanged(sig, now->sig);
+            return now ? now->sig : std::string();
         }
-    return false;
+    return {};
+}
+
+std::optional<ChartNow> chart_changed_since(const std::string& notespath,
+                                            const std::string& stored_sig) {
+    // One listing, and the sig before the hash, as the scan reads them.
+    const std::string now = chart_files_sig(notespath);
+    if (!now.empty() && sig_unchanged(stored_sig, now)) return std::nullopt;
+    return ChartNow{hash_chart_file(notespath), now};
 }
 
 std::string normalize_chart_hash(std::string_view hash) { return to_lower_ascii(hash); }
@@ -835,7 +843,7 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
 
     // A running search checks for cancel in its progress callback, and stops
     // at the next tick (the engine reports every half percent of the chart),
-    // the way the single-chart Analyze button stops.
+    // the way ViewJob (the click's job) stops.
     const std::function<void(float)> check_cancel = stop_on_cancel(cancel);
     const ChartAnalyzer analyze =
         callbacks.analyze ? callbacks.analyze : ChartAnalyzer(analyze_chart_file);

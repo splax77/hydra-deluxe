@@ -1199,7 +1199,7 @@ const std::vector<OwnerRule>& rules() {
         // store's real cause; every screen shows its sentence.
         {"Why is a stored result out of date?",
          "stale_text in src/app/user_messages.cpp",
-         R"(another Hydra version|different rules in hydra_rules|Re-analyze to refresh)",
+         R"(another Hydra version|different rules in hydra_rules|Re-analyze to refresh|run a batch to refresh)",
          "",
          {},
          {},
@@ -1218,8 +1218,42 @@ const std::vector<OwnerRule>& rules() {
           {"src/app/user_messages.cpp", "cause = \"different rules in hydra_rules.ini\";",
            "stale_text, the owner: different rules"},
           {"src/app/user_messages.cpp",
-           "return \"Out of date: this result came from \" + cause + \". Re-analyze to refresh it.\";",
-           "stale_text, the owner: the sentence's frame"}}},
+           "\". Click the song or run a batch to refresh it.\";",
+           "stale_text, the owner: the sentence's ending (D87 item 6)"}}},
+        // Whether a chart file changed since its library row was made. The
+        // Preview's load and the click's job both ask chart_changed_since, so
+        // the two never disagree; the fingerprint and the hash have no other
+        // caller in src or tools.
+        {"Has a chart file changed since its library row was made?",
+         "chart_changed_since in src/app/analysis.cpp",
+         R"(\b(hash_chart_file|chart_files_unchanged|chart_files_sig)\()",
+         "",
+         {"src/app/analysis.h", "src/app/analysis.cpp"},
+         {},
+         "storage-T2 review finding 2 (D87 item 3)",
+         {"if (app::chart_files_unchanged(entry_.notespath, entry_.sig)) return false;",
+          "const std::string hash = app::hash_chart_file(entry_.notespath);",
+          "out_.new_sig = app::chart_files_sig(song_.notespath);"},
+         {"app::chart_changed_since(entry_.notespath, entry_.sig);"},
+         {},
+         // src only: tools/replay.cpp hashes a chart to look it up by path,
+         // which is a different question.
+         {"src"}},
+        // The not-analyzed row's tooltip. The old copy was split over two
+        // source lines, so a rule on the whole sentence missed it; this one
+        // matches the sentence's first words, which sit on one line however
+        // the rest is split. kNotAnalyzedText is the one place it is typed.
+        {"What does a library row with no result say when hovered?",
+         "kNotAnalyzedText in src/app/user_messages.h",
+         R"(Not analyzed yet)",
+         "",
+         {"src/app/user_messages.h"},
+         {},
+         "D91 (2026-10-07)",
+         {"ImGui::SetTooltip(\"Not analyzed yet. Open the song and press \\\"Analyze this \"",
+          "\"Not analyzed yet. Click the song or run a batch to analyze it.\";"},
+         {"ImGui::SetTooltip(\"%s\", app::kNotAnalyzedText);"},
+         {}},
         // Cutting a label to end in "…": ImGui's own ellipsis renderer, its
         // ellipsis glyph, the "…" bytes typed out as escapes, or a "…" typed
         // straight into a string before any // comment. ellipsize is the one
@@ -1330,6 +1364,29 @@ const std::vector<OwnerRule>& rules() {
           {"src/ui/library_model.cpp", "case store::RecordStatus::Stale: return \"Stale\";",
            "status_label, the owner"},
           {"src/ui/library_model.cpp", "return \"Not analyzed\";", "status_label, the owner"}}},
+        // A filter chip's button id typed as text. chip_label builds the whole
+        // label (word, count, id), and render_chips and the GUI tests ask it.
+        // src only: the GUI tests also pin whole labels as literals, which a
+        // text search cannot tell from a label built by hand, so the test that
+        // looks chips up by a computed label is reviewed, not scanned.
+        {"What does a status chip's button label read?",
+         "chip_label in src/ui/library_model.cpp",
+         R"re("chip(all|new|stale|done)")re",
+         "",
+         {},
+         {},
+         "storage-T2 sign-off (library-layout chip refs)",
+         {"{StatusChip::All, \"chipall\"},", "{StatusChip::Analyzed, \"chipdone\"},"},
+         {"const std::string label = chip_label(chip, n);",
+          "if (chip == StatusChip::Stale) hint(app::stale_text(true, true).c_str());"},
+         {{"src/ui/library_model.cpp", "const char* id = \"chipall\";", "chip_label, the owner"},
+          {"src/ui/library_model.cpp", "case StatusChip::NotAnalyzed: id = \"chipnew\"; break;",
+           "chip_label, the owner"},
+          {"src/ui/library_model.cpp", "case StatusChip::Stale: id = \"chipstale\"; break;",
+           "chip_label, the owner"},
+          {"src/ui/library_model.cpp", "case StatusChip::Analyzed: id = \"chipdone\"; break;",
+           "chip_label, the owner"}},
+         {"src"}},
         // Two paths compared by score and notation, or keyed by notation and
         // score glued together, instead of by path_identity.
         {"Is this the same path as that one?",
@@ -2114,7 +2171,7 @@ const std::vector<OwnerRule>& rules() {
           "const int i = idx.section_at(static_cast<int64_t>(std::ceil(ticks)));"}},
         // Fingerprinting a chart's files by hand: anything that calls sig_of
         // has chosen which files go in. Only pending_chart_of chooses, and
-        // the scan walk and chart_files_unchanged both ask it.
+        // the scan walk and chart_files_sig both ask it.
         {"Which files make up a chart's fingerprint?",
          "pending_chart_of in src/app/analysis.cpp",
          R"(\bsig_of\()",
@@ -2947,25 +3004,26 @@ const std::vector<OwnerRule>& rules() {
         // job's guard is a different job with no owner yet; the GUI harness's
         // dump prints each job's state, a different question.
         {"Is a batch or an analysis running?",
-         "batch_running and analyze_running in src/ui/app_state.cpp",
-         R"(\b(batch_job\s*&&\s*!\s*((a|app)\.)?batch_job->snapshot\(\)\.finished|analyze_job\s*&&\s*!\s*((a|app)\.)?analyze_job->finished\(\)))",
+         "batch_running in src/ui/app_state.cpp",
+         R"(\b(batch_job\s*&&\s*!\s*((a|app)\.)?batch_job->snapshot\(\)\.finished|view_job\s*&&\s*!\s*((a|app)\.)?view_job->finished\(\)))",
          "",
          {},
          {},
-         "audit finding 254; phase 6 task J2-4 (D53)",
+         "audit finding 254; phase 6 task J2-4 (D53); storage-T2 review finding 3 (the click's job)",
          {"if (batch_job && !batch_job->snapshot().finished) return;",
-          "if (analyze_job && !analyze_job->finished()) return;",
+          "if (view_job && !view_job->finished()) view_job->cancel();",
           "const bool batch_busy = app.batch_job && !app.batch_job->snapshot().finished;",
-          "if (a.analyze_job && !a.analyze_job->finished()) return true;"},
+          "if (a.view_job && !a.view_job->finished()) return true;"},
          {"if (scan_job && !scan_job->snapshot().finished) return;",
           R"(a.batch_job ? (a.batch_job->snapshot().finished ? "finished" : "running") : "-",)",
-          "if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {"},
+          "if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {",
+          "if (view_thread_alive()) view_job->cancel();"},
          {{"src/ui/app_state.cpp",
-           "bool AppState::analyze_running() const { return analyze_job && !analyze_job->finished(); }",
-           "analyze_running, the owner"},
-          {"src/ui/app_state.cpp",
            "bool AppState::batch_running() const { return batch_job && !batch_job->snapshot().finished; }",
-           "batch_running, the owner"}},
+           "batch_running, the owner"},
+          {"src/ui/app_state.cpp",
+           "bool AppState::view_thread_alive() const { return view_job && !view_job->finished(); }",
+           "view_thread_alive, the owner"}},
          {"src", "tests"}},
         // A cached copy of the library's chart count. The model's own rows
         // are the count; the cache is gone, so no line may name it.
@@ -3007,20 +3065,22 @@ const std::vector<OwnerRule>& rules() {
          {"bool finished() const { return finished_.load(); }"},
          {},
          {"src"}},
-        // The Analyze button's two labels typed as text. The closing quote
-        // keeps the "Re-analyze to refresh it." sentences out.
-        {"What does the song panel's Analyze button say?",
-         "analyze_button_label in src/ui/details_panel.cpp",
+        // The removed Analyze button's two labels typed as text (D87 item 6:
+        // a click analyzes). Only the GUI test that checks the button is
+        // gone may name them. The closing quote keeps the "Re-analyze to
+        // refresh it." sentences out.
+        {"Where may the removed Analyze button's labels appear?",
+         "test_no_analyze_button in tests/ui/uitest_details.cpp, which checks they are gone",
          R"re((Analyze this song|Re-analyze)")re",
-         R"(\banalyze_button_label\()",
-         {"src/ui/details_panel.cpp"},
+         "",
+         {"tests/ui/uitest_details.cpp"},
          {},
-         "audit finding 289; phase 6 task J2-4 (D53)",
+         "audit finding 289; phase 6 task J2-4 (D53); D87 item 6",
          {R"(return h.app->viewed.status == hydra::store::RecordStatus::NotAnalyzed ? "**/Analyze this song")",
           R"(: "**/Re-analyze";)"},
          {R"(IM_CHECK(visible_text(h).find("Also re-analyze") != std::string::npos);)",
           R"("A saved result couldn't be read. Re-analyze this song to replace it.";)",
-          R"(CHECK(analyze_button_label(RecordStatus::Stale) == std::string("Re-analyze"));)"},
+          R"("Click the song or run a batch to refresh it.")"},
          {},
          {"src", "tests"}},
         // The batch button's search label typed as text.
@@ -3884,11 +3944,7 @@ const std::vector<OwnerRule>& rules() {
           "store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,",
           "wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);"},
          {{"src/app/analysis.cpp", "return store::SongLength::found(",
-           "analysis_song_length, the owner"},
-          {"src/ui/song_length_job.cpp",
-           "length_ = store::SongLength::found(app::chart_song_length_ms(",
-           "SongLengthJob::run: its read is the whole job; AppState::update_song_length "
-           "decides what a failed job leaves"}}},
+           "analysis_song_length, the owner"}}},
         // Production's own temp folder for the shell (copy_to_short_temp in
         // src/app/report_files.cpp) answers a different question (audit
         // R7.12), so only tests/ is scanned. The temp_util case in
@@ -5668,8 +5724,6 @@ const std::vector<KnownClone>& known_clones() {
         {"tests/test_search.cpp", "tests/test_search.cpp", 9, R"x({768, true, false},)x"},
         {"tests/test_store.cpp", "tests/test_store.cpp", 8, R"x(for (const std::string& path : corpus::chart_paths()) {)x"},
         {"tests/ui/uitest_batch_reports.cpp", "tests/ui/uitest_batch_reports.cpp", 9, R"x(Harness& h = harness(ctx);)x"},
-        {"tests/ui/uitest_details.cpp", "tests/ui/uitest_details.cpp", 10, R"x(Harness& h = harness(ctx);)x"},
-        {"tests/ui/uitest_details.cpp", "tests/ui/uitest_library.cpp", 8, R"x(ctx->ItemClick(analyze_button_ref(h).c_str());)x"},
     };
     return k;
 }

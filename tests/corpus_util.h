@@ -28,6 +28,7 @@
 #include "parse/chart_files.h"
 #include "parse/song.h"
 #include "search/pather.h"
+#include "store/record_store.h"
 
 #ifndef HYDRA_INPUT_DIR
 #error "HYDRA_INPUT_DIR must be defined (see CMakeLists.txt)"
@@ -38,6 +39,23 @@ namespace corpus {
 using json = nlohmann::json;
 
 inline std::string root() { return HYDRA_INPUT_DIR; }
+
+// The library row a scan would write for the chart file at `notespath`: its
+// md5 and fingerprint come from the scan's own owners (hash_chart_file and
+// chart_files_sig). The sig is empty for a chart whose folder has no song.ini.
+inline hydra::store::ChartLibraryEntry scanned_entry(
+    const std::string& notespath, const std::string& title = "Preview controller test") {
+    hydra::store::ChartLibraryEntry e;
+    e.notespath = notespath;
+    e.rootfolder = notespath.substr(0, notespath.rfind('\\'));
+    e.md5 = hydra::app::hash_chart_file(notespath);
+    e.sig = hydra::app::chart_files_sig(notespath);
+    e.title = title;
+    e.artist = "Artist";
+    e.charter = "Charter";
+    if (e.md5.empty()) throw std::runtime_error("scanned_entry: cannot read " + notespath);
+    return e;
+}
 
 // Every chart file in the corpus (full notespath), sorted for a stable
 // iteration order. Discovery errors throw: the corpus is checked in, so any

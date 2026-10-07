@@ -15,9 +15,7 @@ namespace hydra::ui::detail {
 // same on every path); this only draws them. The states before the table are
 // render_record_state's, shared with the Paths tab.
 void render_stars_panel(AppState& app) {
-    if (!render_record_state(
-            app, "After analyzing this song, star cutoffs will show up here."))
-        return;
+    if (!render_record_state(app)) return;
 
     const StarCutoffs sc = star_cutoffs(app.viewed.record->best_path());
     const bool has_solo = sc.solo_bonus > 0;

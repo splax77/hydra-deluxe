@@ -4,7 +4,7 @@
 #include <future>
 #include <string>
 
-#include "app/analysis.h"  // chart_files_unchanged, hash_chart_file
+#include "app/analysis.h"  // chart_changed_since
 #include "app/preview_source.h"
 #include "app/preview_view.h"
 #include "app/song_length.h"   // chart_song_length_ms
@@ -123,7 +123,7 @@ void PreviewLoadJob::run() {
         throw_if_cancelled();
 
         // Has the chart changed since it was analyzed (finding 126)? First the
-        // rescan's own shortcut: when app::chart_files_unchanged says yes, the
+        // rescan's own shortcut: when app::chart_changed_since says no change, the
         // files still have the scan's md5, so nothing is read.
         // Otherwise the file is hashed with the scan's own rule, so the two
         // can never disagree, on a thread of its own beside both branches: a
@@ -133,9 +133,9 @@ void PreviewLoadJob::run() {
         // the parse error speaks for that. The future waits for the hash if
         // this job throws.
         std::future<bool> changed_check = std::async(std::launch::async, [this] {
-            if (app::chart_files_unchanged(entry_.notespath, entry_.sig)) return false;
-            const std::string hash = app::hash_chart_file(entry_.notespath);
-            return !hash.empty() && hash != entry_.md5;
+            const std::optional<app::ChartNow> now =
+                app::chart_changed_since(entry_.notespath, entry_.sig);
+            return now && !now->md5.empty() && now->md5 != entry_.md5;
         });
 
         // Branch (b) on its own thread. If this branch throws, `stop` tells it

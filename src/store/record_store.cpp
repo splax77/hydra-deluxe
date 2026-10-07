@@ -1642,7 +1642,7 @@ RecordLookup RecordStore::get_record(const RecordKey& key) {
         out.timing = decode_tempomap(songmeta->tempomap);
         restore_timecodes(record, *out.timing);
         // A length under another stamp is not read yet: the backfill works it
-        // out again (SongLengthJob).
+        // out again.
         out.song_length_read = kSongLengthStamp.is_current(songmeta->length_version);
         if (out.song_length_read) out.song_length_ms = songmeta->length_ms;
     }

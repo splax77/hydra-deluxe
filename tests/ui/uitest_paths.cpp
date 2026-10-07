@@ -66,7 +66,7 @@ bool open_burnout(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return false;
     open_titled(ctx, "burnout", "Burnout");
     if (ctx->IsError()) return false;
-    analyze_open_song(ctx);  // clicks the Paths tab first, then analyzes
+    wait_song_analyzed(ctx);  // clicks the Paths tab first, then waits
     if (ctx->IsError()) return false;
     IM_CHECK_RETV(h.app->viewed.record->best_path().pathstring() == "3- 1 2", false);
     ctx->Yield(2);
@@ -262,7 +262,7 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     // not orange.
     open_titled(ctx, "evans blue", "Beg");
     if (ctx->IsError()) return;
-    analyze_open_song(ctx);
+    wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(2);
     // Row 1 is the squeeze-out, row 4 the early fill; rows 2 and 3 have no badge.
@@ -307,7 +307,8 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
 
     // Display only: the record is still the analyzed one. Unticking restores
     // every row and persists too.
-    IM_CHECK(h.app->viewed.status == hydra::store::RecordStatus::Ready);
+    IM_CHECK(h.app->viewed.ready());
+    IM_CHECK(!h.app->view_job);  // the backend limit never re-analyzes
     ctx->ItemClick("**/Hide backend rows beyond##backendlimit");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.backendlimit_enabled; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).backendlimit_enabled);
@@ -364,7 +365,7 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     open_titled(ctx, "tapestry", kTitle);
     if (ctx->IsError()) return;
-    analyze_open_song(ctx);
+    wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     ctx->ItemClick("**/Expand all");
     ctx->Yield(2);
@@ -418,7 +419,7 @@ void test_paths_long_path(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     open_titled(ctx, "spiraling void", "The Spiraling Void");
     if (ctx->IsError()) return;
-    analyze_open_song(ctx);
+    wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(2);
     for (float share : {0.01f, 0.99f}) {  // the widest panel, then the narrowest
@@ -545,33 +546,25 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
 }
 
 // The GUI test library has no audio, but Burnout's song.ini states its
-// length, 130,303 ms, so the timeline places its activation dots (D75). A
-// result saved before the current length rule reads its length once on open,
-// from the metadata, with no re-analysis, and is not read again.
-void test_paths_length_backfill(ImGuiTestContext* ctx) {
+// length, 130,303 ms, so the timeline places its activation dots (D75). The
+// click works the length out with its analysis (app::analysis_song_length on
+// the same Song), so no other job reads the chart for it (D87 item 1).
+void test_paths_length_from_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     hydra::ui::AppState& app = *h.app;
-    IM_CHECK(app.viewed.song_length_read);  // its analysis worked it out
+    IM_CHECK(app.viewed.ready());
     IM_CHECK(app.viewed.song_length_ms == 130303.0);
+    IM_CHECK(!app.view_job);
     ctx->Yield(2);
     IM_CHECK(!drawn_marks(ctx).empty());
     const hydra::HydraRecord* record = &*app.viewed.record;
 
-    // As an old result reads: not read.
-    app.viewed.song_length_read = false;
-    app.viewed.song_length_ms.reset();
-    IM_CHECK(wait_until(ctx, [&] { return app.viewed.song_length_read; }, 10));
-    IM_CHECK(app.viewed.song_length_ms == 130303.0);
-    IM_CHECK(&*app.viewed.record == record);  // not re-read, not re-analyzed
-    IM_CHECK(!app.analyze_job);
-    ctx->Yield(2);
-    IM_CHECK(!drawn_marks(ctx).empty());
-
-    // Read once: the chart is not read again this session.
-    app.viewed.song_length_read = false;
+    // Nothing reads it again while the song stays open.
     ctx->Yield(5);
-    IM_CHECK(!app.length_job);
+    IM_CHECK(!app.view_job);
+    IM_CHECK(&*app.viewed.record == record);
+    IM_CHECK(app.viewed.song_length_ms == 130303.0);
 }
 
 }  // namespace
@@ -592,7 +585,7 @@ void register_paths_tests(Harness& h) {
         {"paths-long-path", test_paths_long_path},
         {"paths-backend-fit", test_paths_backend_fit},
         {"paths-row-layout", test_paths_row_layout},
-        {"paths-length-backfill", test_paths_length_backfill},
+        {"paths-length-from-click", test_paths_length_from_click},
     };
     for (const Entry& e : entries) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);

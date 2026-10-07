@@ -134,15 +134,15 @@ TEST_CASE("song panel: nothing is locked while idle") {
     auto app = app_with_library(paths, 5);
     CHECK_FALSE(app->settings_locked());
     CHECK(app->settings_lock() == AppState::SettingsLock::None);
-    CHECK_FALSE(app->analyze_running());
+    CHECK_FALSE(app->view_running());
     CHECK_FALSE(app->batch_running());
 }
 
-// The settings bar reads the lock once per frame and picks its message from
-// that one answer. It used to ask batch_running() a second time; a batch that
-// ended on its worker in between sent it to the one-song message, which read
-// the analyze job's song through a null analyze_job (an access violation in
-// hydra_uitest's batch-strip-workers under load).
+// The settings bar reads the lock once per frame. It used to ask
+// batch_running() a second time; a batch that ended on its worker in between
+// sent it to the one-song message, which read the analyze job's song through
+// a null pointer (an access violation in hydra_uitest's batch-strip-workers
+// under load). Only a batch locks the bar now (D90 item 2).
 TEST_CASE("song panel: a running batch locks the settings as a batch, then unlocks") {
     ScratchPaths paths("panel_batchlock");
     auto app = app_with_library(paths, 5);
@@ -159,7 +159,6 @@ TEST_CASE("song panel: a running batch locks the settings as a batch, then unloc
     REQUIRE(app->batch_job != nullptr);
     CHECK(app->settings_lock() == AppState::SettingsLock::Batch);
     CHECK(app->settings_locked());
-    CHECK(app->analyze_job == nullptr);  // the Batch answer needs no analyze job
 
     release = true;
     while (!app->batch_job->snapshot().finished)

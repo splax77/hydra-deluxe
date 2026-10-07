@@ -35,7 +35,7 @@
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
-#include "db_file_util.h"  // exec_on_file, write_junk_db
+#include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
 #include "parse/song.h"
 #include "record_bytes.h"
@@ -276,6 +276,9 @@ TEST_CASE("stored transfer scales equal a live recompute after a store round tri
 
 using hydra::test::exec_on_file;
 using hydra::test::write_junk_db;
+// One integer straight out of a database file: how these tests look at the
+// paths/path_refs tables without the store growing an accessor for them.
+using hydra::test::scalar_on_file;
 
 TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
     std::optional<Song> song;
@@ -442,20 +445,6 @@ HydraRecord at_cap(int cap) {
     HydraRecord r = fixture().record;
     r.sp_cap = cap;
     return r;
-}
-
-// One integer straight out of a closed database file — how these tests look at
-// the paths/path_refs tables without the store growing an accessor for them.
-int64_t scalar(const std::string& path, const char* sql) {
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
-    sqlite3_stmt* s = nullptr;
-    REQUIRE(sqlite3_prepare_v2(db, sql, -1, &s, nullptr) == SQLITE_OK);
-    REQUIRE(sqlite3_step(s) == SQLITE_ROW);
-    int64_t v = sqlite3_column_int64(s, 0);
-    sqlite3_finalize(s);
-    sqlite3_close(db);
-    return v;
 }
 
 // The two lenses the coexistence tests use: same chart, same cap, different
@@ -694,7 +683,7 @@ TEST_CASE("a write under rules A keeps the rules-B row") {
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
         store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
     }
-    const int64_t one_row_refs = scalar(db, "SELECT COUNT(*) FROM path_refs");
+    const int64_t one_row_refs = scalar_on_file(db,"SELECT COUNT(*) FROM path_refs");
     REQUIRE(one_row_refs > 0);
 
     {
@@ -704,7 +693,7 @@ TEST_CASE("a write under rules A keeps the rules-B row") {
         CHECK(store.get_record(key).status == RecordStatus::Ready);
     }
     // Each row still holds its own refs, so the rules-B row's paths stay.
-    CHECK(scalar(db, "SELECT COUNT(*) FROM path_refs") == 2 * one_row_refs);
+    CHECK(scalar_on_file(db,"SELECT COUNT(*) FROM path_refs") == 2 * one_row_refs);
     {
         RecordStore store(db, core::RulesStamp::of(other));
         const RecordLookup lookup = store.get_record(key);
@@ -729,13 +718,13 @@ TEST_CASE("reindex leaves a row made under other rules untouched") {
         store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
     }
     const int64_t score = fixture().record.best_path().totalscore();
-    REQUIRE(scalar(db, "SELECT score FROM results") == score);
+    REQUIRE(scalar_on_file(db,"SELECT score FROM results") == score);
     {
         RecordStore store(db);
         CHECK(store.reindex() == 0);
     }
-    CHECK(scalar(db, "SELECT COUNT(*) FROM results WHERE score IS NOT NULL") == 1);
-    CHECK(scalar(db, "SELECT score FROM results") == score);
+    CHECK(scalar_on_file(db,"SELECT COUNT(*) FROM results WHERE score IS NOT NULL") == 1);
+    CHECK(scalar_on_file(db,"SELECT score FROM results") == score);
     std::remove(db.c_str());
 }
 
@@ -1099,8 +1088,8 @@ TEST_CASE("a path stored under two lenses is stored once") {
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
         store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensA}, at_cap_ms10(4));
     }
-    const int64_t nodes = scalar(path, "SELECT COUNT(*) FROM paths");
-    const int64_t refs = scalar(path, "SELECT COUNT(*) FROM path_refs");
+    const int64_t nodes = scalar_on_file(path,"SELECT COUNT(*) FROM paths");
+    const int64_t refs = scalar_on_file(path,"SELECT COUNT(*) FROM path_refs");
     REQUIRE(nodes > 0);
     CHECK(refs == nodes);
 
@@ -1110,8 +1099,8 @@ TEST_CASE("a path stored under two lenses is stored once") {
     }
     // The second result names the identical nodes, so only the references
     // grow: a path is written once no matter how many results point at it.
-    CHECK(scalar(path, "SELECT COUNT(*) FROM paths") == nodes);
-    CHECK(scalar(path, "SELECT COUNT(*) FROM path_refs") == refs * 2);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths") == nodes);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM path_refs") == refs * 2);
     std::remove(path.c_str());
 }
 
@@ -1128,7 +1117,7 @@ TEST_CASE("replacing one lens's result leaves the other's bytes untouched") {
         before = record_bytes(
             *store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}).record);
     }
-    const int64_t shared = scalar(path, "SELECT COUNT(*) FROM paths");
+    const int64_t shared = scalar_on_file(path,"SELECT COUNT(*) FROM paths");
     REQUIRE(shared > 0);
 
     {
@@ -1142,7 +1131,7 @@ TEST_CASE("replacing one lens's result leaves the other's bytes untouched") {
         CHECK(record_bytes(*store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB})
                                 .record) == before);
     }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM paths") == shared);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths") == shared);
 
     // With B replaced too, nothing points at those nodes and they go.
     {
@@ -1152,8 +1141,8 @@ TEST_CASE("replacing one lens's result leaves the other's bytes untouched") {
         redone.allzero_paths.clear();
         store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}, redone);
     }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM paths") == 0);
-    CHECK(scalar(path, "SELECT COUNT(*) FROM path_refs") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM path_refs") == 0);
     std::remove(path.c_str());
 }
 
@@ -1171,9 +1160,9 @@ TEST_CASE("a current-version write purges the chart's old-version rows and their
         }
         CHECK(store.counts().second == 2);
     }
-    const int64_t others = scalar(path, "SELECT COUNT(*) FROM paths WHERE hyhash='other'");
+    const int64_t others = scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='other'");
     REQUIRE(others > 0);
-    REQUIRE(scalar(path, "SELECT COUNT(*) FROM paths WHERE hyhash='h'") == others);
+    REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='h'") == others);
 
     {
         RecordStore store(path);
@@ -1191,8 +1180,8 @@ TEST_CASE("a current-version write purges the chart's old-version rows and their
               RecordStatus::Stale);
         CHECK(store.counts().second == 2);
     }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM paths WHERE hyhash='h'") == 0);
-    CHECK(scalar(path, "SELECT COUNT(*) FROM paths WHERE hyhash='other'") == others);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='h'") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='other'") == others);
     std::remove(path.c_str());
 }
 
@@ -1247,7 +1236,7 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
         CHECK(store.get_record(key).status == RecordStatus::Ready);
     }
     // The old table is left alone: nothing read it and nothing rewrote it.
-    CHECK(scalar(path, "SELECT COUNT(*) FROM records") == 1);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM records") == 1);
     std::remove(path.c_str());
 }
 
@@ -1263,7 +1252,7 @@ TEST_CASE("store: a new database carries 0 in user_version and reads its own row
         store.add_song("h", "Song", "Artist", "Charter", fixture().song);
         store.add_record(key, at_cap(4));
     }
-    CHECK(scalar(path, "PRAGMA user_version") == 0);
+    CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
     {
         RecordStore reopened(path);
         CHECK(reopened.get_record(key).status == RecordStatus::Ready);
@@ -1409,9 +1398,9 @@ TEST_CASE("a schema 2 database keeps its results, filed under Clone Hero 1.1") {
         seed.add_song("h", "Song", "Artist", "Charter", fixture().song);
         seed.add_record(key, at_cap(4));
     }
-    id_before = scalar(path, "SELECT result_id FROM results");
+    id_before = scalar_on_file(path,"SELECT result_id FROM results");
     downgrade_to_schema2(path);
-    REQUIRE(scalar(path, "SELECT COUNT(*) FROM pragma_table_info('results')"
+    REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM pragma_table_info('results')"
                          " WHERE name='legacy_fills'") == 0);
     {
         RecordStore store(path);
@@ -1420,9 +1409,9 @@ TEST_CASE("a schema 2 database keeps its results, filed under Clone Hero 1.1") {
         CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLegacy}).status ==
               RecordStatus::NotAnalyzed);
     }
-    CHECK(scalar(path, "SELECT result_id FROM results") == id_before);
-    CHECK(scalar(path, "SELECT legacy_fills FROM results") == 0);
-    CHECK(scalar(path, "SELECT COUNT(*) FROM sqlite_master WHERE name='results_schema2'") == 0);
+    CHECK(scalar_on_file(path,"SELECT result_id FROM results") == id_before);
+    CHECK(scalar_on_file(path,"SELECT legacy_fills FROM results") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master WHERE name='results_schema2'") == 0);
     std::remove(path.c_str());
 }
 
@@ -1465,17 +1454,17 @@ TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
     // of each row's id and blob to compare against afterwards.
     downgrade_to_schema3(path);
     exec_on_file(path, "CREATE TABLE kept AS SELECT result_id, structure FROM results;");
-    REQUIRE(scalar(path, "SELECT COUNT(*) FROM pragma_table_info('results')"
+    REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM pragma_table_info('results')"
                          " WHERE name='rules_fp'") == 0);
     {
         RecordStore store(path);
         CHECK(store.get_record(at4).status == RecordStatus::Ready);
         CHECK(store.get_record(at8).status == RecordStatus::Stale);
     }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM results") == 2);
-    CHECK(scalar(path, "SELECT COUNT(*) FROM results r JOIN kept k"
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results") == 2);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results r JOIN kept k"
                        " ON k.result_id = r.result_id AND k.structure = r.structure") == 2);
-    CHECK(scalar(path, "SELECT COUNT(DISTINCT rules_fp) FROM results") == 2);
+    CHECK(scalar_on_file(path,"SELECT COUNT(DISTINCT rules_fp) FROM results") == 2);
     // The column holds each row's own rules: a default-rules write at 8 bars
     // keeps the rules-B row there, which then reads Ready under its rules.
     {
@@ -1667,7 +1656,7 @@ TEST_CASE("a file store runs in WAL mode with an index on chart names") {
     sqlite3_finalize(s);
     sqlite3_close(db);
     CHECK(mode == "wal");
-    CHECK(scalar(path, "SELECT COUNT(*) FROM sqlite_master"
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master"
                        " WHERE type='index' AND name='charts_by_name'") == 1);
     std::remove(path.c_str());
 }
@@ -1678,7 +1667,7 @@ TEST_CASE("the library table's md5 index exists, so each save's copy check reads
     const std::string path = testtemp::temp_path("md5_index", ".db");
     std::remove(path.c_str());
     { RecordStore store(path); }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM sqlite_master"
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master"
                        " WHERE type='index' AND name='charts_by_md5'") == 1);
 
     // The plan for the query every save runs is a SEARCH by that index, not
@@ -2020,7 +2009,7 @@ TEST_CASE("the first open deletes the results Auto saved, and their paths, once"
         CHECK(store.get_record(auto_only).status == RecordStatus::Stale);
         CHECK(store.counts().second == 4);
     }
-    REQUIRE(scalar(path, "SELECT COUNT(*) FROM paths WHERE hyhash='a'") > 0);
+    REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='a'") > 0);
     // A database Hydra 1.8.4 wrote has no mark yet.
     exec_on_file(path, "DELETE FROM meta WHERE key='auto_results_deleted'");
 
@@ -2037,10 +2026,10 @@ TEST_CASE("the first open deletes the results Auto saved, and their paths, once"
     }
     // The chart that held only an Auto row has no paths left; the other
     // chart's paths are still used by its kept rows.
-    CHECK(scalar(path, "SELECT COUNT(*) FROM paths WHERE hyhash='a'") == 0);
-    CHECK(scalar(path, "SELECT COUNT(*) FROM path_refs WHERE hyhash='a'") == 0);
-    CHECK(scalar(path, "SELECT COUNT(*) FROM paths WHERE hyhash='h'") > 0);
-    CHECK(scalar(path, "SELECT COUNT(*) FROM meta WHERE key='auto_results_deleted'") == 1);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='a'") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM path_refs WHERE hyhash='a'") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='h'") > 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM meta WHERE key='auto_results_deleted'") == 1);
 
     // Marked done: a later open never deletes again.
     {
@@ -2072,7 +2061,7 @@ TEST_CASE("a start with a bad rules file leaves the Auto results for the next go
         RecordStore store(path, core::RulesStamp::none());
         CHECK(store.counts().second == 1);
     }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM meta WHERE key='auto_results_deleted'") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM meta WHERE key='auto_results_deleted'") == 0);
     {
         RecordStore store(path);
         CHECK(store.counts().second == 0);
@@ -2181,14 +2170,14 @@ TEST_CASE("a database from before the stars column gets its stars filled on open
         CHECK(got[0].summary.stars == expected);
         CHECK(got[1].status == RecordStatus::Stale);
     }
-    CHECK(scalar(path, "SELECT stars FROM results WHERE hyhash='ready'") == expected);
+    CHECK(scalar_on_file(path,"SELECT stars FROM results WHERE hyhash='ready'") == expected);
     // The Stale row is left exactly as it was: no stars, and its other
     // summaries kept rather than blanked.
-    CHECK(scalar(path, "SELECT COUNT(*) FROM results WHERE hyhash='stale'"
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results WHERE hyhash='stale'"
                        " AND stars IS NULL AND score IS NOT NULL") == 1);
     // A second open finds nothing left to fill and changes nothing.
     { RecordStore again(path); }
-    CHECK(scalar(path, "SELECT stars FROM results WHERE hyhash='ready'") == expected);
+    CHECK(scalar_on_file(path,"SELECT stars FROM results WHERE hyhash='ready'") == expected);
     std::remove(path.c_str());
 }
 
@@ -2207,13 +2196,13 @@ TEST_CASE("under rules that make every row Stale, the stars fill changes nothing
     const int64_t score = fixture().record.best_path().totalscore();
 
     { RecordStore bad(path, core::RulesStamp::none()); }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM results WHERE stars IS NULL") == 1);
-    CHECK(scalar(path, "SELECT score FROM results WHERE hyhash='h'") == score);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results WHERE stars IS NULL") == 1);
+    CHECK(scalar_on_file(path,"SELECT score FROM results WHERE hyhash='h'") == score);
 
     { RecordStore good(path); }
-    CHECK(scalar(path, "SELECT stars FROM results WHERE hyhash='h'") ==
+    CHECK(scalar_on_file(path,"SELECT stars FROM results WHERE hyhash='h'") ==
           path_stars(fixture().record.best_path()));
-    CHECK(scalar(path, "SELECT score FROM results WHERE hyhash='h'") == score);
+    CHECK(scalar_on_file(path,"SELECT score FROM results WHERE hyhash='h'") == score);
     std::remove(path.c_str());
 }
 
@@ -2271,7 +2260,7 @@ TEST_CASE("an analysis saves the song's length, and an unstamped length reads as
         CHECK(store.get_record(key).song_length_ms == 5000.0);
         store.fill_song_length("unknown", 5.0);
     }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM songmeta WHERE hyhash = 'unknown'") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM songmeta WHERE hyhash = 'unknown'") == 0);
     std::remove(path.c_str());
 }
 
@@ -2369,7 +2358,7 @@ TEST_CASE("a file from before AL loses its songlength table and its last-note le
         CHECK_FALSE(got.song_length_read);
         CHECK_FALSE(got.song_length_ms.has_value());
     }
-    CHECK(scalar(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'songlength'") == 0);
+    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master WHERE name = 'songlength'") == 0);
     std::remove(path.c_str());
 }
 
@@ -2541,7 +2530,7 @@ ChartRows rows_of(const std::string& path, const std::string& hash) {
     auto count = [&](const char* table, const char* column) {
         const std::string sql = std::string("SELECT COUNT(*) FROM ") + table + " WHERE " +
                                 column + " = '" + hash + "'";
-        return scalar(path, sql.c_str());
+        return scalar_on_file(path,sql.c_str());
     };
     return ChartRows{count("results", "hyhash"), count("songmeta", "hyhash"),
                      count("dynamics", "md5"), count("path_refs", "hyhash"),
