@@ -498,8 +498,9 @@ public:
 
     // How many library rows a chart on a page counts as, read from a
     // library_copies map keyed the way `md5` is. A page lists only charts it
-    // holds a result for, so one the library doesn't list (a hydra_batch-only
-    // database, a chart removed since the scan) still counts once (D77). This
+    // holds a result for, so one the library doesn't list (a result
+    // hydra_batch saved from folder arguments, which leave the library
+    // alone) still counts once (D77). This
     // is the one place that rule lives; every page's chart count reads it.
     static int copies_of(const std::unordered_map<std::string, int>& copies,
                          const std::string& md5);
