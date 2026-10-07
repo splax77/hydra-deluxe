@@ -85,10 +85,10 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     // later one:
     //   - sqout_position(...) == After means the chord's tick is past the
     //     squeezed-out chord's tick, and ticks only grow.
-    //   - Past the deactivation node the offset is row.ms - deact_ms, and ms
-    //     never falls as ticks grow (positive tempos). counted_without_squeeze
-    //     is true for every offset up to a threshold and false above it
-    //     (offset <= 0 || offset < leeway), so once false it stays false.
+    //   - Past the deactivation node the offset only grows, since ms never
+    //     falls as ticks grow (positive tempos), and
+    //     core::counted_without_squeeze is true up to a threshold and false
+    //     above it, so once false it stays false.
     //   - The chord is the squeezed-out chord and its sqout_points are 0 (a
     //     one-note chord under the first-note rule). Every later chord is
     //     past it, so sqout_position(...) == After from then on.
