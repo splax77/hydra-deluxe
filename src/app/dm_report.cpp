@@ -260,7 +260,8 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             // A Ready result whose analysis kept no path (D51 call 11).
             row.status = "no paths";
         } else {
-            row.status = library.count(s.identifier) ? "not analyzed" : "not in library";
+            row.status = report::library_lists(library, s.identifier) ? "not analyzed"
+                                                                       : "not in library";
         }
         if (!base) row.status = "other speed";
         rows.push_back(std::move(row));

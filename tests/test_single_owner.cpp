@@ -4985,12 +4985,8 @@ const std::vector<OwnerRule>& rules() {
 }
 
 const std::vector<KnownCopy>& known_copies() {
-    static const std::vector<KnownCopy> k = {
-        {"Does the library list this chart?", "src/app/dm_report.cpp",
-         "row.status = library.count(s.identifier) ? \"not analyzed\" : \"not in library\";",
-         "a follow-up to task som-a: collect_dm_rows calls report::library_lists (dm_report.cpp "
-         "was outside som-a's files)"},
-    };
+    // Empty: every copy a rule once tolerated has been removed.
+    static const std::vector<KnownCopy> k = {};
     return k;
 }
 

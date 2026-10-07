@@ -93,8 +93,7 @@ std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& 
 
 // Whether the library lists the chart `hash` names, given
 // library_copies_by_hash's map and a hash keyed the same way. The one answer
-// to "is this chart in the library" for the path report and records_by_hash
-// (D87 item 4, D92).
+// to "is this chart in the library" for every page (D87 item 4, D92).
 bool library_lists(const std::unordered_map<std::string, int>& library,
                    const std::string& hash);
 
