@@ -245,11 +245,11 @@ std::string sig_of(const DirEntry& notes, const DirEntry* ini) {
     return sig;
 }
 
-// The rescan cache's one "unchanged" test: a fingerprint was stored and the
-// files on disk still give the same one. The scan's cache lookup and
-// chart_changed_since both ask it.
+// The rescan cache's one "unchanged" test: a fingerprint was stored that can
+// show anything (sig_can_show_unchanged) and the files on disk still give the
+// same one. The scan's cache lookup and chart_changed_since both ask it.
 bool sig_unchanged(const std::string& stored, const std::string& now) {
-    return !stored.empty() && stored == now;
+    return sig_can_show_unchanged(stored) && stored == now;
 }
 
 // The kind of chart a file is, by its name. Anything that is not an archive
@@ -284,6 +284,10 @@ std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEn
 }
 
 }  // namespace
+
+// An empty fingerprint is what a gone file or a folder chart without its
+// song.ini gives (chart_files_sig), so matching it proves nothing.
+bool sig_can_show_unchanged(const std::string& sig) { return !sig.empty(); }
 
 // Chart libraries are UTF-8 in practice; a leading BOM is stripped and
 // anything else is read byte-for-byte rather than replicating Python's
@@ -360,7 +364,7 @@ std::optional<ChartNow> chart_changed_since(const std::string& notespath,
                                             const std::string& stored_sig) {
     // One listing, and the sig before the hash, as the scan reads them.
     const std::string now = chart_files_sig(notespath);
-    if (!now.empty() && sig_unchanged(stored_sig, now)) return std::nullopt;
+    if (sig_unchanged(stored_sig, now)) return std::nullopt;
     return ChartNow{hash_chart_file(notespath), now};
 }
 
