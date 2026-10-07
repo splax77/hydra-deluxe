@@ -47,6 +47,11 @@ check_ipo_supported(RESULT HYDRA_IPO_SUPPORTED OUTPUT HYDRA_IPO_OUTPUT LANGUAGES
 if(HYDRA_IPO_SUPPORTED)
     message(STATUS "Link-time optimization (IPO): supported, on for Release")
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+    # Plain /LTCG, never the incremental kind. The Visual Studio generator only
+    # sets WholeProgramOptimization, and MSBuild turns that into
+    # /LTCG:incremental, whose cache files (.iobj, .ipdb) went stale and broke
+    # links or tests (CMake issue 20484; docs/development.md).
+    add_link_options($<$<CONFIG:Release>:/LTCG>)
 else()
     message(STATUS "Link-time optimization (IPO): not supported, off: ${HYDRA_IPO_OUTPUT}")
 endif()

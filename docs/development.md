@@ -120,6 +120,20 @@ It makes every link slower, several seconds for `Hydra.exe` after a one-file
 change, and the program a little faster. It shipped only after a whole-library
 run stored byte-identical results with it (see "Proving identical results").
 
+The link uses plain `/LTCG`, which redoes the whole program's code on every
+link. `CMakeLists.txt` names it on purpose. Without it, CMake's Visual Studio
+generator leaves the choice to MSBuild, and MSBuild picks the incremental kind
+(`/LTCG:incremental`, CMake issue 20484). That kind keeps a cache beside each
+exe (`.iobj` and `.ipdb` files) and redoes only what it thinks changed. On
+2026-10-07, its first day on, that cache went stale about seven times: links
+failed with C1001 or LNK1000, or `hydra_tests` crashed right after a build that
+said it passed. Deleting the cache fixed it every time. The exact trigger was
+not pinned down; changing a shared header and then building one target and then
+all of them did not break it in three tries. Plain `/LTCG` never reads that
+cache. MSBuild still names the files, so they still appear, but a link with
+garbage in both of them succeeded and simply rewrote them. Nothing stale can
+reach the exe, and deleting them is no longer a fix for anything.
+
 Each Release exe gets a symbol file (`.pdb`) beside it, for profilers and
 crash dumps. The exe records only the symbol file's name, never the build
 folder's path. No symbol file ships: the install rules name only the exes and
