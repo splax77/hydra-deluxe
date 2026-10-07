@@ -587,11 +587,21 @@ int bind_candidate_filter(sqlite3_stmt* s, int idx, const CapQuery& cap, const L
     return bind_cap(s, idx, cap);
 }
 
-// Rolls back the open transaction, if there still is one. Some failures (a
-// full disk, an I/O error) make sqlite roll back by itself, and a second
-// ROLLBACK would then throw over the error that caused it.
+// Whether a transaction is still open on this connection. Some failures (a
+// full disk, an I/O error) make sqlite roll the transaction back by itself,
+// so after a failure this is the one way to ask whether it still stands.
+bool transaction_open(sqlite3* db) { return !sqlite3_get_autocommit(db); }
+
+// Rolls back the open transaction, if there still is one. A second ROLLBACK
+// after sqlite rolled back by itself (see transaction_open) would throw over
+// the error that caused it.
 void rollback_if_open(sqlite3* db) {
-    if (!sqlite3_get_autocommit(db)) sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+    if (transaction_open(db)) sqlite3_exec(db, "ROLLBACK", nullptr, nullptr, nullptr);
+}
+
+// The failure every save in a lost group reports, and its COMMIT too.
+KindedError group_lost_error() {
+    return KindedError(ErrorKind::DatabaseWrite, "the save group's transaction was rolled back");
 }
 
 // The one way a stored row becomes a record: its structure blob, the path
@@ -914,9 +924,7 @@ void RecordStore::commit_save_group() {
     if (!group_open_) return;
     group_open_ = false;
     try {
-        if (group_lost_)
-            throw KindedError(ErrorKind::DatabaseWrite,
-                              "the save group's transaction was rolled back");
+        if (group_lost_) throw group_lost_error();
         if (fail_next_group_commit_) {
             fail_next_group_commit_ = false;
             throw KindedError(ErrorKind::DatabaseWrite,
@@ -1036,9 +1044,7 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
     // transaction; otherwise it is a transaction of its own.
     const bool grouped = group_open_;
     if (grouped) {
-        if (group_lost_)
-            throw KindedError(ErrorKind::DatabaseWrite,
-                              "the save group's transaction was rolled back");
+        if (group_lost_) throw group_lost_error();
         ctl("SAVEPOINT chart");
     } else {
         ctl("BEGIN");
@@ -1065,13 +1071,13 @@ void RecordStore::save_analysis(const std::string& hyhash, const std::string& re
     } catch (...) {
         if (!grouped) {
             rollback_if_open(db_);
-        } else if (sqlite3_get_autocommit(db_)) {
-            // SQLite rolled the whole group back itself (rollback_if_open says
-            // which failures do): the group is lost, not just this chart.
-            group_lost_ = true;
-        } else {
+        } else if (transaction_open(db_)) {
             sqlite3_exec(db_, "ROLLBACK TO chart", nullptr, nullptr, nullptr);
             sqlite3_exec(db_, "RELEASE chart", nullptr, nullptr, nullptr);
+        } else {
+            // SQLite rolled the whole group back itself: the group is lost,
+            // not just this chart.
+            group_lost_ = true;
         }
         throw;
     }

@@ -4572,6 +4572,23 @@ const std::vector<OwnerRule>& rules() {
          {"if (!store.save_group_open()) {", "bool save_group_open() const { return group_open_; }"},
          {},
          {}},
+        // After a failure, rollback_if_open and a grouped save_analysis both
+        // need to know whether sqlite already rolled the transaction back.
+        // Only the helper asks sqlite; record_store.cpp is not exempt as a
+        // file, so a second ask there fails like one anywhere else.
+        {"Is a transaction still open, or has sqlite already rolled it back?",
+         "transaction_open in src/store/record_store.cpp",
+         R"(sqlite3_get_autocommit\s*\()",
+         "",
+         {},
+         {},
+         "derive-once review of task W1 (finding 1)",
+         {"if (!sqlite3_get_autocommit(db)) sqlite3_exec(db, \"ROLLBACK\", nullptr, nullptr, nullptr);",
+          "} else if (sqlite3_get_autocommit(db_)) {"},
+         {"if (transaction_open(db_)) {", "} else if (transaction_open(db_)) {"},
+         {{"src/store/record_store.cpp",
+           "bool transaction_open(sqlite3* db) { return !sqlite3_get_autocommit(db); }",
+           "transaction_open, the owner: rollback_if_open and save_analysis call it"}}},
     };
     return r;
 }
