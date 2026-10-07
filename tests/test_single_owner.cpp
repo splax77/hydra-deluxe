@@ -5015,6 +5015,31 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/analysis.cpp", "thread_local std::vector<uint8_t> buf(1 << 20);",
            "stream_md5, the owner"}},
          {"src/app/analysis.cpp"}},
+        // An empty fingerprint is what a gone file or a folder chart without
+        // its song.ini gives, so it can never show a chart unchanged. The
+        // cache read, the rescan's test and the click's save all ask
+        // store::sig_can_show_unchanged, which sits in store/ so every layer
+        // can call it. Only a variable named for a fingerprint is caught, as
+        // the three callers name theirs.
+        {"Could this stored fingerprint ever show a chart unchanged?",
+         "sig_can_show_unchanged in src/store/record_store.h",
+         R"(\b(sig|stored|stored_sig|new_sig|old_sig)(\.|->)empty\(\)|\bsig\b\s*(==|!=)\s*(""|std::string\(\)))",
+         "",
+         {},
+         {},
+         "D96 (an empty fingerprint never shows a chart unchanged) and its follow-up in the "
+         "audit fix decisions",
+         {"if (sig.empty()) continue;", "return !stored.empty() && stored == now;",
+          "if (now->sig.empty()) return;", "if (it->second.sig.empty()) skip = true;",
+          "if (stored_sig.empty()) return {};"},
+         {"if (!sig_can_show_unchanged(sig)) continue;",
+          "return store::sig_can_show_unchanged(stored) && stored == now;",
+          "if (sig_of(notes, ini).size() > 3) return;"},
+         {{"src/store/record_store.h",
+           "inline bool sig_can_show_unchanged(const std::string& sig) { return !sig.empty(); }",
+           "sig_can_show_unchanged, the owner: chart_library_cache, sig_unchanged and "
+           "ViewJob::run call it"}},
+         {"src"}},
     };
     return r;
 }

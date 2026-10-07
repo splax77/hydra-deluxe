@@ -217,8 +217,9 @@ inline constexpr const char* kNoChartLibrary =
 bool lacks_chart_library(store::RecordStore& store);
 
 // The start of the sentence an empty report gives when the database holds
-// results under other settings. The app's error mapping knows the sentence
-// by it and shows it as it is.
+// results under other settings (nothing_under_settings builds the whole
+// one). The app shows it through GeneratedReport::why_empty, as
+// ReportJob::run does for every empty page (D97).
 inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under these settings";
 
 // The whole sentence an empty page gives, built once for every page that

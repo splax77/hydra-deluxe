@@ -257,6 +257,14 @@ int64_t results_rows(const ScratchPaths& paths) {
     return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results");
 }
 
+// Makes every later change to a library row fail, so a click's
+// reidentify_chart throws.
+void refuse_library_row_updates(const ScratchPaths& paths) {
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
+                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+}
+
 int64_t result_id(const ScratchPaths& paths, const std::string& md5) {
     return hydra::test::scalar_on_file(
         paths.db, "SELECT result_id FROM results WHERE hyhash = '" + md5 + "'");
@@ -368,9 +376,7 @@ TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     write_corpus_chart("click_reidfail", /*extra_note=*/true);
     const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
     REQUIRE(new_md5 != scanned.md5);
-    hydra::test::exec_on_file(paths.db,
-                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
-                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    refuse_library_row_updates(paths);
 
     click(*app, scanned);
 
@@ -423,9 +429,7 @@ TEST_CASE("a touched chart whose fingerprint save fails shows the error and save
     Sleep(20);
     write_corpus_chart("click_touchfail", /*extra_note=*/false);
     REQUIRE(hydra::app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
-    hydra::test::exec_on_file(paths.db,
-                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
-                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    refuse_library_row_updates(paths);
 
     click(*app, scanned);
 
@@ -434,6 +438,64 @@ TEST_CASE("a touched chart whose fingerprint save fails shows the error and save
     CHECK_FALSE(app->viewed.record.has_value());
     CHECK(app->selected->sig == scanned.sig);
     CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
+}
+
+namespace {
+
+// Deletes the song.ini beside a folder chart, so its files give no fingerprint.
+void remove_click_ini(const ChartLibraryEntry& chart) {
+    const std::string ini =
+        std::filesystem::path(chart.notespath).parent_path().string() + "\\song.ini";
+    REQUIRE(std::remove(ini.c_str()) == 0);
+    REQUIRE(hydra::app::chart_files_sig(chart.notespath).empty());
+}
+
+}  // namespace
+
+// D96 follow-up: a folder chart whose song.ini was deleted after the scan
+// gives no fingerprint now, and that one could never show the files unchanged
+// on a later click (store::sig_can_show_unchanged). Saving it would buy nothing
+// and cost a database write and a library reload on every click.
+TEST_CASE("clicking a touched chart that lost its song.ini leaves its library row alone") {
+    ScratchPaths paths("appstate_click_noini");
+    const ChartLibraryEntry scanned = corpus_chart("click_noini");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    remove_click_ini(scanned);
+    REQUIRE(hydra::app::hash_chart_file(scanned.notespath) == scanned.md5);
+
+    click(*app, scanned);
+
+    REQUIRE(app->viewed.ready());
+    const std::vector<ChartLibraryEntry> stored = app->store->list_chart_library(0, -1);
+    REQUIRE(stored.size() == 1);
+    CHECK(stored[0].md5 == scanned.md5);
+    CHECK(stored[0].sig == scanned.sig);
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->sig == scanned.sig);
+    CHECK(row_of(*app, scanned.md5).status == RecordStatus::Ready);
+}
+
+// The other side of the test above: an edited chart still takes its new hash
+// when its files give no fingerprint, or its results would sit under a hash
+// the file no longer has.
+TEST_CASE("clicking an edited chart that lost its song.ini still re-identifies it") {
+    ScratchPaths paths("appstate_click_editnoini");
+    const ChartLibraryEntry scanned = corpus_chart("click_editnoini");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    write_corpus_chart("click_editnoini", /*extra_note=*/true);
+    remove_click_ini(scanned);
+    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
+    REQUIRE(new_md5 != scanned.md5);
+
+    click(*app, scanned);
+
+    REQUIRE(app->viewed.ready());
+    const std::vector<ChartLibraryEntry> stored = app->store->list_chart_library(0, -1);
+    REQUIRE(stored.size() == 1);
+    CHECK(stored[0].md5 == new_md5);
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == new_md5);
+    CHECK(row_of(*app, new_md5).status == RecordStatus::Ready);
 }
 
 TEST_CASE("clicking A then B in one frame shows B, and A is never shown or saved") {

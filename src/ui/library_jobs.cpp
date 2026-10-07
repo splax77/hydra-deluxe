@@ -342,14 +342,18 @@ void ViewJob::run() {
             // chart_changed_since is the one answer, shared with the preview
             // load. A file saved again with the same content keeps its hash
             // but still hands back its new fingerprint, so the row stops
-            // asking for a hash on every click (D96).
+            // asking for a hash on every click (D96). A fingerprint that
+            // could never show the file unchanged (store::sig_can_show_unchanged)
+            // would not stop that, so it is only saved with a new hash.
             if (const std::optional<app::ChartNow> now =
                     app::chart_changed_since(song_.notespath, song_.sig)) {
                 if (now->md5.empty())
                     throw std::runtime_error("could not read " + song_.notespath);
-                out_.new_md5 = now->md5;
-                out_.new_sig = now->sig;
-                out_.files_changed = true;
+                if (now->md5 != song_.md5 || store::sig_can_show_unchanged(now->sig)) {
+                    out_.new_md5 = now->md5;
+                    out_.new_sig = now->sig;
+                    out_.files_changed = true;
+                }
             }
             const std::string& path = song_.notespath;
             throw_if_cancelled();
