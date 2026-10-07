@@ -142,25 +142,35 @@ struct ReportOptions {
     ChartAnalyzer analyze;
 };
 
+// A chart file the pass could not load or analyze. Its chart is left off the
+// page (D89 item 1).
+struct ReportFailure {
+    std::string notespath;
+    std::string error;
+};
+
 // What collect_rows found.
 struct CollectedRows {
     std::vector<ReportRow> rows;
-    // One line per chart and mode whose file failed to load or analyze,
-    // "<notespath>: <error>". That chart is left off the page.
-    std::vector<std::string> failures;
+    // One entry per file, however many chart modes failed on it.
+    std::vector<ReportFailure> failures;
 };
 
 // The page's rows from a fresh analysis (D87 item 5). The charts are the ones
-// in `library` that the store holds a Ready row for at options.cap and
+// the library lists that the store holds a Ready row for at options.cap and
 // options.lens, in every chart mode; list_records says which, and names
-// them. A result with no library row is left out (D87 item 4). Each chart
+// them. Each is analyzed from the file RecordStore::naming_copy_paths gives.
+// A result with no library row is left out (D87 item 4). Each chart
 // and mode gives up to options.max_paths rows, best score first. A chart the
 // seed holds is not analyzed again. The rest run on batch_worker_count()
 // threads; options.cancel stops the pass between charts, and the caller
 // throws the half-built result away. hit_window_ms feeds the tier labels only.
-CollectedRows collect_rows(store::RecordStore& store,
-                           const std::vector<store::ChartLibraryEntry>& library,
-                           const ReportSeed& seed, const ReportOptions& options);
+CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
+                           const ReportOptions& options);
+
+// The line the page shows under its subtitle, and hydra_report prints, when
+// charts were left out (D89 item 1). Empty when none were.
+std::string left_out_line(const std::vector<ReportFailure>& failures);
 
 // The same rows read from the stored records (store::RecordStore::for_each_blob),
 // as the report read them before D87. Kept only for the test that pins the
@@ -174,9 +184,11 @@ std::vector<ReportRow> collect_stored_rows(store::RecordStore& store, int64_t ma
 // The self-contained page: the PAGE template with subtitle/footer escaped in
 // and a JSON payload {hit_window, tiers, rows} embedded, so the page's tier
 // dropdown and stats derive from the same window the rows were labeled with.
+// `failures` are the charts the page says it left out, under its subtitle.
 std::string build_html(const std::vector<ReportRow>& rows, const std::string& subtitle,
                        const std::string& footer,
-                       double hit_window_ms = kDefaultHitWindowMs);
+                       double hit_window_ms = kDefaultHitWindowMs,
+                       const std::vector<ReportFailure>& failures = {});
 
 // ---- generate_report -------------------------------------------------------
 // The whole report in one call: counts + rows + the standard page framing
@@ -188,9 +200,16 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
 enum class EmptyReason {
     None,                  // there is a page
     NothingStored,         // the database holds no results at all
+    NoLibrary,             // it holds results, but no chart library to report on
     NothingUnderSettings,  // it holds results, but none Ready at this cap and fill rule
     Cancelled,             // the caller stopped the walk
 };
+
+// What an empty report says when the database has results but no chart
+// library (D89 item 2): the report covers library charts only.
+inline constexpr const char* kNoChartLibrary =
+    "This database has no chart library. Run hydra_batch without folder arguments, or scan "
+    "in Hydra, to build one.";
 
 // The start of the sentence an empty report gives when the database holds
 // results under other settings. The app's error mapping knows the sentence
@@ -215,16 +234,17 @@ struct GeneratedReport {
     EmptyReason empty_reason = EmptyReason::None;
     // For NothingUnderSettings, the sentence that names the settings: "Nothing
     // is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).
-    // Analyze with these settings, or change them." Empty otherwise: an empty
-    // database and a cancel keep each caller's own words.
+    // Analyze with these settings, or change them." For NoLibrary,
+    // kNoChartLibrary. Empty otherwise: an empty database and a cancel keep
+    // each caller's own words.
     std::string why_empty;
     // collect_rows' failures: charts left off the page because their file
-    // failed to load or analyze.
-    std::vector<std::string> failures;
+    // failed to load or analyze. The page names them (left_out_line).
+    std::vector<ReportFailure> failures;
 };
 
-// The library's charts (RecordStore::list_chart_library) through
-// collect_rows, with `seed`'s rows reused. hydra_report passes an empty seed.
+// The library's charts through collect_rows, with `seed`'s rows reused.
+// hydra_report passes an empty seed.
 GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options,
                                 const ReportSeed& seed = ReportSeed{});
 

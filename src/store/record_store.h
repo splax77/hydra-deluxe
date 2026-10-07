@@ -496,6 +496,11 @@ public:
     // doesn't list is absent.
     std::unordered_map<std::string, int> library_copies();
 
+    // The notes file of the copy that stands for each md5 (kNamingCopiesSql's
+    // pick), by md5: the file a pass over the library analyzes. A chart the
+    // library doesn't list is absent.
+    std::unordered_map<std::string, std::string> naming_copy_paths();
+
     // How many library rows a chart on a page counts as, read from a
     // library_copies map keyed the way `md5` is. A page lists only charts it
     // holds a result for, so one the library doesn't list (a hydra_batch-only

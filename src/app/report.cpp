@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "app/analysis.h"  // normalize_chart_hash, batch_worker_count
 #include "app/config.h"    // Settings::chartmode_key, to_analysis_settings
@@ -71,7 +72,7 @@ const char* const kBody = R"page(<div class="wrap">
 
 )page";
 
-// The payload is {hit_window, beyond_edge_ms, tiers, rows}. The tier dropdown
+// The payload is build_html's (see there). The tier dropdown
 // reads the tier table, and the Beyond chip and the "Past N ms" tile read the
 // edge C++ worked out, so they always match the bands the rows were labeled
 // with.
@@ -92,6 +93,24 @@ function tierLabel(name) {
     o.textContent = tierLabel(t.name);
     sel.appendChild(o);
   }
+}
+
+// Charts the pass couldn't read go under the subtitle, with their files
+// (D89 item 1). C++ words the line and leaves it empty when there are none.
+if (DATA.left_out) {
+  const note = document.createElement('div');
+  note.className = 'sub';
+  const line = document.createElement('p');
+  line.textContent = DATA.left_out;
+  note.appendChild(line);
+  const list = document.createElement('ul');
+  for (const file of DATA.left_out_files) {
+    const li = document.createElement('li');
+    li.textContent = file;
+    list.appendChild(li);
+  }
+  note.appendChild(list);
+  document.querySelector('header .sub').after(note);
 }
 
 const PAGE = {
@@ -353,9 +372,8 @@ std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& 
     return by_hash;
 }
 
-CollectedRows collect_rows(store::RecordStore& store,
-                           const std::vector<store::ChartLibraryEntry>& library,
-                           const ReportSeed& seed, const ReportOptions& options) {
+CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
+                           const ReportOptions& options) {
     // Fail loudly rather than list paths found under other settings.
     if (!options.run)
         throw std::invalid_argument("collect_rows: the report has no analysis settings");
@@ -367,16 +385,17 @@ CollectedRows collect_rows(store::RecordStore& store,
                                seed.max_paths < options.max_paths))
         throw std::invalid_argument("collect_rows: the batch's rows are for other settings");
 
-    // Each library chart's file, by the hash spelling a page joins on. Copies
-    // of one md5 hold the same notes, so the first listed stands for all.
-    std::unordered_map<std::string, const store::ChartLibraryEntry*> files;
-    for (const store::ChartLibraryEntry& e : library) files.emplace(normalize_chart_hash(e.md5), &e);
+    // Which file each library chart is analyzed from (RecordStore::naming_copy_paths),
+    // by the hash spelling a page joins on.
+    std::unordered_map<std::string, std::string> files;
+    for (auto& [md5, path] : store.naming_copy_paths())
+        files.emplace(normalize_chart_hash(md5), std::move(path));
     const std::unordered_map<std::string, int> copies = library_copies_by_hash(store);
 
     // One slot per chart and mode the page lists, in list_records' order.
     struct Slot {
         store::RecordListing listing;
-        const store::ChartLibraryEntry* file = nullptr;
+        const std::string* file = nullptr;
         const std::vector<ReportRow>* seeded = nullptr;  // the batch's rows, when it has them
         std::vector<ReportRow> rows;                     // this pass's rows otherwise
         std::string failure;
@@ -392,7 +411,7 @@ CollectedRows collect_rows(store::RecordStore& store,
         // A result whose chart left the library is not on the page (D87 item 4).
         if (file == files.end()) continue;
         Slot slot;
-        slot.file = file->second;
+        slot.file = &file->second;
         if (listing.chartmode == seed.chartmode) {
             const auto seeded = seed.rows.find(hash);
             if (seeded != seed.rows.end()) slot.seeded = &seeded->second;
@@ -425,14 +444,14 @@ CollectedRows collect_rows(store::RecordStore& store,
             a.slot = to_analyze[k];
             const Slot& slot = slots[a.slot];
             try {
-                const AnalysisResult ar = analyze(
-                    slot.file->notespath, mode_settings.at(slot.listing.chartmode), check_cancel);
+                const AnalysisResult ar =
+                    analyze(*slot.file, mode_settings.at(slot.listing.chartmode), check_cancel);
                 a.rows = chart_rows(ar.record, options.max_paths);
             } catch (const AnalysisCancelled&) {
                 a.cancelled = true;
             } catch (const std::exception& e) {
                 a.failed = true;
-                a.failure = slot.file->notespath + ": " + e.what();
+                a.failure = e.what();
             }
             return a;
         },
@@ -448,9 +467,12 @@ CollectedRows collect_rows(store::RecordStore& store,
     if (options.cancel && options.cancel->load()) return out;
     // Built once for the whole report, not once per row.
     const std::vector<TimingTier> tiers = timing_tiers(options.hit_window_ms);
+    // A file that failed in several chart modes is one chart left out.
+    std::unordered_set<std::string> failed_files;
     for (const Slot& slot : slots) {
         if (!slot.failure.empty()) {
-            out.failures.push_back(slot.failure);
+            if (failed_files.insert(*slot.file).second)
+                out.failures.push_back({*slot.file, slot.failure});
             continue;
         }
         // Every library copy counts (D76).
@@ -481,16 +503,33 @@ std::vector<ReportRow> collect_stored_rows(store::RecordStore& store, int64_t ma
     return rows;
 }
 
+std::string left_out_line(const std::vector<ReportFailure>& failures) {
+    if (failures.empty()) return std::string();
+    return "Left out: " +
+           hydra::counted(static_cast<int64_t>(failures.size()), "chart", "charts") +
+           " whose file couldn't be read.";
+}
+
 std::string build_html(const std::vector<ReportRow>& rows, const std::string& subtitle,
-                       const std::string& footer, double hit_window_ms) {
-    // The payload: {hit_window, beyond_edge_ms, tiers, rows}. The page builds
-    // its tier dropdown from the tiers and its Beyond chip and tile from the
-    // edge, so the embedded UI can never drift from the bands the rows were
-    // labeled with.
+                       const std::string& footer, double hit_window_ms,
+                       const std::vector<ReportFailure>& failures) {
+    // The payload: {hit_window, beyond_edge_ms, left_out, left_out_files,
+    // tiers, rows}. The page builds its tier dropdown from the tiers and its
+    // Beyond chip and tile from the edge, so the embedded UI can never drift
+    // from the bands the rows were labeled with. It shows left_out and its
+    // files under the subtitle when the line is not empty.
     std::string data;
     data.reserve(rows.size() * 160 + 256);
     data += "{\"hit_window\":" + py_repr(hit_window_ms);
     data += ",\"beyond_edge_ms\":" + beyond_edge_text(hit_window_ms);
+    data += ",\"left_out\":";
+    json_escape_into(data, left_out_line(failures));
+    data += ",\"left_out_files\":[";
+    for (size_t i = 0; i < failures.size(); ++i) {
+        if (i) data.push_back(',');
+        json_escape_into(data, failures[i].notespath);
+    }
+    data.push_back(']');
     data += ",\"tiers\":[";
     {
         bool first_tier = true;
@@ -568,8 +607,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                                 const ReportSeed& seed) {
     GeneratedReport out;
     const double w = options.hit_window_ms;
-    CollectedRows collected =
-        collect_rows(store, store.list_chart_library(0, -1), seed, options);  // -1 = no limit
+    CollectedRows collected = collect_rows(store, seed, options);
     // Cancelled part-way through: whatever the pass collected is a partial
     // library, so nothing is built from it. An empty result says "no report",
     // and the caller that set the flag already knows why.
@@ -587,6 +625,10 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         // needs to hear which (finding 105).
         if (store.counts().second == 0) {
             out.empty_reason = EmptyReason::NothingStored;
+        } else if (store.chart_library_count() == 0) {
+            // The report covers library charts only (D87 item 4).
+            out.empty_reason = EmptyReason::NoLibrary;
+            out.why_empty = kNoChartLibrary;
         } else {
             out.empty_reason = EmptyReason::NothingUnderSettings;
             out.why_empty = nothing_under_settings(
@@ -626,7 +668,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                          "far a hit lands from the Star Power end, so the two can "
                          "differ. 'Beyond' means past the " + beyond_edge_text(w) +
                          " ms window.";
-    out.html = build_html(rows, subtitle, footer, w);
+    out.html = build_html(rows, subtitle, footer, w, out.failures);
     return out;
 }
 

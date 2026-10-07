@@ -150,7 +150,7 @@ void check_cap(int cap) {
     report::ReportOptions options = fixture_options(cap);
     options.max_paths = 100;
     std::vector<report::ReportRow> rows =
-        report::collect_rows(store, library, report::ReportSeed{}, options).rows;
+        report::collect_rows(store, report::ReportSeed{}, options).rows;
     int rank1 = 0;
     for (const report::ReportRow& row : rows)
         if (row.rank == 1) ++rank1;
@@ -254,7 +254,7 @@ TEST_CASE("report rows: a tied top-score variant is optimal too") {
     report::ReportOptions options = fixture_options(4);
     options.max_paths = 100;
     const std::vector<report::ReportRow> rows =
-        report::collect_rows(store, library, report::ReportSeed{}, options).rows;
+        report::collect_rows(store, report::ReportSeed{}, options).rows;
     REQUIRE(rows.size() == 3);
     // Best score first: the root and its tied variant, then the lower root.
     CHECK(rows[0].score == rows[1].score);
@@ -371,7 +371,7 @@ TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up
     // numbers for the chart.
     size_t rows_h0 = 0, rows_h1 = 0;
     for (const report::ReportRow& r :
-         report::collect_rows(store, library, report::ReportSeed{}, options).rows)
+         report::collect_rows(store, report::ReportSeed{}, options).rows)
         ++(r.hyhash == "h0" ? rows_h0 : rows_h1);
     REQUIRE(rows_h0 > 0);
     REQUIRE(rows_h1 > 0);
@@ -416,7 +416,7 @@ TEST_CASE("report lists only the wanted cap and names it") {
     int rank1 = 0;
     options.max_paths = 100;
     for (const report::ReportRow& row :
-         report::collect_rows(store, library, report::ReportSeed{}, options).rows)
+         report::collect_rows(store, report::ReportSeed{}, options).rows)
         if (row.rank == 1) ++rank1;
     CHECK(rank1 == 1);
 
@@ -463,7 +463,7 @@ TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") 
     report::ReportOptions options = fixture_options(4);
     options.max_paths = 100;
     const auto collect = [&] {
-        return report::collect_rows(store, library, report::ReportSeed{}, options).rows;
+        return report::collect_rows(store, report::ReportSeed{}, options).rows;
     };
 
     std::vector<report::ReportRow> rows = collect();
@@ -802,7 +802,7 @@ TEST_CASE("report rows from the engine equal the rows from the stored records") 
     report::ReportOptions options = fixture_options(4);
     options.max_paths = 100;
     const report::CollectedRows engine_pass =
-        report::collect_rows(store, store.list_chart_library(0, -1), report::ReportSeed{}, options);
+        report::collect_rows(store, report::ReportSeed{}, options);
     CHECK(engine_pass.failures.empty());
     std::vector<report::ReportRow> engine = engine_pass.rows;
     std::vector<report::ReportRow> stored = report::collect_stored_rows(
@@ -896,19 +896,65 @@ TEST_CASE("cancelling the report's pass stops it and builds no page") {
     CHECK(calls.load() < charts);
 }
 
+TEST_CASE("the report analyzes the copy that names a chart the scan found twice") {
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> library;
+    const std::vector<std::string> files = fill_store(store, library, 4, 1);
+    REQUIRE(files.size() == 1);
+    // The scan listed the real file first, as "Zed", then a copy of the same
+    // md5 whose file is gone, as "Alpha". Alpha sorts first by name.
+    library[0].title = "Zed";
+    store::ChartLibraryEntry moved = library[0];
+    moved.title = "Alpha";
+    moved.notespath = testtemp::temp_path("report_moved_copy", ".chart");
+    store.rebuild_chart_library({library[0], moved});
+
+    CountingAnalyzer pass;
+    report::ReportOptions options = fixture_options(4);
+    options.analyze = pass.analyzer();
+    const report::GeneratedReport page = report::generate_report(store, options);
+    CHECK(pass.paths == std::vector<std::string>{files[0]});
+    CHECK(page.failures.empty());
+    CHECK(page.records == 2);  // both copies count (D76)
+}
+
+TEST_CASE("a report on results with no chart library says the library is missing (D89)") {
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> library;
+    store_tied(store, library, "t", 4);
+    store.rebuild_chart_library({});
+
+    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
+    CHECK(page.rows == 0);
+    CHECK(page.html.empty());
+    CHECK(page.empty_reason == report::EmptyReason::NoLibrary);
+    CHECK(page.why_empty ==
+          "This database has no chart library. Run hydra_batch without folder arguments, or "
+          "scan in Hydra, to build one.");
+}
+
 TEST_CASE("a chart whose file fails to load is left off the page and listed") {
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
     REQUIRE(fill_store(store, library, 4, 2).size() == 2);
     const std::string missing = testtemp::temp_path("report_missing", ".chart");
+
+    // No failures: the page says nothing about charts left out.
+    CHECK(report::generate_report(store, fixture_options(4)).html.find("Left out:") ==
+          std::string::npos);
+
     library[1].notespath = missing;
     store.rebuild_chart_library(library);
-
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     CHECK(page.records == 1);
     CHECK(page.html.find("Title 1") == std::string::npos);
     REQUIRE(page.failures.size() == 1);
-    CHECK(page.failures[0].rfind(missing + ": ", 0) == 0);
+    CHECK(page.failures[0].notespath == missing);
+    CHECK_FALSE(page.failures[0].error.empty());
+    // D89 item 1: the page names the chart it left out, and its file.
+    CHECK(page.html.find("Left out: 1 chart whose file couldn") != std::string::npos);
+    CHECK(page.html.find(std::filesystem::u8path(missing).filename().u8string()) !=
+          std::string::npos);
 
     // A chart mode no settings spell is an error, not a skipped chart.
     store_tied(store, library, "odd", 4, false, std::string("Legendary Drums, 3x Bass"));

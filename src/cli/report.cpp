@@ -103,9 +103,10 @@ int report_main() {
     store->close();
 
     // No page: generate_report says why. An empty database keeps the tool's
-    // own sentence; results stored under other settings name the settings.
+    // own sentence; results stored under other settings name the settings,
+    // and results with no chart library say so.
     if (report.rows == 0) {
-        if (report.empty_reason == hydra::app::report::EmptyReason::NothingUnderSettings)
+        if (!report.why_empty.empty())
             std::printf("%s\n", report.why_empty.c_str());
         else
             std::printf("No records stored yet. Run hydra_batch first.\n");
@@ -127,6 +128,12 @@ int report_main() {
 
     std::printf("Wrote %s to %s\n",
                 hydra::counted(report.rows, "path row", "path rows").c_str(), out.c_str());
+    // The charts the page says it left out, with their files (D89 item 1).
+    if (!report.failures.empty()) {
+        std::printf("%s\n", hydra::app::report::left_out_line(report.failures).c_str());
+        for (const hydra::app::report::ReportFailure& f : report.failures)
+            std::printf("  %s\n", f.notespath.c_str());
+    }
 
     if (open_when_done) {
         // Hand the page to the default browser (the same call the GUI's

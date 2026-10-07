@@ -1118,7 +1118,26 @@ const std::vector<OwnerRule>& rules() {
          {{"src/store/record_store.h",
            "\"(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts\"",
            "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
+          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"},
+          {"src/store/record_store.cpp", "\" AS c JOIN charts AS p ON p.rowid = c.\\\"MIN(rowid)\\\"\";",
+           "naming_copy_paths joins kNamingCopiesSql's own pick back to its row"}}},
+        // A pass over the library that picks a chart's file from its own
+        // listing, instead of the naming copy, can open another copy's file
+        // than the batch did (storage-T3 review, finding 1).
+        {"Which library copy of a chart does a pass analyze?",
+         "kNamingCopiesSql in src/store/record_store.h (the naming copy), read through "
+         "RecordStore::naming_copy_paths",
+         R"(\.emplace\(normalize_chart_hash\(\w+\.md5\),\s*&\w+\))",
+         "",
+         {},
+         {},
+         "D51 call 10, D63 and D76 (storage-T3 review, finding 1)",
+         {"for (const store::ChartLibraryEntry& e : library) files.emplace(normalize_chart_hash(e.md5), &e);",
+          "by_hash.emplace(normalize_chart_hash(entry.md5), &entry);"},
+         {"const auto naming = naming_copy_files.find(normalize_chart_hash(listing.hyhash));",
+          "files.emplace(normalize_chart_hash(md5), std::move(path));"},
+         {},
+         {"src"}},
         // A stored row turned into a record outside decode_record, which
         // also sets the record's fill rule.
         {"Where does record_store.cpp turn a stored row into a record?",
