@@ -4,14 +4,13 @@
 //     hydra_batch                    # every folder in the app's settings; saves the scan as the library
 //     hydra_batch <folder> [...]     # specific folders instead; the library is left alone
 //     hydra_batch --redo             # re-analyze charts already stored
-//     hydra_batch --reindex          # only rebuild sort columns, no analysis
 //     hydra_batch --db <path>        # target a specific database
 //     hydra_batch --legacy-fills     # score fills by Clone Hero 1.0's rule
 //     hydra_batch --rules <path>     # rule choices from this file, not the exe's hydra_rules.ini
 //
 // --legacy-fills needs its own --db, and each run stamps its database with the
 // rule it used; a run whose rule disagrees with an existing stamp exits 2
-// without writing. --reindex never stamps. Compare two such databases with
+// without writing. Compare two such databases with
 // hydra_fillcompare. Every result now carries its rule in its key, so the app
 // keeps 1.0 and 1.1 results side by side in hydra.db; these two guards are the
 // command line's behavior from before that, kept as it was (docs/adr/0010).
@@ -88,7 +87,7 @@ int batch_main() {
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
 
-    bool redo = false, reindex_only = false, legacy_fills = false;
+    bool redo = false, legacy_fills = false;
     std::optional<std::string> dbpath;
     std::optional<std::string> rulespath;
     std::vector<std::string> folder_args;
@@ -96,7 +95,6 @@ int batch_main() {
     for (int i = 1; i < argc; ++i) {
         const std::string& arg = args[i];
         if (arg == "--redo") redo = true;
-        else if (arg == "--reindex") reindex_only = true;
         else if (arg == hydra::app::kLegacyFillsFlag) legacy_fills = true;
         else if (arg == "--db" && i + 1 < argc) dbpath = args[++i];
         else if (arg == "--rules" && i + 1 < argc) rulespath = args[++i];
@@ -144,15 +142,6 @@ int batch_main() {
         return hydra::app::tool_error(e, 2);
     }
     hydra::store::RecordStore& store = *store_ptr;
-
-    // Reindexing only re-reads stored rows. It scores nothing, so it must not
-    // relabel the file: a Clone Hero 1.0 database stays stamped ch10.
-    if (reindex_only) {
-        std::printf("Rebuilding sort columns from stored records...\n");
-        int n = store.reindex();
-        std::printf("Reindexed %s.\n", hydra::counted(n, "record", "records").c_str());
-        return 0;
-    }
 
     // One database holds one fill rule (docs/adr/0010). Which rule a file
     // holds is RecordStore::stamped_fill_rule's answer. The raw stamp is read

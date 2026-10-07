@@ -10,7 +10,7 @@
 //             --acts, typed by hand, or from --path, read straight out of a
 //             file `dump` or `target` wrote so that nothing is retyped and
 //             the squeeze-out offsets survive.
-//   dump      Read the paths a record already holds out of the database, with
+//   dump      Analyze the chart and print the paths the engine found, with
 //             each activation's deactivation node resolved to a tick — the
 //             input `score` wants.
 //   target    Hand the engine an activation set -- "activate at exactly these
@@ -34,11 +34,8 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
-#include <system_error>
 #include <memory>
 #include <optional>
-#include <process.h>
-#include <sqlite3.h>
 #include <string>
 #include <vector>
 
@@ -55,7 +52,6 @@
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "search/pather.h"
-#include "store/record_store.h"
 
 using namespace hydra;
 using json = nlohmann::json;
@@ -67,7 +63,6 @@ namespace {
 struct Args {
     std::string command;
     std::string chart;
-    std::string db;
     std::string out;
     // The setting flags. Each is absent until typed: settings_from starts
     // from app::Settings, the app's own defaults, and changes only these.
@@ -83,7 +78,6 @@ struct Args {
     int index = 0;      // which entry of that file's "paths" array
     std::string ticks;
     bool pretty = false;
-    bool no_analyze = false;
     bool legacy_fills = false;
     std::string rules_path;  // --rules; empty = hydra_rules.ini next to the exe
     core::Rules rules;       // loaded once in main, before any command runs
@@ -96,9 +90,9 @@ void usage() {
         "                     [--path <dump-or-target.json>] [--index N]\n"
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy]\n"
-        "  hydra_replay dump  --chart <file> --db <path> [--cap N]\n"
+        "  hydra_replay dump  --chart <file> [--cap N]\n"
         "                     [--ms N|off] [--depth-mode scores|points] [--depth N]\n"
-        "                     [--out <json>] [--pretty] [--no-analyze] [--legacy-fills]\n"
+        "                     [--out <json>] [--pretty] [--legacy-fills]\n"
         "  hydra_replay target --chart <file> --ticks \"t1,t2,...\" [--cap N]\n"
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy] [--legacy-fills]\n"
@@ -116,11 +110,8 @@ void usage() {
         "warnings are also in the JSON, as \"warnings\".\n"
         "score's JSON also carries \"sections\": the chart's practice sections, "
         "each with tick, ms, and name.\n"
-        "dump copies the database to a per-process file under %%TEMP%% before\n"
-        "reading it, so a running Hydra.exe is never disturbed; the snapshot is\n"
-        "deleted again when dump finishes. If the stored record is missing or\n"
-        "stale, dump analyzes the chart fresh instead of failing (JSON field\n"
-        "\"source\" says which happened); --no-analyze turns that off.\n"
+        "dump analyzes the chart every time and reads no database; its JSON\n"
+        "field \"source\" is always \"analyzed\".\n"
         "target asks the engine to price one specific path: activate at exactly\n"
         "the --ticks fills and nowhere else. Its JSON carries dump's \"paths\"\n"
         "shape plus \"realized\"; when that is false, \"failed_tick\" names the\n"
@@ -128,8 +119,7 @@ void usage() {
         "the leading ticks it did manage.\n"
         "--legacy-fills prices the chart under Clone Hero 1.0's fill deadline,\n"
         "which is what a 1.0 run was played under, the same as the app's\n"
-        "\"1.0 fills\" setting. dump then reads the stored 1.0 row when the\n"
-        "database has one, and analyzes fresh when it does not, like any dump.\n"
+        "\"1.0 fills\" setting.\n"
         "Every command takes --rules <file>: the rule choices to price under\n"
         "(default: hydra_rules.ini next to the exe). A bad file exits with 2.\n"
         "JSON is printed compact by default; --pretty indents it.\n",
@@ -440,79 +430,12 @@ int cmd_score(const Args& a, const app::Settings& s) {
 
 // ---- dump ----------------------------------------------------------------
 
-// A private snapshot of the database. The user's Hydra.exe holds the real
-// file open, and RecordStore opens read-write (it creates tables and can
-// migrate), so reading the original in place could block or change it. If
-// the snapshot cannot be made, this throws rather than silently falling back
-// to the live file -- opening it read-write out from under a running Hydra
-// is exactly what the snapshot exists to prevent.
-std::string snapshot_db(const std::string& src) {
-    std::error_code ec;
-    const std::filesystem::path tmp = std::filesystem::temp_directory_path(ec);
-    if (ec)
-        throw std::runtime_error(
-            "cannot make a snapshot of the database (no temp directory): " +
-            ec.message() + "; refusing to open the live database " + src);
-
-    const std::string dst =
-        (tmp / ("hydra_replay_snapshot_" + std::to_string(_getpid()) + ".db"))
-            .u8string();
-
-    // SQLite's own backup, not a file copy. The database runs in WAL mode, so
-    // recent commits can sit in the -wal file beside it until a checkpoint,
-    // and a copy of the main file alone would miss them. The backup reads
-    // through SQLite and gets one consistent snapshot, whatever the app is
-    // doing (https://www.sqlite.org/backup.html).
-    sqlite3* from = nullptr;
-    if (hydra::store::open_sqlite(src, &from, SQLITE_OPEN_READONLY) != SQLITE_OK) {
-        sqlite3_close(from);
-        throw std::runtime_error("cannot read database: " + src);
-    }
-    std::filesystem::remove(hydra::os_path(dst), ec);
-    sqlite3* to = nullptr;
-    if (hydra::store::open_sqlite(dst, &to, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) !=
-        SQLITE_OK) {
-        sqlite3_close(to);
-        sqlite3_close(from);
-        throw std::runtime_error(
-            "cannot make a snapshot of the database (cannot write " + dst +
-            "); refusing to open the live database " + src);
-    }
-    sqlite3_backup* backup = sqlite3_backup_init(to, "main", from, "main");
-    const int rc = backup ? sqlite3_backup_step(backup, -1) : SQLITE_ERROR;
-    sqlite3_backup_finish(backup);
-    sqlite3_close(to);
-    sqlite3_close(from);
-    if (rc != SQLITE_DONE)
-        throw std::runtime_error(
-            "cannot make a snapshot of the database (copy to " + dst +
-            " failed); refusing to open the live database " + src);
-    std::printf("(read from a snapshot at %s)\n", dst.c_str());
-    return dst;
-}
-
-// dump's JSON. Written once here because the paths can come from a stored row
-// or from a fresh analysis, and both have to print the same shape.
-int emit_dump(const Args& a, const app::Settings& s, const std::string& hyhash,
-              const std::string& source, const HydraRecord& rec,
-              const SongTiming& timing) {
-    const json paths = paths_json(rec.all_paths(), timing);
-
-    emit(json{{"hyhash", hyhash},
-              {"chartmode", s.chartmode_key()},
-              {"source", source},
-              {"sp_cap", rec.sp_cap ? *rec.sp_cap : -1},
-              {"result", result_json(rec)},
-              {"paths", paths}},
-         a.out, a.pretty);
-    return 0;
-}
-
-// `s` is settings_from(a). With --legacy-fills it keys and analyzes under Clone
-// Hero 1.0's fill deadline (docs/adr/0010), so a stored 1.0 row is read like
-// any other. Nothing is written back: dump and target never change a database.
+// `s` is settings_from(a). With --legacy-fills it analyzes under Clone Hero
+// 1.0's fill deadline (docs/adr/0010). dump reads no database (D87): the paths
+// come from app::analyze_chart_file, the same analysis a click in the app runs.
+// It only prints; nothing is stored.
 int cmd_dump(const Args& a, const app::Settings& s) {
-    if (a.chart.empty() || a.db.empty()) { usage(); return 2; }
+    if (a.chart.empty()) { usage(); return 2; }
 
     const std::string hyhash = app::hash_chart_file(a.chart);
     if (hyhash.empty()) {
@@ -520,84 +443,20 @@ int cmd_dump(const Args& a, const app::Settings& s) {
         return 1;
     }
 
-    const std::string snapshot_path = snapshot_db(a.db);
-    // Best-effort cleanup: the snapshot is a scratch copy, not the tool's
-    // output, so it should not linger in %TEMP% after the process exits.
-    struct SnapshotGuard {
-        std::string path;
-        ~SnapshotGuard() {
-            std::error_code ec;
-            std::filesystem::remove(hydra::os_path(path), ec);
-        }
-    } snapshot_guard{snapshot_path};
+    const app::AnalysisResult analysis =
+        app::analyze_chart_file(a.chart, s.to_analysis_settings());
+    const HydraRecord& rec = analysis.record;
 
-    store::RecordStore store(snapshot_path, core::RulesStamp::of(s.rules));
-    const store::RecordKey key = s.record_key(hyhash);
-    store::RecordLookup lookup = store.get_record(key);
-
-    // NotAnalyzed and Stale both mean "no readable stored row" -- by default
-    // that is not a hard failure, it just means dump runs a fresh analysis
-    // instead and says so. --no-analyze keeps the old strict behaviour.
-    std::string source = "record";
-    HydraRecord fresh_record;
-    std::optional<SongTiming> fresh_timing;
-    const HydraRecord* rec_ptr = nullptr;
-    const SongTiming* timing_ptr = nullptr;
-
-    if (lookup.status == store::RecordStatus::NotAnalyzed ||
-        lookup.status == store::RecordStatus::Stale) {
-        if (lookup.status == store::RecordStatus::NotAnalyzed) {
-            // The settings the lookup was keyed by, read back from s.
-            const std::string ms =
-                s.mslimit_enabled ? std::to_string(s.mslimit_value) : std::string("off");
-            const std::string depth = app::describe_settings(s.to_analysis_settings()).depth;
-            std::fprintf(stderr,
-                         "NotAnalyzed: no record for %s under '%s', cap %d, "
-                         "ms %s, depth %s.%s\n",
-                         hyhash.c_str(), s.chartmode_key().c_str(), s.sp_cap,
-                         ms.c_str(), depth.c_str(),
-                         a.no_analyze ? "" : " Analyzing the chart fresh instead.");
-        } else {
-            // One line per reason. The follow-up ("Re-analyze" or "Analyzing
-            // fresh") goes on the last line printed.
-            const char* next_step = a.no_analyze ? " Re-analyze the chart."
-                                                 : " Analyzing the chart fresh instead.";
-            if (lookup.stale_build)
-                std::fprintf(stderr,
-                             "Stale: the stored row was written by Hydra %s, not "
-                             "this build; its paths cannot be read.%s\n",
-                             lookup.hyversion.c_str(), lookup.stale_rules ? "" : next_step);
-            if (lookup.stale_rules)
-                std::fprintf(stderr,
-                             "Stale: the stored row was analyzed with different rules "
-                             "(hydra_rules.ini changed).%s\n",
-                             next_step);
-        }
-        if (a.no_analyze) return 1;
-
-        const Song fresh_song = load_songpath(a.chart, s.view_prodrums,
-                                              s.effective_bass2x(), s.difficulty(), s.rules);
-        if (fresh_song.is_empty()) {
-            std::fprintf(stderr, "chart has no notes: %s\n", a.chart.c_str());
-            return 1;
-        }
-        fresh_record = analyze_chart(fresh_song, s.to_analysis_settings());
-        fresh_timing = fresh_song.timing();
-        rec_ptr = &fresh_record;
-        timing_ptr = &*fresh_timing;
-        source = "analyzed";
-    } else {
-        if (!lookup.timing) {
-            std::fprintf(stderr,
-                         "the record is Ready but the song is not registered in "
-                         "songmeta, so no tempo map is available.\n");
-            return 1;
-        }
-        rec_ptr = &*lookup.record;
-        timing_ptr = &*lookup.timing;
-    }
-
-    return emit_dump(a, s, hyhash, source, *rec_ptr, *timing_ptr);
+    // "source" was "record" or "analyzed" while dump could read a stored row.
+    // It stays in the JSON, always "analyzed", so scripts that read it still work.
+    emit(json{{"hyhash", hyhash},
+              {"chartmode", s.chartmode_key()},
+              {"source", "analyzed"},
+              {"sp_cap", rec.sp_cap ? *rec.sp_cap : -1},
+              {"result", result_json(rec)},
+              {"paths", paths_json(rec.all_paths(), analysis.song.timing())}},
+         a.out, a.pretty);
+    return 0;
 }
 
 // ---- target --------------------------------------------------------------
@@ -823,7 +682,6 @@ int main() {
         };
         try {
             if (k == "--chart") a.chart = next();
-            else if (k == "--db") a.db = next();
             else if (k == "--rules") a.rules_path = next();
             else if (k == "--out") a.out = next();
             else if (k == "--cap") a.cap = next();
@@ -841,7 +699,6 @@ int main() {
             else if (k == "--bass2x") a.bass2x = next_on_off();
             else if (k == "--difficulty") a.difficulty = next();
             else if (k == "--pretty") a.pretty = true;
-            else if (k == "--no-analyze") a.no_analyze = true;
             else if (k == app::kLegacyFillsFlag) a.legacy_fills = true;
             else { std::fprintf(stderr, "unknown option %s\n", k.c_str()); usage(); return 2; }
         } catch (const std::exception& e) {
