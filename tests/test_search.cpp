@@ -196,15 +196,15 @@ TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order"
         if (song.is_empty()) continue;
         ++charts;
 
-        // Every chord, at the combo before it.
+        // Every chord, at the combo before it, read off chord_score_table's
+        // row for that chord.
+        const ChordScoreTable table = chord_score_table(song, core::SqOutRule::FirstNote);
         std::vector<MultSqueeze> want;
-        int combo = 0;
-        for (const SongTimestamp& ts : song.sequence) {
+        for (size_t i = 0; i < song.sequence.size(); ++i) {
             try {
-                want.push_back(MultSqueeze(ts.chord, combo));
+                want.push_back(MultSqueeze(song.sequence[i].chord, table.rows[i].combo_before));
             } catch (const std::invalid_argument&) {
             }
-            combo = category_scores(ts.chord, combo).combo_after;
         }
 
         ScoreGraph graph(song, 4);
