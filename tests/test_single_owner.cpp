@@ -4746,6 +4746,36 @@ const std::vector<OwnerRule>& rules() {
          {{"src/parse/midi.h",
            "bool is_note_on() const { return type == Type::NoteOn && velocity > 0; }",
            "Message::is_note_on, the owner"}}},
+        // Where one .mid drum timestamp gives way to the next is decided once,
+        // so the sequence's size count and the walk that pushes cannot drift.
+        {"Which .mid drum message opens a new timestamp?",
+         "opens_timestamp in src/parse/song.cpp",
+         R"(\b\w+(\.|->)time\s*[!=]=\s*0\b)",
+         "",
+         {},
+         {},
+         "MEM-P derive-once review (memory audit fix 2): the reserve count and the walk had each spelled it",
+         {"if (msg.time != 0) ++pushes;", "if (msg.time != 0) {", "if (m->time == 0) continue;"},
+         {"if (opens_timestamp(msg)) ++pushes;", "elapsed += msg.time;",
+          "CHECK(msg.time == 480);"},
+         {{"src/parse/song.cpp", "return msg.time != 0;", "opens_timestamp, the owner"}},
+         {"src"}},
+        // Which .chart drum lines make one timestamp is decided once, for the
+        // same reason.
+        {"Which .chart drum lines share one timestamp?",
+         "tick_group_end in src/parse/song.cpp",
+         R"(\b\w+\s*->\s*tick\s*[!=]=\s*\w+\s*->\s*tick\b|\b\w+\[[^\]]+\]\.tick\s*[!=]=\s*\w+\[[^\]]+\]\.tick\b)",
+         "",
+         {},
+         {},
+         "MEM-P derive-once review (memory audit fix 2): the reserve count and the walk had each spelled it",
+         {"while (q != end && q->tick == p->tick) ++q;",
+          "if (lines[i].tick != lines[i - 1].tick) ++ticks;"},
+         {"const ChartLine* q = tick_group_end(p, end);",
+          "const auto by_tick = [](const ChartLine& a, const ChartLine& b) { return a.tick < b.tick; };"},
+         {{"src/parse/song.cpp", "while (q != end && q->tick == p->tick) ++q;",
+           "tick_group_end, the owner"}},
+         {"src"}},
         // Which note messages the MIDI parser acts on is decided once. Its
         // optype and the lean read's filter both ask midi_note_is_read; the
         // pitch rules it reads are called nowhere else.
