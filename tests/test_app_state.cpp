@@ -257,6 +257,14 @@ int64_t results_rows(const ScratchPaths& paths) {
     return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results");
 }
 
+// Makes every later change to a library row fail, so a click's
+// reidentify_chart throws.
+void refuse_library_row_updates(const ScratchPaths& paths) {
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
+                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+}
+
 int64_t result_id(const ScratchPaths& paths, const std::string& md5) {
     return hydra::test::scalar_on_file(
         paths.db, "SELECT result_id FROM results WHERE hyhash = '" + md5 + "'");
@@ -368,9 +376,7 @@ TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     write_corpus_chart("click_reidfail", /*extra_note=*/true);
     const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
     REQUIRE(new_md5 != scanned.md5);
-    hydra::test::exec_on_file(paths.db,
-                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
-                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    refuse_library_row_updates(paths);
 
     click(*app, scanned);
 
@@ -423,9 +429,7 @@ TEST_CASE("a touched chart whose fingerprint save fails shows the error and save
     Sleep(20);
     write_corpus_chart("click_touchfail", /*extra_note=*/false);
     REQUIRE(hydra::app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
-    hydra::test::exec_on_file(paths.db,
-                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
-                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    refuse_library_row_updates(paths);
 
     click(*app, scanned);
 
