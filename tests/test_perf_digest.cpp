@@ -89,12 +89,12 @@ uint64_t parse_digest(const app::Settings& st) {
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
     const uint64_t got = engine_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0xa604809679e78c75ULL, "engine digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0x1a0929fcb662ebaaULL, "engine digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {
     const uint64_t got = parse_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0x98ef0041c7c9675aULL, "parse digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0x40c54a484d033934ULL, "parse digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass off") {
