@@ -303,7 +303,7 @@ inline constexpr int kSaveGroupSize = 16;
 // RecordStore::BatchWrites sets it and puts SQLite's own back at the end.
 inline constexpr int kBatchWalAutocheckpointPages = 10000;
 // The most bytes the WAL file keeps after a checkpoint resets it, set on every
-// open (D87 item 7): about SQLite's default 1,000-page checkpoint, so the log
+// open (D93): about SQLite's default 1,000-page checkpoint, so the log
 // never sits at its high-water size. Firefox ships the same default for the
 // same reason (Mozilla bug 1820478).
 inline constexpr int kJournalSizeLimitBytes = 4194304;

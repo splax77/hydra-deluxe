@@ -648,7 +648,7 @@ void RecordStore::set_up_schema() {
     exec("PRAGMA journal_mode=WAL");
     exec("PRAGMA synchronous=NORMAL");
     // SQLite truncates the WAL file to this size when a full checkpoint
-    // resets the log (D87 item 7).
+    // resets the log (D93).
     exec(("PRAGMA journal_size_limit=" + std::to_string(kJournalSizeLimitBytes)).c_str());
 
     exec(

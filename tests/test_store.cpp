@@ -907,8 +907,8 @@ TEST_CASE("the first open of a file with stored path details drops them and keep
 }
 
 TEST_CASE("every open caps the WAL file the log keeps after a checkpoint") {
-    // D87 item 7: journal_size_limit is per connection, so the store sets it
-    // on every open. 4194304 bytes is the value D87 chose.
+    // journal_size_limit is per connection, so the store sets it on every
+    // open. 4194304 bytes is the value D93 chose.
     const std::string path = testtemp::temp_path("journal_size_limit", ".db");
     std::remove(path.c_str());
     for (int open = 0; open < 2; ++open) {
