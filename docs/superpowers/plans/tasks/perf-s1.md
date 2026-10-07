@@ -18,6 +18,10 @@ The plan's S1 list: `src/app/analysis.cpp` (`stream_md5`, `discover_charts`, `Pe
 
 Owned-file check: every S1 acceptance criterion is met inside the files above.
 
+## Added by the main session (2026-10-06, after the review)
+
+The review's kind D finding is the comment at `src/app/analysis.h` lines 77 to 78, which still calls the walk serial. The fix round may change that comment, and only that comment, in `analysis.h`; nothing else in that file is S1's.
+
 ## Preflight
 
 Command: `grep -n "stream_md5(\|discover_charts(" src/app/analysis.cpp` and `grep -n "batch_worker_count" src/app/analysis.h`, run by the orchestrator on the base's code on 2026-10-06.

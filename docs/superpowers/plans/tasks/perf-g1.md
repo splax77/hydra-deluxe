@@ -14,6 +14,10 @@ Correctness compares against the baseline's saved `engine_rows.txt` and its hash
 
 The segment-heap manifest line changes how the process allocates, not what it computes. Say in the report whether the `--engine` hash and `fresh.db` compare were taken with the manifest in place (they must be).
 
+## Decided by the main session (2026-10-06, 22:35): the segment-heap line
+
+The implementer found that the manifest's segment-heap line never reaches the linked exes. The graph speedup measured 13.6 s to 2.7 s without it, so it is not part of what G1 proves. A finisher spends at most about 20 tool calls on it, inside `src/app/long_paths.manifest` only. If the fix needs `CMakeLists.txt` (B1's file) or a new build step, restore `long_paths.manifest` to its base content in one commit, say why in the commit body and the report, and return `complete: true`. The main session makes the segment heap a follow-up after the join. Whole-library runs are already done for G1 (0 differ, same engine hash); do not repeat them.
+
 ## Owned files
 
 The plan's G1 list: `src/search/graph.h`, `src/search/graph.cpp`, `src/search/engine.cpp`, `src/core/model.h`, `src/core/model.cpp`, `src/core/scoring.cpp`, `src/app/dynamics_breakdown.cpp`, `src/app/long_paths.manifest`, `tests/test_model.cpp`, `tests/test_search.cpp`, `tests/test_dynamics_breakdown.cpp`, `tests/test_single_owner.cpp` (your own rows at the end only).
