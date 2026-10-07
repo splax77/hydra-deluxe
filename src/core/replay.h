@@ -4,17 +4,20 @@
 // The search never walks a chart note by note; it walks a graph whose edges
 // carry pre-summed scores, so nothing in it can answer "what was this one
 // chord worth on this path?". This module answers exactly that, by replaying
-// the chart against a list of Star Power windows and applying the same three
-// rules the graph applies:
+// the chart against a list of Star Power windows. It owns no scoring rule:
 //
-//   1. One combo counter, never touched by Star Power. So base, combo,
-//      accent and ghost are fixed per chord, and the only path-dependent
-//      term is whether the chord's doubling (CategoryScores::sp) is paid.
-//   2. The Star Power window is inclusive at both ends: the activation chord
-//      earns its doubling, and so does the chord sitting on the deactivation
-//      node. A chord landing within Rules::backend_leeway_ms after the deactivation
-//      earns it too (core/backend_value.h, the same function the search calls).
-//   3. A solo pays 100 per note on both tracks and is never doubled.
+//   - A chord's path-free points (base, combo, accent, ghost, solo, its SP
+//     value and squeezed-out SP value, its multipliers and combo) are rows
+//     of chord_score_table (core/scoring.h), the table ScoreGraph::build
+//     sums its edges from.
+//   - Whether a window pays a chord's doubling, and how much, is
+//     core::paid_by_sp and core::backend_row_value (core/backend_value.h),
+//     the functions the search calls.
+//   - Which side of the SP end and of a squeeze-out a chord sits on is
+//     core::after_sp_end and core::sqout_position, in the same header.
+//
+// The one question answered here is which windows can still pay a chord,
+// and hydra_replay's selfcheck is the test that it agrees with the graph.
 //
 // Display and tooling only, like core/squeeze_rating.h: nothing in the
 // search, the store, or a stored record reads any of this. It exists so the
@@ -42,11 +45,10 @@ struct ReplayWindow {
     int64_t deact_tick = 0;
 
     // Set when the activation ends on a squeeze-out: the tick of the phrase
-    // chord squeezed out (Activation::sqout_tick). That chord is hit after
-    // Star Power has ended, so everything after it loses its doubling. The
-    // chord itself loses CategoryScores::sqout_reduction: the doubling of
-    // the notes the rules' sqout_rule names (first_note: only its first
-    // note; whole_chord: every note).
+    // chord squeezed out (Activation::sqout_tick). What that chord and the
+    // ones after it are paid is core::backend_row_value's answer, and what
+    // the chord loses is CategoryScores::sqout_reduction under the rules'
+    // sqout_rule.
     std::optional<int64_t> sqout_tick;
 
     // The same squeeze-out as an ms offset from D, for display, and as typed
@@ -132,7 +134,8 @@ struct ReplayNote {
     bool cymbal = false;
     int sp_points = 0;
     // The combo multiplier this note was paid at, as category_scores applied
-    // it. Notes of one chord differ when the chord straddles 10, 20 or 30.
+    // it. Notes of one chord can differ when the chord straddles a step of
+    // to_multiplier (core/timing.h).
     int multiplier = 1;
     // What this note's ghost or accent earned, multiplier included
     // (CategoryScores::dynamics_bonus); 0 for a plain note. A mis-hit dynamic
@@ -158,14 +161,12 @@ struct ReplayChord {
     bool is_solo = false;
     bool is_sp_phrase_end = false;  // the chord ends an SP phrase
 
+    // The chord's row of chord_score_table: the combo before and after it
+    // (what the game's combo counter shows once it is hit) and the
+    // multipliers CategoryScores::multiplier and ::multiplier_after name.
     int combo_before = 0;
-    // The combo once this chord is hit: combo_before plus the chord's notes.
-    // What the game's combo counter shows after the chord.
     int combo_after = 0;
-    // What category_scores applied to the chord's first note (base-sorted).
     int multiplier = 1;
-    // What category_scores applied to the chord's last note: the multiplier
-    // the game's disc shows once this chord is hit.
     int multiplier_after = 1;
     // Star Power paid this chord something: at least one window's
     // core::paid_by_sp is true for it (decision D2). A squeezed-out chord

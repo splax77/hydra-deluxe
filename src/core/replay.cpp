@@ -62,13 +62,16 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     ReplayResult out;
     out.chords.reserve(song.sequence.size());
 
-    int combo = 0;
+    // Every chord's path-free points, the same table ScoreGraph::build sums.
+    const ChordScoreTable table = chord_score_table(
+        song, rules.sqout_rule,
+        options.scores_only ? ChordScoreDetail::ChordsOnly : ChordScoreDetail::WithNotes);
+
     ReplayScore cum;
     int64_t solo_pending = 0;
     size_t next_solo = 0;  // the first solo section not yet passed
 
     const size_t n = song.sequence.size();
-    std::vector<CategoryScores> per_note;
 
     // The windows that can still pay a chord, as indexes into `wins`.
     //
@@ -82,10 +85,10 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     // later one:
     //   - sqout_position(...) == After means the chord's tick is past the
     //     squeezed-out chord's tick, and ticks only grow.
-    //   - Past the deactivation node the offset is row.ms - deact_ms, and ms
-    //     never falls as ticks grow (positive tempos). counted_without_squeeze
-    //     is true for every offset up to a threshold and false above it
-    //     (offset <= 0 || offset < leeway), so once false it stays false.
+    //   - Past the deactivation node the offset only grows, since ms never
+    //     falls as ticks grow (positive tempos), and
+    //     core::counted_without_squeeze is true up to a threshold and false
+    //     above it, so once false it stays false.
     //   - The chord is the squeezed-out chord and its sqout_points are 0 (a
     //     one-note chord under the first-note rule). Every later chord is
     //     past it, so sqout_position(...) == After from then on.
@@ -96,9 +99,7 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
 
     for (size_t i = 0; i < n; ++i) {
         const SongTimestamp& ts = song.sequence[i];
-        const CategoryScores sg =
-            category_scores(ts.chord, combo, options.scores_only ? nullptr : &per_note,
-                            rules.sqout_rule);
+        const ChordScoreRow& sg = table.rows[i];
 
         ReplayChord row;
         row.index = static_cast<int>(i);
@@ -113,21 +114,26 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.is_fill = ts.has_activation();
         row.is_solo = ts.flag_solo;
         row.is_sp_phrase_end = ts.flag_sp;
-        row.combo_before = combo;
-        row.multiplier = sg.multiplier;  // what category_scores applied
+        row.combo_before = sg.combo_before;
+        row.multiplier = sg.multiplier;
         row.multiplier_after = sg.multiplier_after;
 
         if (!options.scores_only) {
+            // The table priced these same notes in this same order, so the
+            // counts always agree; a mismatch is a bug, said out loud.
             const std::vector<ChordNote> ordering = ts.chord.notes(true);
+            if (sg.note_end - sg.note_begin != ordering.size())
+                throw std::logic_error("replay: the chord at tick " + std::to_string(row.tick) +
+                                       " has a different note count in the chord-score table");
             row.notes.reserve(ordering.size());
             for (size_t k = 0; k < ordering.size(); ++k) {
+                const CategoryScores& own = table.notes[sg.note_begin + k];
                 ReplayNote note;
                 note.color = ordering[k].colortype;
                 note.cymbal = ordering[k].is_cymbal();
-                note.sp_points = k < per_note.size() ? per_note[k].sp : 0;
-                note.multiplier = k < per_note.size() ? per_note[k].multiplier : 1;
-                note.dynamics_bonus =
-                    k < per_note.size() ? per_note[k].dynamics_bonus : 0;
+                note.sp_points = own.sp;
+                note.multiplier = own.multiplier;
+                note.dynamics_bonus = own.dynamics_bonus;
                 note.dynamic = ordering[k].dynamictype;
                 row.notes.push_back(note);
             }
@@ -156,11 +162,11 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
             const double offset = offset_from_sp_end(row.ms, w.deact_ms);
             const core::SqOutPosition pos =
                 core::sqout_position(row.tick, w.sqout_tick);
-            const bool paid = core::paid_by_sp(offset, sg.sp, sg.sqout_sp(), pos,
+            const bool paid = core::paid_by_sp(offset, sg.sp, sg.sqout_sp, pos,
                                                rules.backend_leeway_ms);
             if (paid) {
                 ++sp_paid;
-                sp_points += core::backend_row_value(offset, sg.sp, sg.sqout_sp(), pos,
+                sp_points += core::backend_row_value(offset, sg.sp, sg.sqout_sp, pos,
                                                      rules.backend_leeway_ms);
             }
             // Erase-remove in place: keep the window unless it is past its
@@ -174,12 +180,11 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         row.points.base = sg.base;
         row.points.combo = sg.combo;
         row.points.sp = sp_points;
-        row.points.solo = solo_bonus(ts.chord, ts.flag_solo);
+        row.points.solo = sg.solo;
         row.points.accent = sg.accent;
         row.points.ghost = sg.ghost;
 
-        combo = sg.combo_after;
-        row.combo_after = combo;
+        row.combo_after = sg.combo_after;
 
         cum.add(row.points);
         row.cum = cum;
