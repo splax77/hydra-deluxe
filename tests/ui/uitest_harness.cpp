@@ -564,7 +564,14 @@ void open_details(ImGuiTestContext* ctx, size_t index) {
     if (ctx->IsError()) return;
     // The ImGui context outlives reset_app, so the tab bar remembers the tab a
     // previous test left selected. Land on Paths deterministically.
+    wait_tabs_placed(ctx);
     ctx->ItemClick("##DetailsTabs/Paths");
+}
+
+void wait_tabs_placed(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled() || !g_view_gate_open.load(); },
+                        300));
 }
 
 // Narrow the library with `search` typed into the search box, then open the
@@ -588,9 +595,10 @@ void wait_song_analyzed(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     set_panel_ref(ctx);
     if (ctx->IsError()) return;
-    ctx->ItemClick("##DetailsTabs/Paths");
     IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
     IM_CHECK(h.app->viewed.ready());
+    // Only now: the headline has landed, so the tab bar stays put.
+    ctx->ItemClick("##DetailsTabs/Paths");
 }
 
 // Shared: open chart 0's Preview and wait for the load. Returns false on error.
