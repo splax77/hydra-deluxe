@@ -193,14 +193,13 @@ using ChartAnalyzer = std::function<AnalysisResult(
     const std::string& path, const AnalysisSettings& settings,
     const std::function<void(float)>& on_progress)>;
 
-// The song's length an analysis saves on the side, as the store saves it: the
-// owner's answer (app::chart_song_length_ms, D75) for `song`, the chart at
-// `notespath` parsed under `settings`, from what the scan read
-// (chart_timing_meta over `scanned`). Read, with or without a length, unless
+// The song's length a click shows (store::SongLength): the owner's answer
+// (app::chart_song_length_ms, D75) for `song`, the chart at `notespath`
+// parsed under `settings`, from what the scan read (chart_timing_meta over
+// `scanned`). Read, with or without a length, unless
 // that throws: then not read, so a failed read costs only the length, which
 // stays as it was until opening the song reads it. No audio is opened.
-// run_batch saves through here, and so does ViewJob (the click's job), which
-// calls the owner itself.
+// ViewJob (the click's job) asks here; run_batch works out no length.
 store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,
                                        const std::string& notespath, const Song& song,
                                        const AnalysisSettings& settings);
@@ -286,8 +285,7 @@ struct BatchCallbacks {
     // stops at its next progress tick. A stopped chart is neither a result nor
     // a failure, and nothing more is written once the cancel is seen.
     const std::atomic<bool>* cancel = nullptr;
-    // What analyzes one chart. Empty means analyze_chart_file. Its song's
-    // length is saved too (analysis_song_length).
+    // What analyzes one chart. Empty means analyze_chart_file.
     ChartAnalyzer analyze;
     // When set, each chart the run saved hands its path-report rows
     // (report::chart_rows, built on the worker) to this seed, at the moment

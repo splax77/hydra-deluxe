@@ -852,11 +852,12 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
     // count. The progress that counts a row goes out before that row's own
     // callback, so a caller numbering its lines reads the number from the
     // progress (D79).
-    const auto report = [&](const WorkResult& wr) {
+    const auto report = [&](WorkResult& wr) {
         // The chart's report rows go to the seed once, with its first row's
-        // on_result: only a chart that was saved is handed over.
+        // on_result: only a chart that was saved is handed over. They are
+        // moved, not copied: the seed is their last reader.
         if (seed && !wr.failed)
-            seed->rows[normalize_chart_hash(wr.item.md5)] = wr.report_rows;
+            seed->rows[normalize_chart_hash(wr.item.md5)] = std::move(wr.report_rows);
         for (int r = 0; r < wr.rows; ++r) {
             if (wr.failed) ++progress.failed;
             else ++progress.analyzed;
@@ -889,9 +890,9 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
             for (WorkResult& wr : deferred)
                 if (!wr.failed) save_result(store, wr);
         }
-        const std::vector<WorkResult> done = std::move(deferred);
+        std::vector<WorkResult> done = std::move(deferred);
         deferred.clear();
-        for (const WorkResult& wr : done) report(wr);
+        for (WorkResult& wr : done) report(wr);
     };
 
     try {
