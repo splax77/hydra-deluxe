@@ -4701,6 +4701,23 @@ const std::vector<OwnerRule>& rules() {
            "MidiTrack::is_events, the owner"},
           {"src/parse/midi.cpp", "if (track.name == kDrumsTrackName) return &track;",
            "MidiFile::drums_track, the owner"}}},
+        // How many values a MIDI data byte holds is named once. A bare 128 as
+        // a bound or a size, or a bare 127 as the clip, is a second copy.
+        // Clone Hero's accent velocity is a different question and is not a
+        // bound, so `velocity == 127` is left alone.
+        {"How many values does a MIDI data byte hold?",
+         "kMidiDataValues in src/parse/midi.h",
+         R"([<,]\s*128\b|\[\s*128\s*\]|\{\s*127\s*\})",
+         "",
+         {},
+         {},
+         "the speedups plan, task P1 (D86); derive-once review of P1",
+         {"uint8_t clip_data_byte(uint8_t b) { return b < 128 ? b : uint8_t{127}; }",
+          "bool note_on[128] = {};", "for (int pitch = 0; pitch < 128; ++pitch) {"},
+         {"bool note_on[kMidiDataValues] = {};", "velocity == 127   ? NoteDynamicType::Accent",
+          "inline constexpr int kMidiDataValues = 128;"},
+         {},
+         {"src/parse/midi.h", "src/parse/midi.cpp", "src/parse/song.cpp"}},
     };
     return r;
 }

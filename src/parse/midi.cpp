@@ -114,7 +114,9 @@ uint64_t read_message_length(const uint8_t* data, size_t& pos, size_t end) {
 }
 
 // A note's data byte as mido reads it with clip=True: clamped, not rejected.
-uint8_t clip_data_byte(uint8_t b) { return b < 128 ? b : uint8_t{127}; }
+uint8_t clip_data_byte(uint8_t b) {
+    return b < kMidiDataValues ? b : uint8_t{kMidiDataValues - 1};
+}
 
 // Build the meta events hysong can act on; returns false to skip the rest.
 bool meta_message(int meta_type, const uint8_t* payload, size_t len,

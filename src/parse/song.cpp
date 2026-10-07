@@ -1645,7 +1645,7 @@ Song load_songbytes_mid(const std::vector<uint8_t>& data, bool pro,
     const int base = difficulty_base_pitch(difficulty);
     const int kick2x = difficulty_chart_codes(difficulty).kick2x_pitch();
     MidiLeanFilter filter;
-    for (int pitch = 0; pitch < 128; ++pitch) {
+    for (int pitch = 0; pitch < kMidiDataValues; ++pitch) {
         filter.note_on[pitch] = midi_note_is_read(pitch, true, base, kick2x);
         filter.note_off[pitch] = midi_note_is_read(pitch, false, base, kick2x);
     }
