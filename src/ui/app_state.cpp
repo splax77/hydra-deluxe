@@ -1,6 +1,8 @@
 #include "ui/app_state.h"
 
 #include <algorithm>
+#include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "app/config.h"
@@ -110,10 +112,23 @@ void AppState::set_search(std::string text) {
 }
 
 std::vector<store::ChartLibraryEntry> AppState::library_matches() const {
-    std::vector<store::ChartLibraryEntry> out;
     const std::vector<size_t> matched = library.matches();
+    // Each matched row's place in the answer, by row_key.
+    std::unordered_map<std::string_view, size_t> place;
+    place.reserve(matched.size());
+    for (size_t k = 0; k < matched.size(); ++k)
+        place.emplace(row_key(library.rows()[matched[k]].entry), k);
+    std::vector<std::optional<store::ChartLibraryEntry>> found(matched.size());
+    for (store::ChartLibraryEntry& e : store->list_chart_library(0, -1)) {  // -1 = no limit
+        const auto it = place.find(row_key(e));
+        if (it != place.end()) found[it->second] = std::move(e);
+    }
+    // A row the store no longer lists (a scan replaced the table since the
+    // rows were read) is left out; the reload that follows drops its row.
+    std::vector<store::ChartLibraryEntry> out;
     out.reserve(matched.size());
-    for (size_t i : matched) out.push_back(library.rows()[i].entry);
+    for (std::optional<store::ChartLibraryEntry>& e : found)
+        if (e) out.push_back(std::move(*e));
     return out;
 }
 
@@ -144,7 +159,7 @@ void AppState::tick_library(double now) {
 // The rows the library table shows, in its current order and filter.
 size_t AppState::view_row_count() const { return library_shown_count(); }
 
-const store::ChartLibraryEntry& AppState::view_row(size_t i) const {
+const LibraryChart& AppState::view_row(size_t i) const {
     return library_row_at(i).entry;
 }
 
@@ -177,6 +192,19 @@ void AppState::select(const store::ChartLibraryEntry& entry) {
     selected = entry;
     show_details = true;
     start_view();
+}
+
+void AppState::select(const LibraryChart& row) {
+    std::vector<store::ChartLibraryEntry> copies;
+    if (!read_store([&] { copies = store->list_chart_library_copies(row.md5); })) return;
+    for (const store::ChartLibraryEntry& copy : copies) {
+        if (row_key(copy) == row_key(row)) {
+            select(copy);
+            return;
+        }
+    }
+    // None: a scan replaced the table since the rows were read, and the
+    // reload that follows redraws the table.
 }
 
 void AppState::close_details() {
@@ -359,9 +387,12 @@ AppState::SettingsLock AppState::settings_lock() const {
     return batch_running() ? SettingsLock::Batch : SettingsLock::None;
 }
 
-bool AppState::is_selected_row(const store::ChartLibraryEntry& row) const {
-    return selected && row.notespath == selected->notespath;
+template <class Row>
+bool AppState::is_selected_row(const Row& row) const {
+    return selected && row_key(row) == row_key(*selected);
 }
+template bool AppState::is_selected_row(const store::ChartLibraryEntry& row) const;
+template bool AppState::is_selected_row(const LibraryChart& row) const;
 
 bool AppState::can_scan() const {
     return !settings.chartfolders.empty() && !scan_job && !batch_running();
@@ -404,14 +435,14 @@ void AppState::open_batch_confirm() {
     // the ones the batch runs (D79), so the confirm, the strip and the
     // finished counts come from one plan.
     std::vector<app::ScanItem> items;
-    {
-        const std::vector<store::ChartLibraryEntry> scope = library_matches();
-        items.reserve(scope.size());
-        for (const store::ChartLibraryEntry& e : scope) items.push_back(scan_item_of(e));
-    }
     const app::BatchRun run = settings.batch_run();
     std::unordered_set<std::string> with_result;
-    if (!read_store([&] { with_result = app::charts_with_result(*store, run, false); })) {
+    if (!read_store([&] {
+            const std::vector<store::ChartLibraryEntry> scope = library_matches();
+            items.reserve(scope.size());
+            for (const store::ChartLibraryEntry& e : scope) items.push_back(scan_item_of(e));
+            with_result = app::charts_with_result(*store, run, false);
+        })) {
         // The database failed: the confirm stays closed (D72 item 4).
         close_batch_confirm();
         return;

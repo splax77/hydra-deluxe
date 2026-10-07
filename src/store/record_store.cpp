@@ -683,8 +683,8 @@ void RecordStore::set_up_schema() {
     exec("DROP TABLE IF EXISTS songlength");
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
-    // The scan's purge and list_records find a chart's library rows by md5
-    // (D76).
+    // The scan's purge, list_records and list_chart_library_copies find a
+    // chart's library rows by md5 (D76).
     exec("CREATE INDEX IF NOT EXISTS charts_by_md5 ON charts (md5)");
     // Schema 2 = results keyed by the full settings. A database from Hydra
     // 1.6 or older still holds its old `records` table. Nothing reads it
@@ -1388,18 +1388,16 @@ int64_t RecordStore::chart_library_count() {
     return sqlite3_column_int64(s, 0);
 }
 
-std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+namespace {
 
-    // Rows an older scan wrote never read their timing: none, not "none
-    // stated".
-    const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(db_,
-                          "SELECT md5, name, artist, charter, path, folder, sig, stated_length_ms,"
-                          " delay_ms FROM charts ORDER BY name LIMIT ? OFFSET ?");
-    sqlite3_bind_int(s, 1, limit);
-    sqlite3_bind_int(s, 2, offset);
+// The columns a library entry is read from, in read_library_entries' order.
+constexpr const char* kLibraryEntrySelect =
+    "SELECT md5, name, artist, charter, path, folder, sig, stated_length_ms, delay_ms FROM charts";
 
+// Every row `s` (a kLibraryEntrySelect query) steps to. Rows an older scan
+// wrote never read their timing: none, not "none stated"; `timing_read`
+// (RecordStore::chart_meta_current) says which rows those are.
+std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read) {
     std::vector<ChartLibraryEntry> out;
     while (step_row(s)) {
         ChartLibraryEntry e;
@@ -1414,6 +1412,28 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int l
         out.push_back(std::move(e));
     }
     return out;
+}
+
+}  // namespace
+
+std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+    const bool timing_read = chart_meta_current();
+    Stmt s = prepare_read(
+        db_, (std::string(kLibraryEntrySelect) + " ORDER BY name LIMIT ? OFFSET ?").c_str());
+    sqlite3_bind_int(s, 1, limit);
+    sqlite3_bind_int(s, 2, offset);
+    return read_library_entries(s, timing_read);
+}
+
+std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std::string& md5) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+    const bool timing_read = chart_meta_current();
+    Stmt s = prepare_read(db_, (std::string(kLibraryEntrySelect) + " WHERE md5 = ?").c_str());
+    bind_text(s, 1, md5);
+    return read_library_entries(s, timing_read);
 }
 
 }  // namespace hydra::store
