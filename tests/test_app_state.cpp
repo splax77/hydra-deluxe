@@ -382,7 +382,7 @@ TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
 }
 
-// D95: a chart saved again with the same content has a new size-and-time
+// D96: a chart saved again with the same content has a new size-and-time
 // fingerprint but the same hash. The click saves that fingerprint, so the
 // next click finds the file unchanged and does not hash it again.
 TEST_CASE("clicking a chart touched since the scan saves its new fingerprint") {
@@ -414,7 +414,7 @@ TEST_CASE("clicking a chart touched since the scan saves its new fingerprint") {
     CHECK(row_of(*app, scanned.md5).status == RecordStatus::Ready);
 }
 
-// D95 keeps ruling 15 for a touched chart: when the fingerprint cannot be
+// D96 keeps ruling 15 for a touched chart: when the fingerprint cannot be
 // saved, the click fails loudly and saves nothing.
 TEST_CASE("a touched chart whose fingerprint save fails shows the error and saves nothing") {
     ScratchPaths paths("appstate_click_touchfail");

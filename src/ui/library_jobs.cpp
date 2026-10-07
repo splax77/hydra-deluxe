@@ -342,7 +342,7 @@ void ViewJob::run() {
             // chart_changed_since is the one answer, shared with the preview
             // load. A file saved again with the same content keeps its hash
             // but still hands back its new fingerprint, so the row stops
-            // asking for a hash on every click (D95).
+            // asking for a hash on every click (D96).
             if (const std::optional<app::ChartNow> now =
                     app::chart_changed_since(song_.notespath, song_.sig)) {
                 if (now->md5.empty())
