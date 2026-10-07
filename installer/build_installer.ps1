@@ -76,16 +76,21 @@ if ($leaked) { throw "user data leaked into the staging dir: $($leaked.FullName 
 $symbols = Get-ChildItem $stage -Recurse -Include *.pdb
 if ($symbols) { throw "symbol files leaked into the staging dir: $($symbols.FullName -join ', ')" }
 
-# Guard the other invariant: the shipped exe holds no repo path at all, in
-# either slash style. The attached GUI tests (left out by the ship preset)
+# Guard the other invariant: no shipped exe or DLL holds a repo path at all,
+# in either slash style. The attached GUI tests (left out by the ship preset)
 # and __FILE__ (trimmed by /d1trimfile in CMakeLists.txt) were the sources.
-$exeText = [Text.Encoding]::GetEncoding(28591).GetString(
-    [IO.File]::ReadAllBytes((Join-Path $stage "Hydra.exe")))
-foreach ($p in ($repo -replace '/', '\'), ($repo -replace '\\', '/')) {
-    if ($exeText.IndexOf($p, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
-        throw "Hydra.exe holds the repo path $p; build it with -Preset ship"
+$binaries = Get-ChildItem $stage -Recurse -Include *.exe, *.dll
+if (-not $binaries) { throw "no .exe or .dll found in the staging dir $stage" }
+foreach ($bin in $binaries) {
+    $binText = [Text.Encoding]::GetEncoding(28591).GetString(
+        [IO.File]::ReadAllBytes($bin.FullName))
+    foreach ($p in ($repo -replace '/', '\'), ($repo -replace '\\', '/')) {
+        if ($binText.IndexOf($p, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            throw "$($bin.Name) holds the repo path $p; build it with -Preset ship"
+        }
     }
 }
+Write-Host "No repo path in $($binaries.Count) staged exes and DLLs: $($binaries.Name -join ', ')"
 
 # 4. VC++ x64 redistributable (chained by the installer). Cached out of git.
 $redistDir = Join-Path $root "redist"

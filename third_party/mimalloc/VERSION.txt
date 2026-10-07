@@ -1,0 +1,1 @@
+mimalloc v3.5.3 (https://github.com/microsoft/mimalloc, release v3.5.3, mimalloc-v3.5.3-source.tar.gz); only what the shared override DLL build needs is vendored, plus the prebuilt x64 bin/mimalloc-redirect.dll and .lib

@@ -74,9 +74,11 @@ hydra_fillcompare --old hydra.db --new hydra.db
 
 Hydra Deluxe is a native Windows app: C++17, built with CMake and MSVC (Visual
 Studio's "Desktop development with C++" workload is all it needs — the build
-script finds the VS-bundled CMake itself). Third-party code (Dear ImGui,
-SQLite, miniz, doctest, nlohmann/json, stb_image) is vendored under
-`third_party/`.
+script finds the VS-bundled CMake itself). Third-party code is vendored under
+`third_party/` and built from source. `THIRD_PARTY_NOTICES.txt` at the repo
+root lists every library that goes into the shipped programs, with its
+licence, and ships beside them. doctest, the test framework, is vendored for
+the tests only.
 
 ```
 .\build_cpp.ps1              # configure + build everything (Release), dev tools too
@@ -115,14 +117,23 @@ run stored byte-identical results with it (see "Proving identical results").
 
 Each Release exe gets a symbol file (`.pdb`) beside it, for profilers and
 crash dumps. The exe records only the symbol file's name, never the build
-folder's path. No symbol file ships: the install rules name only the exes, and
-the installer refuses a staging folder that holds one.
+folder's path. No symbol file ships: the install rules name only the exes and
+DLLs, and the installer refuses a staging folder that holds one.
 
 The vendored SQLite is built without its memory-use counters and without
 shared cache. Hydra uses neither, and leaving them out trims a little of
 SQLite's own work; `tests/test_store.cpp` checks both. SQLite's default sync
 level for WAL mode is not set at build time, because the store sets it itself
 on every open (`record_store.cpp`).
+
+Every exe runs on Microsoft's mimalloc memory allocator instead of the
+Windows heap, the tests and benchmarks included (decision D88). It cut Hydra's
+own CPU work about 10% on a whole-library run, at the cost of more peak
+memory; `docs/handoffs/2026-10-07-mimalloc-trial.md` has the numbers. It
+comes as two DLLs, `mimalloc.dll` and `mimalloc-redirect.dll`, and an exe
+won't start without both beside it. `hydra_use_mimalloc` at the bottom of
+`CMakeLists.txt` owns which exes link it and how, and puts both DLLs in the
+build folder; the install rules stage them beside the shipped exes.
 
 Four speed flags stay out on purpose. `/fp:fast` and `/fp:contract` let the
 compiler reorder or fuse floating-point math, which can move a computed timing

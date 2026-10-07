@@ -6,9 +6,10 @@
 #   * hydra_bench / hydra_replay      — developer tools (build_cpp.ps1 builds them)
 #   * a zip release via CPack (build_cpp.ps1 -Package)
 #
-# Third-party code (ImGui and its Test Engine, SQLite, miniz, doctest, json,
-# stb, miniaudio, libogg, libopus) is vendored under third_party/ and built
-# here, so there is nothing to install but a compiler + CMake.
+# Third-party code is vendored under third_party/ and built here, so there is
+# nothing to install but a compiler + CMake. THIRD_PARTY_NOTICES.txt lists
+# every library that ships, with its licence; doctest is vendored for the
+# tests only.
 #
 # Configure/build (CMake and MSVC come from Visual Studio; see build_cpp.ps1):
 #   cmake --preset default
@@ -39,7 +40,7 @@ add_compile_options(/MP)
 
 # Release builds: link-time optimization where the toolchain supports it, and
 # a symbol file (.pdb) beside each exe for profiling and crash dumps. The
-# install() rules below name only the exes, so no .pdb ships; the installer
+# install() rules below name no .pdb, so none ships; the installer
 # checks that. docs/development.md says why the riskier speed flags stay out.
 include(CheckIPOSupported)
 check_ipo_supported(RESULT HYDRA_IPO_SUPPORTED OUTPUT HYDRA_IPO_OUTPUT LANGUAGES C CXX)
@@ -173,6 +174,29 @@ set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(OPUS_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/ogg EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/opus EXCLUDE_FROM_ALL)
+
+# ---- third_party: mimalloc (the memory allocator every exe runs on) --------
+# D88 ships Microsoft's mimalloc as its override DLL: mimalloc.dll replaces
+# malloc/free for the whole process, helped by the prebuilt
+# mimalloc-redirect.dll. These options are the ones the trial measured
+# (docs/handoffs/2026-10-07-mimalloc-trial.md); everything else stays at
+# mimalloc's release defaults. hydra_use_mimalloc (bottom of this file) owns
+# which exes link it and how.
+set(MI_BUILD_SHARED ON CACHE BOOL "" FORCE)
+set(MI_OVERRIDE ON CACHE BOOL "" FORCE)
+set(MI_WIN_REDIRECT ON CACHE BOOL "" FORCE)
+set(MI_BUILD_STATIC OFF CACHE BOOL "" FORCE)
+set(MI_BUILD_OBJECT OFF CACHE BOOL "" FORCE)
+set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+# mimalloc's CMake compiles `git describe` into the DLL whenever the top-level
+# source folder holds a .git folder, and then reconfigures on every change to
+# the git index. The measured build came from the source tarball, which has
+# no .git, so Git stays hidden from it here.
+set(CMAKE_DISABLE_FIND_PACKAGE_Git TRUE)
+add_subdirectory(third_party/mimalloc EXCLUDE_FROM_ALL)
+unset(CMAKE_DISABLE_FIND_PACKAGE_Git)
+# The measured build had no link-time optimization; keep the DLL the same.
+set_target_properties(mimalloc PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
 
 # ---- hydra_image: the single stb_image TU (shared PNG/JPEG decode) --------
 # stb_image's implementation may be compiled in exactly one TU across the binary
@@ -528,13 +552,21 @@ add_test(NAME hydra_uitest COMMAND hydra_uitest --all)
 
 # ---- packaging -----------------------------------------------------------
 # `cpack -G ZIP` (or build_cpp.ps1 -Package) produces Hydra-<ver>-win64.zip:
-# the GUI, both CLI tools, resource/, LICENSE and README, all in one folder.
+# everything the install() rules below stage, all in one folder.
 # User data (hydra*.db/.ini) is created next to the exe at runtime and never
 # lives in the package, so a rebuilt zip can't clobber anyone's records.
 install(TARGETS Hydra hydra_batch hydra_report hydra_fillcompare RUNTIME DESTINATION .)
+# Every exe above needs mimalloc's two DLLs beside it to start (see
+# hydra_use_mimalloc). install(FILES) rather than install(TARGETS), so
+# mimalloc's import library stays out of the stage.
+install(FILES $<TARGET_FILE:mimalloc>
+              "${CMAKE_SOURCE_DIR}/third_party/mimalloc/bin/mimalloc-redirect.dll"
+        DESTINATION .)
 install(DIRECTORY resource/ DESTINATION resource)
 install(DIRECTORY assets/ DESTINATION assets)
-install(FILES LICENSE README.md DESTINATION .)
+# THIRD_PARTY_NOTICES.txt carries the licence of every vendored library
+# compiled into a shipped exe or DLL.
+install(FILES LICENSE THIRD_PARTY_NOTICES.txt README.md DESTINATION .)
 
 set(CPACK_GENERATOR ZIP)
 set(CPACK_PACKAGE_FILE_NAME "Hydra-${PROJECT_VERSION}-win64")
@@ -594,3 +626,40 @@ foreach(hydra_exe Hydra hydra_batch hydra_report hydra_fillcompare
                   hydra_uitest hydra_bench hydra_replay)
     target_sources(${hydra_exe} PRIVATE src/app/long_paths.manifest)
 endforeach()
+
+# ---- mimalloc, for every executable (D88) ---------------------------------
+# The one place that decides which exes run on mimalloc and how they load it.
+# It takes every executable defined in this file, so the tests, the GUI test
+# runner and the benchmarks run on the same allocator that ships, and a new
+# exe joins without anyone remembering to add it. It must stay the last thing
+# in the file, after every add_executable.
+#
+# /include:mi_version is the switch mimalloc's readme gives to make sure the
+# exe really imports mimalloc.dll even though Hydra never calls it by name.
+# mimalloc goes first in each exe's link libraries because the readme
+# (third_party/mimalloc/bin/readme.md, step 4) wants mimalloc.dll as early as
+# possible in the import list, so it is in place before any other DLL
+# allocates; the linker lists imports in library order, and an appended
+# mimalloc came after d3d11.dll in Hydra.exe.
+# The DLL is built straight into the exes' output folder, where mimalloc's
+# own post-build step copies mimalloc-redirect.dll beside it, so every exe
+# starts from the build folder. tests/test_cli.cpp copies the CLI tools out of
+# that folder together with every DLL beside them.
+function(hydra_use_mimalloc)
+    set_target_properties(mimalloc PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
+    get_property(targets DIRECTORY "${CMAKE_SOURCE_DIR}"
+                 PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS targets)
+        get_target_property(type ${target} TYPE)
+        if(type STREQUAL "EXECUTABLE")
+            get_target_property(libs ${target} LINK_LIBRARIES)
+            if(NOT libs)
+                set(libs "")
+            endif()
+            set_property(TARGET ${target} PROPERTY LINK_LIBRARIES mimalloc ${libs})
+            target_link_options(${target} PRIVATE /include:mi_version)
+        endif()
+    endforeach()
+endfunction()
+hydra_use_mimalloc()

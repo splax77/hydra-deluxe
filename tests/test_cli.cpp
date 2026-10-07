@@ -125,6 +125,12 @@ struct CliSandbox {
         batch = copy_tool(HYDRA_BATCH_EXE);
         report = copy_tool(HYDRA_REPORT_EXE);
         fillcompare = copy_tool(HYDRA_FILLCOMPARE_EXE);
+        // The tools start only with the DLLs built beside them (see
+        // hydra_use_mimalloc in CMakeLists.txt), so those travel with them.
+        const fs::path built_dir = fs::u8path(HYDRA_BATCH_EXE).make_preferred().parent_path();
+        for (const fs::directory_entry& e : fs::directory_iterator(built_dir))
+            if (e.path().extension() == ".dll")
+                fs::copy_file(e.path(), dir / e.path().filename());
 
         const std::string chart = small_chart();
         REQUIRE(!chart.empty());
