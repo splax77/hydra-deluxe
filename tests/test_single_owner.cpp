@@ -2759,24 +2759,25 @@ const std::vector<OwnerRule>& rules() {
          {"combo += 1;", "note_scores.combo_after = combo;", "combo_ = scores.combo_after;"},
          {},
          {"src", "tools", "tests"}},
-        // A running combo carried chord to chord through category_scores is a
-        // second walk of the chart. chord_score_table is the one walk; read
-        // its rows' combo_before and combo_after instead. Its own step
-        // (combo = sg.combo_after) reads a result it already holds and does
-        // not match.
+        // A running combo carried chord to chord through category_scores,
+        // in one statement or two, is a second walk of the chart.
+        // chord_score_table is the one walk; read its rows' combo_before and
+        // combo_after instead.
         {"What is the combo before a chord?",
          "chord_score_table in src/core/scoring.cpp",
-         R"(\bcombo_?\s*=\s*category_scores\()",
+         R"(\b\w*combo_?\s*=\s*(category_scores\(|\w+\.combo_after\b))",
          "",
          {},
          {},
          "derive-once review of track-r1, proposed scan rules (2026-10-07); audit finding 164",
          {"combo = category_scores(ts.chord, combo).combo_after;",
-          "combo = category_scores(c, combo).combo_after;",
-          "combo_ = category_scores(timestamp.chord, combo_).combo_after;"},
-         {"combo = sg.combo_after;", "const CategoryScores sg = category_scores(ts.chord, combo);",
-          "if (combo == category_scores(c, 0).combo_after) ok = true;"},
-         {},
+          "combo_ = category_scores(timestamp.chord, combo_).combo_after;",
+          "running_combo = category_scores(c, running_combo).combo_after;",
+          "combo = s.combo_after;"},
+         {"const CategoryScores sg = category_scores(ts.chord, combo);",
+          "if (combo == category_scores(c, 0).combo_after) ok = true;",
+          "row.combo_before = combo;", "row.combo_after = sg.combo_after;"},
+         {{"src/core/scoring.cpp", "combo = sg.combo_after;", "chord_score_table, the owner"}},
          {"src", "tools", "tests"}},
         // The chart's note total: chord note counts added up, or a note total
         // added to as a running sum. A running combo is the row above's
