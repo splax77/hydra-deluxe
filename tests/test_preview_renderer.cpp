@@ -17,6 +17,7 @@
 #include "app/user_messages.h"
 #include "render/highway_draw.h"  // track_height
 #include "render/preview_renderer.h"
+#include "temp_util.h"
 #include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
 
@@ -276,7 +277,8 @@ TEST_CASE("PreviewRenderer: setup that fails part-way releases what it made (WAR
 
     // A copy of the shipped assets with the textures gone: the constructor
     // gets through everything else before the first texture throws.
-    const fs::path dir = fs::temp_directory_path() / "hydra_test_preview_no_textures";
+    const std::string dir_utf8 = testtemp::temp_dir("preview_no_textures");
+    const fs::path dir = hydra::os_path(dir_utf8);
     fs::remove_all(dir);
     fs::copy(fs::path(kAssets), dir, fs::copy_options::recursive);
     fs::remove_all(dir / "textures");
@@ -286,7 +288,7 @@ TEST_CASE("PreviewRenderer: setup that fails part-way releases what it made (WAR
         return dev->Release();
     };
     const ULONG before = device_refs();
-    CHECK_THROWS_AS(PreviewRenderer(dev.Get(), ctx.Get(), dir.string()), std::runtime_error);
+    CHECK_THROWS_AS(PreviewRenderer(dev.Get(), ctx.Get(), dir_utf8), std::runtime_error);
     CHECK(device_refs() == before);
     fs::remove_all(dir);
 }
