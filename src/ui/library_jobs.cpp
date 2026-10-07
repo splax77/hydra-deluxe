@@ -142,7 +142,8 @@ BatchJob::BatchJob(app::BatchPlan plan, app::BatchRun run, store::RecordStore& s
     : plan_(std::move(plan)),
       run_(std::move(run)),
       store_(store),
-      workers_(app::batch_worker_count()) {}
+      workers_(app::batch_worker_count()),
+      seed_(app::report::ReportSeed::for_run(run_)) {}
 
 void BatchJob::set_analyzer_for_test(app::ChartAnalyzer analyze, int workers) {
     analyze_ = std::move(analyze);
@@ -277,6 +278,7 @@ void BatchJob::run() {
         snap_.failure_details.push_back(title + ": " + error);
     };
     callbacks.cancel = &cancel_;
+    callbacks.report_seed = &seed_;
     // The pause gate and the "now analyzing" line sit in front of the real
     // analyzer, so run_batch and its pool stay as they are.
     const app::ChartAnalyzer inner =
@@ -344,12 +346,15 @@ app::AnalysisResult AnalyzeJob::take_result() { return std::move(*result_); }
 // ---- ReportJob --------------------------------------------------------
 
 ReportJob::ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-                     bool open_when_done, double hit_window_ms)
+                     bool open_when_done, double hit_window_ms,
+                     std::optional<app::BatchRun> run, app::report::ReportSeed seed)
     : store_(store),
       cap_(cap),
       lens_(lens),
       open_when_done_(open_when_done),
-      hit_window_ms_(hit_window_ms) {}
+      hit_window_ms_(hit_window_ms),
+      run_(std::move(run)),
+      seed_(std::move(seed)) {}
 
 void ReportJob::start() { spawn([this] { run(); }); }
 
@@ -364,10 +369,11 @@ void ReportJob::run() {
         options.hit_window_ms = hit_window_ms_;
         options.db_path = app::db_path();
         // Closing Hydra sets this. Without it the window waits for the whole
-        // library to be read before it can shut down.
+        // library to be analyzed before it can shut down.
         options.cancel = &cancel_;
+        options.run = run_;
         app::report::GeneratedReport report =
-            app::report::generate_report(store_, options);
+            app::report::generate_report(store_, options, seed_);
         // Checked before the "no records" throw and before any file is
         // written: a cancelled run has no rows because it stopped, not
         // because the store is empty, and it must leave the last report on

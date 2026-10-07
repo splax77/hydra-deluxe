@@ -1706,6 +1706,17 @@ std::unordered_map<std::string, int> RecordStore::library_copies() {
     return out;
 }
 
+std::unordered_map<std::string, std::string> RecordStore::naming_copy_paths() {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    // Joins the naming copy kNamingCopiesSql picks back to its own row.
+    const std::string sql = std::string("SELECT c.md5, p.path FROM ") + kNamingCopiesSql +
+                            " AS c JOIN charts AS p ON p.rowid = c.\"MIN(rowid)\"";
+    Stmt s = prepare_read(db_, sql.c_str());
+    std::unordered_map<std::string, std::string> out;
+    while (step_row(s)) out.emplace(column_text(s, 0), column_text(s, 1));
+    return out;
+}
+
 int RecordStore::copies_of(const std::unordered_map<std::string, int>& copies,
                            const std::string& md5) {
     const auto listed = copies.find(md5);
