@@ -32,7 +32,7 @@ struct ImGuiSetupOptions {
 // backends (ImGui_ImplWin32_Init / ImGui_ImplDX11_Init) are the caller's:
 // the app has a window, the runner has none.
 void setup_imgui(const ImGuiSetupOptions& options);
-void shutdown_imgui();  // DestroyContext
+void shutdown_imgui();  // DestroyContext, then unmaps the font files
 
 // The colour each frame is cleared to before ImGui draws, as red, green, blue
 // and alpha. Hydra.exe clears its window with it and the GUI test runner its

@@ -1,9 +1,14 @@
 // Unit tests for the window-placement and DPI half of ui/app_shell: which
-// saved rectangles are safe to reopen at, the hydra_ui.ini text, and the UI
-// scale. A test can't move a real window between monitors, so the Win32
+// saved rectangles are safe to reopen at, the hydra_ui.ini text, the UI
+// scale, and how the fonts are loaded. A test can't move a real window between monitors, so the Win32
 // side in main.cpp stays thin and everything it decides is tested here.
 
 #include "doctest.h"
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>  // VirtualQuery, to see the fonts are file-mapped
 
 #include <filesystem>
 #include <fstream>
@@ -203,4 +208,35 @@ TEST_CASE("app_shell: set_ui_scale rescales sizes, fonts and px() together") {
     CHECK(ImGui::GetStyle().FontScaleDpi == doctest::Approx(1.0f));
     CHECK(hydra::ui::px(10.0f) == doctest::Approx(10.0f));
     hydra::ui::shutdown_imgui();
+}
+
+TEST_CASE("app_shell: the atlas reads every UI font from a file map it does not own") {
+    hydra::ui::setup_imgui(test_options("-"));
+    const ImFontAtlas* atlas = ImGui::GetIO().Fonts;
+    REQUIRE(atlas->Sources.Size >= 2);
+    // Named after the file, as ImGui's own file loader names them.
+    CHECK(std::string(atlas->Sources[0].Name) == "ShipporiAntiqueB1-Regular.ttf");
+    CHECK(std::string(atlas->Sources[1].Name) == "CourierPrime-Regular.ttf");
+    // Every source, the merged Japanese fallback too when this machine has one.
+    for (const ImFontConfig& source : atlas->Sources) {
+        CAPTURE(source.Name);
+        CHECK_FALSE(source.FontDataOwnedByAtlas);
+        MEMORY_BASIC_INFORMATION info{};
+        REQUIRE(VirtualQuery(source.FontData, &info, sizeof(info)) == sizeof(info));
+        CHECK(info.Type == MEM_MAPPED);
+    }
+    hydra::ui::shutdown_imgui();
+}
+
+TEST_CASE("app_shell: a folder without the font files loads no fonts") {
+    const std::string empty = testtemp::temp_dir("app_shell_no_fonts");
+    hydra::ui::ImGuiSetupOptions opts = test_options("-");
+    opts.resource_dir = empty;
+    hydra::ui::setup_imgui(opts);
+    // ImGui adds its built-in font on the first frame.
+    CHECK(ImGui::GetIO().Fonts->Fonts.Size == 0);
+    CHECK(ImGui::GetIO().FontDefault == nullptr);
+    CHECK(hydra::ui::g_mono_font == nullptr);
+    hydra::ui::shutdown_imgui();
+    std::filesystem::remove_all(hydra::os_path(empty));
 }
