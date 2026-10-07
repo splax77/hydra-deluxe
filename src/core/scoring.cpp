@@ -93,6 +93,41 @@ int solo_bonus(const Chord& chord, bool flag_solo) {
     return flag_solo ? kSoloBonusPerNote * chord.count() : 0;
 }
 
+ChordScoreTable chord_score_table(const Song& song, core::SqOutRule sqout_rule,
+                                  ChordScoreDetail detail) {
+    const bool with_notes = detail == ChordScoreDetail::WithNotes;
+    ChordScoreTable out;
+    out.rows.reserve(song.sequence.size());
+    if (with_notes) out.notes.reserve(static_cast<size_t>(song.note_count()));
+
+    // One scratch list reused for every chord, so keeping the notes costs no
+    // allocation per chord.
+    std::vector<CategoryScores> per_note;
+    int combo = 0;
+    for (const SongTimestamp& ts : song.sequence) {
+        const CategoryScores sg =
+            category_scores(ts.chord, combo, with_notes ? &per_note : nullptr, sqout_rule);
+        ChordScoreRow row;
+        row.base = sg.base;
+        row.combo = sg.combo;
+        row.sp = sg.sp;
+        row.sqout_sp = sg.sqout_sp();
+        row.accent = sg.accent;
+        row.ghost = sg.ghost;
+        row.solo = solo_bonus(ts.chord, ts.flag_solo);
+        row.multiplier = sg.multiplier;
+        row.multiplier_after = sg.multiplier_after;
+        row.combo_before = combo;
+        row.combo_after = sg.combo_after;
+        row.note_begin = static_cast<uint32_t>(out.notes.size());
+        if (with_notes) out.notes.insert(out.notes.end(), per_note.begin(), per_note.end());
+        row.note_end = static_cast<uint32_t>(out.notes.size());
+        out.rows.push_back(row);
+        combo = sg.combo_after;
+    }
+    return out;
+}
+
 int multsqueeze_gain(const Chord& chord, int combo) {
     // The multiplier each position is paid at, from the payout itself.
     std::vector<CategoryScores> per_note;

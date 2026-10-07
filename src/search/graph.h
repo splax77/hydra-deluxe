@@ -280,7 +280,6 @@ private:
     Timecode head_time_;
     ScoreGraphNode* base_track_head_ = nullptr;
     ScoreGraphNode* sp_track_head_ = nullptr;
-    int combo_ = 0;
     std::vector<MultSqueeze> multsqueezes_;
     // The Song's sp_phrase_count(), kept here for max_sp_bars() -- not tallied
     // by this graph itself.
