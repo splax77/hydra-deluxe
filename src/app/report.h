@@ -76,8 +76,10 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              const std::vector<TimingTier>& tiers);
 
-// Every listed record for one chart mode, cap and lens, keyed by its chart
-// hash in lower case. Both comparison pages join on this.
+// Every listed record for one chart mode, cap and lens whose chart the
+// library lists (library_copies_by_hash), keyed by its chart hash in lower
+// case. A result the library doesn't list is left out, as the path report
+// leaves it out (D92). Both comparison pages join on this.
 std::unordered_map<std::string, store::RecordListing> records_by_hash(
     store::RecordStore& store, const std::string& chartmode, const store::CapQuery& cap,
     const store::Lens& lens);
@@ -197,10 +199,16 @@ enum class EmptyReason {
 };
 
 // What an empty report says when the database has results but no chart
-// library (D89 item 2): the report covers library charts only.
+// library (D89 item 2): the report covers library charts only. The DM
+// comparison and the fill comparison stop with it too (D92).
 inline constexpr const char* kNoChartLibrary =
     "This database has no chart library. Run hydra_batch without folder arguments, or scan "
     "in Hydra, to build one.";
+
+// Whether `store` holds results but no chart library to report them on: the
+// one answer every page asks before it says kNoChartLibrary (D89 item 2,
+// D92). A database with no results at all keeps each page's own words.
+bool lacks_chart_library(store::RecordStore& store);
 
 // The start of the sentence an empty report gives when the database holds
 // results under other settings. The app's error mapping knows the sentence

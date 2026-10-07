@@ -201,6 +201,9 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
     const std::string refused =
         why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, lens.legacy_fills != 0);
     if (!refused.empty()) throw KindedError(ErrorKind::AlreadyPlain, refused);
+    // The page compares library charts only, as the path report does (D92).
+    if (report::lacks_chart_library(store))
+        throw KindedError(ErrorKind::AlreadyPlain, report::kNoChartLibrary);
 
     // One query for every stored record in this chartmode, indexed by hash.
     // Only records at Clone Hero's cap: a what-if cap's score would read as

@@ -1,6 +1,6 @@
-// Tests for store/ (record_store.{h,cpp} + serialize.{h,cpp}): a record must
-// round-trip through RecordStore (write, reload, restore timecodes)
-// losslessly, across the corpus and the full config matrix.
+// Tests for store/record_store.{h,cpp}: a result's summary row reads back as
+// it was saved, each lookup picks the row its settings name, and an older
+// file upgrades in place (D87).
 
 #include "doctest.h"
 
@@ -25,30 +25,34 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/model.h"
 #include "core/rules.h"
-#include "core/squeeze_rating.h"
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
 #include "parse/song.h"
-#include "record_bytes.h"
 #include "record_fixtures.h"
 #include "search/graph.h"
 #include "search/pather.h"
 #include "store/record_store.h"
 #include "store/stored_versions.h"
-#include "store/serialize.h"
 #include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::store;
+
+using hydra::test::exec_on_file;
+using hydra::test::write_junk_db;
+// One integer straight out of a database file: how these tests look at a
+// table without the store growing an accessor for it.
+using hydra::test::scalar_on_file;
 
 namespace {
 
@@ -75,9 +79,20 @@ const std::vector<Config> kMatrix = {
     {"cap8.scores.200", 8, DepthMode::Scores, 200, std::nullopt},
 };
 
+// One library row for `md5`, named `title`.
+ChartLibraryEntry chart_entry(const char* md5, const char* title) {
+    return ChartLibraryEntry{md5,
+                             title,
+                             "Artist",
+                             "Charter",
+                             std::string("C:\\charts\\") + md5 + "\\notes.chart",
+                             "C:\\charts",
+                             std::string("sig-") + md5};
+}
+
 }  // namespace
 
-TEST_CASE("records round-trip through RecordStore across the corpus and config matrix") {
+TEST_CASE("a saved result reads back its best path and summary across the corpus and config matrix") {
     RecordStore store(":memory:");
 
     int checks = 0, mismatches = 0;
@@ -105,81 +120,15 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
             // The store refuses a key whose ms limit isn't the record's.
             const Lens lens = Lens::from(
                 cfg.ms ? std::optional<int>(static_cast<int>(*cfg.ms)) : std::nullopt, 0, 0);
-            store.add_song(hyhash, "Title", "Artist", "Charter", song);
-            store.add_record(RecordKey{hyhash, "mode", cap, lens}, *record);
+            const RecordKey key{hyhash, "mode", cap, lens};
+            store.add_record(key, *record);
 
-            RecordLookup lookup = store.get_record(RecordKey{hyhash, "mode", cap, lens});
+            const SummaryLookup got = store.get_summary(key);
             ++checks;
-            if (lookup.status != RecordStatus::Ready) {
-                if (++mismatches <= 8)
-                    CHECK_MESSAGE(false, path << " [" << cfg.key << "] no row after add");
-                continue;
-            }
-            const std::optional<HydraRecord>& reloaded = lookup.record;
-
-            const std::string bestpath =
-                record->paths.empty() ? std::string()
-                                      : record->best_path().pathstring();
-            const std::string re_bestpath =
-                reloaded->paths.empty() ? std::string()
-                                        : reloaded->best_path().pathstring();
-
             std::string d;
-            if (re_bestpath != bestpath) {
-                d = "reloaded bestpath";
-            } else if (summarize_record(*reloaded) != summarize_record(*record)) {
-                d = "reloaded summary";
-            }
-
-            // Timecodes are dropped to raw ticks by the blob and rebuilt by
-            // restore_timecodes against the songmeta tempomap; check that
-            // rebuild actually derives ms/measure position, not just ticks.
-            if (d.empty() && !record->paths.empty() &&
-                record->best_path().has_activations()) {
-                // all_activations() returns by value; keep the vectors alive.
-                const auto orig_acts = record->best_path().all_activations();
-                const Activation& orig = orig_acts.front();
-                const auto again_acts = reloaded->best_path().all_activations();
-                const Activation& again = again_acts.front();
-                if (again.timecode.ticks() != orig.timecode.ticks() ||
-                    again.timecode.ms() != orig.timecode.ms())
-                    d = "restored timecode";
-                // The transfer scales ride in the blob bit-exactly: the SP
-                // end's, and each SqIn's own.
-                else if (again.transfer_post != orig.transfer_post)
-                    d = "restored transfer scales";
-                else if (again.sqinouts.size() != orig.sqinouts.size())
-                    d = "restored squeezes";
-                else
-                    for (size_t k = 0; k < orig.sqinouts.size(); ++k)
-                        if (again.sqinouts[k].transfer != orig.sqinouts[k].transfer)
-                            d = "restored SqIn transfer scales";
-            }
-
-            SummaryLookup summary_row = store.get_summary(RecordKey{hyhash, "mode", cap, lens});
-            if (d.empty() && (summary_row.status != RecordStatus::Ready ||
-                              summary_row.bestpath != bestpath))
-                d = "get_summary bestpath";
-
-            // The all-0 path rides in the same blob and is restored the same
-            // way, but must stay out of the summary (pathcount above is
-            // unchanged by it).
-            if (d.empty()) {
-                std::vector<const Path*> want = record->all_allzero_paths();
-                std::vector<const Path*> got = reloaded->all_allzero_paths();
-                if (want.size() != got.size()) {
-                    d = "allzero count";
-                } else {
-                    for (size_t i = 0; i < want.size(); ++i) {
-                        if (want[i]->pathstring() != got[i]->pathstring() ||
-                            want[i]->totalscore() != got[i]->totalscore()) {
-                            d = "allzero path " + std::to_string(i);
-                            break;
-                        }
-                    }
-                }
-            }
-
+            if (got.status != RecordStatus::Ready) d = "no row after add";
+            else if (got.bestpath != best_path_text(*record)) d = "bestpath";
+            else if (got.summary != summarize_record(*record)) d = "summary";
             if (!d.empty() && ++mismatches <= 8)
                 CHECK_MESSAGE(false, path << " [" << cfg.key << "] " << d);
         }
@@ -187,101 +136,10 @@ TEST_CASE("records round-trip through RecordStore across the corpus and config m
 
     CHECK(mismatches == 0);
     REQUIRE(checks > 0);
-    MESSAGE("checked " << checks << " round trips");
+    MESSAGE("checked " << checks << " saved summaries");
 }
 
-// rate_activation reads the stored transfer scales only. That is safe because
-// a Ready record's stored scales equal a live recompute: a Ready row was
-// written by this build, which stamps the scales with
-// frontend_transfer_scales at copy-out, and the store hands back every input
-// that function reads. This pins it through a real store round trip, for
-// every activation of every path, all-0 paths included. Uncapped (a cap no
-// chart reaches) and the 1.0 fill rule are in so D4's "no fresh record
-// stores unknown" is proven beyond cap 4.
-TEST_CASE("stored transfer scales equal a live recompute after a store round trip") {
-    const std::vector<Config> configs = {
-        {"cap4", 4, DepthMode::Scores, 4, std::nullopt},
-        {"cap4.ms10", 4, DepthMode::Scores, 4, 10.0},
-        {"uncapped", 999, DepthMode::Scores, 4, std::nullopt},  // "uncapped" is 999 (D43)
-        {"cap4.fills10", 4, DepthMode::Scores, 4, std::nullopt, true},
-    };
-    RecordStore store(":memory:");
-    int acts = 0, mismatches = 0;
-    std::vector<int> acts_per_config(configs.size(), 0);
-
-    for (const std::string& path : corpus::chart_paths()) {
-        Song song = load_songpath(path, true, true);
-        if (song.is_empty()) continue;
-
-        for (const Config& cfg : configs) {
-            std::optional<HydraRecord> record;
-            try {
-                SearchSettings settings;
-                settings.sp_cap = cfg.cap;
-                settings.depth_mode = cfg.dmode;
-                settings.depth_value = cfg.dvalue;
-                settings.ms_filter = cfg.ms;
-                settings.legacy_fill_deadline = cfg.legacy_fills;
-                record = analyze_chart(song, settings);
-            } catch (const ChartFileError&) {
-                continue;
-            }
-            const CapQuery cap = CapQuery::at(*record->sp_cap);
-            const std::string hyhash = path + "|scales|" + cfg.key;
-            // The store refuses a key whose ms limit or fill rule isn't the
-            // record's.
-            const Lens lens = Lens::from(
-                cfg.ms ? std::optional<int>(static_cast<int>(*cfg.ms)) : std::nullopt, 0, 0,
-                cfg.legacy_fills);
-            store.add_song(hyhash, "Title", "Artist", "Charter", song);
-            store.add_record(RecordKey{hyhash, "mode", cap, lens}, *record);
-
-            const RecordLookup lookup = store.get_record(RecordKey{hyhash, "mode", cap, lens});
-            REQUIRE(lookup.status == RecordStatus::Ready);
-            REQUIRE(lookup.timing.has_value());
-
-            std::vector<const Path*> all = lookup.record->all_paths();
-            for (const Path* p : lookup.record->all_allzero_paths()) all.push_back(p);
-            for (const Path* p : all) {
-                for (const Activation& act : p->walk_activations()) {
-                    ++acts;
-                    ++acts_per_config[static_cast<size_t>(&cfg - configs.data())];
-                    // D4: read back from the store, nothing is unknown.
-                    const std::string why = corpus::unknown_scale_reason(act);
-                    CHECK_MESSAGE(why.empty(), path << " [" << cfg.key << "] activation at tick "
-                                                    << act.timecode.ticks() << ": " << why);
-                    const std::optional<ActTransferScales> live =
-                        frontend_transfer_scales(act, *lookup.timing);
-                    // Each SqIn's stored scale, in SqIn order as
-                    // stored_transfer_scales pairs them, against the live one.
-                    const std::optional<ActTransferScales> stored = stored_transfer_scales(act);
-                    const bool same = live && stored && stored->post == live->post &&
-                                      stored->sqins == live->sqins;
-                    if (!same && ++mismatches <= 8)
-                        CHECK_MESSAGE(false, path << " [" << cfg.key << "] activation at tick "
-                                                  << act.timecode.ticks());
-                }
-            }
-        }
-    }
-
-    CHECK(mismatches == 0);
-    REQUIRE(acts > 0);
-    for (size_t i = 0; i < configs.size(); ++i) {
-        CAPTURE(configs[i].key);
-        CHECK(acts_per_config[i] > 0);  // every config really ran
-    }
-    MESSAGE("compared " << acts << " stored activations with a live recompute");
-}
-
-using hydra::test::exec_on_file;
-using hydra::test::write_junk_db;
-// One integer straight out of a database file: how these tests look at the
-// paths/path_refs tables without the store growing an accessor for them.
-using hydra::test::scalar_on_file;
-
-TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
-    std::optional<Song> song;
+TEST_CASE("RecordStore maintenance: has_record, list_records, counts") {
     std::optional<HydraRecord> record;
     for (const std::string& path : corpus::chart_paths()) {
         Song s = load_songpath(path, true, true);
@@ -296,16 +154,15 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
         } catch (const ChartFileError&) {
             continue;
         }
-        song = std::move(s);
         break;
     }
-    REQUIRE(song.has_value());
+    REQUIRE(record.has_value());
 
     const CapQuery at4 = CapQuery::at(4);
     RecordStore store(":memory:");
     CHECK_FALSE(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}));
 
-    store.add_song("h1", "Song A", "Artist A", "Charter A", *song);
+    store.rebuild_chart_library({chart_entry("h1", "Song A")});
     store.add_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}, *record);
     CHECK(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}));
     CHECK_FALSE(store.has_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", CapQuery::at(8)}));
@@ -316,42 +173,15 @@ TEST_CASE("RecordStore maintenance: has_record, list_records, reindex") {
     CHECK(listing[0].ref_name == "Song A");
     CHECK(listing[0].bestpath == record->best_path().pathstring());
 
-    auto [nsongs, nrecords] = store.counts();
-    CHECK(nsongs == 1);
+    auto [ncharts, nrecords] = store.counts();
+    CHECK(ncharts == 1);
     CHECK(nrecords == 1);
-
-    int touched = store.reindex();
-    CHECK(touched == 1);
-    std::vector<RecordListing> relisted =
-        store.list_records(std::nullopt, at4, Lens{}, SortColumn::Score, true);
-    REQUIRE(relisted.size() == 1);
-    CHECK(relisted[0].summary.score == listing[0].summary.score);
 
     // A row stamped with a different version is stale for this store: it
     // doesn't count as "already analyzed".
     store.add_row(test::old_build_row(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}, *record));
     CHECK(store.counts().second == 2);
     CHECK_FALSE(store.has_record(RecordKey{"h2", "Expert Pro Drums, 2x Bass", at4}));
-
-    // reindex rewrites the best path with the other summary columns (finding
-    // 132). A file database, so a second connection can blank the column.
-    const std::string db = testtemp::temp_path("reindex_bestpath", ".db");
-    std::remove(db.c_str());
-    {
-        RecordStore seed(db);
-        seed.add_song("h1", "Song A", "Artist A", "Charter A", *song);
-        seed.add_record(RecordKey{"h1", "Expert Pro Drums, 2x Bass", at4}, *record);
-    }
-    exec_on_file(db, "UPDATE results SET bestpath = ''");
-    {
-        RecordStore reopened(db);
-        CHECK(reopened.reindex() == 1);
-        const std::vector<RecordListing> again =
-            reopened.list_records(std::nullopt, at4, Lens{}, SortColumn::Score, true);
-        REQUIRE(again.size() == 1);
-        CHECK(again[0].bestpath == record->best_path().pathstring());
-    }
-    std::remove(db.c_str());
 }
 
 TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others Stale") {
@@ -359,8 +189,8 @@ TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others S
     // reads Ready. Results stamped "1.8.2" (every release from 1.8.4 to
     // 2.0.0) or "1.8.3" hold values the SP-end history changed (ADR 0021),
     // and earlier 2.1.0 builds' "2.1.0" can miss the all-0 path (D85), so
-    // they read Stale, through the C++ rule (get_record, get_summary) and
-    // its SQL twin (has_record).
+    // they read Stale, through the C++ rule (get_summary) and its SQL twin
+    // (has_record).
     CHECK(kResultsStamp.is_current("2.1.0+allzero"));
     CHECK_FALSE(kResultsStamp.is_current("2.1.0"));
     CHECK_FALSE(kResultsStamp.is_current("2.0.0"));
@@ -402,7 +232,6 @@ TEST_CASE("RecordStore results stamp: every accepted stamp reads Ready, others S
         PreparedRow row = prepare_row(key, record);
         row.hyversion = c.stamp;
         store.add_row(row);
-        CHECK(store.get_record(key).status == c.want);
         CHECK(store.get_summary(key).status == c.want);
         CHECK(store.has_record(key) == (c.want == RecordStatus::Ready));
     }
@@ -447,6 +276,14 @@ HydraRecord at_cap(int cap) {
     return r;
 }
 
+// at_cap with every path taken out: "analyzed, and nothing survived".
+HydraRecord no_paths_at_cap(int cap) {
+    HydraRecord r = at_cap(cap);
+    r.paths.clear();
+    r.allzero_paths.clear();
+    return r;
+}
+
 // The two lenses the coexistence tests use: same chart, same cap, different
 // searches. Lens C is a third nobody stored anything under.
 const Lens kLensA = Lens::from(10, 0, 20);
@@ -464,61 +301,40 @@ HydraRecord at_cap_ms10(int cap) {
 
 TEST_CASE("records at different caps coexist; each lookup sees only its own cap") {
     RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
     store.add_record(RecordKey{"h", "mode", CapQuery::at(32)}, at_cap(32));
     CHECK(store.counts().second == 2);
 
     // Exact lookups see exactly their cap.
-    CHECK(store.get_record(RecordKey{"h", "mode", CapQuery::at(4)}).record->sp_cap == 4);
-    CHECK(store.get_record(RecordKey{"h", "mode", CapQuery::at(32)}).record->sp_cap == 32);
-    CHECK(store.get_record(RecordKey{"h", "mode", CapQuery::at(8)}).status ==
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4)}).status ==
+          RecordStatus::Ready);
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(32)}).status ==
+          RecordStatus::Ready);
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(8)}).status ==
           RecordStatus::NotAnalyzed);
 
     // A stale 64-bar row leaves the 32-bar answer alone -- for single
-    // lookups and for the set queries alike.
+    // lookups and for the listing alike.
     store.add_row(test::old_build_row(RecordKey{"h", "mode", CapQuery::at(64)}, at_cap(64)));
-    CHECK(store.get_record(RecordKey{"h", "mode", CapQuery::at(32)}).record->sp_cap == 32);
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(32)}).status ==
+          RecordStatus::Ready);
     std::vector<RecordListing> listed =
         store.list_records(std::nullopt, CapQuery::at(32), Lens{}, SortColumn::Score, true);
     REQUIRE(listed.size() == 1);
     CHECK(listed[0].sp_cap == 32);
-    int seen = 0;
-    store.for_each_blob(std::nullopt, CapQuery::at(32), Lens{},
-                        [&](const RecordStore::BlobRow& meta, const HydraRecord*) {
-                            CHECK(meta.sp_cap == 32);
-                            ++seen;
-                        });
-    CHECK(seen == 1);
 
-    // Asked for cap 64 exactly, that stale row is reported as stale: no
-    // record comes back and its blob is never decoded.
-    RecordLookup stale_lookup = store.get_record(RecordKey{"h", "mode", CapQuery::at(64)});
+    // Asked for cap 64 exactly, that stale row is reported as stale, with no
+    // numbers handed out.
+    const SummaryLookup stale_lookup = store.get_summary(RecordKey{"h", "mode", CapQuery::at(64)});
     CHECK(stale_lookup.status == RecordStatus::Stale);
-    CHECK_FALSE(stale_lookup.record.has_value());
-    CHECK(stale_lookup.hyversion == "0.0.0");
-    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(64)}).status == RecordStatus::Stale);
+    CHECK(stale_lookup.stale_build);
+    CHECK_FALSE(stale_lookup.summary.score.has_value());
 
-    // for_each_blob still yields the stale row (at its own cap), with a null
-    // record pointer.
-    int stale_seen = 0;
-    store.for_each_blob(std::nullopt, CapQuery::at(64), Lens{},
-                        [&](const RecordStore::BlobRow& meta, const HydraRecord* rec) {
-                            CHECK(meta.status == RecordStatus::Stale);
-                            CHECK(rec == nullptr);
-                            ++stale_seen;
-                        });
-    CHECK(stale_seen == 1);
-
-    // The listing does not. A stale row takes its chart out of the listing
-    // entirely, so a report counts it as never analyzed rather than reading
-    // numbers this build cannot vouch for.
+    // The listing leaves it out. A stale row takes its chart out of the
+    // listing entirely, so a report counts it as never analyzed rather than
+    // reading numbers this build cannot vouch for.
     CHECK(store.list_records(std::nullopt, CapQuery::at(64), Lens{}, SortColumn::Score, true)
               .empty());
-
-    // reindex rewrites each cap's own readable row. The stale 64-bar row is
-    // left untouched and not counted (D55 item 3).
-    CHECK(store.reindex() == 2);
     CHECK(store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true)[0]
               .summary.score == fixture().record.best_path().totalscore());
 }
@@ -529,7 +345,6 @@ TEST_CASE("a row an old migration marked with unknown settings reads Not analyze
     // candidate for any lookup. It reads as no row at all, not as Stale
     // (user decision 2026-09-26), and a real run of the chart replaces it.
     RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
     PreparedRow migrated = prepare_row(RecordKey{"h", "mode", CapQuery::at(8)}, at_cap(8));
     migrated.lens.ms_enabled = -1;
     migrated.hyversion = "1.6.0";
@@ -537,94 +352,14 @@ TEST_CASE("a row an old migration marked with unknown settings reads Not analyze
     CHECK(store.counts().second == 1);
 
     const RecordKey key{"h", "mode", CapQuery::at(8)};
-    CHECK(store.get_record(key).status == RecordStatus::NotAnalyzed);
     CHECK(store.get_summary(key).status == RecordStatus::NotAnalyzed);
     CHECK_FALSE(store.has_record(key));
     CHECK(store.list_records(std::nullopt, CapQuery::at(8), Lens{}, SortColumn::Score, true)
               .empty());
-    int seen = 0;
-    store.for_each_blob(std::nullopt, CapQuery::at(8), Lens{},
-                        [&](const RecordStore::BlobRow&, const HydraRecord*) { ++seen; });
-    CHECK(seen == 0);
 
     store.add_record(key, at_cap(8));
     CHECK(store.counts().second == 1);
-    CHECK(store.get_record(key).status == RecordStatus::Ready);
-}
-
-TEST_CASE("a row in an older path format is Stale even when this build stamped it") {
-    // The hyversion stamp alone cannot catch this. A released build writes
-    // its own current hyversion no matter what structure format it emits, so
-    // a row can carry today's version and still hold a tree this build no
-    // longer knows how to decode. Only the structure format number inside
-    // the blob can tell the two apart, so that is what has to gate Ready.
-    RecordStore store(":memory:");
-    store.add_song("old", "Song", "Artist", "Charter", fixture().song);
-    PreparedRow old_format = prepare_row(RecordKey{"old", "mode", CapQuery::at(8)}, at_cap(8));
-    REQUIRE(old_format.structure.size() >= 4);
-    old_format.structure[kPathFormatOffset] = 1;
-    old_format.structure[1] = 0;
-    old_format.structure[2] = 0;
-    old_format.structure[3] = 0;
-    store.add_row(old_format);
-    CHECK(store.counts().second == 1);
-
-    // Stale everywhere a lookup can ask.
-    CHECK_FALSE(store.has_record(RecordKey{"old", "mode", CapQuery::at(8)}));
-    RecordLookup lookup = store.get_record(RecordKey{"old", "mode", CapQuery::at(8)});
-    CHECK(lookup.status == RecordStatus::Stale);
-    CHECK_FALSE(lookup.record.has_value());
-    CHECK(store.get_summary(RecordKey{"old", "mode", CapQuery::at(8)}).status ==
-          RecordStatus::Stale);
-    CHECK(store.list_records(std::nullopt, CapQuery::at(8), Lens{}, SortColumn::Score, true)
-              .empty());
-    int seen = 0;
-    store.for_each_blob(std::nullopt, CapQuery::at(8), Lens{},
-                        [&](const RecordStore::BlobRow& meta, const HydraRecord* rec) {
-                            CHECK(meta.status == RecordStatus::Stale);
-                            CHECK(rec == nullptr);
-                            ++seen;
-                        });
-    CHECK(seen == 1);
-
-    // A normal row, same store, still reads Ready -- this isn't blanket
-    // breakage, just this one row's format.
-    store.add_song("new", "Song", "Artist", "Charter", fixture().song);
-    store.add_record(RecordKey{"new", "mode", CapQuery::at(8)}, at_cap(8));
-    CHECK(store.get_record(RecordKey{"new", "mode", CapQuery::at(8)}).status ==
-          RecordStatus::Ready);
-    CHECK(store.has_record(RecordKey{"new", "mode", CapQuery::at(8)}));
-    CHECK(store.list_records(std::nullopt, CapQuery::at(8), Lens{}, SortColumn::Score, true)
-              .size() == 1);
-
-    // And a current write purges an old-format row for the same chart, the
-    // same way it purges an other-version one.
-    RecordStore purge(":memory:");
-    purge.add_song("purge", "Song", "Artist", "Charter", fixture().song);
-    PreparedRow old_format2 =
-        prepare_row(RecordKey{"purge", "mode", CapQuery::at(8)}, at_cap(8));
-    old_format2.structure[kPathFormatOffset] = 1;
-    old_format2.structure[1] = 0;
-    old_format2.structure[2] = 0;
-    old_format2.structure[3] = 0;
-    purge.add_row(old_format2);
-    CHECK(purge.counts().second == 1);
-    purge.add_record(RecordKey{"purge", "mode", CapQuery::at(16)}, at_cap(16));
-    CHECK(purge.counts().second == 1);
-}
-
-TEST_CASE("a row in the 1.8.1 path layout (structure format 5) reads Stale") {
-    RecordStore store(":memory:");
-    store.add_song("old", "Song", "Artist", "Charter", fixture().song);
-    PreparedRow row = prepare_row(RecordKey{"old", "mode", CapQuery::at(4)}, at_cap(4));
-    REQUIRE(row.structure.size() >= 4);
-    row.structure[kPathFormatOffset] = 5;
-    store.add_row(row);
-
-    const RecordLookup lookup = store.get_record(RecordKey{"old", "mode", CapQuery::at(4)});
-    CHECK(lookup.status == RecordStatus::Stale);
-    CHECK(lookup.stale_build);
-    CHECK_FALSE(lookup.record.has_value());
+    CHECK(store.get_summary(key).status == RecordStatus::Ready);
 }
 
 TEST_CASE("a row analyzed under other rules reads Stale until the rules match again") {
@@ -635,10 +370,8 @@ TEST_CASE("a row analyzed under other rules reads Stale until the rules match ag
     // as Stale everywhere a lookup can ask.
     {
         RecordStore store(":memory:");
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
         store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
         CHECK_FALSE(store.has_record(key));
-        CHECK(store.get_record(key).status == RecordStatus::Stale);
         CHECK(store.get_summary(key).status == RecordStatus::Stale);
         CHECK(store.list_records(std::nullopt, CapQuery::at(8), Lens{}, SortColumn::Score, true)
                   .empty());
@@ -648,24 +381,23 @@ TEST_CASE("a row analyzed under other rules reads Stale until the rules match ag
     const std::string db = testtemp::temp_path("rules_fp", ".db");
     {
         RecordStore store(db);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
         store.add_record(key, at_cap(8));
-        CHECK(store.get_record(key).status == RecordStatus::Ready);
+        CHECK(store.get_summary(key).status == RecordStatus::Ready);
     }
     {
         RecordStore store(db, core::RulesStamp::of(other));
-        CHECK(store.get_record(key).status == RecordStatus::Stale);
+        CHECK(store.get_summary(key).status == RecordStatus::Stale);
         CHECK_FALSE(store.has_record(key));
     }
     {
         // A store gated on "no usable rules" (a bad hydra_rules.ini) reads
         // nothing as Ready.
         RecordStore store(db, core::RulesStamp::none());
-        CHECK(store.get_record(key).status == RecordStatus::Stale);
+        CHECK(store.get_summary(key).status == RecordStatus::Stale);
     }
     {
         RecordStore store(db);
-        CHECK(store.get_record(key).status == RecordStatus::Ready);
+        CHECK(store.get_summary(key).status == RecordStatus::Ready);
     }
     std::error_code ec;
     std::filesystem::remove(std::filesystem::u8path(db), ec);
@@ -680,76 +412,45 @@ TEST_CASE("a write under rules A keeps the rules-B row") {
     std::remove(db.c_str());
     {
         RecordStore store(db);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
         store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
     }
-    const int64_t one_row_refs = scalar_on_file(db,"SELECT COUNT(*) FROM path_refs");
-    REQUIRE(one_row_refs > 0);
-
     {
         RecordStore store(db);
         store.add_record(key, at_cap(8));
         CHECK(store.counts().second == 2);
-        CHECK(store.get_record(key).status == RecordStatus::Ready);
+        CHECK(store.get_summary(key).status == RecordStatus::Ready);
     }
-    // Each row still holds its own refs, so the rules-B row's paths stay.
-    CHECK(scalar_on_file(db,"SELECT COUNT(*) FROM path_refs") == 2 * one_row_refs);
     {
         RecordStore store(db, core::RulesStamp::of(other));
-        const RecordLookup lookup = store.get_record(key);
+        const SummaryLookup lookup = store.get_summary(key);
         CHECK(lookup.status == RecordStatus::Ready);
-        REQUIRE(lookup.record.has_value());
-        CHECK(lookup.record->paths.size() == fixture().record.paths.size());
+        CHECK(lookup.summary == summarize_record(fixture().record));
         CHECK(store.has_record(key));
     }
     std::remove(db.c_str());
 }
 
-TEST_CASE("reindex leaves a row made under other rules untouched") {
-    // D55 item 3: a result kept under other rules (D51 call 8) keeps its
-    // cached score after a reindex under the default rules.
-    const core::Rules other = test::other_rules();
-    const RecordKey key{"h", "mode", CapQuery::at(8)};
-    const std::string db = testtemp::temp_path("reindex_rules_b", ".db");
-    std::remove(db.c_str());
-    {
-        RecordStore store(db);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        store.add_row(prepare_row(key, test::other_rules_record(at_cap(8))));
-    }
-    const int64_t score = fixture().record.best_path().totalscore();
-    REQUIRE(scalar_on_file(db,"SELECT score FROM results") == score);
-    {
-        RecordStore store(db);
-        CHECK(store.reindex() == 0);
-    }
-    CHECK(scalar_on_file(db,"SELECT COUNT(*) FROM results WHERE score IS NOT NULL") == 1);
-    CHECK(scalar_on_file(db,"SELECT score FROM results") == score);
-    std::remove(db.c_str());
-}
-
 TEST_CASE("a Stale lookup says why: another build, other rules, or both") {
     RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
     const RecordKey build_key{"h", "build", CapQuery::at(8)};
     const RecordKey rules_key{"h", "rules", CapQuery::at(8)};
     const RecordKey both_key{"h", "both", CapQuery::at(8)};
     test::add_stale_rows(store, at_cap(8), build_key, rules_key, both_key);
 
     // This build, other rules.
-    RecordLookup by_rules = store.get_record(rules_key);
+    const SummaryLookup by_rules = store.get_summary(rules_key);
     CHECK(by_rules.status == RecordStatus::Stale);
     CHECK(by_rules.stale_rules);
     CHECK_FALSE(by_rules.stale_build);
 
     // Another build, these rules.
-    RecordLookup by_build = store.get_record(build_key);
+    const SummaryLookup by_build = store.get_summary(build_key);
     CHECK(by_build.status == RecordStatus::Stale);
     CHECK(by_build.stale_build);
     CHECK_FALSE(by_build.stale_rules);
 
     // Another build and other rules: both reasons.
-    RecordLookup by_both = store.get_record(both_key);
+    const SummaryLookup by_both = store.get_summary(both_key);
     CHECK(by_both.status == RecordStatus::Stale);
     CHECK(by_both.stale_build);
     CHECK(by_both.stale_rules);
@@ -757,139 +458,19 @@ TEST_CASE("a Stale lookup says why: another build, other rules, or both") {
     // A Ready row carries no reason.
     const RecordKey ready_key{"h", "ready", CapQuery::at(8)};
     store.add_record(ready_key, at_cap(8));
-    RecordLookup ready = store.get_record(ready_key);
+    const SummaryLookup ready = store.get_summary(ready_key);
     CHECK(ready.status == RecordStatus::Ready);
     CHECK_FALSE(ready.stale_build);
     CHECK_FALSE(ready.stale_rules);
 }
 
-TEST_CASE("for_each_blob does not hold the store lock across its callback") {
-    // The walk used to keep the store's lock from its first row to its last,
-    // so anything else that touched the store -- a click on the UI thread --
-    // waited for the whole report. The lock now covers the sqlite calls only.
-    RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-    store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-
-    std::atomic<bool> in_callback{false};
-    std::atomic<bool> probe_done{false};
-    // Started before the walk on purpose. On the old code the probe blocks on
-    // the lock until the walk has finished, so this test fails on the flag
-    // rather than hanging forever.
-    std::thread probe([&] {
-        while (!in_callback.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        store.counts();
-        probe_done.store(true);
-    });
-
-    int seen = 0;
-    bool probe_arrived_during_callback = false;
-    store.for_each_blob(std::nullopt, CapQuery::at(4), Lens{},
-                        [&](const RecordStore::BlobRow&, const HydraRecord*) {
-                            ++seen;
-                            in_callback.store(true);
-                            const auto deadline = std::chrono::steady_clock::now() +
-                                                  std::chrono::seconds(2);
-                            while (!probe_done.load() &&
-                                   std::chrono::steady_clock::now() < deadline)
-                                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-                            probe_arrived_during_callback = probe_done.load();
-                        });
-    probe.join();
-
-    // doctest's assertions are not thread-safe, so every check lands here on
-    // the main thread once the probe is joined.
-    CHECK(seen == 1);
-    CHECK(probe_arrived_during_callback);
-}
-
-TEST_CASE("a write during for_each_blob skips the row it replaced") {
-    // Re-analyzing a chart deletes its result row and inserts a new one. The
-    // walk listed the old row, so when it reaches it the row is gone: that
-    // chart is left out of this one walk rather than decoded against paths
-    // that are no longer its own. The next walk picks it up.
-    //
-    // Three records and not two, on purpose. sqlite hands a deleted id
-    // straight back when it was the highest in the table, so with only "a"
-    // and "b" the rewritten row lands on the same id, still passes the
-    // identity check, and is simply read fresh -- which is right, but it
-    // isn't the case this test is about.
-    RecordStore store(":memory:");
-    for (const char* h : {"a", "b", "c"})
-        store.add_song(h, "Song", "Artist", "Charter", fixture().song);
-    store.add_record(RecordKey{"a", "mode", CapQuery::at(4)}, at_cap(4));
-    store.add_record(RecordKey{"b", "mode", CapQuery::at(4)}, at_cap(4));
-    store.add_record(RecordKey{"c", "mode", CapQuery::at(4)}, at_cap(4));
-
-    std::vector<std::string> yielded;
-    CHECK_NOTHROW(store.for_each_blob(
-        std::nullopt, CapQuery::at(4), Lens{},
-        [&](const RecordStore::BlobRow& meta, const HydraRecord*) {
-            yielded.push_back(meta.hyhash);
-            if (meta.hyhash == "a")
-                store.add_record(RecordKey{"b", "mode", CapQuery::at(4)}, at_cap(4));
-        }));
-    CHECK(yielded == std::vector<std::string>{"a", "c"});
-
-    int second = 0;
-    store.for_each_blob(std::nullopt, CapQuery::at(4), Lens{},
-                        [&](const RecordStore::BlobRow&, const HydraRecord*) { ++second; });
-    CHECK(second == 3);
-}
-
-TEST_CASE("a rewritten row that lands on its own id is read fresh, not mixed up") {
-    // The other half of the same write: sqlite reuses the id when the deleted
-    // row was the highest one, so the walk finds a row where it expected one.
-    // The identity columns still match, and the blob and the nodes it names
-    // are read together under one lock, so what comes back is the new row --
-    // never one chart's shape paired with another chart's paths.
-    RecordStore store(":memory:");
-    store.add_song("a", "Song A", "Artist", "Charter", fixture().song);
-    store.add_song("b", "Song B", "Artist", "Charter", fixture().song);
-    store.add_record(RecordKey{"a", "mode", CapQuery::at(4)}, at_cap(4));
-    store.add_record(RecordKey{"b", "mode", CapQuery::at(4)}, at_cap(4));
-
-    std::vector<std::string> yielded;
-    int decoded = 0;
-    CHECK_NOTHROW(store.for_each_blob(
-        std::nullopt, CapQuery::at(4), Lens{},
-        [&](const RecordStore::BlobRow& meta, const HydraRecord* record) {
-            yielded.push_back(meta.hyhash);
-            if (record) ++decoded;
-            if (meta.hyhash == "a")
-                store.add_record(RecordKey{"b", "mode", CapQuery::at(4)}, at_cap(4));
-        }));
-    CHECK(yielded == std::vector<std::string>{"a", "b"});
-    CHECK(decoded == 2);
-}
-
-TEST_CASE("for_each_blob stops between rows when its cancel flag is set") {
-    RecordStore store(":memory:");
-    store.add_song("a", "Song A", "Artist", "Charter", fixture().song);
-    store.add_song("b", "Song B", "Artist", "Charter", fixture().song);
-    store.add_record(RecordKey{"a", "mode", CapQuery::at(4)}, at_cap(4));
-    store.add_record(RecordKey{"b", "mode", CapQuery::at(4)}, at_cap(4));
-
-    std::atomic<bool> cancel{false};
-    int seen = 0;
-    store.for_each_blob(std::nullopt, CapQuery::at(4), Lens{},
-                        [&](const RecordStore::BlobRow&, const HydraRecord*) {
-                            ++seen;
-                            cancel.store(true);
-                        },
-                        &cancel);
-    CHECK(seen == 1);
-}
-
 TEST_CASE("the listing and a lookup agree on which row is a chart's answer") {
     // The lock between the two paths. Each chart below holds rows at several
-    // caps. At every cap, whatever get_record picks is what the listing must
+    // caps. At every cap, whatever get_summary picks is what the listing must
     // show, and when that pick is not readable the chart must not be listed.
     RecordStore store(":memory:");
     const std::vector<const char*> charts = {"two_caps", "over_stale", "over_sentinel",
                                              "all_stale"};
-    for (const char* hash : charts)
-        store.add_song(hash, hash, "Artist", "Charter", fixture().song);
 
     // Two current rows at two caps.
     store.add_record(RecordKey{"two_caps", "mode", CapQuery::at(32)}, at_cap(32));
@@ -923,12 +504,10 @@ TEST_CASE("the listing and a lookup agree on which row is a chart's answer") {
         std::unordered_map<std::string, int> listed = listed_at(cap);
         for (const char* hash : charts) {
             INFO(hash << " at " << cap);
-            const RecordKey key{hash, "mode", CapQuery::at(cap)};
-            const RecordLookup rec = store.get_record(key);
-            CHECK(store.get_summary(key).status == rec.status);
+            const SummaryLookup rec = store.get_summary(RecordKey{hash, "mode", CapQuery::at(cap)});
             if (rec.status == RecordStatus::Ready) {
                 REQUIRE(listed.count(hash) == 1);
-                CHECK(listed[hash] == rec.record->sp_cap);
+                CHECK(listed[hash] == cap);
             } else {
                 CHECK(listed.count(hash) == 0);
             }
@@ -943,7 +522,7 @@ TEST_CASE("the listing and a lookup agree on which row is a chart's answer") {
     CHECK(listed_at(64).count("over_stale") == 0);
     CHECK(listed_at(8).at("over_sentinel") == 8);
     CHECK(listed_at(64).count("over_sentinel") == 0);
-    CHECK(store.get_record(RecordKey{"all_stale", "mode", CapQuery::at(16)}).status ==
+    CHECK(store.get_summary(RecordKey{"all_stale", "mode", CapQuery::at(16)}).status ==
           RecordStatus::Stale);
 }
 
@@ -980,6 +559,17 @@ TEST_CASE("prepare_row refuses a key whose ms limit isn't the record's") {
                     std::invalid_argument);
 }
 
+TEST_CASE("prepare_row files the row under the record's own rules fingerprint") {
+    // The rules_fp column is what rank_row compares against this process's
+    // rules, so it must be the record's, never the store's.
+    CHECK(prepare_row(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4)).rules_fp ==
+          fixture().record.rules_fingerprint);
+    const HydraRecord foreign = test::other_rules_record(at_cap(4));
+    CHECK(prepare_row(RecordKey{"h", "mode", CapQuery::at(4)}, foreign).rules_fp ==
+          foreign.rules_fingerprint);
+    CHECK(foreign.rules_fingerprint != fixture().record.rules_fingerprint);
+}
+
 TEST_CASE("RecordKey compares on every part of the identity") {
     const RecordKey key{"h", "mode", CapQuery::at(4), kLensA};
     CHECK(key == RecordKey{"h", "mode", CapQuery::at(4), kLensA});
@@ -1001,32 +591,27 @@ TEST_CASE("RecordKey compares on every part of the identity") {
     // ...except the ms value when the limit is off, which the engine ignores:
     // "off at 10" and "off at 42" ran the same search.
     CHECK(Lens::from(std::nullopt, 0, 4) == Lens::from(std::nullopt, 0, 4));
-    CHECK(Lens::from(std::nullopt, 0, 4).ms_value == 0);}
+    CHECK(Lens::from(std::nullopt, 0, 4).ms_value == 0);
+}
 
 TEST_CASE("a current-version record with no paths is Ready, not Stale") {
     RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-    HydraRecord empty = at_cap(4);
-    empty.paths.clear();
-    store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, empty);
+    store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, no_paths_at_cap(4));
 
     // "Analyzed, and nothing survived" is a real result, so it reads back as
-    // Ready with an empty record -- the status, not the path count, is what
-    // says whether a row is usable.
-    RecordLookup lookup = store.get_record(RecordKey{"h", "mode", CapQuery::at(4)});
+    // Ready with no summary -- the status, not the path count, is what says
+    // whether a row is usable.
+    const SummaryLookup lookup = store.get_summary(RecordKey{"h", "mode", CapQuery::at(4)});
     CHECK(lookup.status == RecordStatus::Ready);
-    REQUIRE(lookup.record.has_value());
-    CHECK(lookup.record->paths.empty());
-    CHECK(lookup.hyversion == current_record_version());
-    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4)}).status == RecordStatus::Ready);
+    CHECK(lookup.bestpath.empty());
+    CHECK(lookup.summary == PathSummary{});
     CHECK(store.has_record(RecordKey{"h", "mode", CapQuery::at(4)}));
 
     // D51 call 11 (finding 88): such a record has no scored best path, and
     // the summary says so in one place. A record with paths has one. The
     // listing's row, read back from the summary columns, says the same.
-    CHECK_FALSE(summarize_record(empty).has_scored_best_path());
+    CHECK_FALSE(summarize_record(no_paths_at_cap(4)).has_scored_best_path());
     CHECK(summarize_record(at_cap(4)).has_scored_best_path());
-    store.add_song("g", "Other", "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"g", "mode", CapQuery::at(4)}, at_cap(4));
     const std::vector<RecordListing> rows =
         store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::RefName, false);
@@ -1038,13 +623,11 @@ TEST_CASE("a current-version record with no paths is Ready, not Stale") {
 // ---- lens identity --------------------------------------------------------
 //
 // The lens is the rest of a result's identity: the ms limit and the score
-// range it ran under. These cases pin that two lenses coexist, that each
-// lookup gets its own answer, and that the shared paths table stays honest
-// while results come and go.
+// range it ran under. These cases pin that two lenses coexist and that each
+// lookup gets its own answer.
 
 TEST_CASE("the same chart at the same cap keeps one result per lens") {
     RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
 
     // The two records differ in the one field that says which search ran:
     // lens A's ms limit is 10, lens B's is off.
@@ -1052,16 +635,14 @@ TEST_CASE("the same chart at the same cap keeps one result per lens") {
     store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}, at_cap(4));
     CHECK(store.counts().second == 2);
 
-    RecordLookup a = store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensA});
-    REQUIRE(a.status == RecordStatus::Ready);
-    CHECK(a.record->ms_limit == 10.0);
-    RecordLookup b = store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB});
-    REQUIRE(b.status == RecordStatus::Ready);
-    CHECK_FALSE(b.record->ms_limit.has_value());
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLensA}).status ==
+          RecordStatus::Ready);
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLensB}).status ==
+          RecordStatus::Ready);
 
     // A lens nobody ran under has no answer here, and no stored row stands in
     // for it -- this is what stops a batch run skipping the chart.
-    CHECK(store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensC}).status ==
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLensC}).status ==
           RecordStatus::NotAnalyzed);
     CHECK(store.has_record(RecordKey{"h", "mode", CapQuery::at(4), kLensA}));
     CHECK(store.has_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}));
@@ -1073,133 +654,36 @@ TEST_CASE("the same chart at the same cap keeps one result per lens") {
     redone.allzero_paths.clear();
     store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensA}, redone);
     CHECK(store.counts().second == 2);
-    CHECK(store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensA})
-              .record->paths.empty());
-    CHECK_FALSE(store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB})
-                    .record->paths.empty());
+    CHECK_FALSE(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLensA})
+                    .summary.has_scored_best_path());
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLensB}).summary ==
+          summarize_record(at_cap(4)));
 }
 
-TEST_CASE("a path stored under two lenses is stored once") {
-    const std::string path = testtemp::temp_path("dedup", ".db");
-    std::remove(path.c_str());
-
-    {
-        RecordStore store(path);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensA}, at_cap_ms10(4));
+TEST_CASE("a current-version write purges the chart's old-version rows") {
+    RecordStore store(":memory:");
+    for (const char* hash : {"h", "other"}) {
+        store.add_row(
+            test::old_build_row(RecordKey{hash, "mode", CapQuery::at(4), kLensB}, at_cap(4)));
     }
-    const int64_t nodes = scalar_on_file(path,"SELECT COUNT(*) FROM paths");
-    const int64_t refs = scalar_on_file(path,"SELECT COUNT(*) FROM path_refs");
-    REQUIRE(nodes > 0);
-    CHECK(refs == nodes);
+    CHECK(store.counts().second == 2);
 
-    {
-        RecordStore store(path);
-        store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}, at_cap(4));
-    }
-    // The second result names the identical nodes, so only the references
-    // grow: a path is written once no matter how many results point at it.
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths") == nodes);
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM path_refs") == refs * 2);
-    std::remove(path.c_str());
-}
+    HydraRecord fresh = at_cap_ms10(32);
+    fresh.paths.clear();
+    fresh.allzero_paths.clear();
+    store.add_record(RecordKey{"h", "mode", CapQuery::at(32), kLensA}, fresh);
 
-TEST_CASE("replacing one lens's result leaves the other's bytes untouched") {
-    const std::string path = testtemp::temp_path("gc", ".db");
-    std::remove(path.c_str());
-
-    std::vector<uint8_t> before;
-    {
-        RecordStore store(path);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensA}, at_cap_ms10(4));
-        store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}, at_cap(4));
-        before = record_bytes(
-            *store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}).record);
-    }
-    const int64_t shared = scalar_on_file(path,"SELECT COUNT(*) FROM paths");
-    REQUIRE(shared > 0);
-
-    {
-        RecordStore store(path);
-        HydraRecord redone = at_cap_ms10(4);
-        redone.paths.clear();
-        redone.allzero_paths.clear();
-        store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensA}, redone);
-        // Lens B loads exactly the bytes it loaded before: the collection that
-        // followed A's rewrite took nothing B still points at.
-        CHECK(record_bytes(*store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB})
-                                .record) == before);
-    }
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths") == shared);
-
-    // With B replaced too, nothing points at those nodes and they go.
-    {
-        RecordStore store(path);
-        HydraRecord redone = at_cap(4);
-        redone.paths.clear();
-        redone.allzero_paths.clear();
-        store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}, redone);
-    }
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths") == 0);
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM path_refs") == 0);
-    std::remove(path.c_str());
-}
-
-TEST_CASE("a current-version write purges the chart's old-version rows and their paths") {
-    const std::string path = testtemp::temp_path("purge", ".db");
-    std::remove(path.c_str());
-
-    {
-        RecordStore store(path);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        store.add_song("other", "Other", "Artist", "Charter", fixture().song);
-        for (const char* hash : {"h", "other"}) {
-            store.add_row(
-                test::old_build_row(RecordKey{hash, "mode", CapQuery::at(4), kLensB}, at_cap(4)));
-        }
-        CHECK(store.counts().second == 2);
-    }
-    const int64_t others = scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='other'");
-    REQUIRE(others > 0);
-    REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='h'") == others);
-
-    {
-        RecordStore store(path);
-        HydraRecord fresh = at_cap_ms10(32);
-        fresh.paths.clear();
-        fresh.allzero_paths.clear();
-        store.add_record(RecordKey{"h", "mode", CapQuery::at(32), kLensA}, fresh);
-
-        // This build cannot read what another version wrote for this chart, so
-        // the write supersedes it -- at every cap and lens...
-        CHECK(store.get_record(RecordKey{"h", "mode", CapQuery::at(4), kLensB}).status ==
-              RecordStatus::NotAnalyzed);
-        // ...while another chart's old row is none of this write's business.
-        CHECK(store.get_record(RecordKey{"other", "mode", CapQuery::at(4), kLensB}).status ==
-              RecordStatus::Stale);
-        CHECK(store.counts().second == 2);
-    }
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='h'") == 0);
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='other'") == others);
-    std::remove(path.c_str());
+    // This build cannot read what another version wrote for this chart, so
+    // the write supersedes it -- at every cap and lens...
+    CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLensB}).status ==
+          RecordStatus::NotAnalyzed);
+    // ...while another chart's old row is none of this write's business.
+    CHECK(store.get_summary(RecordKey{"other", "mode", CapQuery::at(4), kLensB}).status ==
+          RecordStatus::Stale);
+    CHECK(store.counts().second == 2);
 }
 
 // ---- store correctness (2026-09-26 audit, Task 1) --------------------------
-
-namespace {
-
-ChartLibraryEntry chart_entry(const char* md5, const char* title) {
-    return ChartLibraryEntry{md5,
-                             title,
-                             "Artist",
-                             "Charter",
-                             std::string("C:\\charts\\") + md5 + "\\notes.chart",
-                             "C:\\charts",
-                             std::string("sig-") + md5};
-}
-
-}  // namespace
 
 TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
     // User decision 2026-09-26: the pre-1.7 migrations are gone. The old
@@ -1208,12 +692,9 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
     // read since 1.8.1 anyway.
     const std::string path = testtemp::temp_path("old_records", ".db");
     std::remove(path.c_str());
-    {
-        RecordStore seed(path);
-        seed.add_song("old", "Old Song", "A", "C", fixture().song);
-    }
+    { RecordStore seed(path); }
     exec_on_file(path,
-                 "DROP TABLE results; DROP TABLE path_refs; DROP TABLE paths;"
+                 "DROP TABLE results;"
                  "PRAGMA user_version = 1;"
                  "CREATE TABLE records (hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,"
                  " hyversion TEXT NOT NULL, sp_cap INTEGER NOT NULL, bestpath TEXT NOT NULL,"
@@ -1228,12 +709,11 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
     {
         RecordStore store(path);
         CHECK(store.counts().second == 0);
-        CHECK(store.get_record(key).status == RecordStatus::NotAnalyzed);
         CHECK(store.get_summary(key).status == RecordStatus::NotAnalyzed);
         CHECK_FALSE(store.has_record(key));
         // A fresh analysis lands as usual.
         store.add_record(key, at_cap(8));
-        CHECK(store.get_record(key).status == RecordStatus::Ready);
+        CHECK(store.get_summary(key).status == RecordStatus::Ready);
     }
     // The old table is left alone: nothing read it and nothing rewrote it.
     CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM records") == 1);
@@ -1249,24 +729,22 @@ TEST_CASE("store: a new database carries 0 in user_version and reads its own row
     const RecordKey key{"h", "mode", CapQuery::at(4)};
     {
         RecordStore store(path);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
         store.add_record(key, at_cap(4));
     }
     CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
     {
         RecordStore reopened(path);
-        CHECK(reopened.get_record(key).status == RecordStatus::Ready);
+        CHECK(reopened.get_summary(key).status == RecordStatus::Ready);
     }
     std::remove(path.c_str());
 }
 
 TEST_CASE("store: list_records reads its summary columns from the one list") {
-    // list_records works out where the cap, version, id and structure head sit
-    // from kSummaryColumnList's count. A slot that drifts from the list reads
+    // list_records works out where the cap, version, id and rules sit from
+    // kSummaryColumnList's count. A slot that drifts from the list reads
     // another column, so the listing stops matching the lookup.
     RecordStore store(":memory:");
     const RecordKey key{"h", "mode", CapQuery::at(4)};
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
     store.add_record(key, at_cap(4));
     const SummaryLookup lookup = store.get_summary(key);
     REQUIRE(lookup.status == RecordStatus::Ready);
@@ -1277,6 +755,167 @@ TEST_CASE("store: list_records reads its summary columns from the one list") {
     CHECK(listing[0].sp_cap == 4);
     CHECK(listing[0].hyhash == "h");
     CHECK(listing[0].bestpath == lookup.bestpath);
+}
+
+// ---- the summary-only upgrade (D87 items 1 and 7, task storage-T5) ---------
+
+namespace {
+
+// The results table as the last build that stored path details wrote it
+// (schema 4 with the structure blob), literal, so the upgrade is tested
+// against the real old layout rather than one this build describes.
+constexpr const char* kDetailLayoutResultsTableSql =
+    "CREATE TABLE results (result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
+    " chartmode TEXT NOT NULL, hyversion TEXT NOT NULL, sp_cap INTEGER NOT NULL,"
+    " ms_enabled INTEGER NOT NULL, ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
+    " depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL DEFAULT 0,"
+    " bestpath TEXT NOT NULL, structure BLOB NOT NULL, score INTEGER, actcount INTEGER,"
+    " maxskip INTEGER, hardest_ms REAL, avgmult REAL, notecount INTEGER, sqin_count INTEGER,"
+    " sqout_count INTEGER, pathcount INTEGER, stars INTEGER, rules_fp BLOB NOT NULL,"
+    " UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value,"
+    " legacy_fills, rules_fp))";
+
+// The four detail tables that build kept beside it, as it made them, with
+// one row each so the drop has something to free.
+constexpr const char* kDetailTablesSql =
+    "CREATE TABLE paths (hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,"
+    "  phash TEXT NOT NULL, payload BLOB NOT NULL, PRIMARY KEY (hyhash, chartmode, phash));"
+    "CREATE TABLE path_refs (result_id INTEGER NOT NULL, hyhash TEXT NOT NULL,"
+    "  chartmode TEXT NOT NULL, phash TEXT NOT NULL, PRIMARY KEY (result_id, phash));"
+    "CREATE INDEX path_refs_by_node ON path_refs (hyhash, chartmode, phash);"
+    "CREATE TABLE songmeta (hyhash TEXT PRIMARY KEY, ref_name TEXT, ref_artist TEXT,"
+    "  ref_charter TEXT, tempomap BLOB NOT NULL, length_ms REAL,"
+    "  length_version INTEGER NOT NULL DEFAULT 0);"
+    "CREATE TABLE dynamics (md5 TEXT NOT NULL, difficulty TEXT NOT NULL,"
+    "  pro INTEGER NOT NULL, blob BLOB NOT NULL, count_version INTEGER NOT NULL DEFAULT 0,"
+    "  PRIMARY KEY (md5, difficulty, pro));"
+    "INSERT INTO paths VALUES ('ready', 'mode', 'p1', zeroblob(4096));"
+    "INSERT INTO path_refs VALUES (1, 'ready', 'mode', 'p1');"
+    "INSERT INTO songmeta VALUES ('ready', 'Song', 'Artist', 'Charter', zeroblob(4096),"
+    "  1000.0, 2);"
+    "INSERT INTO dynamics VALUES ('ready', 'Expert', 1, zeroblob(4096), 1);";
+
+// Turns a file this build wrote back into the layout before summary-only
+// storage: every result keeps its id and columns and gains the structure
+// blob, whose head was the path format (7, the last one) and then the rules
+// fingerprint, and the detail tables come back.
+void to_detail_layout(const std::string& path) {
+    const std::string columns = std::string(kSchema2ResultsColumns) + ", legacy_fills, rules_fp";
+    exec_on_file(path, (std::string("ALTER TABLE results RENAME TO results_now;") +
+                        kDetailLayoutResultsTableSql + ";INSERT INTO results (" + columns +
+                        ", structure) SELECT " + columns +
+                        ", unhex('07000000' || hex(rules_fp)) FROM results_now;"
+                        "DROP TABLE results_now;" +
+                        kDetailTablesSql)
+                           .c_str());
+}
+
+int64_t detail_tables_in(const std::string& path) {
+    return scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name IN"
+                                " ('paths', 'path_refs', 'path_refs_by_node', 'songmeta',"
+                                " 'dynamics')");
+}
+
+int64_t structure_columns_in(const std::string& path) {
+    return scalar_on_file(path,
+                          "SELECT COUNT(*) FROM pragma_table_info('results') WHERE name='structure'");
+}
+
+}  // namespace
+
+TEST_CASE("the first open of a file with stored path details drops them and keeps every status") {
+    const std::string path = testtemp::temp_path("summary_only_upgrade", ".db");
+    std::remove(path.c_str());
+    const CapQuery at8 = CapQuery::at(8);
+    const RecordKey ready{"ready", "mode", at8};
+    const RecordKey other_mode{"ready", "other mode", at8};
+    const RecordKey no_paths{"empty", "mode", at8};
+    const RecordKey build{"build", "mode", at8};
+    const RecordKey rules{"rules", "mode", at8};
+    const RecordKey both{"both", "mode", at8};
+    const RecordKey no_stars{"nostars", "mode", at8};
+    {
+        RecordStore seed(path);
+        seed.add_record(ready, at_cap(8));
+        seed.add_record(other_mode, at_cap(8));
+        seed.add_record(no_paths, no_paths_at_cap(8));
+        test::add_stale_rows(seed, at_cap(8), build, rules, both);
+        seed.add_record(no_stars, at_cap(8));
+    }
+    to_detail_layout(path);
+    // A row from before the stars column: a score and no stars. Its stars
+    // needed the stored paths to fill, so the upgrade deletes it. The
+    // no-paths row has neither, by design, and stays (R17).
+    exec_on_file(path, "UPDATE results SET stars = NULL WHERE hyhash = 'nostars'");
+    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results") == 7);
+    REQUIRE(detail_tables_in(path) == 5);
+    REQUIRE(structure_columns_in(path) == 1);
+    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = 'empty'"
+                                 " AND stars IS NULL AND score IS NULL") == 1);
+
+    // What every row reads after the upgrade: Ready stays Ready with its
+    // numbers, Stale stays Stale for the same reason, the no-stars row is
+    // gone.
+    auto check_rows = [&](RecordStore& store) {
+        const SummaryLookup got_ready = store.get_summary(ready);
+        CHECK(got_ready.status == RecordStatus::Ready);
+        CHECK(got_ready.summary == summarize_record(at_cap(8)));
+        CHECK(got_ready.bestpath == best_path_text(at_cap(8)));
+        CHECK(store.get_summary(other_mode).status == RecordStatus::Ready);
+        const SummaryLookup got_empty = store.get_summary(no_paths);
+        CHECK(got_empty.status == RecordStatus::Ready);
+        CHECK_FALSE(got_empty.summary.has_scored_best_path());
+        const SummaryLookup got_build = store.get_summary(build);
+        CHECK(got_build.status == RecordStatus::Stale);
+        CHECK(got_build.stale_build);
+        CHECK_FALSE(got_build.stale_rules);
+        const SummaryLookup got_rules = store.get_summary(rules);
+        CHECK(got_rules.status == RecordStatus::Stale);
+        CHECK_FALSE(got_rules.stale_build);
+        CHECK(got_rules.stale_rules);
+        const SummaryLookup got_both = store.get_summary(both);
+        CHECK(got_both.status == RecordStatus::Stale);
+        CHECK(got_both.stale_build);
+        CHECK(got_both.stale_rules);
+        CHECK(store.get_summary(no_stars).status == RecordStatus::NotAnalyzed);
+        CHECK(store.counts().second == 6);
+    };
+
+    {
+        RecordStore store(path);
+        check_rows(store);
+    }
+    CHECK(detail_tables_in(path) == 0);
+    CHECK(structure_columns_in(path) == 0);
+    // VACUUM ran: the file keeps no free pages from the dropped tables.
+    CHECK(scalar_on_file(path, "PRAGMA freelist_count") == 0);
+    const int64_t ids = scalar_on_file(path, "SELECT SUM(result_id) FROM results");
+
+    // A second open finds no detail tables and does nothing: it doesn't even
+    // apply the delete rule, which a row like this one would fail.
+    exec_on_file(path, "UPDATE results SET stars = NULL WHERE hyhash = 'ready'"
+                       " AND chartmode = 'other mode'");
+    {
+        RecordStore store(path);
+        CHECK(store.counts().second == 6);
+    }
+    CHECK(scalar_on_file(path, "SELECT SUM(result_id) FROM results") == ids);
+    CHECK(detail_tables_in(path) == 0);
+    std::remove((path + "-wal").c_str());
+    std::remove((path + "-shm").c_str());
+    std::remove(path.c_str());
+}
+
+TEST_CASE("every open caps the WAL file the log keeps after a checkpoint") {
+    // D87 item 7: journal_size_limit is per connection, so the store sets it
+    // on every open. 4194304 bytes is the value D87 chose.
+    const std::string path = testtemp::temp_path("journal_size_limit", ".db");
+    std::remove(path.c_str());
+    for (int open = 0; open < 2; ++open) {
+        RecordStore store(path);
+        CHECK(store.journal_size_limit_for_test() == 4194304);
+    }
+    std::remove(path.c_str());
 }
 
 // ---- the fill rule in the key (docs/adr/0010) ------------------------------
@@ -1298,8 +937,9 @@ HydraRecord legacy_at_cap(int cap) {
 }
 
 // Turns a file this build wrote back into schema 3: the results table without
-// its rules_fp column and with a key that leaves it out, every row, result_id
-// and blob kept.
+// its rules_fp column and with a key that leaves it out, every row and
+// result_id kept. A schema 3 row's rules fingerprint lived in its structure
+// blob, after the 4-byte path format, so the blob is rebuilt that way.
 void downgrade_to_schema3(const std::string& path) {
     exec_on_file(path,
                  ("ALTER TABLE results RENAME TO r4;"
@@ -1316,8 +956,8 @@ void downgrade_to_schema3(const std::string& path) {
                  "  UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
                  "          depth_value, legacy_fills));" +
                      std::string("INSERT INTO results (") + kSchema2ResultsColumns +
-                     ", legacy_fills) SELECT " + kSchema2ResultsColumns +
-                     ", legacy_fills FROM r4;"
+                     ", legacy_fills, structure) SELECT " + kSchema2ResultsColumns +
+                     ", legacy_fills, unhex('07000000' || hex(rules_fp)) FROM r4;"
                      "DROP TABLE r4;")
                      .c_str());
 }
@@ -1328,8 +968,9 @@ void downgrade_to_schema2(const std::string& path) {
     downgrade_to_schema3(path);
     exec_on_file(path, (std::string("ALTER TABLE results RENAME TO r3;") +
                         kSchema2ResultsTableSql + ";INSERT INTO results (" +
-                        kSchema2ResultsColumns + ") SELECT " + kSchema2ResultsColumns +
-                        " FROM r3;"
+                        kSchema2ResultsColumns + ", structure) SELECT " +
+                        kSchema2ResultsColumns +
+                        ", structure FROM r3;"
                         "DROP TABLE r3;"
                  "PRAGMA user_version = 2;")
                            .c_str());
@@ -1339,7 +980,6 @@ void downgrade_to_schema2(const std::string& path) {
 
 TEST_CASE("1.0 and 1.1 results for one chart sit side by side") {
     RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
     const RecordKey ch11{"h", "mode", CapQuery::at(4)};
     const RecordKey ch10{"h", "mode", CapQuery::at(4), kLegacy};
 
@@ -1350,18 +990,14 @@ TEST_CASE("1.0 and 1.1 results for one chart sit side by side") {
     // Writing the 1.0 result keeps the 1.1 one, and each lookup finds its own.
     store.add_record(ch10, legacy_at_cap(4));
     CHECK(store.counts().second == 2);
-    const RecordLookup old_rule = store.get_record(ch10);
-    const RecordLookup new_rule = store.get_record(ch11);
-    REQUIRE(old_rule.status == RecordStatus::Ready);
-    REQUIRE(new_rule.status == RecordStatus::Ready);
-    CHECK(old_rule.record->legacy_fills);
-    CHECK_FALSE(new_rule.record->legacy_fills);
+    CHECK(store.get_summary(ch10).status == RecordStatus::Ready);
+    CHECK(store.get_summary(ch11).status == RecordStatus::Ready);
     CHECK(store.analyzed_hashes("mode", CapQuery::at(4), kLegacy).count("h") == 1);
 
     // Re-analyzing under 1.0 replaces only the 1.0 row.
     store.add_record(ch10, legacy_at_cap(4));
     CHECK(store.counts().second == 2);
-    CHECK(store.get_record(ch11).status == RecordStatus::Ready);
+    CHECK(store.get_summary(ch11).status == RecordStatus::Ready);
 }
 
 TEST_CASE("prepare_row refuses a key that names the other fill rule") {
@@ -1372,22 +1008,6 @@ TEST_CASE("prepare_row refuses a key that names the other fill rule") {
     CHECK(prepare_row(ch10, legacy_at_cap(4)).lens.legacy_fills == 1);
 }
 
-TEST_CASE("a walked 1.0 row says 1.0") {
-    // Finding 116: every reader decodes a row the same way, so the walk sets
-    // the fill rule just as get_record does.
-    RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-    store.add_record(RecordKey{"h", "mode", CapQuery::at(4), kLegacy}, legacy_at_cap(4));
-    int seen = 0;
-    store.for_each_blob(std::nullopt, CapQuery::at(4), kLegacy,
-                        [&](const RecordStore::BlobRow&, const HydraRecord* rec) {
-                            REQUIRE(rec != nullptr);
-                            CHECK(rec->legacy_fills);
-                            ++seen;
-                        });
-    CHECK(seen == 1);
-}
-
 TEST_CASE("a schema 2 database keeps its results, filed under Clone Hero 1.1") {
     const std::string path = testtemp::temp_path("schema2", ".db");
     std::remove(path.c_str());
@@ -1395,7 +1015,6 @@ TEST_CASE("a schema 2 database keeps its results, filed under Clone Hero 1.1") {
     int64_t id_before = 0;
     {
         RecordStore seed(path);
-        seed.add_song("h", "Song", "Artist", "Charter", fixture().song);
         seed.add_record(key, at_cap(4));
     }
     id_before = scalar_on_file(path,"SELECT result_id FROM results");
@@ -1404,13 +1023,14 @@ TEST_CASE("a schema 2 database keeps its results, filed under Clone Hero 1.1") {
                          " WHERE name='legacy_fills'") == 0);
     {
         RecordStore store(path);
-        // Still Ready: its paths come back through the kept result_id.
-        CHECK(store.get_record(key).status == RecordStatus::Ready);
+        // Still Ready: its rules come back out of the old blob.
+        CHECK(store.get_summary(key).status == RecordStatus::Ready);
         CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4), kLegacy}).status ==
               RecordStatus::NotAnalyzed);
     }
     CHECK(scalar_on_file(path,"SELECT result_id FROM results") == id_before);
     CHECK(scalar_on_file(path,"SELECT legacy_fills FROM results") == 0);
+    CHECK(structure_columns_in(path) == 0);
     CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master WHERE name='results_schema2'") == 0);
     std::remove(path.c_str());
 }
@@ -1421,14 +1041,13 @@ TEST_CASE("a schema 2 database hydra_batch --legacy-fills filled is filed under 
     const RecordKey ch10{"h", "mode", CapQuery::at(4), kLegacy};
     {
         RecordStore seed(path);
-        seed.add_song("h", "Song", "Artist", "Charter", fixture().song);
         seed.add_record(ch10, legacy_at_cap(4));
         seed.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch10));
     }
     downgrade_to_schema2(path);
     {
         RecordStore store(path);
-        CHECK(store.get_record(ch10).status == RecordStatus::Ready);
+        CHECK(store.get_summary(ch10).status == RecordStatus::Ready);
         CHECK(store.get_summary(RecordKey{"h", "mode", CapQuery::at(4)}).status ==
               RecordStatus::NotAnalyzed);
     }
@@ -1437,8 +1056,9 @@ TEST_CASE("a schema 2 database hydra_batch --legacy-fills filled is filed under 
 
 TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
     // D51 addendum (ST1): schema 4 puts the rules fingerprint in the results
-    // key. The table is rebuilt with every row, result_id and blob kept, so
-    // nothing is analyzed again.
+    // key. The table is rebuilt with every row and result_id kept, and each
+    // row's fingerprint read out of its old blob, so nothing is analyzed
+    // again.
     const core::Rules other = test::other_rules();
     const RecordKey at4{"h", "mode", CapQuery::at(4)};
     const RecordKey at8{"h", "mode", CapQuery::at(8)};
@@ -1446,24 +1066,26 @@ TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
     std::remove(path.c_str());
     {
         RecordStore seed(path);
-        seed.add_song("h", "Song", "Artist", "Charter", fixture().song);
         seed.add_record(at4, at_cap(4));
         seed.add_row(prepare_row(at8, test::other_rules_record(at_cap(8))));
     }
     // Back to the schema 3 table (no rules_fp, a key without it), with a copy
-    // of each row's id and blob to compare against afterwards.
+    // of each row's id and the fingerprint its blob holds to compare against
+    // afterwards.
     downgrade_to_schema3(path);
-    exec_on_file(path, "CREATE TABLE kept AS SELECT result_id, structure FROM results;");
+    exec_on_file(path,
+                 "CREATE TABLE kept AS SELECT result_id, substr(structure, 5, 8) AS fp"
+                 " FROM results;");
     REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM pragma_table_info('results')"
                          " WHERE name='rules_fp'") == 0);
     {
         RecordStore store(path);
-        CHECK(store.get_record(at4).status == RecordStatus::Ready);
-        CHECK(store.get_record(at8).status == RecordStatus::Stale);
+        CHECK(store.get_summary(at4).status == RecordStatus::Ready);
+        CHECK(store.get_summary(at8).status == RecordStatus::Stale);
     }
     CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results") == 2);
     CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results r JOIN kept k"
-                       " ON k.result_id = r.result_id AND k.structure = r.structure") == 2);
+                       " ON k.result_id = r.result_id AND k.fp = r.rules_fp") == 2);
     CHECK(scalar_on_file(path,"SELECT COUNT(DISTINCT rules_fp) FROM results") == 2);
     // The column holds each row's own rules: a default-rules write at 8 bars
     // keeps the rules-B row there, which then reads Ready under its rules.
@@ -1474,7 +1096,7 @@ TEST_CASE("a schema 3 database keeps every result and fills its rules column") {
     }
     {
         RecordStore store(path, core::RulesStamp::of(other));
-        CHECK(store.get_record(at8).status == RecordStatus::Ready);
+        CHECK(store.get_summary(at8).status == RecordStatus::Ready);
     }
     std::remove(path.c_str());
 }
@@ -1528,11 +1150,15 @@ TEST_CASE("a charts table from before the sig column still rebuilds") {
     std::remove(path.c_str());
 }
 
-TEST_CASE("a song's stored names follow the latest analysis and the latest scan") {
-    // User decision 2026-09-26: fixing song.ini reaches the reports. The
-    // names used to be frozen at the chart's first analysis.
+TEST_CASE("a result's names follow the latest scan") {
+    // User decision 2026-09-26: fixing song.ini reaches the reports. A
+    // result's names come from the library (kNamingCopiesSql), so a rescan
+    // after song.ini changed renames it.
     RecordStore store(":memory:");
-    store.add_song("h", "Old Title", "Old Artist", "Old Charter", fixture().song);
+    const ChartLibraryEntry first = chart_entry("h", "Scanned Title");
+    ChartLibraryEntry second = chart_entry("h", "Second Copy");
+    second.notespath = "C:\\charts\\copy\\notes.chart";
+    store.rebuild_chart_library({first, second});
     store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
     auto listed = [&] {
         std::vector<RecordListing> rows =
@@ -1540,42 +1166,36 @@ TEST_CASE("a song's stored names follow the latest analysis and the latest scan"
         REQUIRE(rows.size() == 1);
         return rows[0];
     };
+    // The scan found two copies of the chart; the first one it listed names
+    // it.
+    CHECK(listed().ref_name == "Scanned Title");
 
-    // Analyzed again after song.ini changed.
-    store.add_song("h", "New Title", "New Artist", "New Charter", fixture().song);
+    ChartLibraryEntry renamed = chart_entry("h", "New Title");
+    renamed.artist = "New Artist";
+    renamed.charter = "New Charter";
+    store.rebuild_chart_library({renamed, second});
     CHECK(listed().ref_name == "New Title");
     CHECK(listed().ref_artist == "New Artist");
     CHECK(listed().ref_charter == "New Charter");
 
-    // Rescanned after song.ini changed, with no analysis. The scan found two
-    // copies of the chart; the first one it listed names it.
-    const ChartLibraryEntry first = chart_entry("h", "Scanned Title");
-    ChartLibraryEntry second = chart_entry("h", "Second Copy");
-    second.notespath = "C:\\charts\\copy\\notes.chart";
-    store.rebuild_chart_library({first, second});
-    CHECK(listed().ref_name == "Scanned Title");
-
-    // A chart the scan found but nobody analyzed gets no song row.
-    store.rebuild_chart_library({first, chart_entry("x", "Never Analyzed")});
+    // A chart the scan found but nobody analyzed has no result to count.
+    store.rebuild_chart_library({renamed, chart_entry("x", "Never Analyzed")});
     CHECK(store.counts().first == 1);
 }
 
-TEST_CASE("get_record reads a whole row while another thread rewrites it") {
-    // get_record reads the winning row, its nodes and the tempo map under
-    // one lock, then decodes with the lock released. A rewrite landing in
-    // between must never pair one row's shape with another row's nodes.
+TEST_CASE("get_summary reads a whole row while another thread rewrites it") {
+    // A rewrite deletes the row and inserts the new one in one transaction,
+    // so a lookup landing in between sees the old row or the new one, never
+    // no row and never a mix.
     RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
     const RecordKey key{"h", "mode", CapQuery::at(4)};
-    HydraRecord empty = at_cap(4);
-    empty.paths.clear();
-    empty.allzero_paths.clear();
     store.add_record(key, at_cap(4));
-    const size_t full = fixture().record.paths.size();
+    const PathSummary full = summarize_record(at_cap(4));
+    const PathSummary empty = summarize_record(no_paths_at_cap(4));
 
     std::atomic<bool> stop{false};
     std::thread writer([&] {
-        for (int i = 0; i < 50; ++i) store.add_record(key, i % 2 ? at_cap(4) : empty);
+        for (int i = 0; i < 50; ++i) store.add_record(key, i % 2 ? at_cap(4) : no_paths_at_cap(4));
         stop.store(true);
     });
     int reads = 0;
@@ -1583,10 +1203,9 @@ TEST_CASE("get_record reads a whole row while another thread rewrites it") {
     std::string failure;
     do {
         try {
-            const RecordLookup r = store.get_record(key);
-            if (r.status != RecordStatus::Ready || !r.record) all_whole = false;
-            else if (!r.record->paths.empty() && r.record->paths.size() != full)
-                all_whole = false;
+            const SummaryLookup r = store.get_summary(key);
+            if (r.status != RecordStatus::Ready) all_whole = false;
+            else if (r.summary != full && r.summary != empty) all_whole = false;
             ++reads;
         } catch (const std::exception& e) {
             failure = e.what();
@@ -1605,7 +1224,6 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
     // has_record asks get_summary (D79). This pins that across every kind of
     // row, so a second spelling of the Ready rule there would show up here.
     RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", fixture().song);
 
     const RecordKey ready{"h", "ready", CapQuery::at(8)};
     store.add_record(ready, at_cap(8));
@@ -1615,15 +1233,7 @@ TEST_CASE("has_record and a lookup agree on which rows are readable") {
     const RecordKey both{"h", "both", CapQuery::at(8)};
     test::add_stale_rows(store, at_cap(8), old_build, other_rules, both);
 
-    const RecordKey old_format{"h", "format", CapQuery::at(8)};
-    PreparedRow format_row = prepare_row(old_format, at_cap(8));
-    format_row.structure[kPathFormatOffset] = 1;
-    format_row.structure[1] = 0;
-    format_row.structure[2] = 0;
-    format_row.structure[3] = 0;
-    store.add_row(format_row);
-
-    for (const RecordKey& key : {ready, old_build, old_format, other_rules, both}) {
+    for (const RecordKey& key : {ready, old_build, other_rules, both}) {
         INFO(key.chartmode);
         CHECK(store.has_record(key) ==
               (store.get_summary(key).status == RecordStatus::Ready));
@@ -1661,55 +1271,29 @@ TEST_CASE("a file store runs in WAL mode with an index on chart names") {
     std::remove(path.c_str());
 }
 
-TEST_CASE("the library table's md5 index exists, so each save's copy check reads one chart") {
-    // D76: without it every save read the whole library table, a 92 s batch
-    // instead of 18 s on a 20,000-chart library.
+TEST_CASE("the library table's md5 index exists") {
+    // D76: the scan's purge and list_records find a chart's library rows by
+    // md5; without the index each lookup read the whole library table.
     const std::string path = testtemp::temp_path("md5_index", ".db");
     std::remove(path.c_str());
     { RecordStore store(path); }
     CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master"
                        " WHERE type='index' AND name='charts_by_md5'") == 1);
-
-    // The plan for the query every save runs is a SEARCH by that index, not
-    // a SCAN of the table.
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
-    sqlite3_stmt* s = nullptr;
-    const std::string sql = "EXPLAIN QUERY PLAN " + naming_copy_of_one_sql();
-    REQUIRE(sqlite3_prepare_v2(db, sql.c_str(), -1, &s, nullptr) == SQLITE_OK);
-    std::string plan;
-    while (sqlite3_step(s) == SQLITE_ROW)
-        plan += std::string(reinterpret_cast<const char*>(sqlite3_column_text(s, 3))) + "\n";
-    sqlite3_finalize(s);
-    sqlite3_close(db);
-    INFO(plan);
-    CHECK(plan.find("USING INDEX charts_by_md5") != std::string::npos);
-    CHECK(plan.find("SCAN charts") == std::string::npos);
     std::remove(path.c_str());
 }
 
-TEST_CASE("save_analysis writes the song, the result and the count together") {
+TEST_CASE("save_analysis writes the result") {
     RecordStore store(":memory:");
     const RecordKey key{"h", "mode", CapQuery::at(4)};
-    const DynamicsEntry count{DynamicsKey{"h", "Expert", true}, {1, 2, 3},
-                              kDynamicsCountStamp.written};
-    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
-                        prepare_row(key, at_cap(4)), count);
+    store.save_analysis(prepare_row(key, at_cap(4)));
     CHECK(store.counts() == std::pair<int64_t, int64_t>{1, 1});
-    CHECK(store.get_record(key).status == RecordStatus::Ready);
-    CHECK(store.get_dynamics(count.key) == std::optional<std::vector<uint8_t>>(count.blob));
-
-    // No count (the parse dropped the 2x kicks): the song and result still land.
-    const RecordKey key2{"h2", "mode", CapQuery::at(4)};
-    store.save_analysis("h2", "Song 2", "Artist", "Charter", fixture().song,
-                        prepare_row(key2, at_cap(4)), std::nullopt);
-    CHECK(store.get_record(key2).status == RecordStatus::Ready);
-    CHECK(store.counts().first == 2);
+    const SummaryLookup got = store.get_summary(key);
+    CHECK(got.status == RecordStatus::Ready);
+    CHECK(got.summary == summarize_record(at_cap(4)));
 }
 
-TEST_CASE("a save_analysis that fails leaves nothing behind") {
-    // A trigger that refuses one chart's result makes the save fail after
-    // the song row went in. One transaction means the song row goes back out.
+TEST_CASE("a save_analysis that fails leaves nothing behind and reads as a save error") {
+    // A trigger that refuses one chart's result makes the save fail.
     const std::string path = testtemp::temp_path("save_fail", ".db");
     std::remove(path.c_str());
     { RecordStore store(path); }
@@ -1719,40 +1303,19 @@ TEST_CASE("a save_analysis that fails leaves nothing behind") {
     {
         RecordStore store(path);
         const RecordKey boom{"boom", "mode", CapQuery::at(4)};
-        CHECK_THROWS(store.save_analysis("boom", "Song", "Artist", "Charter", fixture().song,
-                                         prepare_row(boom, at_cap(4)), std::nullopt));
-        CHECK(store.counts().first == 0);
-        // The store is still usable: no transaction was left open.
-        const RecordKey ok{"ok", "mode", CapQuery::at(4)};
-        store.save_analysis("ok", "Song", "Artist", "Charter", fixture().song,
-                            prepare_row(ok, at_cap(4)), std::nullopt);
-        CHECK(store.get_record(ok).status == RecordStatus::Ready);
-    }
-    std::remove(path.c_str());
-}
-
-TEST_CASE("a database write the old matcher missed reads as a database error") {
-    // A trigger refuses the song-length write inside save_analysis.
-    const std::string path = testtemp::temp_path("save_length_fail", ".db");
-    std::remove(path.c_str());
-    { RecordStore store(path); }
-    exec_on_file(path,
-                 "CREATE TRIGGER refuse_length BEFORE UPDATE OF length_ms ON songmeta"
-                 " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
-    {
-        RecordStore store(path);
-        const RecordKey key{"len", "mode", CapQuery::at(4)};
         try {
-            store.save_analysis("len", "Song", "Artist", "Charter", fixture().song,
-                                prepare_row(key, at_cap(4)), std::nullopt,
-                                SongLength::found(180000.0));
-            FAIL("the refused song-length write saved");
+            store.save_analysis(prepare_row(boom, at_cap(4)));
+            FAIL("the refused save went through");
         } catch (const std::exception& e) {
-            CHECK(std::string(e.what()).rfind("saving the song's length failed: ", 0) == 0);
             CHECK(hydra::app::plain_error(e) ==
                   "Hydra couldn't save to its database (hydra.db). Check that the disk isn't "
                   "full and that no other copy of Hydra is running, then try again.");
         }
+        CHECK(store.counts().second == 0);
+        // The store is still usable: no transaction was left open.
+        const RecordKey ok{"ok", "mode", CapQuery::at(4)};
+        store.save_analysis(prepare_row(ok, at_cap(4)));
+        CHECK(store.get_summary(ok).status == RecordStatus::Ready);
     }
     std::remove(path.c_str());
 }
@@ -1806,9 +1369,7 @@ namespace {
 // Every table the store makes, dropped by a second connection while a store
 // has the file open. The store's connection still holds the old schema, so
 // its next read compiles and then fails when it steps.
-constexpr const char* kDropEveryTable =
-    "DROP TABLE results; DROP TABLE paths; DROP TABLE path_refs; DROP TABLE songmeta;"
-    " DROP TABLE charts; DROP TABLE meta; DROP TABLE dynamics;";
+constexpr const char* kDropEveryTable = "DROP TABLE results; DROP TABLE charts; DROP TABLE meta;";
 
 // The read must throw the database read error, never answer.
 void check_read_fails(const std::function<void()>& read) {
@@ -1833,7 +1394,6 @@ TEST_CASE("a read on a failing database throws instead of answering empty") {
     std::remove(path.c_str());
     {
         RecordStore store(path);
-        store.add_song("h", "h", "Artist", "Charter", fixture().song);
         store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
         REQUIRE(store.analyzed_hashes("mode", CapQuery::at(4), Lens{}).count("h") == 1);
         exec_on_file(path, "DROP TABLE results;");
@@ -1855,27 +1415,20 @@ TEST_CASE("every store read throws a database read error when its step fails") {
     const std::pair<const char*, std::function<void(RecordStore&)>> reads[] = {
         {"engine_mode", [](RecordStore& s) { s.engine_mode(); }},
         {"stamped_fill_rule", [](RecordStore& s) { s.stamped_fill_rule(); }},
-        {"get_dynamics", [](RecordStore& s) { s.get_dynamics(DynamicsKey{"h", "Expert", true}); }},
         {"get_summaries", [&](RecordStore& s) { s.get_summaries({"h"}, "mode", cap, Lens{}); }},
-        {"get_record", [&](RecordStore& s) { s.get_record(key); }},
-        {"get_timing", [](RecordStore& s) { s.get_timing("h"); }},
+        {"get_summary", [&](RecordStore& s) { s.get_summary(key); }},
         {"has_record", [&](RecordStore& s) { s.has_record(key); }},
         {"analyzed_hashes", [&](RecordStore& s) { s.analyzed_hashes("mode", cap, Lens{}); }},
-        {"for_each_blob",
-         [&](RecordStore& s) {
-             s.for_each_blob(std::nullopt, cap, Lens{},
-                             [](const RecordStore::BlobRow&, const HydraRecord*) {});
-         }},
         {"list_records",
          [&](RecordStore& s) {
              s.list_records(std::nullopt, cap, Lens{}, SortColumn::Score, false, std::nullopt);
          }},
         {"counts", [](RecordStore& s) { s.counts(); }},
+        {"library_copies", [](RecordStore& s) { s.library_copies(); }},
+        {"naming_copy_paths", [](RecordStore& s) { s.naming_copy_paths(); }},
         {"chart_library_cache", [](RecordStore& s) { s.chart_library_cache(); }},
         {"chart_library_count", [](RecordStore& s) { s.chart_library_count(); }},
         {"list_chart_library", [](RecordStore& s) { s.list_chart_library(0, 10); }},
-        {"fill_song_length", [](RecordStore& s) { s.fill_song_length("h", 1000.0); }},
-        {"reindex", [](RecordStore& s) { s.reindex(); }},
     };
     for (const auto& [name, read] : reads) {
         INFO(std::string(name));
@@ -1892,7 +1445,6 @@ TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {
     RecordStore store(":memory:");
     const std::vector<const char*> charts = {"ready", "stale", "other_lens", "other_cap",
                                              "other_mode"};
-    for (const char* h : charts) store.add_song(h, h, "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
     store.add_row(test::old_build_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4)));
     store.add_record(RecordKey{"other_lens", "mode", CapQuery::at(4), kLensB}, at_cap(4));
@@ -1916,19 +1468,10 @@ TEST_CASE("analyzed_hashes names exactly the charts has_record would skip") {
 TEST_CASE("analyzed_hashes names exactly the charts get_summaries reads as Ready") {
     RecordStore store(":memory:");
     const CapQuery cap = CapQuery::at(8);
-    const std::vector<std::string> charts = {"ready", "build", "rules", "both",
-                                             "format", "mixed", "none"};
-    for (const std::string& h : charts)
-        store.add_song(h, h, "Artist", "Charter", fixture().song);
+    const std::vector<std::string> charts = {"ready", "build", "rules", "both", "mixed", "none"};
     store.add_record(RecordKey{"ready", "mode", cap}, at_cap(8));
     test::add_stale_rows(store, at_cap(8), RecordKey{"build", "mode", cap},
                          RecordKey{"rules", "mode", cap}, RecordKey{"both", "mode", cap});
-    PreparedRow format_row = prepare_row(RecordKey{"format", "mode", cap}, at_cap(8));
-    format_row.structure[kPathFormatOffset] = 1;
-    format_row.structure[1] = 0;
-    format_row.structure[2] = 0;
-    format_row.structure[3] = 0;
-    store.add_row(format_row);
     store.add_record(RecordKey{"mixed", "mode", cap}, at_cap(8));
     store.add_row(prepare_row(RecordKey{"mixed", "mode", cap}, test::other_rules_record(at_cap(8))));
 
@@ -1945,26 +1488,33 @@ TEST_CASE("analyzed_hashes names exactly the charts get_summaries reads as Ready
 
 TEST_CASE("get_summaries answers a page the same as get_summary row by row") {
     RecordStore store(":memory:");
-    for (const char* h : {"ready", "stale", "none", "two_caps"})
-        store.add_song(h, h, "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
     store.add_row(test::old_build_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4)));
     store.add_record(RecordKey{"two_caps", "mode", CapQuery::at(32)}, at_cap(32));
     store.add_record(RecordKey{"two_caps", "mode", CapQuery::at(16)}, at_cap(16));
 
-    // "ready" twice: a page can list the same chart from two folders.
+    // "ready" twice: a page can list the same chart from two folders. Each
+    // page's answers are spelled out, since get_summary is built on
+    // get_summaries and agreeing with it alone proves nothing.
     const std::vector<std::string> page = {"ready", "stale", "none", "two_caps", "ready"};
-    for (const CapQuery& cap : {CapQuery::at(4), CapQuery::at(16), CapQuery::at(32)}) {
-        const std::vector<SummaryLookup> got = store.get_summaries(page, "mode", cap, Lens{});
+    using S = RecordStatus;
+    const std::vector<std::pair<int, std::vector<S>>> want = {
+        {4, {S::Ready, S::Stale, S::NotAnalyzed, S::NotAnalyzed, S::Ready}},
+        {16, {S::NotAnalyzed, S::NotAnalyzed, S::NotAnalyzed, S::Ready, S::NotAnalyzed}},
+        {32, {S::NotAnalyzed, S::NotAnalyzed, S::NotAnalyzed, S::Ready, S::NotAnalyzed}},
+    };
+    for (const auto& [cap, statuses] : want) {
+        const std::vector<SummaryLookup> got =
+            store.get_summaries(page, "mode", CapQuery::at(cap), Lens{});
         REQUIRE(got.size() == page.size());
         for (size_t i = 0; i < page.size(); ++i) {
-            INFO(page[i]);
-            // Compared with get_record, not get_summary, which this task
-            // rebuilds on top of get_summaries. Every Ready row here holds
-            // the fixture's paths, so its best path is the fixture's.
-            const RecordLookup one = store.get_record(RecordKey{page[i], "mode", cap});
-            CHECK(got[i].status == one.status);
-            CHECK(got[i].bestpath == (one.status == RecordStatus::Ready
+            INFO(page[i] << " at " << cap);
+            CHECK(got[i].status == statuses[i]);
+            CHECK(got[i].status ==
+                  store.get_summary(RecordKey{page[i], "mode", CapQuery::at(cap)}).status);
+            // Every Ready row here holds the fixture's paths, so its best
+            // path is the fixture's.
+            CHECK(got[i].bestpath == (statuses[i] == S::Ready
                                           ? fixture().record.best_path().pathstring()
                                           : std::string()));
         }
@@ -1986,7 +1536,7 @@ HydraRecord auto_run_at(int cap) {
 
 }  // namespace
 
-TEST_CASE("the first open deletes the results Auto saved, and their paths, once") {
+TEST_CASE("the first open deletes the results Auto saved, once") {
     const std::string path = testtemp::temp_path("auto_delete", ".db");
     std::remove(path.c_str());
     const RecordKey kept{"h", "mode", CapQuery::at(4)};
@@ -1994,41 +1544,32 @@ TEST_CASE("the first open deletes the results Auto saved, and their paths, once"
     const RecordKey auto_same_chart{"h", "mode", CapQuery::at(16)};
     const RecordKey auto_only{"a", "mode", CapQuery::at(32)};
 
-    std::vector<uint8_t> kept_bytes;
     {
         RecordStore store(path);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        store.add_song("a", "Other", "Artist", "Charter", fixture().song);
         store.add_record(kept, at_cap(4));
         store.add_record(whatif, at_cap(8));
         store.add_record(auto_same_chart, auto_run_at(16));
         store.add_record(auto_only, auto_run_at(32));
-        kept_bytes = record_bytes(*store.get_record(kept).record);
         // This build accepts only the fixed-cap fingerprint, so an Auto row
         // reads Stale even before anything deletes it.
-        CHECK(store.get_record(auto_only).status == RecordStatus::Stale);
+        CHECK(store.get_summary(auto_only).status == RecordStatus::Stale);
         CHECK(store.counts().second == 4);
     }
-    REQUIRE(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='a'") > 0);
     // A database Hydra 1.8.4 wrote has no mark yet.
     exec_on_file(path, "DELETE FROM meta WHERE key='auto_results_deleted'");
 
     {
         RecordStore store(path);
         CHECK(store.counts().second == 2);
-        CHECK(store.get_record(auto_only).status == RecordStatus::NotAnalyzed);
-        CHECK(store.get_record(auto_same_chart).status == RecordStatus::NotAnalyzed);
+        CHECK(store.get_summary(auto_only).status == RecordStatus::NotAnalyzed);
+        CHECK(store.get_summary(auto_same_chart).status == RecordStatus::NotAnalyzed);
         // A fixed-cap what-if above 4 bars is not an Auto result and stays.
-        CHECK(store.get_record(whatif).status == RecordStatus::Ready);
-        const RecordLookup left = store.get_record(kept);
+        CHECK(store.get_summary(whatif).status == RecordStatus::Ready);
+        const SummaryLookup left = store.get_summary(kept);
         REQUIRE(left.status == RecordStatus::Ready);
-        CHECK(record_bytes(*left.record) == kept_bytes);
+        CHECK(left.summary == summarize_record(at_cap(4)));
+        CHECK(left.bestpath == best_path_text(at_cap(4)));
     }
-    // The chart that held only an Auto row has no paths left; the other
-    // chart's paths are still used by its kept rows.
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='a'") == 0);
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM path_refs WHERE hyhash='a'") == 0);
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM paths WHERE hyhash='h'") > 0);
     CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM meta WHERE key='auto_results_deleted'") == 1);
 
     // Marked done: a later open never deletes again.
@@ -2039,7 +1580,7 @@ TEST_CASE("the first open deletes the results Auto saved, and their paths, once"
     {
         RecordStore store(path);
         CHECK(store.counts().second == 3);
-        CHECK(store.get_record(auto_only).status == RecordStatus::Stale);
+        CHECK(store.get_summary(auto_only).status == RecordStatus::Stale);
     }
     std::error_code ec;
     std::filesystem::remove(std::filesystem::u8path(path), ec);
@@ -2051,7 +1592,6 @@ TEST_CASE("a start with a bad rules file leaves the Auto results for the next go
     const RecordKey auto_only{"a", "mode", CapQuery::at(32)};
     {
         RecordStore store(path);
-        store.add_song("a", "Other", "Artist", "Charter", fixture().song);
         store.add_record(auto_only, auto_run_at(32));
     }
     exec_on_file(path, "DELETE FROM meta WHERE key='auto_results_deleted'");
@@ -2074,8 +1614,6 @@ TEST_CASE("a start with a bad rules file leaves the Auto results for the next go
 
 TEST_CASE("a saved result stores its best path's star count") {
     RecordStore store(":memory:");
-    for (const char* h : {"ready", "stale"})
-        store.add_song(h, h, "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
     store.add_row(test::old_build_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4)));
 
@@ -2084,38 +1622,31 @@ TEST_CASE("a saved result stores its best path's star count") {
     REQUIRE(expected.stars.has_value());
     CHECK(*expected.stars == path_stars(best));
 
-    auto check = [&] {
-        const std::vector<SummaryLookup> got =
-            store.get_summaries({"ready", "stale", "none"}, "mode", CapQuery::at(4), Lens{});
-        REQUIRE(got.size() == 3);
-        CHECK(got[0].status == RecordStatus::Ready);
-        CHECK(got[0].summary.score == best.totalscore());
-        CHECK(got[0].summary.hardest_ms == expected.hardest_ms);
-        CHECK(got[0].summary.stars == expected.stars);
-        CHECK(got[0].summary == expected);
-        // Only a Ready answer carries a summary.
-        CHECK(got[1].status == RecordStatus::Stale);
-        CHECK_FALSE(got[1].summary.score.has_value());
-        CHECK(got[2].status == RecordStatus::NotAnalyzed);
-        CHECK_FALSE(got[2].summary.stars.has_value());
+    const std::vector<SummaryLookup> got =
+        store.get_summaries({"ready", "stale", "none"}, "mode", CapQuery::at(4), Lens{});
+    REQUIRE(got.size() == 3);
+    CHECK(got[0].status == RecordStatus::Ready);
+    CHECK(got[0].summary.score == best.totalscore());
+    CHECK(got[0].summary.hardest_ms == expected.hardest_ms);
+    CHECK(got[0].summary.stars == expected.stars);
+    CHECK(got[0].summary == expected);
+    // Only a Ready answer carries a summary.
+    CHECK(got[1].status == RecordStatus::Stale);
+    CHECK_FALSE(got[1].summary.score.has_value());
+    CHECK(got[2].status == RecordStatus::NotAnalyzed);
+    CHECK_FALSE(got[2].summary.stars.has_value());
 
-        const std::vector<RecordListing> listing =
-            store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true);
-        REQUIRE(listing.size() == 1);
-        CHECK(listing[0].summary.stars == expected.stars);
-        CHECK(listing[0].sp_cap == 4);
-    };
-    check();
-    // reindex rewrites every summary column, stars included.
-    store.reindex();
-    check();
+    const std::vector<RecordListing> listing =
+        store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true);
+    REQUIRE(listing.size() == 1);
+    CHECK(listing[0].summary.stars == expected.stars);
+    CHECK(listing[0].sp_cap == 4);
 }
 
 TEST_CASE("get_summaries answers a whole library in chunks") {
     // SQLite refuses more than 32,766 bound values in one statement. The
     // library asks about every chart at once, so the store must split it.
     RecordStore store(":memory:");
-    store.add_song("ready", "ready", "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
 
     std::vector<std::string> hashes;
@@ -2149,241 +1680,39 @@ TEST_CASE("get_summaries answers a whole library in chunks") {
     CHECK(ready == 3);
 }
 
-TEST_CASE("a database from before the stars column gets its stars filled on open") {
-    const std::string path = testtemp::temp_path("stars_fill", ".db");
-    std::remove(path.c_str());
-    {
-        RecordStore seed(path);
-        for (const char* h : {"ready", "stale"})
-            seed.add_song(h, h, "Artist", "Charter", fixture().song);
-        seed.add_record(RecordKey{"ready", "mode", CapQuery::at(4)}, at_cap(4));
-        seed.add_row(test::old_build_row(RecordKey{"stale", "mode", CapQuery::at(4)}, at_cap(4)));
-    }
-    // What the previous Hydra wrote: the same table with no stars column.
-    exec_on_file(path, "ALTER TABLE results DROP COLUMN stars");
-
-    const int expected = path_stars(fixture().record.best_path());
-    {
-        RecordStore store(path);
-        const std::vector<SummaryLookup> got =
-            store.get_summaries({"ready", "stale"}, "mode", CapQuery::at(4), Lens{});
-        CHECK(got[0].summary.stars == expected);
-        CHECK(got[1].status == RecordStatus::Stale);
-    }
-    CHECK(scalar_on_file(path,"SELECT stars FROM results WHERE hyhash='ready'") == expected);
-    // The Stale row is left exactly as it was: no stars, and its other
-    // summaries kept rather than blanked.
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results WHERE hyhash='stale'"
-                       " AND stars IS NULL AND score IS NOT NULL") == 1);
-    // A second open finds nothing left to fill and changes nothing.
-    { RecordStore again(path); }
-    CHECK(scalar_on_file(path,"SELECT stars FROM results WHERE hyhash='ready'") == expected);
-    std::remove(path.c_str());
-}
-
-TEST_CASE("under rules that make every row Stale, the stars fill changes nothing") {
-    // A bad hydra_rules.ini opens the store under RulesStamp::none(), where
-    // every row reads Stale. The fill must not blank or skip-mark anything:
-    // once the rules are fixed, the next open fills the row.
-    const std::string path = testtemp::temp_path("stars_badrules", ".db");
-    std::remove(path.c_str());
-    {
-        RecordStore seed(path);
-        seed.add_song("h", "h", "Artist", "Charter", fixture().song);
-        seed.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-    }
-    exec_on_file(path, "ALTER TABLE results DROP COLUMN stars");
-    const int64_t score = fixture().record.best_path().totalscore();
-
-    { RecordStore bad(path, core::RulesStamp::none()); }
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM results WHERE stars IS NULL") == 1);
-    CHECK(scalar_on_file(path,"SELECT score FROM results WHERE hyhash='h'") == score);
-
-    { RecordStore good(path); }
-    CHECK(scalar_on_file(path,"SELECT stars FROM results WHERE hyhash='h'") ==
-          path_stars(fixture().record.best_path()));
-    CHECK(scalar_on_file(path,"SELECT score FROM results WHERE hyhash='h'") == score);
-    std::remove(path.c_str());
-}
-
-TEST_CASE("an analysis saves the song's length, and an unstamped length reads as not read") {
-    // The stored length is the song's length (app::song_length_ms, D75),
-    // saved with kSongLengthStamp. The lengths here are inputs; the owner is
-    // pinned in test_song_length. RecordStore has no raw-SQL test hook, so
-    // this rewrites the stamp on a second connection, as the stars-fill case
-    // does.
-    const std::string path = testtemp::temp_path("song_length", ".db");
-    std::remove(path.c_str());
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
-    {
-        RecordStore store(path);
-        store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
-                            prepare_row(key, at_cap(4)), std::nullopt,
-                            SongLength::found(4321.0));
-        const RecordLookup got = store.get_record(key);
-        REQUIRE(got.status == RecordStatus::Ready);
-        CHECK(got.song_length_read);
-        CHECK(got.song_length_ms == 4321.0);
-    }
-
-    // A length stamped 1 was the audio's end (D69), which D75 replaced: it
-    // reads as not read, so opening the song works it out again.
-    exec_on_file(path, "UPDATE songmeta SET length_version = 1 WHERE hyhash = 'h'");
-    {
-        RecordStore store(path);
-        const RecordLookup got = store.get_record(key);
-        REQUIRE(got.status == RecordStatus::Ready);
-        CHECK_FALSE(got.song_length_read);
-        CHECK_FALSE(got.song_length_ms.has_value());
-    }
-
-    // A length with no current stamp, as every length in a file from before
-    // this build, reads as not read.
-    exec_on_file(path, "UPDATE songmeta SET length_version = 0 WHERE hyhash = 'h'");
-    {
-        RecordStore store(path);
-        const RecordLookup got = store.get_record(key);
-        REQUIRE(got.status == RecordStatus::Ready);
-        CHECK_FALSE(got.song_length_read);
-        CHECK_FALSE(got.song_length_ms.has_value());
-
-        // Opening the song works its length out once; the result is untouched.
-        store.fill_song_length("h", 5000.0);
-        const RecordLookup filled = store.get_record(key);
-        REQUIRE(filled.status == RecordStatus::Ready);
-        CHECK(filled.song_length_read);
-        CHECK(filled.song_length_ms == 5000.0);
-        CHECK(filled.record->best_path().totalscore() == got.record->best_path().totalscore());
-
-        // A second backfill is ignored, and an unknown song is left alone.
-        store.fill_song_length("h", 6000.0);
-        CHECK(store.get_record(key).song_length_ms == 5000.0);
-        store.fill_song_length("unknown", 5.0);
-    }
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM songmeta WHERE hyhash = 'unknown'") == 0);
-    std::remove(path.c_str());
-}
-
-TEST_CASE("an analysis that could not work out the length leaves the song's length alone") {
-    // SongLength{} is "not read": hydra_bench and the tests save it when they
-    // work no length out.
-    RecordStore store(":memory:");
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
-    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
-                        prepare_row(key, at_cap(4)), std::nullopt, SongLength::found(4321.0));
-    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
-                        prepare_row(key, at_cap(4)), std::nullopt, SongLength{});
-    const RecordLookup got = store.get_record(key);
-    CHECK(got.song_length_read);
-    CHECK(got.song_length_ms == 4321.0);
-}
-
-TEST_CASE("a song the owner gives no length for reads as read, with no length") {
-    // No length is an answer (app::song_length_ms, D75): the backfill does not
-    // try it again, and the timeline places no marks.
-    RecordStore store(":memory:");
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
-    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
-                        prepare_row(key, at_cap(4)), std::nullopt,
-                        SongLength::found(std::nullopt));
-    const RecordLookup got = store.get_record(key);
-    REQUIRE(got.status == RecordStatus::Ready);
-    CHECK(got.song_length_read);
-    CHECK_FALSE(got.song_length_ms.has_value());
-    // The backfill writer leaves a read song alone.
-    store.fill_song_length("h", 5000.0);
-    CHECK_FALSE(store.get_record(key).song_length_ms.has_value());
-}
-
-TEST_CASE("a saved song's tempo map follows the latest analysis") {
-    // D51 call 12 (finding 343): each analysis rewrites the stored tempo map.
-    // The second map is beat_song's 240 BPM, so one tick lands at another ms.
-    const Song& first = fixture().song;
-    const Song second = hydra::test::beat_song({}, {}, 1920);
-    const int64_t tick = 1920;
-    const double first_ms = first.timecode(tick).ms();
-    const double second_ms = second.timecode(tick).ms();
-    REQUIRE(first_ms != second_ms);
-
-    RecordStore store(":memory:");
-    store.add_song("h", "Song", "Artist", "Charter", first);
-    std::optional<SongTiming> timing = store.get_timing("h");
-    REQUIRE(timing.has_value());
-    CHECK(timing->timecode(tick).ms() == first_ms);
-
-    store.add_song("h", "Song", "Artist", "Charter", second);
-    timing = store.get_timing("h");
-    REQUIRE(timing.has_value());
-    CHECK(timing->timecode(tick).ms() == second_ms);
-}
-
-TEST_CASE("one length per song: every difficulty reads the latest analysis") {
-    // The length belongs to the song, so each analysis of any difficulty saves
-    // the one length (D75).
-    RecordStore store(":memory:");
-    const RecordKey a{"h", "a", CapQuery::at(4)};
-    const RecordKey b{"h", "b", CapQuery::at(4)};
-    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
-                        prepare_row(a, at_cap(4)), std::nullopt, SongLength::found(4321.0));
-    store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
-                        prepare_row(b, at_cap(4)), std::nullopt, SongLength::found(1234.0));
-    CHECK(store.get_record(a).song_length_ms == 1234.0);
-    CHECK(store.get_record(b).song_length_ms == 1234.0);
-}
-
-TEST_CASE("a file from before AL loses its songlength table and its last-note lengths") {
-    // D69 replaced D58 item 5: the per-difficulty table goes, and a length
-    // saved from notes reads as not read until it is worked out again.
+TEST_CASE("a file from before AL loses its songlength table") {
+    // D69 replaced D58 item 5: the per-difficulty length table goes.
     const std::string path = testtemp::temp_path("song_length_old", ".db");
     std::remove(path.c_str());
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
-    {
-        RecordStore store(path);
-        store.add_song("h", "Song", "Artist", "Charter", fixture().song);
-        store.add_record(key, at_cap(4));
-    }
-    // The file as a build before this one left it: the songlength table, a
-    // last-note length on songmeta and no stamp column.
+    { RecordStore store(path); }
     exec_on_file(path,
                  "CREATE TABLE IF NOT EXISTS songlength (hyhash TEXT NOT NULL,"
                  " chartmode TEXT NOT NULL, length_ms REAL NOT NULL,"
                  " PRIMARY KEY (hyhash, chartmode));"
-                 "INSERT OR REPLACE INTO songlength VALUES ('h', 'mode', 1234.0);"
-                 "UPDATE songmeta SET length_ms = 1234.0 WHERE hyhash = 'h';"
-                 "ALTER TABLE songmeta DROP COLUMN length_version;");
-    {
-        RecordStore store(path);
-        const RecordLookup got = store.get_record(key);
-        REQUIRE(got.status == RecordStatus::Ready);
-        CHECK_FALSE(got.song_length_read);
-        CHECK_FALSE(got.song_length_ms.has_value());
-    }
+                 "INSERT OR REPLACE INTO songlength VALUES ('h', 'mode', 1234.0);");
+    { RecordStore store(path); }
     CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master WHERE name = 'songlength'") == 0);
     std::remove(path.c_str());
 }
 
 TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
     // D51 call 10 (finding 63): one rule names a chart the scan found twice,
-    // the first copy it listed. Analyzing the second copy used to rename it.
-    // D63: only a chart with more than one copy takes the library's names; a
-    // single copy keeps its newest analysis's names.
+    // the first copy it listed. Every chart takes its names from the library
+    // (kNamingCopiesSql), a single copy included.
     RecordStore store(":memory:");
     const ChartLibraryEntry first = chart_entry("h", "Scanned Title");
     ChartLibraryEntry second = chart_entry("h", "Second Copy");
     second.notespath = "C:\\charts\\copy\\notes.chart";
-    store.rebuild_chart_library({first, second, chart_entry("s", "Old Title")});
+    store.rebuild_chart_library({first, second, chart_entry("s", "Single Copy")});
 
-    // Analyzing copy B saves the names its own song.ini gave.
-    store.add_song("h", "Second Copy", "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
-    // The single copy's song.ini was fixed after the scan, then analyzed.
-    store.add_song("s", "New Title", "Artist", "Charter", fixture().song);
     store.add_record(RecordKey{"s", "mode", CapQuery::at(4)}, at_cap(4));
     std::map<std::string, std::string> names;
     for (const RecordListing& row :
          store.list_records(std::nullopt, CapQuery::at(4), Lens{}, SortColumn::Score, true))
         names[row.hyhash] = row.ref_name;
-    CHECK(names == std::map<std::string, std::string>{{"h", "Scanned Title"}, {"s", "New Title"}});
+    CHECK(names ==
+          std::map<std::string, std::string>{{"h", "Scanned Title"}, {"s", "Single Copy"}});
 }
 
 TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
@@ -2420,7 +1749,6 @@ TEST_CASE("the store names the fill rule a file holds") {
     RecordStore ch11(":memory:");
     ch11.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch11));
     RecordStore unstamped(":memory:");
-    unstamped.add_song("h", "Song", "Artist", "Charter", fixture().song);
     unstamped.add_record(RecordKey{"h", "mode", CapQuery::at(4)}, at_cap(4));
     RecordStore empty(":memory:");
 
@@ -2502,8 +1830,7 @@ TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log a
             const RecordStore::BatchWrites batch(store);
             CHECK(store.wal_autocheckpoint_for_test() == kBatchWalAutocheckpointPages);
             const RecordKey key{"h", "mode", CapQuery::at(4)};
-            store.save_analysis("h", "Song", "Artist", "Charter", fixture().song,
-                                prepare_row(key, at_cap(4)), std::nullopt);
+            store.save_analysis(prepare_row(key, at_cap(4)));
             CHECK(std::filesystem::file_size(wal) > 0);
         }
         CHECK(std::filesystem::file_size(wal) == 0);
@@ -2517,32 +1844,14 @@ TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log a
 
 namespace {
 
-// Every row one chart holds, table by table, read straight out of the file.
-struct ChartRows {
-    int64_t results = 0, songmeta = 0, dynamics = 0, path_refs = 0, paths = 0;
-    bool operator==(const ChartRows& o) const {
-        return results == o.results && songmeta == o.songmeta && dynamics == o.dynamics &&
-               path_refs == o.path_refs && paths == o.paths;
-    }
-};
-
-ChartRows rows_of(const std::string& path, const std::string& hash) {
-    auto count = [&](const char* table, const char* column) {
-        const std::string sql = std::string("SELECT COUNT(*) FROM ") + table + " WHERE " +
-                                column + " = '" + hash + "'";
-        return scalar_on_file(path,sql.c_str());
-    };
-    return ChartRows{count("results", "hyhash"), count("songmeta", "hyhash"),
-                     count("dynamics", "md5"), count("path_refs", "hyhash"),
-                     count("paths", "hyhash")};
+// How many results one chart holds, read straight out of the file.
+int64_t results_of(const std::string& path, const std::string& hash) {
+    return scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = '" + hash + "'");
 }
 
-// One analyzed chart as the click saves it: song, result and count.
+// One analyzed chart as the click saves it.
 void save_chart(RecordStore& store, const std::string& hash, const std::string& mode = "mode") {
-    store.save_analysis(hash, "Song", "Artist", "Charter", fixture().song,
-                        prepare_row(RecordKey{hash, mode, CapQuery::at(4)}, at_cap(4)),
-                        DynamicsEntry{DynamicsKey{hash, "Expert", true}, {1, 2, 3},
-                                      kDynamicsCountStamp.written});
+    store.save_analysis(prepare_row(RecordKey{hash, mode, CapQuery::at(4)}, at_cap(4)));
 }
 
 // chart_entry's row for another folder holding the same chart.
@@ -2564,19 +1873,14 @@ TEST_CASE("a scan that drops a chart deletes its stored rows") {
         save_chart(store, "a");
         save_chart(store, "b");
     }
-    const ChartRows kept = rows_of(path, "a");
-    REQUIRE(kept.results == 1);
-    REQUIRE(kept.songmeta == 1);
-    REQUIRE(kept.dynamics == 1);
-    REQUIRE(kept.path_refs > 0);
-    REQUIRE(kept.paths > 0);
-    REQUIRE(rows_of(path, "b") == kept);
+    REQUIRE(results_of(path, "a") == 1);
+    REQUIRE(results_of(path, "b") == 1);
     {
         RecordStore store(path);
         store.rebuild_chart_library({chart_entry("a", "A")});
     }
-    CHECK(rows_of(path, "b") == ChartRows{});
-    CHECK(rows_of(path, "a") == kept);
+    CHECK(results_of(path, "b") == 0);
+    CHECK(results_of(path, "a") == 1);
     std::remove(path.c_str());
 }
 
@@ -2588,14 +1892,13 @@ TEST_CASE("a chart with two library copies keeps its rows when one copy leaves")
         store.rebuild_chart_library({chart_entry("a", "A"), second_copy("a")});
         save_chart(store, "a");
     }
-    const ChartRows kept = rows_of(path, "a");
-    REQUIRE(kept.results == 1);
+    REQUIRE(results_of(path, "a") == 1);
     {
         RecordStore store(path);
         store.rebuild_chart_library({second_copy("a")});
         CHECK(store.library_copies() == std::unordered_map<std::string, int>{{"a", 1}});
     }
-    CHECK(rows_of(path, "a") == kept);
+    CHECK(results_of(path, "a") == 1);
     std::remove(path.c_str());
 }
 
@@ -2614,14 +1917,13 @@ TEST_CASE("a library chart keeps its rows for other chart modes, including Stale
         REQUIRE(store.get_summary(RecordKey{"a", "build", CapQuery::at(8)}).status ==
                 RecordStatus::Stale);
     }
-    const ChartRows kept = rows_of(path, "a");
-    REQUIRE(kept.results == 5);
+    REQUIRE(results_of(path, "a") == 5);
     {
         RecordStore store(path);
         store.rebuild_chart_library({chart_entry("a", "A")});
     }
-    CHECK(rows_of(path, "a") == kept);
-    CHECK(rows_of(path, "b") == ChartRows{});
+    CHECK(results_of(path, "a") == 5);
+    CHECK(results_of(path, "b") == 0);
     std::remove(path.c_str());
 }
 
@@ -2635,8 +1937,8 @@ TEST_CASE("reidentify_chart moves the library row to the new md5 and deletes the
         save_chart(store, "a");
         save_chart(store, "b");
     }
-    const ChartRows kept = rows_of(path, "b");
-    REQUIRE(rows_of(path, "a") == kept);
+    REQUIRE(results_of(path, "a") == 1);
+    REQUIRE(results_of(path, "b") == 1);
     {
         RecordStore store(path);
         store.reidentify_chart(a.notespath, "a2", "sig-a2");
@@ -2646,8 +1948,8 @@ TEST_CASE("reidentify_chart moves the library row to the new md5 and deletes the
         CHECK(cache.at(a.notespath).md5 == "a2");
         CHECK(cache.at(a.notespath).sig == "sig-a2");
     }
-    CHECK(rows_of(path, "a") == ChartRows{});
-    CHECK(rows_of(path, "b") == kept);
+    CHECK(results_of(path, "a") == 0);
+    CHECK(results_of(path, "b") == 1);
     std::remove(path.c_str());
 }
 
@@ -2660,20 +1962,19 @@ TEST_CASE("reidentify_chart keeps the old md5's rows while another library row h
         store.rebuild_chart_library({chart_entry("a", "A"), copy});
         save_chart(store, "a");
     }
-    const ChartRows kept = rows_of(path, "a");
-    REQUIRE(kept.results == 1);
+    REQUIRE(results_of(path, "a") == 1);
     {
         RecordStore store(path);
         store.reidentify_chart(copy.notespath, "a2", "sig-a2");
         CHECK(store.library_copies() == std::unordered_map<std::string, int>{{"a", 1}, {"a2", 1}});
     }
-    CHECK(rows_of(path, "a") == kept);
+    CHECK(results_of(path, "a") == 1);
     std::remove(path.c_str());
 }
 
 TEST_CASE("a scan that fails partway through its deletes keeps the dropped chart's rows") {
     // The deletes run inside the scan's own transaction. A trigger that
-    // refuses the dynamics delete fails it after the results are gone.
+    // refuses the results delete fails it after the library rows changed.
     const std::string path = testtemp::temp_path("scan_delete_fails", ".db");
     std::remove(path.c_str());
     {
@@ -2682,16 +1983,15 @@ TEST_CASE("a scan that fails partway through its deletes keeps the dropped chart
         save_chart(store, "a");
         save_chart(store, "b");
     }
-    const ChartRows kept = rows_of(path, "b");
-    REQUIRE(kept.results == 1);
+    REQUIRE(results_of(path, "b") == 1);
     exec_on_file(path,
-                 "CREATE TRIGGER refuse_count_delete BEFORE DELETE ON dynamics"
+                 "CREATE TRIGGER refuse_result_delete BEFORE DELETE ON results"
                  " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
     {
         RecordStore store(path);
         CHECK_THROWS(store.rebuild_chart_library({chart_entry("a", "A")}));
         CHECK(store.chart_library_count() == 2);
     }
-    CHECK(rows_of(path, "b") == kept);
+    CHECK(results_of(path, "b") == 1);
     std::remove(path.c_str());
 }

@@ -21,14 +21,18 @@ inline constexpr const char* kMode = "Expert Pro Drums, 2x Bass";
 inline constexpr const char* kHash = "aa11bb22cc33dd44ee55ff6677889900";
 
 // An in-memory store holding one analyzed corpus chart under kHash/kMode at
-// SP cap 4. Returns the record's best score (the "optimal" side of the join).
+// SP cap 4, listed in the library under `name` (a result's names come from
+// the library). Returns the record's best score (the "optimal" side of the
+// join).
 inline int64_t fill_store(hydra::store::RecordStore& store,
                           const std::string& name = "Stored Title") {
     using namespace hydra;
     app::AnalysisSettings settings;
     settings.depth_value = 0;
     const app::AnalysisResult result = corpus::first_analyzed_with_paths(settings);
-    store.add_song(kHash, name, "Stored Artist", "Stored Charter", result.song);
+    store.rebuild_chart_library({store::ChartLibraryEntry{
+        kHash, name, "Stored Artist", "Stored Charter", "C:\\charts\\stored\\notes.chart",
+        "C:\\charts", "sig-stored"}});
     store.add_record(store::RecordKey{kHash, kMode, store::CapQuery::at(kCloneHeroSpCap)},
                      result.record);
     // A what-if record at 8 bars for the same chart: the comparison must never

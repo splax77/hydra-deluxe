@@ -298,7 +298,7 @@ static void engine_mode(const std::string& folder, const std::string& cachedb, i
         t = clk::now();
         store::PreparedRow row = store::prepare_row(st.record_key(it.md5), *rec);
         t_prep += secs_since(t);
-        const uint64_t h = digest::row_hash(row);
+        const uint64_t h = digest::row_hash(row, *rec);
         all = digest::fold(all, h);
         if (out) *out << it.md5 << ' ' << std::hex << h << std::dec << '\n';
         ++n;

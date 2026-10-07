@@ -316,6 +316,12 @@ GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
                                          const store::CapQuery& cap,
                                          const store::Lens& lens) {
     GeneratedFillReport out;
+    // The page compares library charts only, as the path report does (D92),
+    // so either database with results and no library stops it.
+    if (report::lacks_chart_library(old_store) || report::lacks_chart_library(new_store)) {
+        out.reason = report::kNoChartLibrary;
+        return out;
+    }
     std::vector<FillCompareRow> rows =
         collect_fill_rows(old_store, new_store, chartmode, cap, lens);
     out.stats = tally_fill_rows(rows);

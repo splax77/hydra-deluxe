@@ -298,9 +298,7 @@ TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
 
     // A stored artist made only of tags reads "(unknown)" by the title's
     // rule (D50 item 5); a charter made only of tags keeps today's blank.
-    // add_song keeps the latest names it is given.
-    tags_only.add_song(kHash, "Stored Title", test::kTagOnlyTitle, test::kTagOnlyTitle,
-                       test::beat_song({}, {}, 13440));
+    test::name_chart(tags_only, kHash, "Stored Title", test::kTagOnlyTitle, test::kTagOnlyTitle);
     rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
     REQUIRE(rows.size() == 1);
     CHECK(rows[0].artist == kUnknownTitle);
@@ -309,8 +307,7 @@ TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {
     // An empty artist and the scan's placeholder read "(unknown)" too (D56
     // item 2); a charter loses the spaces at its ends (display_charter).
     for (const char* artist : {"", kUnknownArtist}) {
-        tags_only.add_song(kHash, "Stored Title", artist, " <b>Bob</b> ",
-                           test::beat_song({}, {}, 13440));
+        test::name_chart(tags_only, kHash, "Stored Title", artist, " <b>Bob</b> ");
         rows = app::dm_report::collect_dm_rows(tags_only, {unknown_meta}, kMode, store::Lens{});
         REQUIRE(rows.size() == 1);
         CHECK(rows[0].artist == kUnknownTitle);
@@ -622,8 +619,6 @@ TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\" (D51
     // A second chart the last scan found, analyzed at Clone Hero's cap, whose
     // analysis kept no path: a Ready record with no score.
     constexpr const char* kEmpty = "abcdef00112233445566778899aabbcc";
-    store.add_song(kEmpty, "Empty Title", "Stored Artist", "Stored Charter",
-                   test::beat_song({}, {}, 13440));
     test::store_batch_result(store,
                              store::RecordKey{kEmpty, kMode, store::CapQuery::at(kCloneHeroSpCap)});
     store::ChartLibraryEntry analyzed;
@@ -693,4 +688,44 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
         CHECK(app::plain_error(e) == fills);
     }
     CHECK(refused);
+}
+
+// ---- results the library doesn't list (D92) ---------------------------------
+
+TEST_CASE("collect_dm_rows: a database with no chart library stops with the path report's "
+          "sentence") {
+    // What hydra_batch with folder arguments leaves: a result, and no library.
+    store::RecordStore store(":memory:");
+    test::store_batch_result(store,
+                             store::RecordKey{kHash, kMode, store::CapQuery::at(kCloneHeroSpCap)});
+    bool stopped = false;
+    try {
+        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1000)}, kMode, store::Lens{});
+    } catch (const KindedError& e) {
+        stopped = true;
+        CHECK(e.kind() == ErrorKind::AlreadyPlain);
+        CHECK(app::plain_error(e) ==
+              "This database has no chart library. Run hydra_batch without folder arguments, or "
+              "scan in Hydra, to build one.");
+    }
+    CHECK(stopped);
+}
+
+TEST_CASE("collect_dm_rows: a result whose chart the library doesn't list is left out") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    // A second chart's result, saved without a library row for it.
+    constexpr const char* kOutside = "0123456789abcdef0123456789abcdef";
+    test::store_batch_result(
+        store, store::RecordKey{kOutside, kMode, store::CapQuery::at(kCloneHeroSpCap)});
+
+    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+        store, {make_score(kHash, optimal - 1), make_score(kOutside, 5000)}, kMode,
+        store::Lens{});
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].status == "under optimal");
+    // The leaderboard's score stays on the page; Hydra's result for it does
+    // not join it.
+    CHECK(rows[1].status == "not in library");
+    CHECK_FALSE(rows[1].optimal.has_value());
 }

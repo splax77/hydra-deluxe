@@ -35,6 +35,11 @@ struct DynamicsCounts {
         normal += o.normal;
         return *this;
     }
+    // Spelled out rather than defaulted: this project builds as C++17.
+    bool operator==(const DynamicsCounts& o) const {
+        return ghost == o.ghost && accent == o.accent && normal == o.normal;
+    }
+    bool operator!=(const DynamicsCounts& o) const { return !(*this == o); }
 };
 
 enum class DynamicsRow {
@@ -77,10 +82,18 @@ struct DynamicsBreakdown {
     bool dynamics_enabled = false;
     // A late .mid dynamics tag (finding 64): its time in chart ms, and how
     // many marked notes came before it. nullopt and 0 when the tag came first
-    // or there is none. The time is stored because the Dynamics tab draws
-    // from the stored blob and has no tempo map to turn a tick into m:ss.
+    // or there is none. The time is kept in ms so the Dynamics tab can show
+    // it as m:ss without a tempo map.
     std::optional<uint32_t> late_tag_ms;
     int marks_before_tag = 0;
+
+    // Every field. Spelled out rather than defaulted: this project builds as
+    // C++17.
+    bool operator==(const DynamicsBreakdown& o) const {
+        return rows == o.rows && dynamics_enabled == o.dynamics_enabled &&
+               late_tag_ms == o.late_tag_ms && marks_before_tag == o.marks_before_tag;
+    }
+    bool operator!=(const DynamicsBreakdown& o) const { return !(*this == o); }
 
     const DynamicsCounts& row(DynamicsRow r) const;
     DynamicsCounts pads_total() const;

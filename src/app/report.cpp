@@ -355,12 +355,22 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 std::unordered_map<std::string, store::RecordListing> records_by_hash(
     store::RecordStore& store, const std::string& chartmode, const store::CapQuery& cap,
     const store::Lens& lens) {
+    const std::unordered_map<std::string, int> library = library_copies_by_hash(store);
     std::unordered_map<std::string, store::RecordListing> by_hash;
     for (store::RecordListing& r : store.list_records(chartmode, cap, lens,
                                                        store::SortColumn::Score,
-                                                       /*descending=*/true))
-        by_hash.emplace(normalize_chart_hash(r.hyhash), std::move(r));
+                                                       /*descending=*/true)) {
+        std::string hash = normalize_chart_hash(r.hyhash);
+        // A result whose chart the library doesn't list is not on the page
+        // (D92), as in collect_rows.
+        if (library.find(hash) == library.end()) continue;
+        by_hash.emplace(std::move(hash), std::move(r));
+    }
     return by_hash;
+}
+
+bool lacks_chart_library(store::RecordStore& store) {
+    return store.counts().second > 0 && store.chart_library_count() == 0;
 }
 
 std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store) {
@@ -604,7 +614,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
         // needs to hear which (finding 105).
         if (store.counts().second == 0) {
             out.empty_reason = EmptyReason::NothingStored;
-        } else if (store.chart_library_count() == 0) {
+        } else if (lacks_chart_library(store)) {
             // The report covers library charts only (D87 item 4).
             out.empty_reason = EmptyReason::NoLibrary;
             out.why_empty = kNoChartLibrary;

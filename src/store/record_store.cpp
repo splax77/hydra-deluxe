@@ -356,6 +356,12 @@ std::vector<uint8_t> rules_fp_bytes(uint64_t fingerprint) {
     return w.bytes;
 }
 
+// The fingerprint a row must carry to be Ready in this process, as the
+// rules_fp column holds it: rank_row's `fixed_fp`.
+std::vector<uint8_t> ready_rules_fp(const core::RulesStamp& stamp) {
+    return rules_fp_bytes(stamp.fixed);
+}
+
 // The facts that decide whether a row is readable and how it places among
 // the candidates for its chart and mode, and why a row that is not ready is
 // Stale. rank_row is the only place they are read off a row. Whether a chart
@@ -1124,7 +1130,7 @@ std::vector<SummaryLookup> RecordStore::get_summaries(const std::vector<std::str
     static constexpr const char* kLeadColumns = "hyhash, hyversion, bestpath, result_id";
     static constexpr int kFirstSummary = count_list_names(kLeadColumns);
     static constexpr int kAfterSummary = kFirstSummary + kSummaryColumnCount;
-    const std::vector<uint8_t> fixed_fp = rules_fp_bytes(rules_fingerprint_.fixed);
+    const std::vector<uint8_t> fixed_fp = ready_rules_fp(rules_fingerprint_);
     WinnerPicker picker;
     std::vector<Offered> offered;
     {
@@ -1265,7 +1271,7 @@ std::vector<RecordListing> RecordStore::list_records(
     if (chartmode) bind_text(s, idx++, *chartmode);
     bind_candidate_filter(s, idx, cap, lens);
 
-    const std::vector<uint8_t> fixed_fp = rules_fp_bytes(rules_fingerprint_.fixed);
+    const std::vector<uint8_t> fixed_fp = ready_rules_fp(rules_fingerprint_);
     std::vector<RecordListing> candidates;  // by offer index
     WinnerPicker picker;
     while (step_row(s)) {

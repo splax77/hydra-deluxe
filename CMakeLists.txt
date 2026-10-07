@@ -501,7 +501,6 @@ add_executable(hydra_tests
     tests/test_s2_dynamics_tag.cpp
     tests/test_s2_parser_owners.cpp
     tests/test_s2_offspeed.cpp
-    tests/test_s2_stamps.cpp
     tests/test_s2_deact_extension.cpp
     tests/test_perf_digest.cpp
 )

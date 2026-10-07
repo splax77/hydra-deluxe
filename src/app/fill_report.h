@@ -46,7 +46,8 @@ struct FillCompareRow {
 
 // Joins the two stores' records for identical settings but the fill rule
 // (old_store's 1.0 results, new_store's 1.1 ones; lens.legacy_fills is
-// ignored), indexed by lowercased
+// ignored), each side's as report::records_by_hash lists them (library
+// charts only, D92), indexed by lowercased
 // hyhash, over the union of both key sets — a chart stored on one side only
 // still gets a row, labelled by the side that holds its record. Song, artist
 // and charter prefer the 1.1 (new) side; the song reads display_title, and
@@ -85,6 +86,8 @@ struct GeneratedFillReport {
 };
 
 // The whole comparison in one call: join + tally + the standard page framing.
+// Either database with results and no chart library
+// (report::lacks_chart_library) stops it with report::kNoChartLibrary.
 GeneratedFillReport generate_fill_report(store::RecordStore& old_store,
                                          store::RecordStore& new_store,
                                          const std::string& chartmode,

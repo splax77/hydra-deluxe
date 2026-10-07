@@ -6,7 +6,9 @@
 #ifndef HYDRA_TESTS_DISPLAY_FIXTURES_H
 #define HYDRA_TESTS_DISPLAY_FIXTURES_H
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "doctest.h"
 
@@ -117,6 +119,30 @@ inline void add_stale_rows(store::RecordStore& store, const HydraRecord& record,
     store.add_row(old_build_row(both, foreign));
 }
 
+// Lists chart `md5` in `store`'s library under these names, keeping every
+// other chart's library row and replacing this chart's. A result's names come
+// from the library (kNamingCopiesSql), and a report leaves out a result the
+// library doesn't list, so a test that reads names or reports calls this
+// before it saves the chart's results.
+inline void name_chart(store::RecordStore& store, const std::string& md5,
+                       const std::string& title, const std::string& artist = "Artist",
+                       const std::string& charter = "Charter") {
+    std::vector<store::ChartLibraryEntry> rows = store.list_chart_library(0, -1);
+    rows.erase(std::remove_if(rows.begin(), rows.end(),
+                              [&](const store::ChartLibraryEntry& e) { return e.md5 == md5; }),
+               rows.end());
+    store::ChartLibraryEntry entry;
+    entry.md5 = md5;
+    entry.title = title;
+    entry.artist = artist;
+    entry.charter = charter;
+    entry.notespath = "C:\\charts\\" + md5 + "\\notes.chart";
+    entry.rootfolder = "C:\\charts";
+    entry.sig = "sig-" + md5;
+    rows.push_back(entry);
+    store.rebuild_chart_library(rows);
+}
+
 // ---- a title made only of tags ------------------------------------------------
 
 // A song title that is nothing but Clone Hero rich-text tags: a <color=...>
@@ -135,10 +161,10 @@ TEST_CASE("fixtures: a batch result stored for one chart") {
     store::RecordStore db(":memory:");
     const int cap = app::Settings{}.sp_cap;
     const store::RecordKey key = store_batch_result(db, "fixture-chart", cap);
-    CHECK(db.get_record(key).status == store::RecordStatus::Ready);
+    CHECK(db.get_summary(key).status == store::RecordStatus::Ready);
     store::RecordKey other = key;
     other.hyhash = "another-chart";
-    CHECK(db.get_record(other).status == store::RecordStatus::NotAnalyzed);
+    CHECK(db.get_summary(other).status == store::RecordStatus::NotAnalyzed);
 }
 
 TEST_CASE("fixtures: a title made only of tags") {

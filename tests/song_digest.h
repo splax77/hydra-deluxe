@@ -4,8 +4,8 @@
 // files in tests/test_song.cpp), so the tool and the tests can never hash
 // differently.
 //
-// row_hash covers what one chart stores in its results row: the best path,
-// the path tree and its nodes, and the summary columns. song_digest covers a
+// row_hash covers one chart's answer: the whole engine result (record_hash)
+// and its results row's best path and summary columns. song_digest covers a
 // parsed Song: the timing maps, every timestamp's chord and flags, and the
 // display fields. Both are FNV-1a over the raw bytes, so they are stable
 // within one build of one compiler, which is all an A-against-B comparison
@@ -21,10 +21,12 @@
 #include <optional>
 #include <string>
 #include <typeinfo>
+#include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
+#include "core/model.h"
 #include "parse/song.h"
 #include "store/record_store.h"
 
@@ -62,11 +64,111 @@ inline uint64_t fnv_opt(uint64_t h, const std::optional<T>& o) {
 // Adds one chart's hash to a running corpus digest (which starts at kSeed).
 inline uint64_t fold(uint64_t all, uint64_t chart) { return fnv(all, &chart, sizeof chart); }
 
-// One chart's stored result row: bestpath and the summary columns. The row's
-// identity, build stamp and rules fields (see store::PreparedRow) are left
-// out: they come from the settings and the build, not from the analysis.
-inline uint64_t row_hash(const store::PreparedRow& r) {
+// A list's length first, then each element through `each`.
+template <class T, class F>
+inline uint64_t fnv_list(uint64_t h, const std::vector<T>& xs, F each) {
+    const uint64_t n = xs.size();
+    h = fnv(h, &n, sizeof n);
+    for (const T& x : xs) h = each(h, x);
+    return h;
+}
+
+inline uint64_t fnv_scale(uint64_t h, const std::optional<TransferScale>& s) {
+    const unsigned char has = s.has_value();
+    h = fnv(h, &has, 1);
+    if (s) {
+        h = fnv(h, &s->early, sizeof s->early);
+        h = fnv(h, &s->late, sizeof s->late);
+    }
+    return h;
+}
+
+// One activation, field by field: its tick and chord, the frontend points,
+// the backend rows the details view shows (Activation::display_backends),
+// every squeeze with its offset and transfer scale, the early-fill offset,
+// the SP end's transfer scale, the squeezed-out tick, the SP-end history,
+// the bank arrivals and the passed-over fills.
+inline uint64_t activation_hash(uint64_t h, const Activation& a) {
+    auto v = [&](const auto& x) { h = fnv(h, &x, sizeof x); };
+    v(a.timecode.ticks());
+    h = fnv_str(h, a.chord.code());
+    v(a.frontend_points);
+    h = fnv_list(h, a.display_backends(), [](uint64_t g, const BackendSqueeze& b) {
+        const int64_t tick = b.timecode.ticks();
+        g = fnv(g, &tick, sizeof tick);
+        g = fnv_str(g, b.chord.code());
+        g = fnv(g, &b.points, sizeof b.points);
+        g = fnv(g, &b.sqout_points, sizeof b.sqout_points);
+        return fnv_opt(g, b.offset_ms);
+    });
+    h = fnv_list(h, a.sqinouts, [](uint64_t g, const SPSqueeze& q) {
+        g = fnv(g, &q.kind, sizeof q.kind);
+        g = fnv(g, &q.offset_ms, sizeof q.offset_ms);
+        return fnv_scale(g, q.transfer);
+    });
+    v(a.e_offset);
+    h = fnv_scale(h, a.transfer_post);
+    h = fnv_opt(h, a.sqout_tick);
+    h = fnv_list(h, a.sp_end_steps, [](uint64_t g, const SpEndStep& s) {
+        g = fnv(g, &s.tick, sizeof s.tick);
+        g = fnv(g, &s.end_tick, sizeof s.end_tick);
+        return fnv(g, &s.kind, sizeof s.kind);
+    });
+    auto ticks = [](uint64_t g, const int64_t& t) { return fnv(g, &t, sizeof t); };
+    h = fnv_list(h, a.bank_rise_ticks, ticks);
+    h = fnv_list(h, a.skipped_fill_ticks, ticks);
+    return h;
+}
+
+// One path and its variants, depth first: its activations and variant tail,
+// note count, trailing bank, score split, tie count and variation point.
+inline uint64_t path_hash(uint64_t h, const Path& p) {
+    auto v = [&](const auto& x) { h = fnv(h, &x, sizeof x); };
+    h = fnv_list(h, p.activations, activation_hash);
+    h = fnv_list(h, p.variant_tail, activation_hash);
+    v(p.notecount);
+    h = fnv_list(h, p.trailing_bank_ticks,
+                 [](uint64_t g, const int64_t& t) { return fnv(g, &t, sizeof t); });
+    v(p.score_base);
+    v(p.score_combo);
+    v(p.score_sp);
+    v(p.score_solo);
+    v(p.score_accents);
+    v(p.score_ghosts);
+    v(p.tied_count);
+    h = fnv_opt(h, p.var_point);
+    return fnv_list(h, p.variants, path_hash);
+}
+
+// A whole engine result, field by field from the structs (R16): the record's
+// rules fingerprint, ms limit, SP cap and fill rule, its multiplier
+// squeezes, and every path tree, the all-0 ones included. Two records that
+// hash the same are the same answer. hydra.db no longer stores any of this
+// (D87), so this walk, not a store round trip, is how a test proves a change
+// left the engine's whole answer alone.
+inline uint64_t record_hash(const HydraRecord& r) {
     uint64_t h = kSeed;
+    auto v = [&](const auto& x) { h = fnv(h, &x, sizeof x); };
+    v(r.rules_fingerprint);
+    h = fnv_opt(h, r.ms_limit);
+    h = fnv_opt(h, r.sp_cap);
+    v(r.sp_cap_converged);
+    v(r.legacy_fills);
+    h = fnv_list(h, r.multsqueezes, [](uint64_t g, const MultSqueeze& m) {
+        g = fnv_str(g, m.chord().code());
+        const int combo = m.combo();
+        return fnv(g, &combo, sizeof combo);
+    });
+    h = fnv_list(h, r.paths, path_hash);
+    return fnv_list(h, r.allzero_paths, path_hash);
+}
+
+// One chart's answer: its results row (bestpath and the summary columns) and
+// the whole engine result behind it (record_hash). The row's identity and
+// build stamp (see store::PreparedRow) are left out: they come from the
+// settings and the build, not from the analysis.
+inline uint64_t row_hash(const store::PreparedRow& r, const HydraRecord& record) {
+    uint64_t h = record_hash(record);
     h = fnv_str(h, r.bestpath);
     const store::PathSummary& s = r.summary;
     h = fnv_opt(h, s.score);
@@ -169,7 +271,7 @@ inline std::string failure_text(const std::exception& e) {
 inline uint64_t failure_hash(const std::string& text) { return fnv_str(kSeed, text); }
 
 // One chart's parse digest, the per-chart hash hydra_bench --parse folds: the
-// parsed song with its stored dynamics blob, or its failure's hash. `fail`,
+// parsed song with its dynamics count (with_dynamics), or its failure's hash. `fail`,
 // when given, gets the failure text, and stays as it was when the chart
 // parses. The tests call this; tools/bench.cpp keeps its own loop because it
 // times the parse and the dynamics pass apart.

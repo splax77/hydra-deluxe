@@ -117,7 +117,7 @@ TEST_CASE("dynamics tag: a tag in the EVENTS track does nothing") {
     CHECK(red(song, 0) == NoteDynamicType::Normal);
 }
 
-TEST_CASE("dynamics tag: the breakdown stores the tag's time and the count") {
+TEST_CASE("dynamics tag: the breakdown carries the tag's time and the count") {
     const Song song = drums({note_on(97, 127), after(480,text_event(kTag)),
                              note_on(97, 127)});  // tag and a priced note at tick 480
     const app::DynamicsBreakdown bd = app::count_dynamics(song);
@@ -125,20 +125,9 @@ TEST_CASE("dynamics tag: the breakdown stores the tag's time and the count") {
     CHECK(*bd.late_tag_ms == 500);  // tick 480 is one beat at 120 BPM
     CHECK(bd.marks_before_tag == 1);
 
-    std::vector<uint8_t> blob = app::encode_dynamics(bd);
-    const auto back = app::decode_dynamics(blob);
-    REQUIRE(back.has_value());
-    CHECK(back->late_tag_ms == bd.late_tag_ms);
-    CHECK(back->marks_before_tag == 1);
-
-    app::DynamicsBreakdown none;
-    const auto none_back = app::decode_dynamics(app::encode_dynamics(none));
-    REQUIRE(none_back.has_value());
-    CHECK_FALSE(none_back->late_tag_ms.has_value());
-    CHECK(none_back->marks_before_tag == 0);
-
-    blob.resize(110);  // the old layout's length: read as missing, then recounted
-    CHECK_FALSE(app::decode_dynamics(blob).has_value());
+    const app::DynamicsBreakdown none;
+    CHECK_FALSE(none.late_tag_ms.has_value());
+    CHECK(none.marks_before_tag == 0);
 }
 
 TEST_CASE("dynamics tag: the Dynamics tab's Chart line") {
