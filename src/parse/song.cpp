@@ -961,6 +961,12 @@ void MidiParser::push_timestamp(int64_t tick) {
     msg_buffer_.clear();
 }
 
+// Whether the drum track's timestamp so far ends before `msg`: the one owner
+// of where one .mid timestamp gives way to the next.
+bool opens_timestamp(const Message& msg) {
+    return msg.time != 0;
+}
+
 Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
                        Difficulty difficulty) {
     mode_pro_ = pro;
@@ -1003,10 +1009,10 @@ Song MidiParser::parse(const MidiFile& mid, bool pro, bool bass2x,
         // once.
         size_t pushes = 1;
         for (const Message& msg : track.messages)
-            if (msg.time != 0) ++pushes;
+            if (opens_timestamp(msg)) ++pushes;
         song.sequence.reserve(pushes);
         for (const Message& msg : track.messages) {
-            if (msg.time != 0) {
+            if (opens_timestamp(msg)) {
                 push_timestamp(elapsed);
                 elapsed += msg.time;
             }
@@ -1581,6 +1587,14 @@ void ChartParser::push_timestamp(int64_t tick, const ChartLine* first, const Cha
     run_phase(CPhase::PostDelayed);
 }
 
+// The line after the last one that shares `p`'s timestamp, in tick-sorted
+// drum lines: the one owner of which lines make one .chart timestamp.
+const ChartLine* tick_group_end(const ChartLine* p, const ChartLine* end) {
+    const ChartLine* q = p + 1;
+    while (q != end && q->tick == p->tick) ++q;
+    return q;
+}
+
 Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
                         bool bass2x, Difficulty difficulty) {
     // A disco marker counts only in the difficulty it names, so the reader
@@ -1639,14 +1653,12 @@ Song ChartParser::parse(const std::vector<uint8_t>& data, bool pro,
             std::stable_sort(lines.begin(), lines.end(), by_tick);
         // push_timestamp runs once per tick and emits at most one chord, so
         // the tick count sizes the sequence once.
-        size_t ticks = lines.empty() ? 0 : 1;
-        for (size_t i = 1; i < lines.size(); ++i)
-            if (lines[i].tick != lines[i - 1].tick) ++ticks;
-        song.sequence.reserve(ticks);
         const ChartLine* const end = lines.data() + lines.size();
+        size_t ticks = 0;
+        for (const ChartLine* p = lines.data(); p != end; p = tick_group_end(p, end)) ++ticks;
+        song.sequence.reserve(ticks);
         for (const ChartLine* p = lines.data(); p != end;) {
-            const ChartLine* q = p + 1;
-            while (q != end && q->tick == p->tick) ++q;
+            const ChartLine* q = tick_group_end(p, end);
             push_timestamp(p->tick, p, q);
             p = q;
         }
