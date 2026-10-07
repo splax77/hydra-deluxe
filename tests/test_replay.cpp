@@ -2,10 +2,12 @@
 // priced it.
 //
 // The engine sums scores along graph edges and never looks at a chord; the
-// replay walks chords and never looks at the graph. If the two agree on all
+// replay walks chords and never looks at the graph. Both read their chord
+// points from chord_score_table (core/scoring.h) and their doubling from
+// core::backend_row_value (core/backend_value.h). If the two agree on all
 // six score categories, for every path of every corpus chart, then the
-// replay's three rules (one SP-free combo counter, an inclusive SP window
-// with a 3 ms backend leeway, undoubled solos) are the engine's rules.
+// replay's one own question, which windows can pay a chord, agrees with the
+// graph's.
 
 #include "doctest.h"
 
