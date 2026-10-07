@@ -30,7 +30,8 @@
 #include "render/track_state.h"
 #include "store/record_store.h"
 #include "temp_util.h"
-#include "ui/dynamics_load_job.h"
+#include "app/config.h"
+#include "ui/library_jobs.h"  // ViewJob
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
 
@@ -40,7 +41,7 @@
 
 using hydra::Difficulty;
 using hydra::store::ChartLibraryEntry;
-using hydra::ui::DynamicsLoadJob;
+using hydra::ui::ViewJob;
 using hydra::ui::PreviewController;
 using hydra::ui::PreviewLoadJob;
 
@@ -277,14 +278,19 @@ TEST_CASE("a cancelled Preview load stops before decoding") {
     CHECK(job.progress().step == PreviewLoadJob::Step::Reading);
 }
 
-TEST_CASE("a cancelled Dynamics load stops before counting") {
-    DynamicsLoadJob job(entry_for(corpus::first_chart_with_suffix(".chart")), true,
-                        Difficulty::Expert);
+// The click's job counts the Dynamics too (D87 item 1); a cancel before it
+// got going stops it before any parse.
+TEST_CASE("a cancelled click job stops before counting") {
+    const hydra::store::ChartLibraryEntry entry =
+        entry_for(corpus::first_chart_with_suffix(".chart"));
+    const hydra::app::Settings settings;
+    ViewJob job(entry, settings.record_key(entry.md5), settings.to_analysis_settings(),
+                /*analysis_off=*/false, /*generation=*/0);
     job.cancel();
     job.start();
     wait_finished(job);
     CHECK_FALSE(job.ok());
-    CHECK(job.error() == "cancelled");
+    CHECK(job.is_cancelled());
 }
 
 // No output device is a warning, not a failure: the chart loads, the clock

@@ -1199,7 +1199,7 @@ const std::vector<OwnerRule>& rules() {
         // store's real cause; every screen shows its sentence.
         {"Why is a stored result out of date?",
          "stale_text in src/app/user_messages.cpp",
-         R"(another Hydra version|different rules in hydra_rules|Re-analyze to refresh)",
+         R"(another Hydra version|different rules in hydra_rules|Re-analyze to refresh|run a batch to refresh)",
          "",
          {},
          {},
@@ -1218,8 +1218,8 @@ const std::vector<OwnerRule>& rules() {
           {"src/app/user_messages.cpp", "cause = \"different rules in hydra_rules.ini\";",
            "stale_text, the owner: different rules"},
           {"src/app/user_messages.cpp",
-           "return \"Out of date: this result came from \" + cause + \". Re-analyze to refresh it.\";",
-           "stale_text, the owner: the sentence's frame"}}},
+           "\". Click the song or run a batch to refresh it.\";",
+           "stale_text, the owner: the sentence's ending (D87 item 6)"}}},
         // Cutting a label to end in "…": ImGui's own ellipsis renderer, its
         // ellipsis glyph, the "…" bytes typed out as escapes, or a "…" typed
         // straight into a string before any // comment. ellipsize is the one
@@ -2947,7 +2947,7 @@ const std::vector<OwnerRule>& rules() {
         // job's guard is a different job with no owner yet; the GUI harness's
         // dump prints each job's state, a different question.
         {"Is a batch or an analysis running?",
-         "batch_running and analyze_running in src/ui/app_state.cpp",
+         "batch_running in src/ui/app_state.cpp",
          R"(\b(batch_job\s*&&\s*!\s*((a|app)\.)?batch_job->snapshot\(\)\.finished|analyze_job\s*&&\s*!\s*((a|app)\.)?analyze_job->finished\(\)))",
          "",
          {},
@@ -2961,9 +2961,6 @@ const std::vector<OwnerRule>& rules() {
           R"(a.batch_job ? (a.batch_job->snapshot().finished ? "finished" : "running") : "-",)",
           "if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {"},
          {{"src/ui/app_state.cpp",
-           "bool AppState::analyze_running() const { return analyze_job && !analyze_job->finished(); }",
-           "analyze_running, the owner"},
-          {"src/ui/app_state.cpp",
            "bool AppState::batch_running() const { return batch_job && !batch_job->snapshot().finished; }",
            "batch_running, the owner"}},
          {"src", "tests"}},
@@ -3884,11 +3881,7 @@ const std::vector<OwnerRule>& rules() {
           "store::SongLength analysis_song_length(const std::optional<store::ChartTimingMeta>& scanned,",
           "wr.length = analysis_song_length(item.timing, item.notespath, ar.song, settings);"},
          {{"src/app/analysis.cpp", "return store::SongLength::found(",
-           "analysis_song_length, the owner"},
-          {"src/ui/song_length_job.cpp",
-           "length_ = store::SongLength::found(app::chart_song_length_ms(",
-           "SongLengthJob::run: its read is the whole job; AppState::update_song_length "
-           "decides what a failed job leaves"}}},
+           "analysis_song_length, the owner"}}},
         // Production's own temp folder for the shell (copy_to_short_temp in
         // src/app/report_files.cpp) answers a different question (audit
         // R7.12), so only tests/ is scanned. The temp_util case in

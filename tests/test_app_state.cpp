@@ -1,7 +1,8 @@
-// Tests for ui/app_state's commit_settings: the one place that knows which
-// settings change a record's identity. A widget only mutates `settings` and
-// commits; whether the library's summaries and the viewed record are re-read
-// is decided here and nowhere else.
+// Tests for ui/app_state: the click's analysis (D87 items 1-3, 9-11, D90)
+// and commit_settings, the one place that knows which settings change a
+// record's identity. A widget only mutates `settings` and commits; whether
+// the library's summaries are re-read and the open song analyzed again is
+// decided here and nowhere else.
 
 #include "doctest.h"
 
@@ -17,11 +18,13 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "app/analysis.h"
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/report_files.h"
@@ -30,13 +33,12 @@
 #include "core/model.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
-#include "db_file_util.h"  // exec_on_file, write_junk_db
-#include "display_fixtures.h"  // store_batch_result
+#include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
+#include "display_fixtures.h"  // store_batch_result, old_build_row
 #include "parse/song.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "ui/app_state.h"
-#include "ui/details_view.h"  // analyze_button_label
 #include "ui/generation.h"
 #include "ui/library_parts.h"  // analyze_search_label
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
@@ -48,6 +50,7 @@ using hydra::store::RecordStatus;
 using hydra::store::RecordStore;
 using hydra::ui::AppState;
 using hydra::ui::GenerationWatcher;
+using hydra::ui::ViewedSong;
 
 namespace {
 
@@ -100,6 +103,8 @@ struct ScratchPaths {
     }
 };
 
+// A library row whose chart file does not exist: a click on it lands on
+// FileMissing and starts no job.
 ChartLibraryEntry library_entry(int i) {
     char hash[32];
     std::snprintf(hash, sizeof(hash), "hash%03d", i);
@@ -129,116 +134,329 @@ std::unique_ptr<RecordStore> seeded_store(const std::string& db) {
     return store;
 }
 
-// An AppState on the scratch store with the seeded chart selected and its
-// record loaded.
+// An AppState on the scratch store with the seeded chart selected (not
+// clicked: its file does not exist).
 std::unique_ptr<AppState> app_on(const ScratchPaths& paths) {
     auto app = std::make_unique<AppState>(Settings{}, seeded_store(paths.db));
     REQUIRE(app->library_shown_count() == static_cast<size_t>(kChartCount));
     REQUIRE(app->library_row_at(0).entry.md5 == library_entry(0).md5);
     REQUIRE(app->library_row_at(0).status == RecordStatus::Ready);
     app->selected = library_entry(0);
-    app->refresh_viewed_record();
-    REQUIRE(app->viewed.status == RecordStatus::Ready);
     return app;
+}
+
+// ---- real charts for the click ---------------------------------------------
+
+// The library row a scan would write for the chart file at `notespath`: its
+// hash and fingerprint come from the scan's own owners.
+ChartLibraryEntry entry_for(const std::string& notespath, const std::string& title) {
+    ChartLibraryEntry e;
+    e.notespath = notespath;
+    e.rootfolder = notespath.substr(0, notespath.rfind('\\'));
+    e.md5 = hydra::app::hash_chart_file(notespath);
+    e.sig = hydra::app::chart_files_sig(notespath);
+    e.title = title;
+    e.artist = "Artist";
+    e.charter = "Charter";
+    REQUIRE_FALSE(e.md5.empty());
+    REQUIRE_FALSE(e.sig.empty());
+    return e;
+}
+
+// Writes the corpus's first .chart into folder `tag` with a song.ini (a
+// folder chart needs one to be scanned). With `extra_note`, one more note
+// goes at the top of its Expert drums, so the file hashes differently.
+std::string write_corpus_chart(const std::string& tag, bool extra_note) {
+    const std::string dir = testtemp::temp_dir(tag);
+    const std::vector<uint8_t> bytes =
+        hydra::read_file_bytes(corpus::first_chart_with_suffix(".chart"));
+    std::string text(bytes.begin(), bytes.end());
+    if (extra_note) {
+        const size_t section = text.find("[ExpertDrums]");
+        REQUIRE(section != std::string::npos);
+        const size_t open = text.find('\n', text.find('{', section));
+        REQUIRE(open != std::string::npos);
+        text.insert(open + 1, "  0 = N 4 0\n");
+    }
+    const std::string notes = dir + "\\notes.chart";
+    audiochart::write_text_file(notes, text);
+    audiochart::write_text_file(dir + "\\song.ini", "[song]\nname = Click\n");
+    return notes;
+}
+
+// A copy of a corpus chart, as a library row.
+ChartLibraryEntry corpus_chart(const std::string& tag, bool extra_note = false) {
+    return entry_for(write_corpus_chart(tag, extra_note), "Click " + tag);
+}
+
+// An AppState whose library is exactly `charts`, on the scratch database.
+std::unique_ptr<AppState> app_with(const ScratchPaths& paths,
+                                   const std::vector<ChartLibraryEntry>& charts) {
+    auto store = std::make_unique<RecordStore>(paths.db);
+    store->rebuild_chart_library(charts);
+    return std::make_unique<AppState>(Settings{}, std::move(store));
+}
+
+// Runs frames until the click's job, and any request waiting on it, has
+// ended and tick() has collected it, as the app's frames would.
+void settle(AppState& app) {
+    for (int i = 0; i < 12000; ++i) {
+        app.tick(0.0);
+        if (!app.view_job && !app.view_pending) return;
+        Sleep(5);
+    }
+    FAIL("the click's job never ended");
+}
+
+// Clicks `entry` and waits for its analysis.
+void click(AppState& app, const ChartLibraryEntry& entry) {
+    app.select(entry);
+    settle(app);
+}
+
+// The library row of chart `md5`, by search for nothing: every row shows.
+const hydra::ui::LibraryRow& row_of(const AppState& app, const std::string& md5) {
+    for (size_t i = 0; i < app.library_shown_count(); ++i)
+        if (app.library_row_at(i).entry.md5 == md5) return app.library_row_at(i);
+    FAIL("no library row for " << md5);
+    throw std::logic_error("unreachable");
+}
+
+int64_t results_rows(const ScratchPaths& paths) {
+    return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results");
+}
+
+int64_t result_id(const ScratchPaths& paths, const std::string& md5) {
+    return hydra::test::scalar_on_file(
+        paths.db, "SELECT result_id FROM results WHERE hyhash = '" + md5 + "'");
 }
 
 }  // namespace
 
-TEST_CASE("commit_settings refreshes the viewed record when the chart mode changes") {
-    ScratchPaths paths("appstate_mode");
-    std::unique_ptr<AppState> app = app_on(paths);
+// ---- the click (D87 items 1-3, 9-11) ---------------------------------------
 
-    GenerationWatcher records;
-    records.changed(app->record_generation);  // start from "already seen"
+TEST_CASE("clicking a not-analyzed song shows its paths and turns its row Ready") {
+    ScratchPaths paths("appstate_click_new");
+    const ChartLibraryEntry song = corpus_chart("click_new");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    REQUIRE(row_of(*app, song.md5).status == RecordStatus::NotAnalyzed);
 
-    // Pro Drums off is a different chart mode, so the stored record no longer
-    // answers the question being asked.
-    app->settings.view_prodrums = false;
-    app->commit_settings();
-    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
-    CHECK(app->library_row_at(0).status == RecordStatus::NotAnalyzed);  // the row follows
-    CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
-    CHECK(records.changed(app->record_generation));
+    click(*app, song);
 
-    // The INI is written on the scratch path, not the user's.
-    CHECK(Settings::load_file(paths.ini).view_prodrums == false);
-
-    app->settings.view_prodrums = true;
-    app->commit_settings();
-    CHECK(app->viewed.status == RecordStatus::Ready);
-    CHECK(app->library_row_at(0).status == RecordStatus::Ready);
+    REQUIRE(app->viewed.ready());
+    REQUIRE_FALSE(app->viewed.record->paths.empty());
+    CHECK(app->viewed.timing.has_value());
+    CHECK(app->viewed.dynamics.has_value());
+    // The row reads what the headline reads.
+    const hydra::ui::LibraryRow& row = row_of(*app, song.md5);
+    CHECK(row.status == RecordStatus::Ready);
+    REQUIRE(row.summary.has_scored_best_path());
+    CHECK(*row.summary.score == app->viewed.record->best_path().totalscore());
+    CHECK(app->viewed.summary == row.summary);
 }
 
-TEST_CASE("commit_settings refreshes the record and the library row on an SP cap change") {
-    ScratchPaths paths("appstate_cap");
-    std::unique_ptr<AppState> app = app_on(paths);
+TEST_CASE("clicking a Ready song shows its paths and stores nothing new") {
+    ScratchPaths paths("appstate_click_ready");
+    const ChartLibraryEntry song = corpus_chart("click_ready");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
+    REQUIRE(app->viewed.ready());
+    const int64_t rows = results_rows(paths);
+    const int64_t id = result_id(paths, song.md5);
 
-    GenerationWatcher records;
-    records.changed(app->record_generation);
+    app->close_details();
+    click(*app, song);
 
-    // Changing the cap re-reads the record and the row's summary.
-    app->settings.sp_cap = 8;
-    app->commit_settings();
-    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
-    CHECK(app->library_row_at(0).status == RecordStatus::NotAnalyzed);
-    CHECK(records.changed(app->record_generation));
-
-    app->settings.sp_cap = kSeededCap;
-    app->commit_settings();
-    CHECK(app->viewed.status == RecordStatus::Ready);
-    CHECK(app->library_row_at(0).status == RecordStatus::Ready);
+    REQUIRE(app->viewed.ready());
+    CHECK_FALSE(app->viewed.record->paths.empty());
+    CHECK(results_rows(paths) == rows);
+    CHECK(result_id(paths, song.md5) == id);
 }
 
-TEST_CASE("commit_settings refreshes when the ms limit or the score range changes") {
-    ScratchPaths paths("appstate_lens");
-    std::unique_ptr<AppState> app = app_on(paths);
+TEST_CASE("clicking a Stale song turns its row Ready") {
+    ScratchPaths paths("appstate_click_stale");
+    const ChartLibraryEntry song = corpus_chart("click_stale");
+    auto store = std::make_unique<RecordStore>(paths.db);
+    store->rebuild_chart_library({song});
+    const Settings settings;
+    const RecordKey key = settings.record_key(song.md5);
+    store->add_row(hydra::test::old_build_row(
+        key, hydra::app::analyze_chart_file(song.notespath, settings.to_analysis_settings())
+                 .record));
+    AppState app(settings, std::move(store));
+    REQUIRE(row_of(app, song.md5).status == RecordStatus::Stale);
 
-    GenerationWatcher records;
-    records.changed(app->record_generation);
+    click(app, song);
 
-    // The stored result answered "best path under a 10 ms limit". Move the
-    // limit and the question changes, so the answer no longer applies.
-    const int seeded_ms = app->settings.mslimit_value;
-    app->settings.mslimit_value = seeded_ms + 5;
-    app->commit_settings();
-    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
-    CHECK(app->library_row_at(0).status == RecordStatus::NotAnalyzed);
-    CHECK(records.changed(app->record_generation));
-    CHECK(Settings::load_file(paths.ini).mslimit_value == seeded_ms + 5);
-
-    // Moving it back is instant: the old result is still stored, and nothing
-    // has to be analyzed again.
-    app->settings.mslimit_value = seeded_ms;
-    app->commit_settings();
-    CHECK(app->viewed.status == RecordStatus::Ready);
-    CHECK(app->analyze_job == nullptr);
-
-    // The score range is part of the same identity.
-    const int seeded_depth = app->settings.depth_value;
-    app->settings.depth_value = seeded_depth + 1;
-    app->commit_settings();
-    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
-    app->settings.depth_value = seeded_depth;
-    app->commit_settings();
-    CHECK(app->viewed.status == RecordStatus::Ready);
-    CHECK(app->analyze_job == nullptr);
+    CHECK(app.viewed.ready());
+    CHECK(row_of(app, song.md5).status == RecordStatus::Ready);
+    CHECK(app.store->get_summary(key).status == RecordStatus::Ready);
 }
 
-TEST_CASE("commit_settings with a non-identity change does not bump the record generation") {
-    ScratchPaths paths("appstate_plain");
-    std::unique_ptr<AppState> app = app_on(paths);
+// D87 item 3: the click runs the rescan's unchanged test, re-hashes an edited
+// chart, moves its library row to the new hash and analyzes the new file.
+TEST_CASE("clicking a chart edited since the scan re-identifies it and shows the new file") {
+    ScratchPaths paths("appstate_click_edit");
+    const ChartLibraryEntry scanned = corpus_chart("click_edit");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    click(*app, scanned);  // its row is saved under the scanned hash
+    REQUIRE(app->viewed.ready());
+    const RecordKey old_key = app->settings.record_key(scanned.md5);
+    REQUIRE(app->store->get_summary(old_key).status == RecordStatus::Ready);
+    app->close_details();
 
-    GenerationWatcher records;
-    records.changed(app->record_generation);
+    // One more note, written after the scan. The mtime has to move for the
+    // fingerprint to see it, as it does for a user's edit.
+    Sleep(20);
+    write_corpus_chart("click_edit", /*extra_note=*/true);
+    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
+    REQUIRE(new_md5 != scanned.md5);
 
-    // The hit window is a display setting -- it never reaches the search, so
-    // nothing cached goes stale and nothing is re-read.
-    app->settings.hit_window_ms += 1;
-    app->commit_settings();
-    CHECK_FALSE(records.changed(app->record_generation));
-    CHECK(app->viewed.status == RecordStatus::Ready);
-    CHECK(Settings::load_file(paths.ini).hit_window_ms == app->settings.hit_window_ms);
+    click(*app, scanned);
+
+    REQUIRE(app->viewed.ready());
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == new_md5);
+    CHECK(row_of(*app, new_md5).status == RecordStatus::Ready);
+    CHECK(app->store->get_summary(old_key).status == RecordStatus::NotAnalyzed);
+    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results WHERE hyhash = '" +
+                                                    scanned.md5 + "'") == 0);
+    // The paths are the new file's.
+    const hydra::app::AnalysisResult fresh = hydra::app::analyze_chart_file(
+        scanned.notespath, app->settings.to_analysis_settings());
+    CHECK(app->viewed.record->best_path().totalscore() == fresh.record.best_path().totalscore());
 }
+
+TEST_CASE("clicking A then B in one frame shows B, and A is never shown or saved") {
+    ScratchPaths paths("appstate_click_ab");
+    const ChartLibraryEntry a = corpus_chart("click_a");
+    const ChartLibraryEntry b = corpus_chart("click_b", /*extra_note=*/true);
+    REQUIRE(a.md5 != b.md5);
+    std::unique_ptr<AppState> app = app_with(paths, {a, b});
+
+    app->select(a);
+    app->select(b);
+    settle(*app);
+
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == b.md5);
+    REQUIRE(app->viewed.ready());
+    const RecordKey a_key = app->settings.record_key(a.md5);
+    const RecordKey b_key = app->settings.record_key(b.md5);
+    CHECK(app->store->get_summary(b_key).status == RecordStatus::Ready);
+    CHECK(app->store->get_summary(a_key).status == RecordStatus::NotAnalyzed);
+    CHECK(app->viewed.summary == app->store->get_summary(b_key).summary);
+}
+
+TEST_CASE("Cancel shows Cancelled and saves nothing; Try again shows the paths") {
+    ScratchPaths paths("appstate_click_cancel");
+    const ChartLibraryEntry song = corpus_chart("click_cancel");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    const RecordKey key = app->settings.record_key(song.md5);
+
+    app->select(song);
+    app->cancel_view();
+    settle(*app);
+
+    CHECK(app->viewed.state == ViewedSong::State::Cancelled);
+    CHECK(app->store->get_summary(key).status == RecordStatus::NotAnalyzed);
+
+    app->start_view();  // the panel's "Try again"
+    settle(*app);
+    CHECK(app->viewed.ready());
+    CHECK(app->store->get_summary(key).status == RecordStatus::Ready);
+}
+
+// Ruling 13: closing the panel cancels the click's analysis; nothing is saved
+// for it.
+TEST_CASE("closing the panel cancels the click's analysis and saves nothing") {
+    ScratchPaths paths("appstate_click_close");
+    const ChartLibraryEntry song = corpus_chart("click_close");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+
+    app->select(song);
+    app->close_details();  // what the X, Escape and a new selection all run
+    settle(*app);
+
+    CHECK(app->viewed.state == ViewedSong::State::None);
+    CHECK_FALSE(app->view_running());
+    CHECK(app->store->get_summary(app->settings.record_key(song.md5)).status ==
+          RecordStatus::NotAnalyzed);
+}
+
+TEST_CASE("a song whose file is gone shows FileMissing and starts no job") {
+    ScratchPaths paths("appstate_click_missing");
+    std::unique_ptr<AppState> app = app_on(paths);
+    app->select(library_entry(3));
+    CHECK(app->viewed.state == ViewedSong::State::FileMissing);
+    CHECK(app->view_job == nullptr);
+    CHECK_FALSE(app->view_pending);
+}
+
+// A click's analysis doesn't lock the settings bar; only a batch does (D90
+// item 2).
+TEST_CASE("the settings lock is the batch's alone") {
+    ScratchPaths paths("appstate_click_lock");
+    const ChartLibraryEntry song = corpus_chart("click_lock");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    app->select(song);
+    CHECK(app->settings_lock() == AppState::SettingsLock::None);
+    CHECK_FALSE(app->settings_locked());
+    settle(*app);
+}
+
+// A store that refuses the save: the paths still show, and the status line
+// says the save failed in the database's words.
+TEST_CASE("a click whose save fails shows the paths and says so") {
+    ScratchPaths paths("appstate_click_savefail");
+    const ChartLibraryEntry song = corpus_chart("click_savefail");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TRIGGER refuse_results BEFORE INSERT ON results"
+                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+
+    click(*app, song);
+
+    CHECK(app->viewed.ready());
+    CHECK(app->status_is_problem);
+    CHECK(app->status_message ==
+          "Analyzed, but saving failed. Hydra couldn't save to its database (hydra.db). Check "
+          "that the disk isn't full and that no other copy of Hydra is running, then try "
+          "again.");
+}
+
+// ---- the Dynamics count (ruling 10) ----------------------------------------
+
+// The click's count is the Dynamics count's own parse's (load_dynamics_song).
+// With 2x Bass off the analysis drops the 2x kicks, so the count parses
+// again: the 2x kick row still counts them (37 on this chart, pinned in
+// test_dynamics_breakdown).
+TEST_CASE("the click's Dynamics count keeps the 2x kicks with 2x Bass off") {
+    ScratchPaths paths("appstate_click_dyn");
+    const std::string dir = testtemp::temp_dir("click_dyn");
+    audiochart::copy_file_utf8(std::string(HYDRA_TESTDATA_DIR) +
+                                   "/input/common/IB24/T3/Alpha Wolf - Acid Romance/notes.mid",
+                               dir + "\\notes.mid");
+    audiochart::write_text_file(dir + "\\song.ini", "[song]\nname = Click\n");
+    const ChartLibraryEntry song = entry_for(dir + "\\notes.mid", "Click dyn");
+
+    for (const bool bass2x : {true, false}) {
+        CAPTURE(bass2x);
+        std::unique_ptr<AppState> app = app_with(paths, {song});
+        app->settings.view_bass2x = bass2x;
+        app->commit_settings();
+        click(*app, song);
+        REQUIRE(app->viewed.ready());
+        REQUIRE(app->viewed.dynamics.has_value());
+        CHECK(app->viewed.dynamics->row(hydra::app::DynamicsRow::Kick2x).normal == 37);
+        const hydra::app::AnalysisSettings as = app->settings.to_analysis_settings();
+        CHECK(hydra::app::encode_dynamics(*app->viewed.dynamics) ==
+              hydra::app::encode_dynamics(hydra::app::count_dynamics(
+                  hydra::app::load_dynamics_song(song.notespath, as.prodrums, as.difficulty))));
+    }
+}
+
+// ---- broken rules (D87 item 9) ---------------------------------------------
 
 TEST_CASE("a bad hydra_rules.ini names the key and keeps analysis off") {
     ScratchPaths paths("appstate_badrules");
@@ -246,7 +464,11 @@ TEST_CASE("a bad hydra_rules.ini names the key and keeps analysis off") {
         std::ofstream f(paths.rules);
         f << "max_tied_paths = 0\n";
     }
-    seeded_store(paths.db).reset();  // the library and one record, on disk
+    const ChartLibraryEntry song = corpus_chart("click_badrules");
+    {
+        RecordStore store(paths.db);
+        store.rebuild_chart_library({song});
+    }
 
     // The startup constructor: settings INI, rules file and database from
     // the (scratch) paths, exactly as Hydra.exe starts.
@@ -254,11 +476,13 @@ TEST_CASE("a bad hydra_rules.ini names the key and keeps analysis off") {
     CHECK(app.rules_error.find("max_tied_paths") != std::string::npos);
     CHECK(app.analysis_blocked());
 
-    // The buttons are disabled, and the state refuses too, so no other
-    // caller can start an analysis on the wrong rules.
-    app.selected = library_entry(0);
-    app.start_analyze();
-    CHECK(app.analyze_job == nullptr);
+    // A click analyzes nothing, but the Dynamics count needs only the parse,
+    // so it still shows.
+    click(app, song);
+    CHECK(app.viewed.state == ViewedSong::State::RulesBroken);
+    CHECK_FALSE(app.viewed.record.has_value());
+    CHECK(app.viewed.dynamics.has_value());
+    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
     app.start_batch(false);
     CHECK(app.batch_job == nullptr);
 }
@@ -295,147 +519,158 @@ TEST_CASE("under a bad hydra_rules.ini no stored record reads Ready") {
     CHECK(bad.store->get_summary(seeded).status == RecordStatus::Stale);
 }
 
-TEST_CASE("update_dynamics recounts a stored row with an older count stamp") {
-    ScratchPaths paths("appstate_dyn_old");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const hydra::store::DynamicsKey key = hydra::app::dynamics_store_key(
-        library_entry(0).md5, app->settings.difficulty(), app->settings.view_prodrums);
-    // A row counted before the last bump of the counter.
-    app->store->put_dynamics(key, hydra::app::encode_dynamics(hydra::app::DynamicsBreakdown{}),
-                             hydra::store::kDynamicsCountStamp.written - 1);
+// ---- settings (D90) --------------------------------------------------------
 
-    app->update_dynamics();
+TEST_CASE("commit_settings analyzes the open song again when the chart mode changes") {
+    ScratchPaths paths("appstate_mode");
+    const ChartLibraryEntry song = corpus_chart("click_mode");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
+    REQUIRE(app->viewed.ready());
 
-    // The old row was not shown; a background recount started instead. (The
-    // chart file does not exist, so the job itself fails. This test only
-    // cares that the recount was started.)
-    CHECK_FALSE(app->dynamics_result.has_value());
-    CHECK(app->dynamics_job != nullptr);
+    GenerationWatcher records;
+    records.changed(app->record_generation);  // start from "already seen"
+
+    // Pro Drums off is a different chart mode: the open song is analyzed
+    // under it, and its row for that mode is saved.
+    app->settings.view_prodrums = false;
+    app->commit_settings();
+    CHECK(app->viewed.state == ViewedSong::State::Analyzing);
+    CHECK(records.changed(app->record_generation));
+    settle(*app);
+    CHECK(app->viewed.ready());
+    CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
+    CHECK(app->store->get_summary(app->settings.record_key(song.md5)).status ==
+          RecordStatus::Ready);
+
+    // The INI is written on the scratch path, not the user's.
+    CHECK(Settings::load_file(paths.ini).view_prodrums == false);
 }
 
-TEST_CASE("update_dynamics uses a stored row with the current count stamp") {
-    ScratchPaths paths("appstate_dyn_now");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const hydra::store::DynamicsKey key = hydra::app::dynamics_store_key(
-        library_entry(0).md5, app->settings.difficulty(), app->settings.view_prodrums);
-    hydra::app::save_dynamics(*app->store, key, hydra::app::DynamicsBreakdown{});
+TEST_CASE("commit_settings analyzes the open song again on an SP cap change") {
+    ScratchPaths paths("appstate_cap");
+    const ChartLibraryEntry song = corpus_chart("click_cap");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
 
-    app->update_dynamics();
-
-    CHECK(app->dynamics_result.has_value());
-    CHECK(app->dynamics_job == nullptr);  // no recount
+    app->settings.sp_cap = 8;
+    app->commit_settings();
+    REQUIRE(app->view_job != nullptr);
+    CHECK(app->view_job->key().cap == app->settings.cap_query());
+    settle(*app);
+    CHECK(app->viewed.ready());
+    CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
 }
 
-// A Dynamics count that finished while another tab showed is stored when the
-// window closes, not thrown away. Before, only the Dynamics tab collected the
-// job, so the next open parsed the chart again.
-TEST_CASE("close_details keeps a Dynamics count that finished on another tab") {
-    ScratchPaths paths("appstate_dyn_close");
-    std::unique_ptr<AppState> app = app_on(paths);
-    app->selected->notespath = corpus::first_chart_with_suffix(".chart");
-    app->show_details = true;
+TEST_CASE("commit_settings analyzes again when the ms limit or the score range changes") {
+    ScratchPaths paths("appstate_lens");
+    const ChartLibraryEntry song = corpus_chart("click_lens");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
 
-    app->update_dynamics();  // the Dynamics tab was shown once: the parse starts
-    REQUIRE(app->dynamics_job != nullptr);
-    for (int i = 0; i < 1200 && !app->dynamics_job->finished(); ++i) Sleep(50);
-    REQUIRE(app->dynamics_job->finished());
-    REQUIRE(app->dynamics_job->ok());
+    // The result answered "best path under this ms limit". Move the limit and
+    // the question changes, so the song is analyzed under the new one.
+    const int seeded_ms = app->settings.mslimit_value;
+    app->settings.mslimit_value = seeded_ms + 5;
+    app->commit_settings();
+    REQUIRE(app->view_job != nullptr);
+    CHECK(app->view_job->key().lens == app->settings.lens());
+    CHECK(Settings::load_file(paths.ini).mslimit_value == seeded_ms + 5);
+    settle(*app);
+    CHECK(app->viewed.ready());
 
-    // The user went back to Paths, so update_dynamics never ran again.
-    app->close_details();
-
-    CHECK_FALSE(app->show_details);
-    CHECK(app->dynamics_job == nullptr);
-    CHECK_FALSE(app->dynamics_result.has_value());
-    const hydra::store::DynamicsKey key = hydra::app::dynamics_store_key(
-        library_entry(0).md5, app->settings.difficulty(), app->settings.view_prodrums);
-    CHECK(hydra::app::load_stored_dynamics(*app->store, key).has_value());
+    // The score range is part of the same identity.
+    app->settings.depth_value += 1;
+    app->commit_settings();
+    REQUIRE(app->view_job != nullptr);
+    CHECK(app->view_job->key().lens == app->settings.lens());
+    settle(*app);
+    CHECK(app->viewed.ready());
 }
 
-// Finding 193: a Dynamics count whose save fails reads the database's
-// sentence, in the same shape as "Analyzed, but saving failed. ".
-TEST_CASE("a Dynamics save failure reads the database sentence") {
-    ScratchPaths paths("appstate_dyn_savefail");
-    seeded_store(paths.db).reset();
-    // A trigger refuses every Dynamics row, so put_dynamics throws.
-    hydra::test::exec_on_file(paths.db,
-                              "CREATE TRIGGER refuse_dynamics BEFORE INSERT ON dynamics"
-                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
-    std::unique_ptr<AppState> app = app_on(paths);
-    app->selected->notespath = corpus::first_chart_with_suffix(".chart");
+TEST_CASE("commit_settings with a non-identity change analyzes nothing again") {
+    ScratchPaths paths("appstate_plain");
+    const ChartLibraryEntry song = corpus_chart("click_plain");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
 
-    app->update_dynamics();  // the parse starts
-    REQUIRE(app->dynamics_job != nullptr);
-    for (int i = 0; i < 1200 && !app->dynamics_job->finished(); ++i) Sleep(50);
-    REQUIRE(app->dynamics_job->finished());
-    REQUIRE(app->dynamics_job->ok());
-    app->update_dynamics();  // collects the count and tries to save it
+    GenerationWatcher records;
+    records.changed(app->record_generation);
 
-    CHECK(app->dynamics_store_error ==
-          "Counted, but saving failed. Hydra couldn't save to its database (hydra.db). Check "
-          "that the disk isn't full and that no other copy of Hydra is running, then try "
-          "again.");
+    // The hit window is a display setting -- it never reaches the search, so
+    // nothing cached goes stale and nothing is analyzed again.
+    app->settings.hit_window_ms += 1;
+    app->commit_settings();
+    CHECK_FALSE(records.changed(app->record_generation));
+    CHECK(app->view_job == nullptr);
+    CHECK(app->viewed.ready());
+    CHECK(Settings::load_file(paths.ini).hit_window_ms == app->settings.hit_window_ms);
 }
 
-// The "Song file not found" check asks the disk when the window opens and
-// then every two seconds, not on every frame.
-TEST_CASE("the chart-file check runs on open and then every two seconds") {
-    ScratchPaths paths("appstate_fileok");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const std::string chart = temp_path("fileok_chart", ".chart");
-    { std::ofstream f(chart); f << "[Song]\n"; }
-    app->selected->notespath = chart;
+// Ruling 12: a burst of setting changes (a held +/- box) runs at most one
+// job at a time and ends with one analysis of the final settings. The
+// settings in between are never saved.
+TEST_CASE("a burst of setting changes ends with one analysis of the final settings") {
+    ScratchPaths paths("appstate_burst");
+    const ChartLibraryEntry song = corpus_chart("click_burst");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
+    REQUIRE(app->viewed.ready());
 
-    CHECK(app->selected_file_ok(10.0));        // first look
-    std::remove(chart.c_str());
-    CHECK(app->selected_file_ok(11.0));        // one second later: not asked again
-    CHECK_FALSE(app->selected_file_ok(12.5));  // two seconds on: asked, and gone
+    const int first_cap = app->settings.sp_cap + 1;
+    const int last_cap = first_cap + 4;
+    app->settings.sp_cap = first_cap;
+    app->edit_settings();
+    REQUIRE(app->view_job != nullptr);
+    const int first_generation = app->view_job->generation();
+    for (int cap = first_cap + 1; cap <= last_cap; ++cap) {
+        app->settings.sp_cap = cap;
+        app->edit_settings();
+        REQUIRE(app->view_job != nullptr);  // the one slot
+    }
+    const int final_generation = app->view_generation.n;
 
-    { std::ofstream f(chart); f << "[Song]\n"; }
-    app->close_details();                      // the next open looks at once
-    CHECK(app->selected_file_ok(12.6));
-    std::remove(chart.c_str());
+    std::set<int> started{first_generation};
+    for (int i = 0; i < 12000 && (app->view_job || app->view_pending); ++i) {
+        // While a request waits, the job still running is an older one.
+        if (app->view_pending) CHECK(app->view_job != nullptr);
+        app->tick(0.0);
+        if (app->view_job) started.insert(app->view_job->generation());
+        Sleep(5);
+    }
+    REQUIRE_FALSE(app->view_job);
+    CHECK(started.size() <= 2);
+    CHECK(started.count(final_generation) == 1);
+    CHECK(started.count(first_generation) == 1);
+
+    CHECK(app->viewed.ready());
+    Settings at = app->settings;
+    for (int cap = first_cap; cap <= last_cap; ++cap) {
+        CAPTURE(cap);
+        at.sp_cap = cap;
+        CHECK(app->store->get_summary(at.record_key(song.md5)).status ==
+              (cap == last_cap ? RecordStatus::Ready : RecordStatus::NotAnalyzed));
+    }
 }
 
-// The four short UI timings the user confirmed (D48, Q33): how long "Done!"
-// and "Copied!" stay, how often typing re-filters the library, and how often
-// a running batch refreshes its results.
-TEST_CASE("UI timings: Done!, Copied!, search re-filter and batch refresh keep their seconds") {
-    CHECK(AppState::kDoneFlashSeconds == 0.5);
-    CHECK(AppState::kCopiedSeconds == 2.0);
-    CHECK(AppState::kSearchThrottleSeconds == 0.15);
-    CHECK(AppState::kBatchRefreshSeconds == 1.0);
-    CHECK(AppState::kFileCheckSeconds == 2.0);    // D48 Q33, the one file-check interval
-    CHECK(AppState::kStatusFadeSeconds == 6.0);   // the toolbar's since 2026-08-18
-}
-
-// Findings 290 and 289: the batch button's search label and the song panel's
-// Analyze label are each built once; the button, its width sample and the
-// GUI tests call these.
-TEST_CASE("the toolbar and song panel labels come from one function each") {
-    CHECK(hydra::ui::detail::analyze_search_label(1) == "Analyze search (1)...");
-    CHECK(hydra::ui::detail::analyze_search_label(1234) == "Analyze search (1,234)...");
-    using hydra::ui::analyze_button_label;
-    CHECK(analyze_button_label(RecordStatus::NotAnalyzed) == std::string("Analyze this song"));
-    CHECK(analyze_button_label(RecordStatus::Stale) == std::string("Re-analyze"));
-    CHECK(analyze_button_label(RecordStatus::Ready) == std::string("Re-analyze"));
-}
-
-// The number boxes apply each step at once (the shown record follows live)
-// but leave the INI until the edit ends: holding +/- used to rewrite the
+// The number boxes apply each step at once (the open song is analyzed under
+// it) but leave the INI until the edit ends: holding +/- used to rewrite the
 // file every frame.
 TEST_CASE("number boxes apply at once but write the INI only on flush") {
     ScratchPaths paths("appstate_flush");
-    std::unique_ptr<AppState> app = app_on(paths);
+    const ChartLibraryEntry song = corpus_chart("click_flush");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
     const int seeded_depth = app->settings.depth_value;
 
     app->settings.depth_value = seeded_depth + 3;
     app->edit_settings();
-    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);  // applied live
+    CHECK(app->viewed.state == ViewedSong::State::Analyzing);  // applied live
     CHECK(Settings::load_file(paths.ini).depth_value == seeded_depth);  // not saved yet
 
     app->flush_settings();  // the edit ended
     CHECK(Settings::load_file(paths.ini).depth_value == seeded_depth + 3);
+    settle(*app);
 }
 
 // A number typed outside its range takes the path the settings boxes take
@@ -470,29 +705,82 @@ TEST_CASE("a number setting edited outside its range lands on the edge the file 
     CHECK(saved.sp_cap == 1);
 }
 
-// Stepping away and back re-shows a lookup already made, without asking the
-// store again (a big record's decode is the expensive part).
-TEST_CASE("stepping a number box back reuses the lookup it already made") {
-    ScratchPaths paths("appstate_parked");
+// ---- the song's length comes from the click --------------------------------
+
+// The length comes from song.ini, not the audio (D75): junk bytes under the
+// audio's name change nothing.
+TEST_CASE("the click reads a chart's stated length") {
+    ScratchPaths paths("appstate_length");
+    const std::string notes = audiochart::short_chart_with_long_audio("click_length");
+    const std::string folder = notes.substr(0, notes.rfind('\\'));
+    audiochart::write_text_file(folder + "\\song.ini", "[song]\nsong_length = 4321\n");
+    audiochart::write_text_file(folder + "\\song.ogg", "not audio at all");
+    const ChartLibraryEntry song = entry_for(notes, "Click length");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+
+    click(*app, song);
+
+    REQUIRE(app->viewed.ready());
+    CHECK(app->viewed.song_length_ms == 4321.0);
+}
+
+// A chart that states no length reads its last Expert drum note (100 ms
+// here), with no audio file at all (D75 items 2 and 5).
+TEST_CASE("a chart with no stated length and no audio reads its last note") {
+    ScratchPaths paths("appstate_noaudio");
+    const std::string notes = audiochart::short_chart_with_long_audio("click_noaudio");
+    const std::string folder = notes.substr(0, notes.rfind('\\'));
+    REQUIRE(std::remove((folder + "\\song.ogg").c_str()) == 0);
+    audiochart::write_text_file(folder + "\\song.ini", "[song]\nname = Click\n");
+    const ChartLibraryEntry song = entry_for(notes, "Click no audio");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+
+    click(*app, song);
+
+    REQUIRE(app->viewed.ready());
+    CHECK(app->viewed.song_length_ms == 100.0);
+}
+
+// ---- the panel's other state -----------------------------------------------
+
+// The "Song file not found" check asks the disk when the window opens and
+// then every two seconds, not on every frame.
+TEST_CASE("the chart-file check runs on open and then every two seconds") {
+    ScratchPaths paths("appstate_fileok");
     std::unique_ptr<AppState> app = app_on(paths);
+    const std::string chart = temp_path("fileok_chart", ".chart");
+    { std::ofstream f(chart); f << "[Song]\n"; }
+    app->selected->notespath = chart;
 
-    app->settings.sp_cap = 8;
-    app->edit_settings();
-    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
-    app->settings.sp_cap = kSeededCap;
-    app->edit_settings();
-    CHECK(app->viewed.status == RecordStatus::Ready);
+    CHECK(app->selected_file_ok(10.0));        // first look
+    std::remove(chart.c_str());
+    CHECK(app->selected_file_ok(11.0));        // one second later: not asked again
+    CHECK_FALSE(app->selected_file_ok(12.5));  // two seconds on: asked, and gone
 
-    // A cap-8 record appears behind the cache's back. Stepping to 8 shows the
-    // parked "not analyzed" answer: proof the store was not asked again.
-    hydra::test::store_batch_result(*app->store, library_entry(0).md5, 8);
-    app->settings.sp_cap = 8;
-    app->edit_settings();
-    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
+    { std::ofstream f(chart); f << "[Song]\n"; }
+    app->close_details();                      // the next open looks at once
+    CHECK(app->selected_file_ok(12.6));
+    std::remove(chart.c_str());
+}
 
-    // A new selection drops every parked lookup, so the store is asked again.
-    app->select(library_entry(0));
-    CHECK(app->viewed.status == RecordStatus::Ready);
+// The short UI timings the user confirmed (D48, Q33; D87 item 6): how long
+// "Copied!" stays, how often typing re-filters the library, how often a
+// running batch refreshes its results, and how long a click runs before its
+// progress box shows.
+TEST_CASE("UI timings: Copied!, search re-filter, batch refresh and the progress box delay") {
+    CHECK(AppState::kCopiedSeconds == 2.0);
+    CHECK(AppState::kSearchThrottleSeconds == 0.15);
+    CHECK(AppState::kBatchRefreshSeconds == 1.0);
+    CHECK(AppState::kFileCheckSeconds == 2.0);    // D48 Q33, the one file-check interval
+    CHECK(AppState::kStatusFadeSeconds == 6.0);   // the toolbar's since 2026-08-18
+    CHECK(AppState::kViewProgressDelaySeconds == 0.15);  // D87 item 6
+}
+
+// Finding 290: the batch button's search label is built once; the button,
+// its width sample and the GUI tests call it.
+TEST_CASE("the toolbar's search label comes from one function") {
+    CHECK(hydra::ui::detail::analyze_search_label(1) == "Analyze search (1)...");
+    CHECK(hydra::ui::detail::analyze_search_label(1234) == "Analyze search (1,234)...");
 }
 
 // The main window's "Open path report" button looks for the file every two
@@ -554,12 +842,12 @@ void wait_batch_finished(AppState& app) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
-// Runs a Redo batch over chart `md5` alone and waits for it to end. The
-// batch's own analysis fails, since the test has no chart file, so it writes
-// nothing: the result the test stored behind the app's back is the one the
-// batch "stored". Redo, so the batch does not skip a chart with a result.
-void run_redo_batch_over(AppState& app, const std::string& md5) {
-    app.set_search(md5);
+// Runs a Redo batch over the one chart `search` finds and waits for it to
+// end. The batch's own analysis fails on purpose, so it writes nothing: the
+// result the test stored behind the app's back is the one the batch
+// "stored". Redo, so the batch does not skip a chart with a result.
+void run_redo_batch_over(AppState& app, const std::string& search) {
+    app.set_search(search);
     REQUIRE(app.library_shown_count() == 1);
     start_redo_batch(app, [](const std::string&, const hydra::app::AnalysisSettings&,
                              const std::function<void(float)>&) -> hydra::app::AnalysisResult {
@@ -570,43 +858,56 @@ void run_redo_batch_over(AppState& app, const std::string& md5) {
 
 }  // namespace
 
-// A batch that stores a result for the chart the panel is open on turns the
-// panel Ready on the batch's next refresh, without clicking away (D48, Q16).
-TEST_CASE("a batch result for the open chart turns the panel Ready") {
+// Ruling 14: after a batch the library rows refresh, and the open panel is
+// not analyzed again: it keeps what its own click showed (D48 Q16 restated).
+TEST_CASE("a batch result for the open chart refreshes its row, not the panel") {
     ScratchPaths paths("appstate_batchpanel");
     std::unique_ptr<AppState> app = app_on(paths);
     const ChartLibraryEntry open = library_entry(5);
     app->select(open);
-    REQUIRE(app->viewed.status == RecordStatus::NotAnalyzed);
+    REQUIRE(app->viewed.state == ViewedSong::State::FileMissing);
+
+    GenerationWatcher records;
+    records.changed(app->record_generation);
 
     // The result arrives the way a batch files one (H1's fixture).
     hydra::test::store_batch_result(*app->store, open.md5, Settings{}.sp_cap);
     run_redo_batch_over(*app, open.md5);
 
     app->tick_library(0.0);  // the batch's last refresh
-    CHECK(app->viewed.status == RecordStatus::Ready);
+    app->tick(0.0);
+    CHECK(app->library_row_at(0).status == RecordStatus::Ready);
+    CHECK(app->view_job == nullptr);
+    CHECK(app->viewed.state == ViewedSong::State::FileMissing);
+    CHECK_FALSE(records.changed(app->record_generation));
 }
 
-// A Redo batch that stores a new result for a chart that was already Ready
-// shows the new result too: the row stays Ready, but what it holds changed.
-TEST_CASE("a batch result for an open Ready chart shows the new result") {
+// A batch that stores a different result for the open Ready chart changes
+// its library row; the panel keeps the engine's own result from the click.
+TEST_CASE("a batch result for an open Ready chart changes its row and keeps the panel") {
     ScratchPaths paths("appstate_batchredo");
-    std::unique_ptr<AppState> app = app_on(paths);  // chart 0: Ready, no paths
-    const ChartLibraryEntry open = library_entry(0);
-    app->select(open);
-    REQUIRE(app->viewed.status == RecordStatus::Ready);
-    REQUIRE(app->viewed.record->paths.empty());
+    const ChartLibraryEntry song = corpus_chart("click_batchredo");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
+    REQUIRE(app->viewed.ready());
+    const size_t shown_paths = app->viewed.record->paths.size();
+    REQUIRE(shown_paths > 0);
 
-    // The new result has two paths (the shared tied-variant record).
-    hydra::HydraRecord redone = hydra::test::tied_variant_record();
-    redone.sp_cap = kSeededCap;
-    redone.ms_limit = Settings{}.mslimit_value;
-    app->store->add_record(hydra::test::batch_result_key(open.md5, kSeededCap), redone);
-    run_redo_batch_over(*app, open.md5);
+    GenerationWatcher records;
+    records.changed(app->record_generation);
+
+    // An empty result (no paths, so no score) under the same key.
+    hydra::test::store_batch_result(*app->store, app->settings.record_key(song.md5));
+    run_redo_batch_over(*app, song.title);
 
     app->tick_library(0.0);  // the batch's last refresh
-    REQUIRE(app->viewed.status == RecordStatus::Ready);
-    CHECK(app->viewed.record->paths.size() == 2);
+    app->tick(0.0);
+    CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
+    CHECK_FALSE(row_of(*app, song.md5).summary.has_scored_best_path());
+    CHECK(app->view_job == nullptr);
+    REQUIRE(app->viewed.ready());
+    CHECK(app->viewed.record->paths.size() == shown_paths);
+    CHECK_FALSE(records.changed(app->record_generation));
 }
 
 // A result stored behind the view's back shows once its row is re-read, and
@@ -649,89 +950,7 @@ void stop_batch(AppState& app) {
     wait_batch_finished(app);
 }
 
-// Opens library chart 0 on the chart file at `path` (a real corpus chart, no
-// audio, when empty), its Ready record's song registered with a tempo map and
-// no length read, the way a result saved before Hydra read audio lengths
-// reads. Returns the chart file's path.
-std::string open_chart_with_no_length(AppState& app, std::string path = {}) {
-    const hydra::app::AnalysisSettings as = app.settings.to_analysis_settings();
-    if (path.empty()) path = corpus::first_chart_with_notes(as.difficulty);
-    const hydra::Song song =
-        hydra::load_songpath(path, as.prodrums, as.bass2x, as.difficulty, as.rules);
-    ChartLibraryEntry entry = library_entry(0);
-    entry.notespath = path;
-    app.store->add_song(entry.md5, entry.title, entry.artist, entry.charter, song);
-    app.select(entry);
-    REQUIRE(app.viewed.status == RecordStatus::Ready);
-    REQUIRE(app.viewed.timing.has_value());
-    REQUIRE_FALSE(app.viewed.song_length_read);
-    REQUIRE_FALSE(app.viewed.song_length_ms.has_value());
-    return path;
-}
-
-// Runs the open chart's length backfill to its end: starts it, waits for it
-// and lets tick() store what it read.
-void run_length_backfill(AppState& app) {
-    app.tick(0.0);  // starts the backfill
-    REQUIRE(app.length_job != nullptr);
-    for (int i = 0; i < 1200 && !app.length_job->finished(); ++i) Sleep(50);
-    REQUIRE(app.length_job->finished());
-    app.tick(0.0);  // stores what it read
-    CHECK(app.length_job == nullptr);
-}
-
 }  // namespace
-
-// The length belongs to the song, so one read gives every difficulty its
-// length. It comes from song.ini, not the audio (D75): junk
-// bytes under the audio's name change nothing. The library row is one an
-// older scan wrote, with no stated length kept, so the backfill reads
-// song.ini itself (SL1 open question 3).
-TEST_CASE("the backfill reads a chart's stated length once, and every difficulty shows it") {
-    ScratchPaths paths("appstate_length");
-    std::unique_ptr<AppState> app = app_on(paths);
-    // The same chart's Ready record under another chart mode.
-    Settings other = app->settings;
-    other.view_prodrums = !other.view_prodrums;
-    const RecordKey other_key = other.record_key(library_entry(0).md5);
-    hydra::test::store_batch_result(*app->store, other_key);
-    const std::string notes = audiochart::short_chart_with_long_audio("backfill");
-    const std::string folder = notes.substr(0, notes.rfind('\\'));
-    audiochart::write_text_file(folder + "\\song.ini", "[song]\nsong_length = 4321\n");
-    audiochart::write_text_file(folder + "\\song.ogg", "not audio at all");
-    open_chart_with_no_length(*app, notes);
-
-    run_length_backfill(*app);
-
-    CHECK(app->viewed.song_length_ms == 4321.0);
-    CHECK(app->store->get_record(app->settings.record_key(library_entry(0).md5)).song_length_ms ==
-          4321.0);
-    CHECK(app->store->get_record(other_key).song_length_ms == 4321.0);
-}
-
-// A chart that states no length reads its last Expert drum note (100 ms
-// here), with no audio file at all (D75 items 2 and 5). The answer is stored,
-// so it is not read again.
-TEST_CASE("a chart with no stated length and no audio reads its last note, once") {
-    ScratchPaths paths("appstate_noaudio");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const std::string notes = audiochart::short_chart_with_long_audio("backfill_noaudio");
-    REQUIRE(std::remove((notes.substr(0, notes.rfind('\\')) + "\\song.ogg").c_str()) == 0);
-    open_chart_with_no_length(*app, notes);
-
-    run_length_backfill(*app);
-    CHECK(app->viewed.song_length_ms == 100.0);
-    const hydra::store::RecordLookup stored =
-        app->store->get_record(app->settings.record_key(library_entry(0).md5));
-    CHECK(stored.song_length_read);
-    CHECK(stored.song_length_ms == 100.0);
-
-    // Selecting it again starts no job.
-    const ChartLibraryEntry open = *app->selected;
-    app->select(open);
-    app->tick(0.0);
-    CHECK(app->length_job == nullptr);
-}
 
 // The same chart can sit in two folders; only the copy that was clicked is
 // the selected row.
@@ -776,13 +995,15 @@ TEST_CASE("any_job_running lists every background job") {
     stop_batch(*app);
     CHECK_FALSE(app->any_job_running());  // a finished batch is not running
 
-    open_chart_with_no_length(*app);
-    app->tick(0.0);  // starts the length read
-    REQUIRE(app->length_job != nullptr);
-    CHECK(app->any_job_running());
-    for (int i = 0; i < 1200 && !app->length_job->finished(); ++i) Sleep(50);
-    REQUIRE(app->length_job->finished());
-    app->tick(0.0);
+    // The click's job counts while it runs, cancelled or not, until tick()
+    // collects it.
+    const ChartLibraryEntry song = corpus_chart("click_anyjob");
+    app->store->rebuild_chart_library({song});
+    app->select(song);
+    REQUIRE(app->view_job != nullptr);
+    app->cancel_view();
+    if (!app->view_job->finished()) CHECK(app->any_job_running());
+    settle(*app);
     CHECK_FALSE(app->any_job_running());
 }
 
@@ -908,40 +1129,18 @@ TEST_CASE("a library reload whose reads fail keeps the library and says so") {
     CHECK(app->library_row_at(0).status == RecordStatus::Ready);
 }
 
-TEST_CASE("a re-read of the open chart that fails keeps its record and says so") {
-    ScratchPaths paths("appstate_rereadfail");
-    std::unique_ptr<AppState> app = app_on(paths);
-    hydra::test::exec_on_file(paths.db, "DROP TABLE results;");
-
-    app->refresh_viewed_record();
-
-    CHECK(app->status_message == kDatabaseReadSentence);
-    CHECK(app->viewed.status == RecordStatus::Ready);
-}
-
 TEST_CASE("a settings change whose reads fail shows no other settings' record") {
     ScratchPaths paths("appstate_settingsfail");
     std::unique_ptr<AppState> app = app_on(paths);
+    app->select(library_entry(0));
     hydra::test::exec_on_file(paths.db, "DROP TABLE results;");
 
     app->settings.sp_cap = 8;
     app->commit_settings();
 
     CHECK(app->status_message == kDatabaseReadSentence);
-    // The library keeps the rows it showed; the panel shows nothing, since
-    // its last answer was for the old cap.
+    // The library keeps the rows it showed; the panel shows nothing ready,
+    // since its last answer was for the old cap.
     CHECK(app->library_row_at(0).status == RecordStatus::Ready);
-    CHECK(app->viewed.status == RecordStatus::NotAnalyzed);
-}
-
-TEST_CASE("a Dynamics read that fails says so and counts the chart instead") {
-    ScratchPaths paths("appstate_dynreadfail");
-    std::unique_ptr<AppState> app = app_on(paths);
-    hydra::test::exec_on_file(paths.db, "DROP TABLE dynamics;");
-
-    app->update_dynamics();
-
-    CHECK(app->status_message == kDatabaseReadSentence);
-    CHECK_FALSE(app->dynamics_result.has_value());
-    CHECK(app->dynamics_job != nullptr);  // the count starts, as on a store miss
+    CHECK_FALSE(app->viewed.ready());
 }

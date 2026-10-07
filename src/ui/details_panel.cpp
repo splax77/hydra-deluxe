@@ -149,10 +149,12 @@ void render_panel_notices(AppState& app) {
 // AppState::tick() owns the job. The box shows only once the job has run
 // kViewProgressDelaySeconds, and there's no "Done!" (D87 items 6 and 10).
 void render_view_progress(AppState& app) {
-    ViewJob* job = app.view_job.get();
-    if (!job || !app.view_progress_shown()) return;
+    if (!app.view_progress_shown()) return;
+    // The latest request's own job; none while it waits for an older,
+    // cancelled one to exit (AppState::view_pending).
+    const ViewJob* job = app.view_pending ? nullptr : app.view_job.get();
     ImGui::BeginChild("analyzeprogress", ImVec2(0, px(140)), ImGuiChildFlags_Borders);
-    if (job->is_cancelled()) {
+    if (job && job->is_cancelled()) {
         ImGui::TextUnformatted("Cancelling...");
     } else {
         double t = ImGui::GetTime();
@@ -160,7 +162,7 @@ void render_view_progress(AppState& app) {
         ImGui::Text("Analyzing chart%.*s", dots, "...");
         // A real bar once the search starts reporting; until the first tick
         // (parse + graph build) there's nothing to show, so leave it off.
-        float f = job->progress();
+        const float f = job ? job->progress() : -1.0f;
         if (f >= 0.0f) progress_bar_percent(f);
         // A long chart can take a while; the user needs an out that isn't
         // killing the app.

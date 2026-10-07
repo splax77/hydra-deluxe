@@ -11,6 +11,7 @@
 #ifndef HYDRA_UI_APP_STATE_H
 #define HYDRA_UI_APP_STATE_H
 
+#include <chrono>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -177,9 +178,10 @@ public:
     Settings settings;
     std::unique_ptr<store::RecordStore> store;
     // Set at startup when hydra_rules.ini is bad (the loader's message, which
-    // names the key). While set, analysis is off: the Analyze buttons are
-    // disabled and start_batch/start_analyze do nothing. It clears only on a
-    // restart with a fixed file; there is no fallback to the default rules.
+    // names the key). While set, analysis is off: start_batch does nothing
+    // and a click counts only the Dynamics (ViewedSong::State::RulesBroken).
+    // It clears only on a restart with a fixed file; there is no fallback to
+    // the default rules.
     std::string rules_error;
     bool analysis_blocked() const { return !rules_error.empty(); }
 
@@ -296,33 +298,34 @@ public:
     // Bumped whenever `viewed` changes; invalidates the UI's selection caches.
     Generation record_generation;
 
-    // Starts the click's analysis of `selected` under the current settings
+    // Asks for the click's analysis of `selected` under the current settings
     // (D87 item 1): a click, a setting change with a song open (D90 item 1)
-    // and "Try again" all come here. Cancels the previous click's job first
-    // and bumps view_generation, so its late result is dropped.
+    // and "Try again" all come here. It bumps view_generation, so an older
+    // request's late result is dropped. At most one job runs at a time: when
+    // one is still running, it is cancelled and this request waits in
+    // view_pending until that job has exited, and only the latest request
+    // then runs.
     void start_view();
     // The panel's Cancel: the job stops at its next progress tick, and the
     // panel then shows "Analysis cancelled." (D87 item 11).
     void cancel_view();
     // The panel's Continue under an error: the panel goes back to empty.
     void dismiss_view_error();
-    // The click's job, and the generation of the current click. A finished
-    // job whose generation is not the current one is dropped, never compared
-    // by address (memory: analyze-job pointer-reuse bug).
+    // The click's one job, and the generation of the latest request. A
+    // finished job whose generation is not the latest is dropped, never
+    // compared by address (memory: analyze-job pointer-reuse bug). The job is
+    // held until it exits, even once cancelled: joining it on the UI thread
+    // would freeze the window until its next progress tick.
     std::unique_ptr<ViewJob> view_job;
     Generation view_generation;
-    // Jobs of earlier clicks, cancelled but still running: joining one on the
-    // UI thread would freeze the window until its next progress tick. tick()
-    // lets go of each once it finishes.
-    std::vector<std::unique_ptr<ViewJob>> parked_view_jobs;
-    // Whether the click's job is still running, and whether its progress box
-    // shows yet (kViewProgressDelaySeconds).
+    // A request that waits for the cancelled view_job to exit; tick() then
+    // starts it under the settings and song current at that moment.
+    bool view_pending = false;
+    // Whether the latest request is still working (its job runs, or it waits
+    // in view_pending), and whether its progress box shows yet: only once it
+    // has waited kViewProgressDelaySeconds since start_view.
     bool view_running() const;
     bool view_progress_shown() const;
-    // One line per click that replaced a Ready row whose summary differed
-    // from the engine's (D87 item 2). Hydra keeps no log file, so the lines
-    // stay here for the GUI tests and the uitest `state` dump.
-    std::vector<std::string> view_log;
 
     // 3D Preview (Phase 5). The GUI's shared D3D11 device is injected once at
     // startup (set_render_device, mirroring load_icons); the controller is
@@ -478,8 +481,10 @@ private:
     store::PathSummary save_view_summary(const ViewJob& job, const store::RecordKey& key,
                                          const app::AnalysisResult& result,
                                          const store::SongLength& length);
-    // Cancels the click's job, if any, and parks it until it finishes.
-    void park_view_job();
+    // Starts view_job for the latest request. view_job must be empty.
+    void launch_view_job();
+    // When the latest request was made (start_view), for view_progress_shown.
+    std::chrono::steady_clock::time_point view_requested_at_{};
     // The row index select_relative would open, if there is one.
     std::optional<size_t> relative_row(int delta) const;
     // Runs one store read on the UI thread. A read that throws puts its

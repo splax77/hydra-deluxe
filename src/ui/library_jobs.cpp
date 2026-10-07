@@ -314,12 +314,7 @@ ViewJob::ViewJob(store::ChartLibraryEntry song, store::RecordKey key,
       analysis_off_(analysis_off),
       generation_(generation) {}
 
-double ViewJob::elapsed_s() const {
-    return std::chrono::duration<double>(std::chrono::steady_clock::now() - started_).count();
-}
-
 void ViewJob::start() {
-    started_ = std::chrono::steady_clock::now();
     // The thread constructor itself can throw (std::system_error when the OS
     // refuses the thread); route that through the panel's error path instead
     // of letting it escape and terminate the app.

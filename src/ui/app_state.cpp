@@ -184,42 +184,59 @@ void AppState::close_details() {
     // The audio device must stop, and the GPU and decode work must not keep
     // running behind a hidden panel.
     if (preview) preview->close();
-    // A click's analysis that hasn't finished is cancelled; nothing is saved
-    // for it (D87 item 11).
-    park_view_job();
-    // The next open looks at the chart file at once.
-    details_ui.file_checked_at = -1.0;
-}
-
-void AppState::park_view_job() {
-    if (!view_job) return;
-    view_job->cancel();
-    if (!view_job->finished()) parked_view_jobs.push_back(std::move(view_job));
-    view_job.reset();
+    // A click's analysis that hasn't finished is cancelled, and its result,
+    // even one that finished this frame, is dropped by generation: nothing is
+    // saved for it (D87 item 11).
+    if (view_job) view_job->cancel();
+    view_pending = false;
+    view_generation.bump();
     if (viewed.state == ViewedSong::State::Analyzing) {
         viewed = ViewedSong{};
         record_generation.bump();
     }
+    // The next open looks at the chart file at once.
+    details_ui.file_checked_at = -1.0;
 }
 
 void AppState::start_view() {
-    park_view_job();
     view_generation.bump();
+    view_requested_at_ = std::chrono::steady_clock::now();
     viewed = ViewedSong{};
     record_generation.bump();
+    // A finished job not yet collected is an older request's: let it go.
+    if (view_job && view_job->finished()) view_job.reset();
+    if (view_job) view_job->cancel();
+    view_pending = false;
     if (!selected) return;
     if (!file_exists_utf8(selected->notespath)) {
         viewed.state = ViewedSong::State::FileMissing;
         return;
     }
+    viewed.state = ViewedSong::State::Analyzing;
+    // One job at a time: this request waits for the cancelled one to exit.
+    if (view_job)
+        view_pending = true;
+    else
+        launch_view_job();
+}
+
+void AppState::launch_view_job() {
     view_job = std::make_unique<ViewJob>(*selected, settings.record_key(selected->md5),
                                          settings.to_analysis_settings(), analysis_blocked(),
                                          view_generation.n);
-    viewed.state = ViewedSong::State::Analyzing;
     view_job->start();
 }
 
 void AppState::cancel_view() {
+    if (view_pending) {
+        // The waiting request never started; the job still running is an
+        // older request's, and its result is dropped by generation.
+        view_pending = false;
+        viewed = ViewedSong{};
+        viewed.state = ViewedSong::State::Cancelled;
+        record_generation.bump();
+        return;
+    }
     if (view_job && !view_job->finished()) view_job->cancel();
 }
 
@@ -229,21 +246,27 @@ void AppState::dismiss_view_error() {
     record_generation.bump();
 }
 
-bool AppState::view_running() const { return view_job && !view_job->finished(); }
+bool AppState::view_running() const {
+    return view_pending || (view_job && !view_job->finished() &&
+                            view_job->generation() == view_generation.n);
+}
 
 bool AppState::view_progress_shown() const {
-    return view_running() && view_job->elapsed_s() >= kViewProgressDelaySeconds;
+    return view_running() &&
+           std::chrono::duration<double>(std::chrono::steady_clock::now() - view_requested_at_)
+                   .count() >= kViewProgressDelaySeconds;
 }
 
 void AppState::update_view_job() {
-    // Earlier clicks' jobs go once they finish; their results are never read.
-    parked_view_jobs.erase(
-        std::remove_if(parked_view_jobs.begin(), parked_view_jobs.end(),
-                       [](const std::unique_ptr<ViewJob>& job) { return job->finished(); }),
-        parked_view_jobs.end());
     if (!view_job || !view_job->finished()) return;
     const std::unique_ptr<ViewJob> job = std::move(view_job);
-    // A late result from an older click: dropped by generation.
+    // The cancelled job has exited, so the latest request starts now.
+    if (view_pending) {
+        view_pending = false;
+        launch_view_job();
+        return;
+    }
+    // A late result from an older request: dropped by generation.
     if (job->generation() != view_generation.n) return;
 
     ViewedSong v;
@@ -269,7 +292,7 @@ void AppState::update_view_job() {
                 set_problem(app::plain_error(e));
             }
             key.hyhash = out.new_md5;
-            if (selected && selected->notespath == path) {
+            if (is_selected_row(job->song())) {
                 selected->md5 = out.new_md5;
                 selected->sig = out.new_sig;
             }
@@ -308,9 +331,6 @@ store::PathSummary AppState::save_view_summary(const ViewJob& job, const store::
     if (ready && found.front().summary == row.summary && found.front().bestpath == row.bestpath)
         return row.summary;  // the row already says what the engine says
     const store::ChartLibraryEntry& song = job.song();
-    if (ready)
-        view_log.push_back(display_title(song.title) + ": the saved result differed from the " +
-                           "engine's and was replaced.");
     const app::AnalysisSettings& as = job.settings();
     store->save_analysis(key.hyhash, song.title, song.artist, song.charter, result.song, row,
                          app::dynamics_entry_from_analysis(key.hyhash, result.song, as.bass2x,
@@ -341,11 +361,10 @@ bool AppState::can_scan() const {
 }
 
 bool AppState::any_job_running() const {
-    const bool parked_running =
-        std::any_of(parked_view_jobs.begin(), parked_view_jobs.end(),
-                    [](const std::unique_ptr<ViewJob>& job) { return !job->finished(); });
-    return (scan_job && !scan_job->snapshot().finished) || batch_running() || view_running() ||
-           parked_running || (report_job && !report_job->finished()) ||
+    // view_job counts while it runs even when cancelled: tick() still has to
+    // collect it (and start a waiting request).
+    return (scan_job && !scan_job->snapshot().finished) || batch_running() || view_pending ||
+           (view_job && !view_job->finished()) || (report_job && !report_job->finished()) ||
            (dm_fetch_job && !dm_fetch_job->finished()) ||
            (dm_report_job && !dm_report_job->finished()) || (preview && preview->busy());
 }

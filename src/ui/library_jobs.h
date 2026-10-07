@@ -254,8 +254,6 @@ public:
     const app::AnalysisSettings& settings() const { return settings_; }
     bool analysis_off() const { return analysis_off_; }
     int generation() const { return generation_; }
-    // Seconds since start(), on the steady clock.
-    double elapsed_s() const;
 
     // Monotonic 0..1 search progress, or a negative value before the first
     // report (i.e. show an indeterminate spinner until then).
@@ -272,7 +270,6 @@ private:
     app::AnalysisSettings settings_;
     bool analysis_off_;
     int generation_;
-    std::chrono::steady_clock::time_point started_{};
     std::atomic<float> progress_{-1.0f};
     ViewOutcome out_;
 };
