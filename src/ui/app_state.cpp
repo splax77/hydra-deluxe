@@ -284,8 +284,11 @@ void AppState::update_view_job() {
         v.dynamics_message = std::move(out.dynamics_message);
         v.dynamics_error = std::move(out.dynamics_error);
         store::RecordKey key = job->key();
-        // An edited chart: its library row takes the new hash before anything
-        // is saved under it (D87 item 3).
+        // Changed chart files: the library row takes the hash and fingerprint
+        // they give now, before anything is saved under them. An edited chart
+        // gets a new hash (D87 item 3); one only saved again keeps its hash
+        // and takes the new fingerprint (D96). The library is read again
+        // either way, because the next row click copies its row from there.
         if (out.files_changed) {
             const std::string& path = job->song().notespath;
             try {
