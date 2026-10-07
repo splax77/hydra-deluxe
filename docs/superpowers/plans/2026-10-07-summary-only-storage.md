@@ -1,0 +1,293 @@
+# Summary-Only Storage Implementation Plan (2026-10-07)
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers-extended-cc:subagent-driven-development (recommended) or superpowers-extended-cc:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** hydra.db stores only the chart library, one summary row per chart and settings, and `meta`. Every path detail comes from the engine's normal analysis when a song is clicked or a report is built.
+
+**Architecture:** First, every reader of stored details moves to a fresh analysis while the old tables still exist: the GUI click, the path report and the tools. Then one task removes the detail tables, the codec and their stamps, and adds the one-time upgrade. The GUI's existing `AnalyzeJob` becomes the click's job, and the batch's work pool feeds the report.
+
+**Tech Stack:** C++17, SQLite 3.46.0 (vendored), Dear ImGui, doctest (`hydra_tests`), `hydra_uitest`, Python 3.14 (`py`) for `tools/compare_db.py`.
+
+**Spec:** the storage audit, `docs/handoffs/2026-10-06-storage-audit-handoff.md`, with its notes in `docs/handoffs/2026-10-06-storage-audit/notes/`. The user's answers are D87 in `docs/audit/2026-10-03-fix-decisions.md`.
+
+**Status:** planned, not yet dispatched. Base: main at f3882e7.
+
+## Global Constraints
+
+These bind every task and every reviewer.
+
+- **No stored summary changes.** `kResultsStamp` stays "2.1.0+allzero". The summary columns must come out byte-identical for every chart, so no chart needs analyzing again. The join proves it with `compare_db.py`.
+- **One owner for every rule.** The click, the batch and the report all call `app::analyze_chart_file` and the same `prepare_row` / `summarize_path`. The song length comes from `app::analysis_song_length`, and dynamics from `count_dynamics`. Nothing re-derives a rule (memory `derive-display-from-engine-truth.md`).
+- **The library list and the Paths tab never disagree.** If a click's fresh summary differs from the stored row, the fresh one is saved. The engine is the truth (memory `counts-on-screen-must-agree.md`).
+- **Fail loudly.** A failed click analysis shows today's error box. A failed upgrade throws the DatabaseOpen sentence (D72). Nothing falls back silently.
+- **Display text is fixed by D87.** No task invents new user-visible words beyond these: "Analysis cancelled.", "Try again", "Click the song or run a batch to refresh it." Any other new text stops and goes to the user.
+- **Agent rules** (CLAUDE.md): Opus executors, Sonnet reviewers, Fable planners. Agents run only their own tests. Every brief starts from `docs/agents/brief-preamble.md`. Status lines go to `C:\Users\Patrick\.claude\hooks\state\status\<agent id>.md`. Wrap up at 100 tool calls; stop at 150. Every merge to main gets a derive-once review (`docs/agents/derive-once-review.md`).
+- **One library check, at the join** (memory `one-library-check-at-the-join.md`). Tasks test on `testdata` charts only. Every whole-library run goes through `tools/bench_run.ps1`, one at a time. Perf wave 2's timing shares that lock.
+
+**User decisions (already made), D87, 2026-10-07:**
+1. Analyze on click; store only the library, summary rows and `meta`.
+2. A click saves the summary when the row is missing, Stale or different.
+3. An edited chart is re-hashed on click, its library row is updated, and then it's analyzed.
+4. Rows of charts that left the library are deleted at each scan. Other chart modes of a library chart are kept.
+5. The path report analyzes the library on all cores and reuses the batch's charts. It reads exactly as before.
+6. The Analyze / Re-analyze button is removed. The progress box appears only after 0.15 s. The Stale tooltip ends "Click the song or run a batch to refresh it."
+7. Upgrade in place, no backup copy.
+8. The hydra_replay card runs as a parallel track.
+9. With broken rules, a click shows today's "Analysis is off..." warning and no paths.
+10. No "Done!" flash after a click's analysis.
+11. Cancel shows "Analysis cancelled." with a "Try again" button.
+
+---
+
+## The shape of the work
+
+Think of it as moving furniture before knocking down a wall. Wave 1 and wave 2 move every reader off the stored details while those details still exist, so each merge builds, runs and can be tested against the old behaviour. Wave 3 knocks the wall down: it deletes the tables and the code that wrote them, and adds the upgrade. The hydra_replay track runs alongside the whole time in its own session.
+
+The order:
+
+1. **Before dispatch (main session).** Commit this plan, D87 and the storage-audit handoff folder, because worktrees only see committed files.
+2. **T0, measure first.** Two numbers the user asked to see before building: the report's extra time and the upgrade's one-time wait.
+3. **Wave 1, three tasks in parallel.** T1 cleans up gone charts and adds a re-identify for one chart. T3 builds the path report from the engine. T4 stops the tools reading stored details.
+4. **Wave 2.** T2, analyze on click, forks from T1's tip as soon as T1's code exists, because it calls T1's re-identify.
+5. **Wave 3.** T5 stores summaries only, forked once T2, T3 and T4 are merged. T6 writes the ADR and docs in parallel with T5.
+6. **The join (main session).** Full suite once, one library check, the upgrade on a copy of the real database, one timing run.
+7. **Track R** (hydra_replay) starts with wave 1 and merges on its own.
+
+Things this plan decides not to do, with the reason, so nobody re-proposes them. Compression, the trimmed codec and the share-once alternatives are moot, because the blobs are gone. Raw 16-byte hashes in the tables that remain would save about 2 MB of an estimated 20, and would change every query that reads a hash, so they're not worth it. `BatchWrites`' 10,000-page checkpoint (D86 item 3) stays as measured.
+
+---
+
+### Task 0: Measure the report's extra time and the upgrade's wait
+
+**Goal:** Two numbers, before any code. The first is how long the path report's analysis pass will take. The second is how long the first open of the new Hydra will take to drop the tables and shrink the file. If either is over its line, stop and bring it to the user.
+
+**Who:** one Sonnet agent, or the main session. It writes no code.
+
+How. For the report, run `hydra_bench --engine "C:\Clone Hero"` (single-threaded, writes nothing) through the bench lock. Divide its wall time by the worker count the batch uses, `app::batch_worker_count()`. That's the estimate; the join measures the real pass. For the upgrade, take a backup-API copy of the installed database (the recipe is in `docs/superpowers/plans/2026-10-06-perf-speedups.md`, "Real database with --redo"). Then time this in `py` with `sqlite3`: in one transaction, `DROP TABLE` paths, path_refs, songmeta and dynamics, and `ALTER TABLE results DROP COLUMN structure`; then `VACUUM`; then `PRAGMA wal_checkpoint(TRUNCATE)`. Record the file size before and after.
+
+**Files:**
+- Create: `docs/handoffs/2026-10-07-storage-measurements.md` (the two numbers, the commands and the bench-log line)
+
+**Acceptance Criteria:**
+- [ ] The report estimate is written down in seconds, with the worker count and the single-thread total it came from.
+- [ ] The upgrade time and the file size after `VACUUM` are written down. The size is expected near 20 MB.
+- [ ] If the report estimate is over 15 s, or the upgrade is over 10 s, the task stops and the main session asks the user before wave 1 starts.
+
+**Verify:** `py -c "import os; print(os.path.getsize(r'<scratch>\real-upgraded.db'))"` → about 20,000,000 bytes.
+
+---
+
+### Task 1: Delete gone charts at scan, and re-identify one chart
+
+**Goal:** A scan deletes every stored row whose chart is no longer in the library (D87 item 4). The store gains one call that updates a single chart's hash after an edit (D87 item 3), for T2 to use.
+
+**Files:**
+- Modify: `src/store/record_store.h`, `src/store/record_store.cpp`. Add two public functions. `delete_results_without_chart()` deletes every `results` row whose `hyhash` has no `charts` row. While they still exist, it also deletes that chart's `songmeta` and `dynamics` rows and its `path_refs`, and garbage-collects nodes the way `write_row` does today. `reidentify_chart(notespath, new_md5, new_sig)` updates that path's `charts` row and calls `delete_results_without_chart()` in the same transaction. `rebuild_chart_library` calls `delete_results_without_chart()` inside its own transaction, after reinserting the scan.
+- Modify: `src/store/record_store.cpp`, `copies_of`. A result whose chart has no library row can no longer reach a report, so the D77 "counts once" fallback becomes a `std::logic_error` naming the md5.
+- Test: `tests/test_store.cpp`
+
+**Acceptance Criteria:**
+- [ ] After a scan that drops a chart, its `results`, `songmeta`, `dynamics`, `path_refs` and orphaned `paths` rows are gone.
+- [ ] A chart with two library copies keeps its rows when one copy leaves.
+- [ ] A library chart keeps its rows for other chart modes, including Stale ones.
+- [ ] `reidentify_chart` moves the library row to the new md5. It deletes the old md5's rows only when no other library row still has that md5.
+- [ ] `copies_of` on an md5 with no library row throws.
+
+**Verify:** `.\build_cpp.ps1 -Target hydra_tests` then `build-cpp\Release\hydra_tests.exe -sf=*test_store*` → all pass.
+
+**Steps:**
+
+- [ ] **Step 1: Write the failing tests.** Five `TEST_CASE`s in `tests/test_store.cpp`, one per acceptance line. Seed a store with two charts, save an analysis for each with the existing fixtures, then call `rebuild_chart_library` with only one of them. Assert row counts with direct `SELECT COUNT(*)` queries on each table.
+- [ ] **Step 2: Run them and see them fail** (the functions don't exist yet).
+- [ ] **Step 3: Implement** the two functions and the call in `rebuild_chart_library`. Use the existing purge order from `write_row` step (1): refs first, then the orphan-node GC.
+- [ ] **Step 4: Run the tests and see them pass.** Also run `-tc="single-owner*"`, because the source-scan tests pin SQL text.
+- [ ] **Step 5: Commit** with the Task, Agent and Session trailers.
+
+---
+
+### Task 2: Analyze on click
+
+**Goal:** Clicking a song runs the engine on a worker thread and shows its paths. The click saves the summary when needed and re-identifies an edited chart. The Analyze button goes. This is D87 items 1, 2, 3, 6, 9, 10 and 11.
+
+**Forks from:** T1's branch tip, as soon as T1's code exists (memory `parallel-by-default.md`).
+
+What happens on a click, in order. These are the behaviours the tests pin.
+
+1. `AppState::select` cancels any running click job and bumps a generation counter. A late result from an older click is dropped by generation, never by pointer (memory `analyze-job-pointer-reuse-bug.md`).
+2. If the file is missing, the panel shows today's "Song file not found." line with its Rescan button, and nothing else.
+3. Otherwise a `ViewJob` starts on a worker. It reshapes today's `AnalyzeJob` (`src/ui/library_jobs.h:211`) and keeps its progress and cancel plumbing. On the worker it does four things. It runs `app::chart_files_unchanged(notespath, sig)`; if the file changed, it runs `hash_chart_file` and carries the new md5 and sig. It loads the song once with `load_songpath_with_notes`. It works out the length with `analysis_song_length` and the dynamics with `count_dynamics` on that same Song. Last, it runs `analyze_chart` on that Song, but only when `analysis_blocked()` is false.
+4. When the job finishes, `tick` handles it on the main thread. If the md5 changed, it calls `store->reidentify_chart` and refreshes the library row. It builds the row with `prepare_row(key, record)`. If `get_summaries` says the row is not Ready, or its summary differs, it calls `save_analysis`. A differing Ready row gets one line in the log. Then it sets `viewed`.
+5. Display. The progress box shows only when the job is still running 0.15 s after it started (`kViewProgressDelaySeconds = 0.15`). There's no "Done!" state. Cancel leads to "Analysis cancelled." plus a "Try again" button that restarts the job. An error keeps today's text and Continue button. With broken rules, the Paths tab shows only today's "Analysis is off until hydra_rules.ini is fixed and Hydra is restarted." line, while the Dynamics tab still shows its count, which needs only the parse. The Analyze / Re-analyze button and its "Wait for ..." tooltip are removed. `render_headline` keeps the score, path and stars.
+6. `app::stale_text` ends with "Click the song or run a batch to refresh it." The Paths tab never shows Stale any more; the library tooltip does.
+
+The click must load the Song with exactly the options `DynamicsLoadJob` and `SongLengthJob` use today. If the analysis load and the dynamics load disagree on any option (difficulty, pro, 2x bass, rules), stop and report. Don't pick one. If the parse itself needs valid rules, so that broken rules would also lose the Dynamics count, stop and report too.
+
+**Files:**
+- Modify: `src/ui/app_state.h`, `src/ui/app_state.cpp`. `viewed` becomes a `ViewedSong` with a state (Analyzing, Ready, Cancelled, Failed, FileMissing, RulesBroken), the record, timing, song length and dynamics. Replace `refresh_viewed_record`'s `get_record` call, `start_analyze`, `store_finished_analysis`, `update_analyze_job`, `update_dynamics`'s stored path and the song-length backfill trigger.
+- Modify: `src/ui/library_jobs.h`, `src/ui/library_jobs.cpp` (`AnalyzeJob` becomes `ViewJob`).
+- Modify: `src/ui/details_panel.cpp` (`render_headline`, `render_state_line`, `render_analyze_progress`, `render_record_state`), `src/ui/paths_tab.cpp`, `src/ui/dynamics_tab.cpp`, `src/ui/preview_tab.cpp` (it reads `viewed.record` as before; only its Stale branch goes).
+- Modify: `src/app/user_messages.cpp` (`stale_text`).
+- Delete: `src/ui/dynamics_load_job.*`, `src/ui/song_length_job.*`, and their entries in `CMakeLists.txt`.
+- Test: `tests/test_app_state.cpp`, plus new `hydra_uitest` tests in the existing uitest source (see `docs/agents/ui-testing.md` for where tests live and how they're named).
+
+**Acceptance Criteria:**
+- [ ] Clicking a Ready song shows its paths and stores nothing new (row count and `result_id` unchanged).
+- [ ] Clicking a not-analyzed song shows its paths. Its library row turns Ready with the same score as the headline.
+- [ ] Clicking a Stale song turns its row Ready.
+- [ ] Clicking a chart edited since the scan (test copies a chart, scans, then rewrites one note) updates its library md5 and shows the new file's paths. The old md5's row is gone.
+- [ ] Clicking A, then B within one frame, shows B. A's result is never shown and never saved.
+- [ ] Cancel shows "Analysis cancelled." and "Try again"; Try again shows the paths.
+- [ ] With `analysis_blocked()`, the Paths tab shows the "Analysis is off..." line and the Dynamics tab still shows counts.
+- [ ] No "Analyze" or "Re-analyze" button exists. A grep for `analyze_button_label` finds nothing.
+- [ ] The progress box never shows for a chart that finishes within 0.15 s.
+
+**Verify:** `.\build_cpp.ps1 -Target hydra_tests` and `-Target hydra_uitest`; then `build-cpp\Release\hydra_tests.exe -sf=*test_app_state*` → pass; `build-cpp\Release\hydra_uitest.exe --test <each new test name>` → pass; `build-cpp\Release\hydra_tests.exe -tc="single-owner*"` → pass.
+
+**Steps:**
+
+- [ ] **Step 1:** Write the `test_app_state.cpp` cases for items 1 to 4 and 6 (state machine, saves, re-identify, generation). Run them and see them fail.
+- [ ] **Step 2:** Implement `ViewedSong`, `ViewJob` and the `tick` handling. Run the tests and see them pass. Commit.
+- [ ] **Step 3:** Write the uitest tests for the display (cancel and Try again, the rules-broken line, no Analyze button, the 0.15 s delay with a slow testdata chart). Run them and see them fail.
+- [ ] **Step 4:** Implement the display changes and the `stale_text` wording. Delete the two dead jobs. Run the uitests and the scan test, and see them pass. Commit.
+- [ ] **Step 5:** Grep `docs/` for "Re-analyze" and "Analyze button" in the User Guide and list every hit for T6. Don't edit the docs here.
+
+---
+
+### Task 3: The path report from the engine
+
+**Goal:** The path report gets its paths from a fresh analysis of every library chart that has a Ready row, on all cores. It reuses the charts a batch just analyzed (D87 item 5). The page must read exactly as before.
+
+**Files:**
+- Modify: `src/app/report.h`, `src/app/report.cpp`. `collect_rows` stops calling `store.for_each_blob`. Instead it takes the library's charts and the batch's reuse map. It analyzes each chart not in the map with `app::analyze_chart_file` through `run_work_pool` (`src/app/work_pool.h:64`), sized by `batch_worker_count()`, honouring `options.cancel`. It builds each row with the same `summarize_path`, `pathstring`, `is_optimal` and `e_difficulty` calls as today. Names come from the library's naming copy (`list_records` / `kNamingCopiesSql`), not from songmeta. The analysis settings come from the same `Settings` the batch uses (`Settings::batch_run()`). If their record key differs from the report's `options.cap` and `options.lens`, it throws rather than reporting other settings' paths.
+- Modify: `src/app/analysis.h`, `src/app/analysis.cpp` (`run_batch`). Through `BatchCallbacks::on_result`, the batch hands each analyzed chart's report rows (not its record: rows are small) to a `ReportSeed` keyed by md5.
+- Modify: `src/ui/library_jobs.cpp` (`ReportJob` takes the seed), `src/ui/app_state.cpp:548-557` (passes it), `src/cli/report.cpp` (`hydra_report` analyzes everything with an empty seed).
+- Test: `tests/test_report.cpp`
+
+**Acceptance Criteria:**
+- [ ] On the testdata charts, the rows from the engine equal the rows from the stored records, field by field. This test calls the old `for_each_blob` path, which still exists in this wave; T5 deletes the test with the old path.
+- [ ] A seeded chart is not analyzed again (count the analyzer's calls with a test hook on `BatchCallbacks::analyze`).
+- [ ] Cancelling stops the pass and writes no report.
+- [ ] A chart whose file fails to load is skipped and counted the same way a failed record is today. If no "failed" count exists today, stop and ask.
+
+**Verify:** `.\build_cpp.ps1 -Target hydra_tests` then `build-cpp\Release\hydra_tests.exe -sf=*test_report*` → pass; `-sf=*test_fill_report*` → pass (unchanged); `-tc="single-owner*"` → pass.
+
+**Steps:**
+
+- [ ] **Step 1:** Write the equivalence test and the seed test. Run them and see them fail.
+- [ ] **Step 2:** Implement the engine-fed `collect_rows` and the seed. Run the tests and see them pass. Commit.
+- [ ] **Step 3:** Write and pass the cancel test. Commit.
+
+---
+
+### Task 4: The tools stop reading stored details
+
+**Goal:** `hydra_replay dump` always analyzes, and `hydra_batch --reindex` is removed, so nothing outside the store reads path details.
+
+**Files:**
+- Modify: `tools/replay.cpp` (`cmd_dump`, about :514-601). Drop the database snapshot, `--db`, `--no-analyze` and the `get_record` branch. Keep the JSON's `source` field, always `"analyzed"`, so scripts that read it don't break. Update the usage text (about :99).
+- Modify: `src/cli/batch.cpp` (drop `--reindex`, about :98-102 and :154-155) and `src/store/record_store.{h,cpp}` (delete `reindex()`).
+- Test: the replay tests (`build-cpp\Release\hydra_tests.exe -sf=*replay*`) and the batch-argument tests, if any. Grep `tests/` for `reindex` and `no-analyze` and update each hit.
+
+This task changes `cmd_dump` only. Track R changes `cmd_score`, `cmd_target` and `check_chart` in the same file, so the two merge cleanly as long as neither reformats the other's functions.
+
+**Acceptance Criteria:**
+- [ ] `hydra_replay dump <chart>` prints `"source":"analyzed"` and the same paths as before for a testdata chart.
+- [ ] `hydra_replay dump --no-analyze` and `hydra_batch --reindex` exit non-zero with "unknown option" (the tools' existing message for an unknown flag).
+- [ ] A grep for `reindex(` and `no-analyze` in `src`, `tools` and `tests` finds nothing.
+- [ ] Every doc that mentions either flag is listed for T6 (`docs/`, the User Guide, the FC video workflow notes).
+
+**Verify:** `.\build_cpp.ps1 -Target hydra_replay`, `-Target hydra_batch`, `-Target hydra_tests`; then `build-cpp\Release\hydra_tests.exe -sf=*replay*` → pass.
+
+---
+
+### Task 5: The store keeps summaries only, and upgrades in place
+
+**Goal:** Delete the detail tables, the codec, the songmeta and dynamics storage, and their stamps. The batch saves summary rows only. The first open of an old database upgrades it in place (D87 items 1 and 7).
+
+**Forks from:** main once T2, T3 and T4 are merged.
+
+The upgrade, as the last step of `set_up_schema`, runs only when a `paths` table exists:
+
+1. In one transaction, delete `results` rows with NULL `stars` (they can't be filled without details; a click or a batch refills them). Drop `paths`, `path_refs`, `songmeta` and `dynamics`. Run `ALTER TABLE results DROP COLUMN structure` (SQLite has supported this since 3.35; the vendored copy is 3.46.0).
+2. Commit, then run `VACUUM` outside any transaction. `VACUUM` refuses to run inside one, and it needs free disk space up to the file's size.
+3. Run `PRAGMA wal_checkpoint(TRUNCATE)`.
+4. Every open sets `PRAGMA journal_size_limit = 4194304` (4 MB, about SQLite's default 1,000-page checkpoint). SQLite truncates the WAL to that limit when it resets the log after a full checkpoint, so it never sits at 46 MB again. Firefox ships the same default for the same reason (Mozilla bug 1820478).
+
+Any failure throws the DatabaseOpen sentence (D72 item 2).
+
+The Ready rule moves from the blob head to the columns. `rank_row` reads `hyversion` and the `rules_fp` column; `kPathFormatStamp` goes. Every current row has path format 7, because format 7 came before the "2.1.0+allzero" stamp, so no row changes state. The upgrade test proves it.
+
+**Files:**
+- Modify: `src/store/record_store.{h,cpp}`. Delete `get_record`, `get_timing`, `for_each_blob`, `load_nodes`, `reload_row`, `collect_orphan_paths`, `upsert_song`, `encode/decode_tempomap`, `write_song_length`, `fill_song_length`, `insert_dynamics`, `put_dynamics`, `get_dynamics` and `fill_missing_stars`. Trim `PreparedRow` (no `structure`, no `nodes`) and `save_analysis` (no tempomap, dynamics or length arguments). Delete `RecordLookup`. Remove the songmeta join from `list_records`, which now names charts through `kNamingCopiesSql`. Add the upgrade and the pragma.
+- Delete: `src/store/path_codec.{h,cpp}`, `tests/test_path_codec.cpp`, `tests/test_dynamics_store.cpp`, `tests/record_bytes.h`, and T3's stored-versus-engine equivalence test in `tests/test_report.cpp`, which needs `for_each_blob`.
+- Modify: `src/store/stored_versions.h`. Remove `kPathFormatStamp`, `kDynamicsCountStamp`, `kDynamicsBlobStamp` and `kSongLengthStamp`, with their comments. `kResultsStamp` and `kChartMetaStamp` stay unchanged.
+- Modify: `src/app/dynamics_breakdown.{h,cpp}` (delete `encode/decode_dynamics`, `save_dynamics`, `load_stored_dynamics`; keep `count_dynamics`), `src/app/analysis.cpp` (`run_batch` no longer counts dynamics or builds a tempo map; `prepare_row` makes a summary only), `src/ui/app_state.cpp` (the click's `save_analysis` call).
+- Modify: `tools/compare_db.py` and `tools/test_compare_db.py`. Add `--summary-only`, which compares `results` on the columns both files share (leaving out `result_id` and `structure`), plus `charts` and `meta`, and says which tables it skipped.
+- Modify: every test that used `record_bytes` as an equality check. Replace it with the JSON writer `hydra_replay dump` uses (`replay_json`), if that writer covers every field `record_bytes` covered. If it doesn't, stop and report. Don't write a new serializer.
+- Test: `tests/test_store.cpp`, plus the source-scan entries in `tests/test_single_owner.cpp` that pin the pragmas and the schema code (about :4299-4309, :4361-4367, :4823-4827).
+
+**Acceptance Criteria:**
+- [ ] Upgrade test: a store seeded in the old layout with Ready, Stale-version, Stale-rules, NULL-stars and other-chart-mode rows comes out with no detail tables and no `structure` column. Ready rows are still Ready, Stale rows are still Stale, and NULL-stars rows are gone.
+- [ ] Opening an upgraded store a second time does nothing (it's idempotent).
+- [ ] `PRAGMA journal_size_limit` reads 4194304 after open.
+- [ ] A grep for `path_codec`, `tempomap`, `songmeta`, `get_record`, `for_each_blob` and `kPathFormatStamp` in `src` and `tools` finds nothing.
+- [ ] `py tools\test_compare_db.py` passes.
+- [ ] The batch saves rows that `compare_db.py --summary-only` matches against a baseline database on the testdata library.
+
+**Verify:** `.\build_cpp.ps1` (all targets), then `build-cpp\Release\hydra_tests.exe -sf=*test_store*`, `-sf=*test_app_state*`, `-sf=*test_report*`, `-sf=*test_analysis*` and `-tc="single-owner*"` → pass; `py tools\test_compare_db.py` → pass.
+
+**Steps:**
+
+- [ ] **Step 1:** Write the upgrade test and the pragma test. Run them and see them fail. Commit the tests with the upgrade code once they pass.
+- [ ] **Step 2:** Switch `rank_row` to the column, and trim `PreparedRow`, `save_analysis` and `run_batch`. Build, run the named tests, commit.
+- [ ] **Step 3:** Delete the dead functions, files and stamps. Build, then grep. Commit.
+- [ ] **Step 4:** Replace `record_bytes` in the tests. Run the named tests. Commit.
+- [ ] **Step 5:** Add `compare_db.py --summary-only` and its test. Commit.
+
+---
+
+### Task 6: The ADR and the docs
+
+**Goal:** The written record matches the code. A new ADR says why the store holds summaries only, the older ADRs say what they no longer decide, and the User Guide describes the click.
+
+**Runs:** in parallel with T5, docs only. It merges main in after T5 merges, then gets its review.
+
+**Files:**
+- Create: `docs/adr/0026-the-store-keeps-summaries-the-engine-gives-details.md` (use the next free ADR number; check `docs/adr/` first). Its content: the audit's numbers, D87, what's stored and why each piece is, and the rejected options (compression, the trimmed codec, share-once with integer ids), each with one line of why.
+- Modify: ADRs 0009 (superseded for storage; its keying by settings stays), 0014 (the rules fingerprint lives in the `rules_fp` column), 0017 and 0022 (their layout statements are historical), 0018 (the four removed stamps), 0021 (transfer scales are stamped by the engine at analysis and never stored). Add a "Superseded in part by 0026" line to each, without rewriting history.
+- Modify: the User Guide (every hit T2 and T4 listed), `CONTEXT.md` if it defines Ready, Stale or record, and D77's entry (one line pointing to D87 item 4).
+- Test: `build-cpp\Release\hydra_tests.exe -sf=*docs_match_code*`, if it exists.
+
+**Acceptance Criteria:**
+- [ ] A grep of the User Guide for "Re-analyze", "--reindex" and "--no-analyze" finds nothing.
+- [ ] Every ADR named above links to the new ADR.
+- [ ] The docs-match-code test passes.
+
+**Verify:** `build-cpp\Release\hydra_tests.exe -sf=*docs_match_code*` → pass.
+
+---
+
+### The join (main session)
+
+Once T5 and T6 are merged, the main session runs each check once.
+
+1. **Full suite:** `hydra_tests.exe` and `hydra_uitest.exe --all --jobs 4`.
+2. **Library check.** Through the bench lock, run `hydra_batch --db new.db` with the joined build. Compare it with `py tools\compare_db.py --summary-only` against the baseline `fresh.db` in `C:\Users\Patrick\.claude\hooks\state\bench\baseline-c251abd\`, which the perf join showed equal to main. Expect "0 differ" for `results`, `charts` and `meta`.
+3. **Report check.** Generate the path report with the baseline build from `fresh.db` and with the joined build from `new.db`. The HTML must be identical except for its date line.
+4. **Upgrade check.** On a backup-API copy of the installed database, open it once with the joined `hydra_batch` (a run with no charts to do). Before and after, count Ready and Stale rows with `get_summaries`' rule. Ready stays 18,811; Stale drops by exactly the deleted gone-chart rows once a scan runs. Record the wait and the final size.
+5. **One timing run:** `hydra_batch --redo` on a real-database copy, baseline against joined build, plus the report pass's time. Write it up in `docs/handoffs/<date>-summary-storage-results.md`.
+6. **Memory.** Update `storage-audit-2026-10-06.md` with the outcome, and `fc-video-workflow.md` if `--no-analyze` appeared there.
+
+Pushing stays the user's call.
+
+---
+
+### Track R: hydra_replay uses the engine (separate session)
+
+**Goal:** the card "Make hydra_replay use the engine, not a copy" (storage-audit handoff section 6). First, the score graph hands out the per-chord values it already computes (`src/search/graph.cpp`, about :126 and :139), and `hydra_replay score` uses them instead of restating the window rules in `src/core/replay.cpp`. Second, `target` pins the whole path (activation ticks, squeeze choices and the SqOut), not only where activations start, so it stops growing exponentially on long charts (`src/search/pather.cpp` :220-250, `kKeepEveryPathBand` :236-238; `src/search/engine.cpp` :1771-1786).
+
+**How it runs:** its own session in its own worktree, started when wave 1 starts. A Fable planning pass writes its plan first (rule 2), then Opus executes.
+
+One constraint the brief must carry. The Preview's score display calls `replay_stored_path` (`src/app/preview_view.cpp`, about :214-233). If any number the Preview shows would change, that goes to the user before merging. Its proof is that `hydra_replay selfcheck` matches the engine on every testdata chart, and that `target` on blink-182's "Discography" finishes and returns the stored path.
+
+**Files it owns:** `src/search/graph.*`, `src/search/pather.*`, `src/search/engine.cpp` (target mode only), `src/core/replay.*`, and `tools/replay.cpp`'s `cmd_score`, `cmd_target` and `check_chart`. It never touches `cmd_dump` (T4) or `src/store`.

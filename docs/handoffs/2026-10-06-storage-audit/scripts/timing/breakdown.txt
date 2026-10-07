@@ -1,0 +1,11 @@
+Discovered 19436 chart(s) (0 folder error(s)).
+Settings: the GUI default (SP cap 4 bars, depth scores 4, timing cap 10 ms).
+
+C:\Clone Hero\songs\synchotic\Sync Charts\Rock Band\Rock Band Network\Zoo Seven - Painted\notes.mid
+  parse 0.00s | search 0.00s | store 0.00s  => TOTAL 0.00s
+  best score 511725 | 5 paths | sp_cap 4
+
+Something went wrong. Try again, and if it keeps happening, report it with the details below.
+
+analyze_chart was given a song with no notes; check it with require_notes first
+C:\Clone Hero\songs\synchotic\Sync Charts\Rock Band\Rock Band Network\Zing Experience - Faster Than a Bullet\notes.mid
