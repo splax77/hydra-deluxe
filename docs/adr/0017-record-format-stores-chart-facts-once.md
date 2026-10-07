@@ -1,5 +1,10 @@
 # The record format stores each chart fact once
 
+> **Superseded in part by [ADR 0026](0026-the-store-keeps-summaries-the-engine-gives-details.md),
+> 2026-10-07.** The structure blob and the path nodes are gone, so every
+> statement below about the stored layout is history. The record in memory
+> still holds the multiplier squeezes once and each root's totals beside it.
+
 A stored record is a structure blob (the path tree's shape) plus
 content-addressed path nodes (ADR 0009). Until 1.8.1 each node carried its
 own multiplier squeezes, six score totals, note count, leftover SP and two
@@ -43,7 +48,7 @@ shows afterwards is unchanged.
 
 ## Amendment, 2026-10: format 7
 
-The path format stamp is now 7 itself (`kPathFormatStamp`, ADR 0021). So
+The path format stamp is now 7 itself (kPathFormatStamp, ADR 0021). So
 "record format v7" above means stamp 6, the 1.8.2 to 2.0.0 layout.
 
 Format 7 changed the activation fields above. A presence byte is one byte

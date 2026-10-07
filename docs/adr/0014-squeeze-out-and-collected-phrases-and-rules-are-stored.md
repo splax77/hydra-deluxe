@@ -5,6 +5,13 @@
 > reads `auto_cap_ladder` and `auto_budget_s` in `hydra_rules.ini` but ignores
 > them. The rest of this record stands.
 
+> **Superseded in part by [ADR 0026](0026-the-store-keeps-summaries-the-engine-gives-details.md),
+> 2026-10-07.** The rules fingerprint lives in the results table's `rules_fp`
+> column, and the Ready check reads it there. The structure blob it was
+> written into is gone, and so is `hydra_batch --reindex`, named in the D51
+> call 8 amendment. The engine still stamps the squeezed-out phrase and the
+> collected phrases on the record, which is no longer stored.
+
 Two facts about an activation were only ever known inside the search. The
 first is which SP phrase it squeezed out. The second is which phrases it
 collected while Star Power was running. The display layer needed both, so it

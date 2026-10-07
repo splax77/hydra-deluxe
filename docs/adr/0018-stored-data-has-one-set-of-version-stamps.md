@@ -1,5 +1,13 @@
 # Stored data has one set of version stamps, and none is the app version
 
+> **Superseded in part by [ADR 0026](0026-the-store-keeps-summaries-the-engine-gives-details.md),
+> 2026-10-07.** Four stamps are gone with the data they stamped: the path
+> format stamp, the two dynamics stamps (counting and blob layout) and the
+> song length stamp. A row's Ready check now reads its results stamp and its
+> `rules_fp` column. `kResultsStamp` and `kChartMetaStamp` stay, and the rule
+> below about when to bump `kResultsStamp` stands. The removed stamps' names
+> below are left unformatted, since the code no longer has them.
+
 Every row Hydra saves was computed by some build. Before a build shows a
 row, it asks: would I have computed the same thing? Until 1.8.4 that
 question was answered four different ways, in three files.
@@ -26,10 +34,10 @@ store's SQL version of the results check is built from the same lists.
   catch: the engine, the scoring, the chart readers, or what a record holds.
   When it changes it is set to the version of the release that ships the
   change, and changes that ship together share one bump.
-- `kPathFormatStamp`: one number for the structure blob and the nodes it
+- kPathFormatStamp: one number for the structure blob and the nodes it
   points at. A node is only ever read through its structure, so one number
   covers both. Its value stays 6, so no stored byte changes.
-- `kDynamicsCountStamp` and `kDynamicsBlobStamp`: how notes are counted, and
+- kDynamicsCountStamp and kDynamicsBlobStamp: how notes are counted, and
   the count blob's layout.
 
 Dynamics keeps its own counting stamp instead of sharing the results stamp.
@@ -60,6 +68,6 @@ new stamp alone. The app version used to force that bump on every release.
 The SP-end history (ADR 0021) changed both stored values and the layout.
 `kResultsStamp` is now "2.1.0" alone, the release that ships it. Every
 release from 1.8.4 to 2.0.0 stamped "1.8.2", so no saved result already
-carries "2.1.0". `kPathFormatStamp` is now 7. Every saved result reads Stale
+carries "2.1.0". kPathFormatStamp is now 7. Every saved result reads Stale
 once. Step 2's chart-reader changes (D19 to D31) ship in the same release
 and share that bump (D33).

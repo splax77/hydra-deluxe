@@ -1,5 +1,10 @@
 # Analysis settings key a record; paths are stored once
 
+> **Superseded in part by [ADR 0026](0026-the-store-keeps-summaries-the-engine-gives-details.md),
+> 2026-10-07.** The keying by settings stands: a chart keeps one summary row
+> per settings combination. The paths are no longer stored at all, so the
+> "stored once" half below, with its paths and references tables, is history.
+
 A record is now keyed by chart, chart mode, SP cap, ms limit, and score
 range — the full settings the analysis ran with. Records accumulate: one row
 per settings combination, and re-running a combination replaces only its own

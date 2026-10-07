@@ -102,8 +102,9 @@ What changed:
   stamped the file `ch10`; then under 1.0. So a `--legacy-fills` database
   from before still reads as 1.0.
 - `prepare_row` refuses a key that names the other rule. `HydraRecord` carries
-  the rule in memory (`legacy_fills`), not in its stored bytes; `get_record`
-  sets it from the key.
+  the rule in memory (`legacy_fills`), not in its stored bytes; the store's
+  record loader set it from the key. Since ADR 0026 no record is stored or
+  loaded, and the pather sets it from the run's settings.
 - The app's setting is `legacy_fills` in hydra_settings.ini, a checkbox
   beside the SP cap. "Compare with dmleaderboards" is disabled while it is on.
 - `hydra_fillcompare` reads 1.0 results from `--old` and 1.1 results from
@@ -120,3 +121,8 @@ because the request was for the GUI only.
 The byte-for-byte point above still holds: 1.0 results interpolate between
 ticks in floating point. They now share a table with 1.1 results, but never a
 key, so no lookup can mix the two.
+
+## Note, 2026-10-07: no stored paths
+
+ADR 0026 stopped storing paths, so `hydra_batch --reindex`, named above, is
+gone. The stamp on the file and the guards are unchanged.
