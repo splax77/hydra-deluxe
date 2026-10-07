@@ -633,7 +633,8 @@ endforeach()
 # in the file, after every add_executable.
 #
 # /include:mi_version is the switch mimalloc's readme gives to make sure the
-# exe really imports mimalloc.dll even though Hydra never calls it by name.
+# exe really imports mimalloc.dll, even an exe that never calls mimalloc by
+# name (src/app/allocator.h has the calls Hydra does make).
 # mimalloc goes first in each exe's link libraries because the readme
 # (third_party/mimalloc/bin/readme.md, step 4) wants mimalloc.dll as early as
 # possible in the import list, so it is in place before any other DLL
