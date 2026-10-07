@@ -22,7 +22,7 @@ namespace hydra {
 // sqout_tick (-1 or absent when there is none, or in a dump from before v6),
 // and a "sqinouts" list whose SqOut entry holds the squeeze-out's offset in
 // ms. A window with an offset but no sqout_tick must go through
-// resolve_sqout_note before it is replayed.
+// resolve_window_sqout before it is replayed.
 //
 // This exists because the only other way to hand a path to `hydra_replay
 // score` was to retype it as an "act:deact,..." string, and that string used
