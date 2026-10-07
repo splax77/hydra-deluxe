@@ -4,6 +4,8 @@
 > 2026-10-07.** The structure blob and the path nodes are gone, so every
 > statement below about the stored layout is history. The record in memory
 > still holds the multiplier squeezes once and each root's totals beside it.
+> The path format stamp the amendment below names (kPathFormatStamp) is gone
+> from the code.
 
 A stored record is a structure blob (the path tree's shape) plus
 content-addressed path nodes (ADR 0009). Until 1.8.1 each node carried its

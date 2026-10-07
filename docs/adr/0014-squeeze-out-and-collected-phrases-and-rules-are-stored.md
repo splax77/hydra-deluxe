@@ -39,11 +39,12 @@ rules the run used. The fingerprint is FNV-1a 64 over one `name=value` line
 per rule, each number written with 17 significant digits; a hash that lands
 on 0 becomes 1, because 0 means "no usable rules" (`Rules::fingerprint()` in
 src/core/rules.cpp; the user confirmed this format, D48, Q33).
-The store writes it into the structure blob right after
-the format version, so version and rules make one 12-byte head. That head is
-what decides Ready, in C++ (`rank_row` in `src/store/record_store.cpp`,
-whose `.ready()` answers it). An SQL spelling of the same check stood beside
-it until D79 removed it; the batch now asks `RecordStore::get_summaries` too.
+The store wrote it into the structure blob right after
+the format version, so version and rules made one 12-byte head. Today it is
+the results table's `rules_fp` column. Either way it decides Ready, in C++
+(`rank_row` in `src/store/record_store.cpp`, whose `.ready()` answers it). An
+SQL spelling of the same check stood beside it until D79 removed it; the batch
+now asks `RecordStore::get_summaries` too.
 The rules part compares one fingerprint, the store's
 `RulesStamp::fixed`.
 
@@ -319,16 +320,21 @@ result under rules A deleted the chart's rules-B row (audit finding 65). The
 promise now holds, and its two sentences stay as they are.
 
 The results table's unique key gains the rules fingerprint, as a `rules_fp`
-column. It is filled from the structure blob's head by rules_fp_of, the one
+column. It was filled from the structure blob's head by rules_fp_of, the one
 SQL spelling of "which rules was this row analyzed under". Schema 4 rebuilds
 the table once, in upgrade_results_key, and keeps every row, result id and
 blob, so nothing is analyzed again. A rules-A row and a rules-B row for the
 same chart, mode, cap and lens now sit side by side.
 
+Since ADR 0026 (storage-T5) rules_fp_of has one job left. It reads an older
+file's blob while that file upgrades to schema 4, before the upgrade drops the
+blob. Every later read of the fingerprint is the `rules_fp` column.
+
 The SQL Ready check stopped being one undivided check here. It became
-row_readable_sql() (this build can read the row: its results version and
-path format) plus the rules part (the row's fingerprint is this process's).
-D79 later removed the rules part from SQL; only `rank_row` reads it now.
+row_readable_sql() (this build can read the row) plus the rules part (the
+row's fingerprint is this process's). D79 later removed the rules part from
+SQL; only `rank_row` reads it now. Since ADR 0026, row_readable_sql() checks
+the results version alone. The path format it once also checked is gone.
 A write under rules A has two purges: the first removes the rows that fail
 row_readable_sql() (unreadable by this build), and the second replaces the
 row with the same key under the same rules. Neither touches the rules-B row,

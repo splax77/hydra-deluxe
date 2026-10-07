@@ -66,15 +66,26 @@ through `app::analyze_chart_file`). Nothing is worked out a second way:
 - The path report analyzes every library chart that has a Ready row, on all
   cores, and reuses the charts a batch just analyzed (D87 item 5). A chart
   whose file can't be read is left out, and the page names it (D89 item 1).
+- The leaderboard comparison page and `hydra_fillcompare` follow the path
+  report's library rule (D92). With the stored song table gone, a chart's name
+  comes from the chart library. A database with results and no library stops
+  both with D89 item 2's sentence (`report::kNoChartLibrary`), and a result
+  whose chart the library doesn't list is left off the page. The app's own
+  database is unchanged, since every result there is a library chart. A
+  database built by `hydra_batch` with folder arguments has no library.
 - `hydra_replay dump` always analyzes the chart and reads no database.
 
 A row is Ready when its results stamp is current (`kResultsStamp`) and its
-`rules_fp` column matches the rules in force. `rank_row` reads both columns.
-Until storage-T5 it read them from the head of the row's stored path blob,
-together with a path format stamp. Every row that carries the current results
-stamp has path format 7, because format 7 came before that stamp. The older
-rows, in older formats, are already Stale by their results stamp and stay
-Stale. So no row changes state when the check moves to the columns.
+`rules_fp` column matches the rules in force. `rank_row` reads the row's
+`hyversion` and `rules_fp` columns. The SQL twin, `row_readable_sql`, checks
+the results stamp alone. Until storage-T5 the check read the rules from the
+head of the row's stored path blob, together with a path format stamp. Every
+row that carries the current results stamp has path format 7, because format 7
+came before that stamp. The older rows, in older formats, are already Stale by
+their results stamp and stay Stale. So no row changes state when the check
+moves to the columns. `rules_fp_of` is what is left of the blob read. It runs
+only while an older file upgrades, to fill the `rules_fp` column of a file
+that has none yet (ADR 0014).
 
 Two smaller rules come with this. Rows of charts that left the library are
 deleted at each scan (D87 item 4, `delete_results_without_chart`). A chart
@@ -85,18 +96,21 @@ saved under it (D87 item 3, `reidentify_chart`).
 
 It lands with storage-T5. The first time the new Hydra opens an old file,
 `set_up_schema` upgrades it in place, with no backup copy (D87 item 7). It
-runs only when the old paths table exists, so a second open does nothing.
+runs only when the old paths table exists, so a second open does nothing. It
+is the last step of `set_up_schema`, in `drop_stored_details`.
 
-First, in one transaction, it deletes the summary rows whose stars were never
-filled in. Filling them needed the details, and a click or a batch writes them
-again. It drops the paths, path_refs, songmeta and dynamics tables, and the
-results table's structure column. Then it runs VACUUM, which rewrites the file
-at its new size and needs free disk space up to the old size. Last, a WAL
-checkpoint empties the log.
+First, in one transaction, it deletes the rows that have a score and no stars,
+which an older build wrote before the stars column existed. Filling the stars
+needed the details, and a click or a batch writes the row again. In the same
+transaction it drops the paths, path_refs, songmeta and dynamics tables, and
+the results table's structure column. Then it runs VACUUM, which rewrites the
+file at its new size and needs free disk space up to the old size. Last, a
+WAL checkpoint in TRUNCATE mode empties the log.
 
-Every open also sets SQLite's journal_size_limit to 4 MB. SQLite then cuts the
-log back to that size after each full checkpoint, so it never sits at 46 MB
-again. Firefox ships the same limit for the same reason (Mozilla bug 1820478).
+Every open also sets SQLite's journal_size_limit (`kJournalSizeLimitBytes`,
+4 MB; user decision D93). SQLite then cuts the log back to that size after
+each full checkpoint, so it never sits at 46 MB again. Firefox ships the same
+limit for the same reason (Mozilla bug 1820478).
 
 Any failure shows the database-open error (D72 item 2).
 

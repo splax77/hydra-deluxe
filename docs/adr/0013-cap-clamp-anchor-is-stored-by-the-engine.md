@@ -1,5 +1,11 @@
 # The cap-clamp anchor is stored by the engine, never re-derived
 
+> **Superseded in part by [ADR 0026](0026-the-store-keeps-summaries-the-engine-gives-details.md),
+> 2026-10-07.** "Stored" now means the engine stamps the fact on the record
+> when it analyzes. The record is no longer saved, and the store's Ready rule
+> no longer checks a path format (the "What this costs" section below is
+> history).
+
 An activation's Star Power window normally ends a fixed distance past the
 activation. But when a phrase collected mid-Star-Power would overfill the
 meter past the SP cap (the most bars of SP you can hold), the window's end

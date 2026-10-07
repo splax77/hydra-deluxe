@@ -59,9 +59,14 @@ src/app/report.h owns those cases and their sentences.
 
 To see what the rule change did, compare the two. `hydra_fillcompare` reads
 the 1.0 results from `--old` and the 1.1 results from `--new`. Each chart's
-row is labelled by which database holds a record for it, even when that
-record has no paths. Narrow columns name the rules CH 1.0 and CH 1.1. The two
-databases can be two files, or the app's own database twice:
+row is labelled by which database holds a result for it. Narrow columns name
+the rules CH 1.0 and CH 1.1. Like the path report, it compares library charts
+only (D92). A result whose chart the library doesn't list is left off the
+page. A database with results and no chart library, such as one built by
+`hydra_batch` with folder arguments, stops it with the same sentence as
+`hydra_report` (`report::kNoChartLibrary`, D89 item 2). The Compare with dmleaderboards page follows the
+same two rules. The two databases can be two files, or the app's own database
+twice:
 
 ```
 hydra_batch --legacy-fills --db ch10.db
@@ -125,7 +130,8 @@ The vendored SQLite is built without its memory-use counters and without
 shared cache. Hydra uses neither, and leaving them out trims a little of
 SQLite's own work; `tests/test_store.cpp` checks both. SQLite's default sync
 level for WAL mode is not set at build time, because the store sets it itself
-on every open (`record_store.cpp`).
+on every open (`record_store.cpp`). The store also caps the write-ahead log
+(`hydra.db-wal`) there, at `kJournalSizeLimitBytes` (D93; ADR 0026).
 
 Every exe runs on Microsoft's mimalloc memory allocator instead of the
 Windows heap, the tests and benchmarks included (decision D88). It cut Hydra's
@@ -196,6 +202,9 @@ run of the new one (B) over the same charts.
 prints one line per table, "N rows compared, M differ", lists the first few
 keys that differ, and exits 1 if any table differs. It leaves out
 `result_id`, which only records the order worker threads finished in.
+A baseline made before the store kept summaries only (ADR 0026) has tables a
+new file no longer has. Add `--summary-only` to compare just what the new
+store keeps; the script's own header says which tables and columns that is.
 
 `hydra_bench --engine <folder>` and `hydra_bench --parse <folder>` print one
 digest over a whole folder: the first over every chart's stored result row,

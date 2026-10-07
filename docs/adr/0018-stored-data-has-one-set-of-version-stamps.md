@@ -7,6 +7,10 @@
 > `rules_fp` column. `kResultsStamp` and `kChartMetaStamp` stay, and the rule
 > below about when to bump `kResultsStamp` stands. The removed stamps' names
 > below are left unformatted, since the code no longer has them.
+> `src/store/stored_versions.h` is the list of what is left. Where the text
+> below says the results stamp covers what "the path format" doesn't, only the
+> rules fingerprint is left beside it. The store's SQL check
+> (`row_readable_sql`) reads the results stamp alone.
 
 Every row Hydra saves was computed by some build. Before a build shows a
 row, it asks: would I have computed the same thing? Until 1.8.4 that
