@@ -4554,6 +4554,38 @@ const std::vector<OwnerRule>& rules() {
            "copies_of, the owner"},
           {"src/store/record_store.cpp", "return listed == copies.end() ? 1 : listed->second;",
            "copies_of, the owner"}}},
+        // write_row's purge and the Auto cleanup each spelled the refs-then-
+        // results delete; a third spelling could delete in the wrong order
+        // and leave path nodes no sweep finds (task storage-T1 review).
+        {"In what order does a result get deleted?",
+         "RecordStore::delete_results_where in src/store/record_store.cpp",
+         R"(DELETE FROM path_refs)",
+         "",
+         {},
+         {},
+         "D87 items 3 and 4 (task storage-T1 review finding 1)",
+         {"\"DELETE FROM path_refs WHERE result_id IN\"",
+          "std::string refs = \"DELETE FROM path_refs WHERE result_id IN\""},
+         {"\"DELETE FROM paths WHERE hyhash=? AND chartmode=? AND phash NOT IN\"",
+          "delete_results_where(results_gone, [](sqlite3_stmt*) {}, what);"},
+         {{"src/store/record_store.cpp", "\"DELETE FROM path_refs WHERE result_id IN\"",
+           "delete_results_where, the owner"}}},
+        // The scan's purge asks this of results, songmeta and dynamics alike;
+        // a second SQL spelling could keep one table's rows the others drop.
+        {"Which stored rows belong to a chart no library row lists?",
+         "not_in_library in src/store/record_store.cpp",
+         R"(charts\.md5 = )",
+         "",
+         {},
+         {},
+         "D87 items 3 and 4 (task storage-T1 review finding 1)",
+         {"NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = results.hyhash)",
+          "\"SELECT 1 FROM charts WHERE charts.md5 = \" + col"},
+         {"bind_text(s, 1, item.md5);",
+          "kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"},
+         {{"src/store/record_store.cpp",
+           "return std::string(\"NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = \") + hash + \")\";",
+           "not_in_library, the owner"}}},
         // The path report and the fill comparison count charts by adding up
         // each row's copies, in C++ and in the page script alike. Counting
         // rows instead drops every extra copy. The leaderboard page counts
