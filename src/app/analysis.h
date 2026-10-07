@@ -101,18 +101,12 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
 // by path alone. Returns an empty string if the file cannot be read.
 std::string hash_chart_file(const std::string& path);
 
-// Whether a chart's files still give the fingerprint the scan stored in
-// `sig` (ScanItem::sig, ChartLibraryEntry::sig); pending_chart_of in
-// analysis.cpp decides which files that covers. This is the
-// rescan's own shortcut: when it says yes, the stored md5 still holds and the
-// file need not be hashed again. False when `sig` is empty, the file is gone,
-// or a folder chart has lost its song.ini, so the caller hashes.
-bool chart_files_unchanged(const std::string& notespath, const std::string& sig);
-
 // The fingerprint a chart's files give now, as the scan would store it in
-// `sig`. Empty when the file is gone or a folder chart has no song.ini.
-// chart_files_unchanged compares against it; a click that finds an edited
-// chart stores it with the new hash (RecordStore::reidentify_chart).
+// `sig` (ScanItem::sig, ChartLibraryEntry::sig); pending_chart_of in
+// analysis.cpp decides which files that covers. Empty when the file is gone or
+// a folder chart has no song.ini. chart_changed_since compares against it; a
+// click that finds an edited chart stores it with the new hash
+// (RecordStore::reidentify_chart).
 std::string chart_files_sig(const std::string& notespath);
 
 // What a chart's files are now, when they are not what a library row stored.
@@ -122,10 +116,12 @@ struct ChartNow {
 };
 
 // The one answer to "has this chart changed since its library row was made,
-// and what is it now?". Empty when chart_files_unchanged says the files still
-// give `stored_sig`, so nothing is hashed. Otherwise the file is hashed with
-// the scan's own rule and the caller compares ChartNow::md5 with the row's
-// md5 (an empty md5 means the file is unreadable, which is no change).
+// and what is it now?". This is the rescan's own shortcut: empty when the
+// files still give `stored_sig`, so the stored md5 holds and nothing is
+// hashed. A missing `stored_sig`, a gone file or a folder chart without its
+// song.ini all count as changed, so the file is hashed with the scan's own
+// rule and the caller compares ChartNow::md5 with the row's md5 (an empty md5
+// means the file is unreadable, which is no change).
 std::optional<ChartNow> chart_changed_since(const std::string& notespath,
                                             const std::string& stored_sig);
 

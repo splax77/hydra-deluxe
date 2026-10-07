@@ -247,7 +247,7 @@ std::string sig_of(const DirEntry& notes, const DirEntry* ini) {
 
 // The rescan cache's one "unchanged" test: a fingerprint was stored and the
 // files on disk still give the same one. The scan's cache lookup and
-// chart_files_unchanged both ask it.
+// chart_changed_since both ask it.
 bool sig_unchanged(const std::string& stored, const std::string& now) {
     return !stored.empty() && stored == now;
 }
@@ -265,7 +265,7 @@ ChartKind chart_kind_of(const std::string& name) {
 // One chart file in its folder's listing, as the scan records it: its kind,
 // its path, the song.ini that goes with a folder chart, and the fingerprint
 // of the files that make it up. Nothing when a folder chart has no song.ini.
-// The walk and chart_files_unchanged both ask this, so which files go into a
+// The walk and chart_files_sig both ask this, so which files go into a
 // fingerprint is decided here once. The rootfolder is the caller's to fill.
 std::optional<PendingChart> pending_chart_of(const std::string& dir, const DirEntry& chart,
                                              const std::vector<DirEntry>& listing) {
@@ -354,11 +354,6 @@ std::string chart_files_sig(const std::string& notespath) {
             return now ? now->sig : std::string();
         }
     return {};
-}
-
-bool chart_files_unchanged(const std::string& notespath, const std::string& sig) {
-    const std::string now = chart_files_sig(notespath);
-    return !now.empty() && sig_unchanged(sig, now);
 }
 
 std::optional<ChartNow> chart_changed_since(const std::string& notespath,

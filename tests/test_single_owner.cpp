@@ -2148,7 +2148,7 @@ const std::vector<OwnerRule>& rules() {
           "const int i = idx.section_at(static_cast<int64_t>(std::ceil(ticks)));"}},
         // Fingerprinting a chart's files by hand: anything that calls sig_of
         // has chosen which files go in. Only pending_chart_of chooses, and
-        // the scan walk and chart_files_unchanged both ask it.
+        // the scan walk and chart_files_sig both ask it.
         {"Which files make up a chart's fingerprint?",
          "pending_chart_of in src/app/analysis.cpp",
          R"(\bsig_of\()",

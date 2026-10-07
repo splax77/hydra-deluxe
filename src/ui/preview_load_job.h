@@ -110,8 +110,8 @@ public:
         render::TrackStateOptions track_opts;
         // The chart file's hash (app::hash_chart_file, the scan's rule) is not
         // the entry's md5: the chart changed since its record was analyzed.
-        // The file is hashed only when app::chart_files_unchanged says no
-        // for the entry's sig.
+        // The file is hashed only when app::chart_changed_since finds the
+        // entry's sig out of date.
         // The scene was then built with no path, as for an unanalyzed chart.
         bool chart_changed = false;
     };
