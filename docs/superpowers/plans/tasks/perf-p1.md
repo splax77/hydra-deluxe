@@ -22,6 +22,10 @@ The plan's P1 list: `src/parse/song.cpp`, `src/parse/midi.h`, `src/parse/midi.cp
 
 Owned-file check: every P1 acceptance criterion is met inside the files above.
 
+## Added by the main session (2026-10-06, after the review)
+
+The review's kind B/C finding (the per-chart parse digest recipe copied into `tests/test_song.cpp`) puts the shared helper next to `tests/song_digest.h`. The fix round may change `tests/song_digest.h` and `tests/test_perf_digest.cpp` for that finding only. No other wave-1 task touches either file. The pinned digests in `test_perf_digest.cpp` must not move.
+
 ## Preflight
 
 Command: `grep -n "load_sections\|word_stoi\|try_parse_int" src/parse/song.cpp` and `grep -n "parse_track" src/parse/midi.cpp`, run by the orchestrator on the base's code on 2026-10-06.
