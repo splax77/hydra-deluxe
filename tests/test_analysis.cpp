@@ -973,3 +973,95 @@ TEST_CASE("run_batch: a failed group COMMIT saves each chart alone, and only a c
     }
     std::remove(path.c_str());
 }
+
+// S1: the folder walk runs on several threads, but the folder count still
+// reaches on_folders from the thread that called discover_charts (the
+// ScanCallbacks promise), it only grows, and it ends at the walk's total.
+TEST_CASE("the scan's folder count is reported while the walk runs, from the calling thread") {
+    const std::thread::id caller = std::this_thread::get_id();
+    std::mutex mu;  // only matters if a report wrongly comes from a worker
+    std::vector<int> seen;
+    bool all_on_caller = true;
+    ScanCallbacks callbacks;
+    callbacks.on_folders = [&](int n) {
+        std::lock_guard<std::mutex> lock(mu);
+        if (std::this_thread::get_id() != caller) all_on_caller = false;
+        seen.push_back(n);
+    };
+    auto [items, errors] = discover_charts({std::string(HYDRA_INPUT_DIR)}, callbacks, nullptr);
+    CHECK(errors.empty());
+    CHECK(all_on_caller);
+    REQUIRE(seen.size() > 1);
+    CHECK(std::is_sorted(seen.begin(), seen.end()));
+    // testdata/input and its 119 subfolders, counted on 2026-10-06.
+    CHECK(seen.back() == 120);
+}
+
+// S1: the read stage hashes the biggest files first, yet the items keep the
+// walk's order. The walk visits the last-listed subfolder first, so "a_big"
+// (listed first) is walked last while its 4 MB notes file is hashed first.
+// The 4 MB file also spans several reads of the hashing buffer.
+TEST_CASE("the scan's items come out in walk order whatever order they were hashed in") {
+    namespace fs = std::filesystem;
+    const std::string root = scan_fixture_dir("big_first");
+    fs::remove_all(hydra::os_path(root));
+    const auto plant = [&](const std::string& name, const std::vector<uint8_t>& notes) {
+        const std::string dir = root + "\\" + name;
+        fs::create_directories(hydra::os_path(dir));
+        write_bytes(dir + "\\notes.chart", notes);
+        const std::string ini = "[song]\r\nname = " + name + "\r\n";
+        write_bytes(dir + "\\song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
+    };
+    std::vector<uint8_t> big(size_t{4} << 20);
+    for (size_t i = 0; i < big.size(); ++i) big[i] = static_cast<uint8_t>(i % 251);
+    plant("a_big", big);
+    for (int i = 0; i < 12; ++i) {
+        char name[8];
+        std::snprintf(name, sizeof name, "f%02d", i);
+        plant(name, {static_cast<uint8_t>(i)});
+    }
+
+    auto [items, errors] = discover_charts({root});
+    fs::remove_all(hydra::os_path(root));
+    CHECK(errors.empty());
+    std::vector<std::string> titles;
+    for (const ScanItem& it : items) titles.push_back(it.title);
+    const std::vector<std::string> walk_order = {"f11", "f10", "f09", "f08", "f07",
+                                                 "f06", "f05", "f04", "f03", "f02",
+                                                 "f01", "f00", "a_big"};
+    CHECK(titles == walk_order);
+    REQUIRE(!items.empty());
+    // The MD5 of the 4 MB pattern, from Python's hashlib on 2026-10-06.
+    CHECK(items.back().md5 == "aad8b8e4d120d0df7a7fda991d5dab03");
+}
+
+// S1 review: two roots spelled differently can reach one folder, here
+// R\sub\x through R and through "R\sub\". The walk lists x once; its
+// rootfolder must come from the root the serial walk reaches it by, whichever
+// thread listed it. The serial walk pops the last root first.
+TEST_CASE("a folder two roots reach takes its rootfolder from the root the walk reaches it by") {
+    namespace fs = std::filesystem;
+    const std::string root = scan_fixture_dir("two_roots_one_folder");
+    fs::remove_all(hydra::os_path(root));
+    const std::string dir = root + "\\sub\\x";
+    fs::create_directories(hydra::os_path(dir));
+    write_bytes(dir + "\\notes.chart", {0});
+    const std::string ini = "[song]\r\nname = x\r\n";
+    write_bytes(dir + "\\song.ini", std::vector<uint8_t>(ini.begin(), ini.end()));
+    const std::string sub_root = root + "\\sub\\";
+
+    // R last: R is walked first, so x is reached through R\sub.
+    auto [via_r, errors_r] = discover_charts({sub_root, root});
+    // "R\sub\" last: it is walked first and reaches x directly.
+    auto [via_sub, errors_sub] = discover_charts({root, sub_root});
+    fs::remove_all(hydra::os_path(root));
+
+    CHECK(errors_r.empty());
+    CHECK(errors_sub.empty());
+    REQUIRE(via_r.size() == 1);
+    REQUIRE(via_sub.size() == 1);
+    CHECK(via_r[0].notespath == dir + "\\notes.chart");
+    CHECK(via_sub[0].notespath == dir + "\\notes.chart");
+    CHECK(via_r[0].rootfolder == "sub");
+    CHECK(via_sub[0].rootfolder == ".");
+}

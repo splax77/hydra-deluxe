@@ -71,11 +71,13 @@ struct ScanCallbacks {
 // Recursively searches rootfolders for chart-bearing folders: a notes file
 // (pick_notes_file says which) alongside a song.ini (find_song_ini), plus
 // every .sng and .srb file. A chart's rootfolder is its folder's parent
-// (parent_folder), relative to the root it was found under.
+// (parent_folder), relative to the root the walk reached it from.
 // Re-encountered folders are skipped.
 //
-// The walk itself is a serial single pass; hashing/metadata reads run on a
-// batch_worker_count() thread pool. Results keep the serial walk's order.
+// The walk lists folders on a batch_worker_count() thread pool, then hands
+// back the serial walk's order and decides each folder's root (walk_folders
+// in analysis.cpp). Hashing/metadata reads then run on a thread pool of the
+// same size. Results keep the walk's order.
 // `cache` (from RecordStore::chart_library_cache), if given, lets a chart
 // whose fingerprint is unchanged reuse its previous md5/metadata
 // without any file I/O. A failing chart file is skipped with an error entry;
