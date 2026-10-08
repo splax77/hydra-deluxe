@@ -672,6 +672,11 @@ void test_startup_screen(ImGuiTestContext* ctx) {
     IM_CHECK(ImGui::GetFrameCount() > frame_before);
     IM_CHECK(!h.app->store_ready());
     IM_CHECK(gate.started() > 0);
+    // The bar under the words is fed by the store's own count of rows to copy.
+    const hydra::ui::StoreOpenProgress held = h.app->store_open_progress();
+    IM_CHECK(held.step == hydra::ui::StoreOpenProgress::Step::Copying);
+    IM_CHECK(held.upgrading);
+    IM_CHECK(held.rows_total > 0);
 
     gate.open();
     IM_CHECK(wait_until(ctx, [&] { return h.app->store_ready(); }, 30));
