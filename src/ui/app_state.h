@@ -391,7 +391,7 @@ public:
     // job is held (its modal is still up until Continue), and no batch is
     // running. start_scan enforces it; the toolbar button reads it.
     bool can_scan() const;
-    // Whether any background job is still working: scan, batch, the click's
+    // Whether any background job is still working: the startup open, scan, batch, the click's
     // job (a waiting request included), path report, the two leaderboard jobs, and
     // the Preview's jobs. A finished job waiting to be collected counts as
     // done. The parked leaderboard jobs are left out: they were cancelled,
@@ -399,7 +399,8 @@ public:
     // this.
     bool any_job_running() const;
 
-    // Once per frame, before any view draws (run_frame). Owns the panel's
+    // Once per frame, before any view draws (run_frame). Collects the
+    // startup open once it finishes. Owns the panel's
     // closing edge and the click's job: saving its summary, re-identifying
     // an edited chart, and showing its result. `now` is ImGui::GetTime() in
     // the app.

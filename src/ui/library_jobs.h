@@ -64,14 +64,27 @@ struct StoreOpenProgress {
     // known.
     double time_left_s = -1.0;
 
-    // The bar's fill: progress_fraction of the two counts (ui/widgets.h).
-    float fraction() const;
+    // The bar is progress_bar_counted of the two counts (ui/widgets.h),
+    // drawn once rows_total is known.
     // The line under the heading: what the open is doing now.
     std::string label() const;
     // The Preview loader's time-left words and gate, applied to the copy:
     // "" except while Copying.
     std::string time_left_text() const;
 };
+
+// Reads every chart in the library, then every row's summary under
+// `settings` (its chart mode, SP cap and lens), into `library`: the read at
+// startup and after a scan. Returns the plain sentence of the read that
+// failed, or "" when both worked; a failed read leaves the model's rows as
+// they were (D73 item 3).
+std::string read_library(store::RecordStore& store, const app::Settings& settings,
+                         LibraryModel& library);
+// Re-reads every row's summary under `settings`: one store call for the
+// whole library, never per row per frame (the batch workers share the
+// store's lock). Throws when the read fails.
+void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
+                            LibraryModel& library);
 
 // The startup open's test gate (set_store_open_gate_for_test below).
 using StoreOpenGate =
@@ -97,7 +110,11 @@ public:
     // harness only (AppState::wait_store_open); the app never calls it.
     void wait();
 
+    // A snapshot for the startup screen. It also feeds the time-left clock,
+    // so the render thread calls it once a frame.
     StoreOpenProgress progress() const;
+    // Seconds since start(), without touching the clock.
+    double elapsed_s() const;
 
     // Valid once finished() && ok(); each moves its part out (call once).
     std::unique_ptr<store::RecordStore> take_store() { return std::move(store_); }
@@ -114,6 +131,8 @@ private:
     // Publishes a step and counts, then waits at the test gate when one is
     // set. False once the job is cancelled: the store stops there.
     bool report(StoreOpenProgress::Step step, uint64_t rows_done, uint64_t rows_total);
+    // The published step and counts, with no time-left estimate.
+    StoreOpenProgress snapshot() const;
 
     std::string db_path_;
     core::RulesStamp rules_;

@@ -283,8 +283,8 @@ int main()
     }
 #endif
     if (!frame_text) {
-        // Opens hydra.db; a database that won't open closes Hydra with a
-        // message box (D72 item 1).
+        // Starts opening hydra.db on its own thread; the loop below shows
+        // why when it fails. Reading the settings can still throw here.
         try {
             own_app = std::make_unique<hydra::ui::AppState>();
         } catch (const std::exception& e) {
@@ -309,6 +309,19 @@ int main()
         }
         if (done)
             break;
+
+        // A database that won't open or upgrade closes Hydra with the
+        // startup message box (D72 item 1), outside any ImGui frame.
+        if (own_app && own_app->store_open_failed())
+        {
+            const std::exception_ptr failure = own_app->store_open_error();
+            own_app.reset();
+            try {
+                std::rethrow_exception(failure);
+            } catch (const std::exception& e) {
+                return fail_startup(e);
+            }
+        }
 
         // Skip rendering while minimized / occluded.
         if (g_SwapChainOccluded &&

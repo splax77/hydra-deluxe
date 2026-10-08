@@ -13,7 +13,8 @@
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "parse/song.h"  // display_title, display_artist
-#include "ui/preview_load_job.h"  // ByteRateClock
+#include "ui/library_parts.h"     // time_left_text
+#include "ui/preview_load_job.h"  // ByteRateClock, kTimeLeftAfterSeconds
 
 namespace hydra::ui {
 
@@ -25,8 +26,122 @@ StoreOpenGate g_store_open_gate;
 
 void set_store_open_gate_for_test(StoreOpenGate gate) { g_store_open_gate = std::move(gate); }
 
+std::string StoreOpenProgress::label() const {
+    // A file that needs no upgrade reads one line for the open and the
+    // library read alike (DBUP answer 7).
+    if (!upgrading) return "Opening your library...";
+    switch (step) {
+        case Step::UpdatingResultsKey: return "Updating the results table...";
+        case Step::Copying: return "Copying your library...";
+        case Step::Opening:  // the store reports Opening only before an upgrade step
+        case Step::Finishing:
+        case Step::LoadingLibrary: return "Finishing...";
+    }
+    return "Finishing...";
+}
+
+// The copy is the one step with a row rate; the gate and the words are the
+// Preview loader's (DBUP answer 4).
+std::string StoreOpenProgress::time_left_text() const {
+    if (step != Step::Copying || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))
+        return "";
+    return detail::time_left_text(time_left_s);
+}
+
+std::string read_library(store::RecordStore& store, const app::Settings& settings,
+                         LibraryModel& library) {
+    try {
+        // The whole scan in one read. Every chart is needed anyway: the chips
+        // count them and the search filters them in memory.
+        library.set_charts(store.list_chart_library(0, -1));  // -1 = no limit
+    } catch (const std::exception& e) {
+        return app::plain_error(e);
+    }
+    try {
+        read_library_summaries(store, settings, library);
+    } catch (const std::exception& e) {
+        return app::plain_error(e);
+    }
+    return "";
+}
+
+void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
+                            LibraryModel& library) {
+    library.set_summaries(store.get_summaries(library.hashes(), settings.chartmode_key(),
+                                              settings.cap_query(), settings.lens()));
+}
+
+StoreOpenJob::StoreOpenJob(std::string db_path, core::RulesStamp rules, app::Settings settings)
+    : db_path_(std::move(db_path)),
+      rules_(std::move(rules)),
+      settings_(std::move(settings)),
+      gate_(g_store_open_gate),
+      clock_(std::make_unique<ByteRateClock>()) {}
+
 // Out of line: ByteRateClock is only forward-declared in the header.
 StoreOpenJob::~StoreOpenJob() { shutdown(); }
+
+void StoreOpenJob::start() {
+    started_ = std::chrono::steady_clock::now();
+    spawn([this] { run(); });
+}
+
+void StoreOpenJob::wait() {
+    if (thread_.joinable()) thread_.join();
+}
+
+double StoreOpenJob::elapsed_s() const {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - started_).count();
+}
+
+StoreOpenProgress StoreOpenJob::snapshot() const {
+    StoreOpenProgress p;
+    p.step = static_cast<StoreOpenProgress::Step>(step_.load());
+    p.rows_done = rows_done_.load();
+    p.rows_total = rows_total_.load();
+    p.upgrading = upgrading_.load();
+    p.elapsed_s = elapsed_s();
+    return p;
+}
+
+StoreOpenProgress StoreOpenJob::progress() const {
+    StoreOpenProgress p = snapshot();
+    std::lock_guard<std::mutex> lock(clock_mutex_);
+    p.time_left_s = clock_->update(p.elapsed_s, p.rows_done, p.rows_total);
+    return p;
+}
+
+bool StoreOpenJob::report(StoreOpenProgress::Step step, uint64_t rows_done, uint64_t rows_total) {
+    using Step = StoreOpenProgress::Step;
+    // The counts first, then the step: a frame that sees the new step sees
+    // its counts too.
+    rows_total_.store(rows_total);
+    rows_done_.store(rows_done);
+    if (step == Step::UpdatingResultsKey || step == Step::Copying || step == Step::Finishing)
+        upgrading_.store(true);
+    step_.store(static_cast<int>(step));
+    if (gate_) gate_(snapshot(), [this] { return is_cancelled(); });
+    return !is_cancelled();
+}
+
+void StoreOpenJob::run() {
+    using Step = StoreOpenProgress::Step;
+    try {
+        if (!report(Step::Opening, 0, 0)) throw JobCancelled{};
+        store_ = std::make_unique<store::RecordStore>(db_path_, rules_);
+        // The copy's counts stay on the bar while the library is read.
+        if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
+            throw JobCancelled{};
+        library_problem_ = read_library(*store_, settings_, library_);
+        ok_ = true;
+        finished_.store(true);
+    } catch (const std::exception& e) {
+        // A cancel is the app closing: nothing will show it.
+        if (!is_cancelled()) failure_ = std::current_exception();
+        store_.reset();
+        fail(e);
+    }
+}
 
 // ---- ScanJob --------------------------------------------------------------
 
