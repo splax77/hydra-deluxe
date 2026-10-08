@@ -1413,7 +1413,11 @@ const std::vector<OwnerRule>& rules() {
            "status_label, the owner"},
           {"src/ui/library_model.cpp", "case store::RecordStatus::Stale: return \"Stale\";",
            "status_label, the owner"},
-          {"src/ui/library_model.cpp", "return \"Not analyzed\";", "status_label, the owner"}}},
+          {"src/ui/library_model.cpp", "return \"Not analyzed\";", "status_label, the owner"},
+          {"src/app/dm_report.cpp", "{\"Not analyzed\", group_thousands(stats.not_analyzed)},",
+           "dm_tiles' tile label: the comparison's own status word, a score's state in "
+           "this mode at Clone Hero's cap, not a library record's status (derive-once "
+           "review of RW-T2, finding 1)"}}},
         // A filter chip's button id typed as text. chip_label builds the whole
         // label (word, count, id), and render_chips and the GUI tests ask it.
         // src only: the GUI tests also pin whole labels as literals, which a

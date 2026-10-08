@@ -177,8 +177,8 @@ const std::string& page_template() {
 // DmReportRow::pct_h and the average tile.
 constexpr int kPercentDecimals = 2;
 
-// Counts one score into `stats` by its status. Both tally_dm_rows go through
-// it.
+// Counts one score into `stats` by its status. Both tally_dm_rows overloads go
+// through it.
 void count_status(DmReportStats& stats, const DmReportRow& r) {
     ++stats.total;
     if (r.status == "under optimal") ++stats.under_optimal;
