@@ -7,10 +7,7 @@
 // engine and parsers unchanged. The digests are tests/song_digest.h's, the
 // header the tool uses too. A change that is meant to move results bumps its
 // stamp in src/store/stored_versions.h and repins these on purpose; the
-// failure message prints the digest the test got. A change that moves only
-// the all-0 list, which nothing stores (D87), repins with no stamp bump:
-// D102 did, after the same digest without allzero_paths matched before and
-// after (8f37ed4b4e7c11c8).
+// failure message prints the digest the test got.
 
 #include "doctest.h"
 
