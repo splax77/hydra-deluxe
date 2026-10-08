@@ -7,7 +7,9 @@
 #include <cstring>
 #include <filesystem>
 #include <functional>
+#include <numeric>
 #include <stdexcept>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 #include <unordered_set>
@@ -221,6 +223,24 @@ std::string beyond_edge_text(double hit_window_ms) {
     return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
 }
 
+// The timing table's open band past the last cutoff, "Beyond": the
+// next-to-last entry, before the "None" (no squeeze) entry. tier_for labels a
+// row with it and path_tiles counts the rows it labeled so.
+const TimingTier& beyond_tier(const std::vector<TimingTier>& tiers) {
+    return tiers[tiers.size() - 2];
+}
+
+// How many library charts the rows at `shown` belong to, each chart's
+// copies added once however many of its rows there are (D76, D77). The
+// subtitle's chart count and the Charts shown tile both read it.
+int64_t charts_counted(const std::vector<ReportRow>& rows, const std::vector<size_t>& shown) {
+    std::unordered_set<std::string_view> seen;
+    int64_t charts = 0;
+    for (size_t i : shown)
+        if (seen.insert(rows[i].hyhash).second) charts += rows[i].copies;
+    return charts;
+}
+
 // One chart on the page: a small number, in order of first appearance among
 // the rows, and its library copies (D76, D77).
 struct PageChart {
@@ -229,8 +249,8 @@ struct PageChart {
 };
 
 // The charts the rows belong to, each once. The page's "c" is the number, so
-// the Charts tile finds each chart's "k" without the 32-character hash on
-// every row, and the subtitle's chart count adds up the copies.
+// the page's own Charts tile finds each chart's "k" without the 32-character
+// hash on every row. C++ counts charts with charts_counted.
 std::unordered_map<std::string, PageChart> page_charts(const std::vector<ReportRow>& rows) {
     std::unordered_map<std::string, PageChart> charts;
     for (const ReportRow& r : rows)
@@ -338,10 +358,10 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              const std::vector<TimingTier>& tiers) {
-    // The two open bands are the table's last two entries: "Beyond", then
+    // The two open bands are the table's last two entries: beyond_tier, then
     // the "None" (no squeeze) entry.
     const TimingTier& none = tiers.back();
-    const TimingTier& beyond = tiers[tiers.size() - 2];
+    const TimingTier& beyond = beyond_tier(tiers);
     if (!ms) return {none.name, none.tok};
     // Each edge belongs to the band below it (D48 Q3). The table's first row
     // is Normal up to and including the difficult floor, so a timing on the
@@ -510,6 +530,32 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
     return out;
 }
 
+std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
+                             const std::vector<size_t>& shown, double hit_window_ms) {
+    const std::string beyond = beyond_tier(timing_tiers(hit_window_ms)).name;
+    // The row with the largest Hardest ms, the first of a tie; the tile shows
+    // that row's text.
+    const ReportRow* hardest = nullptr;
+    int64_t past_edge = 0;
+    int highest_skip = shown.empty() ? 0 : rows[shown.front()].skip;
+    for (size_t i : shown) {
+        const ReportRow& r = rows[i];
+        if (r.ms && (!hardest || *r.ms > *hardest->ms)) hardest = &r;
+        // The rows tier_for labeled Beyond.
+        if (r.tier == beyond) ++past_edge;
+        highest_skip = std::max(highest_skip, r.skip);
+    }
+    return {
+        {"Charts shown", group_thousands(charts_counted(rows, shown))},
+        {"Paths shown", group_thousands(static_cast<int64_t>(shown.size()))},
+        // The Hardest ms column's own text (ms_text_into).
+        {"Hardest ms", hardest ? format_ms(*hardest->ms) : std::string(kDash)},
+        {"Past " + beyond_edge_text(hit_window_ms) + " ms", group_thousands(past_edge)},
+        // The page writes this one without thousands separators.
+        {"Highest skip", std::to_string(highest_skip)},
+    };
+}
+
 std::string left_out_line(const std::vector<ReportFailure>& failures) {
     if (failures.empty()) return std::string();
     return "Left out: " +
@@ -614,6 +660,7 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                                 const ReportSeed& seed) {
     GeneratedReport out;
     const double w = options.hit_window_ms;
+    out.hit_window_ms = w;
     CollectedRows collected = collect_rows(store, seed, options);
     // Cancelled part-way through: whatever the pass collected is a partial
     // library, so nothing is built from it. An empty result says "no report",
@@ -650,7 +697,9 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
     // count every library copy of a chart (D76, D77).
     for (const ReportRow& r : rows)
         if (r.rank == 1) out.records += r.copies;
-    for (const auto& [hash, chart] : page_charts(rows)) out.songs += chart.copies;
+    std::vector<size_t> every_row(rows.size());
+    std::iota(every_row.begin(), every_row.end(), size_t{0});
+    out.songs = charts_counted(rows, every_row);
 
     // Counts read the house rule (hydra::counted, D48 Q12). The cut is per
     // chart and mode, and the page lists every mode at the current cap.
@@ -677,6 +726,9 @@ GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& 
                          "differ. 'Beyond' means past the " + beyond_edge_text(w) +
                          " ms window.";
     out.html = build_html(rows, subtitle, footer, w, out.failures);
+    out.subtitle = std::move(subtitle);
+    out.footer = std::move(footer);
+    out.paths = std::move(collected.rows);
     return out;
 }
 

@@ -59,6 +59,22 @@ size_t occurrences(const std::string& text, const std::string& what) {
     return n;
 }
 
+// Every row of `n`, in order: what a window shows with no filter set.
+std::vector<size_t> every_row(size_t n) {
+    std::vector<size_t> shown(n);
+    for (size_t i = 0; i < n; ++i) shown[i] = i;
+    return shown;
+}
+
+using TilePairs = std::vector<std::pair<std::string, std::string>>;
+
+// The tiles as (label, value) pairs, so one CHECK compares them all.
+TilePairs tile_pairs(const std::vector<report::Tile>& tiles) {
+    TilePairs out;
+    for (const report::Tile& t : tiles) out.emplace_back(t.label, t.value);
+    return out;
+}
+
 // The settings the report fixtures file their results under: depth 10 by
 // score, the ms limit off, at SP cap `cap`.
 Settings fixture_settings(int cap, bool legacy_fills = false) {
@@ -137,6 +153,22 @@ std::vector<std::string> fill_store(store::RecordStore& store,
 int fill_store(store::RecordStore& store, int cap, int want) {
     std::vector<store::ChartLibraryEntry> library;
     return static_cast<int>(fill_store(store, library, cap, want).size());
+}
+
+// Analyzes two charts at cap 4 into `store` (fill_store), then lists h0 in two
+// library folders and h1 in three, so the library holds 5 copies of 2 charts.
+void fill_store_with_copies(store::RecordStore& store) {
+    std::vector<store::ChartLibraryEntry> files;
+    REQUIRE(fill_store(store, files, 4, 2).size() == 2);
+    std::vector<store::ChartLibraryEntry> library;
+    for (const auto& [chart, copies] : {std::pair<size_t, int>{0, 2}, {1, 3}}) {
+        for (int i = 0; i < copies; ++i) {
+            store::ChartLibraryEntry e = files[chart];
+            e.rootfolder = "C:\\songs" + std::to_string(i);
+            library.push_back(e);
+        }
+    }
+    store.rebuild_chart_library(library);
 }
 
 void check_cap(int cap) {
@@ -314,17 +346,7 @@ TEST_CASE("library copies are keyed like records_by_hash, and an unlisted chart 
 // that chart's copies as "k", and the tile sums exactly those two fields.
 TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> files;
-    REQUIRE(fill_store(store, files, 4, 2).size() == 2);
-    std::vector<store::ChartLibraryEntry> library;
-    for (const auto& [chart, copies] : {std::pair<size_t, int>{0, 2}, {1, 3}}) {
-        for (int i = 0; i < copies; ++i) {
-            store::ChartLibraryEntry e = files[chart];
-            e.rootfolder = "C:\\songs" + std::to_string(i);
-            library.push_back(e);
-        }
-    }
-    store.rebuild_chart_library(library);
+    fill_store_with_copies(store);
 
     const report::ReportOptions options = fixture_options(4);
     const report::GeneratedReport out = report::generate_report(store, options);
@@ -357,6 +379,37 @@ TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up
     CHECK(dm.find("noun: 'scores',") != std::string::npos);
     CHECK(dm.find("\n  count: ") == std::string::npos);
     CHECK(dm.find("const countOf = PAGE.count || (rs => rs.length);") != std::string::npos);
+}
+
+// What a window draws from: the rows, the subtitle and footer the page shows,
+// and the hit window the rows were labeled with. With every row shown, the
+// Charts shown tile reads the subtitle's chart count.
+TEST_CASE("generate_report hands over its rows, subtitle and footer") {
+    store::RecordStore store(":memory:");
+    fill_store_with_copies(store);
+
+    report::ReportOptions options = fixture_options(4);
+    options.hit_window_ms = 85.0;
+    const report::GeneratedReport out = report::generate_report(store, options);
+    REQUIRE(out.rows > 0);
+    CHECK(static_cast<int64_t>(out.paths.size()) == out.rows);
+    const std::vector<report::ReportRow> collected =
+        report::collect_rows(store, report::ReportSeed{}, options).rows;
+    REQUIRE(collected.size() == out.paths.size());
+    for (size_t i = 0; i < collected.size(); ++i) {
+        CHECK(out.paths[i].hyhash == collected[i].hyhash);
+        CHECK(out.paths[i].path == collected[i].path);
+    }
+    CHECK(out.hit_window_ms == 85.0);
+
+    CHECK(out.subtitle.find(" across 5 charts — ") != std::string::npos);
+    CHECK(out.html.find(html::html_escape(out.subtitle)) != std::string::npos);
+    CHECK(out.footer.rfind("Generated from ", 0) == 0);
+    CHECK(out.footer.find("'Beyond' means past the 170 ms window.") != std::string::npos);
+    CHECK(out.html.find(html::html_escape(out.footer)) != std::string::npos);
+
+    CHECK(report::path_tiles(out.paths, every_row(out.paths.size()), out.hit_window_ms)[0]
+              .value == "5");
 }
 
 TEST_CASE("report lists only the wanted cap and names it") {
@@ -996,16 +1049,14 @@ TEST_CASE("records_by_hash keys every listed record by its lower-case hash") {
               .empty());
 }
 
-// Not an invariant: writes one small page of each kind into the folder named
-// by HYDRA_PAGE_SAMPLES, built from fixed rows, so a page change can be
-// checked in a real browser before and after (docs/adr/0016). Run it with
-//   hydra_tests.exe --no-skip -tc="report pages: write samples*"
-TEST_CASE("report pages: write samples for the browser check" * doctest::skip()) {
-    const std::optional<std::string> dir = read_env("HYDRA_PAGE_SAMPLES");
-    REQUIRE(dir.has_value());
-    const std::filesystem::path out = std::filesystem::u8path(*dir);
-    std::filesystem::create_directories(out);
+namespace {
 
+// The six path rows the samples page shows, labeled at an 85 ms hit window.
+// The samples case writes them out and the path_tiles cases are pinned on
+// them.
+constexpr double kSampleHitWindowMs = 85.0;
+
+std::vector<report::ReportRow> sample_path_rows() {
     std::vector<report::ReportRow> paths;
     auto add_path = [&](const std::string& song, const char* mode, int rank,
                         const std::string& path, int64_t score, std::optional<double> ms,
@@ -1021,7 +1072,7 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
         r.acts = 3 + rank;
         r.skip = rank - 1;
         r.ms = ms;
-        auto [tier, tok] = report::tier_for(ms, 85.0);
+        auto [tier, tok] = report::tier_for(ms, kSampleHitWindowMs);
         r.tier = tier;
         r.tok = tok;
         r.efill = efill;
@@ -1041,7 +1092,12 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
     add_path("Song B", "Expert Pro Drums, 2x Bass", 1, long_path, 250000, 171.0, 4.5);
     add_path("Song B", "Expert Pro Drums, 2x Bass", 2, "2 1-E3", 249500, 1.5, 0.0);
     add_path("Song C", "Expert Drums, 1x Bass", 1, "1 1 1", 77000, 90.0, std::nullopt);
+    return paths;
+}
 
+// The four scores the samples page shows. The dm_tiles cases are pinned on
+// them.
+std::vector<dm_report::DmReportRow> sample_dm_rows() {
     std::vector<dm_report::DmReportRow> dm;
     // The delta, the percent (in hundredths, as the payload carries it) and
     // whether the score is above optimal are typed, not worked out again from
@@ -1073,6 +1129,84 @@ TEST_CASE("report pages: write samples for the browser check" * doctest::skip())
            false, std::nullopt);
     add_dm("Song D", 80000, std::nullopt, std::nullopt, std::nullopt, "not analyzed", false,
            false, std::nullopt);
+    return dm;
+}
+
+}  // namespace
+
+TEST_CASE("path_tiles: the six sample rows") {
+    const std::vector<report::ReportRow> rows = sample_path_rows();
+    CHECK(tile_pairs(report::path_tiles(rows, every_row(rows.size()), kSampleHitWindowMs)) ==
+          TilePairs{{"Charts shown", "3"},
+                    {"Paths shown", "6"},
+                    {"Hardest ms", "171.0 ms"},
+                    {"Past 170 ms", "1"},
+                    {"Highest skip", "1"}});
+}
+
+TEST_CASE("path_tiles: the tiles count only the rows shown") {
+    const std::vector<report::ReportRow> rows = sample_path_rows();
+    // Song A's three rows and Song C's one: two charts, no Beyond row, and the
+    // hardest timing is Song C's 90 ms.
+    CHECK(tile_pairs(report::path_tiles(rows, {0, 1, 2, 5}, kSampleHitWindowMs)) ==
+          TilePairs{{"Charts shown", "2"},
+                    {"Paths shown", "4"},
+                    {"Hardest ms", "90.0 ms"},
+                    {"Past 170 ms", "0"},
+                    {"Highest skip", "1"}});
+    // Song A's mode with no squeeze alone: no timing to show.
+    CHECK(tile_pairs(report::path_tiles(rows, {2}, kSampleHitWindowMs)) ==
+          TilePairs{{"Charts shown", "1"},
+                    {"Paths shown", "1"},
+                    {"Hardest ms", "—"},
+                    {"Past 170 ms", "0"},
+                    {"Highest skip", "0"}});
+    // Nothing passes the filters.
+    CHECK(tile_pairs(report::path_tiles(rows, {}, kSampleHitWindowMs)) ==
+          TilePairs{{"Charts shown", "0"},
+                    {"Paths shown", "0"},
+                    {"Hardest ms", "—"},
+                    {"Past 170 ms", "0"},
+                    {"Highest skip", "0"}});
+}
+
+TEST_CASE("path_tiles: Charts shown adds each chart's copies once") {
+    std::vector<report::ReportRow> rows = sample_path_rows();
+    // Song A is in the library 1,200 times and Song B twice; Song A's three
+    // rows still count its copies once.
+    for (report::ReportRow& r : rows) r.copies = r.hyhash == "Song A" ? 1200 : 2;
+    CHECK(report::path_tiles(rows, every_row(rows.size()), kSampleHitWindowMs)[0].value ==
+          "1,204");
+    CHECK(report::path_tiles(rows, {0, 1, 2}, kSampleHitWindowMs)[0].value == "1,200");
+    CHECK(report::path_tiles(rows, {3}, kSampleHitWindowMs)[0].value == "2");
+}
+
+TEST_CASE("dm_tiles: the four sample scores") {
+    const std::vector<dm_report::DmReportRow> rows = sample_dm_rows();
+    CHECK(tile_pairs(dm_report::dm_tiles(rows, every_row(rows.size()))) ==
+          TilePairs{{"Scores", "4"},
+                    {"Under optimal", "1"},
+                    {"At optimal", "0"},
+                    {"Above optimal", "1"},
+                    {"Not analyzed", "1"},
+                    {"Not in library", "1"},
+                    {"Other speed", "0"},
+                    {"Avg % of optimal", "98.80%"},
+                    {"Points left on table", "3,456"}});
+}
+
+// Not an invariant: writes one small page of each kind into the folder named
+// by HYDRA_PAGE_SAMPLES, built from fixed rows, so a page change can be
+// checked in a real browser before and after (docs/adr/0016). Run it with
+//   hydra_tests.exe --no-skip -tc="report pages: write samples*"
+TEST_CASE("report pages: write samples for the browser check" * doctest::skip()) {
+    const std::optional<std::string> dir = read_env("HYDRA_PAGE_SAMPLES");
+    REQUIRE(dir.has_value());
+    const std::filesystem::path out = std::filesystem::u8path(*dir);
+    std::filesystem::create_directories(out);
+
+    const std::vector<report::ReportRow> paths = sample_path_rows();
+    const std::vector<dm_report::DmReportRow> dm = sample_dm_rows();
 
     std::vector<fill_report::FillCompareRow> fill;
     auto add_fill = [&](const char* song, std::optional<int64_t> old_score,

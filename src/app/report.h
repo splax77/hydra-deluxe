@@ -51,8 +51,9 @@ struct ReportRow {
     int sqin = 0;
     int sqout = 0;
     int notes = 0;
-    // The chart this row belongs to. page_charts (report.cpp) is the one place
-    // that groups rows by it: the page's "c" number and the subtitle's count.
+    // The chart this row belongs to. charts_counted (report.cpp) groups rows
+    // by it for the subtitle's count and the Charts shown tile, and
+    // page_charts numbers it for the page's "c".
     std::string hyhash;
     // How many library rows that chart counts as, every copy counted (D76):
     // what the subtitle and the Charts tile add up. collect_rows sets it from
@@ -60,6 +61,30 @@ struct ReportRow {
     // library doesn't list (D77).
     int copies = 0;
 };
+
+// One tile above a report's table: what it counts and the text it shows.
+// path_tiles and dm_report::dm_tiles build them.
+struct Tile {
+    std::string label;
+    std::string value;
+};
+
+// What a tile or cell shows where a value is missing: the pages' DASH.
+inline constexpr const char* kDash = "—";
+
+// The colour a report chip is drawn in. Each member is named after the pages'
+// CSS variable for it: the timing tiers' --t0 to --t5 and --tn, and the dim
+// --muted. A path row's tier carries its token's name as ReportRow::tok, and
+// dm_report::status_token gives a comparison status's. The theme turns a
+// token into a colour.
+enum class ChipToken { t0, t1, t2, t3, t4, t5, tn, muted };
+
+// The path report's five tiles over the rows a window shows: `shown` holds
+// their indices into `rows`. `hit_window_ms` is the window the rows' tiers
+// were labeled with (GeneratedReport::hit_window_ms), which names the Beyond
+// edge in the "Past N ms" tile. Takes over the page script's `stats`.
+std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
+                             const std::vector<size_t>& shown, double hit_window_ms);
 
 // (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2).
 // nullopt -> (None, tn). Bands derive from the two-hit budget
@@ -247,6 +272,15 @@ struct GeneratedReport {
     // collect_rows' failures: charts left off the page because their file
     // failed to load or analyze. The page names them (left_out_line).
     std::vector<ReportFailure> failures;
+    // The rows themselves, one per path, in collect_rows' order. Empty when
+    // there is no page.
+    std::vector<ReportRow> paths;
+    // The window the rows' tiers were labeled with (ReportOptions::hit_window_ms).
+    double hit_window_ms = kDefaultHitWindowMs;
+    // The line under the page's heading and the note at its foot, as the page
+    // shows them. Empty when there is no page.
+    std::string subtitle;
+    std::string footer;
 };
 
 // The library's charts through collect_rows, with `seed`'s rows reused.

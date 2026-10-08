@@ -29,6 +29,8 @@
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "core/model.h"
 #include "app/dm_report.h"
+#include "app/html_page.h"  // html_escape
+#include "app/report.h"     // Tile, ChipToken
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "corpus_util.h"
@@ -266,6 +268,97 @@ TEST_CASE("generate_dm_report: tally and framing behind one seam") {
         app::dm_report::generate_dm_report(store, {}, kMode, store::Lens{}, "TestUser");
     CHECK(none.stats.total == 0);
     CHECK(none.html.empty());
+}
+
+// What a window draws from: the rows, the subtitle and footer the page shows,
+// and who and which mode it compared.
+TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and mode") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+    std::vector<net::DmScore> scores;
+    scores.push_back(make_score(kHash, optimal - 1000));
+    scores.push_back(make_score("00ff00ff00ff00ff00ff00ff00ff00ff", 123456));
+
+    const app::dm_report::GeneratedDmReport result =
+        app::dm_report::generate_dm_report(store, scores, kMode, store::Lens{}, "TestUser");
+    REQUIRE(result.rows.size() == 2);
+    CHECK(result.rows[0].status == "under optimal");
+    CHECK(result.rows[1].status == "not in library");
+    CHECK(result.username == "TestUser");
+    CHECK(result.chartmode == kMode);
+    CHECK(result.subtitle ==
+          "TestUser — 2 scores: 1 under optimal, 0 at optimal, 0 above optimal, "
+          "0 not analyzed, 1 not in your library");
+    CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
+                                  std::string(kMode) + ".",
+                              0) == 0);
+    CHECK(result.html.find(app::html::html_escape(result.subtitle)) != std::string::npos);
+    CHECK(result.html.find(app::html::html_escape(result.footer)) != std::string::npos);
+
+    // No scores: the player and mode are still named, and nothing else is.
+    const app::dm_report::GeneratedDmReport none =
+        app::dm_report::generate_dm_report(store, {}, kMode, store::Lens{}, "TestUser");
+    CHECK(none.rows.empty());
+    CHECK(none.username == "TestUser");
+    CHECK(none.chartmode == kMode);
+    CHECK(none.subtitle.empty());
+    CHECK(none.footer.empty());
+}
+
+TEST_CASE("dm_tiles: the tiles count only the scores shown") {
+    auto row = [](const char* status, std::optional<int64_t> delta,
+                  std::optional<int64_t> pct_h) {
+        DmReportRow r;
+        r.song = "Song";
+        r.status = status;
+        r.delta = delta;
+        r.pct_h = pct_h;
+        return r;
+    };
+    const std::vector<DmReportRow> rows = {
+        row("under optimal", 2000, 9901),
+        row("under optimal", 1500, 9900),
+        row("at optimal", 0, 10000),
+        // Played off base speed: its delta leaves no points on the table.
+        row("other speed", 500, std::nullopt),
+        row("no paths", std::nullopt, std::nullopt),
+    };
+    auto values = [&](const std::vector<size_t>& shown) {
+        std::vector<std::string> out;
+        for (const app::report::Tile& t : app::dm_report::dm_tiles(rows, shown))
+            out.push_back(t.value);
+        return out;
+    };
+    // A "no paths" score has no tile of its own; Scores counts it (D62 item 1).
+    CHECK(values({0, 1, 2, 3, 4}) ==
+          std::vector<std::string>{"5", "2", "1", "0", "0", "0", "1", "99.34%", "3,500"});
+    // One row's average reads its own cell.
+    CHECK(values({0}) ==
+          std::vector<std::string>{"1", "1", "0", "0", "0", "0", "0", "99.01%", "2,000"});
+    // 99.005% on average: the half rounds up, as format_percent rounds it.
+    CHECK(values({0, 1})[7] == "99.01%");
+    // No row with a percent, and nothing under optimal.
+    CHECK(values({3, 4}) ==
+          std::vector<std::string>{"2", "0", "0", "0", "0", "0", "1", "—", "0"});
+    CHECK(values({}) ==
+          std::vector<std::string>{"0", "0", "0", "0", "0", "0", "0", "—", "0"});
+}
+
+TEST_CASE("status_token: each status's chip colour, as the page's STATUS_CLASS gives it") {
+    using app::report::ChipToken;
+    using app::dm_report::status_token;
+    // s-matched is drawn in --t0, s-above in --t1, s-notanalyzed and
+    // s-otherspeed in --muted, and s-unmatched in --tn.
+    CHECK(status_token("under optimal") == ChipToken::t0);
+    CHECK(status_token("at optimal") == ChipToken::t0);
+    CHECK(status_token("above optimal") == ChipToken::t1);
+    CHECK(status_token("not analyzed") == ChipToken::muted);
+    CHECK(status_token("no paths") == ChipToken::muted);
+    CHECK(status_token("other speed") == ChipToken::muted);
+    CHECK(status_token("not in library") == ChipToken::tn);
+    // The page draws a status it doesn't know as s-unmatched.
+    CHECK(status_token("something else") == ChipToken::tn);
 }
 
 TEST_CASE("collect_dm_rows: a blank stored song name reads (unknown)") {

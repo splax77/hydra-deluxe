@@ -173,6 +173,22 @@ const std::string& page_template() {
     return page;
 }
 
+// The decimals every comparison percent is written to: the % of opt cells,
+// DmReportRow::pct_h and the average tile.
+constexpr int kPercentDecimals = 2;
+
+// Counts one score into `stats` by its status. Both tally_dm_rows overloads go
+// through it.
+void count_status(DmReportStats& stats, const DmReportRow& r) {
+    ++stats.total;
+    if (r.status == "under optimal") ++stats.under_optimal;
+    else if (r.status == "at optimal") ++stats.at_optimal;
+    else if (r.status == "above optimal") ++stats.above_optimal;
+    else if (r.status == "not analyzed") ++stats.not_analyzed;
+    else if (r.status == "no paths") ++stats.no_paths;
+    else if (r.status == "other speed") ++stats.other_speed;
+    else ++stats.not_in_library;
+}
 
 }  // namespace
 
@@ -248,7 +264,7 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             int64_t opt = *rec->summary.score;
             row.optimal = opt;
             row.delta = opt - s.score;
-            if (base && opt > 0) row.pct_h = percent_steps(s.score, opt, 2);
+            if (base && opt > 0) row.pct_h = percent_steps(s.score, opt, kPercentDecimals);
             const bool above = s.score > opt;
             row.status = above       ? "above optimal"
                          : s.score == opt ? "at optimal"
@@ -297,7 +313,7 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
         if (r.pct_h && r.optimal) {
             data += ",\"pct_h\":" + std::to_string(*r.pct_h);
             data += ",\"pct_txt\":";
-            json_escape_into(data, format_percent(r.actual, *r.optimal, 2));
+            json_escape_into(data, format_percent(r.actual, *r.optimal, kPercentDecimals));
         } else {
             data += ",\"pct_h\":null,\"pct_txt\":null";
         }
@@ -318,17 +334,63 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
 
 DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows) {
     DmReportStats stats;
-    stats.total = static_cast<int>(rows.size());
-    for (const DmReportRow& r : rows) {
-        if (r.status == "under optimal") ++stats.under_optimal;
-        else if (r.status == "at optimal") ++stats.at_optimal;
-        else if (r.status == "above optimal") ++stats.above_optimal;
-        else if (r.status == "not analyzed") ++stats.not_analyzed;
-        else if (r.status == "no paths") ++stats.no_paths;
-        else if (r.status == "other speed") ++stats.other_speed;
-        else ++stats.not_in_library;
-    }
+    for (const DmReportRow& r : rows) count_status(stats, r);
     return stats;
+}
+
+DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows,
+                            const std::vector<size_t>& shown) {
+    DmReportStats stats;
+    for (size_t i : shown) count_status(stats, rows[i]);
+    return stats;
+}
+
+report::ChipToken status_token(const std::string& status) {
+    using report::ChipToken;
+    if (status == "under optimal" || status == "at optimal") return ChipToken::t0;
+    if (status == "above optimal") return ChipToken::t1;
+    if (status == "not analyzed" || status == "no paths" || status == "other speed")
+        return ChipToken::muted;
+    // "not in library", and a status the page has no class for.
+    return ChipToken::tn;
+}
+
+std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
+                                   const std::vector<size_t>& shown) {
+    const DmReportStats stats = tally_dm_rows(rows, shown);
+    int64_t pct_sum = 0;
+    int64_t pct_rows = 0;
+    int64_t points_left = 0;
+    for (size_t i : shown) {
+        const DmReportRow& r = rows[i];
+        if (r.pct_h) {
+            pct_sum += *r.pct_h;
+            ++pct_rows;
+        }
+        // Only a score under optimal leaves points on the table, and its
+        // delta is the points it left.
+        if (r.status == "under optimal" && r.delta) points_left += *r.delta;
+    }
+    // The mean of the cells' percents. Each pct_h is in format_percent's
+    // steps, so the sum over pct_rows rows of 100% each, in those steps, is
+    // the mean as format_percent writes it: the same rounding as a cell, so
+    // one row's tile reads exactly its cell.
+    std::string average = report::kDash;
+    if (pct_rows > 0)
+        average = format_percent(
+            pct_sum, pct_rows * percent_steps(1, 1, kPercentDecimals), kPercentDecimals);
+    // A "no paths" row has no tile of its own (D62 item 1); Scores counts it.
+    return {
+        {"Scores", group_thousands(stats.total)},
+        {"Under optimal", group_thousands(stats.under_optimal)},
+        {"At optimal", group_thousands(stats.at_optimal)},
+        {"Above optimal", group_thousands(stats.above_optimal)},
+        {"Not analyzed", group_thousands(stats.not_analyzed)},
+        {"Not in library", group_thousands(stats.not_in_library)},
+        {"Other speed", group_thousands(stats.other_speed)},
+        {"Avg % of optimal", average},
+        {"Points left on table", group_thousands(points_left)},
+    };
 }
 
 std::string counts_phrase(const DmReportStats& stats) {
@@ -350,6 +412,8 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
                                      const store::Lens& lens,
                                      const std::string& username) {
     GeneratedDmReport out;
+    out.username = username;
+    out.chartmode = chartmode;
     std::vector<DmReportRow> rows = collect_dm_rows(store, scores, chartmode, lens);
     out.stats = tally_dm_rows(rows);
     if (rows.empty()) return out;
@@ -364,6 +428,9 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
         "Not analyzed charts are in your library without a current result for this mode "
         "at SP cap " + std::to_string(kCloneHeroSpCap) + ": analyze them, then compare again.";
     out.html = build_dm_html(rows, subtitle, footer);
+    out.subtitle = std::move(subtitle);
+    out.footer = std::move(footer);
+    out.rows = std::move(rows);
     return out;
 }
 
