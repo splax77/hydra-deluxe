@@ -7,7 +7,10 @@
 // engine and parsers unchanged. The digests are tests/song_digest.h's, the
 // header the tool uses too. A change that is meant to move results bumps its
 // stamp in src/store/stored_versions.h and repins these on purpose; the
-// failure message prints the digest the test got.
+// failure message prints the digest the test got. A change that moves only
+// the all-0 list, which nothing stores (D87), repins with no stamp bump:
+// D102 did, after the same digest without allzero_paths matched before and
+// after (8f37ed4b4e7c11c8).
 
 #include "doctest.h"
 
@@ -89,7 +92,7 @@ uint64_t parse_digest(const app::Settings& st) {
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
     const uint64_t got = engine_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0x1a0929fcb662ebaaULL, "engine digest is now " << hex(got));
+    CHECK_MESSAGE(got == 0xb95d0ccd1b78b25dULL, "engine digest is now " << hex(got));
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {
