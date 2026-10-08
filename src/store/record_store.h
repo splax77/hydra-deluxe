@@ -14,8 +14,8 @@
 //     names come from here (kNamingCopiesSql).
 //
 // An older file also held the path details, song rows and dynamics counts.
-// The first open by this build deletes them and shrinks the file
-// (drop_stored_details).
+// The first open by this build leaves them behind by copying the kept rows
+// into a fresh file that takes the old one's place (copy_upgrade).
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -345,6 +345,11 @@ struct OpenProgress {
 // thread that builds the store, never after the constructor returns.
 using OpenProgressFn = std::function<bool(const OpenProgress&)>;
 
+// Test seam: while set, the copy upgrade stops right after the database
+// steps aside under its old name, as a kill there would, leaving the files
+// for recover_upgrade_files (store/upgrade_files.h). The constructor throws.
+void stop_copy_upgrade_after_step_aside_for_test(bool stop);
+
 class RecordStore {
 public:
     // dbpath may be ":memory:" for an ephemeral store (used by tests). A db
@@ -584,10 +589,21 @@ private:
     // again. A schema 2 file's rows go under the fill rule stamped_fill_rule
     // names, or 1.1 when it names none.
     void upgrade_results_key();
-    // The summary-only upgrade (D87 items 1 and 7): a file that still holds
-    // the path details loses them, then shrinks. Runs only when the `paths`
-    // table exists, so a second open does nothing.
-    void drop_stored_details();
+    // Opens db_ on `dbpath`, creating the file if it is missing; throws
+    // KindedError(DatabaseOpen) when SQLite refuses.
+    void open_file(const std::string& dbpath);
+    // The summary-only upgrade (D87 items 1 and 7, copy-and-swap since DBUP):
+    // a file that still holds the path details gets a fresh file with only
+    // the kept rows, which then takes the old file's name. Runs only when the
+    // `paths` table exists, so a second open does nothing. Every failure that
+    // leaves the old file whole throws KindedError(DatabaseUpgrade); the file
+    // states a stop can leave are store/upgrade_files.h's.
+    void copy_upgrade(const std::string& dbpath);
+    // Copies every row of `table` that `where` keeps (an SQL condition, or
+    // empty for all) from the open file into the attached fresh one, column
+    // by column as stored, counting each into rows_done for the report.
+    void copy_table(const char* table, const std::string& where, int64_t& rows_done,
+                    int64_t rows_total);
     // The body of add_row and save_analysis. The caller holds the lock and an
     // open transaction.
     void write_row(const PreparedRow& row);

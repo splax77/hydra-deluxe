@@ -242,6 +242,7 @@ add_library(hydra_core STATIC
     src/search/engine.cpp
     src/search/pather.cpp
     src/store/record_store.cpp
+    src/store/upgrade_files.cpp
     src/app/allocator.cpp
     src/app/analysis.cpp
     src/app/config.cpp
@@ -490,6 +491,7 @@ add_executable(hydra_tests
     tests/test_fast_tempo.cpp
     tests/test_replay.cpp
     tests/test_store.cpp
+    tests/test_upgrade_files.cpp
     tests/test_analysis.cpp
     tests/test_report.cpp
     tests/test_config.cpp
