@@ -101,7 +101,11 @@ bool selects(const std::string& what, const char* test_name);
 // the AppState here is safe.
 // rules_text: the scratch hydra_rules.ini's contents. Empty (the default)
 // means no rules file, so every other test runs today's rules.
-void reset_app(Harness& h, const std::string& rules_text = "");
+// wait_store: the app opens its store on a worker thread. True (the default)
+// blocks in AppState::wait_store_open until the store is ready, so the test
+// can click at once, and fails the test if the open failed. Only a test that
+// looks at the startup screen passes false.
+void reset_app(Harness& h, const std::string& rules_text = "", bool wait_store = true);
 
 // Register every C++ test (the uitest_<area>.cpp files, in the order
 // uitest_tests.cpp fixes) and, when h.script_path is set, the "script" test
@@ -161,6 +165,23 @@ public:
     ~ViewGate();
     ViewGate(const ViewGate&) = delete;
     ViewGate& operator=(const ViewGate&) = delete;
+    void open();
+    int started() const;
+};
+
+// Holds the app's store open on its worker thread until the test lets it
+// through. A scratch library opens in a blink, so a test that looks at the
+// startup screen would race it. While a gate lives, the open's progress waits
+// at the gate once it reaches the upgrade's copy, until open(). started()
+// counts the opens that reached it. Make it BEFORE reset_app (the open starts
+// in AppState's constructor) and pass wait_store=false; its destructor opens
+// it and removes the seam. Only one gate can exist at a time.
+class OpenGate {
+public:
+    OpenGate();
+    ~OpenGate();
+    OpenGate(const OpenGate&) = delete;
+    OpenGate& operator=(const OpenGate&) = delete;
     void open();
     int started() const;
 };
