@@ -133,13 +133,43 @@ bool path_button(size_t i, const app::PathButtonView& b, bool selected) {
     return clicked;
 }
 
+// One score's fold: the score (gold on the optimal one) and, beside it, how
+// many paths share it. Open by default. The id is the score, so a closed fold
+// stays closed when its song is opened again, and another song's folds start
+// open (D101).
+bool score_fold(const app::PathButtonView& b) {
+    const bool optimal = b.group == app::PathButtonView::Group::Optimal;
+    const std::string label = b.fold + "##fold";
+    ImGui::PushFont(g_mono_font, 0.0f);
+    if (optimal) ImGui::PushStyleColor(ImGuiCol_Text, kBestPathColor);
+    // NoAutoOpenOnLog: ImGui opens every tree node while it logs text (the
+    // GUI tests read the screen that way), which would show a closed fold's paths.
+    const bool open = ImGui::TreeNodeEx(
+        label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_NoAutoOpenOnLog);
+    if (optimal) ImGui::PopStyleColor();
+    ImGui::PopFont();
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", b.fold_count.c_str());
+    return open;
+}
+
 // The buttons under their headings: Optimal, the "Within N" group, and
-// "Best all-0 path". A heading is drawn where the group changes.
+// "Best all-0 path". A heading is drawn where the group changes, and inside
+// Optimal and Within each score gets its own fold, so tied paths sit together
+// and a lower score always starts a new fold.
 void render_path_list(const app::PathButtonsView& list, const Path*& selected_path) {
     using Group = app::PathButtonView::Group;
+    bool fold_open = false;  // a TreeNode is pushed and needs its TreePop
+    bool hidden = false;     // inside a closed fold
     for (size_t i = 0; i < list.buttons.size(); ++i) {
         const app::PathButtonView& b = list.buttons[i];
-        if (i == 0 || b.group != list.buttons[i - 1].group) {
+        const bool new_group = i == 0 || b.group != list.buttons[i - 1].group;
+        const bool new_fold = new_group || b.fold != list.buttons[i - 1].fold;
+        if (new_fold && fold_open) {
+            ImGui::TreePop();
+            fold_open = false;
+        }
+        if (new_group) {
             if (i > 0) ImGui::Spacing();
             const char* heading = b.group == Group::Optimal  ? "Optimal"
                                   : b.group == Group::Within ? list.within_label.c_str()
@@ -149,8 +179,17 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
                 hint("The best path that activates at the first chance every time "
                      "(no skips). Every squeeze and early fill on it is 0 ms or easier.");
         }
+        if (new_fold) {
+            hidden = false;
+            if (!b.fold.empty()) {
+                fold_open = score_fold(b);
+                hidden = !fold_open;
+            }
+        }
+        if (hidden) continue;
         if (path_button(i, b, b.path == selected_path)) selected_path = b.path;
     }
+    if (fold_open) ImGui::TreePop();
 }
 
 // ---- the activations --------------------------------------------------------
@@ -528,11 +567,15 @@ void render_path_panel(AppState& app, const Path*& selected_path) {
     // The list is as wide as its longest line, up to kMaxPathListShare of the
     // tab and never taking the details below their minimum; a longer path
     // wraps (path_button). Never under 240 px.
+    // A button inside a fold sits one indent in.
     float widest = 0.0f;
-    for (const app::PathButtonView& b : list.buttons)
-        widest = std::max(widest, mono_width(b.title) +
+    const float indent = ImGui::GetStyle().IndentSpacing;
+    for (const app::PathButtonView& b : list.buttons) {
+        const float in = b.fold.empty() ? 0.0f : indent;
+        widest = std::max(widest, in + mono_width(b.title) +
                                       (b.timing.empty() ? 0.0f
                                                         : px(kTimingGap) + mono_width(b.timing)));
+    }
     for (const app::PathButtonView& b : list.buttons)
         widest = std::max(widest, ImGui::CalcTextSize(b.detail.c_str()).x);
     const float list_fit = widest + px(6.0f) * 2.0f + ImGui::GetStyle().ScrollbarSize;

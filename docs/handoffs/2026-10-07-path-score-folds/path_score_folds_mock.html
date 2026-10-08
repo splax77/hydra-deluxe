@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Path score folds</title>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Shippori+Antique+B1&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#1e1e1f;--panel:#28282a;--text:#fafafa;--dim:#9a9a9a;--gold:#fad200;--sel:#123f40;--selb:#1f6a6a;--hover:#2f2f33;--rule:#3a3a3e}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Shippori Antique B1',system-ui,sans-serif;font-size:13px}
+.mono{font-family:'Courier Prime',monospace}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:20px;font-weight:400;margin:0 0 6px}
+p.note{color:#c8c8c8;line-height:19px;margin:4px 0;max-width:900px}
+.ctl{margin:12px 0 18px;display:flex;gap:18px;align-items:center;color:#c8c8c8}
+.ctl input{accent-color:#00a0a0}
+.cols{display:flex;gap:24px;flex-wrap:wrap}
+.col{flex:1 1 440px;min-width:0}
+.colhead{font-size:15px;margin-bottom:8px}
+.colhead span{color:var(--dim);font-size:12px;margin-left:8px}
+.list{background:var(--panel);border:1px solid var(--rule);border-radius:4px;padding:10px 8px;height:620px;overflow-y:auto}
+.grp{color:var(--dim);margin:2px 6px 4px}
+.grp + .grp, .spacer{margin-top:10px}
+.path{display:block;width:100%;box-sizing:border-box;text-align:left;background:transparent;border:1px solid transparent;border-radius:3px;padding:6px;color:var(--text);cursor:pointer;font:inherit}
+.path:hover{background:var(--hover)}
+.path.on{background:var(--sel);border-color:var(--selb)}
+.title{font-family:'Courier Prime',monospace;font-size:13px;line-height:17px;word-spacing:2px}
+.title.gold{color:var(--gold)}
+.ms{color:var(--dim);font-family:'Courier Prime',monospace;margin-left:10px;white-space:nowrap}
+.detail{color:var(--dim);font-size:12px;margin-top:2px}
+.fold{display:flex;align-items:baseline;gap:8px;width:100%;background:transparent;border:0;border-radius:3px;padding:3px 6px;color:var(--text);cursor:pointer;font:inherit;text-align:left}
+.fold:hover{background:var(--hover)}
+.arrow{width:12px;color:#c8c8c8;font-size:10px}
+.fold .score{font-family:'Courier Prime',monospace;font-size:14px}
+.fold .score.gold{color:var(--gold)}
+.fold .count{color:var(--dim);font-size:12px}
+.kids{padding-left:21px}
+.legend{margin-top:22px;color:#c8c8c8;line-height:20px;max-width:900px}
+.legend b{font-weight:400;color:var(--text)}
+@media (max-width:700px){.list{height:480px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Paths tab: one fold per score</h1>
+<p class="note">Left is the list as 2.2.0 draws it. Right is the proposal: the three headings stay, and every score inside them gets its own fold, open by default, like the list before the 2026-09-27 redesign. The score moves from each row onto its fold, so tied variations sit together and a lower score always starts a new fold.</p>
+<p class="note" style="color:var(--dim)">The scores 38,851,555, 38,819,755 and 38,819,715 come from your Discography (2025) screenshot. The path strings, how many paths tie at each score, the fourth score and the all-0 row are [placeholders].</p>
+<div class="ctl">
+<label><input type="checkbox" id="count" checked> Show the path count on each fold</label>
+<span style="color:var(--dim)">Click a fold to close it; click a path to select it.</span>
+</div>
+<div class="cols">
+<div class="col"><div class="colhead">Now<span>2.2.0</span></div><div class="list" id="now"></div></div>
+<div class="col"><div class="colhead">Proposed<span>folds inside the current headings</span></div><div class="list" id="new"></div></div>
+</div>
+<div class="legend">
+<p><b>What changes.</b> Each score is a fold with the score in the same mono font as the rows, gold on the optimal fold. The rows under it show only the path and its hardest timing. A closed fold hides its rows; the headings never close.</p>
+<p><b>What stays.</b> The Optimal, Within 4 scores and Best all-0 path headings, the gold optimal rows, the timing beside each path, the selection colour, and the all-0 row, which keeps its score on the row because it has no fold.</p>
+<p><b>The count.</b> "3 paths" tells you how many rows a closed fold hides. Untick the box above to see the folds without it.</p>
+</div>
+</div>
+<script>
+// Placeholder notation: a fixed pseudo-random path, and tied variants that
+// differ from it in a few tokens.
+function rng(seed){return function(){seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;};}
+var TOK=['0','0','0','1','1','1','2','2','3','0+','0-','1+','2+','2-','3-','4','E0','E2'];
+function basePath(seed,n){var r=rng(seed),a=[];for(var i=0;i<n;i++)a.push(TOK[Math.floor(r()*TOK.length)]);return a;}
+function variant(base,seed){var r=rng(seed),a=base.slice();for(var k=0;k<4;k++){var i=Math.floor(r()*a.length);a[i]=TOK[Math.floor(r()*TOK.length)];}return a.join(' ');}
+var b1=basePath(7,96),b2=basePath(11,96),b3=basePath(19,96),b4=basePath(23,96);
+var groups=[
+ {kind:'Optimal',score:'38,851,555',paths:[b1.join(' '),variant(b1,3)]},
+ {kind:'Within 4 scores',score:'38,819,755',paths:[b2.join(' '),variant(b2,5),variant(b2,9)]},
+ {kind:'Within 4 scores',score:'38,819,715',paths:[b3.join(' '),variant(b3,13)]},
+ {kind:'Within 4 scores',score:'[38,819,675]',paths:[b4.join(' ')]}
+];
+var allzero={score:'[38,790,115]',path:basePath(29,96).map(function(t){return t.replace(/[+-]/,'');}).join(' '),detail:'[61,440] below optimal'};
+var selected={now:'0-0',new:'0-0'};
+var closed={};
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function button(id,key,titleHtml,gold,detail){
+ var on=selected[id]===key?' on':'';
+ return '<button class="path'+on+'" data-sel="'+key+'"><span class="title'+(gold?' gold':'')+'">'+titleHtml+'</span><span class="ms">0.0 ms</span>'+(detail?'<div class="detail">'+detail+'</div>':'')+'</button>';
+}
+function render(){
+ var showCount=document.getElementById('count').checked;
+ // Now: headings only, the score on every row.
+ var h='',last='';
+ groups.forEach(function(g,gi){
+  if(g.kind!==last){h+='<div class="grp'+(last?' spacer':'')+'">'+g.kind+'</div>';last=g.kind;}
+  g.paths.forEach(function(p,pi){h+=button('now',gi+'-'+pi,esc(g.score)+' · '+esc(p),gi===0);});
+ });
+ h+='<div class="grp spacer">Best all-0 path</div>'+button('now','z',esc(allzero.score)+' · '+esc(allzero.path),false,allzero.detail);
+ document.getElementById('now').innerHTML=h;
+ // Proposed: the same headings, a fold per score inside them.
+ h='';last='';
+ groups.forEach(function(g,gi){
+  if(g.kind!==last){h+='<div class="grp'+(last?' spacer':'')+'">'+g.kind+'</div>';last=g.kind;}
+  var open=!closed[gi];
+  var n=g.paths.length;
+  h+='<button class="fold" data-fold="'+gi+'" aria-expanded="'+open+'"><span class="arrow">'+(open?'▼':'▶')+'</span><span class="score'+(gi===0?' gold':'')+'">'+esc(g.score)+'</span>'+(showCount?'<span class="count">'+n+(n===1?' path':' paths')+'</span>':'')+'</button>';
+  if(open){h+='<div class="kids">';g.paths.forEach(function(p,pi){h+=button('new',gi+'-'+pi,esc(p),gi===0);});h+='</div>';}
+ });
+ h+='<div class="grp spacer">Best all-0 path</div>'+button('new','z',esc(allzero.score)+' · '+esc(allzero.path),false,allzero.detail);
+ document.getElementById('new').innerHTML=h;
+}
+document.addEventListener('click',function(e){
+ var f=e.target.closest('[data-fold]');
+ if(f){var k=f.getAttribute('data-fold');closed[k]=!closed[k];render();return;}
+ var s=e.target.closest('[data-sel]');
+ if(s){var list=s.closest('.list').id;selected[list]=s.getAttribute('data-sel');render();}
+});
+document.getElementById('count').addEventListener('change',render);
+render();
+</script>
+</body>
+</html>

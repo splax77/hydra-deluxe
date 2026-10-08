@@ -197,7 +197,14 @@ struct PathButtonView {
     const Path* path = nullptr;
     Group group = Group::Optimal;
     std::string notation;   // Path::pathstring(), "3- 1 2"
-    std::string title;      // "378,315 · 3- 1 2"
+    // The fold this button sits in: its score, "378,315", and how many paths
+    // share that score, "2 paths". Both empty on the all-0 path, which has
+    // no fold.
+    std::string fold;
+    std::string fold_count;
+    // The text on the button: the notation inside a fold (the fold shows the
+    // score), "375,955 · 0 0 0 0" on the all-0 path.
+    std::string title;
     // Beside the title: this path's own hardest squeeze or fill, "163.0 ms",
     // empty when the path needs no timing.
     std::string timing;
@@ -212,7 +219,8 @@ struct PathButtonView {
 struct PathButtonsView {
     // In drawn order; a button's index is its ##path<i> id. Optimal first
     // (every path tied at the best score), then the rest of the generated
-    // list, then the all-0 path when build_path_list shows it.
+    // list, then the all-0 path when build_path_list shows it. Optimal and
+    // Within buttons come in runs of one score each, one fold per run.
     std::vector<PathButtonView> buttons;
     // The heading over the Within group: "Within 2 scores", "Within 1 score",
     // "Within 5,000 points".
