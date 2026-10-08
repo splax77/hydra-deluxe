@@ -110,7 +110,7 @@ None of them touch the GUI's flow, so Hydra keeps working exactly as today after
 
 - The five modals and the tooltips behave as before at normal window sizes.
 - Under `hydra_uitest` the spike window opens by its name.
-- The final report lists every place a popup or tooltip can now become its own OS window.
+- The final report lists every place a popup or tooltip can now become its own OS window. (Done; after the user's answer, D103 item 15, task T1b keeps them all inside their window instead.)
 
 **Hands-on check before merge (main session, with the user).** Build the spike and launch Hydra. Open the spike window, drag it to the second monitor, minimize and restore Hydra, cover Hydra with another app, then restart and reopen. Send the user screenshots. If anything misbehaves, stop. The ImHex-style off switch then goes to the user as a question.
 

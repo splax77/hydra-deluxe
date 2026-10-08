@@ -250,7 +250,7 @@ No whole-library run is planned. The one real-library check, which shows row cou
 
 ## Risks
 
-**Turning on viewports reaches the whole app.** Tooltips and popups near the screen edge may now become their own OS windows. The plan's first task is a spike that turns viewports on with an empty report window, so this shows up before any report code exists.
+**Turning on viewports reaches the whole app.** Upstream ImGui lets a tooltip or popup near a window's edge become its own OS window. The spike showed this, and D103 item 15 keeps every popup and tooltip inside the window that opened it, through one marked block in our copy of `imgui.cpp`, because ImGui has no setting for it.
 
 **Memory.** Keeping 40,000+ path rows in memory after the window closes costs something. The 28 MB page suggests tens of MB. The plan measures it on the corpus. If it looks large, the alternative is freeing rows on close and rebuilding on open, which takes a few seconds. That choice goes to the user with the number in hand.
 
