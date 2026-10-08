@@ -7,6 +7,7 @@
 #include "search/graph.h"  // fill_rule_name
 #include "store/record_store.h"
 #include "ui/fonts.h"
+#include "ui/library_view.h"  // kProgressBoxWidth
 #include "ui/theme.h"
 #include "ui/widgets.h"
 #include "ui/win32_dialogs.h"
@@ -212,7 +213,7 @@ void render_folder_manager(AppState& app) {
 }
 
 void render_scan_modal(AppState& app) {
-    pin_next_modal_width(px(460.0f));  // live counts must not resize it
+    pin_next_modal_width(px(kProgressBoxWidth));
     if (!ImGui::BeginPopupModal("Scanning charts", nullptr,
                                 ImGuiWindowFlags_AlwaysAutoResize)) {
         return;

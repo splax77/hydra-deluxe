@@ -63,6 +63,11 @@ private:
     double published_ = -1.0;
 };
 
+// A ByteRateClock's estimate shows only once its job is this old: the
+// Preview loader's gate, which the startup open's copy reuses (D48 Q20 owns
+// the words, detail::time_left_text).
+inline constexpr double kTimeLeftAfterSeconds = 3.0;
+
 // Prepares a chart for the 3D Preview off the render thread, on the same job
 // base as ViewJob. Two branches run at once:
 //   (a) parse the chart, build the PreviewScene, and build the highway

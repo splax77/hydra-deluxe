@@ -13,6 +13,16 @@ namespace hydra::ui {
 
 void render_main_window(AppState& app);
 
+// What the window shows while the startup open runs (AppState::store_ready is
+// false): nothing until AppState::store_open_shown, then a box centred in the
+// window that says what the open is doing (StoreOpenProgress). Same window
+// name and flags as the main window, so its saved settings carry over.
+void render_startup_screen(AppState& app);
+
+// How wide the progress boxes are, before px(): the scan modal and the
+// startup screen. Fixed so live counts never resize them.
+inline constexpr float kProgressBoxWidth = 460.0f;
+
 // The library's narrowest and widest widths with the song panel open, in
 // `room` px for the two together: the library keeps kMinLibraryW and the
 // panel kMinSongPanelW (both in details_view.h, through px()); when the room
