@@ -71,6 +71,21 @@ void dismiss_done(ImGuiTestContext* ctx) {
     ctx->SetRef("//Hydra");
 }
 
+// Pick alice in the open player picker: the box closes, the comparison
+// window opens, and the comparison builds (D103 item 8).
+void pick_alice(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    ctx->SetRef("//Compare dmleaderboards user");
+    ctx->ItemClick("**/###111");
+    ctx->Yield(2);
+    IM_CHECK(!h.app->dm_picker_open);
+    IM_CHECK(h.app->dm_report.window_open);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 60));
+    IM_CHECK(h.app->dm_report.result != nullptr);
+}
+
 // The running strip shows the chart being worked on and live counts. Its Stop
 // button and its width must not move as they change. The gate steps the run
 // one chart at a time, so the strip is provably on screen for every change.
@@ -158,16 +173,9 @@ void test_settings_and_reports(ImGuiTestContext* ctx) {
     ctx->ItemClick("Compare with dmleaderboards...");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10));
     IM_CHECK(visible_text(h).find("alice") != std::string::npos);
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK(h.app->dm_report.window_open);
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60));
+    pick_alice(ctx);
+    if (ctx->IsError()) return;
     // The canned score (100,000) is under the chart's optimal.
-    IM_CHECK(h.app->dm_report.result != nullptr);
     IM_CHECK_EQ(h.app->dm_report.result->stats.under_optimal, 1);
 }
 
@@ -223,17 +231,10 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(visible_text(h).find("alice") != std::string::npos);
 
-    // Pick alice: the box closes, the comparison window opens and the
-    // comparison builds, and the choice is remembered (D103 item 8).
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK(h.app->dm_report.window_open);
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60));
+    // Pick alice, and the choice is remembered (D103 item 8).
+    pick_alice(ctx);
+    if (ctx->IsError()) return;
     // Nothing is analyzed yet, so the one score is "not analyzed".
-    IM_CHECK(h.app->dm_report.result != nullptr);
     IM_CHECK_EQ(h.app->dm_report.result->stats.not_analyzed, 1);
     IM_CHECK_EQ(h.app->dm_report.result->stats.under_optimal, 0);
     IM_CHECK_STR_EQ(h.app->dm_report.result->username.c_str(), "alice");
