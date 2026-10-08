@@ -46,7 +46,7 @@ The wiki's own user guide describes the public app's older screen, not this one.
 
 **Paths at an SP cap other than 4 can't be played.** Clone Hero's Star Power meter holds 4 bars. The **SP cap** setting lets you raise that to see what the cap costs a chart. Scores at any other cap are a what-if, not paths to play.
 
-**Your data stays put.** Your library, results and settings live next to Hydra.exe in `C:\Program Files\Hydra`. Reports are saved in your `Documents\Hydra` folder. Upgrading keeps everything. Uninstalling keeps your data too; delete the folder yourself if you really want it gone.
+**Your data stays put.** Your library, results and settings live next to Hydra.exe in `C:\Program Files\Hydra`. Reports are saved in your `Documents\Hydra` folder. Upgrading keeps everything. The first start after an upgrade may take a moment to update your library file. That happens once, and your charts and results are kept. The [user guide](docs/UserGuide.md#the-first-start-after-updating) shows what you'll see. Uninstalling keeps your data too; delete the folder yourself if you really want it gone.
 
 **Had this app installed back when it was called Hydra?** Hydra Deluxe is the same program under a new name. It installs over that copy and keeps your library and results. Coming from DragonDelgar's public Hydra instead? See [moving from the public version](docs/differences-from-public-hydra.md#moving-from-the-public-version).
 
