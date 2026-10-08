@@ -147,9 +147,12 @@ std::vector<Column<DmReportRow>> dm_columns() {
         cols.push_back(std::move(c));
     }
     {
-        // The page sorted the timestamp as text and showed its date part.
+        // Sorts on the timestamp as text and shows its date part. An empty
+        // date is an empty value (D103 item 17).
         Column<DmReportRow> c = column("posted", "Posted", false, "The date the score was posted.");
-        c.sort_key = [](const DmReportRow& r) { return SortKey{r.posted}; };
+        c.sort_key = [](const DmReportRow& r) {
+            return r.posted.empty() ? SortKey{} : SortKey{r.posted};
+        };
         c.cell = [](const DmReportRow& r) {
             return r.posted.empty() ? std::string(kDash) : r.posted.substr(0, 10);
         };

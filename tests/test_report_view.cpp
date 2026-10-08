@@ -451,8 +451,9 @@ TEST_CASE("dm comparison cells read as the page wrote them") {
     CHECK(std::holds_alternative<std::monostate>(cols[6].sort_key(rows[3])));
     CHECK(std::get<double>(cols[7].sort_key(rows[1])) == 1.0);
     CHECK(std::get<double>(cols[7].sort_key(rows[0])) == 0.0);
-    // The page sorted Posted as text, an empty date included.
-    CHECK(std::get<std::string>(cols[11].sort_key(rows[2])).empty());
+    // Posted sorts as text; an empty date has no key (D103 item 17).
+    CHECK(std::get<std::string>(cols[11].sort_key(rows[0])) == "2024-05-01T12:00:00Z");
+    CHECK(std::holds_alternative<std::monostate>(cols[11].sort_key(rows[2])));
 }
 
 TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
@@ -481,6 +482,11 @@ TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
     CHECK(songs(view) == std::vector<std::string>{"Above", "Fast", "Under", "Missing"});
     view.set_sort({{"pct_h", view.first_direction("pct_h")}});
     CHECK(songs(view) == std::vector<std::string>{"Above", "Under", "Missing", "Fast"});
+    // An empty Posted date sinks in both directions (D103 item 17).
+    view.set_sort({{"posted", SortDir::Ascending}});
+    CHECK(songs(view) == std::vector<std::string>{"Above", "Under", "Fast", "Missing"});
+    view.set_sort({{"posted", SortDir::Descending}});
+    CHECK(songs(view) == std::vector<std::string>{"Fast", "Under", "Above", "Missing"});
 
     view.set_keep(dm_report_view::dm_keep(std::string("under optimal")));
     CHECK(songs(view) == std::vector<std::string>{"Under"});
