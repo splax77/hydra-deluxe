@@ -137,6 +137,14 @@ inline bool fits_on_line(float w, float spacing) {
                        ImGui::GetCurrentWindow()->WorkRect.Max.x);
 }
 
+// Moves the cursor right so the next item, `w` wide, ends at the right edge
+// of the space left: the table cell's, or the line's. An item wider than that
+// space stays where it is.
+inline void move_to_right_edge(float w) {
+    const float room = ImGui::GetContentRegionAvail().x - w;
+    if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);
+}
+
 // The flags a Library-style table opens with: the Library table's own, which
 // the report tables take and add to.
 inline ImGuiTableFlags base_table_flags() {

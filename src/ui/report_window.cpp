@@ -32,12 +32,9 @@ std::string clock_text(std::chrono::system_clock::time_point at) {
 // Puts the next `width` of items at the right of the current line when they
 // fit beside what is already on it, else on a line of their own.
 void right_align(float width) {
+    if (!fits_on_line(width, ImGui::GetStyle().ItemSpacing.x)) return;
     ImGui::SameLine();
-    const float avail = ImGui::GetContentRegionAvail().x;
-    if (width <= avail)
-        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - width);
-    else
-        ImGui::NewLine();
+    move_to_right_edge(width);
 }
 
 float button_w(const char* label) { return button_slot_width(label); }
@@ -328,11 +325,7 @@ void cell(const std::string& text, const app::report_view::CellLook& look, Tone 
                                              : ImGui::GetStyleColorVec4(ImGuiCol_Text);
     ImGui::PushStyleColor(ImGuiCol_Text, color);
     if (look.mono) ImGui::PushFont(g_mono_font, 0.0f);
-    if (numeric) {
-        const float w = ImGui::CalcTextSize(text.c_str()).x;
-        const float avail = ImGui::GetContentRegionAvail().x;
-        if (w < avail) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - w);
-    }
+    if (numeric) move_to_right_edge(ImGui::CalcTextSize(text.c_str()).x);
     text_ellipsized(text.c_str());
     if (look.mono) ImGui::PopFont();
     ImGui::PopStyleColor();

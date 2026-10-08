@@ -330,9 +330,7 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
             // (right-aligned, dim), so the whole row is one click target.
             ImGui::TableSetColumnIndex(0);
             const std::string number = group_thousands(static_cast<int64_t>(k) + 1);
-            const float number_w = ImGui::CalcTextSize(number.c_str()).x;
-            ImGui::SetCursorPosX(ImGui::GetCursorPosX() +
-                                 (std::max)(0.0f, ImGui::GetContentRegionAvail().x - number_w));
+            move_to_right_edge(ImGui::CalcTextSize(number.c_str()).x);
             ImGui::PushStyleColor(ImGuiCol_Text, kDimTextColor);
             const bool clicked = ImGui::Selectable(
                 number.c_str(), memory.selected == index,

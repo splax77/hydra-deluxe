@@ -5381,13 +5381,45 @@ const std::vector<OwnerRule>& rules() {
           "if (specs->SpecsCount > max_keys) push_sort(sort);"},
          {},
          {"src"}},
+        // Right-aligning the next item: in a table cell, or at the end of a
+        // line once the line-fit check (fits_on_line) has said it fits.
+        {"Where does a right-aligned item start?",
+         "move_to_right_edge in src/ui/widgets.h",
+         R"(SetCursorPosX\(ImGui::GetCursorPosX\(\)\s*\+|>\s*ImGui::GetCursorPosX\(\)\)\s*ImGui::SetCursorPosX\()",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T5 (finding 4)",
+         {"if (w < avail) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - w);",
+          "ImGui::SetCursorPosX(ImGui::GetCursorPosX() +",
+          "ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - width);",
+          "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);"},
+         {"ImGui::SetCursorPosX(buttons_x);",
+          "ImGui::SetCursorPosX(left_x + text_w + style.ItemSpacing.x);",
+          "move_to_right_edge(ImGui::CalcTextSize(number.c_str()).x);"},
+         {{"src/ui/widgets.h", "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
+           "move_to_right_edge, the owner: report_frame's cell, row number and right_align call it"}},
+         {"src"}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
-    // Empty: every copy a rule once tolerated has been removed.
-    static const std::vector<KnownCopy> k = {};
+    // Copies found in files the change that found them could not edit.
+    static const std::vector<KnownCopy> k = {
+        {"Where does a right-aligned item start?", "src/ui/paths_tab.cpp",
+         "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
+         "a follow-up to RW-T5's review: align_right calls move_to_right_edge"},
+        {"Where does a right-aligned item start?", "src/ui/library_dialogs.cpp",
+         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
+         "a follow-up to RW-T5's review, once T4, which owns this file now, has merged"},
+        {"Where does a right-aligned item start?", "src/ui/library_toolbar.cpp",
+         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
+         "a follow-up to RW-T5's review"},
+        {"Where does a right-aligned item start?", "src/ui/settings_bar.cpp",
+         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
+         "a follow-up to RW-T5's review"},
+    };
     return k;
 }
 
