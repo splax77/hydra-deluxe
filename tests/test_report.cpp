@@ -1512,3 +1512,36 @@ TEST_CASE("comparison page explains its columns and splits the missing scores") 
     CHECK(html.find("id=\"status\" aria-label=\"Status\"") != std::string::npos);
     CHECK(html.find("<dl class=\"legend\" id=\"legend\"></dl>") != std::string::npos);
 }
+
+// D103 item 22: a settings change marks the path report out of date only when
+// it moves a setting the report reads.
+TEST_CASE("settings_change_touches: the path report reads the SP cap and the lens, not the mode") {
+    const app::Settings before;
+    CHECK_FALSE(app::report::settings_change_touches(before, before));
+
+    // The chart mode alone: the report lists every mode.
+    app::Settings mode_only = before;
+    mode_only.view_difficulty = "Hard";
+    mode_only.view_prodrums = false;
+    REQUIRE(mode_only.chartmode_key() != before.chartmode_key());
+    CHECK_FALSE(app::report::settings_change_touches(before, mode_only));
+
+    app::Settings cap = before;
+    cap.sp_cap = 5;
+    CHECK(app::report::settings_change_touches(before, cap));
+
+    app::Settings ms_limit = before;
+    ms_limit.mslimit_enabled = !before.mslimit_enabled;
+    REQUIRE(ms_limit.lens() != before.lens());
+    CHECK(app::report::settings_change_touches(before, ms_limit));
+
+    app::Settings fills = before;
+    fills.legacy_fills = !before.legacy_fills;
+    REQUIRE(fills.lens() != before.lens());
+    CHECK(app::report::settings_change_touches(before, fills));
+
+    // A setting no report reads.
+    app::Settings auto_open = before;
+    auto_open.auto_open_report = !before.auto_open_report;
+    CHECK_FALSE(app::report::settings_change_touches(before, auto_open));
+}

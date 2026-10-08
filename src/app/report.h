@@ -17,6 +17,10 @@
 #include "store/record_store.h"
 #include "core/squeeze_rating.h"
 
+namespace hydra::app {
+struct Settings;  // app/config.h
+}
+
 namespace hydra::app::report {
 
 // One table row. Field order is the JSON key order the page's script reads.
@@ -298,6 +302,10 @@ struct GeneratedReport {
 // hydra_report passes an empty seed.
 GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options,
                                 const ReportSeed& seed = ReportSeed{});
+
+// Whether moving from `before` to `after` changes a setting the path report
+// reads, so a report built under `before` is out of date (D103 item 22).
+bool settings_change_touches(const Settings& before, const Settings& after);
 
 }  // namespace hydra::app::report
 

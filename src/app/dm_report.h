@@ -21,6 +21,10 @@
 #include "parse/song.h"  // Difficulty
 #include "store/record_store.h"
 
+namespace hydra::app {
+struct Settings;  // app/config.h
+}
+
 namespace hydra::app::dm_report {
 
 // The words collect_dm_rows writes in DmReportRow::status, one per state a
@@ -150,6 +154,10 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
                                      const std::string& chartmode,
                                      const store::Lens& lens,
                                      const std::string& username);
+
+// Whether moving from `before` to `after` changes a setting the comparison
+// reads, so a comparison built under `before` is out of date (D103 item 22).
+bool settings_change_touches(const Settings& before, const Settings& after);
 
 }  // namespace hydra::app::dm_report
 

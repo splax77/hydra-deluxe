@@ -1,10 +1,9 @@
 #include "ui/dm_jobs.h"
 
-#include <filesystem>
 #include <stdexcept>
+#include <utility>
 
 #include "app/dm_report.h"
-#include "app/report_files.h"
 #include "core/error_kind.h"
 #include "net/dmbot_client.h"
 
@@ -26,13 +25,12 @@ void DmFetchUsersJob::run() {
 // ---- DmReportJob ------------------------------------------------------
 
 DmReportJob::DmReportJob(store::RecordStore& store, std::string discord_id, std::string username,
-                         std::string chartmode, store::Lens lens, bool open_when_done)
+                         std::string chartmode, store::Lens lens)
     : store_(store),
       discord_id_(std::move(discord_id)),
       username_(std::move(username)),
       chartmode_(std::move(chartmode)),
-      lens_(lens),
-      open_when_done_(open_when_done) {}
+      lens_(lens) {}
 
 void DmReportJob::start() { spawn([this] { run(); }); }
 
@@ -42,20 +40,21 @@ void DmReportJob::run() {
             net::fetch_scores(discord_id_, net::kDefaultApiBase, &cancel_);
         // The fetch only checks cancel between read chunks, so a cancel
         // pressed while the server was waking up arrives here. Stop before
-        // anything is written or opened (audit B3).
+        // anything is built (audit B3).
         if (is_cancelled()) return false;
         // Join, tally, and framing all live behind generate_dm_report; the
-        // job only fetches, forwards the counts, and writes the file.
+        // job only fetches and hands the result over.
         app::dm_report::GeneratedDmReport report =
             app::dm_report::generate_dm_report(store_, scores, chartmode_, lens_,
                                                username_);
         if (report.stats.total == 0)
             throw KindedError(ErrorKind::NoScores, "this user has no scores to compare");
 
-        stats_ = report.stats;
-
-        // A browser that won't open the page is not a failed report.
-        outcome_ = publish_report(app::dm_report_html_path(), report.html, open_when_done_);
+        // Nothing reads the page any more; the window draws the rows. Its
+        // text goes now rather than living on with the rows (T7 removes the
+        // field).
+        std::string().swap(report.html);
+        result_ = std::make_shared<const app::dm_report::GeneratedDmReport>(std::move(report));
         return true;
     });
 }

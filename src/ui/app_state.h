@@ -102,10 +102,6 @@ struct LibraryViewState {
     std::string scrolled_to;
     // The dmleaderboards picker's name filter.
     char dm_filter[128] = "";
-    // Whether the path report file exists, as of the last look
-    // (AppState::cached_file_check).
-    bool report_exists = false;
-    double report_checked_at = -1.0;  // -1 = look now
     // The split beside the song panel. The share itself lives in
     // hydra_ui.ini (library_share() in app_shell.h); these tell a drag apart
     // from a width the split set: the width the library had last frame, and
@@ -117,9 +113,6 @@ struct LibraryViewState {
     // Song folders: a folder was added or removed since the dialog opened,
     // so it offers "Scan now".
     bool folders_changed = false;
-    // The leaderboard report was opened by the "Open report" button (the
-    // job itself knows whether it auto-opened).
-    bool dm_opened_by_click = false;
     // The Analysis settings bar's four blocks (Difficulty, SP cap, Score
     // range, Path limit) as wide as they were drawn last frame, so this frame
     // can tell which still fit on the line. 0 = not drawn yet.
@@ -158,6 +151,40 @@ struct ViewedSong {
 
     bool ready() const { return state == State::Ready && record.has_value(); }
 };
+
+// Why a report in memory may no longer match what Hydra would build now: a
+// batch finished after it was built (Library), or a setting it was built from
+// changed (Settings). The later of the two wins (D103). The report window's
+// out-of-date strip reads it.
+enum class ReportStale { None, Library, Settings };
+
+// Where a report's latest build stands. Building is never stored: it is the
+// report's job running (AppState::path_report_build, dm_report_build).
+enum class ReportBuild { None, Building, Ready, Cancelled, Failed };
+
+// One report as the app holds it (D103): the last good result, kept in memory
+// so a window opens at once, when it was built, whether it is out of date,
+// whether its window is open, and how the latest build ended. A failed or
+// cancelled build keeps the last good result.
+template <class Result>
+struct ReportSlot {
+    // Shared, never copied: the window reads the rows where the job left them.
+    std::shared_ptr<const Result> result;
+    std::chrono::system_clock::time_point built_at{};  // "Built HH:MM"
+    ReportStale stale = ReportStale::None;
+    bool window_open = false;
+    // How the latest finished build ended: None (never built), Ready,
+    // Cancelled or Failed. Failed carries the plain sentence and raw text.
+    ReportBuild last = ReportBuild::None;
+    std::string message;
+    std::string error;
+    // An out-of-date event that landed while a build was running. That build
+    // read the old library or settings, so its result starts out of date.
+    ReportStale stale_during_build = ReportStale::None;
+};
+
+using PathReportSlot = ReportSlot<app::report::GeneratedReport>;
+using DmReportSlot = ReportSlot<app::dm_report::GeneratedDmReport>;
 
 // What the app reads before it opens the store: the settings, with
 // hydra_rules.ini already loaded, and the loader's error if the file was bad.
@@ -286,16 +313,23 @@ public:
     // (D87 item 11). Safe to call when closed.
     void close_details();
 
+    // A report row's click (D103 item 3): switches the settings bar to
+    // `chartmode` first when it differs, the way the bar's own controls do,
+    // then selects the chart with hash `hyhash`. A chart with several copies
+    // selects the first in the library's current order. A hash the library
+    // doesn't list selects nothing. While a batch locks the settings bar, a
+    // row of another mode selects nothing and the status line says why.
+    void select_chart(const std::string& hyhash, const std::string& chartmode);
+
     // Whether the selected chart's file exists, as of the last look
     // (cached_file_check).
     bool selected_file_ok(double now);
-    // How long the UI trusts a cached "this file exists" answer, for the
-    // chart file and the path report alike (D54).
+    // How long the UI trusts a cached "this file exists" answer (D54).
     static constexpr double kFileCheckSeconds = 2.0;
     // The one cached file check: calls `look` and keeps its answer when
     // `checked_at` is -1 ("look now") or kFileCheckSeconds old; otherwise
     // returns the kept answer. `checked_at` and `answer` are the caller's
-    // pair (the song panel's chart file, the library's report file).
+    // pair (the song panel's chart file).
     template <class Look>
     static bool cached_file_check(double& checked_at, bool& answer, double now, Look look) {
         if (checked_at < 0.0 || now - checked_at >= kFileCheckSeconds) {
@@ -328,10 +362,6 @@ public:
     DetailsViewState details_ui;
     // The library view's own per-frame state (see LibraryViewState above).
     LibraryViewState library_ui;
-
-    // Whether the path report file exists, as of the last look
-    // (cached_file_check).
-    bool report_file_shown(double now);
 
     // The open song as the click's analysis found it (ViewedSong above).
     ViewedSong viewed;
@@ -393,6 +423,9 @@ public:
     enum class SettingsLock { None, Batch };
     SettingsLock settings_lock() const;
     bool settings_locked() const { return settings_lock() != SettingsLock::None; }
+    // The status line's sentence when a running batch turns a request away
+    // (D51 call 24).
+    static constexpr const char* kBatchRunningStatus = "A batch is running.";
     // Whether a library scan may start now: there are song folders, no scan
     // job is held (its modal is still up until Continue), and no batch is
     // running. start_scan enforces it; the toolbar button reads it.
@@ -413,17 +446,44 @@ public:
     void tick(double now);
 
     // Whether this batch run has already kicked off its path report — one
-    // report per run, however long the finished modal stays open.
+    // report per run, however long the finished strip stays open. The strip
+    // shows the report's outcome only once this run started it.
     bool report_started = false;
 
-    // Whether the batch modal already showed this report job's outcome. When
-    // it didn't (you clicked Continue while the report was still building),
-    // the main window posts a status line when the job lands instead.
-    bool report_outcome_shown = false;
+    // The two reports (D103). Each job hands its result here when
+    // update_background_jobs collects it; the windows, the toolbar and the
+    // finished strip read these and never the jobs' results.
+    PathReportSlot path_report;
+    DmReportSlot dm_report;
+    // Where each report's latest build stands: Building while its job runs,
+    // otherwise how the last one ended (ReportSlot::last).
+    ReportBuild path_report_build() const;
+    ReportBuild dm_report_build() const;
+
+    // Starts the path report's job under the current settings when none is
+    // running, and does nothing when one is. A window's Refresh and Try
+    // again, and showing it with nothing built, all come here. Off under a
+    // bad hydra_rules.ini, like a batch.
+    void request_path_report();
+    // The path report window's Cancel. The job stops between charts and the
+    // window then shows the cancelled state.
+    void cancel_path_report();
+    // Opens the path report window: the toolbar's "Open path report", the
+    // finished strip's "Open report". With nothing ever built this session
+    // it starts a build (request_path_report).
+    void show_path_report();
+    // Whether the library holds a chart with a current result, whatever the
+    // search: the toolbar shows "Open path report" from then on.
+    bool library_has_analyzed() const;
 
     // "Compare dmleaderboards user" picker + its two network jobs. The fetch
-    // job loads the ladder into dm_users; the report job builds the HTML.
+    // job loads the ladder into dm_users; the report job builds the
+    // comparison into dm_report.
     bool dm_picker_open = false;
+    // Set by reopen_dm_picker: the picker opens its popup on the main
+    // window's next frame (render_dm_picker_modal), since a popup has to be
+    // opened from the window that draws it.
+    bool dm_picker_popup_pending = false;
     std::vector<net::DmUser> dm_users;
     std::unique_ptr<DmFetchUsersJob> dm_fetch_job;
     std::unique_ptr<DmReportJob> dm_report_job;
@@ -431,7 +491,18 @@ public:
     void start_scan();
     void start_batch(bool redo);
     void start_dm_fetch();  // loads the dmleaderboards user list
+    // A player picked in the picker (D103 item 8): remembers the player, opens
+    // the comparison window and builds the comparison, replacing one still
+    // building for another player (D103 item 9).
     void start_dm_report(const std::string& discord_id, const std::string& username);
+    // The comparison's Refresh and Try again (D103 item 11): builds it again
+    // for the last player picked, under the current settings, when no build
+    // is running. Does nothing before any player was picked.
+    void request_dm_report();
+    // Opens the player picker again: the toolbar's button, and the comparison
+    // window's Cancel and "Compare another player..." (D103 item 10). Loads
+    // the ladder when this session has none.
+    void reopen_dm_picker();
 
     // The confirm's "Also re-analyze charts that already have a result" box.
     bool batch_redo = false;
@@ -459,18 +530,22 @@ public:
     // Closes the confirm without starting, letting go of its plans.
     void close_batch_confirm();
 
-    // Once per frame (run_frame), after tick(): when a batch ends, start its
-    // path report (never for a stopped batch); when the finished strip was
-    // dismissed before the report landed, post the outcome to the status
-    // line; let go of cancelled leaderboard jobs once they finish.
+    // Once per frame (run_frame), after tick(): when a batch ends, mark both
+    // reports out of date and start its path report (never for a stopped
+    // batch); collect each finished report job into its slot, posting the
+    // path report's outcome to the status line when the finished strip was
+    // dismissed before it landed; let go of cancelled jobs once they finish.
     void update_background_jobs();
 
     // Leaderboard jobs cancelled while a request was in flight. WinHTTP only
     // checks the cancel flag between reads, so joining one on the spot could
     // freeze the window for up to two minutes. They wait here instead, and
-    // update_background_jobs() drops each once it has finished.
+    // update_background_jobs() drops each once it has finished. A path
+    // report replaced while it builds waits the same way, since it stops
+    // only between charts.
     std::vector<std::unique_ptr<DmFetchUsersJob>> parked_dm_fetches;
     std::vector<std::unique_ptr<DmReportJob>> parked_dm_reports;
+    std::vector<std::unique_ptr<ReportJob>> parked_reports;
     void cancel_dm_fetch();
     void cancel_dm_report();
 
@@ -544,14 +619,31 @@ private:
     // goes through it.
     bool read_store(const std::function<void()>& read);
     bool batch_finish_seen_ = false;  // update_background_jobs saw this run end
+
+    // Starts report_job, parking one still running. `from_batch`: the job
+    // is the finished batch's own report, whose outcome the strip shows and
+    // which "Open automatically" opens.
+    void launch_path_report(store::CapQuery cap, store::Lens lens, app::BatchRun run,
+                            app::report::ReportSeed seed, bool from_batch);
+    bool path_report_from_batch_ = false;
+    // Starts dm_report_job for the last player picked. None may be running.
+    void launch_dm_report();
+    std::string dm_player_id_;
+    std::string dm_player_name_;
+    // Moves each finished report job's outcome into its slot.
+    void collect_path_report();
+    void collect_dm_report();
+    // An out-of-date event for the reports that read what changed: `path`
+    // and `dm` say which. A slot with a result turns stale; a running build
+    // remembers it for its own result.
+    void mark_reports_stale(ReportStale reason, bool path, bool dm);
     ID3D11Device* render_device_ = nullptr;
     ID3D11DeviceContext* render_context_ = nullptr;
 
-    // The identity-relevant settings as of the last commit, so commit_settings
-    // can tell an identity change from any other settings edit.
-    std::string committed_chartmode_;
-    store::CapQuery committed_cap_;
-    store::Lens committed_lens_;
+    // The settings as of the last commit, so apply_settings can tell an
+    // identity change from any other settings edit, and which reports a
+    // change reaches.
+    app::Settings committed_settings_;
 
     // An edit_settings change the INI does not have yet.
     bool settings_unsaved_ = false;

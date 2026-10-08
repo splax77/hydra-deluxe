@@ -20,7 +20,6 @@
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
 #include "ui/library_parts.h"  // analyze_search_label
-#include "ui/win32_dialogs.h"
 
 namespace fs = std::filesystem;
 
@@ -32,6 +31,15 @@ namespace {
 // mangled, so go through WindowInfo; NoError because "not there" is a result.
 ImGuiWindow* child_window(ImGuiTestContext* ctx, const char* path) {
     return ctx->WindowInfo(path, ImGuiTestOpFlags_NoError).Window;
+}
+
+// Waits until the finished batch's path report has landed in its slot.
+bool wait_report_landed(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    return wait_until(ctx, [&] {
+        return h.app->report_started &&
+               h.app->path_report_build() != hydra::ui::ReportBuild::Building;
+    }, 60);
 }
 
 // Narrow the library to charts matching `search` and batch them through the
@@ -49,7 +57,7 @@ bool batch_search(ImGuiTestContext* ctx, const std::string& search) {
     return wait_until(ctx, [&] {
                return h.app->batch_job && h.app->batch_job->snapshot().finished;
            }, 300) &&
-           wait_until(ctx, [&] { return h.app->report_job && h.app->report_job->finished(); }, 60);
+           wait_report_landed(ctx);
 }
 
 // Click the finished strip's X and wait for the strip to go.
@@ -61,6 +69,21 @@ void dismiss_done(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->batch_job == nullptr);
     ctx->SetRef("//Hydra");
+}
+
+// Pick alice in the open player picker: the box closes, the comparison
+// window opens, and the comparison builds (D103 item 8).
+void pick_alice(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    ctx->SetRef("//Compare dmleaderboards user");
+    ctx->ItemClick("**/###111");
+    ctx->Yield(2);
+    IM_CHECK(!h.app->dm_picker_open);
+    IM_CHECK(h.app->dm_report.window_open);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 60));
+    IM_CHECK(h.app->dm_report.result != nullptr);
 }
 
 // The running strip shows the chart being worked on and live counts. Its Stop
@@ -133,31 +156,27 @@ void test_settings_and_reports(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/2x Bass");  // restore
 
     // Batch-analyze just the first chart (search narrows the batch), which
-    // builds the path report; with auto-open off no browser is launched.
+    // builds the path report; with auto-open off its window stays shut.
     // In quotes, so the word search matches the title as one phrase.
     const std::string title = "\"" + h.app->library_row_at(0).title + "\"";
     IM_CHECK(batch_search(ctx, title));
-    IM_CHECK(h.app->report_job->ok());
-    IM_CHECK(hydra::app::report_file_exists());
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)0);
+    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
+    IM_CHECK(!h.app->path_report.window_open);
     ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
     ctx->ItemClick("Open report");
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)1);
+    IM_CHECK(h.app->path_report.window_open);
     dismiss_done(ctx);
 
-    // dmleaderboards comparison against the canned API.
+    // dmleaderboards comparison against the canned API: picking the player
+    // closes the box and opens the comparison window (D103 item 8).
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Compare with dmleaderboards...");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10));
     IM_CHECK(visible_text(h).find("alice") != std::string::npos);
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->dm_report_job && h.app->dm_report_job->finished(); }, 60));
-    IM_CHECK_STR_EQ(h.app->dm_report_job->error().c_str(), "");
-    IM_CHECK(fs::exists(hydra::app::dm_report_html_path()));
+    pick_alice(ctx);
+    if (ctx->IsError()) return;
     // The canned score (100,000) is under the chart's optimal.
-    IM_CHECK_EQ(h.app->dm_report_job->stats().under_optimal, 1);
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)1);  // still: auto-open is off
+    IM_CHECK_EQ(h.app->dm_report.result->stats.under_optimal, 1);
 }
 
 // The dmleaderboards comparison, end to end: the button off away from Clone
@@ -212,35 +231,24 @@ void test_dm_compare_flow(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(visible_text(h).find("alice") != std::string::npos);
 
-    // Pick alice: the report builds, the choice is remembered, and with
-    // auto-open off nothing opens until asked.
-    ctx->ItemClick("**/###111");
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->dm_report_job && h.app->dm_report_job->finished();
-    }, 60));
-    IM_CHECK(h.app->dm_report_job->ok());
-    IM_CHECK(visible_text(h).find("not analyzed") != std::string::npos);
-    // The counts read under, at and above optimal; nothing is "matched".
-    IM_CHECK(visible_text(h).find("0 under optimal, 0 at optimal, 0 above optimal") !=
-             std::string::npos);
-    IM_CHECK(visible_text(h).find("matched") == std::string::npos);
+    // Pick alice, and the choice is remembered (D103 item 8).
+    pick_alice(ctx);
+    if (ctx->IsError()) return;
+    // Nothing is analyzed yet, so the one score is "not analyzed".
+    IM_CHECK_EQ(h.app->dm_report.result->stats.not_analyzed, 1);
+    IM_CHECK_EQ(h.app->dm_report.result->stats.under_optimal, 0);
+    IM_CHECK_STR_EQ(h.app->dm_report.result->username.c_str(), "alice");
     IM_CHECK_STR_EQ(h.app->settings.dm_last_user.c_str(), "111");
     IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).dm_last_user.c_str(), "111");
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)0);
-    // "again" only once it has really opened.
-    IM_CHECK(!ctx->ItemExists("Open report again"));
-    ctx->ItemClick("Open report");
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)1);
-    IM_CHECK(h.opened_urls[0] == hydra::app::dm_report_html_path());
-    ctx->Yield(2);
-    IM_CHECK(ctx->ItemExists("Open report again"));
 
-    // Compare another: back to the list, the finished report dropped.
-    ctx->ItemClick("Compare another");
-    ctx->Yield(2);
-    IM_CHECK(h.app->dm_report_job == nullptr);
+    // The window's "Compare another player...": back to the list, and the
+    // comparison stays until another player replaces it (D103 item 9).
+    h.app->reopen_dm_picker();
+    ctx->Yield(3);
     IM_CHECK(h.app->dm_picker_open);
+    IM_CHECK(h.app->dm_report.result != nullptr);
     IM_CHECK(visible_text(h).find("Pick a player") != std::string::npos);
+    ctx->SetRef("//Compare dmleaderboards user");
 
     // Close: the picker goes away.
     ctx->ItemClick("Close");
@@ -262,7 +270,7 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     // Batch just the first chart (the search narrows the batch).
     const std::string title = "\"" + h.app->library_row_at(0).title + "\"";
     IM_CHECK(batch_search(ctx, title));
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)0);  // auto-open is off
+    IM_CHECK(!h.app->path_report.window_open);  // auto-open is off
 
     // Tick "Open automatically" in the finished strip: it persists at once.
     ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
@@ -271,12 +279,12 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).auto_open_report);
     dismiss_done(ctx);
 
-    // The toolbar now offers the report, and opens it on a click.
+    // The toolbar now offers the report, and opens its window on a click.
     ctx->SetRef("//Hydra");
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Open path report"); }, 5));
     ctx->ItemClick("**/Open path report");
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)1);
-    IM_CHECK(h.opened_urls[0] == hydra::app::report_html_path());
+    IM_CHECK(h.app->path_report.window_open);
+    h.app->path_report.window_open = false;  // the window's X
 
     // "Also re-analyze" re-analyzes the stored chart, and the confirm says so.
     const std::string label = hydra::ui::detail::analyze_search_label(
@@ -295,8 +303,8 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     IM_CHECK(batch_search(ctx, title));
     IM_CHECK_EQ(h.app->batch_job->snapshot().skipped, 0);  // nothing skipped: redone
 
-    // With auto-open on, the new report opened by itself.
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)2);
+    // With auto-open on, the new report opened its window by itself.
+    IM_CHECK(h.app->path_report.window_open);
     dismiss_done(ctx);
     h.app->batch_redo = false;
 }
@@ -458,43 +466,33 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     dismiss_done(ctx);
 }
 
-// The finished strip: where the report went, Open report, Show in folder.
+// The finished strip: the report is ready, Open report opens its window, and
+// there is no Show in folder any more (D103).
 void test_batch_done_strip(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
-    // The seam records into a static list, so a failed check that returns
-    // early leaves nothing dangling; it is removed again at the end.
-    static std::vector<std::wstring> shown;
-    shown.clear();
-    hydra::ui::set_show_in_folder([](const std::wstring& p) {
-        shown.push_back(p);
-        return true;
-    });
     scan_library(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(batch_search(ctx, "Burnout"));
-    IM_CHECK(h.app->report_job->ok());
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)0);  // auto-open is off
+    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
+    IM_CHECK(!h.app->path_report.window_open);  // auto-open is off
     ImGuiWindow* done = child_window(ctx, "//Hydra/##batchdone");
     IM_CHECK(done != nullptr);
-    IM_CHECK(visible_text(h).find("Path report saved to") != std::string::npos);
+    IM_CHECK(visible_text(h).find("The path report is ready.") != std::string::npos);
     ctx->SetRef(done);
+    IM_CHECK(!ctx->ItemExists("Show in folder"));
     ctx->ItemClick("Open report");
-    IM_CHECK_EQ(h.opened_urls.size(), (size_t)1);
-    IM_CHECK(h.opened_urls[0] == h.app->report_job->saved_path().wstring());
-    ctx->ItemClick("Show in folder");
-    IM_CHECK_EQ(shown.size(), (size_t)1);
-    IM_CHECK(shown[0] == h.app->report_job->saved_path().wstring());
+    IM_CHECK(h.app->path_report.window_open);
     ctx->ItemClick("X##dismissdone");
     ctx->Yield(3);
     IM_CHECK(h.app->batch_job == nullptr);
     ctx->SetRef("//Hydra");
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Open path report"); }, 5));
-    hydra::ui::set_show_in_folder({});
 }
 
-// A browser that refuses is not a failed report: the page is saved, and the
-// strip says only the opening failed.
+// The report no longer goes through a browser, so a browser that refuses
+// changes nothing: with Open automatically on, the report's window opens
+// and the strip names no browser problem.
 void test_batch_open_failure(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -504,10 +502,10 @@ void test_batch_open_failure(ImGuiTestContext* ctx) {
     scan_library(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(batch_search(ctx, "Burnout"));
-    IM_CHECK(h.app->report_job->ok());
-    IM_CHECK(!h.app->report_job->opened());
-    IM_CHECK(visible_text(h).find("Report saved, but Windows couldn't open it in your browser.") !=
-             std::string::npos);
+    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
+    IM_CHECK(h.app->path_report.window_open);
+    IM_CHECK(visible_text(h).find("The path report is ready.") != std::string::npos);
+    IM_CHECK(visible_text(h).find("browser") == std::string::npos);
     // reset_app reinstalls the recording seam for the next test.
 }
 
@@ -631,7 +629,7 @@ void test_batch_chip_count(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job && h.app->batch_job->snapshot().finished;
     }, 300));
-    IM_CHECK(wait_until(ctx, [&] { return h.app->report_job && h.app->report_job->finished(); }, 60));
+    IM_CHECK(wait_report_landed(ctx));
     const hydra::ui::BatchJob::Snapshot done = h.app->batch_job->snapshot();
     IM_CHECK_GT(done.analyzed, 0);
     ctx->SetRef("//Hydra");

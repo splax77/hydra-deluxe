@@ -26,6 +26,7 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"          // Settings
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "core/model.h"
 #include "app/dm_report.h"
@@ -821,4 +822,37 @@ TEST_CASE("collect_dm_rows: a result whose chart the library doesn't list is lef
     // not join it.
     CHECK(rows[1].status == "not in library");
     CHECK_FALSE(rows[1].optimal.has_value());
+}
+
+// D103 item 22: a settings change marks the comparison out of date only when
+// it moves a setting the comparison reads.
+TEST_CASE("settings_change_touches: the comparison reads its chart mode and the lens, not the cap") {
+    const app::Settings before;
+    CHECK_FALSE(app::dm_report::settings_change_touches(before, before));
+
+    app::Settings mode_only = before;
+    mode_only.view_difficulty = "Hard";
+    mode_only.view_prodrums = false;
+    REQUIRE(mode_only.chartmode_key() != before.chartmode_key());
+    CHECK(app::dm_report::settings_change_touches(before, mode_only));
+
+    // The SP cap alone: the comparison is at Clone Hero's cap.
+    app::Settings cap = before;
+    cap.sp_cap = 5;
+    CHECK_FALSE(app::dm_report::settings_change_touches(before, cap));
+
+    app::Settings ms_limit = before;
+    ms_limit.mslimit_enabled = !before.mslimit_enabled;
+    REQUIRE(ms_limit.lens() != before.lens());
+    CHECK(app::dm_report::settings_change_touches(before, ms_limit));
+
+    app::Settings fills = before;
+    fills.legacy_fills = !before.legacy_fills;
+    REQUIRE(fills.lens() != before.lens());
+    CHECK(app::dm_report::settings_change_touches(before, fills));
+
+    // A setting no report reads.
+    app::Settings auto_open = before;
+    auto_open.auto_open_report = !before.auto_open_report;
+    CHECK_FALSE(app::dm_report::settings_change_touches(before, auto_open));
 }

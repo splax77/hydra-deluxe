@@ -38,6 +38,7 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // store_batch_result, old_build_row
+#include "net/dmbot_client.h"   // set_fetcher
 #include "parse/song.h"
 #include "store/record_store.h"
 #include "temp_util.h"
@@ -966,20 +967,291 @@ TEST_CASE("the toolbar's search label comes from one function") {
     CHECK(hydra::ui::detail::analyze_search_label(1234) == "Analyze search (1,234)...");
 }
 
-// The main window's "Open path report" button looks for the file every two
-// seconds, not on every frame.
-TEST_CASE("the report-file check is cached for two seconds") {
-    ScratchPaths paths("appstate_report");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const std::filesystem::path report(hydra::app::report_html_path());
-    std::error_code ec;
-    std::filesystem::remove(report, ec);
+// ---- the two reports in memory (D103) ---------------------------------------
 
-    CHECK_FALSE(app->report_file_shown(10.0));
-    hydra::app::write_report_file(report, "<html></html>");
-    CHECK_FALSE(app->report_file_shown(11.0));  // one second later: not asked
-    CHECK(app->report_file_shown(12.5));        // two seconds on: asked, found
-    std::filesystem::remove(report, ec);
+namespace {
+
+using hydra::ui::ReportBuild;
+using hydra::ui::ReportStale;
+
+void run_redo_batch_over(AppState& app, const std::string& search);  // below
+
+// Waits for the path report's job, then collects it as the app's frame does.
+void finish_path_report(AppState& app) {
+    REQUIRE(app.report_job != nullptr);
+    while (!app.report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    app.update_background_jobs();
+    REQUIRE(app.report_job == nullptr);
+}
+
+// The same for the comparison's job.
+void finish_dm_report(AppState& app) {
+    REQUIRE(app.dm_report_job != nullptr);
+    while (!app.dm_report_job->finished())
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    app.update_background_jobs();
+    REQUIRE(app.dm_report_job == nullptr);
+}
+
+// A report analyzer that waits for `release`, then analyzes as the app does.
+hydra::app::ChartAnalyzer held_report_analyzer(std::atomic<bool>& release) {
+    return [&release](const std::string& path, const hydra::app::AnalysisSettings& s,
+                      const std::function<void(float)>& on_progress) {
+        while (!release.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        return hydra::app::analyze_chart_file(path, s, on_progress);
+    };
+}
+
+// An app whose one chart has a stored result, so its path report has rows.
+std::unique_ptr<AppState> app_with_result(const ScratchPaths& paths, const char* tag) {
+    const ChartLibraryEntry song = corpus_chart(tag);
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    click(*app, song);
+    REQUIRE(app->viewed.ready());
+    return app;
+}
+
+}  // namespace
+
+TEST_CASE("a path report request builds it in memory, one build at a time") {
+    ScratchPaths paths("appstate_pathreq");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathreq");
+    CHECK(app->library_has_analyzed());
+    CHECK(app->path_report_build() == ReportBuild::None);
+
+    std::atomic<bool> release{false};
+    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
+    app->request_path_report();
+    hydra::ui::set_report_analyzer_for_test({});
+    REQUIRE(app->report_job != nullptr);
+    const hydra::ui::ReportJob* first = app->report_job.get();
+    CHECK(app->path_report_build() == ReportBuild::Building);
+    app->request_path_report();  // one is running: nothing new starts
+    CHECK(app->report_job.get() == first);
+    release = true;
+    finish_path_report(*app);
+
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    REQUIRE(app->path_report.result != nullptr);
+    CHECK_FALSE(app->path_report.result->paths.empty());
+    CHECK(app->path_report.result->html.empty());  // no page is kept
+    CHECK(app->path_report.built_at.time_since_epoch().count() != 0);
+    CHECK(app->path_report.stale == ReportStale::None);
+    CHECK_FALSE(app->path_report.window_open);  // a request opens no window
+}
+
+TEST_CASE("showing the path report opens its window and builds it only the first time") {
+    ScratchPaths paths("appstate_pathshow");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathshow");
+    app->show_path_report();
+    CHECK(app->path_report.window_open);
+    finish_path_report(*app);
+    REQUIRE(app->path_report.result != nullptr);
+    app->path_report.window_open = false;  // the window's X
+    app->show_path_report();
+    CHECK(app->path_report.window_open);
+    CHECK(app->report_job == nullptr);  // the rows in memory show; nothing rebuilds
+}
+
+TEST_CASE("the path report goes out of date on a batch or a setting it was built from") {
+    ScratchPaths paths("appstate_pathstale");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathstale");
+    const std::string title = app->library_row_at(0).title;
+    app->request_path_report();
+    finish_path_report(*app);
+    REQUIRE(app->path_report.stale == ReportStale::None);
+
+    // A setting the report doesn't read leaves it alone; the chart mode is
+    // one (the report lists every mode).
+    app->settings.auto_open_report = !app->settings.auto_open_report;
+    app->commit_settings();
+    app->settings.view_prodrums = !app->settings.view_prodrums;
+    app->commit_settings();
+    CHECK(app->path_report.stale == ReportStale::None);
+    app->settings.view_prodrums = !app->settings.view_prodrums;
+    app->settings.auto_open_report = false;
+    app->commit_settings();
+
+    // The SP cap is one it reads.
+    app->settings.sp_cap = 5;
+    app->commit_settings();
+    CHECK(app->path_report.stale == ReportStale::Settings);
+    app->settings.sp_cap = 4;
+    app->commit_settings();
+
+    // A batch finishing after it: the later event wins, and the batch's own
+    // report starts.
+    run_redo_batch_over(*app, title);
+    app->update_background_jobs();
+    CHECK(app->path_report.stale == ReportStale::Library);
+    finish_path_report(*app);
+    CHECK(app->path_report.stale == ReportStale::None);  // the rebuild is current
+    CHECK_FALSE(app->path_report.window_open);           // Open automatically is off
+
+    // With Open automatically on, the batch's report opens its window.
+    app->batch_job.reset();  // the finished strip's X
+    app->settings.auto_open_report = true;
+    app->commit_settings();
+    run_redo_batch_over(*app, title);
+    app->update_background_jobs();
+    finish_path_report(*app);
+    CHECK(app->path_report.window_open);
+    CHECK(app->status_message.empty());  // the strip is up, so it shows the outcome
+}
+
+TEST_CASE("a setting changed during a build leaves that build out of date") {
+    ScratchPaths paths("appstate_pathduring");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathduring");
+    std::atomic<bool> release{false};
+    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
+    app->request_path_report();
+    hydra::ui::set_report_analyzer_for_test({});
+    app->settings.mslimit_enabled = !app->settings.mslimit_enabled;
+    app->commit_settings();
+    release = true;
+    finish_path_report(*app);
+    REQUIRE(app->path_report.result != nullptr);
+    CHECK(app->path_report.stale == ReportStale::Settings);
+}
+
+TEST_CASE("Cancel ends a path report build as cancelled and keeps the last report") {
+    ScratchPaths paths("appstate_pathcancel");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathcancel");
+    app->request_path_report();
+    finish_path_report(*app);
+    const auto kept = app->path_report.result;
+    REQUIRE(kept != nullptr);
+
+    std::atomic<bool> release{false};
+    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
+    app->request_path_report();
+    hydra::ui::set_report_analyzer_for_test({});
+    app->cancel_path_report();
+    release = true;
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Cancelled);
+    CHECK(app->path_report.result == kept);
+}
+
+// D103 item 3: a report row's click selects its chart, switching the
+// settings bar to the row's mode first.
+TEST_CASE("select_chart switches the mode first, then selects the first copy") {
+    ScratchPaths paths("appstate_selectchart");
+    std::unique_ptr<AppState> app = app_on(paths);
+    // A second copy of chart 7, in another folder, sorting after it by title.
+    std::vector<ChartLibraryEntry> charts;
+    for (int i = 0; i < kChartCount; ++i) charts.push_back(library_entry(i));
+    ChartLibraryEntry copy = library_entry(7);
+    copy.title += " copy";
+    copy.notespath = "C:\\other\\hash007\\notes.chart";
+    charts.push_back(copy);
+    app->store->rebuild_chart_library(charts);
+    app->reload_library();
+
+    Settings target;
+    target.view_difficulty = "Hard";
+    target.view_prodrums = false;
+    target.view_bass2x = true;
+    const std::string mode = target.chartmode_key();
+    REQUIRE(mode != app->settings.chartmode_key());
+
+    app->select_chart("HASH007", mode);  // any hash spelling
+    CHECK(app->settings.chartmode_key() == mode);
+    CHECK(Settings::load_file(paths.ini).chartmode_key() == mode);  // committed
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->notespath == library_entry(7).notespath);
+
+    // The first copy in the library's order: sorted the other way, the copy.
+    app->library.set_sort(hydra::ui::LibrarySort::Title, false);
+    app->select_chart("hash007", mode);
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->notespath == copy.notespath);
+
+    // A hash the library doesn't list selects nothing new.
+    app->select_chart("not-in-library", mode);
+    CHECK(app->selected->notespath == copy.notespath);
+}
+
+namespace {
+
+// The canned leaderboard: one player, whose one score is chart 0's.
+const char* const kDmUsersJson =
+    R"([{"id":"111","username":"alice","elo":1500,"stats":{"total_scores":1,"total_score":1}}])";
+const char* const kDmScoresJson =
+    R"({"scores":[{"identifier":"hash000","song_name":"x","artist":"y","charter_refs":["z"],)"
+    R"("score":100000,"is_fc":0,"percent":95,"speed":100,"rank":1,"posted":"2026-01-01"}],)"
+    R"("unknown_scores":[]})";
+
+}  // namespace
+
+// D103 items 8 to 11: picking a player opens the comparison window and
+// builds it; Refresh builds it again for the same player; Cancel keeps the
+// last comparison.
+TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
+    ScratchPaths paths("appstate_dmreport");
+    std::unique_ptr<AppState> app = app_on(paths);
+    std::mutex m;
+    std::vector<std::string> score_urls;
+    std::atomic<bool> hold{false};
+    hydra::net::set_fetcher([&](const std::string& url,
+                                const std::atomic<bool>* cancel) -> std::string {
+        if (url.find("/all-users") != std::string::npos) return kDmUsersJson;
+        {
+            std::lock_guard<std::mutex> lock(m);
+            score_urls.push_back(url);
+        }
+        while (hold.load() && !cancel->load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (cancel->load()) throw std::runtime_error("cancelled");
+        return kDmScoresJson;
+    });
+
+    app->start_dm_report("111", "alice");
+    CHECK(app->dm_report.window_open);
+    CHECK(app->settings.dm_last_user == "111");
+    finish_dm_report(*app);
+    CHECK(app->dm_report_build() == ReportBuild::Ready);
+    REQUIRE(app->dm_report.result != nullptr);
+    CHECK(app->dm_report.result->username == "alice");
+    CHECK(app->dm_report.result->stats.total == 1);
+    CHECK(app->dm_report.result->html.empty());
+
+    // The chart mode is a setting the comparison reads.
+    app->settings.view_prodrums = !app->settings.view_prodrums;
+    app->commit_settings();
+    CHECK(app->dm_report.stale == ReportStale::Settings);
+
+    // Refresh: the same player again, and the result is current.
+    app->dm_report.window_open = false;
+    app->request_dm_report();
+    finish_dm_report(*app);
+    REQUIRE(score_urls.size() == 2);
+    CHECK(score_urls[1] == score_urls[0]);
+    CHECK(score_urls[1].find("111") != std::string::npos);
+    CHECK(app->dm_report.stale == ReportStale::None);
+    CHECK_FALSE(app->dm_report.window_open);  // Refresh opens no window
+
+    // Cancel while fetching: cancelled, and the last comparison is kept.
+    const auto kept = app->dm_report.result;
+    hold = true;
+    app->request_dm_report();
+    REQUIRE(app->dm_report_build() == ReportBuild::Building);
+    app->cancel_dm_report();
+    CHECK(app->dm_report_build() == ReportBuild::Cancelled);
+    CHECK(app->dm_report.result == kept);
+    while (!app->parked_dm_reports.empty()) {
+        app->update_background_jobs();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    // The window's "Compare another player..." opens the picker again.
+    app->dm_picker_open = false;
+    app->reopen_dm_picker();
+    CHECK(app->dm_picker_open);
+    CHECK(app->dm_picker_popup_pending);
+    if (app->dm_fetch_job) {
+        while (!app->dm_fetch_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    hydra::net::set_fetcher({});
 }
 
 // The search runs in memory over every chart; a word matches inside a title.
