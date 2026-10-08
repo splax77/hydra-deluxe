@@ -1,6 +1,6 @@
 # Report windows: design (2026-10-08)
 
-**Status:** design approved by the user on 2026-10-08 (mock boards 1 to 5). This spec waits on the user's review before any agent starts.
+**Status:** design approved by the user on 2026-10-08 (mock boards 1 to 5), and this written spec approved the same day.
 **Mock:** `docs/superpowers/specs/2026-10-08-path-report-window-mockup/report-window.html`.
 **Plan:** `docs/superpowers/plans/2026-10-08-path-report-window.md`.
 **Base:** main at d7b8001 (Hydra Deluxe 2.3.0).
@@ -164,7 +164,7 @@ Every Hydra rule is worked out once. Today the pages' JavaScript computes tiles,
 
 **The tiles live with each report's data.** `report::path_tiles(rows)` takes over the page's five tiles. The "copies once per chart" rule behind Charts shown moves there from `page_charts`. Hardest ms shows that row's `ms_text`, and "Past N ms" reads `beyond_edge_ms`, the one `tier_for` uses. `dm_report::dm_tiles(rows)` takes over the nine. It calls `tally_dm_rows` for the counts. It also takes over two numbers that only the JavaScript computes today: the average % of optimal (a mean of `pct_h`, rounded half up and written as `format_percent` writes it) and the points left on the table. The status-to-chip-colour table moves next to `tally_dm_rows`.
 
-**A shared table view, `app/report_view.{h,cpp}`.** This is plain C++ with no ImGui, so doctest can pin it. A `TableView<Row>` holds the rows, each row's search text, a keep-rule from the window's controls, and up to two sort keys. It answers `visible()` with the row indices to draw, in order, and the count line. Search goes through the library's own query parser and `make_searchable` (`src/app/library_query.h`), so all three search boxes match words the same way.
+**A shared table view, `app/report_view.{h,cpp}`.** This is plain C++ with no ImGui, so doctest can pin it. A `TableView<Row>` holds the rows, each row's search text, a keep-rule from the window's controls, and up to two sort keys. It answers `visible()` with the row indices to draw, in order, and the count line. Search folds text with the library's own `fold_for_search` and builds each row's search text with `make_searchable` (`src/app/library_query.h`), so accents fold the same way in all three search boxes. As D56 item 1 decided, a report's search matches words only; the Library alone reads the full query language.
 
 **Each report's columns, `app/path_report_view.{h,cpp}` and `app/dm_report_view.{h,cpp}`.** These hold each report's column table: id, title, numeric or text, definition, sort key and cell text. The definitions move word for word from the pages, with `__BASE_SPEED__` and `__SP_CAP__` filled from their constants as today. They also hold each report's keep-rule: Best path and Timing for the path report, Status for the comparison.
 

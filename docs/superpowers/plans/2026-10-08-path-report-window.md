@@ -8,7 +8,7 @@
 
 **Tech stack:** C++17, Dear ImGui docking branch 1.93.0 WIP (vendored) with the Win32 + DX11 backends, doctest (`hydra_tests`), `hydra_uitest`.
 
-**Status:** planned, not dispatched. Base: main at d7b8001.
+**Status:** spec approved by the user 2026-10-08; wave 1 dispatched the same day. Base: main at d7b8001. Wave 1's briefs are `docs/superpowers/plans/tasks/rw-t1.md`, `rw-t2.md` and `rw-t3.md`, after `_rw-preamble.md`.
 
 ## Global constraints
 
@@ -145,7 +145,7 @@ None of them touch the GUI's flow, so Hydra keeps working exactly as today after
 
 **Steps (failing test first for each):**
 
-- [ ] Search uses `app/library_query`'s parser and `make_searchable`, matching every word in any order. The search text covers the fields the page searches today: song, artist, charter and path for the path report; song, artist and charter for the comparison. No new fold table.
+- [ ] Search keeps D56 item 1: it folds with `app/library_query`'s `fold_for_search` and matches every word in any order, with no query language (no `parse_library_query`). Each row's search text comes from `make_searchable`, through today's `html::search_field`. The search text covers the fields the page searches today: song, artist, charter and path for the path report; song, artist and charter for the comparison. No new fold table.
 - [ ] The sort works on an index array. Empty values sink in both directions. A numeric column starts high-to-low and a text column starts A-to-Z.
 - [ ] Cells read exactly as the pages write them. Take each rule from today's `cells` in `report.cpp:154-170` and `dm_report.cpp:103-123`, calling the existing C++ text functions; nothing is re-derived. The path report has em dashes, thousands separators, `ms_text`, `efill_text`, `mult_text`, "Beyond N ms" and "No squeezes". The comparison has "+N over", "✓", "#N", "N%" and the date's first ten characters.
 - [ ] Definitions move word for word from the pages' `cols`. `__BASE_SPEED__` and `__SP_CAP__` are filled from `net::kBaseSpeedPercent` and `kCloneHeroSpCap`.
