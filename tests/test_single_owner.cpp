@@ -5350,6 +5350,21 @@ const std::vector<OwnerRule>& rules() {
          {{"src/ui/widgets.h", "ImGuiTableFlags_SizingStretchProp;",
            "base_table_flags, the owner: render_table and report_frame::table_flags call it"}},
          {"src"}},
+        // Each report window rebuilds its view when AppState hands it a new
+        // result; both ask the one template whether the result changed.
+        {"Is a report window still showing the result its view was built from?",
+         "report_frame::same_result in src/ui/report_window.h",
+         R"(\bowner_before\b)",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T5 (finding 2)",
+         {"return !w.owner_before(p) && !p.owner_before(w);", "!p.owner_before(w)"},
+         {"ImGui::SetCursorPosX(buttons_x);",
+          "if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);"},
+         {{"src/ui/report_window.h", "return !w.owner_before(p) && !p.owner_before(w);",
+           "report_frame::same_result, the owner: both report windows call it"}},
+         {"src"}},
     };
     return r;
 }

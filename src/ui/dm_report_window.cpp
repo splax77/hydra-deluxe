@@ -37,13 +37,6 @@ DmWindow& dm_window() {
     return w;
 }
 
-// Whether `w` still points at the result `p` owns (an expired one never
-// matches a new one, even at the same address).
-bool same_result(const std::weak_ptr<const GeneratedDmReport>& w,
-                 const std::shared_ptr<const GeneratedDmReport>& p) {
-    return !w.owner_before(p) && !p.owner_before(w);
-}
-
 // The controls' choices, handed to the view.
 void apply_filters(DmWindow& w) {
     w.view->set_search(w.memory.search);
@@ -111,32 +104,21 @@ void draw_dm_report_window(bool* open, const DmReportInput& input) {
         w.memory.was_open = false;
         return;
     }
-    if (!same_result(w.built_from, input.result)) rebuild(w, input.result);
+    if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);
     const GeneratedDmReport* result = input.result.get();
     const std::string player =
         !input.player.empty() ? input.player : result ? result->username : std::string();
 
-    report_frame::Frame frame;
+    report_frame::Frame frame = report_frame::frame_from(input);
     frame.window_name = "dmleaderboards: " + player + " \xE2\x80\x94 Hydra###dmreport";  // U+2014
     frame.heading = "vs dmleaderboards";
-    frame.built = input.built;
-    frame.state = input.state;
-    frame.out_of_date = input.out_of_date;
-    frame.batch_finished = input.batch_finished;
     // The picker box's two sentences; the server gives no count.
     frame.building_lines = {"Fetching scores and building the report...",
                             "The leaderboard server can take a moment to wake up."};
     frame.failure_sentence = "Could not build the report.";
-    frame.failure_message = input.failure_message;
-    frame.failure_error = input.failure_error;
     frame.compare_another = true;
-    frame.callbacks = &input.callbacks;
-    if (result) {
-        frame.subtitle = result->subtitle;
-        frame.footer = result->footer;
-        // A player with no scores: the counts as the picker box gave them.
-        if (!w.view) frame.empty_text = app::dm_report::counts_phrase(result->stats);
-    }
+    // A player with no scores: the counts as the picker box gave them.
+    if (result && !w.view) frame.empty_text = app::dm_report::counts_phrase(result->stats);
 
     if (report_frame::begin(open, frame, w.memory) && w.view) draw_body(w, frame, input);
     report_frame::end(open, frame, w.memory);

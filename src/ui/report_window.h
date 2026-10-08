@@ -125,6 +125,32 @@ struct Frame {
     const ReportCallbacks* callbacks = nullptr;
 };
 
+// The frame's fields that come straight from the window's input and its
+// result. Each window adds its own words and the fields only it has.
+template <class Result>
+Frame frame_from(const ReportWindowInput<Result>& input) {
+    Frame f;
+    f.built = input.built;
+    f.state = input.state;
+    f.out_of_date = input.out_of_date;
+    f.batch_finished = input.batch_finished;
+    f.failure_message = input.failure_message;
+    f.failure_error = input.failure_error;
+    f.callbacks = &input.callbacks;
+    if (input.result) {
+        f.subtitle = input.result->subtitle;
+        f.footer = input.result->footer;
+    }
+    return f;
+}
+
+// Whether `w` still points at the result `p` owns (an expired one never
+// matches a new one, even at the same address).
+template <class Result>
+bool same_result(const std::weak_ptr<const Result>& w, const std::shared_ptr<const Result>& p) {
+    return !w.owner_before(p) && !p.owner_before(w);
+}
+
 // What a window keeps between frames.
 struct Memory {
     char search[256] = {};

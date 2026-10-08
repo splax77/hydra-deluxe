@@ -38,13 +38,6 @@ PathWindow& path_window() {
     return w;
 }
 
-// Whether `w` still points at the result `p` owns (an expired one never
-// matches a new one, even at the same address).
-bool same_result(const std::weak_ptr<const GeneratedReport>& w,
-                 const std::shared_ptr<const GeneratedReport>& p) {
-    return !w.owner_before(p) && !p.owner_before(w);
-}
-
 // The controls' choices, handed to the view.
 void apply_filters(PathWindow& w) {
     w.view->set_search(w.memory.search);
@@ -114,25 +107,16 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
         w.memory.was_open = false;
         return;
     }
-    if (!same_result(w.built_from, input.result)) rebuild(w, input.result);
+    if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);
     const GeneratedReport* result = input.result.get();
 
-    report_frame::Frame frame;
+    report_frame::Frame frame = report_frame::frame_from(input);
     frame.window_name = "Path report \xE2\x80\x94 Hydra###pathreport";  // U+2014
     frame.heading = "Path Index";
-    frame.built = input.built;
-    frame.state = input.state;
-    frame.out_of_date = input.out_of_date;
-    frame.batch_finished = input.batch_finished;
     frame.building_subtitle = "Building the report from your library...";
     frame.progress = std::make_pair(input.progress_done, input.progress_total);
     frame.failure_sentence = "The path report could not be built.";
-    frame.failure_message = input.failure_message;
-    frame.failure_error = input.failure_error;
-    frame.callbacks = &input.callbacks;
     if (result) {
-        frame.subtitle = result->subtitle;
-        frame.footer = result->footer;
         frame.notice = app::report::left_out_line(result->failures);
         for (const app::report::ReportFailure& f : result->failures)
             frame.notice_files.push_back(f.notespath);
