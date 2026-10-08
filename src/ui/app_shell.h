@@ -138,6 +138,31 @@ ImGuiStyle scaled_style(const ImGuiStyle& base, float scale);
 // window lands on a monitor with another scale. Call between frames only.
 void set_ui_scale(float scale);
 
+// ---- Report windows: their own OS windows (D103) -----------------------
+
+// The window class every report window carries. It always gets its own OS
+// window (never merged into the main window), with a real title bar and its
+// own taskbar button, and Hydra's main window as its OS owner, so it
+// minimizes and restores with Hydra and sits in front of it. Every other
+// ImGui window keeps setup_imgui's settings. Pass it to SetNextWindowClass.
+ImGuiWindowClass report_window_class();
+
+// Call before Begin(name) on every frame the report window shows. When the
+// window opens, a saved rectangle (from hydra_ui.ini, or from an earlier
+// open this session) that fails placement_on_screen falls back to the
+// first-open placement, as does a window with nothing saved: the main
+// window's own position and size (D103 item 14).
+void place_report_window(const char* name);
+
+// ---- The viewport spike's window ----------------------------------------
+//
+// An empty "Report spike" window that proves the report windows' OS-window
+// plumbing (report windows plan, task 1). Hydra.exe shows it with
+// --report-spike; the GUI test calls the setter. Task 5 replaces both with
+// the real report windows.
+void show_report_spike(bool shown);
+bool report_spike_shown();
+
 // Everything ImGui drew this frame, as text, in draw order. Filled by
 // run_frame when `enabled`; the runner's wait-text/expect-text search it.
 struct FrameText {

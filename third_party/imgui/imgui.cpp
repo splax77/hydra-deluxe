@@ -17572,6 +17572,16 @@ static void ImGui::WindowSelectViewport(ImGuiWindow* window)
     {
         if (flags & (ImGuiWindowFlags_Tooltip | ImGuiWindowFlags_Popup))
         {
+            // Hydra: tooltips, dropdowns, menus and modals stay inside the
+            // window they open from, as they did before viewports (D103 item
+            // 15): only the report windows get their own OS windows. Upstream
+            // (the #if 0 block) lets every popup and tooltip reach the whole
+            // monitor under the mouse, so GetPopupAllowedExtentRect() places it
+            // anywhere on that monitor and Begin() gives one that spills past
+            // its host window a borderless OS window of its own. Leaving
+            // ViewportAllowPlatformMonitorExtend at -1 keeps the host
+            // viewport's rectangle as the limit and never makes that OS window.
+#if 0
             // We need to take account of the possibility that mouse may become invalid.
             // Popups/Tooltip always set ViewportAllowPlatformMonitorExtend so GetWindowAllowedExtentRect() will return full monitor bounds.
             ImVec2 mouse_ref = (flags & ImGuiWindowFlags_Tooltip) ? g.IO.MousePos : g.BeginPopupStack.back().OpenMousePos;
@@ -17581,6 +17591,7 @@ static void ImGui::WindowSelectViewport(ImGuiWindow* window)
                 window->ViewportAllowPlatformMonitorExtend = FindPlatformMonitorForPos((use_mouse_ref && mouse_valid) ? mouse_ref : NavCalcPreferredRefPos(window->Flags));
             else
                 window->ViewportAllowPlatformMonitorExtend = window->Viewport->PlatformMonitor;
+#endif
         }
         else if (window->Viewport && window != window->Viewport->Window && window->Viewport->Window && !(flags & ImGuiWindowFlags_ChildWindow) && window->DockNode == NULL)
         {
