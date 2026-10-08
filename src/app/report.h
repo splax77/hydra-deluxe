@@ -101,6 +101,10 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              const std::vector<TimingTier>& tiers);
 
+// The Beyond edge (beyond_edge_ms) as every report prints it, in whole ms:
+// the page's payload, its footer, the Past tile and the Timing chip.
+std::string beyond_edge_text(double hit_window_ms);
+
 // Every listed record for one chart mode, cap and lens whose chart the
 // library lists (library_copies_by_hash), keyed by its chart hash in lower
 // case. A result the library doesn't list is left out, as the path report

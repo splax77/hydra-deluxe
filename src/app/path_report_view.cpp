@@ -3,7 +3,7 @@
 #include "app/display_format.h"  // format_ms, format_avg_mult
 #include "app/html_page.h"       // search_field
 #include "core/model.h"          // group_thousands
-#include "core/squeeze_rating.h" // timing_tiers, beyond_edge_ms
+#include "core/squeeze_rating.h" // timing_tiers
 
 namespace hydra::app::path_report_view {
 
@@ -20,14 +20,6 @@ std::string ms_cell(const std::optional<double>& ms) {
 
 SortKey ms_key(const std::optional<double>& ms) {
     return ms ? SortKey{*ms} : SortKey{};
-}
-
-// The Beyond edge as the chip prints it. A copy of beyond_edge_text in
-// report.cpp, which the footer and the page's payload read; that one is
-// private to report.cpp, owned by another task this wave, so the merge
-// should leave one of the two.
-std::string beyond_edge_text(double hit_window_ms) {
-    return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
 }
 
 // A column of text read straight from the row.
@@ -68,7 +60,7 @@ std::string tier_label(const std::string& tier_name, double hit_window_ms) {
     // them: Beyond, then None.
     const std::vector<TimingTier> tiers = timing_tiers(hit_window_ms);
     if (tier_name == tiers[tiers.size() - 2].name)
-        return "Beyond " + beyond_edge_text(hit_window_ms) + " ms";
+        return "Beyond " + report::beyond_edge_text(hit_window_ms) + " ms";
     if (tier_name == tiers.back().name) return "No squeezes";
     return tier_name;
 }

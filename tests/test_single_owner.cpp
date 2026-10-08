@@ -1355,6 +1355,25 @@ const std::vector<OwnerRule>& rules() {
           "x = 1;  // reads \"\xE2\x80\x94\" when empty"},
          {{"src/app/report.h", "inline constexpr const char* kDash = \"\xE2\x80\x94\";",
            "kDash, the owner"}}},
+        // The Beyond edge handed straight to a cast, a rounding or a
+        // formatter is a second way of writing it. format_ms_whole is not a
+        // stand-in: the review found the two differ on a fractional edge.
+        {"How is the Beyond edge written in ms?",
+         "beyond_edge_text in src/app/report.cpp",
+         R"(\(\s*beyond_edge_ms\()",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T3, finding 2 (2026-10-08)",
+         {"return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+          "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) + \" ms\"",
+          "return format_ms_whole(beyond_edge_ms(w));"},
+         {"return \"Beyond \" + report::beyond_edge_text(hit_window_ms) + \" ms\";",
+          "double beyond_edge_ms(double hit_window_ms) {",
+          "const DATA_EDGE = DATA.beyond_edge_ms;"},
+         {{"src/app/report.cpp",
+           "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+           "beyond_edge_text, the owner"}}},
         // ---- M_D review follow-ups (phase 3 task FX-L) ----
         // A switch over the Dynamics rows, the 2x test that picks a kick
         // row, or a test of a row against a named row (the old cymbal-row

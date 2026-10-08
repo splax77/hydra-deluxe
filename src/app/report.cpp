@@ -218,11 +218,6 @@ void ms_text_into(std::string& data, const std::optional<double>& ms) {
         data += "null";
 }
 
-// The Beyond edge as the page and its footer print it: beyond_edge_ms, whole.
-std::string beyond_edge_text(double hit_window_ms) {
-    return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
-}
-
 // The timing table's open band past the last cutoff, "Beyond": the
 // next-to-last entry, before the "None" (no squeeze) entry. tier_for labels a
 // row with it and path_tiles counts the rows it labeled so.
@@ -370,6 +365,10 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
     for (const TimingTier& t : tiers)
         if (t.cutoff && *ms <= *t.cutoff) return {t.name, t.tok};
     return {beyond.name, beyond.tok};
+}
+
+std::string beyond_edge_text(double hit_window_ms) {
+    return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));
 }
 
 std::unordered_map<std::string, store::RecordListing> records_by_hash(
