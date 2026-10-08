@@ -1,7 +1,7 @@
 #include "app/report_view.h"
 
 #include "app/library_query.h"  // fold_for_search
-#include "core/model.h"         // group_thousands
+#include "core/model.h"         // group_thousands, counted
 
 namespace hydra::app::report_view {
 
@@ -48,9 +48,9 @@ int compare_keys(const SortKey& a, const SortKey& b) {
     return 0;
 }
 
-std::string count_line(size_t shown, size_t total, std::string_view noun) {
+std::string count_line(size_t shown, size_t total, const CountNoun& noun) {
     return group_thousands(static_cast<int64_t>(shown)) + " of " +
-           group_thousands(static_cast<int64_t>(total)) + " " + std::string(noun);
+           counted(static_cast<int64_t>(total), noun.one, noun.many);
 }
 
 SortDir first_direction(bool numeric) {

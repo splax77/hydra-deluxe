@@ -213,7 +213,17 @@ TEST_CASE("report view: search, keep-rule, clear_search and the count line") {
     view.set_keep(path_report_view::path_keep(std::nullopt, false));
     CHECK(view.count_line(path_report_view::kNoun) == "4 of 4 paths");
 
-    CHECK(report_view::count_line(1234, 56789, "paths") == "1,234 of 56,789 paths");
+    CHECK(report_view::count_line(1234, 56789, path_report_view::kNoun) ==
+          "1,234 of 56,789 paths");
+}
+
+TEST_CASE("report view count line: the noun follows counted on the total (D103 item 18)") {
+    TableView<ReportRow> view = path_view({path_row("Halo", "Beyonce", "A", "1", 300, 1.0, true)});
+    CHECK(view.count_line(path_report_view::kNoun) == "1 of 1 path");
+    view.set_search("nope");
+    CHECK(view.count_line(path_report_view::kNoun) == "0 of 1 path");
+    CHECK(report_view::count_line(4, 4, dm_report_view::kNoun) == "4 of 4 scores");
+    CHECK(report_view::count_line(1, 1, dm_report_view::kNoun) == "1 of 1 score");
 }
 
 TEST_CASE("report view sort: first directions, empty values sink, two keys, stable ties") {

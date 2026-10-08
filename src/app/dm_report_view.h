@@ -20,7 +20,7 @@ using report_view::Column;
 using report_view::SortSpec;
 
 // What the count line counts the comparison's rows as.
-inline constexpr const char* kNoun = "scores";
+inline constexpr report_view::CountNoun kNoun{"score", "scores"};
 
 // The thirteen columns, in the page's order.
 std::vector<Column<DmReportRow>> dm_columns();

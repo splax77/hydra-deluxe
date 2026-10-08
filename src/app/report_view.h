@@ -81,8 +81,16 @@ SortKey folded_key(SortKey key);
 // (TableView's) to sink.
 int compare_keys(const SortKey& a, const SortKey& b);
 
-// "X of Y <noun>", with thousands grouped the way every count reads.
-std::string count_line(size_t shown, size_t total, std::string_view noun);
+// What a report's count line counts its rows as, singular and plural, in
+// the form hydra::counted takes them.
+struct CountNoun {
+    const char* one;
+    const char* many;
+};
+
+// "X of Y <noun>": the rows shown out of every row. The total and its noun
+// are written by hydra::counted (core/model.h, D103 item 18).
+std::string count_line(size_t shown, size_t total, const CountNoun& noun);
 
 // Which way a column sorts when it is first picked: numbers high to low,
 // text A to Z.
@@ -155,8 +163,8 @@ public:
         return visible_;
     }
 
-    // "X of Y <noun>": the rows shown out of every row.
-    std::string count_line(std::string_view noun) const {
+    // The count line (report_view::count_line) over this table's rows.
+    std::string count_line(const CountNoun& noun) const {
         return report_view::count_line(visible().size(), rows_.size(), noun);
     }
 

@@ -20,7 +20,7 @@ using report_view::Column;
 using report_view::SortSpec;
 
 // What the count line counts the path report's rows as.
-inline constexpr const char* kNoun = "paths";
+inline constexpr report_view::CountNoun kNoun{"path", "paths"};
 
 // The fifteen columns, in the page's order. `hit_window_ms` is the window
 // the rows' tiers were labeled under; the Timing chip names its Beyond edge.
