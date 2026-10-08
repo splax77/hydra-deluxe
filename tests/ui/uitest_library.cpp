@@ -5,7 +5,6 @@
 #include <cstring>
 #include <filesystem>
 #include <string>
-#include <system_error>
 #include <vector>
 
 #include "uitest_harness.h"
@@ -20,6 +19,7 @@
 #include "ui/library_model.h"
 #include "ui/preview_controller.h"
 #include "store/record_store.h"
+#include "store/upgrade_files.h"  // the upgrade's file names
 #include "ui/widgets.h"  // widest_digits, button_slot_width
 
 namespace uitest {
@@ -613,8 +613,7 @@ constexpr const char* kStartupTitles[] = {"Startup Song One", "Startup Song Two"
 // upgrade leaves behind. Returns the file's path, or "" if a step failed.
 std::string write_old_layout_library(Harness& h) {
     const std::string path = h.temp_dir + "\\old_layout_seed.db";
-    std::error_code ec;
-    for (const char* suffix : {"", "-wal", "-shm"}) fs::remove(fs::u8path(path + suffix), ec);
+    if (!hydra::store::remove_with_side_files(path)) return "";
     {
         hydra::store::RecordStore seed(path);
         std::vector<hydra::store::ChartLibraryEntry> charts(2);
@@ -688,8 +687,10 @@ void test_startup_screen(ImGuiTestContext* ctx) {
     for (const char* title : kStartupTitles)
         IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(title) != std::string::npos; }, 5));
     // The upgrade swapped its files and tidied up.
-    for (const char* leftover : {".upgrading", ".old"})
-        IM_CHECK(!fs::exists(fs::u8path(h.db_path + leftover)));
+    for (const std::string& leftover :
+         {hydra::store::upgrading_path(h.db_path), hydra::store::old_path(h.db_path)})
+        for (const std::string& file : hydra::store::with_side_files(leftover))
+            IM_CHECK(!fs::exists(fs::u8path(file)));
     // The two results with stars came across; the one without did not. The
     // detail tables are gone.
     IM_CHECK_EQ(scalar_on_file(h.db_path, "SELECT COUNT(*) FROM results"), int64_t{2});
