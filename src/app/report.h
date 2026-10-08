@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 #include <string>
@@ -78,6 +79,20 @@ inline constexpr const char* kDash = "—";
 // dm_report::status_token gives a comparison status's. The theme turns a
 // token into a colour.
 enum class ChipToken { t0, t1, t2, t3, t4, t5, tn, muted };
+
+// The token a path row's Timing chip is drawn in, read from the token name
+// tier_for gave the row (ReportRow::tok). Throws for a name tier_for never
+// gives.
+inline ChipToken tier_token(const std::string& tok) {
+    static constexpr std::pair<const char*, ChipToken> kTokens[] = {
+        {"t0", ChipToken::t0}, {"t1", ChipToken::t1}, {"t2", ChipToken::t2},
+        {"t3", ChipToken::t3}, {"t4", ChipToken::t4}, {"t5", ChipToken::t5},
+        {"tn", ChipToken::tn},
+    };
+    for (const auto& [name, token] : kTokens)
+        if (tok == name) return token;
+    throw std::invalid_argument("no chip token named \"" + tok + "\"");
+}
 
 // The path report's five tiles over the rows a window shows: `shown` holds
 // their indices into `rows`. `hit_window_ms` is the window the rows' tiers

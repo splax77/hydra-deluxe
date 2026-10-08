@@ -1,6 +1,28 @@
 #include "ui/theme.h"
 
+#include <stdexcept>
+
+#include "app/report.h"  // ChipToken
+
 namespace hydra::ui {
+
+ImVec4 chip_color(app::report::ChipToken token) {
+    using app::report::ChipToken;
+    // The tiers are the HTML pages' dark-scheme --t0 to --t5 and --tn
+    // (html_page.cpp's kReportCss), which the windows keep (D103). The dim
+    // chip is the theme's dimmed text.
+    switch (token) {
+        case ChipToken::t0: return ImVec4(0x4f / 255.0f, 0xbf / 255.0f, 0x94 / 255.0f, 1.0f);
+        case ChipToken::t1: return ImVec4(0xe0 / 255.0f, 0xb1 / 255.0f, 0x3f / 255.0f, 1.0f);
+        case ChipToken::t2: return ImVec4(0xf0 / 255.0f, 0x89 / 255.0f, 0x4e / 255.0f, 1.0f);
+        case ChipToken::t3: return ImVec4(0xf2 / 255.0f, 0x68 / 255.0f, 0x6b / 255.0f, 1.0f);
+        case ChipToken::t4: return ImVec4(0xe0 / 255.0f, 0x7a / 255.0f, 0xc0 / 255.0f, 1.0f);
+        case ChipToken::t5: return ImVec4(0xa7 / 255.0f, 0x8b / 255.0f, 0xfa / 255.0f, 1.0f);
+        case ChipToken::tn: return ImVec4(0x94 / 255.0f, 0x9a / 255.0f, 0xa6 / 255.0f, 1.0f);
+        case ChipToken::muted: return kDimTextColor;
+    }
+    throw std::invalid_argument("chip_color: unknown chip token");
+}
 
 void apply_theme() {
     ImGuiStyle& style = ImGui::GetStyle();

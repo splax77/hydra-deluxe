@@ -14,6 +14,10 @@
 
 #include "imgui.h"
 
+namespace hydra::app::report {
+enum class ChipToken;  // app/report.h
+}
+
 namespace hydra::ui {
 
 inline const ImVec4 kBestPathColor{250 / 255.0f, 210 / 255.0f, 0 / 255.0f, 1.0f};
@@ -73,6 +77,12 @@ inline const ImVec4 kDisabledButtonColor{100 / 255.0f, 100 / 255.0f, 100 / 255.0
 // as dimmed text, so it names that one rather than spelling it again.
 inline const ImVec4& kDisabledInputTextColor = kDimTextColor;
 inline const ImVec4 kDisabledInputBgColor{40 / 255.0f, 40 / 255.0f, 40 / 255.0f, 1.0f};
+
+// The colour a report window's chip is drawn in, its outline and its words
+// both: the path report's Timing chips and the comparison's Status chips
+// (report::tier_token and dm_report::status_token pick the token). The one
+// home of the chip colours.
+ImVec4 chip_color(app::report::ChipToken token);
 
 // Applies the app-wide accent (teal buttons/headers, matching
 // build_main_ui's "default_theme") plus DPG's own baseline colors for
