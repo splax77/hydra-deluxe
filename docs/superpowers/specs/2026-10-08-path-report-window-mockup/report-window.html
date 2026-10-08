@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Report windows mock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime&family=Shippori+Antique+B1&display=swap" rel="stylesheet">
+<style>
+/* Colours are theme.h's (see the spec's "Look" section). The tier colours are
+   the HTML page's dark-scheme --t0..--t5, which the window keeps. */
+:root {
+  --desk: #15161a;
+  --win: #252526; --panel: #28282a; --bar: #2b2b2e; --frame: #333337;
+  --border: #4e4e4e; --text: #fafafa; --dim: #a0a0a0;
+  --accent: #00b4b4; --btn: #007a7a; --btn-h: #006868;
+  --gold: #fad200; --warn: #ff7f00; --warnbg: #3a2612; --warnbd: #7a4a1a;
+  --done: #1f3322; --donebd: #2f5a36;
+  --t0: #4fbf94; --t1: #e0b13f; --t2: #f0894e; --t3: #f2686b; --t4: #e07ac0; --t5: #a78bfa; --tn: #949aa6;
+  --ui: 'Shippori Antique B1', 'Segoe UI', sans-serif;
+  --mono: 'Courier Prime', Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--desk); color: var(--text); font: 14px/1.35 var(--ui); padding: 24px 16px 60px; }
+h1.page { font-size: 20px; margin: 0 0 4px; }
+p.lede { color: var(--dim); margin: 0 0 24px; max-width: 900px; }
+.board { margin: 0 0 40px; }
+.board > h2 { font-size: 15px; margin: 0 0 4px; color: var(--accent); }
+.board > p { color: var(--dim); margin: 0 0 12px; max-width: 900px; }
+.stage { position: relative; overflow-x: auto; }
+
+/* An OS window: Windows 11 title bar, 32px. */
+.os { background: var(--win); border: 1px solid #000; border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.6); overflow: hidden; }
+.tb { height: 32px; display: flex; align-items: center; background: #1f1f20; font: 12px 'Segoe UI', sans-serif; color: #ddd; }
+.tb .ico { width: 16px; height: 16px; margin: 0 8px 0 10px; border-radius: 3px; background: var(--accent); }
+.tb .ttl { flex: 1; }
+.tb .cap { width: 46px; text-align: center; color: #ccc; }
+.content { padding: 12px 14px 10px; }
+
+/* The main Hydra window behind, drawn faintly. */
+.mainwin { width: 1180px; opacity: .55; }
+.mainwin .content { height: 250px; display: grid; grid-template-columns: 1.6fr 1fr; gap: 10px; }
+.toolbar { grid-column: 1 / 3; display: flex; gap: 8px; align-items: center; }
+.libsel { background: var(--panel); border: 1px solid var(--border); padding: 8px; }
+.libsel .r { height: 18px; border-bottom: 1px solid #2f2f31; color: var(--dim); font-size: 12px; }
+.libsel .r.sel { background: #0a4a4a; color: var(--text); }
+
+.reportwin { position: relative; width: 1240px; margin: -170px 0 0 70px; }
+.btn { display: inline-block; background: var(--btn); color: #fff; padding: 3px 10px; border-radius: 3px; font-size: 13px; white-space: nowrap; }
+.btn.sec { background: var(--frame); border: 1px solid #55555c; }
+.btn.hot { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.head { display: flex; align-items: flex-start; gap: 12px; }
+.head .t { flex: 1; }
+.head h3 { margin: 0; font-size: 18px; }
+.head h3 span { color: var(--accent); }
+.sub { color: var(--dim); font-size: 12.5px; }
+.built { color: var(--dim); font-size: 12.5px; white-space: nowrap; padding-top: 3px; }
+
+.tiles { display: flex; gap: 8px; margin: 10px 0; }
+.tile { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 6px 12px; min-width: 120px; }
+.tile .k { color: var(--dim); font-size: 12px; }
+.tile .v { font-size: 20px; }
+
+.controls { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.input { background: var(--frame); border: 1px solid var(--border); padding: 3px 8px; color: var(--dim); font-size: 13px; }
+.input.search { width: 360px; }
+.input.combo { width: 170px; display: flex; justify-content: space-between; color: var(--text); }
+.check { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.check i { width: 15px; height: 15px; background: var(--btn); display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-size: 11px; }
+.count { margin-left: auto; color: var(--dim); font-size: 13px; }
+
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th { background: var(--frame); text-align: left; font-weight: normal; padding: 4px 6px; border-right: 1px solid var(--border); white-space: nowrap; position: relative; }
+th.num, td.num { text-align: right; }
+th .arrow { color: var(--accent); }
+td { padding: 3px 6px; height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+tbody tr:nth-child(even) td { background: #2a2a2c; }
+tbody tr.best td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+tbody tr.hover td { background: #34343a; }
+tbody tr.sel td { background: #0a4a4a; }
+td.dim { color: var(--dim); }
+td.mono { font-family: var(--mono); }
+td.rn { color: var(--dim); text-align: right; width: 34px; }
+.chip { display: inline-block; padding: 0 7px; border-radius: 999px; border: 1px solid currentColor; font-size: 11px; line-height: 16px; }
+.t0{color:var(--t0)} .t1{color:var(--t1)} .t2{color:var(--t2)} .t3{color:var(--t3)} .t4{color:var(--t4)} .t5{color:var(--t5)} .tn{color:var(--tn); border-color: transparent}
+.tip { position: absolute; z-index: 5; background: #1b1b1c; border: 1px solid var(--border); padding: 6px 9px; width: 300px; font-size: 12px; white-space: normal; color: var(--text); box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+.statusline { display: flex; justify-content: space-between; color: var(--dim); font-size: 12px; margin-top: 6px; }
+
+.strip { display: flex; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 3px; margin-bottom: 8px; font-size: 13px; }
+.strip.warn { background: var(--warnbg); border: 1px solid var(--warnbd); }
+.strip.warn b { color: var(--warn); font-weight: normal; }
+.strip.done { background: var(--done); border: 1px solid var(--donebd); }
+.strip .sp { flex: 1; }
+
+.callout { position: absolute; background: #0d3b3b; border: 1px solid var(--accent); color: var(--text); font-size: 12px; padding: 4px 8px; border-radius: 3px; max-width: 250px; z-index: 6; }
+.callout b { color: var(--accent); }
+
+.small { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.small .os { width: 100%; }
+.small .content { min-height: 210px; }
+.progress { height: 18px; background: var(--frame); border: 1px solid var(--border); margin: 8px 0; position: relative; }
+.progress > div { height: 100%; width: 45%; background: var(--btn); }
+.progress span { position: absolute; inset: 0; text-align: center; font-size: 12px; line-height: 18px; }
+.ghost td { color: transparent; }
+.ghost td span { display: block; height: 9px; background: #343437; border-radius: 2px; }
+.empty { text-align: center; color: var(--dim); padding: 40px 0 20px; }
+ul.files { margin: 4px 0 0; padding-left: 18px; font-family: var(--mono); font-size: 12px; color: var(--dim); }
+@media (max-width: 900px) { .small { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<h1 class="page">Report windows, mock</h1>
+<p class="lede">The path report (boards 1-3) and the dmleaderboards comparison (boards 4-5) move from the browser into their own Hydra windows. Both are the same window frame filled with different rows. These are drawings for layout, wording and order, like the 2026-09-27 redesign mocks. They aren't the code. The rows are the sample rows from the test that writes sample pages, and the numbers are made up.</p>
+
+<!-- Board 1 -->
+<section class="board">
+  <h2>1. The report window, opened over Hydra</h2>
+  <p>The report is a real Windows window with its own title bar and taskbar button. You can drag it to a second monitor. It minimizes and restores with Hydra and stays in front of it. Hydra's own window is drawn faintly behind it.</p>
+  <div class="stage">
+    <div class="os mainwin">
+      <div class="tb"><div class="ico"></div><div class="ttl">Hydra Deluxe 2.3.0</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="toolbar"><span class="btn sec">Song folders...</span><span class="btn">Analyze library</span><span style="flex:1"></span><span style="color:var(--dim);font-size:12px">opens the window &#x2192;</span><span class="btn hot">Open path report</span></div>
+        <div class="libsel"><div class="r">Song A</div><div class="r sel">Song B &nbsp;&nbsp;(selected by the click in the report)</div><div class="r">Song C</div></div>
+        <div class="libsel" style="color:var(--dim);font-size:12px">Details panel: Paths tab shows Song B, Expert Pro Drums, 2x Bass</div>
+      </div>
+    </div>
+
+    <div class="os reportwin">
+      <div class="tb"><div class="ico"></div><div class="ttl">Path report &mdash; Hydra</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="head">
+          <div class="t">
+            <h3>Hydra <span>Path Index</span></h3>
+            <div class="sub">9,402 records across 4,120 charts &mdash; every mode at the current cap, top 5 paths per chart and mode &mdash; SP cap 4 bars</div>
+          </div>
+          <div class="built">Built 13:42</div>
+          <span class="btn sec">Refresh</span>
+        </div>
+
+        <div class="tiles">
+          <div class="tile"><div class="k">Charts shown</div><div class="v">4,120</div></div>
+          <div class="tile"><div class="k">Paths shown</div><div class="v">9,611</div></div>
+          <div class="tile"><div class="k">Hardest ms</div><div class="v">171.0</div></div>
+          <div class="tile"><div class="k">Past 170 ms</div><div class="v">2</div></div>
+          <div class="tile"><div class="k">Highest skip</div><div class="v">3</div></div>
+        </div>
+
+        <div class="controls">
+          <div class="input search">Search song, artist, charter, or path notation</div>
+          <div class="input combo"><span>All timing tiers</span><span>&#x25BE;</span></div>
+          <div class="check"><i>&#x2713;</i> Best path only</div>
+          <div class="count">9,611 of 41,230 paths</div>
+        </div>
+
+        <div style="position:relative">
+          <table>
+            <thead><tr>
+              <th class="num">#</th><th>Song</th><th>Artist</th><th>Charter</th><th>Mode</th><th>Path</th>
+              <th class="num">Score <span class="arrow">&#x25BC;</span></th><th class="num">Acts</th><th class="num">Max skip</th><th class="num">Hardest ms</th>
+              <th>Timing</th><th class="num">Early fill (ms)</th><th class="num">Avg multiplier</th><th class="num">SqIn</th><th class="num">SqOut</th><th class="num">Notes</th>
+            </tr></thead>
+            <tbody>
+              <tr class="best sel"><td class="rn">1</td><td>Song B</td><td class="dim">Artist of Song B</td><td class="dim">Charter &amp; Co</td><td class="dim">Expert Pro Drums, 2x Bass</td><td class="mono">1-E2+ 1-E2+ 1-E2+ 1-E2+ 1-E2+ 1-E2+ ...</td><td class="num">250,000</td><td class="num">4</td><td class="num">0</td><td class="num">171.0</td><td><span class="chip t5">Beyond 170 ms</span></td><td class="num">4.5</td><td class="num">3.345</td><td class="num">1</td><td class="num">1</td><td class="num">1,201</td></tr>
+              <tr class="best hover"><td class="rn">2</td><td>Song A</td><td class="dim">Artist of Song A</td><td class="dim">Charter &amp; Co</td><td class="dim">Expert Pro Drums, 2x Bass</td><td class="mono">1-E2+ 0-E1</td><td class="num">123,456</td><td class="num">4</td><td class="num">0</td><td class="num">12.5</td><td><span class="chip t1">Hard</span></td><td class="num">-3.25</td><td class="num">3.345</td><td class="num">1</td><td class="num">1</td><td class="num">1,201</td></tr>
+              <tr class="best"><td class="rn">3</td><td>Song A</td><td class="dim">Artist of Song A</td><td class="dim">Charter &amp; Co</td><td class="dim">Hard Drums, 1x Bass</td><td class="mono">0 0 1</td><td class="num">98,000</td><td class="num">4</td><td class="num">0</td><td class="num">&mdash;</td><td><span class="chip tn">No squeezes</span></td><td class="num">&mdash;</td><td class="num">3.345</td><td class="num">1</td><td class="num">1</td><td class="num">1,201</td></tr>
+              <tr class="best"><td class="rn">4</td><td>Song C</td><td class="dim">Artist of Song C</td><td class="dim">Charter &amp; Co</td><td class="dim">Expert Drums, 1x Bass</td><td class="mono">1 1 1</td><td class="num">77,000</td><td class="num">4</td><td class="num">0</td><td class="num">90.0</td><td><span class="chip t3">Insane</span></td><td class="num">&mdash;</td><td class="num">3.345</td><td class="num">1</td><td class="num">1</td><td class="num">1,201</td></tr>
+            </tbody>
+          </table>
+          <div class="tip" style="left:520px; top:26px">Hovering the Path header: <i>The path in path notation: one entry per activation, with its skip count and squeeze symbols.</i></div>
+        </div>
+        <p class="sub" style="margin:8px 0 0">Generated from hydra.db. Timing tiers measure how big each squeeze is, in steps of your hit window. The Paths tab's row labels measure how far a hit lands from the Star Power end, so the two can differ. 'Beyond' means past the 170 ms window.</p>
+      </div>
+    </div>
+  </div>
+  <p style="margin-top:14px">The line under the table is today's page footer, word for word. The column legend under it on the HTML page goes; header hover text carries the same words.</p>
+  <p style="margin-top:6px"><b style="color:var(--accent);font-weight:normal">Click a row</b> to select that chart in Hydra; the main window's Paths tab then shows it (row 1, highlighted). <b style="color:var(--accent);font-weight:normal">Click a header</b> to sort; click again to flip; Shift+click adds a second sort. The arrow marks the sorted column. <b style="color:var(--accent);font-weight:normal">Hover</b> a header for what the column means, or a cut-off cell to read all of it. The gold bar marks a best path, as on the HTML page. Esc or Ctrl+W closes the window.</p>
+</section>
+
+<!-- Board 2 -->
+<section class="board">
+  <h2>2. The window's other states</h2>
+  <p>Each of these replaces part of board 1. Everything else in the window stays where it is.</p>
+  <div class="small">
+
+    <div class="os">
+      <div class="tb"><div class="ico"></div><div class="ttl">Path report &mdash; Hydra</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="head"><div class="t"><h3>Hydra <span>Path Index</span></h3><div class="sub">Building the report from your library...</div></div></div>
+        <div class="progress"><div></div><span>Analyzing 1,854 of 4,120 charts</span></div>
+        <div style="display:flex;justify-content:flex-end"><span class="btn sec">Cancel</span></div>
+        <table class="ghost" style="margin-top:10px"><tbody>
+          <tr><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td></tr>
+          <tr><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td></tr>
+          <tr><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td></tr>
+        </tbody></table>
+        <p class="sub" style="margin-top:10px"><b style="color:var(--text);font-weight:normal">2a. Building.</b> Shown when you open the window and no report is in memory: the first open after Hydra starts, or after Refresh. The rest of Hydra stays usable. Cancel shows &ldquo;Report cancelled.&rdquo; with a Try again button.</p>
+      </div>
+    </div>
+
+    <div class="os">
+      <div class="tb"><div class="ico"></div><div class="ttl">Path report &mdash; Hydra</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="strip done"><span>Your library changed since this report was built (a batch finished at 14:05).</span><span class="sp"></span><span class="btn">Refresh</span></div>
+        <div class="head"><div class="t"><h3>Hydra <span>Path Index</span></h3><div class="sub">9,402 records across 4,120 charts &mdash; ...</div></div><div class="built">Built 13:42</div></div>
+        <p class="sub" style="margin-top:10px"><b style="color:var(--text);font-weight:normal">2b. Out of date.</b> The old rows stay readable under the strip until you press Refresh. Changing the settings bar shows the same strip, worded &ldquo;The settings changed since this report was built.&rdquo;</p>
+      </div>
+    </div>
+
+    <div class="os">
+      <div class="tb"><div class="ico"></div><div class="ttl">Path report &mdash; Hydra</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="controls">
+          <div class="input search" style="color:var(--text)">zzz</div>
+          <div class="input combo"><span>Beyond 170 ms</span><span>&#x25BE;</span></div>
+          <div class="check"><i>&#x2713;</i> Best path only</div>
+          <div class="count">0 of 41,230 paths</div>
+        </div>
+        <div class="empty">Nothing matches those filters.<br><br><span class="btn sec">Clear filters</span></div>
+        <p class="sub"><b style="color:var(--text);font-weight:normal">2c. No rows pass the filters.</b> Same words as the HTML page. Clear filters empties the search, sets Timing back to All timing tiers and leaves Best path only as it was.</p>
+      </div>
+    </div>
+
+    <div class="os">
+      <div class="tb"><div class="ico"></div><div class="ttl">Path report &mdash; Hydra</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="head"><div class="t"><h3>Hydra <span>Path Index</span></h3><div class="sub">9,399 records across 4,117 charts &mdash; ...</div></div></div>
+        <div class="strip warn" style="margin-top:8px"><b>Left out: 3 charts whose file couldn't be read.</b><span class="sp"></span><span class="btn sec">Show files &#x25BE;</span></div>
+        <ul class="files"><li>D:\Songs\Song D\notes.chart</li><li>D:\Songs\Song E\notes.mid</li><li>D:\Songs\Song F\song.srb</li></ul>
+        <p class="sub" style="margin-top:10px"><b style="color:var(--text);font-weight:normal">2d. Left-out charts.</b> The sentence is the one C++ already writes. The file list folds open under it. When the library is missing or nothing is analyzed, the table area shows the report's existing empty reason instead of a table.</p>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- Board 3 -->
+<section class="board">
+  <h2>3. What changes in Hydra's main window</h2>
+  <p>The labels stay as they are today. The finished-batch strip loses Show in folder, because there is no file. Its second line says the report is ready instead of naming a file. Open report and Open automatically now mean the window. Open automatically no longer touches the dmleaderboards comparison, which always opens its window because you asked for it; its hint becomes &ldquo;Open the path report as soon as it's built.&rdquo;</p>
+  <div class="os" style="max-width:1180px">
+    <div class="content">
+      <div class="strip done" style="align-items:flex-start"><div><div>Finished: 4,120 charts analyzed &middot; took 2m 10s</div><div style="color:#9fc7a5">The path report is ready.</div><div class="check" style="margin-top:4px"><i>&#x2713;</i> Open automatically</div></div><span class="sp"></span><span class="btn">Open report</span><span class="btn sec">X</span></div>
+      <div class="toolbar" style="display:flex;gap:8px;align-items:center"><span class="btn sec">Song folders...</span><span class="btn">Analyze library</span><span class="sp" style="flex:1"></span><span class="btn">Open path report</span></div>
+      <p class="sub" style="margin:8px 0 0">Today the toolbar button appears only once a report file exists. Now it appears once the library has analyzed charts. While the batch's report builds it reads &ldquo;Building path report...&rdquo; as today, but stays clickable and opens the window on board 2a. The strip's counts line is drawn by the existing code and is only sketched here.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Board 4 -->
+<section class="board">
+  <h2>4. The dmleaderboards comparison window</h2>
+  <p>The same frame as board 1, with the comparison's own rows, tiles and Status filter. The path report window and this one can both be open, each its own OS window. Rows are the four sample scores from the samples test; the player name is made up.</p>
+  <div class="stage">
+    <div class="os" style="width:1240px">
+      <div class="tb"><div class="ico"></div><div class="ttl">dmleaderboards: SamplePlayer &mdash; Hydra</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="head">
+          <div class="t">
+            <h3>Hydra <span>vs dmleaderboards</span></h3>
+            <div class="sub">SamplePlayer &mdash; 4 scores: 1 under optimal, 0 at optimal, 1 above optimal, 1 not analyzed, 1 not in your library</div>
+          </div>
+          <div class="built">Built 14:10</div>
+          <span class="btn sec">Compare another player...</span>
+          <span class="btn sec">Refresh</span>
+        </div>
+
+        <div class="tiles" style="flex-wrap:wrap">
+          <div class="tile"><div class="k">Scores</div><div class="v">4</div></div>
+          <div class="tile"><div class="k">Under optimal</div><div class="v">1</div></div>
+          <div class="tile"><div class="k">At optimal</div><div class="v">0</div></div>
+          <div class="tile"><div class="k">Above optimal</div><div class="v">1</div></div>
+          <div class="tile"><div class="k">Not analyzed</div><div class="v">1</div></div>
+          <div class="tile"><div class="k">Not in library</div><div class="v">1</div></div>
+          <div class="tile"><div class="k">Other speed</div><div class="v">0</div></div>
+          <div class="tile"><div class="k">Avg % of optimal</div><div class="v">98.80%</div></div>
+          <div class="tile"><div class="k">Points left on table</div><div class="v">3,456</div></div>
+        </div>
+
+        <div class="controls">
+          <div class="input search">Search song, artist, or charter</div>
+          <div class="input combo" style="width:260px"><span>All charts</span><span>&#x25BE;</span></div>
+          <div class="count">4 of 4 scores</div>
+        </div>
+
+        <table>
+          <thead><tr>
+            <th class="num">#</th><th>Song</th><th>Artist</th><th>Charter</th>
+            <th class="num">Actual</th><th class="num">Hydra opt</th><th class="num">Points left <span class="arrow">&#x25BC;</span></th><th class="num">% of opt</th>
+            <th class="num">FC</th><th class="num">Percent</th><th class="num">Speed</th><th class="num">Rank</th><th>Posted</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+            <tr class="sel"><td class="rn">1</td><td>Song A</td><td class="dim">Artist</td><td class="dim">Charter</td><td class="num">120,000</td><td class="num">123,456</td><td class="num">3,456</td><td class="num">97.20%</td><td class="num">&#x2713;</td><td class="num">100%</td><td class="num">100%</td><td class="num">#3</td><td class="dim">2026-09-20</td><td><span class="chip t0">under optimal</span></td></tr>
+            <tr><td class="rn">2</td><td>Song B</td><td class="dim">Artist</td><td class="dim">Charter</td><td class="num">251,000</td><td class="num">250,000</td><td class="num" style="color:var(--t3)">+1,000 over</td><td class="num">100.40%</td><td class="num">&mdash;</td><td class="num">97%</td><td class="num">100%</td><td class="num">#1</td><td class="dim">2026-09-20</td><td><span class="chip t1">above optimal</span></td></tr>
+            <tr><td class="rn">3</td><td>Song D</td><td class="dim">Artist</td><td class="dim">Charter</td><td class="num">80,000</td><td class="num">&mdash;</td><td class="num dim">&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">97%</td><td class="num">100%</td><td class="num">&mdash;</td><td class="dim">2026-09-20</td><td><span class="chip" style="color:var(--dim)">not analyzed</span></td></tr>
+            <tr><td class="rn">4</td><td>Song C</td><td class="dim">Artist</td><td class="dim">Charter</td><td class="num">90,000</td><td class="num">&mdash;</td><td class="num dim">&mdash;</td><td class="num">&mdash;</td><td class="num">&mdash;</td><td class="num">97%</td><td class="num">100%</td><td class="num">&mdash;</td><td class="dim">2026-09-20</td><td><span class="chip tn">not in library</span></td></tr>
+          </tbody>
+        </table>
+        <p class="sub" style="margin:8px 0 0">Actual scores from dmleaderboards.com against Hydra's optimal for &lt;mode&gt;. Above-optimal scores are expected &mdash; Hydra's optimal excludes several score backends, and older Clone Hero versions allowed fills that are impossible now. Not analyzed charts are in your library without a current result for this mode at SP cap 4: analyze them, then compare again.</p>
+      </div>
+    </div>
+  </div>
+  <p style="margin-top:14px">Columns, tiles, Status options, cell text and chip colours are today's page's. The first sort is Points left, most first. Clicking a row selects that chart in Hydra, in the mode the comparison was made for. A &ldquo;not in library&rdquo; row has no chart to select, so clicking it does nothing; its hover text says &ldquo;Not in your library&rdquo;. The footer line is today's, word for word. Refresh fetches the player's scores again and rebuilds.</p>
+</section>
+
+<!-- Board 5 -->
+<section class="board">
+  <h2>5. Getting there: the player picker hands over to the window</h2>
+  <p>The &ldquo;Compare dmleaderboards user&rdquo; box keeps its first two steps (loading the user list, then picking a player). Picking a player now closes the box and opens the window, which shows the wait and the result. The box's old third step (Done, Open report, Compare another, Close) goes, because the window is the result.</p>
+  <div class="small">
+    <div class="os">
+      <div class="tb"><div class="ico"></div><div class="ttl">dmleaderboards: SamplePlayer &mdash; Hydra</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="head"><div class="t"><h3>Hydra <span>vs dmleaderboards</span></h3><div class="sub">Fetching scores and building the report...</div></div></div>
+        <p class="sub">The leaderboard server can take a moment to wake up.</p>
+        <div class="progress"><div style="width:30%;opacity:.6"></div><span></span></div>
+        <div style="display:flex;justify-content:flex-end"><span class="btn sec">Cancel</span></div>
+        <p class="sub" style="margin-top:10px"><b style="color:var(--text);font-weight:normal">5a. Waiting.</b> Today's two sentences, moved from the box. The server gives no count, so the bar only shows that work is going on. Cancel closes the window and reopens the player list, the way Cancel in the box goes back to the list today.</p>
+      </div>
+    </div>
+    <div class="os">
+      <div class="tb"><div class="ico"></div><div class="ttl">dmleaderboards: SamplePlayer &mdash; Hydra</div><div class="cap">&#x2013;</div><div class="cap">&#x25A1;</div><div class="cap">&#x2715;</div></div>
+      <div class="content">
+        <div class="head"><div class="t"><h3>Hydra <span>vs dmleaderboards</span></h3></div></div>
+        <div class="strip warn" style="margin-top:8px; display:block"><b>Could not build the report.</b><div style="margin-top:4px">&lt;the job's message&gt;</div><div style="color:var(--dim)">&lt;the job's error&gt;</div></div>
+        <div style="display:flex;gap:8px"><span class="btn">Try again</span><span class="btn sec">Compare another player...</span></div>
+        <p class="sub" style="margin-top:10px"><b style="color:var(--text);font-weight:normal">5b. Failed.</b> Today's words from the box. Try again repeats the same player. The window's other states (out of date, no matches, Clear filters) are board 2's, shared.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
