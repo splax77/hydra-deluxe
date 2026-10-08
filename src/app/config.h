@@ -172,6 +172,12 @@ struct Settings {
     // "Expert Pro Drums, 2x Bass" — mirrors HyAppUserSettings.chartmode_key.
     std::string chartmode_key() const;
 
+    // These settings with the Difficulty, Pro Drums and 2x Bass choices
+    // that make chartmode_key() spell `chartmode`, the rest kept as they
+    // are. When several choices spell it, the first one this function tries
+    // wins. nullopt when no choice spells it.
+    std::optional<Settings> with_chartmode(const std::string& chartmode) const;
+
     AnalysisSettings to_analysis_settings() const;
 
     // The backend display window as the view-model wants it: the value when

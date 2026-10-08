@@ -273,6 +273,21 @@ std::string Settings::chartmode_key() const {
     return std::string(difficulty_name(difficulty())) + " " + prodrums + ", " + bass;
 }
 
+std::optional<Settings> Settings::with_chartmode(const std::string& chartmode) const {
+    for (Difficulty d : kAllDifficulties) {
+        for (bool prodrums : {true, false}) {
+            for (bool bass2x : {true, false}) {
+                Settings mode = *this;
+                mode.view_difficulty = difficulty_name(d);
+                mode.view_prodrums = prodrums;
+                mode.view_bass2x = bass2x;
+                if (mode.chartmode_key() == chartmode) return mode;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 AnalysisSettings Settings::to_analysis_settings() const {
     AnalysisSettings s;
     s.prodrums = view_prodrums;

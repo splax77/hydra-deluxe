@@ -9,7 +9,7 @@
 #include "app/rules_file.h"
 #include "app/user_messages.h"
 #include "core/winstr.h"
-#include "parse/song.h"  // display_title, difficulty_name, kAllDifficulties
+#include "parse/song.h"  // display_title
 #include "ui/preview_controller.h"
 
 namespace hydra::ui {
@@ -468,27 +468,12 @@ void AppState::select_chart(const std::string& hyhash, const std::string& chartm
             set_status("A batch is running.");
             return;
         }
-        // The choices whose Settings::chartmode_key() spells the row's mode,
-        // set the way the settings bar's Difficulty, Pro Drums and 2x Bass
-        // set them, then committed as the bar commits. None spells it: a
-        // mode this build can't analyze, so the row selects nothing.
-        auto switch_mode = [&] {
-            for (Difficulty difficulty : kAllDifficulties) {
-                for (bool prodrums : {true, false}) {
-                    for (bool bass2x : {true, false}) {
-                        Settings mode = settings;
-                        mode.view_difficulty = difficulty_name(difficulty);
-                        mode.view_prodrums = prodrums;
-                        mode.view_bass2x = bass2x;
-                        if (mode.chartmode_key() != chartmode) continue;
-                        settings = std::move(mode);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        };
-        if (!switch_mode()) return;
+        // Settings::with_chartmode picks the choices, which are then
+        // committed as the bar commits. When it finds none, this build can't
+        // analyze the row's mode, so the row selects nothing.
+        std::optional<Settings> mode = settings.with_chartmode(chartmode);
+        if (!mode) return;
+        settings = std::move(*mode);
         commit_settings();
     }
     reload_after_scan();  // the copies the store holds now

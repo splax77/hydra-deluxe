@@ -271,26 +271,17 @@ void place_rows(std::vector<ReportRow>& out, const std::vector<ReportRow>& rows,
 // The settings one chart mode is analyzed under. The run's own mode takes the
 // run's settings as they are. Another mode keeps the run's search settings
 // (the SearchSettings base) and takes the parse choices (AnalysisSettings'
-// own fields) of the settings whose Settings::chartmode_key() spells it, so
-// the key's one owner decides which choices a mode means. Throws when no
-// choice spells the mode.
+// own fields) that Settings::with_chartmode picks for it, so the key's one
+// owner decides which choices a mode means. Throws when no choice spells the
+// mode.
 AnalysisSettings settings_for_mode(const BatchRun& run, const std::string& chartmode) {
     if (chartmode == run.chartmode) return run.settings;
-    for (Difficulty difficulty : kAllDifficulties) {
-        for (bool prodrums : {true, false}) {
-            for (bool bass2x : {true, false}) {
-                Settings mode;
-                mode.view_difficulty = difficulty_name(difficulty);
-                mode.view_prodrums = prodrums;
-                mode.view_bass2x = bass2x;
-                if (mode.chartmode_key() != chartmode) continue;
-                AnalysisSettings out = mode.to_analysis_settings();
-                static_cast<SearchSettings&>(out) = run.settings;
-                return out;
-            }
-        }
-    }
-    throw std::runtime_error("No analysis settings give the chart mode \"" + chartmode + "\".");
+    const std::optional<Settings> mode = Settings{}.with_chartmode(chartmode);
+    if (!mode)
+        throw std::runtime_error("No analysis settings give the chart mode \"" + chartmode + "\".");
+    AnalysisSettings out = mode->to_analysis_settings();
+    static_cast<SearchSettings&>(out) = run.settings;
+    return out;
 }
 
 }  // namespace
