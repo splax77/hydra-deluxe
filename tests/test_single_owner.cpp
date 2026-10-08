@@ -1330,6 +1330,31 @@ const std::vector<OwnerRule>& rules() {
          {{"src/render/overlay_layout.cpp",
            R"(static const std::string kEllipsis = "\xE2\x80\xA6";)",
            "ellipsize, the owner: the one ellipsis a cut ends in"}}},
+        // A string that is only an em dash, typed as escaped bytes, as a
+        // \u escape, or as the raw character before any // comment. kDash
+        // is the one such string; a dash inside longer text (a subtitle's
+        // separator) is not this question. As with the ellipsis row, the
+        // raw alternative is built from the three UTF-8 bytes.
+        {"What text shows where a value is missing?",
+         "kDash in src/app/report.h",
+         R"re("(\\x[eE]2\\x80\\x94|\\u2014)"|^(?:(?!//).)*")re"
+         "\xE2\x80\x94"
+         R"re(")re",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T2, finding 2 (2026-10-08)",
+         {R"(: std::string("\xe2\x80\x94"));)",
+          R"(std::string acts_txt = (r.old_acts ? std::to_string(*r.old_acts) : std::string("\xe2\x80\x94"));)",
+          R"(inline constexpr const char* kDash = "\xE2\x80\x94";  // U+2014 EM DASH)",
+          "return r.posted.empty() ? \"\xE2\x80\x94\" : r.posted;",
+          "const char* dash = \"\\u2014\";"},
+         {"std::string average = report::kDash;",
+          "std::string subtitle = username + \" \xE2\x80\x94 \" +",
+          "const DASH = '\\u2014';",
+          "x = 1;  // reads \"\xE2\x80\x94\" when empty"},
+         {{"src/app/report.h", "inline constexpr const char* kDash = \"\xE2\x80\x94\";",
+           "kDash, the owner"}}},
         // ---- M_D review follow-ups (phase 3 task FX-L) ----
         // A switch over the Dynamics rows, the 2x test that picks a kick
         // row, or a test of a row against a named row (the old cymbal-row

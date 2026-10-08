@@ -69,7 +69,7 @@ struct Tile {
     std::string value;
 };
 
-// What a tile shows when it has no value: the pages' DASH.
+// What a tile or cell shows where a value is missing: the pages' DASH.
 inline constexpr const char* kDash = "—";
 
 // The colour a report chip is drawn in. Each member is named after the pages'

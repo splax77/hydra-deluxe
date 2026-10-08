@@ -294,10 +294,10 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
         // to 1.0); `acts_txt` is what it shows: "1.0 / 1.1".
         data += ",\"acts\":" + opt_num(r.new_acts ? r.new_acts : r.old_acts);
         std::string acts_txt = (r.old_acts ? std::to_string(*r.old_acts)
-                                           : std::string("\xe2\x80\x94"));
+                                           : std::string(report::kDash));
         acts_txt += " / ";
         acts_txt += (r.new_acts ? std::to_string(*r.new_acts)
-                                : std::string("\xe2\x80\x94"));
+                                : std::string(report::kDash));
         data += ",\"acts_txt\":";
         json_escape_into(data, acts_txt);
         data += ",\"notes\":" + opt_num(r.notes);
