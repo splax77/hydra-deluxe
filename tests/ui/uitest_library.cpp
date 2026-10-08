@@ -578,7 +578,7 @@ void test_library_column_order(ImGuiTestContext* ctx) {
 }
 
 // The first column of the first row `sql` returns, or -1 when it fails.
-int64_t scalar_on_file(const std::string& path, const std::string& sql) {
+int64_t number_in_file(const std::string& path, const std::string& sql) {
     return hydra::test::first_int_on_file(path, sql).value_or(-1);
 }
 
@@ -671,8 +671,8 @@ void test_startup_screen(ImGuiTestContext* ctx) {
             IM_CHECK(!fs::exists(fs::u8path(file)));
     // The two results with stars came across; the one without did not. The
     // detail tables are gone.
-    IM_CHECK_EQ(scalar_on_file(h.db_path, "SELECT COUNT(*) FROM results"), int64_t{2});
-    IM_CHECK_EQ(scalar_on_file(h.db_path, hydra::test::kDetailTablesCountSql), int64_t{0});
+    IM_CHECK_EQ(number_in_file(h.db_path, "SELECT COUNT(*) FROM results"), int64_t{2});
+    IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kDetailTablesCountSql), int64_t{0});
 }
 
 }  // namespace
