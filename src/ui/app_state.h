@@ -168,15 +168,43 @@ struct StartupSettings {
 
 class AppState {
 public:
+    // Reads the user's settings and rules file, then starts opening the
+    // user's database on store_open_job: the window draws while it opens.
     AppState();
     // Injecting form, for tests and harnesses: same startup work as the
     // default constructor, but on a caller-supplied settings struct and store
-    // instead of the user's INI and database.
+    // instead of the user's INI and database. The store is ready at once.
     AppState(app::Settings settings, std::unique_ptr<store::RecordStore> store);
     ~AppState();  // out-of-line: PreviewController is only forward-declared here
 
     Settings settings;
+    // Null until the startup open is collected (store_ready). Only the main
+    // window reaches it, and run_frame draws that window only once it is
+    // ready.
     std::unique_ptr<store::RecordStore> store;
+
+    // The startup open (StoreOpenJob). tick() collects it once it finishes:
+    // the store and the library move in, and the job goes.
+    std::unique_ptr<StoreOpenJob> store_open_job;
+    // Whether the store is open and the library read: the one gate run_frame
+    // asks before drawing the main window.
+    bool store_ready() const { return store != nullptr; }
+    // Whether the startup open failed. The window then has nothing to show:
+    // main.cpp shows the startup message box with store_open_error() and
+    // Hydra closes (D72 item 1).
+    bool store_open_failed() const { return store_open_error_ != nullptr; }
+    std::exception_ptr store_open_error() const { return store_open_error_; }
+    // Where the startup open is, for the startup screen. A default progress
+    // when no open is running.
+    StoreOpenProgress store_open_progress() const;
+    // Whether the startup screen shows its words yet: only once the open has
+    // run kViewProgressDelaySeconds, so a fast open shows an empty window
+    // and then the library.
+    bool store_open_shown() const;
+    // Blocks until the startup open has finished, then collects it as tick()
+    // does. For the test harness only, so a test can start from a ready
+    // store; the app never waits on it.
+    void wait_store_open();
     // Set at startup when hydra_rules.ini is bad (the loader's message, which
     // names the key). While set, analysis is off: start_batch does nothing
     // and a click counts only the Dynamics (ViewedSong::State::RulesBroken).
@@ -479,6 +507,11 @@ public:
 
 private:
     explicit AppState(StartupSettings start);
+
+    // Moves a finished startup open into place: the store and library, or
+    // the failure. tick() and wait_store_open() both collect through it.
+    void collect_store_open();
+    std::exception_ptr store_open_error_;
 
     // The click's job lifecycle on the UI thread: drop a late result, then
     // re-identify an edited chart, save the summary when needed and show the

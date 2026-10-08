@@ -13,8 +13,20 @@
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "parse/song.h"  // display_title, display_artist
+#include "ui/preview_load_job.h"  // ByteRateClock
 
 namespace hydra::ui {
+
+// ---- StoreOpenJob ---------------------------------------------------------
+
+namespace {
+StoreOpenGate g_store_open_gate;
+}  // namespace
+
+void set_store_open_gate_for_test(StoreOpenGate gate) { g_store_open_gate = std::move(gate); }
+
+// Out of line: ByteRateClock is only forward-declared in the header.
+StoreOpenJob::~StoreOpenJob() { shutdown(); }
 
 // ---- ScanJob --------------------------------------------------------------
 
