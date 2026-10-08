@@ -126,6 +126,6 @@ This version doesn't read `records.json`, so your old results don't carry over. 
 | 1.9.7 | The `1.0 fills` setting in the app |
 | 2.0.0 | The new name, Hydra Deluxe |
 | 2.1.0 | Clone Hero's own rules for disco flip, 2x kick and phrase ends; squeeze scales from the true SP end; the SP end mark in the Preview |
-| 2.2.0 | A song is analyzed when you click it; a much smaller `hydra.db`; faster analysis and lower memory use |
+| 2.2.0 | `hydra.db` saves only each analysis's summary, so it is much smaller, and opening a song runs the analysis again for its paths; faster analysis and lower memory use |
 
 Each release's full notes are on the [releases page](https://github.com/splax77/hydra-deluxe/releases).
