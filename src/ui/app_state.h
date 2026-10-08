@@ -518,8 +518,14 @@ private:
     void save_settings();
     // The refresh half of commit_settings.
     void apply_settings();
-    // tick_library's memory: whether the current scan's result was read
-    // yet, and the batch's stored count and time at the last summary read.
+    // A finished scan replaced the chart table: reloads the rows once, so
+    // they match the store again. True when it reloaded. tick_library runs it
+    // every frame; a click, previous / next and the batch confirm run it
+    // first, so none of them reads rows older than the store.
+    bool reload_after_scan();
+    // reload_after_scan's memory: whether the current scan's result was read
+    // yet. Then tick_library's: the batch's stored count and time at the last
+    // summary read.
     bool scan_reloaded_ = true;
     int batch_seen_completed_ = 0;
     double batch_refreshed_at_ = -1.0;
