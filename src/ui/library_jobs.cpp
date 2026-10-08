@@ -9,7 +9,6 @@
 #include "app/allocator.h"
 #include "app/config.h"
 #include "app/report.h"
-#include "app/report_files.h"
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "parse/song.h"  // display_title, display_artist
@@ -555,16 +554,24 @@ void ViewJob::run() {
 
 // ---- ReportJob --------------------------------------------------------
 
+namespace {
+app::ChartAnalyzer g_report_analyzer;
+}  // namespace
+
+void set_report_analyzer_for_test(app::ChartAnalyzer analyze) {
+    g_report_analyzer = std::move(analyze);
+}
+
 ReportJob::ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-                     bool open_when_done, double hit_window_ms,
-                     std::optional<app::BatchRun> run, app::report::ReportSeed seed)
+                     double hit_window_ms, std::optional<app::BatchRun> run,
+                     app::report::ReportSeed seed)
     : store_(store),
       cap_(cap),
       lens_(lens),
-      open_when_done_(open_when_done),
       hit_window_ms_(hit_window_ms),
       run_(std::move(run)),
-      seed_(std::move(seed)) {}
+      seed_(std::move(seed)),
+      analyze_(g_report_analyzer) {}
 
 void ReportJob::start() { spawn([this] { run(); }); }
 
@@ -582,6 +589,7 @@ void ReportJob::run() {
         // library to be analyzed before it can shut down.
         options.cancel = &cancel_;
         options.run = run_;
+        options.analyze = analyze_;  // empty: generate_report's own
         // The seed's rows are read by this pass alone, so they go when it
         // ends, however it ends, not with the job (memory audit fix 4).
         app::report::GeneratedReport report;
@@ -589,10 +597,9 @@ void ReportJob::run() {
             const app::report::ReportSeed seed = std::exchange(seed_, {});
             report = app::report::generate_report(store_, options, seed);
         }
-        // Checked before the "no records" throw and before any file is
-        // written: a cancelled run has no rows because it stopped, not
-        // because the store is empty, and it must leave the last report on
-        // disk alone.
+        // Checked before the "no records" throw: a cancelled run has no rows
+        // because it stopped, not because the store is empty, and the last
+        // report in memory stays as it was.
         if (is_cancelled()) return false;
         // generate_report says why the page is empty (GeneratedReport::
         // why_empty). When it gives a sentence, the strip shows that sentence
@@ -604,9 +611,11 @@ void ReportJob::run() {
             throw KindedError(ErrorKind::NoRecords, "no records stored yet");
         }
 
-        // A browser that won't open the page is not a failed report: the
-        // page is saved, and the finished strip says so (audit B1).
-        outcome_ = publish_report(app::report_html_path(), report.html, open_when_done_);
+        // Nothing reads the page any more; the window draws the rows. Its
+        // text goes now rather than living on with the rows (T7 removes the
+        // field).
+        std::string().swap(report.html);
+        result_ = std::make_shared<const app::report::GeneratedReport>(std::move(report));
         return true;
     });
 }

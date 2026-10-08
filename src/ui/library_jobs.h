@@ -34,7 +34,6 @@
 #include "store/record_store.h"
 #include "ui/job_base.h"
 #include "ui/library_model.h"
-#include "ui/report_outcome.h"
 
 namespace hydra::ui {
 
@@ -415,38 +414,34 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 
 // ---- ReportJob --------------------------------------------------------
 
-// Builds the sortable HTML path report for the library — the same page
-// src/cli/report.cpp writes (app::report::generate_report). Kicked off
-// automatically when a library batch analysis finishes; opens the browser only
-// when `open_when_done` (the user's "Open report automatically" setting).
+// Builds the library's path report in memory (app::report::generate_report)
+// for the path report window (D103). Kicked off when a library batch analysis
+// finishes, and by the window's Refresh (AppState::request_path_report).
 // Analyzing the library's charts can take seconds on a big library, so it runs
-// off the render thread like every other job. Where the page lands and how it
-// reaches the browser live in app/report_files.h.
+// off the render thread like every other job. It writes and opens nothing.
 class ReportJob : public ResultJobBase {
 public:
-    // hit_window_ms feeds the page's timing-tier bands (settings.hit_window_ms).
-    // cap/lens: which records the page lists (the user's current SP cap, ms
+    // hit_window_ms feeds the report's timing-tier bands (settings.hit_window_ms).
+    // cap/lens: which records the report lists (the user's current SP cap, ms
     // limit and score range). `run` is the batch's settings the charts are
     // analyzed under (ReportOptions::run; the report fails without it), and
     // `seed` the rows the batch already worked out.
     ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens lens,
-              bool open_when_done, double hit_window_ms = kDefaultHitWindowMs,
+              double hit_window_ms = kDefaultHitWindowMs,
               std::optional<app::BatchRun> run = std::nullopt,
               app::report::ReportSeed seed = {});
     ~ReportJob() { shutdown(); }
 
     void start();
 
-    // What the page is built from, as given to the constructor.
+    // What the report is built from, as given to the constructor.
     const store::CapQuery& cap() const { return cap_; }
     const store::Lens& lens() const { return lens_; }
     double hit_window_ms() const { return hit_window_ms_; }
 
-    // Valid once finished() && ok(): where the page was written, whether the
-    // browser opened it, and why not when it was asked to and didn't.
-    const std::filesystem::path& saved_path() const { return outcome_.saved_path; }
-    bool opened() const { return outcome_.opened; }
-    const std::string& open_problem() const { return outcome_.open_problem; }
+    // Valid once finished() && ok(): the report, shared with AppState's slot
+    // rather than copied.
+    const std::shared_ptr<const app::report::GeneratedReport>& result() const { return result_; }
 
     // Test seam: how many charts' rows the job still holds from the batch's
     // seed. Read before start() or once finished().
@@ -458,12 +453,18 @@ private:
     store::RecordStore& store_;
     store::CapQuery cap_;
     store::Lens lens_;
-    bool open_when_done_;
     double hit_window_ms_;
     std::optional<app::BatchRun> run_;
     app::report::ReportSeed seed_;
-    ReportOutcome outcome_;
+    app::ChartAnalyzer analyze_;  // the test seam's, copied at construction
+    std::shared_ptr<const app::report::GeneratedReport> result_;
 };
+
+// Test seam: when set, every report job built from now on analyzes its
+// charts with this in place of generate_report's own, so a test can hold a
+// build open (one build at a time, Cancel, an out-of-date event during a
+// build). An empty analyzer clears it. Only tests set it.
+void set_report_analyzer_for_test(app::ChartAnalyzer analyze);
 
 }  // namespace hydra::ui
 

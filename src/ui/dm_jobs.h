@@ -1,13 +1,14 @@
 // The two dmleaderboards jobs: fetching the ladder for the user picker
-// (DmFetchUsersJob) and building one user's comparison report
-// (DmReportJob). AppState owns both; library_dialogs.cpp's picker and
-// finished modal are the only readers. Both wrap net/dmbot_client.h calls, which the
-// free-tier backend can leave hanging for tens of seconds.
+// (DmFetchUsersJob) and building one user's comparison (DmReportJob).
+// AppState owns both; library_dialogs.cpp's picker reads the fetch, and
+// AppState collects the comparison into its dm_report slot. Both wrap
+// net/dmbot_client.h calls, which the free-tier backend can leave hanging
+// for tens of seconds.
 
 #ifndef HYDRA_UI_DM_JOBS_H
 #define HYDRA_UI_DM_JOBS_H
 
-#include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,6 @@
 #include "net/dmbot_client.h"
 #include "store/record_store.h"
 #include "ui/job_base.h"
-#include "ui/report_outcome.h"
 
 namespace hydra::ui {
 
@@ -41,29 +41,23 @@ private:
 
 // ---- DmReportJob ------------------------------------------------------
 
-// Fetches one user's scores (GET /api/user/{id}/scores), joins them against the
-// store by chart hash, writes the HTML comparison report and opens it. Same
-// off-thread + cold-start handling as DmFetchUsersJob. Where the page lands and
-// how it reaches the browser live in app/report_files.h.
+// Fetches one user's scores (GET /api/user/{id}/scores) and joins them
+// against the store by chart hash, in memory, for the comparison window
+// (D103). Same off-thread + cold-start handling as DmFetchUsersJob. It
+// writes and opens nothing.
 class DmReportJob : public ResultJobBase {
 public:
-    // open_when_done: the user's "Open report automatically" setting, same as
-    // ReportJob (the finished modal offers an "Open report again" button).
     DmReportJob(store::RecordStore& store, std::string discord_id, std::string username,
-                std::string chartmode, store::Lens lens, bool open_when_done);
+                std::string chartmode, store::Lens lens);
     ~DmReportJob() { shutdown(); }
 
     void start();
 
-    // Every count the comparison produced, for the finished modal. Valid
-    // once ok().
-    const app::dm_report::DmReportStats& stats() const { return stats_; }
-
-    // Valid once finished() && ok(): where the page was written, whether the
-    // browser opened it, and why not when it was asked to and didn't.
-    const std::filesystem::path& saved_path() const { return outcome_.saved_path; }
-    bool opened() const { return outcome_.opened; }
-    const std::string& open_problem() const { return outcome_.open_problem; }
+    // Valid once finished() && ok(): the comparison, shared with AppState's
+    // slot rather than copied.
+    const std::shared_ptr<const app::dm_report::GeneratedDmReport>& result() const {
+        return result_;
+    }
 
 private:
     void run();
@@ -72,9 +66,7 @@ private:
     std::string username_;
     std::string chartmode_;
     store::Lens lens_;
-    bool open_when_done_;
-    app::dm_report::DmReportStats stats_;
-    ReportOutcome outcome_;
+    std::shared_ptr<const app::dm_report::GeneratedDmReport> result_;
 };
 
 }  // namespace hydra::ui

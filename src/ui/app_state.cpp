@@ -7,10 +7,9 @@
 
 #include "app/config.h"
 #include "app/rules_file.h"
-#include "app/report_files.h"
 #include "app/user_messages.h"
 #include "core/winstr.h"
-#include "parse/song.h"  // display_title
+#include "parse/song.h"  // display_title, difficulty_name, kAllDifficulties
 #include "ui/preview_controller.h"
 
 namespace hydra::ui {
@@ -462,9 +461,54 @@ void AppState::tick(double /*now*/) {
     update_view_job();
 }
 
-bool AppState::report_file_shown(double now) {
-    return cached_file_check(library_ui.report_checked_at, library_ui.report_exists, now,
-                             [] { return app::report_file_exists(); });
+void AppState::select_chart(const std::string& hyhash, const std::string& chartmode) {
+    if (chartmode != settings.chartmode_key()) {
+        // The bar is off during a batch, so a row can't switch it either.
+        if (settings_locked()) {
+            set_status("A batch is running.");
+            return;
+        }
+        // The choices whose Settings::chartmode_key() spells the row's mode,
+        // set the way the settings bar's Difficulty, Pro Drums and 2x Bass
+        // set them, then committed as the bar commits. None spells it: a
+        // mode this build can't analyze, so the row selects nothing.
+        auto switch_mode = [&] {
+            for (Difficulty difficulty : kAllDifficulties) {
+                for (bool prodrums : {true, false}) {
+                    for (bool bass2x : {true, false}) {
+                        Settings mode = settings;
+                        mode.view_difficulty = difficulty_name(difficulty);
+                        mode.view_prodrums = prodrums;
+                        mode.view_bass2x = bass2x;
+                        if (mode.chartmode_key() != chartmode) continue;
+                        settings = std::move(mode);
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        if (!switch_mode()) return;
+        commit_settings();
+    }
+    reload_after_scan();  // the copies the store holds now
+    const std::string want = app::normalize_chart_hash(hyhash);
+    const std::vector<LibraryRow>& rows = library.rows();
+    auto is_copy = [&](size_t i) { return app::normalize_chart_hash(rows[i].entry.md5) == want; };
+    // The first copy the table shows; a copy the search or chip hides is
+    // still the chart, so the rest of the library comes after.
+    for (size_t i : library.order()) {
+        if (is_copy(i)) {
+            select(rows[i].entry);
+            return;
+        }
+    }
+    for (size_t i = 0; i < rows.size(); ++i) {
+        if (is_copy(i)) {
+            select(rows[i].entry);
+            return;
+        }
+    }
 }
 
 void AppState::start_scan() {
@@ -523,7 +567,6 @@ void AppState::start_batch(bool redo) {
                                            settings.batch_run(), *store);
     close_batch_confirm();
     report_started = false;
-    report_outcome_shown = false;
     batch_seen_completed_ = 0;
     batch_refreshed_at_ = -1.0;
     batch_finish_seen_ = false;
@@ -538,7 +581,10 @@ void AppState::update_background_jobs() {
         // lets the rows go here rather than when its strip is dismissed
         // (memory audit fix 4).
         app::report::ReportSeed seed = batch_job->take_report_seed();
-        // tick_library re-reads the summaries once the batch ends.
+        // tick_library re-reads the summaries once the batch ends. Stopped
+        // or not, the run stored results, so both reports in memory now
+        // read an older library (D103).
+        mark_reports_stale(ReportStale::Library, /*path=*/true, /*dm=*/true);
         // One path report per finished run. A stopped run keeps its results
         // but builds no report: a report of part of the library would read
         // as the whole of it.
@@ -547,34 +593,21 @@ void AppState::update_background_jobs() {
             // The report lists the records the batch filed: its cap and lens,
             // not whatever the settings bar holds now, analyzed under the
             // batch's settings, reusing the charts the batch just analyzed
-            // (D87 item 5). Opening the page and its timing bands only shape
-            // the page, so they stay live.
+            // (D87 item 5).
             const app::BatchRun& run = batch_job->batch_run();
-            report_job = std::make_unique<ReportJob>(*store, run.cap_query(), run.lens,
-                                                     settings.auto_open_report,
-                                                     settings.hit_window_ms, run,
-                                                     std::move(seed));
-            report_job->start();
+            launch_path_report(run.cap_query(), run.lens, run, std::move(seed),
+                               /*from_batch=*/true);
         }
     }
 
-    // The finished strip shows the report's outcome. Dismissed before the
-    // report landed, the outcome goes to the status line instead.
-    if (!batch_job && report_job && report_job->finished()) {
-        library_ui.report_checked_at = -1.0;  // a new report: look at once
-        if (!report_outcome_shown && !report_job->is_cancelled()) {
-            const std::string where = report_job->saved_path().u8string();
-            if (!report_job->ok())
-                set_problem("The path report could not be built. " + report_job->message());
-            else if (!report_job->open_problem().empty())
-                set_problem("Path report saved to " + where + ". " + report_job->open_problem());
-            else
-                set_status("Path report saved to " + where + ".");
-        }
-        report_job.reset();
-    }
+    collect_path_report();
+    collect_dm_report();
 
-    // Let go of cancelled leaderboard jobs once their request has returned.
+    // Let go of cancelled jobs once they have returned.
+    parked_reports.erase(
+        std::remove_if(parked_reports.begin(), parked_reports.end(),
+                       [](const std::unique_ptr<ReportJob>& job) { return job->finished(); }),
+        parked_reports.end());
     parked_dm_fetches.erase(
         std::remove_if(parked_dm_fetches.begin(), parked_dm_fetches.end(),
                        [](const std::unique_ptr<DmFetchUsersJob>& job) { return job->finished(); }),
@@ -594,9 +627,16 @@ void AppState::cancel_dm_fetch() {
 
 void AppState::cancel_dm_report() {
     if (!dm_report_job) return;
+    // One that already finished has its result: keep it, not the cancel.
+    if (dm_report_job->finished()) {
+        collect_dm_report();
+        return;
+    }
     dm_report_job->cancel();
-    if (!dm_report_job->finished()) parked_dm_reports.push_back(std::move(dm_report_job));
+    parked_dm_reports.push_back(std::move(dm_report_job));
     dm_report_job.reset();
+    dm_report.last = ReportBuild::Cancelled;
+    dm_report.stale_during_build = ReportStale::None;
 }
 
 void AppState::start_dm_fetch() {
@@ -606,17 +646,146 @@ void AppState::start_dm_fetch() {
     dm_fetch_job->start();
 }
 
+void AppState::reopen_dm_picker() {
+    dm_picker_open = true;
+    dm_picker_popup_pending = true;
+    if (dm_users.empty()) start_dm_fetch();
+}
+
 void AppState::start_dm_report(const std::string& discord_id, const std::string& username) {
-    if (dm_report_job && !dm_report_job->finished()) return;
-    dm_report_job = std::make_unique<DmReportJob>(*store, discord_id, username,
-                                                  settings.chartmode_key(),
-                                                  settings.lens(),
-                                                  settings.auto_open_report);
+    // A new player replaces one still building (D103 item 9). Parked, never
+    // joined here.
+    if (dm_report_job && !dm_report_job->finished()) {
+        dm_report_job->cancel();
+        parked_dm_reports.push_back(std::move(dm_report_job));
+    }
+    dm_report_job.reset();
+    dm_player_id_ = discord_id;
+    dm_player_name_ = username;
     // Remember the choice so the picker can pre-select it next time.
     settings.dm_last_user = discord_id;
     commit_settings();
-    library_ui.dm_opened_by_click = false;
+    dm_report.window_open = true;
+    launch_dm_report();
+}
+
+void AppState::request_dm_report() {
+    if (!store || dm_player_id_.empty()) return;
+    if (dm_report_job && !dm_report_job->finished()) return;
+    collect_dm_report();  // one that finished this frame lands first
+    launch_dm_report();
+}
+
+void AppState::launch_dm_report() {
+    dm_report.stale_during_build = ReportStale::None;
+    dm_report_job = std::make_unique<DmReportJob>(*store, dm_player_id_, dm_player_name_,
+                                                  settings.chartmode_key(), settings.lens());
     dm_report_job->start();
+}
+
+ReportBuild AppState::path_report_build() const {
+    return report_job && !report_job->finished() ? ReportBuild::Building : path_report.last;
+}
+
+ReportBuild AppState::dm_report_build() const {
+    return dm_report_job && !dm_report_job->finished() ? ReportBuild::Building : dm_report.last;
+}
+
+void AppState::request_path_report() {
+    if (!store || analysis_blocked()) return;
+    if (report_job && !report_job->finished()) return;
+    collect_path_report();  // one that finished this frame lands first
+    launch_path_report(settings.cap_query(), settings.lens(), settings.batch_run(), {},
+                       /*from_batch=*/false);
+}
+
+void AppState::launch_path_report(store::CapQuery cap, store::Lens lens, app::BatchRun run,
+                                  app::report::ReportSeed seed, bool from_batch) {
+    // A build still running read an older library: it stops between charts,
+    // and waits parked rather than freezing the window until then.
+    if (report_job && !report_job->finished()) {
+        report_job->cancel();
+        parked_reports.push_back(std::move(report_job));
+    }
+    report_job = std::make_unique<ReportJob>(*store, cap, lens, settings.hit_window_ms,
+                                             std::move(run), std::move(seed));
+    path_report_from_batch_ = from_batch;
+    path_report.stale_during_build = ReportStale::None;
+    report_job->start();
+}
+
+void AppState::cancel_path_report() {
+    if (report_job && !report_job->finished()) report_job->cancel();
+}
+
+void AppState::show_path_report() {
+    path_report.window_open = true;
+    if (!path_report.result && path_report_build() == ReportBuild::None) request_path_report();
+}
+
+bool AppState::library_has_analyzed() const {
+    const std::vector<LibraryRow>& rows = library.rows();
+    return std::any_of(rows.begin(), rows.end(), [](const LibraryRow& r) {
+        return r.status == store::RecordStatus::Ready;
+    });
+}
+
+namespace {
+
+// How a finished report job ends up in its slot. The one spelling both
+// collect_* functions share. Returns the job's outcome.
+template <class Result, class Job>
+ReportBuild land_report(ReportSlot<Result>& slot, const Job& job) {
+    const ReportStale during = std::exchange(slot.stale_during_build, ReportStale::None);
+    if (job.ok()) {
+        slot.result = job.result();
+        slot.built_at = std::chrono::system_clock::now();
+        slot.stale = during;
+        slot.last = ReportBuild::Ready;
+        slot.message.clear();
+        slot.error.clear();
+    } else if (job.is_cancelled()) {
+        slot.last = ReportBuild::Cancelled;
+    } else {
+        slot.last = ReportBuild::Failed;
+        slot.message = job.message();
+        slot.error = job.error();
+    }
+    return slot.last;
+}
+
+}  // namespace
+
+void AppState::collect_path_report() {
+    if (!report_job || !report_job->finished()) return;
+    const std::unique_ptr<ReportJob> job = std::move(report_job);
+    const ReportBuild outcome = land_report(path_report, *job);
+    if (!path_report_from_batch_) return;
+    // The batch's own report: "Open automatically" opens it (D103 item 13).
+    if (outcome == ReportBuild::Ready && settings.auto_open_report)
+        path_report.window_open = true;
+    // The finished strip shows the outcome. Dismissed before the report
+    // landed, the outcome goes to the status line instead.
+    if (batch_job) return;
+    if (outcome == ReportBuild::Ready)
+        set_status("The path report is ready.");
+    else if (outcome == ReportBuild::Failed)
+        set_problem("The path report could not be built. " + path_report.message);
+}
+
+void AppState::collect_dm_report() {
+    if (!dm_report_job || !dm_report_job->finished()) return;
+    const std::unique_ptr<DmReportJob> job = std::move(dm_report_job);
+    land_report(dm_report, *job);
+}
+
+void AppState::mark_reports_stale(ReportStale reason, bool path, bool dm) {
+    auto mark = [reason](auto& slot, bool building) {
+        if (slot.result) slot.stale = reason;
+        if (building) slot.stale_during_build = reason;
+    };
+    if (path) mark(path_report, path_report_build() == ReportBuild::Building);
+    if (dm) mark(dm_report, dm_report_build() == ReportBuild::Building);
 }
 
 void AppState::set_status(std::string message) {
@@ -671,6 +840,14 @@ void AppState::apply_settings() {
         // settings, as a click would (D90 item 1).
         refresh_library_summaries();
         if (show_details && selected) start_view();
+        // A report in memory is out of date when a setting it was built from
+        // moved (D103): the path report lists every mode at one cap and lens
+        // (generate_report), the comparison one mode at Clone Hero's cap
+        // (generate_dm_report). So a row click that switches the mode
+        // leaves the path report as it is.
+        const bool lens_moved = lens != committed_lens_;
+        mark_reports_stale(ReportStale::Settings, /*path=*/lens_moved || cap != committed_cap_,
+                           /*dm=*/lens_moved || chartmode != committed_chartmode_);
     }
     committed_chartmode_ = std::move(chartmode);
     committed_cap_ = cap;

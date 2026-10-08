@@ -1,7 +1,6 @@
 #include "ui/library_parts.h"
 
 #include "app/dm_report.h"  // why_not_comparable
-#include "app/report_files.h"
 #include "core/model.h"
 #include "imgui.h"
 #include "ui/fonts.h"
@@ -107,12 +106,10 @@ void render_actions_row(AppState& app) {
     const bool compare_off = !refused.empty();
     begin_disabled_button(compare_off);
     if (ImGui::Button("Compare with dmleaderboards...")) {
-        // Fresh picker: drop a finished report (a running one is parked, not
-        // joined), and refetch the ladder only when this session has none.
+        // Fresh picker: a comparison still building stops (parked, not
+        // joined); the picker opens on its next frame.
         app.cancel_dm_report();
-        app.dm_picker_open = true;
-        if (app.dm_users.empty()) app.start_dm_fetch();
-        ImGui::OpenPopup("Compare dmleaderboards user");
+        app.reopen_dm_picker();
     }
     end_disabled_button(compare_off);
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -122,22 +119,19 @@ void render_actions_row(AppState& app) {
             ImGui::SetTooltip("Compare a dmleaderboards.com player's scores against your library");
     }
 
-    // The last report, at the right. While one builds, a greyed button says so.
-    const bool building = app.report_job && !app.report_job->finished();
-    if (building || app.report_file_shown(ImGui::GetTime())) {
+    // The path report, at the right, once there is something to report or
+    // one in memory (D103). While one builds the button says so, and still
+    // opens the window in its building state.
+    const bool building = app.path_report_build() == ReportBuild::Building;
+    if (building || app.path_report.result || app.library_has_analyzed()) {
         const float report_w = std::max(button_slot_width("Open path report"),
                                         button_slot_width("Building path report..."));
         ImGui::SameLine();
         const float right = ImGui::GetContentRegionMax().x - report_w;
         if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);
-        if (building) {
-            begin_disabled_button(true);
-            ImGui::Button("Building path report...", ImVec2(report_w, 0.0f));
-            end_disabled_button(true);
-        } else if (ImGui::Button("Open path report", ImVec2(report_w, 0.0f)) &&
-                   !app::open_report_in_browser()) {
-            app.set_problem("Windows couldn't open the path report in your browser.");
-        }
+        if (ImGui::Button(building ? "Building path report..." : "Open path report",
+                          ImVec2(report_w, 0.0f)))
+            app.show_path_report();
     }
 
     render_status_line(app);

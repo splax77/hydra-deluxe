@@ -1,6 +1,5 @@
 #include "ui/library_parts.h"
 
-#include "app/report_files.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "imgui.h"
@@ -425,22 +424,23 @@ void render_batch_strip(AppState& app) {
     ImGui::EndChild();
 }
 
-// The finished batch: the counts, how long it took, where the report went,
-// and what to do with it. It stays until its X is clicked.
+// The finished batch: the counts, how long it took, how its path report
+// went, and a way to open it. It stays until its X is clicked.
 void render_batch_done(AppState& app) {
     if (!app.batch_job) return;
     const BatchJob::Snapshot s = app.batch_job->snapshot();
     if (!s.finished) return;
     const bool stopped = app.batch_job->is_cancelled();
-    ReportJob* report = app.report_job.get();
-    const bool building = report && !report->finished();
-    const bool report_ok = report && report->finished() && report->ok();
-    const bool report_failed = report && report->finished() && !report->ok() &&
-                               !report->is_cancelled();
-    const bool open_failed = report_ok && !report->open_problem().empty();
-    if (report && report->finished()) app.report_outcome_shown = true;
+    // The report's outcome shows once this run has started its report
+    // (AppState::update_background_jobs); before that the slot holds an
+    // older one.
+    const ReportBuild build =
+        app.report_started ? app.path_report_build() : ReportBuild::None;
+    const bool building = build == ReportBuild::Building;
+    const bool report_ok = build == ReportBuild::Ready;
+    const bool report_failed = build == ReportBuild::Failed;
 
-    const bool problem = report_failed || open_failed;
+    const bool problem = report_failed;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, problem ? kProblemBg : kDoneBg);
     ImGui::BeginChild("##batchdone", ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
@@ -451,21 +451,13 @@ void render_batch_done(AppState& app) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const float close_w = ImGui::GetFrameHeight();
     const float open_w = button_slot_width("Open report");
-    const float folder_w = button_slot_width("Show in folder");
-    const float buttons_w = (report_ok ? open_w + folder_w + style.ItemSpacing.x * 2 : 0.0f) + close_w;
+    const float buttons_w = (report_ok ? open_w + style.ItemSpacing.x : 0.0f) + close_w;
     const float left_x = ImGui::GetCursorPosX();
     const float top_y = ImGui::GetCursorPosY();
     const float text_w = ImGui::GetContentRegionAvail().x - buttons_w - style.ItemSpacing.x;
     ImGui::SetCursorPosX(left_x + text_w + style.ItemSpacing.x);
     if (report_ok) {
-        const std::string path = report->saved_path().u8string();
-        if (button_in_slot("Open report", open_w) &&
-            !app::open_in_browser(report->saved_path().wstring()))
-            app.set_problem("Windows couldn't open the report in your browser. Open " + path +
-                            " directly.");
-        ImGui::SameLine();
-        if (button_in_slot("Show in folder", folder_w) && !show_in_folder(report->saved_path()))
-            app.set_problem("Windows couldn't open the folder that holds " + path + ".");
+        if (button_in_slot("Open report", open_w)) app.show_path_report();
         ImGui::SameLine();
     }
     if (ImGui::Button("X##dismissdone", ImVec2(close_w, close_w))) {
@@ -486,17 +478,10 @@ void render_batch_done(AppState& app) {
         ImGui::TextWrapped("Building the path report...");
     } else if (report_failed) {
         ImGui::TextColored(kWarningColor, "The path report could not be built.");
-        ImGui::TextWrapped("%s", report->message().c_str());
-        ImGui::TextDisabled("%s", report->error().c_str());
-    } else if (open_failed) {
-        ImGui::PopStyleColor();
-        ImGui::TextColored(kWarningColor,
-                           "Report saved, but Windows couldn't open it in your browser.");
-        ImGui::PushStyleColor(ImGuiCol_Text, text2);
-        ImGui::TextWrapped("Open %s directly, or try Open report again.",
-                           report->saved_path().u8string().c_str());
+        ImGui::TextWrapped("%s", app.path_report.message.c_str());
+        ImGui::TextDisabled("%s", app.path_report.error.c_str());
     } else if (report_ok) {
-        ImGui::TextWrapped("Path report saved to %s", report->saved_path().u8string().c_str());
+        ImGui::TextWrapped("The path report is ready.");
     }
     ImGui::PopStyleColor();
     ImGui::PopTextWrapPos();
@@ -504,7 +489,7 @@ void render_batch_done(AppState& app) {
     if (report_ok) {
         if (ImGui::Checkbox("Open automatically", &app.settings.auto_open_report))
             app.commit_settings();
-        hint("Open each report in your browser as soon as it's built.");
+        hint("Open the path report as soon as it's built.");
     }
     // A run that failed as a whole shows its error here, and counts no chart.
     if (!s.run_error.empty()) {
@@ -530,66 +515,22 @@ void render_batch_done(AppState& app) {
     ImGui::EndChild();
 }
 
-// The "Compare dmleaderboards user" modal: fetch the ladder, let the user pick
-// a player (filter-as-you-type), then fetch that player's scores and build the
-// HTML comparison. Both network steps can cold-start the render.com backend, so
-// each shows a "still waking up" note and a Cancel that abandons the job.
+// The "Compare dmleaderboards user" modal: fetch the ladder and let the user
+// pick a player (filter-as-you-type). Picking closes the box and opens the
+// comparison window, which builds the comparison (D103 item 8). The ladder
+// fetch can cold-start the render.com backend, so it shows a "still waking
+// up" note and a Cancel that abandons the job.
 void render_dm_picker_modal(AppState& app) {
+    // AppState::reopen_dm_picker asks; the popup opens from this window.
+    if (app.dm_picker_popup_pending) {
+        app.dm_picker_popup_pending = false;
+        ImGui::OpenPopup("Compare dmleaderboards user");
+    }
     if (!ImGui::BeginPopupModal("Compare dmleaderboards user", nullptr,
                                 ImGuiWindowFlags_AlwaysAutoResize)) {
         return;
     }
-
-    // Stage 2: a report job is running or done — it owns the modal until the
-    // user backs out of it.
     const bool escape = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
-    // A cancelled report goes back to the list, quietly: the user asked.
-    if (app.dm_report_job && app.dm_report_job->finished() && app.dm_report_job->is_cancelled())
-        app.dm_report_job.reset();
-
-    if (app.dm_report_job) {
-        DmReportJob& job = *app.dm_report_job;
-        if (!job.finished()) {
-            ImGui::TextUnformatted("Fetching scores and building the report...");
-            ImGui::TextDisabled("The leaderboard server can take a moment to wake up.");
-            if (ImGui::Button("Cancel") || escape) app.cancel_dm_report();  // never joins
-        } else if (!job.ok()) {
-            ImGui::TextColored(kWarningColor, "Could not build the report.");
-            ImGui::TextWrapped("%s", job.message().c_str());
-            ImGui::TextDisabled("%s", job.error().c_str());
-            ImGui::Spacing();
-            if (ImGui::Button("Back to list") || escape) app.dm_report_job.reset();
-        } else {
-            ImGui::TextWrapped("Done: %s.", app::dm_report::counts_phrase(job.stats()).c_str());
-            if (job.opened())
-                ImGui::TextDisabled("The report opened in your browser.");
-            else if (!job.open_problem().empty())
-                ImGui::TextColored(kWarningColor,
-                                   "Report saved, but Windows couldn't open it in your browser.");
-            else
-                ImGui::TextDisabled("The report is ready.");
-            ImGui::Spacing();
-            // "again" only once it really opened.
-            const bool opened = job.opened() || app.library_ui.dm_opened_by_click;
-            if (ImGui::Button(opened ? "Open report again" : "Open report")) {
-                if (app::open_in_browser(job.saved_path().wstring()))
-                    app.library_ui.dm_opened_by_click = true;
-                else
-                    app.set_problem("Windows couldn't open the report in your browser. Open " +
-                                    job.saved_path().u8string() + " directly.");
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Compare another")) app.dm_report_job.reset();
-            ImGui::SameLine();
-            if (ImGui::Button("Close") || escape) {
-                app.dm_report_job.reset();
-                app.dm_picker_open = false;
-                ImGui::CloseCurrentPopup();
-            }
-        }
-        ImGui::EndPopup();
-        return;
-    }
 
     // Stage 0: still loading the user list.
     if (app.dm_fetch_job && !app.dm_fetch_job->finished()) {
@@ -650,7 +591,11 @@ void render_dm_picker_modal(AppState& app) {
                 std::snprintf(label, sizeof(label), "%s  (%s)###%s", u.username.c_str(),
                               scores.c_str(), u.id.c_str());
             bool is_last = u.id == app.settings.dm_last_user;
-            if (ImGui::Selectable(label, is_last)) app.start_dm_report(u.id, u.username);
+            if (ImGui::Selectable(label, is_last)) {
+                app.start_dm_report(u.id, u.username);
+                app.dm_picker_open = false;
+                ImGui::CloseCurrentPopup();
+            }
         }
     }
     ImGui::EndChild();

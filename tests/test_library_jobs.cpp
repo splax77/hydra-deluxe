@@ -335,7 +335,7 @@ TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
     RecordStore store(":memory:");
     const hydra::store::CapQuery cap = hydra::store::CapQuery::at(6);
     const hydra::store::Lens lens = hydra::store::Lens::from(std::optional<int>(20), 1, 7);
-    const hydra::ui::ReportJob job(store, cap, lens, /*open_when_done=*/false, 85.5);
+    const hydra::ui::ReportJob job(store, cap, lens, 85.5);
     CHECK(job.cap() == cap);
     CHECK(job.lens() == lens);
     CHECK(job.hit_window_ms() == 85.5);  // the decimal is kept (D51 call 15)
@@ -350,7 +350,7 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
     RecordStore no_library(":memory:");
     hydra::test::store_batch_result(no_library, "orphan", run.cap_query().exact);
     hydra::ui::ReportJob orphaned(no_library, run.cap_query(), run.lens,
-                                  /*open_when_done=*/false, hydra::kDefaultHitWindowMs, run);
+                                  hydra::kDefaultHitWindowMs, run);
     orphaned.start();
     REQUIRE(wait_until([&] { return orphaned.finished(); }));
     CHECK_FALSE(orphaned.ok());
@@ -358,7 +358,7 @@ TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's ow
 
     RecordStore empty(":memory:");
     hydra::ui::ReportJob nothing(empty, run.cap_query(), run.lens,
-                                 /*open_when_done=*/false, hydra::kDefaultHitWindowMs, run);
+                                 hydra::kDefaultHitWindowMs, run);
     nothing.start();
     REQUIRE(wait_until([&] { return nothing.finished(); }));
     CHECK_FALSE(nothing.ok());
@@ -375,8 +375,7 @@ TEST_CASE("jobs: a report job lets go of the batch's rows once its pass is done"
     const BatchRun run = test_run();
     hydra::app::report::ReportSeed seed = hydra::app::report::ReportSeed::for_run(run);
     seed.rows["fake0"] = {};
-    hydra::ui::ReportJob job(store, run.cap_query(), run.lens, /*open_when_done=*/false, 85.5,
-                             run, std::move(seed));
+    hydra::ui::ReportJob job(store, run.cap_query(), run.lens, 85.5, run, std::move(seed));
     REQUIRE(job.seed_charts_for_test() == 1);
     job.start();
     REQUIRE(wait_until([&] { return job.finished(); }));
@@ -429,7 +428,7 @@ TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
         while (!cancel->load()) std::this_thread::sleep_for(1ms);
         throw std::runtime_error("cancelled");
     });
-    hydra::ui::DmReportJob thrown(store, "1", "someone", "jobs-test", hydra::store::Lens{}, true);
+    hydra::ui::DmReportJob thrown(store, "1", "someone", "jobs-test", hydra::store::Lens{});
     thrown.start();
     thrown.cancel();
     REQUIRE(wait_until([&] { return thrown.finished(); }));
@@ -441,7 +440,7 @@ TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
         while (!cancel->load()) std::this_thread::sleep_for(1ms);
         return "{}";
     });
-    hydra::ui::DmReportJob late(store, "1", "someone", "jobs-test", hydra::store::Lens{}, true);
+    hydra::ui::DmReportJob late(store, "1", "someone", "jobs-test", hydra::store::Lens{});
     late.start();
     late.cancel();
     REQUIRE(wait_until([&] { return late.finished(); }));
