@@ -177,7 +177,8 @@ void render_path_list(const app::PathButtonsView& list, const Path*& selected_pa
             ImGui::TextDisabled("%s", heading);
             if (b.group == Group::AllZero)
                 hint("The best path that activates at the first chance every time "
-                     "(no skips). Every squeeze and early fill on it is 0 ms or easier.");
+                     "(no skips). An early fill it lets pass (E1) counts as no skip. "
+                     "Every squeeze and early fill on it is 0 ms or easier.");
         }
         if (new_fold) {
             hidden = false;

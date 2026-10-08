@@ -583,7 +583,7 @@ private:
 
     // The fills on the base track in chart order, for ready_class.
     void index_fills();
-    uint64_t ready_class(const Path& p, uint64_t* early = nullptr) const;
+    uint64_t ready_class(const Path& p, uint64_t* passable = nullptr) const;
     void close_last_activation(Path& p) const;
 
     void reduce_iteration_paths();
@@ -777,14 +777,16 @@ void Engine::index_fills() {
 // early fill would be over the limit (only while nothing was passed over, so
 // the next activation can be an E0). High 16: fills that refuse it. 0 for a
 // path under kSpActivationBars: its ready time is not set yet.
-// `early`, when given, gets the count of upcoming fills inside the early-fill
-// window for this path, by the same cut-off argument (a later ready time is
-// inside the window at every fill an earlier one is). Only the all-0 pass
-// asks for it (no_skips_ in the group key, D102).
-uint64_t Engine::ready_class(const Path& p, uint64_t* early) const {
-    if (early) *early = 0;
+// `passable`, when given, gets the count of upcoming fills the path could
+// pass over and still be all-0 (allzero_activation, D102). While it has
+// passed none those are the fills inside the early-fill window, so the same
+// cut-off argument holds (a later ready time is inside the window at every
+// fill an earlier one is); once it has passed one there are none. Only the
+// all-0 pass asks for it (no_skips_ in the group key).
+uint64_t Engine::ready_class(const Path& p, uint64_t* passable) const {
+    if (passable) *passable = 0;
     if (p.sp < kSpActivationBars || !has_value(p.sp_ready_ms)) return 0;
-    uint64_t refused = 0, over = 0, inside = 0;
+    uint64_t refused = 0, over = 0, can_pass = 0;
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
         // Every deadline from here on is at least this one. When even this
         // one leaves too much slack for an E0, none is an E0, and none
@@ -792,11 +794,13 @@ uint64_t Engine::ready_class(const Path& p, uint64_t* early) const {
         if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
         if (fill_refuses(e_offset)) ++refused;
-        if (is_e0(e_offset, 0)) ++inside;
+        if (allzero_activation(recorded_e_offset(p.skipped_e_offset, e_offset),
+                               p.currentskips + 1))
+            ++can_pass;
         if (has_ms_filter_ && !fill_within_limit(e_offset, p.currentskips, ms_filter_)) ++over;
     }
     if (refused > 0xFFFF || over > 0xFFFF) throw std::logic_error("search group key out of range");
-    if (early) *early = inside;
+    if (passable) *passable = can_pass;
     return (refused << 16) | over;
 }
 
@@ -1404,14 +1408,13 @@ void Engine::reduce_iteration_paths() {
             // The meter in the high bits, ready_class's 32 below it.
             if (p.sp < 0 || p.sp >= (1 << 30))
                 throw std::logic_error("search group key out of range");
-            uint64_t early = 0;
-            key_value = (key_value << 32) | ready_class(p, no_skips_ ? &early : nullptr);
+            uint64_t passable = 0;
+            key_value = (key_value << 32) | ready_class(p, no_skips_ ? &passable : nullptr);
             // In the all-0 pass, a waiting path's second word is how many
-            // upcoming fills it may still pass over (D102): its early fills
-            // while it has passed none, none once it has. A path that has
-            // passed its early fill must activate on the next one, so it
-            // must not knock out one that can still pass its own.
-            if (no_skips_) key2 = p.currentskips == 0 ? early : 0;
+            // upcoming fills it may still pass over (ready_class, D102). A
+            // path that has passed its early fill must activate on the next
+            // one, so it must not knock out one that can still pass its own.
+            if (no_skips_) key2 = passable;
         }
         const uint64_t key = (key_value << 1) | (is_sp ? 1ull : 0ull);
 
