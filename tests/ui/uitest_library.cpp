@@ -1,5 +1,3 @@
-#include <sqlite3.h>
-
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -9,7 +7,8 @@
 
 #include "uitest_harness.h"
 
-#include "../old_layout_fixture.h"  // tests/ is not on the runner's include path
+#include "../db_file_sql.h"          // tests/ is not on the runner's include path
+#include "../old_layout_fixture.h"
 #include "app/config.h"
 #include "imgui_internal.h"
 #include "ui/app_shell.h"  // remember_library_share
@@ -578,30 +577,9 @@ void test_library_column_order(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(table->Columns[best].SortOrder, -1);
 }
 
-// SQL on a database file through a connection of the test's own. A copy of
-// exec_on_file (tests/db_file_util.h), which needs doctest; the GUI harness
-// has none.
-bool exec_on_file(const std::string& path, const std::string& sql) {
-    sqlite3* db = nullptr;
-    bool ok = sqlite3_open(path.c_str(), &db) == SQLITE_OK &&
-              sqlite3_exec(db, sql.c_str(), nullptr, nullptr, nullptr) == SQLITE_OK;
-    sqlite3_close(db);
-    return ok;
-}
-
-// The first column of the first row `sql` returns, or -1 when it fails. A
-// copy of scalar_on_file (tests/db_file_util.h), for the same reason.
+// The first column of the first row `sql` returns, or -1 when it fails.
 int64_t scalar_on_file(const std::string& path, const std::string& sql) {
-    sqlite3* db = nullptr;
-    int64_t v = -1;
-    sqlite3_stmt* s = nullptr;
-    if (sqlite3_open(path.c_str(), &db) == SQLITE_OK &&
-        sqlite3_prepare_v2(db, sql.c_str(), -1, &s, nullptr) == SQLITE_OK &&
-        sqlite3_step(s) == SQLITE_ROW)
-        v = sqlite3_column_int64(s, 0);
-    sqlite3_finalize(s);
-    sqlite3_close(db);
-    return v;
+    return hydra::test::first_int_on_file(path, sql).value_or(-1);
 }
 
 // The titles the startup test's library file holds.
@@ -641,7 +619,7 @@ std::string write_old_layout_library(Harness& h) {
         " (3, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'other', 'v', 8, 0, 0, 0, 2, '1', 3000,"
         " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, x'', x'07');" +
         hydra::test::kDetailTablesSql;
-    if (!exec_on_file(path, sql)) return "";
+    if (!hydra::test::run_sql_on_file(path, sql)) return "";
     return path;
 }
 

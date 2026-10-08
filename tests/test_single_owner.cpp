@@ -5161,6 +5161,23 @@ const std::vector<OwnerRule>& rules() {
            "AppState::progress_delay_passed, the owner: view_progress_shown and "
            "store_open_shown call it"}},
          {"src"}},
+        // A WAL database's log and index sit beside it under SQLite's two
+        // suffixes. The upgrade's file rule names them once; code that sweeps
+        // or checks a database's files asks it (with_side_files,
+        // remove_with_side_files, side_files_present).
+        {"Which files make up a database on disk?",
+         "with_side_files in src/store/upgrade_files.cpp",
+         R"re("-(wal|shm)")re",
+         "",
+         {"src/store/upgrade_files.cpp"},
+         {},
+         "derive-once review of the DBUP join (F4); ADR 0026, the upgrade",
+         {"return {db, db + \"-wal\", db + \"-shm\"};",
+          "for (const char* suffix : {\"\", \"-wal\", \"-shm\"}) fs::remove(path + suffix);"},
+         {"for (const std::string& f : with_side_files(path)) std::remove(f.c_str());",
+          "\"' is open in another program: its -wal or -shm file stayed \");"},
+         {},
+         {"src", "tools"}},
     };
     return r;
 }

@@ -105,7 +105,7 @@ Opening the library file at startup waits the same 0.15 s, through the same
 constant (`kViewProgressDelaySeconds` in src/ui/app_state.h): a fast open
 draws an empty window, and the startup screen appears only once the open has
 run that long (D100 item 2). The startup screen's time-left line follows the
-Song Preview's rule (`PreviewLoadJob::Progress::time_left_text`, D100 item 4).
+Song Preview's rule (`gated_time_left_text` in src/ui/preview_load_job.h, D100 item 4).
 The "Copied!" flash after Copy path
 lasts 2 seconds, the library search refilters at most every 0.15 s while
 typing, and a running batch refreshes the library at most once a second

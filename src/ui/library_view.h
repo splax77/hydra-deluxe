@@ -20,7 +20,7 @@ void render_main_window(AppState& app);
 void render_startup_screen(AppState& app);
 
 // How wide the progress boxes are, before px(): the scan modal and the
-// startup screen. Fixed so live counts never resize them.
+// startup screen (D100 item 3). Fixed so live counts never resize them.
 inline constexpr float kProgressBoxWidth = 460.0f;
 
 // The library's narrowest and widest widths with the song panel open, in
