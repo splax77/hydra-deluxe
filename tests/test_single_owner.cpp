@@ -3385,6 +3385,22 @@ const std::vector<OwnerRule>& rules() {
            "Settings::with_chartmode, the owner"},
           {"src/app/config.cpp", "if (mode.chartmode_key() == chartmode) return mode;",
            "Settings::with_chartmode, the owner"}}},
+        // The sentence written out where a request is turned away. Tests pin
+        // it as a literal, so the row covers src and tools only.
+        {"What does the status line say when a running batch turns a request away?",
+         "AppState::kBatchRunningStatus in src/ui/app_state.h",
+         R"("A batch is running\.")",
+         "",
+         {},
+         {},
+         "D51 call 24; derive-once review of RW-T4 (key 4979976), finding 2",
+         {"set_status(\"A batch is running.\");",
+          "if (batch_running()) set_status(\"A batch is running.\");"},
+         {"set_status(\"A scan is running.\");", "ImGui::SetTooltip(\"Busy: a batch is running.\");",
+          "set_status(kBatchRunningStatus);"},
+         {{"src/ui/app_state.h",
+           "static constexpr const char* kBatchRunningStatus = \"A batch is running.\";",
+           "AppState::kBatchRunningStatus, the owner"}}},
         // The hit window's default cut to a whole number. The setting, the
         // report job and the report keep its decimal (D51 call 15).
         {"What is the hit window's default?",

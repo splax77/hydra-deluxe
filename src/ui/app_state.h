@@ -423,6 +423,9 @@ public:
     enum class SettingsLock { None, Batch };
     SettingsLock settings_lock() const;
     bool settings_locked() const { return settings_lock() != SettingsLock::None; }
+    // The status line's sentence when a running batch turns a request away
+    // (D51 call 24).
+    static constexpr const char* kBatchRunningStatus = "A batch is running.";
     // Whether a library scan may start now: there are song folders, no scan
     // job is held (its modal is still up until Continue), and no batch is
     // running. start_scan enforces it; the toolbar button reads it.

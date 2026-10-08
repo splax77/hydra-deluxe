@@ -465,7 +465,7 @@ void AppState::select_chart(const std::string& hyhash, const std::string& chartm
     if (chartmode != settings.chartmode_key()) {
         // The bar is off during a batch, so a row can't switch it either.
         if (settings_locked()) {
-            set_status("A batch is running.");
+            set_status(kBatchRunningStatus);
             return;
         }
         // Settings::with_chartmode picks the choices, which are then
@@ -500,7 +500,7 @@ void AppState::start_scan() {
     if (!can_scan()) {
         // The toolbar's button is off during a batch, but "Scan now" and the
         // panel's "Rescan library" ask from here: say why nothing happened.
-        if (batch_running()) set_status("A batch is running.");
+        if (batch_running()) set_status(kBatchRunningStatus);
         return;
     }
     scan_job = std::make_unique<ScanJob>(settings.chartfolders, *store);
