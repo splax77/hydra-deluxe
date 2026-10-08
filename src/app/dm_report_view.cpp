@@ -93,8 +93,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
             return group_thousands(*r.delta);
         };
         c.tone = [](const DmReportRow& r) {
-            if (!r.delta || r.status == "other speed") return Tone::Dim;
-            return r.status == "above optimal" ? Tone::Alert : Tone::Normal;
+            if (!r.delta || r.status == dm_report::kStatusOtherSpeed) return Tone::Dim;
+            return r.status == dm_report::kStatusAboveOptimal ? Tone::Alert : Tone::Normal;
         };
         cols.push_back(std::move(c));
     }
@@ -175,16 +175,16 @@ std::vector<Column<DmReportRow>> dm_columns() {
 SortSpec dm_first_sort() { return {"delta", report_view::SortDir::Descending}; }
 
 std::vector<StatusChoice> status_choices() {
-    // The statuses are collect_dm_rows' words for DmReportRow::status.
+    using namespace dm_report;
     return {
         {std::nullopt, "All charts"},
-        {std::string("under optimal"), "Under optimal"},
-        {std::string("at optimal"), "At optimal"},
-        {std::string("above optimal"), "Above optimal"},
-        {std::string("not analyzed"), "Not analyzed (in your library)"},
-        {std::string("no paths"), "No paths (analyzed, none kept)"},
-        {std::string("not in library"), "Not in your library"},
-        {std::string("other speed"), "Other speed"},
+        {std::string(kStatusUnderOptimal), "Under optimal"},
+        {std::string(kStatusAtOptimal), "At optimal"},
+        {std::string(kStatusAboveOptimal), "Above optimal"},
+        {std::string(kStatusNotAnalyzed), "Not analyzed (in your library)"},
+        {std::string(kStatusNoPaths), "No paths (analyzed, none kept)"},
+        {std::string(kStatusNotInLibrary), "Not in your library"},
+        {std::string(kStatusOtherSpeed), "Other speed"},
     };
 }
 

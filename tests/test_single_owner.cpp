@@ -1478,9 +1478,43 @@ const std::vector<OwnerRule>& rules() {
            "status_label, the owner"},
           {"src/ui/library_model.cpp", "return \"Not analyzed\";", "status_label, the owner"},
           {"src/app/dm_report.cpp", "{\"Not analyzed\", group_thousands(stats.not_analyzed)},",
-           "dm_tiles' tile label: the comparison's own status word, a score's state in "
+           "dm_tiles' tile label for dm_report::kStatusNotAnalyzed, a score's state in "
            "this mode at Clone Hero's cap, not a library record's status (derive-once "
            "review of RW-T2, finding 1)"}}},
+        // A comparison status word typed in double quotes. The page's
+        // dropdown option values (value="...", gone with the page in T7) and
+        // its single-quoted script stay out.
+        {"Which words name a comparison row's status?",
+         "the kStatus constants in src/app/dm_report.h",
+         R"re((^|[^=])"(under optimal|at optimal|above optimal|not analyzed|no paths|not in library|other speed)")re",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T3, finding 4 (2026-10-08)",
+         {"if (!r.delta || r.status == \"other speed\") return Tone::Dim;",
+          "{std::string(\"under optimal\"), \"Under optimal\"},",
+          "if (r.status == \"under optimal\") ++stats.under_optimal;",
+          "row.status = \"no paths\";",
+          "if (status == \"not analyzed\" || status == \"no paths\" || status == \"other speed\")"},
+         {"if (!r.delta || r.status == dm_report::kStatusOtherSpeed) return Tone::Dim;",
+          "<option value=\"under optimal\">Under optimal</option>",
+          "{\"Under optimal\", group_thousands(stats.under_optimal)},",
+          "group_thousands(stats.under_optimal) + \" under optimal, \" +"},
+         {{"src/app/dm_report.h",
+           "inline constexpr const char* kStatusUnderOptimal = \"under optimal\";",
+           "the owner"},
+          {"src/app/dm_report.h", "inline constexpr const char* kStatusAtOptimal = \"at optimal\";",
+           "the owner"},
+          {"src/app/dm_report.h",
+           "inline constexpr const char* kStatusAboveOptimal = \"above optimal\";", "the owner"},
+          {"src/app/dm_report.h", "inline constexpr const char* kStatusNoPaths = \"no paths\";",
+           "the owner"},
+          {"src/app/dm_report.h",
+           "inline constexpr const char* kStatusNotAnalyzed = \"not analyzed\";", "the owner"},
+          {"src/app/dm_report.h",
+           "inline constexpr const char* kStatusNotInLibrary = \"not in library\";", "the owner"},
+          {"src/app/dm_report.h",
+           "inline constexpr const char* kStatusOtherSpeed = \"other speed\";", "the owner"}}},
         // A filter chip's button id typed as text. chip_label builds the whole
         // label (word, count, id), and render_chips and the GUI tests ask it.
         // src only: the GUI tests also pin whole labels as literals, which a

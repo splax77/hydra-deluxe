@@ -181,12 +181,12 @@ constexpr int kPercentDecimals = 2;
 // through it.
 void count_status(DmReportStats& stats, const DmReportRow& r) {
     ++stats.total;
-    if (r.status == "under optimal") ++stats.under_optimal;
-    else if (r.status == "at optimal") ++stats.at_optimal;
-    else if (r.status == "above optimal") ++stats.above_optimal;
-    else if (r.status == "not analyzed") ++stats.not_analyzed;
-    else if (r.status == "no paths") ++stats.no_paths;
-    else if (r.status == "other speed") ++stats.other_speed;
+    if (r.status == kStatusUnderOptimal) ++stats.under_optimal;
+    else if (r.status == kStatusAtOptimal) ++stats.at_optimal;
+    else if (r.status == kStatusAboveOptimal) ++stats.above_optimal;
+    else if (r.status == kStatusNotAnalyzed) ++stats.not_analyzed;
+    else if (r.status == kStatusNoPaths) ++stats.no_paths;
+    else if (r.status == kStatusOtherSpeed) ++stats.other_speed;
     else ++stats.not_in_library;
 }
 
@@ -266,20 +266,20 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
             row.delta = opt - s.score;
             if (base && opt > 0) row.pct_h = percent_steps(s.score, opt, kPercentDecimals);
             const bool above = s.score > opt;
-            row.status = above       ? "above optimal"
-                         : s.score == opt ? "at optimal"
-                                          : "under optimal";
+            row.status = above            ? kStatusAboveOptimal
+                         : s.score == opt ? kStatusAtOptimal
+                                          : kStatusUnderOptimal;
             // Kept apart from the status, which an off-speed score overwrites
             // below; the page's "+N over" reads it (D64).
             row.above_optimal = above;
         } else if (rec) {
             // A Ready result whose analysis kept no path (D51 call 11).
-            row.status = "no paths";
+            row.status = kStatusNoPaths;
         } else {
-            row.status = report::library_lists(library, s.identifier) ? "not analyzed"
-                                                                       : "not in library";
+            row.status = report::library_lists(library, s.identifier) ? kStatusNotAnalyzed
+                                                                       : kStatusNotInLibrary;
         }
-        if (!base) row.status = "other speed";
+        if (!base) row.status = kStatusOtherSpeed;
         rows.push_back(std::move(row));
     }
     return rows;
@@ -347,11 +347,11 @@ DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows,
 
 report::ChipToken status_token(const std::string& status) {
     using report::ChipToken;
-    if (status == "under optimal" || status == "at optimal") return ChipToken::t0;
-    if (status == "above optimal") return ChipToken::t1;
-    if (status == "not analyzed" || status == "no paths" || status == "other speed")
+    if (status == kStatusUnderOptimal || status == kStatusAtOptimal) return ChipToken::t0;
+    if (status == kStatusAboveOptimal) return ChipToken::t1;
+    if (status == kStatusNotAnalyzed || status == kStatusNoPaths || status == kStatusOtherSpeed)
         return ChipToken::muted;
-    // "not in library", and a status the page has no class for.
+    // kStatusNotInLibrary, and a status the page has no class for.
     return ChipToken::tn;
 }
 
@@ -369,7 +369,7 @@ std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
         }
         // Only a score under optimal leaves points on the table, and its
         // delta is the points it left.
-        if (r.status == "under optimal" && r.delta) points_left += *r.delta;
+        if (r.status == kStatusUnderOptimal && r.delta) points_left += *r.delta;
     }
     // The mean of the cells' percents. Each pct_h is in format_percent's
     // steps, so the sum over pct_rows rows of 100% each, in those steps, is
