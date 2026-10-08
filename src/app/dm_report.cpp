@@ -173,10 +173,6 @@ const std::string& page_template() {
     return page;
 }
 
-// The decimals every comparison percent is written to: the % of opt cells,
-// DmReportRow::pct_h and the average tile.
-constexpr int kPercentDecimals = 2;
-
 // Counts one score into `stats` by its status. Both tally_dm_rows overloads go
 // through it.
 void count_status(DmReportStats& stats, const DmReportRow& r) {

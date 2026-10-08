@@ -111,7 +111,7 @@ std::vector<DmReportRow> dm_sample() {
     under.actual = 98000;
     under.optimal = 100000;
     under.delta = 2000;
-    under.pct_h = percent_steps(98000, 100000, 2);
+    under.pct_h = percent_steps(98000, 100000, dm_report::kPercentDecimals);
     under.percent = 99;
     under.speed = 100;
     under.rank = 3;
@@ -125,7 +125,7 @@ std::vector<DmReportRow> dm_sample() {
     above.actual = 101234;
     above.optimal = 100000;
     above.delta = -1234;
-    above.pct_h = percent_steps(101234, 100000, 2);
+    above.pct_h = percent_steps(101234, 100000, dm_report::kPercentDecimals);
     above.is_fc = true;
     above.percent = 100;
     above.speed = 100;

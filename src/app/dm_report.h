@@ -39,6 +39,10 @@ inline constexpr const char* kStatusNotInLibrary = "not in library";
 // Played at a speed other than net::kBaseSpeedPercent: shown, never compared.
 inline constexpr const char* kStatusOtherSpeed = "other speed";
 
+// The decimals every comparison percent is written to: DmReportRow::pct_h,
+// the % of opt cells on the page and in the window, and the average tile.
+inline constexpr int kPercentDecimals = 2;
+
 // One table row: a single leaderboard score plus the Hydra record it joins to.
 struct DmReportRow {
     std::string song;

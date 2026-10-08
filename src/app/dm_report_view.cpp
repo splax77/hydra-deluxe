@@ -109,7 +109,8 @@ std::vector<Column<DmReportRow>> dm_columns() {
             return has_percent(r) ? SortKey{static_cast<double>(*r.pct_h)} : SortKey{};
         };
         c.cell = [](const DmReportRow& r) {
-            return has_percent(r) ? format_percent(r.actual, *r.optimal, 2) : std::string(kDash);
+            return has_percent(r) ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals)
+                                  : std::string(kDash);
         };
         cols.push_back(std::move(c));
     }

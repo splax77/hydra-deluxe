@@ -1515,6 +1515,20 @@ const std::vector<OwnerRule>& rules() {
            "inline constexpr const char* kStatusNotInLibrary = \"not in library\";", "the owner"},
           {"src/app/dm_report.h",
            "inline constexpr const char* kStatusOtherSpeed = \"other speed\";", "the owner"}}},
+        // A comparison percent written with its decimals typed in.
+        // kPercentDecimals is the one count.
+        {"How many decimals does % of opt carry?",
+         "kPercentDecimals in src/app/dm_report.h",
+         R"((percent_steps|format_percent)\([^;]*,\s*2\))",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T3, finding 5 (2026-10-08)",
+         {"row.pct_h = percent_steps(s.score, opt, 2);",
+          "return has_percent(r) ? format_percent(r.actual, *r.optimal, 2) : std::string(kDash);"},
+         {"return total > 0 ? format_percent(part, total, 0) : \"0%\";",
+          "return has_percent(r) ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals)"},
+         {}},
         // A filter chip's button id typed as text. chip_label builds the whole
         // label (word, count, id), and render_chips and the GUI tests ask it.
         // src only: the GUI tests also pin whole labels as literals, which a
