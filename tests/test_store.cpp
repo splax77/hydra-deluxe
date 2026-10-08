@@ -1119,7 +1119,9 @@ TEST_CASE("upgrade timing") {
     };
     for (size_t i = 0; i < began.size(); ++i) {
         const Clock::time_point to = i + 1 < began.size() ? began[i + 1].second : end;
-        MESSAGE(name(began[i].first) << ": " << seconds(began[i].second, to) << " s");
+        // As a std::string: doctest prints a bare const char* as its address.
+        MESSAGE(std::string(name(began[i].first)) << ": " << seconds(began[i].second, to)
+                                                  << " s");
     }
     MESSAGE("total: " << seconds(start, end) << " s");
     MESSAGE("rows copied: " << last.rows_done << " of " << last.rows_total);
