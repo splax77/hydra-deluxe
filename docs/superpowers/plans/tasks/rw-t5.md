@@ -42,6 +42,12 @@ New `src/ui/report_window.h`, `src/ui/report_window.cpp`, `src/ui/path_report_wi
 
 Owned-file check: every T5 step draws from a plain struct and wave 1's views; nothing reads or changes AppState (T4 owns it this wave), and `library_view.cpp` (T6) is untouched.
 
+## Orchestrator answers to the first agent's questions (2026-10-08)
+
+1. **The imgui#9519 workaround** moves into one shared helper in `src/ui/widgets.h` (for example `keep_table_column_order()`). `library_table.cpp`'s `render_table` calls it in place of its own lines 258-270, and `report_frame::table` calls it right after its `TableSetupColumn` loop. For this, the finisher also owns `src/ui/widgets.h` and those lines of `src/ui/library_table.cpp`. Add a scan row that would flag the old inline reset if it came back. Rerun the five report-window uitests and `library-column-order` by name.
+2. **The strip background colours** (`kDoneBg`, `kProblemBg` in `library_dialogs.cpp`) wait for wave 3: T4 owns `library_dialogs.cpp` this wave. T6 moves them into the theme and uses them in both places. Leave the strips as they are now.
+3. **The two mock sentences** not in the spec's word list wait for the user; don't add them.
+
 ## Preflight
 
 Command: `Grep "9519|ImGuiTableFlags_|ScrollFreeze|ListClipper" src/ui/library_table.cpp`, `Grep "window_named|window_shown" tests/ui`, `Grep "sample_path_rows|sample_dm_rows" tests`, `Grep "report_window_class|place_report_window|report_spike" src/ui`, run by the orchestrator on main at e0507e1 on 2026-10-08.
