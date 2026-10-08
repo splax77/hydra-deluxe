@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 
+#include "app/report.h"  // Tile, ChipToken
 #include "net/dmbot_client.h"
 #include "parse/song.h"  // Difficulty
 #include "store/record_store.h"
@@ -96,6 +97,20 @@ struct DmReportStats {
     int no_paths = 0;        // analyzed, but the analysis kept no path
 };
 DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows);
+// The same tally over the rows a window shows: `shown` holds their indices
+// into `rows`.
+DmReportStats tally_dm_rows(const std::vector<DmReportRow>& rows,
+                            const std::vector<size_t>& shown);
+
+// The colour a row's status chip is drawn in. Takes over the page script's
+// STATUS_CLASS table.
+report::ChipToken status_token(const std::string& status);
+
+// The comparison's nine tiles over the rows a window shows: `shown` holds
+// their indices into `rows`. The counts are tally_dm_rows'. Takes over the
+// page script's `stats`.
+std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
+                                   const std::vector<size_t>& shown);
 
 // "1 under optimal, 0 at optimal, 1 above optimal, 0 not analyzed, 1 not in
 // your library", plus ", 1 with no paths" and ", 2 at other speeds" when
@@ -106,6 +121,16 @@ std::string counts_phrase(const DmReportStats& stats);
 struct GeneratedDmReport {
     std::string html;  // empty when the user had no scores to compare
     DmReportStats stats;
+    // collect_dm_rows' rows, one per score, in the leaderboard's order.
+    std::vector<DmReportRow> rows;
+    // The line under the page's heading and the note at its foot, as the page
+    // shows them. Empty when the user had no scores to compare.
+    std::string subtitle;
+    std::string footer;
+    // Whose scores, compared in which chart mode: generate_dm_report's own
+    // arguments, set even when there were no scores.
+    std::string username;
+    std::string chartmode;
 };
 
 GeneratedDmReport generate_dm_report(store::RecordStore& store,
