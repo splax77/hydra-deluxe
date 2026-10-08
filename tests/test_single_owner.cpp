@@ -369,8 +369,8 @@ const std::vector<OwnerRule>& rules() {
            "the replay's own window (ReplayWindow), not an Activation"},
           {"src/core/replay.cpp", "w.sqout_tick = row->timecode.ticks();",
            "the replay's own window (replay.cpp's Window), not an Activation"},
-          {"tools/replay.cpp", "w.sqout_tick = n.tick;",
-           "a window typed by hand for hydra_replay (ReplayWindow), not an Activation"},
+          {"src/core/replay.cpp", "w.sqout_tick = n.tick;",
+           "resolve_window_sqout, on a typed or dumped window (ReplayWindow), not an Activation"},
           {"tools/replay_json.cpp", "w.sqout_tick = act[\"sqout_tick\"].get<int64_t>();",
            "a window read from hydra_replay's JSON (ReplayWindow), not an Activation"}}},
         {"Is this SP-end step a clamp?",
@@ -780,6 +780,41 @@ const std::vector<OwnerRule>& rules() {
            "drives the engine's target mode directly on a hand-built song, not search_target's filter"},
           {"tests/test_replay.cpp", "opts.target_act_ticks = std::vector<int64_t>{28800};",
            "drives the engine's target mode directly on a hand-built song, not search_target's filter"}},
+         {"src", "tools", "tests"}},
+        // A tick list becomes activation-only pins in one place: sorted, each
+        // tick once. A pin built from a variable in a loop restates that.
+        // Literal-tick pins in tests do not match.
+        {"How does a list of activation ticks become pins?",
+         "activation_pins in src/search/pather.cpp",
+         R"(PinnedWindow\{\s*[a-z_]\w*\s*\})",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of track-r2, finding 2 (2026-10-07)",
+         {"for (const int64_t t : sorted) windows.push_back(PinnedWindow{t});",
+          "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});"},
+         {"search_target(song, cfg, {PinnedWindow{3168}, PinnedWindow{12864}});"},
+         {{"src/search/pather.cpp", "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});",
+           "activation_pins, the owner"}},
+         {"src", "tools", "tests"}},
+        // Whether a window's squeeze-out still needs its chord found is
+        // sqout_needs_resolving's answer; resolve_window_sqout acts on it.
+        // A window that is "settled" (ambiguous_window_warnings) or an
+        // offset read alone asks a different question and does not match.
+        {"Does a typed window still need its squeeze-out chord resolved?",
+         "sqout_needs_resolving in src/core/replay.cpp",
+         R"(sqout_offset_ms\s*&&\s*!|!\s*\w+\s*&&\s*[\w.>-]*sqout_offset_ms|!\s*[\w.>-]*sqout_offset_ms\s*\|\|)",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of track-r2, finding 4 (2026-10-07)",
+         {"if (!squeezed_out && w.sqout_offset_ms) squeezed_out = resolve_sqout_note(song, w).tick;",
+          "if (!w.sqout_offset_ms || w.sqout_tick) continue;",
+          "if (w.sqout_offset_ms && !w.sqout_tick)"},
+         {"std::optional<double> sqout_offset_ms;", "if (w.sqout_offset_ms || w.sqout_tick) continue;",
+          "if (!w.sqout_offset_ms)", "if (sqout_needs_resolving(w))"},
+         {{"src/core/replay.cpp", "return w.sqout_offset_ms && !w.sqout_tick;",
+           "sqout_needs_resolving, the owner"}},
          {"src", "tools", "tests"}},
         // A SqIn's transfer scale sits at its SqIn rank. Indexing the list
         // with a hand-kept counter restates that rank; index it with
@@ -2737,6 +2772,26 @@ const std::vector<OwnerRule>& rules() {
          {"combo_ += timestamp.chord.count();", "combo += ts.chord.count();"},
          {"combo += 1;", "note_scores.combo_after = combo;", "combo_ = scores.combo_after;"},
          {},
+         {"src", "tools", "tests"}},
+        // A running combo carried chord to chord through category_scores,
+        // in one statement or two, is a second walk of the chart.
+        // chord_score_table is the one walk; read its rows' combo_before and
+        // combo_after instead.
+        {"What is the combo before a chord?",
+         "chord_score_table in src/core/scoring.cpp",
+         R"(\b\w*combo_?\s*=\s*(category_scores\(|\w+\.combo_after\b))",
+         "",
+         {},
+         {},
+         "derive-once review of track-r1, proposed scan rules (2026-10-07); audit finding 164",
+         {"combo = category_scores(ts.chord, combo).combo_after;",
+          "combo_ = category_scores(timestamp.chord, combo_).combo_after;",
+          "running_combo = category_scores(c, running_combo).combo_after;",
+          "combo = s.combo_after;"},
+         {"const CategoryScores sg = category_scores(ts.chord, combo);",
+          "if (combo == category_scores(c, 0).combo_after) ok = true;",
+          "row.combo_before = combo;", "row.combo_after = sg.combo_after;"},
+         {{"src/core/scoring.cpp", "combo = sg.combo_after;", "chord_score_table, the owner"}},
          {"src", "tools", "tests"}},
         // The chart's note total: chord note counts added up, or a note total
         // added to as a running sum. A running combo is the row above's
@@ -5041,6 +5096,31 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/analysis.cpp", "thread_local std::vector<uint8_t> buf(1 << 20);",
            "stream_md5, the owner"}},
          {"src/app/analysis.cpp"}},
+        // An empty fingerprint is what a gone file or a folder chart without
+        // its song.ini gives, so it can never show a chart unchanged. The
+        // cache read, the rescan's test and the click's save all ask
+        // store::sig_can_show_unchanged, which sits in store/ so every layer
+        // can call it. Only a variable named for a fingerprint is caught, as
+        // the three callers name theirs.
+        {"Could this stored fingerprint ever show a chart unchanged?",
+         "sig_can_show_unchanged in src/store/record_store.h",
+         R"(\b(sig|stored|stored_sig|new_sig|old_sig)(\.|->)empty\(\)|\bsig\b\s*(==|!=)\s*(""|std::string\(\)))",
+         "",
+         {},
+         {},
+         "D96 (an empty fingerprint never shows a chart unchanged) and its follow-up in the "
+         "audit fix decisions",
+         {"if (sig.empty()) continue;", "return !stored.empty() && stored == now;",
+          "if (now->sig.empty()) return;", "if (it->second.sig.empty()) skip = true;",
+          "if (stored_sig.empty()) return {};"},
+         {"if (!sig_can_show_unchanged(sig)) continue;",
+          "return store::sig_can_show_unchanged(stored) && stored == now;",
+          "if (sig_of(notes, ini).size() > 3) return;"},
+         {{"src/store/record_store.h",
+           "inline bool sig_can_show_unchanged(const std::string& sig) { return !sig.empty(); }",
+           "sig_can_show_unchanged, the owner: chart_library_cache, sig_unchanged and "
+           "ViewJob::run call it"}},
+         {"src"}},
     };
     return r;
 }

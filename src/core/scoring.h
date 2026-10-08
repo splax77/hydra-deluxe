@@ -7,10 +7,12 @@
 #ifndef HYDRA_CORE_SCORING_H
 #define HYDRA_CORE_SCORING_H
 
+#include <cstdint>
 #include <vector>
 
 #include "core/model.h"
 #include "core/rules.h"
+#include "parse/song.h"
 
 namespace hydra {
 
@@ -58,6 +60,44 @@ CategoryScores category_scores(const Chord& chord, int combo,
 // The solo bonus a chord earns: kSoloBonusPerNote for each of its notes when
 // the chord is in a solo section (flag_solo), else 0.
 int solo_bonus(const Chord& chord, bool flag_solo);
+
+// One chord's points, the same on every path: category_scores at the chart's
+// running combo, plus solo_bonus. Only the doubling depends on the path, and
+// core::backend_row_value prices that from `sp` and `sqout_sp`.
+struct ChordScoreRow {
+    int base = 0;
+    int combo = 0;
+    int sp = 0;
+    int sqout_sp = 0;  // CategoryScores::sqout_sp
+    int accent = 0;
+    int ghost = 0;
+    int solo = 0;      // solo_bonus
+    int multiplier = 1;        // CategoryScores::multiplier
+    int multiplier_after = 1;  // CategoryScores::multiplier_after
+    int combo_before = 0;
+    int combo_after = 0;       // CategoryScores::combo_after
+    // This chord's notes are ChordScoreTable::notes[note_begin, note_end);
+    // an empty range when the table was built without them.
+    uint32_t note_begin = 0;
+    uint32_t note_end = 0;
+};
+
+// Whether chord_score_table also keeps each note's own CategoryScores.
+enum class ChordScoreDetail { ChordsOnly, WithNotes };
+
+struct ChordScoreTable {
+    // One row per Song::sequence entry, in chart order.
+    std::vector<ChordScoreRow> rows;
+    // Every chord's per-note CategoryScores, in chart order and in the order
+    // category_scores fills them; empty under ChordsOnly.
+    std::vector<CategoryScores> notes;
+};
+
+// The chart's chord-score table: one walk over the chart, one combo counter.
+// ScoreGraph::build sums its edges from it and replay_path prices chords from
+// it, so the two never walk the chart apart.
+ChordScoreTable chord_score_table(const Song& song, core::SqOutRule sqout_rule,
+                                  ChordScoreDetail detail = ChordScoreDetail::ChordsOnly);
 
 // What hitting a chord in the right order gains over the wrong order, in
 // points, when the chord straddles a multiplier step (a multiplier squeeze).

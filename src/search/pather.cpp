@@ -174,28 +174,16 @@ void keep_qualifying_variants(Path& p, const Keep& keep) {
     p.variants = std::move(stay);
 }
 
-}  // namespace
-
-std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<int64_t>& ticks,
-                                    std::vector<bool>* promoted) {
-    // A tick the search never met as an activation opportunity -- not a fill
-    // node at all, or one the path was already under Star Power for -- does
-    // not empty the frontier: that path just quietly comes back with fewer
-    // activations than asked for. Every returned path, tied variants
-    // included, took exactly the named activations (decision D45 and its
-    // addendum).
-    const auto took_all = [&ticks](const Path& p) {
-        const ActivationWalk acts = p.walk_activations();
-        if (acts.size() != ticks.size()) return false;
-        for (size_t i = 0; i < acts.size(); ++i)
-            if (acts[i].timecode.ticks() != ticks[i]) return false;
-        return true;
-    };
+// keep_target_paths' filter for any test a path must pass: every returned
+// path, tied variants included, passes `keep` (D45 and its addendum).
+template <class Keep>
+std::vector<Path> keep_paths_where(std::vector<Path> paths, const Keep& keep,
+                                   std::vector<bool>* promoted) {
     std::vector<Path> kept;
     if (promoted) promoted->clear();
     for (Path& p : paths) {
-        if (took_all(p)) {
-            keep_qualifying_variants(p, took_all);
+        if (keep(p)) {
+            keep_qualifying_variants(p, keep);
             p.recount_tied_paths();
             kept.push_back(std::move(p));
             if (promoted) promoted->push_back(false);
@@ -205,7 +193,7 @@ std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<i
         // the first leads, the rest are its tied variants, in the search's
         // order, each sharing nothing with the lead (as above).
         std::vector<Path> rescued;
-        rescue_variants(p, took_all, rescued);
+        rescue_variants(p, keep, rescued);
         if (rescued.empty()) continue;
         Path lead = std::move(rescued.front());
         rescued.erase(rescued.begin());
@@ -217,37 +205,241 @@ std::vector<Path> keep_target_paths(std::vector<Path> paths, const std::vector<i
     return kept;
 }
 
-std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
-                                const std::vector<int64_t>& act_ticks,
-                                std::vector<bool>* promoted) {
-    std::vector<int64_t> ticks = act_ticks;
-    std::sort(ticks.begin(), ticks.end());
-    ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());
+// Whether `p` activated at exactly `ticks`, in order, and nowhere else.
+bool took_exactly(const Path& p, const std::vector<int64_t>& ticks) {
+    const ActivationWalk acts = p.walk_activations();
+    if (acts.size() != ticks.size()) return false;
+    for (size_t i = 0; i < acts.size(); ++i)
+        if (acts[i].timecode.ticks() != ticks[i]) return false;
+    return true;
+}
 
-    // Built as tall as the main search builds it (decision D45).
-    ScoreGraph graph(song,
-                     std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
-                     fill_rule_for(settings.legacy_fill_deadline), settings.rules);
+// Whether the pinned windows of `p` ended as pinned: on their deactivation
+// node, and, when the pin says how, on its squeeze-out or plainly. The
+// path's own windows are read once, through pinned_windows.
+bool ended_as_pinned(const Path& p, const std::vector<PinnedWindow>& windows) {
+    if (windows.empty() || !windows.front().deact_tick) return true;
+    std::vector<PinnedWindow> got;
+    try {
+        got = pinned_windows(p);
+    } catch (const std::invalid_argument&) {
+        return false;  // a window with no end to compare
+    }
+    for (size_t i = 0; i < windows.size() && windows[i].deact_tick; ++i) {
+        if (i >= got.size() || got[i].deact_tick != windows[i].deact_tick) return false;
+        if (windows[i].check_sqout && got[i].squeezed_out != windows[i].squeezed_out)
+            return false;
+    }
+    return true;
+}
+
+}  // namespace
+
+std::vector<Path> keep_target_paths(std::vector<Path> paths,
+                                    const std::vector<PinnedWindow>& windows,
+                                    std::vector<bool>* promoted) {
+    // A tick the search never met as an activation opportunity -- not a fill
+    // node at all, or one the path was already under Star Power for -- does
+    // not empty the frontier: that path just quietly comes back with fewer
+    // activations than asked for.
+    std::vector<int64_t> ticks;
+    for (const PinnedWindow& w : windows) ticks.push_back(w.act_tick);
+    return keep_paths_where(
+        std::move(paths),
+        [&](const Path& p) { return took_exactly(p, ticks) && ended_as_pinned(p, windows); },
+        promoted);
+}
+
+namespace {
+
+// The graph a target search runs on: as tall as the main search builds it
+// (decision D45).
+ScoreGraph target_graph(const Song& song, const SearchSettings& settings) {
+    return ScoreGraph(song,
+                      std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
+                      fill_rule_for(settings.legacy_fill_deadline), settings.rules);
+}
+
+// The one target run both search_target entry points make, over a graph
+// already built: activate at exactly the windows' act ticks (sorted, pinned
+// ones first, as search_target over windows checks), each pinned window
+// ending on its deactivation node. keep_target_paths then keeps what it
+// keeps; none left means the windows are not realizable.
+std::vector<Path> run_target(const ScoreGraph& graph, const std::vector<PinnedWindow>& windows,
+                             std::vector<bool>* promoted) {
+    std::vector<int64_t> ticks;
+    EngineOptions options;
+    for (const PinnedWindow& w : windows) {
+        ticks.push_back(w.act_tick);
+        if (w.deact_tick) options.target_deact_ticks.push_back(*w.deact_tick);
+    }
 
     // The caller named the path, so nothing may prune it: the widest possible
     // points band keeps every survivor, and no timing filter is applied.
     std::vector<Path> paths;
     try {
-        EngineOptions options;
         options.depth_mode = DepthMode::Points;
         options.depth_value = kKeepEveryPathBand;
         options.target_act_ticks = ticks;
         paths = run_search(graph, options);
     } catch (const std::runtime_error&) {
-        // The frontier emptied: this activation set is not realizable on this
+        // The frontier emptied: these windows are not realizable on this
         // chart. That is the normal failure for a targeted search, not a bug.
         if (promoted) promoted->clear();
         return {};
     }
+    return keep_target_paths(std::move(paths), windows, promoted);
+}
 
-    // Only the paths that took every named activation stay; none left means
-    // the set is not realizable.
-    return keep_target_paths(std::move(paths), ticks, promoted);
+// The first `k` windows.
+std::vector<PinnedWindow> prefix_of(const std::vector<PinnedWindow>& windows, size_t k) {
+    return std::vector<PinnedWindow>(windows.begin(), windows.begin() + (std::ptrdiff_t)k);
+}
+
+}  // namespace
+
+std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
+                                const std::vector<int64_t>& act_ticks,
+                                std::vector<bool>* promoted) {
+    return run_target(target_graph(song, settings), activation_pins(act_ticks), promoted);
+}
+
+std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks) {
+    std::sort(ticks.begin(), ticks.end());
+    ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());
+    std::vector<PinnedWindow> out;
+    for (const int64_t t : ticks) out.push_back(PinnedWindow{t});
+    return out;
+}
+
+TargetResult search_target(const Song& song, const SearchSettings& settings,
+                           std::vector<PinnedWindow> windows) {
+    std::sort(windows.begin(), windows.end(),
+              [](const PinnedWindow& a, const PinnedWindow& b) { return a.act_tick < b.act_tick; });
+    for (size_t i = 0; i < windows.size(); ++i) {
+        const PinnedWindow& w = windows[i];
+        const std::string at = "target window at tick " + std::to_string(w.act_tick);
+        if (i > 0 && windows[i - 1].act_tick == w.act_tick)
+            throw std::invalid_argument(at + " is named twice");
+        if (i > 0 && w.deact_tick && !windows[i - 1].deact_tick)
+            throw std::invalid_argument(at + " pins its end after a window that does not");
+        if (w.check_sqout && !w.deact_tick)
+            throw std::invalid_argument(at + " checks its squeeze-out but pins no end");
+        if (w.deact_tick && *w.deact_tick < w.act_tick)
+            throw std::invalid_argument(at + " ends before it activates");
+    }
+
+    const ScoreGraph graph = target_graph(song, settings);
+    TargetResult out;
+    out.paths = run_target(graph, windows, &out.promoted);
+    out.realized_prefix = windows.size();
+    if (!out.paths.empty() || windows.empty()) return out;
+
+    // The whole list failed. Some path realizes no window at all (decline
+    // every fill), and realizing the first k + 1 windows realizes the first
+    // k (decline the last one), so the realized prefix lengths run from 0 up
+    // to some k and the binary search finds that k. Window k is the one no
+    // path realizes.
+    size_t realized = 0, failed = windows.size();
+    while (failed - realized > 1) {
+        const size_t mid = realized + (failed - realized) / 2;
+        if (run_target(graph, prefix_of(windows, mid), nullptr).empty()) failed = mid;
+        else realized = mid;
+    }
+    out.realized_prefix = realized;
+    const PinnedWindow& broke = windows[realized];
+    out.failed_tick = broke.act_tick;
+
+    // Which part of it broke: the activation itself (pinned alone), else the
+    // end, else the squeeze-out (the end pinned, how it ended not checked).
+    std::vector<PinnedWindow> probe = prefix_of(windows, realized + 1);
+    probe.back().deact_tick.reset();
+    probe.back().check_sqout = false;
+    if (!broke.deact_tick || run_target(graph, probe, nullptr).empty()) {
+        out.failed_reason = "activation";
+        return out;
+    }
+    if (!broke.check_sqout) {
+        out.failed_reason = "window_end";
+        return out;
+    }
+    probe.back().deact_tick = broke.deact_tick;
+    out.failed_reason = run_target(graph, probe, nullptr).empty() ? "window_end" : "sqout";
+    return out;
+}
+
+namespace {
+
+// One replay window as a full pin, its squeeze-out on `squeezed_out`.
+PinnedWindow full_pin(const ReplayWindow& w, std::optional<int64_t> squeezed_out) {
+    PinnedWindow p;
+    p.act_tick = w.act_tick;
+    p.deact_tick = w.deact_tick;
+    p.check_sqout = w.from_record || squeezed_out.has_value();
+    p.squeezed_out = squeezed_out;
+    return p;
+}
+
+}  // namespace
+
+std::vector<PinnedWindow> pinned_windows(const Song& song,
+                                         const std::vector<ReplayWindow>& windows) {
+    std::vector<PinnedWindow> out;
+    for (ReplayWindow w : windows) {
+        resolve_window_sqout(song, w);
+        out.push_back(full_pin(w, w.sqout_tick));
+    }
+    return out;
+}
+
+std::vector<PinnedWindow> pinned_windows(const Path& path) {
+    const std::vector<ReplayWindow> windows = windows_for_path(path);
+    const size_t acts = path.walk_activations().size();
+    if (windows.size() != acts)
+        throw std::invalid_argument("only " + std::to_string(windows.size()) + " of " +
+                                    std::to_string(acts) +
+                                    " activations have a deactivation node to pin");
+    // A stored window names its squeeze-out by its chord (windows_for_path).
+    std::vector<PinnedWindow> out;
+    for (const ReplayWindow& w : windows) out.push_back(full_pin(w, w.sqout_tick));
+    return out;
+}
+
+std::string full_pin_mismatch(const Song& song, const SearchSettings& settings,
+                              const Path& path) {
+    const std::vector<PinnedWindow> pins = pinned_windows(path);
+    const TargetResult t = search_target(song, settings, pins);
+    if (t.paths.empty())
+        return "no path came back: the window at tick " +
+               std::to_string(t.failed_tick.value_or(-1)) + " broke (" + t.failed_reason + ")";
+    if (t.paths.size() != 1) return std::to_string(t.paths.size()) + " paths came back, not one";
+    const Path& got = t.paths.front();
+    if (!got.variants.empty())
+        return "it came back with " + std::to_string(got.variants.size()) + " tied variant(s)";
+
+    std::string diffs;
+    const auto differ = [&diffs](const std::string& what, const std::string& got_s,
+                                 const std::string& want_s) {
+        diffs += (diffs.empty() ? "" : ", ") + what + " " + got_s + " vs " + want_s;
+    };
+    if (got.pathstring() != path.pathstring())
+        differ("path", "'" + got.pathstring() + "'", "'" + path.pathstring() + "'");
+    if (got.totalscore() != path.totalscore())
+        differ("total", std::to_string(got.totalscore()), std::to_string(path.totalscore()));
+    // The activations and ends already match: keep_target_paths kept only such
+    // paths.
+    const ActivationWalk mine = path.walk_activations();
+    const ActivationWalk theirs = got.walk_activations();
+    for (size_t i = 0; i < mine.size() && i < theirs.size(); ++i) {
+        const std::string at = "window " + std::to_string(pins[i].act_tick) + " ";
+        if (theirs[i].sp_meter() != mine[i].sp_meter())
+            differ(at + "SP meter", std::to_string(theirs[i].sp_meter()),
+                   std::to_string(mine[i].sp_meter()));
+        if (theirs[i].skips() != mine[i].skips())
+            differ(at + "skips", std::to_string(theirs[i].skips()),
+                   std::to_string(mine[i].skips()));
+    }
+    return diffs;
 }
 
 int graph_build_cap(int sp_cap, int sp_phrase_count) {

@@ -10,16 +10,22 @@ The Preview line now reads "This chart changed since it was analyzed. Click the 
 
 ## 2. Proposed sessions waiting for the user
 
-Each of these is a card in the session where this plan ran. Nothing starts until the user starts it.
+The user started all four on 2026-10-07, each in its own session. Their results live in those sessions, not here.
 
 - **Make hydra_replay use the engine, not a copy (Track R).** This is D87 item 8, the parallel track.
 - **Fix the agent call counter that resets mid-run.** `agent_progress_gate.ps1` saves its state with `Set-Content`. When two tool calls run at once, a hook run can read the file half-written and start counting again from zero. One agent reached about 237 calls with the 150 cap never firing. The fix is an atomic write, plus failing loudly when the file can't be read.
 - **Stop stale link state from breaking builds.** Leftover incremental link-time files (`.iobj` and `.ipdb`) caused C1001/LNK1000 link errors or a crashing test exe about eight times today. The last time, the reviewer of the D94 cleanup saw it in third_party imgui_te_perftool.cpp on every try, and worked around it with a RelWithDebInfo build. The fix is to find the cause in the CMake and LTCG flags, and ask the user before changing the shipped build's flags.
 - **Find why the panel-split UI test flakes.** It failed once under `--all --jobs 4`, then passed 3 of 3 alone and 70 of 70 on a rerun. The rule is to find the root cause, never to add a retry.
 
-## 3. Deferred minor findings from the reviews
+## 3. Deferred minor findings from the reviews: all closed (2026-10-07, second session)
 
-None of these changes what the user sees today. Each is worth fixing when someone is next in that file.
+A second session fixed every item below in four reviewed branches. Each passed its derive-once review clean. som-b merged as e729e37, som-c as 8a7c5c5, som-a as 660929b and som-d as 446b5e8.
+
+The two items that touched what the user sees or stores went to the user first, as D96 and D97 in `docs/audit/2026-10-03-fix-decisions.md`. Under D96, a click on a chart whose file was saved again with the same content now stores the new size and time, so later clicks skip the re-hash. An empty fingerprint is never saved, because it can't prove anything; `store::sig_can_show_unchanged` owns that rule. Under D97, the GUI's empty Path Report now says "None of the songs in this run could be analyzed, so there is no report to show." The first D97 question gave a wrong premise (that the message showed before a first scan). The som-c agent caught it, and the user decided again with the real rule. Results with no chart library now show the same reason in the GUI as in the CLI.
+
+The view-progress-delay UI test no longer half skips. Both held clicks watch for the box from the first frame, and the second checks that a new request restarts the delay. "Is this chart in the library" has one owner, `report::library_lists`, which the DM page uses too. "Does the store hold results" has one owner, `holds_results`. `serialize.*` and `Chord::from_code` are gone, and `Timecode::raw` stays because about 20 tests need it. A scan test now pins the UserGuide's quote of the D94 line.
+
+The original list follows, for the record.
 
 - **"No records stored yet" on a database with no library.** The GUI report job shows that message there. A GUI database always has a library after a scan, so the user can't hit it.
 - **The naming-copy join relies on SQLite's automatic column name.** `RecordStore::naming_copy_paths` joins on `c."MIN(rowid)"`. An alias in `kNamingCopiesSql` would be sturdier.

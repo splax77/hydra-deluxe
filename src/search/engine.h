@@ -45,6 +45,12 @@ struct EngineOptions {
     // spawn in time, a tick that is not a fill node) empties the frontier,
     // which surfaces as the usual std::runtime_error.
     std::optional<std::vector<int64_t>> target_act_ticks;
+    // With target_act_ticks: the deactivation node (Activation::deact_tick)
+    // each of the first target_deact_ticks.size() windows must end on, in the
+    // same order; later windows are pinned by activation only. It answers
+    // every squeeze choice in a pinned window, so that window keeps one path
+    // (search_target over PinnedWindow, search/pather.h).
+    std::vector<int64_t> target_deact_ticks;
 };
 
 // Run the BFS over the graph and return finished, best-score-first,

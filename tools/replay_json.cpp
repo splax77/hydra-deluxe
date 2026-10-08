@@ -15,7 +15,7 @@ namespace {
 // Which field names this window's squeezed-out chord. The stamped tick does
 // when the activation has one (-1 or no key means none). Only without it is
 // the SqOut entry's offset read, for dumps written before the tick existed;
-// `score` in tools/replay.cpp resolves that offset with resolve_sqout_note.
+// `score` in tools/replay.cpp resolves that offset with resolve_window_sqout.
 // That bare offset is the one deliberate exception to the record reader's
 // rule (windows_for_path drops a window it cannot name a squeeze-out chord
 // for); only an old or hand-edited JSON carries one, and the CLI prints which
