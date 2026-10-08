@@ -502,12 +502,20 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
     // A cap below kSpActivationBars can never activate (D51 call 16).
     const bool cap_never_activates = record.sp_cap && *record.sp_cap < kSpActivationBars;
 
-    auto add = [&](const Path* p, PathButtonView::Group group) {
+    // `fold` is the score group the button sits in; null for the all-0 path.
+    auto add = [&](const Path* p, PathButtonView::Group group, const PathGroupView* fold) {
         PathButtonView b;
         b.path = p;
         b.group = group;
         b.notation = p->pathstring();
-        b.title = group_thousands(p->totalscore()) + kDot + b.notation;
+        if (fold) {
+            b.fold = fold->score_label;
+            b.fold_count =
+                counted(static_cast<int64_t>(fold->paths.size()), "path", "paths");
+            b.title = b.notation;
+        } else {
+            b.title = group_thousands(p->totalscore()) + kDot + b.notation;
+        }
         if (std::optional<double> hardest = p->difficulty()) {
             b.timing = format_ms(*hardest);
             b.timing_warn = p->is_difficult();
@@ -523,10 +531,12 @@ PathButtonsView build_path_buttons(const HydraRecord& record, int depth_mode, in
     };
     for (const PathGroupView& g : list.groups)
         for (const Path* p : g.paths)
-            add(p, record.is_optimal(*p) ? PathButtonView::Group::Optimal
-                                         : PathButtonView::Group::Within);
+            add(p,
+                record.is_optimal(*p) ? PathButtonView::Group::Optimal
+                                      : PathButtonView::Group::Within,
+                &g);
     if (list.show_allzero)
-        for (const Path* p : list.allzero) add(p, PathButtonView::Group::AllZero);
+        for (const Path* p : list.allzero) add(p, PathButtonView::Group::AllZero, nullptr);
     return view;
 }
 

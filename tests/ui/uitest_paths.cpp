@@ -83,10 +83,16 @@ void test_paths_list(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "Within 2 scores"));
     IM_CHECK(on_screen(h, "Best all-0 path"));
     IM_CHECK(!on_screen(h, "0 ms limit"));
-    IM_CHECK(on_screen(h, "378,315" + dot + "3- 1 2"));
+    // One fold per score, the score on the fold and the path on its button;
+    // the all-0 path has no fold and keeps its score on the button.
+    IM_CHECK(on_screen(h, "378,315"));
+    IM_CHECK(on_screen(h, "1 path"));
+    IM_CHECK(!on_screen(h, "378,315" + dot + "3- 1 2"));
+    IM_CHECK(on_screen(h, "3- 1 2"));
     IM_CHECK(on_screen(h, "163.0 ms"));
     IM_CHECK(!on_screen(h, "hardest squeeze"));
-    IM_CHECK(on_screen(h, "378,175" + dot + "0 4 1"));
+    IM_CHECK(on_screen(h, "378,175"));
+    IM_CHECK(on_screen(h, "0 4 1"));
     IM_CHECK(on_screen(h, "375,955" + dot + "0 0 0 0"));
     IM_CHECK(on_screen(h, "2,360 below optimal"));
     // The old list's headings are gone.
@@ -104,6 +110,16 @@ void test_paths_list(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##path3");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 0 0 0");
+
+    // A closed fold hides its paths and nothing else; opening it brings them back.
+    ctx->ItemClick("**/378,175##fold");
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "378,175"));
+    IM_CHECK(!on_screen(h, "0 4 1"));
+    IM_CHECK(on_screen(h, "2 1 2"));
+    ctx->ItemClick("**/378,175##fold");
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "0 4 1"));
 }
 
 // A window drawn this frame whose name holds `part` (child names are mangled).

@@ -1146,19 +1146,27 @@ TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
     CHECK(v.buttons[0].path == &rec.best_path());
     CHECK(v.buttons[0].group == PathButtonView::Group::Optimal);
     CHECK(v.buttons[0].notation == "3- 1 2");
-    CHECK(v.buttons[0].title == "378,315" + kDot + "3- 1 2");
+    // Inside a fold the score sits on the fold, not on the button.
+    CHECK(v.buttons[0].fold == "378,315");
+    CHECK(v.buttons[0].fold_count == "1 path");
+    CHECK(v.buttons[0].title == "3- 1 2");
     CHECK(v.buttons[0].timing == "163.0 ms");
     CHECK(v.buttons[0].timing_warn);
     CHECK(v.buttons[0].detail.empty());
 
     CHECK(v.buttons[1].group == PathButtonView::Group::Within);
-    CHECK(v.buttons[1].title == "378,175" + kDot + "0 4 1");
+    CHECK(v.buttons[1].fold == "378,175");
+    CHECK(v.buttons[1].title == "0 4 1");
     CHECK(v.buttons[1].timing.empty());  // needs no squeeze
     CHECK(v.buttons[1].detail.empty());
     CHECK(v.buttons[2].group == PathButtonView::Group::Within);
-    CHECK(v.buttons[2].title == "378,075" + kDot + "2 1 2");
+    CHECK(v.buttons[2].fold == "378,075");
+    CHECK(v.buttons[2].title == "2 1 2");
 
+    // The all-0 path has no fold, so its score stays on the button.
     CHECK(v.buttons[3].group == PathButtonView::Group::AllZero);
+    CHECK(v.buttons[3].fold.empty());
+    CHECK(v.buttons[3].fold_count.empty());
     CHECK(v.buttons[3].title == "375,955" + kDot + "0 0 0 0");
     CHECK(v.buttons[3].detail == "2,360 below optimal");
 
@@ -1179,6 +1187,13 @@ TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
     CHECK(tv.buttons[1].group == PathButtonView::Group::Optimal);
     CHECK(tv.buttons[2].path == &tied.paths.at(1));
     CHECK(tv.buttons[2].group == PathButtonView::Group::Within);
+    // The two tied paths share one fold that counts both; the lower root
+    // starts its own.
+    CHECK(tv.buttons[0].fold == tv.buttons[1].fold);
+    CHECK(tv.buttons[0].fold_count == "2 paths");
+    CHECK(tv.buttons[1].fold_count == "2 paths");
+    CHECK(tv.buttons[2].fold != tv.buttons[0].fold);
+    CHECK(tv.buttons[2].fold_count == "1 path");
 }
 
 TEST_CASE("multiplier squeeze: Burnout's one squeeze and the fold's summary") {
