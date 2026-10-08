@@ -3,6 +3,8 @@
 #include <sqlite3.h>
 
 #include <algorithm>
+#include <atomic>
+#include <cctype>
 #include <cstdlib>
 #include <map>
 #include <new>
@@ -14,6 +16,7 @@
 #include "core/stars.h"
 #include "core/winstr.h"
 #include "store/stored_versions.h"
+#include "store/upgrade_files.h"
 
 namespace hydra::store {
 
@@ -596,36 +599,86 @@ PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record) {
     return row;
 }
 
+namespace {
+
+// The name SQLite is given for a database file. SQLite takes UTF-8 and
+// understands the \\?\ prefix, so a long database path goes through the same
+// one conversion as every other file. open_sqlite opens by it and the copy
+// upgrade attaches by it.
+std::string sqlite_file_name(const std::string& utf8_path) {
+    return wide_to_utf8(win32_path(utf8_path));
+}
+
+}  // namespace
+
 int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags) {
-    // SQLite takes UTF-8 and understands the \\?\ prefix, so a long database
-    // path goes through the same one conversion as every other file.
     // "win32-longpath" is SQLite's own Windows layer with its path buffer
     // raised from 260 characters to 32,767; it is otherwise the default one.
-    return sqlite3_open_v2(wide_to_utf8(win32_path(utf8_path)).c_str(), db, flags,
-                           "win32-longpath");
+    // An attached file goes through the same layer as its connection.
+    return sqlite3_open_v2(sqlite_file_name(utf8_path).c_str(), db, flags, "win32-longpath");
 }
+
+namespace {
+
+std::atomic<bool> g_stop_after_step_aside{false};
+
+// What the test seam throws: not a failure the copy upgrade tidies up after,
+// so it passes the upgrade's own handlers untouched.
+struct StoppedForTest : std::runtime_error {
+    StoppedForTest() : std::runtime_error("the test seam stopped the upgrade after step-aside") {}
+};
+
+// Whether `dbpath` names a file on disk rather than one of SQLite's own
+// in-memory names, the only kind the upgrade files sit beside.
+bool names_a_file(const std::string& dbpath) { return !dbpath.empty() && dbpath != ":memory:"; }
+
+// The table only a file that still holds path details has.
+constexpr const char* kDetailTable = "paths";
+
+// "A result with a score and no stars", spelled once in SQL. Such a row was
+// written before the stars column existed; filling its stars needed the
+// stored paths, so the summary-only upgrade leaves it behind, and a click or
+// a batch writes it again. The upgrade's row count and its copy both read it.
+constexpr const char* kNoStarsResultSql = "stars IS NULL AND score IS NOT NULL";
+
+}  // namespace
+
+void stop_copy_upgrade_after_step_aside_for_test(bool stop) { g_stop_after_step_aside = stop; }
 
 // ---- RecordStore ------------------------------------------------------
 
-RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_fingerprint)
-    : rules_fingerprint_(rules_fingerprint) {
-    if (open_sqlite(dbpath, &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) != SQLITE_OK) {
-        std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown error";
-        close();
-        throw KindedError(ErrorKind::DatabaseOpen,
-                          "failed to open database '" + dbpath + "': " + msg);
-    }
+RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_fingerprint,
+                         OpenProgressFn progress)
+    : rules_fingerprint_(rules_fingerprint), progress_(std::move(progress)) {
+    // Whatever happens below, the callback is not kept past the constructor.
+    struct ForgetProgress {
+        OpenProgressFn& fn;
+        ~ForgetProgress() { fn = nullptr; }
+    } forget{progress_};
+
+    report(OpenStep::Opening);
+    // Before anything opens the file, so the open never makes an empty
+    // database while the rows sit under the upgrade's names.
+    if (names_a_file(dbpath)) recover_upgrade_files(dbpath);
+    open_file(dbpath);
 
     // SQLite notices a locked file, or one that isn't a database, only at
     // the first statement below. Any throw from here on is still a failed
     // open (D72 item 2), with the raw text kept. A constructor that throws
     // never runs the destructor, so the handle is closed here. Running out of
-    // memory keeps its own type, which plain_error answers by.
+    // memory keeps its own type, which plain_error answers by. A stop the
+    // callback asked for, and a failed upgrade that left the old file whole,
+    // keep their own kinds too.
     try {
         set_up_schema();
+        if (names_a_file(dbpath) && has_table(kDetailTable)) copy_upgrade(dbpath);
     } catch (const std::bad_alloc&) {
         close();
         throw;
+    } catch (const KindedError& e) {
+        close();
+        if (e.kind() == ErrorKind::Cancelled || e.kind() == ErrorKind::DatabaseUpgrade) throw;
+        throw KindedError(ErrorKind::DatabaseOpen, e.what());
     } catch (const std::exception& e) {
         close();
         throw KindedError(ErrorKind::DatabaseOpen, e.what());
@@ -702,8 +755,8 @@ void RecordStore::set_up_schema() {
     // Auto was removed (2026-09-27). Its results go the first time this
     // build opens the file.
     delete_auto_results();
-    // Last, so the steps above read an older file in its own layout.
-    drop_stored_details();
+    // The summary-only upgrade comes after these steps, so they read an older
+    // file in its own layout (the constructor runs copy_upgrade).
 }
 
 void RecordStore::upgrade_results_key() {
@@ -719,6 +772,7 @@ void RecordStore::upgrade_results_key() {
     } else {
         return;  // schema 4 already
     }
+    report(OpenStep::UpdatingResultsKey);
     exec("BEGIN");
     try {
         exec("ALTER TABLE results RENAME TO results_before_upgrade");
@@ -735,31 +789,210 @@ void RecordStore::upgrade_results_key() {
     }
 }
 
-void RecordStore::drop_stored_details() {
-    if (!has_table("paths")) return;
-    // (1) One transaction. A row with a score and no stars was written before
-    //     the stars column existed; filling it needed the stored paths, so it
-    //     goes, and a click or a batch writes it again. Then the details.
-    exec("BEGIN");
-    try {
-        exec("DELETE FROM results WHERE stars IS NULL AND score IS NOT NULL");
-        exec("DROP TABLE IF EXISTS paths;"
-             "DROP TABLE IF EXISTS path_refs;"
-             "DROP TABLE IF EXISTS songmeta;"
-             "DROP TABLE IF EXISTS dynamics;");
-        if (has_column("results", "structure")) exec("ALTER TABLE results DROP COLUMN structure");
-        exec("COMMIT");
-    } catch (...) {
-        rollback_if_open(db_);
-        throw;
+void RecordStore::open_file(const std::string& dbpath) {
+    if (open_sqlite(dbpath, &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) != SQLITE_OK) {
+        std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown error";
+        close();
+        throw KindedError(ErrorKind::DatabaseOpen,
+                          "failed to open database '" + dbpath + "': " + msg);
     }
-    // (2) VACUUM refuses to run inside a transaction, so it runs after the
-    //     commit. It rewrites the file without the freed pages, and needs
-    //     free disk space up to the file's size.
-    exec("VACUUM");
-    // (3) The rewrite went through the WAL; fold it into the file and empty
-    //     the log.
-    exec("PRAGMA wal_checkpoint(TRUNCATE)");
+}
+
+namespace {
+
+// The schema name the fresh file is attached under.
+constexpr const char* kFreshSchema = "fresh";
+
+// The tables the upgrade keeps, in the order it copies them. Everything else
+// in an old file (the path details, a pre-1.7 records table) stays behind.
+constexpr const char* kKeptTables[] = {"charts", "results", "meta"};
+
+// The one integer a counting query returns.
+int64_t count_of(sqlite3* db, const std::string& sql) {
+    Stmt s = prepare_read(db, sql.c_str());
+    if (!step_row(s)) return 0;
+    return sqlite3_column_int64(s, 0);
+}
+
+// A failure of the upgrade's own file steps, worded with the file it concerns.
+[[noreturn]] void upgrade_failed(const std::string& what) {
+    throw KindedError(ErrorKind::DatabaseUpgrade, what);
+}
+
+}  // namespace
+
+void RecordStore::copy_upgrade(const std::string& dbpath) {
+    const std::string fresh = upgrading_path(dbpath);
+    const std::string aside = old_path(dbpath);
+    // Which rows of a kept table are copied, as an SQL condition (empty for
+    // every row). The row count and the copy both ask it.
+    const std::string kept_results = std::string("NOT (") + kNoStarsResultSql + ")";
+    auto kept_rows = [&](const char* table) {
+        return std::string_view(table) == "results" ? kept_results : std::string();
+    };
+    bool attached = false;
+
+    // Undoes whatever the steps below began, leaving the old file as it was.
+    auto tidy_up = [&] {
+        if (db_) {
+            rollback_if_open(db_);
+            if (attached)
+                sqlite3_exec(db_, (std::string("DETACH DATABASE ") + kFreshSchema).c_str(),
+                             nullptr, nullptr, nullptr);
+        }
+        attached = false;
+        remove_with_side_files(fresh);
+    };
+
+    try {
+        // (1) An earlier run's fresh file is never one to keep while the
+        //     database exists (recover_upgrade_files).
+        remove_with_side_files(fresh);
+
+        // (2) The fresh file, made by this build's own schema set-up: its
+        //     tables, columns and indexes are this build's, and it has no
+        //     detail table, so it never upgrades itself. Its meta is emptied
+        //     so the old file's rows, copied below, are the only ones.
+        try {
+            RecordStore made(fresh, rules_fingerprint_);
+        } catch (const KindedError& e) {
+            upgrade_failed("making '" + fresh + "' failed: " + e.what());
+        }
+        {
+            Stmt attach = prepare_read(  // SQLite counts ATTACH as read-only
+                db_, (std::string("ATTACH DATABASE ? AS ") + kFreshSchema).c_str());
+            bind_text(attach, 1, sqlite_file_name(fresh));
+            step_done(attach, "attaching '" + fresh + "'");
+        }
+        attached = true;
+
+        // (3) Every row the copy will copy, counted from the file.
+        int64_t rows_total = 0;
+        for (const char* table : kKeptTables) {
+            const std::string where = kept_rows(table);
+            rows_total += count_of(db_, std::string("SELECT COUNT(*) FROM main.") + table +
+                                            (where.empty() ? "" : " WHERE " + where));
+        }
+        int64_t rows_done = 0;
+        report(OpenStep::Copying, rows_done, rows_total);
+
+        // (4) One transaction on the fresh file. Only it is written; the old
+        //     file is only read.
+        exec("BEGIN");
+        exec((std::string("DELETE FROM ") + kFreshSchema + ".meta").c_str());
+        for (const char* table : kKeptTables)
+            copy_table(table, kept_rows(table), rows_done, rows_total);
+        exec("COMMIT");
+        report(OpenStep::Finishing, rows_done, rows_total);
+
+        // (5) Fold the fresh file's log into it, which syncs it to disk, then
+        //     let it go: its log and index go with the last connection.
+        exec((std::string("PRAGMA ") + kFreshSchema + ".wal_checkpoint(TRUNCATE)").c_str());
+        exec((std::string("DETACH DATABASE ") + kFreshSchema).c_str());
+        attached = false;
+
+        // (6) Closing the only connection folds the old file's log in and
+        //     removes it. A log still there means another program has the
+        //     file open, and renaming the file away from its log would leave
+        //     that log for the new file.
+        close();
+        if (side_files_present(dbpath))
+            upgrade_failed("'" + dbpath +
+                           "' is open in another program: its -wal or -shm file stayed "
+                           "after Hydra closed it");
+
+        // (7) The old file steps aside. A file held open elsewhere refuses.
+        if (std::optional<std::string> why = rename_file(dbpath, aside))
+            upgrade_failed("renaming '" + dbpath + "' to '" + aside + "' failed: " + *why);
+        if (g_stop_after_step_aside) throw StoppedForTest();
+
+        // (8) The fresh file takes the name. If it cannot, the old file comes
+        //     back; if even that fails, recover_upgrade_files finishes the
+        //     job at the next open.
+        if (std::optional<std::string> why = rename_file(fresh, dbpath)) {
+            rename_file(aside, dbpath);
+            upgrade_failed("renaming '" + fresh + "' to '" + dbpath + "' failed: " + *why);
+        }
+    } catch (const StoppedForTest&) {
+        throw;
+    } catch (const std::bad_alloc&) {
+        tidy_up();
+        throw;
+    } catch (const KindedError& e) {
+        tidy_up();
+        if (e.kind() == ErrorKind::Cancelled || e.kind() == ErrorKind::DatabaseUpgrade) throw;
+        upgrade_failed(e.what());
+    } catch (const std::exception& e) {
+        tidy_up();
+        upgrade_failed(e.what());
+    }
+
+    // (9) The old file goes. One that stays is removed at the next open.
+    remove_with_side_files(aside);
+
+    // (10) Open the new file. Its set-up finds nothing to upgrade, and a
+    //      failure here is a failed open of a whole file (DatabaseOpen).
+    open_file(dbpath);
+    set_up_schema();
+}
+
+void RecordStore::copy_table(const char* table, const std::string& where, int64_t& rows_done,
+                             int64_t rows_total) {
+    // The columns are the fresh table's, as this build's set-up made them;
+    // the old table has every one, because set_up_schema brought it up to
+    // date first. A table whose rows have no INTEGER PRIMARY KEY also gets
+    // its rowid copied, so the library's first-listed copy (kNamingCopiesSql)
+    // stays the same row.
+    std::vector<std::string> columns;
+    bool rowid_column = false;
+    {
+        Stmt info = prepare_read(
+            db_, (std::string("PRAGMA ") + kFreshSchema + ".table_info(" + table + ")").c_str());
+        int key_columns = 0;
+        bool integer_key = false;
+        while (step_row(info)) {
+            columns.push_back(column_text(info, 1));
+            if (sqlite3_column_int(info, 5) > 0) {
+                ++key_columns;
+                std::string type = column_text(info, 2);
+                for (char& c : type) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                integer_key = type == "INTEGER";
+            }
+        }
+        // SQLite's rule: a lone INTEGER PRIMARY KEY column is the rowid.
+        rowid_column = key_columns == 1 && integer_key;
+    }
+    if (columns.empty())
+        throw std::runtime_error(std::string("the fresh file has no ") + table + " table");
+    if (!rowid_column) columns.insert(columns.begin(), "rowid");
+
+    std::string list;
+    for (const std::string& c : columns) list += (list.empty() ? "" : ", ") + c;
+    std::string select = "SELECT " + list + " FROM main." + table;
+    if (!where.empty()) select += " WHERE " + where;
+    const std::string insert = std::string("INSERT INTO ") + kFreshSchema + "." + table + " (" +
+                               list + ") VALUES (" + placeholders(columns.size()) + ")";
+
+    Stmt from = prepare_read(db_, select.c_str());
+    Stmt to = prepare_write(db_, insert.c_str());
+    const int n = static_cast<int>(columns.size());
+    while (step_row(from)) {
+        // Each value goes across as stored, so nothing is retyped.
+        for (int i = 0; i < n; ++i) sqlite3_bind_value(to, i + 1, sqlite3_column_value(from, i));
+        step_done(to, std::string("copying ") + table);
+        sqlite3_reset(to);
+        report(OpenStep::Copying, ++rows_done, rows_total);
+    }
+}
+
+void RecordStore::report(OpenStep step, int64_t rows_done, int64_t rows_total) {
+    if (!progress_) return;
+    OpenProgress p;
+    p.step = step;
+    p.rows_done = rows_done;
+    p.rows_total = rows_total;
+    if (!progress_(p))
+        throw KindedError(ErrorKind::Cancelled, "opening the database was stopped");
 }
 
 RecordStore::~RecordStore() { close(); }
