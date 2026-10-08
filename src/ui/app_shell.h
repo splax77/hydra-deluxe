@@ -150,8 +150,8 @@ ImGuiWindowClass report_window_class();
 // Call before Begin(name) on every frame the report window shows. When the
 // window opens, a saved rectangle (from hydra_ui.ini, or from an earlier
 // open this session) that fails placement_on_screen falls back to the
-// first-open placement, as does a window with nothing saved: centred over
-// the main window, its size capped to that monitor's work area.
+// first-open placement, as does a window with nothing saved: the main
+// window's own position and size (D103 item 14).
 void place_report_window(const char* name);
 
 // ---- The viewport spike's window ----------------------------------------

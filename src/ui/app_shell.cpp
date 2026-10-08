@@ -15,7 +15,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <unordered_set>
 
 #include "imgui.h"
 #include "imgui_internal.h"  // g.LogBuffer for FrameText; ImGuiSettingsHandler
@@ -235,10 +234,11 @@ void setup_imgui(const ImGuiSetupOptions& options) {
     // monitor and keep open while Hydra is in use. Only the report windows
     // opt in, through report_window_class. Everything else stays one primary
     // window filling the OS window, like hydra_app.py's
-    // dpg.set_primary_window: docking stays off, and a popup or tooltip only
-    // gets its own borderless OS window when it would otherwise be cut off at
-    // the main window's edge. Those get no taskbar button. Without a platform
-    // backend (the GUI test runner) ImGui turns viewports back off itself.
+    // dpg.set_primary_window: docking stays off, and popups and tooltips stay
+    // inside the window they open from (D103 item 15; the "Hydra:" block in
+    // third_party/imgui/imgui.cpp's WindowSelectViewport). Any other OS window
+    // ImGui makes gets no taskbar button. Without a platform backend (the GUI
+    // test runner) ImGui turns viewports back off itself.
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     io.ConfigViewportsNoTaskBarIcon = true;
 
@@ -320,10 +320,6 @@ void shutdown_imgui() {
 
 namespace {
 
-// Report windows still being given the first-open placement: from the frame
-// they open until ImGui has finished fitting their size to their content.
-std::unordered_set<std::string> g_first_open_placing;
-
 ScreenRect screen_rect(const ImVec2& pos, const ImVec2& size) {
     const int left = static_cast<int>(pos.x), top = static_cast<int>(pos.y);
     return {left, top, left + static_cast<int>(size.x), top + static_cast<int>(size.y)};
@@ -387,26 +383,15 @@ ImGuiWindowClass report_window_class() {
 
 void place_report_window(const char* name) {
     const ImGuiWindow* w = ImGui::FindWindowByName(name);
-    if (!w || !w->WasActive) {  // opening this frame
-        const std::optional<ScreenRect> saved = saved_rect(name);
-        if (saved && placement_on_screen(*saved, imgui_work_areas()))
-            g_first_open_placing.erase(name);
-        else
-            g_first_open_placing.insert(name);
-    } else if (w->AutoFitFramesX <= 0 && w->AutoFitFramesY <= 0) {
-        g_first_open_placing.erase(name);  // its size has settled
-    }
-    if (g_first_open_placing.count(name) == 0) return;
+    if (w && w->WasActive) return;  // already open: it stays where it is
+    const std::optional<ScreenRect> saved = saved_rect(name);
+    if (saved && placement_on_screen(*saved, imgui_work_areas())) return;
 
-    ImGuiViewport* main_viewport = ImGui::GetMainViewport();
-    const ImGuiPlatformMonitor* monitor = ImGui::GetViewportPlatformMonitor(main_viewport);
-    const ImVec2 work_min = monitor->WorkPos;
-    const ImVec2 work_max(work_min.x + monitor->WorkSize.x, work_min.y + monitor->WorkSize.y);
-    const ImVec2 centre = main_viewport->GetCenter();
-    ImGui::SetNextWindowPos(ImVec2(std::clamp(centre.x, work_min.x, work_max.x),
-                                   std::clamp(centre.y, work_min.y, work_max.y)),
-                            ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-    ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), monitor->WorkSize);
+    // The first-open placement (D103 item 14). An explicit size also stops
+    // ImGui fitting the window to its content, so one frame is enough.
+    const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(main_viewport->Pos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(main_viewport->Size, ImGuiCond_Always);
 }
 
 void show_report_spike(bool shown) { g_report_spike = shown; }
