@@ -808,7 +808,7 @@ bool Path::is_allzero() const {
     const ActivationWalk acts = walk_activations();
     if (acts.empty()) return false;
     for (const Activation& act : acts)
-        if (act.skips() != 0) return false;
+        if (!allzero_activation(act.e_offset, act.skips())) return false;
     return true;
 }
 

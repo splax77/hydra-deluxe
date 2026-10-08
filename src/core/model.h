@@ -295,6 +295,17 @@ inline bool fill_within_limit(double e_offset, int skips, double limit_ms) {
     return !is_e0(e_offset, skips) || timing_within_limit(early_fill_difficulty(e_offset), limit_ms);
 }
 
+// Does an activation fit the all-0 rule (D102)? It passed over no fill, or
+// exactly one that was its early fill (inside the window: an E1). A player
+// whose SP comes ready a little later never sees that early fill and
+// activates on the next fill, so they skipped nothing. `e_offset` is the
+// activation's own (Activation::e_offset): with one fill passed over, it
+// was measured at that fill. Path::is_allzero and the all-0 pass's engine
+// rule both ask it.
+inline bool allzero_activation(double e_offset, int skips) {
+    return skips == 0 || (skips == 1 && is_e0(e_offset, 0));
+}
+
 // How frontend (activation-hit) timing error transfers to the SP end. SP
 // length is measure-based, so hitting the frontend d ms off moves the SP end
 // by r*d ms, where r = ms-per-measure at the SP end / ms-per-measure at the
@@ -760,8 +771,9 @@ struct Path {
     // warning color's rule, asked of the path instead of re-derived by callers.
     bool is_difficult() const;
 
-    // An "all-0" path: it has activations and every one of them records
-    // skips == 0. False for a path with no activations.
+    // An "all-0" path: it has activations and every one of them fits the
+    // all-0 rule (allzero_activation: no skips, or an E1). False for a path
+    // with no activations.
     bool is_allzero() const;
 
     // The chart's base score: every note at 1x with no Star Power (50 a gem,
@@ -813,7 +825,7 @@ struct HydraRecord {
     std::vector<MultSqueeze> multsqueezes;
 
     // The best all-0 path: the highest-scoring path whose activations all
-    // record skips == 0, found under the all-0 pass's 0 ms limit
+    // fit the all-0 rule (Path::is_allzero), found under the all-0 pass's 0 ms limit
     // (search/pather.cpp, allzero_options), plus the tied variations an
     // early fill or a squeeze in/out produces. The main
     // search keeps paths by score band, not by shape, so this path is usually

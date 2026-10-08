@@ -583,7 +583,7 @@ private:
 
     // The fills on the base track in chart order, for ready_class.
     void index_fills();
-    uint64_t ready_class(const Path& p) const;
+    uint64_t ready_class(const Path& p, uint64_t* early = nullptr) const;
     void close_last_activation(Path& p) const;
 
     void reduce_iteration_paths();
@@ -665,8 +665,10 @@ private:
     int32_t depth_value_;
     bool has_ms_filter_;
     double ms_filter_;
-    // Every activation must record skips == 0: the declining parent is dropped
-    // whenever branch_activate produced a real child. BFS only.
+    // Every activation must fit the all-0 rule (allzero_activation: no skips,
+    // or an E1): the declining parent is dropped whenever branch_activate
+    // produced a real child, unless the fill it passed is its early fill.
+    // BFS only.
     bool no_skips_;
     // Treat ms_filter_ as a requirement rather than a preference
     // (EngineOptions::hard_ms_filter): a path over the limit is dropped
@@ -775,9 +777,14 @@ void Engine::index_fills() {
 // early fill would be over the limit (only while nothing was passed over, so
 // the next activation can be an E0). High 16: fills that refuse it. 0 for a
 // path under kSpActivationBars: its ready time is not set yet.
-uint64_t Engine::ready_class(const Path& p) const {
+// `early`, when given, gets the count of upcoming fills inside the early-fill
+// window for this path, by the same cut-off argument (a later ready time is
+// inside the window at every fill an earlier one is). Only the all-0 pass
+// asks for it (no_skips_ in the group key, D102).
+uint64_t Engine::ready_class(const Path& p, uint64_t* early) const {
+    if (early) *early = 0;
     if (p.sp < kSpActivationBars || !has_value(p.sp_ready_ms)) return 0;
-    uint64_t refused = 0, over = 0;
+    uint64_t refused = 0, over = 0, inside = 0;
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
         // Every deadline from here on is at least this one. When even this
         // one leaves too much slack for an E0, none is an E0, and none
@@ -785,9 +792,11 @@ uint64_t Engine::ready_class(const Path& p) const {
         if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
         if (fill_refuses(e_offset)) ++refused;
+        if (is_e0(e_offset, 0)) ++inside;
         if (has_ms_filter_ && !fill_within_limit(e_offset, p.currentskips, ms_filter_)) ++over;
     }
     if (refused > 0xFFFF || over > 0xFFFF) throw std::logic_error("search group key out of range");
+    if (early) *early = inside;
     return (refused << 16) | over;
 }
 
@@ -1381,8 +1390,8 @@ void Engine::reduce_iteration_paths() {
         // NO_TIME on almost every path, which leaves the groups as they were.
         // A second word, not more bits in the first: no lossy packing.
         const bool is_sp = !is_complete && node(p.node).is_sp;
-        const uint64_t key2 = is_sp ? (uint64_t)pending_sqout_at(p, node(p.node).tick)
-                                    : (uint64_t)NO_TIME;
+        uint64_t key2 = is_sp ? (uint64_t)pending_sqout_at(p, node(p.node).tick)
+                              : (uint64_t)NO_TIME;
         const int64_t sp_value =
             is_complete ? 0 : (is_sp ? p.sp_end_time : (int64_t)p.sp);
         uint64_t key_value = (uint64_t)sp_value;
@@ -1395,7 +1404,14 @@ void Engine::reduce_iteration_paths() {
             // The meter in the high bits, ready_class's 32 below it.
             if (p.sp < 0 || p.sp >= (1 << 30))
                 throw std::logic_error("search group key out of range");
-            key_value = (key_value << 32) | ready_class(p);
+            uint64_t early = 0;
+            key_value = (key_value << 32) | ready_class(p, no_skips_ ? &early : nullptr);
+            // In the all-0 pass, a waiting path's second word is how many
+            // upcoming fills it may still pass over (D102): its early fills
+            // while it has passed none, none once it has. A path that has
+            // passed its early fill must activate on the next one, so it
+            // must not knock out one that can still pass its own.
+            if (no_skips_) key2 = p.currentskips == 0 ? early : 0;
         }
         const uint64_t key = (key_value << 1) | (is_sp ? 1ull : 0ull);
 
@@ -1824,11 +1840,14 @@ bool Engine::run() {
                         next_.push_back(p);
                         has_child = false;
                     }
-                } else if (!(no_skips_ && has_child)) {
+                } else if (!(no_skips_ && has_child &&
+                             !allzero_activation(p.skipped_e_offset, p.currentskips))) {
                     // The parent is the path that declined this opportunity, and
                     // branch_activate has just charged it a skip. Under no_skips_
-                    // that parent can no longer reach an all-0 path, so drop it and
-                    // keep only the activating child. branch_activate charges the
+                    // that parent can still reach an all-0 path only when this
+                    // was its early fill, its first and only skip (an E1, D102).
+                    // Otherwise drop it and keep only the activating child.
+                    // branch_activate charges the
                     // skip solely on the branch that produced a child -- a refused
                     // opportunity (no branch edge, SP under kSpActivationBars, blown fill
                     // deadline) leaves currentskips alone, so the surviving path is

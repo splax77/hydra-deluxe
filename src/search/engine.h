@@ -28,9 +28,11 @@ struct EngineOptions {
     int depth_value = 0;
     // The ms limit; nullopt is off.
     std::optional<double> ms_filter;
-    // Only paths whose activations all record skips == 0: the "all-0" path a
-    // player hits by activating at every first opportunity. It removes all
-    // activation branching, so such a search is far cheaper.
+    // Only paths whose activations all fit the all-0 rule
+    // (allzero_activation, core/model.h): the "all-0" path a player hits by
+    // activating at every first opportunity, an early fill they may never see
+    // aside (E1). It removes almost all activation branching, so such a
+    // search is far cheaper.
     bool no_skips = false;
     // Make ms_filter a requirement. By default an over-limit path still
     // survives while nothing outscores it, so the best path can need more

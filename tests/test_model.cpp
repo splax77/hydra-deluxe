@@ -189,6 +189,25 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
     CHECK(*a.e_difficulty() == early_fill_difficulty(10.0));
 }
 
+// The all-0 rule (D102): no skips, or one skip that was the early fill.
+TEST_CASE("allzero_activation: no skips, or an E1") {
+    CHECK(allzero_activation(500.0, 0));                     // a plain 0
+    CHECK(allzero_activation(kEarlyFillWindowMs - 0.1, 0));  // an E0
+    CHECK(allzero_activation(kEarlyFillWindowMs - 0.1, 1));  // an E1
+    CHECK(allzero_activation(-kEarlyFillWindowMs, 1));       // an E1, 60 ms late
+    CHECK_FALSE(allzero_activation(kEarlyFillWindowMs, 1));  // a plain 1
+    CHECK_FALSE(allzero_activation(10.0, 2));                // an E2 skips a real fill
+
+    Path p;
+    Activation e1;
+    e1.e_offset = 10.0;
+    test::set_skips(e1, 1);
+    p.activations.push_back(e1);
+    CHECK(p.is_allzero());
+    p.activations.front().e_offset = kEarlyFillWindowMs;
+    CHECK_FALSE(p.is_allzero());
+}
+
 // The early-fill window has one owner: model.h states both halves of it, the
 // fill that refuses (fill_refuses) and the E0 (is_e0). That only model.h
 // reads kEarlyFillWindowMs is a row of the single-owner scan

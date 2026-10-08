@@ -431,7 +431,8 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
 }
 
 // The all-0 pass is a second, constrained search. Its whole contract is that
-// every activation it reports records skips == 0, that the 0 ms limit
+// every activation it reports fits the all-0 rule (no skips, or an E1: D102),
+// that the 0 ms limit
 // (Path::within_ms_limit) is a requirement rather than a preference, and that
 // it never scores above the unconstrained optimum.
 TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
@@ -440,6 +441,9 @@ TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
     // squeeze-out dead on the SP end or a zero-slack early fill. E3 dropped
     // these (D60); D85 restored them, so the corpus must still have some.
     std::set<std::string> zero_ms_charts;
+    // Charts whose all-0 list keeps an E1: an activation that passed over
+    // only its early fill (D102). The corpus must still have some.
+    std::set<std::string> e1_charts;
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, true, true);
@@ -470,6 +474,8 @@ TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
             }
             // A timing of exactly 0 ms needs hitting yet passes (D85).
             if (p->needs_timing()) zero_ms_charts.insert(path);
+            for (const Activation& a : p->walk_activations())
+                if (a.skips() == 1) e1_charts.insert(path);
             if (p->totalscore() > optimum) {
                 d = "scores above the optimum: " + p->pathstring();
                 break;
@@ -482,8 +488,10 @@ TEST_CASE("search_allzero returns only all-0 paths inside the 0 ms limit") {
     CHECK(mismatches == 0);
     CHECK(found > 0);
     CHECK_FALSE(zero_ms_charts.empty());
+    CHECK_FALSE(e1_charts.empty());
     MESSAGE("checked " << checks << " charts, " << found << " with an all-0 path, "
-                       << zero_ms_charts.size() << " of them with a 0 ms timing");
+                       << zero_ms_charts.size() << " of them with a 0 ms timing, "
+                       << e1_charts.size() << " with an E1");
 }
 
 // ---- SP that outlasts the chart ----------------------------------------
