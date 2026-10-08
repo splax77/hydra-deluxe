@@ -75,7 +75,8 @@ std::vector<std::string> search_words(std::string_view typed);
 bool search_matches(const std::vector<std::string>& words, std::string_view search_text);
 
 // A sort key in the form it is compared in: text goes through
-// fold_for_search, so case and accents don't split names apart.
+// fold_for_search, so case and accents don't split names apart. The windows
+// take the Library table's text order, not the pages' (D103 item 16).
 SortKey folded_key(SortKey key);
 
 // The order two folded_key results of one column take: below zero when `a`
