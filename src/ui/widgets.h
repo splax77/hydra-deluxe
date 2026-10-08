@@ -137,6 +137,14 @@ inline bool fits_on_line(float w, float spacing) {
                        ImGui::GetCurrentWindow()->WorkRect.Max.x);
 }
 
+// The flags a Library-style table opens with: the Library table's own, which
+// the report tables take and add to.
+inline ImGuiTableFlags base_table_flags() {
+    return ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
+           ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuterH |
+           ImGuiTableFlags_SizingStretchProp;
+}
+
 // Keeps the current table's columns in the order they were set up. Call it
 // right after the table's TableSetupColumn calls. Dear ImGui 1.93 WIP
 // (ocornut/imgui#9519) loads a sort-only hydra_ui.ini entry into a table
@@ -144,7 +152,7 @@ inline bool fits_on_line(float w, float spacing) {
 // with no saved line get position -1 and sort after it. The reset runs in the
 // same layout pass, after the load, so ask for it whenever a load is pending
 // or the order is already off (not every frame: each reset marks
-// hydra_ui.ini as changed). The Library table and the report tables call it.
+// hydra_ui.ini as changed).
 inline void keep_table_column_order() {
     ImGuiTable* table = ImGui::GetCurrentTable();
     if (!table) return;

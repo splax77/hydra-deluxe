@@ -357,11 +357,8 @@ void chip(const std::string& text, ChipToken token) {
 }
 
 ImGuiTableFlags table_flags() {
-    // The library table's flags (library_table.cpp's render_table), with
     // SortMulti for the Shift+click second sort (D103 item 1).
-    return ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
-           ImGuiTableFlags_SortMulti | ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg |
-           ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;
+    return base_table_flags() | ImGuiTableFlags_SortMulti;
 }
 
 float row_number_width(size_t rows) {

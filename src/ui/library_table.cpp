@@ -228,11 +228,8 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
 
 SecondLineUse render_table(AppState& app, ImVec2 size) {
     SecondLineUse used;
-    const ImGuiTableFlags flags =
-        ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
-        ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuterH |
-        ImGuiTableFlags_SizingStretchProp;
-    if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, flags, size)) return used;
+    if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, base_table_flags(), size))
+        return used;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
     ImGui::TableSetupColumn("Title",

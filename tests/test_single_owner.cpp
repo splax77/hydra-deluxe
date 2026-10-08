@@ -5333,6 +5333,23 @@ const std::vector<OwnerRule>& rules() {
           {"src/ui/widgets.h", "if (reset) table->IsResetDisplayOrderRequest = true;",
            "keep_table_column_order, the owner"}},
          {"src"}},
+        // The report tables open with the Library table's flags and add to
+        // them; a second list of those flags would drift from the first.
+        {"Which flags does a Library-style table open with?",
+         "base_table_flags in src/ui/widgets.h",
+         R"(\bImGuiTableFlags_SizingStretchProp\b)",
+         "",
+         {},
+         {},
+         "report windows plan, T5 brief (the table uses the Library table's flags); "
+         "derive-once review of RW-T5 (finding 1)",
+         {"ImGuiTableFlags_SizingStretchProp;",
+          "ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;"},
+         {"const int table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;",
+          "return base_table_flags() | ImGuiTableFlags_SortMulti;"},
+         {{"src/ui/widgets.h", "ImGuiTableFlags_SizingStretchProp;",
+           "base_table_flags, the owner: render_table and report_frame::table_flags call it"}},
+         {"src"}},
     };
     return r;
 }
