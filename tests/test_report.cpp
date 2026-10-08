@@ -155,6 +155,22 @@ int fill_store(store::RecordStore& store, int cap, int want) {
     return static_cast<int>(fill_store(store, library, cap, want).size());
 }
 
+// Analyzes two charts at cap 4 into `store` (fill_store), then lists h0 in two
+// library folders and h1 in three, so the library holds 5 copies of 2 charts.
+void fill_store_with_copies(store::RecordStore& store) {
+    std::vector<store::ChartLibraryEntry> files;
+    REQUIRE(fill_store(store, files, 4, 2).size() == 2);
+    std::vector<store::ChartLibraryEntry> library;
+    for (const auto& [chart, copies] : {std::pair<size_t, int>{0, 2}, {1, 3}}) {
+        for (int i = 0; i < copies; ++i) {
+            store::ChartLibraryEntry e = files[chart];
+            e.rootfolder = "C:\\songs" + std::to_string(i);
+            library.push_back(e);
+        }
+    }
+    store.rebuild_chart_library(library);
+}
+
 void check_cap(int cap) {
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
@@ -330,17 +346,7 @@ TEST_CASE("library copies are keyed like records_by_hash, and an unlisted chart 
 // that chart's copies as "k", and the tile sums exactly those two fields.
 TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> files;
-    REQUIRE(fill_store(store, files, 4, 2).size() == 2);
-    std::vector<store::ChartLibraryEntry> library;
-    for (const auto& [chart, copies] : {std::pair<size_t, int>{0, 2}, {1, 3}}) {
-        for (int i = 0; i < copies; ++i) {
-            store::ChartLibraryEntry e = files[chart];
-            e.rootfolder = "C:\\songs" + std::to_string(i);
-            library.push_back(e);
-        }
-    }
-    store.rebuild_chart_library(library);
+    fill_store_with_copies(store);
 
     const report::ReportOptions options = fixture_options(4);
     const report::GeneratedReport out = report::generate_report(store, options);
@@ -380,17 +386,7 @@ TEST_CASE("path page: the Charts tile adds up the copies generate_report adds up
 // Charts shown tile reads the subtitle's chart count.
 TEST_CASE("generate_report hands over its rows, subtitle and footer") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> files;
-    REQUIRE(fill_store(store, files, 4, 2).size() == 2);
-    std::vector<store::ChartLibraryEntry> library;
-    for (const auto& [chart, copies] : {std::pair<size_t, int>{0, 2}, {1, 3}}) {
-        for (int i = 0; i < copies; ++i) {
-            store::ChartLibraryEntry e = files[chart];
-            e.rootfolder = "C:\\songs" + std::to_string(i);
-            library.push_back(e);
-        }
-    }
-    store.rebuild_chart_library(library);
+    fill_store_with_copies(store);
 
     report::ReportOptions options = fixture_options(4);
     options.hit_window_ms = 85.0;
