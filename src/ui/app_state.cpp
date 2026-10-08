@@ -58,6 +58,13 @@ AppState::AppState(app::Settings initial_settings,
 // in the header (its destructor needs the full type, which lives here).
 AppState::~AppState() { flush_settings(); }  // an edit in progress still lands
 
+// The contract stage: the default constructor still opens the store before
+// it returns, so there is never an open to show, wait on or collect.
+StoreOpenProgress AppState::store_open_progress() const { return {}; }
+bool AppState::store_open_shown() const { return false; }
+void AppState::wait_store_open() {}
+void AppState::collect_store_open() {}
+
 void AppState::set_render_device(ID3D11Device* device, ID3D11DeviceContext* context) {
     render_device_ = device;
     render_context_ = context;

@@ -1,7 +1,8 @@
-// The library tab's four background jobs: scanning chart folders (ScanJob),
-// batch-analyzing many charts (BatchJob), analyzing the clicked chart (ViewJob),
-// and building the HTML path report afterwards (ReportJob). AppState owns one
-// of each at most; the library files (library_toolbar.cpp, library_dialogs.cpp)
+// The library tab's background jobs: opening the library file at startup
+// (StoreOpenJob), scanning chart folders (ScanJob), batch-analyzing many
+// charts (BatchJob), analyzing the clicked chart (ViewJob), and building the
+// HTML path report afterwards (ReportJob). AppState owns one of each at most;
+// the library files (library_toolbar.cpp, library_dialogs.cpp, library_view.cpp)
 // and details_panel.cpp poll them per frame.
 //
 // Every job is polled once per frame from the render thread via snapshot()/
@@ -13,9 +14,11 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <exception>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -24,14 +27,121 @@
 #include <vector>
 
 #include "app/analysis.h"
+#include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "app/report.h"
 #include "core/model.h"
 #include "store/record_store.h"
 #include "ui/job_base.h"
+#include "ui/library_model.h"
 #include "ui/report_outcome.h"
 
 namespace hydra::ui {
+
+class ByteRateClock;  // ui/preview_load_job.h
+
+// ---- StoreOpenJob ---------------------------------------------------------
+
+// Where the startup open of the library file is, for the startup screen. The
+// first four steps are the store's own (it reports them while it opens and,
+// for an old file, upgrades); LoadingLibrary is the job's read of the chart
+// list and its summaries once the store is open.
+struct StoreOpenProgress {
+    enum class Step { Opening, UpdatingResultsKey, Copying, Finishing, LoadingLibrary };
+    Step step = Step::Opening;
+    // Rows copied into the upgraded file, out of the rows to copy, both as
+    // the store counted them. 0 of 0 until the copy begins, and on a file
+    // that needs no upgrade.
+    uint64_t rows_done = 0;
+    uint64_t rows_total = 0;
+    // Whether this open has upgraded the file at any step so far. It stays
+    // set through Finishing and LoadingLibrary, so the screen keeps its
+    // upgrade heading and full bar until the library appears.
+    bool upgrading = false;
+    // Seconds since the job started.
+    double elapsed_s = 0.0;
+    // Seconds left at the measured row rate (ByteRateClock); < 0 while not
+    // known.
+    double time_left_s = -1.0;
+
+    // The bar's fill: progress_fraction of the two counts (ui/widgets.h).
+    float fraction() const;
+    // The line under the heading: what the open is doing now.
+    std::string label() const;
+    // The Preview loader's time-left words and gate, applied to the copy:
+    // "" except while Copying.
+    std::string time_left_text() const;
+};
+
+// The startup open's test gate (set_store_open_gate_for_test below).
+using StoreOpenGate =
+    std::function<void(const StoreOpenProgress& progress, const std::function<bool()>& cancelled)>;
+
+// Opens the library file off the UI thread at startup, then reads the
+// library the way AppState::reload_library does, into a model of its own.
+// AppState::tick collects it: the store and the model move into AppState, and
+// a failed read of the library becomes the status line's problem, as it does
+// on the UI thread. A store that will not open fails the job; main.cpp then
+// shows the startup message box (D72 item 1) and Hydra closes. Closing the
+// window while it runs cancels the open (the store stops at its next
+// progress report) and joins the thread.
+class StoreOpenJob : public ResultJobBase {
+public:
+    // `settings` is copied: its chart mode, SP cap and lens pick the
+    // summaries the library shows, as reload_library's do.
+    StoreOpenJob(std::string db_path, core::RulesStamp rules, app::Settings settings);
+    ~StoreOpenJob();
+
+    void start();
+    // Blocks until the thread has exited. A deliberate wait, for the test
+    // harness only (AppState::wait_store_open); the app never calls it.
+    void wait();
+
+    StoreOpenProgress progress() const;
+
+    // Valid once finished() && ok(); each moves its part out (call once).
+    std::unique_ptr<store::RecordStore> take_store() { return std::move(store_); }
+    LibraryModel take_library() { return std::move(library_); }
+    // The plain sentence of a library read that failed after the store
+    // opened, or "" when the read worked.
+    const std::string& library_problem() const { return library_problem_; }
+    // The exception that failed the job, for the startup message box. Null
+    // unless finished() && !ok().
+    std::exception_ptr failure() const { return failure_; }
+
+private:
+    void run();
+    // Publishes a step and counts, then waits at the test gate when one is
+    // set. False once the job is cancelled: the store stops there.
+    bool report(StoreOpenProgress::Step step, uint64_t rows_done, uint64_t rows_total);
+
+    std::string db_path_;
+    core::RulesStamp rules_;
+    app::Settings settings_;
+    std::unique_ptr<store::RecordStore> store_;
+    LibraryModel library_;
+    std::string library_problem_;
+    std::exception_ptr failure_;
+    StoreOpenGate gate_;  // the test seam's, copied at construction
+
+    // Written by the job's thread, read by the render thread.
+    std::atomic<int> step_{static_cast<int>(StoreOpenProgress::Step::Opening)};
+    std::atomic<uint64_t> rows_done_{0};
+    std::atomic<uint64_t> rows_total_{0};
+    std::atomic<bool> upgrading_{false};
+    std::chrono::steady_clock::time_point started_{};  // set in start(), then read-only
+
+    // The time-left clock, fed from progress() on the render thread.
+    mutable std::mutex clock_mutex_;
+    std::unique_ptr<ByteRateClock> clock_;
+};
+
+// GUI-test seam: when set, every startup open built from now on calls `gate`
+// from its thread at every progress report, after publishing it, and carries
+// on once the gate returns. `cancelled` reads true once the app is closing,
+// so a gate that waits must give up then. An empty function clears it. Only
+// the uitest harness sets it.
+void set_store_open_gate_for_test(StoreOpenGate gate);
 
 // ---- ScanJob --------------------------------------------------------------
 
