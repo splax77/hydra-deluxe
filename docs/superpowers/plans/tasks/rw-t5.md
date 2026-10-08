@@ -46,7 +46,7 @@ Owned-file check: every T5 step draws from a plain struct and wave 1's views; no
 
 1. **The imgui#9519 workaround** moves into one shared helper in `src/ui/widgets.h` (for example `keep_table_column_order()`). `library_table.cpp`'s `render_table` calls it in place of its own lines 258-270, and `report_frame::table` calls it right after its `TableSetupColumn` loop. For this, the finisher also owns `src/ui/widgets.h` and those lines of `src/ui/library_table.cpp`. Add a scan row that would flag the old inline reset if it came back. Rerun the five report-window uitests and `library-column-order` by name.
 2. **The strip background colours** (`kDoneBg`, `kProblemBg` in `library_dialogs.cpp`) wait for wave 3: T4 owns `library_dialogs.cpp` this wave. T6 moves them into the theme and uses them in both places. Leave the strips as they are now.
-3. **The two mock sentences** not in the spec's word list wait for the user; don't add them.
+3. **The two mock sentences: the user said draw both** (D103 item 21). The path report's subtitle reads "Building the report from your library..." while it builds. `ReportWindowInput` gains an optional batch finish time; when it's set and the out-of-date reason is Library, the line ends with "(a batch finished at HH:MM)", written the way "Built HH:MM" is written (one time formatter, not two). T6 fills the time from AppState. Pin both in `report-window-states`.
 
 ## Preflight
 
