@@ -182,8 +182,6 @@ public:
     // for a cymbal or a 2x kick. Red + yellow cymbal + green cymbal is
     // ".nN.N". Every chord a chart can express has one; nothing is looked up.
     std::string code() const;
-    // The reverse of code(). Throws std::out_of_range on a malformed code.
-    static Chord from_code(const std::string& code);
 
     bool operator==(const Chord& o) const;
     bool operator!=(const Chord& o) const { return !(*this == o); }

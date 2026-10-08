@@ -245,11 +245,11 @@ std::string sig_of(const DirEntry& notes, const DirEntry* ini) {
     return sig;
 }
 
-// The rescan cache's one "unchanged" test: a fingerprint was stored and the
-// files on disk still give the same one. The scan's cache lookup and
-// chart_changed_since both ask it.
+// The rescan cache's one "unchanged" test: a fingerprint was stored that can
+// show anything (store::sig_can_show_unchanged) and the files on disk still
+// give the same one. The scan's cache lookup and chart_changed_since both ask it.
 bool sig_unchanged(const std::string& stored, const std::string& now) {
-    return !stored.empty() && stored == now;
+    return store::sig_can_show_unchanged(stored) && stored == now;
 }
 
 // The kind of chart a file is, by its name. Anything that is not an archive
@@ -360,7 +360,7 @@ std::optional<ChartNow> chart_changed_since(const std::string& notespath,
                                             const std::string& stored_sig) {
     // One listing, and the sig before the hash, as the scan reads them.
     const std::string now = chart_files_sig(notespath);
-    if (!now.empty() && sig_unchanged(stored_sig, now)) return std::nullopt;
+    if (sig_unchanged(stored_sig, now)) return std::nullopt;
     return ChartNow{hash_chart_file(notespath), now};
 }
 
@@ -852,11 +852,12 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
     // count. The progress that counts a row goes out before that row's own
     // callback, so a caller numbering its lines reads the number from the
     // progress (D79).
-    const auto report = [&](const WorkResult& wr) {
+    const auto report = [&](WorkResult& wr) {
         // The chart's report rows go to the seed once, with its first row's
-        // on_result: only a chart that was saved is handed over.
+        // on_result: only a chart that was saved is handed over. They are
+        // moved, not copied: the seed is their last reader.
         if (seed && !wr.failed)
-            seed->rows[normalize_chart_hash(wr.item.md5)] = wr.report_rows;
+            seed->rows[normalize_chart_hash(wr.item.md5)] = std::move(wr.report_rows);
         for (int r = 0; r < wr.rows; ++r) {
             if (wr.failed) ++progress.failed;
             else ++progress.analyzed;
@@ -889,9 +890,9 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
             for (WorkResult& wr : deferred)
                 if (!wr.failed) save_result(store, wr);
         }
-        const std::vector<WorkResult> done = std::move(deferred);
+        std::vector<WorkResult> done = std::move(deferred);
         deferred.clear();
-        for (const WorkResult& wr : done) report(wr);
+        for (WorkResult& wr : done) report(wr);
     };
 
     try {

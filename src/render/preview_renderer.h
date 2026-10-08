@@ -16,6 +16,7 @@
 
 #include <d3d11.h>
 
+#include <memory>
 #include <string>
 
 #include "app/preview_view.h"
@@ -38,6 +39,11 @@ public:
 
     // (Re)create the size-dependent targets.
     void resize(int width, int height);
+    // Free the size-dependent targets, keeping the assets and pipeline (D95
+    // call 4: the Preview frees them when it closes). Until the next resize,
+    // texture_srv() is null, width() and height() are 0 and render() draws
+    // nothing.
+    void release_targets();
 
     // Replace the chart being drawn (builds the track state once, here, on
     // the calling thread).
@@ -61,7 +67,7 @@ public:
 
 private:
     struct Impl;
-    Impl* impl_;
+    std::unique_ptr<Impl> impl_;
 };
 
 }  // namespace hydra::render

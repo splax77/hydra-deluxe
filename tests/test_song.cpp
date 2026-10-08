@@ -50,16 +50,15 @@ void check_invariants(const Song& song, const std::string& what,
         if (ts.timecode.ticks() <= prev) ticks_ok = false;
         prev = ts.timecode.ticks();
 
-        // Every chord code decodes back to the same chord.
-        const std::string code = ts.chord.code();
-        if (code.empty() || Chord::from_code(code).code() != code) codes_ok = false;
+        // Every chord spells as a code (Chord::code throws on one it can't).
+        if (ts.chord.code().empty()) codes_ok = false;
 
         // An activation fill length is always positive.
         if (ts.activation_length.has_value() && *ts.activation_length <= 0)
             fills_ok = false;
     }
     CHECK_MESSAGE(ticks_ok, what << ": ticks not strictly increasing");
-    CHECK_MESSAGE(codes_ok, what << ": chord code round-trip");
+    CHECK_MESSAGE(codes_ok, what << ": a chord with no code");
     if (fill_check == FillCheck::Check)
         CHECK_MESSAGE(fills_ok, what << ": non-positive activation fill");
 }
@@ -78,6 +77,20 @@ TEST_CASE("song parse holds its invariants over the corpus") {
 
     CHECK(nonempty > 0);
     MESSAGE("checked " << charts << " charts (" << nonempty << " non-empty)");
+}
+
+TEST_CASE("a parsed song keeps no spare room in its chord list") {
+    // Every loader ends at load_songbytes_mid or load_songbytes_chart, so the
+    // corpus covers .mid, .chart and the containers alike. Parsed fresh here,
+    // not through corpus::song's cache.
+    int nonempty = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song song = load_songpath(path, true, true);
+        if (song.is_empty()) continue;
+        ++nonempty;
+        CHECK_MESSAGE(song.sequence.capacity() == song.sequence.size(), path);
+    }
+    CHECK(nonempty > 0);
 }
 
 TEST_CASE("song parse holds its invariants at Hard too") {

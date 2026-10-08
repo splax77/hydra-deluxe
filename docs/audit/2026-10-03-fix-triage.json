@@ -2785,7 +2785,7 @@
 "decision_weight": "low",
 "visible_change": "none",
 "results_change": "no",
-"notes": "The same question applies to many test copies in the audit."
+"notes": "The same question applies to many test copies in the audit. The test copy in tests/test_search.cpp (the multiplier-squeeze test) outlived J2-7; it now reads chord_score_table's rows (the owner since Track R, 3083155), and the single-owner row \"What is the combo before a chord?\" flags a new category_scores combo walk."
 },
 {
 "id": "165",

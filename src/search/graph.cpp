@@ -106,7 +106,17 @@ ScoreGraph::ScoreGraph(const Song& song, std::optional<int> sp_meter_cap,
 void ScoreGraph::build() {
     TickGreater cmp;
 
-    for (const SongTimestamp& timestamp : song_.sequence) {
+    // The loop below stores one row per chord (store_new_backend), so the
+    // list is sized once instead of growing a row at a time.
+    all_backends_.reserve(song_.sequence.size());
+
+    // Every chord's points come off the chart's one chord-score table
+    // (core/scoring.h), the same table replay_path prices chords from.
+    const ChordScoreTable table = chord_score_table(song_, rules_.sqout_rule);
+
+    for (size_t i = 0; i < song_.sequence.size(); ++i) {
+        const SongTimestamp& timestamp = song_.sequence[i];
+        const ChordScoreRow& sg = table.rows[i];
         // SP can fall off between timestamps: handle deacts due before this one.
         while (!deact_heap_.empty() &&
                deact_heap_.front().ticks() < timestamp.timecode.ticks()) {
@@ -122,12 +132,10 @@ void ScoreGraph::build() {
 
         set_head_time(timestamp.timecode);
 
-        store_soloscore(solo_bonus(timestamp.chord, timestamp.flag_solo));
+        store_soloscore(sg.solo);
 
-        CategoryScores sg = category_scores(timestamp.chord, combo_, nullptr, rules_.sqout_rule);
-
-        if (MultSqueeze::applies(timestamp.chord, combo_))
-            store_multsqueeze(MultSqueeze(timestamp.chord, combo_));
+        if (MultSqueeze::applies(timestamp.chord, sg.combo_before))
+            store_multsqueeze(MultSqueeze(timestamp.chord, sg.combo_before));
 
         store_basescore(sg.base);
         store_comboscore(sg.combo);
@@ -135,9 +143,7 @@ void ScoreGraph::build() {
         store_accentscore(sg.accent);
         store_ghostscore(sg.ghost);
 
-        combo_ = sg.combo_after;
-
-        store_new_backend(timestamp, sg.sp, sg.sqout_sp());
+        store_new_backend(timestamp, sg.sp, sg.sqout_sp);
 
         if (timestamp.flag_sp) {
             // Deacts within the squeeze window keep a non-extended copy (SqOut).

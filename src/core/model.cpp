@@ -133,34 +133,6 @@ std::string Chord::code() const {
     return out;
 }
 
-Chord Chord::from_code(const std::string& code) {
-    if (code.size() != kLanes) throw std::out_of_range("unknown chord code: " + code);
-
-    Chord chord;
-    for (size_t i = 0; i < kLanes; ++i) {
-        const char ch = code[i];
-        if (ch == '.') continue;
-        const NoteColor color = static_cast<NoteColor>(i + 1);
-        const bool flag = ch >= 'A' && ch <= 'Z';
-        const char lower = flag ? static_cast<char>(ch - 'A' + 'a') : ch;
-
-        ChordNote note{color};
-        switch (lower) {
-            case 'n': note.dynamictype = NoteDynamicType::Normal; break;
-            case 'g': note.dynamictype = NoteDynamicType::Ghost; break;
-            case 'a': note.dynamictype = NoteDynamicType::Accent; break;
-            default: throw std::out_of_range("unknown chord code: " + code);
-        }
-        if (flag) {
-            if (!lane_allows_flag(color))
-                throw std::out_of_range("unknown chord code: " + code);
-            set_lane_flag(note);
-        }
-        chord.insert_note(note);
-    }
-    return chord;
-}
-
 // ---- Chord: rest --------------------------------------------------------
 
 bool Chord::operator==(const Chord& o) const {

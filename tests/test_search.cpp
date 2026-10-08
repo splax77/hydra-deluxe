@@ -196,15 +196,15 @@ TEST_CASE("the graph finds the chart's multiplier squeezes once, in chart order"
         if (song.is_empty()) continue;
         ++charts;
 
-        // Every chord, at the combo before it.
+        // Every chord, at the combo before it, read off chord_score_table's
+        // row for that chord.
+        const ChordScoreTable table = chord_score_table(song, core::SqOutRule::FirstNote);
         std::vector<MultSqueeze> want;
-        int combo = 0;
-        for (const SongTimestamp& ts : song.sequence) {
+        for (size_t i = 0; i < song.sequence.size(); ++i) {
             try {
-                want.push_back(MultSqueeze(ts.chord, combo));
+                want.push_back(MultSqueeze(song.sequence[i].chord, table.rows[i].combo_before));
             } catch (const std::invalid_argument&) {
             }
-            combo = category_scores(ts.chord, combo).combo_after;
         }
 
         ScoreGraph graph(song, 4);
@@ -574,6 +574,21 @@ using test::lone_pricing_mismatch;
 using test::collect_tied;
 
 }  // namespace
+
+TEST_CASE("score graph: the backend rows are sized once, one per chord") {
+    // The graph sizes its row list from the song before building, so it ends
+    // with one row per chord and no spare room from growing a row at a time.
+    int built = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, true, true);
+        if (song.is_empty()) continue;
+        const ScoreGraph graph(song, 4);
+        ++built;
+        CHECK_MESSAGE(graph.all_backends().size() == song.sequence.size(), path);
+        CHECK_MESSAGE(graph.all_backends().capacity() == song.sequence.size(), path);
+    }
+    CHECK(built > 0);
+}
 
 TEST_CASE("SP past the last note: backends measured from the tracked SP end") {
     // Two SP phrases, then an activation at tick 2304 with a 2-bar meter, so

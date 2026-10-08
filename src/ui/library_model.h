@@ -38,9 +38,26 @@ inline constexpr int kColumnBestPath = static_cast<int>(LibrarySort::BestPath);
 // How many columns the table has: one per LibrarySort value.
 inline constexpr int kLibraryColumnCount = kColumnBestPath + 1;
 
+// The part of a scanned chart's row (store::ChartLibraryEntry) the library
+// keeps for every chart: its hash, its file and its folder. The rest of the
+// scan's row (the names as written, sig, timing) is read from the store when
+// a song is clicked or a batch starts (AppState::select, library_matches).
+struct LibraryChart {
+    std::string md5;         // the chart's hash
+    std::string notespath;   // which row is selected, and the sort's last tie-break
+    std::string rootfolder;  // the Folder column
+};
+
+// What tells one library row from another, for a LibraryChart or a store
+// entry alike. Never the md5: the same chart can sit in two folders, and each
+// copy is its own row (audit finding 143). Which row is selected, a click's
+// copy and a batch's entries all compare this.
+inline const std::string& row_key(const LibraryChart& row) { return row.notespath; }
+inline const std::string& row_key(const store::ChartLibraryEntry& row) { return row.notespath; }
+
 // One scanned chart as the table shows it.
 struct LibraryRow {
-    store::ChartLibraryEntry entry;       // as scanned; entry.md5 is the chart's hash
+    LibraryChart entry;
     std::string title, artist, charter;   // colour tags removed: what the table draws
     app::SearchableRow searchable;        // folded copies, for matching and sorting
     store::RecordStatus status = store::RecordStatus::NotAnalyzed;
@@ -48,7 +65,8 @@ struct LibraryRow {
     bool stale_rules = false;             // SummaryLookup); the tooltip names it
     std::string bestpath;                 // set when Ready
     store::PathSummary summary;           // set when Ready (T7)
-    std::string best_label;               // the Best path cell (best_path_label)
+    // The Best path cell, made when it is drawn (best_path_label).
+    std::string best_label() const;
 };
 
 // The word for a record's status: "Analyzed", "Stale" or "Not analyzed". The

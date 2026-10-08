@@ -297,22 +297,6 @@ private:
     bool recognized_ = false;
 };
 
-// The name the full read gives this track, from a walk that keeps nothing.
-// Throws where the full read throws.
-std::string track_name_of(const uint8_t* data, size_t pos, size_t end) {
-    std::string name;
-    TrackNamePick pick;
-    walk_track(
-        data, pos, end,
-        [&](int meta_type, const uint8_t* payload, size_t plen, int64_t) {
-            if (meta_type == kTrackNameMeta && !pick.settled())
-                pick.offer(decode_latin1(payload, plen), name);
-            return false;
-        },
-        [](int, uint8_t, uint8_t, int64_t) { return false; });
-    return name;
-}
-
 // A note-on or note-off as the reader emits it.
 Message note_message(int high, uint8_t d1, uint8_t d2, int64_t time) {
     Message msg;
@@ -321,6 +305,50 @@ Message note_message(int high, uint8_t d1, uint8_t d2, int64_t time) {
     msg.velocity = clip_data_byte(d2);
     msg.time = time;
     return msg;
+}
+
+// The metas the timing track's role keeps in MidiFile::lean.
+bool timing_meta(int meta_type) {
+    return meta_type == kSetTempoMeta || meta_type == kTimeSignatureMeta;
+}
+
+// One track as the lean reader's first walk sees it: the name the full read
+// gives it, and how many messages each lean role would keep from it, so
+// MidiFile::lean can size the track once. Each count uses the predicate the
+// lean walk keeps by. A count can run high (a kept type whose payload
+// meta_message refuses) but never low, and it only sizes a vector.
+struct TrackScan {
+    std::string name;
+    size_t timing_metas = 0;  // timing_meta
+    size_t text_metas = 0;    // text_meta
+    size_t kept_notes = 0;    // MidiLeanFilter::keeps
+
+    size_t kept(bool timing, bool texts, bool drums) const {
+        return (timing ? timing_metas : 0) + (texts ? text_metas : 0) +
+               (drums ? kept_notes : 0);
+    }
+};
+
+// A walk that keeps nothing. Throws where the full read throws.
+TrackScan scan_track(const uint8_t* data, size_t pos, size_t end,
+                     const MidiLeanFilter& filter) {
+    TrackScan scan;
+    TrackNamePick pick;
+    walk_track(
+        data, pos, end,
+        [&](int meta_type, const uint8_t* payload, size_t plen, int64_t) {
+            if (meta_type == kTrackNameMeta && !pick.settled())
+                pick.offer(decode_latin1(payload, plen), scan.name);
+            MType text_type;
+            if (timing_meta(meta_type)) ++scan.timing_metas;
+            if (text_meta(meta_type, &text_type)) ++scan.text_metas;
+            return false;
+        },
+        [&](int high, uint8_t d1, uint8_t d2, int64_t) {
+            if (filter.keeps(note_message(high, d1, d2, 0))) ++scan.kept_notes;
+            return false;
+        });
+    return scan;
 }
 
 }  // namespace
@@ -365,12 +393,14 @@ void MidiFile::parse(const uint8_t* data, size_t size) {
 
 MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& filter) {
     MidiFile mf;
-    // First every track's byte range and name: every track is walked, so a
-    // bad length anywhere throws as the full read does.
+    // First every track's byte range, name and kept counts: every track is
+    // walked, so a bad length anywhere throws as the full read does.
     std::vector<std::pair<size_t, size_t>> ranges;
+    std::vector<TrackScan> scans;
     walk_chunks(data, size, mf.format, mf.ticks_per_beat, [&](size_t start, size_t end) {
         ranges.emplace_back(start, end);
-        mf.tracks.emplace_back().name = track_name_of(data, start, end);
+        scans.push_back(scan_track(data, start, end, filter));
+        mf.tracks.emplace_back().name = std::move(scans.back().name);
     });
 
     // Then each track keeps only what its role reads (see the header).
@@ -381,13 +411,13 @@ MidiFile MidiFile::lean(const uint8_t* data, size_t size, const MidiLeanFilter& 
         const bool drums = &track == drums_track;
         const bool texts = drums || track.is_events();
         if (!timing && !texts) continue;
+        track.messages.reserve(scans[i].kept(timing, texts, drums));
         walk_track(
             data, ranges[i].first, ranges[i].second,
             [&](int meta_type, const uint8_t* payload, size_t plen, int64_t pending) {
                 MType text_type;
-                const bool keep =
-                    (timing && (meta_type == kSetTempoMeta || meta_type == kTimeSignatureMeta)) ||
-                    (texts && text_meta(meta_type, &text_type));
+                const bool keep = (timing && timing_meta(meta_type)) ||
+                                  (texts && text_meta(meta_type, &text_type));
                 if (!keep) return false;
                 Message msg;
                 if (!meta_message(meta_type, payload, plen, pending, &msg)) return false;

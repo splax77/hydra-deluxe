@@ -10,9 +10,9 @@
 #include <string_view>
 
 #include "core/error_kind.h"
+#include "core/little_endian.h"
 #include "core/stars.h"
 #include "core/winstr.h"
-#include "store/serialize.h"
 #include "store/stored_versions.h"
 
 namespace hydra::store {
@@ -351,9 +351,9 @@ int bind_cap(sqlite3_stmt* s, int idx, const CapQuery& cap) {
 
 // A rules fingerprint as the rules_fp column holds it.
 std::vector<uint8_t> rules_fp_bytes(uint64_t fingerprint) {
-    BinaryWriter w;
-    w.u64(fingerprint);
-    return w.bytes;
+    std::vector<uint8_t> bytes;
+    core::append_le_u64(bytes, fingerprint);
+    return bytes;
 }
 
 // The fingerprint a row must carry to be Ready in this process, as the
@@ -683,8 +683,8 @@ void RecordStore::set_up_schema() {
     exec("DROP TABLE IF EXISTS songlength");
     // The library page sorts by name (list_chart_library's ORDER BY name).
     exec("CREATE INDEX IF NOT EXISTS charts_by_name ON charts (name)");
-    // The scan's purge and list_records find a chart's library rows by md5
-    // (D76).
+    // The scan's purge, list_records and list_chart_library_copies find a
+    // chart's library rows by md5 (D76).
     exec("CREATE INDEX IF NOT EXISTS charts_by_md5 ON charts (md5)");
     // Schema 2 = results keyed by the full settings. A database from Hydra
     // 1.6 or older still holds its old `records` table. Nothing reads it
@@ -1227,7 +1227,7 @@ std::unordered_map<std::string, std::string> RecordStore::naming_copy_paths() {
     std::lock_guard<std::recursive_mutex> lock(mutex_);
     // Joins the naming copy kNamingCopiesSql picks back to its own row.
     const std::string sql = std::string("SELECT c.md5, p.path FROM ") + kNamingCopiesSql +
-                            " AS c JOIN charts AS p ON p.rowid = c.\"MIN(rowid)\"";
+                            " AS c JOIN charts AS p ON p.rowid = c.naming_rowid";
     Stmt s = prepare_read(db_, sql.c_str());
     std::unordered_map<std::string, std::string> out;
     while (step_row(s)) out.emplace(column_text(s, 0), column_text(s, 1));
@@ -1367,7 +1367,7 @@ ChartLibraryCache RecordStore::chart_library_cache() {
                           " FROM charts");
     while (step_row(s)) {
         std::string sig = column_text(s, 1);
-        if (sig.empty()) continue;
+        if (!sig_can_show_unchanged(sig)) continue;
         cache[column_text(s, 0)] = {std::move(sig),      column_text(s, 2), column_text(s, 3),
                                     column_text(s, 4),   column_text(s, 5),
                                     {column_opt_f64(s, 6), column_opt_f64(s, 7)}};
@@ -1388,18 +1388,16 @@ int64_t RecordStore::chart_library_count() {
     return sqlite3_column_int64(s, 0);
 }
 
-std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+namespace {
 
-    // Rows an older scan wrote never read their timing: none, not "none
-    // stated".
-    const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(db_,
-                          "SELECT md5, name, artist, charter, path, folder, sig, stated_length_ms,"
-                          " delay_ms FROM charts ORDER BY name LIMIT ? OFFSET ?");
-    sqlite3_bind_int(s, 1, limit);
-    sqlite3_bind_int(s, 2, offset);
+// The columns a library entry is read from, in read_library_entries' order.
+constexpr const char* kLibraryEntrySelect =
+    "SELECT md5, name, artist, charter, path, folder, sig, stated_length_ms, delay_ms FROM charts";
 
+// Every row `s` (a kLibraryEntrySelect query) steps to. Rows an older scan
+// wrote never read their timing: none, not "none stated"; `timing_read`
+// (RecordStore::chart_meta_current) says which rows those are.
+std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing_read) {
     std::vector<ChartLibraryEntry> out;
     while (step_row(s)) {
         ChartLibraryEntry e;
@@ -1414,6 +1412,28 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int l
         out.push_back(std::move(e));
     }
     return out;
+}
+
+}  // namespace
+
+std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+    const bool timing_read = chart_meta_current();
+    Stmt s = prepare_read(
+        db_, (std::string(kLibraryEntrySelect) + " ORDER BY name LIMIT ? OFFSET ?").c_str());
+    sqlite3_bind_int(s, 1, limit);
+    sqlite3_bind_int(s, 2, offset);
+    return read_library_entries(s, timing_read);
+}
+
+std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std::string& md5) {
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
+
+    const bool timing_read = chart_meta_current();
+    Stmt s = prepare_read(db_, (std::string(kLibraryEntrySelect) + " WHERE md5 = ?").c_str());
+    bind_text(s, 1, md5);
+    return read_library_entries(s, timing_read);
 }
 
 }  // namespace hydra::store

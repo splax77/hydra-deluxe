@@ -257,6 +257,14 @@ int64_t results_rows(const ScratchPaths& paths) {
     return hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results");
 }
 
+// Makes every later change to a library row fail, so a click's
+// reidentify_chart throws.
+void refuse_library_row_updates(const ScratchPaths& paths) {
+    hydra::test::exec_on_file(paths.db,
+                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
+                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+}
+
 int64_t result_id(const ScratchPaths& paths, const std::string& md5) {
     return hydra::test::scalar_on_file(
         paths.db, "SELECT result_id FROM results WHERE hyhash = '" + md5 + "'");
@@ -368,9 +376,7 @@ TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     write_corpus_chart("click_reidfail", /*extra_note=*/true);
     const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
     REQUIRE(new_md5 != scanned.md5);
-    hydra::test::exec_on_file(paths.db,
-                              "CREATE TRIGGER refuse_reidentify BEFORE UPDATE ON charts"
-                              " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    refuse_library_row_updates(paths);
 
     click(*app, scanned);
 
@@ -380,6 +386,114 @@ TEST_CASE("a click whose re-identify fails shows the error and saves nothing") {
     // The row keeps its old hash, and nothing was saved under either hash.
     CHECK(app->selected->md5 == scanned.md5);
     CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
+}
+
+// D96: a chart saved again with the same content has a new size-and-time
+// fingerprint but the same hash. The click saves that fingerprint, so the
+// next click finds the file unchanged and does not hash it again.
+TEST_CASE("clicking a chart touched since the scan saves its new fingerprint") {
+    ScratchPaths paths("appstate_click_touch");
+    const ChartLibraryEntry scanned = corpus_chart("click_touch");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    // The same bytes written again: the mtime moves, the hash does not.
+    Sleep(20);
+    write_corpus_chart("click_touch", /*extra_note=*/false);
+    REQUIRE(hydra::app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
+    REQUIRE(hydra::app::hash_chart_file(scanned.notespath) == scanned.md5);
+
+    click(*app, scanned);
+
+    REQUIRE(app->viewed.ready());
+    // The store's row and the selected row hold the fingerprint the file
+    // gives now, under the unchanged hash. The library row keeps no
+    // fingerprint (LibraryChart); the next click reads the store's.
+    const std::vector<ChartLibraryEntry> stored = app->store->list_chart_library(0, -1);
+    REQUIRE(stored.size() == 1);
+    CHECK(stored[0].md5 == scanned.md5);
+    CHECK_FALSE(hydra::app::chart_changed_since(scanned.notespath, stored[0].sig).has_value());
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == scanned.md5);
+    CHECK_FALSE(hydra::app::chart_changed_since(scanned.notespath, app->selected->sig).has_value());
+    // The click's result is saved under the unchanged hash.
+    CHECK(row_of(*app, scanned.md5).status == RecordStatus::Ready);
+}
+
+// D96 keeps ruling 15 for a touched chart: when the fingerprint cannot be
+// saved, the click fails loudly and saves nothing.
+TEST_CASE("a touched chart whose fingerprint save fails shows the error and saves nothing") {
+    ScratchPaths paths("appstate_click_touchfail");
+    const ChartLibraryEntry scanned = corpus_chart("click_touchfail");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    Sleep(20);
+    write_corpus_chart("click_touchfail", /*extra_note=*/false);
+    REQUIRE(hydra::app::chart_changed_since(scanned.notespath, scanned.sig).has_value());
+    refuse_library_row_updates(paths);
+
+    click(*app, scanned);
+
+    CHECK(app->viewed.state == hydra::ui::ViewedSong::State::Failed);
+    CHECK_FALSE(app->viewed.message.empty());
+    CHECK_FALSE(app->viewed.record.has_value());
+    CHECK(app->selected->sig == scanned.sig);
+    CHECK(hydra::test::scalar_on_file(paths.db, "SELECT COUNT(*) FROM results") == 0);
+}
+
+namespace {
+
+// Deletes the song.ini beside a folder chart, so its files give no fingerprint.
+void remove_click_ini(const ChartLibraryEntry& chart) {
+    const std::string ini =
+        std::filesystem::path(chart.notespath).parent_path().string() + "\\song.ini";
+    REQUIRE(std::remove(ini.c_str()) == 0);
+    REQUIRE(hydra::app::chart_files_sig(chart.notespath).empty());
+}
+
+}  // namespace
+
+// D96 follow-up: a folder chart whose song.ini was deleted after the scan
+// gives no fingerprint now, and that one could never show the files unchanged
+// on a later click (store::sig_can_show_unchanged). Saving it would buy nothing
+// and cost a database write and a library reload on every click.
+TEST_CASE("clicking a touched chart that lost its song.ini leaves its library row alone") {
+    ScratchPaths paths("appstate_click_noini");
+    const ChartLibraryEntry scanned = corpus_chart("click_noini");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    remove_click_ini(scanned);
+    REQUIRE(hydra::app::hash_chart_file(scanned.notespath) == scanned.md5);
+
+    click(*app, scanned);
+
+    REQUIRE(app->viewed.ready());
+    const std::vector<ChartLibraryEntry> stored = app->store->list_chart_library(0, -1);
+    REQUIRE(stored.size() == 1);
+    CHECK(stored[0].md5 == scanned.md5);
+    CHECK(stored[0].sig == scanned.sig);
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->sig == scanned.sig);
+    CHECK(row_of(*app, scanned.md5).status == RecordStatus::Ready);
+}
+
+// The other side of the test above: an edited chart still takes its new hash
+// when its files give no fingerprint, or its results would sit under a hash
+// the file no longer has.
+TEST_CASE("clicking an edited chart that lost its song.ini still re-identifies it") {
+    ScratchPaths paths("appstate_click_editnoini");
+    const ChartLibraryEntry scanned = corpus_chart("click_editnoini");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    write_corpus_chart("click_editnoini", /*extra_note=*/true);
+    remove_click_ini(scanned);
+    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
+    REQUIRE(new_md5 != scanned.md5);
+
+    click(*app, scanned);
+
+    REQUIRE(app->viewed.ready());
+    const std::vector<ChartLibraryEntry> stored = app->store->list_chart_library(0, -1);
+    REQUIRE(stored.size() == 1);
+    CHECK(stored[0].md5 == new_md5);
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == new_md5);
+    CHECK(row_of(*app, new_md5).status == RecordStatus::Ready);
 }
 
 TEST_CASE("clicking A then B in one frame shows B, and A is never shown or saved") {
@@ -1047,6 +1161,75 @@ TEST_CASE("a scan cannot start during a batch, and the status line says so (D51 
     CHECK(app->can_scan());
 }
 
+namespace {
+
+// The hash the rows hold for a chart edited before the scan.
+const std::string kHashBeforeEdit = "hash-before-the-edit";
+
+// A library read before a scan that has since replaced the chart table, with
+// no frame run in between, so the rows are older than the store. `kept` is
+// what the scan wrote for a chart still in the folder, edited before the scan
+// (its row holds kHashBeforeEdit); `removed` is a row the scan dropped.
+struct RowsOlderThanScan {
+    ChartLibraryEntry kept;
+    ChartLibraryEntry removed = library_entry(1);
+    std::unique_ptr<AppState> app;
+};
+
+RowsOlderThanScan rows_older_than_scan(const ScratchPaths& paths, const std::string& tag) {
+    RowsOlderThanScan s;
+    s.kept = corpus_chart(tag);
+    ChartLibraryEntry before_edit = s.kept;
+    before_edit.md5 = kHashBeforeEdit;
+    before_edit.sig = "sig-before-the-edit";  // so the scan reads the file again
+    s.app = app_with(paths, {before_edit, s.removed});
+    s.app->settings.chartfolders = {s.kept.rootfolder};
+    s.app->start_scan();
+    REQUIRE(s.app->scan_job != nullptr);
+    for (int i = 0; i < 12000 && !s.app->scan_job->snapshot().finished; ++i) Sleep(5);
+    const auto progress = s.app->scan_job->snapshot();
+    REQUIRE(progress.finished);
+    REQUIRE(progress.charts_found == 1);
+    REQUIRE(s.app->library_shown_count() == 2);  // no frame has read the new table
+    return s;
+}
+
+}  // namespace
+
+// A click in the frame a scan finishes acts like a click one frame later: it
+// opens the chart the scan kept, under the hash the scan wrote.
+TEST_CASE("a click right after a scan, before any frame, opens the chart the scan kept") {
+    ScratchPaths paths("appstate_scanclick");
+    RowsOlderThanScan s = rows_older_than_scan(paths, "scan_click");
+    s.app->select(row_of(*s.app, kHashBeforeEdit).entry);
+    REQUIRE(s.app->selected.has_value());
+    CHECK(s.app->details_open());
+    CHECK(s.app->selected->notespath == s.kept.notespath);
+    CHECK(s.app->selected->md5 == s.kept.md5);
+    settle(*s.app);
+}
+
+// The one silent no-op left: the scan really removed the clicked row.
+TEST_CASE("a click right after a scan on a row the scan removed does nothing") {
+    ScratchPaths paths("appstate_scanclickgone");
+    RowsOlderThanScan s = rows_older_than_scan(paths, "scan_click_gone");
+    s.app->select(row_of(*s.app, s.removed.md5).entry);
+    CHECK_FALSE(s.app->selected.has_value());
+    CHECK_FALSE(s.app->details_open());
+    CHECK(s.app->status_message.empty());
+}
+
+// The confirm's count and the button's N count one thing, so they agree even
+// in the frame a scan finishes.
+TEST_CASE("the batch confirm right after a scan, before any frame, counts the library's N") {
+    ScratchPaths paths("appstate_scanconfirm");
+    RowsOlderThanScan s = rows_older_than_scan(paths, "scan_confirm");
+    s.app->open_batch_confirm();
+    REQUIRE(s.app->batch_confirm_pending);
+    CHECK(s.app->batch_scope_charts() == static_cast<int64_t>(s.app->library_match_count()));
+    CHECK(s.app->batch_scope_charts() == 1);
+}
+
 // wait-idle in the GUI tests waits on this one list (finding 109).
 TEST_CASE("any_job_running lists every background job") {
     ScratchPaths paths("appstate_anyjob");
@@ -1090,6 +1273,35 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     std::error_code ec;
     std::filesystem::remove(std::filesystem::path(hydra::app::report_html_path()), ec);
+}
+
+// Memory audit fix 4: a stopped batch builds no report, so nothing reads the
+// report rows its saved charts handed over. They go when the run ends, not
+// when the finished strip is dismissed.
+TEST_CASE("a stopped batch lets go of its report rows when it ends") {
+    ScratchPaths paths("appstate_stopseed");
+    std::unique_ptr<AppState> app = app_on(paths);
+    const hydra::app::AnalysisResult real =
+        corpus::first_analyzed_with_paths(app->settings.batch_run().settings);
+    std::atomic<int> calls{0};
+    // The first chart is saved; the second runs until Stop.
+    start_redo_batch(*app, [&](const std::string&, const hydra::app::AnalysisSettings&,
+                               const std::function<void(float)>& on_progress)
+                               -> hydra::app::AnalysisResult {
+        if (calls++ == 0) return real;
+        for (;;) {
+            on_progress(0.0f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    });
+    while (app->batch_job->snapshot().analyzed < 1)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    stop_batch(*app);
+    app->update_background_jobs();
+
+    CHECK(app->report_job == nullptr);
+    REQUIRE(app->batch_job != nullptr);  // the finished strip is still up
+    CHECK(app->batch_job->take_report_seed().rows.empty());
 }
 
 // The confirm counts library rows, every copy included, like the library

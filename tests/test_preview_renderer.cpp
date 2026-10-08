@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,7 @@
 #include "app/user_messages.h"
 #include "render/highway_draw.h"  // track_height
 #include "render/preview_renderer.h"
+#include "temp_util.h"
 #include "ui/preview_load_job.h"  // track_options
 #include "warp_util.h"
 
@@ -249,6 +251,43 @@ TEST_CASE("PreviewRenderer: resize and a tall target keep the track at the botto
     CHECK_FALSE(is_background(r.config(), warp::pixel(img, 100, 50, 292)));
 }
 
+// D95 call 4: the closed Preview frees its targets, and the next resize draws
+// exactly the pixels it drew before.
+TEST_CASE("PreviewRenderer: released targets are freed and come back drawing the same (WARP)") {
+    ComPtr<ID3D11Device> dev;
+    ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(warp::make_device(dev, ctx));
+
+    const int W = 160, H = 120;
+    PreviewRenderer r(dev.Get(), ctx.Get(), kAssets);
+    r.resize(W, H);
+    PreviewScene scene;
+    scene.has_notes = true;
+    scene.notes.push_back(note_at(1100.0, PreviewLane::Kick));
+    scene.notes.push_back(note_at(1300.0, PreviewLane::Yellow, true));
+    scene.song_length_ms = 1300.0;
+    r.set_scene(scene);
+    r.render(1000.0);
+    const std::vector<uint8_t> before =
+        warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), W, H);
+
+    // Hold the shown texture: once released, this is its only reference.
+    ComPtr<ID3D11Resource> shown;
+    r.texture_srv()->GetResource(&shown);
+    r.release_targets();
+    shown->AddRef();
+    CHECK(shown->Release() == 1);  // Release returns the count left
+    CHECK(r.texture_srv() == nullptr);
+    CHECK(r.width() == 0);
+    CHECK(r.height() == 0);
+    r.render(1000.0);  // nothing to draw into: a no-op, not a crash
+
+    r.resize(W, H);
+    r.render(1000.0);
+    REQUIRE(r.texture_srv() != nullptr);
+    CHECK(warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), W, H) == before);
+}
+
 TEST_CASE("PreviewRenderer: a missing asset dir is a clear error") {
     ComPtr<ID3D11Device> dev;
     ComPtr<ID3D11DeviceContext> ctx;
@@ -261,4 +300,32 @@ TEST_CASE("PreviewRenderer: a missing asset dir is a clear error") {
         CHECK(hydra::app::plain_error(e) ==
               "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
     }
+}
+
+// The memory audit's one real leak (docs/handoffs/2026-10-07-memory-audit.md):
+// a constructor that throws after building shaders, buffers and meshes must
+// release them. Every D3D object it made holds a reference on the device, so
+// the device's reference count shows anything left behind.
+TEST_CASE("PreviewRenderer: setup that fails part-way releases what it made (WARP)") {
+    namespace fs = std::filesystem;
+    ComPtr<ID3D11Device> dev;
+    ComPtr<ID3D11DeviceContext> ctx;
+    REQUIRE(warp::make_device(dev, ctx));
+
+    // A copy of the shipped assets with the textures gone: the constructor
+    // gets through everything else before the first texture throws.
+    const std::string dir_utf8 = testtemp::temp_dir("preview_no_textures");
+    const fs::path dir = hydra::os_path(dir_utf8);
+    fs::remove_all(dir);
+    fs::copy(fs::path(kAssets), dir, fs::copy_options::recursive);
+    fs::remove_all(dir / "textures");
+
+    auto device_refs = [&] {
+        dev->AddRef();
+        return dev->Release();
+    };
+    const ULONG before = device_refs();
+    CHECK_THROWS_AS(PreviewRenderer(dev.Get(), ctx.Get(), dir_utf8), std::runtime_error);
+    CHECK(device_refs() == before);
+    fs::remove_all(dir);
 }

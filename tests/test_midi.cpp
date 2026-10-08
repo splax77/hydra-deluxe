@@ -15,6 +15,7 @@
 #include "parse/chart_files.h"
 #include "parse/midi.h"
 #include "corpus_util.h"
+#include "leak_check.h"
 #include "midi_util.h"
 
 namespace {
@@ -56,30 +57,32 @@ using testmidi::smf;
 }  // namespace
 
 TEST_CASE("midi: every corpus .mid reads with a sane structure") {
-    size_t mids = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        if (hydra::chart_format_of(path) != hydra::ChartFormat::Mid) continue;
+    hydra::test::leak_checked([&] {
+        size_t mids = 0;
+        for (const std::string& path : corpus::chart_paths()) {
+            if (hydra::chart_format_of(path) != hydra::ChartFormat::Mid) continue;
 
-        hydra::MidiFile mid = hydra::MidiFile::from_file(path);
-        ++mids;
+            hydra::MidiFile mid = hydra::MidiFile::from_file(path);
+            ++mids;
 
-        CHECK_MESSAGE(mid.ticks_per_beat > 0, path << ": ticks_per_beat");
-        CHECK_MESSAGE(!mid.tracks.empty(), path << ": no tracks");
+            CHECK_MESSAGE(mid.ticks_per_beat > 0, path << ": ticks_per_beat");
+            CHECK_MESSAGE(!mid.tracks.empty(), path << ": no tracks");
 
-        // Delta times never run backwards, and the drum track exists by name
-        // (this corpus is all drum charts).
-        bool has_drums = false;
-        bool deltas_ok = true;
-        for (const auto& t : mid.tracks) {
-            if (t.name == "PART DRUMS") has_drums = true;
-            for (const auto& m : t.messages)
-                if (m.time < 0) deltas_ok = false;
+            // Delta times never run backwards, and the drum track exists by name
+            // (this corpus is all drum charts).
+            bool has_drums = false;
+            bool deltas_ok = true;
+            for (const auto& t : mid.tracks) {
+                if (t.name == "PART DRUMS") has_drums = true;
+                for (const auto& m : t.messages)
+                    if (m.time < 0) deltas_ok = false;
+            }
+            CHECK_MESSAGE(deltas_ok, path << ": negative delta");
+            CHECK_MESSAGE(has_drums, path << ": no PART DRUMS track");
         }
-        CHECK_MESSAGE(deltas_ok, path << ": negative delta");
-        CHECK_MESSAGE(has_drums, path << ": no PART DRUMS track");
-    }
-    REQUIRE(mids > 0);
-    MESSAGE("midi smoke: " << mids << " files");
+        REQUIRE(mids > 0);
+        MESSAGE("midi smoke: " << mids << " files");
+    });
 }
 
 // D54: from_file reads through read_file_bytes, so a missing file fails with
@@ -376,6 +379,35 @@ TEST_CASE("midi: the lean reader keeps only what each track's role reads, at the
         json::array({json::array({7, "text", "text", "[section A]"})}),
     });
     CHECK(event_view(mid) == expected);
+}
+
+TEST_CASE("midi: the lean reader sizes each track's messages once") {
+    // Each track holds exactly what it keeps, with no spare room from growing
+    // one message at a time. The kept counts (1, 7, 5) are ones a vector
+    // grown by push_back would overshoot.
+    using namespace testmidi;
+    std::vector<std::vector<uint8_t>> drums = {track_name("PART DRUMS"),
+                                               text_event("[mix 3 drums0d]")};
+    for (int i = 0; i < 6; ++i) {
+        drums.push_back(after(10, note_on(96, 100)));
+        drums.push_back(after(0, note_on(97, 100)));  // dropped by the filter
+    }
+    drums.push_back(end_of_track());
+    std::vector<std::vector<uint8_t>> events = {track_name("EVENTS")};
+    for (int i = 0; i < 5; ++i) events.push_back(after(3, text_event("[section A]")));
+    events.push_back(end_of_track());
+    const std::vector<uint8_t> file = smf_tracks({
+        concat({track_name("tempo"), set_tempo(400000), end_of_track()}),
+        concat(drums),
+        concat(events),
+    });
+    const hydra::MidiFile mid = hydra::MidiFile::lean(file.data(), file.size(), lean_test_filter());
+    REQUIRE(mid.tracks.size() == 3);
+    CHECK(mid.tracks[0].messages.size() == 1);
+    CHECK(mid.tracks[1].messages.size() == 7);
+    CHECK(mid.tracks[2].messages.size() == 5);
+    for (const hydra::MidiTrack& t : mid.tracks)
+        CHECK_MESSAGE(t.messages.capacity() == t.messages.size(), t.name);
 }
 
 TEST_CASE("midi: the lean reader refuses a file where the full reader does") {

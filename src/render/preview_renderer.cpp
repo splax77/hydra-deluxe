@@ -117,9 +117,10 @@ struct PreviewRenderer::Impl {
     std::string asset_dir;
     PreviewConfig cfg;
 
-    // Where the track sits in the target, from track_rect; all zero until the
-    // first resize.
-    TrackRect rect{0, 0, 0, 0, 0.0f};
+    // Where the track sits in the target, from track_rect; kNoTargets until
+    // the first resize and after release_targets.
+    static constexpr TrackRect kNoTargets{0, 0, 0, 0, 0.0f};
+    TrackRect rect = kNoTargets;
     UINT msaa = 1;
 
     // Final target (what the GUI shows) and the scene target it composites.
@@ -198,9 +199,13 @@ struct PreviewRenderer::Impl {
         return upload(load_obj(text));
     }
 
-    void create_targets() {
+    void drop_targets() {
         final_tex.Reset(); scene_tex.Reset(); scene_resolved.Reset(); depth_tex.Reset();
         final_rtv.Reset(); scene_rtv.Reset(); final_srv.Reset(); scene_srv.Reset(); dsv.Reset();
+    }
+
+    void create_targets() {
+        drop_targets();
 
         D3D11_TEXTURE2D_DESC td = {};
         td.Width = static_cast<UINT>(rect.width);
@@ -289,7 +294,7 @@ struct PreviewRenderer::Impl {
 
 PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* context,
                                  const std::string& asset_dir)
-    : impl_(new Impl) {
+    : impl_(std::make_unique<Impl>()) {
     Impl& d = *impl_;
     d.device = device;
     d.context = context;
@@ -393,12 +398,19 @@ PreviewRenderer::PreviewRenderer(ID3D11Device* device, ID3D11DeviceContext* cont
         d.textures[static_cast<size_t>(i)] = d.load_texture(texture_file(static_cast<TextureId>(i)));
 }
 
-PreviewRenderer::~PreviewRenderer() { delete impl_; }
+// Defined here, where Impl is complete, for the unique_ptr's deleter.
+PreviewRenderer::~PreviewRenderer() = default;
 
 void PreviewRenderer::resize(int width, int height) {
     Impl& d = *impl_;
     d.rect = track_rect(d.cfg, width, height);
     d.create_targets();
+}
+
+void PreviewRenderer::release_targets() {
+    Impl& d = *impl_;
+    d.drop_targets();
+    d.rect = Impl::kNoTargets;
 }
 
 void PreviewRenderer::set_scene(const PreviewScene& scene, const TrackStateOptions& opts) {

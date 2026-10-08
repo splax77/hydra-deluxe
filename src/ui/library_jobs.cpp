@@ -4,7 +4,9 @@
 #include <chrono>
 #include <filesystem>
 #include <stdexcept>
+#include <utility>
 
+#include "app/allocator.h"
 #include "app/config.h"
 #include "app/report.h"
 #include "app/report_files.h"
@@ -171,7 +173,12 @@ void BatchJob::start() {
         clock_.start(now);
         if (snap_.paused) clock_.pause(now);  // paused before it started
     }
-    spawn([this] { run(); });
+    // However the run ended (done, stopped or failed), the memory its charts
+    // freed then goes back to Windows (D95 call 1), on this job's thread.
+    spawn([this] {
+        run();
+        app::return_freed_memory();
+    });
 }
 
 void BatchJob::pause() {
@@ -340,12 +347,16 @@ void ViewJob::run() {
             // An edited chart is hashed again before anything reads it, with
             // the rescan's own unchanged test (D87 item 3).
             // chart_changed_since is the one answer, shared with the preview
-            // load; a touched file with the same content is no change.
+            // load. A file saved again with the same content keeps its hash
+            // but still hands back its new fingerprint, so the row stops
+            // asking for a hash on every click (D96). A fingerprint that
+            // could never show the file unchanged (store::sig_can_show_unchanged)
+            // would not stop that, so it is only saved with a new hash.
             if (const std::optional<app::ChartNow> now =
                     app::chart_changed_since(song_.notespath, song_.sig)) {
                 if (now->md5.empty())
                     throw std::runtime_error("could not read " + song_.notespath);
-                if (now->md5 != song_.md5) {
+                if (now->md5 != song_.md5 || store::sig_can_show_unchanged(now->sig)) {
                     out_.new_md5 = now->md5;
                     out_.new_sig = now->sig;
                     out_.files_changed = true;
@@ -421,18 +432,24 @@ void ReportJob::run() {
         // library to be analyzed before it can shut down.
         options.cancel = &cancel_;
         options.run = run_;
-        app::report::GeneratedReport report =
-            app::report::generate_report(store_, options, seed_);
+        // The seed's rows are read by this pass alone, so they go when it
+        // ends, however it ends, not with the job (memory audit fix 4).
+        app::report::GeneratedReport report;
+        {
+            const app::report::ReportSeed seed = std::exchange(seed_, {});
+            report = app::report::generate_report(store_, options, seed);
+        }
         // Checked before the "no records" throw and before any file is
         // written: a cancelled run has no rows because it stopped, not
         // because the store is empty, and it must leave the last report on
         // disk alone.
         if (is_cancelled()) return false;
-        // generate_report says why the page is empty. Results stored under
-        // other settings throw the sentence that names them, which the strip
-        // shows as it is; an empty database keeps the app's own sentence.
+        // generate_report says why the page is empty (GeneratedReport::
+        // why_empty). When it gives a sentence, the strip shows that sentence
+        // as it is, the same one hydra_report prints. When it gives none, the
+        // database holds no results, and the app's own sentence says so (D97).
         if (report.rows == 0) {
-            if (report.empty_reason == app::report::EmptyReason::NothingUnderSettings)
+            if (!report.why_empty.empty())
                 throw KindedError(ErrorKind::AlreadyPlain, report.why_empty);
             throw KindedError(ErrorKind::NoRecords, "no records stored yet");
         }

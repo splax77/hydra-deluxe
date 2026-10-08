@@ -287,13 +287,23 @@ struct ChartCacheEntry {
 };
 using ChartLibraryCache = std::unordered_map<std::string, ChartCacheEntry>;
 
+// Whether a stored fingerprint could ever show a chart's files unchanged. An
+// empty one is what a gone file or a folder chart without its song.ini gives
+// (app::chart_files_sig), so matching it proves nothing. The one owner of that
+// answer: chart_library_cache leaves such rows out, the rescan's "unchanged"
+// test (sig_unchanged in app/analysis.cpp) asks it, and so does the click's
+// save (ui::ViewJob::run).
+inline bool sig_can_show_unchanged(const std::string& sig) { return !sig.empty(); }
+
 // Which copy names an md5 (D51 call 10): the first copy the scan listed, the
 // charts row with the smallest rowid for that md5. One row per md5, with its
 // name, artist and charter (SQLite takes a bare column from the MIN(rowid)
-// row), plus `copies`, how many rows the scan listed for it. list_records,
-// library_copies and naming_copy_paths all read through it.
+// row), plus `copies`, how many rows the scan listed for it, and
+// `naming_rowid`, the naming copy's own rowid. list_records, library_copies
+// and naming_copy_paths all read through it.
 inline constexpr const char* kNamingCopiesSql =
-    "(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts"
+    "(SELECT md5, name, artist, charter, MIN(rowid) AS naming_rowid, COUNT(*) AS copies"
+    " FROM charts"
     " GROUP BY md5)";
 
 // The most charts one save group holds (D86 item 2). When a group closes
@@ -468,10 +478,12 @@ public:
     void delete_results_without_chart();
 
     // One chart's files changed since the scan (D87 item 3): the library row
-    // at `notespath` takes the hash and fingerprint the edited files now
-    // give, and whatever the old hash leaves unlisted is deleted, as
+    // at `notespath` takes the hash and fingerprint the files now give, and
+    // whatever the old hash leaves unlisted is deleted, as
     // delete_results_without_chart does, in the same transaction. A path the
-    // library doesn't list changes nothing.
+    // library doesn't list changes nothing. The hash can be the row's own,
+    // for files only saved again (D96); ui::ViewJob::run decides when a
+    // click calls this.
     void reidentify_chart(const std::string& notespath, const std::string& new_md5,
                           const std::string& new_sig);
 
@@ -487,6 +499,10 @@ public:
     // wrote; rows an older scan wrote carry none.
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit);
+    // The library's rows for one chart, one per copy the scan listed, read
+    // the way list_chart_library reads them. A click on a library row picks
+    // its copy from these (ui::AppState::select).
+    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5);
 
 private:
     sqlite3* db_ = nullptr;

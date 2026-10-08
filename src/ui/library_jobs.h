@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "app/analysis.h"
@@ -136,8 +137,8 @@ public:
     const app::BatchRun& batch_run() const { return run_; }
     // The report rows of every chart the run saved (D87 item 5), for the
     // report that follows it. Read once the snapshot says finished; it moves
-    // the rows out.
-    app::report::ReportSeed take_report_seed() { return std::move(seed_); }
+    // the rows out and leaves the job an empty seed.
+    app::report::ReportSeed take_report_seed() { return std::exchange(seed_, {}); }
 
     struct Snapshot {
         bool preparing = true;  // BatchJob::run has not reached its first chart yet
@@ -217,7 +218,9 @@ void apply_app_batch_analyzer_for_test(BatchJob& job);
 // What one click's job found on its thread (D87 items 1 and 3).
 struct ViewOutcome {
     // Set when the chart's files changed since the scan: the hash and
-    // fingerprint they give now.
+    // fingerprint they give now. The hash is the row's own when the files
+    // were only saved again with the same content (D96); ViewJob::run says
+    // when such a fingerprint is worth saving.
     bool files_changed = false;
     std::string new_md5;
     std::string new_sig;
@@ -315,6 +318,10 @@ public:
     const std::filesystem::path& saved_path() const { return outcome_.saved_path; }
     bool opened() const { return outcome_.opened; }
     const std::string& open_problem() const { return outcome_.open_problem; }
+
+    // Test seam: how many charts' rows the job still holds from the batch's
+    // seed. Read before start() or once finished().
+    size_t seed_charts_for_test() const { return seed_.rows.size(); }
 
 private:
     void run();

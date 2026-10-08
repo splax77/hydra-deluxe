@@ -241,8 +241,8 @@ add_library(hydra_core STATIC
     src/search/graph.cpp
     src/search/engine.cpp
     src/search/pather.cpp
-    src/store/serialize.cpp
     src/store/record_store.cpp
+    src/app/allocator.cpp
     src/app/analysis.cpp
     src/app/config.cpp
     src/app/rules_file.cpp
@@ -274,6 +274,13 @@ target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
 # (AssocQueryStringW) to hand it a long page's short name directly.
 target_link_libraries(hydra_core PUBLIC sqlite3 miniz)
 target_link_libraries(hydra_core PRIVATE bcrypt shell32 shlwapi ole32 uuid hydra_warnings)
+# allocator.cpp calls mimalloc by name, so it needs mimalloc.h. Only the
+# header folder: every exe links mimalloc first already (hydra_use_mimalloc),
+# and linking it here too makes CMake move it after hydra_core on each exe's
+# link line, behind d3d11.dll, where mimalloc-redirect.dll gives up and leaves
+# malloc on the Windows heap.
+target_include_directories(hydra_core PRIVATE
+                           $<TARGET_PROPERTY:mimalloc,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
@@ -641,7 +648,8 @@ endforeach()
 # in the file, after every add_executable.
 #
 # /include:mi_version is the switch mimalloc's readme gives to make sure the
-# exe really imports mimalloc.dll even though Hydra never calls it by name.
+# exe really imports mimalloc.dll, even an exe that never calls mimalloc by
+# name (src/app/allocator.h has the calls Hydra does make).
 # mimalloc goes first in each exe's link libraries because the readme
 # (third_party/mimalloc/bin/readme.md, step 4) wants mimalloc.dll as early as
 # possible in the import list, so it is in place before any other DLL

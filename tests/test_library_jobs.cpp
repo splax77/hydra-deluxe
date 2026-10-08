@@ -15,7 +15,9 @@
 #include <thread>
 #include <vector>
 
+#include "app/allocator.h"
 #include "app/analysis.h"
+#include "app/report.h"  // kNoChartLibrary
 #include "app/report_files.h"
 #include "app/user_messages.h"  // plain_error
 #include "core/error_kind.h"
@@ -281,6 +283,54 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
     CHECK(job.batch_run().chartmode == test_run().chartmode);
 }
 
+// D88: every exe runs on mimalloc, this one too. An exe whose link puts
+// mimalloc.dll after another DLL keeps the Windows heap without a word; the
+// memory wave's join did that to every GUI exe. The Debug runtime is never
+// redirected, so only a Release build can tell.
+#ifdef NDEBUG
+TEST_CASE("allocator: malloc goes to mimalloc") {
+    CHECK(hydra::app::malloc_redirected());
+}
+#endif
+
+// D95 call 1: once a batch ends, the memory its charts freed goes back to
+// Windows at once, not after mimalloc's purge delay. As in a real batch, each
+// result is built on a worker and freed on the batch's own thread once
+// stored; here each one carries kChartBytes.
+TEST_CASE("jobs: a finished batch hands the memory its charts freed back to Windows") {
+    static constexpr size_t kBlock = 1024;  // small blocks, as a chart's are
+    static constexpr size_t kChartBytes = 128 * 1024 * 1024;
+#ifdef NDEBUG
+    // On the Windows heap the charts' memory never reaches mimalloc, and the
+    // check below passes whatever the batch did.
+    REQUIRE(hydra::app::malloc_redirected());
+#endif
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    hydra::app::return_freed_memory();
+    const size_t before = hydra::app::committed_bytes();
+    {
+        RecordStore store(":memory:");
+        BatchJob job(plan_of(fake_charts(4)), test_run(), store);
+        job.set_analyzer_for_test(
+            [&real](const std::string&, const AnalysisSettings&,
+                    const std::function<void(float)>&) -> AnalysisResult {
+                AnalysisResult r = real;
+                // Filled, so committed.
+                r.song.features.assign(kChartBytes / kBlock, std::string(kBlock, 'x'));
+                return r;
+            },
+            /*workers=*/2);
+        job.start();
+        REQUIRE(wait_until([&] { return job.snapshot().finished; }));
+    }  // joins the job's thread, which runs the hand-back after the batch
+    const size_t after = hydra::app::committed_bytes();
+    MESSAGE("committed before the batch " << before / (1024 * 1024) << " MB, after it "
+                                          << after / (1024 * 1024) << " MB");
+    // A test margin, not an app number: less than half of one chart's
+    // memory may still be committed.
+    CHECK(after < before + kChartBytes / 2);
+}
+
 TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
     RecordStore store(":memory:");
     const hydra::store::CapQuery cap = hydra::store::CapQuery::at(6);
@@ -289,6 +339,48 @@ TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
     CHECK(job.cap() == cap);
     CHECK(job.lens() == lens);
     CHECK(job.hit_window_ms() == 85.5);  // the decimal is kept (D51 call 15)
+}
+
+// D97: an empty report shows generate_report's own reason when it gives one,
+// as hydra_report does. Results with no chart library name the missing
+// library; a database with no results gets the app's own sentence.
+TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's own") {
+    const BatchRun run = test_run();
+
+    RecordStore no_library(":memory:");
+    hydra::test::store_batch_result(no_library, "orphan", run.cap_query().exact);
+    hydra::ui::ReportJob orphaned(no_library, run.cap_query(), run.lens,
+                                  /*open_when_done=*/false, hydra::kDefaultHitWindowMs, run);
+    orphaned.start();
+    REQUIRE(wait_until([&] { return orphaned.finished(); }));
+    CHECK_FALSE(orphaned.ok());
+    CHECK(orphaned.message() == std::string(hydra::app::report::kNoChartLibrary));
+
+    RecordStore empty(":memory:");
+    hydra::ui::ReportJob nothing(empty, run.cap_query(), run.lens,
+                                 /*open_when_done=*/false, hydra::kDefaultHitWindowMs, run);
+    nothing.start();
+    REQUIRE(wait_until([&] { return nothing.finished(); }));
+    CHECK_FALSE(nothing.ok());
+    CHECK(nothing.message() ==
+          hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::NoRecords, "x")));
+}
+
+// Memory audit fix 4: the batch's rows are read by the report's one pass and
+// nothing after it, so the job lets them go then, not when the finished
+// strip is dismissed. An empty store ends the pass with no page, so no file
+// is written.
+TEST_CASE("jobs: a report job lets go of the batch's rows once its pass is done") {
+    RecordStore store(":memory:");
+    const BatchRun run = test_run();
+    hydra::app::report::ReportSeed seed = hydra::app::report::ReportSeed::for_run(run);
+    seed.rows["fake0"] = {};
+    hydra::ui::ReportJob job(store, run.cap_query(), run.lens, /*open_when_done=*/false, 85.5,
+                             run, std::move(seed));
+    REQUIRE(job.seed_charts_for_test() == 1);
+    job.start();
+    REQUIRE(wait_until([&] { return job.finished(); }));
+    CHECK(job.seed_charts_for_test() == 0);
 }
 
 TEST_CASE("jobs: a report the browser refuses is saved, not failed") {

@@ -24,6 +24,7 @@
 #include "../temp_util.h"
 #include "../warp_util.h"  // tests/ is not on the runner's include path
 
+#include "app/allocator.h"
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/report_files.h"
@@ -179,6 +180,16 @@ const ImGuiTest* Harness::running_test() const {
 }
 
 bool Harness::init() {
+#ifdef NDEBUG
+    // This runner links what Hydra.exe links, so a link order that leaves
+    // malloc on the Windows heap here does the same to the app (D88). The
+    // Debug runtime is never redirected.
+    if (!hydra::app::malloc_redirected()) {
+        std::fprintf(stderr, "hydra_uitest: malloc is not going to mimalloc; mimalloc.dll "
+                             "must come first in the exe's imports (CMakeLists.txt)\n");
+        return false;
+    }
+#endif
     if (!warp::make_device(device, context)) {
         std::fprintf(stderr, "hydra_uitest: could not create a WARP D3D11 device\n");
         return false;
@@ -225,6 +236,10 @@ void Harness::frame() {
     context->OMSetRenderTargets(1, views, nullptr);
     context->ClearRenderTargetView(rtv.Get(), hydra::ui::kClearColor);
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    // Nothing presents here, so nothing paces the software GPU: without a
+    // flush, a long wait queues frames faster than WARP draws them and their
+    // buffers pile up. The user's call is in D98 item 1.
+    context->Flush();
     ImGuiTestEngine_PostSwap(engine);
 }
 
@@ -564,7 +579,14 @@ void open_details(ImGuiTestContext* ctx, size_t index) {
     if (ctx->IsError()) return;
     // The ImGui context outlives reset_app, so the tab bar remembers the tab a
     // previous test left selected. Land on Paths deterministically.
+    wait_tabs_placed(ctx);
     ctx->ItemClick("##DetailsTabs/Paths");
+}
+
+void wait_tabs_placed(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled() || !g_view_gate_open.load(); },
+                        300));
 }
 
 // Narrow the library with `search` typed into the search box, then open the
@@ -588,9 +610,10 @@ void wait_song_analyzed(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     set_panel_ref(ctx);
     if (ctx->IsError()) return;
-    ctx->ItemClick("##DetailsTabs/Paths");
     IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, 300));
     IM_CHECK(h.app->viewed.ready());
+    // Only now: the headline has landed, so the tab bar stays put.
+    ctx->ItemClick("##DetailsTabs/Paths");
 }
 
 // Shared: open chart 0's Preview and wait for the load. Returns false on error.

@@ -397,7 +397,7 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
                                                                             : kNewSongColor;
             ImGui::PushStyleColor(ImGuiCol_Text, color);
             ImGui::PushFont(g_mono_font, 0.0f);
-            text_ellipsized(row.best_label.c_str());
+            text_ellipsized(row.best_label().c_str());
             ImGui::PopFont();
             ImGui::PopStyleColor();
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {

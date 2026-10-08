@@ -86,10 +86,16 @@ std::unordered_map<std::string, store::RecordListing> records_by_hash(
 
 // Every chart the store's library lists, with its copies
 // (RecordStore::library_copies), keyed like records_by_hash so a page looks
-// up both with one key. Every page reads its library copies and its "is this
-// chart in the library" answer from here; a chart's count goes through
-// RecordStore::copies_of.
+// up both with one key. Every page reads its library copies from here; a
+// chart's count goes through RecordStore::copies_of, and "is this chart in
+// the library" through library_lists.
 std::unordered_map<std::string, int> library_copies_by_hash(store::RecordStore& store);
+
+// Whether the library lists the chart `hash` names, given
+// library_copies_by_hash's map and a hash keyed the same way. The one answer
+// to "is this chart in the library" for every page (D87 item 4, D92).
+bool library_lists(const std::unordered_map<std::string, int>& library,
+                   const std::string& hash);
 
 // The path report's default: the top 5 paths per chart.
 inline constexpr int64_t kDefaultReportPaths = 5;
@@ -211,8 +217,9 @@ inline constexpr const char* kNoChartLibrary =
 bool lacks_chart_library(store::RecordStore& store);
 
 // The start of the sentence an empty report gives when the database holds
-// results under other settings. The app's error mapping knows the sentence
-// by it and shows it as it is.
+// results under other settings (nothing_under_settings builds the whole
+// one). The app shows it through GeneratedReport::why_empty, as
+// ReportJob::run does for every empty page (D97).
 inline constexpr const char* kNothingUnderSettings = "Nothing is analyzed under these settings";
 
 // The whole sentence an empty page gives, built once for every page that

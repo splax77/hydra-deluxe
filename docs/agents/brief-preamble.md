@@ -34,6 +34,8 @@ Touch only the files your brief owns, plus your scratch folder. Never delete, mo
 
 Run only the tests your brief names. Use `-tc=` (test case) or `-sf=` (source file) filters on `build-cpp\Release\hydra_tests.exe`. Never run the whole suite. Never run `hydra_uitest --all`; run only the uitest scripts your brief names. Never run all the hook tests. The main session runs the full suite once per merge; a repeat from you buys nothing and slows every other agent on the machine.
 
+Never run a full library test: no `hydra_batch` with no arguments, and no compare or timing run over the user's whole song library. Only the user can allow one, in chat, and a brief that asks for one without naming that permission is wrong; stop and report it. Test on the checked-in corpus in `testdata/input` or on the charts your change touches.
+
 If a timing test fails while the machine is busy, report it once. Do not rerun the suite to chase it.
 
 If your brief asks for a failing-first test, run it red before the fix and keep the exact red output line for your report. The reviewer reuses that line instead of rebuilding the old code to see it fail.

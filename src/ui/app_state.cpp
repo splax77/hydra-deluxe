@@ -1,6 +1,8 @@
 #include "ui/app_state.h"
 
 #include <algorithm>
+#include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "app/config.h"
@@ -110,19 +112,36 @@ void AppState::set_search(std::string text) {
 }
 
 std::vector<store::ChartLibraryEntry> AppState::library_matches() const {
-    std::vector<store::ChartLibraryEntry> out;
     const std::vector<size_t> matched = library.matches();
+    // Each matched row's place in the answer, by row_key.
+    std::unordered_map<std::string_view, size_t> place;
+    place.reserve(matched.size());
+    for (size_t k = 0; k < matched.size(); ++k)
+        place.emplace(row_key(library.rows()[matched[k]].entry), k);
+    std::vector<std::optional<store::ChartLibraryEntry>> found(matched.size());
+    for (store::ChartLibraryEntry& e : store->list_chart_library(0, -1)) {  // -1 = no limit
+        const auto it = place.find(row_key(e));
+        if (it != place.end()) found[it->second] = std::move(e);
+    }
+    // A row the store no longer lists is left out. The confirm reloads after
+    // a scan first (reload_after_scan), so that happens only when that reload
+    // failed and said so.
+    std::vector<store::ChartLibraryEntry> out;
     out.reserve(matched.size());
-    for (size_t i : matched) out.push_back(library.rows()[i].entry);
+    for (std::optional<store::ChartLibraryEntry>& e : found)
+        if (e) out.push_back(std::move(*e));
     return out;
 }
 
+bool AppState::reload_after_scan() {
+    if (!scan_job || scan_reloaded_ || !scan_job->snapshot().finished) return false;
+    scan_reloaded_ = true;
+    reload_library();
+    return true;
+}
+
 void AppState::tick_library(double now) {
-    // A finished scan replaced the chart table: read it once.
-    if (scan_job && !scan_reloaded_ && scan_job->snapshot().finished) {
-        scan_reloaded_ = true;
-        reload_library();
-    }
+    reload_after_scan();
     // A batch stores results on its own threads. Re-read the summaries at
     // most once per kBatchRefreshSeconds, only when it stored something since
     // the last read,
@@ -144,7 +163,7 @@ void AppState::tick_library(double now) {
 // The rows the library table shows, in its current order and filter.
 size_t AppState::view_row_count() const { return library_shown_count(); }
 
-const store::ChartLibraryEntry& AppState::view_row(size_t i) const {
+const LibraryChart& AppState::view_row(size_t i) const {
     return library_row_at(i).entry;
 }
 
@@ -167,6 +186,7 @@ std::optional<size_t> AppState::relative_row(int delta) const {
 bool AppState::can_select_relative(int delta) const { return relative_row(delta).has_value(); }
 
 void AppState::select_relative(int delta) {
+    reload_after_scan();  // the neighbour in the rows the store holds now
     if (std::optional<size_t> i = relative_row(delta)) select(view_row(*i));
 }
 
@@ -177,6 +197,35 @@ void AppState::select(const store::ChartLibraryEntry& entry) {
     selected = entry;
     show_details = true;
     start_view();
+}
+
+void AppState::select(const LibraryChart& row) {
+    // Kept by value: a reload replaces the rows `row` may live in.
+    const std::string key = row_key(row);
+    std::string md5 = row.md5;
+    if (reload_after_scan()) {
+        // The clicked row as the new scan wrote it, which may be under a new
+        // hash. None: the scan removed it, and the click opens nothing.
+        const LibraryChart* now = nullptr;
+        for (const LibraryRow& r : library.rows()) {
+            if (row_key(r.entry) == key) {
+                now = &r.entry;
+                break;
+            }
+        }
+        if (!now) return;
+        md5 = now->md5;
+    }
+    std::vector<store::ChartLibraryEntry> copies;
+    if (!read_store([&] { copies = store->list_chart_library_copies(md5); })) return;
+    for (const store::ChartLibraryEntry& copy : copies) {
+        if (row_key(copy) == key) {
+            select(copy);
+            return;
+        }
+    }
+    // None: the rows are older than the store only when the reload after a
+    // scan failed, and that read said so.
 }
 
 void AppState::close_details() {
@@ -284,8 +333,12 @@ void AppState::update_view_job() {
         v.dynamics_message = std::move(out.dynamics_message);
         v.dynamics_error = std::move(out.dynamics_error);
         store::RecordKey key = job->key();
-        // An edited chart: its library row takes the new hash before anything
-        // is saved under it (D87 item 3).
+        // Changed chart files: the library row takes the hash and fingerprint
+        // they give now, before anything is saved under them. An edited chart
+        // gets a new hash (D87 item 3); one only saved again keeps its hash
+        // and takes the new fingerprint (D96), when ViewJob::run finds that
+        // fingerprint worth saving. The library is read again either way,
+        // because the next row click looks its chart up by the row's hash.
         if (out.files_changed) {
             const std::string& path = job->song().notespath;
             try {
@@ -356,9 +409,12 @@ AppState::SettingsLock AppState::settings_lock() const {
     return batch_running() ? SettingsLock::Batch : SettingsLock::None;
 }
 
-bool AppState::is_selected_row(const store::ChartLibraryEntry& row) const {
-    return selected && row.notespath == selected->notespath;
+template <class Row>
+bool AppState::is_selected_row(const Row& row) const {
+    return selected && row_key(row) == row_key(*selected);
 }
+template bool AppState::is_selected_row(const store::ChartLibraryEntry& row) const;
+template bool AppState::is_selected_row(const LibraryChart& row) const;
 
 bool AppState::can_scan() const {
     return !settings.chartfolders.empty() && !scan_job && !batch_running();
@@ -399,16 +455,18 @@ void AppState::start_scan() {
 void AppState::open_batch_confirm() {
     // Exactly the rows the library's search matches. The plans made here are
     // the ones the batch runs (D79), so the confirm, the strip and the
-    // finished counts come from one plan.
+    // finished counts come from one plan. Rows older than the store would
+    // count fewer charts than the button's N.
+    reload_after_scan();
     std::vector<app::ScanItem> items;
-    {
-        const std::vector<store::ChartLibraryEntry> scope = library_matches();
-        items.reserve(scope.size());
-        for (const store::ChartLibraryEntry& e : scope) items.push_back(scan_item_of(e));
-    }
     const app::BatchRun run = settings.batch_run();
     std::unordered_set<std::string> with_result;
-    if (!read_store([&] { with_result = app::charts_with_result(*store, run, false); })) {
+    if (!read_store([&] {
+            const std::vector<store::ChartLibraryEntry> scope = library_matches();
+            items.reserve(scope.size());
+            for (const store::ChartLibraryEntry& e : scope) items.push_back(scan_item_of(e));
+            with_result = app::charts_with_result(*store, run, false);
+        })) {
         // The database failed: the confirm stays closed (D72 item 4).
         close_batch_confirm();
         return;
@@ -449,6 +507,10 @@ void AppState::start_batch(bool redo) {
 void AppState::update_background_jobs() {
     if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {
         batch_finish_seen_ = true;
+        // The report below is the seed's only reader. A run that builds none
+        // lets the rows go here rather than when its strip is dismissed
+        // (memory audit fix 4).
+        app::report::ReportSeed seed = batch_job->take_report_seed();
         // tick_library re-reads the summaries once the batch ends.
         // One path report per finished run. A stopped run keeps its results
         // but builds no report: a report of part of the library would read
@@ -464,7 +526,7 @@ void AppState::update_background_jobs() {
             report_job = std::make_unique<ReportJob>(*store, run.cap_query(), run.lens,
                                                      settings.auto_open_report,
                                                      settings.hit_window_ms, run,
-                                                     batch_job->take_report_seed());
+                                                     std::move(seed));
             report_job->start();
         }
     }

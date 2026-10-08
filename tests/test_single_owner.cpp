@@ -369,8 +369,8 @@ const std::vector<OwnerRule>& rules() {
            "the replay's own window (ReplayWindow), not an Activation"},
           {"src/core/replay.cpp", "w.sqout_tick = row->timecode.ticks();",
            "the replay's own window (replay.cpp's Window), not an Activation"},
-          {"tools/replay.cpp", "w.sqout_tick = n.tick;",
-           "a window typed by hand for hydra_replay (ReplayWindow), not an Activation"},
+          {"src/core/replay.cpp", "w.sqout_tick = n.tick;",
+           "resolve_window_sqout, on a typed or dumped window (ReplayWindow), not an Activation"},
           {"tools/replay_json.cpp", "w.sqout_tick = act[\"sqout_tick\"].get<int64_t>();",
            "a window read from hydra_replay's JSON (ReplayWindow), not an Activation"}}},
         {"Is this SP-end step a clamp?",
@@ -781,6 +781,41 @@ const std::vector<OwnerRule>& rules() {
           {"tests/test_replay.cpp", "opts.target_act_ticks = std::vector<int64_t>{28800};",
            "drives the engine's target mode directly on a hand-built song, not search_target's filter"}},
          {"src", "tools", "tests"}},
+        // A tick list becomes activation-only pins in one place: sorted, each
+        // tick once. A pin built from a variable in a loop restates that.
+        // Literal-tick pins in tests do not match.
+        {"How does a list of activation ticks become pins?",
+         "activation_pins in src/search/pather.cpp",
+         R"(PinnedWindow\{\s*[a-z_]\w*\s*\})",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of track-r2, finding 2 (2026-10-07)",
+         {"for (const int64_t t : sorted) windows.push_back(PinnedWindow{t});",
+          "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});"},
+         {"search_target(song, cfg, {PinnedWindow{3168}, PinnedWindow{12864}});"},
+         {{"src/search/pather.cpp", "for (const int64_t t : ticks) out.push_back(PinnedWindow{t});",
+           "activation_pins, the owner"}},
+         {"src", "tools", "tests"}},
+        // Whether a window's squeeze-out still needs its chord found is
+        // sqout_needs_resolving's answer; resolve_window_sqout acts on it.
+        // A window that is "settled" (ambiguous_window_warnings) or an
+        // offset read alone asks a different question and does not match.
+        {"Does a typed window still need its squeeze-out chord resolved?",
+         "sqout_needs_resolving in src/core/replay.cpp",
+         R"(sqout_offset_ms\s*&&\s*!|!\s*\w+\s*&&\s*[\w.>-]*sqout_offset_ms|!\s*[\w.>-]*sqout_offset_ms\s*\|\|)",
+         "",
+         {},
+         {},
+         "step-1 derive-once review of track-r2, finding 4 (2026-10-07)",
+         {"if (!squeezed_out && w.sqout_offset_ms) squeezed_out = resolve_sqout_note(song, w).tick;",
+          "if (!w.sqout_offset_ms || w.sqout_tick) continue;",
+          "if (w.sqout_offset_ms && !w.sqout_tick)"},
+         {"std::optional<double> sqout_offset_ms;", "if (w.sqout_offset_ms || w.sqout_tick) continue;",
+          "if (!w.sqout_offset_ms)", "if (sqout_needs_resolving(w))"},
+         {{"src/core/replay.cpp", "return w.sqout_offset_ms && !w.sqout_tick;",
+           "sqout_needs_resolving, the owner"}},
+         {"src", "tools", "tests"}},
         // A SqIn's transfer scale sits at its SqIn rank. Indexing the list
         // with a hand-kept counter restates that rank; index it with
         // sqin_rank, or compare whole lists (stored_transfer_scales pairs
@@ -1116,11 +1151,9 @@ const std::vector<OwnerRule>& rules() {
          {"\" FROM (SELECT md5, name, artist, charter, MIN(rowid) FROM charts GROUP BY md5)\""},
          {"kNamingCopiesSql + \" AS c WHERE songmeta.hyhash = c.md5\")"},
          {{"src/store/record_store.h",
-           "\"(SELECT md5, name, artist, charter, MIN(rowid), COUNT(*) AS copies FROM charts\"",
+           "\"(SELECT md5, name, artist, charter, MIN(rowid) AS naming_rowid, COUNT(*) AS copies\"",
            "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"},
-          {"src/store/record_store.cpp", "\" AS c JOIN charts AS p ON p.rowid = c.\\\"MIN(rowid)\\\"\";",
-           "naming_copy_paths joins kNamingCopiesSql's own pick back to its row"}}},
+          {"src/store/record_store.h", "\" GROUP BY md5)\";", "kNamingCopiesSql, the owner"}}},
         // A pass over the library that picks a chart's file from its own
         // listing, instead of the naming copy, can open another copy's file
         // than the batch did (storage-T3 review, finding 1).
@@ -1809,10 +1842,24 @@ const std::vector<OwnerRule>& rules() {
          {},
          "audit finding 208 (phase 6 task J1-2)",
          {"(resource_dir + \"ShipporiAntiqueB1-Regular.ttf\").c_str(), 18.0f);",
-          "if (io.Fonts->AddFontFromFileTTF(path, 18.0f, &merge)) break;"},
-         {"(resource_dir + \"CourierPrime-Regular.ttf\").c_str(), kFontSize);",
+          "if (add_font_file(path, 18.0f, &merge)) break;"},
+         {"g_mono_font = add_font_file(join_folder(fonts_dir, \"CourierPrime-Regular.ttf\"), kFontSize);",
           "const float w = 118.0f;"},
          {{"src/ui/app_shell.cpp", "constexpr float kFontSize = 18.0f;", "kFontSize, the owner"}},
+         {"src/ui/app_shell.cpp"}},
+        // A font source's name only labels ImGui's own debug windows, which
+        // Hydra never opens; naming the mapped fonts copied a path rule.
+        {"Does the font loader cut a file name off a path itself?",
+         "ImGui's AddFontFromFileTTF; Hydra does not name font sources",
+         R"x(find_last_of\(\s*"(/\\\\|\\\\/)"\))x",
+         "",
+         {},
+         {},
+         "MEM-F derive-once review round 1, finding 1 (2026-10-07)",
+         {"const size_t slash = path.find_last_of(\"/\\\\\");",
+          "const size_t pos = p.find_last_of(\"\\\\/\");"},
+         {"const std::string fonts_dir = join_folder(base, \"resource\");"},
+         {},
          {"src/ui/app_shell.cpp"}},
         {"Where does the startup UI scale come from?",
          "ui_scale_for_dpi in src/ui/app_shell.cpp",
@@ -2507,14 +2554,14 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/dynamics_breakdown.h", "int dynamic() const { return ghost + accent; }",
            "DynamicsCounts::dynamic, the owner"}},
          {"src", "tests"}},
-        // A private byte-by-byte little-endian helper. The store's
-        // BinaryWriter is the codec; the store's own read_le/write_le are
-        // task J3-6's and are not in this row.
+        // A private byte-by-byte little-endian helper. src/core/little_endian.h
+        // is the codec; the store's own read_le/write_le are task J3-6's and
+        // are not in this row.
         {"How is a little-endian number written byte by byte?",
-         "BinaryWriter::u32 in src/store/serialize.cpp",
+         "append_le_u32 and read_le_u32 in src/core/little_endian.h",
          R"(\b(write|read)_u32_le\()",
          "",
-         {"src/store/serialize.cpp"},
+         {},
          {},
          "audit finding 195 (the Dynamics half); phase 6 task J2-5 (D53)",
          {"write_u32_le(out, static_cast<uint32_t>(b.rows[i].ghost));",
@@ -2725,6 +2772,26 @@ const std::vector<OwnerRule>& rules() {
          {"combo_ += timestamp.chord.count();", "combo += ts.chord.count();"},
          {"combo += 1;", "note_scores.combo_after = combo;", "combo_ = scores.combo_after;"},
          {},
+         {"src", "tools", "tests"}},
+        // A running combo carried chord to chord through category_scores,
+        // in one statement or two, is a second walk of the chart.
+        // chord_score_table is the one walk; read its rows' combo_before and
+        // combo_after instead.
+        {"What is the combo before a chord?",
+         "chord_score_table in src/core/scoring.cpp",
+         R"(\b\w*combo_?\s*=\s*(category_scores\(|\w+\.combo_after\b))",
+         "",
+         {},
+         {},
+         "derive-once review of track-r1, proposed scan rules (2026-10-07); audit finding 164",
+         {"combo = category_scores(ts.chord, combo).combo_after;",
+          "combo_ = category_scores(timestamp.chord, combo_).combo_after;",
+          "running_combo = category_scores(c, running_combo).combo_after;",
+          "combo = s.combo_after;"},
+         {"const CategoryScores sg = category_scores(ts.chord, combo);",
+          "if (combo == category_scores(c, 0).combo_after) ok = true;",
+          "row.combo_before = combo;", "row.combo_after = sg.combo_after;"},
+         {{"src/core/scoring.cpp", "combo = sg.combo_after;", "chord_score_table, the owner"}},
          {"src", "tools", "tests"}},
         // The chart's note total: chord note counts added up, or a note total
         // added to as a running sum. A running combo is the row above's
@@ -3189,12 +3256,13 @@ const std::vector<OwnerRule>& rules() {
         // alone.
         {"Which library row is the selected one?",
          "AppState::is_selected_row in src/ui/app_state.cpp",
-         R"(\bnotespath\s*(==|!=)\s*(\w+(\.|->))*selected|\bselected(\w*(\.|->))*notespath\s*(==|!=))",
+         R"(\bnotespath\s*(==|!=)\s*(\w+(\.|->))*selected|\bselected(\w*(\.|->))*notespath\s*(==|!=)|\brow_key\(\s*\*?(\w+(\.|->))*selected\b)",
          "",
          {},
          {},
          "audit finding 143 (phase 7 task LB2)",
-         {"if (view_row(i).notespath != selected->notespath) continue;",
+         {"return selected && row.notespath == selected->notespath;",
+          "if (view_row(i).notespath != selected->notespath) continue;",
           "if (rows[order[k]].entry.notespath == selected_path) {",
           "const bool selected = !selected_path.empty() && row.entry.notespath == selected_path;",
           "analyze_job->song().notespath == selected->notespath;",
@@ -3203,8 +3271,24 @@ const std::vector<OwnerRule>& rules() {
           "if (selected->notespath == view_row(i).notespath) return i;"},
          {"const std::string selected_path = app.selected ? app.selected->notespath : std::string();",
           "const bool selected = app.is_selected_row(row.entry);"},
-         {{"src/ui/app_state.cpp", "return selected && row.notespath == selected->notespath;",
+         {{"src/ui/app_state.cpp", "return selected && row_key(row) == row_key(*selected);",
            "is_selected_row, the owner"}},
+         {"src"}},
+        // Two library rows (or a row and a store entry) told apart by their
+        // notespath read straight off, not through the owner's key: a click
+        // picking its copy, or a batch matching rows to store entries.
+        {"What tells one library row from another?",
+         "row_key in src/ui/library_model.h",
+         R"((\.|->)notespath\s*(==|!=)\s*[\w.\[\]()*>-]*notespath\b|\.(emplace|find)\([^;]*\bentry\.notespath\b)",
+         "",
+         {"src/ui/library_model.h"},
+         {},
+         "audit finding 143; MEM-L review finding 1",
+         {"if (copy.notespath == row.notespath) {",
+          "place.emplace(library.rows()[matched[k]].entry.notespath, k);"},
+         {"return x.entry.notespath < y.entry.notespath;",
+          "by_path_.emplace(plan_.todo[i].notespath, i);"},
+         {},
          {"src"}},
         // Song folders and the scan job tested together, or the old scan-only
         // guard in start_scan.
@@ -3476,7 +3560,7 @@ const std::vector<OwnerRule>& rules() {
         // big-endian read (MIDI) and the hash's XOR-ed tail bytes are other
         // questions and are not flagged.
         {"How is a little-endian number written byte by byte? (any width or name)",
-         "read_le and append_le in src/core/little_endian.h (BinaryWriter and "
+         "read_le and append_le in src/core/little_endian.h (rules_fp_bytes and "
          "testbytes::put_le call the writer)",
          R"(\b(uint16_t|uint32_t|uint64_t|size_t|void|std::vector<uint8_t>)\s+(read|write)_(u16_|u32_|u64_)?le\(|<<\s*\(8\s*\*\s*i\)|>>\s*\(8\s*\*\s*i\)|\b\w*le(16|32|64)\s*\(\s*const\s+(uint8_t|unsigned char)\s*\*|\|\s*\(*\s*(static_cast<\w+>|u?int\d*_t)?\s*\(*\s*[\w.>-]+\[[^\]]*\]\s*\)*\s*<<\s*8\b)",
          "",
@@ -4253,10 +4337,27 @@ const std::vector<OwnerRule>& rules() {
           "if (old_store.chart_library_count() == 0 || new_store.chart_library_count() == 0)"},
          {"} else if (lacks_chart_library(store)) {",
           "if (report::lacks_chart_library(store))"},
-         {{"src/app/report.cpp",
-           "return store.counts().second > 0 && store.chart_library_count() == 0;",
+         {{"src/app/report.cpp", "return any_results && store.chart_library_count() == 0;",
            "lacks_chart_library, the owner"}},
          {"src"}},
+        // The path report and records_by_hash once each tested "is this chart
+        // in the library" against their own map (the naming-copy files and
+        // the copies). A page that looks a chart up in a library map itself
+        // can disagree with them about which charts the library lists.
+        {"Does the library list this chart?",
+         "report::library_lists in src/app/report.cpp",
+         R"(\blibrary\w*\.(find|end|count|contains)\(|\bfiles\.(find|end|count|contains)\()",
+         "",
+         {},
+         {},
+         "D87 item 4, D92 (task som-a)",
+         {"if (library.find(hash) == library.end()) continue;",
+          "const auto file = files.find(hash);",
+          "if (file == files.end()) continue;"},
+         {"if (!library_lists(library, hash)) continue;", "slot.file = &files.at(hash);",
+          "const auto listed = copies.find(md5);"},
+         {{"src/app/report.cpp", "return library.find(hash) != library.end();",
+           "library_lists, the owner"}}},
         // The GUI harness writes its ini from scratch_settings(), and the
         // Burnout reference cases run through its to_analysis_settings. Other
         // depths in these files are a case's own input.
@@ -4537,12 +4638,14 @@ const std::vector<OwnerRule>& rules() {
            "walks the failure lines; the heading reads s.failed"}},
          {"src/app/analysis.cpp", "src/cli/batch.cpp", "src/ui/library_jobs.cpp",
           "src/ui/library_dialogs.cpp", "src/ui/app_state.cpp"}},
-        // D79 B5: RecordStore::counts() is every stored row at every
-        // setting, so printing it next to the batch's counts read as a
-        // second chart count. It may only say whether the store is empty.
+        // D79 B5: RecordStore::counts() adds up every stored row at every
+        // setting, so a line that printed it next to the batch's counts read
+        // as a second chart count. This row flags every call to a store's
+        // counts() in src/ and tools/. The one call kept is holds_results in
+        // src/app/report.cpp, which asks only whether the store is empty.
         {"Does a line print the store's raw row count as a count of charts?",
-         "BatchProgress and the library table (D76, D79); RecordStore::counts() only tells an "
-         "empty store",
+         "BatchProgress and the library table count charts (D76, D79); holds_results in "
+         "src/app/report.cpp is the one reader of RecordStore::counts()",
          R"(\b\w*store\w*(\.|->)counts\(\))",
          "",
          {},
@@ -4550,11 +4653,9 @@ const std::vector<OwnerRule>& rules() {
          "D79 item 2 (task COUNT-B)",
          {"auto [songs, records] = store.counts();", "const auto n = app.store->counts().first;"},
          {"CHECK(m.counts().all == 6);", "const ChipCounts& counts = app.library.counts();"},
-         {{"src/app/report.cpp", "if (store.counts().second == 0) {",
-           "generate_report asks only whether the store is empty"},
-          {"src/app/report.cpp",
-           "return store.counts().second > 0 && store.chart_library_count() == 0;",
-           "lacks_chart_library asks only whether the store is empty"}},
+         {{"src/app/report.cpp",
+           "bool holds_results(store::RecordStore& store) { return store.counts().second > 0; }",
+           "holds_results, the owner: it asks only whether the store is empty"}},
          {}},
         // D79 B4: Scan library, hydra_batch and the bench tool each saved a
         // scan their own way. One function saves it, so every one leaves the
@@ -4717,6 +4818,36 @@ const std::vector<OwnerRule>& rules() {
          {{"src/parse/midi.h",
            "bool is_note_on() const { return type == Type::NoteOn && velocity > 0; }",
            "Message::is_note_on, the owner"}}},
+        // Where one .mid drum timestamp gives way to the next is decided once,
+        // so the sequence's size count and the walk that pushes cannot drift.
+        {"Which .mid drum message opens a new timestamp?",
+         "opens_timestamp in src/parse/song.cpp",
+         R"(\b\w+(\.|->)time\s*[!=]=\s*0\b)",
+         "",
+         {},
+         {},
+         "MEM-P derive-once review (memory audit fix 2): the reserve count and the walk had each spelled it",
+         {"if (msg.time != 0) ++pushes;", "if (msg.time != 0) {", "if (m->time == 0) continue;"},
+         {"if (opens_timestamp(msg)) ++pushes;", "elapsed += msg.time;",
+          "CHECK(msg.time == 480);"},
+         {{"src/parse/song.cpp", "return msg.time != 0;", "opens_timestamp, the owner"}},
+         {"src"}},
+        // Which .chart drum lines make one timestamp is decided once, for the
+        // same reason.
+        {"Which .chart drum lines share one timestamp?",
+         "tick_group_end in src/parse/song.cpp",
+         R"(\b\w+\s*->\s*tick\s*[!=]=\s*\w+\s*->\s*tick\b|\b\w+\[[^\]]+\]\.tick\s*[!=]=\s*\w+\[[^\]]+\]\.tick\b)",
+         "",
+         {},
+         {},
+         "MEM-P derive-once review (memory audit fix 2): the reserve count and the walk had each spelled it",
+         {"while (q != end && q->tick == p->tick) ++q;",
+          "if (lines[i].tick != lines[i - 1].tick) ++ticks;"},
+         {"const ChartLine* q = tick_group_end(p, end);",
+          "const auto by_tick = [](const ChartLine& a, const ChartLine& b) { return a.tick < b.tick; };"},
+         {{"src/parse/song.cpp", "while (q != end && q->tick == p->tick) ++q;",
+           "tick_group_end, the owner"}},
+         {"src"}},
         // Which note messages the MIDI parser acts on is decided once. Its
         // optype and the lean read's filter both ask midi_note_is_read; the
         // pitch rules it reads are called nowhere else.
@@ -4965,6 +5096,31 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/analysis.cpp", "thread_local std::vector<uint8_t> buf(1 << 20);",
            "stream_md5, the owner"}},
          {"src/app/analysis.cpp"}},
+        // An empty fingerprint is what a gone file or a folder chart without
+        // its song.ini gives, so it can never show a chart unchanged. The
+        // cache read, the rescan's test and the click's save all ask
+        // store::sig_can_show_unchanged, which sits in store/ so every layer
+        // can call it. Only a variable named for a fingerprint is caught, as
+        // the three callers name theirs.
+        {"Could this stored fingerprint ever show a chart unchanged?",
+         "sig_can_show_unchanged in src/store/record_store.h",
+         R"(\b(sig|stored|stored_sig|new_sig|old_sig)(\.|->)empty\(\)|\bsig\b\s*(==|!=)\s*(""|std::string\(\)))",
+         "",
+         {},
+         {},
+         "D96 (an empty fingerprint never shows a chart unchanged) and its follow-up in the "
+         "audit fix decisions",
+         {"if (sig.empty()) continue;", "return !stored.empty() && stored == now;",
+          "if (now->sig.empty()) return;", "if (it->second.sig.empty()) skip = true;",
+          "if (stored_sig.empty()) return {};"},
+         {"if (!sig_can_show_unchanged(sig)) continue;",
+          "return store::sig_can_show_unchanged(stored) && stored == now;",
+          "if (sig_of(notes, ini).size() > 3) return;"},
+         {{"src/store/record_store.h",
+           "inline bool sig_can_show_unchanged(const std::string& sig) { return !sig.empty(); }",
+           "sig_can_show_unchanged, the owner: chart_library_cache, sig_unchanged and "
+           "ViewJob::run call it"}},
+         {"src"}},
     };
     return r;
 }
@@ -5215,6 +5371,42 @@ TEST_CASE("single-owner: the results stamp's bump rule names the chart readers (
     CHECK(rule.find("src/search") != std::string::npos);
     CHECK(rule.find("src/core") != std::string::npos);
     CHECK(rule.find("src/parse") != std::string::npos);
+}
+
+// D94: the User Guide quotes the Preview's changed-chart line in backticks.
+// The sentence is read off the owner line of the row that guards it, and that
+// line is checked against src/ui/preview_tab.cpp, so the words are typed only
+// in the code and in that row.
+TEST_CASE("single-owner: the User Guide quotes the Preview's changed-chart line as the code has it") {
+    const OwnerLine* owner = nullptr;
+    for (const OwnerRule& r : rules())
+        if (r.question == "What does the Preview say when the chart changed since it was analyzed?")
+            for (const OwnerLine& o : r.owner_lines)
+                if (o.file == "src/ui/preview_tab.cpp") owner = &o;
+    REQUIRE(owner != nullptr);
+
+    const auto slurp = [](const fs::path& p) {
+        std::ifstream in(p);
+        REQUIRE(in.good());
+        std::stringstream ss;
+        ss << in.rdbuf();
+        return ss.str();
+    };
+    INFO("owner line: " << owner->line_text);
+    REQUIRE(slurp(sourcetree::root() / fs::u8path(owner->file)).find(owner->line_text) !=
+            std::string::npos);
+
+    // The C++ literal on that line, between its first and last double quote.
+    const size_t open = owner->line_text.find('"');
+    const size_t close = owner->line_text.rfind('"');
+    REQUIRE(open != std::string::npos);
+    REQUIRE(close > open);
+    const std::string sentence = owner->line_text.substr(open + 1, close - open - 1);
+    REQUIRE(sentence.find('\\') == std::string::npos);  // no escapes to undo
+
+    INFO("docs/UserGuide.md should quote `" << sentence << "`");
+    CHECK(slurp(sourcetree::root() / "docs" / "UserGuide.md").find("`" + sentence + "`") !=
+          std::string::npos);
 }
 
 // E3 (findings 180, 243, 245 and 56): "does this path need any timing?" is

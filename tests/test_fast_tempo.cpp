@@ -23,6 +23,7 @@
 #include "app/config.h"
 #include "bank_check.h"
 #include "chart_text.h"
+#include "corpus_util.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "parse/song.h"
@@ -607,7 +608,7 @@ TEST_CASE("keep_target_paths: every kept path and tied variant took exactly the 
     const std::vector<Path> in = {r1, r6, made(10, {300})};
 
     std::vector<bool> promoted;
-    const std::vector<Path> out = keep_target_paths(in, {100, 200}, &promoted);
+    const std::vector<Path> out = keep_target_paths(in, activation_pins({100, 200}), &promoted);
     REQUIRE(out.size() == 2);
     CHECK(promoted == std::vector<bool>{false, true});
 
@@ -631,6 +632,136 @@ TEST_CASE("keep_target_paths: every kept path and tied variant took exactly the 
     CHECK(k7.variants[0].notecount == 8);
     CHECK(k7.variants[0].var_point == std::optional<int>(2));
     CHECK(k7.tied_pathcount() == 2);
+}
+
+// Track R2: every corpus path, handed back to search_target as a full pin
+// (pinned_windows: each window's activation, deactivation node and
+// squeeze-out), comes back alone and stores what the search stored for it.
+// full_pin_mismatch is the check hydra_replay selfcheck runs; windows_text
+// adds every other stored fact of each window.
+TEST_CASE("search_target: every corpus path pinned in full comes back alone, the same") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int paths = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        for (const Path* p : rec.all_paths()) {
+            ++paths;
+            CAPTURE(chart);
+            CAPTURE(p->pathstring());
+            CHECK(full_pin_mismatch(song, cfg, *p) == "");
+            const TargetResult t = search_target(song, cfg, pinned_windows(*p));
+            CHECK(t.paths.size() == 1);
+            if (t.paths.size() != 1) continue;
+            CHECK(test::windows_text(t.paths[0]) == test::windows_text(*p));
+        }
+    }
+    CHECK(paths > 0);
+}
+
+// Track R2 on D45's chart (fuzz seed 5, activations 3168 and 12864): a full
+// pin of one of its paths comes back alone. Moved to an end no Star Power
+// reaches, or told a squeeze-out the engine does not make there, it comes
+// back empty, naming the window that broke and how.
+TEST_CASE("search_target: a full pin no path realizes names its window and why") {
+    const FuzzChart fc = fuzz_chart(5);
+    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
+    const Song song = load_songbytes_chart(bytes, true, true);
+    const app::AnalysisSettings cfg = scores_settings(fc.cap);
+    const std::vector<Path> kept = search_target(song, cfg, {3168, 12864});
+    const Path* path = test::path_named(kept, "0+- 0-");
+    REQUIRE(path != nullptr);
+    const std::vector<PinnedWindow> pins = pinned_windows(*path);
+    REQUIRE(pins.size() == 2);
+
+    const TargetResult whole = search_target(song, cfg, pins);
+    REQUIRE(whole.paths.size() == 1);
+    CHECK(whole.paths[0].pathstring() == path->pathstring());
+    CHECK(whole.paths[0].totalscore() == path->totalscore());
+    CHECK(whole.realized_prefix == 2);
+    CHECK_FALSE(whole.failed_tick.has_value());
+    CHECK(whole.failed_reason.empty());
+
+    // One tick after its own activation, no Star Power can end.
+    std::vector<PinnedWindow> unreachable = pins;
+    unreachable[1].deact_tick = unreachable[1].act_tick + 1;
+    const TargetResult end = search_target(song, cfg, unreachable);
+    CHECK(end.paths.empty());
+    CHECK(end.realized_prefix == 1);
+    CHECK(end.failed_tick == std::optional<int64_t>(12864));
+    CHECK(end.failed_reason == "window_end");
+
+    // The second window's end as stored, but the other answer on how it
+    // ended: a plain end where it squeezed out, or 22848 (a phrase chord)
+    // squeezed out where it ended plainly.
+    std::vector<PinnedWindow> other_sqout = pins;
+    REQUIRE(other_sqout[1].check_sqout);
+    other_sqout[1].squeezed_out =
+        pins[1].squeezed_out ? std::nullopt : std::optional<int64_t>(22848);
+    const TargetResult sqout = search_target(song, cfg, other_sqout);
+    CHECK(sqout.paths.empty());
+    CHECK(sqout.realized_prefix == 1);
+    CHECK(sqout.failed_tick == std::optional<int64_t>(12864));
+    CHECK(sqout.failed_reason == "sqout");
+}
+
+// Activation pins alone ask what the tick list asks: search_target over them
+// returns what search_target over the ticks returns (D45's answer above).
+// D45's unrealizable set still fails on 12865, a tick that is no fill node,
+// now found by the binary search over the prefix length.
+TEST_CASE("search_target: activation pins return the tick search's paths and its failing tick (D45)") {
+    const FuzzChart fc = fuzz_chart(5);
+    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
+    const Song song = load_songbytes_chart(bytes, true, true);
+    const app::AnalysisSettings cfg = scores_settings(fc.cap);
+
+    std::vector<bool> promoted;
+    const std::vector<Path> by_ticks = search_target(song, cfg, {3168, 12864}, &promoted);
+    const TargetResult by_pins = search_target(song, cfg, {PinnedWindow{3168}, PinnedWindow{12864}});
+    CHECK(target_text(by_pins.paths) == target_text(by_ticks));
+    CHECK(by_pins.promoted == promoted);
+    CHECK(by_pins.realized_prefix == 2);
+
+    const TargetResult bad =
+        search_target(song, cfg, {PinnedWindow{3168}, PinnedWindow{12865}});
+    CHECK(bad.paths.empty());
+    CHECK(bad.realized_prefix == 1);
+    CHECK(bad.failed_tick == std::optional<int64_t>(12865));
+    CHECK(bad.failed_reason == "activation");
+}
+
+// The binary search over more than two windows, on corpus chart Mutemath
+// "Allies" (its first stored path, four windows). One window's end is moved
+// one tick past its activation, where no Star Power ends: the last window,
+// then a middle one. The answers are pinned as read from one run.
+TEST_CASE("search_target: the binary search names the last or a middle window that breaks") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    std::string chart;
+    for (const std::string& p : corpus::chart_paths())
+        if (p.find("Mutemath - Allies") != std::string::npos) chart = p;
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.prodrums, cfg.bass2x, cfg.difficulty);
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    REQUIRE_FALSE(rec.all_paths().empty());
+    const std::vector<PinnedWindow> pins = pinned_windows(*rec.all_paths().front());
+    REQUIRE(pins.size() == 4);
+
+    std::vector<PinnedWindow> last = pins;
+    last[3].deact_tick = last[3].act_tick + 1;
+    const TargetResult at_last = search_target(song, cfg, last);
+    CHECK(at_last.paths.empty());
+    CHECK(at_last.realized_prefix == 3);
+    CHECK(at_last.failed_tick == std::optional<int64_t>(49920));
+    CHECK(at_last.failed_reason == "window_end");
+
+    std::vector<PinnedWindow> middle = pins;
+    middle[1].deact_tick = middle[1].act_tick + 1;
+    const TargetResult at_middle = search_target(song, cfg, middle);
+    CHECK(at_middle.paths.empty());
+    CHECK(at_middle.realized_prefix == 1);
+    CHECK(at_middle.failed_tick == std::optional<int64_t>(22272));
+    CHECK(at_middle.failed_reason == "window_end");
 }
 
 // The phrases still ahead when SP ends, pinned (s1-fix-merge). D34 lets one

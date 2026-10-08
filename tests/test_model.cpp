@@ -649,13 +649,11 @@ TEST_CASE("Chord::code spells a ghost/accent kick in the kick lane") {
     ghost.add_note(NoteColor::Kick).dynamictype = NoteDynamicType::Ghost;
     ghost.add_note(NoteColor::Red);
     CHECK(ghost.code() == "gn...");
-    CHECK(Chord::from_code("gn...") == ghost);
 
     Chord accent;
     accent.add_note(NoteColor::Kick).dynamictype = NoteDynamicType::Accent;
     accent.add_note(NoteColor::Red);
     CHECK(accent.code() == "an...");
-    CHECK(Chord::from_code("an...") == accent);
 
     CHECK(ghost.rowstr() == "[Kick (Ghost) - Red snare]");
 }

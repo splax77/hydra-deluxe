@@ -37,6 +37,7 @@
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
+#include "leak_check.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "search/graph.h"
@@ -570,6 +571,23 @@ TEST_CASE("prepare_row files the row under the record's own rules fingerprint") 
     CHECK(foreign.rules_fingerprint != fixture().record.rules_fingerprint);
 }
 
+TEST_CASE("the rules_fp column holds a fingerprint's bytes as one run wrote them") {
+    // Every stored row's key includes these bytes, so a change to how they
+    // are written would orphan every result a user has. The literal is from
+    // one run.
+    const std::string db = testtemp::temp_path("rules_fp_bytes", ".db");
+    HydraRecord rec = at_cap(4);
+    rec.rules_fingerprint = 0x0102030405060708ULL;
+    {
+        RecordStore store(db);
+        store.add_row(prepare_row(RecordKey{"h", "mode", CapQuery::at(4)}, rec));
+    }
+    CHECK(scalar_on_file(db, "SELECT COUNT(*) FROM results WHERE hex(rules_fp) = '0807060504030201'") ==
+          1);
+    std::error_code ec;
+    std::filesystem::remove(std::filesystem::u8path(db), ec);
+}
+
 TEST_CASE("RecordKey compares on every part of the identity") {
     const RecordKey key{"h", "mode", CapQuery::at(4), kLensA};
     CHECK(key == RecordKey{"h", "mode", CapQuery::at(4), kLensA});
@@ -721,22 +739,24 @@ TEST_CASE("a database from Hydra 1.6 or older opens with nothing to show") {
 }
 
 TEST_CASE("store: a new database carries 0 in user_version and reads its own rows") {
-    // D53 item 1: Hydra never writes the user_version slot. The column checks
-    // in the constructor are the one upgrade gate, so a new file keeps the 0
-    // SQLite gives a file nobody wrote it on.
-    const std::string path = testtemp::temp_path("user_version", ".db");
-    std::remove(path.c_str());
-    const RecordKey key{"h", "mode", CapQuery::at(4)};
-    {
-        RecordStore store(path);
-        store.add_record(key, at_cap(4));
-    }
-    CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
-    {
-        RecordStore reopened(path);
-        CHECK(reopened.get_summary(key).status == RecordStatus::Ready);
-    }
-    std::remove(path.c_str());
+    hydra::test::leak_checked([&] {
+        // D53 item 1: Hydra never writes the user_version slot. The column checks
+        // in the constructor are the one upgrade gate, so a new file keeps the 0
+        // SQLite gives a file nobody wrote it on.
+        const std::string path = testtemp::temp_path("user_version", ".db");
+        std::remove(path.c_str());
+        const RecordKey key{"h", "mode", CapQuery::at(4)};
+        {
+            RecordStore store(path);
+            store.add_record(key, at_cap(4));
+        }
+        CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
+        {
+            RecordStore reopened(path);
+            CHECK(reopened.get_summary(key).status == RecordStatus::Ready);
+        }
+        std::remove(path.c_str());
+    });
 }
 
 TEST_CASE("store: list_records reads its summary columns from the one list") {

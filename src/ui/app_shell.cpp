@@ -10,11 +10,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
+#include <limits>
+#include <memory>
 
 #include "imgui.h"
 #include "imgui_internal.h"  // g.LogBuffer for FrameText; ImGuiSettingsHandler
 
 #include "app/config.h"
+#include "audio/mapped_file.h"
 #include "core/winstr.h"
 #include "ui/app_state.h"
 #include "ui/details_view.h"
@@ -38,6 +42,36 @@ ImGuiStyle g_base_style;
 // merged into the main font must load at the same size: ImGui scales merged
 // glyphs by the ratio of the two sizes.
 constexpr float kFontSize = 18.0f;
+
+// The font files the atlas reads glyphs from, mapped by add_font_file. ImGui
+// loads glyphs on demand for as long as its context lives, so shutdown_imgui
+// unmaps them only after DestroyContext.
+std::vector<std::shared_ptr<const audio::MappedFile>> g_font_files;
+
+// AddFontFromFileTTF, but the atlas reads the file through a read-only memory
+// map instead of a heap copy, so Windows keeps only the pages glyphs come
+// from. A file that can't be mapped goes to AddFontFromFileTTF itself, so a
+// missing or unreadable file fails just as it always has.
+ImFont* add_font_file(const std::string& path, float size, const ImFontConfig* config = nullptr) {
+    ImFontAtlas* atlas = ImGui::GetIO().Fonts;
+    std::shared_ptr<const audio::MappedFile> file;
+    try {
+        file = audio::MappedFile::open(path);
+    } catch (const std::exception&) {
+        // Left to AddFontFromFileTTF below.
+    }
+    if (!file || file->size() == 0 ||
+        file->size() > static_cast<size_t>(std::numeric_limits<int>::max()))
+        return atlas->AddFontFromFileTTF(path.c_str(), size, config);
+
+    ImFontConfig mapped = config ? *config : ImFontConfig();
+    mapped.FontDataOwnedByAtlas = false;
+    // ImGui only reads font data; its signature just isn't const.
+    ImFont* font = atlas->AddFontFromMemoryTTF(const_cast<uint8_t*>(file->data()),
+                                               static_cast<int>(file->size()), size, &mapped);
+    if (font) g_font_files.push_back(std::move(file));
+    return font;
+}
 
 // Reads "<a>,<b>" into two ints; false unless the text is exactly that.
 bool read_int_pair(std::string_view text, int& a, int& b) {
@@ -244,10 +278,8 @@ void setup_imgui(const ImGuiSetupOptions& options) {
     // rather than asserting.
     const std::string fonts_dir =
         options.resource_dir.empty() ? app::resource_dir() : options.resource_dir;
-    ImFont* main_font = io.Fonts->AddFontFromFileTTF(
-        join_folder(fonts_dir, "ShipporiAntiqueB1-Regular.ttf").c_str(), kFontSize);
-    g_mono_font = io.Fonts->AddFontFromFileTTF(
-        join_folder(fonts_dir, "CourierPrime-Regular.ttf").c_str(), kFontSize);
+    ImFont* main_font = add_font_file(join_folder(fonts_dir, "ShipporiAntiqueB1-Regular.ttf"), kFontSize);
+    g_mono_font = add_font_file(join_folder(fonts_dir, "CourierPrime-Regular.ttf"), kFontSize);
     if (main_font) io.FontDefault = main_font;
 
     // CJK fallback: Clone Hero libraries are full of Japanese (and other
@@ -265,12 +297,15 @@ void setup_imgui(const ImGuiSetupOptions& options) {
             if (!hydra::file_exists_utf8(path)) continue;
             ImFontConfig merge;
             merge.MergeMode = true;
-            if (io.Fonts->AddFontFromFileTTF(path, kFontSize, &merge)) break;
+            if (add_font_file(path, kFontSize, &merge)) break;
         }
     }
 }
 
-void shutdown_imgui() { ImGui::DestroyContext(); }
+void shutdown_imgui() {
+    ImGui::DestroyContext();
+    g_font_files.clear();  // the atlas that read them is gone
+}
 
 void run_frame(AppState& app, FrameText* capture) {
     const bool capturing = capture && capture->enabled;

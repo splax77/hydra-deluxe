@@ -66,7 +66,7 @@ bool open_burnout(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return false;
     open_titled(ctx, "burnout", "Burnout");
     if (ctx->IsError()) return false;
-    wait_song_analyzed(ctx);  // clicks the Paths tab first, then waits
+    wait_song_analyzed(ctx);  // waits, then lands on the Paths tab
     if (ctx->IsError()) return false;
     IM_CHECK_RETV(h.app->viewed.record->best_path().pathstring() == "3- 1 2", false);
     ctx->Yield(2);
