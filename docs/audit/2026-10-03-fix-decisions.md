@@ -464,3 +464,5 @@ On the 97 test charts, 68 have an all-0 path again, up from 61 on main, and ever
 16. **Text columns sort the way the Library table does** (2026-10-08, asked after T3): fold case and accents with `fold_for_search`, then plain character order. "Song 10" sorts before "Song 2". The pages' browser order is not copied.
 17. **An empty Posted date sinks to the bottom in both directions,** like every other empty value (2026-10-08, asked after T3). The old page sorted it first from A to Z.
 18. **The count line's noun follows `counted`'s singular-at-1 rule,** on the total: "1 of 1 path" (2026-10-08, asked after T3). The old page always wrote the plural.
+19. **While a batch locks the settings bar, a click on a report row of another mode selects nothing,** and the status line shows today's "A batch is running." (2026-10-08, asked after T4). A row of the bar's own mode still selects. The Paths tab and the row never disagree.
+20. **"Open path report" shows when the library has analyzed charts, when a report is in memory, or while one builds** (2026-10-08, asked after T4), so the button never vanishes while there is a report to show.

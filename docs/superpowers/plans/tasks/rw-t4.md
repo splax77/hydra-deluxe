@@ -30,6 +30,10 @@ Your spec is the plan's "Task 4" section, plus the spec's "How the windows work"
 
 Owned-file check: every T4 step changes app state, the two jobs, the toolbar, the strip and the dm box, and their tests; no window is drawn (T5) and nothing is deleted from the app layer (T7).
 
+## Review fix round (added by the orchestrator, 2026-10-08)
+
+`select_chart` searches the Difficulty, Pro Drums and 2x Bass choices for the one whose `chartmode_key` spells a mode. `settings_for_mode` in `src/app/report.cpp` already answers that question, privately. For the fix round only, you may edit `src/app/report.h` and `src/app/report.cpp` to make `settings_for_mode` public (or move it beside `chartmode_key` if that's its natural owner), and have `select_chart` call it. Add the scan row the fix-round rules ask for. T5 also adds one function to `report.h` this wave; touch only `settings_for_mode`'s lines so the merge stays mechanical.
+
 ## Preflight
 
 Command: `Grep "publish_report|open_when_done|report_file_exists|class ReportJob|class DmReportJob|show_in_folder|Open path report|Show in folder|Open automatically|Open report|Compare another" src/ui`, run by the orchestrator on main at e0507e1 on 2026-10-08.
