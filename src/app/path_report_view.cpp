@@ -8,7 +8,7 @@
 namespace hydra::app::path_report_view {
 
 using report_view::CellLook;
-using report_view::kDash;
+using report::kDash;
 using report_view::SortKey;
 
 namespace {

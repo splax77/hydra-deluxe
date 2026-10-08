@@ -7,7 +7,7 @@
 namespace hydra::app::dm_report_view {
 
 using report_view::CellLook;
-using report_view::kDash;
+using report::kDash;
 using report_view::SortKey;
 using report_view::Tone;
 

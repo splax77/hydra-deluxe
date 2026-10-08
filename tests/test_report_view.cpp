@@ -326,8 +326,8 @@ TEST_CASE("path report cells read as the page wrote them") {
 
     // No timing and no early fill: dashes, and the None tier's chip.
     ReportRow none = path_row("Halo", "Beyonce", "Someone", "1", 100, std::nullopt, false);
-    CHECK(cols[8].cell(none) == report_view::kDash);
-    CHECK(cols[10].cell(none) == report_view::kDash);
+    CHECK(cols[8].cell(none) == report::kDash);
+    CHECK(cols[10].cell(none) == report::kDash);
     CHECK(cols[9].cell(none) == "No squeezes");
     CHECK(std::holds_alternative<std::monostate>(cols[8].sort_key(none)));
     CHECK(std::holds_alternative<std::monostate>(cols[10].sort_key(none)));
@@ -424,13 +424,13 @@ TEST_CASE("dm comparison cells read as the page wrote them") {
     const std::vector<DmReportRow> rows = dm_sample();
     CHECK(cells(cols, rows[0]) == std::vector<std::string>{
                                       "Under", "Band A", "Charter A", "98,000", "100,000",
-                                      "2,000", "98.00%", report_view::kDash, "99%", "100%",
+                                      "2,000", "98.00%", report::kDash, "99%", "100%",
                                       "#3", "2024-05-01", "under optimal"});
     CHECK(cells(cols, rows[1]) == std::vector<std::string>{
                                       "Above", "Band B", "Charter B", "101,234", "100,000",
                                       "+1,234 over", "101.23%", "\xE2\x9C\x93", "100%", "100%",
                                       "#1", "2023-01-02", "above optimal"});
-    const std::string d = report_view::kDash;
+    const std::string d = report::kDash;
     CHECK(cells(cols, rows[2]) == std::vector<std::string>{
                                       "Missing", "Band C", "", "5,000", d, d, d, d, "80%",
                                       "100%", d, d, "not in library"});

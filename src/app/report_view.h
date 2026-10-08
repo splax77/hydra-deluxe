@@ -21,9 +21,6 @@
 
 namespace hydra::app::report_view {
 
-// What a report cell shows when it has no value, as the pages wrote it.
-inline constexpr const char* kDash = "\xE2\x80\x94";  // U+2014 EM DASH
-
 // What a column sorts on for one row: nothing (an empty value), a number or
 // text. Empty values sink to the bottom whichever way the column sorts.
 using SortKey = std::variant<std::monostate, double, std::string>;
