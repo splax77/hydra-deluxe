@@ -283,6 +283,16 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
     CHECK(job.batch_run().chartmode == test_run().chartmode);
 }
 
+// D88: every exe runs on mimalloc, this one too. An exe whose link puts
+// mimalloc.dll after another DLL keeps the Windows heap without a word; the
+// memory wave's join did that to every GUI exe. The Debug runtime is never
+// redirected, so only a Release build can tell.
+#ifdef NDEBUG
+TEST_CASE("allocator: malloc goes to mimalloc") {
+    CHECK(hydra::app::malloc_redirected());
+}
+#endif
+
 // D95 call 1: once a batch ends, the memory its charts freed goes back to
 // Windows at once, not after mimalloc's purge delay. As in a real batch, each
 // result is built on a worker and freed on the batch's own thread once
@@ -290,6 +300,11 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
 TEST_CASE("jobs: a finished batch hands the memory its charts freed back to Windows") {
     static constexpr size_t kBlock = 1024;  // small blocks, as a chart's are
     static constexpr size_t kChartBytes = 128 * 1024 * 1024;
+#ifdef NDEBUG
+    // On the Windows heap the charts' memory never reaches mimalloc, and the
+    // check below passes whatever the batch did.
+    REQUIRE(hydra::app::malloc_redirected());
+#endif
     const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
     hydra::app::return_freed_memory();
     const size_t before = hydra::app::committed_bytes();

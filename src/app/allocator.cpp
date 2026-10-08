@@ -16,4 +16,6 @@ size_t committed_bytes() {
     return current_commit;
 }
 
+bool malloc_redirected() { return mi_is_redirected(); }
+
 }  // namespace hydra::app

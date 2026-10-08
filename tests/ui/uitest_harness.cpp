@@ -24,6 +24,7 @@
 #include "../temp_util.h"
 #include "../warp_util.h"  // tests/ is not on the runner's include path
 
+#include "app/allocator.h"
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/report_files.h"
@@ -179,6 +180,16 @@ const ImGuiTest* Harness::running_test() const {
 }
 
 bool Harness::init() {
+#ifdef NDEBUG
+    // This runner links what Hydra.exe links, so a link order that leaves
+    // malloc on the Windows heap here does the same to the app (D88). The
+    // Debug runtime is never redirected.
+    if (!hydra::app::malloc_redirected()) {
+        std::fprintf(stderr, "hydra_uitest: malloc is not going to mimalloc; mimalloc.dll "
+                             "must come first in the exe's imports (CMakeLists.txt)\n");
+        return false;
+    }
+#endif
     if (!warp::make_device(device, context)) {
         std::fprintf(stderr, "hydra_uitest: could not create a WARP D3D11 device\n");
         return false;

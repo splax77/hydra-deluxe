@@ -262,9 +262,13 @@ target_compile_definitions(hydra_core PUBLIC HYDRA_VERSION="${PROJECT_VERSION}"
 # (AssocQueryStringW) to hand it a long page's short name directly.
 target_link_libraries(hydra_core PUBLIC sqlite3 miniz)
 target_link_libraries(hydra_core PRIVATE bcrypt shell32 shlwapi ole32 uuid hydra_warnings)
-# allocator.cpp calls mimalloc by name; this brings in mimalloc.h. Every exe
-# links mimalloc already (hydra_use_mimalloc).
-target_link_libraries(hydra_core PRIVATE mimalloc)
+# allocator.cpp calls mimalloc by name, so it needs mimalloc.h. Only the
+# header folder: every exe links mimalloc first already (hydra_use_mimalloc),
+# and linking it here too makes CMake move it after hydra_core on each exe's
+# link line, behind d3d11.dll, where mimalloc-redirect.dll gives up and leaves
+# malloc on the Windows heap.
+target_include_directories(hydra_core PRIVATE
+                           $<TARGET_PROPERTY:mimalloc,INTERFACE_INCLUDE_DIRECTORIES>)
 
 # ---- hydra_audio: the Preview audio engine (decode + mix + player) -------
 # Decodes chart stems to float PCM, mixes them, and (GUI-side) drives the
