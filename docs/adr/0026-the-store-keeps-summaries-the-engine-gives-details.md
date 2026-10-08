@@ -94,29 +94,80 @@ saved under it (D87 item 3, `reidentify_chart`).
 
 ## The upgrade
 
-It lands with storage-T5. The first time the new Hydra opens an old file,
-`set_up_schema` upgrades it in place, with no backup copy (D87 item 7). It
-runs only when the old paths table exists, so a second open does nothing. It
-is the last step of `set_up_schema`, in `drop_stored_details`.
+It landed with storage-T5, and D100 (2026-10-07) changed how it works. The
+first time the new Hydra opens an old file, it writes a fresh, small file with
+only the kept tables and swaps it in for the old one. It runs only when the
+old paths table exists, so a second open does nothing. No lasting backup copy
+is left (D100 item 1, which replaces D87 item 7's in-place upgrade). The copy
+lives in the `RecordStore` constructor in src/store/record_store.cpp.
 
-First, in one transaction, it deletes the rows that have a score and no stars,
-which an older build wrote before the stars column existed. Filling the stars
-needed the details, and a click or a batch writes the row again. In the same
-transaction it drops the paths, path_refs, songmeta and dynamics tables, and
-the results table's structure column. Then it runs VACUUM, which rewrites the
-file at its new size and needs free disk space up to the old size. Last, a
-WAL checkpoint in TRUNCATE mode empties the log.
+Think of moving house. The first version threw things out of the old house
+room by room and then shrank the house. The new one packs only the boxes
+being kept, carries them to a new house, and hands back the old keys.
+
+**Why a copy.** The first version dropped the paths, path_refs, songmeta and
+dynamics tables inside the old 292 MB file, then ran VACUUM (SQLite's command
+that rewrites a file at its new size). Task T0 timed that at 0.41 s on a
+freshly made copy (below). On a cold disk, such as the first start after a
+reboot, the same work took about 4.4 s when it was timed for D100, because
+SQLite read the pages it was throwing away. The window sat frozen and
+unpainted the whole time. The copy reads only the charts, results and meta
+tables and never touches a page of the dropped ones. A prototype of it took
+0.39 s on a cold disk. The merged code is timed at merge with the "upgrade timing" test case
+in tests/test_store.cpp, and that number is the one to quote. The copy also
+needs less free disk space: only the new file's size, where VACUUM needed up
+to the old file's size.
+
+**The steps.** Hydra writes the kept rows into a new file beside the old one,
+hydra.db.upgrading. Each row is copied value for value, so it keeps its id
+and its stamps (ADR 0018). The new file gets this build's tables and indexes.
+Rows that have a score and no stars are left out of the copy. An older build
+wrote them before the stars column existed; filling the stars needed the
+details, and a click or a batch writes the row again. Once the copy is
+complete and on disk, Hydra closes the old file and swaps the two names,
+through a third name, hydra.db.old, which it then removes. Last, it opens the
+new hydra.db as usual. The exact order, and the checks that stop the swap when
+another program holds the file open, are in record_store.cpp.
+
+**If it stops part-way.** A crash, a power cut or a closed window can stop the
+upgrade at any moment. The steps are ordered so the disk then holds either the
+whole old file or the whole new one, under a name the next start recognizes.
+Before it opens anything, the next start looks at which of the three names
+exist and finishes or reverses the swap. That rule lives in
+src/store/upgrade_files.cpp, which only moves files and never reads inside a
+database. When hydra.db exists it is always whole, so any leftover is thrown
+away. Closing the window during the copy stops it at the next row and removes
+the new file; hydra.db is untouched and the next start begins again (D100
+item 5).
+
+Why two renames and not one "replace" rename: on NTFS a replace is a single
+step, but on exFAT or FAT32 Windows does it as a delete and then a rename. A
+crash between the two would lose hydra.db. Two renames are safe on every file
+system, because the next start knows the one moment when hydra.db is briefly
+missing.
+
+**What the user sees.** The open runs on a worker thread (`StoreOpenJob` in
+src/ui/library_jobs.cpp), so the window keeps drawing. A fast open shows an
+empty window. An open still running after 0.15 s shows the startup screen,
+with a bar that counts rows copied out of rows to copy, both counted from the
+file itself (D100 items 2 to 4 and 7). The command-line tools have no window to
+freeze. They still open the file before doing anything else, and get the
+faster upgrade too.
+
+**If it fails.** A failure before the swap leaves hydra.db as it was. Hydra
+shows the startup message box (D72 item 1) with the library-file sentence for
+`ErrorKind::DatabaseUpgrade` from src/app/user_messages.cpp over the raw
+error, then closes (D100 item 6). A failure to open the new file after the
+swap reads like any failed open (D72 item 2).
+
+Task T0 measured the first, in-place version on a copy of the real database
+(docs/handoffs/2026-10-07-storage-measurements.md). The file went from
+292,372,480 bytes to 13,033,472 bytes, about 13.0 MB.
 
 Every open also sets SQLite's journal_size_limit (`kJournalSizeLimitBytes`,
 4 MB; user decision D93). SQLite then cuts the log back to that size after
 each full checkpoint, so it never sits at 46 MB again. Firefox ships the same
 limit for the same reason (Mozilla bug 1820478).
-
-Any failure shows the database-open error (D72 item 2).
-
-Task T0 measured the upgrade on a copy of the real database
-(docs/handoffs/2026-10-07-storage-measurements.md). It took 0.41 s. The file
-went from 292,372,480 bytes to 13,033,472 bytes, about 13.0 MB.
 
 ## Rejected
 

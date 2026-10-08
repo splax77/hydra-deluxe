@@ -12,6 +12,28 @@ Click a song and the **song panel** opens beside the library. Drag the library's
 
 When something goes wrong, a message appears under the toolbar. A plain notice fades by itself. A problem stays in orange until you dismiss it with its `X`.
 
+### The first start after updating
+
+Your library and results live in a file called `hydra.db`, next to the program. A new version sometimes stores less in that file than an older one did. Then the first start after updating rewrites the file in the new layout. This happens once.
+
+A quick update shows nothing: the window opens and the library appears. If it takes a moment, a box in the middle of the window says:
+
+> Updating your library file for this version of Hydra
+>
+> This happens once. Your charts and results are kept.
+
+Under that, a line says what Hydra Deluxe is doing. `Copying your library...` comes with a bar that counts the rows copied, like `12,345 / 38,009`. `Finishing...` shows with the bar full while the new file takes the old one's place. Coming from a 1.8.x version, the line reads `Updating the results table...` before the copy starts. On a slow disk, an estimate of the time left appears after a few seconds, the same way the Preview's does. When the box goes away, your library is there as before.
+
+On any start, if opening your library takes longer than usual, for example while a drive wakes from sleep, the window shows `Opening your library...` until the library appears.
+
+You can close the window during the update. Hydra Deluxe stops, removes the half-made new file and leaves `hydra.db` exactly as it was. The next start runs the update again from the beginning.
+
+If the update fails, a message box shows this sentence, with the error from Windows or the database under it:
+
+> Hydra couldn't update its library file (hydra.db) for this version. Your charts and results were not changed. Check that no other copy of Hydra or hydra_batch is running and that the disk isn't full, then start Hydra again.
+
+Hydra Deluxe closes when you dismiss the box. Nothing in `hydra.db` has changed. Close any other copy of Hydra Deluxe or `hydra_batch`, free some disk space if the drive is full, and start Hydra Deluxe again.
+
 ### Toolbar
 
 **`Manage folders... (N)`** opens the **Song folders** window. N is how many folders you have. Add your Clone Hero song folder (or any folder of charts) with `Add folder...`. Hydra Deluxe finds every chart in its subfolders. Each folder has a red `X` to remove it, with a confirmation, because removing a folder changes what the next scan finds.

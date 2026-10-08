@@ -43,6 +43,17 @@ lookup reports a chart as one of three statuses: not analyzed, stale, or
 ready. A listing returns only ready rows, so a stale row reads the same as no
 row at all.
 
+**Library file upgrade**:
+The one-time rewrite of an older hydra.db into this version's smaller layout,
+on the first start after updating. Hydra copies the kept tables into a new
+file beside the old one, then swaps the two. A crash or a closed window at any
+point leaves either the whole old file or the whole new one, and the next
+start tidies up (docs/adr/0026, "The upgrade"; D100). The copy lives in
+src/store/record_store.cpp, the next start's tidy-up in
+src/store/upgrade_files.cpp, and the failure sentence in
+src/app/user_messages.cpp. The open runs off the window's thread, so the
+window never freezes; a slow one shows the startup screen.
+
 **SP cap**:
 The Star Power meter ceiling an analysis runs under, in bars. 4 is Clone
 Hero's rule and the default. Other values answer what-if questions; their
@@ -90,6 +101,11 @@ once three charts have finished").
 How long the app's short-lived messages and refreshes wait. A click's
 "Analyzing chart..." box shows only once its analysis has run 0.15 s, so a
 fast chart shows its paths with no box and no "Done!" (D87 items 6 and 10).
+Opening the library file at startup waits the same 0.15 s, through the same
+constant (`kViewProgressDelaySeconds` in src/ui/app_state.h): a fast open
+draws an empty window, and the startup screen appears only once the open has
+run that long (D100 item 2). The startup screen's time-left line follows the
+Song Preview's rule (`PreviewLoadJob::Progress::time_left_text`, D100 item 4).
 The "Copied!" flash after Copy path
 lasts 2 seconds, the library search refilters at most every 0.15 s while
 typing, and a running batch refreshes the library at most once a second
