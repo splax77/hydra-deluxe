@@ -56,7 +56,7 @@ From reading the code, here is what explains it and what doesn't. The confirm's 
 1. Find the cause of the 326-chart slowdown with the one-branch builds above. If it's MEM-F, the fix stays in `src/ui/app_shell.cpp` (for example, reading the glyph-heavy file into memory while mapping only the large fallback). That's a code-only change, so check with the user that 0.2 s on the first draw is worth fixing before trading memory back. If it's MEM-L's full-table read, `library_matches` can read only the matched charts by key instead.
 2. Merge `claude/mem-mem-r` into the join, keeping one copy of the D96 test fix.
 3. Dispatch a derive-once reviewer for the join's own commits (f3195f7 and the MEM-R merge resolution). The merge to main needs a key the gate accepts.
-4. Build the join with all targets. Delete `build-cpp\hydra_tests.dir\Release\hydra_tests.iobj` and `.ipdb` first: stale incremental links crashed the compiler (C1001, LNK1000) or produced crashing test exes in four worktrees today. Run the full suite once. It hasn't been run on the join yet.
+4. Build the join with all targets. Delete `build-cpp\hydra_tests.dir\Release\hydra_tests.iobj` and `.ipdb` first: stale incremental links crashed the compiler (C1001, LNK1000) or produced crashing test exes in four worktrees today. (No longer needed since D99: the everyday build has no link-time optimization and the installer's build uses plain `/LTCG`, so no build depends on those files.) Run the full suite once. It hasn't been run on the join yet.
 5. Merge to main, then clean up the worktrees `mem-baseline`, `mem-join` and the `mem-mem-*` ones.
 
 ## Open items found along the way (none block the merge)

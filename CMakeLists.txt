@@ -207,8 +207,8 @@ set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(CMAKE_DISABLE_FIND_PACKAGE_Git TRUE)
 add_subdirectory(third_party/mimalloc EXCLUDE_FROM_ALL)
 unset(CMAKE_DISABLE_FIND_PACKAGE_Git)
-# The measured build had no link-time optimization; keep the DLL the same.
-set_target_properties(mimalloc PROPERTIES INTERPROCEDURAL_OPTIMIZATION OFF)
+# mimalloc takes HYDRA_LTCG like every target, so the installer's DLL is
+# link-time optimized, which the trial did not measure (user decision D99).
 
 # ---- hydra_image: the single stb_image TU (shared PNG/JPEG decode) --------
 # stb_image's implementation may be compiled in exactly one TU across the binary
