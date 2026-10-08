@@ -34,6 +34,8 @@ Owned-file check: every T4 step changes app state, the two jobs, the toolbar, th
 
 `select_chart` searches the Difficulty, Pro Drums and 2x Bass choices for the one whose `chartmode_key` spells a mode. `settings_for_mode` in `src/app/report.cpp` already answers that question, privately. For the fix round only, you may edit `src/app/report.h` and `src/app/report.cpp` to make `settings_for_mode` public (or move it beside `chartmode_key` if that's its natural owner), and have `select_chart` call it. Add the scan row the fix-round rules ask for. T5 also adds one function to `report.h` this wave; touch only `settings_for_mode`'s lines so the merge stays mechanical.
 
+The review's finding 3 is answered: D103 item 22 keeps T4's rule (a report goes out of date only when a setting it reads changes). Give that rule one owner beside the report builders: one function per report, in `report.h` and `dm_report.h`, saying whether a settings change touches what it reads. `apply_settings` calls them and its comment names them instead of restating the rule. For this, the fix round may also edit `src/app/dm_report.h` and `src/app/dm_report.cpp`.
+
 ## Preflight
 
 Command: `Grep "publish_report|open_when_done|report_file_exists|class ReportJob|class DmReportJob|show_in_folder|Open path report|Show in folder|Open automatically|Open report|Compare another" src/ui`, run by the orchestrator on main at e0507e1 on 2026-10-08.
