@@ -257,6 +257,8 @@ add_library(hydra_core STATIC
     src/app/song_length.cpp
     src/app/fill_report.cpp
     src/app/report.cpp
+    src/app/report_view.cpp
+    src/app/path_report_view.cpp
     src/app/report_files.cpp
     src/app/user_messages.cpp
 )
@@ -339,6 +341,7 @@ target_link_libraries(hydra_render PRIVATE
 # comparison page. third_party/json parses the leaderboard API responses.
 add_library(hydra_dm STATIC
     src/app/dm_report.cpp
+    src/app/dm_report_view.cpp
     src/net/dmbot_client.cpp
 )
 target_link_libraries(hydra_dm PUBLIC hydra_core)
@@ -494,6 +497,7 @@ add_executable(hydra_tests
     tests/test_upgrade_files.cpp
     tests/test_analysis.cpp
     tests/test_report.cpp
+    tests/test_report_view.cpp
     tests/test_config.cpp
     tests/test_rules.cpp
     tests/test_dm_report.cpp
