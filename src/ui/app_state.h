@@ -640,11 +640,10 @@ private:
     ID3D11Device* render_device_ = nullptr;
     ID3D11DeviceContext* render_context_ = nullptr;
 
-    // The identity-relevant settings as of the last commit, so commit_settings
-    // can tell an identity change from any other settings edit.
-    std::string committed_chartmode_;
-    store::CapQuery committed_cap_;
-    store::Lens committed_lens_;
+    // The settings as of the last commit, so apply_settings can tell an
+    // identity change from any other settings edit, and which reports a
+    // change reaches.
+    app::Settings committed_settings_;
 
     // An edit_settings change the INI does not have yet.
     bool settings_unsaved_ = false;

@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <unordered_map>
 
+#include "app/config.h"          // Settings::chartmode_key, Settings::lens
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "app/html_page.h"
 #include "app/report.h"  // records_by_hash, library_copies_by_hash
@@ -428,6 +429,12 @@ GeneratedDmReport generate_dm_report(store::RecordStore& store,
     out.footer = std::move(footer);
     out.rows = std::move(rows);
     return out;
+}
+
+bool settings_change_touches(const Settings& before, const Settings& after) {
+    // generate_dm_report is asked for one chart mode and one lens. Its results
+    // are always at Clone Hero's SP cap, so the cap setting reaches no row.
+    return before.chartmode_key() != after.chartmode_key() || before.lens() != after.lens();
 }
 
 }  // namespace hydra::app::dm_report

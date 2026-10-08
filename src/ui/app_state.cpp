@@ -6,6 +6,8 @@
 #include <unordered_set>
 
 #include "app/config.h"
+#include "app/dm_report.h"  // settings_change_touches
+#include "app/report.h"     // settings_change_touches
 #include "app/rules_file.h"
 #include "app/user_messages.h"
 #include "core/winstr.h"
@@ -48,9 +50,7 @@ AppState::AppState(app::Settings initial_settings,
                    std::unique_ptr<store::RecordStore> initial_store)
     : settings(std::move(initial_settings)),
       store(std::move(initial_store)),
-      committed_chartmode_(settings.chartmode_key()),
-      committed_cap_(settings.cap_query()),
-      committed_lens_(settings.lens()) {
+      committed_settings_(settings) {
     // No store: the default constructor's open job brings it, and the
     // library with it (collect_store_open).
     if (store) reload_library();
@@ -816,27 +816,21 @@ void AppState::apply_settings() {
     // Which record a chart shows is (chart, chart mode, SP cap, lens). When
     // any of the last three moves, every cached lookup is answering the old
     // question and has to be re-asked.
-    std::string chartmode = settings.chartmode_key();
-    store::CapQuery cap = settings.cap_query();
-    store::Lens lens = settings.lens();
-    if (chartmode != committed_chartmode_ || cap != committed_cap_ || lens != committed_lens_) {
+    const app::Settings& before = committed_settings_;
+    if (settings.chartmode_key() != before.chartmode_key() ||
+        settings.cap_query() != before.cap_query() || settings.lens() != before.lens()) {
         // The rows themselves come from the scan and stay; their summaries
         // are read again, and the open song is analyzed again under the new
         // settings, as a click would (D90 item 1).
         refresh_library_summaries();
         if (show_details && selected) start_view();
-        // A report in memory is out of date when a setting it was built from
-        // moved (D103): the path report lists every mode at one cap and lens
-        // (generate_report), the comparison one mode at Clone Hero's cap
-        // (generate_dm_report). So a row click that switches the mode
-        // leaves the path report as it is.
-        const bool lens_moved = lens != committed_lens_;
-        mark_reports_stale(ReportStale::Settings, /*path=*/lens_moved || cap != committed_cap_,
-                           /*dm=*/lens_moved || chartmode != committed_chartmode_);
     }
-    committed_chartmode_ = std::move(chartmode);
-    committed_cap_ = cap;
-    committed_lens_ = lens;
+    // Each report's own settings_change_touches says whether the change
+    // reaches what that report read (D103 item 22).
+    mark_reports_stale(ReportStale::Settings,
+                       /*path=*/app::report::settings_change_touches(before, settings),
+                       /*dm=*/app::dm_report::settings_change_touches(before, settings));
+    committed_settings_ = settings;
 }
 
 }  // namespace hydra::ui
