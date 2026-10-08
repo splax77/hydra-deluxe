@@ -13,8 +13,7 @@
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "parse/song.h"  // display_title, display_artist
-#include "ui/library_parts.h"     // time_left_text
-#include "ui/preview_load_job.h"  // ByteRateClock, kTimeLeftAfterSeconds
+#include "ui/preview_load_job.h"  // ByteRateClock, gated_time_left_text
 
 namespace hydra::ui {
 
@@ -40,12 +39,11 @@ std::string StoreOpenProgress::label() const {
     return "Finishing...";
 }
 
-// The copy is the one step with a row rate; the gate and the words are the
-// Preview loader's (DBUP answer 4).
+// The copy is the one step with a row rate; the gate and the words are
+// gated_time_left_text's, the Preview loader's (DBUP answer 4).
 std::string StoreOpenProgress::time_left_text() const {
-    if (step != Step::Copying || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))
-        return "";
-    return detail::time_left_text(time_left_s);
+    if (step != Step::Copying) return "";
+    return gated_time_left_text(elapsed_s, time_left_s);
 }
 
 std::string read_library(store::RecordStore& store, const app::Settings& settings,

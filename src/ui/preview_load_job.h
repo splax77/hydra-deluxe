@@ -68,6 +68,12 @@ private:
 // the words, detail::time_left_text).
 inline constexpr double kTimeLeftAfterSeconds = 3.0;
 
+// The time-left line for a job `elapsed_s` old whose ByteRateClock gave
+// `time_left_s`: the one gate (kTimeLeftAfterSeconds, a known rate) and the
+// one set of words. Each caller checks only that its job is in a step with a
+// rate: PreviewLoadJob::Progress and StoreOpenProgress.
+std::string gated_time_left_text(double elapsed_s, double time_left_s);
+
 // Prepares a chart for the 3D Preview off the render thread, on the same job
 // base as ViewJob. Two branches run at once:
 //   (a) parse the chart, build the PreviewScene, and build the highway

@@ -5121,6 +5121,25 @@ const std::vector<OwnerRule>& rules() {
            "sig_can_show_unchanged, the owner: chart_library_cache, sig_unchanged and "
            "ViewJob::run call it"}},
          {"src"}},
+        // The Preview loader and the startup open both show a time-left line;
+        // each checks only its own step and asks the owner for the rest.
+        {"Is a job old enough, with a known rate, to show its time left, and in what words?",
+         "gated_time_left_text in src/ui/preview_load_job.cpp",
+         R"(elapsed_s\s*<\s*kTimeLeftAfterSeconds)",
+         "",
+         {},
+         {},
+         "D48 Q20 (the words), DBUP answer 4 (the startup open reuses the Preview's gate); "
+         "derive-once review of the DBUP join (F1)",
+         {"if (step != Step::Opening || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))",
+          "if (step != Step::Copying || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))"},
+         {"return gated_time_left_text(elapsed_s, time_left_s);",
+          "if (step != Step::Copying) return \"\";"},
+         {{"src/ui/preview_load_job.cpp",
+           "if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return \"\";",
+           "gated_time_left_text, the owner: PreviewLoadJob::Progress::time_left_text and "
+           "StoreOpenProgress::time_left_text call it"}},
+         {"src"}},
     };
     return r;
 }
