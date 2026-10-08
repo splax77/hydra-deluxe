@@ -1,10 +1,11 @@
 // Hydra (C++ port) — application entry point.
 //
 // Stands up the Win32 window, DirectX 11 device, and Dear ImGui context
-// (single primary window; docking/multi-viewport deliberately off) and runs
-// the frame loop over the library view + details modal. The Win32/DX11
-// plumbing is the upstream example_win32_directx11 boilerplate, unchanged
-// except for the window identity and the frame contents.
+// (single primary window, docking off; multi-viewports on for the report
+// windows, see setup_imgui) and runs the frame loop over the library view +
+// details modal. The Win32/DX11 plumbing is the upstream docking-branch
+// example_win32_directx11 boilerplate, unchanged except for the window
+// identity, the frame contents and the skip-while-hidden check.
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -46,6 +47,8 @@ static UINT                     g_ResizeWidth = 0, g_ResizeHeight = 0;
 static ID3D11RenderTargetView*  g_mainRenderTargetView = nullptr;
 // Set by WM_DPICHANGED, applied by the frame loop before the next frame.
 static float                    g_PendingUiScale = 0.0f;
+// How long the loop waits between checks while nothing it draws can be seen.
+static constexpr DWORD          kHiddenPollMs = 10;
 
 HRESULT CreateDeviceD3D(HWND hWnd);
 void CleanupDeviceD3D();
@@ -116,6 +119,23 @@ static void note_window_placement(HWND hWnd)
     hydra::ui::remember_window_placement(p);
 }
 
+// True when an OS window ImGui made beside the main one (a report window, or
+// a popup that spilled past the main window's edge) is on screen. Report
+// windows are owned by the main window, so Windows hides them while Hydra is
+// minimized.
+static bool other_platform_window_showing()
+{
+    const ImGuiPlatformIO& pio = ImGui::GetPlatformIO();
+    const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+    for (const ImGuiViewport* viewport : pio.Viewports)
+    {
+        if (viewport == main_viewport) continue;
+        const HWND w = static_cast<HWND>(viewport->PlatformHandleRaw);
+        if (w && ::IsWindowVisible(w) && !::IsIconic(w)) return true;
+    }
+    return false;
+}
+
 // Why Hydra can't start, in a Windows message box over `owner` (null until
 // the window exists): the plain sentence with the raw text under it (D72
 // item 1).
@@ -137,12 +157,16 @@ static std::runtime_error startup_call_failed(const char* call, const char* code
 
 int main()
 {
-    // --uitest <what> [--uitest-log <file>]; everything else is ignored.
+    // --uitest <what> [--uitest-log <file>] and --report-spike; everything
+    // else is ignored.
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
     std::string uitest_what, uitest_log;
-    for (int i = 1; i + 1 < argc; ++i) {
-        if (args[i] == "--uitest") uitest_what = args[++i];
+    bool report_spike = false;
+    for (int i = 1; i < argc; ++i) {
+        if (args[i] == "--report-spike") report_spike = true;
+        else if (i + 1 >= argc) break;
+        else if (args[i] == "--uitest") uitest_what = args[++i];
         else if (args[i] == "--uitest-log") uitest_log = args[++i];
     }
 #ifndef HYDRA_UITEST_ATTACHED
@@ -181,6 +205,10 @@ int main()
     hydra::ui::ImGuiSetupOptions imgui_options;
     imgui_options.dpi_scale = main_scale;
     hydra::ui::setup_imgui(imgui_options);
+    // The viewport spike's empty report window (report windows plan, task
+    // 1), for trying the OS-window plumbing by hand. Task 5 replaces the
+    // switch with the real report windows.
+    hydra::ui::show_report_spike(report_spike);
 
     // Reopen where the user left it, unless that spot is on no monitor now
     // (a monitor was unplugged or rearranged). Otherwise the old default.
@@ -323,11 +351,14 @@ int main()
             }
         }
 
-        // Skip rendering while minimized / occluded.
-        if (g_SwapChainOccluded &&
-            g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED)
+        // Skip rendering while nothing Hydra draws can be seen: the main
+        // window is minimized or occluded, and no other OS window of ours
+        // shows. A report window still on screen keeps the frames coming.
+        const bool main_hidden = g_SwapChainOccluded &&
+            g_pSwapChain->Present(0, DXGI_PRESENT_TEST) == DXGI_STATUS_OCCLUDED;
+        if (main_hidden && !other_platform_window_showing())
         {
-            ::Sleep(10);
+            ::Sleep(kHiddenPollMs);
             continue;
         }
         g_SwapChainOccluded = false;
@@ -375,8 +406,21 @@ int main()
                                                    clear_with_alpha);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
+        // Create, move and draw the OS windows ImGui keeps beside the main
+        // one (the report windows), as the upstream example does.
+        if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+        }
+
         HRESULT hr = g_pSwapChain->Present(1, 0);   // vsync
         g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
+        // An occluded swapchain returns at once instead of waiting for
+        // vsync, and the other windows present without it, so pace the
+        // frames that only a report window still shows.
+        if (main_hidden)
+            ::Sleep(kHiddenPollMs);
 
 #ifdef HYDRA_UITEST_ATTACHED
         if (uitest) {

@@ -14,6 +14,7 @@
 namespace uitest {
 
 void register_paths_tests(Harness& h);  // uitest_paths.cpp
+void register_report_spike_tests(Harness& h);  // uitest_report_spike.cpp
 
 void register_tests(Harness& h) {
     // --all runs the tests in the order they are registered, and the ImGui
@@ -56,6 +57,7 @@ void register_tests(Harness& h) {
         t->TestFunc = e.fn;
     }
     register_paths_tests(h);
+    register_report_spike_tests(h);
 }
 
 }  // namespace uitest

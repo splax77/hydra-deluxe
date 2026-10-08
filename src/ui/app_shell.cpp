@@ -13,6 +13,9 @@
 #include <exception>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <string>
+#include <unordered_set>
 
 #include "imgui.h"
 #include "imgui_internal.h"  // g.LogBuffer for FrameText; ImGuiSettingsHandler
@@ -227,9 +230,17 @@ void setup_imgui(const ImGuiSetupOptions& options) {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    // No docking/viewports: Hydra is one primary window filling the OS
-    // window, like hydra_app.py's dpg.set_primary_window -- not a docking
-    // workspace with panels that can be torn into their own OS windows.
+    // Multi-viewports are on so the report windows can open as real OS
+    // windows beside Hydra (D103): a report is something to move to another
+    // monitor and keep open while Hydra is in use. Only the report windows
+    // opt in, through report_window_class. Everything else stays one primary
+    // window filling the OS window, like hydra_app.py's
+    // dpg.set_primary_window: docking stays off, and a popup or tooltip only
+    // gets its own borderless OS window when it would otherwise be cut off at
+    // the main window's edge. Those get no taskbar button. Without a platform
+    // backend (the GUI test runner) ImGui turns viewports back off itself.
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    io.ConfigViewportsNoTaskBarIcon = true;
 
     // Persist ImGui state (library table column widths) next to the exe. The
     // default cwd-relative "imgui.ini" landed wherever the app happened to be
@@ -307,6 +318,100 @@ void shutdown_imgui() {
     g_font_files.clear();  // the atlas that read them is gone
 }
 
+namespace {
+
+// Report windows still being given the first-open placement: from the frame
+// they open until ImGui has finished fitting their size to their content.
+std::unordered_set<std::string> g_first_open_placing;
+
+ScreenRect screen_rect(const ImVec2& pos, const ImVec2& size) {
+    const int left = static_cast<int>(pos.x), top = static_cast<int>(pos.y);
+    return {left, top, left + static_cast<int>(size.x), top + static_cast<int>(size.y)};
+}
+
+// Every monitor's work area, as the platform backend reported them. With no
+// backend (the GUI test runner), ImGui's stand-in monitor: the main viewport.
+// main.cpp's monitor_work_areas asks Windows directly, because it runs before
+// the backend exists; this list is in ImGui's own coordinates and also
+// answers in the test runner, where the windows are not on any real monitor.
+std::vector<ScreenRect> imgui_work_areas() {
+    std::vector<ScreenRect> areas;
+    for (const ImGuiPlatformMonitor& m : ImGui::GetPlatformIO().Monitors)
+        areas.push_back(screen_rect(m.WorkPos, m.WorkSize));
+    if (areas.empty()) {
+        const ImGuiPlatformMonitor* m = ImGui::GetViewportPlatformMonitor(ImGui::GetMainViewport());
+        areas.push_back(screen_rect(m->WorkPos, m->WorkSize));
+    }
+    return areas;
+}
+
+// Where the window was last: the live window when it has shown this session,
+// else its hydra_ui.ini entry (ImGui saves a window that had its own OS
+// window relative to that window, and any other relative to the main
+// window). Nothing when there is neither.
+std::optional<ScreenRect> saved_rect(const char* name) {
+    if (const ImGuiWindow* w = ImGui::FindWindowByName(name))
+        return screen_rect(w->Pos, w->SizeFull);
+    const ImGuiWindowSettings* s = ImGui::FindWindowSettingsByID(ImHashStr(name));
+    if (!s) return std::nullopt;
+    const ImVec2 origin = s->ViewportId ? ImVec2(s->ViewportPos.x, s->ViewportPos.y)
+                                        : ImGui::GetMainViewport()->Pos;
+    return screen_rect(ImVec2(origin.x + s->Pos.x, origin.y + s->Pos.y),
+                       ImVec2(s->Size.x, s->Size.y));
+}
+
+// Whether the spike window shows; its own close button clears it.
+bool g_report_spike = false;
+
+// The spike window: empty, in the report windows' class and placement.
+void render_report_spike() {
+    if (!g_report_spike) return;
+    constexpr const char* kName = "Report spike";
+    place_report_window(kName);
+    const ImGuiWindowClass window_class = report_window_class();
+    ImGui::SetNextWindowClass(&window_class);
+    // No collapse arrow: a report window minimizes with its OS title bar.
+    ImGui::Begin(kName, &g_report_spike, ImGuiWindowFlags_NoCollapse);
+    ImGui::End();
+}
+
+}  // namespace
+
+ImGuiWindowClass report_window_class() {
+    ImGuiWindowClass c;
+    c.ParentViewportId = ImGui::GetMainViewport()->ID;
+    c.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
+    c.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoDecoration | ImGuiViewportFlags_NoTaskBarIcon;
+    return c;
+}
+
+void place_report_window(const char* name) {
+    const ImGuiWindow* w = ImGui::FindWindowByName(name);
+    if (!w || !w->WasActive) {  // opening this frame
+        const std::optional<ScreenRect> saved = saved_rect(name);
+        if (saved && placement_on_screen(*saved, imgui_work_areas()))
+            g_first_open_placing.erase(name);
+        else
+            g_first_open_placing.insert(name);
+    } else if (w->AutoFitFramesX <= 0 && w->AutoFitFramesY <= 0) {
+        g_first_open_placing.erase(name);  // its size has settled
+    }
+    if (g_first_open_placing.count(name) == 0) return;
+
+    ImGuiViewport* main_viewport = ImGui::GetMainViewport();
+    const ImGuiPlatformMonitor* monitor = ImGui::GetViewportPlatformMonitor(main_viewport);
+    const ImVec2 work_min = monitor->WorkPos;
+    const ImVec2 work_max(work_min.x + monitor->WorkSize.x, work_min.y + monitor->WorkSize.y);
+    const ImVec2 centre = main_viewport->GetCenter();
+    ImGui::SetNextWindowPos(ImVec2(std::clamp(centre.x, work_min.x, work_max.x),
+                                   std::clamp(centre.y, work_min.y, work_max.y)),
+                            ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), monitor->WorkSize);
+}
+
+void show_report_spike(bool shown) { g_report_spike = shown; }
+bool report_spike_shown() { return g_report_spike; }
+
 void run_frame(AppState& app, FrameText* capture) {
     const bool capturing = capture && capture->enabled;
     if (capturing) {
@@ -328,6 +433,7 @@ void run_frame(AppState& app, FrameText* capture) {
         render_main_window(app);
     else
         render_startup_screen(app);
+    render_report_spike();
     // The number boxes apply edits live but leave the INI until the edit
     // ends (AppState::edit_settings). An edit has ended once no widget is
     // active: the +/- button is released, or the text box lost focus.
