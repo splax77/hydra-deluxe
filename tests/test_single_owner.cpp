@@ -3481,7 +3481,13 @@ const std::vector<OwnerRule>& rules() {
          {"if (sq.value(\"kind\", std::string()) != \"SqOut\") continue;"},
          {"if (squeeze_kind_from_name(sq.value(\"kind\", std::string())) != SqueezeKind::SqOut)"},
          {{"src/core/model.h", "return kind == SqueezeKind::SqIn ? \"SqIn\" : \"SqOut\";",
-           "type_name, the owner"}},
+           "type_name, the owner"},
+          {"src/app/path_report_view.cpp", "cols.push_back(count_column(\"sqin\", \"SqIn\",",
+           "a column title the user reads, not a kind read from data (derive-once review "
+           "of RW-T3, finding 1)"},
+          {"src/app/path_report_view.cpp", "cols.push_back(count_column(\"sqout\", \"SqOut\",",
+           "a column title the user reads, not a kind read from data (derive-once review "
+           "of RW-T3, finding 1)"}},
          {}},
         {"How is a multiplier squeeze written as text?",
          "MultSqueeze::notationstr in src/core/model.cpp",
