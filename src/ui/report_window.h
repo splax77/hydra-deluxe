@@ -206,8 +206,8 @@ float row_number_width(size_t rows);
 void best_bar();
 // Hands the table a sort (table column index and direction, first key
 // first), and reads back a header click's: nullopt when the headers didn't
-// change it. A third key a Shift+click adds is dropped: a report sorts by at
-// most two (TableView::set_sort).
+// change it. A key a Shift+click adds past kMaxSortKeys (app/report_view.h)
+// is dropped.
 using HeaderSort = std::vector<std::pair<int, app::report_view::SortDir>>;
 // Whether the current table is past its first frame.
 bool table_settled();

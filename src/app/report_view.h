@@ -33,6 +33,10 @@ struct SortSpec {
     SortDir dir = SortDir::Ascending;
 };
 
+// How many sort keys a report table may hold (D103 item 1: Shift+click adds
+// a second key). TableView::set_sort and the window's header_sort read it.
+inline constexpr size_t kMaxSortKeys = 2;
+
 // How a cell is drawn, from the pages' cell classes. Fixed per column.
 struct CellLook {
     bool dim = false;       // the dim text colour
@@ -139,11 +143,13 @@ public:
         dirty_ = true;
     }
 
-    // Orders the table by up to two columns, the first deciding and the
-    // second breaking its ties. Rows that tie on both keep their row order.
+    // Orders the table by up to kMaxSortKeys columns, the first deciding and
+    // each later one breaking the ties left. Rows that tie on every key keep
+    // their row order.
     void set_sort(std::vector<SortSpec> specs) {
-        if (specs.size() > 2)
-            throw std::invalid_argument("a report table sorts by at most two columns");
+        if (specs.size() > kMaxSortKeys)
+            throw std::invalid_argument("a report table sorts by at most " +
+                                        std::to_string(kMaxSortKeys) + " columns");
         for (const SortSpec& s : specs) column(s.column);  // throws for an unknown id
         sort_ = std::move(specs);
         resort();

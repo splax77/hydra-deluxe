@@ -389,13 +389,14 @@ std::optional<HeaderSort> header_sort() {
     ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs();
     if (!specs || !specs->SpecsDirty) return std::nullopt;
     specs->SpecsDirty = false;
+    const int max_keys = static_cast<int>(app::report_view::kMaxSortKeys);
     HeaderSort sort;
-    for (int i = 0; i < specs->SpecsCount && i < 2; ++i)
+    for (int i = 0; i < specs->SpecsCount && i < max_keys; ++i)
         sort.push_back({specs->Specs[i].ColumnIndex,
                         specs->Specs[i].SortDirection == ImGuiSortDirection_Descending
                             ? SortDir::Descending
                             : SortDir::Ascending});
-    if (specs->SpecsCount > 2) push_sort(sort);
+    if (specs->SpecsCount > max_keys) push_sort(sort);
     return sort;
 }
 

@@ -5365,6 +5365,22 @@ const std::vector<OwnerRule>& rules() {
          {{"src/ui/report_window.h", "return !w.owner_before(p) && !p.owner_before(w);",
            "report_frame::same_result, the owner: both report windows call it"}},
          {"src"}},
+        // A table's header sort can hold more keys than a report sorts by,
+        // so the window cuts it to the report's limit, read from the owner.
+        {"How many sort keys may a report hold?",
+         "kMaxSortKeys in src/app/report_view.h",
+         R"(\bSpecsCount\b[^;]*[<>]=?\s*[2-9]\b)",
+         "",
+         {},
+         {},
+         "D103 item 1 (Shift+click adds a second key); derive-once review of RW-T5 (finding 3)",
+         {"for (int i = 0; i < specs->SpecsCount && i < 2; ++i)",
+          "if (specs->SpecsCount > 2) push_sort(sort);"},
+         {"if ((specs->SpecsDirty || !app.library_ui.sort_synced) && specs->SpecsCount > 0) {",
+          "for (int i = 0; i < specs->SpecsCount && i < max_keys; ++i)",
+          "if (specs->SpecsCount > max_keys) push_sort(sort);"},
+         {},
+         {"src"}},
     };
     return r;
 }
