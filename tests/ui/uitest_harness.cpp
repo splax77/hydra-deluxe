@@ -28,6 +28,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/report_files.h"
+#include "app/user_messages.h"  // plain_error_block
 #include "audio/device.h"
 #include "net/dmbot_client.h"
 #include "ui/app_state.h"
@@ -264,7 +265,7 @@ void Harness::shutdown() {
     }
 }
 
-void reset_app(Harness& h, const std::string& rules_text) {
+void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
     if (h.app && h.app->preview) h.app->preview->close();
     h.app.reset();
 
@@ -330,6 +331,19 @@ void reset_app(Harness& h, const std::string& rules_text) {
 
     h.app = std::make_unique<hydra::ui::AppState>();
     h.app->set_render_device(h.device.Get(), h.context.Get());
+    if (!wait_store) return;
+    // A deliberate block, in the harness only: the tests click at once.
+    h.app->wait_store_open();
+    if (!h.app->store_open_failed()) return;
+    // The text the startup message box would show (D72 item 1).
+    std::string why = "unknown error";
+    try {
+        std::rethrow_exception(h.app->store_open_error());
+    } catch (const std::exception& e) {
+        why = hydra::app::plain_error_block(e);
+    } catch (...) {
+    }
+    IM_ERRORF("The scratch library did not open:\n%s", why.c_str());
 }
 
 bool wait_until(ImGuiTestContext* ctx, const std::function<bool()>& pred, double seconds) {
@@ -416,6 +430,36 @@ void ViewGate::open() { g_view_gate_open = true; }
 
 int ViewGate::started() const { return g_view_gate_started.load(); }
 
+namespace {
+// Statics, like the other gates': the open's job keeps its copy of the gate
+// and can outlive the OpenGate.
+std::atomic<bool> g_open_gate_open{true};
+std::atomic<int> g_open_gate_started{0};
+}  // namespace
+
+OpenGate::OpenGate() {
+    g_open_gate_open = false;
+    g_open_gate_started = 0;
+    hydra::ui::set_store_open_gate_for_test(
+        [](const hydra::ui::StoreOpenProgress& progress, const std::function<bool()>& cancelled) {
+            // Hold at the copy, where the upgrade's screen has all its words.
+            if (progress.step != hydra::ui::StoreOpenProgress::Step::Copying) return;
+            if (g_open_gate_open.load()) return;
+            ++g_open_gate_started;
+            while (!g_open_gate_open.load() && !cancelled())
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        });
+}
+
+OpenGate::~OpenGate() {
+    g_open_gate_open = true;
+    hydra::ui::set_store_open_gate_for_test(nullptr);
+}
+
+void OpenGate::open() { g_open_gate_open = true; }
+
+int OpenGate::started() const { return g_open_gate_started.load(); }
+
 std::string visible_text(Harness& h) {
     std::string s = h.frame_text.text;
     if (h.app) {
@@ -468,6 +512,9 @@ void dump_widgets(ImGuiTestContext* ctx, const std::string& window_name) {
 void dump_state(Harness& h) {
     auto& a = *h.app;
     std::printf("state:\n");
+    std::printf("  store=%s\n", a.store_open_failed() ? "failed"
+                                : a.store_ready()      ? "ready"
+                                                       : "opening");
     std::printf("  charts=%zu shown=%zu search=\"%s\"\n", a.library.rows().size(),
                 a.library_shown_count(), a.search.c_str());
     for (size_t i = 0; i < a.library_shown_count() && i < 20; ++i) {

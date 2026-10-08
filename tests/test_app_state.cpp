@@ -13,11 +13,13 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -642,6 +644,7 @@ TEST_CASE("a bad hydra_rules.ini names the key and keeps analysis off") {
     // The startup constructor: settings INI, rules file and database from
     // the (scratch) paths, exactly as Hydra.exe starts.
     AppState app;
+    app.wait_store_open();
     CHECK(app.rules_error.find("max_tied_paths") != std::string::npos);
     CHECK(app.analysis_blocked());
 
@@ -660,6 +663,7 @@ TEST_CASE("no hydra_rules.ini leaves analysis on") {
     ScratchPaths paths("appstate_norules");
     seeded_store(paths.db).reset();
     AppState app;
+    app.wait_store_open();
     CHECK(app.rules_error.empty());
     CHECK_FALSE(app.analysis_blocked());
 }
@@ -673,6 +677,7 @@ TEST_CASE("under a bad hydra_rules.ini no stored record reads Ready") {
     // default rules, is Ready.
     {
         AppState good;
+        good.wait_store_open();
         CHECK(good.store->get_summary(seeded).status == RecordStatus::Ready);
     }
 
@@ -684,6 +689,7 @@ TEST_CASE("under a bad hydra_rules.ini no stored record reads Ready") {
         f << "max_tied_paths = 0\n";
     }
     AppState bad;
+    bad.wait_store_open();
     REQUIRE(bad.analysis_blocked());
     CHECK(bad.store->get_summary(seeded).status == RecordStatus::Stale);
 }
@@ -1357,18 +1363,141 @@ TEST_CASE("the batch runs the plan the confirm showed, with no second store read
     CHECK(s.failed == 2);
 }
 
-// D72 item 2: the startup constructor's store open reads "couldn't open"
-// even when SQLite only notices the junk at its first statement. main() shows
-// it in a message box.
-TEST_CASE("an AppState whose database can't open throws DatabaseOpen") {
+// D72 item 2: the startup open reads "couldn't open" even when SQLite only
+// notices the junk at its first statement. main() shows it in a message box.
+TEST_CASE("an AppState whose database can't open fails its startup open with DatabaseOpen") {
     ScratchPaths paths("appstate_junkdb");  // puts the overrides back when it ends
     hydra::test::write_junk_db(paths.db);
+    AppState app;
+    app.wait_store_open();
+    CHECK_FALSE(app.store_ready());
+    REQUIRE(app.store_open_failed());
+    CHECK(app.store_open_job == nullptr);
     try {
-        AppState app;
-        FAIL("an AppState opened a file of junk bytes");
+        std::rethrow_exception(app.store_open_error());
     } catch (const hydra::KindedError& e) {
         CHECK(e.kind() == hydra::ErrorKind::DatabaseOpen);
     }
+}
+
+// ---- the startup open (DBUP) ------------------------------------------------
+
+TEST_CASE("the startup open runs on its own thread and tick collects the store and library") {
+    ScratchPaths paths("appstate_startopen");
+    seeded_store(paths.db).reset();
+
+    // Hold the open at its first report, as the GUI test's gate does.
+    std::mutex mu;
+    std::condition_variable cv;
+    bool open = false;
+    std::vector<hydra::ui::StoreOpenProgress::Step> steps;
+    hydra::ui::set_store_open_gate_for_test(
+        [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>& cancelled) {
+            std::unique_lock<std::mutex> lock(mu);
+            steps.push_back(p.step);
+            cv.wait_for(lock, std::chrono::seconds(10), [&] { return open || cancelled(); });
+        });
+    AppState app;
+    hydra::ui::set_store_open_gate_for_test(nullptr);
+
+    // The constructor returned with the open still held: nothing is ready,
+    // the job counts as running, and a tick collects nothing.
+    CHECK_FALSE(app.store_ready());
+    CHECK_FALSE(app.store_open_failed());
+    CHECK(app.any_job_running());
+    app.tick(0.0);
+    CHECK_FALSE(app.store_ready());
+
+    {
+        std::lock_guard<std::mutex> lock(mu);
+        open = true;
+    }
+    cv.notify_all();
+    while (app.store_open_job && !app.store_open_job->finished())
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    app.tick(0.0);
+
+    REQUIRE(app.store_ready());
+    CHECK(app.store_open_job == nullptr);
+    CHECK_FALSE(app.any_job_running());
+    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.status_message.empty());
+    // A file that needs no upgrade reports the open, then the library read.
+    std::lock_guard<std::mutex> lock(mu);
+    CHECK(steps == std::vector<hydra::ui::StoreOpenProgress::Step>{
+                       hydra::ui::StoreOpenProgress::Step::Opening,
+                       hydra::ui::StoreOpenProgress::Step::LoadingLibrary});
+}
+
+TEST_CASE("an AppState closed during its startup open stops the open") {
+    ScratchPaths paths("appstate_startclose");
+    seeded_store(paths.db).reset();
+    std::atomic<bool> gave_up{false};
+    hydra::ui::set_store_open_gate_for_test(
+        [&](const hydra::ui::StoreOpenProgress&, const std::function<bool()>& cancelled) {
+            while (!cancelled()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            gave_up = true;
+        });
+    {
+        AppState app;
+        hydra::ui::set_store_open_gate_for_test(nullptr);
+        CHECK_FALSE(app.store_ready());
+    }  // the destructor cancels the held open and joins it
+    CHECK(gave_up);
+}
+
+TEST_CASE("a library read that fails after the startup open is the status line's problem") {
+    ScratchPaths paths("appstate_startreadfail");
+    seeded_store(paths.db).reset();
+    // Dropped once the store is open (it would make a missing table again),
+    // just before the library read.
+    hydra::ui::set_store_open_gate_for_test(
+        [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>&) {
+            if (p.step == hydra::ui::StoreOpenProgress::Step::LoadingLibrary)
+                hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE results;");
+        });
+    AppState app;
+    hydra::ui::set_store_open_gate_for_test(nullptr);
+    app.wait_store_open();
+    REQUIRE(app.store_ready());
+    CHECK(app.library.rows().empty());
+    CHECK(app.status_is_problem);
+    CHECK(app.status_message == kDatabaseReadSentence);
+}
+
+TEST_CASE("the startup screen's line names what the open is doing") {
+    using hydra::ui::StoreOpenProgress;
+    StoreOpenProgress p;
+    CHECK(p.label() == "Opening your library...");
+    p.step = StoreOpenProgress::Step::LoadingLibrary;
+    CHECK(p.label() == "Opening your library...");
+
+    p.upgrading = true;
+    p.step = StoreOpenProgress::Step::UpdatingResultsKey;
+    CHECK(p.label() == "Updating the results table...");
+    p.step = StoreOpenProgress::Step::Copying;
+    CHECK(p.label() == "Copying your library...");
+    p.step = StoreOpenProgress::Step::Finishing;
+    CHECK(p.label() == "Finishing...");
+    p.step = StoreOpenProgress::Step::LoadingLibrary;
+    CHECK(p.label() == "Finishing...");
+}
+
+TEST_CASE("the startup screen's time left follows the Preview loader's gate") {
+    using hydra::ui::StoreOpenProgress;
+    StoreOpenProgress p;
+    p.upgrading = true;
+    p.step = StoreOpenProgress::Step::Copying;
+    p.time_left_s = 65.0;
+    p.elapsed_s = 2.9;
+    CHECK(p.time_left_text() == "");  // under the gate
+    p.elapsed_s = 3.0;
+    CHECK(p.time_left_text() == "about 1:05 left");
+    p.time_left_s = -1.0;
+    CHECK(p.time_left_text() == "");  // the rate is not known
+    p.time_left_s = 65.0;
+    p.step = StoreOpenProgress::Step::Finishing;
+    CHECK(p.time_left_text() == "");  // only the copy has a rate
 }
 
 // D72 item 4: the Analyze-library click asks the store which charts already

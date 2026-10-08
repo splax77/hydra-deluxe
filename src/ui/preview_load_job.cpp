@@ -260,12 +260,16 @@ std::string PreviewLoadJob::Progress::label() const {
     return "";
 }
 
-// Only the Preview's own gate lives here: opening audio is the one step with a
-// byte rate, and the loader waits 3 s before guessing. The words are the batch
-// strip's (D48, Q20).
-std::string PreviewLoadJob::Progress::time_left_text() const {
-    if (step != Step::Opening || elapsed_s < 3.0 || !(time_left_s >= 0.0)) return "";
+std::string gated_time_left_text(double elapsed_s, double time_left_s) {
+    if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return "";
     return detail::time_left_text(time_left_s);
+}
+
+// Only the Preview's own step check lives here: opening audio is the one step
+// with a byte rate. The gate and the words are gated_time_left_text's.
+std::string PreviewLoadJob::Progress::time_left_text() const {
+    if (step != Step::Opening) return "";
+    return gated_time_left_text(elapsed_s, time_left_s);
 }
 
 std::shared_ptr<const PreviewSceneBase> build_scene_base(

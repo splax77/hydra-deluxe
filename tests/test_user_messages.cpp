@@ -134,6 +134,10 @@ TEST_CASE("user_messages: a kinded error reads its kind's sentence, whatever its
         {ErrorKind::DatabaseOpen,
          "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
          "running and that the Hydra folder isn't read-only."},
+        {ErrorKind::DatabaseUpgrade,
+         "Hydra couldn't update its library file (hydra.db) for this version. Your charts and "
+         "results were not changed. Check that no other copy of Hydra or hydra_batch is "
+         "running and that the disk isn't full, then start Hydra again."},
         {ErrorKind::DatabaseWrite, kDatabaseWrite},
         {ErrorKind::DatabaseRead,
          "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "

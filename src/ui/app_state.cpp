@@ -33,15 +33,16 @@ StartupSettings load_startup_settings() {
 
 AppState::AppState() : AppState(load_startup_settings()) {}
 
-// A bad rules file gates the store on RulesStamp::none(), so no row reads
-// Ready under the defaults the settings still hold.
-AppState::AppState(StartupSettings start)
-    : AppState(start.settings,
-               app::open_store(app::db_path(),
-                               start.rules_error.empty()
-                                   ? core::RulesStamp::of(start.settings.rules)
-                                   : core::RulesStamp::none())) {
+// The store opens on its own thread, so the window draws while an old file
+// upgrades. A bad rules file gates the store on RulesStamp::none(), so no row
+// reads Ready under the defaults the settings still hold.
+AppState::AppState(StartupSettings start) : AppState(std::move(start.settings), nullptr) {
     rules_error = std::move(start.rules_error);
+    store_open_job = std::make_unique<StoreOpenJob>(
+        app::db_path(),
+        rules_error.empty() ? core::RulesStamp::of(settings.rules) : core::RulesStamp::none(),
+        settings);
+    store_open_job->start();
 }
 
 AppState::AppState(app::Settings initial_settings,
@@ -51,12 +52,44 @@ AppState::AppState(app::Settings initial_settings,
       committed_chartmode_(settings.chartmode_key()),
       committed_cap_(settings.cap_query()),
       committed_lens_(settings.lens()) {
-    reload_library();
+    // No store: the default constructor's open job brings it, and the
+    // library with it (collect_store_open).
+    if (store) reload_library();
 }
 
 // Out-of-line so the unique_ptr<PreviewController> can be a forward declaration
 // in the header (its destructor needs the full type, which lives here).
 AppState::~AppState() { flush_settings(); }  // an edit in progress still lands
+
+StoreOpenProgress AppState::store_open_progress() const {
+    return store_open_job ? store_open_job->progress() : StoreOpenProgress{};
+}
+
+bool AppState::store_open_shown() const {
+    return store_open_job && !store_open_job->finished() &&
+           progress_delay_passed(store_open_job->elapsed_s());
+}
+
+void AppState::wait_store_open() {
+    if (!store_open_job) return;
+    store_open_job->wait();
+    collect_store_open();
+}
+
+void AppState::collect_store_open() {
+    if (!store_open_job || !store_open_job->finished()) return;
+    const std::unique_ptr<StoreOpenJob> job = std::move(store_open_job);
+    if (!job->ok()) {
+        store_open_error_ = job->failure();
+        return;
+    }
+    store = job->take_store();
+    library = job->take_library();
+    library.set_query(search);
+    // The library read failed after the store opened: the same problem line
+    // a failed reload shows, over an empty library.
+    if (!job->library_problem().empty()) set_problem(job->library_problem());
+}
 
 void AppState::set_render_device(ID3D11Device* device, ID3D11DeviceContext* context) {
     render_device_ = device;
@@ -80,22 +113,13 @@ bool AppState::read_store(const std::function<void()>& read) {
 }
 
 void AppState::reload_library() {
-    // The whole scan in one read. Every chart is needed anyway: the chips
-    // count them and the search filters them in memory.
-    if (!read_store([&] { library.set_charts(store->list_chart_library(0, -1)); }))  // -1 = no limit
-        return;
+    const std::string problem = read_library(*store, settings, library);
     library.set_query(search);
-    refresh_library_summaries();
+    if (!problem.empty()) set_problem(problem);
 }
 
 void AppState::refresh_library_summaries() {
-    // One store call for the whole library (T7 splits it into chunks), on
-    // this thread, never per row per frame: the batch workers share the
-    // store's lock.
-    read_store([&] {
-        library.set_summaries(store->get_summaries(library.hashes(), settings.chartmode_key(),
-                                                   settings.cap_query(), settings.lens()));
-    });
+    read_store([&] { read_library_summaries(*store, settings, library); });
 }
 
 bool AppState::refresh_library_row(const std::string& md5) {
@@ -304,8 +328,9 @@ bool AppState::view_running() const {
 
 bool AppState::view_progress_shown() const {
     return view_running() &&
-           std::chrono::duration<double>(std::chrono::steady_clock::now() - view_requested_at_)
-                   .count() >= kViewProgressDelaySeconds;
+           progress_delay_passed(
+               std::chrono::duration<double>(std::chrono::steady_clock::now() - view_requested_at_)
+                   .count());
 }
 
 void AppState::update_view_job() {
@@ -423,13 +448,15 @@ bool AppState::can_scan() const {
 bool AppState::any_job_running() const {
     // view_job counts while it runs even when cancelled: tick() still has to
     // collect it (and start a waiting request).
-    return (scan_job && !scan_job->snapshot().finished) || batch_running() || view_pending ||
+    return (store_open_job && !store_open_job->finished()) ||
+           (scan_job && !scan_job->snapshot().finished) || batch_running() || view_pending ||
            view_thread_alive() || (report_job && !report_job->finished()) ||
            (dm_fetch_job && !dm_fetch_job->finished()) ||
            (dm_report_job && !dm_report_job->finished()) || (preview && preview->busy());
 }
 
 void AppState::tick(double /*now*/) {
+    collect_store_open();
     if (!show_details && details_ui.prev_open) close_details();
     details_ui.prev_open = show_details;
     update_view_job();

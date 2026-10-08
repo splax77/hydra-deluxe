@@ -5121,6 +5121,63 @@ const std::vector<OwnerRule>& rules() {
            "sig_can_show_unchanged, the owner: chart_library_cache, sig_unchanged and "
            "ViewJob::run call it"}},
          {"src"}},
+        // The Preview loader and the startup open both show a time-left line;
+        // each checks only its own step and asks the owner for the rest.
+        {"Is a job old enough, with a known rate, to show its time left, and in what words?",
+         "gated_time_left_text in src/ui/preview_load_job.cpp",
+         R"(elapsed_s\s*<\s*kTimeLeftAfterSeconds)",
+         "",
+         {},
+         {},
+         "D48 Q20 (the words), DBUP answer 4 (the startup open reuses the Preview's gate); "
+         "derive-once review of the DBUP join (F1)",
+         {"if (step != Step::Opening || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))",
+          "if (step != Step::Copying || elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0))"},
+         {"return gated_time_left_text(elapsed_s, time_left_s);",
+          "if (step != Step::Copying) return \"\";"},
+         {{"src/ui/preview_load_job.cpp",
+           "if (elapsed_s < kTimeLeftAfterSeconds || !(time_left_s >= 0.0)) return \"\";",
+           "gated_time_left_text, the owner: PreviewLoadJob::Progress::time_left_text and "
+           "StoreOpenProgress::time_left_text call it"}},
+         {"src"}},
+        // The click's progress box and the startup screen both wait out the
+        // same delay; each works out its own elapsed time and asks the owner.
+        {"Has a job run long enough for its progress to show?",
+         "AppState::progress_delay_passed in src/ui/app_state.h",
+         R"((>=|<)\s*kViewProgressDelaySeconds\b|\bkViewProgressDelaySeconds\s*(<=|>))",
+         "",
+         {},
+         {},
+         "D87 item 6 (the 0.15 s delay), DBUP answer 2 (the startup screen follows it); "
+         "derive-once review of the DBUP join (F2)",
+         {".count() >= kViewProgressDelaySeconds;",
+          "store_open_job->elapsed_s() >= kViewProgressDelaySeconds;",
+          "if (elapsed < kViewProgressDelaySeconds) return false;",
+          "return kViewProgressDelaySeconds <= waited;"},
+         {"progress_delay_passed(store_open_job->elapsed_s());",
+          "static constexpr double kViewProgressDelaySeconds = 0.15;",
+          "const double delay = hydra::ui::AppState::kViewProgressDelaySeconds;"},
+         {{"src/ui/app_state.h", "return elapsed_s >= kViewProgressDelaySeconds;",
+           "AppState::progress_delay_passed, the owner: view_progress_shown and "
+           "store_open_shown call it"}},
+         {"src"}},
+        // A WAL database's log and index sit beside it under SQLite's two
+        // suffixes. The upgrade's file rule names them once; code that sweeps
+        // or checks a database's files asks it (with_side_files,
+        // remove_with_side_files, side_files_present).
+        {"Which files make up a database on disk?",
+         "with_side_files in src/store/upgrade_files.cpp",
+         R"re("-(wal|shm)")re",
+         "",
+         {"src/store/upgrade_files.cpp"},
+         {},
+         "derive-once review of the DBUP join (F4); ADR 0026, the upgrade",
+         {"return {db, db + \"-wal\", db + \"-shm\"};",
+          "for (const char* suffix : {\"\", \"-wal\", \"-shm\"}) fs::remove(path + suffix);"},
+         {"for (const std::string& f : with_side_files(path)) std::remove(f.c_str());",
+          "\"' is open in another program: its -wal or -shm file stayed \");"},
+         {},
+         {"src", "tools"}},
     };
     return r;
 }

@@ -322,7 +322,12 @@ void run_frame(AppState& app, FrameText* capture) {
     // Batch ends, report starts and reaps, parked leaderboard jobs: state
     // work, done here once a frame rather than inside a view.
     app.update_background_jobs();
-    render_main_window(app);
+    // The main window is the only thing that reaches the store, so until the
+    // startup open has brought it, the startup screen draws instead.
+    if (app.store_ready())
+        render_main_window(app);
+    else
+        render_startup_screen(app);
     // The number boxes apply edits live but leave the INI until the edit
     // ends (AppState::edit_settings). An edit has ended once no widget is
     // active: the +/- button is released, or the text box lost focus.

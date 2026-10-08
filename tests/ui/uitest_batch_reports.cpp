@@ -8,9 +8,9 @@
 #include <thread>
 #include <vector>
 
-#include <sqlite3.h>
-
 #include "uitest_harness.h"
+
+#include "../db_file_sql.h"  // tests/ is not on the runner's include path
 
 #include "app/analysis.h"
 #include "app/config.h"
@@ -543,15 +543,8 @@ void test_analyze_db_fails(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    // A copy of exec_on_file (tests/db_file_util.h): the GUI harness builds
-    // with only tests/ui on its include path.
-    {  // A second connection drops the scratch library's results table.
-        sqlite3* db = nullptr;
-        IM_CHECK_NO_RET(sqlite3_open(h.db_path.c_str(), &db) == SQLITE_OK);
-        IM_CHECK_NO_RET(sqlite3_exec(db, "DROP TABLE results", nullptr, nullptr, nullptr) ==
-                        SQLITE_OK);
-        sqlite3_close(db);
-    }
+    // A second connection drops the scratch library's results table.
+    IM_CHECK_NO_RET(hydra::test::run_sql_on_file(h.db_path, "DROP TABLE results"));
 
     ctx->SetRef("//Hydra");
     ctx->ItemClick("Analyze library...");

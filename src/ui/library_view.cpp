@@ -104,11 +104,14 @@ float library_split_width(float room, float share) {
     return std::clamp(share * room, b.min_w, b.max_w);
 }
 
-void render_main_window(AppState& app) {
-    // The primary window: fixed to the full viewport, no title bar/resize/
-    // move/collapse of its own -- mirrors hydra_app.py's
-    // dpg.set_primary_window("mainwindow", True), a single window that IS the
-    // app rather than a panel floating inside it.
+namespace {
+
+// The primary window: fixed to the full viewport, no title bar/resize/
+// move/collapse of its own -- mirrors hydra_app.py's
+// dpg.set_primary_window("mainwindow", True), a single window that IS the
+// app rather than a panel floating inside it. The main window and the
+// startup screen both begin it here; the caller ends it.
+void begin_hydra_window() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -120,6 +123,48 @@ void render_main_window(AppState& app) {
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
                      ImGuiWindowFlags_NoBringToFrontOnFocus);
+}
+
+}  // namespace
+
+void render_startup_screen(AppState& app) {
+    begin_hydra_window();
+    if (app.store_open_shown()) {
+        const StoreOpenProgress p = app.store_open_progress();
+        const std::string time_left = p.time_left_text();
+        const bool bar = p.rows_total > 0;
+        // The box's height, to centre it: one row per line it draws.
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const int text_rows = (p.upgrading ? 3 : 1) + (time_left.empty() ? 0 : 1);
+        const float box_h = text_rows * ImGui::GetTextLineHeightWithSpacing() +
+                            (bar ? ImGui::GetFrameHeightWithSpacing() : 0.0f) +
+                            2.0f * style.WindowPadding.y;
+        const float box_w = px(kProgressBoxWidth);
+        const ImVec2 room = ImGui::GetContentRegionAvail();
+        const ImVec2 at = ImGui::GetCursorPos();
+        ImGui::SetCursorPos(ImVec2(at.x + std::max(0.0f, (room.x - box_w) * 0.5f),
+                                   at.y + std::max(0.0f, (room.y - box_h) * 0.5f)));
+        ImGui::BeginChild("##startup", ImVec2(box_w, 0.0f),
+                          ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY |
+                              ImGuiChildFlags_AlwaysUseWindowPadding,
+                          ImGuiWindowFlags_NoSavedSettings);
+        if (p.upgrading) {
+            ImGui::TextWrapped("Updating your library file for this version of Hydra");
+            ImGui::TextWrapped("This happens once. Your charts and results are kept.");
+        }
+        ImGui::TextUnformatted(p.label().c_str());
+        if (bar) {
+            // The store's counts: rows of one library file, far below INT_MAX.
+            progress_bar_counted(static_cast<int>(p.rows_done), static_cast<int>(p.rows_total));
+        }
+        if (!time_left.empty()) ImGui::TextUnformatted(time_left.c_str());
+        ImGui::EndChild();
+    }
+    ImGui::End();
+}
+
+void render_main_window(AppState& app) {
+    begin_hydra_window();
 
     // A finished report job is reaped by AppState::update_background_jobs.
 

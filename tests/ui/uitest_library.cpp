@@ -1,9 +1,14 @@
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 #include "uitest_harness.h"
 
+#include "../db_file_sql.h"          // tests/ is not on the runner's include path
+#include "../old_layout_fixture.h"
 #include "app/config.h"
 #include "imgui_internal.h"
 #include "ui/app_shell.h"  // remember_library_share
@@ -12,11 +17,15 @@
 #include "ui/fonts.h"  // px()
 #include "ui/library_model.h"
 #include "ui/preview_controller.h"
+#include "store/record_store.h"
+#include "store/upgrade_files.h"  // the upgrade's file names
 #include "ui/widgets.h"  // widest_digits, button_slot_width
 
 namespace uitest {
 
 namespace {
+
+namespace fs = std::filesystem;
 
 void test_scan(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -568,6 +577,104 @@ void test_library_column_order(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(table->Columns[best].SortOrder, -1);
 }
 
+// The first column of the first row `sql` returns, or -1 when it fails.
+int64_t number_in_file(const std::string& path, const std::string& sql) {
+    return hydra::test::first_int_on_file(path, sql).value_or(-1);
+}
+
+// The titles the startup test's library file holds.
+constexpr const char* kStartupTitles[] = {"Startup Song One", "Startup Song Two"};
+
+// Writes a library file in the layout before summary-only storage (D87): two
+// charts, three results with the structure blob, and the detail tables. One
+// result is from before the stars column (a score and no stars), which the
+// upgrade leaves behind. Returns the file's path, or "" if a step failed.
+std::string write_old_layout_library(Harness& h) {
+    const std::string path = h.temp_dir + "\\old_layout_seed.db";
+    if (!hydra::store::remove_with_side_files(path)) return "";
+    {
+        hydra::store::RecordStore seed(path);
+        std::vector<hydra::store::ChartLibraryEntry> charts(2);
+        for (size_t i = 0; i < charts.size(); ++i) {
+            charts[i].md5 = std::string(32, static_cast<char>('a' + i));
+            charts[i].title = kStartupTitles[i];
+            charts[i].artist = "Startup Artist";
+            charts[i].charter = "Startup Charter";
+            charts[i].notespath = h.temp_dir + "\\startup" + std::to_string(i) + "\\notes.chart";
+            charts[i].rootfolder = h.temp_dir;
+        }
+        seed.rebuild_chart_library(charts);
+    }
+    // The results table as that layout made it, with literal rows. The column
+    // list is the owner's (kSchema2ResultsColumns) plus the three later
+    // columns; each row's values follow that order.
+    const std::string sql =
+        std::string("DROP TABLE results;") + hydra::test::kDetailLayoutResultsTableSql + ";" +
+        "INSERT INTO results (" + hydra::store::kSchema2ResultsColumns +
+        ", legacy_fills, rules_fp, structure) VALUES"
+        " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, '1', 1000,"
+        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5, 0, x'', x'07'),"
+        " (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mode', 'v', 8, 0, 0, 0, 2, '1', 2000,"
+        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 6, 0, x'', x'07'),"
+        " (3, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'other', 'v', 8, 0, 0, 0, 2, '1', 3000,"
+        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, x'', x'07');" +
+        hydra::test::kDetailTablesSql;
+    if (!hydra::test::run_sql_on_file(path, sql)) return "";
+    return path;
+}
+
+// The window keeps drawing while the store opens (the DBUP plan, part 1). A
+// library file in the old layout makes the open run the upgrade; an OpenGate
+// holds that open on its worker thread, and the frames still come with the
+// upgrade's screen on them, in the words the user chose for it. Once the gate
+// opens, the library lists the file's charts and the upgrade left no temp file.
+void test_startup_screen(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    const std::string seed = write_old_layout_library(h);
+    IM_CHECK(!seed.empty());
+    const std::string seed_before = h.seed_db;
+    h.seed_db = seed;
+    OpenGate gate;  // before reset_app: the open starts in AppState's constructor
+    reset_app(h, "", /*wait_store=*/false);
+    h.seed_db = seed_before;
+
+    const int frame_before = ImGui::GetFrameCount();
+    const bool upgrade_screen_drawn = wait_until(ctx, [&] {
+        const std::string text = visible_text(h);
+        return text.find("Updating your library file for this version of Hydra") !=
+                   std::string::npos &&
+               text.find("This happens once. Your charts and results are kept.") !=
+                   std::string::npos &&
+               text.find("Copying your library...") != std::string::npos;
+    }, 10);
+    IM_CHECK(upgrade_screen_drawn);
+    // Frames kept coming while the open was held, and it is still held.
+    IM_CHECK(ImGui::GetFrameCount() > frame_before);
+    IM_CHECK(!h.app->store_ready());
+    IM_CHECK(gate.started() > 0);
+    // The bar under the words is fed by the store's own count of rows to copy.
+    const hydra::ui::StoreOpenProgress held = h.app->store_open_progress();
+    IM_CHECK(held.step == hydra::ui::StoreOpenProgress::Step::Copying);
+    IM_CHECK(held.upgrading);
+    IM_CHECK(held.rows_total > 0);
+
+    gate.open();
+    IM_CHECK(wait_until(ctx, [&] { return h.app->store_ready(); }, 30));
+    IM_CHECK(!h.app->store_open_failed());
+    IM_CHECK_EQ(h.app->library.rows().size(), size_t{2});
+    for (const char* title : kStartupTitles)
+        IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(title) != std::string::npos; }, 5));
+    // The upgrade swapped its files and tidied up.
+    for (const std::string& leftover :
+         {hydra::store::upgrading_path(h.db_path), hydra::store::old_path(h.db_path)})
+        for (const std::string& file : hydra::store::with_side_files(leftover))
+            IM_CHECK(!fs::exists(fs::u8path(file)));
+    // The two results with stars came across; the one without did not. The
+    // detail tables are gone.
+    IM_CHECK_EQ(number_in_file(h.db_path, "SELECT COUNT(*) FROM results"), int64_t{2});
+    IM_CHECK_EQ(number_in_file(h.db_path, hydra::test::kDetailTablesCountSql), int64_t{0});
+}
+
 }  // namespace
 
 const std::vector<TestEntry>& library_tests() {
@@ -582,6 +689,7 @@ const std::vector<TestEntry>& library_tests() {
         {"library-column-order", test_library_column_order},
         {"library-layout", test_library_layout},
         {"library-twin-rows", test_library_twin_rows},
+        {"startup-screen", test_startup_screen},
     };
     return entries;
 }

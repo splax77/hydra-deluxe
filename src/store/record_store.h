@@ -14,8 +14,8 @@
 //     names come from here (kNamingCopiesSql).
 //
 // An older file also held the path details, song rows and dynamics counts.
-// The first open by this build deletes them and shrinks the file
-// (drop_stored_details).
+// The first open by this build leaves them behind by copying the kept rows
+// into a fresh file that takes the old one's place (copy_upgrade).
 //
 // Why the full settings and not just the cap: a run under a different ms
 // limit or score range is a different answer, and overwriting one with the
@@ -318,6 +318,38 @@ inline constexpr int kBatchWalAutocheckpointPages = 10000;
 // same reason (Mozilla bug 1820478).
 inline constexpr int kJournalSizeLimitBytes = 4194304;
 
+// ---- opening, and the library file upgrade --------------------------------
+
+// What the store is doing while it opens, in the order the steps run. An open
+// of a file this build already wrote reports Opening alone.
+enum class OpenStep {
+    Opening,             // the journal settings, the tables and the cheap upgrades
+    UpdatingResultsKey,  // upgrade_results_key rebuilding a 1.8.x file's results
+    Copying,             // the copy upgrade copying the kept rows into a fresh file
+    Finishing,           // the copy upgrade swapping the fresh file in
+};
+
+// One progress report from an opening store.
+struct OpenProgress {
+    OpenStep step = OpenStep::Opening;
+    // Copying and Finishing only: the rows copied so far, and the rows the
+    // copy will copy, both counted from the file itself. Zero for the other
+    // steps. Finishing reports both at the total.
+    int64_t rows_done = 0;
+    int64_t rows_total = 0;
+};
+
+// Called at every step change and, while Copying, once per row copied. A
+// false return asks the store to stop: it leaves the old file as it was and
+// the constructor throws KindedError(ErrorKind::Cancelled). Called on the
+// thread that builds the store, never after the constructor returns.
+using OpenProgressFn = std::function<bool(const OpenProgress&)>;
+
+// Test seam: while set, the copy upgrade stops right after the database
+// steps aside under its old name, as a kill there would, leaving the files
+// for recover_upgrade_files (store/upgrade_files.h). The constructor throws.
+void stop_copy_upgrade_after_step_aside_for_test(bool stop);
+
 class RecordStore {
 public:
     // dbpath may be ":memory:" for an ephemeral store (used by tests). A db
@@ -327,8 +359,15 @@ public:
     // under. A row stamped with any other fingerprint reads Stale. The first
     // open by this build also deletes the results Auto saved (delete_auto_results).
     // core::RulesStamp::none() (a bad hydra_rules.ini) makes every row Stale.
+    // progress: told what the open is doing (OpenProgressFn); empty for a
+    // caller with nothing to show.
+    //
+    // Throws KindedError: Cancelled when `progress` asked to stop,
+    // DatabaseUpgrade when the copy upgrade failed with the old file whole,
+    // and DatabaseOpen for any other failed open.
     explicit RecordStore(const std::string& dbpath,
-                         core::RulesStamp rules_fingerprint = core::default_stamp());
+                         core::RulesStamp rules_fingerprint = core::default_stamp(),
+                         OpenProgressFn progress = {});
     ~RecordStore();
 
     RecordStore(const RecordStore&) = delete;
@@ -511,6 +550,12 @@ private:
     // stamped with anything but `fixed` reads Stale. Computed once, when the
     // store opens.
     core::RulesStamp rules_fingerprint_;
+    // The constructor's progress callback, held only while the constructor
+    // runs and emptied before it returns.
+    OpenProgressFn progress_;
+    // Tells progress_ the open is at `step`; throws KindedError(Cancelled)
+    // when it asks to stop.
+    void report(OpenStep step, int64_t rows_done = 0, int64_t rows_total = 0);
     // The rule: this lock covers sqlite calls and nothing else. A prepared
     // statement is compiled, stepped, reset and finalized with the lock held,
     // because all four are sqlite calls.
@@ -544,10 +589,21 @@ private:
     // again. A schema 2 file's rows go under the fill rule stamped_fill_rule
     // names, or 1.1 when it names none.
     void upgrade_results_key();
-    // The summary-only upgrade (D87 items 1 and 7): a file that still holds
-    // the path details loses them, then shrinks. Runs only when the `paths`
-    // table exists, so a second open does nothing.
-    void drop_stored_details();
+    // Opens db_ on `dbpath`, creating the file if it is missing; throws
+    // KindedError(DatabaseOpen) when SQLite refuses.
+    void open_file(const std::string& dbpath);
+    // The summary-only upgrade (D87 items 1 and 7, copy-and-swap since DBUP):
+    // a file that still holds the path details gets a fresh file with only
+    // the kept rows, which then takes the old file's name. Runs only when the
+    // `paths` table exists, so a second open does nothing. Every failure that
+    // leaves the old file whole throws KindedError(DatabaseUpgrade); the file
+    // states a stop can leave are store/upgrade_files.h's.
+    void copy_upgrade(const std::string& dbpath);
+    // Copies every row of `table` that `where` keeps (an SQL condition, or
+    // empty for all) from the open file into the attached fresh one, column
+    // by column as stored, counting each into rows_done for the report.
+    void copy_table(const char* table, const std::string& where, int64_t& rows_done,
+                    int64_t rows_total);
     // The body of add_row and save_analysis. The caller holds the lock and an
     // open transaction.
     void write_row(const PreparedRow& row);

@@ -65,7 +65,7 @@ screenshot stars.png
 | `wait-text <substring>` | wait until the text appears on screen |
 | `expect-text <substring>` / `expect-not-text <substring>` | assert on screen text now |
 | `text` | print everything on screen as text |
-| `state` | print the key app state (library count, rows, selection, jobs, preview, status) |
+| `state` | print the key app state (library count, rows, selection, jobs, preview, status, and the store line: `store=opening`, `store=ready` or `store=failed`) |
 | `dump [window]` | print the widget tree of a window and its child windows: label, id, rect, checked/disabled/opened/inputable |
 | `screenshot <file.png>` | save the frame |
 | `timeout <seconds>` | change the wait-text / wait-idle limit (default 30) |
@@ -101,6 +101,7 @@ These are the labels the merged app draws. Every GUI test finds widgets by them.
 | Batch confirm, popup `Analyze library` | checkbox `Also re-analyze charts that already have a result##redo`, buttons `Start analyzing` and `Cancel` |
 | Running batch, child `##batchstrip` | `Pause` / `Resume`, `Stop` |
 | Finished batch, child `##batchdone` | `Open report`, `Show in folder`, `X##dismissdone`, checkbox `Open automatically` |
+| Startup screen (window `Hydra`, drawn instead of everything above until the store is open) | an empty window until the click's progress delay (`kViewProgressDelaySeconds`) has passed. Then a slow normal open reads `Opening your library...` with no bar. An upgrade of an old library file shows a bordered box: `Updating your library file for this version of Hydra`, `This happens once. Your charts and results are kept.`, then a step line (`Copying your library...`, `Updating the results table...` on a 1.8.x file, `Finishing...`) over a bar whose overlay reads `rows done / rows total` (`12,345 / 38,009`). A time-left line follows the Song Preview's rule and words. There are no buttons |
 | Other modals | `Scanning charts` (`Continue`, `Cancel`); `Song folders` (`Add folder...`, `Scan now`, `Close`); `Compare dmleaderboards user` (`##dmfilter`, `Close`, `Open report` / `Open report again`, `Compare another`, `Back to list`) |
 
 When unsure, `dump Hydra` and read the labels off it. The dump cuts long labels short (the test engine keeps about 30 characters), so `Hide backend rows beyond##backendlimit` prints as `Hide backend rows beyond##backe`. Combos print with an empty label; take their `##id` from the source.
@@ -145,6 +146,7 @@ Rules of thumb:
 - Wait on app state (`h.app->…`) with `wait_until`, never on frame counts. Jobs are real threads.
 - To look at a running batch, hold it open with `BatchGate` (see above); never hope it is still running.
 - To look at a click's running analysis (its progress box, Cancel, a setting changed under it), hold it with `ViewGate`. Make the gate after `reset_app`; every click's job then waits at it until `open()`, and `started()` counts the jobs that reached it.
+- The app opens its store on a worker thread. `reset_app(h)` waits for that open (`AppState::wait_store_open`) and fails the test if it failed, so every test can click at once. To look at the startup screen instead, make an `OpenGate` **before** `reset_app` (the open starts in AppState's constructor), then call `reset_app(h, "", false)`. The open then waits at the gate until `open()`, and `h.app->store_ready()` stays false. The `startup-screen` test seeds an old-layout library file through `h.seed_db` to get the upgrade's screen.
 - Click a song-panel tab only once the click's analysis has settled or a closed `ViewGate` holds it (`wait_tabs_placed`). The headline above the tabs (`render_headline`) grows when the record lands and pushes them down, so a click whose mouse is still travelling misses. `open_details` and `wait_song_analyzed` already wait for it.
 - `wait_until` yields one extra frame after its condition holds, so `visible_text` reflects it.
 - `wait_until` returns false at once when the test has already failed (`ctx->IsError()`). A click that found no item no longer sits out the whole timeout.
