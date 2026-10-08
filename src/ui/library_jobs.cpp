@@ -124,11 +124,34 @@ bool StoreOpenJob::report(StoreOpenProgress::Step step, uint64_t rows_done, uint
     return !is_cancelled();
 }
 
+namespace {
+
+// The store's step as the startup screen's (StoreOpenProgress::Step).
+StoreOpenProgress::Step screen_step(store::OpenStep step) {
+    using Step = StoreOpenProgress::Step;
+    switch (step) {
+        case store::OpenStep::Opening: return Step::Opening;
+        case store::OpenStep::UpdatingResultsKey: return Step::UpdatingResultsKey;
+        case store::OpenStep::Copying: return Step::Copying;
+        case store::OpenStep::Finishing: return Step::Finishing;
+    }
+    return Step::Opening;
+}
+
+uint64_t row_count(int64_t rows) { return rows > 0 ? static_cast<uint64_t>(rows) : 0; }
+
+}  // namespace
+
 void StoreOpenJob::run() {
     using Step = StoreOpenProgress::Step;
     try {
-        if (!report(Step::Opening, 0, 0)) throw JobCancelled{};
-        store_ = std::make_unique<store::RecordStore>(db_path_, rules_);
+        // The store reports its own steps, Opening first; a false return
+        // (the app is closing) stops it with the old file as it was.
+        store_ = std::make_unique<store::RecordStore>(
+            db_path_, rules_, [this](const store::OpenProgress& p) {
+                return report(screen_step(p.step), row_count(p.rows_done),
+                              row_count(p.rows_total));
+            });
         // The copy's counts stay on the bar while the library is read.
         if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
             throw JobCancelled{};
