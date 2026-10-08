@@ -122,13 +122,6 @@ void test_paths_list(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "0 4 1"));
 }
 
-// A window drawn this frame whose name holds `part` (child names are mangled).
-ImGuiWindow* window_named(const char* part) {
-    for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows)
-        if (w->WasActive && std::strstr(w->Name, part)) return w;
-    return nullptr;
-}
-
 // One timeline mark as the Paths tab last drew it: where its gold bar sits,
 // and whether an orange or a grey stroke is drawn around it.
 struct DrawnMark {

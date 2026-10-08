@@ -356,21 +356,6 @@ std::optional<ScreenRect> saved_rect(const char* name) {
                        ImVec2(s->Size.x, s->Size.y));
 }
 
-// Whether the spike window shows; its own close button clears it.
-bool g_report_spike = false;
-
-// The spike window: empty, in the report windows' class and placement.
-void render_report_spike() {
-    if (!g_report_spike) return;
-    constexpr const char* kName = "Report spike";
-    place_report_window(kName);
-    const ImGuiWindowClass window_class = report_window_class();
-    ImGui::SetNextWindowClass(&window_class);
-    // No collapse arrow: a report window minimizes with its OS title bar.
-    ImGui::Begin(kName, &g_report_spike, ImGuiWindowFlags_NoCollapse);
-    ImGui::End();
-}
-
 }  // namespace
 
 ImGuiWindowClass report_window_class() {
@@ -394,9 +379,6 @@ void place_report_window(const char* name) {
     ImGui::SetNextWindowSize(main_viewport->Size, ImGuiCond_Always);
 }
 
-void show_report_spike(bool shown) { g_report_spike = shown; }
-bool report_spike_shown() { return g_report_spike; }
-
 void run_frame(AppState& app, FrameText* capture) {
     const bool capturing = capture && capture->enabled;
     if (capturing) {
@@ -418,7 +400,6 @@ void run_frame(AppState& app, FrameText* capture) {
         render_main_window(app);
     else
         render_startup_screen(app);
-    render_report_spike();
     // The number boxes apply edits live but leave the INI until the edit
     // ends (AppState::edit_settings). An edit has ended once no widget is
     // active: the +/- button is released, or the text box lost focus.

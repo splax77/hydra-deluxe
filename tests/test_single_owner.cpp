@@ -5351,13 +5351,113 @@ const std::vector<OwnerRule>& rules() {
           "\"' is open in another program: its -wal or -shm file stayed \");"},
          {},
          {"src", "tools"}},
+        // The imgui#9519 workaround: a table that can't reorder asks ImGui to
+        // reset its column order after an ini load. Every table calls the one
+        // helper; a second inline copy (the Library table had one) fails.
+        {"Who keeps a table's columns in their set-up order (imgui#9519)?",
+         "keep_table_column_order in src/ui/widgets.h",
+         R"(\bIsResetDisplayOrderRequest\b|\bIsSettingsRequestLoad\b)",
+         "",
+         {},
+         {},
+         "report windows plan, T5 orchestrator answer 1 (2026-10-08)",
+         {"bool reset = table->IsSettingsRequestLoad;",
+          "if (reset) table->IsResetDisplayOrderRequest = true;",
+          "table->IsResetDisplayOrderRequest = true;"},
+         {"keep_table_column_order();", "keep_table_column_order();  // imgui#9519, as in the Library table",
+          "reset = table->Columns[n].DisplayOrder != n;"},
+         {{"src/ui/widgets.h", "bool reset = table->IsSettingsRequestLoad;",
+           "keep_table_column_order, the owner: render_table and report_frame::table call it"},
+          {"src/ui/widgets.h", "if (reset) table->IsResetDisplayOrderRequest = true;",
+           "keep_table_column_order, the owner"}},
+         {"src"}},
+        // The report tables open with the Library table's flags and add to
+        // them; a second list of those flags would drift from the first.
+        {"Which flags does a Library-style table open with?",
+         "base_table_flags in src/ui/widgets.h",
+         R"(\bImGuiTableFlags_SizingStretchProp\b)",
+         "",
+         {},
+         {},
+         "report windows plan, T5 brief (the table uses the Library table's flags); "
+         "derive-once review of RW-T5 (finding 1)",
+         {"ImGuiTableFlags_SizingStretchProp;",
+          "ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_SizingStretchProp;"},
+         {"const int table_flags = ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg;",
+          "return base_table_flags() | ImGuiTableFlags_SortMulti;"},
+         {{"src/ui/widgets.h", "ImGuiTableFlags_SizingStretchProp;",
+           "base_table_flags, the owner: render_table and report_frame::table_flags call it"}},
+         {"src"}},
+        // Each report window rebuilds its view when AppState hands it a new
+        // result; both ask the one template whether the result changed.
+        {"Is a report window still showing the result its view was built from?",
+         "report_frame::same_result in src/ui/report_window.h",
+         R"(\bowner_before\b)",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T5 (finding 2)",
+         {"return !w.owner_before(p) && !p.owner_before(w);", "!p.owner_before(w)"},
+         {"ImGui::SetCursorPosX(buttons_x);",
+          "if (!report_frame::same_result(w.built_from, input.result)) rebuild(w, input.result);"},
+         {{"src/ui/report_window.h", "return !w.owner_before(p) && !p.owner_before(w);",
+           "report_frame::same_result, the owner: both report windows call it"}},
+         {"src"}},
+        // A table's header sort can hold more keys than a report sorts by,
+        // so the window cuts it to the report's limit, read from the owner.
+        {"How many sort keys may a report hold?",
+         "kMaxSortKeys in src/app/report_view.h",
+         R"(\bSpecsCount\b[^;]*[<>]=?\s*[2-9]\b)",
+         "",
+         {},
+         {},
+         "D103 item 1 (Shift+click adds a second key); derive-once review of RW-T5 (finding 3)",
+         {"for (int i = 0; i < specs->SpecsCount && i < 2; ++i)",
+          "if (specs->SpecsCount > 2) push_sort(sort);"},
+         {"if ((specs->SpecsDirty || !app.library_ui.sort_synced) && specs->SpecsCount > 0) {",
+          "for (int i = 0; i < specs->SpecsCount && i < max_keys; ++i)",
+          "if (specs->SpecsCount > max_keys) push_sort(sort);"},
+         {},
+         {"src"}},
+        // Right-aligning the next item: in a table cell, or at the end of a
+        // line once the line-fit check (fits_on_line) has said it fits.
+        {"Where does a right-aligned item start?",
+         "move_to_right_edge in src/ui/widgets.h",
+         R"(SetCursorPosX\(ImGui::GetCursorPosX\(\)\s*\+|>\s*ImGui::GetCursorPosX\(\)\)\s*ImGui::SetCursorPosX\()",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T5 (finding 4)",
+         {"if (w < avail) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - w);",
+          "ImGui::SetCursorPosX(ImGui::GetCursorPosX() +",
+          "ImGui::SetCursorPosX(ImGui::GetCursorPosX() + avail - width);",
+          "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);"},
+         {"ImGui::SetCursorPosX(buttons_x);",
+          "ImGui::SetCursorPosX(left_x + text_w + style.ItemSpacing.x);",
+          "move_to_right_edge(ImGui::CalcTextSize(number.c_str()).x);"},
+         {{"src/ui/widgets.h", "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
+           "move_to_right_edge, the owner: report_frame's cell, row number and right_align call it"}},
+         {"src"}},
     };
     return r;
 }
 
 const std::vector<KnownCopy>& known_copies() {
-    // Empty: every copy a rule once tolerated has been removed.
-    static const std::vector<KnownCopy> k = {};
+    // Copies found in files the change that found them could not edit.
+    static const std::vector<KnownCopy> k = {
+        {"Where does a right-aligned item start?", "src/ui/paths_tab.cpp",
+         "if (room > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + room);",
+         "a follow-up to RW-T5's review: align_right calls move_to_right_edge"},
+        {"Where does a right-aligned item start?", "src/ui/library_dialogs.cpp",
+         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
+         "a follow-up to RW-T5's review, once T4, which owns this file now, has merged"},
+        {"Where does a right-aligned item start?", "src/ui/library_toolbar.cpp",
+         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
+         "a follow-up to RW-T5's review"},
+        {"Where does a right-aligned item start?", "src/ui/settings_bar.cpp",
+         "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
+         "a follow-up to RW-T5's review"},
+    };
     return k;
 }
 

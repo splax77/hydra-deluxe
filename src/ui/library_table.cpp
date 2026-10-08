@@ -228,11 +228,8 @@ SecondLine second_line(const app::LibraryQuery& q, const LibraryRow& row, bool f
 
 SecondLineUse render_table(AppState& app, ImVec2 size) {
     SecondLineUse used;
-    const ImGuiTableFlags flags =
-        ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable |
-        ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersOuterH |
-        ImGuiTableFlags_SizingStretchProp;
-    if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, flags, size)) return used;
+    if (!ImGui::BeginTable("##librarytable", kLibraryColumnCount, base_table_flags(), size))
+        return used;
 
     ImGui::TableSetupScrollFreeze(0, 1);  // the header row stays on screen
     ImGui::TableSetupColumn("Title",
@@ -255,19 +252,8 @@ SecondLineUse render_table(AppState& app, ImVec2 size) {
     // shown when it closes. In between, the header's right-click menu shows
     // or hides any column but Title.
     // T9: read app.details_open() here once it exists.
-    // The columns always stay in the order set up above. Dear ImGui 1.93 WIP
-    // (ocornut/imgui#9519) loads a sort-only hydra_ui.ini entry into a table
-    // that can't reorder by moving the sorted column to the front: the
-    // columns with no saved line get position -1 and sort after it. The reset
-    // runs in the same layout pass, after the load, so ask for it whenever a
-    // load is pending or the order is already off (not every frame: each
-    // reset marks hydra_ui.ini as changed).
-    if (ImGuiTable* table = ImGui::GetCurrentTable()) {
-        bool reset = table->IsSettingsRequestLoad;
-        for (int n = 0; n < table->ColumnsCount && !reset; ++n)
-            reset = table->Columns[n].DisplayOrder != n;
-        if (reset) table->IsResetDisplayOrderRequest = true;
-    }
+    // The columns always stay in the order set up above (imgui#9519).
+    keep_table_column_order();
 
     const bool panel_open = app.details_open();
     if (app.library_ui.columns_for_panel != panel_open) {
