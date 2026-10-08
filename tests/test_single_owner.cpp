@@ -5140,6 +5140,27 @@ const std::vector<OwnerRule>& rules() {
            "gated_time_left_text, the owner: PreviewLoadJob::Progress::time_left_text and "
            "StoreOpenProgress::time_left_text call it"}},
          {"src"}},
+        // The click's progress box and the startup screen both wait out the
+        // same delay; each works out its own elapsed time and asks the owner.
+        {"Has a job run long enough for its progress to show?",
+         "AppState::progress_delay_passed in src/ui/app_state.h",
+         R"((>=|<)\s*kViewProgressDelaySeconds\b|\bkViewProgressDelaySeconds\s*(<=|>))",
+         "",
+         {},
+         {},
+         "D87 item 6 (the 0.15 s delay), DBUP answer 2 (the startup screen follows it); "
+         "derive-once review of the DBUP join (F2)",
+         {".count() >= kViewProgressDelaySeconds;",
+          "store_open_job->elapsed_s() >= kViewProgressDelaySeconds;",
+          "if (elapsed < kViewProgressDelaySeconds) return false;",
+          "return kViewProgressDelaySeconds <= waited;"},
+         {"progress_delay_passed(store_open_job->elapsed_s());",
+          "static constexpr double kViewProgressDelaySeconds = 0.15;",
+          "const double delay = hydra::ui::AppState::kViewProgressDelaySeconds;"},
+         {{"src/ui/app_state.h", "return elapsed_s >= kViewProgressDelaySeconds;",
+           "AppState::progress_delay_passed, the owner: view_progress_shown and "
+           "store_open_shown call it"}},
+         {"src"}},
     };
     return r;
 }

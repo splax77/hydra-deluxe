@@ -67,7 +67,7 @@ StoreOpenProgress AppState::store_open_progress() const {
 
 bool AppState::store_open_shown() const {
     return store_open_job && !store_open_job->finished() &&
-           store_open_job->elapsed_s() >= kViewProgressDelaySeconds;
+           progress_delay_passed(store_open_job->elapsed_s());
 }
 
 void AppState::wait_store_open() {
@@ -328,8 +328,9 @@ bool AppState::view_running() const {
 
 bool AppState::view_progress_shown() const {
     return view_running() &&
-           std::chrono::duration<double>(std::chrono::steady_clock::now() - view_requested_at_)
-                   .count() >= kViewProgressDelaySeconds;
+           progress_delay_passed(
+               std::chrono::duration<double>(std::chrono::steady_clock::now() - view_requested_at_)
+                   .count());
 }
 
 void AppState::update_view_job() {

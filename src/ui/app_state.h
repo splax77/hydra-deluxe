@@ -310,6 +310,12 @@ public:
     // A click's progress box shows only once its job has run this long, so
     // a fast chart shows its paths with no box (D87 item 6).
     static constexpr double kViewProgressDelaySeconds = 0.15;
+    // Whether a job `elapsed_s` old has waited out that delay: the one test
+    // the click's box (view_progress_shown) and the startup screen
+    // (store_open_shown) both ask.
+    static bool progress_delay_passed(double elapsed_s) {
+        return elapsed_s >= kViewProgressDelaySeconds;
+    }
     // How long "Copied!" stays after the path is copied.
     static constexpr double kCopiedSeconds = 2.0;
     // Typing in the library search re-filters at most this often, so a burst
