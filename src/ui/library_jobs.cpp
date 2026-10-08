@@ -144,26 +144,28 @@ uint64_t row_count(int64_t rows) { return rows > 0 ? static_cast<uint64_t>(rows)
 
 void StoreOpenJob::run() {
     using Step = StoreOpenProgress::Step;
-    try {
-        // The store reports its own steps, Opening first; a false return
-        // (the app is closing) stops it with the old file as it was.
-        store_ = std::make_unique<store::RecordStore>(
-            db_path_, rules_, [this](const store::OpenProgress& p) {
-                return report(screen_step(p.step), row_count(p.rows_done),
-                              row_count(p.rows_total));
-            });
-        // The copy's counts stay on the bar while the library is read.
-        if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
-            throw JobCancelled{};
-        library_problem_ = read_library(*store_, settings_, library_);
-        ok_ = true;
-        finished_.store(true);
-    } catch (const std::exception& e) {
-        // A cancel is the app closing: nothing will show it.
-        if (!is_cancelled()) failure_ = std::current_exception();
-        store_.reset();
-        fail(e);
-    }
+    run_guarded([&] {
+        try {
+            // The store reports its own steps, Opening first; a false return
+            // (the app is closing) stops it with the old file as it was.
+            store_ = std::make_unique<store::RecordStore>(
+                db_path_, rules_, [this](const store::OpenProgress& p) {
+                    return report(screen_step(p.step), row_count(p.rows_done),
+                                  row_count(p.rows_total));
+                });
+            // The copy's counts stay on the bar while the library is read.
+            if (!report(Step::LoadingLibrary, rows_done_.load(), rows_total_.load()))
+                throw JobCancelled{};
+            library_problem_ = read_library(*store_, settings_, library_);
+            return true;
+        } catch (...) {
+            // Kept for main's startup box; a cancel is the app closing, so
+            // nothing will show it. run_guarded records the failure.
+            if (!is_cancelled()) failure_ = std::current_exception();
+            store_.reset();
+            throw;
+        }
+    });
 }
 
 // ---- ScanJob --------------------------------------------------------------

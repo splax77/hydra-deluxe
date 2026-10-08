@@ -628,16 +628,19 @@ std::string write_old_layout_library(Harness& h) {
         }
         seed.rebuild_chart_library(charts);
     }
-    // The results table as that layout made it, with literal rows: the old
-    // build's columns, not this build's.
+    // The results table as that layout made it, with literal rows. The column
+    // list is the owner's (kSchema2ResultsColumns) plus the three later
+    // columns; each row's values follow that order.
     const std::string sql =
         std::string("DROP TABLE results;") + hydra::test::kDetailLayoutResultsTableSql + ";" +
-        "INSERT INTO results (result_id, hyhash, chartmode, hyversion, sp_cap, ms_enabled,"
-        " ms_value, depth_mode, depth_value, bestpath, structure, score, stars, rules_fp) VALUES"
-        " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, '1', x'07', 1000, 5, x''),"
-        " (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mode', 'v', 8, 0, 0, 0, 2, '1', x'07', 2000, 6, x''),"
-        " (3, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'other', 'v', 8, 0, 0, 0, 2, '1', x'07', 3000,"
-        " NULL, x'');" +
+        "INSERT INTO results (" + hydra::store::kSchema2ResultsColumns +
+        ", legacy_fills, rules_fp, structure) VALUES"
+        " (1, 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'mode', 'v', 8, 0, 0, 0, 2, '1', 1000,"
+        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5, 0, x'', x'07'),"
+        " (2, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'mode', 'v', 8, 0, 0, 0, 2, '1', 2000,"
+        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 6, 0, x'', x'07'),"
+        " (3, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 'other', 'v', 8, 0, 0, 0, 2, '1', 3000,"
+        " NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, x'', x'07');" +
         hydra::test::kDetailTablesSql;
     if (!exec_on_file(path, sql)) return "";
     return path;

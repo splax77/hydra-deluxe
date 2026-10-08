@@ -599,23 +599,13 @@ PreparedRow prepare_row(const RecordKey& key, const HydraRecord& record) {
     return row;
 }
 
-namespace {
-
-// The name SQLite is given for a database file. SQLite takes UTF-8 and
-// understands the \\?\ prefix, so a long database path goes through the same
-// one conversion as every other file. open_sqlite opens by it and the copy
-// upgrade attaches by it.
-std::string sqlite_file_name(const std::string& utf8_path) {
-    return wide_to_utf8(win32_path(utf8_path));
-}
-
-}  // namespace
-
 int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags) {
     // "win32-longpath" is SQLite's own Windows layer with its path buffer
     // raised from 260 characters to 32,767; it is otherwise the default one.
-    // An attached file goes through the same layer as its connection.
-    return sqlite3_open_v2(sqlite_file_name(utf8_path).c_str(), db, flags, "win32-longpath");
+    // An attached file goes through the same layer as its connection. SQLite
+    // takes UTF-8 and understands the \\?\ prefix win32_path adds (ADR 0020).
+    return sqlite3_open_v2(wide_to_utf8(win32_path(utf8_path)).c_str(), db, flags,
+                           "win32-longpath");
 }
 
 namespace {
@@ -861,7 +851,7 @@ void RecordStore::copy_upgrade(const std::string& dbpath) {
         {
             Stmt attach = prepare_read(  // SQLite counts ATTACH as read-only
                 db_, (std::string("ATTACH DATABASE ? AS ") + kFreshSchema).c_str());
-            bind_text(attach, 1, sqlite_file_name(fresh));
+            bind_text(attach, 1, wide_to_utf8(win32_path(fresh)));  // as open_sqlite names it
             step_done(attach, "attaching '" + fresh + "'");
         }
         attached = true;
