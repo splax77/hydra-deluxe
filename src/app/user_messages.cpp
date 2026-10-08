@@ -16,6 +16,10 @@ constexpr const char* kDatabaseWrite =
 constexpr const char* kDatabaseOpen =
     "Hydra couldn't open its database (hydra.db). Check that no other copy of Hydra is "
     "running and that the Hydra folder isn't read-only.";
+constexpr const char* kDatabaseUpgrade =
+    "Hydra couldn't update its library file (hydra.db) for this version. Your charts and "
+    "results were not changed. Check that no other copy of Hydra or hydra_batch is running "
+    "and that the disk isn't full, then start Hydra again.";
 constexpr const char* kDatabaseRead =
     "Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is "
     "running, then try again.";
@@ -74,6 +78,7 @@ std::optional<std::string> kind_sentence(const KindedError& e) {
     switch (e.kind()) {
         case ErrorKind::Cancelled: return kStopped;
         case ErrorKind::DatabaseOpen: return kDatabaseOpen;
+        case ErrorKind::DatabaseUpgrade: return kDatabaseUpgrade;
         case ErrorKind::DatabaseWrite: return kDatabaseWrite;
         case ErrorKind::DatabaseRead: return kDatabaseRead;
         case ErrorKind::SongFileMissing: return kSongFileMissing;

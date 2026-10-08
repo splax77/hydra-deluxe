@@ -38,6 +38,7 @@
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, write_junk_db
 #include "display_fixtures.h"  // add_stale_rows, old_build_row, other_rules_record
 #include "leak_check.h"
+#include "old_layout_fixture.h"  // detail_layout_sql and the old layout's counts
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "search/graph.h"
@@ -781,64 +782,17 @@ TEST_CASE("store: list_records reads its summary columns from the one list") {
 
 namespace {
 
-// The results table as the last build that stored path details wrote it
-// (schema 4 with the structure blob), literal, so the upgrade is tested
-// against the real old layout rather than one this build describes.
-constexpr const char* kDetailLayoutResultsTableSql =
-    "CREATE TABLE results (result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL,"
-    " chartmode TEXT NOT NULL, hyversion TEXT NOT NULL, sp_cap INTEGER NOT NULL,"
-    " ms_enabled INTEGER NOT NULL, ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
-    " depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL DEFAULT 0,"
-    " bestpath TEXT NOT NULL, structure BLOB NOT NULL, score INTEGER, actcount INTEGER,"
-    " maxskip INTEGER, hardest_ms REAL, avgmult REAL, notecount INTEGER, sqin_count INTEGER,"
-    " sqout_count INTEGER, pathcount INTEGER, stars INTEGER, rules_fp BLOB NOT NULL,"
-    " UNIQUE (hyhash, chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value,"
-    " legacy_fills, rules_fp))";
-
-// The four detail tables that build kept beside it, as it made them, with
-// one row each so the drop has something to free.
-constexpr const char* kDetailTablesSql =
-    "CREATE TABLE paths (hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,"
-    "  phash TEXT NOT NULL, payload BLOB NOT NULL, PRIMARY KEY (hyhash, chartmode, phash));"
-    "CREATE TABLE path_refs (result_id INTEGER NOT NULL, hyhash TEXT NOT NULL,"
-    "  chartmode TEXT NOT NULL, phash TEXT NOT NULL, PRIMARY KEY (result_id, phash));"
-    "CREATE INDEX path_refs_by_node ON path_refs (hyhash, chartmode, phash);"
-    "CREATE TABLE songmeta (hyhash TEXT PRIMARY KEY, ref_name TEXT, ref_artist TEXT,"
-    "  ref_charter TEXT, tempomap BLOB NOT NULL, length_ms REAL,"
-    "  length_version INTEGER NOT NULL DEFAULT 0);"
-    "CREATE TABLE dynamics (md5 TEXT NOT NULL, difficulty TEXT NOT NULL,"
-    "  pro INTEGER NOT NULL, blob BLOB NOT NULL, count_version INTEGER NOT NULL DEFAULT 0,"
-    "  PRIMARY KEY (md5, difficulty, pro));"
-    "INSERT INTO paths VALUES ('ready', 'mode', 'p1', zeroblob(4096));"
-    "INSERT INTO path_refs VALUES (1, 'ready', 'mode', 'p1');"
-    "INSERT INTO songmeta VALUES ('ready', 'Song', 'Artist', 'Charter', zeroblob(4096),"
-    "  1000.0, 2);"
-    "INSERT INTO dynamics VALUES ('ready', 'Expert', 1, zeroblob(4096), 1);";
-
-// Turns a file this build wrote back into the layout before summary-only
-// storage: every result keeps its id and columns and gains the structure
-// blob, whose head was the path format (7, the last one) and then the rules
-// fingerprint, and the detail tables come back.
+// The old layout's SQL lives in old_layout_fixture.h; these run it here.
 void to_detail_layout(const std::string& path) {
-    const std::string columns = std::string(kSchema2ResultsColumns) + ", legacy_fills, rules_fp";
-    exec_on_file(path, (std::string("ALTER TABLE results RENAME TO results_now;") +
-                        kDetailLayoutResultsTableSql + ";INSERT INTO results (" + columns +
-                        ", structure) SELECT " + columns +
-                        ", unhex('07000000' || hex(rules_fp)) FROM results_now;"
-                        "DROP TABLE results_now;" +
-                        kDetailTablesSql)
-                           .c_str());
+    exec_on_file(path, test::detail_layout_sql().c_str());
 }
 
 int64_t detail_tables_in(const std::string& path) {
-    return scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name IN"
-                                " ('paths', 'path_refs', 'path_refs_by_node', 'songmeta',"
-                                " 'dynamics')");
+    return scalar_on_file(path, test::kDetailTablesCountSql);
 }
 
 int64_t structure_columns_in(const std::string& path) {
-    return scalar_on_file(path,
-                          "SELECT COUNT(*) FROM pragma_table_info('results') WHERE name='structure'");
+    return scalar_on_file(path, test::kStructureColumnCountSql);
 }
 
 }  // namespace

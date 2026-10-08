@@ -607,8 +607,16 @@ int open_sqlite(const std::string& utf8_path, sqlite3** db, int flags) {
 
 // ---- RecordStore ------------------------------------------------------
 
-RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_fingerprint)
-    : rules_fingerprint_(rules_fingerprint) {
+RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_fingerprint,
+                         OpenProgressFn progress)
+    : rules_fingerprint_(rules_fingerprint), progress_(std::move(progress)) {
+    // Whatever happens below, the callback is not kept past the constructor.
+    struct ForgetProgress {
+        OpenProgressFn& fn;
+        ~ForgetProgress() { fn = nullptr; }
+    } forget{progress_};
+
+    report(OpenStep::Opening);
     if (open_sqlite(dbpath, &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) != SQLITE_OK) {
         std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown error";
         close();
@@ -620,12 +628,18 @@ RecordStore::RecordStore(const std::string& dbpath, core::RulesStamp rules_finge
     // the first statement below. Any throw from here on is still a failed
     // open (D72 item 2), with the raw text kept. A constructor that throws
     // never runs the destructor, so the handle is closed here. Running out of
-    // memory keeps its own type, which plain_error answers by.
+    // memory keeps its own type, which plain_error answers by. A stop the
+    // callback asked for, and a failed upgrade that left the old file whole,
+    // keep their own kinds too.
     try {
         set_up_schema();
     } catch (const std::bad_alloc&) {
         close();
         throw;
+    } catch (const KindedError& e) {
+        close();
+        if (e.kind() == ErrorKind::Cancelled || e.kind() == ErrorKind::DatabaseUpgrade) throw;
+        throw KindedError(ErrorKind::DatabaseOpen, e.what());
     } catch (const std::exception& e) {
         close();
         throw KindedError(ErrorKind::DatabaseOpen, e.what());
@@ -719,6 +733,7 @@ void RecordStore::upgrade_results_key() {
     } else {
         return;  // schema 4 already
     }
+    report(OpenStep::UpdatingResultsKey);
     exec("BEGIN");
     try {
         exec("ALTER TABLE results RENAME TO results_before_upgrade");
@@ -760,6 +775,16 @@ void RecordStore::drop_stored_details() {
     // (3) The rewrite went through the WAL; fold it into the file and empty
     //     the log.
     exec("PRAGMA wal_checkpoint(TRUNCATE)");
+}
+
+void RecordStore::report(OpenStep step, int64_t rows_done, int64_t rows_total) {
+    if (!progress_) return;
+    OpenProgress p;
+    p.step = step;
+    p.rows_done = rows_done;
+    p.rows_total = rows_total;
+    if (!progress_(p))
+        throw KindedError(ErrorKind::Cancelled, "opening the database was stopped");
 }
 
 RecordStore::~RecordStore() { close(); }

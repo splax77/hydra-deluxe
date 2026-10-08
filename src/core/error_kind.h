@@ -20,6 +20,7 @@ namespace hydra {
 enum class ErrorKind {
     Cancelled,
     DatabaseOpen,
+    DatabaseUpgrade,  // the library file upgrade failed and left the old file whole
     DatabaseWrite,
     DatabaseRead,
     SongFileMissing,
