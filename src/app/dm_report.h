@@ -23,6 +23,26 @@
 
 namespace hydra::app::dm_report {
 
+// The words collect_dm_rows writes in DmReportRow::status, one per state a
+// score can be in. Every reader compares against these names, never the words.
+// Hydra has a result, and the score is below, equal to or over its optimal.
+inline constexpr const char* kStatusUnderOptimal = "under optimal";
+inline constexpr const char* kStatusAtOptimal = "at optimal";
+inline constexpr const char* kStatusAboveOptimal = "above optimal";
+// Hydra has a result, but its analysis kept no path (D51 call 11).
+inline constexpr const char* kStatusNoPaths = "no paths";
+// The last scan found the chart, but it has no current result at Clone Hero's
+// cap, kCloneHeroSpCap, for this mode.
+inline constexpr const char* kStatusNotAnalyzed = "not analyzed";
+// The last scan never found the chart.
+inline constexpr const char* kStatusNotInLibrary = "not in library";
+// Played at a speed other than net::kBaseSpeedPercent: shown, never compared.
+inline constexpr const char* kStatusOtherSpeed = "other speed";
+
+// The decimals every comparison percent is written to: DmReportRow::pct_h,
+// the % of opt cells on the page and in the window, and the average tile.
+inline constexpr int kPercentDecimals = 2;
+
 // One table row: a single leaderboard score plus the Hydra record it joins to.
 struct DmReportRow {
     std::string song;
@@ -41,19 +61,11 @@ struct DmReportRow {
     int speed = net::kBaseSpeedPercent;
     std::optional<int> rank;
     std::string posted;                 // ISO-8601 timestamp
-    // "under optimal" | "at optimal" | "above optimal" (Hydra has a result:
-    // the score is below, equal to or over its optimal) |
-    // "no paths" (Hydra has a result, but its analysis kept no path; D51
-    // call 11) |
-    // "not analyzed" (the last scan found the chart, but it has no current
-    // result at Clone Hero's cap, kCloneHeroSpCap, for this mode) |
-    // "not in library" (the last scan never found it) |
-    // "other speed" (played at a speed other than net::kBaseSpeedPercent;
-    // shown, never compared).
+    // One of the kStatus words above.
     std::string status;
-    // Whether the score beat Hydra's optimal: collect_dm_rows' "above optimal"
-    // answer, kept even when the status became "other speed", so an off-speed
-    // row still reads "+N over" on the page (D64).
+    // Whether the score beat Hydra's optimal: collect_dm_rows' above-optimal
+    // answer, kept even when the status became kStatusOtherSpeed, so an
+    // off-speed row still reads "+N over" on the page (D64).
     bool above_optimal = false;
 };
 

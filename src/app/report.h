@@ -86,6 +86,13 @@ enum class ChipToken { t0, t1, t2, t3, t4, t5, tn, muted };
 std::vector<Tile> path_tiles(const std::vector<ReportRow>& rows,
                              const std::vector<size_t>& shown, double hit_window_ms);
 
+// The timing_tiers table's two open bands, the one answer to which entries
+// they are: Beyond, past the last cutoff, and None, a path with no squeeze.
+// tier_for labels rows with them, path_tiles counts the Beyond rows and the
+// path report view names both.
+const TimingTier& beyond_tier(const std::vector<TimingTier>& tiers);
+const TimingTier& none_tier(const std::vector<TimingTier>& tiers);
+
 // (label, token) for a hardest-squeeze value (raw ms), e.g. (Extreme, t2).
 // nullopt -> (None, tn). Bands derive from the two-hit budget
 // (nominal_budget_ms): up to and including kDifficultMs is Normal (an absolute
@@ -100,6 +107,10 @@ std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
 // labeling many rows builds the table once.
 std::pair<std::string, std::string> tier_for(const std::optional<double>& ms,
                                              const std::vector<TimingTier>& tiers);
+
+// The Beyond edge (beyond_edge_ms) as every report prints it, in whole ms:
+// the page's payload, its footer, the Past tile and the Timing chip.
+std::string beyond_edge_text(double hit_window_ms);
 
 // Every listed record for one chart mode, cap and lens whose chart the
 // library lists (library_copies_by_hash), keyed by its chart hash in lower

@@ -1355,6 +1355,44 @@ const std::vector<OwnerRule>& rules() {
           "x = 1;  // reads \"\xE2\x80\x94\" when empty"},
          {{"src/app/report.h", "inline constexpr const char* kDash = \"\xE2\x80\x94\";",
            "kDash, the owner"}}},
+        // The Beyond edge handed straight to a cast, a rounding or a
+        // formatter is a second way of writing it. format_ms_whole is not a
+        // stand-in: the review found the two differ on a fractional edge.
+        {"How is the Beyond edge written in ms?",
+         "beyond_edge_text in src/app/report.cpp",
+         R"(\(\s*beyond_edge_ms\()",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T3, finding 2 (2026-10-08)",
+         {"return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+          "\"Beyond \" + std::to_string(static_cast<int64_t>(beyond_edge_ms(w))) + \" ms\"",
+          "return format_ms_whole(beyond_edge_ms(w));"},
+         {"return \"Beyond \" + report::beyond_edge_text(hit_window_ms) + \" ms\";",
+          "double beyond_edge_ms(double hit_window_ms) {",
+          "const DATA_EDGE = DATA.beyond_edge_ms;"},
+         {{"src/app/report.cpp",
+           "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
+           "beyond_edge_text, the owner"}}},
+        // Picking an open band out of a timing_tiers table by its place in
+        // the table. beyond_tier and none_tier are the one answer.
+        {"Which timing_tiers entries are the open ones?",
+         "beyond_tier and none_tier in src/app/report.cpp",
+         R"(\btiers\[\s*\w+\.size\(\)\s*-\s*[12]\s*\]|\btiers\.back\(\))",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T3, finding 3 (2026-10-08)",
+         {"if (tier_name == tiers[tiers.size() - 2].name)",
+          "if (tier_name == tiers.back().name) return \"No squeezes\";",
+          "const TimingTier& none = tiers.back();"},
+         {"if (tier_name == report::beyond_tier(tiers).name)",
+          "if (tier_name == report::none_tier(tiers).name) return \"No squeezes\";",
+          "CHECK(choices[i + 1].tier == std::optional<std::string>(tiers[i].name));"},
+         {{"src/app/report.cpp", "return tiers[tiers.size() - 2];", "beyond_tier, the owner"},
+          {"src/app/report.cpp",
+           "const TimingTier& none_tier(const std::vector<TimingTier>& tiers) { return tiers.back(); }",
+           "none_tier, the owner"}}},
         // ---- M_D review follow-ups (phase 3 task FX-L) ----
         // A switch over the Dynamics rows, the 2x test that picks a kick
         // row, or a test of a row against a named row (the old cymbal-row
@@ -1440,9 +1478,57 @@ const std::vector<OwnerRule>& rules() {
            "status_label, the owner"},
           {"src/ui/library_model.cpp", "return \"Not analyzed\";", "status_label, the owner"},
           {"src/app/dm_report.cpp", "{\"Not analyzed\", group_thousands(stats.not_analyzed)},",
-           "dm_tiles' tile label: the comparison's own status word, a score's state in "
+           "dm_tiles' tile label for dm_report::kStatusNotAnalyzed, a score's state in "
            "this mode at Clone Hero's cap, not a library record's status (derive-once "
            "review of RW-T2, finding 1)"}}},
+        // A comparison status word typed in double quotes. The page's
+        // dropdown option values (value="...", gone with the page in T7) and
+        // its single-quoted script stay out.
+        {"Which words name a comparison row's status?",
+         "the kStatus constants in src/app/dm_report.h",
+         R"re((^|[^=])"(under optimal|at optimal|above optimal|not analyzed|no paths|not in library|other speed)")re",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T3, finding 4 (2026-10-08)",
+         {"if (!r.delta || r.status == \"other speed\") return Tone::Dim;",
+          "{std::string(\"under optimal\"), \"Under optimal\"},",
+          "if (r.status == \"under optimal\") ++stats.under_optimal;",
+          "row.status = \"no paths\";",
+          "if (status == \"not analyzed\" || status == \"no paths\" || status == \"other speed\")"},
+         {"if (!r.delta || r.status == dm_report::kStatusOtherSpeed) return Tone::Dim;",
+          "<option value=\"under optimal\">Under optimal</option>",
+          "{\"Under optimal\", group_thousands(stats.under_optimal)},",
+          "group_thousands(stats.under_optimal) + \" under optimal, \" +"},
+         {{"src/app/dm_report.h",
+           "inline constexpr const char* kStatusUnderOptimal = \"under optimal\";",
+           "the owner"},
+          {"src/app/dm_report.h", "inline constexpr const char* kStatusAtOptimal = \"at optimal\";",
+           "the owner"},
+          {"src/app/dm_report.h",
+           "inline constexpr const char* kStatusAboveOptimal = \"above optimal\";", "the owner"},
+          {"src/app/dm_report.h", "inline constexpr const char* kStatusNoPaths = \"no paths\";",
+           "the owner"},
+          {"src/app/dm_report.h",
+           "inline constexpr const char* kStatusNotAnalyzed = \"not analyzed\";", "the owner"},
+          {"src/app/dm_report.h",
+           "inline constexpr const char* kStatusNotInLibrary = \"not in library\";", "the owner"},
+          {"src/app/dm_report.h",
+           "inline constexpr const char* kStatusOtherSpeed = \"other speed\";", "the owner"}}},
+        // A comparison percent written with its decimals typed in.
+        // kPercentDecimals is the one count.
+        {"How many decimals does % of opt carry?",
+         "kPercentDecimals in src/app/dm_report.h",
+         R"((percent_steps|format_percent)\([^;]*,\s*2\))",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T3, finding 5 (2026-10-08)",
+         {"row.pct_h = percent_steps(s.score, opt, 2);",
+          "return has_percent(r) ? format_percent(r.actual, *r.optimal, 2) : std::string(kDash);"},
+         {"return total > 0 ? format_percent(part, total, 0) : \"0%\";",
+          "return has_percent(r) ? format_percent(r.actual, *r.optimal, dm_report::kPercentDecimals)"},
+         {}},
         // A filter chip's button id typed as text. chip_label builds the whole
         // label (word, count, id), and render_chips and the GUI tests ask it.
         // src only: the GUI tests also pin whole labels as literals, which a
@@ -3481,7 +3567,13 @@ const std::vector<OwnerRule>& rules() {
          {"if (sq.value(\"kind\", std::string()) != \"SqOut\") continue;"},
          {"if (squeeze_kind_from_name(sq.value(\"kind\", std::string())) != SqueezeKind::SqOut)"},
          {{"src/core/model.h", "return kind == SqueezeKind::SqIn ? \"SqIn\" : \"SqOut\";",
-           "type_name, the owner"}},
+           "type_name, the owner"},
+          {"src/app/path_report_view.cpp", "cols.push_back(count_column(\"sqin\", \"SqIn\",",
+           "a column title the user reads, not a kind read from data (derive-once review "
+           "of RW-T3, finding 1)"},
+          {"src/app/path_report_view.cpp", "cols.push_back(count_column(\"sqout\", \"SqOut\",",
+           "a column title the user reads, not a kind read from data (derive-once review "
+           "of RW-T3, finding 1)"}},
          {}},
         {"How is a multiplier squeeze written as text?",
          "MultSqueeze::notationstr in src/core/model.cpp",
