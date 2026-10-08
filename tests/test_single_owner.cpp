@@ -5313,6 +5313,26 @@ const std::vector<OwnerRule>& rules() {
           "\"' is open in another program: its -wal or -shm file stayed \");"},
          {},
          {"src", "tools"}},
+        // The imgui#9519 workaround: a table that can't reorder asks ImGui to
+        // reset its column order after an ini load. Every table calls the one
+        // helper; a second inline copy (the Library table had one) fails.
+        {"Who keeps a table's columns in their set-up order (imgui#9519)?",
+         "keep_table_column_order in src/ui/widgets.h",
+         R"(\bIsResetDisplayOrderRequest\b|\bIsSettingsRequestLoad\b)",
+         "",
+         {},
+         {},
+         "report windows plan, T5 orchestrator answer 1 (2026-10-08)",
+         {"bool reset = table->IsSettingsRequestLoad;",
+          "if (reset) table->IsResetDisplayOrderRequest = true;",
+          "table->IsResetDisplayOrderRequest = true;"},
+         {"keep_table_column_order();", "keep_table_column_order();  // imgui#9519, as in the Library table",
+          "reset = table->Columns[n].DisplayOrder != n;"},
+         {{"src/ui/widgets.h", "bool reset = table->IsSettingsRequestLoad;",
+           "keep_table_column_order, the owner: render_table and report_frame::table call it"},
+          {"src/ui/widgets.h", "if (reset) table->IsResetDisplayOrderRequest = true;",
+           "keep_table_column_order, the owner"}},
+         {"src"}},
     };
     return r;
 }

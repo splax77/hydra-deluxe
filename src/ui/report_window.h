@@ -26,7 +26,7 @@
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
 #include "ui/theme.h"
-#include "ui/widgets.h"  // hint, overflow_tooltip
+#include "ui/widgets.h"  // hint, overflow_tooltip, keep_table_column_order
 
 namespace hydra::ui {
 
@@ -62,6 +62,10 @@ struct ReportWindowInput {
     // When `result` was built, for "Built HH:MM".
     std::optional<std::chrono::system_clock::time_point> built;
     ReportOutOfDate out_of_date = ReportOutOfDate::None;
+    // When the batch that changed the library finished, for the library
+    // out-of-date line's "(a batch finished at HH:MM)". Unset: the line
+    // names no time (D103 item 21).
+    std::optional<std::chrono::system_clock::time_point> batch_finished;
     // The path report's progress while it builds: charts analyzed of all.
     // The comparison has no count.
     int progress_done = 0;
@@ -95,9 +99,12 @@ struct Frame {
     // The heading's accent words after "Hydra".
     const char* heading = "";
     std::string subtitle;
+    // The subtitle while the report builds (empty: none).
+    const char* building_subtitle = "";
     std::optional<std::chrono::system_clock::time_point> built;
     ReportState state = ReportState::Building;
     ReportOutOfDate out_of_date = ReportOutOfDate::None;
+    std::optional<std::chrono::system_clock::time_point> batch_finished;
     // Building: the bar's count, or no count for a moving bar, and the lines
     // above it.
     std::optional<std::pair<int, int>> progress;
@@ -251,6 +258,7 @@ void table(const char* id, Memory& memory, app::report_view::TableView<Row>& vie
                                           : ImGuiTableColumnFlags_PreferSortAscending));
         titles.push_back(columns[c].title);
     }
+    keep_table_column_order();  // imgui#9519, as in the Library table
 
     // The table opens in the view's sort, whatever an earlier run left. A
     // table's first frame sets its own first sort after this, so the view's

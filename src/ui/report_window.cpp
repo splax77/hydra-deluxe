@@ -18,14 +18,15 @@ using app::report::ChipToken;
 using app::report_view::SortDir;
 using app::report_view::Tone;
 
-// "Built 13:42", in local time.
-std::string built_text(std::chrono::system_clock::time_point at) {
+// "13:42", in local time: "Built 13:42" and "(a batch finished at 14:05)"
+// both write their time here.
+std::string clock_text(std::chrono::system_clock::time_point at) {
     const std::time_t t = std::chrono::system_clock::to_time_t(at);
     std::tm local{};
     localtime_s(&local, &t);
     char hhmm[8];
     std::strftime(hhmm, sizeof(hhmm), "%H:%M", &local);
-    return std::string("Built ") + hhmm;
+    return hhmm;
 }
 
 // Puts the next `width` of items at the right of the current line when they
@@ -60,7 +61,7 @@ void header(const Frame& f) {
     ImGui::TextColored(kAccentColor, "%s", f.heading);
 
     if (f.state == ReportState::Ready && f.built) {
-        const std::string built = built_text(*f.built);
+        const std::string built = "Built " + clock_text(*f.built);
         std::vector<const char*> buttons;
         if (f.compare_another) buttons.push_back("Compare another player...");
         buttons.push_back("Refresh");
@@ -75,21 +76,29 @@ void header(const Frame& f) {
         ImGui::SameLine();
         if (ImGui::Button("Refresh")) call(cb.refresh);
     }
-    if (f.state == ReportState::Ready && !f.subtitle.empty()) {
+    const char* subtitle = f.state == ReportState::Ready      ? f.subtitle.c_str()
+                           : f.state == ReportState::Building ? f.building_subtitle
+                                                              : "";
+    if (*subtitle) {
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextColored(kDimTextColor, "%s", f.subtitle.c_str());
+        ImGui::TextColored(kDimTextColor, "%s", subtitle);
         ImGui::PopTextWrapPos();
     }
 }
 
-// The out-of-date strip: why the rows may be old, and Refresh.
+// The out-of-date strip: why the rows may be old, and Refresh. The library
+// line names the batch's finish time when there is one; the settings line
+// has no time (D103 item 21).
 void out_of_date_strip(const Frame& f) {
     if (f.state != ReportState::Ready || f.out_of_date == ReportOutOfDate::None) return;
-    const char* why = f.out_of_date == ReportOutOfDate::Library
-                          ? "Your library changed since this report was built."
-                          : "The settings changed since this report was built.";
+    const std::string why =
+        f.out_of_date == ReportOutOfDate::Settings
+            ? "The settings changed since this report was built."
+        : f.batch_finished ? "Your library changed since this report was built (a batch finished at " +
+                                 clock_text(*f.batch_finished) + ")."
+                           : "Your library changed since this report was built.";
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(why);
+    ImGui::TextUnformatted(why.c_str());
     ImGui::SameLine();
     if (ImGui::Button("Refresh##outofdate")) call(f.callbacks->refresh);
     ImGui::Separator();
@@ -259,8 +268,8 @@ void tiles(const std::vector<app::report::Tile>& tiles) {
 }
 
 bool search_box(Memory& m, const char* hint_text) {
-    const ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::SetNextItemWidth(ImGui::CalcTextSize(hint_text).x + style.FramePadding.x * 2.0f);
+    // As wide as its hint, framed like a button's label.
+    ImGui::SetNextItemWidth(button_slot_width(hint_text));
     // The first Escape empties the box, as in the library's search.
     return ImGui::InputTextWithHint("##search", hint_text, m.search, sizeof(m.search),
                                     ImGuiInputTextFlags_EscapeClearsAll);

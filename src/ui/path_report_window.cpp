@@ -123,6 +123,8 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     frame.built = input.built;
     frame.state = input.state;
     frame.out_of_date = input.out_of_date;
+    frame.batch_finished = input.batch_finished;
+    frame.building_subtitle = "Building the report from your library...";
     frame.progress = std::make_pair(input.progress_done, input.progress_total);
     frame.failure_sentence = "The path report could not be built.";
     frame.failure_message = input.failure_message;

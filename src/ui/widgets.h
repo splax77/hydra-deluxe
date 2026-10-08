@@ -137,6 +137,23 @@ inline bool fits_on_line(float w, float spacing) {
                        ImGui::GetCurrentWindow()->WorkRect.Max.x);
 }
 
+// Keeps the current table's columns in the order they were set up. Call it
+// right after the table's TableSetupColumn calls. Dear ImGui 1.93 WIP
+// (ocornut/imgui#9519) loads a sort-only hydra_ui.ini entry into a table
+// that can't reorder by moving the sorted column to the front: the columns
+// with no saved line get position -1 and sort after it. The reset runs in the
+// same layout pass, after the load, so ask for it whenever a load is pending
+// or the order is already off (not every frame: each reset marks
+// hydra_ui.ini as changed). The Library table and the report tables call it.
+inline void keep_table_column_order() {
+    ImGuiTable* table = ImGui::GetCurrentTable();
+    if (!table) return;
+    bool reset = table->IsSettingsRequestLoad;
+    for (int n = 0; n < table->ColumnsCount && !reset; ++n)
+        reset = table->Columns[n].DisplayOrder != n;
+    if (reset) table->IsResetDisplayOrderRequest = true;
+}
+
 // A popup modal that keeps one width while its text changes. Pair with
 // ImGuiWindowFlags_AlwaysAutoResize: height still follows the content,
 // width is pinned to `width`.

@@ -122,6 +122,7 @@ void draw_dm_report_window(bool* open, const DmReportInput& input) {
     frame.built = input.built;
     frame.state = input.state;
     frame.out_of_date = input.out_of_date;
+    frame.batch_finished = input.batch_finished;
     // The picker box's two sentences; the server gives no count.
     frame.building_lines = {"Fetching scores and building the report...",
                             "The leaderboard server can take a moment to wake up."};

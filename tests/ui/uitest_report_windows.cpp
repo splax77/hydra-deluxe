@@ -9,6 +9,7 @@
 #include "uitest_harness.h"
 
 #include <chrono>
+#include <ctime>
 #include <memory>
 #include <string>
 #include <vector>
@@ -107,6 +108,18 @@ void draw_windows(ImGuiTestContext*) {
     ImGui::LogFinish();
 }
 
+// Today at hour:minute, local time.
+std::chrono::system_clock::time_point local_time(int hour, int minute) {
+    const std::time_t now = std::time(nullptr);
+    std::tm t{};
+    localtime_s(&t, &now);
+    t.tm_hour = hour;
+    t.tm_min = minute;
+    t.tm_sec = 0;
+    t.tm_isdst = -1;
+    return std::chrono::system_clock::from_time_t(std::mktime(&t));
+}
+
 bool shows(const std::string& s) { return fixture().text.find(s) != std::string::npos; }
 size_t where(const std::string& s) { return fixture().text.find(s); }
 
@@ -198,6 +211,10 @@ void test_states(ImGuiTestContext* ctx) {
     f.path_open = true;
     ctx->Yield(3);
     IM_CHECK(shows("Analyzing 3 of 10 charts"));
+    // The subtitle while it builds (D103 item 21, board 2a), not the old
+    // result's.
+    IM_CHECK(shows("Building the report from your library..."));
+    IM_CHECK(!shows("sample path subtitle"));
     ctx->SetRef(path_window());
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 1);
@@ -223,10 +240,21 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK(shows("Built "));
     ctx->ItemClick("Refresh##outofdate");
     IM_CHECK_EQ(f.refreshes, 1);
+    // With a batch's finish time, the library line names it (D103 item 21,
+    // board 2b), in the same HH:MM as "Built".
+    f.path.built = local_time(13, 42);
+    f.path.batch_finished = local_time(14, 5);
+    ctx->Yield(2);
+    IM_CHECK(shows("Your library changed since this report was built "
+                   "(a batch finished at 14:05)."));
+    IM_CHECK(shows("Built 13:42"));
+    // The settings line has no time.
     f.path.out_of_date = ReportOutOfDate::Settings;
     ctx->Yield(2);
     IM_CHECK(shows("The settings changed since this report was built."));
+    IM_CHECK(!shows("a batch finished"));
     f.path.out_of_date = ReportOutOfDate::None;
+    f.path.batch_finished.reset();
 
     // Left-out charts: the report's own sentence, the files under Show files.
     auto left_out = sample_path_result();
@@ -250,6 +278,8 @@ void test_states(ImGuiTestContext* ctx) {
     f.dm.state = ReportState::Building;
     open_dm(ctx);
     IM_CHECK(shows("Fetching scores and building the report..."));
+    IM_CHECK(!shows("Building the report from your library..."));
+    IM_CHECK(!shows("sample dm subtitle"));
     IM_CHECK(shows("The leaderboard server can take a moment to wake up."));
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 2);
