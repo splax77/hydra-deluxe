@@ -824,8 +824,12 @@ int64_t count_of(sqlite3* db, const std::string& sql) {
 void RecordStore::copy_upgrade(const std::string& dbpath) {
     const std::string fresh = upgrading_path(dbpath);
     const std::string aside = old_path(dbpath);
-    // The condition a results row must meet to be copied, and counted.
+    // Which rows of a kept table are copied, as an SQL condition (empty for
+    // every row). The row count and the copy both ask it.
     const std::string kept_results = std::string("NOT (") + kNoStarsResultSql + ")";
+    auto kept_rows = [&](const char* table) {
+        return std::string_view(table) == "results" ? kept_results : std::string();
+    };
     bool attached = false;
 
     // Undoes whatever the steps below began, leaving the old file as it was.
@@ -864,10 +868,11 @@ void RecordStore::copy_upgrade(const std::string& dbpath) {
 
         // (3) Every row the copy will copy, counted from the file.
         int64_t rows_total = 0;
-        for (const char* table : kKeptTables)
-            rows_total += count_of(
-                db_, std::string("SELECT COUNT(*) FROM main.") + table +
-                         (std::string_view(table) == "results" ? " WHERE " + kept_results : ""));
+        for (const char* table : kKeptTables) {
+            const std::string where = kept_rows(table);
+            rows_total += count_of(db_, std::string("SELECT COUNT(*) FROM main.") + table +
+                                            (where.empty() ? "" : " WHERE " + where));
+        }
         int64_t rows_done = 0;
         report(OpenStep::Copying, rows_done, rows_total);
 
@@ -876,8 +881,7 @@ void RecordStore::copy_upgrade(const std::string& dbpath) {
         exec("BEGIN");
         exec((std::string("DELETE FROM ") + kFreshSchema + ".meta").c_str());
         for (const char* table : kKeptTables)
-            copy_table(table, std::string_view(table) == "results" ? kept_results : "",
-                       rows_done, rows_total);
+            copy_table(table, kept_rows(table), rows_done, rows_total);
         exec("COMMIT");
         report(OpenStep::Finishing, rows_done, rows_total);
 
