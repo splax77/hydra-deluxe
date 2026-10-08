@@ -1374,6 +1374,25 @@ const std::vector<OwnerRule>& rules() {
          {{"src/app/report.cpp",
            "return std::to_string(static_cast<int64_t>(beyond_edge_ms(hit_window_ms)));",
            "beyond_edge_text, the owner"}}},
+        // Picking an open band out of a timing_tiers table by its place in
+        // the table. beyond_tier and none_tier are the one answer.
+        {"Which timing_tiers entries are the open ones?",
+         "beyond_tier and none_tier in src/app/report.cpp",
+         R"(\btiers\[\s*\w+\.size\(\)\s*-\s*[12]\s*\]|\btiers\.back\(\))",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T3, finding 3 (2026-10-08)",
+         {"if (tier_name == tiers[tiers.size() - 2].name)",
+          "if (tier_name == tiers.back().name) return \"No squeezes\";",
+          "const TimingTier& none = tiers.back();"},
+         {"if (tier_name == report::beyond_tier(tiers).name)",
+          "if (tier_name == report::none_tier(tiers).name) return \"No squeezes\";",
+          "CHECK(choices[i + 1].tier == std::optional<std::string>(tiers[i].name));"},
+         {{"src/app/report.cpp", "return tiers[tiers.size() - 2];", "beyond_tier, the owner"},
+          {"src/app/report.cpp",
+           "const TimingTier& none_tier(const std::vector<TimingTier>& tiers) { return tiers.back(); }",
+           "none_tier, the owner"}}},
         // ---- M_D review follow-ups (phase 3 task FX-L) ----
         // A switch over the Dynamics rows, the 2x test that picks a kick
         // row, or a test of a row against a named row (the old cymbal-row

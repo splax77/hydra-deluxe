@@ -56,12 +56,10 @@ Column<ReportRow> count_column(std::string id, std::string title, std::string de
 }  // namespace
 
 std::string tier_label(const std::string& tier_name, double hit_window_ms) {
-    // The two open entries are timing_tiers' last two, as tier_for reads
-    // them: Beyond, then None.
     const std::vector<TimingTier> tiers = timing_tiers(hit_window_ms);
-    if (tier_name == tiers[tiers.size() - 2].name)
+    if (tier_name == report::beyond_tier(tiers).name)
         return "Beyond " + report::beyond_edge_text(hit_window_ms) + " ms";
-    if (tier_name == tiers.back().name) return "No squeezes";
+    if (tier_name == report::none_tier(tiers).name) return "No squeezes";
     return tier_name;
 }
 
