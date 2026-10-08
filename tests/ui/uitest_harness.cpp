@@ -460,6 +460,12 @@ void OpenGate::open() { g_open_gate_open = true; }
 
 int OpenGate::started() const { return g_open_gate_started.load(); }
 
+ImGuiWindow* window_named(const char* part) {
+    for (ImGuiWindow* w : ImGui::GetCurrentContext()->Windows)
+        if (w->WasActive && std::strstr(w->Name, part)) return w;
+    return nullptr;
+}
+
 std::string visible_text(Harness& h) {
     std::string s = h.frame_text.text;
     if (h.app) {

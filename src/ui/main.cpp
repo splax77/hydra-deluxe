@@ -157,16 +157,12 @@ static std::runtime_error startup_call_failed(const char* call, const char* code
 
 int main()
 {
-    // --uitest <what> [--uitest-log <file>] and --report-spike; everything
-    // else is ignored.
+    // --uitest <what> [--uitest-log <file>]; everything else is ignored.
     const std::vector<std::string> args = hydra::utf8_argv();
     const int argc = static_cast<int>(args.size());
     std::string uitest_what, uitest_log;
-    bool report_spike = false;
-    for (int i = 1; i < argc; ++i) {
-        if (args[i] == "--report-spike") report_spike = true;
-        else if (i + 1 >= argc) break;
-        else if (args[i] == "--uitest") uitest_what = args[++i];
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (args[i] == "--uitest") uitest_what = args[++i];
         else if (args[i] == "--uitest-log") uitest_log = args[++i];
     }
 #ifndef HYDRA_UITEST_ATTACHED
@@ -205,10 +201,6 @@ int main()
     hydra::ui::ImGuiSetupOptions imgui_options;
     imgui_options.dpi_scale = main_scale;
     hydra::ui::setup_imgui(imgui_options);
-    // The viewport spike's empty report window (report windows plan, task
-    // 1), for trying the OS-window plumbing by hand. Task 5 replaces the
-    // switch with the real report windows.
-    hydra::ui::show_report_spike(report_spike);
 
     // Reopen where the user left it, unless that spot is on no monitor now
     // (a monitor was unplugged or rearranged). Otherwise the old default.

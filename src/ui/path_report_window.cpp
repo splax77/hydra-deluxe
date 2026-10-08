@@ -1,0 +1,144 @@
+// The path report's window: the shared report frame (ui/report_window.h)
+// filled with the path report's rows, columns (app/path_report_view.h),
+// tiles (path_tiles) and its Timing and Best path only controls.
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "app/path_report_view.h"
+#include "imgui.h"
+#include "ui/report_window.h"
+
+namespace hydra::ui {
+
+namespace {
+
+using app::report::GeneratedReport;
+using app::report::ReportRow;
+using app::report_view::TableView;
+namespace view_rules = app::path_report_view;
+
+// Everything the window keeps between frames. A new result starts it fresh.
+struct PathWindow {
+    std::weak_ptr<const GeneratedReport> built_from;
+    std::unique_ptr<TableView<ReportRow>> view;
+    std::vector<view_rules::TimingChoice> choices;
+    std::vector<std::string> labels;
+    int timing = 0;
+    bool best_only = true;
+    std::vector<app::report::Tile> tiles;
+    bool tiles_dirty = true;
+    report_frame::Memory memory;
+};
+
+PathWindow& path_window() {
+    static PathWindow w;
+    return w;
+}
+
+// Whether `w` still points at the result `p` owns (an expired one never
+// matches a new one, even at the same address).
+bool same_result(const std::weak_ptr<const GeneratedReport>& w,
+                 const std::shared_ptr<const GeneratedReport>& p) {
+    return !w.owner_before(p) && !p.owner_before(w);
+}
+
+// The controls' choices, handed to the view.
+void apply_filters(PathWindow& w) {
+    w.view->set_search(w.memory.search);
+    w.view->set_keep(view_rules::path_keep(w.choices[static_cast<size_t>(w.timing)].tier,
+                                           w.best_only));
+    w.tiles_dirty = true;
+}
+
+void rebuild(PathWindow& w, const std::shared_ptr<const GeneratedReport>& result) {
+    w.memory.reset();
+    w.view.reset();
+    w.timing = 0;
+    w.best_only = true;
+    w.tiles_dirty = true;
+    w.built_from = result;
+    if (!result || result->paths.empty()) return;
+    std::vector<std::string> texts;
+    texts.reserve(result->paths.size());
+    for (const ReportRow& r : result->paths) texts.push_back(view_rules::path_search_text(r));
+    w.view = std::make_unique<TableView<ReportRow>>(
+        result->paths, std::move(texts), view_rules::path_columns(result->hit_window_ms));
+    w.view->set_sort({view_rules::path_first_sort()});
+    w.choices = view_rules::timing_choices(result->hit_window_ms);
+    w.labels.clear();
+    for (const view_rules::TimingChoice& c : w.choices) w.labels.push_back(c.label);
+    apply_filters(w);
+}
+
+// Tiles, controls, count line and table: a Ready report with rows.
+void draw_body(PathWindow& w, const report_frame::Frame& frame, const PathReportInput& input) {
+    TableView<ReportRow>& view = *w.view;
+    if (w.tiles_dirty) {
+        w.tiles = app::report::path_tiles(view.rows(), view.visible(),
+                                          input.result->hit_window_ms);
+        w.tiles_dirty = false;
+    }
+    report_frame::tiles(w.tiles);
+
+    if (report_frame::search_box(w.memory, "Search song, artist, charter, or path notation"))
+        apply_filters(w);
+    if (report_frame::dropdown("##timing", w.labels, w.timing)) apply_filters(w);
+    ImGui::SameLine();
+    if (ImGui::Checkbox("Best path only", &w.best_only)) apply_filters(w);
+    report_frame::count_line(w.memory, view.count_line(view_rules::kNoun));
+
+    if (view.visible().empty()) {
+        // Clear filters leaves Best path only as it is.
+        if (report_frame::nothing_matches()) {
+            w.memory.search[0] = '\0';
+            w.timing = 0;
+            apply_filters(w);
+        }
+        return;
+    }
+    report_frame::RowLook<ReportRow> look;
+    look.best = [](const ReportRow& r) { return r.optimal; };
+    look.chip = [](const ReportRow& r) { return app::report::tier_token(r.tok); };
+    report_frame::table("##pathtable", w.memory, view, look, input.callbacks,
+                        ImGui::GetContentRegionAvail().y - report_frame::footer_height(frame));
+}
+
+}  // namespace
+
+void draw_path_report_window(bool* open, const PathReportInput& input) {
+    PathWindow& w = path_window();
+    if (!*open) {
+        w.memory.was_open = false;
+        return;
+    }
+    if (!same_result(w.built_from, input.result)) rebuild(w, input.result);
+    const GeneratedReport* result = input.result.get();
+
+    report_frame::Frame frame;
+    frame.window_name = "Path report \xE2\x80\x94 Hydra###pathreport";  // U+2014
+    frame.heading = "Path Index";
+    frame.built = input.built;
+    frame.state = input.state;
+    frame.out_of_date = input.out_of_date;
+    frame.progress = std::make_pair(input.progress_done, input.progress_total);
+    frame.failure_sentence = "The path report could not be built.";
+    frame.failure_message = input.failure_message;
+    frame.failure_error = input.failure_error;
+    frame.callbacks = &input.callbacks;
+    if (result) {
+        frame.subtitle = result->subtitle;
+        frame.footer = result->footer;
+        frame.notice = app::report::left_out_line(result->failures);
+        for (const app::report::ReportFailure& f : result->failures)
+            frame.notice_files.push_back(f.notespath);
+        if (!w.view) frame.empty_text = result->why_empty;
+    }
+
+    if (report_frame::begin(open, frame, w.memory) && w.view) draw_body(w, frame, input);
+    report_frame::end(open, frame, w.memory);
+}
+
+}  // namespace hydra::ui

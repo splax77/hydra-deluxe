@@ -372,6 +372,9 @@ add_library(hydra_ui STATIC
     src/ui/preview_controller.cpp
     src/ui/preview_load_job.cpp
     src/ui/preview_transport.cpp
+    src/ui/report_window.cpp
+    src/ui/path_report_window.cpp
+    src/ui/dm_report_window.cpp
     src/ui/theme.cpp
     src/ui/win32_dialogs.cpp
 )
@@ -405,7 +408,8 @@ add_library(hydra_uitest_harness STATIC
     tests/ui/uitest_preview.cpp
     tests/ui/uitest_batch_reports.cpp
     tests/ui/uitest_paths.cpp
-    tests/ui/uitest_report_spike.cpp
+    tests/ui/uitest_report_windows.cpp
+    tests/report_samples.cpp
 )
 target_include_directories(hydra_uitest_harness PUBLIC tests/ui)
 target_link_libraries(hydra_uitest_harness PUBLIC hydra_ui PRIVATE hydra_warnings)
@@ -498,6 +502,7 @@ add_executable(hydra_tests
     tests/test_upgrade_files.cpp
     tests/test_analysis.cpp
     tests/test_report.cpp
+    tests/report_samples.cpp
     tests/test_report_view.cpp
     tests/test_config.cpp
     tests/test_rules.cpp

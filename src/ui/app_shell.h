@@ -154,15 +154,6 @@ ImGuiWindowClass report_window_class();
 // window's own position and size (D103 item 14).
 void place_report_window(const char* name);
 
-// ---- The viewport spike's window ----------------------------------------
-//
-// An empty "Report spike" window that proves the report windows' OS-window
-// plumbing (report windows plan, task 1). Hydra.exe shows it with
-// --report-spike; the GUI test calls the setter. Task 5 replaces both with
-// the real report windows.
-void show_report_spike(bool shown);
-bool report_spike_shown();
-
 // Everything ImGui drew this frame, as text, in draw order. Filled by
 // run_frame when `enabled`; the runner's wait-text/expect-text search it.
 struct FrameText {

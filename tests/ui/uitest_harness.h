@@ -189,6 +189,10 @@ public:
 // All text ImGui drew last frame plus the status line, for substring checks.
 std::string visible_text(Harness& h);
 
+// A window drawn last frame whose name holds `part`, or nullptr when none
+// was. A part finds child windows too, whose names ImGui mangles.
+ImGuiWindow* window_named(const char* part);
+
 // Print the widget tree (label, id, state flags, rect) of one window, or of
 // every window when `window_name` is empty.
 void dump_widgets(ImGuiTestContext* ctx, const std::string& window_name);
