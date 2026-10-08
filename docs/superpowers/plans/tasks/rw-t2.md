@@ -26,6 +26,15 @@ Your spec is the plan's "Task 2" section, plus the spec's "How the code is arran
 
 Owned-file check: every T2 step adds to the two result structs, the two report files and their two test files; the chip-token enum goes in `report.h` or `dm_report.h`, whichever the other includes, so no new file is needed.
 
+## Review fix round (added by the orchestrator, 2026-10-08)
+
+The derive-once review's first two findings need files this brief didn't own. For the fix round only, you may also edit:
+
+- `tests/test_single_owner.cpp`, only the rows for the "Not analyzed" tile label (finding 1) and a new "What text shows where a value is missing?" row owned by `report::kDash` (finding 2). Run `-tc="single-owner rules hold across src/*"` and the other single-owner cases you touch, once each.
+- `src/app/fill_report.cpp`, only its two em dash literals near lines 297 and 300, which become `report::kDash` (finding 2).
+
+T3 added its own `kDash` in `src/app/report_view.h` in parallel. Leave it; the orchestrator joins the two at the merge, keeping yours in `report.h`. Write the scan row so its must-match examples include a literal em dash like T3's, so the join is checked.
+
 ## Preflight
 
 Command: `Grep "struct GeneratedReport|struct GeneratedDmReport|page_charts|tally_dm_rows|STATUS_CLASS|beyond_edge_ms|subtitle|footer" src/app/{report,dm_report}.{h,cpp}` and `Grep TEST_CASE tests/test_{report,dm_report}.cpp`, run by the orchestrator on base 658abcf on 2026-10-08.

@@ -459,3 +459,8 @@ On the 97 test charts, 68 have an all-0 path again, up from 61 on main, and ever
 11. **Refresh fetches the player's scores again and rebuilds.**
 12. **A "not in library" row's click does nothing.** Its hover text says "Not in your library".
 13. **"Open automatically" covers only the path report.** Its hint becomes "Open the path report as soon as it's built."
+14. **A report window first opens at the main window's size and position** (2026-10-08, asked after the T1 spike). Hydra remembers its placement after that, as the spec says. Its minimum size is where the controls row and the first five columns still fit, measured from the content.
+15. **Tooltips, dropdowns and popups opened from the main window stay inside it, as before viewports** (2026-10-08, asked after the T1 spike). Only the report windows get their own OS windows.
+16. **Text columns sort the way the Library table does** (2026-10-08, asked after T3): fold case and accents with `fold_for_search`, then plain character order. "Song 10" sorts before "Song 2". The pages' browser order is not copied.
+17. **An empty Posted date sinks to the bottom in both directions,** like every other empty value (2026-10-08, asked after T3). The old page sorted it first from A to Z.
+18. **The count line's noun follows `counted`'s singular-at-1 rule,** on the total: "1 of 1 path" (2026-10-08, asked after T3). The old page always wrote the plural.
