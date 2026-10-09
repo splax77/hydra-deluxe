@@ -266,6 +266,10 @@ void AppState::close_details() {
         viewed = ViewedSong{};
         record_generation.bump();
     }
+    // The next song opened is not a re-analysis, and no held height pads it.
+    view_reanalysis_ = false;
+    details_ui.headline = {};
+    details_ui.path_picker = {};
     // The next open looks at the chart file at once.
     details_ui.file_checked_at = -1.0;
 }
@@ -279,9 +283,13 @@ void AppState::start_view() {
     if (view_job && view_job->finished()) view_job.reset();
     if (view_job) view_job->cancel();
     view_pending = false;
-    if (!selected) return;
+    if (!selected) {
+        view_reanalysis_ = false;
+        return;
+    }
     if (!file_exists_utf8(selected->notespath)) {
         viewed.state = ViewedSong::State::FileMissing;
+        view_reanalysis_ = false;
         return;
     }
     viewed.state = ViewedSong::State::Analyzing;
@@ -306,6 +314,7 @@ void AppState::cancel_view() {
         view_pending = false;
         viewed = ViewedSong{};
         viewed.state = ViewedSong::State::Cancelled;
+        view_reanalysis_ = false;
         record_generation.bump();
         return;
     }
@@ -323,6 +332,10 @@ void AppState::dismiss_view_error() {
 bool AppState::view_running() const {
     return view_pending ||
            (view_thread_alive() && view_job->generation() == view_generation.n);
+}
+
+bool AppState::view_holds_space() const {
+    return viewed.state == ViewedSong::State::Analyzing && view_reanalysis_;
 }
 
 bool AppState::view_progress_shown() const {
@@ -375,6 +388,7 @@ void AppState::update_view_job() {
                 v.message = app::plain_error(e);
                 v.error = e.what();
                 viewed = std::move(v);
+                view_reanalysis_ = false;
                 record_generation.bump();
                 return;
             }
@@ -405,6 +419,7 @@ void AppState::update_view_job() {
         }
     }
     viewed = std::move(v);
+    view_reanalysis_ = viewed.ready();
     record_generation.bump();
 }
 

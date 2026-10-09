@@ -93,10 +93,13 @@ bool render_state_line(AppState& app) {
 }
 
 // The optimal score and path in gold with one line of facts under it. Stars
-// are the summary row's (T7), never worked out again here.
+// are the summary row's (T7), never worked out again here. While the open
+// song is re-analyzed it keeps its place, empty (AppState::view_holds_space).
 void render_headline(AppState& app) {
     const float left_x = ImGui::GetCursorPosX();
+    const float top_y = ImGui::GetCursorPosY();
     const float text_w = ImGui::GetContentRegionAvail().x;
+    HeldRow& row = app.details_ui.headline;
 
     ImGui::BeginGroup();
     if (render_state_line(app)) {
@@ -125,7 +128,14 @@ void render_headline(AppState& app) {
         ImGui::TextUnformatted(facts.c_str());
         ImGui::PopStyleColor();
     }
+    // Whether anything above was drawn: the cursor moved down past it.
+    const bool drew = ImGui::GetCursorPosY() != top_y;
+    if (!drew) {
+        if (const std::optional<float> held = row.keep(app.view_holds_space()))
+            ImGui::Dummy(ImVec2(0.0f, *held));
+    }
     ImGui::EndGroup();
+    if (drew) row.height = ImGui::GetItemRectSize().y;
 }
 
 // The lines that say why analysis can't run, each with its remedy.

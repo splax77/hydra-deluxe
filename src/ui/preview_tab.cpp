@@ -126,10 +126,16 @@ float key_hints(float width, bool draw) {
 // "Showing" and the ##previewpath list: the same paths, in the same order and
 // from the same cache, as the Paths tab's buttons. A pick sets the one
 // selection both tabs read (DetailsViewState::selected_path). Drawn only when
-// the song has a Ready record with paths.
+// the song has a Ready record with paths; while the open song is re-analyzed
+// it keeps its place, empty (AppState::view_holds_space).
 void render_path_picker(AppState& app) {
-    if (!app.viewed.ready() || app.viewed.record->paths.empty())
+    HeldRow& row = app.details_ui.path_picker;
+    if (!app.viewed.ready() || app.viewed.record->paths.empty()) {
+        if (const std::optional<float> held = row.keep(app.view_holds_space()))
+            ImGui::Dummy(ImVec2(0.0f, *held));
         return;
+    }
+    ImGui::BeginGroup();
     const hydra::app::PathButtonsView& list = app.details_ui.paths_tab.buttons(
         *app.viewed.record, app.record_generation.n, app.settings.depth_mode,
         app.settings.depth_value);
@@ -166,6 +172,8 @@ void render_path_picker(AppState& app) {
         ImGui::EndCombo();
     }
     ImGui::PopFont();
+    ImGui::EndGroup();
+    row.height = ImGui::GetItemRectSize().y;
 }
 
 // Gold ticks over the scrubber just drawn, one per activation, where the
