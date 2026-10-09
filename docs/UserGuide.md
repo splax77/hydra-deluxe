@@ -238,7 +238,7 @@ The **path report** is one table of every analyzed song's paths, squeeze timings
 
 A finished batch builds it. `Open path report` on the toolbar opens it at any time. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one.
 
-Hydra Deluxe keeps only each song's summary, so building the report analyzes those songs again, on all cores. Songs a batch just analyzed are reused. On a large library that takes a few seconds. While it builds, the window shows a bar reading `Analyzing n of N charts` and a `Cancel` button. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
+Hydra Deluxe keeps only each song's summary, so building the report analyzes those songs again, on all cores. Songs a batch just analyzed are reused. On a large library that takes a few seconds. While it builds, the window shows a bar reading `Analyzing n of N records` and a `Cancel` button. A record is one song in one mode, so a song analyzed in two modes counts twice. When a batch already analyzed everything, the bar just moves, with no count. While `hydra_rules.ini` has an error, analysis is off. A window with no report to show then says so instead of building. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
 
 The window is titled `Path report — Hydra`. From top to bottom it has:
 

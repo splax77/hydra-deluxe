@@ -174,6 +174,10 @@ Items 1 to 13 came with the design. These came up while it was built:
     the mock.
 22. A report goes out of date only when a setting it reads changes.
 23. The Path column sorts by item 16's rule too, so "+" now sorts before "-".
+24. With analysis off and no report in memory, the path window shows the
+    toolbar's rules-error sentence.
+25. The building bar reads "Analyzing n of N records", one per chart and mode.
+26. With nothing left to analyze, the building bar moves with no count.
 
 The full wording of each is in docs/audit/2026-10-03-fix-decisions.md.
 
