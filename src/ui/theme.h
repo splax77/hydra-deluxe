@@ -78,6 +78,14 @@ inline const ImVec4 kDisabledButtonColor{100 / 255.0f, 100 / 255.0f, 100 / 255.0
 inline const ImVec4& kDisabledInputTextColor = kDimTextColor;
 inline const ImVec4 kDisabledInputBgColor{40 / 255.0f, 40 / 255.0f, 40 / 255.0f, 1.0f};
 
+// The strips' backgrounds: the batch's finished strip and the report
+// windows' out-of-date strip (done), and the finished strip after a failed
+// report and the report windows' left-out strip (problem). (250,250,250) text
+// is 12.94:1 on the done strip and 13.73:1 on the problem strip; orange
+// (kWarningColor) on the problem strip is 5.65:1.
+inline const ImVec4 kDoneStripBg{31 / 255.0f, 51 / 255.0f, 34 / 255.0f, 1.0f};
+inline const ImVec4 kProblemStripBg{58 / 255.0f, 38 / 255.0f, 18 / 255.0f, 1.0f};
+
 // The colour a report window's chip is drawn in, its outline and its words
 // both: the path report's Timing chips and the comparison's Status chips
 // (report::tier_token and dm_report::status_token pick the token). The one

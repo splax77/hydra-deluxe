@@ -29,7 +29,7 @@ using hydra::app::report::GeneratedReport;
 using hydra::ui::DmReportInput;
 using hydra::ui::PathReportInput;
 using hydra::ui::ReportOutOfDate;
-using hydra::ui::ReportState;
+using hydra::ui::ReportBuild;
 
 // What the windows were handed, and what they handed back.
 struct Fixture {
@@ -88,11 +88,11 @@ void reset_fixture() {
     Fixture& f = fixture();
     f = Fixture{};
     f.path.result = sample_path_result();
-    f.path.state = ReportState::Ready;
+    f.path.state = ReportBuild::Ready;
     f.path.built = std::chrono::system_clock::now();
     f.path.callbacks = recording_callbacks(f.path_clicks);
     f.dm.result = sample_dm_result();
-    f.dm.state = ReportState::Ready;
+    f.dm.state = ReportBuild::Ready;
     f.dm.built = std::chrono::system_clock::now();
     f.dm.callbacks = recording_callbacks(f.dm_clicks);
 }
@@ -205,7 +205,7 @@ void test_states(ImGuiTestContext* ctx) {
     reset_app(harness(ctx));
     reset_fixture();
     Fixture& f = fixture();
-    f.path.state = ReportState::Building;
+    f.path.state = ReportBuild::Building;
     f.path.progress_done = 3;
     f.path.progress_total = 10;
     f.path_open = true;
@@ -219,13 +219,13 @@ void test_states(ImGuiTestContext* ctx) {
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 1);
 
-    f.path.state = ReportState::Cancelled;
+    f.path.state = ReportBuild::Cancelled;
     ctx->Yield(2);
     IM_CHECK(shows("Report cancelled."));
     ctx->ItemClick("Try again");
     IM_CHECK_EQ(f.retries, 1);
 
-    f.path.state = ReportState::Failed;
+    f.path.state = ReportBuild::Failed;
     f.path.failure_message = "sample failure message";
     f.path.failure_error = "sample failure error";
     ctx->Yield(2);
@@ -233,12 +233,12 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK(shows("sample failure message"));
     IM_CHECK(shows("sample failure error"));
 
-    f.path.state = ReportState::Ready;
+    f.path.state = ReportBuild::Ready;
     f.path.out_of_date = ReportOutOfDate::Library;
     ctx->Yield(2);
     IM_CHECK(shows("Your library changed since this report was built."));
     IM_CHECK(shows("Built "));
-    ctx->ItemClick("Refresh##outofdate");
+    ctx->ItemClick("**/Refresh##outofdate");  // inside the strip's child
     IM_CHECK_EQ(f.refreshes, 1);
     // With a batch's finish time, the library line names it (D103 item 21,
     // board 2b), in the same HH:MM as "Built".
@@ -263,7 +263,7 @@ void test_states(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(shows(hydra::app::report::left_out_line(left_out->failures)));
     IM_CHECK(!shows("Song D\\notes.chart"));
-    ctx->ItemClick("Show files");
+    ctx->ItemClick("**/Show files");  // inside the strip's child
     ctx->Yield(2);
     IM_CHECK(shows("Song D\\notes.chart"));
 
@@ -275,7 +275,7 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK(shows("sample empty reason"));
     f.path_open = false;
 
-    f.dm.state = ReportState::Building;
+    f.dm.state = ReportBuild::Building;
     open_dm(ctx);
     IM_CHECK(shows("Fetching scores and building the report..."));
     IM_CHECK(!shows("Building the report from your library..."));
@@ -283,7 +283,7 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK(shows("The leaderboard server can take a moment to wake up."));
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 2);
-    f.dm.state = ReportState::Failed;
+    f.dm.state = ReportBuild::Failed;
     ctx->Yield(2);
     IM_CHECK(shows("Could not build the report."));
     ctx->ItemClick("Compare another player...");

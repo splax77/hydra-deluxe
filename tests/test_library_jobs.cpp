@@ -342,7 +342,7 @@ TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
 }
 
 // D97: an empty report shows generate_report's own reason when it gives one,
-// as hydra_report does. Results with no chart library name the missing
+// word for word. Results with no chart library name the missing
 // library; a database with no results gets the app's own sentence.
 TEST_CASE("jobs: an empty report shows generate_report's reason, or the app's own") {
     const BatchRun run = test_run();

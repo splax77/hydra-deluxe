@@ -9,6 +9,7 @@
 
 #include "app/dm_report_view.h"
 #include "imgui.h"
+#include "ui/app_state.h"  // dm_report_input
 #include "ui/report_window.h"
 
 namespace hydra::ui {
@@ -122,6 +123,37 @@ void draw_dm_report_window(bool* open, const DmReportInput& input) {
 
     if (report_frame::begin(open, frame, w.memory) && w.view) draw_body(w, frame, input);
     report_frame::end(open, frame, w.memory);
+}
+
+DmReportInput dm_report_input(AppState& app) {
+    const DmReportSlot& slot = app.dm_report;
+    DmReportInput in;
+    in.result = slot.result;
+    in.state = app.dm_report_build();
+    if (slot.result) in.built = slot.built_at;
+    in.out_of_date = slot.out_of_date;
+    in.batch_finished = slot.batch_finished;
+    in.failure_message = slot.message;
+    in.failure_error = slot.error;
+    in.player = app.dm_player_name();
+    // The row index is into this frame's result, which the click keeps alive.
+    // A score the library doesn't list never calls it (the window's
+    // clickable rule).
+    in.callbacks.row_click = [&app, result = slot.result](size_t row) {
+        app.select_chart(result->rows[row].identifier, result->chartmode);
+    };
+    in.callbacks.refresh = [&app] { app.request_dm_report(); };
+    in.callbacks.try_again = [&app] { app.request_dm_report(); };
+    // Cancel while fetching closes the window and goes back to the player
+    // list (D103 item 10).
+    in.callbacks.cancel = [&app] {
+        app.cancel_dm_report();
+        app.dm_report.window_open = false;
+        app.reopen_dm_picker();
+    };
+    in.callbacks.compare_another = [&app] { app.reopen_dm_picker(); };
+    // The window clears window_open itself through its `open` flag.
+    return in;
 }
 
 }  // namespace hydra::ui
