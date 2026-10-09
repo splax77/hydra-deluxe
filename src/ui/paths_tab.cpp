@@ -397,7 +397,7 @@ void render_backend_table(const app::ActivationRowView& a) {
 
 // What an opened row shows: the chord and "Show in Preview", the early fill
 // line, the squeeze sentences, the scale and overfill notes with their hover
-// hints, and the folded backend table.
+// hints, and the backend table under its fold (open until the user closes it).
 void render_activation_body(size_t i, const app::ActivationRowView& a, app::PathsTabUi& ui) {
     ImGui::Indent(px(48.0f));
     ImGui::TextDisabled("Chord");
