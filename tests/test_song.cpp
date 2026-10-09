@@ -909,7 +909,7 @@ TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle"
             app::load_dynamics_song(path, true, Difficulty::Expert, false));
         for (size_t i = 0; i < bd.rows.size(); ++i) {
             CAPTURE(i);
-            const bool pad = i <= static_cast<size_t>(app::DynamicsRow::GreenTom);
+            const bool pad = app::is_pad_row(static_cast<app::DynamicsRow>(i));
             CHECK(bd.rows[i] == (pad ? pads.rows[i] : kicks.rows[i]));
         }
     }

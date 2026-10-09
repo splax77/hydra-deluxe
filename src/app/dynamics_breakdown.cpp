@@ -17,7 +17,8 @@ const DynamicsCounts& DynamicsBreakdown::row(DynamicsRow r) const {
 
 DynamicsCounts DynamicsBreakdown::pads_total() const {
     DynamicsCounts t;
-    for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) t += rows[i];
+    for (size_t i = 0; i < rows.size(); ++i)
+        if (is_pad_row(static_cast<DynamicsRow>(i))) t += rows[i];
     return t;
 }
 
@@ -70,6 +71,8 @@ constexpr bool row_has_flag(const DynamicsRowInfo& info) {
 const DynamicsRowInfo& dynamics_row_info(DynamicsRow r) {
     return kDynamicsRows[static_cast<size_t>(r)];
 }
+
+bool is_pad_row(DynamicsRow r) { return dynamics_row_info(r).color != NoteColor::Kick; }
 
 DynamicsRow dynamics_row_for(const ChordNote& note) {
     // A row is a lane with its flag on or off (lane_flag). A flag the lane
@@ -153,8 +156,8 @@ DynamicsBreakdown dynamics_for_settings(const std::string& notespath, bool pro, 
         analysis_song ? *analysis_song
                       : load_songpath(notespath, pro, bass2x, difficulty, core::default_rules(),
                                       noteshuffle));
-    for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i)
-        bd.rows[i] = pads.rows[i];
+    for (size_t i = 0; i < bd.rows.size(); ++i)
+        if (is_pad_row(static_cast<DynamicsRow>(i))) bd.rows[i] = pads.rows[i];
     return bd;
 }
 

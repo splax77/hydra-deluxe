@@ -230,18 +230,18 @@ TEST_CASE("dynamics_breakdown: the row table, row by row") {
     struct Expect {
         DynamicsRow row;
         NoteColor color;
-        bool cymbal, is2x;
+        bool cymbal, is2x, pad;
     };
     const Expect expect[] = {
-        {DynamicsRow::RedSnare,     NoteColor::Red,    false, false},
-        {DynamicsRow::YellowCymbal, NoteColor::Yellow, true,  false},
-        {DynamicsRow::YellowTom,    NoteColor::Yellow, false, false},
-        {DynamicsRow::BlueCymbal,   NoteColor::Blue,   true,  false},
-        {DynamicsRow::BlueTom,      NoteColor::Blue,   false, false},
-        {DynamicsRow::GreenCymbal,  NoteColor::Green,  true,  false},
-        {DynamicsRow::GreenTom,     NoteColor::Green,  false, false},
-        {DynamicsRow::Kick,         NoteColor::Kick,   false, false},
-        {DynamicsRow::Kick2x,       NoteColor::Kick,   false, true},
+        {DynamicsRow::RedSnare,     NoteColor::Red,    false, false, true},
+        {DynamicsRow::YellowCymbal, NoteColor::Yellow, true,  false, true},
+        {DynamicsRow::YellowTom,    NoteColor::Yellow, false, false, true},
+        {DynamicsRow::BlueCymbal,   NoteColor::Blue,   true,  false, true},
+        {DynamicsRow::BlueTom,      NoteColor::Blue,   false, false, true},
+        {DynamicsRow::GreenCymbal,  NoteColor::Green,  true,  false, true},
+        {DynamicsRow::GreenTom,     NoteColor::Green,  false, false, true},
+        {DynamicsRow::Kick,         NoteColor::Kick,   false, false, false},
+        {DynamicsRow::Kick2x,       NoteColor::Kick,   false, true,  false},
     };
     for (const Expect& e : expect) {
         INFO("row " << static_cast<int>(e.row));
@@ -250,6 +250,7 @@ TEST_CASE("dynamics_breakdown: the row table, row by row") {
         CHECK(info.color == e.color);
         CHECK(info.cymbal == e.cymbal);
         CHECK(info.is2x == e.is2x);
+        CHECK(is_pad_row(e.row) == e.pad);
     }
 }
 

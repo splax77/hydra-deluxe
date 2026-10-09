@@ -69,6 +69,11 @@ struct DynamicsRowInfo {
 // The table entry for row `r`. `r` must be a real row, not Count.
 const DynamicsRowInfo& dynamics_row_info(DynamicsRow r);
 
+// Whether row `r` is a pad row, read from its table entry: the one answer to
+// which rows the pad table shows and pads_total() sums. `r` must be a real
+// row, not Count.
+bool is_pad_row(DynamicsRow r);
+
 // The row a note is counted in.
 DynamicsRow dynamics_row_for(const ChordNote& note);
 
