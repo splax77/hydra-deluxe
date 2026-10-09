@@ -235,6 +235,11 @@ public:
     // the default rules.
     std::string rules_error;
     bool analysis_blocked() const { return !rules_error.empty(); }
+    // What the toolbar and the path report window say, above rules_error,
+    // while analysis is off (D103 item 24).
+    static constexpr const char* kAnalysisOffSentence =
+        "hydra_rules.ini has an error, so analysis is off until the file is fixed and "
+        "Hydra is restarted.";
 
     // Library browsing: every scanned chart in memory, with its stored
     // summary, filtered by the search and the status chip and sorted by the

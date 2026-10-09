@@ -116,7 +116,13 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
     frame.window_name = "Path report \xE2\x80\x94 Hydra###pathreport";  // U+2014
     frame.heading = "Path Index";
     frame.building_subtitle = "Building the report from your library...";
-    frame.progress = std::make_pair(input.progress_done, input.progress_total);
+    // Nothing left to analyze (a batch's results cover every chart) leaves
+    // the bar moving with no count, as the comparison's does (D103 item 26).
+    if (input.progress_total > 0)
+        frame.progress = std::make_pair(input.progress_done, input.progress_total);
+    frame.placeholder_rows = true;
+    frame.analysis_off_sentence = AppState::kAnalysisOffSentence;
+    frame.analysis_off_error = input.rules_error;
     frame.failure_sentence = "The path report could not be built.";
     if (result) {
         frame.notice = app::report::left_out_line(result->failures);
@@ -134,6 +140,7 @@ PathReportInput path_report_input(AppState& app) {
     PathReportInput in = input_from_slot(slot, app.path_report_build());
     if (in.state == ReportBuild::Building && app.report_job)
         std::tie(in.progress_done, in.progress_total) = app.report_job->progress();
+    in.rules_error = app.rules_error;
     // The row index is into this frame's result, which the click keeps alive.
     in.callbacks.row_click = [&app, result = slot.result](size_t row) {
         const ReportRow& r = result->paths[row];
