@@ -25,7 +25,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 | Early fill window | 70 ms | 60 ms |
 | Rules you can change | None | `hydra_rules.ini` |
 | Analyzing many songs | `hydra_runfolder.py` script | In-app batch, plus `hydra_batch` |
-| Reports | JSON from the runfolder script | HTML path report and leaderboard comparison |
+| Reports | JSON from the runfolder script | Path report and leaderboard comparison windows in the app |
 
 The sections below explain each difference.
 
@@ -53,7 +53,7 @@ The sections below explain each difference.
 
 **The Stars tab** is new. It shows the exact score each star from 1 to 7 needs on that chart, and what the full solo bonus adds on top.
 
-**Analyzing the whole library** happens in the app. It runs in the background on all but one CPU core, with Pause and Stop, and you can keep browsing while it runs. When it finishes it builds a sortable HTML report of every song's paths.
+**Analyzing the whole library** happens in the app. It runs in the background on all but one CPU core, with Pause and Stop, and you can keep browsing while it runs. When it finishes it builds a sortable path report of every song's paths, shown in its own Hydra window.
 
 **Compare with dmleaderboards** is new. It fetches a player's posted scores from dmleaderboards.com and lines them up against your optimals.
 
@@ -91,7 +91,7 @@ Two changes affect only the display, never the path search. The hit window is 85
 
 ## What the public version has that this one doesn't
 
-**The runfolder script.** Public Hydra's `hydra_runfolder.py` analyzes a folder and writes JSON, and its newer code also writes CSV. This version has `hydra_batch` and an HTML report instead. It has no JSON or CSV export.
+**The runfolder script.** Public Hydra's `hydra_runfolder.py` analyzes a folder and writes JSON, and its newer code also writes CSV. This version has `hydra_batch` and the in-app path report instead. It has no JSON or CSV export.
 
 **A portable zip.** Public releases are a zip you can run from anywhere. This version's releases are an installer only.
 

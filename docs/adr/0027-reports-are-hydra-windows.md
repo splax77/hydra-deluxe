@@ -173,6 +173,7 @@ Items 1 to 13 came with the design. These came up while it was built:
 21. The building subtitle and "(a batch finished at HH:MM)" are drawn, as in
     the mock.
 22. A report goes out of date only when a setting it reads changes.
+23. The Path column sorts by item 16's rule too, so "+" now sorts before "-".
 
 The full wording of each is in docs/audit/2026-10-03-fix-decisions.md.
 
