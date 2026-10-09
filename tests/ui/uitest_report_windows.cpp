@@ -13,18 +13,21 @@
 #include "uitest_harness.h"
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <ctime>
 #include <functional>
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "../report_samples.h"  // tests/ is not on the runner's include path
 #include "imgui_internal.h"
 #include "app/analysis.h"
 #include "app/dm_report.h"
+#include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
 #include "core/model.h"  // kCloneHeroSpCap
 #include "net/dmbot_client.h"
@@ -352,7 +355,10 @@ void test_keys(ImGuiTestContext* ctx) {
     IM_CHECK(!f.path_open);
     IM_CHECK(path_window() == nullptr);
     IM_CHECK_EQ(f.closes, 1);
-    // Reopening shows the rows at once: nothing is rebuilt.
+    // Reopening, the window takes the rows up again. They come as AppState
+    // hands rows built for an opening (keep_filters), so Best path only
+    // stays unticked.
+    f.path.keep_filters = true;
     f.path_open = true;
     ctx->Yield(2);
     IM_CHECK(shows("6 of 6 paths"));
@@ -662,22 +668,30 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->settings.chartmode_key() == mode_before);
 }
 
+// The first chart batched, its report built while the window is shut, then
+// the window opened on that report. False when a step failed.
+bool open_batch_report(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return false;
+    IM_CHECK_RETV(batch_search(ctx, quoted_title(h, 0)), false);
+    dismiss_done(ctx);
+
+    h.app->show_path_report();
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, false);
+    IM_CHECK_RETV(h.app->report_job == nullptr, false);  // the batch's report, kept while shut
+    IM_CHECK_RETV(h.app->path_report.result != nullptr, false);
+    return true;
+}
+
 // A batch's report, built while the window is shut, shows at once. Esc then
 // closes the window and lets its rows go; opening it again builds the report
 // again behind the building bar (D103 item 28).
 void test_reopen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    IM_CHECK(batch_search(ctx, quoted_title(h, 0)));
-    dismiss_done(ctx);
-
-    h.app->show_path_report();
-    ctx->Yield(3);
-    IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(h.app->report_job == nullptr);  // the batch's report, kept while shut
-    IM_CHECK_RETV(h.app->path_report.result != nullptr, );
+    if (!open_batch_report(ctx)) return;
     const std::string count = path_count_tail(h);
     IM_CHECK(on_screen(h, count));
 
@@ -693,6 +707,125 @@ void test_reopen(ImGuiTestContext* ctx) {
     held_build_then_rows(ctx, hold, "Building the report from your library...");
     IM_CHECK(path_window() != nullptr);
     IM_CHECK(on_screen(h, count));  // the same rows as before the close
+}
+
+// The path window's count line for the report in memory, "n of M paths", as
+// drawn this frame; empty when it isn't on screen.
+std::string shown_count(Harness& h) {
+    const std::string text = visible_text(h);
+    const std::string tail = path_count_tail(h);
+    const size_t at = text.find(tail);
+    if (at == std::string::npos) return {};
+    size_t start = at;
+    while (start > 0 && (std::isdigit(static_cast<unsigned char>(text[start - 1])) ||
+                         text[start - 1] == ','))
+        --start;
+    return text.substr(start, at + tail.size() - start);
+}
+
+// The path table's sort as ImGui holds it: table column index and direction,
+// first key first. The window hands the table its view's sort.
+std::vector<std::pair<int, int>> table_sort(ImGuiTestContext* ctx) {
+    std::vector<std::pair<int, int>> out;
+    ctx->SetRef(path_window());
+    const ImGuiTableSortSpecs* specs = ctx->TableGetSortSpecs("##pathtable");
+    if (!specs) return out;
+    for (int i = 0; i < specs->SpecsCount; ++i)
+        out.emplace_back(specs->Specs[i].ColumnIndex, static_cast<int>(specs->Specs[i].SortDirection));
+    return out;
+}
+
+// A text box's or a dropdown's shown text as the frame text logs it.
+std::string boxed(const std::string& s) { return "{ " + s + " }"; }
+
+bool best_only_ticked(ImGuiTestContext* ctx) {
+    ctx->SetRef(path_window());
+    return (ctx->ItemInfo("Best path only").StatusFlags & ImGuiItemStatusFlags_Checked) != 0;
+}
+
+// Closing the window and opening it again keeps its search, timing,
+// Best path only and sort, though the rows are built again (the user's
+// answer to D103 item 28's follow-up). Refresh still resets all four.
+void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!open_batch_report(ctx)) return;
+    // Read only before the Esc below lets these rows go.
+    const GeneratedReport& report = *h.app->path_report.result;
+    const std::string default_count = shown_count(h);
+    const auto default_sort = table_sort(ctx);
+    IM_CHECK_RETV(!default_count.empty() && !default_sort.empty(), );
+    IM_CHECK(best_only_ticked(ctx));
+
+    // Sort by Song, then flip it: Z to A.
+    ctx->SetRef(path_window());
+    ctx->ItemClick("**/Song");
+    ctx->Yield(2);
+    ctx->ItemClick("**/Song");
+    ctx->Yield(2);
+    const auto sort = table_sort(ctx);
+    IM_CHECK_RETV(!sort.empty() && sort != default_sort, );
+    IM_CHECK_EQ(sort.front().second, static_cast<int>(ImGuiSortDirection_Descending));
+
+    // Every path, then a search that keeps them (the chart's own song).
+    ctx->SetRef(path_window());
+    ctx->ItemClick("Best path only");
+    ctx->Yield(2);
+    IM_CHECK(!best_only_ticked(ctx));
+    const std::string all_count = shown_count(h);
+    const std::string search = report.paths.front().song;
+    ctx->SetRef(path_window());
+    ctx->ItemInputValue("##search", search.c_str());
+    ctx->Yield(2);
+    IM_CHECK_STR_EQ(shown_count(h).c_str(), all_count.c_str());
+    const std::string search_shown = boxed(search);
+    IM_CHECK(on_screen(h, search_shown));
+
+    // A timing tier a path has, so the table stays up to show its sort.
+    const auto choices = hydra::app::path_report_view::timing_choices(report.hit_window_ms);
+    std::string label;
+    for (size_t i = 1; i < choices.size() && label.empty(); ++i)
+        for (const auto& r : report.paths)
+            if (r.tier == *choices[i].tier) label = choices[i].label;
+    IM_CHECK_RETV(!label.empty(), );
+    ctx->SetRef(path_window());
+    ctx->ComboClick(("##timing/" + label).c_str());
+    ctx->Yield(2);
+    const std::string count = shown_count(h);
+    IM_CHECK_RETV(!count.empty() && count != default_count, );
+    const std::string timing_shown = boxed(label);
+    const std::string default_timing = boxed(choices.front().label);
+    IM_CHECK(on_screen(h, timing_shown));
+
+    // Esc lets the rows go; opening again builds them, filters kept.
+    press_escape_on(ctx, path_window());
+    IM_CHECK_RETV(h.app->path_report.result == nullptr, );
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("**/Open path report");
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 60), );
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    IM_CHECK_STR_EQ(shown_count(h).c_str(), count.c_str());
+    IM_CHECK(on_screen(h, search_shown));
+    IM_CHECK(on_screen(h, timing_shown));
+    IM_CHECK(!best_only_ticked(ctx));
+    IM_CHECK(table_sort(ctx) == sort);
+
+    // Refresh starts all four over (the rule before this change).
+    ctx->SetRef(path_window());
+    ctx->ItemClick("Refresh");
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 60), );
+    ctx->Yield(3);
+    IM_CHECK_STR_EQ(shown_count(h).c_str(), default_count.c_str());
+    IM_CHECK(!on_screen(h, search_shown));
+    IM_CHECK(on_screen(h, default_timing));
+    IM_CHECK(best_only_ticked(ctx));
+    IM_CHECK(table_sort(ctx) == default_sort);
 }
 
 // After a batch the report goes out of date with the batch's time; a setting
@@ -769,6 +902,7 @@ const std::vector<TestEntry>& report_window_flow_tests() {
         {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},
         {"report-window-reopen", test_reopen},
+        {"report-window-reopen-keeps-filters", test_reopen_keeps_filters},
         {"report-window-out-of-date", test_out_of_date},
     };
     return entries;

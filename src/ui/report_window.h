@@ -69,6 +69,10 @@ struct ReportWindowInput {
     // (AppState::rules_error), shown when no report is in memory. Empty when
     // analysis is on.
     std::string rules_error;
+    // The path report only: `result` was built because the window opened
+    // with nothing in memory (ReportSlot::built_on_open), so the window keeps
+    // its search, timing, Best path only and sort when the rows arrive.
+    bool keep_filters = false;
     // A failed build's message and error, as the job gives them.
     std::string failure_message;
     std::string failure_error;

@@ -149,7 +149,11 @@ file to keep or send.
 **Memory.** Closing the path report window lets its rows go, and reopening it
 builds the report again with the building bar (D103 item 28, 2026-10-08). The
 user chose this after the report memory run measured about 42 MB of rows on
-their library. A build still running when the window closes stops, as its
+their library. The rows reopening builds keep the window's search, timing,
+Best path only and sort (the user's call, 2026-10-09); Refresh and a batch's
+new report still start them over. AppState records why each build started,
+and the window reads it from its input. A build still running when the
+window closes stops, as its
 Cancel stops it. A report a batch builds while the window is shut stays until
 the window is opened and closed. The comparison's rows still stay in memory
 after its window closes, so it reopens at once.

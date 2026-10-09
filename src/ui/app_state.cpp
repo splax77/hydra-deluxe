@@ -583,7 +583,7 @@ void AppState::update_background_jobs() {
             // (D87 item 5).
             const app::BatchRun& run = batch_job->batch_run();
             launch_path_report(run.cap_query(), run.lens, run, std::move(seed),
-                               /*from_batch=*/true);
+                               PathReportCause::Batch);
         }
     }
 
@@ -678,16 +678,17 @@ ReportBuild AppState::dm_report_build() const {
     return dm_report_job && !dm_report_job->finished() ? ReportBuild::Building : dm_report.last;
 }
 
-void AppState::request_path_report() {
+void AppState::request_path_report() { request_path_report(PathReportCause::Request); }
+
+void AppState::request_path_report(PathReportCause cause) {
     if (!store || analysis_blocked()) return;
     if (report_job && !report_job->finished()) return;
     collect_path_report();  // one that finished this frame lands first
-    launch_path_report(settings.cap_query(), settings.lens(), settings.batch_run(), {},
-                       /*from_batch=*/false);
+    launch_path_report(settings.cap_query(), settings.lens(), settings.batch_run(), {}, cause);
 }
 
 void AppState::launch_path_report(store::CapQuery cap, store::Lens lens, app::BatchRun run,
-                                  app::report::ReportSeed seed, bool from_batch) {
+                                  app::report::ReportSeed seed, PathReportCause cause) {
     // A build still running read an older library: it stops between charts,
     // and waits parked rather than freezing the window until then.
     if (report_job && !report_job->finished()) {
@@ -696,7 +697,7 @@ void AppState::launch_path_report(store::CapQuery cap, store::Lens lens, app::Ba
     }
     report_job = std::make_unique<ReportJob>(*store, cap, lens, settings.hit_window_ms,
                                              std::move(run), std::move(seed));
-    path_report_from_batch_ = from_batch;
+    path_report_cause_ = cause;
     path_report.out_of_date_during_build = ReportOutOfDate::None;
     report_job->start();
 }
@@ -707,7 +708,8 @@ void AppState::cancel_path_report() {
 
 void AppState::show_path_report() {
     path_report.window_open = true;
-    if (!path_report.result && path_report_build() == ReportBuild::None) request_path_report();
+    if (!path_report.result && path_report_build() == ReportBuild::None)
+        request_path_report(PathReportCause::Open);
 }
 
 void AppState::close_path_report() {
@@ -759,7 +761,11 @@ void AppState::collect_path_report() {
     if (!report_job || !report_job->finished()) return;
     const std::unique_ptr<ReportJob> job = std::move(report_job);
     const ReportBuild outcome = land_report(path_report, *job);
-    if (!path_report_from_batch_) return;
+    // Only new rows carry a cause; a cancelled or failed build leaves the
+    // rows, and what they were built for, as they were.
+    if (outcome == ReportBuild::Ready)
+        path_report.built_on_open = path_report_cause_ == PathReportCause::Open;
+    if (path_report_cause_ != PathReportCause::Batch) return;
     // The batch's own report: "Open automatically" opens it (D103 item 13).
     if (outcome == ReportBuild::Ready && settings.auto_open_report)
         path_report.window_open = true;

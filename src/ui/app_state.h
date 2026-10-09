@@ -177,6 +177,12 @@ struct ReportSlot {
     // An out-of-date event that landed while a build was running. That build
     // read the old library or settings, so its result starts out of date.
     ReportOutOfDate out_of_date_during_build = ReportOutOfDate::None;
+    // `result` was built because its window opened with nothing in memory,
+    // as after a close let the rows go (D103 item 28). The window then keeps
+    // the search, timing, Best path only and sort the user left; a result
+    // from Refresh or a batch starts them over. The path report only;
+    // AppState::collect_path_report sets it.
+    bool built_on_open = false;
 };
 
 using PathReportSlot = ReportSlot<app::report::GeneratedReport>;
@@ -470,8 +476,9 @@ public:
     // window then shows the cancelled state.
     void cancel_path_report();
     // Opens the path report window: the toolbar's "Open path report", the
-    // finished strip's "Open report". With nothing ever built this session
-    // it starts a build (request_path_report).
+    // finished strip's "Open report". With nothing in memory (never built
+    // this session, or let go by close_path_report) it starts a build whose
+    // result keeps the window's filters (ReportSlot::built_on_open).
     void show_path_report();
     // Closes the path report window (D103 item 28): its X, Esc and Ctrl+W
     // all come here, through the window's close callback. The rows go, a
@@ -630,12 +637,18 @@ private:
     bool read_store(const std::function<void()>& read);
     bool batch_finish_seen_ = false;  // update_background_jobs saw this run end
 
-    // Starts report_job, parking one still running. `from_batch`: the job
-    // is the finished batch's own report, whose outcome the strip shows and
-    // which "Open automatically" opens.
+    // Why a path report build started. Batch: the finished batch's own
+    // report, whose outcome the strip shows and which "Open automatically"
+    // opens. Open: show_path_report found nothing in memory, so its result
+    // keeps the window's filters (ReportSlot::built_on_open). Request: the
+    // window's Refresh or Try again.
+    enum class PathReportCause { Request, Batch, Open };
+    // Starts report_job, parking one still running.
     void launch_path_report(store::CapQuery cap, store::Lens lens, app::BatchRun run,
-                            app::report::ReportSeed seed, bool from_batch);
-    bool path_report_from_batch_ = false;
+                            app::report::ReportSeed seed, PathReportCause cause);
+    // request_path_report's work, for the cause given.
+    void request_path_report(PathReportCause cause);
+    PathReportCause path_report_cause_ = PathReportCause::Request;
     // Starts dm_report_job for the last player picked. None may be running.
     void launch_dm_report();
     std::string dm_player_id_;

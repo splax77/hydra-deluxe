@@ -45,6 +45,7 @@
 #include "ui/generation.h"
 #include "ui/library_parts.h"  // analyze_search_label
 #include "ui/library_jobs.h"  // set_app_batch_analyzer_for_test
+#include "ui/report_window.h"  // path_report_input
 
 using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
@@ -1079,6 +1080,30 @@ TEST_CASE("closing the path report frees its rows, and reopening builds it again
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
     CHECK(app->path_report.result != nullptr);
+}
+
+// The user's answer to item 28's follow-up (2026-10-09): rows built because
+// the window opened keep its filters; Refresh's start them over.
+TEST_CASE("a path report built on opening its window says so; Refresh's does not") {
+    ScratchPaths paths("appstate_pathopenkeep");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathopenkeep");
+    app->show_path_report();
+    finish_path_report(*app);
+    REQUIRE(app->path_report.result != nullptr);
+    CHECK(app->path_report.built_on_open);
+    CHECK(hydra::ui::path_report_input(*app).keep_filters);
+
+    app->request_path_report();  // the window's Refresh
+    finish_path_report(*app);
+    CHECK_FALSE(app->path_report.built_on_open);
+    CHECK_FALSE(hydra::ui::path_report_input(*app).keep_filters);
+
+    // Closed and opened again: built on opening once more.
+    app->close_path_report();
+    CHECK_FALSE(app->path_report.built_on_open);
+    app->show_path_report();
+    finish_path_report(*app);
+    CHECK(app->path_report.built_on_open);
 }
 
 TEST_CASE("closing the path report mid-build cancels the build, and nothing lands") {

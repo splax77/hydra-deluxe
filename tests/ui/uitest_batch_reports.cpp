@@ -294,7 +294,7 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report.window_open);
     ctx->Yield(2);
     IM_CHECK(window_named("###pathreport") != nullptr);
-    h.app->path_report.window_open = false;  // the window's X
+    h.app->close_path_report();  // the window's X, through its close callback
 
     // "Also re-analyze" re-analyzes the stored chart, and the confirm says so.
     const std::string label = hydra::ui::detail::analyze_search_label(
