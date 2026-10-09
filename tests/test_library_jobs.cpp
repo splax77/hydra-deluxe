@@ -293,72 +293,72 @@ TEST_CASE("allocator: malloc goes to mimalloc") {
 }
 #endif
 
+namespace {
+
+// The memory each chart's result carries in the hand-back tests below.
+constexpr size_t kBlock = 1024;  // small blocks, as a chart's are
+constexpr size_t kChartBytes = 128 * 1024 * 1024;
+
+// An analyzer that returns a copy of `real` carrying kChartBytes, filled so
+// it is committed.
+hydra::app::ChartAnalyzer analyzer_carrying_chart_bytes(const AnalysisResult& real) {
+    return [&real](const std::string&, const AnalysisSettings&,
+                   const std::function<void(float)>&) -> AnalysisResult {
+        AnalysisResult r = real;
+        r.song.features.assign(kChartBytes / kBlock, std::string(kBlock, 'x'));
+        return r;
+    };
+}
+
+// Runs `job_body`, which builds a job, runs it to its end and destroys it
+// (joining its thread), then checks the memory its charts freed went back
+// to Windows. `what` names the job in the message.
+void check_job_hands_memory_back(const std::string& what,const std::function<void()>& job_body) {
+#ifdef NDEBUG
+    // On the Windows heap the charts' memory never reaches mimalloc, and the
+    // check below passes whatever the job did.
+    REQUIRE(hydra::app::malloc_redirected());
+#endif
+    hydra::app::return_freed_memory();
+    const size_t before = hydra::app::committed_bytes();
+    job_body();
+    const size_t after = hydra::app::committed_bytes();
+    MESSAGE("committed before the " << what << " " << before / (1024 * 1024) << " MB, after it "
+                                    << after / (1024 * 1024) << " MB");
+    // A test margin, not an app number: less than half of one chart's
+    // memory may still be committed.
+    CHECK(after < before + kChartBytes / 2);
+}
+
+}  // namespace
+
 // D95 call 1: once a batch ends, the memory its charts freed goes back to
 // Windows at once, not after mimalloc's purge delay. As in a real batch, each
 // result is built on a worker and freed on the batch's own thread once
 // stored; here each one carries kChartBytes.
 TEST_CASE("jobs: a finished batch hands the memory its charts freed back to Windows") {
-    static constexpr size_t kBlock = 1024;  // small blocks, as a chart's are
-    static constexpr size_t kChartBytes = 128 * 1024 * 1024;
-#ifdef NDEBUG
-    // On the Windows heap the charts' memory never reaches mimalloc, and the
-    // check below passes whatever the batch did.
-    REQUIRE(hydra::app::malloc_redirected());
-#endif
     const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
-    hydra::app::return_freed_memory();
-    const size_t before = hydra::app::committed_bytes();
-    {
+    check_job_hands_memory_back("batch", [&real] {
         RecordStore store(":memory:");
         BatchJob job(plan_of(fake_charts(4)), test_run(), store);
-        job.set_analyzer_for_test(
-            [&real](const std::string&, const AnalysisSettings&,
-                    const std::function<void(float)>&) -> AnalysisResult {
-                AnalysisResult r = real;
-                // Filled, so committed.
-                r.song.features.assign(kChartBytes / kBlock, std::string(kBlock, 'x'));
-                return r;
-            },
-            /*workers=*/2);
+        job.set_analyzer_for_test(analyzer_carrying_chart_bytes(real), /*workers=*/2);
         job.start();
         REQUIRE(wait_until([&] { return job.snapshot().finished; }));
-    }  // joins the job's thread, which runs the hand-back after the batch
-    const size_t after = hydra::app::committed_bytes();
-    MESSAGE("committed before the batch " << before / (1024 * 1024) << " MB, after it "
-                                          << after / (1024 * 1024) << " MB");
-    // A test margin, not an app number: less than half of one chart's
-    // memory may still be committed.
-    CHECK(after < before + kChartBytes / 2);
+    });
 }
 
 // D95 call 1, for the path report's build: it analyzes every chart too, so
 // once it ends the memory those charts freed goes back to Windows at once.
 // Here the one listed chart's result carries kChartBytes.
 TEST_CASE("jobs: a finished report build hands the memory its charts freed back to Windows") {
-    static constexpr size_t kBlock = 1024;  // small blocks, as a chart's are
-    static constexpr size_t kChartBytes = 128 * 1024 * 1024;
-#ifdef NDEBUG
-    // On the Windows heap the charts' memory never reaches mimalloc, and the
-    // check below passes whatever the build did.
-    REQUIRE(hydra::app::malloc_redirected());
-#endif
     const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
     // The run the default settings make, so the stored result is under its key.
     const BatchRun run = hydra::app::Settings{}.batch_run();
     RecordStore store(":memory:");
     hydra::test::name_chart(store, "fake0", "fake 0");
     hydra::test::store_batch_result(store, "fake0", run.cap_query().exact);
-    hydra::app::return_freed_memory();
-    const size_t before = hydra::app::committed_bytes();
-    {
-        hydra::ui::set_report_analyzer_for_test(
-            [&real](const std::string&, const AnalysisSettings&,
-                    const std::function<void(float)>&) -> AnalysisResult {
-                AnalysisResult r = real;
-                // Filled, so committed.
-                r.song.features.assign(kChartBytes / kBlock, std::string(kBlock, 'x'));
-                return r;
-            });
+    check_job_hands_memory_back("report build", [&] {
+        hydra::ui::set_report_analyzer_for_test(analyzer_carrying_chart_bytes(real));
         hydra::ui::ReportJob job(store, run.cap_query(), run.lens, hydra::kDefaultHitWindowMs,
                                  run);
         hydra::ui::set_report_analyzer_for_test({});
@@ -366,13 +366,7 @@ TEST_CASE("jobs: a finished report build hands the memory its charts freed back 
         REQUIRE(wait_until([&] { return job.finished(); }));
         INFO(job.message());
         REQUIRE(job.ok());  // the chart was analyzed: the build has rows
-    }  // joins the job's thread, which runs the hand-back after the build
-    const size_t after = hydra::app::committed_bytes();
-    MESSAGE("committed before the report build " << before / (1024 * 1024) << " MB, after it "
-                                                 << after / (1024 * 1024) << " MB");
-    // A test margin, not an app number: less than half of one chart's
-    // memory may still be committed.
-    CHECK(after < before + kChartBytes / 2);
+    });
 }
 
 TEST_CASE("jobs: a report job carries the cap and lens it was built from") {
