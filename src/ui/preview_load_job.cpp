@@ -41,6 +41,30 @@ long long whole_mb(uint64_t bytes) {
 
 }  // namespace
 
+PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
+                                const app::SharedBytes& container, bool pro, bool bass2x,
+                                Difficulty difficulty, const core::Rules& rules,
+                                bool noteshuffle) {
+    PreviewNotes notes{app::resolve_preview_song(entry.notespath, container, pro, bass2x,
+                                                 difficulty, rules, noteshuffle),
+                       std::nullopt};
+    // The song's length, from the same owner analysis saves through (D75),
+    // with the container already in hand. A failed read costs only the
+    // length.
+    try {
+        notes.song_length_ms = app::chart_song_length_ms(
+            app::chart_timing_meta(entry.timing, entry.notespath), entry.notespath, notes.ps.song,
+            difficulty, bass2x, rules, container);
+    } catch (const std::exception&) {
+    }
+    // A chart with no charting in this mode would otherwise build an empty
+    // scene and the tab would show a blank highway with no reason given.
+    // Throwing here surfaces it as "Preview failed: ...", the same wording
+    // analysis uses.
+    require_notes(notes.ps.song, difficulty, pro);
+    return notes;
+}
+
 double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_total) {
     if (window_start_s_ < 0.0) {
         window_start_s_ = now_s;
@@ -155,26 +179,11 @@ void PreviewLoadJob::run() {
         } guard{stop, audio_branch};
 
         // Branch (a) here: the notes.
-        app::PreviewSong ps =
-            app::resolve_preview_song(entry_.notespath, container, pro_, bass2x_, difficulty_, rules_,
-                                      noteshuffle_);
-        // The song's length, from the same owner analysis saves through
-        // (D75), with the container already in hand. A failed read costs only
-        // the length: the scrubber then ends where playback does
-        // (app::scrub_end_ms).
-        std::optional<double> song_length_ms;
-        try {
-            song_length_ms = app::chart_song_length_ms(
-                app::chart_timing_meta(entry_.timing, entry_.notespath), entry_.notespath, ps.song,
-                difficulty_, bass2x_, rules_, container);
-        } catch (const std::exception&) {
-        }
+        PreviewNotes notes = read_preview_notes(entry_, container, pro_, bass2x_, difficulty_,
+                                                rules_, noteshuffle_);
         container.reset();
-        // A chart with no charting at this difficulty would otherwise build an
-        // empty scene and the tab would show a blank highway with no reason
-        // given. Throwing here surfaces it as "Preview failed: ...", the same
-        // wording analysis uses.
-        require_notes(ps.song, difficulty_, pro_);
+        app::PreviewSong& ps = notes.ps;
+        const std::optional<double> song_length_ms = notes.song_length_ms;
         reading_done_.store(true);
         throw_if_cancelled();
 

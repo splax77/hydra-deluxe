@@ -45,6 +45,26 @@ inline render::TrackStateOptions track_options(bool pro) {
     return opts;
 }
 
+// One chart's notes in one mode, as the Preview reads them: the parsed song
+// with where chart time 0 sits in the audio, and the song's length.
+struct PreviewNotes {
+    app::PreviewSong ps;
+    // app::chart_song_length_ms (D75). Empty when the owner gives none or its
+    // read failed: the scrubber then ends where playback does
+    // (app::scrub_end_ms).
+    std::optional<double> song_length_ms;
+};
+
+// Reads `entry`'s notes for one mode (difficulty, Pro Drums, 2x Bass, Note
+// Shuffle) from `container`, app::read_preview_container's bytes for the same
+// chart (null for a loose chart). The first load and the notes reload both
+// read through here. Throws require_notes' error when the chart has no notes
+// in this mode, so the Preview says why instead of drawing a blank highway.
+PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
+                                const app::SharedBytes& container, bool pro, bool bass2x,
+                                Difficulty difficulty, const core::Rules& rules,
+                                bool noteshuffle);
+
 // Turns "bytes done so far" readings into a time-left estimate for the
 // loading bar. The rate is measured over at least one second of the load's
 // own progress, and the answer changes at most once a second, so the text
