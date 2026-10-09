@@ -21,7 +21,7 @@ Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a sc
 | `hydra_uitest --test scan` | run one test (repeatable) |
 | `hydra_uitest --list` | list the tests |
 | `hydra_uitest --script file.txt` | run a command file (see below) |
-| `--keep-temp` | keep the scratch folder (DB, INI, report HTML) and print its path |
+| `--keep-temp` | keep the scratch folder (DB, INI) and print its path |
 | `--shots <dir>` | where `screenshot` files go (default: the scratch folder) |
 | `--db <file>` | start each test from a copy of this database instead of an empty one (the file itself is never opened). A missing file is an error. Close Hydra first: a database it has open is not a clean copy |
 
@@ -31,7 +31,7 @@ Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The
 
 The 97 test charts analyze in a blink: a whole-library batch can start and finish between two frames. So a test that looks at a running batch (the strip, Pause, Stop, the settings lock) makes a `BatchGate` before it starts the batch. The gate holds each chart until the test lets it through with `allow(n)`, and `started()` says how many charts have reached it. The run is then provably still going when the test looks, however busy the machine is. The gate runs the batch on one worker unless given a count: `BatchGate gate(3)` runs three, so three charts sit at the gate at once (`batch-strip-workers` tests the strip that way).
 
-Each test starts from scratch: a temp folder with a settings INI (song folder = `testdata/input`, 97 charts; "open report automatically" off; search depth 2) and an empty DB. No browser opens, no sound card is touched, and the dmleaderboards API is canned (one user, `alice`, id `111`, whose one score is the first library chart). Reports land in the scratch folder, never in the real Documents folder. The seams are `set_open_in_browser`, `audio::set_headless`, `net::set_fetcher`, and `app::set_path_overrides`.
+Each test starts from scratch: a temp folder with a settings INI (song folder = `testdata/input`, 97 charts; "open report automatically" off; search depth 2) and an empty DB. No sound card is touched, and the dmleaderboards API is canned (one user, `alice`, id `111`, whose one score is the first library chart). The reports live in memory and write no file. The seams are `audio::set_headless`, `net::set_fetcher`, and `app::set_path_overrides`.
 
 ## Command files (no rebuild)
 
@@ -100,11 +100,23 @@ These are the labels the merged app draws. Every GUI test finds widgets by them.
 | Preview tab | text `Showing` beside the combo `##previewpath`, `< Act##prevact`, `Act >##nextact`, transport `-5s`, `< 5 Ticks`, `Play` / `Pause`, `5 Ticks >`, `+5s`, sliders `##volume` and `##scrub` |
 | Batch confirm, popup `Analyze library` | checkbox `Also re-analyze charts that already have a result##redo`, buttons `Start analyzing` and `Cancel` |
 | Running batch, child `##batchstrip` | `Pause` / `Resume`, `Stop` |
-| Finished batch, child `##batchdone` | `Open report`, `Show in folder`, `X##dismissdone`, checkbox `Open automatically` |
+| Finished batch, child `##batchdone` | `Open report`, `X##dismissdone`, checkbox `Open automatically` |
+| Path report window, `###pathreport` (title `Path report — Hydra`) | header `Refresh`; out-of-date strip `Refresh##outofdate`; left-out strip `Show files`; search `##search`, combo `##timing` (`All timing tiers` first), checkbox `Best path only`; table `##pathtable`, whose rows are clicked by their row number (`**/1`); when nothing passes, `Clear filters`; while building, `Cancel`; cancelled or failed, `Try again`. `Escape` and `Ctrl+W` close it |
+| Comparison window, `###dmreport` (title `dmleaderboards: <player> — Hydra`) | the same frame, plus `Compare another player...` in the header and the failed state; combo `##status` (`All charts` first, then the statuses, like `##status/Not in your library`); table `##dmtable`. A `not in library` row has no click |
 | Startup screen (window `Hydra`, drawn instead of everything above until the store is open) | an empty window until the click's progress delay (`kViewProgressDelaySeconds`) has passed. Then a slow normal open reads `Opening your library...` with no bar. An upgrade of an old library file shows a bordered box: `Updating your library file for this version of Hydra`, `This happens once. Your charts and results are kept.`, then a step line (`Copying your library...`, `Updating the results table...` on a 1.8.x file, `Finishing...`) over a bar whose overlay reads `rows done / rows total` (`12,345 / 38,009`). A time-left line follows the Song Preview's rule and words. There are no buttons |
-| Other modals | `Scanning charts` (`Continue`, `Cancel`); `Song folders` (`Add folder...`, `Scan now`, `Close`); `Compare dmleaderboards user` (`##dmfilter`, `Close`, `Open report` / `Open report again`, `Compare another`, `Back to list`) |
+| Other modals | `Scanning charts` (`Continue`, `Cancel`); `Song folders` (`Add folder...`, `Scan now`, `Close`); `Compare dmleaderboards user` (`Cancel` while the list loads, `Retry` and `Close` when it fails, then `##dmfilter`, player rows `###<discord id>` and `Close`; picking a player closes the box and opens the comparison window) |
 
 When unsure, `dump Hydra` and read the labels off it. The dump cuts long labels short (the test engine keeps about 30 characters), so `Hide backend rows beyond##backendlimit` prints as `Hide backend rows beyond##backe`. Combos print with an empty label; take their `##id` from the source.
+
+## The report windows
+
+The path report and the dmleaderboards comparison are their own windows (ADR 0027). In the app each one is a separate OS window. `hydra_uitest` has no platform backend, so ImGui turns that off by itself and each report window draws inside the main viewport. The test engine finds windows by name across viewports, so the same refs work in both. A report window's name ends in `###pathreport` or `###dmreport`, so its title can change without moving its saved place. A C++ test points at one with `window_named("###pathreport")` and `ctx->SetRef(...)`; a command file can try `window //###pathreport`.
+
+Their tests live in `tests/ui/uitest_report_windows.cpp`, in two groups.
+
+The first group opens the windows on sample rows, with no AppState. The test's own GUI function (`draw_windows`) draws both windows from a `ReportWindowInput` it fills itself, and records what each button hands back. The rows are the shared samples in `tests/report_samples.{h,cpp}`, the same ones `tests/test_report.cpp` pins the tiles on. These tests are `report-window-sort`, `report-window-filters`, `report-window-states`, `report-window-keys` and `report-windows-both`.
+
+The second group goes end to end through AppState: the toolbar, the batch strip, the dm picker and the settings bar. These are `report-window-open-path`, `report-window-dm-handover`, `report-window-row-click`, `report-window-reopen` and `report-window-out-of-date`. They use the canned dmleaderboards API above and never reach the real server.
 
 ## Watching it run: attached mode
 
@@ -118,7 +130,7 @@ Attached mode exists only in dev builds (`build-cpp`). The installer builds with
 
 ## Adding a C++ test
 
-Tests are split by area into four files: `uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp` and `uitest_batch_reports.cpp`. Each file ends with an entry table (`library_tests()`, `details_tests()`, and so on). Write the test in the file for its area, then add `{"thing", test_thing}` to that file's table. `uitest_paths.cpp` holds the Paths tab tests and registers them itself, from `register_paths_tests`.
+Tests are split by area into four files: `uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp` and `uitest_batch_reports.cpp`. Each file ends with an entry table (`library_tests()`, `details_tests()`, and so on). Write the test in the file for its area, then add `{"thing", test_thing}` to that file's table. `uitest_paths.cpp` holds the Paths tab tests and registers them itself, from `register_paths_tests`. `uitest_report_windows.cpp` does the same for the report windows, from `register_report_window_tests`.
 
 `register_tests` in `uitest_tests.cpp` walks the four tables. Its `kRunOrder` list keeps the order the tests had before the split, because one ImGui context carries tab and input state from one test to the next under `--all`. A test that isn't on the list runs after the listed ones, in its file's order, so a new test needs no line there. A renamed test must be renamed in `kRunOrder` too, or the runner stops with an error.
 
@@ -160,5 +172,6 @@ Rules of thumb:
 - `tests/ui/uitest_tests.cpp` — `register_tests` and its `kRunOrder` list.
 - `tests/ui/uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp`, `uitest_batch_reports.cpp` — the checked-in tests by area, each with its entry table.
 - `tests/ui/uitest_paths.cpp` — the Paths tab tests.
+- `tests/ui/uitest_report_windows.cpp` — the report windows' tests; their sample rows are in `tests/report_samples.{h,cpp}`.
 - `tests/ui/uitest_main.cpp` — the CLI and `--jobs`.
 - `src/ui/app_shell.{h,cpp}` — `setup_imgui` / `run_frame`, shared by `Hydra.exe` and the runner. `run_frame` can capture every string ImGui drew (`FrameText`), which is what `text`/`wait-text` read.

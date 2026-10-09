@@ -48,7 +48,7 @@ Songs stay in the list until the next scan, even if you changed their files. Aft
 
 **`Compare with dmleaderboards...`** compares a player's leaderboard scores with your stored results. See [Reports](#reports).
 
-**`Open path report`** opens the last path report in your browser. It appears once a report exists.
+**`Open path report`** opens the path report in its own window. It appears once your library has analyzed songs, and it stays while a report is open or building. While a batch's report builds, it reads **`Building path report...`**. You can still click it, and the window shows the build's progress. See [Reports](#reports).
 
 ## Analysis settings
 
@@ -74,7 +74,7 @@ For example, say you have a song open with 2x Bass on and want to see it with 1x
 
 ## Searching the library
 
-The library lists every song from the latest scan. Its columns are **Title**, **Artist**, **Charter**, **Folder** and **Best path**. Click a column heading to sort by it. Columns can be resized and hidden, and Hydra Deluxe remembers them, the sort included. The columns always stay in this order. While the song panel is open, the Charter and Folder columns step aside to save room, and the folder shows under the title. Song names show without Clone Hero's colour and style tags, here and on the report pages. A name that is nothing but tags reads `(unknown)`.
+The library lists every song from the latest scan. Its columns are **Title**, **Artist**, **Charter**, **Folder** and **Best path**. Click a column heading to sort by it. Columns can be resized and hidden, and Hydra Deluxe remembers them, the sort included. The columns always stay in this order. While the song panel is open, the Charter and Folder columns step aside to save room, and the folder shows under the title. Song names show without Clone Hero's colour and style tags, here and in the report windows. A name that is nothing but tags reads `(unknown)`.
 
 The **Best path** cell shows the song's state under the current analysis settings:
 
@@ -228,34 +228,70 @@ When it finishes, the strip changes to a summary: how many songs were analyzed, 
 
 ### The path report
 
-A finished batch builds the **path report**, `hydra_paths.html`. It is a sortable, searchable web page of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums and 2x Bass) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
+Hydra Deluxe has two reports: the path report and the dmleaderboards comparison. Each one opens in its own window. It's a real Windows window with its own taskbar button, so you can drag it to another monitor and keep it open while you use the rest of Hydra Deluxe. It minimizes and restores with Hydra Deluxe and sits in front of the main window. Both windows can be open at once.
 
-Hydra Deluxe keeps only each song's summary, so building the report analyzes those songs again, on all cores. Songs the batch just analyzed are reused. On a large library that adds a few seconds. A song whose file can't be read any more is left out. A line starting `Left out:` under the page's subtitle then says how many, with their file paths listed under it.
+The first time a report window opens, it covers the main window, at the same size and place. After that it opens where you last left it. If that spot is on a monitor that's no longer connected, the window opens over the main window again. The placement is saved in `hydra_ui.ini`, next to the program.
 
-Tiles at the top sum up the rows on show. The **Hardest ms** tile is the hardest squeeze or required early fill any of those paths needs. `Best path only` keeps just the optimal paths. When paths tie for the top score, it keeps every one of them, because each is optimal. The search box ignores case and accents. Every word you type must appear somewhere in the song, artist, charter or path the row shows, and the words can match different fields. Quotes and the Library's field prefixes, like `artist:`, are ordinary words here. Numbers read the same as in the app, with commas from 1,000 whatever language your browser uses, and `1 bar` at an SP cap of 1.
+### The path report
+
+The **path report** is one table of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums and 2x Bass) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
+
+A finished batch builds it. `Open path report` on the toolbar opens it at any time. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one.
+
+Hydra Deluxe keeps only each song's summary, so building the report analyzes those songs again, on all cores. Songs a batch just analyzed are reused. On a large library that takes a few seconds. While it builds, the window shows a bar reading `Analyzing n of N charts` and a `Cancel` button. Cancelling shows `Report cancelled.` with `Try again`. If the build fails, the window says `The path report could not be built.`, with the reason and `Try again`.
+
+The window is titled `Path report — Hydra`. From top to bottom it has:
+
+- **The header.** `Hydra Path Index`, a line saying what the report covers, `Built HH:MM` (when it was built), and `Refresh`, which builds it again.
+- **Strips,** only when one applies. A song whose file can't be read any more is left out of the report. A strip then says `Left out: N charts whose file couldn't be read.`, and `Show files` lists their file paths. Another strip says when the report is out of date (below).
+- **Tiles.** Five numbers that sum up the rows that pass the filters, like `Charts shown` and `Paths shown`. The **Hardest ms** tile is the hardest squeeze or required early fill any of those paths needs. The tiles change as you filter.
+- **The controls.** A search box, a timing dropdown (`All timing tiers`, or one tier) and `Best path only`. On the right, a count line says how many paths pass, like `120 of 4,512 paths`.
+- **The table.** One row per path. Hover a column heading to see what the column means.
+- **The footer.** A dim note under the table.
+
+`Best path only` starts ticked. It keeps just the optimal paths. When paths tie for the top score, it keeps every one of them, because each is optimal.
+
+The search box ignores case and accents. Every word you type must appear somewhere in the song, artist, charter or path the row shows, and the words can match different fields. Quotes and the Library's field prefixes, like `artist:`, are ordinary words here. When no row passes the filters, the window says `Nothing matches those filters.` `Clear filters` then empties the search and sets the dropdown back to all. It leaves `Best path only` as it is.
+
+The table starts sorted by score, highest first. Click a column heading to sort by it, and click it again to flip the order. Shift+click another heading to add a second sort. Empty values always sink to the bottom. Text columns sort the way the Library does. Columns can be resized and hidden, and Hydra Deluxe remembers their widths.
+
+Click a row to select that song in Hydra Deluxe, the same as clicking it in the library. If the row is for another chart mode, say Hard instead of Expert, the settings bar switches to that mode first. That way the Paths tab shows the same path as the row. While a batch runs, the settings bar is locked. A row of another mode then selects nothing, and the status line says `A batch is running.`
 
 If nothing is analyzed under the current settings but other results exist, the report says so and names the settings it looked under, like `Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).` It then suggests analyzing with these settings or changing them. Only an empty database says no records are stored yet.
 
-Reports are saved in your **Documents\Hydra** folder. Hydra Deluxe makes the folder if it's missing. If Windows can't find your Documents folder, the report goes next to Hydra Deluxe's database instead. A report an older version saved next to `hydra.db` stays there; the next batch writes a new one in Documents\Hydra.
+**When the report is out of date.** The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Changing a setting the report depends on shows `The settings changed since this report was built.` For the path report those settings are the SP cap, `1.0 fills`, the score range and the path limit. Switching the difficulty, Pro Drums or 2x Bass doesn't count, because the report already lists every chart mode. The old rows stay readable under the strip. `Refresh` builds the report again and clears it.
 
-The finished strip offers:
+**Keyboard.** `Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close it. Closing keeps the report in memory, so it opens again at once.
 
-- **`Open report`** opens it in your browser.
-- **`Show in folder`** opens the folder that holds it.
-- **`Open automatically`**: Open each report in your browser as soon as it's built.
+The finished batch strip offers:
+
+- **`Open report`** opens the path report window. The strip's second line reads `The path report is ready.`
+- **`Open automatically`**: Open the path report as soon as it's built. It covers only the path report.
 - Its `X` dismisses the strip.
 
-`Open path report` on the toolbar opens the last report at any time.
+### Old report files
+
+Older versions saved the reports as web pages, `hydra_paths.html` and `hydra_dmcompare.html`, in your **Documents\Hydra** folder. Hydra Deluxe no longer reads or writes them. It leaves any old ones where they are, because deleting your files needs your say. Delete them yourself if you don't want them.
 
 ### Compare with dmleaderboards
 
-`Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list; Hydra Deluxe remembers the last pick. Hydra Deluxe fetches their scores, matches them to your analyzed songs by chart hash, and saves a sortable page, `hydra_dmcompare.html`, in the same Documents\Hydra folder. The page lists each score, Hydra Deluxe's optimal, the points left, and a status per row. A score played at normal speed that Hydra Deluxe has a result for reads `Under optimal`, `At optimal` or `Above optimal`. A score played at any other speed reads Other speed. The rest read Not analyzed or Not in your library.
+`Compare with dmleaderboards...` compares a [dmleaderboards.com](https://dmleaderboards.com) player's posted scores with your stored optimals. Pick a player from the searchable list in the **Compare dmleaderboards user** box; Hydra Deluxe remembers the last pick. Picking a player closes the box and opens the comparison in its own window, titled `dmleaderboards: <player> — Hydra`. Hydra Deluxe fetches the player's scores and matches them to your analyzed songs by chart hash.
 
-When it's done, the window counts the scores under, at and above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library. Scores played at a speed other than 100% get their own status, Other speed. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed, so those rows show Hydra's numbers but aren't compared with its optimal.
+The comparison window works like the path report window. It has the same header, strips, tiles, controls, table, keyboard and placement. Its header reads `Hydra vs dmleaderboards` and also has `Compare another player...`, which reopens the box. There is one comparison window, so comparing another player replaces what it shows.
+
+While the scores load, the window says `Fetching scores and building the report...` and `The leaderboard server can take a moment to wake up.`, over a moving bar. The server gives no count, so the bar only shows that work is happening. `Cancel` closes the window and reopens the player list. `Refresh` fetches the player's scores again and rebuilds the comparison.
+
+The table lists each score, Hydra Deluxe's optimal, the points left, and a status per row. It starts sorted by points left, most first. A score played at normal speed that Hydra Deluxe has a result for reads `Under optimal`, `At optimal` or `Above optimal`. A score played at any other speed reads Other speed. The rest read Not analyzed or Not in your library. The status dropdown shows one status at a time, or `All charts`.
+
+Clicking a row selects its song, as in the path report. A row whose status is `not in library` has no song to select, so clicking it does nothing, and hovering it says `Not in your library`.
+
+The tiles count the scores under, at and above optimal, the ones for songs you haven't analyzed, and the ones for songs not in your library, among the rows that pass the filters. Scores played at a speed other than 100% get their own status, Other speed. Clone Hero keeps a separate leaderboard for each speed, and Hydra Deluxe's optimal is for normal speed, so those rows show Hydra's numbers but aren't compared with its optimal.
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 
 The comparison needs Expert, an SP cap of 4 and `1.0 fills` off, because the leaderboard only holds Expert scores played under Clone Hero's rules. Only songs analyzed under the current settings can match, so analyze your library first for a full comparison.
+
+The comparison goes out of date the same way the path report does, with the same strips. A batch marks it. So does a change to the difficulty, Pro Drums, 2x Bass, `1.0 fills`, the score range or the path limit, because those decide which of your results it compared against.
 
 The first request after a while can take tens of seconds, because the leaderboard's server has to wake up.
 
@@ -294,4 +330,4 @@ Every result remembers the rules it was made with. After you change the file, re
 
 ## For power users: command line tools
 
-You never need these; everything they do is in the app. Three console programs sit next to Hydra.exe and share its settings and library. `hydra_batch` analyzes the library, `hydra_report` rebuilds the path report, and `hydra_fillcompare` compares Clone Hero 1.0 and 1.1 fill results. The [developer page](development.md#command-line-tools) lists their flags.
+You never need these; everything they do is in the app. Two console programs sit next to Hydra.exe and share its settings and library. `hydra_batch` analyzes the library, and `hydra_fillcompare` compares Clone Hero 1.0 and 1.1 fill results. The path report lives only in the app. The [developer page](development.md#command-line-tools) lists their flags.

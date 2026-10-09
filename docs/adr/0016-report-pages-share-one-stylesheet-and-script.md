@@ -33,3 +33,11 @@ does not fit `PAGE` has to be added to the shared script, where every page gets
 it.
 
 This supersedes ADR 0002.
+
+## Note, 2026-10-08: only the fill page is left
+
+The path report and the dmleaderboards comparison are no longer pages. They
+are Hydra windows (D103, ADR 0027), and their pages, their `PAGE` objects and
+the CSS and script only they used are gone. The fill-spawn comparison, which
+only `hydra_fillcompare` makes, is now the one page that uses the shared
+stylesheet and script. The headless-Edge check above still applies to it.

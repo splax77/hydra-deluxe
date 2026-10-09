@@ -6,9 +6,10 @@ see the [User Guide](UserGuide.md).
 
 ## Command line tools
 
-Three console tools ship next to the app. They share its settings, rules and
+Two console tools ship next to the app. They share its settings, rules and
 database: they read the same `hydra_settings.ini`, `hydra_rules.ini` and
-`hydra.db` beside the executable.
+`hydra.db` beside the executable. The path report has no command-line tool;
+it lives only in the app (D103 item 5, ADR 0027).
 
 ```
 hydra_batch                    Analyze every chart folder from the app's settings
@@ -18,14 +19,6 @@ hydra_batch --db <path>        Target a specific database
 hydra_batch --rules <path>     Take the rule choices from this file, not hydra_rules.ini
 hydra_batch --legacy-fills     Score fills by Clone Hero 1.0's rule (needs its own --db)
 
-hydra_report                   Sortable HTML report of analyzed charts' paths (top 5 per chart and mode)
-hydra_report --paths 20        Top 20 per chart and mode
-hydra_report --all-paths       Every path the analysis kept
-hydra_report --out report.html
-hydra_report --db <path>       Report on a specific database
-hydra_report --rules <path>    Judge records against the rules in this file
-hydra_report --no-open         Write the file without opening the browser
-
 hydra_fillcompare --old <ch10.db> --new <ch11.db>
                                Compare Clone Hero 1.0 and 1.1 fill results, chart by chart
 hydra_fillcompare ... --out fill_compare.html
@@ -33,14 +26,11 @@ hydra_fillcompare ... --rules <path>
 hydra_fillcompare ... --no-open
 ```
 
-All three read the app's settings file, so they work at the same SP cap,
-timing limit and score range the app is set to. `hydra_batch` and
-`hydra_fillcompare` also use the app's chart mode. `hydra_report` covers every
-chart mode at those settings, top N paths per chart and mode, and it picks its
-charts from the chart library; `collect_rows` in src/app/report.h owns which
-charts those are (D87 item 5). The fill rule is the exception, below. All three read the scoring rules from
-`hydra_rules.ini` next to Hydra.exe, or from the file `--rules` names. If that
-file has an error, they print it and stop with exit code 2.
+Both read the app's settings file, so they work at the same SP cap, timing
+limit, score range and chart mode the app is set to. The fill rule is the
+exception, below. Both read the scoring rules from `hydra_rules.ini` next to
+Hydra.exe, or from the file `--rules` names. If that file has an error, they
+print it and stop with exit code 2.
 
 Clone Hero 1.1 changed when a drum fill appears. The app's **1.0 fills**
 setting scores by the older 1.0 rule instead. Each result remembers which rule
@@ -51,11 +41,6 @@ the app's 1.0 fills setting and goes by the flag alone. It still refuses to
 write into the app's own `hydra.db`, so give it its own `--db`. Each database it
 fills is stamped with the rule, and hydra_batch refuses (exit code 2) a run
 whose rule disagrees with the stamp.
-`hydra_report` on a database stamped 1.0 reports its 1.0 results. When it has
-nothing to show, it says why rather than calling the database empty: other
-settings hold results, or the database has no chart library, as one built by
-`hydra_batch` with folder arguments has (D89 item 2). `generate_report` in
-src/app/report.h owns those cases and their sentences.
 
 To see what the rule change did, compare the two. `hydra_fillcompare` reads
 the 1.0 results from `--old` and the 1.1 results from `--new`. Each chart's
@@ -64,7 +49,7 @@ the rules CH 1.0 and CH 1.1. Like the path report, it compares library charts
 only. A database built by `hydra_batch` with folder arguments has no chart
 library, so it stops with the path report's sentence. D92 and
 `report::lacks_chart_library` own that rule, and ADR 0026 explains it. The
-Compare with dmleaderboards page follows it too. The two databases can be two
+dmleaderboards comparison follows it too. The two databases can be two
 files, or the app's own database twice:
 
 ```
@@ -184,10 +169,50 @@ lossless round-trips over that corpus. GUI changes are checked headlessly with
 `hydra_uitest`; see [agents/ui-testing.md](agents/ui-testing.md).
 
 The program's name on screen is "Hydra Deluxe", but its files keep their older
-names: `Hydra.exe`, `hydra.db`, `hydra_settings.ini`, `hydra_ui.ini`, the
-`C:\Program Files\Hydra` install folder and the `Documents\Hydra` report
-folder. That way an upgrade from an earlier Hydra finds the user's records
-where they were.
+names: `Hydra.exe`, `hydra.db`, `hydra_settings.ini`, `hydra_ui.ini` and the
+`C:\Program Files\Hydra` install folder. That way an upgrade from an earlier
+Hydra finds the user's records where they were. Older versions also saved
+report pages in `Documents\Hydra`. Nothing reads or writes that folder any
+more, and Hydra leaves the old pages there (ADR 0027).
+
+## The report windows
+
+The path report and the dmleaderboards comparison are Hydra windows, each its
+own OS window (D103; ADR 0027 says why and what it costs). Each rule behind
+them has one owner. This list points at each; read the owner for the rule.
+
+- **The rows.** `report::generate_report` in `src/app/report.h` builds the
+  path report's rows, and `dm_report::generate_dm_report` in
+  `src/app/dm_report.h` builds the comparison's. Each result also carries the
+  subtitle and footer the window shows.
+- **The tiles.** `report::path_tiles` and `dm_report::dm_tiles`, beside the
+  two builders. Both take the rows the window shows.
+- **Search, filtering, sorting and the count line.** `TableView` in
+  `src/app/report_view.h`. It is plain C++ with no ImGui, so the doctest
+  suite pins it.
+- **Each report's columns and keep-rules.** `src/app/path_report_view.{h,cpp}`
+  and `src/app/dm_report_view.{h,cpp}`. A keep-rule is what a window's
+  dropdown and checkbox let through.
+- **When a report goes out of date.** `report::settings_change_touches` and
+  `dm_report::settings_change_touches`, beside the two builders (D103 item
+  22).
+- **The window frame.** `src/ui/report_window.{h,cpp}` draws the header,
+  strips, tiles, controls, table, footer and every state from a plain input
+  struct. It never sorts, counts or filters by itself. The thin files
+  `src/ui/path_report_window.cpp` and `src/ui/dm_report_window.cpp` fill it
+  in for each report.
+- **The OS window and its placement.** `report_window_class` and
+  `place_report_window` in `src/ui/app_shell.{h,cpp}` (D103 item 14). The
+  popup patch in `third_party/imgui/imgui.cpp` keeps popups inside their
+  window (D103 item 15).
+- **Chip colours.** `chip_color` in `src/ui/theme.{h,cpp}`.
+- **The reports' state.** AppState holds both reports as `ReportSlot`s,
+  `path_report` and `dm_report`, in `src/ui/app_state.h`, with the functions
+  that build, cancel and show them. The jobs that build them are `ReportJob`
+  in `src/ui/library_jobs.h` and `DmReportJob` in `src/ui/dm_jobs.h`.
+
+The GUI tests for the windows are in `tests/ui/uitest_report_windows.cpp`;
+[agents/ui-testing.md](agents/ui-testing.md) lists them.
 
 ## Developer tools
 
