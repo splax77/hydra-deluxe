@@ -125,6 +125,7 @@ const std::vector<Key>& keys() {
         word("view_difficulty", &Settings::view_difficulty),
         on_off("view_prodrums", &Settings::view_prodrums),
         on_off("view_bass2x", &Settings::view_bass2x),
+        on_off("view_noteshuffle", &Settings::view_noteshuffle),
         // Below 0 the search crashes (finding 311).
         number("depth_value", &Settings::depth_value, 0, kNoCeiling),
         // A switch: 0 is scores, 1 is points, and anything else is scores,
@@ -270,18 +271,25 @@ std::string Settings::chartmode_key() const {
     std::string bass = effective_bass2x() ? "2x Bass" : "1x Bass";
     // The word comes from difficulty(), so an uncleaned view_difficulty
     // ("easy", "Legendary") still names a real difficulty (finding 134).
-    return std::string(difficulty_name(difficulty())) + " " + prodrums + ", " + bass;
+    std::string key = std::string(difficulty_name(difficulty())) + " " + prodrums + ", " + bass;
+    // Only an ending, so a key stored before Note Shuffle existed still names
+    // the unshuffled result (D104).
+    if (view_noteshuffle) key += ", Note Shuffle";
+    return key;
 }
 
 std::optional<Settings> Settings::with_chartmode(const std::string& chartmode) const {
     for (Difficulty d : kAllDifficulties) {
         for (bool prodrums : {true, false}) {
             for (bool bass2x : {true, false}) {
-                Settings mode = *this;
-                mode.view_difficulty = difficulty_name(d);
-                mode.view_prodrums = prodrums;
-                mode.view_bass2x = bass2x;
-                if (mode.chartmode_key() == chartmode) return mode;
+                for (bool noteshuffle : {false, true}) {
+                    Settings mode = *this;
+                    mode.view_difficulty = difficulty_name(d);
+                    mode.view_prodrums = prodrums;
+                    mode.view_bass2x = bass2x;
+                    mode.view_noteshuffle = noteshuffle;
+                    if (mode.chartmode_key() == chartmode) return mode;
+                }
             }
         }
     }
