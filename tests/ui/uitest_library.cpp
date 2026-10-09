@@ -207,7 +207,8 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
-    ctx->SetRef("//Hydra");
+    // The open popup outlives the test, so the next test could hover nothing.
+    close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, [&] { return !compare_disabled(); }, 5));
 }
 
