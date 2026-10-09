@@ -71,8 +71,8 @@ struct FillCompareStats {
 };
 FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows);
 
-// The self-contained comparison page. Same __SUBTITLE__/__FOOTER__/__DATA__
-// placeholder mechanism as report::build_html, with its own columns.
+// The self-contained comparison page, with its own columns. Its template comes
+// from html::page_template and html::render_page fills it (html_page.h).
 std::string build_fill_html(const std::vector<FillCompareRow>& rows,
                             const std::string& subtitle,
                             const std::string& footer);
