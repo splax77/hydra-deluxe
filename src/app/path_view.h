@@ -246,13 +246,13 @@ inline std::string path_item_id(const std::string& label, size_t index) {
 struct PathsTabUi {
     std::vector<char> act_open;       // one per activation row; char, not vector<bool>
     std::vector<char> backends_open;  // one per activation row
-    bool mult_open = false;
-    bool breakdown_open = false;
+    bool mult_open = true;
+    bool breakdown_open = true;
     // The 0-based activation "Show in Preview" asked for, until the Preview
     // tab has moved its playhead there.
     std::optional<size_t> preview_jump;
 
-    // A fresh path: `rows` rows, the first one open, every backend table folded.
+    // A fresh path: `rows` rows, the first one open, every backend table open.
     void reset(size_t rows);
     // Every row open; false when there are no rows.
     bool all_open() const;

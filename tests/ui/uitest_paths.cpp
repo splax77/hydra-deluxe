@@ -280,6 +280,12 @@ void test_paths_rows(ImGuiTestContext* ctx) {
 void test_paths_backend_timings(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
+    // Row 1 opens with its backend table open; its fold closes and reopens it.
+    IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
+    IM_CHECK(on_screen(h, "Insane SqOut"));
+    ctx->ItemClick("**/Backend timings##act1");
+    ctx->Yield(2);
+    IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
     IM_CHECK(!on_screen(h, "Insane SqOut"));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
@@ -326,21 +332,25 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     if (!open_burnout(ctx)) return;
     FakeClipboard clipboard;
 
+    // Both folds start open; a click closes each and another reopens it.
     IM_CHECK(on_screen(h, "+15"));  // beside the Multiplier squeeze fold
+    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
+    IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red snare - Yellow cymbal]"));
+    ctx->ItemClick("**/Multiplier squeeze##mult");
+    ctx->Yield(2);
     IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "Hit [Red snare] first."));
-    IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red snare - Yellow cymbal]"));
 
-    IM_CHECK(!on_screen(h, "Total Score:"));
-    ctx->ItemClick("**/Score breakdown##breakdown");
-    ctx->Yield(2);
     IM_CHECK(on_screen(h, "Total Score:"));
     IM_CHECK(on_screen(h, "Avg. Multiplier:"));
     ctx->ItemClick("**/Score breakdown##breakdown");
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, "Total Score:"));
+    ctx->ItemClick("**/Score breakdown##breakdown");
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Total Score:"));
 
     IM_CHECK(!on_screen(h, "Copied!"));
     ctx->ItemClick("**/Copy path");
@@ -375,11 +385,7 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Expand all");
     ctx->Yield(2);
     const size_t rows = h.app->details_ui.paths_tab.ui().act_open.size();
-    IM_CHECK(rows > 0);
-    for (size_t i = 1; i <= rows; ++i) {
-        ctx->ItemClick(("**/Backend timings##act" + std::to_string(i)).c_str());
-        ctx->Yield(1);
-    }
+    IM_CHECK(rows > 0);  // every row's backend table opens with it
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
     IM_CHECK(on_screen(h, "It costs no points, because Hydra's score never counted that "
@@ -400,9 +406,8 @@ void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     ImGuiWindow* panel = ctx->WindowInfo("//Hydra/##songpanel").Window;
     IM_CHECK_FLOAT_NEAR_EQ(panel->Size.x, hydra::ui::px(hydra::ui::kMinSongPanelW), 1.0f);
 
-    ctx->ItemClick("**/Expand all");
+    ctx->ItemClick("**/Expand all");  // every row and its backend table
     ctx->Yield(1);
-    ctx->ItemClick("**/Backend timings##act1");
     ctx->ItemClick("**/Copy path");
     ctx->Yield(2);
     IM_CHECK(on_screen(h, "Copied!"));
@@ -483,8 +488,7 @@ ImGuiTable* backend_table(int number) {
 void test_paths_backend_fit(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    if (!narrowest_panel(ctx)) return;
-    ctx->ItemClick("**/Backend timings##act1");
+    if (!narrowest_panel(ctx)) return;  // row 1 is open, its backend table too
     ctx->Yield(3);
     IM_CHECK(on_screen(h, "Insane SqOut (eff. 163.5 ms) <-- squeezed out (-260)"));
     ImGuiTable* t = backend_table(1);

@@ -1235,7 +1235,7 @@ TEST_CASE("PathsTabUi: one row open at a time, expand and collapse all") {
     PathsTabUi ui;
     ui.reset(3);
     CHECK(ui.act_open == std::vector<char>{1, 0, 0});
-    CHECK(ui.backends_open == std::vector<char>{0, 0, 0});
+    CHECK(ui.backends_open == std::vector<char>{1, 1, 1});
     CHECK_FALSE(ui.all_open());
 
     ui.click_row(2);  // opens row 3 alone
