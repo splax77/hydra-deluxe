@@ -87,3 +87,7 @@ A follow-up agent (task id RW-T6c) applies these in T6's worktree, on top of T6'
 3. **Nothing to analyze (item 26).** When the progress total is 0, the bar moves with no count, the way the comparison's building bar does, under the building subtitle. Reuse the comparison's moving-bar code; don't write a second one. Pin it in a uitest (a seed that covers every chart) or a window-input test.
 
 Tests: the touched uitest scripts by name, and `-sf=*test_report.cpp*` if the progress case changes.
+
+## Review findings 1 and 2: owned files added (orchestrator, 2026-10-08)
+
+For the review's findings 1 (`on_screen` written twice) and 2 (`CannedDm` copying the harness's canned dm JSON), the fix round and the sign-off reviewer also own `tests/ui/uitest_harness.{h,cpp}` (one shared `on_screen` beside `visible_text`, and the canned JSON exposed once) and `tests/ui/uitest_paths.cpp` (calls the shared `on_screen`). T7 edits `uitest_harness.{h,cpp}` this wave too (removing the browser and folder recorders); keep to those two helpers, and the main session resolves the overlap at the merge.
