@@ -150,22 +150,6 @@ struct CliSandbox {
     }
     std::string db(const char* name) const { return (dir / name).u8string(); }
     std::string folder() const { return songs.u8string(); }
-
-    // A database with a chart library, built the way a user builds one: the
-    // sandbox's hydra_settings.ini lists the songs folder as a chart folder and
-    // hydra_batch runs with no folder arguments (D79 item 1: folder arguments
-    // never save a library). `extra` holds any further flags, e.g. --legacy-fills.
-    std::string library_db(const char* name, std::vector<std::string> extra = {}) const {
-        hydra::app::Settings settings{};
-        settings.chartfolders = {folder()};
-        REQUIRE(settings.save_file((dir / "hydra_settings.ini").u8string()));
-        const std::string path = db(name);
-        extra.insert(extra.end(), {"--db", path});
-        const RunResult r = run_exe(batch, extra);
-        INFO(r.output);
-        REQUIRE(r.exit_code == 0);
-        return path;
-    }
 };
 
 }  // namespace
