@@ -152,10 +152,14 @@ std::optional<std::string> save_scan_as_library(store::RecordStore& store,
 std::map<std::string, std::string> read_song_ini_keys(const std::string& path);
 
 // The settings a batch run applies uniformly. Everything the search itself reads
-// lives on the SearchSettings base; the two flags here are parse-time only.
+// lives on the SearchSettings base; the flags here are parse-time only.
 struct AnalysisSettings : SearchSettings {
     bool prodrums = true;
     bool bass2x = true;
+    // The Note Shuffle switch (Settings::view_noteshuffle), handed to the
+    // loader. Off by default, so every existing caller reads the chart as
+    // written.
+    bool noteshuffle = false;
     // Which charted difficulty to read. Expert by default, so every existing
     // caller keeps the behavior it had.
     Difficulty difficulty = Difficulty::Expert;

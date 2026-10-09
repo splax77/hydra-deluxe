@@ -64,6 +64,8 @@ While a batch runs, the bar is locked and says `Stop the batch to change these.`
 
 For example, say you have a song open with 2x Bass on and want to see it with 1x bass. Untick 2x Bass and the song is analyzed again without its 2x kicks. Tick it again and the 2x result comes back.
 
+**Note Shuffle.** Score the chart the way Clone Hero 1.1's Note Shuffle modifier rearranges it. The game moves notes between pads, and the move is the same every time for a given chart and drum setting. So each Difficulty, Pro Drums and 2x Bass choice gets its own shuffled result, kept beside the unshuffled one. The Paths, Preview, Stars and Dynamics tabs and batches all use the shuffled chart while it's on. If Clone Hero would freeze trying to shuffle a chart, that chart shows no path, and a sentence saying so takes its place. The leaderboard comparison is off while Note Shuffle is on, because leaderboard scores don't say whether it was used.
+
 **SP cap.** The most bars of Star Power the meter can hold during the analysis. 4 is Clone Hero's rule and the default. Leave it at 4 for paths you mean to play. Any other number is a what-if: its scores can't be reached in the game. At 1 bar no path can activate Star Power, and the Paths tab says so. Results are kept per cap, so a 4-bar result and a 16-bar result for the same song sit side by side. The leaderboard comparison only runs at 4 bars.
 
 **1.0 fills.** Spawn drum fills by Clone Hero 1.0's rule instead of 1.1's. A fill only appears if your Star Power was ready in time. Clone Hero 1.1 wants it ready 4 beats before the fill. 1.0 wanted it about one fill-length before, so short fills were looser and long fills stricter. Leave it off for current Clone Hero. Tick it to price a run played on 1.0. Results are kept per rule, so a song can hold a 1.1 result and a 1.0 result side by side. The leaderboard comparison needs it off. Everywhere else, Hydra Deluxe names the two rules `Clone Hero 1.0` and `Clone Hero 1.1`, or `CH 1.0` and `CH 1.1` in narrow columns.
@@ -164,7 +166,7 @@ The Preview plays the chart as a 3D note highway, in time with the song's audio.
 
 Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
 
-The Preview follows the Analysis settings. Change the difficulty, Pro Drums or 2x Bass and it reloads with that mode's notes. If the chart has no notes for that mode, it says so, like `No Hard Pro Drums notes in this chart.` If the chart file changed since it was analyzed, the Preview draws no path and shows `This chart changed since it was analyzed. Click the song again to see its path.`
+The Preview follows the Analysis settings. Change the difficulty, Pro Drums, 2x Bass or Note Shuffle and it reloads with that mode's notes. If the chart has no notes for that mode, it says so, like `No Hard Pro Drums notes in this chart.` If the chart file changed since it was analyzed, the Preview draws no path and shows `This chart changed since it was analyzed. Click the song again to see its path.`
 
 **`Showing`** picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (best all-0)`.
 
@@ -234,7 +236,7 @@ The first time a report window opens, it covers the main window, at the same siz
 
 ### The path report
 
-The **path report** is one table of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums and 2x Bass) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
+The **path report** is one table of every analyzed song's paths, squeeze timings and scores. It lists every chart mode (each difficulty, with or without Pro Drums, 2x Bass and Note Shuffle) analyzed at the current SP cap, fill rule, path limit and score range. Each chart and mode shows its top 5 paths.
 
 A finished batch builds it. `Open path report` on the toolbar opens it at any time. Hydra Deluxe keeps the report in memory, not in a file. So the first time you open it after starting Hydra Deluxe, it builds a fresh one. Closing the window lets the report go, to save memory, and opening it again builds a fresh one too. The window keeps your search, timing choice, `Best path only` and sort for it. `Refresh` and a batch's new report start them over. If a build is still running when you close the window, it stops. A report a batch builds while the window is closed waits for you to open it.
 
@@ -259,7 +261,7 @@ Click a row to select that song in Hydra Deluxe, the same as clicking it in the 
 
 If nothing is analyzed under the current settings but other results exist, the report says so and names the settings it looked under, like `Nothing is analyzed under these settings (SP cap 8, Clone Hero 1.1 fills).` It then suggests analyzing with these settings or changing them. Only an empty database says no records are stored yet.
 
-**When the report is out of date.** The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Changing a setting the report depends on shows `The settings changed since this report was built.` For the path report those settings are the SP cap, `1.0 fills`, the score range and the path limit. Switching the difficulty, Pro Drums or 2x Bass doesn't count, because the report already lists every chart mode. The old rows stay readable under the strip. `Refresh` builds the report again and clears it.
+**When the report is out of date.** The window never changes its rows behind your back. After a batch, a report built before it shows a strip: `Your library changed since this report was built (a batch finished at HH:MM).` Changing a setting the report depends on shows `The settings changed since this report was built.` For the path report those settings are the SP cap, `1.0 fills`, the score range and the path limit. Switching the difficulty, Pro Drums, 2x Bass or Note Shuffle doesn't count, because the report already lists every chart mode. The old rows stay readable under the strip. `Refresh` builds the report again and clears it.
 
 **Keyboard.** `Tab` moves through the controls and the table. The `Up` and `Down` arrows move the row selection, and each move selects the song, like a click. `Escape` or `Ctrl+W` closes the window, and so does its `X`. While you're typing in the search box, `Escape` doesn't close it. Closing the path report lets it go, as described under the path report above. Closing the comparison keeps it in memory, so it opens again at once.
 
@@ -289,9 +291,9 @@ The header line gives the player's total number of scores. The tiles count only 
 
 Rows above optimal are expected, not errors. Hydra Deluxe's optimal leaves out several score backends on purpose. Many leaderboard scores were also set on older Clone Hero versions, whose fill rules allowed totals that are impossible now.
 
-The comparison needs Expert, an SP cap of 4 and `1.0 fills` off, because the leaderboard only holds Expert scores played under Clone Hero's rules. Only songs analyzed under the current settings can match, so analyze your library first for a full comparison.
+The comparison needs Expert, an SP cap of 4, `1.0 fills` off and Note Shuffle off. The leaderboard only holds Expert scores played under Clone Hero's rules, and its scores don't say whether Note Shuffle was on. Only songs analyzed under the current settings can match, so analyze your library first for a full comparison.
 
-The comparison goes out of date the same way the path report does, with the same strips. A batch marks it. So does a change to the difficulty, Pro Drums, 2x Bass, `1.0 fills`, the score range or the path limit, because those decide which of your results it compared against.
+The comparison goes out of date the same way the path report does, with the same strips. A batch marks it. So does a change to the difficulty, Pro Drums, 2x Bass, Note Shuffle, `1.0 fills`, the score range or the path limit, because those decide which of your results it compared against.
 
 The first request after a while can take tens of seconds, because the leaderboard's server has to wake up.
 

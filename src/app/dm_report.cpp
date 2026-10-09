@@ -30,7 +30,8 @@ void count_status(DmReportStats& stats, const DmReportRow& r) {
 
 }  // namespace
 
-std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills) {
+std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills,
+                               bool note_shuffle) {
     if (difficulty != Difficulty::Expert)
         return "Needs Expert: the leaderboard only has Expert scores.";
     if (sp_cap != kCloneHeroSpCap)
@@ -40,6 +41,10 @@ std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fi
         return std::string("Needs ") +
                fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long) +
                " fills: untick \"1.0 fills\". The leaderboard is played on current Clone Hero.";
+    // D104 item 6: a board score never records its modifiers.
+    if (note_shuffle)
+        return "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
+               "compared with a shuffled path.";
     return std::string();
 }
 
@@ -47,13 +52,16 @@ std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
                                          const std::vector<net::DmScore>& scores,
                                          const std::string& chartmode,
                                          const store::Lens& lens) {
-    // The Clone Hero rules come from why_not_comparable. Of its three inputs,
-    // only the fill rule arrives here: the cap is forced to Clone Hero's
-    // below, and the difficulty is folded into `chartmode`, so the caller's
-    // settings take that rule to the same owner (the library toolbar asks it
-    // for all three before a comparison can start).
+    // The Clone Hero rules come from why_not_comparable. Of its four inputs,
+    // the fill rule arrives in `lens` and Note Shuffle in `chartmode`, read
+    // back through its owner. The cap is forced to Clone Hero's below, and the
+    // difficulty is folded into `chartmode`, so the caller's settings take
+    // that rule to the same owner (the library toolbar asks it for all four
+    // before a comparison can start).
+    const std::optional<Settings> mode = Settings{}.with_chartmode(chartmode);
     const std::string refused =
-        why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, lens.legacy_fills != 0);
+        why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, lens.legacy_fills != 0,
+                           mode && mode->view_noteshuffle);
     if (!refused.empty()) throw KindedError(ErrorKind::AlreadyPlain, refused);
     // The page compares library charts only, as the path report does (D92).
     if (report::lacks_chart_library(store))

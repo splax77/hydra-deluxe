@@ -1411,6 +1411,29 @@ const std::vector<OwnerRule>& rules() {
           "const DynamicsRowInfo& info = dynamics_row_info(r);"},
          {{"src/app/dynamics_breakdown.cpp", "if (r == DynamicsRow::Count) return std::string();",
            "dynamics_row_label's guard: Count marks the end of the rows and names no row"}}},
+        // Which Dynamics rows are pads, decided by cutting the row order at a
+        // named row. Four copies once did (pads_total, dynamics_for_settings,
+        // the Dynamics tab's pad table and a Note Shuffle test); a row added
+        // or moved in the enum would have split them. is_pad_row reads the
+        // row table instead.
+        {"Which Dynamics rows are pad rows?",
+         "is_pad_row in src/app/dynamics_breakdown.cpp",
+         R"([<>]=?\s*(static_cast<\w+>\(\s*)?(app::)?DynamicsRow::(GreenTom|Kick)\b)",
+         "",
+         {},
+         {},
+         "Note Shuffle wave derive-once review (ns-review) finding 1 (2026-10-09)",
+         {"for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) t += rows[i];",
+          "for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i)",
+          "for (int i = 0; i <= static_cast<int>(app::DynamicsRow::GreenTom); ++i) {",
+          "const bool pad = i <= static_cast<size_t>(app::DynamicsRow::GreenTom);",
+          "if (r < app::DynamicsRow::Kick) t += bd.row(r);"},
+         {"{DynamicsRow::GreenTom,     NoteColor::Green,  false, false},",
+          "const app::DynamicsCounts& k = bd.row(app::DynamicsRow::Kick);",
+          "if (!app::is_pad_row(r)) continue;",
+          "auto r = static_cast<app::DynamicsRow>(i);"},
+         {},
+         {"src", "tools", "tests"}},
         // "Is the typed search narrowing the library?" asked of the query,
         // from outside the model or inside it. LibraryModel::searching
         // answers it, from the model's own query_.
@@ -3399,7 +3422,7 @@ const std::vector<OwnerRule>& rules() {
         // from a loop's enum, or a built key tested against a wanted one.
         // report.cpp's settings_for_mode and AppState::select_chart each had
         // one before the RW-T4 review.
-        {"Which Difficulty, Pro Drums and 2x Bass choices spell a chart mode key?",
+        {"Which Difficulty, Pro Drums, 2x Bass and Note Shuffle choices spell a chart mode key?",
          "Settings::with_chartmode in src/app/config.cpp",
          R"(\bview_difficulty\s*=\s*difficulty_name\(\s*\w+\s*\)|\.chartmode_key\(\)\s*(==|!=)\s*[A-Za-z_]\w*\s*\))",
          "",
@@ -6236,7 +6259,6 @@ struct KnownClone {
 // later fix; removing one means removing its entry here.
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
-        {"src/app/dynamics_breakdown.cpp", "tests/test_dynamics_breakdown.cpp", 9, R"x({DynamicsRow::RedSnare, NoteColor::Red, false, false},)x"},
         {"src/audio/ma_reader.cpp", "src/audio/vorbis_reader.cpp", 9, R"x(pos_ += done;)x"},
         {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
         {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},

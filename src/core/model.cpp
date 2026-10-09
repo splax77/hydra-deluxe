@@ -247,8 +247,41 @@ ChordNote& Chord::add_note(NoteColor color) {
 
 void Chord::insert_note(const ChordNote& note) { at(note.colortype) = note; }
 
-void Chord::add_2x() {
-    set_lane_flag(add_note(NoteColor::Kick));
+// The one owner of what a note plays as when a second ghost or accent mark
+// lands on it: the merged kick below and the .chart markers both call it.
+// Clone Hero keeps every mark on the chart note, and its note-list builder
+// (0x20D4BE0, at 0x20D4E1F to 0x20D4E45) then gives the play note one, with
+// accent ahead of ghost.
+static void add_dynamic_mark(ChordNote& note, NoteDynamicType mark) {
+    if (note.is_accent() || mark == NoteDynamicType::Normal) return;
+    note.dynamictype = mark;
+}
+
+// Clone Hero's readers keep both kicks; its track finalizer then ORs their
+// flags onto one of them and deletes the other (0x215B8C0, 0x5DB0C0), so the
+// kick that stays carries the 2x mark and both kicks' ghost or accent marks.
+ChordNote& Chord::add_kick(bool is2x, NoteDynamicType dyn) {
+    std::optional<ChordNote>& kick = at(NoteColor::Kick);
+    if (!kick.has_value()) {
+        ChordNote& added = add_note(NoteColor::Kick);
+        added.dynamictype = dyn;
+        if (is2x) set_lane_flag(added);
+        return added;
+    }
+    // Two kicks of one kind: add_note raises the duplicate.
+    if (lane_flag(*kick) == is2x) return add_note(NoteColor::Kick);
+    set_lane_flag(*kick);
+    add_dynamic_mark(*kick, dyn);
+    return *kick;
+}
+
+void Chord::add_2x() { add_kick(true, NoteDynamicType::Normal); }
+
+bool Chord::apply_2x_bass(bool bass2x) {
+    std::optional<ChordNote>& kick = at(NoteColor::Kick);
+    if (bass2x || !kick.has_value() || !lane_flag(*kick)) return false;
+    kick.reset();
+    return true;
 }
 
 // A cymbal, ghost or accent marker with no note of its colour under it is a
@@ -262,12 +295,12 @@ void Chord::apply_cymbal(NoteColor color) {
 
 void Chord::apply_ghost(NoteColor color) {
     if (!at(color)) throw ChartFileError("ghost marker with no note under it");
-    at(color)->dynamictype = NoteDynamicType::Ghost;
+    add_dynamic_mark(*at(color), NoteDynamicType::Ghost);
 }
 
 void Chord::apply_accent(NoteColor color) {
     if (!at(color)) throw ChartFileError("accent marker with no note under it");
-    at(color)->dynamictype = NoteDynamicType::Accent;
+    add_dynamic_mark(*at(color), NoteDynamicType::Accent);
 }
 
 const ChordNote& Chord::activation_note() const {

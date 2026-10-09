@@ -531,14 +531,12 @@ void ViewJob::run() {
                 }
             }
             throw_if_cancelled();
-            // The Dynamics count reuses the analysis's song only when that
-            // parse is the count's own; otherwise it parses as the count does.
+            // When the count may reuse the analysis's song: see
+            // app::dynamics_for_settings.
             try {
-                if (out_.analysis && app::analysis_parse_counts_dynamics(settings_.bass2x))
-                    out_.dynamics = app::count_dynamics(out_.analysis->song);
-                else
-                    out_.dynamics = app::count_dynamics(
-                        app::load_dynamics_song(path, settings_.prodrums, settings_.difficulty));
+                out_.dynamics = app::dynamics_for_settings(
+                    path, settings_.prodrums, settings_.bass2x, settings_.difficulty,
+                    settings_.noteshuffle, out_.analysis ? &out_.analysis->song : nullptr);
             } catch (const std::exception& e) {
                 out_.dynamics_error = e.what();
                 out_.dynamics_message = app::plain_error(e);

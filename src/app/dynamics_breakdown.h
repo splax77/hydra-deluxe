@@ -69,6 +69,11 @@ struct DynamicsRowInfo {
 // The table entry for row `r`. `r` must be a real row, not Count.
 const DynamicsRowInfo& dynamics_row_info(DynamicsRow r);
 
+// Whether row `r` is a pad row, read from its table entry: the one answer to
+// which rows the pad table shows and pads_total() sums. `r` must be a real
+// row, not Count.
+bool is_pad_row(DynamicsRow r);
+
 // The row a note is counted in.
 DynamicsRow dynamics_row_for(const ChordNote& note);
 
@@ -132,14 +137,27 @@ constexpr bool kDynamicsParseBass2x = true;
 
 // The Dynamics count's own parse of a chart at `difficulty` and `pro`: 2x
 // kicks kept, the parser's default rules, and no notes check, so a
-// difficulty with no charting counts as all zero.
-Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty);
+// difficulty with no charting counts as all zero. `noteshuffle` is the Note
+// Shuffle switch, the same one the analysis reads (D104 item 1): a shuffled
+// note keeps its ghost or accent but can land on another pad.
+Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty,
+                        bool noteshuffle = false);
 
 // Whether a song an analysis parsed with `bass2x`, at the count's own
-// difficulty and pro, counts exactly as load_dynamics_song's would, so the
-// count can reuse it. The rules never change the count (pinned in
-// test_dynamics_breakdown), so only the 2x kicks decide.
+// difficulty, pro and Note Shuffle switch, counts exactly as
+// load_dynamics_song's would, so the count can reuse it. The rules never
+// change the count (pinned in test_dynamics_breakdown), so only the 2x kicks
+// decide.
 bool analysis_parse_counts_dynamics(bool bass2x);
+
+// The Dynamics tab's count for a chart under the click's settings: the one
+// owner of which parse each row reads. `analysis_song` is the song the
+// click's analysis parsed under the same settings, or null when it has none.
+// Pad rows follow the shuffle the analysis saw; kick rows always come from
+// the count's own parse, so the 2x kick row is known with 2x Bass off.
+DynamicsBreakdown dynamics_for_settings(const std::string& notespath, bool pro, bool bass2x,
+                                        Difficulty difficulty, bool noteshuffle,
+                                        const Song* analysis_song);
 
 }  // namespace app
 }  // namespace hydra

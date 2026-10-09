@@ -15,6 +15,9 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/dynamics_breakdown.h"
+#include "app/user_messages.h"
+#include "core/error_kind.h"
 #include "core/model.h"
 #include "core/strutil.h"
 #include "chart_text.h"
@@ -25,6 +28,8 @@
 #include "parse/chart_files.h"
 #include "parse/song.h"
 #include "song_digest.h"
+#include "source_tree.h"
+#include "ui/preview_controller.h"  // PreviewSongKey
 
 #ifndef HYDRA_TESTDATA_DIR
 #error "HYDRA_TESTDATA_DIR must be defined (see CMakeLists.txt)"
@@ -314,8 +319,9 @@ TEST_CASE("song: solo_sections lists each run of solo chords once") {
 TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting") {
     // Tick 0: a kick, a 2x kick on the same tick, and a red. Tick 192: a lone
     // 2x kick. Tick 384: a yellow. Tick 576: a 2x kick written before a kick
-    // on the same tick. A tick holds one kick whichever way 2x Bass is set,
-    // so only the lone 2x kick at 192 moves the total.
+    // on the same tick. The two kicks on one tick merge into one 2x kick
+    // (D105), so 2x Bass off removes all three kicks, and on keeps one per
+    // tick.
     const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
         "ExpertDrums",
         "  0 = N 0 0\n  0 = N 32 0\n  0 = N 1 0\n"
@@ -323,7 +329,7 @@ TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting")
         "  384 = N 2 0\n"
         "  576 = N 32 0\n  576 = N 0 0\n"));
     CHECK(load_songbytes_chart(data, true, /*bass2x=*/true).note_count() == 5);
-    CHECK(load_songbytes_chart(data, true, /*bass2x=*/false).note_count() == 4);
+    CHECK(load_songbytes_chart(data, true, /*bass2x=*/false).note_count() == 2);
     // A chart with no notes counts none.
     CHECK(Song(192).note_count() == 0);
 }
@@ -811,6 +817,104 @@ TEST_CASE("load-and-check throws the no-notes error for a missing difficulty") {
     CHECK_NOTHROW(load_songpath_with_notes(has_hard, true, true, Difficulty::Hard));
 }
 
+// ---- the Note Shuffle switch on the loaders (D104) ---------------------------
+
+namespace {
+
+const std::string kShuffleSongs =
+    (sourcetree::root() / "docs/audit/note-shuffle/game-tests/songs/").u8string();
+
+std::vector<std::string> chord_codes(const Song& song) {
+    std::vector<std::string> out;
+    for (const SongTimestamp& ts : song.sequence) out.push_back(ts.chord.code());
+    return out;
+}
+
+Song load_shuffle_song(const std::string& file, bool pro, bool bass2x, bool noteshuffle) {
+    return load_songpath(kShuffleSongs + file, pro, bass2x, Difficulty::Expert,
+                         core::default_rules(), noteshuffle);
+}
+
+}  // namespace
+
+TEST_CASE("Note Shuffle switch: a game-confirmed song loads shuffled on and as written off") {
+    const std::string a1 = "NS A1 tick scale chart192/notes.chart";
+    // The game-confirmed A1 run with Pro Drums on, the literal test_note_shuffle
+    // pins from the reference.
+    const std::vector<std::string> shuffled = {
+        "nn...", "..n..", "...n.", "..n..", "n..n.", "n....", "..n..", "...n.",
+        "nn...", "....n", "..N..", "...n.", "n.N..", "....N", "...n.", "n.n.."};
+    CHECK(chord_codes(load_shuffle_song(a1, true, false, true)) == shuffled);
+
+    const std::vector<std::string> off = chord_codes(load_shuffle_song(a1, true, false, false));
+    CHECK(off == chord_codes(load_songpath(kShuffleSongs + a1, true, false)));
+    CHECK(off != shuffled);
+
+    // The app's switch reaches the analysis settings.
+    app::Settings s;
+    CHECK_FALSE(s.to_analysis_settings().noteshuffle);
+    s.view_noteshuffle = true;
+    CHECK(s.to_analysis_settings().noteshuffle);
+}
+
+TEST_CASE("Note Shuffle switch: a chart the game freezes on gives the freeze error") {
+    const std::string c1 = "NS C1 four colour then snare/notes.mid";
+    const char* sentence = "Clone Hero freezes loading this chart with Note Shuffle on.";
+    for (const bool pro : {true, false}) {
+        CAPTURE(pro);
+        bool threw = false;
+        try {
+            load_shuffle_song(c1, pro, false, true);
+        } catch (const KindedError& e) {
+            threw = true;
+            CHECK(e.kind() == ErrorKind::NoteShuffleFreezes);
+            CHECK(app::plain_error(e) == sentence);
+        }
+        CHECK(threw);
+        CHECK_NOTHROW(load_shuffle_song(c1, pro, false, false));
+    }
+
+    // Analysis shows it the way it shows an unreadable chart: the error
+    // escapes analyze_chart_file, and its sentence is the freeze's.
+    app::Settings s;
+    s.view_noteshuffle = true;
+    bool threw = false;
+    try {
+        app::analyze_chart_file(kShuffleSongs + c1, s.to_analysis_settings());
+    } catch (const std::exception& e) {
+        threw = true;
+        CHECK(app::plain_error(e) == sentence);
+    }
+    CHECK(threw);
+}
+
+TEST_CASE("Note Shuffle switch: the Preview's song key differs when only the switch differs") {
+    const ui::PreviewSongKey off{"md5", Difficulty::Expert, true, true, false};
+    ui::PreviewSongKey on = off;
+    on.noteshuffle = true;
+    CHECK(off != on);
+    CHECK(off == ui::PreviewSongKey{"md5", Difficulty::Expert, true, true});
+}
+
+TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle") {
+    const std::string a2 = "NS A2 tick scale mid960/notes.mid";
+    const std::string path = kShuffleSongs + a2;
+    for (const bool bass2x : {true, false}) {
+        CAPTURE(bass2x);
+        const app::DynamicsBreakdown bd =
+            app::dynamics_for_settings(path, true, bass2x, Difficulty::Expert, true, nullptr);
+        const app::DynamicsBreakdown pads =
+            app::count_dynamics(load_shuffle_song(a2, true, bass2x, true));
+        const app::DynamicsBreakdown kicks = app::count_dynamics(
+            app::load_dynamics_song(path, true, Difficulty::Expert, false));
+        for (size_t i = 0; i < bd.rows.size(); ++i) {
+            CAPTURE(i);
+            const bool pad = app::is_pad_row(static_cast<app::DynamicsRow>(i));
+            CHECK(bd.rows[i] == (pad ? pads.rows[i] : kicks.rows[i]));
+        }
+    }
+}
+
 // ---- display_title: the one cleaned song title (findings 8 and 111) ----------
 
 TEST_CASE("display_title: a title made only of Clone Hero tags reads (unknown)") {
@@ -856,12 +960,14 @@ TEST_CASE("display_charter: tags go and the ends are trimmed, with no fallback")
 // ---- the crafted edge files (testdata/parse_edge, speedups task P1) ----
 //
 // gen_edge.py writes 41 small charts, each one odd or broken in its own way,
-// and says what each one tests. The two expected files hold what the readers
-// made of them before P1 rewrote the readers, captured with the old readers'
-// hydra_bench --parse (one line per file: its name relative to the folder,
+// and says what each one tests. The two expected files were first captured
+// from the readers as they stood before P1 rewrote them, with hydra_bench
+// --parse (one line per file: its name relative to the folder,
 // tests/song_digest.h's hash in hex, and for a file that failed "FAIL " and
-// its exception's type and message). This test reads every file again and
-// must get the same hash and the same failure text.
+// its exception's type and message). Later changes to the readers or the
+// digest re-pinned some lines; git log on expected_expert.tsv and
+// expected_hard.tsv says which and why. This test reads every file again and
+// must get each line's pinned hash and failure text.
 
 namespace {
 

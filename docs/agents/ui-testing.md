@@ -14,6 +14,8 @@ Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a sc
 .\build-cpp\Release\hydra_uitest.exe --all --jobs 4
 ```
 
+Agents do not run `--all`. They run only the tests for their own change, with `--test <name>`; the rule is in `docs/agents/brief-preamble.md`. The main session runs the whole suite once per merge.
+
 | Command | What it does |
 |---|---|
 | `hydra_uitest --all` | run every checked-in test, one after another |
@@ -27,7 +29,7 @@ Use this instead of launching `Hydra.exe` and taking screenshots. Reach for a sc
 
 Output is `[PASS]`/`[FAIL]` per test. A failed test prints the engine's log. The log names the check that failed (like `uitest_library.cpp:120`) and every action before it. The exit code is 0 only when everything passed. `ctest` runs it too.
 
-**Running tests in parallel.** `--jobs <n>` starts each test as its own `hydra_uitest --test <name>` process, at most n at once. Each process has its own scratch folder and a fresh ImGui context, so no test sees another's leftovers. The results still print in the usual order. The full suite takes about 14 s at `--jobs 4`, against about 22 s one after another. `--jobs` runs named tests only, not scripts.
+**Running tests in parallel.** `--jobs <n>` starts each test as its own `hydra_uitest --test <name>` process, at most n at once. Each process has its own scratch folder and a fresh ImGui context, so no test sees another's leftovers. The results still print in the usual order. The full suite took about 14 s at `--jobs 4`, against about 22 s one after another. Those two times were written on 2026-09-27 (commit 66309530) with no run count or spread recorded, and have not been measured again. The suite then had about 60 tests (60 of 60 passed on 2026-10-03, `docs/handoffs/2026-10-03-preview-loading-audit.md`) and has 85 now (`hydra_uitest --list`), so today's times will differ. `--jobs` runs named tests only, not scripts.
 
 The 97 test charts analyze in a blink: a whole-library batch can start and finish between two frames. So a test that looks at a running batch (the strip, Pause, Stop, the settings lock) makes a `BatchGate` before it starts the batch. The gate holds each chart until the test lets it through with `allow(n)`, and `started()` says how many charts have reached it. The run is then provably still going when the test looks, however busy the machine is. The gate runs the batch on one worker unless given a count: `BatchGate gate(3)` runs three, so three charts sit at the gate at once (`batch-strip-workers` tests the strip that way).
 
@@ -93,7 +95,7 @@ These are the labels the merged app draws. Every GUI test finds widgets by them.
 |---|---|
 | Toolbar (window `Hydra`) | `Manage folders... (N)`, `Scan library`, `Analyze library...` or `Analyze search (N)...` while searching, `Compare with dmleaderboards...`, `Open path report` / `Building path report...` |
 | Status line | a problem stays until `X##dismissstatus` |
-| Settings bar, child `##settingsbar` | combo `##difficulty`, checkboxes `Pro Drums` and `2x Bass`, input `##spcap` with checkbox `1.0 fills` beside it, input `##depthvalue`, combo `##depthmode`, checkbox `Path limit##mslimit`, input `##mslimitvalue`. Only a batch locks it, and it then shows `Stop the batch to change these.` (D90 item 2) |
+| Settings bar, child `##settingsbar` | combo `##difficulty`, checkboxes `Pro Drums`, `2x Bass` and `Note Shuffle`, input `##spcap` with checkbox `1.0 fills` beside it, input `##depthvalue`, combo `##depthmode`, checkbox `Path limit##mslimit`, input `##mslimitvalue`. Only a batch locks it, and it then shows `Stop the batch to change these.` (D90 item 2) |
 | Library, child `##library` | search input `##search`, clear button `X##clearsearch`, chips `All (N)##chipall`, `Not analyzed (N)##chipnew`, `Stale (N)##chipstale`, `Analyzed (N)##chipdone`, table `##librarytable` with columns `Title`, `Artist`, `Charter`, `Folder`, `Best path`. A Best path cell reads `Not analyzed`, `Stale`, or `<score>  <path>`. Under a search: `Clear search` |
 | Song panel, child `##songpanel` | `Hide library` / `Show library`, `<##prevsong`, `>##nextsong`, `X##closepanel` (Escape does the same). A click's analysis shows `Analyzing chart...` with `Cancel` once it has run 0.15 s; a cancelled one shows `Analysis cancelled.` with `Try again`; a failed one shows its error with `Continue`. Tab bar `##DetailsTabs` with tabs `Paths`, `Preview`, `Dynamics`, `Stars` |
 | Paths tab | path buttons `##path<i>` (0-based), `Expand all` / `Collapse all`, activation rows `##act<i>` (1-based), links `Show in Preview >##showact<i>`, folds `Backend timings##act<i>`, `Multiplier squeeze##mult`, `Score breakdown##breakdown`, button `Copy path` (flashes `Copied!`), checkbox `Hide backend rows beyond##backendlimit`, input `##backendlimitvalue` |
@@ -116,7 +118,7 @@ Their tests live in `tests/ui/uitest_report_windows.cpp`, in two groups.
 
 The first group opens the windows on sample rows, with no AppState. The test's own GUI function (`draw_windows`) draws both windows from a `ReportWindowInput` it fills itself, and records what each button hands back. The rows are the shared samples in `tests/report_samples.{h,cpp}`, the same ones `tests/test_report.cpp` pins the tiles on. These tests are `report-window-sort`, `report-window-filters`, `report-window-states`, `report-window-keys` and `report-windows-both`.
 
-The second group goes end to end through AppState: the toolbar, the batch strip, the dm picker and the settings bar. These are `report-window-open-path`, `report-window-dm-handover`, `report-window-row-click`, `report-window-reopen` and `report-window-out-of-date`. They use the canned dmleaderboards API above and never reach the real server.
+The second group goes end to end through AppState: the toolbar, the batch strip, the dm picker and the settings bar. These are `report-window-open-path`, `report-window-dm-handover`, `report-window-row-click`, `report-window-reopen`, `report-window-reopen-keeps-filters` and `report-window-out-of-date`. They use the canned dmleaderboards API above and never reach the real server.
 
 ## Watching it run: attached mode
 
@@ -130,7 +132,7 @@ Attached mode exists only in dev builds (`build-cpp`). The installer builds with
 
 ## Adding a C++ test
 
-Tests are split by area into four files: `uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp` and `uitest_batch_reports.cpp`. Each file ends with an entry table (`library_tests()`, `details_tests()`, and so on). Write the test in the file for its area, then add `{"thing", test_thing}` to that file's table. `uitest_paths.cpp` holds the Paths tab tests and registers them itself, from `register_paths_tests`. `uitest_report_windows.cpp` does the same for the report windows, from `register_report_window_tests`.
+Tests are split by area into four files: `uitest_library.cpp`, `uitest_details.cpp`, `uitest_preview.cpp` and `uitest_batch_reports.cpp`. Each file ends with an entry table (`library_tests()`, `details_tests()`, and so on). Write the test in the file for its area, then add `{"thing", test_thing}` to that file's table. `uitest_paths.cpp` holds the Paths tab tests and registers them itself, from `register_paths_tests`. `uitest_report_windows.cpp` registers its own: the sample-row tests from `register_report_window_tests`, and the end-to-end ones from `report_window_flow_tests()`, which `register_tests` calls last.
 
 `register_tests` in `uitest_tests.cpp` walks the four tables. Its `kRunOrder` list keeps the order the tests had before the split, because one ImGui context carries tab and input state from one test to the next under `--all`. A test that isn't on the list runs after the listed ones, in its file's order, so a new test needs no line there. A renamed test must be renamed in `kRunOrder` too, or the runner stops with an error.
 

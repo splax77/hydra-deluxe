@@ -61,9 +61,10 @@ scores are not achievable in game.
 _Avoid_: edition, uncapped, SP meter
 
 **Analysis settings**:
-The seven settings that make up a record's identity, shown together in the
-settings bar and applied to every song: difficulty, Pro Drums and 2x Bass
-(together the chart mode), the SP cap, 1.0 fills (the fill spawn deadline),
+The eight settings that make up a record's identity, shown together in the
+settings bar and applied to every song: difficulty, Pro Drums, 2x Bass and
+Note Shuffle (together the chart mode, spelled by `Settings::chartmode_key`),
+the SP cap, 1.0 fills (the fill spawn deadline),
 the score range, and the path limit.
 Changing one shows the library's summary rows under the new combination, and
 analyzes the open song again under it (D90 item 1). Changing it back brings

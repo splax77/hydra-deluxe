@@ -235,6 +235,7 @@ add_library(hydra_core STATIC
     src/core/audio_sniff.cpp
     src/parse/midi.cpp
     src/parse/song.cpp
+    src/parse/note_shuffle.cpp
     src/parse/srb.cpp
     src/parse/chart_files.cpp
     src/parse/sng.cpp
@@ -533,6 +534,7 @@ add_executable(hydra_tests
     tests/test_s2_offspeed.cpp
     tests/test_s2_deact_extension.cpp
     tests/test_perf_digest.cpp
+    tests/test_note_shuffle.cpp
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.

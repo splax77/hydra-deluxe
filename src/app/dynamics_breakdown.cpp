@@ -17,7 +17,8 @@ const DynamicsCounts& DynamicsBreakdown::row(DynamicsRow r) const {
 
 DynamicsCounts DynamicsBreakdown::pads_total() const {
     DynamicsCounts t;
-    for (size_t i = 0; i <= static_cast<size_t>(DynamicsRow::GreenTom); ++i) t += rows[i];
+    for (size_t i = 0; i < rows.size(); ++i)
+        if (is_pad_row(static_cast<DynamicsRow>(i))) t += rows[i];
     return t;
 }
 
@@ -70,6 +71,8 @@ constexpr bool row_has_flag(const DynamicsRowInfo& info) {
 const DynamicsRowInfo& dynamics_row_info(DynamicsRow r) {
     return kDynamicsRows[static_cast<size_t>(r)];
 }
+
+bool is_pad_row(DynamicsRow r) { return dynamics_row_info(r).color != NoteColor::Kick; }
 
 DynamicsRow dynamics_row_for(const ChordNote& note) {
     // A row is a lane with its flag on or off (lane_flag). A flag the lane
@@ -129,11 +132,34 @@ DynamicsBreakdown count_dynamics(const Song& song) {
 
 // ---- the count's parse ------------------------------------------------------
 
-Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty) {
-    return load_songpath(notespath, pro, kDynamicsParseBass2x, difficulty);
+Song load_dynamics_song(const std::string& notespath, bool pro, Difficulty difficulty,
+                        bool noteshuffle) {
+    return load_songpath(notespath, pro, kDynamicsParseBass2x, difficulty,
+                         core::default_rules(), noteshuffle);
 }
 
 bool analysis_parse_counts_dynamics(bool bass2x) { return bass2x == kDynamicsParseBass2x; }
+
+DynamicsBreakdown dynamics_for_settings(const std::string& notespath, bool pro, bool bass2x,
+                                        Difficulty difficulty, bool noteshuffle,
+                                        const Song* analysis_song) {
+    if (analysis_song && analysis_parse_counts_dynamics(bass2x))
+        return count_dynamics(*analysis_song);
+    // The shuffle's seed reads the first notes, kicks included, so with 2x
+    // Bass off a shuffled chart's pads can differ from the count's own
+    // 2x-kept parse. Kicks never move, so the kick rows still come from it.
+    const bool pads_differ = noteshuffle && !analysis_parse_counts_dynamics(bass2x);
+    DynamicsBreakdown bd =
+        count_dynamics(load_dynamics_song(notespath, pro, difficulty, noteshuffle && !pads_differ));
+    if (!pads_differ) return bd;
+    const DynamicsBreakdown pads = count_dynamics(
+        analysis_song ? *analysis_song
+                      : load_songpath(notespath, pro, bass2x, difficulty, core::default_rules(),
+                                      noteshuffle));
+    for (size_t i = 0; i < bd.rows.size(); ++i)
+        if (is_pad_row(static_cast<DynamicsRow>(i))) bd.rows[i] = pads.rows[i];
+    return bd;
+}
 
 }  // namespace app
 }  // namespace hydra

@@ -316,19 +316,20 @@ double preview_audio_offset_ms(std::optional<double> ini_delay_ms,
 
 PreviewSource resolve_preview_source(const std::string& notespath, bool pro,
                                      bool bass2x, Difficulty difficulty,
-                                     const core::Rules& rules) {
+                                     const core::Rules& rules, bool noteshuffle) {
     return resolve_preview_source_reading(read_file_bytes, notespath, pro, bass2x,
-                                          difficulty, rules);
+                                          difficulty, rules, noteshuffle);
 }
 
 PreviewSource resolve_preview_source_reading(const FileBytesReader& read_bytes,
                                              const std::string& notespath, bool pro,
                                              bool bass2x, Difficulty difficulty,
-                                             const core::Rules& rules) {
+                                             const core::Rules& rules, bool noteshuffle) {
     // A container is read from disk once; the same bytes give the notes, the
     // audio and (for a .sng) the metadata delay.
     const SharedBytes container = read_preview_container(read_bytes, notespath);
-    PreviewSong ps = resolve_preview_song(notespath, container, pro, bass2x, difficulty, rules);
+    PreviewSong ps = resolve_preview_song(notespath, container, pro, bass2x, difficulty, rules,
+                                          noteshuffle);
     PreviewSource src{std::move(ps.song), resolve_preview_stems(notespath, container),
                       ps.audio_offset_ms};
     return src;
@@ -349,10 +350,11 @@ SharedBytes read_preview_container(const FileBytesReader& read_bytes,
 
 PreviewSong resolve_preview_song(const std::string& notespath, const SharedBytes& container,
                                  bool pro, bool bass2x, Difficulty difficulty,
-                                 const core::Rules& rules) {
+                                 const core::Rules& rules, bool noteshuffle) {
     PreviewSong out{container ? load_songpath_from_bytes(notespath, *container, pro, bass2x,
-                                                         difficulty, rules)
-                              : load_songpath(notespath, pro, bass2x, difficulty, rules)};
+                                                         difficulty, rules, noteshuffle)
+                              : load_songpath(notespath, pro, bass2x, difficulty, rules,
+                                              noteshuffle)};
     out.audio_offset_ms = chart_audio_offset_ms(notespath, container, out.song.chart_offset_s);
     return out;
 }

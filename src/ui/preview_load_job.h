@@ -90,7 +90,7 @@ class PreviewLoadJob : public ResultJobBase {
 public:
     PreviewLoadJob(store::ChartLibraryEntry entry, bool pro, bool bass2x,
                    Difficulty difficulty, std::optional<Path> path, int sp_cap,
-                   core::Rules rules = core::default_rules());
+                   core::Rules rules = core::default_rules(), bool noteshuffle = false);
     ~PreviewLoadJob() { shutdown(); }
 
     void start();
@@ -171,6 +171,7 @@ private:
     std::optional<Path> path_;
     int sp_cap_;  // the record's SP cap, used only to scale the preview's SP meter
     core::Rules rules_;  // copied: the job outlives the caller's settings
+    bool noteshuffle_;   // the Note Shuffle switch, handed to the loader
     std::optional<Result> result_;
 
     // Written by the workers, read by the render thread; each field is its own

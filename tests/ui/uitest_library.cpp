@@ -163,6 +163,51 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
 }
 
+// The settings bar's "Note Shuffle" box (D104 items 1, 2 and 6): off by
+// default, ticking it saves the INI and ends the mode string in ", Note
+// Shuffle", and the dmleaderboards Compare button greys out with its sentence
+// as its tooltip. Unticking puts both back.
+void test_note_shuffle_switch(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    auto compare_disabled = [&] {
+        return (ctx->ItemInfo("//Hydra/Compare with dmleaderboards...").ItemFlags &
+                ImGuiItemFlags_Disabled) != 0;
+    };
+    const std::string refused =
+        "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
+        "compared with a shuffled path.";
+
+    IM_CHECK(!h.app->settings.view_noteshuffle);
+    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
+    IM_CHECK(!compare_disabled());
+
+    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
+    IM_CHECK((ctx->ItemInfo("Note Shuffle").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    ctx->ItemCheck("Note Shuffle");
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_noteshuffle; }, 5));
+    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
+    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(),
+                    "Expert Pro Drums, 2x Bass, Note Shuffle");
+
+    ctx->SetRef("//Hydra");
+    IM_CHECK(wait_until(ctx, compare_disabled, 5));
+    // The tooltip shows on a disabled button too, after the hover delay.
+    ctx->MouseMove("Compare with dmleaderboards...", ImGuiTestOpFlags_NoCheckHoveredId);
+    IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find(refused) != std::string::npos; },
+                        5));
+
+    ctx->SetRef(ctx->WindowInfo("//Hydra/##settingsbar").Window);
+    ctx->ItemUncheck("Note Shuffle");
+    IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
+    IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
+    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
+    ctx->SetRef("//Hydra");
+    IM_CHECK(wait_until(ctx, [&] { return !compare_disabled(); }, 5));
+}
+
 // A bad hydra_rules.ini: the app still opens and scans, the error naming the
 // key stays on screen, Analyze library is disabled, and a click analyzes
 // nothing: the song's row stays Not analyzed (D87 item 9).
@@ -462,7 +507,7 @@ void test_library_layout(ImGuiTestContext* ctx) {
     if (bar == nullptr) return;
     IM_CHECK_LE(bar->ContentSize.x, bar->ContentRegionRect.GetWidth() + 0.5f);
     ctx->SetRef(bar);
-    const char* bar_items[] = {"##difficulty", "Pro Drums", "2x Bass", "##spcap",
+    const char* bar_items[] = {"##difficulty", "Pro Drums", "2x Bass", "Note Shuffle", "##spcap",
                                "1.0 fills", "##depthvalue", "##depthmode",
                                "Path limit##mslimit", "##mslimitvalue"};
     for (const char* item : bar_items)
@@ -531,7 +576,8 @@ void test_library_layout(ImGuiTestContext* ctx) {
     IM_CHECK_LE(bar->ContentSize.x, bar->ContentRegionRect.GetWidth() + 0.5f);
     const float line_y = ctx->ItemInfo("##difficulty").RectFull.Min.y;
     for (const char* item :
-         {"Pro Drums", "2x Bass", "##spcap", "1.0 fills", "##depthvalue", "##mslimitvalue"})
+         {"Pro Drums", "2x Bass", "Note Shuffle", "##spcap", "1.0 fills", "##depthvalue",
+          "##mslimitvalue"})
         IM_CHECK_EQ(ctx->ItemInfo(item).RectFull.Min.y, line_y);
     // The whole row sits centred on the two caption lines ("Analysis
     // settings" over "for every song"), not level with the first of them.
@@ -681,6 +727,7 @@ const std::vector<TestEntry>& library_tests() {
     static const std::vector<TestEntry> entries = {
         {"scan", test_scan},
         {"difficulty", test_difficulty},
+        {"note-shuffle-switch", test_note_shuffle_switch},
         {"rules-error", test_rules_error},
         {"library-state-per-app", test_library_state_per_app},
         {"view-settings", test_view_settings},

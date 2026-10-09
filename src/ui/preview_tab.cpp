@@ -285,7 +285,7 @@ void render_preview_panel(AppState& app, const Path* selected_path) {
     }
     pc->open(*app.selected, app.settings.view_prodrums, app.settings.effective_bass2x(),
              app.settings.difficulty(), selected_path, ui.overlay_key, sp_cap,
-             app.settings.rules);
+             app.settings.rules, app.settings.view_noteshuffle);
     pc->poll();
 
     if (pc->has_error()) {

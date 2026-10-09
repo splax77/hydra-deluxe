@@ -130,10 +130,11 @@ void render_dynamics_panel(AppState& app) {
         ImGui::TableSetupColumn("All");
         ImGui::TableHeadersRow();
 
-        // Pad rows in DynamicsRow order, Red through Green tom.
+        // The pad rows (app::is_pad_row), in DynamicsRow order.
         // With Pro Drums off, skip the three Cymbal rows.
-        for (int i = 0; i <= static_cast<int>(app::DynamicsRow::GreenTom); ++i) {
+        for (int i = 0; i < static_cast<int>(app::DynamicsRow::Count); ++i) {
             auto r = static_cast<app::DynamicsRow>(i);
+            if (!app::is_pad_row(r)) continue;
             // Skip cymbal rows when not pro.
             if (!pro && app::dynamics_row_info(r).cymbal) continue;
             const app::DynamicsCounts& c = bd.row(r);

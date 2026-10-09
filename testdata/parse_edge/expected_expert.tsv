@@ -1,4 +1,4 @@
-c01_base.chart	751232970657e198
+c01_base.chart	beeba5f21566b0c
 c02_bad_number_skipped.chart	b2a6519932df9d34	FAIL class std::invalid_argument: invalid stoi argument
 c03_overflow_skipped.chart	cf71dbe49b918de7	FAIL class std::out_of_range: stoi argument out of range
 c04_overflow_length_skipped.chart	fd3607e08b224c8d	FAIL class std::out_of_range: stoll argument out of range
@@ -9,33 +9,33 @@ c08_bad_number_events.chart	71272fbdaee2120a	FAIL class std::invalid_argument: i
 c09_overflow_events.chart	cf71dbe49b918de7	FAIL class std::out_of_range: stoi argument out of range
 c10_bad_number_song.chart	b2a6519932df9d34	FAIL class std::invalid_argument: invalid stoi argument
 c11_overflow_song.chart	fd3607e08b224c8d	FAIL class std::out_of_range: stoll argument out of range
-c12_odd_keys.chart	4fa3d20107e721cb
-c13_odd_numbers.chart	e14201c1540d6219
+c12_odd_keys.chart	45c0a61d75c79d7
+c13_odd_numbers.chart	b93215da418a575d
 c14_duplicate_sections.chart	b35af4398cf5ecbc
 c15_unterminated_drums.chart	ce14cc7b668695a7	FAIL class hydra::NoNotesError: No Expert Pro Drums notes in this chart.
-c16_unterminated_second_copy.chart	751232970657e198
+c16_unterminated_second_copy.chart	beeba5f21566b0c
 c17_header_inside_section.chart	ce14cc7b668695a7	FAIL class hydra::NoNotesError: No Expert Pro Drums notes in this chart.
 c18_unsorted_ticks.chart	fdaf4d9e2d69b92c
-c19_crlf.chart	751232970657e198
-c20_disco.chart	6ff958459f31cbab
+c19_crlf.chart	beeba5f21566b0c
+c20_disco.chart	f688bfe7fe696e8f
 c21_missing_song.chart	b0783a30d6a5d45e	FAIL class std::out_of_range: invalid unordered_map<K, T> key
 c22_missing_resolution.chart	b0783a30d6a5d45e	FAIL class std::out_of_range: invalid unordered_map<K, T> key
-c23_resolution_junk.chart	30dbd9ee6866bd3
+c23_resolution_junk.chart	a165a79c4c87560b
 c24_bad_resolution.chart	71272fbdaee2120a	FAIL class std::invalid_argument: invalid stoll argument
 c25_bad_header.chart	c2f8b89143a28c58	FAIL class hydra::ChartFileError: expected a [section] header
-c26_header_junk.chart	40a3e68951877f98
-c27_empty_values.chart	250c4ef05d766790
-c28_timing_in_drums.chart	bfc8dfaea1409870
-m01_base.mid	9c191b35146d5862
-m02_two_drum_tracks.mid	9c191b35146d5862
-m03_late_names.mid	c6de602afdc9d065
+c26_header_junk.chart	8ec4a4001f60099c
+c27_empty_values.chart	459fab75fd4f649c
+c28_timing_in_drums.chart	c37acc68de4fa37c
+m01_base.mid	d29039f71602b5a0
+m02_two_drum_tracks.mid	d29039f71602b5a0
+m03_late_names.mid	1a3e462348c8e6a7
 m04_oversize_meta_other.mid	fa7b66f79b7580c6	FAIL class hydra::MidiError: Message length 1000001 exceeds maximum length 1000000
 m05_oversize_meta_drums.mid	fa7b66f79b7580c6	FAIL class hydra::MidiError: Message length 1000001 exceeds maximum length 1000000
-m06_format0.mid	81b1f0832ee2c086
+m06_format0.mid	1f5a0b4b162b6244
 m07_smpte.mid	755697472955f6b2	FAIL class hydra::MidiError: SMPTE time division is not supported
-m08_truncated.mid	5e4336e7e5df7dbe
-m09_running_status_after_meta.mid	742234e66dbbace6
-m10_unknown_chunk.mid	9c191b35146d5862
-m11_bad_status.mid	3a74284ad2bd0480
+m08_truncated.mid	b80e3db7a8b67b3d
+m09_running_status_after_meta.mid	ec990af7b82a447e
+m10_unknown_chunk.mid	d29039f71602b5a0
+m11_bad_status.mid	bad28352f4930bc2
 m12_zero_tempo.mid	b24c21e718ba36a4	FAIL class hydra::ChartFileError: the tempo at tick 0 is infinite (0 microseconds per beat)
-m13_clipped_and_short_metas.mid	a89ba1150416c4b6
+m13_clipped_and_short_metas.mid	7716352714a4124c
