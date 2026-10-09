@@ -9,7 +9,6 @@
 
 #include "app/analysis.h"
 #include "app/dm_report.h"
-#include "app/report.h"  // Tile
 #include "core/model.h"
 #include "corpus_util.h"
 #include "dm_fixture.h"
@@ -100,10 +99,5 @@ TEST_CASE("s2 offspeed: the subtitle and the Other speed tile count 'other speed
           "0 above optimal, 0 not analyzed, 0 not in your library, "
           "2 at other speeds");
 
-    std::vector<size_t> shown(report.rows.size());
-    for (size_t i = 0; i < shown.size(); ++i) shown[i] = i;
-    bool tiled = false;
-    for (const app::report::Tile& t : app::dm_report::dm_tiles(report.rows, shown))
-        if (t.label == "Other speed") tiled = t.value == "2";
-    CHECK(tiled);
+    CHECK(testdm::dm_tile(report.rows, "Other speed") == "2");
 }

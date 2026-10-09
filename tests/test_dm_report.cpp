@@ -50,6 +50,7 @@ using testdm::fill_store;
 using testdm::kHash;
 using testdm::kMode;
 using testdm::make_score;
+using testdm::dm_tile;
 
 TEST_CASE("collect_dm_rows joins scores to records and labels them") {
     store::RecordStore store(":memory:");
@@ -408,16 +409,6 @@ app::report_view::SortKey dm_sort_key(const std::string& id, const DmReportRow& 
     for (const auto& c : app::dm_report_view::dm_columns())
         if (c.id == id) return c.sort_key(row);
     FAIL("no column " << id);
-    return {};
-}
-
-// The value of the tile named `label` over every score in `rows`.
-std::string dm_tile(const std::vector<DmReportRow>& rows, const std::string& label) {
-    std::vector<size_t> shown(rows.size());
-    for (size_t i = 0; i < rows.size(); ++i) shown[i] = i;
-    for (const app::report::Tile& t : app::dm_report::dm_tiles(rows, shown))
-        if (t.label == label) return t.value;
-    FAIL("no tile " << label);
     return {};
 }
 

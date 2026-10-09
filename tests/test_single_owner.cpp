@@ -2651,6 +2651,23 @@ const std::vector<OwnerRule>& rules() {
            "return s.size() >= suffix.size() && equals_ci(s.substr(s.size() - suffix.size()), suffix);",
            "ends_with_ci, the owner"}},
          {"src", "tools", "tests"}},
+        // A test building the index list 0..n-1 itself, by a loop that sets
+        // each slot to its own index or by std::iota.
+        {"Which rows does a test show when it wants every row? (tests)",
+         "every_row in tests/report_samples.h",
+         R"(\b\w+\[(\w+)\]\s*=\s*\1\s*;|\bstd::iota\()",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T7 (finding 2)",
+         {"for (size_t i = 0; i < rows.size(); ++i) shown[i] = i;",
+          "for (size_t i = 0; i < shown.size(); ++i) shown[i] = i;",
+          "std::iota(shown.begin(), shown.end(), size_t{0});"},
+         {R"(CHECK(report::path_tiles({a, a2, b}, every_row(3), 85.0)[0].value == "2");)",
+          "out[i] = in[i];", "counts[i] = i2;"},
+         {{"tests/report_samples.h", "for (size_t i = 0; i < n; ++i) shown[i] = i;",
+           "every_row, the owner"}},
+         {"tests"}},
         // The stars filter's range typed out as text. The owner builds the
         // top of the range from kMaxStars, so no line matches it. The tests
         // pin the whole sentence on purpose, so they are outside the scope.

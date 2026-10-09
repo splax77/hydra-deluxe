@@ -63,12 +63,7 @@ size_t occurrences(const std::string& text, const std::string& what) {
     return n;
 }
 
-// Every row of `n`, in order: what a window shows with no filter set.
-std::vector<size_t> every_row(size_t n) {
-    std::vector<size_t> shown(n);
-    for (size_t i = 0; i < n; ++i) shown[i] = i;
-    return shown;
-}
+using report_samples::every_row;
 
 using TilePairs = std::vector<std::pair<std::string, std::string>>;
 
