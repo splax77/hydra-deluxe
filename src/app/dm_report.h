@@ -130,10 +130,6 @@ std::vector<report::Tile> dm_tiles(const std::vector<DmReportRow>& rows,
 std::string counts_phrase(const DmReportStats& stats);
 
 struct GeneratedDmReport {
-    // Nothing fills this any more: the page it held is gone. It stays only
-    // until src/ui/dm_jobs.cpp and tests/test_app_state.cpp stop naming it
-    // (RW-T7's handoff).
-    std::string html;
     DmReportStats stats;
     // collect_dm_rows' rows, one per score, in the leaderboard's order.
     std::vector<DmReportRow> rows;

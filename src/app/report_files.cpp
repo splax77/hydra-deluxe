@@ -4,15 +4,14 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#include <shlobj.h>
-#include <shlwapi.h>  // AssocQueryStringW
+#include <shellapi.h>  // ShellExecuteW
+#include <shlwapi.h>   // AssocQueryStringW
 
 #include <fstream>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
 
-#include "app/config.h"
 #include "core/error_kind.h"
 #include "core/winstr.h"
 
@@ -20,46 +19,9 @@ namespace hydra::app {
 
 namespace {
 
-std::filesystem::path db_folder() {
-    return std::filesystem::u8path(app::db_path()).parent_path();
-}
-
-// The user's Documents folder, or nullopt when Windows can't name one.
-std::optional<std::filesystem::path> known_documents_dir() {
-    PWSTR raw = nullptr;
-    std::optional<std::filesystem::path> out;
-    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_Documents, KF_FLAG_DEFAULT, nullptr, &raw)) &&
-        raw)
-        out = std::filesystem::path(raw);
-    CoTaskMemFree(raw);  // safe on nullptr
-    return out;
-}
-
-DocumentsDirFn g_documents_dir;
 OpenInBrowserFn g_open_in_browser;
 
 }  // namespace
-
-std::filesystem::path reports_dir() {
-    // A harness pointed the app at a scratch database: keep its pages there.
-    if (!path_overrides().db_path.empty()) return db_folder();
-
-    std::optional<std::filesystem::path> docs =
-        g_documents_dir ? g_documents_dir() : known_documents_dir();
-    if (!docs || docs->empty()) return db_folder();
-
-    const std::filesystem::path dir = *docs / L"Hydra";
-    std::error_code ec;
-    std::filesystem::create_directories(os_path(dir), ec);
-    if (!std::filesystem::is_directory(os_path(dir), ec)) return db_folder();
-    return dir;
-}
-
-void set_documents_dir_lookup(DocumentsDirFn fn) { g_documents_dir = std::move(fn); }
-
-std::wstring report_html_path() {
-    return (reports_dir() / std::filesystem::u8path(kPathReportFileName)).wstring();
-}
 
 void set_open_in_browser(OpenInBrowserFn fn) { g_open_in_browser = std::move(fn); }
 

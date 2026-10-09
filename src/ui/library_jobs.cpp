@@ -616,10 +616,6 @@ void ReportJob::run() {
             throw KindedError(ErrorKind::NoRecords, "no records stored yet");
         }
 
-        // Nothing reads the page any more; the window draws the rows. Its
-        // text goes now rather than living on with the rows (T7 removes the
-        // field).
-        std::string().swap(report.html);
         result_ = std::make_shared<const app::report::GeneratedReport>(std::move(report));
         return true;
     });

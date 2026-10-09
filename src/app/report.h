@@ -187,7 +187,7 @@ struct ReportOptions {
     double hit_window_ms = kDefaultHitWindowMs;
     std::string db_path;  // names the footer's source database
     // Set this and the pass stops between charts and generate_report hands
-    // back an empty result -- no rows, no html. Closing the app while a report
+    // back an empty result, with no rows. Closing the app while a report
     // builds goes through here; the CLI never sets it.
     const std::atomic<bool>* cancel = nullptr;
     // Called on the caller's thread with how many charts the pass has
@@ -278,10 +278,6 @@ std::string nothing_under_settings(int cap, const std::string& middle,
                                    const std::string& ending = std::string());
 
 struct GeneratedReport {
-    // Nothing fills this any more: the page it held is gone. It stays only
-    // until src/ui/dm_jobs.cpp, src/ui/library_jobs.cpp and
-    // tests/test_app_state.cpp stop naming it (RW-T7's handoff).
-    std::string html;
     // Both count every library copy of a chart (D76, D77).
     int64_t songs = 0;    // charts with rows on the page
     int64_t records = 0;  // records with rows on the page (one rank-1 row each)
