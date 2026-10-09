@@ -568,8 +568,10 @@ void AppState::update_background_jobs() {
         app::report::ReportSeed seed = batch_job->take_report_seed();
         // tick_library re-reads the summaries once the batch ends. Stopped
         // or not, the run stored results, so both reports in memory now
-        // read an older library (D103).
-        mark_reports_stale(ReportStale::Library, /*path=*/true, /*dm=*/true);
+        // read an older library (D103). Their windows name this moment as
+        // the batch's finish time (D103 item 21).
+        mark_reports_out_of_date(ReportOutOfDate::Library, /*path=*/true, /*dm=*/true,
+                                 std::chrono::system_clock::now());
         // One path report per finished run. A stopped run keeps its results
         // but builds no report: a report of part of the library would read
         // as the whole of it.
@@ -621,7 +623,7 @@ void AppState::cancel_dm_report() {
     parked_dm_reports.push_back(std::move(dm_report_job));
     dm_report_job.reset();
     dm_report.last = ReportBuild::Cancelled;
-    dm_report.stale_during_build = ReportStale::None;
+    dm_report.out_of_date_during_build = ReportOutOfDate::None;
 }
 
 void AppState::start_dm_fetch() {
@@ -662,8 +664,8 @@ void AppState::request_dm_report() {
 }
 
 void AppState::launch_dm_report() {
-    dm_report.stale_during_build = ReportStale::None;
-    dm_report_job = std::make_unique<DmReportJob>(*store, dm_player_id_, dm_player_name_,
+    dm_report.out_of_date_during_build = ReportOutOfDate::None;
+    dm_report_job =std::make_unique<DmReportJob>(*store, dm_player_id_, dm_player_name_,
                                                   settings.chartmode_key(), settings.lens());
     dm_report_job->start();
 }
@@ -695,7 +697,7 @@ void AppState::launch_path_report(store::CapQuery cap, store::Lens lens, app::Ba
     report_job = std::make_unique<ReportJob>(*store, cap, lens, settings.hit_window_ms,
                                              std::move(run), std::move(seed));
     path_report_from_batch_ = from_batch;
-    path_report.stale_during_build = ReportStale::None;
+    path_report.out_of_date_during_build = ReportOutOfDate::None;
     report_job->start();
 }
 
@@ -721,11 +723,12 @@ namespace {
 // collect_* functions share. Returns the job's outcome.
 template <class Result, class Job>
 ReportBuild land_report(ReportSlot<Result>& slot, const Job& job) {
-    const ReportStale during = std::exchange(slot.stale_during_build, ReportStale::None);
+    const ReportOutOfDate during =
+        std::exchange(slot.out_of_date_during_build, ReportOutOfDate::None);
     if (job.ok()) {
         slot.result = job.result();
         slot.built_at = std::chrono::system_clock::now();
-        slot.stale = during;
+        slot.out_of_date = during;
         slot.last = ReportBuild::Ready;
         slot.message.clear();
         slot.error.clear();
@@ -764,10 +767,13 @@ void AppState::collect_dm_report() {
     land_report(dm_report, *job);
 }
 
-void AppState::mark_reports_stale(ReportStale reason, bool path, bool dm) {
-    auto mark = [reason](auto& slot, bool building) {
-        if (slot.result) slot.stale = reason;
-        if (building) slot.stale_during_build = reason;
+void AppState::mark_reports_out_of_date(
+    ReportOutOfDate reason, bool path, bool dm,
+    std::optional<std::chrono::system_clock::time_point> batch_finished) {
+    auto mark = [&](auto& slot, bool building) {
+        if (slot.result) slot.out_of_date = reason;
+        if (building) slot.out_of_date_during_build = reason;
+        if (batch_finished && (slot.result || building)) slot.batch_finished = batch_finished;
     };
     if (path) mark(path_report, path_report_build() == ReportBuild::Building);
     if (dm) mark(dm_report, dm_report_build() == ReportBuild::Building);
@@ -827,7 +833,7 @@ void AppState::apply_settings() {
     }
     // Each report's own settings_change_touches says whether the change
     // reaches what that report read (D103 item 22).
-    mark_reports_stale(ReportStale::Settings,
+    mark_reports_out_of_date(ReportOutOfDate::Settings,
                        /*path=*/app::report::settings_change_touches(before, settings),
                        /*dm=*/app::dm_report::settings_change_touches(before, settings));
     committed_settings_ = settings;

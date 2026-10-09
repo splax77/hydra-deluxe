@@ -4,6 +4,7 @@
 #include "imgui.h"
 #include "ui/details_view.h"
 #include "ui/fonts.h"
+#include "ui/report_window.h"
 #include "ui/theme.h"
 #include "ui/widgets.h"
 
@@ -166,15 +167,13 @@ void render_startup_screen(AppState& app) {
 void render_main_window(AppState& app) {
     begin_hydra_window();
 
-    // A finished report job is reaped by AppState::update_background_jobs.
+    // Both report jobs are collected by AppState::update_background_jobs,
+    // which hands their results to the report windows.
 
-    // Reap dmleaderboards jobs once the picker is closed: a finished report
-    // job (or a fetch left running when the modal was dismissed) has nothing
-    // left to show, and its thread should be joined.
-    if (!app.dm_picker_open) {
-        if (app.dm_report_job && app.dm_report_job->finished()) app.dm_report_job.reset();
-        if (app.dm_fetch_job && app.dm_fetch_job->finished()) app.dm_fetch_job.reset();
-    }
+    // Reap a ladder fetch left running when the picker was dismissed: it has
+    // nothing left to show, and its thread should be joined.
+    if (!app.dm_picker_open && app.dm_fetch_job && app.dm_fetch_job->finished())
+        app.dm_fetch_job.reset();
 
     // The song panel's "Rescan library" and the Song folders' "Scan now"
     // land here: the scan modal belongs to this window, so the scan has to
@@ -199,6 +198,15 @@ void render_main_window(AppState& app) {
     if (app.dm_picker_open) detail::render_dm_picker_modal(app);
 
     ImGui::End();
+
+    // The report windows (D103), each its own OS window beside this one,
+    // drawn while its slot says it is open. Each window clears that flag
+    // itself when it closes; its rows stay in the slot, so reopening is
+    // instant.
+    if (app.path_report.window_open)
+        draw_path_report_window(&app.path_report.window_open, path_report_input(app));
+    if (app.dm_report.window_open)
+        draw_dm_report_window(&app.dm_report.window_open, dm_report_input(app));
 }
 
 }  // namespace hydra::ui

@@ -50,6 +50,7 @@
 #include "search/graph.h"
 #include "store/record_store.h"
 #include "temp_util.h"
+#include "ui/library_jobs.h"
 #include "wcag_util.h"
 
 using namespace hydra;
@@ -241,6 +242,16 @@ struct CountingAnalyzer {
         };
     }
 };
+
+// The scan rows a batch over the first `count` charts of `library` reads,
+// each made by the GUI's own conversion, ui::scan_item_of.
+std::vector<ScanItem> scan_items(const std::vector<store::ChartLibraryEntry>& library,
+                                 size_t count) {
+    std::vector<ScanItem> items;
+    for (size_t i = 0; i < count && i < library.size(); ++i)
+        items.push_back(ui::scan_item_of(library[i]));
+    return items;
+}
 
 }  // namespace
 
@@ -734,14 +745,7 @@ TEST_CASE("the report reuses the charts a batch just analyzed (D87 item 5)") {
     BatchCallbacks callbacks;
     callbacks.analyze = batch.analyzer();
     callbacks.report_seed = &seed;
-    std::vector<ScanItem> items;
-    for (size_t i = 0; i < 2; ++i) {
-        ScanItem item;
-        item.md5 = library[i].md5;
-        item.title = library[i].title;
-        item.notespath = library[i].notespath;
-        items.push_back(item);
-    }
+    const std::vector<ScanItem> items = scan_items(library, 2);
     run_batch(plan_batch(items, {}), run, store, 2, callbacks);
     REQUIRE(batch.paths.size() == 2);
     CHECK(seed.rows.size() == 2);
@@ -1196,4 +1200,37 @@ TEST_CASE("settings_change_touches: the path report reads the SP cap and the len
     app::Settings auto_open = before;
     auto_open.auto_open_report = !before.auto_open_report;
     CHECK_FALSE(app::report::settings_change_touches(before, auto_open));
+}
+
+// The path report window's "Analyzing n of N charts" reads these calls.
+TEST_CASE("generate_report tells its progress chart by chart, from 0 to the whole") {
+    store::RecordStore store(":memory:");
+    std::vector<store::ChartLibraryEntry> library;
+    const std::vector<std::string> files = fill_store(store, library, 4, 3);
+    REQUIRE(files.size() == 3);
+
+    std::vector<std::pair<int, int>> calls;
+    report::ReportOptions options = fixture_options(4);
+    options.progress = [&](int done, int total) { calls.emplace_back(done, total); };
+    const report::GeneratedReport page = report::generate_report(store, options);
+    REQUIRE(page.rows > 0);
+    REQUIRE_FALSE(calls.empty());
+    CHECK(calls.front() == std::make_pair(0, 3));
+    CHECK(calls.back() == std::make_pair(3, 3));
+    for (size_t i = 1; i < calls.size(); ++i) {
+        CHECK(calls[i].second == 3);
+        CHECK(calls[i].first >= calls[i - 1].first);  // never goes back
+    }
+
+    // A batch's seed that holds every chart leaves nothing to analyze.
+    report::ReportSeed seed = report::ReportSeed::for_run(fixture_settings(4).batch_run());
+    CountingAnalyzer batch;
+    BatchCallbacks callbacks;
+    callbacks.analyze = batch.analyzer();
+    callbacks.report_seed = &seed;
+    run_batch(plan_batch(scan_items(library, library.size()), {}), fixture_settings(4).batch_run(), store, 2, callbacks);
+    REQUIRE(seed.rows.size() == 3);
+    calls.clear();
+    report::generate_report(store, options, seed);
+    CHECK(calls == std::vector<std::pair<int, int>>{{0, 0}});
 }

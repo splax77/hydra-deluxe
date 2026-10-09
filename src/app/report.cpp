@@ -263,6 +263,9 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
     const ChartAnalyzer analyze =
         options.analyze ? options.analyze : ChartAnalyzer(analyze_chart_file);
     const std::function<void(float)> check_cancel = stop_on_cancel(options.cancel);
+    const int total = static_cast<int>(to_analyze.size());
+    int done = 0;
+    if (options.progress) options.progress(done, total);
     run_work_pool<Analyzed>(
         to_analyze.size(), batch_worker_count(), options.cancel,
         [&](size_t k) {
@@ -282,6 +285,7 @@ CollectedRows collect_rows(store::RecordStore& store, const ReportSeed& seed,
             return a;
         },
         [&](Analyzed&& a) {
+            if (options.progress) options.progress(++done, total);
             if (a.cancelled) return;
             Slot& slot = slots[a.slot];
             if (a.failed) slot.failure = std::move(a.failure);

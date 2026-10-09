@@ -447,9 +447,19 @@ public:
     // seed. Read before start() or once finished().
     size_t seed_charts_for_test() const { return seed_.rows.size(); }
 
+    // How many charts the build has analyzed of how many it will
+    // (ReportOptions::progress), as of its latest call: 0 of 0 before the
+    // first. Safe to read from the UI thread while the job runs.
+    std::pair<int, int> progress() const {
+        return {progress_done_.load(std::memory_order_relaxed),
+                progress_total_.load(std::memory_order_relaxed)};
+    }
+
 private:
     void run();
 
+    std::atomic<int> progress_done_{0};
+    std::atomic<int> progress_total_{0};
     store::RecordStore& store_;
     store::CapQuery cap_;
     store::Lens lens_;

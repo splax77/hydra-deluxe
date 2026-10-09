@@ -32,17 +32,15 @@ namespace detail {
 
 namespace {
 
-// The strips' colours. Each text colour was measured on its strip:
-// (250,250,250) is 11.97:1 on the running strip, 12.94:1 on the done strip
-// and 13.73:1 on the problem strip; the secondary lines are 9.47:1, 9.27:1
-// and 9.38:1; orange on the problem strip is 5.65:1; the teal bar on its
-// track is 6.4:1.
+// The strips' colours. The done and problem backgrounds are the theme's
+// (kDoneStripBg, kProblemStripBg), shared with the report windows. Each text
+// colour was measured on its strip: (250,250,250) is 11.97:1 on the running
+// strip; the secondary lines are 9.47:1, 9.27:1 and 9.38:1 on the running,
+// done and problem strips; the teal bar on its track is 6.4:1.
 const ImVec4 kStripBg{22 / 255.0f, 57 / 255.0f, 58 / 255.0f, 1.0f};
 const ImVec4 kStripText2{200 / 255.0f, 230 / 255.0f, 230 / 255.0f, 1.0f};
 const ImVec4 kStripTrack{11 / 255.0f, 35 / 255.0f, 36 / 255.0f, 1.0f};
-const ImVec4 kDoneBg{31 / 255.0f, 51 / 255.0f, 34 / 255.0f, 1.0f};
 const ImVec4 kDoneText2{196 / 255.0f, 220 / 255.0f, 199 / 255.0f, 1.0f};
-const ImVec4 kProblemBg{58 / 255.0f, 38 / 255.0f, 18 / 255.0f, 1.0f};
 const ImVec4 kProblemText2{230 / 255.0f, 205 / 255.0f, 180 / 255.0f, 1.0f};
 
 // Enter or keypad Enter this frame.
@@ -441,7 +439,7 @@ void render_batch_done(AppState& app) {
     const bool report_failed = build == ReportBuild::Failed;
 
     const bool problem = report_failed;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, problem ? kProblemBg : kDoneBg);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, problem ? kProblemStripBg : kDoneStripBg);
     ImGui::BeginChild("##batchdone", ImVec2(0.0f, 0.0f),
                       ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
     ImGui::PopStyleColor();

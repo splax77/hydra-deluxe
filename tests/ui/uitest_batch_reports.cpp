@@ -41,8 +41,11 @@ bool wait_report_landed(ImGuiTestContext* ctx) {
     }, 60);
 }
 
+}  // namespace
+
 // Narrow the library to charts matching `search` and batch them through the
-// confirm; waits for the batch and its report to finish.
+// confirm; waits for the batch and its report to finish. Shared with
+// uitest_report_windows.cpp, which declares it.
 bool batch_search(ImGuiTestContext* ctx, const std::string& search) {
     Harness& h = harness(ctx);
     ctx->SetRef("//Hydra");
@@ -59,7 +62,8 @@ bool batch_search(ImGuiTestContext* ctx, const std::string& search) {
            wait_report_landed(ctx);
 }
 
-// Click the finished strip's X and wait for the strip to go.
+// Click the finished strip's X and wait for the strip to go. Shared with
+// uitest_report_windows.cpp, which declares it.
 void dismiss_done(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchdone") != nullptr; }, 5));
@@ -70,6 +74,8 @@ void dismiss_done(ImGuiTestContext* ctx) {
     ctx->SetRef("//Hydra");
 }
 
+namespace {
+
 // Pick alice in the open player picker: the box closes, the comparison
 // window opens, and the comparison builds (D103 item 8).
 void pick_alice(ImGuiTestContext* ctx) {
@@ -79,6 +85,7 @@ void pick_alice(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(!h.app->dm_picker_open);
     IM_CHECK(h.app->dm_report.window_open);
+    IM_CHECK(window_named("###dmreport") != nullptr);
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
     }, 60));
@@ -164,6 +171,8 @@ void test_settings_and_reports(ImGuiTestContext* ctx) {
     ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
     ctx->ItemClick("Open report");
     IM_CHECK(h.app->path_report.window_open);
+    ctx->Yield(2);
+    IM_CHECK(window_named("###pathreport") != nullptr);
     dismiss_done(ctx);
 
     // dmleaderboards comparison against the canned API: picking the player
@@ -283,6 +292,8 @@ void test_report_buttons(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Open path report"); }, 5));
     ctx->ItemClick("**/Open path report");
     IM_CHECK(h.app->path_report.window_open);
+    ctx->Yield(2);
+    IM_CHECK(window_named("###pathreport") != nullptr);
     h.app->path_report.window_open = false;  // the window's X
 
     // "Also re-analyze" re-analyzes the stored chart, and the confirm says so.
@@ -304,6 +315,8 @@ void test_report_buttons(ImGuiTestContext* ctx) {
 
     // With auto-open on, the new report opened its window by itself.
     IM_CHECK(h.app->path_report.window_open);
+    ctx->Yield(2);
+    IM_CHECK(window_named("###pathreport") != nullptr);
     dismiss_done(ctx);
     h.app->batch_redo = false;
 }
@@ -482,6 +495,8 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(!ctx->ItemExists("Show in folder"));
     ctx->ItemClick("Open report");
     IM_CHECK(h.app->path_report.window_open);
+    ctx->Yield(2);
+    IM_CHECK(window_named("###pathreport") != nullptr);
     ctx->ItemClick("X##dismissdone");
     ctx->Yield(3);
     IM_CHECK(h.app->batch_job == nullptr);
@@ -501,6 +516,8 @@ void test_batch_open_failure(ImGuiTestContext* ctx) {
     IM_CHECK(batch_search(ctx, "Burnout"));
     IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
     IM_CHECK(h.app->path_report.window_open);
+    ctx->Yield(2);
+    IM_CHECK(window_named("###pathreport") != nullptr);
     IM_CHECK(visible_text(h).find("The path report is ready.") != std::string::npos);
     IM_CHECK(visible_text(h).find("browser") == std::string::npos);
 }

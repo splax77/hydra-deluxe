@@ -577,8 +577,8 @@ void ReportJob::start() { spawn([this] { run(); }); }
 
 void ReportJob::run() {
     run_guarded([this] {
-        // One seam for the whole page — rows, counts, and framing come from
-        // generate_report, the same call the hydra_report CLI makes.
+        // One seam for the whole report: rows, counts, and framing come from
+        // generate_report.
         app::report::ReportOptions options;
         options.max_paths = app::report::kDefaultReportPaths;
         options.cap = cap_;
@@ -588,6 +588,11 @@ void ReportJob::run() {
         // Closing Hydra sets this. Without it the window waits for the whole
         // library to be analyzed before it can shut down.
         options.cancel = &cancel_;
+        // The window's "Analyzing n of N charts" reads these (progress()).
+        options.progress = [this](int done, int total) {
+            progress_total_.store(total, std::memory_order_relaxed);
+            progress_done_.store(done, std::memory_order_relaxed);
+        };
         options.run = run_;
         options.analyze = analyze_;  // empty: generate_report's own
         // The seed's rows are read by this pass alone, so they go when it
@@ -603,7 +608,7 @@ void ReportJob::run() {
         if (is_cancelled()) return false;
         // generate_report says why the page is empty (GeneratedReport::
         // why_empty). When it gives a sentence, the strip shows that sentence
-        // as it is, the same one hydra_report prints. When it gives none, the
+        // as it is, the one generate_report wrote. When it gives none, the
         // database holds no results, and the app's own sentence says so (D97).
         if (report.rows == 0) {
             if (!report.why_empty.empty())

@@ -31,6 +31,7 @@
 #include "ui/generation.h"
 #include "ui/library_jobs.h"
 #include "ui/library_model.h"
+#include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
 
 struct ID3D11Device;
 struct ID3D11DeviceContext;
@@ -152,26 +153,21 @@ struct ViewedSong {
     bool ready() const { return state == State::Ready && record.has_value(); }
 };
 
-// Why a report in memory may no longer match what Hydra would build now: a
-// batch finished after it was built (Library), or a setting it was built from
-// changed (Settings). The later of the two wins (D103). The report window's
-// out-of-date strip reads it.
-enum class ReportStale { None, Library, Settings };
-
-// Where a report's latest build stands. Building is never stored: it is the
-// report's job running (AppState::path_report_build, dm_report_build).
-enum class ReportBuild { None, Building, Ready, Cancelled, Failed };
-
 // One report as the app holds it (D103): the last good result, kept in memory
 // so a window opens at once, when it was built, whether it is out of date,
 // whether its window is open, and how the latest build ended. A failed or
-// cancelled build keeps the last good result.
+// cancelled build keeps the last good result. ReportBuild and
+// ReportOutOfDate live in ui/report_state.h, shared with the windows.
 template <class Result>
 struct ReportSlot {
     // Shared, never copied: the window reads the rows where the job left them.
     std::shared_ptr<const Result> result;
     std::chrono::system_clock::time_point built_at{};  // "Built HH:MM"
-    ReportStale stale = ReportStale::None;
+    ReportOutOfDate out_of_date = ReportOutOfDate::None;
+    // When the batch that last marked this report out of date finished, for
+    // the window's "(a batch finished at HH:MM)" (D103 item 21). Unset until
+    // a batch marks it.
+    std::optional<std::chrono::system_clock::time_point> batch_finished;
     bool window_open = false;
     // How the latest finished build ended: None (never built), Ready,
     // Cancelled or Failed. Failed carries the plain sentence and raw text.
@@ -180,7 +176,7 @@ struct ReportSlot {
     std::string error;
     // An out-of-date event that landed while a build was running. That build
     // read the old library or settings, so its result starts out of date.
-    ReportStale stale_during_build = ReportStale::None;
+    ReportOutOfDate out_of_date_during_build = ReportOutOfDate::None;
 };
 
 using PathReportSlot = ReportSlot<app::report::GeneratedReport>;
@@ -503,6 +499,9 @@ public:
     // window's Cancel and "Compare another player..." (D103 item 10). Loads
     // the ladder when this session has none.
     void reopen_dm_picker();
+    // The last player picked, whom the comparison window's title names even
+    // while that player's scores still fetch.
+    const std::string& dm_player_name() const { return dm_player_name_; }
 
     // The confirm's "Also re-analyze charts that already have a result" box.
     bool batch_redo = false;
@@ -634,9 +633,12 @@ private:
     void collect_path_report();
     void collect_dm_report();
     // An out-of-date event for the reports that read what changed: `path`
-    // and `dm` say which. A slot with a result turns stale; a running build
-    // remembers it for its own result.
-    void mark_reports_stale(ReportStale reason, bool path, bool dm);
+    // and `dm` say which. A slot with a result goes out of date; a running
+    // build remembers it for its own result. A batch's event passes the time
+    // the batch finished, which the slot keeps for its window.
+    void mark_reports_out_of_date(
+        ReportOutOfDate reason, bool path, bool dm,
+        std::optional<std::chrono::system_clock::time_point> batch_finished = std::nullopt);
     ID3D11Device* render_device_ = nullptr;
     ID3D11DeviceContext* render_context_ = nullptr;
 

@@ -972,7 +972,7 @@ TEST_CASE("the toolbar's search label comes from one function") {
 namespace {
 
 using hydra::ui::ReportBuild;
-using hydra::ui::ReportStale;
+using hydra::ui::ReportOutOfDate;
 
 void run_redo_batch_over(AppState& app, const std::string& search);  // below
 
@@ -1028,7 +1028,14 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     CHECK(app->path_report_build() == ReportBuild::Building);
     app->request_path_report();  // one is running: nothing new starts
     CHECK(app->report_job.get() == first);
+    // The job's progress, for the window's "Analyzing n of N charts": the
+    // pass has listed its one chart and holds it at the analyzer.
+    while (app->report_job->progress().second == 0)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    CHECK(app->report_job->progress() == std::make_pair(0, 1));
     release = true;
+    while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    CHECK(app->report_job->progress() == std::make_pair(1, 1));
     finish_path_report(*app);
 
     CHECK(app->path_report_build() == ReportBuild::Ready);
@@ -1036,7 +1043,7 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     CHECK_FALSE(app->path_report.result->paths.empty());
     CHECK(app->path_report.result->html.empty());  // no page is kept
     CHECK(app->path_report.built_at.time_since_epoch().count() != 0);
-    CHECK(app->path_report.stale == ReportStale::None);
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::None);
     CHECK_FALSE(app->path_report.window_open);  // a request opens no window
 }
 
@@ -1059,7 +1066,7 @@ TEST_CASE("the path report goes out of date on a batch or a setting it was built
     const std::string title = app->library_row_at(0).title;
     app->request_path_report();
     finish_path_report(*app);
-    REQUIRE(app->path_report.stale == ReportStale::None);
+    REQUIRE(app->path_report.out_of_date == ReportOutOfDate::None);
 
     // A setting the report doesn't read leaves it alone; the chart mode is
     // one (the report lists every mode).
@@ -1067,7 +1074,7 @@ TEST_CASE("the path report goes out of date on a batch or a setting it was built
     app->commit_settings();
     app->settings.view_prodrums = !app->settings.view_prodrums;
     app->commit_settings();
-    CHECK(app->path_report.stale == ReportStale::None);
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::None);
     app->settings.view_prodrums = !app->settings.view_prodrums;
     app->settings.auto_open_report = false;
     app->commit_settings();
@@ -1075,17 +1082,24 @@ TEST_CASE("the path report goes out of date on a batch or a setting it was built
     // The SP cap is one it reads.
     app->settings.sp_cap = 5;
     app->commit_settings();
-    CHECK(app->path_report.stale == ReportStale::Settings);
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::Settings);
     app->settings.sp_cap = 4;
     app->commit_settings();
 
     // A batch finishing after it: the later event wins, and the batch's own
-    // report starts.
+    // report starts. The slot keeps the moment the batch's end was seen, for
+    // the window's "(a batch finished at HH:MM)" (D103 item 21).
+    CHECK_FALSE(app->path_report.batch_finished.has_value());
     run_redo_batch_over(*app, title);
+    const auto before_end = std::chrono::system_clock::now();
     app->update_background_jobs();
-    CHECK(app->path_report.stale == ReportStale::Library);
+    const auto after_end = std::chrono::system_clock::now();
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::Library);
+    REQUIRE(app->path_report.batch_finished.has_value());
+    CHECK(*app->path_report.batch_finished >= before_end);
+    CHECK(*app->path_report.batch_finished <= after_end);
     finish_path_report(*app);
-    CHECK(app->path_report.stale == ReportStale::None);  // the rebuild is current
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::None);  // the rebuild is current
     CHECK_FALSE(app->path_report.window_open);           // Open automatically is off
 
     // With Open automatically on, the batch's report opens its window.
@@ -1111,7 +1125,7 @@ TEST_CASE("a setting changed during a build leaves that build out of date") {
     release = true;
     finish_path_report(*app);
     REQUIRE(app->path_report.result != nullptr);
-    CHECK(app->path_report.stale == ReportStale::Settings);
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::Settings);
 }
 
 TEST_CASE("Cancel ends a path report build as cancelled and keeps the last report") {
@@ -1218,7 +1232,7 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
     // The chart mode is a setting the comparison reads.
     app->settings.view_prodrums = !app->settings.view_prodrums;
     app->commit_settings();
-    CHECK(app->dm_report.stale == ReportStale::Settings);
+    CHECK(app->dm_report.out_of_date == ReportOutOfDate::Settings);
 
     // Refresh: the same player again, and the result is current.
     app->dm_report.window_open = false;
@@ -1227,7 +1241,7 @@ TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
     REQUIRE(score_urls.size() == 2);
     CHECK(score_urls[1] == score_urls[0]);
     CHECK(score_urls[1].find("111") != std::string::npos);
-    CHECK(app->dm_report.stale == ReportStale::None);
+    CHECK(app->dm_report.out_of_date == ReportOutOfDate::None);
     CHECK_FALSE(app->dm_report.window_open);  // Refresh opens no window
 
     // Cancel while fetching: cancelled, and the last comparison is kept.

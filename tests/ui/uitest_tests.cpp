@@ -15,6 +15,7 @@ namespace uitest {
 
 void register_paths_tests(Harness& h);  // uitest_paths.cpp
 void register_report_window_tests(Harness& h);  // uitest_report_windows.cpp
+const std::vector<TestEntry>& report_window_flow_tests();  // uitest_report_windows.cpp
 
 void register_tests(Harness& h) {
     // --all runs the tests in the order they are registered, and the ImGui
@@ -51,13 +52,19 @@ void register_tests(Harness& h) {
     }
     ordered.insert(ordered.end(), pending.begin(), pending.end());
 
-    for (const TestEntry& e : ordered) {
-        ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);
-        t->UserData = &h;
-        t->TestFunc = e.fn;
-    }
+    auto register_entries = [&h](const std::vector<TestEntry>& entries) {
+        for (const TestEntry& e : entries) {
+            ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);
+            t->UserData = &h;
+            t->TestFunc = e.fn;
+        }
+    };
+    register_entries(ordered);
     register_paths_tests(h);
     register_report_window_tests(h);
+    // The report windows end to end: the app draws them from run_frame, so
+    // these have no GUI function of their own.
+    register_entries(report_window_flow_tests());
 }
 
 }  // namespace uitest

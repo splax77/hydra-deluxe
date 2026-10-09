@@ -25,17 +25,11 @@
 #include "app/report_view.h"
 #include "core/model.h"  // group_thousands
 #include "imgui.h"
+#include "ui/report_state.h"  // ReportBuild, ReportOutOfDate
 #include "ui/theme.h"
 #include "ui/widgets.h"  // hint, overflow_tooltip, keep_table_column_order
 
 namespace hydra::ui {
-
-// Where a report is in its life. A Ready report with no rows shows its
-// nothing-to-report text instead of a table.
-enum class ReportState { Building, Cancelled, Failed, Ready };
-
-// Why the rows on screen may be older than the library or the settings.
-enum class ReportOutOfDate { None, Library, Settings };
 
 // What the window's buttons and rows hand back. An empty function leaves
 // that control doing nothing.
@@ -58,7 +52,7 @@ template <class Result>
 struct ReportWindowInput {
     // The last report built, or null when none is in memory.
     std::shared_ptr<const Result> result;
-    ReportState state = ReportState::Building;
+    ReportBuild state = ReportBuild::None;
     // When `result` was built, for "Built HH:MM".
     std::optional<std::chrono::system_clock::time_point> built;
     ReportOutOfDate out_of_date = ReportOutOfDate::None;
@@ -87,6 +81,30 @@ using DmReportInput = ReportWindowInput<app::dm_report::GeneratedDmReport>;
 void draw_path_report_window(bool* open, const PathReportInput& input);
 void draw_dm_report_window(bool* open, const DmReportInput& input);
 
+// Each window's input as AppState holds its report this frame: the slot's
+// result and out-of-date reason, the job's state and progress, and callbacks
+// into AppState. path_report_window.cpp and dm_report_window.cpp fill them;
+// this header leaves AppState forward-declared.
+class AppState;
+PathReportInput path_report_input(AppState& app);
+DmReportInput dm_report_input(AppState& app);
+
+// The input's fields that come straight from a report's slot in AppState
+// (ReportSlot, ui/app_state.h) and its build state. Both window inputs start
+// here; each adds its own progress, player and callbacks.
+template <template <class> class Slot, class Result>
+ReportWindowInput<Result> input_from_slot(const Slot<Result>& slot, ReportBuild state) {
+    ReportWindowInput<Result> in;
+    in.result = slot.result;
+    in.state = state;
+    if (slot.result) in.built = slot.built_at;
+    in.out_of_date = slot.out_of_date;
+    in.batch_finished = slot.batch_finished;
+    in.failure_message = slot.message;
+    in.failure_error = slot.error;
+    return in;
+}
+
 // ---- The shared frame, used by the two window files -----------------------
 
 namespace report_frame {
@@ -102,7 +120,7 @@ struct Frame {
     // The subtitle while the report builds (empty: none).
     const char* building_subtitle = "";
     std::optional<std::chrono::system_clock::time_point> built;
-    ReportState state = ReportState::Building;
+    ReportBuild state = ReportBuild::None;
     ReportOutOfDate out_of_date = ReportOutOfDate::None;
     std::optional<std::chrono::system_clock::time_point> batch_finished;
     // Building: the bar's count, or no count for a moving bar, and the lines

@@ -54,10 +54,6 @@ struct FakeClipboard {
     }
 };
 
-bool on_screen(Harness& h, const std::string& s) {
-    return visible_text(h).find(s) != std::string::npos;
-}
-
 // A fresh app with Burnout analyzed and its Paths tab showing.
 bool open_burnout(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);

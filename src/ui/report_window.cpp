@@ -57,7 +57,7 @@ void header(const Frame& f) {
     ImGui::SameLine();
     ImGui::TextColored(kAccentColor, "%s", f.heading);
 
-    if (f.state == ReportState::Ready && f.built) {
+    if (f.state == ReportBuild::Ready && f.built) {
         const std::string built = "Built " + clock_text(*f.built);
         std::vector<const char*> buttons;
         if (f.compare_another) buttons.push_back("Compare another player...");
@@ -73,8 +73,8 @@ void header(const Frame& f) {
         ImGui::SameLine();
         if (ImGui::Button("Refresh")) call(cb.refresh);
     }
-    const char* subtitle = f.state == ReportState::Ready      ? f.subtitle.c_str()
-                           : f.state == ReportState::Building ? f.building_subtitle
+    const char* subtitle = f.state == ReportBuild::Ready      ? f.subtitle.c_str()
+                           : f.state == ReportBuild::Building ? f.building_subtitle
                                                               : "";
     if (*subtitle) {
         ImGui::PushTextWrapPos(0.0f);
@@ -83,27 +83,40 @@ void header(const Frame& f) {
     }
 }
 
-// The out-of-date strip: why the rows may be old, and Refresh. The library
-// line names the batch's finish time when there is one; the settings line
-// has no time (D103 item 21).
+// A strip on its own background (theme.h's strip colours), as wide as the
+// window and as tall as what it holds. Always pair with end_strip().
+void begin_strip(const char* id, const ImVec4& bg) {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, bg);
+    ImGui::BeginChild(id, ImVec2(0.0f, 0.0f),
+                      ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::PopStyleColor();
+}
+void end_strip() { ImGui::EndChild(); }
+
+// The out-of-date strip: why the rows may be old, and Refresh, on the done
+// strip's colour (mock board 2b). The library line names the batch's finish
+// time when there is one; the settings line has no time (D103 item 21).
 void out_of_date_strip(const Frame& f) {
-    if (f.state != ReportState::Ready || f.out_of_date == ReportOutOfDate::None) return;
+    if (f.state != ReportBuild::Ready || f.out_of_date == ReportOutOfDate::None) return;
     const std::string why =
         f.out_of_date == ReportOutOfDate::Settings
             ? "The settings changed since this report was built."
         : f.batch_finished ? "Your library changed since this report was built (a batch finished at " +
                                  clock_text(*f.batch_finished) + ")."
                            : "Your library changed since this report was built.";
+    begin_strip("##outofdate", kDoneStripBg);
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(why.c_str());
     ImGui::SameLine();
     if (ImGui::Button("Refresh##outofdate")) call(f.callbacks->refresh);
-    ImGui::Separator();
+    end_strip();
 }
 
-// The notice strip: the report's sentence and the files under Show files.
+// The notice strip: the report's sentence and the files under Show files, on
+// the problem strip's colour (mock board 2d).
 void notice_strip(const Frame& f, Memory& m) {
-    if (f.state != ReportState::Ready || f.notice.empty()) return;
+    if (f.state != ReportBuild::Ready || f.notice.empty()) return;
+    begin_strip("##leftout", kProblemStripBg);
     ImGui::AlignTextToFramePadding();
     ImGui::TextColored(kWarningColor, "%s", f.notice.c_str());
     if (!f.notice_files.empty()) {
@@ -117,6 +130,7 @@ void notice_strip(const Frame& f, Memory& m) {
             ImGui::PopFont();
         }
     }
+    end_strip();
 }
 
 // The rows a building report will fill, drawn as grey bars (mock board 2a).
@@ -142,7 +156,11 @@ void placeholder_rows() {
 bool state_body(const Frame& f) {
     const ReportCallbacks& cb = *f.callbacks;
     switch (f.state) {
-        case ReportState::Building: {
+        case ReportBuild::None:
+            // Never built, and no build could start (AppState's request
+            // refused it): the header alone.
+            return true;
+        case ReportBuild::Building: {
             // The first line says what is happening; any after it are dim
             // notes, as in the picker box.
             for (size_t i = 0; i < f.building_lines.size(); ++i) {
@@ -167,11 +185,11 @@ bool state_body(const Frame& f) {
             if (f.progress) placeholder_rows();
             return true;
         }
-        case ReportState::Cancelled:
+        case ReportBuild::Cancelled:
             ImGui::TextUnformatted("Report cancelled.");
             if (ImGui::Button("Try again")) call(cb.try_again);
             return true;
-        case ReportState::Failed:
+        case ReportBuild::Failed:
             ImGui::TextColored(kWarningColor, "%s", f.failure_sentence);
             ImGui::PushTextWrapPos(0.0f);
             ImGui::TextWrapped("%s", f.failure_message.c_str());
@@ -184,7 +202,7 @@ bool state_body(const Frame& f) {
                 if (ImGui::Button("Compare another player...")) call(cb.compare_another);
             }
             return true;
-        case ReportState::Ready:
+        case ReportBuild::Ready:
             if (f.empty_text.empty()) return false;
             ImGui::PushTextWrapPos(0.0f);
             ImGui::TextWrapped("%s", f.empty_text.c_str());
@@ -233,7 +251,7 @@ bool begin(bool* open, const Frame& f, Memory& m) {
 }
 
 void end(bool* open, const Frame& f, Memory& m) {
-    if (m.visible && f.state == ReportState::Ready && !f.footer.empty()) {
+    if (m.visible && f.state == ReportBuild::Ready && !f.footer.empty()) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(kDimTextColor, "%s", f.footer.c_str());
         ImGui::PopTextWrapPos();
