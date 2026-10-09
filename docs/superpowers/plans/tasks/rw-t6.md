@@ -77,3 +77,13 @@ Run by the orchestrator on main at `1a0bdd8` on 2026-10-08:
 ## Return
 
 `complete`, `branch`, `worktree`, `tip`, `report`, `questions`, `handoff`.
+
+## T6c: the user's answers to T6's three questions (2026-10-08)
+
+A follow-up agent (task id RW-T6c) applies these in T6's worktree, on top of T6's signed-off tip. They are D103 items 24 to 26.
+
+1. **Analysis off (item 24).** With a bad `hydra_rules.ini` and no report in memory, the path window shows the toolbar's sentence, "hydra_rules.ini has an error, so analysis is off until the file is fixed and Hydra is restarted.", and `app.rules_error` under it, where today it draws the header alone. The sentence is a literal in `library_toolbar.cpp:142-144`; give it one owner (a named constant beside `analysis_blocked` in AppState, or in the toolbar's header) that both the toolbar and the window read. The button stays (item 20). Owned for this: `src/ui/library_toolbar.cpp` (that sentence only), plus the T6 files.
+2. **The bar's word (item 25).** "Analyzing n of N charts" becomes "Analyzing n of N records". The count stays one per chart and mode still to analyze. Update every place the old string is pinned (report-window-states, report-window-open-path, the docs' ui-testing line if it quotes it; the docs line is the main session's).
+3. **Nothing to analyze (item 26).** When the progress total is 0, the bar moves with no count, the way the comparison's building bar does, under the building subtitle. Reuse the comparison's moving-bar code; don't write a second one. Pin it in a uitest (a seed that covers every chart) or a window-input test.
+
+Tests: the touched uitest scripts by name, and `-sf=*test_report.cpp*` if the progress case changes.
