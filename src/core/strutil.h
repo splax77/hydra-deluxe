@@ -37,6 +37,10 @@ std::string trim(std::string_view s);
 // (empty when s is all whitespace). Valid only while s's storage lives.
 std::string_view trim_view(std::string_view s);
 
+// Every occurrence of `from` in s replaced by `to`, left to right; text a
+// replacement put in is never searched again.
+std::string replace_all(std::string s, std::string_view from, std::string_view to);
+
 // Whether s starts with prefix, byte for byte.
 bool starts_with(std::string_view s, std::string_view prefix);
 

@@ -18,6 +18,7 @@
 #include "app/config.h"    // Settings::chartmode_key, to_analysis_settings
 #include "app/display_format.h"
 #include "app/html_page.h"
+#include "app/library_query.h"
 #include "app/work_pool.h"
 #include "core/model.h"
 #include "core/squeeze_rating.h"
@@ -609,7 +610,7 @@ std::string build_html(const std::vector<ReportRow>& rows, const std::string& su
         data += ",\"path\":";
         json_escape_into(data, r.path);
         data += ",\"search\":";
-        json_escape_into(data, html::search_field(r.song, r.artist, r.charter, r.path));
+        json_escape_into(data, search_field(r.song, r.artist, r.charter, r.path));
         data += ",\"score\":" + std::to_string(r.score);
         data += ",\"acts\":" + std::to_string(r.acts);
         data += ",\"skip\":" + std::to_string(r.skip);

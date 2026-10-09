@@ -5,8 +5,10 @@
 #include <utility>
 
 #include "app/html_page.h"
+#include "app/library_query.h"  // search_field
 #include "app/report.h"  // records_by_hash
 #include "core/model.h"  // group_thousands, counted
+#include "core/strutil.h"  // replace_all
 #include "parse/song.h"  // display_title, display_artist, display_charter
 #include "search/graph.h"  // fill_rule_name, fill_rule_description
 
@@ -153,8 +155,8 @@ const PAGE = {
 // The page shell, built once on first use. The title, heading and column
 // names read each rule's short name from fill_rule_name.
 const std::string& page_template() {
-    static const std::string page = html::replace_all(
-        html::replace_all(html::page_template(kTitle, kBody, kPageJs), "__OLD_RULE__",
+    static const std::string page = replace_all(
+        replace_all(html::page_template(kTitle, kBody, kPageJs), "__OLD_RULE__",
                           fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Short)),
         "__NEW_RULE__", fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Short));
     return page;
@@ -282,7 +284,7 @@ std::string build_fill_html(const std::vector<FillCompareRow>& rows,
         data += ",\"charter\":";
         json_escape_into(data, r.charter);
         data += ",\"search\":";
-        json_escape_into(data, html::search_field(r.song, r.artist, r.charter));
+        json_escape_into(data, search_field(r.song, r.artist, r.charter));
         data += ",\"s10\":" + opt_num(r.old_score);
         data += ",\"s11\":" + opt_num(r.new_score);
         data += ",\"delta\":" + opt_num(r.delta);

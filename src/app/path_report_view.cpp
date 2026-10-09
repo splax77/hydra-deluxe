@@ -1,7 +1,7 @@
 #include "app/path_report_view.h"
 
 #include "app/display_format.h"  // format_ms, format_avg_mult
-#include "app/html_page.h"       // search_field
+#include "app/library_query.h"   // search_field
 #include "core/model.h"          // group_thousands
 #include "core/squeeze_rating.h" // timing_tiers
 
@@ -174,7 +174,7 @@ std::function<bool(const ReportRow&)> path_keep(std::optional<std::string> tier,
 }
 
 std::string path_search_text(const ReportRow& row) {
-    return html::search_field(row.song, row.artist, row.charter, row.path);
+    return search_field(row.song, row.artist, row.charter, row.path);
 }
 
 }  // namespace hydra::app::path_report_view

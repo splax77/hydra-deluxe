@@ -6,9 +6,11 @@
 #include "app/config.h"          // Settings::chartmode_key, Settings::lens
 #include "app/display_format.h"  // format_percent, percent_steps
 #include "app/html_page.h"
+#include "app/library_query.h"
 #include "app/report.h"  // records_by_hash, library_copies_by_hash
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
+#include "core/strutil.h"
 #include "parse/song.h"  // display_title, display_artist, display_charter
 #include "search/graph.h"  // fill_rule_name
 
@@ -167,8 +169,8 @@ const std::string& page_template() {
     // The help texts name the base speed through __BASE_SPEED__ and Clone
     // Hero's cap through __SP_CAP__, so the page reads net::kBaseSpeedPercent
     // and kCloneHeroSpCap instead of repeating them.
-    static const std::string page = html::replace_all(
-        html::replace_all(html::page_template(kTitle, kBody, kPageJs), "__BASE_SPEED__",
+    static const std::string page = replace_all(
+        replace_all(html::page_template(kTitle, kBody, kPageJs), "__BASE_SPEED__",
                           std::to_string(net::kBaseSpeedPercent)),
         "__SP_CAP__", std::to_string(kCloneHeroSpCap));
     return page;
@@ -299,7 +301,7 @@ std::string build_dm_html(const std::vector<DmReportRow>& rows, const std::strin
         data += ",\"charter\":";
         json_escape_into(data, r.charter);
         data += ",\"search\":";
-        json_escape_into(data, html::search_field(r.song, r.artist, r.charter));
+        json_escape_into(data, search_field(r.song, r.artist, r.charter));
         data += ",\"actual\":" + std::to_string(r.actual);
         data += ",\"optimal\":" + (r.optimal ? std::to_string(*r.optimal) : std::string("null"));
         data += ",\"delta\":" + (r.delta ? std::to_string(*r.delta) : std::string("null"));

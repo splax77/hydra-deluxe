@@ -3,19 +3,10 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "app/library_query.h"  // make_searchable, search_fold_table
+#include "app/library_query.h"  // search_fold_table
+#include "core/strutil.h"        // replace_all
 
 namespace hydra::app::html {
-
-std::string replace_all(std::string s, const std::string& from,
-                        const std::string& to) {
-    size_t pos = 0;
-    while ((pos = s.find(from, pos)) != std::string::npos) {
-        s.replace(pos, from.size(), to);
-        pos += to.size();
-    }
-    return s;
-}
 
 std::string html_escape(const std::string& s) {
     std::string out;
@@ -533,20 +524,6 @@ std::string page_template(const char* title, const char* body, const char* page_
     page += kReportJs;
     page += kEnd;
     return page;
-}
-
-std::string search_field(std::string_view song, std::string_view artist,
-                         std::string_view charter, std::string_view path) {
-    // The library's own row builder folds and strips each field; the path
-    // rides in its folder slot.
-    const SearchableRow row = make_searchable(song, artist, charter, path);
-    std::string out;
-    for (const std::string* field : {&row.title, &row.artist, &row.charter, &row.folder}) {
-        if (field->empty()) continue;
-        if (!out.empty()) out.push_back(' ');
-        out += *field;
-    }
-    return out;
 }
 
 }  // namespace hydra::app::html

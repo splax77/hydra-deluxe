@@ -11,10 +11,6 @@
 
 namespace hydra::app::html {
 
-// str.replace(old, new) for the one-shot template placeholders.
-std::string replace_all(std::string s, const std::string& from,
-                        const std::string& to);
-
 // html.escape(s, quote=True): & first, then the rest.
 std::string html_escape(const std::string& s);
 
@@ -50,13 +46,6 @@ extern const char* const kReportJs;      // sorting, filtering, drawing, first r
 // The result still carries __SUBTITLE__, __FOOTER__ and __DATA__ for
 // render_page to fill.
 std::string page_template(const char* title, const char* body, const char* page_js);
-
-// A row's search text on a report page: each field the page searches, folded
-// and tag-free the way the library stores its rows (make_searchable in
-// app/library_query.h), joined by single spaces. Empty fields are left out.
-// The page keeps a row when every word of the folded query appears in it.
-std::string search_field(std::string_view song, std::string_view artist,
-                         std::string_view charter, std::string_view path = {});
 
 }  // namespace hydra::app::html
 
