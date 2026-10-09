@@ -56,6 +56,19 @@ std::string batch_counts(const BatchJob::Snapshot& s) {
            counted(s.skipped, "skipped", "skipped") + " (already had a result)";
 }
 
+// The setting values both summaries print, each said once: the batch
+// confirm and the settings button wrap them in their own words.
+std::string sp_cap_value(const app::Settings& s) { return counted(s.sp_cap, "bar", "bars"); }
+
+std::string score_range_value(const app::Settings& s) {
+    return s.search_depth_mode() == DepthMode::Scores ? counted(s.depth_value, "score", "scores")
+                                                      : counted(s.depth_value, "point", "points");
+}
+
+std::string path_limit_ms_value(const app::Settings& s) {
+    return std::to_string(s.mslimit_value) + " ms";
+}
+
 }  // namespace
 
 std::string format_duration(double seconds) {
@@ -75,14 +88,39 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     if (s.view_prodrums) out.difficulty += " \xC2\xB7 Pro Drums";
     if (s.effective_bass2x()) out.difficulty += " \xC2\xB7 2x Bass";
     if (s.view_noteshuffle) out.difficulty += " \xC2\xB7 Note Shuffle";
-    out.sp_cap = counted(s.sp_cap, "bar", "bars") +
+    out.sp_cap = sp_cap_value(s) +
                  (s.sp_cap == kCloneHeroSpCap ? " (Clone Hero's rule)" : " (a what-if)");
     out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);
-    out.score_range = s.search_depth_mode() == DepthMode::Scores
-                          ? counted(s.depth_value, "score", "scores")
-                          : counted(s.depth_value, "point", "points");
-    out.path_limit = s.mslimit_enabled ? std::to_string(s.mslimit_value) + " ms" : "off";
+    out.score_range = score_range_value(s);
+    out.path_limit = s.mslimit_enabled ? path_limit_ms_value(s) : "off";
     return out;
+}
+
+std::string settings_changes_summary(const app::Settings& s) {
+    // The defaults are a default-constructed Settings' (app/config.h).
+    const app::Settings d;
+    std::string out;
+    const auto add = [&out](const std::string& phrase) {
+        if (!out.empty()) out += " \xC2\xB7 ";
+        out += phrase;
+    };
+    if (s.difficulty() != d.difficulty()) add(difficulty_name(s.difficulty()));
+    if (s.view_prodrums != d.view_prodrums) add(s.view_prodrums ? "Pro Drums" : "Pro Drums off");
+    if (s.effective_bass2x() != d.effective_bass2x())
+        add(s.effective_bass2x() ? "2x Bass" : "2x Bass off");
+    if (s.view_noteshuffle != d.view_noteshuffle)
+        add(s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off");
+    if (s.sp_cap != d.sp_cap) add("SP cap " + sp_cap_value(s));
+    if (s.legacy_fills != d.legacy_fills) add(s.legacy_fills ? "1.0 fills" : "1.0 fills off");
+    if (s.depth_value != d.depth_value || s.search_depth_mode() != d.search_depth_mode())
+        add("Score range " + score_range_value(s));
+    if (s.mslimit_enabled != d.mslimit_enabled || s.mslimit_value != d.mslimit_value)
+        add(s.mslimit_enabled ? "Path limit " + path_limit_ms_value(s) : "Path limit off");
+    return out.empty() ? "defaults" : out;
+}
+
+std::string settings_button_label(const app::Settings& s, bool locked) {
+    return "Analysis settings: " + settings_changes_summary(s) + (locked ? " (locked)" : "");
 }
 
 std::string scan_folders_found_text(int64_t folders_seen) {

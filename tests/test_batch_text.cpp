@@ -59,6 +59,78 @@ TEST_CASE("batch text: the confirm lists the settings a batch runs with") {
     CHECK(d.score_range == "4 scores");
 }
 
+TEST_CASE("settings button: lists only the settings that differ from the defaults") {
+    Settings s;
+    CHECK(settings_changes_summary(s) == "defaults");
+    CHECK(settings_button_label(s, false) == "Analysis settings: defaults");
+    CHECK(settings_button_label(s, true) == "Analysis settings: defaults (locked)");
+
+    // Each setting on its own, one phrase per row of the handoff's table.
+    {
+        Settings t;
+        t.view_difficulty = "Hard";
+        CHECK(settings_changes_summary(t) == "Hard");
+    }
+    {
+        Settings t;
+        t.view_prodrums = false;
+        CHECK(settings_changes_summary(t) == "Pro Drums off");
+    }
+    {
+        Settings t;
+        t.view_bass2x = false;
+        CHECK(settings_changes_summary(t) == "2x Bass off");
+    }
+    {
+        Settings t;
+        t.view_noteshuffle = true;
+        CHECK(settings_changes_summary(t) == "Note Shuffle");
+    }
+    {
+        Settings t;
+        t.sp_cap = 5;
+        CHECK(settings_changes_summary(t) == "SP cap 5 bars");
+        t.sp_cap = 1;
+        CHECK(settings_changes_summary(t) == "SP cap 1 bar");
+    }
+    {
+        Settings t;
+        t.legacy_fills = true;
+        CHECK(settings_changes_summary(t) == "1.0 fills");
+    }
+    {
+        Settings t;
+        t.depth_value = 100;
+        t.depth_mode = 1;
+        CHECK(settings_changes_summary(t) == "Score range 100 points");
+        t.depth_value = 4;  // the unit alone differs
+        CHECK(settings_changes_summary(t) == "Score range 4 points");
+        t.depth_mode = 0;
+        t.depth_value = 2000;  // the number alone differs
+        CHECK(settings_changes_summary(t) == "Score range 2,000 scores");
+    }
+    {
+        Settings t;
+        t.mslimit_value = 20;
+        CHECK(settings_changes_summary(t) == "Path limit 20 ms");
+        t.mslimit_enabled = false;
+        CHECK(settings_changes_summary(t) == "Path limit off");
+        t.mslimit_value = 10;  // the tick alone differs
+        CHECK(settings_changes_summary(t) == "Path limit off");
+    }
+
+    // Several at once keep the table's order.
+    s.mslimit_value = 20;
+    s.view_noteshuffle = true;
+    s.view_difficulty = "Hard";
+    s.sp_cap = 5;
+    CHECK(settings_changes_summary(s) ==
+          "Hard \xC2\xB7 Note Shuffle \xC2\xB7 SP cap 5 bars \xC2\xB7 Path limit 20 ms");
+    CHECK(settings_button_label(s, true) ==
+          "Analysis settings: Hard \xC2\xB7 Note Shuffle \xC2\xB7 SP cap 5 bars \xC2\xB7 "
+          "Path limit 20 ms (locked)");
+}
+
 TEST_CASE("batch text: cap 1 reads 1 bar and cap 1000 reads 1,000 bars") {
     Settings s;
     s.sp_cap = 1;

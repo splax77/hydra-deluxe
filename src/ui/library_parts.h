@@ -69,6 +69,14 @@ struct BatchSettingsSummary {
 };
 BatchSettingsSummary batch_settings_summary(const app::Settings& s);
 
+// The settings that differ from a default-constructed app::Settings, one
+// phrase each in the panel's order, joined with " · ": "Hard · Note Shuffle".
+// "defaults" when none differ.
+std::string settings_changes_summary(const app::Settings& s);
+// The settings button's label: "Analysis settings: " and the summary above,
+// ending in " (locked)" while the settings are locked.
+std::string settings_button_label(const app::Settings& s, bool locked);
+
 // What the library area says when there are no charts: add a folder first,
 // or scan the folders you have.
 const char* empty_library_message(const app::Settings& s);
