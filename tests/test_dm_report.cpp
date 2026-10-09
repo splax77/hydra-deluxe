@@ -729,13 +729,13 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
     const std::string fills =
         "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
         "current Clone Hero.";
-    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false) == "");
-    CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false) == expert);
-    CHECK(why_not_comparable(Difficulty::Expert, 8, false) == cap);
-    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true) == fills);
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false, false) == "");
+    CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false, false) == expert);
+    CHECK(why_not_comparable(Difficulty::Expert, 8, false, false) == cap);
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true, false) == fills);
     // The first rule that fails names the reason.
-    CHECK(why_not_comparable(Difficulty::Easy, 8, true) == expert);
-    CHECK(why_not_comparable(Difficulty::Expert, 8, true) == cap);
+    CHECK(why_not_comparable(Difficulty::Easy, 8, true, false) == expert);
+    CHECK(why_not_comparable(Difficulty::Expert, 8, true, false) == cap);
 
     // The join refuses a 1.0-fills lens with the same sentence, as an
     // AlreadyPlain error, so a screen shows the sentence as it is.
@@ -752,6 +752,37 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule (170)") {
         CHECK(app::plain_error(e) == fills);
     }
     CHECK(refused);
+}
+
+TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle changes (D104 item 6)") {
+    using app::dm_report::why_not_comparable;
+    const std::string shuffle =
+        "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
+        "compared with a shuffled path.";
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false, true) == shuffle);
+    // An earlier rule still names the reason first.
+    CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false, true) ==
+          "Needs Expert: the leaderboard only has Expert scores.");
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true, true) ==
+          "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
+          "current Clone Hero.");
+
+    // The join reads the switch back from the mode string and refuses a
+    // shuffled one with the same sentence. The unshuffled mode still joins.
+    store::RecordStore store(":memory:");
+    REQUIRE(fill_store(store) > 0);
+    bool refused = false;
+    try {
+        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)},
+                                        "Expert Pro Drums, 2x Bass, Note Shuffle", store::Lens{});
+    } catch (const KindedError& e) {
+        refused = true;
+        CHECK(e.kind() == ErrorKind::AlreadyPlain);
+        CHECK(app::plain_error(e) == shuffle);
+    }
+    CHECK(refused);
+    CHECK(app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, kMode, store::Lens{})
+              .size() == 1);
 }
 
 // ---- results the library doesn't list (D92) ---------------------------------

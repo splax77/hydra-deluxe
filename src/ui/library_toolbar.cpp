@@ -101,8 +101,10 @@ void render_actions_row(AppState& app) {
     // app::dm_report::why_not_comparable says whether these settings can be
     // compared with the leaderboard. When they can't, the button is off and
     // its tooltip is the gate's sentence.
-    const std::string refused = app::dm_report::why_not_comparable(
-        app.settings.difficulty(), app.settings.sp_cap, app.settings.legacy_fills);
+    const std::string refused =
+        app::dm_report::why_not_comparable(app.settings.difficulty(), app.settings.sp_cap,
+                                           app.settings.legacy_fills,
+                                           app.settings.view_noteshuffle);
     const bool compare_off = !refused.empty();
     begin_disabled_button(compare_off);
     if (ImGui::Button("Compare with dmleaderboards...")) {

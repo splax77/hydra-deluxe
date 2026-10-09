@@ -74,11 +74,13 @@ struct DmReportRow {
 };
 
 // The one gate on comparing with dmleaderboards (finding 170): the leaderboard
-// holds Clone Hero scores, so the comparison needs Clone Hero's rules. Returns
-// an empty string when these settings allow it, and otherwise the sentence
-// that names the first rule they break. The library toolbar's button and
-// collect_dm_rows both ask it.
-std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills);
+// holds Clone Hero scores, so the comparison needs Clone Hero's rules, and a
+// path its scores can be held against (D104 item 6). Returns an empty string
+// when these settings allow it, and otherwise the sentence that names the
+// first rule they break. The library toolbar's button and collect_dm_rows
+// both ask it.
+std::string why_not_comparable(Difficulty difficulty, int sp_cap, bool legacy_fills,
+                               bool note_shuffle);
 
 // Joins every fetched score against the store's records for `chartmode`,
 // preferring the leaderboard's own song/artist metadata and falling back to the

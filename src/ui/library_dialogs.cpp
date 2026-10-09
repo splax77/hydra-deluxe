@@ -74,6 +74,7 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     out.difficulty = difficulty_name(s.difficulty());
     if (s.view_prodrums) out.difficulty += " \xC2\xB7 Pro Drums";
     if (s.effective_bass2x()) out.difficulty += " \xC2\xB7 2x Bass";
+    if (s.view_noteshuffle) out.difficulty += " \xC2\xB7 Note Shuffle";
     out.sp_cap = counted(s.sp_cap, "bar", "bars") +
                  (s.sp_cap == kCloneHeroSpCap ? " (Clone Hero's rule)" : " (a what-if)");
     out.fills = fill_rule_name(fill_rule_for(s.legacy_fills), FillRuleNameStyle::Long);

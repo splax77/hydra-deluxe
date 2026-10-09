@@ -1052,6 +1052,7 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     }, 5));
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/Pro Drums").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK((ctx->ItemInfo("**/Note Shuffle").ItemFlags & ImGuiItemFlags_Disabled) != 0);
 
     h.app->batch_job->stop();
     IM_CHECK(wait_until(ctx, [&] { return !h.app->batch_running(); }, 300));
