@@ -197,14 +197,13 @@ const std::vector<OwnerRule>& rules() {
           "FILE* f = _wfopen(w.c_str(), L\"rb\");"},
          {"HANDLE h = CreateFileW(win32_path(p).c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);",
           "std::FILE* f = hydra::fopen_utf8(path, L\"rb\");"}},
-        // The shell takes no long or prefixed path (fits_shell), so only the
-        // two report buttons launch it, each with shell_path's short form.
+        // The shell takes no long or prefixed path (fits_shell), so only
+        // open_in_browser launches it, with shell_path's short form.
         {"Which code launches the Windows shell?",
-         "open_in_browser (src/app/report_files.cpp) and show_in_folder "
-         "(src/ui/win32_dialogs.cpp)",
+         "open_in_browser (src/app/report_files.cpp)",
          R"(ShellExecute|CreateProcess)",
          "",
-         {"src/app/report_files.cpp", "src/ui/win32_dialogs.cpp"},
+         {"src/app/report_files.cpp"},
          {},
          "ADR 0020 (The shell: Open report and Show in folder)",
          {"ShellExecuteW(nullptr, L\"open\", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL);",
@@ -1108,9 +1107,6 @@ const std::vector<OwnerRule>& rules() {
          "",
          {"src/app/config.cpp"},
          {{"src/ui/app_state.cpp", "the GUI is where the 1.0 fills setting lives"},
-          {"src/cli/report.cpp",
-           "hydra_report follows the app's setting, or a database's 1.0 stamp, by design "
-           "(docs/adr/0010)"},
           {"src/cli/fillcompare.cpp",
            "hydra_fillcompare sets each side's fill rule itself (collect_fill_rows in "
            "src/app/fill_report.cpp)"}},
@@ -1481,12 +1477,11 @@ const std::vector<OwnerRule>& rules() {
            "dm_tiles' tile label for dm_report::kStatusNotAnalyzed, a score's state in "
            "this mode at Clone Hero's cap, not a library record's status (derive-once "
            "review of RW-T2, finding 1)"}}},
-        // A comparison status word typed in double quotes. The page's
-        // dropdown option values (value="...", gone with the page in T7) and
-        // its single-quoted script stay out.
+        // A comparison status word typed in double quotes, an HTML attribute
+        // value included. Only single quotes stay out.
         {"Which words name a comparison row's status?",
          "the kStatus constants in src/app/dm_report.h",
-         R"re((^|[^=])"(under optimal|at optimal|above optimal|not analyzed|no paths|not in library|other speed)")re",
+         R"re("(under optimal|at optimal|above optimal|not analyzed|no paths|not in library|other speed)")re",
          "",
          {},
          {},
@@ -1495,9 +1490,9 @@ const std::vector<OwnerRule>& rules() {
           "{std::string(\"under optimal\"), \"Under optimal\"},",
           "if (r.status == \"under optimal\") ++stats.under_optimal;",
           "row.status = \"no paths\";",
-          "if (status == \"not analyzed\" || status == \"no paths\" || status == \"other speed\")"},
+          "if (status == \"not analyzed\" || status == \"no paths\" || status == \"other speed\")",
+          "<option value=\"under optimal\">Under optimal</option>"},
          {"if (!r.delta || r.status == dm_report::kStatusOtherSpeed) return Tone::Dim;",
-          "<option value=\"under optimal\">Under optimal</option>",
           "{\"Under optimal\", group_thousands(stats.under_optimal)},",
           "group_thousands(stats.under_optimal) + \" under optimal, \" +"},
          {{"src/app/dm_report.h",
@@ -2750,21 +2745,22 @@ const std::vector<OwnerRule>& rules() {
           "const std::vector<const Path*> paths = record->all_paths();"},
          {},
          {"src", "tools", "tests"}},
-        // The subtitle's chart count and the page's chart ids come from one
+        // The subtitle's chart count and the Charts shown tile come from one
         // file-local helper in report.cpp.
-        {"How many charts does a report page list?",
-         "page_charts in src/app/report.cpp",
-         R"(\.insert\(\s*r\.hyhash|\.emplace\(\s*r\.hyhash)",
+        {"How many charts does a path report list?",
+         "charts_counted in src/app/report.cpp",
+         R"(\.(insert|emplace)\(\s*\w+(\[\w+\])?\.hyhash)",
          "",
          {},
          {},
          "audit finding 242; phase 6 task J2-2 (D53); D77 (copies)",
          {"songs.insert(r.hyhash);",
-          "if (seen.insert(r.hyhash).second) n += r.copies;"},
-         {"for (const auto& [hash, chart] : page_charts(rows)) out.songs += chart.copies;"},
+          "if (seen.insert(r.hyhash).second) n += r.copies;",
+          "if (seen.insert(rows[k].hyhash).second) n += rows[k].copies;"},
+         {"out.songs = charts_counted(rows, every_row);"},
          {{"src/app/report.cpp",
-           "charts.emplace(r.hyhash, PageChart{static_cast<int>(charts.size()), r.copies});",
-           "page_charts, the owner"}},
+           "if (seen.insert(rows[i].hyhash).second) charts += rows[i].copies;",
+           "charts_counted, the owner"}},
          {"src"}},
         // collect_dm_rows and collect_fill_rows set each row's status from
         // the one comparison; the page scripts read it instead of testing the
@@ -3163,9 +3159,9 @@ const std::vector<OwnerRule>& rules() {
          {"tests"}},
         // ---- report pages (phase 7 task RP) ----
         // A report page's file name typed outside its constant. The GUI test
-        // harness clears both pages, so it is scanned too.
+        // harness once cleared the pages, so it is scanned too.
         {"What file name does each report page have?",
-         "kPathReportFileName and kDmReportFileName in src/app/report_files.h",
+         "kPathReportFileName in src/app/report_files.h",
          R"(hydra_(paths|dmcompare)\.html)",
          "",
          {},
@@ -3177,10 +3173,7 @@ const std::vector<OwnerRule>& rules() {
           "std::string out = \"fill_compare.html\";"},
          {{"src/app/report_files.h",
            "inline constexpr const char* kPathReportFileName = \"hydra_paths.html\";",
-           "kPathReportFileName, the owner"},
-          {"src/app/report_files.h",
-           "inline constexpr const char* kDmReportFileName = \"hydra_dmcompare.html\";",
-           "kDmReportFileName, the owner"}},
+           "kPathReportFileName, the owner"}},
          {"src", "tools", "tests/ui/uitest_harness.cpp"}},
         // Clone Hero's SP cap written as text, where the leaderboard page
         // names it.
@@ -4899,12 +4892,13 @@ const std::vector<OwnerRule>& rules() {
            "return std::string(\"NOT EXISTS (SELECT 1 FROM charts WHERE charts.md5 = \") + hash + \")\";",
            "not_in_library, the owner"}}},
         // The path report and the fill comparison count charts by adding up
-        // each row's copies, in C++ and in the page script alike. Counting
-        // rows instead drops every extra copy. The leaderboard page counts
-        // posted scores, not charts (D79), so it is not scanned.
+        // each row's copies, in C++ and in the fill page's script alike.
+        // Counting rows instead drops every extra copy. The leaderboard
+        // comparison counts posted scores, not charts (D79), so it is not
+        // scanned.
         {"How many charts does a page or its tool count?",
          "each row's copies from RecordStore::copies_of, added up by generate_report, "
-         "tally_fill_rows and the pages' stats() through the payload's \"k\"",
+         "tally_fill_rows and the fill page's stats() through the payload's \"k\"",
          R"(\['Charts',\s*fmt\(rows\.length\)|rows\.filter\(r\s*=>\s*r\.status\s*===\s*s\)\.length|\+\+stats\.|stats\.total\s*=\s*static_cast<int>\(rows\.size\(\)\))",
          "",
          {},
@@ -4919,8 +4913,7 @@ const std::vector<OwnerRule>& rules() {
           "if (r.status == \"same\") stats.same += r.copies;",
           "const beyond = rows.filter(r => r.tier === 'Beyond').length;"},
          {},
-         {"src/app/report.cpp", "src/app/fill_report.cpp", "src/cli/report.cpp",
-          "src/cli/fillcompare.cpp"}},
+         {"src/app/report.cpp", "src/app/fill_report.cpp", "src/cli/fillcompare.cpp"}},
         // A chord's note order prices it: ties keep lane order, and the first
         // note is the one a squeeze-out takes. One function sorts; a second
         // sort on basescore, stable_sort's comparator or an insertion sort's
@@ -6185,13 +6178,8 @@ struct KnownClone {
 // later fix; removing one means removing its entry here.
 const std::vector<KnownClone>& known_clones() {
     static const std::vector<KnownClone> k = {
-        {"src/app/dm_report.cpp", "src/app/fill_report.cpp", 8, R"x(</select>)x"},
-        {"src/app/dm_report.cpp", "src/app/fill_report.cpp", 9, R"x(<div class="sub">__SUBTITLE__</div>)x"},
-        {"src/app/dm_report.cpp", "src/app/report.cpp", 9, R"x(<div class="sub">__SUBTITLE__</div>)x"},
         {"src/app/dynamics_breakdown.cpp", "tests/test_dynamics_breakdown.cpp", 9, R"x({DynamicsRow::RedSnare, NoteColor::Red, false, false},)x"},
-        {"src/app/fill_report.cpp", "src/app/report.cpp", 9, R"x(<div class="sub">__SUBTITLE__</div>)x"},
         {"src/audio/ma_reader.cpp", "src/audio/vorbis_reader.cpp", 9, R"x(pos_ += done;)x"},
-        {"src/cli/fillcompare.cpp", "src/cli/report.cpp", 9, R"x(return 1;)x"},
         {"tests/test_app_state.cpp", "tests/test_song_panel_state.cpp", 11, R"x(char hash[32];)x"},
         {"tests/test_audio_player.cpp", "tests/test_preview_transport.cpp", 10, R"x(namespace {)x"},
         {"tests/test_highway_draw.cpp", "tests/test_track_state.cpp", 9, R"x(SongTiming timing(480, {{0, 1920}}, {{0, 300.0}});)x"},

@@ -203,7 +203,7 @@ void check_cap(int cap) {
 }
 
 // True when `text` ends with `tail`.
-bool ends_with(const std::string& text, const std::string& tail) {
+bool subtitle_ends_with(const std::string& text, const std::string& tail) {
     return text.size() >= tail.size() &&
            text.compare(text.size() - tail.size(), tail.size(), tail) == 0;
 }
@@ -419,7 +419,7 @@ TEST_CASE("report lists only the wanted cap and names it") {
 
     report::ReportOptions options = fixture_options(4);
     report::GeneratedReport four = report::generate_report(store, options);
-    CHECK(ends_with(four.subtitle, "SP cap 4 bars"));
+    CHECK(subtitle_ends_with(four.subtitle, "SP cap 4 bars"));
     // The subtitle counts what the report lists: the one record at 4 bars, not
     // the 8-bar record the database also holds for the same chart.
     CHECK(four.records == 1);
@@ -436,13 +436,13 @@ TEST_CASE("report lists only the wanted cap and names it") {
     // 1,000 (D48 Q12).
     store_tied(store, library, "one", 1);
     store_tied(store, library, "thousand", 1000);
-    CHECK(ends_with(report::generate_report(store, fixture_options(1)).subtitle, "SP cap 1 bar"));
-    CHECK(ends_with(report::generate_report(store, fixture_options(1000)).subtitle,
+    CHECK(subtitle_ends_with(report::generate_report(store, fixture_options(1)).subtitle, "SP cap 1 bar"));
+    CHECK(subtitle_ends_with(report::generate_report(store, fixture_options(1000)).subtitle,
                     "SP cap 1,000 bars"));
 
     // A 1.0 report names its rule by the fill rule's one long name.
     store_tied(store, library, "legacy", 4, /*legacy_fills=*/true);
-    CHECK(ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))
+    CHECK(subtitle_ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))
                         .subtitle,
                     std::string("SP cap 4 bars — ") +
                         fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
@@ -468,7 +468,7 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
     CHECK(ch10.records == 1);
     REQUIRE_FALSE(ch10.paths.empty());
     for (const report::ReportRow& r : ch10.paths) CHECK(r.song == "Title 0");
-    CHECK(ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));
+    CHECK(subtitle_ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));
 
     const report::GeneratedReport ch11 = report::generate_report(store, fixture_options(4));
     CHECK(ch11.paths.empty());
