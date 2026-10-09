@@ -54,6 +54,12 @@ public:
               double audio_offset_ms = 0.0);
     void unload();  // drop the playhead, back to an empty paused transport
 
+    // A new last note for the loaded audio, as when the Preview swaps in
+    // another mode's notes. length_ms() follows by the same rule as load().
+    // The audio, the play state and the clock stay as they are, except that
+    // a clock past the new end is pulled back to it, as seek_ms clamps.
+    void set_last_note_ms(double last_note_ms);
+
     void play();    // seeks the playhead to the clock and starts both
     void pause();
     void toggle();
@@ -82,6 +88,10 @@ public:
     int sample_rate() const;
 
 private:
+    // The playback range rule load() and set_last_note_ms share. Call with
+    // mu_ held, after playhead_ and audio_offset_ms_ are set.
+    void update_length_locked(double last_note_ms);
+
     app::PreviewClock clock_;  // GUI thread only
     double length_ms_ = 0.0;
     double audio_offset_ms_ = 0.0;  // as audio_ms_of_chart_ms takes it

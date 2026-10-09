@@ -172,7 +172,7 @@ The Preview plays the chart as a 3D note highway, in time with the song's audio.
 
 Where Star Power runs out, a bright teal line crosses the floor and a small teal triangle sits just outside each railing, level with the line. A note just before the end can cover the line, but the triangles stay in view, so you can always see exactly where SP stops.
 
-The Preview follows the Analysis settings. Change the difficulty, Pro Drums, 2x Bass or Note Shuffle and it reloads with that mode's notes. If the chart has no notes for that mode, it says so, like `No Hard Pro Drums notes in this chart.` If the chart file changed since it was analyzed, the Preview draws no path and shows `This chart changed since it was analyzed. Click the song again to see its path.`
+The Preview follows the Analysis settings. Change the difficulty, Pro Drums, 2x Bass or Note Shuffle and that mode's notes appear in place. The song keeps playing, or stays paused, at the same spot. If the chart has no notes for that mode, the Preview pauses where it is and says so, like `No Hard Pro Drums notes in this chart.` Switch back and the notes return at that spot. If the chart file changed since it was analyzed, the Preview draws no path and shows `This chart changed since it was analyzed. Click the song again to see its path.`
 
 **`Showing`** picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (best all-0)`.
 

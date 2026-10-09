@@ -41,6 +41,7 @@ class PreviewAudioDevice;
 namespace hydra::ui {
 
 class PreviewLoadJob;
+class PreviewNotesJob;
 class PreviewSceneJob;
 class PreviewBaseJob;
 struct PreviewSceneBase;
@@ -49,7 +50,9 @@ struct PreviewSceneBase;
 // difficulty, with Pro Drums, 2x Bass and Note Shuffle on or off. These are
 // the inputs Settings::to_analysis_settings reads to pick the notes, so
 // another difficulty, Pro Drums, 2x Bass or Note Shuffle is another song and
-// reloads its notes (D48, Q22; D104 item 1).
+// loads its own notes (D48, Q22; D104 item 1). On a chart whose first load
+// finished, only the notes reload: the audio and the playhead stay (see
+// PreviewController::open).
 struct PreviewSongKey {
     std::string md5;
     Difficulty difficulty = Difficulty::Expert;
@@ -77,12 +80,17 @@ public:
     // the caller's Path need not outlive the call. `path_key` is
     // app::path_overlay_key(path), which the caller builds once per selection
     // (it is too heavy to build per frame). Already open for the same song
-    // (PreviewSongKey), path key and
-    // SP cap: a no-op. Another song is a fresh load. Same song, different
-    // path or cap: the new
-    // overlay is built on a background job off the retained song and swapped
-    // in by a later poll() — no re-parse, no audio re-decode, playback
-    // position untouched; the old overlay stays up until then.
+    // (PreviewSongKey), path key and SP cap: a no-op. Same song, different
+    // path or cap: the new overlay is built on a background job off the
+    // retained song and swapped in by a later poll() — no re-parse, no audio
+    // re-decode, playback position untouched; the old overlay stays up until
+    // then. Same chart in another mode, once its first load has finished:
+    // only the notes reload, on a PreviewNotesJob. The audio keeps playing
+    // (or stays paused), the playhead stays put, and the old highway stays
+    // up until poll() swaps the new notes in. If the new mode has no notes,
+    // the Preview pauses where it is and shows the error. Another chart, or
+    // the same chart while its first load runs or after it failed: a fresh
+    // load from the start.
     void open(const store::ChartLibraryEntry& entry, bool pro, bool bass2x,
               Difficulty difficulty, const Path* path, const std::string& path_key,
               int sp_cap, const core::Rules& rules = core::default_rules(),
@@ -120,11 +128,13 @@ public:
     bool has_sp_gauge() const;
 
     // The first load is still running: what the panel's progress bar means.
+    // A notes reload is not a load here: the old highway stays on screen.
     bool loading() const { return job_ != nullptr; }
     // Any Preview job is still running or waiting for poll() to take it in:
-    // the first load, the base build (or one poll() is about to start), the
-    // overlay build, or a replaced overlay build still finishing. False
-    // means every Preview thread is done (finding 109).
+    // the first load, a notes reload, the base build (or one poll() is about
+    // to start), the overlay build, or a replaced notes, base or overlay
+    // build still finishing. False means every Preview thread is done
+    // (finding 109).
     bool busy() const;
     // Only meaningful while loading(); the load's current step and how far
     // through the audio it is.
@@ -294,16 +304,22 @@ private:
     std::unique_ptr<PreviewLoadJob> job_;
     hydra::app::PreviewScene scene_;
     bool scene_dirty_ = true;  // scene_ changed since the renderer last saw it
-    bool pro_ = true;          // the pro-drums view setting the chart was opened with
+    bool pro_ = true;          // the pro-drums setting the drawn notes were read with
     // The highway options drawn with: track_options(pro_).
     render::TrackStateOptions track_opts() const;
     // The highway timeline a job built from scene_ on its worker, waiting for
     // render() to move it into the renderer, plus the options it was built
-    // with. Set together with scene_ whenever a job's scene lands; empty
-    // otherwise (then render() builds the timeline itself, as for the empty
-    // scene after close()). Dropped after the upload.
+    // with. Set by show_scene together with scene_; empty when there is none
+    // (then render() builds the timeline itself, as for the empty scene after
+    // close()). Dropped after the upload.
     std::optional<render::TrackState> pending_track_;
     render::TrackStateOptions pending_track_opts_;
+    // The one place scene_ changes: the scene, the timeline a job built from
+    // it (or none), that timeline's options and the overlay key the scene was
+    // built for are swapped in together, and render() is told. Each landing
+    // job and each drop of the scene calls it.
+    void show_scene(hydra::app::PreviewScene scene, std::optional<render::TrackState> track,
+                    render::TrackStateOptions track_opts, std::string path_key);
     int sp_cap_ = kCloneHeroSpCap;  // the SP meter's ceiling the scene was built with
     // The rules the running score is priced under: the user's
     // hydra_rules.ini, as the panel passes it to every open().
@@ -331,6 +347,10 @@ private:
     // builds its own and hands it back); dropped with the song.
     std::shared_ptr<const PreviewSceneBase> scene_base_;
     std::unique_ptr<PreviewBaseJob> base_job_;
+    // Base builds for notes a notes reload replaced, still finishing. They
+    // never land: poll() drops each once done, so the UI thread never joins
+    // one.
+    std::vector<std::unique_ptr<PreviewBaseJob>> retired_base_jobs_;
     bool base_started_ = false;  // base_job_ ran once for this chart
     // The next poll() starts base_job_: the song is here, nothing else is
     // building a base, and none was built or started yet.
@@ -338,13 +358,28 @@ private:
     std::optional<Path> path_;
     std::string requested_path_key_;  // the path half of path_key_, as open() got it
     std::string path_key_;        // key of path_ + sp_cap_
+    // Every branch of open() remembers the caller's path, cap and path key
+    // here, and builds path_key_ from them.
+    void record_request(const Path* path, const std::string& path_key, int sp_cap);
+    // The path a new scene or notes build draws (drawn_path's answer for
+    // path_), copied for the job to own.
+    std::optional<Path> path_to_draw() const;
     // The overlay being built for a new selection, and replaced ones still
     // finishing (dropped by poll() once done, so replacing one never joins
     // its thread on the UI thread).
     std::unique_ptr<PreviewSceneJob> scene_job_;
     std::vector<std::unique_ptr<PreviewSceneJob>> retired_scene_jobs_;
     void start_scene_job();
-    std::string job_path_key_;    // key the in-flight job was started with
+    // The notes reload for a new mode (see open()), and replaced ones still
+    // finishing, dropped by poll() once done like the overlay builds.
+    std::unique_ptr<PreviewNotesJob> notes_job_;
+    std::vector<std::unique_ptr<PreviewNotesJob>> retired_notes_jobs_;
+    void start_notes_job(const store::ChartLibraryEntry& entry, const PreviewSongKey& key);
+    void take_notes_job();  // poll()'s half: swap the new notes in, or show the error
+    // The first load landed and loaded the transport: a mode change can keep
+    // it and reload only the notes. Cleared by close().
+    bool first_load_done_ = false;
+    std::string job_path_key_;    // key the in-flight load or notes job was started with
     std::string scene_path_key_;  // key scene_'s overlay was built from
 
     int volume_pct_;  // starts at app::Settings' preview_volume default

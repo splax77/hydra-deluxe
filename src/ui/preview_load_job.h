@@ -45,6 +45,26 @@ inline render::TrackStateOptions track_options(bool pro) {
     return opts;
 }
 
+// One chart's notes in one mode, as the Preview reads them: the parsed song
+// with where chart time 0 sits in the audio, and the song's length.
+struct PreviewNotes {
+    app::PreviewSong ps;
+    // app::chart_song_length_ms (D75). Empty when the owner gives none or its
+    // read failed: the scrubber then ends where playback does
+    // (app::scrub_end_ms).
+    std::optional<double> song_length_ms;
+};
+
+// Reads `entry`'s notes for one mode (difficulty, Pro Drums, 2x Bass, Note
+// Shuffle) from `container`, app::read_preview_container's bytes for the same
+// chart (null for a loose chart). The first load and the notes reload both
+// read through here. Throws require_notes' error when the chart has no notes
+// in this mode, so the Preview says why instead of drawing a blank highway.
+PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
+                                const app::SharedBytes& container, bool pro, bool bass2x,
+                                Difficulty difficulty, const core::Rules& rules,
+                                bool noteshuffle);
+
 // Turns "bytes done so far" readings into a time-left estimate for the
 // loading bar. The rate is measured over at least one second of the load's
 // own progress, and the answer changes at most once a second, so the text
@@ -113,10 +133,9 @@ public:
         // The parsed song the scene was built from. The controller keeps it so
         // a later path selection can rebuild the overlay without re-parsing.
         Song song;
-        // The highway timeline, build_track_state(scene, track_opts), built
-        // here on the worker so the UI thread only moves it into the
-        // renderer. track_opts.pro is the pro-drums setting the job was
-        // started with.
+        // The highway timeline built from `scene` on the worker, and its
+        // options (build_scene_and_highway in the .cpp), so the UI thread
+        // only moves it into the renderer.
         render::TrackState track_state;
         render::TrackStateOptions track_opts;
         // The chart file's hash (app::hash_chart_file, the scan's rule) is not
@@ -187,6 +206,55 @@ private:
     // The time-left clock, fed from progress() on the render thread.
     mutable std::mutex clock_mutex_;
     mutable ByteRateClock clock_;
+};
+
+// Reloads only the notes of the chart the Preview already has open, for a new
+// mode (difficulty, Pro Drums, 2x Bass or Note Shuffle), off the UI thread.
+// It reads the notes through read_preview_notes, the first load's own step,
+// then builds the scene and the highway for them. It opens no audio and does
+// not hash the chart file: the audio and the "chart changed" answer belong to
+// the file, not the mode, so the controller keeps the first load's. `path` is
+// the path to draw (already drawn_path's answer), and `audio_end_ms` is the
+// first load's Result::audio_end_ms, which the beat lines run to.
+class PreviewNotesJob : public ResultJobBase {
+public:
+    PreviewNotesJob(store::ChartLibraryEntry entry, bool pro, bool bass2x, Difficulty difficulty,
+                    std::optional<Path> path, int sp_cap, core::Rules rules, bool noteshuffle,
+                    std::optional<double> audio_end_ms);
+    ~PreviewNotesJob() { shutdown(); }
+
+    void start();
+
+    struct Result {
+        app::PreviewScene scene;
+        // The new mode's song length (read_preview_notes).
+        std::optional<double> song_length_ms;
+        // The parsed song the scene was built from, kept by the controller
+        // for later overlays, as PreviewLoadJob::Result::song.
+        Song song;
+        // The highway timeline and its options, as PreviewLoadJob::Result's
+        // (build_scene_and_highway in the .cpp).
+        render::TrackState track_state;
+        render::TrackStateOptions track_opts;
+    };
+    // Valid once finished() && ok(); moves the result out (call once).
+    Result take_result();
+    // The Pro Drums setting the notes were read with.
+    bool pro() const { return pro_; }
+
+private:
+    void run();
+
+    store::ChartLibraryEntry entry_;
+    bool pro_;
+    bool bass2x_;
+    Difficulty difficulty_;
+    std::optional<Path> path_;
+    int sp_cap_;
+    core::Rules rules_;  // copied: the job outlives the caller's settings
+    bool noteshuffle_;
+    std::optional<double> audio_end_ms_;
+    std::optional<Result> result_;
 };
 
 // The path-free half of one chart's Preview: the scene without an overlay

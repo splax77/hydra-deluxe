@@ -55,6 +55,43 @@ void wait_finished(const Job& job) {
     REQUIRE(job.finished());
 }
 
+// Polls until the first load has landed (loading()), for at most 60 s.
+void wait_loaded(PreviewController& pc) {
+    for (int i = 0; i < 1200 && pc.loading(); ++i) {
+        pc.poll();
+        Sleep(50);
+    }
+    REQUIRE_FALSE(pc.loading());
+}
+
+// Polls until every Preview thread is done (busy(), finding 109), for at
+// most 12 s.
+void settle(PreviewController& pc) {
+    for (int i = 0; i < 1200 && pc.busy(); ++i) {
+        pc.poll();
+        Sleep(10);
+    }
+    REQUIRE_FALSE(pc.busy());
+}
+
+// Polls until the overlay drawn is `path_key`'s (shows_path), or a failed
+// build set the error and nothing more will land, for at most 12 s.
+void wait_for_path(PreviewController& pc, const std::string& path_key) {
+    for (int i = 0; i < 1200 && !pc.shows_path(path_key) && !pc.has_error(); ++i) {
+        pc.poll();
+        Sleep(10);
+    }
+}
+
+// An audio device factory that fails as a PC with no device would, so
+// nothing real opens.
+PreviewController::AudioDeviceFactory no_device_factory() {
+    return [](int, int, PreviewController::AudioSource)
+               -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
+        throw std::runtime_error("no device in tests");
+    };
+}
+
 // The entry the scan would make (corpus::scanned_entry), without its
 // fingerprint: its md5 is the file's own hash, so the Preview hashes the file,
 // takes the chart as unchanged and draws the path it is given.
@@ -303,11 +340,7 @@ TEST_CASE("with no audio device the Preview still loads, muted, with a warning")
             throw std::runtime_error("PreviewAudioDevice: ma_device_init failed");
         });
     pc.open(entry_for(chart_with_audio()), true, true, Difficulty::Expert, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(50);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_loaded(pc);
 
     CHECK(pc.has_audio());        // the stem decoded; only the device failed
     CHECK_FALSE(pc.has_error());  // so no "Preview failed"
@@ -358,17 +391,9 @@ std::string long_audio_chart_stating_3s(const std::string& tag) {
 
 // A controller with no audio device, opened on `notes` and loaded.
 void open_and_load(PreviewController& pc, const std::string& notes) {
-    pc.set_audio_device_factory(
-        [](int, int, PreviewController::AudioSource)
-            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-            throw std::runtime_error("no device in tests");
-        });
+    pc.set_audio_device_factory(no_device_factory());
     pc.open(entry_for(notes), true, true, Difficulty::Expert, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(50);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_loaded(pc);
     REQUIRE(pc.has_audio());
 }
 
@@ -448,11 +473,7 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
 
     PreviewController pc(nullptr, nullptr);
     pc.open(entry_for(chart), true, true, Difficulty::Expert, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(50);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_loaded(pc);
     const std::string before = pc.overlay_path_key();
 
     // open() returns at once: the old overlay is still up, and nothing reloads.
@@ -460,12 +481,8 @@ TEST_CASE("switching paths builds the new overlay off the UI thread") {
     CHECK(pc.overlay_path_key() == before);
     CHECK_FALSE(pc.loading());
 
-    // The new overlay lands on a later poll. A failed build sets the error,
-    // and then nothing more will land, so stop waiting.
-    for (int i = 0; i < 1200 && !pc.shows_path(best_key) && !pc.has_error(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
+    // The new overlay lands on a later poll.
+    wait_for_path(pc, best_key);
     CHECK_FALSE(pc.has_error());
     CHECK(pc.shows_path(best_key));
 }
@@ -491,17 +508,10 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
     other_key.back() = other_key.back() == 'x' ? 'y' : 'x';
 
     PreviewController pc(nullptr, nullptr);
-    pc.set_audio_device_factory(
-        [](int, int, PreviewController::AudioSource)
-            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-            throw std::runtime_error("no device in tests");
-        });
+    pc.set_audio_device_factory(no_device_factory());
     const ChartLibraryEntry entry = entry_for(chart);
     pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 4);
-    for (int i = 0; i < 1200 && !pc.shows_path(best_key) && !pc.has_error(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
+    wait_for_path(pc, best_key);
     REQUIRE_FALSE(pc.has_error());
     CHECK(pc.shows_path(best_key));
     CHECK_FALSE(pc.shows_path(other_key));
@@ -513,48 +523,170 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
     pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 1);
     CHECK(pc.overlay_path_key() == at_cap4);
     CHECK(pc.shows_path(best_key));
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
+    settle(pc);
     REQUIRE_FALSE(pc.has_error());
     CHECK(pc.overlay_path_key() != at_cap4);  // the cap-1 overlay is in
     CHECK(pc.shows_path(best_key));
     CHECK_FALSE(pc.shows_path(other_key));
 }
 
-// With a chart open on the Preview tab, a mode change used to keep the old
-// mode's notes: open() compared only the md5. Each of difficulty, Pro Drums
-// and 2x Bass now picks another song, so open() starts a new load (D48, Q22).
-TEST_CASE("a difficulty change on the open chart starts a new Preview load") {
-    PreviewController pc(nullptr, nullptr);
-    const ChartLibraryEntry entry = entry_for(corpus::first_chart_with_suffix(".chart"));
-    auto settle = [&pc] {
-        for (int i = 0; i < 1200 && pc.loading(); ++i) {
-            pc.poll();
-            Sleep(10);
-        }
-        REQUIRE_FALSE(pc.loading());
+namespace {
+
+// no_device_factory, counting its calls: how many times the Preview opened
+// its audio for output.
+PreviewController::AudioDeviceFactory counting_factory(int& calls) {
+    return [&calls, fail = no_device_factory()](int channels, int sample_rate,
+                                               PreviewController::AudioSource source) {
+        ++calls;
+        return fail(channels, sample_rate, std::move(source));
     };
+}
+
+// A chart with Expert and Hard drums, the last note at 2 s (tick 3840 at 600
+// BPM, 192 ticks a beat), and 5 s of audio.
+std::string expert_and_hard_chart_with_audio(const std::string& tag) {
+    const std::string dir = testtemp::temp_dir(tag);
+    using namespace testchart;
+    const std::string notes = line(0, "N 1 0") + line(1920, "N 2 0") + line(3840, "N 1 0");
+    audiochart::write_text_file(
+        dir + "\\notes.chart",
+        chart_text(section("ExpertDrums", notes) + section("HardDrums", notes), 192, "",
+                   line(0, "TS 4") + line(0, "B 600000")));
+    copy_file_utf8(testaudio::fixture_path("sine220.ogg"), dir + "\\song.ogg");
+    return dir + "\\notes.chart";
+}
+
+}  // namespace
+
+// With a chart open on the Preview tab, a mode change used to keep the old
+// mode's notes: open() compared only the md5. Each of difficulty, Pro Drums,
+// 2x Bass and Note Shuffle picks another song (D48, Q22; D104 item 1). Once
+// the first load is done, only the notes reload: the audio is not opened
+// again, the playhead stays where it was, and playing stays playing.
+TEST_CASE("a mode change on the open chart reloads only the notes and keeps the playhead") {
+    PreviewController pc(nullptr, nullptr);
+    int device_calls = 0;
+    pc.set_audio_device_factory(counting_factory(device_calls));
+    const ChartLibraryEntry entry = entry_for(expert_and_hard_chart_with_audio("prevctl_modes"));
     pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
-    settle();
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    REQUIRE(pc.has_audio());
+    REQUIRE(device_calls == 1);
 
     // The same chart in the same mode is a no-op: nothing reloads.
     pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
-    CHECK_FALSE(pc.loading());
+    CHECK_FALSE(pc.busy());
 
-    // Another difficulty starts a new load at once.
+    struct Mode {
+        std::string what;
+        bool pro;
+        bool bass2x;
+        Difficulty difficulty;
+        bool noteshuffle;
+    };
+    const Mode modes[] = {
+        {"difficulty", true, false, Difficulty::Hard, false},
+        {"Pro Drums", false, false, Difficulty::Hard, false},
+        {"2x Bass", false, true, Difficulty::Hard, false},
+        {"Note Shuffle", false, true, Difficulty::Hard, true},
+    };
+    for (const Mode& m : modes) {
+        CAPTURE(m.what);
+        // Paused: the playhead stays exactly where it was.
+        pc.pause();
+        pc.seek_ms(1500.0);
+        pc.open(entry, m.pro, m.bass2x, m.difficulty, nullptr, "", 4, hydra::core::default_rules(),
+                m.noteshuffle);
+        CHECK_FALSE(pc.loading());  // the old highway stays up, no loading bar
+        CHECK(pc.busy());           // the notes job runs
+        settle(pc);
+        INFO(pc.error_detail());
+        CHECK_FALSE(pc.has_error());
+        CHECK_FALSE(pc.playing());
+        CHECK(pc.position_ms() == doctest::Approx(1500.0));
+        CHECK(pc.has_audio());
+    }
+
+    // Playing: it keeps playing through a mode change, from about where it was.
+    pc.seek_ms(1500.0);
+    pc.play();
+    REQUIRE(pc.playing());
+    pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
+    settle(pc);
+    CHECK_FALSE(pc.has_error());
+    CHECK(pc.playing());
+    CHECK(pc.position_ms() >= 1500.0);
+    pc.pause();
+
+    // Five mode changes, and the audio was opened only by the first load.
+    CHECK(device_calls == 1);
+}
+
+// A mode the chart has no notes in fails as the first load would ("Preview
+// failed: ..."), but keeps the audio and the spot: the Preview pauses where
+// it is. Switching back clears the error and lands on the same spot, paused.
+TEST_CASE("a mode with no notes pauses the Preview in place; switching back clears it") {
+    PreviewController pc(nullptr, nullptr);
+    int device_calls = 0;
+    pc.set_audio_device_factory(counting_factory(device_calls));
+    // Expert notes only, and 5 s of audio.
+    const ChartLibraryEntry entry = entry_for(short_chart_with_long_audio("prevctl_nonotes"));
+    pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    REQUIRE(pc.has_audio());
+
+    pc.seek_ms(400.0);
+    pc.play();
     pc.open(entry, true, false, Difficulty::Hard, nullptr, "", 4);
-    CHECK(pc.loading());
-    settle();
+    settle(pc);
+    CHECK(pc.has_error());
+    CHECK_FALSE(pc.playing());
+    CHECK(pc.has_audio());
+    const double stopped_at = pc.position_ms();
+    CHECK(stopped_at >= 400.0);
 
-    // Pro Drums off, then 2x Bass on: each is another song too.
-    pc.open(entry, false, false, Difficulty::Hard, nullptr, "", 4);
-    CHECK(pc.loading());
-    settle();
-    pc.open(entry, false, true, Difficulty::Hard, nullptr, "", 4);
-    CHECK(pc.loading());
-    settle();
+    pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
+    CHECK_FALSE(pc.has_error());  // cleared as the reload starts
+    settle(pc);
+    CHECK_FALSE(pc.has_error());
+    CHECK_FALSE(pc.playing());
+    CHECK(pc.position_ms() == doctest::Approx(stopped_at));
+    CHECK(device_calls == 1);
+}
+
+// Two mode changes in a row: the second one's notes are the ones drawn, and
+// the first one's never land. The chart has no audio, so where playback ends
+// is each mode's last note: Expert's at tick 960, Hard's at 1920, Medium's at
+// 2880, at 600 BPM and 192 ticks a beat (100 ms a beat).
+TEST_CASE("a second mode change during a notes reload wins") {
+    const std::string dir = testtemp::temp_dir("prevctl_twomodes");
+    using namespace testchart;
+    audiochart::write_text_file(
+        dir + "\\notes.chart",
+        chart_text(section("ExpertDrums", line(0, "N 1 0") + line(960, "N 1 0")) +
+                       section("HardDrums", line(0, "N 1 0") + line(1920, "N 1 0")) +
+                       section("MediumDrums", line(0, "N 1 0") + line(2880, "N 1 0")),
+                   192, "", line(0, "TS 4") + line(0, "B 600000")));
+    const ChartLibraryEntry entry = entry_for(dir + "\\notes.chart");
+
+    PreviewController pc(nullptr, nullptr);
+    pc.open(entry, true, false, Difficulty::Expert, nullptr, "", 4);
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    REQUIRE(pc.playback_end_ms() == doctest::Approx(500.0));
+
+    pc.open(entry, true, false, Difficulty::Hard, nullptr, "", 4);
+    pc.open(entry, true, false, Difficulty::Medium, nullptr, "", 4);
+    for (int i = 0; i < 1200 && pc.busy(); ++i) {
+        pc.poll();
+        CHECK(pc.playback_end_ms() != doctest::Approx(1000.0));  // Hard's never lands
+        Sleep(10);
+    }
+    REQUIRE_FALSE(pc.busy());
+    CHECK_FALSE(pc.has_error());
+    CHECK(pc.playback_end_ms() == doctest::Approx(1500.0));
 }
 
 // An edited chart that was not rescanned used to draw its record's path on
@@ -579,17 +711,9 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
         ChartLibraryEntry entry = entry_for(chart);
         if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
         PreviewController pc(nullptr, nullptr);
-        pc.set_audio_device_factory(
-            [](int, int, PreviewController::AudioSource)
-                -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-                throw std::runtime_error("no device in tests");
-            });
+        pc.set_audio_device_factory(no_device_factory());
         pc.open(entry, true, true, Difficulty::Expert, &best, best_key, 4);
-        for (int i = 0; i < 1200 && pc.loading(); ++i) {
-            pc.poll();
-            Sleep(50);
-        }
-        REQUIRE_FALSE(pc.loading());
+        wait_loaded(pc);
         REQUIRE_FALSE(pc.has_error());
         CHECK(pc.chart_changed() == changed);
         CHECK(pc.scrub_marks().empty() == changed);
@@ -633,17 +757,9 @@ TEST_CASE("the Preview trusts the scan's fingerprint and does not re-hash an unc
         entry.md5 = "0123456789abcdef0123456789abcdef";
         entry.sig = sig;
         PreviewController pc(nullptr, nullptr);
-        pc.set_audio_device_factory(
-            [](int, int, PreviewController::AudioSource)
-                -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-                throw std::runtime_error("no device in tests");
-            });
+        pc.set_audio_device_factory(no_device_factory());
         pc.open(entry, true, true, Difficulty::Expert, nullptr, "", 4);
-        for (int i = 0; i < 1200 && pc.loading(); ++i) {
-            pc.poll();
-            Sleep(50);
-        }
-        REQUIRE_FALSE(pc.loading());
+        wait_loaded(pc);
         REQUIRE_FALSE(pc.has_error());
         CHECK(pc.chart_changed() == changed);
     }
@@ -656,20 +772,12 @@ TEST_CASE("busy covers the overlay and base jobs, not only the first load") {
     const std::string best_key = hydra::app::path_overlay_key(&a.best);
     PreviewController pc(nullptr, nullptr);
     pc.open(entry_for(a.chart), true, true, Difficulty::Expert, nullptr, "", 4);
-    for (int i = 0; i < 1200 && pc.loading(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
-    REQUIRE_FALSE(pc.loading());
+    wait_loaded(pc);
 
     pc.open(entry_for(a.chart), true, true, Difficulty::Expert, &a.best, best_key, 4);
     CHECK(pc.busy());
     CHECK_FALSE(pc.loading());
-    for (int i = 0; i < 1200 && pc.busy(); ++i) {
-        pc.poll();
-        Sleep(10);
-    }
-    CHECK_FALSE(pc.busy());
+    settle(pc);
     CHECK_FALSE(pc.has_error());
     CHECK(pc.shows_path(best_key));
 }

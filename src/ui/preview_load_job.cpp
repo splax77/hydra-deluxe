@@ -39,7 +39,57 @@ long long whole_mb(uint64_t bytes) {
     return static_cast<long long>((bytes + 500000) / 1000000);
 }
 
+// A Preview scene for one mode's notes and one path, and the highway
+// timeline built from it on the worker, so the UI thread only uploads it.
+struct SceneAndHighway {
+    app::PreviewScene scene;
+    render::TrackState track_state;
+    render::TrackStateOptions track_opts;  // track_options(pro), as the controller draws
+};
+
+// The first load and the notes reload both build their scene and highway
+// here. `audio_end_ms` and `song_length_ms` are the load's Result fields of
+// those names. `after_scene` runs between the two steps and may throw to stop
+// the build.
+SceneAndHighway build_scene_and_highway(const Song& song, const Path* path, int sp_cap,
+                                        const core::Rules& rules,
+                                        std::optional<double> audio_end_ms,
+                                        std::optional<double> song_length_ms, bool pro,
+                                        const std::function<void()>& after_scene) {
+    SceneAndHighway built;
+    built.scene =
+        app::build_preview_scene(song, path, sp_cap, rules, audio_end_ms, song_length_ms);
+    after_scene();
+    built.track_opts = track_options(pro);
+    built.track_state = render::build_track_state(built.scene, built.track_opts);
+    return built;
+}
+
 }  // namespace
+
+PreviewNotes read_preview_notes(const store::ChartLibraryEntry& entry,
+                                const app::SharedBytes& container, bool pro, bool bass2x,
+                                Difficulty difficulty, const core::Rules& rules,
+                                bool noteshuffle) {
+    PreviewNotes notes{app::resolve_preview_song(entry.notespath, container, pro, bass2x,
+                                                 difficulty, rules, noteshuffle),
+                       std::nullopt};
+    // The song's length, from the same owner analysis saves through (D75),
+    // with the container already in hand. A failed read costs only the
+    // length.
+    try {
+        notes.song_length_ms = app::chart_song_length_ms(
+            app::chart_timing_meta(entry.timing, entry.notespath), entry.notespath, notes.ps.song,
+            difficulty, bass2x, rules, container);
+    } catch (const std::exception&) {
+    }
+    // A chart with no charting in this mode would otherwise build an empty
+    // scene and the tab would show a blank highway with no reason given.
+    // Throwing here surfaces it as "Preview failed: ...", the same wording
+    // analysis uses.
+    require_notes(notes.ps.song, difficulty, pro);
+    return notes;
+}
 
 double ByteRateClock::update(double now_s, uint64_t bytes_done, uint64_t bytes_total) {
     if (window_start_s_ < 0.0) {
@@ -155,26 +205,11 @@ void PreviewLoadJob::run() {
         } guard{stop, audio_branch};
 
         // Branch (a) here: the notes.
-        app::PreviewSong ps =
-            app::resolve_preview_song(entry_.notespath, container, pro_, bass2x_, difficulty_, rules_,
-                                      noteshuffle_);
-        // The song's length, from the same owner analysis saves through
-        // (D75), with the container already in hand. A failed read costs only
-        // the length: the scrubber then ends where playback does
-        // (app::scrub_end_ms).
-        std::optional<double> song_length_ms;
-        try {
-            song_length_ms = app::chart_song_length_ms(
-                app::chart_timing_meta(entry_.timing, entry_.notespath), entry_.notespath, ps.song,
-                difficulty_, bass2x_, rules_, container);
-        } catch (const std::exception&) {
-        }
+        PreviewNotes notes = read_preview_notes(entry_, container, pro_, bass2x_, difficulty_,
+                                                rules_, noteshuffle_);
         container.reset();
-        // A chart with no charting at this difficulty would otherwise build an
-        // empty scene and the tab would show a blank highway with no reason
-        // given. Throwing here surfaces it as "Preview failed: ...", the same
-        // wording analysis uses.
-        require_notes(ps.song, difficulty_, pro_);
+        app::PreviewSong& ps = notes.ps;
+        const std::optional<double> song_length_ms = notes.song_length_ms;
         reading_done_.store(true);
         throw_if_cancelled();
 
@@ -189,20 +224,19 @@ void PreviewLoadJob::run() {
         // The scene and the highway wait for the audio, because the beat
         // lines run to its end (D48, Q25). A changed chart is drawn with no
         // path, as an unanalyzed one is (drawn_path).
-        const Path* path = drawn_path(path_, chart_changed);
-        app::PreviewScene scene =
-            app::build_preview_scene(ps.song, path, sp_cap_, rules_, audio_end_ms, song_length_ms);
-        scene_done_.store(true);
-        throw_if_cancelled();
-        // The highway timeline, built here so the UI thread only uploads it,
-        // with the options the controller draws with (track_options).
-        const render::TrackStateOptions track_opts = track_options(pro_);
-        render::TrackState track_state = render::build_track_state(scene, track_opts);
+        SceneAndHighway built = build_scene_and_highway(
+            ps.song, drawn_path(path_, chart_changed), sp_cap_, rules_, audio_end_ms,
+            song_length_ms, pro_, [this] {
+                scene_done_.store(true);
+                throw_if_cancelled();
+            });
         highway_done_.store(true);
 
-        result_ = Result{std::move(scene),  std::move(song_mix.mix),  song_mix.audio_offset_ms,
-                         audio_end_ms,      song_length_ms,           std::move(ps.song),
-                         std::move(track_state), track_opts,          chart_changed};
+        result_ = Result{std::move(built.scene),       std::move(song_mix.mix),
+                         song_mix.audio_offset_ms,     audio_end_ms,
+                         song_length_ms,               std::move(ps.song),
+                         std::move(built.track_state), built.track_opts,
+                         chart_changed};
         return true;
     });
 }
@@ -273,6 +307,43 @@ std::string PreviewLoadJob::Progress::time_left_text() const {
     if (step != Step::Opening) return "";
     return gated_time_left_text(elapsed_s, time_left_s);
 }
+
+PreviewNotesJob::PreviewNotesJob(store::ChartLibraryEntry entry, bool pro, bool bass2x,
+                                 Difficulty difficulty, std::optional<Path> path, int sp_cap,
+                                 core::Rules rules, bool noteshuffle,
+                                 std::optional<double> audio_end_ms)
+    : entry_(std::move(entry)),
+      pro_(pro),
+      bass2x_(bass2x),
+      difficulty_(difficulty),
+      path_(std::move(path)),
+      sp_cap_(sp_cap),
+      rules_(std::move(rules)),
+      noteshuffle_(noteshuffle),
+      audio_end_ms_(audio_end_ms) {}
+
+void PreviewNotesJob::start() { spawn([this] { run(); }); }
+
+void PreviewNotesJob::run() {
+    run_guarded([this] {
+        throw_if_cancelled();  // a newer mode change already replaced this one
+        // A .sng or .srb is read whole: its notes live inside it.
+        app::SharedBytes container = app::read_preview_container(read_file_bytes, entry_.notespath);
+        throw_if_cancelled();
+        PreviewNotes notes = read_preview_notes(entry_, container, pro_, bass2x_, difficulty_,
+                                                rules_, noteshuffle_);
+        container.reset();  // a .sng's audio is not needed here
+        throw_if_cancelled();
+        SceneAndHighway built = build_scene_and_highway(
+            notes.ps.song, path_ ? &*path_ : nullptr, sp_cap_, rules_, audio_end_ms_,
+            notes.song_length_ms, pro_, [this] { throw_if_cancelled(); });
+        result_ = Result{std::move(built.scene), notes.song_length_ms, std::move(notes.ps.song),
+                         std::move(built.track_state), built.track_opts};
+        return true;
+    });
+}
+
+PreviewNotesJob::Result PreviewNotesJob::take_result() { return std::move(*result_); }
 
 std::shared_ptr<const PreviewSceneBase> build_scene_base(
     const Song& song, render::TrackStateOptions track_opts, std::optional<double> audio_end_ms,
