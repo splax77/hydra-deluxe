@@ -60,10 +60,15 @@ struct ReportWindowInput {
     // out-of-date line's "(a batch finished at HH:MM)". Unset: the line
     // names no time (D103 item 21).
     std::optional<std::chrono::system_clock::time_point> batch_finished;
-    // The path report's progress while it builds: charts analyzed of all.
+    // The path report's progress while it builds: records analyzed of all,
+    // one per chart and mode still to analyze. A total of 0 shows no count.
     // The comparison has no count.
     int progress_done = 0;
     int progress_total = 0;
+    // The path report only: hydra_rules.ini's error while analysis is off
+    // (AppState::rules_error), shown when no report is in memory. Empty when
+    // analysis is on.
+    std::string rules_error;
     // A failed build's message and error, as the job gives them.
     std::string failure_message;
     std::string failure_error;
@@ -127,6 +132,13 @@ struct Frame {
     // above it.
     std::optional<std::pair<int, int>> progress;
     std::vector<const char*> building_lines;
+    // Building: grey rows where the table will be (mock board 2a).
+    bool placeholder_rows = false;
+    // Never built: why no build can start (empty: the header alone). The
+    // sentence's owner is AppState::kAnalysisOffSentence; the error is
+    // AppState::rules_error.
+    const char* analysis_off_sentence = "";
+    std::string analysis_off_error;
     // Failed: the report's own sentence, then the job's words.
     const char* failure_sentence = "";
     std::string failure_message;

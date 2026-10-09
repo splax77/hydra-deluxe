@@ -1028,7 +1028,7 @@ TEST_CASE("a path report request builds it in memory, one build at a time") {
     CHECK(app->path_report_build() == ReportBuild::Building);
     app->request_path_report();  // one is running: nothing new starts
     CHECK(app->report_job.get() == first);
-    // The job's progress, for the window's "Analyzing n of N charts": the
+    // The job's progress, for the window's "Analyzing n of N records": the
     // pass has listed its one chart and holds it at the analyzer.
     while (app->report_job->progress().second == 0)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

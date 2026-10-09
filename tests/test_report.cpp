@@ -1473,7 +1473,7 @@ TEST_CASE("settings_change_touches: the path report reads the SP cap and the len
     CHECK_FALSE(app::report::settings_change_touches(before, auto_open));
 }
 
-// The path report window's "Analyzing n of N charts" reads these calls.
+// The path report window's "Analyzing n of N records" reads these calls.
 TEST_CASE("generate_report tells its progress chart by chart, from 0 to the whole") {
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;

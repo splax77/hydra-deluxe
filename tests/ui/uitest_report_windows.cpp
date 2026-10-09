@@ -2,7 +2,8 @@
 // open the path report or the comparison window on the sample rows
 // (tests/report_samples.h) through ReportWindowInput, the struct AppState
 // fills in the app, and drive the window by its labels. Their own GUI
-// function draws the windows, so no app state is involved. The rest (task 6)
+// function draws the windows; only report-window-states' analysis-off step
+// fills the input from AppState (path_report_input). The rest (task 6)
 // run end to end: the app draws both windows itself from run_frame while a
 // slot's window_open is set, so they have no GUI function. Under hydra_uitest
 // there is no platform backend, so each report window draws inside the main
@@ -224,7 +225,8 @@ void test_states(ImGuiTestContext* ctx) {
     f.path.progress_total = 10;
     f.path_open = true;
     ctx->Yield(3);
-    IM_CHECK(shows("Analyzing 3 of 10 charts"));
+    // One per chart and mode still to analyze (D103 item 25).
+    IM_CHECK(shows("Analyzing 3 of 10 records"));
     // The subtitle while it builds (D103 item 21, board 2a), not the old
     // result's.
     IM_CHECK(shows("Building the report from your library..."));
@@ -232,6 +234,16 @@ void test_states(ImGuiTestContext* ctx) {
     ctx->SetRef(path_window());
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 1);
+    // Nothing left to analyze (D103 item 26): the bar moves with no count,
+    // under the building subtitle, and Cancel stays.
+    f.path.progress_done = 0;
+    f.path.progress_total = 0;
+    ctx->Yield(2);
+    IM_CHECK(shows("Building the report from your library..."));
+    IM_CHECK(!shows("Analyzing "));
+    IM_CHECK(!shows("0 of 0"));
+    ctx->ItemClick("Cancel");
+    IM_CHECK_EQ(f.cancels, 2);
 
     f.path.state = ReportBuild::Cancelled;
     ctx->Yield(2);
@@ -296,12 +308,28 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK(!shows("sample dm subtitle"));
     IM_CHECK(shows("The leaderboard server can take a moment to wake up."));
     ctx->ItemClick("Cancel");
-    IM_CHECK_EQ(f.cancels, 2);
+    IM_CHECK_EQ(f.cancels, 3);
     f.dm.state = ReportBuild::Failed;
     ctx->Yield(2);
     IM_CHECK(shows("Could not build the report."));
     ctx->ItemClick("Compare another player...");
     IM_CHECK_EQ(f.compares, 1);
+    f.dm_open = false;
+
+    // Analysis off with no report in memory (D103 item 24): the toolbar's
+    // sentence and the rules file's error, as AppState hands them over.
+    Harness& h = harness(ctx);
+    reset_app(h, "max_tied_paths = 0\n");
+    IM_CHECK_RETV(h.app->analysis_blocked(), );
+    f.path = hydra::ui::path_report_input(*h.app);
+    IM_CHECK(f.path.state == ReportBuild::None);
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK(shows("hydra_rules.ini has an error, so analysis is off until the file is "
+                   "fixed and Hydra is restarted."));
+    IM_CHECK(shows("max_tied_paths"));
+    f.path_open = false;
+    ctx->Yield(2);
 }
 
 // Row clicks, the arrow keys, Esc and Ctrl+W.
@@ -495,7 +523,7 @@ void test_open_path(ImGuiTestContext* ctx) {
     }, 10), );
     const int total = h.app->report_job->progress().second;
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Analyzing 0 of " + std::to_string(total) + " chart"));
+    IM_CHECK(on_screen(h, "Analyzing 0 of " + std::to_string(total) + " record"));
     hold.release();
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&

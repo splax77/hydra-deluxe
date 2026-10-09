@@ -588,7 +588,7 @@ void ReportJob::run() {
         // Closing Hydra sets this. Without it the window waits for the whole
         // library to be analyzed before it can shut down.
         options.cancel = &cancel_;
-        // The window's "Analyzing n of N charts" reads these (progress()).
+        // The window's "Analyzing n of N records" reads these (progress()).
         options.progress = [this](int done, int total) {
             progress_total_.store(total, std::memory_order_relaxed);
             progress_done_.store(done, std::memory_order_relaxed);

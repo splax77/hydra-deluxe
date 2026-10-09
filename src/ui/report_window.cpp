@@ -158,7 +158,14 @@ bool state_body(const Frame& f) {
     switch (f.state) {
         case ReportBuild::None:
             // Never built, and no build could start (AppState's request
-            // refused it): the header alone.
+            // refused it): the header, and why when analysis is off, as the
+            // toolbar words it.
+            if (!f.analysis_off_error.empty()) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextColored(kWarningColor, "%s", f.analysis_off_sentence);
+                ImGui::TextColored(kWarningColor, "%s", f.analysis_off_error.c_str());
+                ImGui::PopTextWrapPos();
+            }
             return true;
         case ReportBuild::Building: {
             // The first line says what is happening; any after it are dim
@@ -172,7 +179,7 @@ bool state_body(const Frame& f) {
             if (f.progress) {
                 const auto [done, total] = *f.progress;
                 const std::string overlay = "Analyzing " + group_thousands(done) + " of " +
-                                            counted(total, "chart", "charts");
+                                            counted(total, "record", "records");
                 ImGui::ProgressBar(progress_fraction(done, total), ImVec2(-1.0f, 0.0f),
                                    overlay.c_str());
             } else {
@@ -182,7 +189,7 @@ bool state_body(const Frame& f) {
             }
             right_align(button_w("Cancel"));
             if (ImGui::Button("Cancel")) call(cb.cancel);
-            if (f.progress) placeholder_rows();
+            if (f.placeholder_rows) placeholder_rows();
             return true;
         }
         case ReportBuild::Cancelled:
