@@ -449,6 +449,33 @@ TEST_CASE("report lists only the wanted cap and names it") {
                         " fills"));
 }
 
+// What hydra_report's "--legacy-fills database" case pinned, now that the
+// tool is gone: a database filled under the 1.0 rule, as hydra_batch
+// --legacy-fills leaves one, reports its chart under the 1.0 rule when the
+// report is asked for 1.0 fills, and lists nothing under the 1.1 rule.
+TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
+    store::RecordStore store(":memory:");
+    const Settings legacy = fixture_settings(4, /*legacy_fills=*/true);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(legacy.batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    store.add_record(legacy.record_key("h0"), charts[0].result.record);
+    store.rebuild_chart_library({library_entry("h0", "Title 0", charts[0].chart)});
+    store.set_engine_mode(engine_mode_stamp(FillDeadlineRule::Ch10));
+
+    const report::GeneratedReport ch10 =
+        report::generate_report(store, fixture_options(4, /*legacy_fills=*/true));
+    CHECK(ch10.records == 1);
+    REQUIRE_FALSE(ch10.paths.empty());
+    for (const report::ReportRow& r : ch10.paths) CHECK(r.song == "Title 0");
+    CHECK(ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));
+
+    const report::GeneratedReport ch11 = report::generate_report(store, fixture_options(4));
+    CHECK(ch11.paths.empty());
+    CHECK(ch11.empty_reason == report::EmptyReason::NothingUnderSettings);
+    CHECK(ch11.why_empty == report::nothing_under_settings(4, "Clone Hero 1.1 fills"));
+}
+
 TEST_CASE("collect_rows: a blank or old-placeholder song name reads (unknown)") {
     store::RecordStore store(":memory:");
     // Library names written before the fallback existed, a title with a
