@@ -50,6 +50,6 @@ Reversing the order of notes inside each chord changed the output in 1,188 of th
 
 Game tests by the user, from `../game-tests/README.md`. A1, A2 and B confirm Open 1 and 2. C1, C2, D1 and D2 confirm the freezes. E confirms Open 3. The code reading predicts one outcome for each, and the README lists them.
 
-One decision for the user: whether Hydra should merge a same-tick 2x kick and normal kick the way the game does. That change applies with Note Shuffle off too.
+The 2x kick merge is decision D105. The user chose to match the game once songs F1 and F2 confirm it, and the change applies with Note Shuffle off too.
 
-Not tested anywhere: the 2x-kick merge in the game itself, and the flam copy's position. Code reading only.
+Not tested in the game: the flam copy's position. That's code reading only, and Hydra's lane walk gives the same list either way.

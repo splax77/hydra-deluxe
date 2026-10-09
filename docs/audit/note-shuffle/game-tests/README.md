@@ -1,24 +1,24 @@
 # Note Shuffle game tests
 
-These are eight tiny Clone Hero songs. Each one answers one open question from the Note Shuffle plan (`docs/superpowers/plans/2026-10-08-note-shuffle.md`, Part 4) by playing it in the real game with Note Shuffle on.
+These are ten tiny Clone Hero songs. Songs A to E each answer one open question from the Note Shuffle plan (`docs/superpowers/plans/2026-10-08-note-shuffle.md`, Part 4) by playing them in the real game with Note Shuffle on. Songs F1 and F2 check the 2x kick rule from decision D105, with Note Shuffle off.
 
 For every song, the two decoded copies of the game's shuffle (the "references", one per scout) were run on the exact notes in the file. Both copies agree on every prediction below. Hydra loaded every file and read back exactly the chords that were meant to be written, with Pro Drums on and off (16 of 16 checks; the output is in `build-scripts/hydra_check_output.txt`).
 
 ## What the code reading expects (added 2026-10-09)
 
-These songs were built before the game-code reading finished. That reading (`../step0/FINDINGS.md`) now predicts one row per song. A1 should show its 192 row and A2 its 960 row, because the game uses each file's own ticks. B should show the colour order row, because the game sorts each chord kick, red, yellow, blue, green. C1 and D1 should freeze, and C2 and D2 should play. E should show 5 stars on a full combo, because the star base is taken after the shuffle. Any other result means the code reading is wrong somewhere, so please note exactly what you saw.
+These songs were built before the game-code reading finished. That reading (`../step0/FINDINGS.md`) now predicts one row per song. A1 should show its 192 row and A2 its 960 row, because the game uses each file's own ticks. B should show the colour order row, because the game sorts each chord kick, red, yellow, blue, green. C1 and D1 should freeze, and C2 and D2 should play. E should show 5 stars on a full combo, because the star base is taken after the shuffle. F1 and F2 (added later, Note Shuffle off) should show no kick on chords 3, 5 and 7 with 2x kick off. Any other result means the code reading is wrong somewhere, so please note exactly what you saw.
 
 You don't need to hit any notes, except in song E. A short screen recording of the first few seconds is enough. A screenshot of the highway works too, as long as the first chords are on screen.
 
 ## How to install them
 
-1. Copy the eight folders inside `songs/` into your Clone Hero 1.1 songs folder. Putting them in a new subfolder, for example `Note Shuffle tests`, keeps them together.
+1. Copy the ten folders inside `songs/` into your Clone Hero 1.1 songs folder. Putting them in a new subfolder, for example `Note Shuffle tests`, keeps them together.
 2. Start the game and rescan your songs.
 3. Search for "NS". Every song name starts with "NS" and says what it tests.
 
 ## Settings for every song
 
-Pick Drums on Expert. That is the only difficulty the songs have. Turn the Note Shuffle modifier on, unless a step says otherwise. Turn Pro Drums on: that's the main run, because cymbals show far more of the shuffle than toms do. 2x kick doesn't matter, because no song has 2x kicks.
+Pick Drums on Expert. That is the only difficulty the songs have. Turn the Note Shuffle modifier on, unless a step says otherwise. Turn Pro Drums on: that's the main run, because cymbals show far more of the shuffle than toms do. 2x kick doesn't matter for songs A to E, because none of them has 2x kicks. F has its own settings.
 
 A Pro Drums off run is optional. The tables give its predictions too, if you want a second check.
 
@@ -200,11 +200,30 @@ If a full combo scores something other than 19,925 before any bonus, the shuffle
 
 With Pro Drums off there are no cymbals either way, so E can't tell anything apart. It scores 18,350 and shows 5 stars under both answers.
 
+## F1 and F2: a 2x kick and a normal kick on one tick (decision D105)
+
+**What it settles.** This one doesn't need Note Shuffle. The code reading says the game merges a 2x kick and a normal kick on the same tick into one kick marked 2x. With 2x kick off, the game then removes every 2x kick, so that tick shows no kick at all. Hydra today keeps the normal kick there. If the game agrees with the code, Hydra changes to match (D105).
+
+**The songs.** F1 is a .mid and F2 is the same song as a .chart. Nine chords, one every half second from 2.0 seconds. Every chord has a red snare. The kicks are written like this: chord 1 a normal kick; chord 3 a normal kick and a 2x kick, normal written first; chord 5 the same pair, 2x written first; chord 7 a 2x kick alone; chord 9 a normal kick. Chords 2, 4, 6 and 8 are a lone snare.
+
+**How to run it.** Note Shuffle off. Drums on Expert, Pro Drums either way. Play each song twice, once with 2x kick off and once with it on, and note which chords show a kick.
+
+| | 1 | 3 | 5 | 7 | 9 |
+|---|---|---|---|---|---|
+| Code reading, 2x kick off | kick | no kick | no kick | no kick | kick |
+| Code reading, 2x kick on | kick | kick | kick | kick | kick |
+| Hydra today, 2x kick off | kick | kick | kick | no kick | kick |
+| Hydra today, 2x kick on | kick | kick | kick | kick | kick |
+
+**What each outcome means.** If chords 3 and 5 show no kick with 2x kick off, the code reading is right, and Hydra will merge the two kicks the way the game does. If they show a kick, Hydra is already right and nothing changes. With 2x kick on, every row should show a kick on all five chords; anything else is a finding of its own.
+
+`build-scripts/build_f.py` builds both songs and prints Hydra's rows.
+
 ---
 
 ## What's in this folder
 
-`songs/` holds the eight song folders. Each has a song.ini, a notes.chart or notes.mid, and a silent song.ogg.
+`songs/` holds the ten song folders. Each has a song.ini, a notes.chart or notes.mid, and a silent song.ogg.
 
 `predictions.json` holds every song's written notes and every prediction, including the rows the tables leave out.
 
