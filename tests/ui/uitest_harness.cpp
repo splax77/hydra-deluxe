@@ -18,6 +18,7 @@
 #include "imgui.h"
 #include "imgui_impl_dx11.h"
 #include "imgui_internal.h"
+#include "imgui_te_context.h"
 #include "imgui_te_internal.h"
 
 #include "../scratch_settings.h"
@@ -230,7 +231,7 @@ void Harness::frame() {
     io.DisplaySize = ImVec2((float)width, (float)height);
     ImGui_ImplDX11_NewFrame();
     ImGui::NewFrame();
-    if (app) hydra::ui::run_frame(*app, &frame_text);
+    if (app && !app_hidden) hydra::ui::run_frame(*app, &frame_text);
     ImGui::Render();
     ID3D11RenderTargetView* views[] = {rtv.Get()};
     context->OMSetRenderTargets(1, views, nullptr);
@@ -240,7 +241,30 @@ void Harness::frame() {
     // flush, a long wait queues frames faster than WARP draws them and their
     // buffers pile up. The user's call is in D98 item 1.
     context->Flush();
+    // A removed device makes every later texture and shader fail quietly and
+    // ends in a crash several tests on, so stop the run where it happened.
+    const HRESULT removed = device->GetDeviceRemovedReason();
+    if (removed != S_OK) {
+        const ImGuiTest* test = running_test();
+        std::fprintf(stderr,
+                     "hydra_uitest: the D3D device was removed (0x%08lX) during test %s\n",
+                     static_cast<unsigned long>(removed), test ? test->Name : "(none)");
+        std::fflush(stderr);
+        std::exit(3);
+    }
     ImGuiTestEngine_PostSwap(engine);
+}
+
+// Waits until the GPU has drawn every frame sent so far, so nothing it still
+// holds keeps a texture alive past its owner's release.
+static void wait_for_gpu(Harness& h) {
+    D3D11_QUERY_DESC qd = {D3D11_QUERY_EVENT, 0};
+    Microsoft::WRL::ComPtr<ID3D11Query> done;
+    if (FAILED(h.device->CreateQuery(&qd, &done))) return;
+    h.context->End(done.Get());
+    BOOL finished = FALSE;
+    while (h.context->GetData(done.Get(), &finished, sizeof(finished), 0) == S_FALSE)
+        std::this_thread::yield();
 }
 
 void Harness::stop() {
@@ -265,6 +289,17 @@ void Harness::shutdown() {
 }
 
 void reset_app(Harness& h, const std::string& rules_text, bool wait_store) {
+    // The engine runs this step inside ImGui's end-of-frame hook: the app has
+    // drawn this frame and it hasn't rendered yet, so an Image the Preview drew
+    // still points at its texture (the warning on PreviewController::close).
+    // Let this frame render, then run one with no app drawn, before freeing.
+    // The GPU wait makes a missed case fail every run instead of now and then.
+    if (h.app && h.app->preview && !h.attached && h.engine && h.engine->TestContext) {
+        h.app_hidden = true;
+        h.engine->TestContext->Yield();
+        h.app_hidden = false;
+        wait_for_gpu(h);
+    }
     if (h.app && h.app->preview) h.app->preview->close();
     h.app.reset();
 
