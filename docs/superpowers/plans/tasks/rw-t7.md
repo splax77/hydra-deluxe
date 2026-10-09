@@ -60,3 +60,9 @@ Run by the orchestrator on main at `1a0bdd8` on 2026-10-08:
 ## Return
 
 `complete`, `branch`, `worktree`, `tip`, `report`, `questions`, `handoff`.
+
+## Orchestrator answers to the first finisher's questions (2026-10-08)
+
+1. **The three leftovers** (the result structs' `html` fields, `report_html_path` / `reports_dir` / `set_documents_dir_lookup` / `kPathReportFileName`, and `report_outcome.h`) stay on this branch. Their last readers are in T6's files and `src/ui/dm_jobs.cpp`. The main session deletes them in one cleanup after T7 and T6 both merge. List them in your report as "left for the join cleanup", not as open work.
+2. **The 1.0 rule.** The GUI builds a 1.0 report through the settings bar's 1.0 fills setting. The new `test_report.cpp` case that pins `generate_report` under 1.0 fills is enough; the GUI does not follow a database's 1.0 stamp.
+3. **`replace_all` in `src/core/strutil.{h,cpp}`** is fine. Those files are owned for this move.
