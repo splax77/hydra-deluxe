@@ -505,6 +505,15 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(visible_text(h).find("The path report is ready.") == std::string::npos);
     ctx->SetRef(child_window(ctx, "//Hydra/##batchdone"));
     IM_CHECK(!ctx->ItemExists("Open report"));
+    // "Open automatically" is a setting, and the strip is its only place, so
+    // it stays after the close (item 28's 2026-10-09 answer) and still works.
+    IM_CHECK(ctx->ItemExists("Open automatically"));
+    ctx->ItemClick("Open automatically");
+    IM_CHECK(h.app->settings.auto_open_report);
+    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).auto_open_report);
+    ctx->ItemClick("Open automatically");
+    IM_CHECK(!h.app->settings.auto_open_report);
+    IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).auto_open_report);
     ctx->ItemClick("X##dismissdone");
     ctx->Yield(3);
     IM_CHECK(h.app->batch_job == nullptr);

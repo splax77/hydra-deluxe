@@ -265,8 +265,8 @@ If nothing is analyzed under the current settings but other results exist, the r
 
 The finished batch strip offers:
 
-- **`Open report`** opens the path report window. The strip's second line reads `The path report is ready.` Once you close the path report window, the report is gone, so the line, the button and the `Open automatically` box go too. The toolbar's `Open path report` still opens it.
-- **`Open automatically`**: Open the path report as soon as it's built. It covers only the path report.
+- **`Open report`** opens the path report window. The strip's second line reads `The path report is ready.` Once you close the path report window, the report is gone, so the line and the button go too. The toolbar's `Open path report` still opens it.
+- **`Open automatically`**: Open the path report as soon as it's built. It covers only the path report. The strip is the only place to change it, so it stays after you close the path report window. It hides while a report builds and after a build fails.
 - Its `X` dismisses the strip.
 
 ### Old report files

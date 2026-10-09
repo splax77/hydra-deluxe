@@ -1660,6 +1660,45 @@ TEST_CASE("the post-batch report lists the batch's cap and lens, not the live se
     while (!app->report_job->finished()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
+// D103 item 28's 2026-10-09 answer: the finished strip keeps "Open
+// automatically" after the window's close, so AppState remembers that this
+// batch's report landed Ready after the rows are gone. A new batch forgets it.
+TEST_CASE("a batch's path report landing Ready outlasts a close, and a new batch clears it") {
+    ScratchPaths paths("appstate_batchlanded");
+    std::unique_ptr<AppState> app = app_with_result(paths, "batchlanded");
+    const std::string title = app->library_row_at(0).title;
+    CHECK_FALSE(app->batch_report_landed());
+
+    // A report built for another reason is not the batch's.
+    app->request_path_report();
+    finish_path_report(*app);
+    REQUIRE(app->path_report_build() == ReportBuild::Ready);
+    CHECK_FALSE(app->batch_report_landed());
+
+    run_redo_batch_over(*app, title);
+    app->update_background_jobs();  // starts the batch's own report
+    finish_path_report(*app);
+    REQUIRE(app->path_report_build() == ReportBuild::Ready);
+    CHECK(app->batch_report_landed());
+
+    app->close_path_report();
+    CHECK(app->path_report_build() == ReportBuild::None);
+    CHECK(app->batch_report_landed());
+
+    // The toolbar's reopen builds for the window, not the batch: the fact
+    // stays as it was.
+    app->show_path_report();
+    finish_path_report(*app);
+    CHECK(app->batch_report_landed());
+
+    app->batch_job.reset();  // the finished strip's X
+    run_redo_batch_over(*app, title);
+    CHECK_FALSE(app->batch_report_landed());  // the new run's report has not landed
+    app->update_background_jobs();
+    finish_path_report(*app);
+    CHECK(app->batch_report_landed());
+}
+
 // Memory audit fix 4: a stopped batch builds no report, so nothing reads the
 // report rows its saved charts handed over. They go when the run ends, not
 // when the finished strip is dismissed.

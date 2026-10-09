@@ -456,6 +456,10 @@ public:
     // report per run, however long the finished strip stays open. The strip
     // shows the report's outcome only once this run started it.
     bool report_started = false;
+    // Whether this batch run's own report landed Ready, even if closing the
+    // window has since let its rows go. The finished strip keeps its "Open
+    // automatically" setting on this (D103 item 28's 2026-10-09 answer).
+    bool batch_report_landed() const { return batch_report_landed_; }
 
     // The two reports (D103). Each job hands its result here when
     // update_background_jobs collects it; the windows, the toolbar and the
@@ -636,6 +640,7 @@ private:
     // goes through it.
     bool read_store(const std::function<void()>& read);
     bool batch_finish_seen_ = false;  // update_background_jobs saw this run end
+    bool batch_report_landed_ = false;  // see batch_report_landed()
 
     // Why a path report build started. Batch: the finished batch's own
     // report, whose outcome the strip shows and which "Open automatically"
