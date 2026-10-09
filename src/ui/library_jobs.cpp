@@ -573,7 +573,14 @@ ReportJob::ReportJob(store::RecordStore& store, store::CapQuery cap, store::Lens
       seed_(std::move(seed)),
       analyze_(g_report_analyzer) {}
 
-void ReportJob::start() { spawn([this] { run(); }); }
+void ReportJob::start() {
+    // However the build ended (done, cancelled or failed), the memory its
+    // charts freed then goes back to Windows (D95 call 1), on this job's thread.
+    spawn([this] {
+        run();
+        app::return_freed_memory();
+    });
+}
 
 void ReportJob::run() {
     run_guarded([this] {
