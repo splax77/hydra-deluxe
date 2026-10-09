@@ -17,6 +17,7 @@
 
 #include "app/allocator.h"
 #include "app/analysis.h"
+#include "app/config.h"  // Settings::batch_run
 #include "app/report.h"  // kNoChartLibrary
 #include "app/report_files.h"
 #include "app/user_messages.h"  // plain_error
@@ -325,6 +326,50 @@ TEST_CASE("jobs: a finished batch hands the memory its charts freed back to Wind
     const size_t after = hydra::app::committed_bytes();
     MESSAGE("committed before the batch " << before / (1024 * 1024) << " MB, after it "
                                           << after / (1024 * 1024) << " MB");
+    // A test margin, not an app number: less than half of one chart's
+    // memory may still be committed.
+    CHECK(after < before + kChartBytes / 2);
+}
+
+// D95 call 1, for the path report's build: it analyzes every chart too, so
+// once it ends the memory those charts freed goes back to Windows at once.
+// Here the one listed chart's result carries kChartBytes.
+TEST_CASE("jobs: a finished report build hands the memory its charts freed back to Windows") {
+    static constexpr size_t kBlock = 1024;  // small blocks, as a chart's are
+    static constexpr size_t kChartBytes = 128 * 1024 * 1024;
+#ifdef NDEBUG
+    // On the Windows heap the charts' memory never reaches mimalloc, and the
+    // check below passes whatever the build did.
+    REQUIRE(hydra::app::malloc_redirected());
+#endif
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    // The run the default settings make, so the stored result is under its key.
+    const BatchRun run = hydra::app::Settings{}.batch_run();
+    RecordStore store(":memory:");
+    hydra::test::name_chart(store, "fake0", "fake 0");
+    hydra::test::store_batch_result(store, "fake0", run.cap_query().exact);
+    hydra::app::return_freed_memory();
+    const size_t before = hydra::app::committed_bytes();
+    {
+        hydra::ui::set_report_analyzer_for_test(
+            [&real](const std::string&, const AnalysisSettings&,
+                    const std::function<void(float)>&) -> AnalysisResult {
+                AnalysisResult r = real;
+                // Filled, so committed.
+                r.song.features.assign(kChartBytes / kBlock, std::string(kBlock, 'x'));
+                return r;
+            });
+        hydra::ui::ReportJob job(store, run.cap_query(), run.lens, hydra::kDefaultHitWindowMs,
+                                 run);
+        hydra::ui::set_report_analyzer_for_test({});
+        job.start();
+        REQUIRE(wait_until([&] { return job.finished(); }));
+        INFO(job.message());
+        REQUIRE(job.ok());  // the chart was analyzed: the build has rows
+    }  // joins the job's thread, which runs the hand-back after the build
+    const size_t after = hydra::app::committed_bytes();
+    MESSAGE("committed before the report build " << before / (1024 * 1024) << " MB, after it "
+                                                 << after / (1024 * 1024) << " MB");
     // A test margin, not an app number: less than half of one chart's
     // memory may still be committed.
     CHECK(after < before + kChartBytes / 2);
