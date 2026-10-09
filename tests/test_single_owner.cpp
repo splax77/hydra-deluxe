@@ -2596,8 +2596,8 @@ const std::vector<OwnerRule>& rules() {
          {"src"}},
         // A test telling a file's format from its extension by hand: a
         // case-sensitive ends_with, or a path's last six bytes compared with
-        // ".chart". The tests use the case-sensitive ends_with for nothing
-        // else, so any call is flagged.
+        // ".chart". Every case-sensitive ends_with call in the tests is
+        // flagged; the few that check a report's text are listed one by one.
         {"Which chart format is a test file? (tests)",
          "chart_format_of in src/parse/chart_files.cpp",
          R"(\bends_with\s*\(|\.compare\([^;]*\b6\s*,\s*"\.chart"\))",
@@ -2611,8 +2611,46 @@ const std::vector<OwnerRule>& rules() {
          {"if (chart_format_of(path) != ChartFormat::Mid) continue;",
           R"(CHECK(ends_with_ci("SONG.Mid", ".mid"));)",
           R"(const std::string chart = corpus::first_chart_with_suffix(".chart");)"},
-         {},
+         {{"tests/test_report.cpp", R"(CHECK(hydra::ends_with(four.subtitle, "SP cap 4 bars"));)",
+           "checks a report subtitle's tail, not a file format"},
+          {"tests/test_report.cpp",
+           R"(CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1)).subtitle, "SP cap 1 bar"));)",
+           "checks a report subtitle's tail, not a file format"},
+          {"tests/test_report.cpp",
+           "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1000)).subtitle,",
+           "checks a report subtitle's tail, not a file format"},
+          {"tests/test_report.cpp",
+           "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))",
+           "checks a report subtitle's tail, not a file format"},
+          {"tests/test_report.cpp",
+           R"(CHECK(hydra::ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));)",
+           "checks a report subtitle's tail, not a file format"},
+          {"tests/test_dm_report.cpp", "CHECK(hydra::ends_with(phrase, clause));",
+           "checks the counts phrase's last clause, not a file format"}},
          {"tests"}},
+        // A string's tail compared by hand, under any name: the text's size
+        // minus the tail's size picks where the tail starts.
+        {"Does a string end with a tail?",
+         "ends_with and ends_with_ci in src/core/strutil.cpp",
+         R"(\.(compare|substr)\(\s*\w+\.size\(\)\s*-\s*\w+\.size\(\)|\brfind\([^;]*==\s*\w+\.size\(\)\s*-\s*\w+\.size\(\))",
+         "",
+         {},
+         {},
+         "derive-once review of RW-T7 (finding 1)",
+         {"text.compare(text.size() - tail.size(), tail.size(), tail) == 0;",
+          "return s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;",
+          "CHECK(phrase.substr(phrase.size() - clause.size()) == clause);",
+          "return s.rfind(suffix) == s.size() - suffix.size();"},
+         {R"(CHECK(hydra::ends_with(four.subtitle, "SP cap 4 bars"));)",
+          "const std::string tail = s.substr(s.size() - 4);",
+          "return slash == std::string::npos ? path : path.substr(slash + 1);"},
+         {{"src/core/strutil.cpp",
+           "return s.size() >= suffix.size() && s.substr(s.size() - suffix.size()) == suffix;",
+           "ends_with, the owner"},
+          {"src/core/strutil.cpp",
+           "return s.size() >= suffix.size() && equals_ci(s.substr(s.size() - suffix.size()), suffix);",
+           "ends_with_ci, the owner"}},
+         {"src", "tools", "tests"}},
         // The stars filter's range typed out as text. The owner builds the
         // top of the range from kMaxStars, so no line matches it. The tests
         // pin the whole sentence on purpose, so they are outside the scope.
@@ -5450,6 +5488,10 @@ const std::vector<KnownCopy>& known_copies() {
         {"Where does a right-aligned item start?", "src/ui/settings_bar.cpp",
          "if (right > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(right);",
          "a follow-up to RW-T5's review"},
+        {"Does a string end with a tail?", "tests/test_config.cpp",
+         "CHECK(dir.substr(dir.size() - tail.size()) == tail);",
+         "a follow-up to RW-T7's review: the check calls hydra::ends_with, and the chart-format "
+         "row lists that line"},
     };
     return k;
 }

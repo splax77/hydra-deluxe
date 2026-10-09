@@ -34,6 +34,7 @@
 #include "app/report.h"          // Tile, ChipToken
 #include "app/user_messages.h"
 #include "core/error_kind.h"
+#include "core/strutil.h"
 #include "corpus_util.h"
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "dm_fixture.h"
@@ -699,7 +700,7 @@ TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\" (D51
     const std::string phrase = app::dm_report::counts_phrase(stats);
     const std::string clause = ", 1 with no paths";
     REQUIRE(phrase.size() > clause.size());
-    CHECK(phrase.substr(phrase.size() - clause.size()) == clause);
+    CHECK(hydra::ends_with(phrase, clause));
 
     // With no such row, the phrase has no clause (D62 item 1).
     CHECK(app::dm_report::counts_phrase(app::dm_report::tally_dm_rows({rows[0]})).find(
