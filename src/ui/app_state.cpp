@@ -710,6 +710,17 @@ void AppState::show_path_report() {
     if (!path_report.result && path_report_build() == ReportBuild::None) request_path_report();
 }
 
+void AppState::close_path_report() {
+    // A build still running stops as the window's Cancel stops it. It waits
+    // parked, so neither its rows nor its Cancelled land with the window shut;
+    // one that finished this frame is dropped the same way.
+    cancel_path_report();
+    if (report_job) parked_reports.push_back(std::move(report_job));
+    // The slot starts over as never built: no rows, no outcome, nothing out
+    // of date, so show_path_report builds again.
+    path_report = PathReportSlot{};
+}
+
 bool AppState::library_has_analyzed() const {
     const std::vector<LibraryRow>& rows = library.rows();
     return std::any_of(rows.begin(), rows.end(), [](const LibraryRow& r) {

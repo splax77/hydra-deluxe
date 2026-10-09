@@ -1052,10 +1052,83 @@ TEST_CASE("showing the path report opens its window and builds it only the first
     CHECK(app->path_report.window_open);
     finish_path_report(*app);
     REQUIRE(app->path_report.result != nullptr);
-    app->path_report.window_open = false;  // the window's X
-    app->show_path_report();
+    app->show_path_report();  // shown again while open
     CHECK(app->path_report.window_open);
     CHECK(app->report_job == nullptr);  // the rows in memory show; nothing rebuilds
+}
+
+// D103 item 28: closing the window (its X, Esc or Ctrl+W) lets the rows go,
+// and reopening builds the report again.
+TEST_CASE("closing the path report frees its rows, and reopening builds it again") {
+    ScratchPaths paths("appstate_pathclose");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathclose");
+    app->show_path_report();
+    finish_path_report(*app);
+    REQUIRE(app->path_report.result != nullptr);
+    const std::weak_ptr<const hydra::app::report::GeneratedReport> rows = app->path_report.result;
+
+    app->close_path_report();
+    CHECK_FALSE(app->path_report.window_open);
+    CHECK(app->path_report.result == nullptr);
+    CHECK(rows.expired());  // nothing in AppState still holds them
+    CHECK(app->path_report_build() == ReportBuild::None);
+
+    app->show_path_report();
+    CHECK(app->path_report.window_open);
+    CHECK(app->path_report_build() == ReportBuild::Building);
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    CHECK(app->path_report.result != nullptr);
+}
+
+TEST_CASE("closing the path report mid-build cancels the build, and nothing lands") {
+    ScratchPaths paths("appstate_pathclosebuild");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosebuild");
+    std::atomic<bool> release{false};
+    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
+    app->show_path_report();
+    hydra::ui::set_report_analyzer_for_test({});
+    REQUIRE(app->path_report_build() == ReportBuild::Building);
+
+    app->close_path_report();
+    CHECK(app->path_report_build() == ReportBuild::None);
+    CHECK(app->report_job == nullptr);
+    REQUIRE(app->parked_reports.size() == 1);
+    CHECK(app->parked_reports.front()->is_cancelled());
+
+    // The stopped job finishes; it never lands in the slot.
+    release = true;
+    while (!app->parked_reports.front()->finished())
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    app->update_background_jobs();
+    CHECK(app->parked_reports.empty());
+    CHECK(app->path_report.result == nullptr);
+    CHECK(app->path_report_build() == ReportBuild::None);
+
+    app->show_path_report();
+    CHECK(app->path_report_build() == ReportBuild::Building);
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+}
+
+TEST_CASE("reopening the path report after a cancelled build builds it again") {
+    ScratchPaths paths("appstate_pathclosecancelled");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathclosecancelled");
+    std::atomic<bool> release{false};
+    hydra::ui::set_report_analyzer_for_test(held_report_analyzer(release));
+    app->show_path_report();
+    hydra::ui::set_report_analyzer_for_test({});
+    app->cancel_path_report();  // the window's Cancel
+    release = true;
+    finish_path_report(*app);
+    REQUIRE(app->path_report_build() == ReportBuild::Cancelled);
+    REQUIRE(app->path_report.result == nullptr);
+
+    app->close_path_report();
+    app->show_path_report();
+    CHECK(app->path_report_build() == ReportBuild::Building);
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
 }
 
 TEST_CASE("the path report goes out of date on a batch or a setting it was built from") {

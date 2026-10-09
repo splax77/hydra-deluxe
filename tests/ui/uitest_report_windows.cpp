@@ -470,6 +470,29 @@ void compare_with_alice(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 }
 
+// A path report build just started under `hold`: the window counts the
+// records from 0 (and shows `also_while_building` when given), then, once
+// released, shows the rows with no bar.
+void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold,
+                          const char* also_while_building = nullptr) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->report_job && h.app->report_job->progress().second > 0;
+    }, 10), );
+    const int total = h.app->report_job->progress().second;
+    ctx->Yield(2);
+    IM_CHECK(on_screen(h, "Analyzing 0 of " + std::to_string(total) + " record"));
+    if (also_while_building) IM_CHECK(on_screen(h, also_while_building));
+    hold.release();
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr &&
+               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 60));
+    ctx->Yield(2);
+    IM_CHECK(!on_screen(h, "Analyzing "));
+    IM_CHECK(on_screen(h, path_count_tail(h)));
+}
+
 // The path window opens from the finished strip's "Open report", from the
 // toolbar's "Open path report", and by itself after a batch with "Open
 // automatically" on. While it builds it counts the charts.
@@ -501,8 +524,13 @@ void test_open_path(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Open path report");
     ctx->Yield(2);
     IM_CHECK_RETV(path_window() != nullptr, );
+    // The Esc above let the rows go, so this opening builds them again.
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+    }, 60));
+    ctx->Yield(2);
     IM_CHECK(on_screen(h, path_count_tail(h)));
-    h.app->path_report.window_open = false;  // it covers the toolbar
+    h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
 
     // Open automatically: the next batch's report opens its window by itself.
@@ -518,20 +546,7 @@ void test_open_path(ImGuiTestContext* ctx) {
     ReportHold hold;
     ctx->SetRef(path_window());
     ctx->ItemClick("Refresh");
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->report_job && h.app->report_job->progress().second > 0;
-    }, 10), );
-    const int total = h.app->report_job->progress().second;
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Analyzing 0 of " + std::to_string(total) + " record"));
-    hold.release();
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60));
-    ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "Analyzing "));
-    IM_CHECK(on_screen(h, path_count_tail(h)));
+    held_build_then_rows(ctx, hold);
 }
 
 // Picking a player closes the picker and opens the comparison; the window's
@@ -624,7 +639,7 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(selected_md5().c_str(), md5.c_str());
     IM_CHECK(h.app->settings.chartmode_key() != first_mode);
     IM_CHECK(h.app->settings.chartmode_key() == mode_a || h.app->settings.chartmode_key() == mode_b);
-    h.app->path_report.window_open = false;  // it covers the toolbar
+    h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
 
     // A comparison with a second score on a chart not in the library. With
@@ -647,8 +662,9 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->settings.chartmode_key() == mode_before);
 }
 
-// Esc closes the path window; opening it again shows the same rows at once,
-// with no new build.
+// A batch's report, built while the window is shut, shows at once. Esc then
+// closes the window and lets its rows go; opening it again builds the report
+// again behind the building bar (D103 item 28).
 void test_reopen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -660,23 +676,23 @@ void test_reopen(ImGuiTestContext* ctx) {
     h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
-    const hydra::app::report::GeneratedReport* result = h.app->path_report.result.get();
-    IM_CHECK_RETV(result != nullptr, );
+    IM_CHECK(h.app->report_job == nullptr);  // the batch's report, kept while shut
+    IM_CHECK_RETV(h.app->path_report.result != nullptr, );
     const std::string count = path_count_tail(h);
     IM_CHECK(on_screen(h, count));
 
     press_escape_on(ctx, path_window());
     IM_CHECK(!h.app->path_report.window_open);
     IM_CHECK(path_window() == nullptr);
+    IM_CHECK(h.app->path_report.result == nullptr);
 
+    // Every build held at its first chart, so the bar stays up to be read.
+    ReportHold hold;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("**/Open path report");
-    IM_CHECK(h.app->report_job == nullptr);  // nothing rebuilt
-    ctx->Yield(2);
+    held_build_then_rows(ctx, hold, "Building the report from your library...");
     IM_CHECK(path_window() != nullptr);
-    IM_CHECK(h.app->path_report.result.get() == result);
-    IM_CHECK(on_screen(h, count));
-    IM_CHECK(!on_screen(h, "Analyzing "));
+    IM_CHECK(on_screen(h, count));  // the same rows as before the close
 }
 
 // After a batch the report goes out of date with the batch's time; a setting

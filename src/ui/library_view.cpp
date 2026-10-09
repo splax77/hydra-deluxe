@@ -201,8 +201,9 @@ void render_main_window(AppState& app) {
 
     // The report windows (D103), each its own OS window beside this one,
     // drawn while its slot says it is open. Each window clears that flag
-    // itself when it closes; its rows stay in the slot, so reopening is
-    // instant.
+    // itself when it closes. The path report's close then runs
+    // AppState::close_path_report through the window's close callback (D103
+    // item 28); the comparison's rows stay in its slot.
     if (app.path_report.window_open)
         draw_path_report_window(&app.path_report.window_open, path_report_input(app));
     if (app.dm_report.window_open)

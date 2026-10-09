@@ -473,6 +473,12 @@ public:
     // finished strip's "Open report". With nothing ever built this session
     // it starts a build (request_path_report).
     void show_path_report();
+    // Closes the path report window (D103 item 28): its X, Esc and Ctrl+W
+    // all come here, through the window's close callback. The rows go, a
+    // build still running stops as its Cancel stops it and never lands, and
+    // the slot starts over as never built, so the next show_path_report
+    // builds again.
+    void close_path_report();
     // Whether the library holds a chart with a current result, whatever the
     // search: the toolbar shows "Open path report" from then on.
     bool library_has_analyzed() const;

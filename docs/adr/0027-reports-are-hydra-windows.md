@@ -146,8 +146,13 @@ misbehave.
 **No export.** The windows only show the report (D103 item 2). There is no
 file to keep or send.
 
-**Memory.** A report's rows stay in memory after its window closes, so it
-reopens at once. The plan measures that cost when the windows merge.
+**Memory.** Closing the path report window lets its rows go, and reopening it
+builds the report again with the building bar (D103 item 28, 2026-10-08). The
+user chose this after the report memory run measured about 42 MB of rows on
+their library. A build still running when the window closes stops, as its
+Cancel stops it. A report a batch builds while the window is shut stays until
+the window is opened and closed. The comparison's rows still stay in memory
+after its window closes, so it reopens at once.
 
 ## Rejected
 

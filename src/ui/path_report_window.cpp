@@ -133,6 +133,13 @@ void draw_path_report_window(bool* open, const PathReportInput& input) {
 
     if (report_frame::begin(open, frame, w.memory) && w.view) draw_body(w, frame, input);
     report_frame::end(open, frame, w.memory);
+    // Closed this frame: the window's copy of the rows goes with AppState's
+    // (D103 item 28). The search box, dropdown and sort stay.
+    if (!*open) {
+        w.view.reset();
+        w.tiles.clear();
+        w.built_from.reset();
+    }
 }
 
 PathReportInput path_report_input(AppState& app) {
@@ -149,7 +156,9 @@ PathReportInput path_report_input(AppState& app) {
     in.callbacks.refresh = [&app] { app.request_path_report(); };
     in.callbacks.try_again = [&app] { app.request_path_report(); };
     in.callbacks.cancel = [&app] { app.cancel_path_report(); };
-    // The window clears window_open itself through its `open` flag.
+    // The window clears window_open itself through its `open` flag; the
+    // close then goes through its one owner.
+    in.callbacks.close = [&app] { app.close_path_report(); };
     return in;
 }
 
