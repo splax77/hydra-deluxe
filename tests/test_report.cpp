@@ -47,6 +47,7 @@
 #include "search/graph.h"
 #include "store/record_store.h"
 #include "temp_util.h"
+#include "ui/library_jobs.h"
 #include "wcag_util.h"
 
 using namespace hydra;
@@ -240,6 +241,16 @@ struct CountingAnalyzer {
         };
     }
 };
+
+// The scan rows a batch over the first `count` charts of `library` reads,
+// each made by the GUI's own conversion, ui::scan_item_of.
+std::vector<ScanItem> scan_items(const std::vector<store::ChartLibraryEntry>& library,
+                                 size_t count) {
+    std::vector<ScanItem> items;
+    for (size_t i = 0; i < count && i < library.size(); ++i)
+        items.push_back(ui::scan_item_of(library[i]));
+    return items;
+}
 
 }  // namespace
 
@@ -811,14 +822,7 @@ TEST_CASE("the report reuses the charts a batch just analyzed (D87 item 5)") {
     BatchCallbacks callbacks;
     callbacks.analyze = batch.analyzer();
     callbacks.report_seed = &seed;
-    std::vector<ScanItem> items;
-    for (size_t i = 0; i < 2; ++i) {
-        ScanItem item;
-        item.md5 = library[i].md5;
-        item.title = library[i].title;
-        item.notespath = library[i].notespath;
-        items.push_back(item);
-    }
+    const std::vector<ScanItem> items = scan_items(library, 2);
     run_batch(plan_batch(items, {}), run, store, 2, callbacks);
     REQUIRE(batch.paths.size() == 2);
     CHECK(seed.rows.size() == 2);
@@ -1495,15 +1499,7 @@ TEST_CASE("generate_report tells its progress chart by chart, from 0 to the whol
     BatchCallbacks callbacks;
     callbacks.analyze = batch.analyzer();
     callbacks.report_seed = &seed;
-    std::vector<ScanItem> items;
-    for (const store::ChartLibraryEntry& e : library) {
-        ScanItem item;
-        item.md5 = e.md5;
-        item.title = e.title;
-        item.notespath = e.notespath;
-        items.push_back(item);
-    }
-    run_batch(plan_batch(items, {}), fixture_settings(4).batch_run(), store, 2, callbacks);
+    run_batch(plan_batch(scan_items(library, library.size()), {}), fixture_settings(4).batch_run(), store, 2, callbacks);
     REQUIRE(seed.rows.size() == 3);
     calls.clear();
     report::generate_report(store, options, seed);
