@@ -425,9 +425,8 @@ public:
     bool view_progress_shown() const;
     // Whether the song panel holds its rows' places (HeldRow): the open song
     // is analyzing again after its result was shown, as after a setting
-    // change. A click on a song, "Try again" after a cancel, and a request
-    // after an error don't hold. The headline and the Preview's "Showing" row
-    // both ask here.
+    // change. Which requests count as analyzing again is view_reanalysis_'s
+    // to say. Every held row asks here, through detail::draw_held_row.
     bool view_holds_space() const;
     // True once the click's job has been collected and nothing waits: the
     // click has settled. The one spelling tests wait on.
@@ -654,10 +653,9 @@ private:
     void launch_view_job();
     // When the latest request was made (start_view), for view_progress_shown.
     std::chrono::steady_clock::time_point view_requested_at_{};
-    // For view_holds_space: true once the open song's result has landed
-    // Ready, and through the re-analyses of that song that follow. A result
-    // that isn't Ready, a cancel while waiting, and close_details (the panel
-    // closing, or a click opening another song) clear it.
+    // For view_holds_space: the open song's last result landed Ready, so a
+    // request for it now is a re-analysis. update_view_job sets it as each
+    // result lands; start_view, cancel_view and close_details also clear it.
     bool view_reanalysis_ = false;
     // The row index select_relative would open, if there is one.
     std::optional<size_t> relative_row(int delta) const;
