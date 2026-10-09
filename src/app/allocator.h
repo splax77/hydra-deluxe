@@ -10,9 +10,8 @@
 namespace hydra::app {
 
 // Hands the memory mimalloc keeps after it is freed back to Windows at once,
-// instead of after mimalloc's purge delay (D95 call 1). Library batches and
-// path report builds call it once when they end. It takes some ms, so it does
-// not belong in a loop.
+// instead of after mimalloc's purge delay (D95 call 1), for a job that has
+// just freed a lot at once. It takes some ms, so it does not belong in a loop.
 void return_freed_memory();
 
 // Committed memory in bytes as mimalloc's mi_process_info reports it, for
